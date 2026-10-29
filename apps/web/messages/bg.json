@@ -2329,6 +2329,8 @@
     "py_storno": "Сторно направено · {who}, {time}",
     "py_refund_failed": "Връщането не е минало в {provider}",
     "rf_fail_t": "Връщане на {amt} не е минало в {provider}. Сторното вече е направено: проверете със счетоводителя.",
+    "rf_ok": "Разбрах",
+    "rf_toast": "Отбелязано",
     "d_due": "Отговорете в {provider} до {date}",
     "d_ok": "Виж доказателствата",
     "py_disputed": "Оспорено",
@@ -2347,6 +2349,7 @@
     "lg_pay_refund": "Връщане на {amt}, направено в {provider}",
     "lg_pay_storno": "Сторно направено",
     "lg_pay_storno_undone": "Сторното е върнато като неприключено",
+    "lg_pay_refund_seen": "Видяно: неуспешно връщане",
     "lg_pay_dispute": "Спор по плащането: {state}"
   },
   "ownerSettings": {

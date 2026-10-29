@@ -67,6 +67,8 @@ export const LOG_KINDS = {
   // done or put back (lg_pay_storno), and a dispute opened or closed (lg_pay_dispute) (#222).
   'payment.refund_seen': 'record',
   'payment.storno': 'record',
+  // A refund that did not go through, seen by a manager or owner, or put back (#234).
+  'payment.refund_failed_seen': 'record',
   'payment.dispute': 'record',
 } as const satisfies Record<string, LogRetention>
 

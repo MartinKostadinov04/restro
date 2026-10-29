@@ -11,7 +11,8 @@
 // 8-second toast offers an Undo that brings the row back; the dispute opens the payment's sheet
 // with the "Dispute evidence" text; the end of the night lists the refund with no storno under "To
 // fix" and sections 5 and 6; a refund that fails after its storno asks the manager to check with
-// the accountant. The admin is read in English.
+// the accountant, and "Got it" clears that row (Undo brings it back; the Log and the end of the
+// night keep who, #234). The admin is read in English.
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
@@ -353,5 +354,30 @@ test('a refund that fails at the provider after its storno asks the manager to c
   await expect(failed).toHaveAttribute('data-kind', 'refund_failed')
   await expect(failed).toContainText(/A refund of €3\.00 didn't go through at .+\./)
   await expect(failed).toContainText('check with your accountant')
-  await expect(failed.getByRole('button')).toHaveCount(0)
+  await expect(failed.getByRole('button')).toHaveText(['Got it'])
+
+  // "Got it" clears the row at once; the toast's Undo brings it back (#234).
+  const got = new Taps()
+  await got.tap(failed.getByRole('button', { name: 'Got it' }))
+  await expect(toast(page, 'Noted')).toBeVisible()
+  await expect(failed).toHaveCount(0)
+  expect(got.count).toBe(1)
+  const undo = new Taps()
+  await undo.tap(toast(page, 'Noted').getByRole('button', { name: 'Undo' }))
+  await expect(failed).toHaveCount(1)
+  expect(undo.count).toBe(1)
+
+  // Said again, it stays gone after a reload; the Log and the end of the night keep who.
+  await failed.getByRole('button', { name: 'Got it' }).click()
+  await expect(toast(page, 'Noted')).toBeVisible()
+  await expect(failed).toHaveCount(0)
+  await page.reload()
+  await page.waitForLoadState('networkidle')
+  await expect(rows(page).filter({ hasText: "didn't go through" })).toHaveCount(0)
+  await open(page, 'log')
+  await expect(page.getByTestId('log-list')).toContainText("Seen: refund that didn't go through")
+  await open(page, 'night')
+  await expect(page.getByTestId('night-refunds-list')).toContainText(
+    /didn't go through at .+ · Seen: refund that didn't go through · /,
+  )
 })

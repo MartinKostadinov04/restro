@@ -81,6 +81,7 @@ describe('refunds and disputes in the CSV (#222)', () => {
         earlier: false,
         failed: false,
         storno: { by: { who: { kind: 'person', name: 'Ivan' }, telegram: false }, time: '12:30' },
+        seen: null,
       },
       {
         refundId: 'rf_2',
@@ -95,6 +96,7 @@ describe('refunds and disputes in the CSV (#222)', () => {
         earlier: true,
         failed: false,
         storno: null,
+        seen: null,
       },
     ],
     disputes: [
@@ -126,6 +128,33 @@ describe('refunds and disputes in the CSV (#222)', () => {
       state: 'py_disputed',
       amountMinor: 4600,
       reason: 'd_due{"provider":"Stripe","date":"2026-11-04 11:00"}',
+    })
+  })
+  it('says a failed refund was seen, and who, in the state and the who column (#234)', () => {
+    const seen: MoneySectionsView = {
+      ...money,
+      refunds: [
+        {
+          refundId: 'rf_3',
+          paymentId: 'py_2',
+          paymentNumber: 'XY9ZW',
+          table: '4',
+          numbered: true,
+          amountMinor: 700,
+          currency: 'EUR',
+          receiptNumber: 'R-000124',
+          serviceDate: '2026-10-28',
+          earlier: false,
+          failed: true,
+          storno: { by: { who: { kind: 'person', name: 'Ivan' }, telegram: false }, time: '12:30' },
+          seen: { by: { who: { kind: 'person', name: 'Mira' }, telegram: false }, time: '13:05' },
+        },
+      ],
+    }
+    expect(moneyCsvRows(seen, { say, provider: 'Stripe' })[0]).toMatchObject({
+      state: 'py_refund_failed{"provider":"Stripe"} · lg_pay_refund_seen',
+      time: '13:05',
+      amountMinor: 700,
     })
   })
 })

@@ -62,6 +62,7 @@ const line = (kind: LogLineView['kind'], fields: Partial<LogLineView> = {}): Log
   disputeState: null,
   refundFailed: false,
   stornoUndone: false,
+  refundSeenUndone: false,
   paymentId: null,
   sentOrdersOfDay: null,
   callKinds: [],
@@ -298,6 +299,14 @@ describe('the sentences of refunds, stornos and disputes (#222)', () => {
     expect(en(line('payment.storno'))).toBe('Storno done')
     expect(bgText(line('payment.storno'))).toBe('Сторно направено')
     expect(en(line('payment.storno', { stornoUndone: true }))).toBe('Storno taken back')
+  })
+
+  it('words "Got it" on a failed refund and its Undo (#234)', () => {
+    expect(en(line('payment.refund_failed_seen'))).toBe("Seen: refund that didn't go through")
+    expect(bgText(line('payment.refund_failed_seen'))).toBe('Видяно: неуспешно връщане')
+    expect(en(line('payment.refund_failed_seen', { refundSeenUndone: true }))).toBe(
+      "The refund didn't go through at the payment provider",
+    )
   })
 
   it('words a dispute by where it stands', () => {

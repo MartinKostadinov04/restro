@@ -332,8 +332,12 @@ export function NightRefunds({
     <>
       <ul className="divide-y rounded-lg border" data-testid="night-refunds-list">
         {refunds.map((refund) => {
+          const failedText = t('py_refund_failed', { provider: provider ?? t('pb_provider_none') })
+          // A failed refund a manager saw says so, and who (#234), as "Storno done" does.
           const state = refund.failed
-            ? t('py_refund_failed', { provider: provider ?? t('pb_provider_none') })
+            ? refund.seen === null
+              ? failedText
+              : `${failedText} · ${t('lg_pay_refund_seen')} · ${who(refund.seen.by)}, ${refund.seen.time}`
             : refund.storno === null
               ? t('nt_fix_storno')
               : t('py_storno', { who: who(refund.storno.by), time: refund.storno.time })
