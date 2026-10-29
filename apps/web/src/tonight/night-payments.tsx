@@ -16,6 +16,7 @@ import { nightPaymentsAction } from '@/server/tonight/payment-actions'
 import type { MoneyAlertView, PaymentRowView, PaymentsView } from '@/server/tonight/payment-view'
 
 import { ActionRowItem } from './action-rows'
+import { useDateText } from './day-picker'
 import { useMoney } from './money'
 import { variantTitleKey } from './money-rows'
 import { PAGE } from './pages'
@@ -303,10 +304,14 @@ export function NightRefunds({
   )
 }
 
-/** Section 6: disputes opened on the night's payments. */
+/** Section 6: disputes opened on the night's payments, and how many are still open. */
 export function NightDisputes({
+  day,
+  openCount,
   disputes,
 }: {
+  day: string
+  openCount: number
   disputes: readonly {
     paymentId: string
     table: string
@@ -318,22 +323,29 @@ export function NightDisputes({
   const t = useTranslations('tonight')
   const money = useMoney()
   const tableName = useTableName()
+  const dateText = useDateText()
   return (
-    <ul className="divide-y rounded-lg border" data-testid="night-disputes-list">
-      {disputes.map((dispute) => (
-        <li
-          key={dispute.paymentId}
-          className="flex justify-between gap-3 p-3 text-sm [overflow-wrap:anywhere]"
-        >
-          <span>{t('py_title', { table: tableName(dispute.table, dispute.numbered) })}</span>
-          {dispute.amountMinor === null ? null : (
-            <span className="shrink-0 tabular-nums">
-              {money(dispute.amountMinor, dispute.currency)}
+    <div className="space-y-2">
+      {openCount === 0 ? null : (
+        <p className="text-sm text-muted-foreground" data-testid="night-disputes-open">
+          {t('nt_disp_open', { n: openCount })}
+        </p>
+      )}
+      <ul className="divide-y rounded-lg border" data-testid="night-disputes-list">
+        {disputes.map((dispute) => (
+          <li key={dispute.paymentId} className="space-y-0.5 p-3 text-sm">
+            <span className="block font-medium">{t('d_t')}</span>
+            <span className="block text-muted-foreground [overflow-wrap:anywhere]">
+              {t('d_d', {
+                amt: money(dispute.amountMinor ?? 0, dispute.currency),
+                table: tableName(dispute.table, dispute.numbered),
+                date: dateText(day),
+              })}
             </span>
-          )}
-        </li>
-      ))}
-    </ul>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 

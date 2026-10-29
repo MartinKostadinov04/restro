@@ -31,14 +31,7 @@ const CORE_RELEASE_REASONS = [
   'expired',
   'hold_refused',
   'below_minimum',
-  // Written by core, still without a word in the plan (asked of the lead, #115): never shown raw.
-  'item_unavailable',
-  'enter_refused',
-  'bill_changed',
-  'ask_waiter_to_split',
-  'isolate_refused',
-]
-const WITHOUT_WORD = [
+  // The lead's words, awaiting Martin 10-30.
   'item_unavailable',
   'enter_refused',
   'bill_changed',
@@ -65,11 +58,11 @@ describe('the payment state words', () => {
 })
 
 describe('the release reasons', () => {
-  it('words every code with a word, in both languages, and the rest are the listed ones', () => {
+  it('words every code core writes, in both languages', () => {
     const wordless = CORE_RELEASE_REASONS.filter(
       (code) => PAYMENT_RELEASE_REASONS[code] === undefined,
     )
-    expect(wordless.sort()).toEqual([...WITHOUT_WORD].sort())
+    expect(wordless).toEqual([])
     for (const code of Object.keys(PAYMENT_RELEASE_REASONS)) {
       for (const locale of ['en', 'bg'] as const) {
         expect(
@@ -83,7 +76,8 @@ describe('the release reasons', () => {
   it('never returns a raw code', () => {
     const say = (key: string) => messages('en')[key] ?? key
     expect(releaseReasonWord(say, 'expired')).toBe('the hold ran out')
-    expect(releaseReasonWord(say, 'bill_changed')).toBeNull()
+    expect(releaseReasonWord(say, 'bill_changed')).toBe('the bill changed')
+    expect(releaseReasonWord(say, 'a_code_with_no_word')).toBeNull()
     expect(releaseReasonWord(say, null)).toBeNull()
   })
 })

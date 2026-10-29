@@ -2301,7 +2301,15 @@
     "pr_expired": "задържането изтече",
     "pr_hold_refused": "картата не беше одобрена",
     "pr_below_minimum": "под най-малкото плащане с карта",
-    "pb_provider_none": "доставчика на плащания"
+    "pb_provider_none": "доставчика на плащания",
+    "pr_bill_changed": "сметката се промени",
+    "pr_ask_waiter_to_split": "трябва сервитьор за разделянето",
+    "pr_item_unavailable": "артикул свърши",
+    "pr_enter_refused": "касата не прие поръчката",
+    "pr_isolate_refused": "касата не прие поръчката",
+    "d_t": "Спор по картово плащане",
+    "d_d": "Плащане от {amt} ({table}, {date}).",
+    "nt_disp_open": "{n} още отворени"
   },
   "ownerSettings": {
     "st_hours": "Работно време",

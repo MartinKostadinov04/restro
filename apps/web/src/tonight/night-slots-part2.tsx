@@ -72,7 +72,7 @@ export async function nightSlots(
       'disputes',
       t('nt_disputes'),
       money.disputes.length,
-      <NightDisputes disputes={money.disputes} />,
+      <NightDisputes day={payments.day} openCount={money.openDisputes} disputes={money.disputes} />,
     )
   }
 

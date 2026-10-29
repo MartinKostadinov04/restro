@@ -2301,7 +2301,15 @@
     "pr_expired": "the hold ran out",
     "pr_hold_refused": "the card wasn't approved",
     "pr_below_minimum": "below the smallest card payment",
-    "pb_provider_none": "the payment provider"
+    "pb_provider_none": "the payment provider",
+    "pr_bill_changed": "the bill changed",
+    "pr_ask_waiter_to_split": "a waiter has to split it",
+    "pr_item_unavailable": "an item ran out",
+    "pr_enter_refused": "the till didn't take the order",
+    "pr_isolate_refused": "the till didn't take the order",
+    "d_t": "Card dispute",
+    "d_d": "Payment of {amt} ({table}, {date}).",
+    "nt_disp_open": "{n} still open"
   },
   "ownerSettings": {
     "st_hours": "Hours",

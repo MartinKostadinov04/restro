@@ -36,6 +36,12 @@ export const PAYMENT_RELEASE_REASONS: Readonly<Record<string, string>> = {
   expired: 'pr_expired',
   hold_refused: 'pr_hold_refused',
   below_minimum: 'pr_below_minimum',
+  // The lead's words, awaiting Martin 10-30 (paying plan, "Release reasons").
+  bill_changed: 'pr_bill_changed',
+  ask_waiter_to_split: 'pr_ask_waiter_to_split',
+  item_unavailable: 'pr_item_unavailable',
+  enter_refused: 'pr_enter_refused',
+  isolate_refused: 'pr_isolate_refused',
 }
 
 /** The state words of one language, for the Log's sentence context. */
