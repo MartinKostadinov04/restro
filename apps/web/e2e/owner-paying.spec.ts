@@ -73,6 +73,17 @@ async function noSidewaysScroll(page: Page) {
   expect(overflow).toBeLessThanOrEqual(0)
 }
 
+/** Runs `act` and waits for the server action it starts to answer. */
+async function saved(page: Page, act: () => Promise<unknown>) {
+  const answered = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.request().headers()['next-action'] !== undefined,
+  )
+  await act()
+  await answered
+}
+
 async function snapshot(page: Page, name: string) {
   const dir = process.env.SCREENSHOT_DIR
   if (!dir) return
@@ -232,25 +243,32 @@ test('pay first: hidden while card payments are off, 2 taps with Undo once they 
   await expect(card.getByTestId('paying-pf-overrides')).toHaveCount(0)
   await snapshot(page, 'paying-pay-first.png')
 
+  // The controls show a choice at once, so each step waits for the server action to answer
+  // before it reloads or does the next thing; and an Undo is taken from its own toast.
+  const toastOf = (text: string) =>
+    page.locator('[data-sonner-toast]').filter({ hasText: text }).last()
+  const undoOf = (text: string) => toastOf(text).getByRole('button', { name: 'Отмяна' })
+
   // PF1: the whole menu paid first. Undo (a toast, gone after a reload) puts it back at once.
-  await card.getByTestId('paying-pf-mode-pay_first').check()
-  await expect(page.getByText('Артикули без собствен избор: плаща се предварително')).toBeVisible()
+  const PF1 = 'Артикули без собствен избор: плаща се предварително'
+  await saved(page, () => card.getByTestId('paying-pf-mode-pay_first').check())
+  await expect(toastOf(PF1)).toBeVisible()
   await expect(card.getByTestId('paying-pf-mode-pay_first')).toBeChecked()
-  await page.getByRole('button', { name: 'Отмяна' }).click()
+  await saved(page, () => undoOf(PF1).click())
   await expect(card.getByTestId('paying-pf-mode-on_bill')).toBeChecked()
   // ...and the choice itself is kept across a reload.
-  await card.getByTestId('paying-pf-mode-pay_first').check()
-  await expect(card.getByTestId('paying-pf-mode-pay_first')).toBeChecked()
+  await saved(page, () => card.getByTestId('paying-pf-mode-pay_first').check())
   await page.reload()
   await expect(page.getByTestId('paying-pf-mode-pay_first')).toBeChecked()
-  await page.getByTestId('paying-pf-mode-on_bill').check()
+  await saved(page, () => page.getByTestId('paying-pf-mode-on_bill').check())
   await expect(page.getByTestId('paying-pf-mode-on_bill')).toBeChecked()
 
   // PF2: everything on the bill at every table, with its consequence line; Undo puts it back.
-  await page.getByTestId('paying-pf-applies').click()
-  await expect(page.getByText('Всичко се поръчва по сметката', { exact: true })).toBeVisible()
+  const PF2 = 'Всичко се поръчва по сметката'
+  await saved(page, () => page.getByTestId('paying-pf-applies').click())
+  await expect(toastOf(PF2)).toBeVisible()
   await expect(page.getByTestId('paying-pf-off-d')).toBeVisible()
-  await page.getByRole('button', { name: 'Отмяна' }).click()
+  await saved(page, () => undoOf(PF2).click())
   await expect(page.getByTestId('paying-pf-applies')).toBeChecked()
   await expect(page.getByTestId('paying-pf-off-d')).toHaveCount(0)
   await context.close()
