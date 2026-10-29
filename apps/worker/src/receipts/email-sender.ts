@@ -95,9 +95,10 @@ export function receiptWords(venueName: string): {
 } {
   const name = senderName(venueName)
   return {
-    subject: `${name}: вашата разписка / your receipt`,
+    // Martin 10-29: «Касова бележка от {venue}» / "Your receipt from {venue}".
+    subject: `Касова бележка от ${name} / Your receipt from ${name}`,
     text: [
-      `Вашата разписка от ${name} е приложена.`,
+      `Вашата касова бележка от ${name} е приложена.`,
       '',
       `Your receipt from ${name} is attached.`,
     ].join('\n'),

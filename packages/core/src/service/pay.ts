@@ -104,6 +104,11 @@ const handleHash = z.string().regex(/^[0-9a-f]{64}$/)
 const MinorSchema = z.int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 /** A short code (a reason, a step's answer): the database's name pattern. */
 const CodeSchema = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
+/**
+ * A guest's email for an electronic receipt (`ReceiptEmailSchema` of the service seam, restated:
+ * the service path imports nothing under connectors/): one valid address, nothing else.
+ */
+const ReceiptEmailSchema = z.email().max(254)
 /** *Backend*: a provider's id, in the database's pattern. */
 const ProviderRefTextSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,254}$/)
 /** *Backend*: a POS reference as the reading gives it. */
@@ -359,6 +364,13 @@ export function payStart() {
       /** The knock: every picked line as the phone saw it. */
       seen: z.array(SeenLineSchema).min(1).max(200),
       tip: TipSchema,
+      /**
+       * The guest's email for the venue's electronic receipt (D127, #186): one valid address, only
+       * where the connector declares `electronicReceipt` (else the command is invalid: the phone
+       * was never offered the field). Personal data: kept on the payment only until the close
+       * (`payments.receipt_email`), never logged and never in a Log entry.
+       */
+      receiptEmail: ReceiptEmailSchema.optional(),
     }),
     origins: ['guest'],
     permission: null,
@@ -482,11 +494,11 @@ export function payStart() {
         return refused(command.actionId, 'invalid_command')
       }
       // No tip where the POS can't put it on the receipt (D127): the phone was told none is possible.
-      if (
-        tipMinor > 0 &&
-        !(await readTableCapabilities(stx.tx, command.tableId)).recordTipOnClose
-      ) {
-        return refuse('tip_not_offered')
+      const capabilities = await readTableCapabilities(stx.tx, command.tableId)
+      if (tipMinor > 0 && !capabilities.recordTipOnClose) return refuse('tip_not_offered')
+      // No email where the POS can't issue an electronic receipt: the phone was never offered it.
+      if (command.receiptEmail !== undefined && !capabilities.electronicReceipt) {
+        return refused(command.actionId, 'invalid_command')
       }
       const amountMinor = addMinor(linesMinor, tipMinor)
       // The venue's own floor here; the provider's minimum is checked when the worker prices it.
@@ -508,6 +520,7 @@ export function payStart() {
         handleHash: command.handleHash,
         actionId: command.actionId,
         tipMinor,
+        receiptEmail: command.receiptEmail ?? null,
         currency,
         providerKind: account.providerKind,
         ...stx.provenance,
@@ -937,6 +950,9 @@ export const PAYMENT_STEP_NAMES = [
   'capture',
   // Pay-first (#113): the round entered on a payment table.
   'addLines',
+  // The venue's electronic receipt (#186): the POS issued it, or Restro sent the POS's file.
+  // Its answer is a code (`pos_sent`, `file_sent`, `not_issued`, `send_failed`), never an address.
+  'receiptEmail',
 ] as const
 
 /** The POS writes a payment makes once: a second `attempting` is refused (#113). */

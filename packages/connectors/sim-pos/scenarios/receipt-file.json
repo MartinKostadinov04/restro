@@ -1,0 +1,10 @@
+{
+  "name": "receipt-file",
+  "extends": "demo-bar",
+  "description": "A POS that issues the sale as an electronic receipt and returns the receipt file on the close, for Restro to send (electronicReceipt and electronicReceiptFile, Q38), with the receipt number on the close (D127, #186). No faults.",
+  "switches": {
+    "electronicReceipt": true,
+    "electronicReceiptFile": true,
+    "receiptNumberOnClose": true
+  }
+}

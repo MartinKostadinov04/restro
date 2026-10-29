@@ -288,6 +288,13 @@
       "when": 1793238669225,
       "tag": "0040_paid_lines",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793265202389,
+      "tag": "0041_pay_receipt_email",
+      "breakpoints": true
     }
   ]
 }

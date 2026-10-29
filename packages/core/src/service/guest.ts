@@ -1269,6 +1269,11 @@ async function payAct(
       pick: input.command.pick,
       seen: input.command.seen,
       tip: tipOfCommand(input.command),
+      // The guest's email for the venue's electronic receipt (D127, #186): the engine's schema
+      // checks it, and refuses it where the connector declares no electronic receipt.
+      ...(input.command.receiptEmail === undefined
+        ? {}
+        : { receiptEmail: input.command.receiptEmail }),
     }
   } else {
     if (input.handle === undefined || !HANDLE_PATTERN.test(input.handle)) {

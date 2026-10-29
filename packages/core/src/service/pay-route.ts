@@ -846,9 +846,11 @@ export function paymentClosed() {
       }
       if (payment.state !== 'checked') return at(payment, payment.state, false)
       if (command.outcome === 'done') {
+        // The guest's email is erased with the close (the database's trigger would too, #186).
         await move(stx, locked, 'closed', {
           receiptNumber: command.receiptNumber,
           fiscalMemoryNumber: command.fiscalMemoryNumber,
+          receiptEmail: null,
         })
         return at(payment, 'closed', true)
       }
@@ -1297,6 +1299,39 @@ export function paymentStuck() {
   })
 }
 
+/**
+ * How long a payment may hold the guest's email for the venue's electronic receipt (#186): no
+ * payment takes longer from `pay.start` to its close (the card form's 2 and 10 minutes, the wait
+ * for a table's 60 seconds), so one still holding it is stuck and loses it. Every other end of a
+ * payment erases it in the same update (the database's trigger).
+ */
+export const RECEIPT_EMAIL_KEPT_MS = 30 * 60_000
+
+/**
+ * `payment.erase_receipt_email`: the recovery erases the guest's email from a payment older than
+ * `RECEIPT_EMAIL_KEPT_MS` that never reached its close or an end (D127, "Martin 10-29"). The
+ * payment itself is not changed; the close, if it comes, is the paper one.
+ */
+export function paymentEraseReceiptEmail() {
+  return defineCommand({
+    schema: z.strictObject({ type: z.literal('payment.erase_receipt_email'), paymentId }),
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    async handle(stx, command) {
+      const locked = await lockRoute(stx, command.paymentId, {})
+      if (refusedLock(locked)) return locked
+      const { payment } = locked
+      if (payment.receiptEmail === null) return at(payment, payment.state, false)
+      await stx.tx
+        .update(payments)
+        .set({ receiptEmail: null, ...stx.provenance, updatedAt: sql`now()` })
+        .where(eq(payments.id, payment.id))
+      return at(payment, payment.state, true)
+    },
+  })
+}
+
 /** The route's commands, for the registry. */
 export const PAY_ROUTE_COMMANDS = {
   'payment.claim_table': paymentClaimTable(),
@@ -1311,4 +1346,5 @@ export const PAY_ROUTE_COMMANDS = {
   'payment.release_refused': paymentReleaseRefused(),
   'payment.expired': paymentExpired(),
   'payment.stuck': paymentStuck(),
+  'payment.erase_receipt_email': paymentEraseReceiptEmail(),
 } as const

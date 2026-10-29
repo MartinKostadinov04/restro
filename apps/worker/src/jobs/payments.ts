@@ -63,6 +63,7 @@ import {
   type IsolatedHandle,
   JOB_NAMES,
   type OrderLine,
+  type PayAndCloseResult,
   PaymentIdSchema,
   type PaymentJob,
   PaymentJobSchema,
@@ -125,6 +126,7 @@ import type { Job } from 'pg-boss'
 import type { SimPolicy } from '../config'
 import type { PaymentProviders } from '../connectors'
 import type { Logger } from '../logger'
+import { EmailSendError, type EmailSender } from '../receipts/email-sender'
 import { assertSimAllowed, serviceConnectorFor, serviceContext } from '../service-connectors'
 import type { Limiter } from '../sync/limiter'
 import { type Bounded, bounded } from './connection'
@@ -188,6 +190,14 @@ export interface PaymentJobDeps {
   readonly sleep?: (ms: number) => Promise<void>
   /** The provider breakers (`SHARED_PAYMENT_BREAKERS`); tests pass their own. */
   readonly breakers?: PaymentBreakers
+  /**
+   * Sends the POS's own receipt file to the guest, from the venue's name (#186); null or absent
+   * where RECEIPT_FROM_ADDRESS is unset: a connector that returns the file is then never given
+   * the guest's email (the waiter brings paper).
+   */
+  readonly receiptSender?: EmailSender | null
+  /** The waits between a receipt send's tries (default 1 s, then 4 s); tests pass zeros. */
+  readonly receiptRetryDelaysMs?: readonly number[]
 }
 
 export interface PaymentEnvironment {
@@ -1479,6 +1489,16 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
   const now = await paymentOf(env, target)
   if (now === null || now.state !== 'checked' || now.amountMinor === null) return 'next'
   const { amountMinor, tipMinor } = now
+  // The guest's email goes into this one close, where the POS can issue an electronic receipt and
+  // the receipt can reach the guest: the POS sends it itself, or it returns the file and Restro's
+  // sender has it to send. Never past this function: held in memory, never logged (#186).
+  const capabilities = pos.connector.capabilities
+  const receiptEmail =
+    now.receiptEmail !== null &&
+    capabilities.electronicReceipt &&
+    (!capabilities.electronicReceiptFile || (deps.receiptSender ?? null) !== null)
+      ? now.receiptEmail
+      : null
   const ref = `${payment.id}-close`
   const outcome = await writePos(
     env,
@@ -1493,6 +1513,7 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
         tipMinor,
         // The card payment type: the connector picks its card type (no venue setting yet, #111).
         paymentType: null,
+        ...(receiptEmail === null ? {} : { receiptEmail }),
         ref,
       }),
     null,
@@ -1533,7 +1554,92 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
     throw error
   }
   await env.onStep?.({ step: 'payAndClose', outcome: outcome.kind })
+  if (receiptEmail !== null && outcome.kind === 'done') {
+    await handOffReceipt(env, target, payment, receiptEmail, outcome.result, deps)
+  }
   return 'next'
+}
+
+/** The default waits between a receipt send's tries (a busy service passes in seconds). */
+const RECEIPT_RETRY_DELAYS_MS: readonly number[] = [1_000, 4_000]
+
+/**
+ * What became of the guest's electronic receipt after a done close (#186), recorded as the
+ * `receiptEmail` step (a code, never the address): the POS sent it (`pos_sent`), Restro sent the
+ * POS's file unchanged (`file_sent`), or no receipt reached the guest (`not_issued`,
+ * `send_failed`), and the capture then raises "Bring the receipt" (#200). The address and the file
+ * live in this call only: nothing here stores or logs them, and a failure logs a code. Never
+ * throws: the payment goes on whatever became of the receipt.
+ */
+async function handOffReceipt(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  email: string,
+  result: PayAndCloseResult,
+  deps: PaymentJobDeps,
+): Promise<void> {
+  const step = recordStep(env, target, 'receiptEmail', `${payment.id}-receipt`)
+  try {
+    if (result.electronicReceipt === 'sent') {
+      await step('done', 'pos_sent')
+    } else if (
+      result.electronicReceipt === 'file' &&
+      result.receiptFile !== undefined &&
+      deps.receiptSender != null
+    ) {
+      const [venue] = await withTenant(env.pool, target.tenantId, (tx) =>
+        tx.select({ name: venues.name }).from(venues).where(eq(venues.id, target.venueId)),
+      )
+      const sent = await sendReceipt(env, payment.id, deps, {
+        to: email,
+        venueName: venue?.name ?? '',
+        file: result.receiptFile,
+        idempotencyKey: `${payment.id}-receipt`,
+      })
+      if (sent) await step('done', 'file_sent')
+      else await step('refused', 'send_failed')
+    } else {
+      await step('refused', 'not_issued')
+    }
+  } catch (error) {
+    // A step that could not be recorded: the capture brings paper. The text of an error here can
+    // not hold the address (the sender's never does); only its name and status are kept.
+    env.log.warn(
+      { paymentId: payment.id, error: error instanceof Error ? error.name : 'error' },
+      'the receipt email step failed',
+    )
+  }
+}
+
+/** Sends the receipt, again after a busy service; false once it cannot go. Logs codes only. */
+async function sendReceipt(
+  env: PaymentEnvironment,
+  paymentId: string,
+  deps: PaymentJobDeps,
+  message: Parameters<EmailSender['sendReceipt']>[0],
+): Promise<boolean> {
+  const sender = deps.receiptSender
+  if (sender == null) return false
+  const delays = deps.receiptRetryDelaysMs ?? RECEIPT_RETRY_DELAYS_MS
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await sender.sendReceipt(message)
+      return true
+    } catch (error) {
+      const known = error instanceof EmailSendError ? error : null
+      const wait = delays[attempt]
+      if (known?.retryable === true && wait !== undefined) {
+        await new Promise((resolve) => setTimeout(resolve, wait))
+        continue
+      }
+      env.log.warn(
+        { paymentId, status: known?.status ?? null, retryable: known?.retryable ?? false },
+        'the receipt email was not sent',
+      )
+      return false
+    }
+  }
 }
 
 /**
@@ -1568,6 +1674,8 @@ const captureStep: RouteStep = async (env, target, payment, deps) => {
     env.log.warn({ paymentId: payment.id, err: error }, 'the capture threw')
     outcome = { kind: 'unknown', reason: 'threw' }
   }
+  // No paper receipt is brought where the guest's electronic one went out (#186, #200).
+  const electronicReceipt = (await latestStep(env, target, 'receiptEmail'))?.outcome === 'done'
   if (outcome.kind === 'done') {
     await step('done')
     await route(env, target, {
@@ -1575,6 +1683,7 @@ const captureStep: RouteStep = async (env, target, payment, deps) => {
       outcome: 'captured',
       capturedMinor: outcome.result.capturedMinor,
       code: null,
+      electronicReceipt,
     })
     return 'next'
   }
@@ -1601,6 +1710,7 @@ const captureStep: RouteStep = async (env, target, payment, deps) => {
       outcome: 'captured',
       capturedMinor: reading.value.capturedMinor,
       code: null,
+      electronicReceipt,
     })
     return 'next'
   }
