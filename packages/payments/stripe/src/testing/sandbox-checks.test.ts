@@ -4,9 +4,10 @@
 //   STRIPE_SANDBOX_CHECKS=run STRIPE_SANDBOX_ENV_FILE=<path of a .env file with the keys> \
 //     pnpm vitest run --project packages/payments/stripe src/testing/sandbox-checks.test.ts
 //
-// `STRIPE_SECRET_KEY` is the platform's restricted key (what the app runs on); `STRIPE_HARNESS_KEY`
-// is the harness's own key, used only to read the balance (the platform's key may not). Both must
-// be sandbox keys, or the run stops before any request. The run prints request ids and object ids
+// `STRIPE_SECRET_KEY` is the platform's restricted key (what the app runs on) and must begin
+// `rk_test_`: a full key could refund, and the refund check would then create one. `STRIPE_HARNESS_KEY`
+// is the harness's own key, used only to read the balance (the platform's key may not); a sandbox
+// key. Otherwise the run stops before any request. The run prints request ids and object ids
 // as `EVIDENCE` lines, never a key. `STRIPE_HARNESS_ACCOUNT` names the connected account.
 
 import { appendFileSync } from 'node:fs'
@@ -17,6 +18,7 @@ import Stripe from 'stripe'
 import { describe, expect, it } from 'vitest'
 
 import { stripeKeyMode } from '../config'
+import { PAYMENT_METADATA_KEY } from '../mapping'
 import { createStripeProvider, STRIPE_API_VERSION } from '../provider'
 
 const RUN = process.env.STRIPE_SANDBOX_CHECKS === 'run'
@@ -24,10 +26,12 @@ const ACCOUNT = process.env.STRIPE_HARNESS_ACCOUNT ?? 'acct_1UUjd8H6CXJeKV2v'
 
 if (RUN && process.env.STRIPE_SANDBOX_ENV_FILE) loadEnvFile(process.env.STRIPE_SANDBOX_ENV_FILE)
 
-function sandboxKey(name: string): string {
-  // `.env.local` has had `NAME =` (a space) before; take either spelling.
-  const key = process.env[name] ?? process.env[`${name} `] ?? ''
+function sandboxKey(name: string, restrictedOnly: boolean): string {
+  const key = process.env[name] ?? ''
   if (stripeKeyMode(key) !== 'test') throw new Error(`${name} is not a sandbox key: stopping`)
+  if (restrictedOnly && !key.startsWith('rk_test_')) {
+    throw new Error(`${name} is not a restricted sandbox key (rk_test_): stopping`)
+  }
   return key
 }
 
@@ -57,11 +61,7 @@ async function refusalOf(call: () => Promise<unknown>): Promise<Refusal | null> 
 function note(line: string): void {
   console.log(line)
   if (process.env.STRIPE_SANDBOX_EVIDENCE_FILE) {
-    appendFileSync(
-      process.env.STRIPE_SANDBOX_EVIDENCE_FILE,
-      `${line}
-`,
-    )
+    appendFileSync(process.env.STRIPE_SANDBOX_EVIDENCE_FILE, `${line}\n`)
   }
 }
 
@@ -73,8 +73,8 @@ function evidence(check: string, what: string, request: unknown, ...ids: string[
 }
 
 describe.skipIf(!RUN)('sandbox checks 1-3 (#117)', () => {
-  const platform = RUN ? client(sandboxKey('STRIPE_SECRET_KEY')) : (null as never)
-  const harness = RUN ? client(sandboxKey('STRIPE_HARNESS_KEY')) : (null as never)
+  const platform = RUN ? client(sandboxKey('STRIPE_SECRET_KEY', true)) : (null as never)
+  const harness = RUN ? client(sandboxKey('STRIPE_HARNESS_KEY', false)) : (null as never)
 
   /** A manual-capture card hold, as the provider makes it, confirmed with a test card. */
   async function hold(check: string, amount: number) {
@@ -85,7 +85,7 @@ describe.skipIf(!RUN)('sandbox checks 1-3 (#117)', () => {
         capture_method: 'manual',
         allowed_payment_method_types: ['card'],
         payment_method_options: { card: { request_three_d_secure: 'any' } },
-        metadata: { restro_payment_id: newId('py') },
+        metadata: { [PAYMENT_METADATA_KEY]: newId('py') },
         description: `sandbox check ${check}`,
       },
       on,
@@ -98,6 +98,7 @@ describe.skipIf(!RUN)('sandbox checks 1-3 (#117)', () => {
       on,
     )
     evidence(check, 'confirm with the test card', confirmed, confirmed.id)
+    expect(confirmed.livemode).toBe(false)
     expect(confirmed.status).toBe('requires_capture')
     return confirmed
   }
@@ -120,6 +121,7 @@ describe.skipIf(!RUN)('sandbox checks 1-3 (#117)', () => {
     const captureBefore = (heldCharge.payment_method_details?.card as { capture_before?: number })
       ?.capture_before
     note(`EVIDENCE 2 | capture_before present on the held charge: ${captureBefore != null}`)
+    expect(captureBefore).toBeTypeOf('number')
 
     const captured = await platform.paymentIntents.capture(
       full.id,
@@ -127,12 +129,13 @@ describe.skipIf(!RUN)('sandbox checks 1-3 (#117)', () => {
       on,
     )
     evidence('1', 'capture', captured, captured.id)
+    expect(captured.livemode).toBe(false)
     expect(captured.status).toBe('succeeded')
     expect(captured.amount_received).toBe(1000)
     const fullCharge = captured.latest_charge as Stripe.Charge
     expect(fullCharge.amount_captured).toBe(1000)
     const moved = await chargeTransactions(fullCharge.id)
-    expect(moved.map((t) => [t.type, t.amount])).toContainEqual(['charge', 1000])
+    expect(moved.map((t) => [t.type, t.amount])).toEqual([['charge', 1000]])
 
     // The refund the key must not be able to make (D122 §8), by payment and by charge.
     for (const params of [{ payment_intent: full.id }, { charge: fullCharge.id }]) {
@@ -145,6 +148,7 @@ describe.skipIf(!RUN)('sandbox checks 1-3 (#117)', () => {
         full.id,
       )
       expect(refused?.statusCode).toBe(403)
+      expect(refused?.code).toBe('more_permissions_required')
     }
     const after = await platform.charges.retrieve(fullCharge.id, {}, on)
     expect(after.amount_refunded).toBe(0)
@@ -176,6 +180,7 @@ describe.skipIf(!RUN)('sandbox checks 1-3 (#117)', () => {
       on,
     )
     evidence('1', 'cancel', cancelled, cancelled.id)
+    expect(cancelled.livemode).toBe(false)
     expect(cancelled.status).toBe('canceled')
     expect(cancelled.amount_received).toBe(0)
     const charge = cancelled.latest_charge as Stripe.Charge
@@ -193,7 +198,10 @@ describe.skipIf(!RUN)('sandbox checks 1-3 (#117)', () => {
   }, 120_000)
 
   it('check 1: the provider code path with the real key', async () => {
-    const provider = createStripeProvider({ env: 'test', key: sandboxKey('STRIPE_SECRET_KEY') })
+    const provider = createStripeProvider({
+      env: 'test',
+      key: sandboxKey('STRIPE_SECRET_KEY', true),
+    })
     const account = providerRef(ACCOUNT)
     const paymentId = newId('py')
     const created = await provider.createHold({
