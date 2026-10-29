@@ -15,7 +15,7 @@ Walk the functionality file entry by entry. Done when each entry with status `su
 
 ## 2. Contract and rules in code
 
-Run `pnpm vitest run --project packages/faces/<id> --reporter=dot` (it holds `faceContractSuite`, the manifest test and the CSS tests) and `pnpm deps:check`. Done when both are green, or every failure is a finding. At most two sessions run tests at once, and you count as one.
+Run `pnpm vitest run --project packages/faces/<id> --reporter=dot` (it holds `faceContractSuite`, the manifest test and the CSS tests) and `pnpm deps:check`. Done when both are green, or every failure is a finding. Locally that is the face's own package, the files under review; every other package's tests and the Playwright specs run in GitHub's CI on the pull request (CLAUDE.md, Testing, Martin 10-28), and a red check there is a finding too. Only when Actions minutes stop being free does CLAUDE.md's fallback apply: at most two agents run tests at once, and you count as one.
 
 ## 3. Screenshots against §7.5 and §9.5
 

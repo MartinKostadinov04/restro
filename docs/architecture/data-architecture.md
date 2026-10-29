@@ -795,6 +795,10 @@ Text pairs read at 4.5:1 and controls at 3:1 (WCAG 1.4.11); a scheme is checked 
 - **Fonts, corners, shadow.** Six families with Cyrillic letters (Inter, Manrope, Montserrat, Playfair Display, Lora, Unbounded), served by the web app itself so a guest's phone never calls a font host; corner radius 0–32 px; shadow 0–5.
 - **Older venues.** A venue that only set a brand colour, or nothing, publishes as before: its roles come from its palette.
 
+### The design record (D128–D130)
+
+From 10-27 the venue's look is one **design record** per venue (D129): a value for every option of D130's list, a revision number, and the name of the Style it came from. It replaces `venues.settings.theme` and `presentation` (the template choice and per-face options) and absorbs the menu's `layout` and `layout_switch`; the three colours, the Advanced roles and the logo stay as this section describes, and the Styles (D128: Basic, Editorial, Soft, Classic, Club, plus an organisation's saved Styles) are presets of the same record. Writes go through `core.apply` with provenance (rule 1); a stale revision is refused. The snapshot publishes the record's values as the `design` block beside `theme`, every value a short lower-case token checked by the contract schema; the renderer draws from it, and the leak guard allows only the contract's words. Nothing in the record can hide an item, a price, allergens or a part of an item's row (D130's never-list; D131 hides sold-out items in the shell, not in the design). The option list itself lives in D130 and in the contract file the spec issue names; the two are kept equal by a test.
+
 ### The face contract
 
 Each face ships a manifest. Installing a face validates the manifest against R6, R7, R9 and R15, and the contract tests run against it. The example is the manifest of the Editorial Market, the default template:

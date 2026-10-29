@@ -22,11 +22,11 @@ What a guest can do in a menu. The `template-design` skill reads this file first
 - **Drawn means:** name, price, description (cut only with a way to read the rest), photo, portion, dietary labels, tags, badges, extra fields and the choices an item offers; an empty optional slot collapses; the dish page opens at `#item-<id>`, from a control marked `item.open` (a template without a dish page draws none).
 - **Where:** §7.2, §7.3, §5.2 R7 to R10 and R12, §9.5; D69
 
-### See whether an item can be had (sold out, scheduled, unavailable)
+### See only what can be had
 - **Shell key:** none (slot `item.state`)
 - **Status:** supported
-- **Drawn means:** each state is visibly different and legible, with the shell's label (a scheduled item shows when it opens), and the menu says when the whole menu is closed (`menu.schedule`); a sold-out item stays visible, with no order control.
-- **Where:** §5.2 R1 and R5, §7.2, §9.5, App. C 5; D69
+- **Drawn means:** an item that is sold out or unavailable is not in the menu at all (D131); the menu says when the whole menu is closed (`menu.schedule`). Scheduled items (available from a time) are out of scope (D131). Any state label the shell still sends for a drawn item is drawn legibly, and such an item is never orderable.
+- **Where:** §5.2 R1 and R5, §7.2, §9.5, App. C 5; D69, D131
 
 ### Find allergens
 - **Shell key:** none; has no switch of any kind
