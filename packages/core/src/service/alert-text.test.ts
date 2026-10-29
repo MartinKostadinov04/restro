@@ -349,3 +349,33 @@ describe('doneButtonText', () => {
     expect(doneButtonText('bg')).toBe('Готово')
   })
 })
+
+describe("a pay-first round's question (#113, #115)", () => {
+  it('asks whether the order is on its payment table, not about a receipt', () => {
+    const alert = { kind: 'payment_unconfirmed', details: { question: 'till', reference: 'K8R' } }
+    expect(alertMessage(alert, context('en'), 'new').body).toBe(
+      'Check in barsy whether the order is on its payment table, then answer in Restro.',
+    )
+    expect(alertMessage(alert, context('bg'), 'new').body).toBe(
+      'Проверете в barsy дали поръчката е на масата ѝ за плащане и отговорете в Restro.',
+    )
+  })
+
+  it('keeps the receipt question for a close', () => {
+    const alert = { kind: 'payment_unconfirmed', details: {} }
+    expect(alertMessage(alert, context('en'), 'new').body).toBe(
+      'Check in barsy whether its receipt printed, then answer in Restro.',
+    )
+  })
+
+  it('carries no amount, in the push or the group', () => {
+    const alert = {
+      kind: 'payment_unconfirmed',
+      details: { question: 'till', amountMinor: 3800, tipMinor: 200 },
+    }
+    for (const locale of ['en', 'bg'] as const) {
+      const message = alertMessage(alert, context(locale), 'new')
+      expect(`${message.title}${message.body}`).not.toMatch(/38|2\.00|200/)
+    }
+  })
+})

@@ -403,7 +403,13 @@ describe.skipIf(!hasDatabase)(
         const manager = await readNight(world.app, input(user(managerUser)))
         if (!manager.ok) throw new Error(manager.code)
         expect(manager.night.full).toBe(true)
-        expect(manager.night.money).toEqual({ payments: 0, capturedMinor: 0, tipMinor: 0 })
+        expect(manager.night.money).toEqual({
+          payments: 0,
+          capturedMinor: 0,
+          tipMinor: 0,
+          paymentsUnconfirmed: 0,
+          unconfirmedMinor: 0,
+        })
       })
 
       it('lists the Unconfirmed order to fix and counts the live night', async () => {

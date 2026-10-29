@@ -40,7 +40,7 @@ function clockAt(iso: string, timezone: string): string {
   }).format(new Date(iso))
 }
 
-function Section({
+export function Section({
   id,
   title,
   count,
@@ -180,7 +180,7 @@ function Content({ view, frame, slots }: { view: NightView; frame: Frame; slots:
           <Section
             id="night-fix"
             title={t('nt_fix')}
-            count={view.fix.length + view.answered.length}
+            count={view.fix.length + view.answered.length + slots.fixCount}
           >
             {view.fix.length === 0 && view.answered.length === 0 && slots.fix === null ? (
               <p

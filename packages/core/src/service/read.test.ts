@@ -227,9 +227,18 @@ describe.skipIf(!hasDatabase)('the service read side (as the restro_app role)', 
     const money = device.alerts.find((alert) => alert.kind === 'payment_unconfirmed')
     expect(money?.details).toMatchObject({ amountMinor: 3800 })
     expect(money?.details).not.toHaveProperty('tipMinor')
-    // A member with Staff's rights on a phone of their own sees no manager's alert.
+    // A member with Staff's rights on a phone of their own sees that a payment question waits (#115),
+    // without a tip, but no other manager's alert.
     const phone = await tonightOf(user(waiterId))
-    expect(phone.alerts.some((alert) => alert.kind === 'payment_unconfirmed')).toBe(false)
+    const seen = phone.alerts.find((alert) => alert.kind === 'payment_unconfirmed')
+    expect(seen?.details).not.toHaveProperty('tipMinor')
+    await world.owner.query(
+      "update restro.alerts set kind = 'payment_capture_failed' where kind = 'payment_unconfirmed' and tenant_id = $1",
+      [world.tenantId],
+    )
+    expect((await tonightOf(user(waiterId))).alerts.map((alert) => alert.kind)).not.toContain(
+      'payment_capture_failed',
+    )
     await world.owner.query(
       "delete from restro.alerts where kind = 'payment_unconfirmed' and tenant_id = $1",
       [world.tenantId],

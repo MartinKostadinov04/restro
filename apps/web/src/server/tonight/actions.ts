@@ -6,11 +6,12 @@
 // action; then it calls tables.ts, whose service write path checks the permission. The mark of a
 // payment table is a settings change: it takes no PIN, only the person's own sign-in.
 import { idSchema } from '@restro/core'
-import type { ServiceActor } from '@restro/core/service'
+import { paymentWorkerJob, type ServiceActor } from '@restro/core/service'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { getPool } from '../db'
+import { queuePaymentStep } from '../guest-api'
 import { enqueueJob } from '../jobs'
 import { logError } from '../log'
 import { requireTenant } from '../session'
@@ -248,4 +249,60 @@ export async function tableBillAction(
     logError('tonight_table_bill_failed', error)
     return { ok: false }
   }
+}
+
+const OnAlert = z.strictObject({ venueId, alertId: idSchema('al'), pin })
+const OnPayment = z.strictObject({
+  venueId,
+  paymentId: idSchema('py'),
+  answering: z.enum(['close', 'lines_not_back']),
+  answer: z.enum(['receipt_printed', 'no_receipt', 'on_till', 'not_on_till']),
+  pin,
+})
+
+/**
+ * Marks an alert done: the acknowledgement of items stuck on a payment table, of a payment stopped
+ * before closing and of the owners' money alerts (#115). The service path refuses a payment
+ * question (`alert_needs_answer`), so a hidden button is not the only guard.
+ */
+export async function doneAlertAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnAlert.safeParse(input)
+  if (!parsed.success) return INVALID
+  return perform(parsed.data, (scope) =>
+    command(scope, { type: 'alert.done', alertId: parsed.data.alertId }),
+  )
+}
+
+/**
+ * A manager's or owner's answer to a payment question (#115): "Receipt printed" / "No receipt", or
+ * for a pay-first round "On the till" / "Not on the till". The answer moves the payment on, so the
+ * worker is queued at once (`paymentWorkerJob`, #113) and does not wait for the recovery tick.
+ */
+export async function answerPaymentAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnPayment.safeParse(input)
+  if (!parsed.success) return INVALID
+  const { paymentId, answering, answer } = parsed.data
+  return perform(parsed.data, async (scope) => {
+    const result = await command(scope, { type: 'payment.answer', paymentId, answering, answer })
+    if (!result.ok) return result
+    const state = result.details.state
+    if (typeof state === 'string') {
+      const step = paymentWorkerJob({
+        state,
+        reason: typeof result.details.answer === 'string' ? result.details.answer : null,
+      })
+      if (step !== null) {
+        try {
+          await queuePaymentStep(
+            { tenantId: scope.tenantId, venueId: scope.venueId, paymentId },
+            step,
+          )
+        } catch (error) {
+          // The answer is saved; the recovery tick picks the payment up within a minute.
+          logError('payment_worker_not_queued', error)
+        }
+      }
+    }
+    return result
+  })
 }

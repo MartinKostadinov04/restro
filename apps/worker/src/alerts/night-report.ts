@@ -10,7 +10,13 @@
 // answers whether one went; the marker and the retry are the tick's (`jobs/service-day.ts`).
 
 import { readOrderingSettings } from '@restro/core'
-import { alertLocale, nightMessage, readNightReport, tableLabel } from '@restro/core/service'
+import {
+  alertLocale,
+  nightMessage,
+  readNightPaymentsReport,
+  readNightReport,
+  tableLabel,
+} from '@restro/core/service'
 import type { DbPool } from '@restro/db'
 
 import type { Logger } from '../logger'
@@ -44,6 +50,11 @@ export async function sendNightReport(
     if (chatId === null) return false
     // The venue's language decides the words, as for its alerts.
     const locale = alertLocale(report.defaultLocale)
+    const paid = await readNightPaymentsReport(deps.pool, {
+      tenantId: day.tenantId,
+      venueId: day.venueId,
+      day: day.serviceDate,
+    })
     await deps.telegram.sendMessage(
       chatId,
       nightMessage(locale, {
@@ -57,6 +68,13 @@ export async function sendNightReport(
           reference: problem.reference,
           table: tableLabel(locale, problem),
         })),
+        payments: {
+          taken: paid.taken,
+          fix: paid.fix.map((problem) => ({
+            table: tableLabel(locale, problem),
+            what: problem.what,
+          })),
+        },
       }),
     )
     return true

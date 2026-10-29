@@ -38,6 +38,7 @@ import { CARD_FLOOR_MINOR, readPayingSettings, smallestCardMinor } from '../payi
 import { serviceDate } from '../service-day'
 import { nextOrderChangeAt, orderFromRow } from '../table-order'
 import type { CallWaiterKind } from '../theme'
+import { PAYMENT_LINES_NOT_BACK_KIND, PAYMENT_UNCONFIRMED_KIND } from './alert-rules'
 import { type BillView, billBackendValues, billView, parseStoredBills } from './bill'
 import type { ServiceActor } from './context'
 import { resolveGrants } from './grants'
@@ -50,6 +51,8 @@ import {
   payFirstState,
   payingOffer,
 } from './pay-first'
+import { payingPausedAt } from './paying-pause'
+import { loadPayingConnection } from './payment-connection'
 import type { Permission } from './permissions'
 import { sentOrderLinesOf } from './send'
 import { readTableCapabilities } from './table-capabilities'
@@ -636,8 +639,18 @@ export interface Tonight {
     readonly subjectId: string
     readonly permission: string | null
     readonly raisedAt: Date
+    /** The service day it was raised on: a payment question may outlive its night (#162). */
+    readonly serviceDate: string
     readonly details: Record<string, unknown>
   }[]
+  /**
+   * Why card payments in the app are stopped at the venue, or null while they flow (or were never
+   * offered): the provider's breaker (`paused`), access to the account lost (`lost`) or the account
+   * unable to take card payments (`restricted`). Every role that sees Tonight reads it (#115).
+   */
+  readonly paying: 'paused' | 'lost' | 'restricted' | null
+  /** The venue's payment provider (its kind), for the words that name it; null with no account. */
+  readonly payingProvider: string | null
   /**
    * When Restro found an Unconfirmed sent order on the bill by itself (#135, the Log's
    * `sent_order.landed_late`). It changes nothing: staff still answer (D116).
@@ -678,6 +691,12 @@ export type TonightRefusal =
   | 'actor_unknown'
   | 'venue_missing'
   | 'venue_archived'
+
+/** The payment questions every role that sees Tonight reads, though only a manager answers. */
+const PAYMENT_QUESTION_KINDS: readonly string[] = [
+  PAYMENT_UNCONFIRMED_KIND,
+  PAYMENT_LINES_NOT_BACK_KIND,
+]
 
 /** An alert's details without the tips: Staff, and so a shared device, never see them. */
 function withoutTips(details: Record<string, unknown>): Record<string, unknown> {
@@ -765,6 +784,7 @@ export async function readTonight(
         subjectId: alerts.subjectId,
         permission: alerts.permission,
         raisedAt: alerts.raisedAt,
+        serviceDate: alerts.serviceDate,
         details: alerts.details,
       })
       .from(alerts)
@@ -878,6 +898,17 @@ export async function readTonight(
           .limit(TONIGHT_LOG_LIMIT)
       : null
 
+    // Why paying is stopped, for every role (the guest's phone already says "Ask your waiter").
+    const connection = await loadPayingConnection(tx, venue.id)
+    const paying: Tonight['paying'] =
+      connection.state === 'lost_access'
+        ? connection.checks.lostReason === 'account_restricted'
+          ? 'restricted'
+          : 'lost'
+        : connection.state === 'connected' && (await payingPausedAt(tx, venue.id))
+          ? 'paused'
+          : null
+
     const tonight: Tonight = {
       serviceDate: day,
       permissions: [...held],
@@ -900,16 +931,25 @@ export async function readTonight(
           (alert) =>
             alert.permission === null ||
             held.has(alert.permission as Permission) ||
-            (grants.device === true && alert.permission === 'money.follow_up'),
+            (grants.device === true && alert.permission === 'money.follow_up') ||
+            // A waiter sees that a payment waits on a manager, with no way to answer (#115 P4).
+            PAYMENT_QUESTION_KINDS.includes(alert.kind),
         )
         .map((alert) =>
-          grants.device === true ? { ...alert, details: withoutTips(alert.details) } : alert,
+          // A tip is for those who answer the alert: not a shared device, not a waiter who only
+          // sees that a payment question waits (#115).
+          grants.device === true ||
+          (alert.permission !== null && !held.has(alert.permission as Permission))
+            ? { ...alert, details: withoutTips(alert.details) }
+            : alert,
         ),
       landedLate: landed.flatMap((row) =>
         row.sentOrderId === null ? [] : [{ sentOrderId: row.sentOrderId, at: row.at }],
       ),
       waiterCalls:
         calls === null ? null : calls.map((call) => ({ ...call, kinds: orderedKinds(call.kinds) })),
+      paying,
+      payingProvider: connection.providerKind,
       pauses: active.map(({ actor: starter, ...pause }) => ({
         ...pause,
         startedBy: pause.restroStarted ? null : (named.get(starter) ?? null),

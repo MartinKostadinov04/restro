@@ -87,7 +87,7 @@ export interface NightAccess {
   readonly today: string
 }
 
-const accessOf = (reader: Reader): NightAccess => ({
+export const accessOf = (reader: Reader): NightAccess => ({
   venue: reader.venue,
   permissions: [...reader.held],
   device: reader.device,
@@ -164,7 +164,7 @@ function like(text: string): string {
 }
 
 /** Who the actors are: a person's name, Restro, or a guest's phone. */
-async function whoOf(tx: ReadTx, actors: readonly string[]): Promise<Map<string, Who>> {
+export async function whoOf(tx: ReadTx, actors: readonly string[]): Promise<Map<string, Who>> {
   const named = new Map<string, Who>()
   const memberIds: string[] = []
   const accountIds: string[] = []
@@ -204,7 +204,7 @@ async function whoOf(tx: ReadTx, actors: readonly string[]): Promise<Map<string,
   return named
 }
 
-const RESTRO: Who = { kind: 'restro' }
+export const RESTRO: Who = { kind: 'restro' }
 
 // ───────────────────────────── sent orders ─────────────────────────────
 
@@ -812,6 +812,9 @@ export interface NightMoney {
   readonly payments: number
   readonly capturedMinor: number
   readonly tipMinor: number
+  /** Payments left `unconfirmed` and what they hold on cards (#115): answered after the close. */
+  readonly paymentsUnconfirmed: number
+  readonly unconfirmedMinor: number
 }
 
 /** The end of one service day. */
@@ -834,7 +837,10 @@ export interface NightRead {
     readonly notAdded: SentOrderPage
   }
   /** Part 1's totals: no payments, no tips. */
-  readonly totals: Omit<ServiceDayTotals, 'payments' | 'capturedMinor' | 'tipMinor'>
+  readonly totals: Omit<
+    ServiceDayTotals,
+    'payments' | 'capturedMinor' | 'tipMinor' | 'paymentsUnconfirmed' | 'unconfirmedMinor'
+  >
   readonly money: NightMoney | null
 }
 
@@ -910,6 +916,8 @@ export async function readNight(
         and(
           eq(sentOrders.venueId, venue.id),
           eq(sentOrders.serviceDate, day),
+          // A pay-first round is answered through its payment (#113), which To fix lists itself.
+          eq(sentOrders.kind, 'on_bill'),
           today
             ? eq(sentOrders.state, 'unconfirmed')
             : or(
@@ -998,7 +1006,14 @@ export async function readNight(
       }
     })
 
-    const { payments: paymentCount, capturedMinor, tipMinor, ...part1 } = totals
+    const {
+      payments: paymentCount,
+      capturedMinor,
+      tipMinor,
+      paymentsUnconfirmed,
+      unconfirmedMinor,
+      ...part1
+    } = totals
     const dayList = await tx.execute<{ day: string }>(sql`
       select day::text as day from (
         select service_date as day from restro.service_days where venue_id = ${venue.id}
@@ -1026,7 +1041,13 @@ export async function readNight(
         sent: { counts: sent.counts, notAdded: sent },
         totals: part1,
         money: reader.held.has('money.follow_up')
-          ? { payments: paymentCount, capturedMinor, tipMinor }
+          ? {
+              payments: paymentCount,
+              capturedMinor,
+              tipMinor,
+              paymentsUnconfirmed,
+              unconfirmedMinor,
+            }
           : null,
       },
     } as const
@@ -1085,6 +1106,7 @@ export async function readNightReport(
         and(
           eq(sentOrders.venueId, venue.id),
           eq(sentOrders.serviceDate, input.day),
+          eq(sentOrders.kind, 'on_bill'),
           eq(sentOrders.state, 'unconfirmed'),
         ),
       )

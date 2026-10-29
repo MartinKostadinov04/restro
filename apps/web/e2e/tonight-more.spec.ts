@@ -413,7 +413,7 @@ test.describe('the end of the night', () => {
     const order = await page
       .locator('[data-testid="tonight-night"] section')
       .evaluateAll((els) => els.map((el) => el.id))
-    expect(order).toEqual(['night-fix', 'night-sent', 'night-totals'])
+    expect(order).toEqual(['night-fix', 'night-sent', 'night-payments-body', 'night-totals'])
     expect(taps.count).toBe(1)
     await expect(page.getByTestId('night-fix-count')).toHaveText('1')
     await expect(page.getByTestId('night-fix-list').getByTestId('action-row')).toHaveCount(1)

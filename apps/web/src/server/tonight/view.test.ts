@@ -37,6 +37,8 @@ function tonight(overrides: Partial<Tonight> = {}): Tonight {
     tables: [table(1, BAR1, true), table(2, BAR1, false), table(3, BAR2, true)],
     sentOrders: [],
     alerts: [],
+    paying: null,
+    payingProvider: null,
     landedLate: [],
     waiterCalls: [],
     pauses: [],
@@ -76,6 +78,7 @@ describe('Needs you, in the order of what costs most to leave', () => {
           subjectId: 'so_1',
           permission: 'alerts.answer',
           raisedAt: new Date('2026-10-27T21:20:00Z'),
+          serviceDate: '2026-10-27',
           details: {
             reference: 'K7F2',
             tableId: 'tb_000000000000000000001',
@@ -184,6 +187,7 @@ describe('a late landing Restro found (#135)', () => {
           subjectId: 'so_1',
           permission: 'alerts.answer',
           raisedAt: new Date('2026-10-27T21:20:00Z'),
+          serviceDate: '2026-10-27',
           details: { reference: 'K7F2', sentOrderId: 'so_1', tableId: 'tb_000000000000000000001' },
         },
       ],
@@ -315,6 +319,7 @@ describe('the out-of-stock notice', () => {
     subjectId: `nd_${n}`,
     permission: 'alerts.answer',
     raisedAt: new Date(`2026-10-27T21:0${n}:00Z`),
+    serviceDate: '2026-10-27',
     details: { itemId: `nd_${n}`, name },
   })
 
@@ -339,6 +344,7 @@ describe('what the actor may do', () => {
       pause: false,
       lift: false,
       answer: true,
+      followUp: false,
     })
   })
 })
@@ -360,5 +366,163 @@ describe('Pause ordering while Restro has paused', () => {
     )
     expect(v.canPauseAll).toBe(false)
     expect(v.pausableBars).toEqual([])
+  })
+})
+
+describe('the money rows of "Needs you" (#115)', () => {
+  const TABLE = 'tb_000000000000000000001'
+  const payAlert = (id: string, kind: string, over: Record<string, unknown> = {}) => ({
+    id,
+    kind,
+    subjectId: `py_${id}`,
+    permission: kind === 'payment_stranded' ? 'alerts.answer' : 'money.follow_up',
+    raisedAt: new Date('2026-10-27T21:00:00Z'),
+    serviceDate: '2026-10-27',
+    details: {
+      paymentId: `py_${id}`,
+      tableId: TABLE,
+      amountMinor: 3800,
+      captureBefore: '2026-11-02T20:00:00Z',
+      ...over,
+    },
+  })
+
+  it('puts payment questions first, by the hold that ends soonest, then a failed capture, then stuck items', () => {
+    const v = view(
+      tonight({
+        alerts: [
+          payAlert('al_stuck', 'payment_stranded'),
+          payAlert('al_failed', 'payment_capture_failed'),
+          payAlert('al_late', 'payment_unconfirmed', { captureBefore: '2026-11-03T20:00:00Z' }),
+          payAlert('al_soon', 'payment_unconfirmed', { captureBefore: '2026-10-30T20:00:00Z' }),
+          {
+            id: 'al_check',
+            kind: 'order_unconfirmed',
+            subjectId: 'so_1',
+            permission: 'alerts.answer',
+            raisedAt: new Date('2026-10-27T21:20:00Z'),
+            serviceDate: '2026-10-27',
+            details: { reference: 'K7F2', sentOrderId: 'so_1', tableId: TABLE },
+          },
+        ],
+      }),
+    )
+    expect(v.rows.map((row) => row.id)).toEqual([
+      'al_soon',
+      'al_late',
+      'al_failed',
+      'al_stuck',
+      'al_check',
+    ])
+    expect(v.rows.map((row) => row.kind)).toEqual(['pay', 'pay', 'failed', 'stuck', 'check'])
+  })
+
+  it("puts a payment stopped before closing after part 1's rows, for Later", () => {
+    const v = view(
+      tonight({
+        alerts: [
+          payAlert('al_stopped', 'payment_check_failed'),
+          {
+            id: 'al_check',
+            kind: 'order_unconfirmed',
+            subjectId: 'so_1',
+            permission: 'alerts.answer',
+            raisedAt: new Date('2026-10-27T21:20:00Z'),
+            serviceDate: '2026-10-27',
+            details: { reference: 'K7F2', sentOrderId: 'so_1', tableId: TABLE },
+          },
+        ],
+      }),
+    )
+    expect(v.rows.map((row) => row.kind)).toEqual(['check', 'stopped'])
+  })
+
+  it("words a pay-first round as the till's question and a second question as items not back", () => {
+    const v = view(
+      tonight({
+        alerts: [
+          payAlert('al_a', 'payment_unconfirmed', { question: 'till', reference: 'K8R' }),
+          payAlert('al_b', 'payment_lines_not_back'),
+          payAlert('al_c', 'payment_unconfirmed'),
+        ],
+      }),
+    )
+    const money = (id: string) => v.rows.find((row) => row.id === id)?.money
+    expect(money('al_a')).toMatchObject({ question: 'till', reference: 'K8R', amountMinor: 3800 })
+    expect(money('al_b')?.question).toBe('lines_not_back')
+    expect(money('al_c')?.question).toBe('close')
+  })
+
+  it("names the hold's end in the venue's zone and a question from an earlier night", () => {
+    const v = view(
+      tonight({
+        alerts: [
+          payAlert('al_a', 'payment_unconfirmed', { captureBefore: '2026-10-30T22:30:00Z' }),
+        ],
+      }),
+    )
+    expect(v.rows[0]?.money?.holdUntil).toEqual({ date: '2026-10-31', time: '00:30' })
+    expect(v.rows[0]?.money?.earlier).toBeNull()
+    const older = view(
+      tonight({
+        alerts: [{ ...payAlert('al_o', 'payment_unconfirmed'), serviceDate: '2026-10-25' }],
+      }),
+    )
+    expect(older.rows[0]?.money?.earlier).toBe('2026-10-25')
+  })
+
+  it("turns a table's tile red while a question waits, and only then", () => {
+    const waiting = view(tonight({ alerts: [payAlert('al_a', 'payment_unconfirmed')] }))
+    const tile = waiting.groups.flatMap((g) => g.tables).find((x) => x.id === TABLE)
+    expect(tile?.state).toBe('payment')
+    const acknowledged = view(tonight({ alerts: [payAlert('al_f', 'payment_capture_failed')] }))
+    const other = acknowledged.groups.flatMap((g) => g.tables).find((x) => x.id === TABLE)
+    expect(other?.state).toBe('open')
+  })
+
+  it('reads whether the role answers payments', () => {
+    const v = view(
+      tonight({
+        permissions: ['alerts.answer', 'money.follow_up', 'settings.connect_payments'],
+        alerts: [payAlert('al_a', 'payment_unconfirmed')],
+      }),
+    )
+    expect(v.can.followUp).toBe(true)
+  })
+})
+
+describe('the paying banner (#115)', () => {
+  it('shows for every role, with Reconnect only for who may connect payments', () => {
+    const owner = view(
+      tonight({ paying: 'lost', permissions: ['alerts.answer', 'settings.connect_payments'] }),
+    )
+    expect(owner.paying).toEqual({ state: 'lost', canReconnect: true })
+    const waiter = view(tonight({ paying: 'lost', permissions: ['alerts.answer'] }))
+    expect(waiter.paying).toEqual({ state: 'lost', canReconnect: false })
+    expect(view(tonight({ paying: 'paused' })).paying?.state).toBe('paused')
+    expect(view(tonight({ paying: 'restricted' })).paying?.state).toBe('restricted')
+  })
+
+  it("is hidden while Restro's own connection pause shows", () => {
+    const v = view(
+      tonight({
+        paying: 'paused',
+        pauses: [
+          pause({
+            id: 'pa_r',
+            scope: 'connection',
+            cause: 'breaker',
+            restroStarted: true,
+            startedBy: null,
+          }),
+        ],
+      }),
+    )
+    expect(v.paying).toBeNull()
+    expect(v.banners).toHaveLength(1)
+  })
+
+  it('is absent while paying flows', () => {
+    expect(view(tonight()).paying).toBeNull()
   })
 })

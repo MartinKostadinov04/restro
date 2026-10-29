@@ -106,7 +106,24 @@ export interface NightMessageInput {
   readonly unconfirmed: number
   /** Sent orders still Unconfirmed: the reference and the table as the venue words it. */
   readonly fix: readonly { readonly reference: string; readonly table: string | null }[]
+  /** Card payments (#115): counts and what is wrong, never an amount (Martin 10-27). */
+  readonly payments?: {
+    readonly taken: number
+    readonly fix: readonly {
+      readonly table: string | null
+      readonly what: NightPayWhat
+    }[]
+  }
 }
+
+/** What is wrong with a payment, as the group is told (no amounts). */
+export type NightPayWhat =
+  | 'unconfirmed'
+  | 'lines_not_back'
+  | 'stranded'
+  | 'capture_failed'
+  | 'expired'
+  | 'no_receipt'
 
 interface Words {
   readonly head: (venue: string, date: string) => string
@@ -114,6 +131,27 @@ interface Words {
   readonly fix: (k: number) => string
   readonly none: string
   readonly line: (ref: string, table: string | null) => string
+  readonly pay: (n: number, k: number) => string
+  readonly payLine: (table: string | null, what: NightPayWhat) => string
+}
+
+const PAY_WHAT: Readonly<Record<AlertLocale, Readonly<Record<NightPayWhat, string>>>> = {
+  bg: {
+    unconfirmed: 'без потвърждение',
+    lines_not_back: 'артикулите не са върнати на масата',
+    stranded: 'артикули останаха на маса за плащане',
+    capture_failed: 'картата не е таксувана след приключване на сметката',
+    expired: 'задържаната сума изтече преди някой да отговори',
+    no_receipt: 'таксувано, без номер на бележка',
+  },
+  en: {
+    unconfirmed: 'not confirmed',
+    lines_not_back: 'items not back on the table',
+    stranded: 'items stuck on a payment table',
+    capture_failed: 'card not charged after the bill closed',
+    expired: 'a card hold ran out before anyone answered',
+    no_receipt: 'charged, no receipt number',
+  },
 }
 
 const WORDS: Readonly<Record<AlertLocale, Words>> = {
@@ -123,6 +161,9 @@ const WORDS: Readonly<Record<AlertLocale, Words>> = {
     fix: (k) => `За оправяне (${k}):`,
     none: 'Няма нищо за оправяне.',
     line: (ref, table) => `· Поръчка ${ref}${table === null ? '' : `, ${table}`}: още непотвърдена`,
+    pay: (n, k) => `Плащания: ${n} взети, ${k} за оправяне`,
+    payLine: (table, what) =>
+      `· Плащане${table === null ? '' : `, ${table}`}: ${PAY_WHAT.bg[what]}`,
   },
   en: {
     head: (venue, date) => `${venue} · night of ${date}`,
@@ -131,6 +172,9 @@ const WORDS: Readonly<Record<AlertLocale, Words>> = {
     none: 'Nothing to fix.',
     line: (ref, table) =>
       `· Sent order ${ref}${table === null ? '' : `, ${table}`}: still unconfirmed`,
+    pay: (n, k) => `Payments: ${n} taken, ${k} to fix`,
+    payLine: (table, what) =>
+      `· Payment${table === null ? '' : `, ${table}`}: ${PAY_WHAT.en[what]}`,
   },
 }
 
@@ -145,8 +189,8 @@ export function nightDateText(locale: AlertLocale, day: string): string {
 
 /**
  * The message for the venue's Telegram group when a service day closes (plan §7): the totals and
- * the problems, counts only. Part 2's lines ("Payments: n taken, k to fix", the table and what is
- * wrong) join here once #115 reports them.
+ * the problems, counts only. Part 2's lines are "Payments: n taken, k to fix" and, per problem, the
+ * table and what is wrong (#115).
  */
 export function nightMessage(locale: AlertLocale, input: NightMessageInput): string {
   const words = WORDS[locale]
@@ -154,10 +198,16 @@ export function nightMessage(locale: AlertLocale, input: NightMessageInput): str
     words.head(input.venueName, nightDateText(locale, input.day)),
     words.sent(input.sentOrders, input.added, input.notSent, input.unconfirmed),
   ]
-  if (input.fix.length === 0) lines.push(words.none)
+  const pay = input.payments
+  if (pay !== undefined && (pay.taken > 0 || pay.fix.length > 0)) {
+    lines.push(words.pay(pay.taken, pay.fix.length))
+  }
+  const count = input.fix.length + (pay?.fix.length ?? 0)
+  if (count === 0) lines.push(words.none)
   else {
-    lines.push(words.fix(input.fix.length))
+    lines.push(words.fix(count))
     for (const problem of input.fix) lines.push(words.line(problem.reference, problem.table))
+    for (const problem of pay?.fix ?? []) lines.push(words.payLine(problem.table, problem.what))
   }
   return lines.join('\n')
 }
