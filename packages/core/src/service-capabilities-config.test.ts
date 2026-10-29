@@ -32,6 +32,7 @@ describe('the recorded service capabilities (#78)', () => {
       notesReachTicket: true,
       firstItemsOpenBill: false,
       recordTipOnClose: false,
+      electronicReceipt: false,
     })
     expect(
       readServiceCapabilities({
@@ -40,7 +41,12 @@ describe('the recorded service capabilities (#78)', () => {
           firstItemsOpenBill: true,
         }),
       }),
-    ).toEqual({ notesReachTicket: false, firstItemsOpenBill: true, recordTipOnClose: false })
+    ).toEqual({
+      notesReachTicket: false,
+      firstItemsOpenBill: true,
+      recordTipOnClose: false,
+      electronicReceipt: false,
+    })
     expect(
       readServiceCapabilities({
         service_capabilities: storedServiceCapabilities({
@@ -49,5 +55,14 @@ describe('the recorded service capabilities (#78)', () => {
         }),
       }),
     ).toMatchObject({ recordTipOnClose: true })
+    expect(
+      readServiceCapabilities({
+        service_capabilities: storedServiceCapabilities({
+          ...NO_SERVICE_CAPABILITIES,
+          electronicReceipt: true,
+          electronicReceiptFile: true,
+        }),
+      }),
+    ).toMatchObject({ electronicReceipt: true })
   })
 })

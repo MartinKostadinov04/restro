@@ -70,7 +70,11 @@ export interface ServiceConnector extends ServiceReader {
    * Part 2: close the isolated bill with its payment, the tip on the same bill and receipt where
    * `recordTipOnClose` is declared (D127); undeclared, a tip above 0 is refused before any write.
    * Adding the tip is part of taking the payment, as a waiter does at the till (D110). A second
-   * close is refused.
+   * close is refused. With a `receiptEmail` it asks the POS for the sale as an electronic receipt
+   * (`electronicReceipt`, D127): the POS sends it, or, with `electronicReceiptFile`, the result
+   * carries the POS's file for Restro to send. The result says which came of it
+   * (`electronicReceipt`: `sent`, `file` or `not_issued`). Undeclared, an email is refused
+   * `not_supported` before any write. The email goes nowhere but into that one call.
    */
   payAndClose(
     ctx: ServiceContext,

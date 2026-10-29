@@ -340,6 +340,9 @@ export type IsolateLinesRequest = z.output<typeof IsolateLinesRequestSchema>
 export const IsolateLinesResultSchema = z.strictObject({ isolated: IsolatedHandleSchema })
 export type IsolateLinesResult = z.output<typeof IsolateLinesResultSchema>
 
+/** A guest's email for an electronic receipt: one valid address, nothing else (D127, #186). */
+export const ReceiptEmailSchema = z.email().max(254)
+
 /** Close the isolated bill with its payment (D122 §8 step 4). */
 export const PayAndCloseRequestSchema = z
   .strictObject({
@@ -353,6 +356,12 @@ export const PayAndCloseRequestSchema = z
     tipMinor: MinorSchema,
     /** The POS's payment type, where `closeWithPaymentType` is declared; else null. */
     paymentType: PosRefSchema.nullable(),
+    /**
+     * The guest's email, where `electronicReceipt` is declared: the close asks the POS for the
+     * sale as an electronic receipt to this address (D127, #186). Absent for paper. Personal
+     * data: carried to this one close and never recorded, logged or sent anywhere else.
+     */
+    receiptEmail: ReceiptEmailSchema.optional(),
     ref: WriteRefSchema,
   })
   .refine((request) => request.tipMinor <= request.amountMinor, {
@@ -361,10 +370,88 @@ export const PayAndCloseRequestSchema = z
   })
 export type PayAndCloseRequest = z.output<typeof PayAndCloseRequestSchema>
 
-export const PayAndCloseResultSchema = z.strictObject({
-  /** Where `receiptNumberOnClose` is declared; else null. Backend only. */
-  receiptNumber: z.string().min(1).max(100).nullable(),
+/** The largest receipt file Restro will send on: a fiscal receipt is a page or two. */
+export const RECEIPT_FILE_MAX_BYTES = 2_000_000
+
+/**
+ * The POS's own receipt file, where `electronicReceiptFile` is declared: passed on unchanged,
+ * never drawn, read or edited by Restro, and never stored (D127, #186).
+ */
+export const ReceiptFileSchema = z.strictObject({
+  /** The file's name as the POS gave it. */
+  filename: z
+    .string()
+    .min(1)
+    .max(120)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
+  contentType: z.enum(['application/pdf', 'text/html', 'text/plain']),
+  /** The bytes, base64 as sent over the wire. */
+  contentBase64: z
+    .base64()
+    .min(1)
+    .max(Math.ceil((RECEIPT_FILE_MAX_BYTES * 4) / 3) + 4),
 })
+export type ReceiptFile = z.output<typeof ReceiptFileSchema>
+
+/**
+ * A POS's receipt file as a connector read it, made safe to pass on, or null when it can't be: the
+ * file's name is made safe rather than refused (anything outside letters, digits, dot, dash and
+ * underscore becomes an underscore, and a name must start with a letter or digit), and line breaks
+ * wrapped into the base64 are taken out; the bytes themselves are never changed. A type or size
+ * Restro doesn't pass on is null. Never throws: a bad file must not turn a finished close into an
+ * unknown one (D127, #186); the connector then reports the receipt as not issued.
+ */
+export function safeReceiptFile(raw: unknown): ReceiptFile | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const { filename, contentType, contentBase64 } = raw as Record<string, unknown>
+  if (typeof filename !== 'string' || typeof contentBase64 !== 'string') return null
+  const stem = Array.from(filename.normalize('NFKD'))
+    .map((char) => (/[A-Za-z0-9._-]/.test(char) ? char : '_'))
+    .join('')
+    .replace(/^[^A-Za-z0-9]+/, '')
+    .slice(0, 120)
+  const parsed = ReceiptFileSchema.safeParse({
+    filename: stem === '' ? 'receipt' : stem,
+    contentType,
+    contentBase64: contentBase64.replace(/\s+/g, ''),
+  })
+  return parsed.success ? parsed.data : null
+}
+
+/**
+ * What became of the electronic receipt a close was asked for (D127, #186), reported only when
+ * the close was given an email:
+ *   - `sent`: the POS issued it and sends it itself;
+ *   - `file`: the POS issued it and `receiptFile` is its file, for Restro to send;
+ *   - `not_issued`: the close was done but the POS issued no electronic receipt (a printer fault,
+ *     a file Restro could not pass on). The waiter brings paper; the guest is never told it was
+ *     sent.
+ */
+export const ElectronicReceiptOutcomeSchema = z.enum(['sent', 'file', 'not_issued'])
+export type ElectronicReceiptOutcome = z.output<typeof ElectronicReceiptOutcomeSchema>
+
+export const PayAndCloseResultSchema = z
+  .strictObject({
+    /** Where `receiptNumberOnClose` is declared; else null. Backend only. */
+    receiptNumber: z.string().min(1).max(100).nullable(),
+    /**
+     * What became of the electronic receipt: present exactly when the close was given an email
+     * (a connector without `electronicReceipt` refuses one).
+     */
+    electronicReceipt: ElectronicReceiptOutcomeSchema.optional(),
+    /**
+     * The receipt as a file: present exactly when `electronicReceipt` is `file`. Absent where the
+     * POS sends the receipt itself, where none was issued, or for paper.
+     */
+    receiptFile: ReceiptFileSchema.optional(),
+  })
+  .refine(
+    (result) => (result.receiptFile !== undefined) === (result.electronicReceipt === 'file'),
+    {
+      message: "a receipt file comes with 'file', and only with it",
+      path: ['receiptFile'],
+    },
+  )
 export type PayAndCloseResult = z.output<typeof PayAndCloseResultSchema>
 
 /** Put isolated lines back on the real table (D122 §8: a declined card, a failed last check). */
