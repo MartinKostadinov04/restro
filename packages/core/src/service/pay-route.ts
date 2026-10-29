@@ -789,7 +789,8 @@ export function paymentClosed() {
       }
       const reason = command.outcome === 'unknown' ? 'close_unknown' : 'close_refused'
       await move(stx, locked, 'unconfirmed', { reason }, { code: command.code })
-      await raise(stx, locked, PAYMENT_UNCONFIRMED_KIND, 'money.follow_up')
+      // Asked again where an earlier question was answered: a pay-first round's entry (#113).
+      await raise(stx, locked, PAYMENT_UNCONFIRMED_KIND, 'money.follow_up', {}, true)
       return at(payment, 'unconfirmed', true)
     },
   })
