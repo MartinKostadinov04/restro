@@ -108,7 +108,7 @@ A venue-defined label on an item, such as a dietary label, shown to guests.
 _Avoid_: badge, label (on its own)
 
 **Sold out**:
-An item the POS stopped selling, or a manager marked sold out for tonight; guests do not see it until it is back on sale (D130).
+An item the POS stopped selling, or a manager marked sold out for tonight; guests do not see it until it is back on sale (D131).
 _Avoid_: unavailable, out of stock
 
 **Hidden**:
@@ -134,7 +134,7 @@ Making a menu's current draft the version guests see.
 One published state of a menu. A venue keeps the live version and up to two restorable ones.
 
 **Style**:
-A complete set of design choices for the guest page. Restro's premade Styles (Basic, Editorial, Soft, Classic, Club) and an organisation's own saved Styles; a venue picks one and changes what it likes (D127).
+A complete set of design choices for the guest page. Restro's premade Styles (Basic, Editorial, Soft, Classic, Club) and an organisation's own saved Styles; a venue picks one and changes what it likes (D128).
 _Avoid_: template (the old word, still in code and file names), face (the renderer's code), theme, skin, preset (on its own); never for the item schema
 
 **Basic**:

@@ -25,8 +25,8 @@ What a guest can do in a menu. The `template-design` skill reads this file first
 ### See only what can be had
 - **Shell key:** none (slot `item.state`)
 - **Status:** supported
-- **Drawn means:** an item that is sold out or unavailable is not in the menu at all (D130); the menu says when the whole menu is closed (`menu.schedule`). Scheduled items (available from a time) are out of scope (D130). Any state label the shell still sends for a drawn item is drawn legibly, and such an item is never orderable.
-- **Where:** §5.2 R1 and R5, §7.2, §9.5, App. C 5; D69, D130
+- **Drawn means:** an item that is sold out or unavailable is not in the menu at all (D131); the menu says when the whole menu is closed (`menu.schedule`). Scheduled items (available from a time) are out of scope (D131). Any state label the shell still sends for a drawn item is drawn legibly, and such an item is never orderable.
+- **Where:** §5.2 R1 and R5, §7.2, §9.5, App. C 5; D69, D131
 
 ### Find allergens
 - **Shell key:** none; has no switch of any kind
