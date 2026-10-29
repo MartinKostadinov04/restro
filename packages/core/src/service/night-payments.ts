@@ -108,6 +108,7 @@ export interface NightPaymentRow {
   readonly tipMinor: number | null
   /** Without the tip for a role that never sees tips. */
   readonly capturedMinor: number | null
+  /** Refunds are read for `night.view_full` only (a refund may hold the tip): 0 for the rest. */
   readonly refundedMinor: number
   readonly dispute: string | null
   readonly receiptNumber: string | null
@@ -281,7 +282,7 @@ function rowOf(row: PaymentSelect, full: boolean): NightPaymentRow {
     amountMinor: full ? row.amountMinor : withoutTipMinor(row.amountMinor, row.tipMinor),
     tipMinor: full ? row.tipMinor : null,
     capturedMinor: full ? row.capturedMinor : withoutTipMinor(row.capturedMinor, row.tipMinor),
-    refundedMinor: row.refundedMinor,
+    refundedMinor: full ? row.refundedMinor : 0,
     dispute: row.dispute,
     receiptNumber: row.receiptNumber,
     currency: row.currency,
@@ -375,13 +376,34 @@ export async function readNightPayments(
     const full = reader.held.has('night.view_full')
     const { venue } = reader
     const inDay = and(eq(payments.venueId, venue.id), eq(payments.serviceDate, day))
-    // Today's page also lists the earlier nights' payments still waiting for a person (#220).
+    // A card not charged after close and a hold that ran out are the owners' and managers': the
+    // end of the night follows Tonight's rows (a waiter never sees them).
+    const sees = reader.held.has('money.follow_up') || reader.device
+    // Today's page also lists the earlier nights' payments still waiting for a person (#220): those
+    // with an alert still open, as Tonight lists them. The day's close clears some alerts, and a
+    // cleared one must not bring its payment back on every night after.
     const toFix = and(
       eq(payments.venueId, venue.id),
       day === reader.today
-        ? or(eq(payments.serviceDate, day), lt(payments.serviceDate, day))
+        ? or(
+            eq(payments.serviceDate, day),
+            and(
+              lt(payments.serviceDate, day),
+              sql`exists (select 1 from ${alerts} a where a.subject_id = ${payments.id}
+                and a.done_at is null and a.kind in (${sql.join(
+                  PAYMENT_ALERT_KINDS.map((kind) => sql`${kind}`),
+                  sql`, `,
+                )}))`,
+            ),
+          )
         : eq(payments.serviceDate, day),
       FIX_CONDITION,
+      sees
+        ? undefined
+        : and(
+            ne(payments.state, 'capture_failed'),
+            or(ne(payments.state, 'released'), sql`${payments.reason} is distinct from 'expired'`),
+          ),
     )
 
     const [counts] = await tx
@@ -419,9 +441,6 @@ export async function readNightPayments(
               ),
             )
             .orderBy(desc(alerts.raisedAt))
-    // A card not charged after close and a hold that ran out are the owners' and managers': the
-    // end of the night follows Tonight's rows (a waiter never sees them).
-    const sees = reader.held.has('money.follow_up') || reader.device
     const fix = fixRows.flatMap((row): NightPayFix[] => {
       const problem = problemOf(row)
       if (problem === null) return []

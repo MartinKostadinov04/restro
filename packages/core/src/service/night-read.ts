@@ -8,7 +8,8 @@
 //   of a sent order.
 // - the Log: `log.view`.
 // - the end of the night: `night.view` (sections 1–3 and part 1's totals, no tips) or
-//   `night.view_full` (all). Money lines of part 2 are carried only for `money.follow_up`.
+//   `night.view_full` (all). Money lines of part 2 are carried only for `money.follow_up` together with
+//   `night.view_full`: its totals hold the tips (#220).
 //
 // Times are `Date`s; the screen words them in the venue's zone.
 
@@ -813,7 +814,7 @@ export interface NightFixRow {
   readonly answer: SentOrderRow['answer']
 }
 
-/** What part 2 fills in: carried only for `money.follow_up`, counted live or from the close. */
+/** What part 2 fills in: carried only for `money.follow_up` and `night.view_full` (it holds the tips), counted live or from the close. */
 export interface NightMoney {
   readonly payments: number
   readonly capturedMinor: number
@@ -1046,15 +1047,16 @@ export async function readNight(
         fix,
         sent: { counts: sent.counts, notAdded: sent },
         totals: part1,
-        money: reader.held.has('money.follow_up')
-          ? {
-              payments: paymentCount,
-              capturedMinor,
-              tipMinor,
-              paymentsUnconfirmed,
-              unconfirmedMinor,
-            }
-          : null,
+        money:
+          reader.held.has('money.follow_up') && reader.held.has('night.view_full')
+            ? {
+                payments: paymentCount,
+                capturedMinor,
+                tipMinor,
+                paymentsUnconfirmed,
+                unconfirmedMinor,
+              }
+            : null,
       },
     } as const
   })

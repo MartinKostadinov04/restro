@@ -850,7 +850,15 @@ export async function readTonight(
           .orderBy(waiterCalls.calledAt)
       : null
 
-    const receipts = held.has('alerts.answer') ? await receiptsToBring(tx, venue.id, day) : null
+    // The row's amount is the charge: with its tip only for those who read the whole night (#220).
+    const receipts = held.has('alerts.answer')
+      ? await receiptsToBring(
+          tx,
+          venue.id,
+          day,
+          held.has('night.view_full') && grants.device !== true,
+        )
+      : null
 
     const active = await tx
       .select({

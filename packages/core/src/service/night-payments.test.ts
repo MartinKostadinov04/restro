@@ -14,6 +14,7 @@ import type { ServiceActor } from './context'
 import { readNightPayments, readPaymentDetail } from './night-payments'
 import { readLog, readNight } from './night-read'
 import { readTonight } from './read'
+import { readReceiptsToBring } from './receipts'
 
 describe.skipIf(!hasDatabase)('the payment reads of Tonight (as the restro_app role)', () => {
   let world: ServiceWorld
@@ -21,6 +22,8 @@ describe.skipIf(!hasDatabase)('the payment reads of Tonight (as the restro_app r
   let managerUser: string
   let waiterUser: string
   let loggerUser: string
+  let followUpUser: string
+  let bringerUser: string
   let day: string
   const ids: Record<string, string> = {}
   const sittings = new Map<string, string>()
@@ -138,6 +141,11 @@ describe.skipIf(!hasDatabase)('the payment reads of Tonight (as the restro_app r
     await world.addStaff(['alerts.answer'], waiterUser)
     loggerUser = await world.addUser('member')
     await world.addStaff(['log.view'], loggerUser)
+    // Follows money up but does not read the whole night: tips are not theirs (#220).
+    followUpUser = await world.addUser('member')
+    await world.addStaff(['night.view', 'alerts.answer', 'money.follow_up'], followUpUser)
+    bringerUser = await world.addUser('member')
+    await world.addStaff(['alerts.answer', 'night.view_full'], bringerUser)
 
     const first = await readNight(world.app, input(user(staffUser)))
     if (!first.ok) throw new Error(`refused: ${first.code}`)
@@ -245,6 +253,50 @@ describe.skipIf(!hasDatabase)('the payment reads of Tonight (as the restro_app r
     // The rows To fix are the same payments.
     expect(staff.payments.fix.every((fix) => fix.payment.amountMinor === 3600)).toBe(true)
     expect(manager.payments.fix.every((fix) => fix.payment.amountMinor === 3800)).toBe(true)
+  })
+
+  it('gives a role that follows money up but does not read the whole night no tip and no money totals', async () => {
+    const tonight = await readTonight(world.app, input(user(followUpUser)))
+    if (!tonight.ok) throw new Error(tonight.code)
+    const question = tonight.tonight.alerts.find((alert) => alert.kind === 'payment_unconfirmed')
+    expect(question?.details).toMatchObject({ amountMinor: 3600 })
+    expect(question?.details).not.toHaveProperty('tipMinor')
+    const night = await readNight(world.app, input(user(followUpUser)))
+    if (!night.ok) throw new Error(night.code)
+    // The totals hold the tips: a manager reads them, this role does not.
+    expect(night.night.money).toBeNull()
+    const manager = await readNight(world.app, input(user(managerUser)))
+    if (!manager.ok) throw new Error(manager.code)
+    expect(manager.night.money).not.toBeNull()
+    // A refund may hold the tip: staff rows carry none.
+    const rows = await readNightPayments(world.app, { ...input(user(followUpUser)), all: 100 })
+    if (!rows.ok) throw new Error(rows.code)
+    expect(rows.payments.rows.every((row) => row.refundedMinor === 0)).toBe(true)
+  })
+
+  it('gives the receipt to bring the charge without the tip to staff, with it to a reader of the night', async () => {
+    await world.owner.query(
+      'update restro.payments set receipt_to_bring_at = now() where id = $1',
+      [ids.captured],
+    )
+    try {
+      const amountOf = async (who: string) => {
+        const read = await readReceiptsToBring(world.app, input(user(who)))
+        if (!read.ok) throw new Error(read.code)
+        return read.receipts.map((receipt) => receipt.amountMinor)
+      }
+      expect(await amountOf(staffUser)).toEqual([3600])
+      expect(await amountOf(bringerUser)).toEqual([3800])
+      // Tonight's own read carries the same rows.
+      const tonight = await readTonight(world.app, input(user(staffUser)))
+      if (!tonight.ok) throw new Error(tonight.code)
+      expect(tonight.tonight.receipts?.map((receipt) => receipt.amountMinor)).toEqual([3600])
+    } finally {
+      await world.owner.query(
+        'update restro.payments set receipt_to_bring_at = null where id = $1',
+        [ids.captured],
+      )
+    }
   })
 
   it("gives staff a payment sheet's total without the tip", async () => {

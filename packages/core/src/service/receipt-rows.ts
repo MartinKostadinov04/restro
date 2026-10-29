@@ -7,6 +7,7 @@ import { payments, type ReadTx, venueTables } from '@restro/db'
 import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm'
 
 import { paymentNumberOf } from './payment-number'
+import { withoutTipMinor } from './staff-amount'
 
 /** The most receipts one read returns: a night of paper receipts is far below it. */
 export const MAX_RECEIPTS = 2000
@@ -22,7 +23,10 @@ export interface ReceiptToBring {
   readonly number: string | null
   /** The fiscal receipt's number when the POS gave one at the close; the row shows it then. */
   readonly receiptNumber: string | null
-  /** What was charged, tip included: the row's `{amt}`. Always set once a receipt is raised. */
+  /**
+   * What was charged: the row's `{amt}`. Always set once a receipt is raised. With the tip for a
+   * reader of the whole night, without it for staff (#220).
+   */
   readonly amountMinor: number
   readonly currency: string
   /** When the payment was captured, so the row is oldest-first. */
@@ -80,11 +84,15 @@ export async function receiptsNotBrought(
   }
 }
 
-/** The receipts to bring of `day`, oldest first. Shared by Tonight's read and the receipts' own. */
+/**
+ * The receipts to bring of `day`, oldest first. Shared by Tonight's read and the receipts' own.
+ * `full` is true for a reader with `night.view_full`; any other gets the amount without the tip.
+ */
 export async function receiptsToBring(
   tx: ReadTx,
   venueId: string,
   day: string,
+  full: boolean,
 ): Promise<readonly ReceiptToBring[]> {
   const rows = await tx
     .select({
@@ -94,6 +102,7 @@ export async function receiptsToBring(
       number: venueTables.number,
       receiptNumber: payments.receiptNumber,
       amountMinor: payments.capturedMinor,
+      tipMinor: payments.tipMinor,
       currency: payments.currency,
       raisedAt: payments.receiptToBringAt,
     })
@@ -109,7 +118,7 @@ export async function receiptsToBring(
     )
     .orderBy(asc(payments.receiptToBringAt), asc(payments.id))
     .limit(MAX_RECEIPTS)
-  return rows.flatMap((row) =>
+  return rows.flatMap(({ tipMinor, ...row }) =>
     // A receipt is raised at the capture, which sets both.
     row.amountMinor === null || row.raisedAt === null
       ? []
@@ -117,7 +126,7 @@ export async function receiptsToBring(
           {
             ...row,
             paymentNumber: paymentNumberOf(row.paymentId),
-            amountMinor: row.amountMinor,
+            amountMinor: (full ? row.amountMinor : withoutTipMinor(row.amountMinor, tipMinor)) ?? 0,
             raisedAt: row.raisedAt,
           },
         ],
