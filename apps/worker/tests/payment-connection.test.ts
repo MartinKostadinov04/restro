@@ -169,6 +169,7 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
         state: c.state,
         checks: c.checks,
         tables: { paymentTables: 1, queuesWithoutOne: 0 },
+        legalDetails: c.legal,
       }),
     }))
   const alertRows = () =>

@@ -252,6 +252,12 @@ export interface PayingStrings {
   readonly payX: (amount: string) => string
   readonly legalPrices: string
   readonly legalProcessor: (processor: string, venue: string) => string
+  /** The link that opens the venue's legal details (#198, D127 log 1.6; guide `legal_links`). */
+  readonly legalDetailsLink: string
+  /** The link to the venue's privacy notice (guide `legal_links`). */
+  readonly legalPrivacyLink: string
+  /** The venue's ЕИК as the legal details list it. */
+  readonly legalEik: (eik: string) => string
   readonly belowMinimum: (min: string) => string
   readonly notUpToDate: string
   readonly cardsPaused: string
@@ -600,6 +606,9 @@ const EN: Strings = {
       payX: (amount) => `Pay ${amount}`,
       legalPrices: 'Prices in EUR incl. VAT. Complaints and refunds: the venue.',
       legalProcessor: (processor, venue) => `Payment processed by ${processor} for ${venue}.`,
+      legalDetailsLink: 'About the venue',
+      legalPrivacyLink: 'Privacy',
+      legalEik: (eik) => `Company ID (ЕИК): ${eik}`,
       belowMinimum: (min) => `Card payments start at ${min}. Add an item or ask your waiter.`,
       notUpToDate: 'We can’t read the bill right now. We keep trying.',
       cardsPaused: 'Card payments are paused right now. Ask your waiter.',
@@ -940,6 +949,9 @@ const BG: Strings = {
       payX: (amount) => `Плати ${amount}`,
       legalPrices: 'Цените са в EUR с ДДС. Рекламации и връщане на пари: заведението.',
       legalProcessor: (processor, venue) => `Плащането се обработва от ${processor} за ${venue}.`,
+      legalDetailsLink: 'Данни за заведението',
+      legalPrivacyLink: 'Поверителност',
+      legalEik: (eik) => `ЕИК: ${eik}`,
       belowMinimum: (min) =>
         `Плащането с карта е от ${min}. Добавете артикул или попитайте сервитьора.`,
       notUpToDate: 'В момента не можем да прочетем сметката. Опитваме отново.',

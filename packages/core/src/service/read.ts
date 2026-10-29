@@ -32,6 +32,7 @@ import {
 import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 
 import type { AreaId, BarId, TableId } from '../ids'
+import type { LegalDetails } from '../legal-details'
 import { PAID_LINES_MAX } from '../paid-lines'
 import { payFirstApplies, readPayFirstSettings } from '../pay-first-settings'
 import { CARD_FLOOR_MINOR, readPayingSettings, smallestCardMinor } from '../paying-settings'
@@ -180,6 +181,8 @@ export interface TableStateRead {
     readonly state: PayingState
     /** The provider's kind (a public word), or null while none is connected. */
     readonly provider: string | null
+    /** The venue's legal details (#198) while paying is offered: the pay screen names them. */
+    readonly legal: LegalDetails | null
     readonly minCardMinor: number
   }
   /** When the table's bill was last read, or null. */

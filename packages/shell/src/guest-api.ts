@@ -116,6 +116,18 @@ export const GuestTableStateSchema = z.strictObject({
       .string()
       .regex(/^[a-z][a-z0-9_-]{0,31}$/)
       .nullable(),
+    /**
+     * The venue's legal details while paying is offered (#198, D127 log 1.6), for "Payment processed
+     * by … for [legal name]" and its links: public fields only.
+     */
+    payingLegal: z
+      .strictObject({
+        name: z.string().min(1).max(200),
+        eik: z.string().regex(/^(\d{9}|\d{13})$/),
+        address: z.string().min(1).max(300),
+        privacyUrl: z.string().max(500).startsWith('https://'),
+      })
+      .nullable(),
     /** The smallest card payment here in minor units: Pay is greyed below it. */
     minCardMinor: z.int().positive(),
     /** A tip can be given when paying here (D127: the POS records it on the receipt). */

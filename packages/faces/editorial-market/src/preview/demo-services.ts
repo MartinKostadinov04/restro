@@ -174,6 +174,12 @@ function stateOf(store: Store, view: ViewModel): ServiceState {
       minCardMinor: 50,
       processor: 'Demo',
       venueName: 'Demo venue',
+      legal: {
+        name: 'Demo venue EOOD',
+        eik: '123456789',
+        address: 'Sofia, 1 Vitosha Blvd',
+        privacyUrl: 'https://example.com/privacy',
+      },
       electronicReceipt: false,
       recent: null,
     },

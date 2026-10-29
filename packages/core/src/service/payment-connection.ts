@@ -30,6 +30,7 @@ import {
   type DbPool,
   paymentAccounts,
   payments,
+  venues,
   venueTables,
   withTenant,
 } from '@restro/db'
@@ -37,6 +38,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { newId } from '../ids'
+import { type LegalDetails, readLegalDetails } from '../legal-details'
 import {
   type AccountChecks,
   type AccountState,
@@ -173,6 +175,8 @@ export interface PayingConnection {
   readonly checkedAt: Date | null
   readonly connectedAt: Date | null
   readonly accountName: string | null
+  /** The venue's legal details (#198), or null until all four are filled in. */
+  readonly legal: LegalDetails | null
   readonly readiness: PayingReadiness
 }
 
@@ -190,6 +194,11 @@ export async function loadPayingConnection(
   const checks = readAccountChecks(row?.checks)
   const state = (row?.state ?? null) as AccountState | null
   const tables = await paymentTableFacts(tx, venueId)
+  const [venue] = await tx
+    .select({ settings: venues.settings })
+    .from(venues)
+    .where(eq(venues.id, venueId))
+  const legal = readLegalDetails(venue?.settings ?? {})
   return {
     state,
     providerKind: row?.providerKind ?? null,
@@ -197,7 +206,8 @@ export async function loadPayingConnection(
     checkedAt: row?.checkedAt ?? null,
     connectedAt: row?.connectedAt ?? null,
     accountName: row?.accountName ?? null,
-    readiness: payingReadiness({ state, checks, tables }),
+    legal,
+    readiness: payingReadiness({ state, checks, tables, legalDetails: legal }),
   }
 }
 

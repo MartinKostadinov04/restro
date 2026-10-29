@@ -16,6 +16,7 @@ import {
 import {
   fixture,
   PAID_LINES,
+  PAYING_LEGAL,
   payingBill,
   payingState,
   payScenarioPayment,
@@ -331,9 +332,46 @@ describe('the review of #195 (D127)', () => {
     )
   })
 
-  it('names the venue on the processor line from the paying state', async () => {
+  it('names the venue’s legal name on the processor line from the paying state', async () => {
     const { page } = await drawRecording(payingState())
-    expect(page.textContent).toContain('Payment processed by Stripe for Club X.')
+    expect(page.textContent).toContain('Payment processed by Stripe for Club X EOOD.')
+  })
+
+  it('links the legal details and the privacy notice, in English and in Bulgarian (#198)', async () => {
+    for (const locale of ['en_US', 'bg_BG'] as const) {
+      const w = stringsFor(locale).services.paying
+      const localView = buildViewModel(f.snapshot, f.overlay, {
+        ...f.context,
+        locale,
+        images: imageSlotsFor(QR_PHONE_MANIFEST, 1),
+      })
+      unmount()
+      host = document.createElement('div')
+      document.body.append(host)
+      root = createRoot(host)
+      const services: ServiceBinding = {
+        state: payingState(),
+        dispatch: (command) => pending(command.actionId),
+        payControls: { dismiss: () => undefined },
+      }
+      await act(async () => root?.render(<QrPhoneFace view={localView} services={services} />))
+      const legal = host.querySelector('[data-slot="pay.legal"]') as HTMLElement
+      expect(host.textContent).toContain(w.legalProcessor('Stripe', PAYING_LEGAL.name))
+      expect(legal.querySelector('summary')?.textContent).toBe(w.legalDetailsLink)
+      expect(legal.textContent).toContain(PAYING_LEGAL.name)
+      expect(legal.textContent).toContain(w.legalEik(PAYING_LEGAL.eik))
+      expect(legal.textContent).toContain(PAYING_LEGAL.address)
+      const privacy = legal.querySelector('a') as HTMLAnchorElement
+      expect(privacy.textContent).toBe(w.legalPrivacyLink)
+      expect(privacy.getAttribute('href')).toBe(PAYING_LEGAL.privacyUrl)
+    }
+  })
+
+  it('draws no legal links while the host sends no legal details', async () => {
+    const { page } = await drawRecording(
+      payingState({ paying: { ...payingState().paying!, legal: null } }),
+    )
+    expect(page.querySelector('[data-slot="pay.legal"]')).toBeNull()
   })
 
   it('says why the bill is hidden without a location pass, with Allow location and Call a waiter', async () => {

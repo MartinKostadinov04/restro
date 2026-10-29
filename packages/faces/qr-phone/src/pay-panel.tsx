@@ -713,8 +713,21 @@ export function PayPanel(props: PayPanelProps): ReactNode {
           <p className="rq-order-hint">{words.legalPrices}</p>
           {paying.processor === null ? null : (
             <p className="rq-order-hint">
-              {words.legalProcessor(paying.processor, paying.venueName)}
+              {words.legalProcessor(paying.processor, paying.legal?.name ?? paying.venueName)}
             </p>
+          )}
+          {paying.legal === null ? null : (
+            <div className="rq-order-hint" data-slot="pay.legal">
+              <details>
+                <summary>{words.legalDetailsLink}</summary>
+                <p>{paying.legal.name}</p>
+                <p>{words.legalEik(paying.legal.eik)}</p>
+                <p>{paying.legal.address}</p>
+              </details>
+              <a href={paying.legal.privacyUrl} target="_blank" rel="noopener noreferrer">
+                {words.legalPrivacyLink}
+              </a>
+            </div>
           )}
           {askingSame === null ? (
             <button

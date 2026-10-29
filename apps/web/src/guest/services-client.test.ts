@@ -43,6 +43,7 @@ function tableState(version: number, lines: Lines = [], location: LocationState 
       payFirst: 'off',
       paying: 'off',
       payingProvider: null,
+      payingLegal: null,
       minCardMinor: 50,
       tips: false,
       receiptEmail: false,
@@ -690,6 +691,12 @@ describe('paying (#110, #114, D127)', () => {
       ...tableState(version).ordering,
       paying: 'on' as const,
       payingProvider: 'stripe',
+      payingLegal: {
+        name: 'Nova Club EOOD',
+        eik: '123456789',
+        address: 'Sofia, 1 Vitosha Blvd',
+        privacyUrl: 'https://club.example/privacy',
+      },
       tips: true,
     },
     bill: {
@@ -804,6 +811,12 @@ describe('paying (#110, #114, D127)', () => {
       minCardMinor: 50,
       processor: 'Stripe',
       venueName: 'Club',
+      legal: {
+        name: 'Nova Club EOOD',
+        eik: '123456789',
+        address: 'Sofia, 1 Vitosha Blvd',
+        privacyUrl: 'https://club.example/privacy',
+      },
       electronicReceipt: false,
       recent: null,
     })

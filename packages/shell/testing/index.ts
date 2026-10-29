@@ -36,6 +36,7 @@ export {
 export { type HtmlElement, parseHtml, textOf, withAttribute } from './html'
 export {
   PAID_LINES,
+  PAYING_LEGAL,
   type PayScenario,
   payingBill,
   payingState,

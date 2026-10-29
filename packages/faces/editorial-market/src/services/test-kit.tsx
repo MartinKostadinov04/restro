@@ -226,6 +226,12 @@ export function payingOf(changes: Partial<PayingView> = {}): PayingView {
     minCardMinor: 50,
     processor: 'The processor',
     venueName: 'Club X',
+    legal: {
+      name: 'Club X EOOD',
+      eik: '123456789',
+      address: 'Sofia, 1 Vitosha Blvd',
+      privacyUrl: 'https://club-x.example/privacy',
+    },
     electronicReceipt: false,
     recent: null,
     ...changes,

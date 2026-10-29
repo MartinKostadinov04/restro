@@ -465,7 +465,22 @@ export function PaySheet() {
           </div>
           <p className="ro-allergy">{w.legalPrices}</p>
           {paying.processor === null ? null : (
-            <p className="ro-allergy">{w.legalProcessor(paying.processor, paying.venueName)}</p>
+            <p className="ro-allergy">
+              {w.legalProcessor(paying.processor, paying.legal?.name ?? paying.venueName)}
+            </p>
+          )}
+          {paying.legal === null ? null : (
+            <div className="ro-allergy" data-slot="pay.legal">
+              <details>
+                <summary>{w.legalDetailsLink}</summary>
+                <p>{paying.legal.name}</p>
+                <p>{w.legalEik(paying.legal.eik)}</p>
+                <p>{paying.legal.address}</p>
+              </details>
+              <a href={paying.legal.privacyUrl} target="_blank" rel="noopener noreferrer">
+                {w.legalPrivacyLink}
+              </a>
+            </div>
           )}
           {asking === null ? (
             <button

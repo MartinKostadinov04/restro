@@ -435,6 +435,21 @@ export interface TableBillView {
   readonly paidLines: readonly PaidLineView[]
 }
 
+/**
+ * The venue's legal details as the pay screen shows them (#198, D127 log 1.6): who the payment is
+ * processed for, and what the two links open. Public fields only.
+ */
+export interface PayingLegal {
+  /** The legal name: "Payment processed by Stripe for [legal name]". */
+  readonly name: string
+  /** The company's ЕИК (9 digits, 13 for a branch). */
+  readonly eik: string
+  /** The registered address. */
+  readonly address: string
+  /** The privacy notice, a full `https://` link. */
+  readonly privacyUrl: string
+}
+
 /** Paying on the bill as the host says it (#114). */
 export interface PayingView {
   readonly state: 'on' | 'paused' | 'off'
@@ -444,9 +459,15 @@ export interface PayingView {
   readonly processor: string | null
   /**
    * The venue's name for that line: always sent with the table's state, even where the location
-   * check is off. The venue's legal name and links come with a later ticket (D127 1.6).
+   * check is off. The processor line names `legal.name` instead where the venue gave it.
    */
   readonly venueName: string
+  /**
+   * The venue's legal details (#198, D127 log 1.6), or null where paying is off: the processor line
+   * names the legal name, and the screen links to the legal details (name, ЕИК, address) and to
+   * the privacy notice.
+   */
+  readonly legal: PayingLegal | null
   /**
    * True when the pay screen offers the optional receipt email (#186, D127): the table's POS can
    * issue the venue's electronic receipt, and where it returns a file, Restro has a way to send

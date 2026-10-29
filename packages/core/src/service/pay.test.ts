@@ -281,6 +281,11 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
         insert into restro.integrations (id, tenant_id, kind, host)
         values (${integrationId}, ${world.tenantId}, 'sim', '127.0.0.1:9')`),
     )
+    // The venue's legal details are part of what turns paying on (#198).
+    await world.owner.query(
+      `update restro.venues set settings = settings || '{"legalDetails":{"name":"Club EOOD","eik":"123456789","address":"Sofia, 1 Vitosha Blvd","privacyUrl":"https://club.example/privacy"}}'::jsonb where id = $1`,
+      [world.venueId],
+    )
     await world.owner.query(
       `insert into restro.payment_accounts
          (tenant_id, venue_id, provider_kind, account_ref, state, checks, connected_at, source, actor, job_id)
@@ -553,6 +558,36 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
           await setChecks(checks)
           expect(await refusal(await start(phone(), ['L1']))).toBe('paying_not_offered')
         }
+        // Every check but the legal details: with one detail missing paying is not offered (#198).
+        await setChecks(ready)
+        const legalOf = async () =>
+          (
+            await world.owner.query<{ legal: unknown }>(
+              `select settings -> 'legalDetails' as legal from restro.venues where id = $1`,
+              [world.venueId],
+            )
+          ).rows[0]?.legal
+        const kept = await legalOf()
+        for (const field of ['name', 'eik', 'address', 'privacyUrl']) {
+          await world.owner.query(
+            `update restro.venues set settings = jsonb_set(settings, '{legalDetails}', (settings -> 'legalDetails') - $2::text) where id = $1`,
+            [world.venueId, field],
+          )
+          expect(await refusal(await start(phone(), ['L1'])), field).toBe('paying_not_offered')
+          await world.owner.query(
+            `update restro.venues set settings = jsonb_set(settings, '{legalDetails}', $2::jsonb) where id = $1`,
+            [world.venueId, JSON.stringify(kept)],
+          )
+        }
+        await world.owner.query(
+          `update restro.venues set settings = settings - 'legalDetails' where id = $1`,
+          [world.venueId],
+        )
+        expect(await refusal(await start(phone(), ['L1']))).toBe('paying_not_offered')
+        await world.owner.query(
+          `update restro.venues set settings = jsonb_set(settings, '{legalDetails}', $2::jsonb) where id = $1`,
+          [world.venueId, JSON.stringify(kept)],
+        )
         // Every check but the payment tables: the till's table is no longer marked.
         await setChecks(ready)
         await world.owner.query('update restro.tables set is_payment_table = false where id = $1', [
@@ -643,6 +678,15 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
       expect(await refusal(await start(phone(), ['L3'], { tipMinor: 301 }))).toBe('invalid_command')
       const id = paymentIdOf(await start(phone(), ['L3'], { tipMinor: 300 }))
       expect((await stored(id))?.tip_minor).toBe('300')
+    })
+
+    it('tells the phone who the payment is processed for: the four public legal fields and nothing else (#198, rule 3)', async () => {
+      expect((await friendState()).ordering.payingLegal).toStrictEqual({
+        name: 'Club EOOD',
+        eik: '123456789',
+        address: 'Sofia, 1 Vitosha Blvd',
+        privacyUrl: 'https://club.example/privacy',
+      })
     })
 
     it('tip_not_offered: a tip where the POS records none on the close (D127)', async () => {

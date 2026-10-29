@@ -15,6 +15,8 @@
 
 import { z } from 'zod'
 
+import type { LegalDetails } from './legal-details'
+
 /** The checks, in the order D125 2.3 lists them. */
 export const PAYING_CHECKS = [
   'cardPayments',
@@ -112,25 +114,35 @@ export interface CheckStanding {
   readonly source: 'provider' | 'venue' | 'owner'
 }
 
+/**
+ * What can still be missing before paying turns on: D125's four checks, then the venue's legal
+ * details (#198, D127 log 1.6) as one more.
+ */
+export type PayingMissing = PayingCheck | 'legalDetails'
+
 /** Whether paying is on, and what is missing when it is not. */
 export interface PayingReadiness {
-  /** True only when the account is connected and every check passes. */
+  /** True only when the account is connected, every check passes and the legal details are complete. */
   readonly on: boolean
+  /** D125's four checks in order (the legal details are not one of them: see `missing`). */
   readonly checks: readonly CheckStanding[]
-  /** The checks not passed, in D125's order. */
-  readonly missing: readonly PayingCheck[]
+  /** What is not done: the checks not passed in D125's order, then `legalDetails` (#198). */
+  readonly missing: readonly PayingMissing[]
   /** The provider's own words for what it still asks of the owner. */
   readonly providerMissing: readonly string[]
 }
 
 /**
- * The reading the settings show and `pay.start` obeys (D125 2.3): paying is on only when the
- * account is connected and all four checks pass. Any other state is off.
+ * The reading the settings show and `pay.start` obeys (D125 2.3, D127 log 1.6): paying is on only
+ * when the account is connected, all four checks pass and the venue's legal details are complete
+ * (`readLegalDetails` gave something). Any other state is off. The one predicate: the screen, Pay
+ * first, Tonight and `pay.start` all read `on` from here.
  */
 export function payingReadiness(input: {
   readonly state: AccountState | null
   readonly checks: AccountChecks
   readonly tables: PaymentTableFacts
+  readonly legalDetails: LegalDetails | null
 }): PayingReadiness {
   const { checks, tables } = input
   const standings: CheckStanding[] = [
@@ -143,7 +155,10 @@ export function payingReadiness(input: {
     },
     { check: 'receiptEmailsOff', passed: checks.ticks.receiptEmailsOff !== null, source: 'owner' },
   ]
-  const missing = standings.filter((standing) => !standing.passed).map((s) => s.check)
+  const missing: PayingMissing[] = standings
+    .filter((standing) => !standing.passed)
+    .map((s) => s.check)
+  if (input.legalDetails === null) missing.push('legalDetails')
   return {
     on: input.state === 'connected' && missing.length === 0,
     checks: standings,

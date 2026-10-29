@@ -11,6 +11,7 @@
 import type { PayScreen } from '../src/paying'
 import type {
   PaidLineView,
+  PayingLegal,
   PayingView,
   PaymentView,
   ServiceState,
@@ -51,6 +52,14 @@ export function payingBill(changes: Partial<TableBillView> = {}): TableBillView 
   }
 }
 
+/** The venue's legal details as the pay screen shows them (#198): the contract tests look for these. */
+export const PAYING_LEGAL: PayingLegal = {
+  name: 'Club X EOOD',
+  eik: '123456789',
+  address: 'Sofia, 1 Vitosha Blvd',
+  privacyUrl: 'https://club-x.example/privacy',
+}
+
 /** Paying on at the venue; the smallest card payment is €0.50; tips are offered. */
 export function payingView(changes: Partial<PayingView> = {}): PayingView {
   return {
@@ -58,6 +67,7 @@ export function payingView(changes: Partial<PayingView> = {}): PayingView {
     minCardMinor: 50,
     processor: 'Stripe',
     venueName: 'Club X',
+    legal: PAYING_LEGAL,
     electronicReceipt: false,
     recent: null,
     ...changes,

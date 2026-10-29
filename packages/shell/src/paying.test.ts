@@ -71,6 +71,7 @@ const PAYING: PayingView = {
   minCardMinor: 50,
   processor: 'Stripe',
   venueName: 'Club X',
+  legal: null,
   electronicReceipt: false,
   recent: null,
 }

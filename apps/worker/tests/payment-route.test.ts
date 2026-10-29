@@ -281,6 +281,11 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     const account = engine.addAccount()
     engine.finishConnecting(account)
     accountRef = account.provider
+    // The venue's legal details are part of what turns paying on (#198).
+    await query(
+      `update restro.venues set settings = settings || '{"legalDetails":{"name":"Club EOOD","eik":"123456789","address":"Sofia, 1 Vitosha Blvd","privacyUrl":"https://club.example/privacy"}}'::jsonb where id = $1`,
+      [demo.venueId],
+    )
     await query(
       `insert into restro.payment_accounts
          (tenant_id, venue_id, provider_kind, account_ref, state, checks, connected_at, source, actor, job_id)
