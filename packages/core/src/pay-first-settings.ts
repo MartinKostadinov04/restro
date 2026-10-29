@@ -1,5 +1,5 @@
 // A venue's pay-first settings (D113, D122 §5; ticket #113): `venues.settings.payFirst`, Zod-checked,
-// written only by `setPayFirstSettings` (core/apply). Two layers:
+// written only by `patchPayFirstSettingsIn` (core/apply). Two layers:
 // - the payment mode an item takes when it sets none (the item's own `payment_mode` field wins);
 // - whether pay-first applies at a table: set for the venue, a group of tables (a bar or a hall)
 //   and a table, the most specific setting winning.
@@ -12,7 +12,7 @@ import { type AreaId, type BarId, idSchema, type TableId } from './ids'
 import { PAYMENT_MODES, type PaymentMode } from './templates/venue-menu'
 
 /** The id of a group of tables a pay-first setting may sit on: a bar or a hall (area). */
-const GroupIdSchema = z.union([idSchema('br'), idSchema('ar')])
+export const PayFirstGroupIdSchema = z.union([idSchema('br'), idSchema('ar')])
 
 /** `venues.settings.payFirst` as stored. Every key is present after a save. */
 export const PayFirstSettingsSchema = z.strictObject({
@@ -21,7 +21,7 @@ export const PayFirstSettingsSchema = z.strictObject({
   /** Whether pay-first applies at the venue's tables unless a group or a table says otherwise. */
   applies: z.boolean(),
   /** Per bar or hall: whether pay-first applies at its tables, over the venue's setting. */
-  groups: z.record(GroupIdSchema, z.boolean()),
+  groups: z.record(PayFirstGroupIdSchema, z.boolean()),
   /** Per table: whether pay-first applies there, over its bar's, hall's and the venue's. */
   tables: z.record(idSchema('tb'), z.boolean()),
 })

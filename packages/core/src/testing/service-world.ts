@@ -51,6 +51,13 @@ export interface ServiceWorld {
     readonly reference: string
     readonly serviceDate?: string
   }): Promise<string>
+  /**
+   * Makes saves overlap for certain: another connection holds the venue's row `FOR UPDATE`, every
+   * `start` is called without waiting, the test waits until each is really blocked on a lock, then
+   * the row is released and the saves' answers come back in order. `Promise.all` alone does not
+   * make two commands meet; this does (a shared lock taken first and upgraded later deadlocks here).
+   */
+  saveTogether<T>(starts: readonly (() => Promise<T>)[]): Promise<T[]>
   /** Removes everything this world made. */
   close(): Promise<void>
 }
@@ -205,6 +212,29 @@ export async function openServiceWorld(name: string): Promise<ServiceWorld> {
         ],
       )
       return id
+    },
+
+    async saveTogether(starts) {
+      const holder = await owner.connect()
+      try {
+        await holder.query('begin')
+        await holder.query('select 1 from restro.venues where id = $1 for update', [venue.id])
+        const saves = starts.map((start) => start())
+        const deadline = Date.now() + 10_000
+        for (;;) {
+          const { rows } = await owner.query<{ waiting: string }>(
+            `select count(*) as waiting from pg_stat_activity
+              where datname = current_database() and wait_event_type = 'Lock'`,
+          )
+          if (Number(rows[0]?.waiting) >= starts.length) break
+          if (Date.now() > deadline) throw new Error('the saves never waited for the venue row')
+          await new Promise((resolve) => setTimeout(resolve, 20))
+        }
+        await holder.query('commit')
+        return await Promise.all(saves)
+      } finally {
+        holder.release()
+      }
     },
 
     async close() {

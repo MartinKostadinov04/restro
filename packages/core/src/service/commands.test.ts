@@ -110,6 +110,38 @@ describe('the service commands', () => {
     ).toBe(false)
   })
 
+  it('builds pay_first.set (#216): one change, each shape on its own right, a fresh sign-in', () => {
+    const command = SERVICE_COMMANDS['pay_first.set']
+    expect(command.origins).toEqual(['staff'])
+    expect(command.freshSignIn).toBe(true)
+    expect(command.venueLock).toBe('update')
+    expect(command.handle).not.toBeNull()
+    const AREA = 'ar_0123456789ABCDEFGHIJKL'
+    const need = (change: Record<string, unknown>) => {
+      const parsed = command.schema.parse({ type: 'pay_first.set', change })
+      return command.permissionOf?.(parsed)
+    }
+    expect(need({ itemMode: 'pay_first' })).toBe('settings.connect_payments')
+    expect(need({ applies: false })).toBe('settings.connect_payments')
+    expect(need({ group: AREA, value: null })).toBe('settings.payment_tables')
+    expect(need({ table: TABLE, value: true })).toBe('settings.payment_tables')
+    for (const change of [
+      {},
+      { itemMode: 'pay_first', applies: true },
+      { itemMode: 'later' },
+      { table: AREA, value: true },
+      { group: TABLE, value: true },
+      { group: 'br_0123456789ABCDEFGHIJKL', value: true },
+      { table: TABLE },
+      { applies: 'yes' },
+    ]) {
+      expect(
+        command.schema.safeParse({ type: 'pay_first.set', change }).success,
+        JSON.stringify(change),
+      ).toBe(false)
+    }
+  })
+
   it('builds the sitting commands (#73) on tables.open_close, and the payment-table mark', () => {
     const types = [
       'table.open',

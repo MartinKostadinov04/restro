@@ -7,6 +7,7 @@ import type { KeyObject } from 'node:crypto'
 import type { Venue } from '@restro/db'
 import type { z } from 'zod'
 
+import type { VenueLockStrength } from '../apply/venue-lock'
 import type { ServiceActor, ServiceOrigin, Via } from './context'
 import type { LeaseTx } from './leases'
 import type { LogEntryInput } from './log'
@@ -89,6 +90,18 @@ export interface CommandDefinition<S extends z.ZodType = z.ZodType> {
   readonly origins: readonly ServiceOrigin[]
   /** What a staff actor must hold; null for guest and worker commands. */
   readonly permission: Permission | null
+  /**
+   * For a command whose parts need different rights (`pay_first.set`: the venue's choices and a
+   * table's): the permission this command needs, which replaces `permission` (kept as the
+   * command's usual one). Left out: `permission`.
+   */
+  permissionOf?(command: z.infer<S>): Permission
+  /**
+   * How hard the engine locks the venue row for the command. `update` is for a command that
+   * rewrites `venues.settings` (a read-modify-write): two of them queue instead of both holding
+   * the shared lock and deadlocking on the upgrade. Left out: `share`.
+   */
+  readonly venueLock?: VenueLockStrength
   /**
    * A settings change: a signed-in actor must have entered their password within
    * `FRESH_SIGN_IN_MINUTES` (D122 §7), or it is refused `sign_in_again`. Left out: not needed.

@@ -143,11 +143,8 @@ export async function executeCommand(
   if (!definition.origins.includes(context.origin)) {
     return refused(actionId, 'origin_not_allowed')
   }
-  if (
-    definition.permission !== null &&
-    isSettingsPermission(definition.permission) &&
-    context.actor.kind === 'staff'
-  ) {
+  const needed = definition.permissionOf?.(parsed.data) ?? definition.permission
+  if (needed !== null && isSettingsPermission(needed) && context.actor.kind === 'staff') {
     return refused(actionId, 'own_sign_in_required')
   }
 
@@ -163,7 +160,7 @@ export async function executeCommand(
       await tx.execute(sql.raw(`set local lock_timeout = '${SERVICE_LOCK_TIMEOUT}'`))
       await tx.execute(sql.raw(`set local statement_timeout = '${SERVICE_STATEMENT_TIMEOUT}'`))
 
-      const live = await lockLiveVenue(tx, context.venueId, 'share')
+      const live = await lockLiveVenue(tx, context.venueId, definition.venueLock ?? 'share')
       if (live.refused !== null) throw new Refusal(refused(actionId, live.refused))
       const venue = live.venue
 
@@ -215,7 +212,7 @@ export async function executeCommand(
         quick: definition.quickOnSharedDevice === true,
       })
       if (!grants.ok) throw new Refusal(refused(actionId, grants.code))
-      if (definition.permission !== null && !grants.permissions.has(definition.permission)) {
+      if (needed !== null && !grants.permissions.has(needed)) {
         throw new Refusal(refused(actionId, 'permission_denied'))
       }
 

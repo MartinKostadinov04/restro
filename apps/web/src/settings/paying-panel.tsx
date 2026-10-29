@@ -2,8 +2,8 @@
 
 // Settings › Paying (#116, plan `docs/deliverables/2026-10-29-settings-paying-plan.md`; D125, D127,
 // D107, D123): connecting the venue's own card-provider account, what is still missing before card
-// payments can start (each item with its fix), the smallest card payment and tips, and the venue's
-// legal details for the pay screen (#198). Every control saves at once with Undo, except Disconnect
+// payments can start (each item with its fix), the smallest card payment and tips, pay first (#216)
+// and the venue's legal details for the pay screen (#198). Every control saves at once with Undo, except Disconnect
 // (a dialog: Undo cannot bring the connection back) and the details card (a form with Save). A role
 // without `settings.connect_payments` sees the same, read-only.
 import { decimalToMinor, MIN_CARD_MAX_MINOR, MoneyError, minorToDecimal } from '@restro/core'
@@ -44,6 +44,7 @@ import type { PayingView } from '@/server/settings/paying-view'
 import { useMoney } from '@/tonight/money'
 
 import { PayingLegalCard } from './paying-legal'
+import { PayingPayFirstCard } from './paying-pay-first'
 import { useSettingsRun } from './use-settings-run'
 
 /** The owner's two ticks. */
@@ -412,6 +413,10 @@ export function PayingPanel({
           </p>
         </div>
       </div>
+
+      {view.payFirst === null ? null : (
+        <PayingPayFirstCard view={view} card={view.payFirst} runner={runner} />
+      )}
 
       <PayingLegalCard view={view} runner={runner} />
 
