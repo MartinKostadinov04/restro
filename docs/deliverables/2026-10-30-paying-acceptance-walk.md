@@ -49,10 +49,10 @@ Open a table, have the waiter put a round on (step 8 above), and open the table'
 - **The bill:** "Your table's bill", with "Updated {n} s ago"; the lines and amounts are the till's own.
 - **Pay:** "What are you paying for?" with your lines to tick and "The whole bill". Nothing ticked: "Choose at least one line."
 - **Tip** (where offered): "Tip: goes to the venue", starting at zero, with "Other amount".
-- **The total and the legal lines:** "Your items", "Tip", "Total", then "Prices in EUR incl. VAT. Complaints and refunds: the venue.", "Payment processed by … for …", "About the venue" (opens in place; built as recommended, your call) with "Company ID (ЕИК): …" / «ЕИК: …», and "Privacy". Both links are easy to tap.
+- **The total and the legal lines:** "Your items", "Tip", "Total", then "Prices in EUR incl. VAT. Complaints and refunds: the venue.", "Payment processed by … for …", "About the venue" (opens in place; Martin 10-30) with "Company ID (ЕИК): …" / «ЕИК: …», and "Privacy". Both links are easy to tap.
 - **Below the smallest card payment:** Pay is greyed with "Card payments start at {min}. Add an item or ask your waiter."
 - **Paying:** "Preparing your bill…" (with "Pay later" to cancel), the card form (with the simulator, a single button), "Processing your payment…", then "Paid" with a payment number and "Show this number to your waiter. Your waiter brings your receipt."
-- **The receipt by email (optional):** a wrong address says "Check the email address" (built as recommended, your call). With an address, the Paid screen says the receipt was sent or requested to it. Receipt emails stay off until the sending address is set (see "Still yours" below).
+- **The receipt by email (optional):** a wrong address says "Check the email address" (Martin 10-30). With an address, the Paid screen says the receipt was sent or requested to it. Receipt emails stay off until the sending address is set (see "Still yours" below).
 - **The friend's phone:** while you pay, your lines read "Being paid" with no name, amount or timer, and paying them is refused ("Someone is already paying for this line."). Once paid they read "Paid in the app"; if you cancel, they come back.
 - **Payment confirmation:** a paid line opens "Payment confirmation", "Paid by card", with "This is not your receipt. Your waiter brings the venue's receipt." and Save.
 - **Refusals in plain words:** the bill changed while paying ("Your bill changed since you opened it."), card payments paused ("Card payments are paused right now. Ask your waiter."), cancelling too late ("Too late to cancel: the payment is being processed.").
@@ -74,8 +74,8 @@ Most of these need a payment that went wrong. With the simulator, the Ordering l
 - **"Payment not confirmed"** on top of "Needs you": the bill's close couldn't be proven. "Receipt printed" captures; "No receipt" releases the hold. A pay-first order asks "Is the order on the till?" with "On the till" / "Not on the till". On the shared tablet a manager's PIN is asked, and the PIN confirmation shows the true charge with the tip; staff rows stay tip-free (your 10-29 answer). A waiter's own phone shows "A manager or owner answers this." and no buttons.
 - **The paying banner** for everyone when card payments pause or access is lost, with "Reconnect" only for those allowed to connect payments.
 - **"Bring the receipt" / "Brought"** after a paid payment.
-- **Refunds and disputes made in the venue's Stripe Dashboard:** "Storno done" on the payment, the dispute to-do and "Dispute evidence". A refund that failed at the bank shows a row; without a button it leaves by itself after three days. A "Got it" button on it is recommended, not built, and waits for your call.
-- **Undo:** each staff Undo works within its time window; afterwards «Твърде късно за отмяна.» / "Too late to undo.", and «Някой друг вече промени това.» / "Someone else has changed this since." when someone else changed it first (built as recommended, your call).
+- **Refunds and disputes made in the venue's Stripe Dashboard:** "Storno done" on the payment, the dispute to-do and "Dispute evidence". A refund that failed at the bank shows a row; until the "Got it" button (Martin 10-30) is built, it leaves by itself after three days.
+- **Undo:** each staff Undo works within its time window; afterwards «Твърде късно за отмяна.» / "Too late to undo.", and «Някой друг вече промени това.» / "Someone else has changed this since." when someone else changed it first (Martin 10-30).
 - **End of night:** the payments, "To fix" (including earlier nights' open questions, marked «От вечерта на {date}» / "From the night of {date}"), the released payments with their reason, refunds and disputes, the totals. Staff see every amount without the tip; owners see the tip. The CSV export follows the same rule.
 - **Log:** each payment step that matters (held, closed, captured, released, unconfirmed, staff answers), and the payment sheet with everything about one payment.
 - **Telegram:** counts only, never amounts or tips.
@@ -104,10 +104,6 @@ Switch `.env.local` to Stripe: `PAYMENTS_PROVIDER=stripe`, your restricted key a
 - **The address receipts are sent from.** Restro has no sending domain yet. Recommendation: a subdomain of Restro's own domain used only for mail, `receipts@mail.<restro's domain>`, shown under the venue's name ("Club X <receipts@mail…>"). Once you have the domain: verify `mail.<domain>` in Resend, then the address goes in `RECEIPT_FROM_ADDRESS` with `RESEND_API_KEY` (on the server, never in chat).
 - **Staging:** your OK for the deploy that sandbox checks 4 and 5 need, PR #203 and PR #199 into main, and the staging migration.
 - **The pull request from `or/foundation` into `main`,** after this walk; you merge it.
-
-## Wording built as recommended, waiting for your call
-
-The e-receipt's "Check the email address", the two Undo refusals, the ЕИК line and "About the venue" opening in place are built the way the lead recommended. Saying yes here settles them; a no is a small change. The "Got it" button on a failed refund is recommended but not built.
 
 ## What to report
 
