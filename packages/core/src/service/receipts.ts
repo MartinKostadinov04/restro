@@ -1,8 +1,7 @@
 // The reads behind "Bring the receipt" (#200; Tonight screen 1, S7): the paper receipts waiting to
 // be brought on Tonight, and the end of the night's list of those never marked Brought. Read-only
-// on `withTenant`, our ids and public fields only (rule 3). The payment number the guest shows is
-// made from the payment's id (`paymentNumberOf`, #114), so the reads carry `paymentId` and the
-// screen words the number.
+// on `withTenant`, our ids and public fields only (rule 3). Each row carries the payment number the
+// guest shows (`paymentNumberOf`, #114, made from the payment's id) beside its id.
 //
 // - Tonight: `alerts.answer`, the right that marks a receipt Brought; the amount is part of the
 //   row's words (`r_d`).
@@ -13,6 +12,7 @@ import { type DbPool, payments, type ReadTx, venueTables, withTenant } from '@re
 import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm'
 
 import { dayOf, open, type ReadInput } from './night-read'
+import { paymentNumberOf } from './payment-number'
 import type { TonightRefusal } from './read'
 
 /** The most receipts one read returns: a night of paper receipts is far below it. */
@@ -21,6 +21,8 @@ export const MAX_RECEIPTS = 2000
 /** One paper receipt waiting to be brought, as Tonight's row needs it. */
 export interface ReceiptToBring {
   readonly paymentId: string
+  /** The number the guest shows the waiter (`paymentNumberOf`). */
+  readonly paymentNumber: string
   readonly tableId: string
   /** The table's name and number, for the screen to word (a numbered table has no name). */
   readonly name: string | null
@@ -37,6 +39,7 @@ export interface ReceiptToBring {
 /** A receipt of a night that was never marked Brought: no amount, no receipt number. */
 export interface ReceiptNotBrought {
   readonly paymentId: string
+  readonly paymentNumber: string
   readonly tableId: string
   readonly name: string | null
   readonly number: string | null
@@ -75,7 +78,13 @@ export async function receiptsNotBrought(
     )
     .orderBy(asc(payments.receiptToBringAt), asc(payments.id))
     .limit(MAX_RECEIPTS + 1)
-  return { day, rows: rows.slice(0, MAX_RECEIPTS), hasMore: rows.length > MAX_RECEIPTS }
+  return {
+    day,
+    rows: rows
+      .slice(0, MAX_RECEIPTS)
+      .map((row) => ({ ...row, paymentNumber: paymentNumberOf(row.paymentId) })),
+    hasMore: rows.length > MAX_RECEIPTS,
+  }
 }
 
 /**
@@ -123,7 +132,14 @@ export async function readReceiptsToBring(
         // A receipt is raised at the capture, which sets both.
         row.amountMinor === null || row.raisedAt === null
           ? []
-          : [{ ...row, amountMinor: row.amountMinor, raisedAt: row.raisedAt }],
+          : [
+              {
+                ...row,
+                paymentNumber: paymentNumberOf(row.paymentId),
+                amountMinor: row.amountMinor,
+                raisedAt: row.raisedAt,
+              },
+            ],
       ),
     } as const
   })

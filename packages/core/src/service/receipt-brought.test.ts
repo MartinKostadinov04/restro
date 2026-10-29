@@ -22,6 +22,7 @@ import {
   readReceiptsToBring,
   type ServiceCommand,
 } from './index'
+import { paymentNumberOf } from './payment-number'
 import { DEFAULT_ROLE_PERMISSIONS } from './permissions'
 
 describe.skipIf(!hasDatabase)('Bring the receipt (as the restro_app role)', () => {
@@ -377,6 +378,7 @@ describe.skipIf(!hasDatabase)('Bring the receipt (as the restro_app role)', () =
     // An earlier night's receipt is not Tonight's.
     expect(ids).not.toContain(old)
     expect(read.receipts.find((receipt) => receipt.paymentId === first)).toMatchObject({
+      paymentNumber: paymentNumberOf(first),
       tableId: world.tables[1],
       receiptNumber: 'R-000123',
       // What was charged, not what was held.
@@ -407,6 +409,7 @@ describe.skipIf(!hasDatabase)('Bring the receipt (as the restro_app role)', () =
     expect(read.notBrought.rows).toEqual([
       {
         paymentId: fresh,
+        paymentNumber: paymentNumberOf(fresh),
         tableId: world.tables[1],
         // A numbered table has no name.
         name: null,
