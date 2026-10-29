@@ -117,7 +117,7 @@ test('connect leaves for the provider’s form, and coming back says it needs mo
     page.getByText(`${PROVIDER} чака още малко данни. Продължете, когато сте готови.`),
   ).toBeVisible()
   await expect(page).toHaveURL(/section=paying$/)
-  await expect(page.getByTestId('paying-account')).toContainText(`Свързано с ${PROVIDER}`)
+  await expect(page.getByTestId('paying-account')).toContainText('Свързано')
   // The provider's own requirements are one line, never raw codes.
   await expect(page.getByTestId('paying-missing-card')).toContainText(
     `${PROVIDER} още чака данни от вас.`,

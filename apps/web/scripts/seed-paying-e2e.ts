@@ -12,11 +12,11 @@
 // Written the way the service paths write it, as the database owner. Like `db:seed:dev` this
 // refuses to run unless NODE_ENV is development and the database is on this machine. No provider
 // is called: the test's connect runs against the worker's simulated provider.
+import { randomUUID } from 'node:crypto'
+
 import { newId } from '@restro/core'
 import {
-  createArea,
   createIntegration,
-  createTable,
   mapBarsyVenue,
   provisionVenue,
   upsertBarsyVenues,
@@ -123,25 +123,8 @@ async function seed(): Promise<void> {
     if (!venue) throw new Error('the venue was not made')
     const venueId = venue.id
 
-    // Three tables in one hall.
-    const existingTables = await owner.query<{ id: string }>(
-      'select id from restro.tables where tenant_id = $1 and archived_at is null',
-      [tenantId],
-    )
-    if (existingTables.rows.length === 0) {
-      const area = await createArea(pool, tenantId, venueId, 'Hall')
-      if (!area.ok) throw new Error(`area refused: ${JSON.stringify(area)}`)
-      for (const number of ['1', '2', '3']) {
-        const table = await createTable(pool, tenantId, {
-          areaId: area.area.id,
-          name: null,
-          number,
-        })
-        if (!table.ok) throw new Error(`table refused: ${JSON.stringify(table)}`)
-      }
-    }
-
-    // The venue is served by the simulated POS, which declares what paying needs.
+    // The venue is served by the simulated POS, which declares what paying needs. Its places become
+    // the venue's tables when the venue is mapped (D95): three, in one hall.
     let integrationId = (
       await owner.query<{ id: string }>(
         `select id from restro.integrations where tenant_id = $1 and kind = 'sim' and removed_at is null`,
@@ -151,20 +134,16 @@ async function seed(): Promise<void> {
     if (integrationId === undefined) {
       integrationId = (await createIntegration(pool, tenantId, { kind: 'sim', host: HOST })).id
       await upsertBarsyVenues(pool, tenantId, integrationId, [{ bid: 1, name: 'Paying Club' }])
+      for (const number of ['1', '2', '3']) {
+        await owner.query(
+          `insert into restro.places
+             (id, tenant_id, integration_id, bid, place_id, place_num, salon_name, salon_id, salon_weight, is_public)
+           values ($1, $2, $3, 1, $4, $4, 'Hall', 'hall', 1, true)`,
+          [randomUUID(), tenantId, integrationId, number],
+        )
+      }
       const mapped = await mapBarsyVenue(pool, tenantId, integrationId, 1, venueId)
       if (!mapped.ok) throw new Error('the venue could not be mapped to the simulated POS')
-    }
-    const tables = await owner.query<{ id: string }>(
-      'select id from restro.tables where tenant_id = $1 and archived_at is null',
-      [tenantId],
-    )
-    for (const table of tables.rows) {
-      await owner.query(
-        `insert into restro.places (id, tenant_id, integration_id, bid, place_id, place_num, is_public, table_id)
-         values ($1, $2, $3, 1, $1, $1, true, $1)
-         on conflict do nothing`,
-        [table.id, tenantId, integrationId],
-      )
     }
     await owner.query(
       `update restro.integrations
