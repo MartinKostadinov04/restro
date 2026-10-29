@@ -711,14 +711,24 @@ const PAYMENT_QUESTION_KINDS: readonly string[] = [
 /**
  * An alert's details without the tips: Staff, and so a shared device, never see them. A payment
  * alert's `amountMinor` is the charge with the tip in it, so the tip comes off it too (#220):
- * the total would give the tip away next to the bill.
+ * the total would give the tip away next to the bill. Whoever may confirm the alert's answer also
+ * gets `chargeMinor`, the true charge, for the confirmation.
  */
-function withoutTips(details: Record<string, unknown>): Record<string, unknown> {
+function withoutTips(
+  details: Record<string, unknown>,
+  mayConfirm: boolean,
+): Record<string, unknown> {
   const { amountMinor, tipMinor } = details
   const kept = Object.fromEntries(Object.entries(details).filter(([key]) => !key.startsWith('tip')))
-  return typeof amountMinor === 'number' && typeof tipMinor === 'number'
-    ? { ...kept, amountMinor: withoutTipMinor(amountMinor, tipMinor) }
-    : kept
+  if (typeof amountMinor !== 'number' || typeof tipMinor !== 'number') return kept
+  // Whoever confirms the answer (a manager's PIN on the shared device, or the right on a phone) is
+  // told the true charge in the confirmation, as the guest's card will bear it (Martin 10-29); the
+  // row itself stays without the tip.
+  return {
+    ...kept,
+    amountMinor: withoutTipMinor(amountMinor, tipMinor),
+    ...(mayConfirm ? { chargeMinor: amountMinor } : {}),
+  }
 }
 
 /** How many Log entries Tonight shows at once. */
@@ -970,7 +980,14 @@ export async function readTonight(
           grants.device === true ||
           !held.has('night.view_full') ||
           (alert.permission !== null && !held.has(alert.permission as Permission))
-            ? { ...alert, details: withoutTips(alert.details) }
+            ? {
+                ...alert,
+                details: withoutTips(
+                  alert.details,
+                  grants.device === true ||
+                    (alert.permission !== null && held.has(alert.permission as Permission)),
+                ),
+              }
             : alert,
         ),
       landedLate: landed.flatMap((row) =>

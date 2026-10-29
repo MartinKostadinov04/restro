@@ -40,11 +40,16 @@ const paymentRow = (id: string): NightPaymentRow => ({
   captureBefore: new Date('2026-11-02T20:00:00Z'),
 })
 
-const fix = (id: string, earlier: string | null): NightPayFix => ({
+const fix = (
+  id: string,
+  earlier: string | null,
+  chargeMinor: number | null = null,
+): NightPayFix => ({
   payment: paymentRow(id),
   problem: 'unconfirmed',
   question: 'close',
   earlier,
+  chargeMinor,
   alert: {
     id: `al_${id}`,
     kind: 'payment_unconfirmed',
@@ -74,6 +79,12 @@ describe("an earlier night's question on today's end of night", () => {
     const byPayment = (id: string) => view.fix.find((row) => row.money?.paymentId === id)
     expect(byPayment('py_old')?.money?.earlier).toBe('2026-10-25')
     expect(byPayment('py_new')?.money?.earlier).toBeNull()
+  })
+
+  it('keeps the amount without the tip and carries the true charge for the confirmation alone', () => {
+    const shown = paymentsView(read([fix('py_dev', null, 3800)]), 'Europe/Sofia')
+    expect(shown.fix[0]?.money).toMatchObject({ amountMinor: 3600, chargeMinor: 3800 })
+    expect(view.fix.every((row) => row.money?.chargeMinor === null)).toBe(true)
   })
 
   it('draws the words for the earlier night only', () => {

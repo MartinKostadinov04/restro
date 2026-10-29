@@ -261,6 +261,8 @@ describe.skipIf(!hasDatabase)('the payment reads of Tonight (as the restro_app r
     const question = tonight.tonight.alerts.find((alert) => alert.kind === 'payment_unconfirmed')
     expect(question?.details).toMatchObject({ amountMinor: 3600 })
     expect(question?.details).not.toHaveProperty('tipMinor')
+    // They confirm the answer, so the confirmation is told the true charge.
+    expect(question?.details).toMatchObject({ chargeMinor: 3800 })
     const night = await readNight(world.app, input(user(followUpUser)))
     if (!night.ok) throw new Error(night.code)
     // The totals hold the tips: a manager reads them, this role does not.
@@ -272,6 +274,14 @@ describe.skipIf(!hasDatabase)('the payment reads of Tonight (as the restro_app r
     const rows = await readNightPayments(world.app, { ...input(user(followUpUser)), all: 100 })
     if (!rows.ok) throw new Error(rows.code)
     expect(rows.payments.rows.every((row) => row.refundedMinor === 0)).toBe(true)
+    // The same on the end of the night: rows without the tip, the charge for the confirmation.
+    const fixOf = (read: Awaited<ReturnType<typeof readNightPayments>>) =>
+      read.ok ? read.payments.fix.find((fix) => fix.problem === 'unconfirmed') : undefined
+    expect(fixOf(rows)).toMatchObject({ chargeMinor: 3800, payment: { amountMinor: 3600 } })
+    const waiterLevel = await readNightPayments(world.app, input(user(staffUser)))
+    expect(fixOf(waiterLevel)?.chargeMinor).toBeNull()
+    const manager2 = await readNightPayments(world.app, input(user(managerUser)))
+    expect(fixOf(manager2)).toMatchObject({ chargeMinor: null, payment: { amountMinor: 3800 } })
   })
 
   it('gives the receipt to bring the charge without the tip to staff, with it to a reader of the night', async () => {

@@ -125,6 +125,11 @@ export interface NightPayFix {
   readonly question: PayQuestion | null
   /** The service day of a payment from an earlier night, on today's page; else null. */
   readonly earlier: string | null
+  /**
+   * The charge with its tip, only for a reader who answers the question and does not read tips
+   * (the shared device): its confirmation tells what the card will bear. Null otherwise.
+   */
+  readonly chargeMinor: number | null
   readonly alert: {
     readonly id: string
     readonly kind: string
@@ -461,6 +466,7 @@ export async function readNightPayments(
           problem,
           question: problem === 'unconfirmed' ? questionOf(row.reason) : null,
           earlier,
+          chargeMinor: !full && sees ? row.amountMinor : null,
           alert:
             alert === undefined
               ? null

@@ -137,8 +137,8 @@ test("a waiter's own phone sees the questions and who answers them, with no butt
   await expect(rowOf(page, '1')).toContainText('€36.00 on hold')
 })
 
-// The shared tablet is staff-level too: every amount it shows is the bill without the tip (€38.00
-// charged, €2.00 of it tip). The owner's phone below reads the whole €38.00.
+// The shared tablet is staff-level: its rows show the bill without the tip (€38.00 charged, €2.00
+// of it tip), but a manager confirming a PIN there is told the true charge (Martin 10-29).
 test("on the tablet a manager's PIN answers: receipt printed / no receipt, on the till / not on the till", async () => {
   const { page } = tablet
   await openPay(page)
@@ -151,6 +151,8 @@ test("on the tablet a manager's PIN answers: receipt printed / no receipt, on th
       .count(),
   ).toBe(0)
   await expect(rowOf(page, '1').getByRole('button')).toHaveText(['Receipt printed', 'No receipt'])
+  // The row's own text stays without the tip.
+  await expect(rowOf(page, '1')).toContainText('€36.00 on hold')
   await expect(rowOf(page, '3').getByRole('button')).toHaveText(['On the till', 'Not on the till'])
 
   // Receipt printed: one tap and the PIN, which names the consequence. A staff PIN is told so.
@@ -159,18 +161,18 @@ test("on the tablet a manager's PIN answers: receipt printed / no receipt, on th
   const sheet = page.getByTestId('pin-sheet')
   await expect(sheet).toContainText("Enter a manager's PIN")
   await expect(sheet).toContainText(
-    "The guest's card will be charged €36.00. This can't be undone.",
+    "The guest's card will be charged €38.00. This can't be undone.",
   )
   await typePin(page, '1234')
   await expect(sheet).toContainText("This PIN belongs to staff. A manager's PIN is needed.")
   await typePin(page, '4321')
-  await expect(toast(page, 'Card charged €36.00')).toBeVisible()
+  await expect(toast(page, 'Card charged €38.00')).toBeVisible()
   await expect(rowOf(page, '1')).toHaveCount(0)
   expect(printed.count).toBe(1)
 
   const noReceipt = new Taps()
   await noReceipt.tap(rowOf(page, '2').getByRole('button', { name: 'No receipt' }))
-  await expect(sheet).toContainText('The held €36.00 is released and the items go back to Table 2.')
+  await expect(sheet).toContainText('The held €38.00 is released and the items go back to Table 2.')
   await typePin(page, '4321')
   await expect(toast(page, 'Money released')).toBeVisible()
   await expect(rowOf(page, '2')).toHaveCount(0)
@@ -178,7 +180,7 @@ test("on the tablet a manager's PIN answers: receipt printed / no receipt, on th
 
   const onTill = new Taps()
   await onTill.tap(rowOf(page, '3').getByRole('button', { name: 'On the till', exact: true }))
-  await expect(sheet).toContainText('closes it and charges the card €36.00')
+  await expect(sheet).toContainText('closes it and charges the card €38.00')
   await typePin(page, '4321')
   await expect(toast(page, 'Saved: on the till')).toBeVisible()
   await expect(rowOf(page, '3')).toHaveCount(0)
@@ -186,7 +188,7 @@ test("on the tablet a manager's PIN answers: receipt printed / no receipt, on th
 
   const notOnTill = new Taps()
   await notOnTill.tap(rowOf(page, '4').getByRole('button', { name: 'Not on the till' }))
-  await expect(sheet).toContainText('The held €36.00 is released. Nothing is charged.')
+  await expect(sheet).toContainText('The held €38.00 is released. Nothing is charged.')
   await typePin(page, '4321')
   await expect(rowOf(page, '4')).toHaveCount(0)
   await expect(rows(page)).toHaveCount(0)
