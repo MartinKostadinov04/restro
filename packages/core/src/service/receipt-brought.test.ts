@@ -9,7 +9,9 @@ import { createHash, randomUUID } from 'node:crypto'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { hasDatabase } from '../apply/test-database'
+import { provisionVenue } from '../apply/provision'
+import { createArea, createTable } from '../apply/tables'
+import { hasDatabase, testSlug } from '../apply/test-database'
 import { newId } from '../ids'
 import { serviceDate } from '../service-day'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
@@ -78,19 +80,24 @@ describe.skipIf(!hasDatabase)('Bring the receipt (as the restro_app role)', () =
     return id
   }
 
-  /** A bill closed on the POS and waiting for its capture. */
+  /**
+   * A bill closed on the POS and waiting for its capture; or, with `printed`, one a manager
+   * answered "Receipt printed" (unconfirmed, no receipt number read).
+   */
   async function closed(
     receiptNumber: string | null = 'R-000123',
     table = 0,
     serviceDay = day,
+    printed = false,
   ): Promise<string> {
     const id = newId('py')
     await world.owner.query(
       `insert into restro.payments
          (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
-          amount_minor, tip_minor, currency, provider_kind, receipt_number, source, actor, job_id)
-       values ($1, $2, $3, $4, $5, $6, 'on_bill', 'closed', $7, 1450, 100, 'EUR', 'sim-pay', $8,
-          'restro', 'system', 'test-seed')`,
+          amount_minor, tip_minor, currency, provider_kind, receipt_number, reason, settled_at,
+          source, actor, job_id)
+       values ($1, $2, $3, $4, $5, $6, 'on_bill', $9, $7, 1500, 100, 'EUR', 'sim-pay', $8, $10,
+          case when $9 = 'unconfirmed' then now() end, 'restro', 'system', 'test-seed')`,
       [
         id,
         world.tenantId,
@@ -100,6 +107,8 @@ describe.skipIf(!hasDatabase)('Bring the receipt (as the restro_app role)', () =
         serviceDay,
         createHash('sha256').update(id).digest('hex'),
         receiptNumber,
+        printed ? 'unconfirmed' : 'closed',
+        printed ? 'receipt_printed' : null,
       ],
     )
     return id
@@ -179,20 +188,43 @@ describe.skipIf(!hasDatabase)('Bring the receipt (as the restro_app role)', () =
     expect((await row(id))?.to_bring).toEqual(first)
   })
 
-  it('raises none for a capture with no receipt number, or once an electronic receipt was sent', async () => {
+  it('raises one for a capture with no receipt number too, as after a manager’s "Receipt printed"', async () => {
     const noNumber = await closed(null)
     await capture(noNumber)
+    const printed = await closed(null, 0, day, true)
+    await capture(printed)
+    for (const id of [noNumber, printed]) {
+      expect((await row(id))?.to_bring).toBeInstanceOf(Date)
+      expect(await openIds()).toContain(id)
+    }
+    const read = await readReceiptsToBring(world.app, {
+      tenantId: world.tenantId,
+      venueId: world.venueId,
+      actor: user(staffId),
+    })
+    if (!read.ok) throw new Error(read.code)
+    expect(read.receipts.find((receipt) => receipt.paymentId === printed)).toMatchObject({
+      receiptNumber: null,
+      amountMinor: 1450,
+    })
+    expect(await run(brought(printed), context(user(staffId)))).toMatchObject({
+      details: { changed: true },
+    })
+  })
+
+  it('raises none once an electronic receipt was sent, or before the capture', async () => {
     const sent = await closed('R-000124')
     await capture(sent, { electronicReceipt: true })
-    expect((await row(noNumber))?.to_bring).toBeNull()
+    const waiting = await closed('R-000125')
     expect((await row(sent))?.to_bring).toBeNull()
-    expect(await openIds()).not.toContain(noNumber)
     expect(await openIds()).not.toContain(sent)
-    // And Brought on either is refused: there is nothing to bring.
-    expect(await run(brought(sent), context(user(staffId)))).toMatchObject({
-      status: 'refused',
-      code: 'no_receipt_to_bring',
-    })
+    // Brought on either is refused: there is nothing to bring.
+    for (const id of [sent, waiting]) {
+      expect(await run(brought(id), context(user(staffId)))).toMatchObject({
+        status: 'refused',
+        code: 'no_receipt_to_bring',
+      })
+    }
   })
 
   it('marks it Brought, names the account and takes it off Tonight', async () => {
@@ -282,6 +314,54 @@ describe.skipIf(!hasDatabase)('Bring the receipt (as the restro_app role)', () =
     expect(await row(id)).toMatchObject({ brought_at: null })
   })
 
+  it('does not touch a payment of another venue of the same organisation', async () => {
+    const venue = await provisionVenue(world.app, world.tenantId, {
+      name: 'Second club',
+      slug: testSlug('receipt-second'),
+    })
+    const area = await createArea(world.app, world.tenantId, venue.id, 'Hall')
+    if (!area.ok) throw new Error('area refused')
+    const table = await createTable(world.app, world.tenantId, {
+      areaId: area.area.id,
+      name: null,
+      number: '1',
+    })
+    if (!table.ok) throw new Error('table refused')
+    const sitting = newId('st')
+    await world.owner.query(
+      `insert into restro.sittings (id, tenant_id, venue_id, table_id, service_date, opened_how, source, actor, job_id)
+       values ($1, $2, $3, $4, $5, 'one', 'restro', 'system', 'test-seed')`,
+      [sitting, world.tenantId, venue.id, table.table.id, day],
+    )
+    const other = newId('py')
+    await world.owner.query(
+      `insert into restro.payments
+         (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
+          amount_minor, captured_minor, currency, provider_kind, settled_at, receipt_to_bring_at,
+          source, actor, job_id)
+       values ($1, $2, $3, $4, $5, $6, 'on_bill', 'captured', $7, 1000, 1000, 'EUR', 'sim-pay',
+          now(), now(), 'restro', 'system', 'test-seed')`,
+      [
+        other,
+        world.tenantId,
+        venue.id,
+        table.table.id,
+        sitting,
+        day,
+        createHash('sha256').update(other).digest('hex'),
+      ],
+    )
+    // The first venue's staff can neither mark it, nor undo it, nor see it.
+    for (const command of [brought(other), unbrought(other)]) {
+      expect(await run(command, context(user(staffId)))).toMatchObject({
+        status: 'refused',
+        code: 'payment_missing',
+      })
+    }
+    expect(await row(other)).toMatchObject({ brought_at: null })
+    expect(await openIds()).not.toContain(other)
+  })
+
   it('lists Tonight’s receipts oldest first with the receipt number and amount, for alerts.answer only', async () => {
     const first = await toBring(1)
     const second = await toBring(2)
@@ -299,6 +379,7 @@ describe.skipIf(!hasDatabase)('Bring the receipt (as the restro_app role)', () =
     expect(read.receipts.find((receipt) => receipt.paymentId === first)).toMatchObject({
       tableId: world.tables[1],
       receiptNumber: 'R-000123',
+      // What was charged, not what was held.
       amountMinor: 1450,
       currency: 'EUR',
     })
@@ -344,7 +425,26 @@ describe.skipIf(!hasDatabase)('Bring the receipt (as the restro_app role)', () =
     ).toEqual({ ok: false, code: 'permission_denied' })
   })
 
-  it('is kept honest by the table: Brought needs a receipt to bring, and a name for the account', async () => {
+  it('reads today when the day asked for is no date or lies ahead', async () => {
+    const mine = await toBring(0)
+    for (const asked of ['not-a-date', '2999-12-31', "2001-02-03'; --", '']) {
+      const read = await readReceiptsNotBrought(world.app, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        actor: user(staffId),
+        day: asked,
+      })
+      if (!read.ok) throw new Error(read.code)
+      expect(read.notBrought.day, asked).toBe(day)
+      expect(
+        read.notBrought.rows.map((row) => row.paymentId),
+        asked,
+      ).toContain(mine)
+    }
+  })
+
+  it('is kept honest by the table: Brought needs a receipt to bring and an account, a receipt to bring a captured payment', async () => {
+    // Closed, not captured yet: nothing to bring and nothing to mark.
     const none = await closed(null)
     await expect(
       world.owner.query(

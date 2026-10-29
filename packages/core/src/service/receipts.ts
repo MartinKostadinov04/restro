@@ -9,13 +9,10 @@
 // - The end of the night: `night.view`, the first sections' right. It carries no amount (nothing
 //   on Telegram shows one), so one list serves the page and the worker's message.
 
-import { type DbPool, payments, type ReadTx, venues, venueTables, withTenant } from '@restro/db'
+import { type DbPool, payments, type ReadTx, venueTables, withTenant } from '@restro/db'
 import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm'
 
-import { serviceDate } from '../service-day'
-import type { ServiceActor } from './context'
-import { resolveGrants } from './grants'
-import type { Permission } from './permissions'
+import { dayOf, open, type ReadInput } from './night-read'
 import type { TonightRefusal } from './read'
 
 /** The most receipts one read returns: a night of paper receipts is far below it. */
@@ -28,9 +25,9 @@ export interface ReceiptToBring {
   /** The table's name and number, for the screen to word (a numbered table has no name). */
   readonly name: string | null
   readonly number: string | null
-  /** The fiscal receipt's number, read from the POS at the close (the waiter matches it). */
-  readonly receiptNumber: string
-  /** What the guest paid, tip included: the row's `{amt}`. */
+  /** The fiscal receipt's number when the POS gave one at the close; the row shows it then. */
+  readonly receiptNumber: string | null
+  /** What was charged, tip included: the row's `{amt}`. Always set once a receipt is raised. */
   readonly amountMinor: number
   readonly currency: string
   /** When the payment was captured, so the row is oldest-first. */
@@ -81,42 +78,13 @@ export async function receiptsNotBrought(
   return { day, rows: rows.slice(0, MAX_RECEIPTS), hasMore: rows.length > MAX_RECEIPTS }
 }
 
-interface Input {
-  readonly tenantId: string
-  readonly venueId: string
-  readonly actor: ServiceActor
-  readonly now?: Date
-}
-
-type Opened =
-  | { readonly ok: true; readonly today: string; readonly held: ReadonlySet<Permission> }
-  | { readonly ok: false; readonly code: TonightRefusal }
-
-/** The actor's grants at the venue, as Tonight's reads check them (a shared device reads quickly). */
-async function open(tx: ReadTx, input: Input): Promise<Opened> {
-  const { actor } = input
-  if (actor.kind !== 'user' && actor.kind !== 'staff' && actor.kind !== 'operator') {
-    return { ok: false, code: 'origin_not_allowed' }
-  }
-  const [venue] = await tx.select().from(venues).where(eq(venues.id, input.venueId))
-  if (venue === undefined) return { ok: false, code: 'venue_missing' }
-  if (venue.archivedAt !== null) return { ok: false, code: 'venue_archived' }
-  const grants = await resolveGrants(tx, input.tenantId, venue.id, actor, { quick: true })
-  if (!grants.ok) return { ok: false, code: grants.code }
-  return {
-    ok: true,
-    held: grants.permissions,
-    today: serviceDate(input.now ?? new Date(), venue.timezone, venue.serviceDayEndsAt),
-  }
-}
-
 /**
  * The receipts to bring on Tonight: this service day's captured payments with a paper receipt not
  * yet marked Brought. Refused for an actor without `alerts.answer`, like the waiter calls.
  */
 export async function readReceiptsToBring(
   pool: DbPool,
-  input: Input,
+  input: ReadInput,
 ): Promise<
   | { readonly ok: true; readonly receipts: readonly ReceiptToBring[] }
   | { readonly ok: false; readonly code: TonightRefusal }
@@ -124,7 +92,8 @@ export async function readReceiptsToBring(
   return withTenant(pool, input.tenantId, async (tx) => {
     const opened = await open(tx, input)
     if (!opened.ok) return opened
-    if (!opened.held.has('alerts.answer')) return { ok: false, code: 'permission_denied' } as const
+    const { held, today } = opened.reader
+    if (!held.has('alerts.answer')) return { ok: false, code: 'permission_denied' } as const
     const rows = await tx
       .select({
         paymentId: payments.id,
@@ -132,7 +101,7 @@ export async function readReceiptsToBring(
         name: venueTables.name,
         number: venueTables.number,
         receiptNumber: payments.receiptNumber,
-        amountMinor: payments.amountMinor,
+        amountMinor: payments.capturedMinor,
         currency: payments.currency,
         raisedAt: payments.receiptToBringAt,
       })
@@ -141,7 +110,7 @@ export async function readReceiptsToBring(
       .where(
         and(
           eq(payments.venueId, input.venueId),
-          eq(payments.serviceDate, opened.today),
+          eq(payments.serviceDate, today),
           isNotNull(payments.receiptToBringAt),
           isNull(payments.receiptBroughtAt),
         ),
@@ -151,29 +120,23 @@ export async function readReceiptsToBring(
     return {
       ok: true,
       receipts: rows.flatMap((row) =>
-        // The table's checks keep these set once a receipt is to be brought.
-        row.receiptNumber === null || row.amountMinor === null || row.raisedAt === null
+        // A receipt is raised at the capture, which sets both.
+        row.amountMinor === null || row.raisedAt === null
           ? []
-          : [
-              {
-                ...row,
-                receiptNumber: row.receiptNumber,
-                amountMinor: row.amountMinor,
-                raisedAt: row.raisedAt,
-              },
-            ],
+          : [{ ...row, amountMinor: row.amountMinor, raisedAt: row.raisedAt }],
       ),
     } as const
   })
 }
 
 /**
- * The end of the night's receipts not brought, for one service day (today when none is asked).
+ * The end of the night's receipts not brought, for one service day (today when none is asked or the
+ * asked day is no date or lies ahead, as the other end-of-night reads).
  * Refused for an actor without `night.view` or `night.view_full`.
  */
 export async function readReceiptsNotBrought(
   pool: DbPool,
-  input: Input & { readonly day?: string },
+  input: ReadInput & { readonly day?: string },
 ): Promise<
   | { readonly ok: true; readonly notBrought: ReceiptsNotBrought }
   | { readonly ok: false; readonly code: TonightRefusal }
@@ -181,13 +144,13 @@ export async function readReceiptsNotBrought(
   return withTenant(pool, input.tenantId, async (tx) => {
     const opened = await open(tx, input)
     if (!opened.ok) return opened
-    if (!opened.held.has('night.view') && !opened.held.has('night.view_full')) {
+    const { held, today } = opened.reader
+    if (!held.has('night.view') && !held.has('night.view_full')) {
       return { ok: false, code: 'permission_denied' } as const
     }
-    const day = input.day !== undefined && input.day <= opened.today ? input.day : opened.today
     return {
       ok: true,
-      notBrought: await receiptsNotBrought(tx, input.venueId, day),
+      notBrought: await receiptsNotBrought(tx, input.venueId, dayOf(input.day, today)),
     } as const
   })
 }

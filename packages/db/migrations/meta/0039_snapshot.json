@@ -1,5 +1,5 @@
 {
-  "id": "3f816813-2992-4779-9c30-336a69d5a7bd",
+  "id": "2be29461-34cb-44f3-bfc7-954972dd2d08",
   "prevId": "73302b03-a592-45a8-bf78-f7bf0199501e",
   "version": "7",
   "dialect": "postgresql",
@@ -4738,7 +4738,7 @@
         },
         "payments_receipt_brought": {
           "name": "payments_receipt_brought",
-          "value": "(\"restro\".\"payments\".\"receipt_brought_at\" is null) = (\"restro\".\"payments\".\"receipt_brought_by\" is null) and (\"restro\".\"payments\".\"receipt_brought_at\" is null or \"restro\".\"payments\".\"receipt_to_bring_at\" is not null) and (\"restro\".\"payments\".\"receipt_brought_by\" is null or \"restro\".\"payments\".\"receipt_brought_by\" ~ '^(system|guest|(user|staff|integration|operator):[A-Za-z0-9][A-Za-z0-9_.:-]{0,127})$') and (\"restro\".\"payments\".\"receipt_to_bring_at\" is null or \"restro\".\"payments\".\"receipt_number\" is not null)"
+          "value": "(\"restro\".\"payments\".\"receipt_brought_at\" is null) = (\"restro\".\"payments\".\"receipt_brought_by\" is null) and (\"restro\".\"payments\".\"receipt_brought_at\" is null or \"restro\".\"payments\".\"receipt_to_bring_at\" is not null) and (\"restro\".\"payments\".\"receipt_brought_by\" is null or \"restro\".\"payments\".\"receipt_brought_by\" ~ '^(system|guest|(user|staff|integration|operator):[A-Za-z0-9][A-Za-z0-9_.:-]{0,127})$') and (\"restro\".\"payments\".\"receipt_to_bring_at\" is null or \"restro\".\"payments\".\"state\" = 'captured')"
         },
         "payments_form_values": {
           "name": "payments_form_values",

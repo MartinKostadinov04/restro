@@ -2689,8 +2689,9 @@ export const payments = restro.table(
     threeDsResult: text('three_ds_result'),
     authorisationCode: text('authorisation_code'),
     /**
-     * When the venue's paper receipt became one to bring (#200): set at capture, when the receipt
-     * number was read and no electronic receipt was sent. Null for any other payment.
+     * When the venue's paper receipt became one to bring (#200): set at capture, whenever no
+     * electronic receipt was sent (the receipt number is shown when the POS gave one). Null for any
+     * other payment.
      */
     receiptToBringAt: timestamp('receipt_to_bring_at', { withTimezone: true }),
     /** When staff marked the paper receipt Brought, and the account that did (the shared device's own, or a person). */
@@ -2784,7 +2785,7 @@ export const payments = restro.table(
     ),
     check(
       'payments_receipt_brought',
-      sql`(${t.receiptBroughtAt} is null) = (${t.receiptBroughtBy} is null) and (${t.receiptBroughtAt} is null or ${t.receiptToBringAt} is not null) and (${t.receiptBroughtBy} is null or ${t.receiptBroughtBy} ~ ${SERVICE_ACTOR_PATTERN}) and (${t.receiptToBringAt} is null or ${t.receiptNumber} is not null)`,
+      sql`(${t.receiptBroughtAt} is null) = (${t.receiptBroughtBy} is null) and (${t.receiptBroughtAt} is null or ${t.receiptToBringAt} is not null) and (${t.receiptBroughtBy} is null or ${t.receiptBroughtBy} ~ ${SERVICE_ACTOR_PATTERN}) and (${t.receiptToBringAt} is null or ${t.state} = 'captured')`,
     ),
     check(
       'payments_form_values',

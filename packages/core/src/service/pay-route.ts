@@ -829,9 +829,10 @@ export function paymentCaptured() {
         if (captured === null || payment.amountMinor === null || captured > payment.amountMinor) {
           return refused(null, 'payment_mismatch', { reason: 'captured_amount' })
         }
-        // A paper receipt is to be brought when the close gave its number and none was sent by
-        // email (#200); a capture with no number is the end of night's "no receipt number" fix.
-        const toBring = payment.receiptNumber !== null && !command.electronicReceipt
+        // A paper receipt is to be brought on every capture unless an electronic one was sent
+        // (#200; D122, D127 4.4): the waiter matches it by table and payment number, and the row
+        // shows the POS's receipt number when the close gave one.
+        const toBring = !command.electronicReceipt
         await move(
           stx,
           locked,

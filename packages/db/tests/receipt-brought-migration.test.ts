@@ -3,7 +3,7 @@
 // own: migrated to the one before, seeded with a payment captured then, then migrated through it.
 // The old payment must read as one with no receipt to bring; the check must refuse a Brought mark
 // without a receipt to bring, without an account, with a name that is no account, and a receipt to
-// bring on a payment with no receipt number. Skipped without a database.
+// bring on a payment that is not captured. Skipped without a database.
 import { createHash, randomUUID } from 'node:crypto'
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -58,15 +58,15 @@ describe.skipIf(!hasDatabase)('the receipt to bring migration (#200)', () => {
   const insertPayment = (
     id: string,
     receiptNumber: string | null,
-    receipt: { toBring?: boolean; broughtBy?: string } = {},
+    receipt: { toBring?: boolean; broughtBy?: string; state?: 'captured' | 'closed' } = {},
   ) =>
     client.query(
       `insert into restro.payments
          (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
           amount_minor, captured_minor, currency, provider_kind, receipt_number, settled_at,
           receipt_to_bring_at, receipt_brought_at, receipt_brought_by, source, actor, job_id)
-       values ($1, 'org_x', 'vn_x', 'tb_x', 'st_x', '2026-10-29', 'on_bill', 'captured', $2,
-          1000, 1000, 'EUR', 'sim-pay', $3, now(),
+       values ($1, 'org_x', 'vn_x', 'tb_x', 'st_x', '2026-10-29', 'on_bill', $6, $2,
+          1000, null, 'EUR', 'sim-pay', $3, case when $6 = 'captured' then now() end,
           case when $4::boolean then now() end,
           case when $5::text is not null then now() end, $5, 'restro', 'system', 'jb_x')`,
       [
@@ -75,6 +75,7 @@ describe.skipIf(!hasDatabase)('the receipt to bring migration (#200)', () => {
         receiptNumber,
         receipt.toBring ?? false,
         receipt.broughtBy ?? null,
+        receipt.state ?? 'captured',
       ],
     )
 
@@ -121,13 +122,15 @@ describe.skipIf(!hasDatabase)('the receipt to bring migration (#200)', () => {
     ])
   })
 
-  it('holds a receipt to bring only with a receipt number, and Brought only with both a time and an account', async () => {
+  it('holds a receipt to bring only on a captured payment, and Brought only with a receipt to bring, a time and an account', async () => {
     await insertPayment('py_TOBRING1', 'R-2', { toBring: true })
+    // The POS may give no receipt number (a manager's "Receipt printed"): the receipt is still brought.
+    await insertPayment('py_TOBRING2', null, { toBring: true })
     await insertPayment('py_BROUGHT1', 'R-3', { toBring: true, broughtBy: 'user:u1' })
-    // No receipt number, so nothing to bring.
-    await expect(insertPayment('py_NONUMBER', null, { toBring: true })).rejects.toThrow(
-      /payments_receipt_brought/,
-    )
+    // Not captured yet, so nothing to bring.
+    await expect(
+      insertPayment('py_NOTYET', 'R-6', { toBring: true, state: 'closed' }),
+    ).rejects.toThrow(/payments_receipt_brought/)
     // Brought without a receipt to bring, and an account that is not one.
     await expect(insertPayment('py_NOTHING', 'R-4', { broughtBy: 'user:u1' })).rejects.toThrow(
       /payments_receipt_brought/,
