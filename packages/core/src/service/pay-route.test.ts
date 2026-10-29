@@ -67,7 +67,7 @@ describe('the last check', () => {
     lastCheck({ confirmed, isolated: bill(), real: [], partialCapture: true, ...input })
 
   it('passes exactly the confirmed lines and amounts, however the POS writes the quantity', () => {
-    expect(check({})).toEqual({ ok: true, foundMinor: 1_450, voided: 0 })
+    expect(check({})).toEqual({ ok: true, foundMinor: 1_450, voided: 0, found: [0, 1] })
   })
 
   it('fails a closed bill, a part-paid one, a total off its lines, and a line slipped in', () => {
@@ -100,7 +100,8 @@ describe('the last check', () => {
 
   it('lowers the amount only for a line a fresh read of the real table shows voided', () => {
     const short = bill([{ quantity: '1', amountMinor: 450 }])
-    expect(check({ isolated: short })).toEqual({ ok: true, foundMinor: 450, voided: 1 })
+    // The voided line (the first) is not among those the POS closes.
+    expect(check({ isolated: short })).toEqual({ ok: true, foundMinor: 450, voided: 1, found: [1] })
     // Still on the real table, or one just like it: not voided, moved back or somewhere else.
     expect(
       check({ isolated: short, real: [{ pos: 'L1', quantity: '1', amountMinor: 1 }] }),
@@ -166,15 +167,23 @@ describe('the last check', () => {
           const missing = [...want].filter(([k, n]) => n > (have.get(k) ?? 0))
           const voided = missing.reduce((total, [k, n]) => total + n - (have.get(k) ?? 0), 0)
           const realKeys = new Set(real.map(key))
+          // The confirmed lines the bill holds, in order: those the POS closes.
+          const left = counts(lines)
+          const found = confirmed.flatMap((l, index) => {
+            const open = left.get(key(l)) ?? 0
+            if (open === 0) return []
+            left.set(key(l), open - 1)
+            return [index]
+          })
           if (lines.length === 0) expect(result).toEqual({ ok: false, why: 'no_bill' })
           else if (extra) expect(result).toEqual({ ok: false, why: 'extra_line' })
           else if (voided === 0)
-            expect(result).toEqual({ ok: true, foundMinor: sum(lines), voided })
+            expect(result).toEqual({ ok: true, foundMinor: sum(lines), voided, found })
           else if (missing.some(([k]) => realKeys.has(k))) {
             expect(result).toEqual({ ok: false, why: 'line_missing' })
           } else if (!partialCapture) {
             expect(result).toEqual({ ok: false, why: 'partial_not_supported' })
-          } else expect(result).toEqual({ ok: true, foundMinor: sum(lines), voided })
+          } else expect(result).toEqual({ ok: true, foundMinor: sum(lines), voided, found })
           // Never more than the guest confirmed.
           if (result.ok) expect(result.foundMinor).toBeLessThanOrEqual(sum(confirmed))
         },
@@ -266,16 +275,18 @@ describe('the last check', () => {
             (f) => f === 'moved_back' || f === 'moved_back_repriced' || f === 'twin_on_real',
           )
           const changed = fates.some((f) => f === 'repriced' || f === 'requantified')
+          // The lines the POS closes are the kept ones, by their place among the confirmed.
+          const found = confirmed.flatMap((_, index) => (fates[index] === 'kept' ? [index] : []))
           let want: ReturnType<typeof lastCheck>
           if (lines.length === 0) want = { ok: false, why: 'no_bill' }
           else if (bill === 'second_bill') want = { ok: false, why: 'several_bills' }
           else if (bill === 'part_paid') want = { ok: false, why: 'part_paid' }
           else if (bill === 'total_off') want = { ok: false, why: 'total_changed' }
           else if (changed || added > 0) want = { ok: false, why: 'extra_line' }
-          else if (missing === 0) want = { ok: true, foundMinor: keptMinor, voided: 0 }
+          else if (missing === 0) want = { ok: true, foundMinor: keptMinor, voided: 0, found }
           else if (onReal) want = { ok: false, why: 'line_missing' }
           else if (!partialCapture) want = { ok: false, why: 'partial_not_supported' }
-          else want = { ok: true, foundMinor: keptMinor, voided: missing }
+          else want = { ok: true, foundMinor: keptMinor, voided: missing, found }
           expect(result).toEqual(want)
         },
       ),

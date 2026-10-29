@@ -42,7 +42,7 @@ import { addMinor, percentOfMinor, sumSignedMinor } from '../money'
 import { readPayingSettings } from '../paying-settings'
 import { DecimalQuantitySchema } from '../quantity'
 import { orderFromRow, releaseHeldLines } from '../table-order'
-import { parseStoredBills, type StoredBill, type StoredBillLine } from './bill'
+import { parseStoredBills, paymentLineName, type StoredBill, type StoredBillLine } from './bill'
 import { defineCommand, type ServiceTx } from './definition'
 import { recordRetainUntil } from './log'
 import { writeOrder } from './order'
@@ -524,6 +524,7 @@ export function payStart() {
             quantity: line.quantity,
             posAmountMinor: line.amountMinor,
             displayName: displayNameOf(line),
+            name: paymentLineName(line.name),
             ...stx.provenance,
           })),
         )

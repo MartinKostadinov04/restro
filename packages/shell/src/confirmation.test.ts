@@ -4,8 +4,10 @@ import {
   type ConfirmationCanvas,
   confirmationOf,
   confirmationWords,
+  DOWNLOAD_LINK_MS,
   drawConfirmation,
   formatPaidAt,
+  prepareConfirmation,
   type SaveCanvas,
   type SaveEnv,
   type SaveShare,
@@ -48,6 +50,7 @@ describe('confirmationOf', () => {
       const view = confirmationOf({
         payment: { ...captured, state },
         venueName: 'Club X',
+        otherItem: 'Other item',
         locale: 'en_US',
         words,
       })
@@ -57,7 +60,13 @@ describe('confirmationOf', () => {
 
   it('carries the venue, time, lines, tip, total, "Paid by card" and the payment number', () => {
     const words = stringsFor('en_US').services.paying
-    const view = confirmationOf({ payment: captured, venueName: 'Club X', locale: 'en_US', words })
+    const view = confirmationOf({
+      payment: captured,
+      venueName: 'Club X',
+      otherItem: 'Other item',
+      locale: 'en_US',
+      words,
+    })
     expect(view).toMatchObject({
       title: 'Payment confirmation',
       venue: 'Club X',
@@ -81,26 +90,41 @@ describe('confirmationOf', () => {
       payment: {
         ...captured,
         tipMinor: 0,
-        amountMinor: 2250,
-        lines: [{ name: 'Мохито', quantity: '2', amountMinor: 2000 }],
+        amountMinor: 2000,
+        lines: [
+          { name: { bg_BG: 'Мохито', en_US: 'Mojito' }, quantity: '2', amountMinor: 1500 },
+          { name: null, quantity: '1', amountMinor: 500 },
+        ],
       },
       venueName: '  ',
+      otherItem: 'Друг артикул',
       locale: 'bg_BG',
       words,
     })
     expect(view?.tip).toBeNull()
     expect(view?.venue).toBeNull()
-    expect(view?.lines).toEqual([{ text: 'Мохито ×2', amount: payMoney(2000, 'EUR', 'bg_BG') }])
-    expect(view?.total.amount).toBe(payMoney(2250, 'EUR', 'bg_BG'))
+    // Each line in the guest's language; a line with no name is "Other item".
+    expect(view?.lines).toEqual([
+      { text: 'Мохито ×2', amount: payMoney(1500, 'EUR', 'bg_BG') },
+      { text: 'Друг артикул', amount: payMoney(500, 'EUR', 'bg_BG') },
+    ])
+    expect(view?.total.amount).toBe(payMoney(2000, 'EUR', 'bg_BG'))
   })
 
   it('says the receipt went by email where it did (#186), and the waiter’s line otherwise', () => {
     for (const locale of LOCALES) {
       const words = stringsFor(locale).services.paying
-      const plain = confirmationOf({ payment: captured, venueName: 'Club X', locale, words })
+      const plain = confirmationOf({
+        payment: captured,
+        venueName: 'Club X',
+        otherItem: 'Other item',
+        locale,
+        words,
+      })
       const emailed = confirmationOf({
         payment: captured,
         venueName: 'Club X',
+        otherItem: 'Other item',
         locale,
         words,
         receiptEmail: 'ana@example.com',
@@ -119,6 +143,7 @@ describe('confirmationOf', () => {
         const view = confirmationOf({
           payment: captured,
           venueName: 'Club X',
+          otherItem: 'Other item',
           locale,
           words,
           receiptEmail,
@@ -165,6 +190,7 @@ describe('drawConfirmation', () => {
   const view = confirmationOf({
     payment: captured,
     venueName: 'Club X',
+    otherItem: 'Other item',
     locale: 'en_US',
     words: stringsFor('en_US').services.paying,
   })
@@ -243,6 +269,7 @@ describe('saveConfirmation', () => {
   const view = confirmationOf({
     payment: captured,
     venueName: 'Club X',
+    otherItem: 'Other item',
     locale: 'en_US',
     words: stringsFor('en_US').services.paying,
   })
@@ -253,12 +280,14 @@ describe('saveConfirmation', () => {
     const fetch = vi.fn()
     vi.stubGlobal('fetch', fetch)
     const { env, downloads, revoked } = fakeEnv()
-    await expect(saveConfirmation(view, env)).resolves.toBe('saved')
+    await expect(saveConfirmation(prepareConfirmation(view, () => env))).resolves.toBe('saved')
     expect(downloads).toEqual([{ url: 'blob:phone/1', name: 'payment-K7Q4M.png' }])
     expect(downloads[0]?.url.startsWith('blob:')).toBe(true)
     // The link does not last.
     expect(revoked).toEqual([])
-    vi.advanceTimersByTime(1_000)
+    vi.advanceTimersByTime(DOWNLOAD_LINK_MS - 1)
+    expect(revoked).toEqual([])
+    vi.advanceTimersByTime(1)
     expect(revoked).toEqual(['blob:phone/1'])
     expect(fetch).not.toHaveBeenCalled()
   })
@@ -272,7 +301,7 @@ describe('saveConfirmation', () => {
         shared.push(data)
       },
     })
-    await expect(saveConfirmation(view, env)).resolves.toBe('saved')
+    await expect(saveConfirmation(prepareConfirmation(view, () => env))).resolves.toBe('saved')
     expect(shared).toHaveLength(1)
     expect(shared[0]?.files[0]?.name).toBe('payment-K7Q4M.png')
     expect(shared[0]?.files[0]?.type).toBe('image/png')
@@ -288,7 +317,9 @@ describe('saveConfirmation', () => {
         throw new DOMException('closed', 'AbortError')
       },
     })
-    await expect(saveConfirmation(view, closed.env)).resolves.toBe('dismissed')
+    await expect(saveConfirmation(prepareConfirmation(view, () => closed.env))).resolves.toBe(
+      'dismissed',
+    )
     expect(closed.downloads).toEqual([])
 
     const broken = fakeEnv({
@@ -297,7 +328,9 @@ describe('saveConfirmation', () => {
         throw new Error('no share here')
       },
     })
-    await expect(saveConfirmation(view, broken.env)).resolves.toBe('saved')
+    await expect(saveConfirmation(prepareConfirmation(view, () => broken.env))).resolves.toBe(
+      'saved',
+    )
     expect(broken.downloads).toHaveLength(1)
   })
 
@@ -306,6 +339,6 @@ describe('saveConfirmation', () => {
     const { env } = fakeEnv({
       createCanvas: () => ({ getContext: () => null }) as unknown as SaveCanvas,
     })
-    await expect(saveConfirmation(view, env)).rejects.toThrow()
+    await expect(saveConfirmation(prepareConfirmation(view, () => env))).rejects.toThrow()
   })
 })

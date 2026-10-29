@@ -12,6 +12,7 @@ import {
   forbiddenPaths,
   type LineItem,
   parseStoredBills,
+  paymentLineName,
   type ReadBill,
   ReadBillSchema,
   sittingEndsByReading,
@@ -171,14 +172,25 @@ describe('storedBills and billView', () => {
       complete: true,
       bills: stored,
       paidLines: [
-        { name: 'Gin & tonic', quantity: '2', amountMinor: 1800 },
-        { name: 'Nachos', quantity: '1', amountMinor: 900 },
+        { name: { en_US: 'Gin & tonic', bg_BG: 'Джин тоник' }, quantity: '2', amountMinor: 1800 },
+        { name: null, quantity: '1', amountMinor: 900 },
       ],
     })
     expect(paid.paidLines).toHaveLength(2)
     expect(Object.keys(paid.paidLines[0] ?? {}).sort()).toEqual(['amountMinor', 'name', 'quantity'])
     // Rule 3: the view with paid lines still holds nothing the POS gave.
     expect(forbiddenPaths(paid, billBackendValues(stored))).toEqual([])
+  })
+
+  it('keeps a payment line’s name per language, and null for "Other item" (#197)', () => {
+    expect(paymentLineName({ en_US: 'Beer', bg_BG: 'Бира' })).toEqual({
+      en_US: 'Beer',
+      bg_BG: 'Бира',
+    })
+    expect(paymentLineName({ en_US: 'Beer', bg_BG: '' })).toEqual({ en_US: 'Beer' })
+    expect(paymentLineName({})).toBeNull()
+    expect(paymentLineName(null)).toBeNull()
+    expect(paymentLineName(undefined)).toBeNull()
   })
 
   it('reads back what it stored, and a row that no longer parses as no bill', () => {

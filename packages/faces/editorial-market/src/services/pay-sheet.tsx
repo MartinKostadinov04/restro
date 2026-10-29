@@ -16,26 +16,26 @@ import {
   choosePay,
   confirmationOf,
   endText,
-  fallbackChain,
   freeLines,
   type Locale,
+  lineNameText,
   NO_TIP,
   offersPay,
   type PayFormSlot,
   type PaymentView,
   type PayScreen,
   type Picks,
+  type PreparedConfirmation,
   parseMinor,
   payBlock,
   payFormLocale,
   payMoney,
   payScreen,
   payStartCommand,
-  pickText,
   pickWhole,
+  prepareConfirmation,
   reconcilePicks,
   refusalText,
-  type SaveOutcome,
   sameAmountAgo,
   saveConfirmation,
   type TableBillLineView,
@@ -88,6 +88,9 @@ function FormSlot({
   return <div data-slot="pay.form" ref={holder} />
 }
 
+/** The Payment confirmation's id: the button that opens it names it in `aria-controls`. */
+const CONFIRMATION_ID = 'ro-pay-confirmation'
+
 /** "×2" for a line of more than one. */
 const mark = (quantity: string) => (quantity === '1' ? '' : ` ×${quantity}`)
 
@@ -102,7 +105,7 @@ export function PaidInApp({
   readonly lines: TableBillView['paidLines']
   readonly money: (minor: number) => string
 }) {
-  const { words } = useServicesRequired()
+  const { words, locale } = useServicesRequired()
   if (lines.length === 0) return null
   return (
     <section data-slot="bill.paid">
@@ -110,8 +113,8 @@ export function PaidInApp({
       <ul className="ro-lines">
         {lines.map((line, index) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: a paid line has no id of its own (rule 3)
-          <li key={index} data-paid-in-app="" aria-disabled="true">
-            {line.name}
+          <li key={index} data-paid-in-app="">
+            {lineNameText(line.name, locale, words.otherItem)}
             {mark(line.quantity)} · {money(line.amountMinor)}
           </li>
         ))}
@@ -125,29 +128,57 @@ export function PaidInApp({
  * tip, the total, "Paid by card" and the payment number, and Save. It saves an image on the phone
  * and leaves no link; it is not a receipt and does not look like one.
  */
-function Confirmation({ view }: { readonly view: ConfirmationView }) {
+function Confirmation({
+  view,
+  id,
+  closeLabel,
+  failedText,
+  onClose,
+}: {
+  readonly view: ConfirmationView
+  readonly id: string
+  /** "Back" (the guide's `same_no`), pending Martin's word for closing the page. */
+  readonly closeLabel: string
+  readonly failedText: string
+  readonly onClose: () => void
+}) {
   const [saving, setSaving] = useState(false)
+  const [failed, setFailed] = useState(false)
+  // The image is drawn as the page opens, so the Save tap has it ready (a share sheet needs the tap).
+  const [prepared] = useState<PreparedConfirmation>(() => prepareConfirmation(view))
+  const heading = useRef<HTMLHeadingElement>(null)
   const alive = useRef(true)
   useEffect(() => {
     alive.current = true
+    heading.current?.focus({ preventScroll: false })
     return () => {
       alive.current = false
     }
   }, [])
   async function save() {
     setSaving(true)
-    let outcome: SaveOutcome | null = null
+    setFailed(false)
     try {
-      outcome = await saveConfirmation(view)
+      await saveConfirmation(prepared)
     } catch {
-      // No success is shown for a save that failed; the guest taps Save again.
+      // No success is shown for a save that failed: one line, and the guest taps Save again.
+      if (alive.current) setFailed(true)
     }
     if (alive.current) setSaving(false)
-    return outcome
   }
   return (
-    <article className="ro-confirm" data-slot="pay.confirmation">
-      <h3 className="ro-h">{view.title}</h3>
+    <article className="ro-confirm" id={id} data-slot="pay.confirmation">
+      <button
+        type="button"
+        className="ro-ghost"
+        data-slot="pay.confirmation.close"
+        onClick={onClose}
+      >
+        {closeLabel}
+      </button>
+      <h3 className="ro-h" tabIndex={-1} ref={heading}>
+        {view.title}
+      </h3>
       {view.venue === null ? null : <p data-slot="pay.confirmation.venue">{view.venue}</p>}
       {view.when === null ? null : <p data-slot="pay.confirmation.when">{view.when}</p>}
       <ul className="ro-lines">
@@ -172,7 +203,7 @@ function Confirmation({ view }: { readonly view: ConfirmationView }) {
       <p>
         {view.number.label}: <b className="ro-pay-number">{view.number.value}</b>
       </p>
-      <p className="ro-allergy" data-slot="pay.confirmation.note">
+      <p className="ro-confirm-note" data-slot="pay.confirmation.note">
         {view.note}
       </p>
       <button
@@ -184,6 +215,11 @@ function Confirmation({ view }: { readonly view: ConfirmationView }) {
       >
         <span>{view.saveLabel}</span>
       </button>
+      {failed ? (
+        <p className="ro-notice is-bad" role="alert" data-slot="pay.confirmation.failed">
+          {failedText}
+        </p>
+      ) : null}
     </article>
   )
 }
@@ -221,9 +257,7 @@ export function PaySheet() {
     if (bill !== null && payment === null) setPicks((current) => reconcilePicks(current, bill))
   }, [bill, payment])
 
-  const nameOf = (line: TableBillLineView) =>
-    (line.name === null ? null : pickText(line.name, fallbackChain(locale, locale, [])))?.text ??
-    words.otherItem
+  const nameOf = (line: TableBillLineView) => lineNameText(line.name, locale, words.otherItem)
 
   /** Sends a pay command; a refusal is worded by code, a lost answer is not a success. */
   async function send(command: Parameters<typeof run>[0]) {
@@ -294,6 +328,10 @@ export function PaySheet() {
               ? w.tipTooBig
               : null
   const free = freeLines(bill)
+  // Everything is paid: nothing is free to pay and the sitting has paid lines, so the choosing, the
+  // totals and Pay go, and the bill shows what was paid (D127 1.2).
+  const settled = free.length === 0 && bill.paidLines.length > 0
+  const hasLines = bill.parts.some((part) => part.lines.length > 0)
   const everything = free.length > 0 && free.every((line) => picks.has(line.id))
   const pickTip = (next: TipChoice) =>
     setTip((current) =>
@@ -305,9 +343,9 @@ export function PaySheet() {
 
   return (
     <div className="ro-sheet" data-slot="pay.choose">
-      <h3 className="ro-h">{w.pickTitle}</h3>
-      {paying.state === 'off' ? <p className="ro-notice">{w.askWaiterToPay}</p> : null}
-      {offersPay(state) ? (
+      {settled ? null : <h3 className="ro-h">{w.pickTitle}</h3>}
+      {paying.state === 'off' && !settled ? <p className="ro-notice">{w.askWaiterToPay}</p> : null}
+      {offersPay(state) && !settled ? (
         <button
           type="button"
           className="ro-ghost"
@@ -318,39 +356,43 @@ export function PaySheet() {
           {w.wholeBill}
         </button>
       ) : null}
-      <ul className="ro-lines">
-        {bill.parts.flatMap((part) =>
-          part.lines.map((line) => {
-            const greyed = part.beingPaid || line.beingPaid
-            const label = `${nameOf(line)}${mark(line.quantity)} · ${money(line.amountMinor)}`
-            return (
-              <li key={line.id} data-being-paid={greyed ? '' : undefined}>
-                {paying.state === 'off' || greyed ? (
-                  <span aria-disabled={greyed ? 'true' : undefined}>
-                    {label}
-                    {greyed ? ` · ${w.beingPaid}` : ''}
-                  </span>
-                ) : (
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={picks.has(line.id)}
-                      onChange={() => setPicks(togglePick(picks, bill, line.id))}
-                    />{' '}
-                    {label}
-                  </label>
-                )}
-              </li>
-            )
-          }),
-        )}
-      </ul>
-      <p className="ro-sum">
-        <span>{w.leftToPay}</span>
-        <b>{money(bill.owedMinor)}</b>
-      </p>
+      {hasLines ? (
+        <ul className="ro-lines">
+          {bill.parts.flatMap((part) =>
+            part.lines.map((line) => {
+              const greyed = part.beingPaid || line.beingPaid
+              const label = `${nameOf(line)}${mark(line.quantity)} · ${money(line.amountMinor)}`
+              return (
+                <li key={line.id} data-being-paid={greyed ? '' : undefined}>
+                  {paying.state === 'off' || greyed ? (
+                    <span>
+                      {label}
+                      {greyed ? ` · ${w.beingPaid}` : ''}
+                    </span>
+                  ) : (
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={picks.has(line.id)}
+                        onChange={() => setPicks(togglePick(picks, bill, line.id))}
+                      />{' '}
+                      {label}
+                    </label>
+                  )}
+                </li>
+              )
+            }),
+          )}
+        </ul>
+      ) : null}
+      {settled ? null : (
+        <p className="ro-sum">
+          <span>{w.leftToPay}</span>
+          <b>{money(bill.owedMinor)}</b>
+        </p>
+      )}
 
-      {paying.state === 'off' ? null : (
+      {paying.state === 'off' || settled ? null : (
         <>
           {tipsOffered ? (
             <fieldset className="ro-tips" data-slot="pay.tip.row">
@@ -511,6 +553,13 @@ function PaymentScreen({
   const w = words.paying
   const [refusal, setRefusal] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const toggle = useRef<HTMLButtonElement>(null)
+  const wasOpen = useRef(false)
+  // Closing the confirmation brings the focus back to the button that opened it.
+  useEffect(() => {
+    if (!confirming && wasOpen.current) toggle.current?.focus()
+    wasOpen.current = confirming
+  }, [confirming])
   const screen: PayScreen = payScreen(payment)
   const dismiss = () => binding.payControls?.dismiss()
   const confirmation = confirmationOf({
@@ -518,6 +567,7 @@ function PaymentScreen({
     venueName: o.state.paying?.venueName ?? null,
     locale: o.locale,
     words: w,
+    otherItem: words.otherItem,
   })
   const call = <CallWaiter />
   const back = (
@@ -531,7 +581,7 @@ function PaymentScreen({
         {payment.lines.map((line, index) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: a payment's lines have no id of their own
           <li key={index}>
-            {line.name}
+            {lineNameText(line.name, o.locale, words.otherItem)}
             {mark(line.quantity)} · {money(line.amountMinor)}
           </li>
         ))}
@@ -605,7 +655,13 @@ function PaymentScreen({
         <Screen kind="paid">
           <StatePanel tone="ok" title={w.paid}>
             {confirming && confirmation !== null ? (
-              <Confirmation view={confirmation} />
+              <Confirmation
+                view={confirmation}
+                id={CONFIRMATION_ID}
+                closeLabel={w.sameNo}
+                failedText={w.confirmSaveFailed}
+                onClose={() => setConfirming(false)}
+              />
             ) : (
               <>
                 <p>{w.paidNumber}</p>
@@ -619,13 +675,15 @@ function PaymentScreen({
                 <p>{w.paidReceipt}</p>
               </>
             )}
-            {confirmation === null ? null : (
+            {confirmation === null || confirming ? null : (
               <button
                 type="button"
                 className="ro-ghost"
                 data-slot="pay.confirmation.toggle"
-                aria-expanded={confirming}
-                onClick={() => setConfirming(!confirming)}
+                ref={toggle}
+                aria-expanded={false}
+                aria-controls={CONFIRMATION_ID}
+                onClick={() => setConfirming(true)}
               >
                 {w.confirmTitle}
               </button>

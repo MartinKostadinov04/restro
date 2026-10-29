@@ -393,7 +393,8 @@ export interface TableBillLineView {
  * until the sitting ends.
  */
 export interface PaidLineView {
-  readonly name: string
+  /** The line's name per language; null is "Other item", worded by the shell. */
+  readonly name: LocalizedText | null
   /** The quantity as decimal text ("2", "0.5"). */
   readonly quantity: string
   readonly amountMinor: number
@@ -448,7 +449,8 @@ export interface PayingView {
 
 /** One line of this phone's payment. */
 export interface PaymentLineView {
-  readonly name: string
+  /** The line's name per language; null is "Other item", worded by the shell. */
+  readonly name: LocalizedText | null
   readonly quantity: string
   readonly amountMinor: number
 }

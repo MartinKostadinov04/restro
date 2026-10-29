@@ -6,7 +6,7 @@
 //   facts: the venue, the date and time in the venue's time zone, the lines, the tip, the total in
 //   EUR, "Paid by card", the payment number and the line "This is not your receipt…".
 // - `drawConfirmation` and `saveConfirmation` make an image of it and keep it on the phone: the
-//   share sheet where the phone has one, else a download of a `blob:` file that is dropped at once.
+//   share sheet where the phone has one, else a download of a `blob:` file whose link is dropped soon.
 //   Nothing is sent anywhere and no link to it lasts (D127 1.4).
 //
 // It must not look like a receipt: a plain card in the page's own sans-serif, with no VAT, no
@@ -14,7 +14,7 @@
 
 import { type Locale, localeToBcp47 } from '@restro/core'
 
-import { payMoney } from './paying'
+import { lineNameText, payMoney } from './paying'
 import type { PaymentView } from './services'
 import type { PayingStrings } from './strings'
 
@@ -50,6 +50,8 @@ export interface ConfirmationInput {
   readonly venueName: string | null
   readonly locale: Locale
   readonly words: PayingStrings
+  /** "Other item" (`strings.services.otherItem`): the name of a line that has none. */
+  readonly otherItem: string
   /**
    * The address the venue's electronic receipt went to, where there is one (#186): the note then
    * says the receipt was sent there. Nothing sets it before a connector declares the receipt.
@@ -92,7 +94,7 @@ export function confirmationOf(input: ConfirmationInput): ConfirmationView | nul
     venue: venue === '' ? null : venue,
     when: formatPaidAt(payment.paidAt, payment.timeZone, locale),
     lines: payment.lines.map((line) => ({
-      text: `${line.name}${mark(line.quantity)}`,
+      text: `${lineNameText(line.name, locale, input.otherItem)}${mark(line.quantity)}`,
       amount: money(line.amountMinor),
     })),
     tip: payment.tipMinor > 0 ? { label: words.tip, amount: money(payment.tipMinor) } : null,
@@ -343,18 +345,47 @@ export function confirmationImage(view: ConfirmationView, env: SaveEnv): Promise
 /** How a Save ended: kept on the phone, or the guest closed the share sheet. */
 export type SaveOutcome = 'saved' | 'dismissed'
 
+/** How long a download link lives before it is revoked: long enough for a slow phone to start it. */
+export const DOWNLOAD_LINK_MS = 40_000
+
+/** The confirmation's image, drawn ahead of the tap. */
+export interface PreparedConfirmation {
+  /** The PNG; rejects where the phone could not draw it. */
+  readonly image: Promise<Blob>
+  readonly name: string
+  readonly env: () => SaveEnv
+}
+
+/**
+ * Draws the image as the confirmation opens, so the Save tap has it ready: a share sheet needs
+ * the tap's activation, and drawing after the tap could outlast it. A failure waits for Save,
+ * which then rejects.
+ */
+export function prepareConfirmation(
+  view: ConfirmationView,
+  env: () => SaveEnv = browserSaveEnv,
+): PreparedConfirmation {
+  let image: Promise<Blob>
+  try {
+    image = confirmationImage(view, env())
+  } catch (error) {
+    image = Promise.reject(error)
+  }
+  // Handled here so an unused image is no unhandled rejection; Save awaits it and sees the error.
+  image.catch(() => undefined)
+  return { image, name: `payment-${view.number.value}.png`, env }
+}
+
 /**
  * Keeps the confirmation on the phone as an image: the share sheet (where "Save Image" lives) when
- * the phone can share a file, else a download of a `blob:` file revoked right after. It sends
- * nothing anywhere and leaves no link (D127 1.4). A failure rejects: the face shows no success.
+ * the phone can share a file, else a download of a `blob:` file whose link is revoked soon after.
+ * It sends nothing anywhere and leaves no lasting link (D127 1.4). A failure rejects: the face
+ * shows its failure line, never a success.
  */
-export async function saveConfirmation(
-  view: ConfirmationView,
-  env: SaveEnv = browserSaveEnv(),
-): Promise<SaveOutcome> {
-  const blob = await confirmationImage(view, env)
-  const name = `payment-${view.number.value}.png`
-  const file = new File([blob], name, { type: 'image/png' })
+export async function saveConfirmation(prepared: PreparedConfirmation): Promise<SaveOutcome> {
+  const blob = await prepared.image
+  const env = prepared.env()
+  const file = new File([blob], prepared.name, { type: 'image/png' })
   const data: SaveShare = { files: [file] }
   if (env.share !== undefined && env.canShare?.(data) === true) {
     try {
@@ -367,10 +398,10 @@ export async function saveConfirmation(
   }
   const url = env.createObjectURL(blob)
   try {
-    env.download(url, name)
+    env.download(url, prepared.name)
   } finally {
     // The click has started the download; the file is the phone's now and the link goes.
-    setTimeout(() => env.revokeObjectURL(url), 1_000)
+    setTimeout(() => env.revokeObjectURL(url), DOWNLOAD_LINK_MS)
   }
   return 'saved'
 }

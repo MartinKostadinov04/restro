@@ -87,8 +87,8 @@ export function payment(changes: Partial<PaymentView> = {}): PaymentView {
     amountMinor: 2250,
     tipMinor: 0,
     lines: [
-      { name: 'House wine', quantity: '1', amountMinor: 1250 },
-      { name: 'Mojito', quantity: '1', amountMinor: 1000 },
+      { name: { en_US: 'House wine', bg_BG: 'Домашно вино' }, quantity: '1', amountMinor: 1250 },
+      { name: { en_US: 'Mojito', bg_BG: 'Мохито' }, quantity: '1', amountMinor: 1000 },
     ],
     paidAt: null,
     timeZone: 'Europe/Sofia',
@@ -167,8 +167,8 @@ export function payScenarios(): readonly PayScenario[] {
 
 /** Two lines paid in the app in this sitting: a name, a quantity and an amount, never a payer. */
 export const PAID_LINES: readonly PaidLineView[] = [
-  { name: 'Gin & tonic', quantity: '2', amountMinor: 1800 },
-  { name: 'Nachos', quantity: '1', amountMinor: 900 },
+  { name: { en_US: 'Gin & tonic', bg_BG: 'Джин тоник' }, quantity: '2', amountMinor: 1800 },
+  { name: { en_US: 'Nachos', bg_BG: 'Начос' }, quantity: '1', amountMinor: 900 },
 ]
 
 /**

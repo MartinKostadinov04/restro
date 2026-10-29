@@ -423,12 +423,68 @@ describe('paid in the app (#197, D127 1.2)', () => {
       'Nachos · €9.00',
     ])
     for (const row of rows) {
-      expect(row.getAttribute('aria-disabled')).toBe('true')
       expect(row.hasAttribute('data-paid-in-app')).toBe(true)
       expect(row.querySelector('input')).toBeNull()
     }
     // Only the open lines can be ticked.
     expect(page.querySelectorAll('input[type="checkbox"]')).toHaveLength(2)
+  })
+
+  it('names each paid line in the guest’s language, and "Other item" where it has no name', async () => {
+    const bgView = buildViewModel(f.snapshot, f.overlay, {
+      ...f.context,
+      locale: 'bg_BG',
+      images: imageSlotsFor(QR_PHONE_MANIFEST, 1),
+    })
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+    const services: ServiceBinding = {
+      state: payingState({
+        tableBill: payingBill({
+          paidLines: [
+            {
+              name: { en_US: 'Gin & tonic', bg_BG: 'Джин тоник' },
+              quantity: '2',
+              amountMinor: 1800,
+            },
+            { name: null, quantity: '1', amountMinor: 900 },
+          ],
+        }),
+      }),
+      dispatch: (command) => pending(command.actionId),
+    }
+    await act(async () => root?.render(<QrPhoneFace view={bgView} services={services} />))
+    const rows = [...host.querySelectorAll('[data-slot="bill.paid"] li')]
+    expect(rows[0]?.textContent).toContain('Джин тоник ×2')
+    expect(rows[1]?.textContent).toContain(stringsFor('bg_BG').services.otherItem)
+  })
+
+  it('when everything is paid, shows the paid lines alone: no empty-bill line, no choosing, no Pay', async () => {
+    const full = payingBill({ paidLines: PAID_LINES })
+    const part = full.parts[0]
+    if (part === undefined) throw new Error('no part')
+    const settled = await draw(
+      payingState({
+        tableBill: {
+          ...full,
+          owedMinor: 0,
+          totalMinor: 0,
+          parts: [{ ...part, lines: [], totalMinor: 0 }],
+        },
+      }),
+    )
+    expect(settled.querySelector('[data-slot="bill.paid"]')).not.toBeNull()
+    expect(settled.textContent).not.toContain(words.emptyBill)
+    expect(settled.querySelector('[data-slot="pay.choose"]')).toBeNull()
+    expect(settled.querySelector('[data-slot="pay.start"]')).toBeNull()
+    expect(settled.querySelector('[data-slot="pay.off"]')).toBeNull()
+  })
+
+  it('shows the choosing as usual while a line is still free to pay', async () => {
+    const page = await draw(payingState({ tableBill: payingBill({ paidLines: PAID_LINES }) }))
+    expect(page.querySelector('[data-slot="pay.choose"]')).not.toBeNull()
+    expect(page.querySelector('[data-slot="pay.start"]')).not.toBeNull()
   })
 
   it('draws them even when nothing is left to pay, and nothing when there are none', async () => {
@@ -541,21 +597,60 @@ describe('the Payment confirmation (#197, D127 1.4)', () => {
     expect(host.textContent).not.toMatch(/(?<!\p{L})бон/u)
   })
 
-  it('saves an image on the phone through a blob file, drops its link, and sends nothing', async () => {
+  it('saves an image on the phone through a blob file and sends nothing', async () => {
     const record = recordSaving()
     const fetch = vi.fn()
     vi.stubGlobal('fetch', fetch)
     try {
       const page = await open()
+      // The image is drawn as the page opens, before any tap on Save.
+      expect(record.images).toHaveLength(1)
       await tap(page.querySelector('[data-slot="pay.confirmation.save"]'))
       await vi.waitFor(() => expect(record.downloads).toHaveLength(1))
       expect(record.downloads[0]).toEqual({ href: 'blob:test/1', name: 'payment-K7Q4M.png' })
       expect(record.images).toHaveLength(1)
       expect(fetch).not.toHaveBeenCalled()
-      await vi.waitFor(() => expect(record.revoked).toEqual(['blob:test/1']), { timeout: 3_000 })
+      // The link is revoked soon (the shell's test holds the time), never kept.
+      expect(record.made).toEqual(['blob:test/1'])
     } finally {
       record.restore()
       vi.unstubAllGlobals()
     }
+  })
+
+  it('says one line when a Save fails, and no success line either way', async () => {
+    const record = recordSaving()
+    const broken = HTMLCanvasElement.prototype as unknown as Record<string, unknown>
+    broken.toBlob = (done: (blob: Blob | null) => void) => done(null)
+    try {
+      const page = await open()
+      await tap(page.querySelector('[data-slot="pay.confirmation.save"]'))
+      await vi.waitFor(() =>
+        expect(page.querySelector('[data-slot="pay.confirmation.failed"]')?.textContent).toBe(
+          words.confirmSaveFailed,
+        ),
+      )
+      expect(record.downloads).toHaveLength(0)
+      expect(page.textContent).not.toMatch(/saved/i)
+    } finally {
+      record.restore()
+    }
+  })
+
+  it('opens with the focus on its heading, names itself in aria-controls, and closes with "Back"', async () => {
+    const page = await draw(captured())
+    const toggle = page.querySelector<HTMLElement>('[data-slot="pay.confirmation.toggle"]')
+    expect(toggle?.getAttribute('aria-controls')).toBe('rq-pay-confirmation')
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false')
+    await tap(toggle)
+    const card = page.querySelector('#rq-pay-confirmation') as HTMLElement
+    expect(card).not.toBeNull()
+    expect(document.activeElement).toBe(card.querySelector('h3'))
+    const close = card.querySelector('[data-slot="pay.confirmation.close"]')
+    expect(close?.textContent).toBe(words.sameNo)
+    expect(card.firstElementChild).toBe(close)
+    await tap(close)
+    expect(page.querySelector('#rq-pay-confirmation')).toBeNull()
+    expect(document.activeElement).toBe(page.querySelector('[data-slot="pay.confirmation.toggle"]'))
   })
 })

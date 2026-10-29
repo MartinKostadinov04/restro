@@ -211,11 +211,25 @@ export interface BillPartView {
 }
 
 /**
+ * A line's name as a payment line keeps it (#197): its non-empty texts per language, or null for
+ * "Other item" (worded by the shell, D75). Never an empty object.
+ */
+export function paymentLineName(
+  name: LocalizedText | null | undefined,
+): Record<string, string> | null {
+  const kept = Object.entries(name ?? {}).filter(
+    (entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1] !== '',
+  )
+  return kept.length === 0 ? null : Object.fromEntries(kept)
+}
+
+/**
  * A line paid in the app in this sitting (D127 1.2): the name the guest saw, the quantity and the
  * amount, and never who paid. It carries no id: nothing acts on it, and a POS line's id is backend.
  */
 export interface PaidLineView {
-  readonly name: string
+  /** The line's name per language; null is "Other item", worded by the shell. */
+  readonly name: Record<string, string> | null
   /** Decimal text ("2", "0.5"). */
   readonly quantity: string
   readonly amountMinor: number

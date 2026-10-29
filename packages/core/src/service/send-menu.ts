@@ -29,6 +29,8 @@ export interface SendMenuItem {
   readonly orderable: boolean
   readonly soldOut: boolean
   readonly name: string
+  /** The item's public name in every language of the menu: what a guest's pay screen shows (#197). */
+  readonly publicName?: LocalizedText
   readonly options: ReadonlyMap<string, SendMenuOption>
   /** A modifier group of the item asks for at least one choice (`min` 1 or more). */
   readonly requiredOptions?: boolean
@@ -111,6 +113,7 @@ export async function loadSendMenu(
       orderable: item.orderable,
       soldOut: soldOut.has(id) || item.availability.state === 'sold_out',
       name: nameOf(id, item.name),
+      publicName: item.name,
       options,
       paymentMode: item.payment_mode ?? null,
     })
@@ -138,6 +141,8 @@ export interface PricedLine {
   readonly unitMinor: number
   readonly totalMinor: number
   readonly name: string
+  /** The item's public name per language (#197); absent where the menu has none. */
+  readonly publicName?: LocalizedText
   readonly optionNames: readonly string[]
 }
 
@@ -189,7 +194,13 @@ export function priceSentLines(
     }
     const lineTotal = multiplyMinor(unit, line.qty)
     total = addMinor(total, lineTotal)
-    priced.push({ unitMinor: unit, totalMinor: lineTotal, name: item.name, optionNames })
+    priced.push({
+      unitMinor: unit,
+      totalMinor: lineTotal,
+      name: item.name,
+      ...(item.publicName === undefined ? {} : { publicName: item.publicName }),
+      optionNames,
+    })
   }
   return { ok: true, lines: priced, totalMinor: total }
 }

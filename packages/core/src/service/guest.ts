@@ -234,7 +234,8 @@ export interface GuestTableState {
     }[]
     /** The lines paid in the app in this sitting (D127 1.2): never who paid. */
     readonly paidLines: readonly {
-      readonly name: string
+      /** The line's name per language; null is "Other item", worded by the shell. */
+      readonly name: LocalizedText | null
       readonly quantity: string
       readonly amountMinor: number
     }[]
@@ -1350,11 +1351,12 @@ export interface GuestPaymentView {
   readonly amountMinor: number | null
   readonly tipMinor: number
   readonly lines: readonly {
-    readonly name: string
+    /** The line's name per language; null is "Other item", worded by the shell. */
+    readonly name: LocalizedText | null
     readonly quantity: string
     readonly amountMinor: number
   }[]
-  /** When it reached its final state (an ISO instant), or null: the Payment confirmation's time. */
+  /** When it was captured (an ISO instant), or null: the Payment confirmation's time. */
   readonly paidAt: string | null
   /** The venue's time zone (IANA): the confirmation shows the time there (D127 1.4). */
   readonly timeZone: string
@@ -1453,9 +1455,11 @@ export async function guestPayment(
     const lines = await tx
       .select({
         ref: paymentLines.posLineRef,
-        name: paymentLines.displayName,
+        name: paymentLines.name,
         quantity: paymentLines.quantity,
         amountMinor: paymentLines.posAmountMinor,
+        closedQuantity: paymentLines.closedQuantity,
+        closedMinor: paymentLines.closedMinor,
       })
       .from(paymentLines)
       .where(eq(paymentLines.paymentId, payment.id))
@@ -1505,12 +1509,29 @@ export async function guestPayment(
     currency: payment.currency,
     amountMinor: payment.amountMinor,
     tipMinor: payment.tipMinor,
-    lines: lines.map((line) => ({
-      name: line.name,
-      quantity: shownQuantity(line.quantity),
-      amountMinor: line.amountMinor,
-    })),
-    paidAt: payment.settledAt?.toISOString() ?? null,
+    // A captured payment shows the lines the POS closed, at what it closed them for, so the lines
+    // plus the tip are the total (#197); before that, the lines the guest confirmed.
+    lines: lines.flatMap((line) => {
+      if (payment.state !== 'captured') {
+        return [
+          {
+            name: line.name,
+            quantity: shownQuantity(line.quantity),
+            amountMinor: line.amountMinor,
+          },
+        ]
+      }
+      return line.closedMinor === null || line.closedQuantity === null
+        ? []
+        : [
+            {
+              name: line.name,
+              quantity: shownQuantity(line.closedQuantity),
+              amountMinor: line.closedMinor,
+            },
+          ]
+    }),
+    paidAt: payment.state === 'captured' ? (payment.settledAt?.toISOString() ?? null) : null,
     timeZone: found.timeZone,
     form:
       payment.state === 'awaiting_guest' && payment.formValues !== null

@@ -29,9 +29,10 @@ import {
   waiterCalls,
   withTenant,
 } from '@restro/db'
-import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 
 import type { AreaId, BarId, TableId } from '../ids'
+import { PAID_LINES_MAX } from '../paid-lines'
 import { payFirstApplies, readPayFirstSettings } from '../pay-first-settings'
 import { CARD_FLOOR_MINOR, readPayingSettings, smallestCardMinor } from '../paying-settings'
 import { serviceDate } from '../service-day'
@@ -427,16 +428,17 @@ export async function readTableState(
               ),
             )
     const beingPaid = new Set(greyed.flatMap((line) => (line.ref === null ? [] : [line.ref])))
-    // The lines paid in the app in this sitting (D127 1.2): the captured payments' lines, oldest
-    // payment first. They name no payer: the payment's handle and provider values stay behind.
-    const paidLines =
+    // The lines paid in the app in this sitting (D127 1.2): the lines the POS closed on the
+    // captured payments, at what it closed them for (#197), oldest payment first. They name no
+    // payer: the payment's handle and provider values stay behind.
+    const paidRows =
       sitting === undefined
         ? []
         : await tx
             .select({
-              name: paymentLines.displayName,
-              quantity: paymentLines.quantity,
-              amountMinor: paymentLines.posAmountMinor,
+              name: paymentLines.name,
+              quantity: paymentLines.closedQuantity,
+              amountMinor: paymentLines.closedMinor,
             })
             .from(paymentLines)
             .innerJoin(
@@ -446,8 +448,21 @@ export async function readTableState(
                 eq(payments.id, paymentLines.paymentId),
               ),
             )
-            .where(and(eq(payments.sittingId, sitting.id), eq(payments.state, 'captured')))
+            .where(
+              and(
+                eq(payments.tableId, table.id),
+                eq(payments.sittingId, sitting.id),
+                eq(payments.state, 'captured'),
+                isNotNull(paymentLines.closedMinor),
+              ),
+            )
             .orderBy(asc(payments.settledAt), asc(payments.id), asc(paymentLines.position))
+            .limit(PAID_LINES_MAX)
+    const paidLines = paidRows.flatMap((row) =>
+      row.quantity === null || row.amountMinor === null
+        ? []
+        : [{ name: row.name, quantity: row.quantity, amountMinor: row.amountMinor }],
+    )
     const backendValues = billBackendValues(stored)
     for (const payment of open) {
       if (payment.ref !== null) backendValues.add(payment.ref)

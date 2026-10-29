@@ -548,8 +548,13 @@ export const SERVICES_CSS = `
 }
 .rm .ro-lines li[data-being-paid],
 .rm .ro-lines li[data-paid-in-app] {
-  /* A line in some phone's payment, or already paid in the app (D127): greyed, nothing to tick. */
-  opacity: 0.6;
+  /* A line in some phone's payment, or already paid in the app (D127): greyed, nothing to tick.
+     The muted colour keeps its contrast, which a fade of the whole line would not. */
+  color: var(--rm-muted);
+}
+.rm .ro-confirm-note {
+  color: var(--rm-muted);
+  font-size: 0.9em;
 }
 .rm .ro-confirm {
   /* The Payment confirmation (D127 1.4): a plain card, nothing of a receipt's look. */

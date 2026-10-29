@@ -275,6 +275,11 @@ export interface PayingStrings {
   /** The same line where an electronic receipt went to an email (#186). */
   readonly confirmReceiptEmailed: (email: string) => string
   readonly confirmSave: string
+  /**
+   * A Save that failed (the lead's words, awaiting Martin 10-30). No "Saved" line exists: the
+   * phone's share sheet or download already shows it worked.
+   */
+  readonly confirmSaveFailed: string
   readonly backToBill: string
   readonly checkingTitle: string
   readonly checkingBody: string
@@ -605,6 +610,7 @@ const EN: Strings = {
       confirmReceiptEmailed: (email) =>
         `This is not your receipt. Your receipt was sent to ${email}.`,
       confirmSave: 'Save',
+      confirmSaveFailed: 'Couldn’t save. Try again.',
       backToBill: 'Back to the bill',
       checkingTitle: 'The venue is checking the payment',
       checkingBody: 'You don’t need to do anything. If you have a question, call a waiter.',
@@ -938,6 +944,7 @@ const BG: Strings = {
       confirmReceiptEmailed: (email) =>
         `Това не е касова бележка. Касовата бележка е изпратена на ${email}.`,
       confirmSave: 'Запази',
+      confirmSaveFailed: 'Не успяхме да запазим. Опитайте отново.',
       backToBill: 'Към сметката',
       checkingTitle: 'Заведението проверява плащането',
       checkingBody: 'Не е нужно да правите нищо. Ако имате въпрос, повикайте сервитьор.',

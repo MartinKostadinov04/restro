@@ -727,7 +727,7 @@ describe('paying (#110, #114, D127)', () => {
     currency: 'EUR',
     amountMinor: 2250,
     tipMinor: 0,
-    lines: [{ name: 'House wine', quantity: '1', amountMinor: 2250 }],
+    lines: [{ name: { en_US: 'House wine' }, quantity: '1', amountMinor: 2250 }],
     paidAt: null,
     timeZone: 'Europe/Sofia',
     form: {

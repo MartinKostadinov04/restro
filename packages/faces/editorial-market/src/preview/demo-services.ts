@@ -398,7 +398,7 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
             amountMinor: addMinor(linesMinor, tipMinor),
             tipMinor,
             lines: lines.map((line) => ({
-              name: line.name.text,
+              name: { [now.locale]: line.name.text } as NonNullable<TableBillLineView['name']>,
               quantity: String(line.qty),
               amountMinor: line.totalMinor,
             })),

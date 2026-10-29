@@ -15,13 +15,18 @@ export function BillSheet() {
   const { words, state, locale, features } = o
   const rounds = distinctRounds(state.bill)
   const bill = state.bill
+  const paidLines = state.tableBill?.paidLines ?? []
   // What the table owes, as the host states it; nothing when the bill is empty or settled.
   const owed = bill !== null && bill.total.minor > 0 ? bill.total : null
   return (
     <div className="ro-sheet">
       <p className="rm-overlay-intro">{words.tabIntro}</p>
       {rounds.length === 0 || bill === null ? (
-        <p className="ro-empty">{words.emptyTab}</p>
+        // Nothing left on the bill but lines paid in the app: they say what happened, so no
+        // "nothing ordered" over them.
+        paidLines.length > 0 ? null : (
+          <p className="ro-empty">{words.emptyTab}</p>
+        )
       ) : (
         <>
           {rounds.map((round, index) => (

@@ -37,6 +37,7 @@ import {
 import type { PaymentMode } from '../templates/venue-menu'
 import { PAYMENT_UNCONFIRMED_KIND } from './alert-rules'
 import type { AlertLocale } from './alert-text'
+import { paymentLineName } from './bill'
 import { defineCommand, type ServiceTx } from './definition'
 import { writeOrder } from './order'
 import {
@@ -55,6 +56,7 @@ import {
   type Locked,
   lockRoute,
   MinorSchema,
+  markClosed,
   move,
   PosRefSchema,
   raise,
@@ -334,6 +336,7 @@ export async function insertPayFirst(
         quantity: String(line.qty),
         posAmountMinor: price.totalMinor,
         displayName: price.name,
+        name: paymentLineName(price.publicName),
         ...stx.provenance,
       }
     }),
@@ -466,29 +469,62 @@ export function billIsRound(
     readonly amountMinor: number
   }[],
 ): boolean {
-  if (bill.length === 0) return false
-  const left = [...round]
+  return matchRound(round, bill) !== null
+}
+
+/** A round line the POS closed: its place in the round and what the POS closed it as (#197). */
+export interface ClosedRoundLine {
+  /** The index of the line in the round (the payment's lines, in their order). */
+  readonly index: number
+  readonly quantity: string
+  readonly amountMinor: number
+}
+
+/**
+ * The round's lines the bill holds, each as the POS has it (its quantity and amount), or null when
+ * the bill is not the round (`billIsRound`). A round line the bill does not hold was dropped by the
+ * POS and is not here.
+ */
+export function matchRound(
+  round: readonly RoundLine[],
+  bill: readonly {
+    readonly item: string | null
+    readonly quantity: string
+    readonly amountMinor: number
+  }[],
+): readonly ClosedRoundLine[] | null {
+  if (bill.length === 0) return null
+  const taken = new Set<number>()
+  const closed: ClosedRoundLine[] = []
   for (const line of bill) {
     const item = line.item
-    if (item === null) return false
+    if (item === null) return null
     const quantity = quantityKey(line.quantity)
-    const index = left.findIndex(
-      (own) =>
+    const index = round.findIndex(
+      (own, at) =>
+        !taken.has(at) &&
         own.item === item &&
         quantity > 0n &&
         quantity <= quantityKey(own.quantity) &&
         line.amountMinor >= 0 &&
         line.amountMinor <= own.amountMinor,
     )
-    if (index < 0) return false
-    left.splice(index, 1)
+    if (index < 0) return null
+    taken.add(index)
+    closed.push({ index, quantity: line.quantity, amountMinor: line.amountMinor })
   }
-  return true
+  return closed
 }
 
 /** The outcome of the pay-first check: what to capture, or why not. */
 export type PayFirstCheck =
-  | { readonly ok: true; readonly amountMinor: number; readonly lowered: boolean }
+  | {
+      readonly ok: true
+      readonly amountMinor: number
+      readonly lowered: boolean
+      /** The round's lines the POS closed, at its quantity and amount (`matchRound`). */
+      readonly closed: readonly ClosedRoundLine[]
+    }
   | { readonly ok: false; readonly why: string }
 
 /**
@@ -518,7 +554,8 @@ export function payFirstCheck(input: {
   if (bill === null || bill.lines.length === 0) return { ok: false, why: 'no_bill' }
   if (bill.bills > 1) return { ok: false, why: 'several_bills' }
   if (input.round === null) return { ok: false, why: 'round_unknown' }
-  if (!billIsRound(input.round, bill.lines)) return { ok: false, why: 'not_the_round' }
+  const closed = matchRound(input.round, bill.lines)
+  if (closed === null) return { ok: false, why: 'not_the_round' }
   const linesMinor = signedSumMinor(input.round.map((line) => line.amountMinor)) ?? 0
   if (bill.paidMinor > 0) return { ok: false, why: 'part_paid' }
   if (signedSumMinor(bill.lines.map((line) => line.amountMinor)) !== bill.totalMinor) {
@@ -530,7 +567,7 @@ export function payFirstCheck(input: {
   if (lowered && !input.partialCapture) return { ok: false, why: 'partial_not_supported' }
   const amountMinor = addMinor(bill.totalMinor, input.tipMinor)
   if (input.heldMinor < amountMinor) return { ok: false, why: 'hold_lost' }
-  return { ok: true, amountMinor, lowered }
+  return { ok: true, amountMinor, lowered, closed }
 }
 
 /**
@@ -608,6 +645,9 @@ export function paymentPayFirstChecked() {
         await raise(stx, locked, PAYMENT_UNCONFIRMED_KIND, 'money.follow_up', {}, true)
         return at(payment, 'unconfirmed', true, { reason: 'entered_check_failed', why: check.why })
       }
+      // What the POS closed, line by line (#197): a dropped line is not paid, a lowered one is
+      // paid at the POS's price. Written before the move, in the same transaction.
+      await markClosed(stx, payment.id, new Map(check.closed.map((line) => [line.index + 1, line])))
       const lowered = check.amountMinor !== payment.amountMinor
       if (again && !lowered)
         return at(payment, 'checked', false, { amountMinor: check.amountMinor })

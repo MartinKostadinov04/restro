@@ -593,7 +593,6 @@ describe('paid in the app (#197, D127 1.2)', () => {
       'Nachos · €9.00',
     ])
     for (const row of rows) {
-      expect(row.getAttribute('aria-disabled')).toBe('true')
       expect(row.hasAttribute('data-paid-in-app')).toBe(true)
       // Greyed: nothing to tick.
       expect(row.querySelector('input')).toBeNull()
@@ -612,6 +611,60 @@ describe('paid in the app (#197, D127 1.2)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Table order' }))
     const bill = screen.getByRole('dialog', { name: 'Table order' })
     expect(bill.querySelector('[data-slot="bill.paid"]')?.textContent).toContain('Nachos · €9.00')
+  })
+
+  it('names each paid line in the guest’s language, and "Other item" where it has no name', () => {
+    const host = fakeHost({
+      ...base(),
+      tableBill: tableBillOf(undefined, {
+        paidLines: [
+          { name: { en_US: 'Gin & tonic', bg_BG: 'Джин тоник' }, quantity: '2', amountMinor: 1800 },
+          { name: null, quantity: '1', amountMinor: 900 },
+        ],
+      }),
+    })
+    drawFace(host, orderingView('bg_BG'))
+    fireEvent.click(document.querySelector('[data-slot="menu.pay"]') as HTMLElement)
+    const rows = [
+      ...(screen.getByRole('dialog').querySelectorAll('[data-slot="bill.paid"] li') ?? []),
+    ]
+    expect(rows[0]?.textContent).toContain('Джин тоник ×2')
+    expect(rows[1]?.textContent).toContain('Друг артикул')
+  })
+
+  it('when everything is paid, shows the paid lines alone: no choosing, no totals, no Pay', () => {
+    const host = fakeHost({
+      ...base(),
+      tableBill: tableBillOf([], { paidLines: PAID_LINES, owedMinor: 0, totalMinor: 0 }),
+    })
+    const { sheet } = openPay(host)
+    expect(sheet.querySelector('[data-slot="bill.paid"]')).not.toBeNull()
+    expect(sheet.textContent).not.toContain('What are you paying for?')
+    expect(sheet.querySelector('[data-slot="pay.start"]')).toBeNull()
+    expect(sheet.querySelector('[data-slot="pay.whole"]')).toBeNull()
+    expect(sheet.querySelector('[data-slot="pay.tip.row"]')).toBeNull()
+    expect(sheet.textContent).not.toContain('Left to pay')
+  })
+
+  it('shows the choosing as usual while a line is still free to pay', () => {
+    const { sheet } = openPay(
+      fakeHost({ ...base(), tableBill: tableBillOf(undefined, { paidLines: PAID_LINES }) }),
+    )
+    expect(sheet.textContent).toContain('What are you paying for?')
+    expect(sheet.querySelector('[data-slot="pay.start"]')).not.toBeNull()
+  })
+
+  it('leaves "Nothing has been ordered yet" off the bill once lines were paid in the app', () => {
+    const host = fakeHost({
+      tableBill: tableBillOf([], { paidLines: PAID_LINES }),
+      paying: payingOf(),
+      ordering: { state: 'on' as const, tips: true },
+    })
+    drawFace(host)
+    fireEvent.click(screen.getByRole('button', { name: 'Table order' }))
+    const bill = screen.getByRole('dialog', { name: 'Table order' })
+    expect(bill.querySelector('.ro-empty')).toBeNull()
+    expect(bill.querySelector('[data-slot="bill.paid"]')).not.toBeNull()
   })
 
   it('draws nothing for a bill with no paid lines', () => {
@@ -691,7 +744,7 @@ describe('the Payment confirmation (#197, D127 1.4)', () => {
     expect(sheet.textContent).not.toMatch(/(?<!\p{L})бон/u)
   })
 
-  it('saves an image on the phone through a blob file, drops its link, and sends nothing', async () => {
+  it('saves an image on the phone through a blob file and sends nothing', async () => {
     const record = recordSaving()
     const fetch = vi.fn()
     vi.stubGlobal('fetch', fetch)
@@ -699,6 +752,8 @@ describe('the Payment confirmation (#197, D127 1.4)', () => {
       const host = paid()
       const { sheet } = openPay(host)
       fireEvent.click(within(sheet).getByRole('button', { name: 'Payment confirmation' }))
+      // The image is drawn as the page opens, before any tap on Save.
+      expect(record.images).toHaveLength(1)
       fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }))
       await waitFor(() => expect(record.downloads).toHaveLength(1))
       expect(record.downloads[0]).toEqual({ href: 'blob:test/1', name: 'payment-K7Q4M.png' })
@@ -706,10 +761,51 @@ describe('the Payment confirmation (#197, D127 1.4)', () => {
       // No server link: nothing was fetched and no command went to the host.
       expect(fetch).not.toHaveBeenCalled()
       expect(host.of('pay.start')).toHaveLength(0)
-      await waitFor(() => expect(record.revoked).toEqual(['blob:test/1']), { timeout: 3_000 })
+      // The link is revoked soon (the shell's test holds the time), never kept.
+      expect(record.made).toEqual(['blob:test/1'])
     } finally {
       record.restore()
       vi.unstubAllGlobals()
     }
+  })
+
+  it('says one line when a Save fails, and no success line either way', async () => {
+    const record = recordSaving()
+    const broken = HTMLCanvasElement.prototype as unknown as Record<string, unknown>
+    broken.toBlob = (done: (blob: Blob | null) => void) => done(null)
+    try {
+      const { sheet } = openPay(paid())
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Payment confirmation' }))
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }))
+      await waitFor(() =>
+        expect(sheet.querySelector('[data-slot="pay.confirmation.failed"]')?.textContent).toBe(
+          'Couldn’t save. Try again.',
+        ),
+      )
+      expect(record.downloads).toHaveLength(0)
+      expect(sheet.textContent).not.toMatch(/saved/i)
+    } finally {
+      record.restore()
+    }
+  })
+
+  it('opens with the focus on its heading, names itself in aria-controls, and closes with "Back"', () => {
+    const { sheet } = openPay(paid())
+    const toggle = within(sheet).getByRole('button', { name: 'Payment confirmation' })
+    expect(toggle.getAttribute('aria-controls')).toBe('ro-pay-confirmation')
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(toggle)
+    const page = sheet.querySelector('#ro-pay-confirmation') as HTMLElement
+    expect(page).not.toBeNull()
+    expect(document.activeElement).toBe(page.querySelector('h3'))
+    // "Back" is the first control of the card; it closes it and the focus returns to the opener.
+    const close = page.querySelector('[data-slot="pay.confirmation.close"]') as HTMLElement
+    expect(close.textContent).toBe('Back')
+    expect(page.firstElementChild).toBe(close)
+    fireEvent.click(close)
+    expect(sheet.querySelector('#ro-pay-confirmation')).toBeNull()
+    expect(document.activeElement).toBe(
+      sheet.querySelector('[data-slot="pay.confirmation.toggle"]'),
+    )
   })
 })

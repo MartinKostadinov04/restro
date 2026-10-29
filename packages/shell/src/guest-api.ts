@@ -12,7 +12,7 @@
 // `X-Restro-Payment`, never in an address or a body; `GET /api/guest/payment` answers that phone
 // alone, with its payment and, while the card is being collected, the provider's form values.
 
-import { GuestPositionSchema, idSchema, LocalizedTextSchema } from '@restro/core'
+import { GuestPositionSchema, idSchema, LocalizedTextSchema, PAID_LINES_MAX } from '@restro/core'
 import { z } from 'zod'
 import { SERVICE_KINDS } from './features'
 import { GUEST_REFUSAL_CODES, PAYMENT_STATES } from './service-vocabulary'
@@ -237,12 +237,13 @@ export const GuestTableStateSchema = z.strictObject({
       paidLines: z
         .array(
           z.strictObject({
-            name: z.string().max(200),
+            /** The line's name per language; null is "Other item", worded by the shell. */
+            name: LocalizedTextSchema.nullable(),
             quantity: z.string().max(32),
             amountMinor: minor,
           }),
         )
-        .max(500),
+        .max(PAID_LINES_MAX),
     })
     .nullable(),
 })
@@ -371,7 +372,8 @@ export const GuestPaymentAnswerSchema = z.strictObject({
   lines: z
     .array(
       z.strictObject({
-        name: z.string().max(200),
+        /** The line's name per language; null is "Other item", worded by the shell. */
+        name: LocalizedTextSchema.nullable(),
         quantity: z.string().max(32),
         amountMinor: minor,
       }),

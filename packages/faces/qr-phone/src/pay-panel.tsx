@@ -22,9 +22,9 @@ import {
   choosePay,
   confirmationOf,
   endText,
-  fallbackChain,
   freeLines,
   type Locale,
+  lineNameText,
   NO_TIP,
   offersPay,
   type PayFormSlot,
@@ -32,17 +32,17 @@ import {
   type PaymentView,
   type PayScreen,
   type Picks,
+  type PreparedConfirmation,
   parseMinor,
   payBlock,
   payFormLocale,
   payMoney,
   payScreen,
   payStartCommand,
-  pickText,
   pickWhole,
+  prepareConfirmation,
   reconcilePicks,
   refusalText,
-  type SaveOutcome,
   type ServiceBinding,
   type ServiceStrings,
   sameAmountAgo,
@@ -74,8 +74,7 @@ export interface PayPanelProps {
 
 /** The line's name: our item's, else "Other item". */
 function lineName(line: TableBillLineView, locale: Locale, other: string): string {
-  const picked = line.name === null ? null : pickText(line.name, fallbackChain(locale, locale, []))
-  return picked?.text ?? other
+  return lineNameText(line.name, locale, other)
 }
 
 /** "×2" for a line of more than one. */
@@ -90,10 +89,14 @@ function quantityMark(quantity: string): string {
 function PaidInApp({
   lines,
   words,
+  locale,
+  otherItem,
   money,
 }: {
   readonly lines: TableBillView['paidLines']
   readonly words: PayingStrings
+  readonly locale: Locale
+  readonly otherItem: string
   readonly money: (minor: number) => string
 }) {
   if (lines.length === 0) return null
@@ -103,8 +106,8 @@ function PaidInApp({
       <ul className="rq-order-lines">
         {lines.map((line, index) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: a paid line has no id of its own (rule 3)
-          <li key={index} data-paid-in-app="" aria-disabled="true">
-            {line.name}
+          <li key={index} data-paid-in-app="">
+            {lineNameText(line.name, locale, otherItem)}
             {quantityMark(line.quantity)} · {money(line.amountMinor)}
           </li>
         ))}
@@ -118,29 +121,52 @@ function PaidInApp({
  * tip, the total, "Paid by card" and the payment number, and Save. It saves an image on the phone
  * and leaves no link; it is not a receipt and does not look like one.
  */
-function Confirmation({ view }: { readonly view: ConfirmationView }) {
+function Confirmation({
+  view,
+  id,
+  closeLabel,
+  failedText,
+  onClose,
+}: {
+  readonly view: ConfirmationView
+  readonly id: string
+  /** "Back" (the guide's `same_no`), pending Martin's word for closing the page. */
+  readonly closeLabel: string
+  readonly failedText: string
+  readonly onClose: () => void
+}) {
   const [saving, setSaving] = useState(false)
+  const [failed, setFailed] = useState(false)
+  // The image is drawn as the page opens, so the Save tap has it ready (a share sheet needs the tap).
+  const [prepared] = useState<PreparedConfirmation>(() => prepareConfirmation(view))
+  const heading = useRef<HTMLHeadingElement>(null)
   const alive = useRef(true)
   useEffect(() => {
     alive.current = true
+    heading.current?.focus()
     return () => {
       alive.current = false
     }
   }, [])
   async function save() {
     setSaving(true)
-    let outcome: SaveOutcome | null = null
+    setFailed(false)
     try {
-      outcome = await saveConfirmation(view)
+      await saveConfirmation(prepared)
     } catch {
-      // No success is shown for a save that failed; the guest taps Save again.
+      // No success is shown for a save that failed: one line, and the guest taps Save again.
+      if (alive.current) setFailed(true)
     }
     if (alive.current) setSaving(false)
-    return outcome
   }
   return (
-    <article className="rq-confirm" data-slot="pay.confirmation">
-      <h3>{view.title}</h3>
+    <article className="rq-confirm" id={id} data-slot="pay.confirmation">
+      <button type="button" data-slot="pay.confirmation.close" onClick={onClose}>
+        {closeLabel}
+      </button>
+      <h3 tabIndex={-1} ref={heading}>
+        {view.title}
+      </h3>
       {view.venue === null ? null : <p data-slot="pay.confirmation.venue">{view.venue}</p>}
       {view.when === null ? null : <p data-slot="pay.confirmation.when">{view.when}</p>}
       <ul className="rq-order-lines">
@@ -176,9 +202,17 @@ function Confirmation({ view }: { readonly view: ConfirmationView }) {
       >
         {view.saveLabel}
       </button>
+      {failed ? (
+        <p className="rq-note" role="alert" data-slot="pay.confirmation.failed">
+          {failedText}
+        </p>
+      ) : null}
     </article>
   )
 }
+
+/** The Payment confirmation's id: the button that opens it names it in `aria-controls`. */
+const CONFIRMATION_ID = 'rq-pay-confirmation'
 
 /** Puts the page's card form into the slot the face provides; the face loads no provider library. */
 function FormSlot({
@@ -217,10 +251,14 @@ function FormSlot({
 function Priced({
   payment,
   words,
+  locale,
+  otherItem,
   money,
 }: {
   readonly payment: PaymentView
   readonly words: PayingStrings
+  readonly locale: Locale
+  readonly otherItem: string
   readonly money: (minor: number) => string
 }) {
   return (
@@ -229,7 +267,7 @@ function Priced({
         {payment.lines.map((line, index) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: a payment's lines have no id of their own
           <li key={index}>
-            {line.name}
+            {lineNameText(line.name, locale, otherItem)}
             {quantityMark(line.quantity)} · {money(line.amountMinor)}
           </li>
         ))}
@@ -261,6 +299,13 @@ function PaymentScreen({
   const { services, words, serviceWords, send, callWaiter } = props
   const [refusal, setRefusal] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const toggle = useRef<HTMLButtonElement>(null)
+  const wasOpen = useRef(false)
+  // Closing the confirmation brings the focus back to the button that opened it.
+  useEffect(() => {
+    if (!confirming && wasOpen.current) toggle.current?.focus()
+    wasOpen.current = confirming
+  }, [confirming])
   const screen: PayScreen = payScreen(payment)
   const dismiss = () => services?.payControls?.dismiss()
   const confirmation = confirmationOf({
@@ -268,6 +313,7 @@ function PaymentScreen({
     venueName: services?.state.paying?.venueName ?? null,
     locale: props.locale,
     words,
+    otherItem: serviceWords.otherItem,
   })
   const callButton = callWaiter ? (
     <button
@@ -287,7 +333,13 @@ function PaymentScreen({
             <p role="status">{words.preparing}</p>
           ) : (
             <>
-              <Priced payment={payment} words={words} money={money} />
+              <Priced
+                payment={payment}
+                words={words}
+                locale={props.locale}
+                otherItem={serviceWords.otherItem}
+                money={money}
+              />
               <p className="rq-order-hint">{words.legalPrices}</p>
               {services?.payForm === undefined || payment.amountMinor === null ? null : (
                 <FormSlot
@@ -333,7 +385,13 @@ function PaymentScreen({
         <section className="rq-order" data-pay-screen="paid" aria-live="polite">
           <h2>{words.paid}</h2>
           {confirming && confirmation !== null ? (
-            <Confirmation view={confirmation} />
+            <Confirmation
+              view={confirmation}
+              id={CONFIRMATION_ID}
+              closeLabel={words.sameNo}
+              failedText={words.confirmSaveFailed}
+              onClose={() => setConfirming(false)}
+            />
           ) : (
             <>
               <p>{words.paidNumber}</p>
@@ -341,17 +399,25 @@ function PaymentScreen({
                 {payment.number}
               </p>
               {props.tableText === null ? null : <p data-slot="pay.table">{props.tableText}</p>}
-              <Priced payment={payment} words={words} money={money} />
+              <Priced
+                payment={payment}
+                words={words}
+                locale={props.locale}
+                otherItem={serviceWords.otherItem}
+                money={money}
+              />
               <p>{words.paidReceipt}</p>
             </>
           )}
-          {confirmation === null ? null : (
+          {confirmation === null || confirming ? null : (
             <>
               <button
                 type="button"
                 data-slot="pay.confirmation.toggle"
-                aria-expanded={confirming}
-                onClick={() => setConfirming(!confirming)}
+                ref={toggle}
+                aria-expanded={false}
+                aria-controls={CONFIRMATION_ID}
+                onClick={() => setConfirming(true)}
               >
                 {words.confirmTitle}
               </button>{' '}
@@ -494,6 +560,9 @@ export function PayPanel(props: PayPanelProps): ReactNode {
               ? words.tipTooBig
               : null
   const all = free.length > 0 && free.every((line) => picks.has(line.id))
+  // Everything is paid: nothing is free to pay and the sitting has paid lines, so "Nothing on your
+  // bill yet", the choosing, the totals and Pay go, and the bill shows what was paid (D127 1.2).
+  const settled = free.length === 0 && bill.paidLines.length > 0
   const pickTip = (next: TipChoice) => {
     setTip((current) =>
       current.kind === next.kind &&
@@ -510,10 +579,12 @@ export function PayPanel(props: PayPanelProps): ReactNode {
         {bill.complete ? words.updated(bill.readAgoSeconds) : words.stale(bill.readAgoSeconds)}
       </p>
       {bill.parts.every((part) => part.lines.length === 0) ? (
-        <p>{words.emptyBill}</p>
+        settled ? null : (
+          <p>{words.emptyBill}</p>
+        )
       ) : (
         <>
-          {offersPay(services.state) && paying.state !== 'off' ? (
+          {offersPay(services.state) && paying.state !== 'off' && !settled ? (
             <button
               type="button"
               data-slot="pay.whole"
@@ -560,7 +631,7 @@ export function PayPanel(props: PayPanelProps): ReactNode {
         </>
       )}
 
-      {paying.state === 'off' ? (
+      {settled ? null : paying.state === 'off' ? (
         <p className="rq-note" data-slot="pay.off">
           {words.askWaiterToPay}
         </p>
@@ -651,7 +722,13 @@ export function PayPanel(props: PayPanelProps): ReactNode {
           )}
         </div>
       )}
-      <PaidInApp lines={bill.paidLines} words={words} money={money} />
+      <PaidInApp
+        lines={bill.paidLines}
+        words={words}
+        locale={locale}
+        otherItem={serviceWords.otherItem}
+        money={money}
+      />
     </section>
   )
 }

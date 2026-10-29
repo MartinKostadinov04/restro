@@ -244,8 +244,8 @@ export function paymentOf(changes: Partial<PaymentView> = {}): PaymentView {
     amountMinor: 2250,
     tipMinor: 0,
     lines: [
-      { name: 'House wine', quantity: '1', amountMinor: 1250 },
-      { name: 'Mojito', quantity: '1', amountMinor: 1000 },
+      { name: { en_US: 'House wine', bg_BG: 'Домашно вино' }, quantity: '1', amountMinor: 1250 },
+      { name: { en_US: 'Mojito', bg_BG: 'Мохито' }, quantity: '1', amountMinor: 1000 },
     ],
     paidAt: null,
     timeZone: 'Europe/Sofia',

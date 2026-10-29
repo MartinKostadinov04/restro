@@ -77,6 +77,10 @@ describe('the pay-first check before the close (#113)', () => {
       ok: true,
       amountMinor: 1_300,
       lowered: false,
+      closed: [
+        { index: 0, quantity: '1', amountMinor: 800 },
+        { index: 1, quantity: '1', amountMinor: 400 },
+      ],
     })
   })
 
@@ -85,7 +89,10 @@ describe('the pay-first check before the close (#113)', () => {
       ok: true,
       amountMinor: 900,
       lowered: true,
+      // The dropped line (index 1) was not closed: it is not paid.
+      closed: [{ index: 0, quantity: '1', amountMinor: 800 }],
     })
+    // A lower POS price closes the line at the POS's price.
     expect(
       payFirstCheck({
         ...base,
@@ -94,7 +101,14 @@ describe('the pay-first check before the close (#113)', () => {
           { item: '2003', amountMinor: 400 },
         ]),
       }),
-    ).toMatchObject({ ok: true, amountMinor: 1_200 })
+    ).toMatchObject({
+      ok: true,
+      amountMinor: 1_200,
+      closed: [
+        { index: 0, quantity: '1', amountMinor: 700 },
+        { index: 1, quantity: '1', amountMinor: 400 },
+      ],
+    })
     expect(
       why({ ...base, partialCapture: false, bill: bill([{ item: '2002', amountMinor: 800 }]) }),
     ).toBe('partial_not_supported')
