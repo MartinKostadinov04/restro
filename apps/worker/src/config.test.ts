@@ -46,6 +46,7 @@ describe('loadConfig', () => {
       posSync: true,
       send: true,
       alerts: NO_ALERTS,
+      receiptEmail: null,
     })
     expect(DEFAULT_HEALTH_PORT).toBe(8081)
   })
@@ -94,6 +95,7 @@ describe('loadConfig', () => {
       posSync: false,
       send: true,
       alerts: NO_ALERTS,
+      receiptEmail: null,
     })
     // Unset, the Send follows the sync.
     expect(loadConfig({ DATABASE_URL: URL, WORKER_POS_SYNC: 'off' }).send).toBe(false)
@@ -139,6 +141,33 @@ describe('loadConfig', () => {
       'VAPID_SUBJECT',
     ])
     expect(lines.join('\n')).not.toMatch(/s3cret|my-chat|plain/)
+  })
+
+  it('reads the receipt email settings (#186): the address switches it on and needs the key, the key alone does not', () => {
+    const key = `re_${'k'.repeat(30)}`
+    const from = 'receipts@mail.restro.example'
+    expect(
+      loadConfig({
+        DATABASE_URL: URL,
+        RESEND_API_KEY: ` ${key} `,
+        RECEIPT_FROM_ADDRESS: ` ${from} `,
+      }).receiptEmail,
+    ).toEqual({ apiKey: key, fromAddress: from })
+    const names = (env: Record<string, string>) =>
+      problemsOf({ DATABASE_URL: URL, ...env }).map((line) => line.split(' ')[0])
+    // The key alone is the stack's email key for other mail: receipts stay off.
+    expect(loadConfig({ DATABASE_URL: URL, RESEND_API_KEY: key }).receiptEmail).toBeNull()
+    expect(names({ RECEIPT_FROM_ADDRESS: from })).toEqual(['RESEND_API_KEY'])
+    const lines = problemsOf({
+      DATABASE_URL: URL,
+      RESEND_API_KEY: 'sk-s3cret-not-a-resend-key',
+      RECEIPT_FROM_ADDRESS: 'not-an-address-s3cret',
+    })
+    expect(lines.map((line) => line.split(' ')[0])).toEqual([
+      'RESEND_API_KEY',
+      'RECEIPT_FROM_ADDRESS',
+    ])
+    expect(lines.join('\n')).not.toMatch(/s3cret/)
   })
 
   it('refuses the simulated POS in production, by NODE_ENV or by BARSY_ENV, and nowhere else', () => {

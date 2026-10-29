@@ -45,6 +45,8 @@ export const LOG_KINDS = {
   'waiter_call.called': 'night',
   'waiter_call.done': 'night',
   'waiter_call.lapsed': 'night',
+  // A paid receipt marked Brought, or put back by Undo (#200).
+  'receipt.brought': 'night',
   'lease.taken_over': 'night',
   'service_day.closed': 'night',
   'guard.tripped': 'record',
