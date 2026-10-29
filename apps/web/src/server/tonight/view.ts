@@ -85,7 +85,14 @@ export interface MoneyRow {
   readonly paymentId: string
   /** Which question a `question` variant asks (a pay-first round asks about the till). */
   readonly question: 'close' | 'till' | 'lines_not_back' | null
+  /** The amount the row shows: without the tip for staff (decision log 3.4). */
   readonly amountMinor: number | null
+  /**
+   * What the guest's card will really bear, tip included: only for who may confirm the answer (a
+   * manager's PIN on the shared tablet), for the confirmation alone (Martin 10-29). Null: use
+   * `amountMinor`.
+   */
+  readonly chargeMinor: number | null
   /** A pay-first round's order reference. */
   readonly reference: string | null
   /** Until when the card's hold lasts, in the venue's zone; null when not known. */
@@ -248,6 +255,7 @@ function moneyRowOf(
             ? 'till'
             : 'close',
     amountMinor: typeof amount === 'number' ? amount : null,
+    chargeMinor: typeof details.chargeMinor === 'number' ? details.chargeMinor : null,
     reference: text(details.reference) || null,
     holdUntil: variant === 'question' ? hold : null,
     holdAt: variant === 'question' && before !== null ? before.getTime() : null,

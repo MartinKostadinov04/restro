@@ -45,6 +45,7 @@ describe.skipIf(!hasDatabase)(
         reason?: string | null
         capturedMinor?: number | null
         receiptNumber?: string | null
+        serviceDate?: string
       },
     ) {
       const tableId = world.tables[fields.tableIndex] as string
@@ -68,7 +69,7 @@ describe.skipIf(!hasDatabase)(
           world.venueId,
           tableId,
           sittingId,
-          day,
+          fields.serviceDate ?? day,
           fields.state,
           fields.reason ?? null,
           createHash('sha256').update(randomUUID()).digest('hex'),
@@ -217,6 +218,90 @@ describe.skipIf(!hasDatabase)(
       if (!read.ok) throw new Error(read.code)
       const asked = read.payments.money?.alerts.filter((alert) => alert.paymentId === ids.twice)
       expect(asked?.map((alert) => alert.answer?.code)).toEqual(['no_receipt', 'receipt_printed'])
+    })
+
+    it("lists an earlier night's open question on today's page with its day, until it is answered", async () => {
+      const yesterday = new Date(Date.parse(`${day}T00:00:00Z`) - 86_400_000)
+        .toISOString()
+        .slice(0, 10)
+      const asked = await addPayment('earlierAsked', {
+        tableIndex: 3,
+        state: 'unconfirmed',
+        reason: 'close_unknown',
+        serviceDate: yesterday,
+      })
+      // A charge with no receipt number from that night is a line without an answer: not carried over.
+      const noReceipt = await addPayment('earlierNoReceipt', {
+        tableIndex: 3,
+        state: 'captured',
+        capturedMinor: 3800,
+        serviceDate: yesterday,
+      })
+      await addAlert('payment_unconfirmed', asked)
+      // Cleared by the day's close: nobody is asked any more, so it does not come back every night.
+      const clearedFailed = await addPayment('earlierFailedCleared', {
+        tableIndex: 3,
+        state: 'capture_failed',
+        serviceDate: yesterday,
+      })
+      await addAlert('payment_capture_failed', clearedFailed, {
+        doneAt: '2020-01-01T21:00:00Z',
+        cleared: true,
+      })
+      const openFailed = await addPayment('earlierFailedOpen', {
+        tableIndex: 3,
+        state: 'capture_failed',
+        serviceDate: yesterday,
+      })
+      await addAlert('payment_capture_failed', openFailed)
+      const today = await readNightPayments(world.app, input(user(managerUser)))
+      if (!today.ok) throw new Error(today.code)
+      const earlier = today.payments.fix.find((fix) => fix.payment.id === asked)
+      expect(earlier).toMatchObject({ problem: 'unconfirmed', earlier: yesterday })
+      expect(today.payments.fix.some((fix) => fix.payment.id === noReceipt)).toBe(false)
+      expect(today.payments.fix.some((fix) => fix.payment.id === clearedFailed)).toBe(false)
+      expect(today.payments.fix.find((fix) => fix.payment.id === openFailed)?.earlier).toBe(
+        yesterday,
+      )
+      // A card not charged is not shown to a waiter-level reader, tonight's or an earlier night's.
+      const staffToday = await readNightPayments(world.app, input(user(staffUser)))
+      if (!staffToday.ok) throw new Error(staffToday.code)
+      expect(staffToday.payments.fix.some((fix) => fix.payment.id === openFailed)).toBe(false)
+      expect(staffToday.payments.fix.some((fix) => fix.payment.id === asked)).toBe(true)
+      // Today's own rows carry no night's mark, and the counts are today's alone.
+      expect(
+        today.payments.fix
+          .filter((fix) => fix.payment.id !== asked && fix.payment.id !== openFailed)
+          .every((fix) => fix.earlier === null),
+      ).toBe(true)
+
+      // Yesterday's own page lists its own day, as before.
+      const past = await readNightPayments(world.app, {
+        ...input(user(managerUser)),
+        day: yesterday,
+      })
+      if (!past.ok) throw new Error(past.code)
+      expect(past.payments.fix.map((fix) => fix.payment.id).sort()).toEqual(
+        [asked, noReceipt, clearedFailed, openFailed].sort(),
+      )
+      expect(past.payments.fix.every((fix) => fix.earlier === null)).toBe(true)
+
+      // The closing message counts today's night only.
+      const report = await readNightPaymentsReport(world.app, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        day,
+      })
+      expect(report.fix.map((entry) => entry.what)).toEqual(['stranded'])
+
+      // Answered, it waits for the worker and leaves the list.
+      await world.owner.query(
+        `update restro.payments set reason = 'receipt_printed' where id = $1`,
+        [asked],
+      )
+      const after = await readNightPayments(world.app, input(user(managerUser)))
+      if (!after.ok) throw new Error(after.code)
+      expect(after.payments.fix.some((fix) => fix.payment.id === asked)).toBe(false)
     })
   },
 )
