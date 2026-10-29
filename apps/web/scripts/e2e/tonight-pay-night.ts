@@ -32,7 +32,7 @@ export async function seedPayNight(world: PayNightWorld): Promise<void> {
     minutesAgo: number,
   ) => {
     const sittingId = await sitting(number)
-    const id = `py_${crypto.randomUUID().replaceAll('-', '')}`
+    const id = newId('py')
     let sentOrderId: string | null = null
     if (kind === 'pay_first' && reference !== null) {
       sentOrderId = newId('so')
