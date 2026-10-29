@@ -27,6 +27,9 @@ True but not a defect: a smell, a missing test, an awkward screen. Martin picks 
 |---|---|---|---|---|---|
 | RR-O1 | Part 2 lead (handover, 10-30) | Tonight: paying off | Tonight gives no reason when paying is off because a Paying setup check is incomplete | A8 confirms as the manager; a one-line reason on the banner | S |
 | RR-O2 | A2 | CI: retried-green tests | Nine Playwright tests passed only on a retry in the window (41 runs); `tables.spec.ts` "an area is renamed and moved…" 18 runs on 9 branches and six outright failures on `or/foundation` pushes; `guest-pay-return.spec.ts:33` 8 runs; `payment-tables.spec.ts:201` 7 runs. Full list and re-run recipe in `flakes.md` | A9 re-runs each with retries off; a spec that fails once is a finding | — |
+| RR-O4 | A1 | i18n | bg and en both have 2,123 keys with none missing; 5 keys have no reference in `apps/web/src` at all (list in `index.md` §3) | a Sonnet reader confirms and the fixer deletes dead keys | S |
+| RR-O5 | A1 | interface strings vs GLOSSARY | en.json strings use glossary wrong forms in 59 keys; the strongest: `failed` (5 keys) and `unknown` (3 keys) under the Sent order state, where the glossary names other states | A10c checks the Sent order state words against D116's names | S |
+| RR-O6 | A1 | code without a decision citation | 80 of 185 in-scope files cite no decision (62 in `apps/web/src/server`, 13 in `packages/core/src/service`, 5 in worker jobs) | context for the readers, not a defect; the readers start from the citing files | — |
 | RR-O3 | A2 | CI: skipped tests | 135 of 431 Playwright tests are skipped on every CI run (env-gated: `FACES_VISUAL`, `SCREENSHOT_DIR`); none was seen green in the window | decide which gates CI should open on a nightly run | M |
 
 ## Quorum log
