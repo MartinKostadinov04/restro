@@ -2350,6 +2350,7 @@
     "lg_pay_storno": "Storno done",
     "lg_pay_storno_undone": "Storno taken back",
     "lg_pay_refund_seen": "Seen: refund that didn't go through",
+    "lg_pay_refund_seen_undone": "Seen taken back: refund that didn't go through",
     "lg_pay_dispute": "Card dispute: {state}"
   },
   "ownerSettings": {

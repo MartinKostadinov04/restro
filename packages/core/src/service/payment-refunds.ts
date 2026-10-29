@@ -314,6 +314,8 @@ async function markFailedSeen(
   if (refund === undefined) return refused(null, 'refund_missing')
   // Only a refund that did not go through can be seen as such.
   if (refund.failedAt === null) return refused(null, 'refund_not_failed')
+  // Tonight lists only a refund that failed after its storno was made (`refundsFailedAfterStorno`).
+  if (refund.stornoAt === null) return refused(null, 'invalid_command')
   const [latest] = await stx.tx
     .select({ toState: logEntries.toState })
     .from(logEntries)

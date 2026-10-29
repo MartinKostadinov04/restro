@@ -305,7 +305,10 @@ describe('the sentences of refunds, stornos and disputes (#222)', () => {
     expect(en(line('payment.refund_failed_seen'))).toBe("Seen: refund that didn't go through")
     expect(bgText(line('payment.refund_failed_seen'))).toBe('Видяно: неуспешно връщане')
     expect(en(line('payment.refund_failed_seen', { refundSeenUndone: true }))).toBe(
-      "The refund didn't go through at the payment provider",
+      "Seen taken back: refund that didn't go through",
+    )
+    expect(bgText(line('payment.refund_failed_seen', { refundSeenUndone: true }))).toBe(
+      'Видяното е отменено: неуспешно връщане',
     )
   })
 

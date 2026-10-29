@@ -152,8 +152,12 @@ describe('refunds and disputes in the CSV (#222)', () => {
       ],
     }
     expect(moneyCsvRows(seen, { say, provider: 'Stripe' })[0]).toMatchObject({
-      state: 'py_refund_failed{"provider":"Stripe"} · lg_pay_refund_seen',
-      time: '13:05',
+      state: expect.stringMatching(
+        /^py_refund_failed\{"provider":"Stripe"\} · lg_pay_refund_seen · .+, 13:05$/,
+      ),
+      // The time and who columns stay the storno's, as for every refund.
+      time: '12:30',
+      who: expect.stringContaining('Ivan'),
       amountMinor: 700,
     })
   })

@@ -2350,6 +2350,7 @@
     "lg_pay_storno": "Сторно направено",
     "lg_pay_storno_undone": "Сторното е върнато като неприключено",
     "lg_pay_refund_seen": "Видяно: неуспешно връщане",
+    "lg_pay_refund_seen_undone": "Видяното е отменено: неуспешно връщане",
     "lg_pay_dispute": "Спор по плащането: {state}"
   },
   "ownerSettings": {

@@ -421,6 +421,11 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
       if (!result.ok) throw new Error(result.code)
       return result.tonight.refunds?.failed.filter((row) => row.paymentId === paymentId) ?? []
     }
+    const tabletActor = (): ServiceActor => ({
+      kind: 'user',
+      userId: deviceUserId,
+      sessionId: deviceSession,
+    })
     /** A refund whose storno was made and which then did not go through at the provider. */
     async function failedAfterStorno() {
       const target = await captured()
@@ -434,6 +439,8 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
     it('takes the row off Tonight, writes the Log line, changes nothing a second time and comes back with Undo', async () => {
       const { target, refundId } = await failedAfterStorno()
       expect(await failedRows(user(managerId), target.id)).toHaveLength(1)
+      // The tablet reads it too (a read that failed would throw), before anyone said Got it.
+      expect(await failedRows(tabletActor(), target.id)).toHaveLength(1)
 
       const answer = await run(seen(refundId), context(user(managerId)))
       expect(answer).toMatchObject({ status: 'accepted', details: { changed: true } })
@@ -443,14 +450,7 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
       expect(token.entry).toBeGreaterThan(0)
       expect(await failedRows(user(managerId), target.id)).toHaveLength(0)
       // The tablet, a manager's PIN there, no longer sees it either.
-      const tablet = await readTonight(world.app, {
-        tenantId: world.tenantId,
-        venueId: world.venueId,
-        actor: { kind: 'user', userId: deviceUserId, sessionId: deviceSession },
-      })
-      expect(
-        tablet.ok && tablet.tonight.refunds?.failed.some((row) => row.paymentId === target.id),
-      ).toBe(false)
+      expect(await failedRows(tabletActor(), target.id)).toHaveLength(0)
       expect(await logKinds(target.id, 'payment.refund_failed_seen')).toMatchObject([
         { to_state: 'seen', details: { refundId } },
       ])
@@ -504,7 +504,7 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
       expect(await failedRows(user(managerId), target.id)).toHaveLength(0)
     })
 
-    it('refuses a waiter, a refund that is not failed and one this venue does not have', async () => {
+    it('refuses a waiter, a refund that is not failed or failed before its storno, and one this venue does not have', async () => {
       const { target, refundId } = await failedAfterStorno()
       expect(await run(seen(refundId), context(user(staffUserId)))).toMatchObject({
         status: 'refused',
@@ -522,6 +522,17 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
         status: 'refused',
         code: 'refund_not_failed',
       })
+      // A refund that failed before its storno was made is not on Tonight's list, so no Got it.
+      const early = await captured()
+      await run(observe(early, { refundedMinor: 400 }), worker())
+      await run(observe(early, { refundedMinor: 0 }), worker())
+      const earlyId = (await refundRows(early.id))[0]?.id as string
+      expect((await refundRows(early.id))[0]?.failed_at).toBeInstanceOf(Date)
+      expect(await run(seen(earlyId), context(user(managerId)))).toMatchObject({
+        status: 'refused',
+        code: 'invalid_command',
+      })
+      expect(await logKinds(early.id, 'payment.refund_failed_seen')).toHaveLength(0)
     })
 
     it('takes the Undo only with the token of the very "Got it" it takes back', async () => {

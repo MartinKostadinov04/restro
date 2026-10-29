@@ -86,22 +86,18 @@ export function moneyCsvRows(
   const refunds = money.refunds.map(
     (refund): CsvRow => ({
       section: say('nt_refunds'),
-      time: refund.seen?.time ?? refund.storno?.time ?? '',
+      time: refund.storno?.time ?? '',
       table: tableText(say, refund.table, refund.numbered),
       reference: refund.paymentId,
       what: 'refund',
       state: refund.failed
         ? refund.seen === null
           ? say('py_refund_failed', { provider })
-          : `${say('py_refund_failed', { provider })} · ${say('lg_pay_refund_seen')}`
+          : `${say('py_refund_failed', { provider })} · ${say('lg_pay_refund_seen')} · ${whoText(say, refund.seen.by)}, ${refund.seen.time}`
         : refund.storno === null
           ? say('nt_fix_storno')
           : say('st_ok'),
-      ...(refund.seen !== null
-        ? { who: whoText(say, refund.seen.by) }
-        : refund.storno === null
-          ? {}
-          : { who: whoText(say, refund.storno.by) }),
+      ...(refund.storno === null ? {} : { who: whoText(say, refund.storno.by) }),
       amountMinor: refund.amountMinor,
       detail: refund.receiptNumber ?? '',
     }),
