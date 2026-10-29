@@ -1,0 +1,6 @@
+{
+  "name": "receipt-sent",
+  "extends": "demo-bar",
+  "description": "A POS that issues the sale as an electronic receipt to the guest's email and sends it itself (electronicReceipt, Q38), with the receipt number on the close (D127, #186). No faults.",
+  "switches": { "electronicReceipt": true, "receiptNumberOnClose": true }
+}

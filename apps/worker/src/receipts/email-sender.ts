@@ -63,7 +63,9 @@ interface ResendOptions {
 }
 
 const API = 'https://api.resend.com/emails'
-const CALL_TIMEOUT_MS = 15_000
+/** How long the service gets to answer one call before it is given up. */
+export const RECEIPT_CALL_TIMEOUT_MS = 15_000
+const CALL_TIMEOUT_MS = RECEIPT_CALL_TIMEOUT_MS
 /** The longest display name Restro puts on a sender; a venue's name is cut here, never refused. */
 const MAX_SENDER_NAME = 60
 /** What the service accepts as an idempotency key (its own rule: 256 characters at most). */
@@ -95,9 +97,10 @@ export function receiptWords(venueName: string): {
 } {
   const name = senderName(venueName)
   return {
-    subject: `${name}: вашата разписка / your receipt`,
+    // Martin 10-29: «Касова бележка от {venue}» / "Your receipt from {venue}".
+    subject: `Касова бележка от ${name} / Your receipt from ${name}`,
     text: [
-      `Вашата разписка от ${name} е приложена.`,
+      `Вашата касова бележка от ${name} е приложена.`,
       '',
       `Your receipt from ${name} is attached.`,
     ].join('\n'),

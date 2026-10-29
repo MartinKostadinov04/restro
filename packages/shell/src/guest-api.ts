@@ -120,6 +120,8 @@ export const GuestTableStateSchema = z.strictObject({
     minCardMinor: z.int().positive(),
     /** A tip can be given when paying here (D127: the POS records it on the receipt). */
     tips: z.boolean(),
+    /** An email for the venue's electronic receipt can be given when paying here (D127, #186). */
+    receiptEmail: z.boolean(),
     /** The venue's night (#82): `at` is the wall-clock time the words name, `HH:MM`. */
     night: z.strictObject({
       state: z.enum(NIGHT_STATES),
@@ -381,6 +383,11 @@ export const GuestPaymentAnswerSchema = z.strictObject({
     .max(SERVICE_LIMITS.payLines),
   /** When the payment reached its final state (an ISO instant), or null: the confirmation's time. */
   paidAt: z.iso.datetime().nullable(),
+  /**
+   * The guest's electronic receipt once paid (D127, #186): `sent` where Restro sent the POS's file,
+   * `requested` where the POS sends it itself; null where none went out (paper).
+   */
+  receiptEmailed: z.enum(['sent', 'requested']).nullable(),
   /** The venue's time zone (IANA): the Payment confirmation shows the time there (D127 1.4). */
   timeZone: z.string().min(1).max(64),
   /** The card form: which provider's, and the values it needs. Only while `awaiting_guest`. */

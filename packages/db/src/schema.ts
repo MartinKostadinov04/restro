@@ -2556,6 +2556,22 @@ export const PAYMENT_STATES = [
   'capture_failed',
 ] as const
 
+/**
+ * The states in which a payment may still hold the guest's email for the venue's electronic receipt
+ * (D127, #186): up to and including `checked`, the state the close is attempted from. In any other
+ * state the email is erased (trigger `payments_erase_receipt_email`, migration 0041).
+ */
+export const PAYMENT_EMAIL_STATES = [
+  'requested',
+  'priced',
+  'awaiting_guest',
+  'held',
+  'queued',
+  'isolated',
+  'entered',
+  'checked',
+] as const
+
 /** The final states: a payment in one is settled (design §5.1). */
 export const PAYMENT_FINAL_STATES = [
   'captured',
@@ -2697,6 +2713,14 @@ export const payments = restro.table(
     /** When staff marked the paper receipt Brought, and the account that did (the shared device's own, or a person). */
     receiptBroughtAt: timestamp('receipt_brought_at', { withTimezone: true }),
     receiptBroughtBy: text('receipt_brought_by'),
+    /**
+     * *Backend*: the guest's email for the venue's electronic receipt (D127, #186), kept only until
+     * the close: a trigger erases it in the update that leaves `PAYMENT_EMAIL_STATES` (the close,
+     * a cancel, any final state), the check refuses it anywhere else, and a job erases it once the
+     * payment is older than any payment can take. Never in a log, an event, a Log entry, a step or
+     * a provider's metadata; never read by the guest page.
+     */
+    receiptEmail: text('receipt_email'),
     /** When it reached a final state. */
     settledAt: timestamp('settled_at', { withTimezone: true }),
     /** Set when it is final: 18 months on (D122 §8, D127 4.2); the purge only compares it. */
@@ -2786,6 +2810,10 @@ export const payments = restro.table(
     check(
       'payments_receipt_brought',
       sql`(${t.receiptBroughtAt} is null) = (${t.receiptBroughtBy} is null) and (${t.receiptBroughtAt} is null or ${t.receiptToBringAt} is not null) and (${t.receiptBroughtBy} is null or ${t.receiptBroughtBy} ~ ${SERVICE_ACTOR_PATTERN}) and (${t.receiptToBringAt} is null or ${t.state} = 'captured')`,
+    ),
+    check(
+      'payments_receipt_email',
+      sql`${t.receiptEmail} is null or (char_length(${t.receiptEmail}) between 3 and 254 and ${t.state} in ${sqlWords(PAYMENT_EMAIL_STATES)})`,
     ),
     check(
       'payments_form_values',

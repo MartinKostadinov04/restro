@@ -97,6 +97,12 @@ export interface FloorJobDeps {
   readonly breakers?: ConnectionBreakers
   /** Builds the connector of an instance; tests pass their own. */
   readonly connectorFor?: typeof serviceConnectorFor
+  /**
+   * True where a receipt email sender is configured (RECEIPT_FROM_ADDRESS, #186). A connector
+   * that returns the POS's receipt file (`electronicReceiptFile`) is recorded as offering the
+   * guest's email only then: with no sender the file could not reach the guest.
+   */
+  readonly receiptSender?: boolean
 }
 
 /** What one floor read did. */
@@ -236,7 +242,12 @@ export async function readFloorOf(
       bid: link.bid,
       jobId: run.id,
       reading,
-      capabilities: connector.capabilities,
+      capabilities: {
+        ...connector.capabilities,
+        electronicReceipt:
+          connector.capabilities.electronicReceipt &&
+          (!connector.capabilities.electronicReceiptFile || deps.receiptSender === true),
+      },
       now: now(),
     })
   } catch (error) {

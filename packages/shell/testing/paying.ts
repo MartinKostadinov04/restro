@@ -91,6 +91,8 @@ export function payment(changes: Partial<PaymentView> = {}): PaymentView {
       { name: { en_US: 'Mojito', bg_BG: 'Мохито' }, quantity: '1', amountMinor: 1000 },
     ],
     paidAt: null,
+    receiptEmailed: null,
+    receiptEmail: null,
     timeZone: 'Europe/Sofia',
     form: { confirmSeconds: 120 },
     ...changes,

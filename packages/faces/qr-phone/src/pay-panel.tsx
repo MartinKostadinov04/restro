@@ -27,12 +27,14 @@ import {
   lineNameText,
   NO_TIP,
   offersPay,
+  offersReceiptEmail,
   type PayFormSlot,
   type PayingStrings,
   type PaymentView,
   type PayScreen,
   type Picks,
   type PreparedConfirmation,
+  paidReceiptText,
   parseMinor,
   payBlock,
   payFormLocale,
@@ -406,7 +408,7 @@ function PaymentScreen({
                 otherItem={serviceWords.otherItem}
                 money={money}
               />
-              <p>{words.paidReceipt}</p>
+              <p data-slot="pay.receipt.line">{paidReceiptText(payment, words)}</p>
             </>
           )}
           {confirmation === null || confirming ? null : (
@@ -480,6 +482,7 @@ export function PayPanel(props: PayPanelProps): ReactNode {
   const payment = state?.payment ?? null
   const paying = state?.paying ?? null
   const tipsOffered = state?.ordering?.tips === true
+  const receiptEmailOffered = offersReceiptEmail(paying)
   const money = useMemo(
     () => (minor: number) => payMoney(minor, bill?.currency ?? 'EUR', locale),
     [bill?.currency, locale],
@@ -488,6 +491,7 @@ export function PayPanel(props: PayPanelProps): ReactNode {
   const [picks, setPicks] = useState<Picks>(new Map())
   const [tip, setTip] = useState<TipChoice>(NO_TIP)
   const [other, setOther] = useState('')
+  const [receiptEmail, setReceiptEmail] = useState('')
   const [askingSame, setAskingSame] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [refusal, setRefusal] = useState<string | null>(null)
@@ -526,7 +530,14 @@ export function PayPanel(props: PayPanelProps): ReactNode {
     setAskingSame(null)
     setRefusal(null)
     try {
-      const { actionId: _unused, ...draft } = payStartCommand('', picks, tip, tipsOffered)
+      const { actionId: _unused, ...draft } = payStartCommand(
+        '',
+        picks,
+        tip,
+        tipsOffered,
+        receiptEmail,
+        receiptEmailOffered,
+      )
       const result = await send(draft)
       if (result !== null && result.status === 'rejected') {
         setRefusal(
@@ -545,7 +556,7 @@ export function PayPanel(props: PayPanelProps): ReactNode {
   if (bill === null || paying === null) return null
 
   const totals = choosePay(picks, tip, tipsOffered)
-  const block = payBlock(paying, bill, picks, tip, tipsOffered)
+  const block = payBlock(paying, bill, picks, tip, tipsOffered, receiptEmail)
   const free = freeLines(bill)
   const blockWords =
     block === 'cards_paused'
@@ -558,7 +569,9 @@ export function PayPanel(props: PayPanelProps): ReactNode {
             ? words.belowMinimum(money(paying.minCardMinor))
             : block === 'tip_too_big'
               ? words.tipTooBig
-              : null
+              : block === 'bad_email'
+                ? words.emailInvalid
+                : null
   const all = free.length > 0 && free.every((line) => picks.has(line.id))
   // Everything is paid: nothing is free to pay and the sitting has paid lines, so "Nothing on your
   // bill yet", the choosing, the totals and Pay go, and the bill shows what was paid (D127 1.2).
@@ -666,6 +679,24 @@ export function PayPanel(props: PayPanelProps): ReactNode {
               </label>
             </fieldset>
           ) : null}
+          {receiptEmailOffered ? (
+            <p>
+              <label>
+                {words.receiptEmail}{' '}
+                <input
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  value={receiptEmail}
+                  maxLength={254}
+                  data-slot="pay.receipt.email"
+                  aria-invalid={block === 'bad_email' ? 'true' : undefined}
+                  aria-describedby={block === 'bad_email' ? 'rq-receipt-email-help' : undefined}
+                  onChange={(event) => setReceiptEmail(event.target.value)}
+                />
+              </label>
+            </p>
+          ) : null}
           <p>
             {words.yourItems}: {money(totals.itemsMinor)}
           </p>
@@ -711,7 +742,7 @@ export function PayPanel(props: PayPanelProps): ReactNode {
             </div>
           )}
           {blockWords === null ? null : (
-            <p className="rq-note" data-slot="pay.blocked" role="status">
+            <p className="rq-note" id="rq-receipt-email-help" data-slot="pay.blocked" role="status">
               {blockWords}
             </p>
           )}

@@ -43,6 +43,8 @@ export interface RecordedServiceCapabilities {
   readonly moveLinesToTable: boolean
   /** The close can ask the POS for an electronic receipt to the guest's email (D127, #186). */
   readonly electronicReceipt: boolean
+  /** With it: the POS returns the receipt file and Restro sends it ("sent"); else the POS sends ("requested"). */
+  readonly electronicReceiptFile: boolean
 }
 
 /** Nothing declared: the cautious answer. */
@@ -53,6 +55,7 @@ export const NO_RECORDED_SERVICE_CAPABILITIES: RecordedServiceCapabilities = Obj
   closeWithPaymentType: false,
   moveLinesToTable: false,
   electronicReceipt: false,
+  electronicReceiptFile: false,
 })
 
 function snakeCase(name: string): string {
@@ -80,5 +83,6 @@ export function readServiceCapabilities(config: unknown): RecordedServiceCapabil
     closeWithPaymentType: stored.close_with_payment_type === true,
     moveLinesToTable: stored.move_lines_to_table === true,
     electronicReceipt: stored.electronic_receipt === true,
+    electronicReceiptFile: stored.electronic_receipt_file === true,
   }
 }

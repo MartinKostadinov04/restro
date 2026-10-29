@@ -164,6 +164,8 @@ export interface TableStateRead {
   readonly notesAndOptions: boolean
   /** A tip can be given when paying here: the table's POS records it on the receipt (D127). */
   readonly tips: boolean
+  /** An email for the venue's electronic receipt can be given when paying here (D127, #186). */
+  readonly receiptEmail: boolean
   /**
    * Pay-first items at the table (#113, #114): whether they are offered now, and the items of the
    * table's menu that are paid first (none where pay-first doesn't apply at the table).
@@ -560,6 +562,7 @@ export async function readTableState(
       pauses: active,
       notesAndOptions: capabilities.notesReachTicket,
       tips: capabilities.recordTipOnClose,
+      receiptEmail: capabilities.electronicReceipt,
       payFirst,
       paying,
       reading:

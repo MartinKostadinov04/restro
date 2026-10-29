@@ -195,7 +195,7 @@ describe('the Resend sender (#186)', () => {
     const cut = senderName('😀'.repeat(61))
     expect(Array.from(cut)).toHaveLength(60)
     expect(cut).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/)
-    expect(receiptWords('Club').subject).toContain('Club')
+    expect(receiptWords('Club').subject).toBe('Касова бележка от Club / Your receipt from Club')
   })
 })
 
