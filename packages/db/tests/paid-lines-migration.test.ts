@@ -147,6 +147,26 @@ describe.skipIf(!hasDatabase)('the paid lines migration (#197)', () => {
     expect(rows.map((row) => row.name)).toEqual([{ bg_BG: 'House wine' }, null])
   })
 
+  it('forces row-level security on the owner again, and the updated_at trigger is back on', async () => {
+    // The backfills ran with it off (a hosted owner has no BYPASSRLS); the migration puts it back.
+    const { rows } = await client.query<{ name: string; enabled: boolean; forced: boolean }>(
+      `select c.relname as name, c.relrowsecurity as enabled, c.relforcerowsecurity as forced
+         from pg_class c join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'restro' and c.relname in ('payments', 'payment_lines', 'venues')
+        order by c.relname`,
+    )
+    expect(rows).toEqual([
+      { name: 'payment_lines', enabled: true, forced: true },
+      { name: 'payments', enabled: true, forced: true },
+      { name: 'venues', enabled: true, forced: true },
+    ])
+    const triggers = await client.query<{ tgenabled: string }>(
+      `select tgenabled from pg_trigger
+        where tgrelid = 'restro.payment_lines'::regclass and tgname = 'payment_lines_touch_updated_at'`,
+    )
+    expect(triggers.rows).toEqual([{ tgenabled: 'O' }])
+  })
+
   it('refuses a closed amount without a closed quantity, a zero quantity, and a name that is no object', async () => {
     await payment('py_NEW1', 'isolated')
     await line('py_NEW1', 1, 'Gin')
