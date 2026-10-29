@@ -853,7 +853,12 @@ export async function readTonight(
             PAYMENT_QUESTION_KINDS.includes(alert.kind),
         )
         .map((alert) =>
-          grants.device === true ? { ...alert, details: withoutTips(alert.details) } : alert,
+          // A tip is for those who answer the alert: not a shared device, not a waiter who only
+          // sees that a payment question waits (#115).
+          grants.device === true ||
+          (alert.permission !== null && !held.has(alert.permission as Permission))
+            ? { ...alert, details: withoutTips(alert.details) }
+            : alert,
         ),
       landedLate: landed.flatMap((row) =>
         row.sentOrderId === null ? [] : [{ sentOrderId: row.sentOrderId, at: row.at }],
