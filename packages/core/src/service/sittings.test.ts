@@ -373,6 +373,39 @@ describe.skipIf(!hasDatabase)('tables open for phones (as the restro_app role)',
       )
       expect(rows).toEqual([{ is_payment_table: false, hidden: true }])
     })
+
+    it('refuses to take the mark away while a payment holds the table (#215)', async () => {
+      const tableId = table(3)
+      const unmark = { type: 'table.mark_payment', tableId, isPaymentTable: false } as const
+      await accepted({ type: 'table.mark_payment', tableId, isPaymentTable: true })
+
+      // A payment owns the table from `queued` until it is final and the table reads empty (D127).
+      const holder = `py_${randomUUID().replaceAll('-', '')}`
+      await world.owner.query(
+        `insert into restro.locks
+           (tenant_id, venue_id, scope, key, holder, fence, taken_at, source, actor, job_id)
+         values ($1, $2, 'payment_table', $3, $4, 1, now(), 'restro', 'system', 'unmark-test')`,
+        [world.tenantId, world.venueId, tableId, holder],
+      )
+      expect(await run(unmark)).toMatchObject({ status: 'refused', code: 'payment_table_busy' })
+      const { rows: held } = await world.owner.query(
+        'select is_payment_table from restro.tables where id = $1',
+        [tableId],
+      )
+      expect(held).toEqual([{ is_payment_table: true }])
+      // Marking it again is not what the lease guards.
+      expect(
+        await accepted({ type: 'table.mark_payment', tableId, isPaymentTable: true }),
+      ).toMatchObject({ changed: false })
+
+      // Once the payment frees the table, the mark can go.
+      await world.owner.query(
+        `update restro.locks set holder = null, released_at = now()
+         where tenant_id = $1 and scope = 'payment_table' and key = $2`,
+        [world.tenantId, tableId],
+      )
+      expect(await accepted(unmark)).toMatchObject({ changed: true })
+    })
   })
 
   it('refuses to open a table that left the POS floor while its pause is active', async () => {

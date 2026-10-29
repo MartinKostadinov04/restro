@@ -282,6 +282,20 @@ export async function freePaymentTable(
   return true
 }
 
+/** Makes sure the lease row exists, free; a row that is there is left as it is. */
+async function ensureFreeLease(stx: LeaseTx, lease: LeaseKey): Promise<void> {
+  const { source, actor, jobId } = stx.provenance
+  await stx.tx.execute(sql`
+    insert into restro.locks
+      (tenant_id, venue_id, scope, key, holder, fence, taken_at, deadline, released_at,
+       source, actor, job_id, updated_at)
+    values
+      (${stx.tenantId}, ${stx.venueId}, ${lease.scope}, ${lease.key}, null, 0, null, null, null,
+       ${source}, ${actor}, ${jobId}, now())
+    on conflict (tenant_id, scope, key) do nothing
+  `)
+}
+
 /** Locks these lease rows in the ledger's order (one call), so a command can decide under them. */
 export async function lockLeases(
   stx: LeaseTx,
@@ -295,6 +309,11 @@ export async function lockLeases(
     const split = ledger.indexOf(':')
     const scope = ledger.slice(0, split)
     const key = ledger.slice(split + 1)
+    // A payment table's lease row may not exist yet (nobody has paid through it), and `FOR UPDATE`
+    // on a row that is not there locks nothing: a claim and an unmark could both commit. A free
+    // row first, so whoever inserts it makes the other wait; the claim then reads the table's mark
+    // again in a new statement, and the unmark sees the holder (#215).
+    if (scope === 'payment_table') await ensureFreeLease(stx, { scope, key })
     const [row] = await stx.tx
       .select({ holder: locks.holder, fence: locks.fence })
       .from(locks)

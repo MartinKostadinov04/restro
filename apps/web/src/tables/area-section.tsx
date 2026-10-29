@@ -39,7 +39,7 @@ import type { HallView, MenuChoice } from '@/server/tables/view'
 
 import { ConfirmDialog } from './confirm-dialog'
 import { RoutePicker } from './route-picker'
-import { TableCard } from './table-card'
+import { type PaymentTableAccess, TableCard } from './table-card'
 import { useRun } from './use-run'
 
 export function AreaSection({
@@ -51,6 +51,7 @@ export function AreaSection({
   fromTill,
   menus,
   areas,
+  payment,
 }: {
   hall: HallView
   /** The area's place among the venue's areas, and how many areas there are. */
@@ -62,6 +63,8 @@ export function AreaSection({
   menus: readonly MenuChoice[]
   /** Every area of the venue, in order: "Move to …" on a table lists the others. */
   areas: readonly { readonly id: string; readonly name: string; readonly tableCount: number }[]
+  /** Payment tables, where a connector can take payments; null elsewhere. */
+  payment: PaymentTableAccess | null
 }) {
   const t = useTranslations('tables')
   const { pending, run } = useRun()
@@ -325,6 +328,7 @@ export function AreaSection({
               canManage={canManage}
               fromTill={fromTill}
               areaPublic={hall.isPublic}
+              payment={payment}
               menus={menus}
               otherAreas={otherAreas}
               index={position}

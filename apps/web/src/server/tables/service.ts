@@ -50,7 +50,13 @@ import {
   tableLabel,
   type VenueTable,
 } from '@restro/core/apply'
-import { applyService, type RefusalCode } from '@restro/core/service'
+import {
+  applyService,
+  type PaymentTableBoard,
+  type RefusalCode,
+  readPayingOffer,
+  readPaymentTableBoard,
+} from '@restro/core/service'
 import { type DbPool, integrations, type Venue, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
 
@@ -83,6 +89,11 @@ export interface TablesScope {
   readonly canManage: boolean
   /** The signed-in person and their session, for a re-issue's Log entry; null when not known. */
   readonly actor?: RevealActor | null
+  /**
+   * The signed-in person, for payment tables: whether they hold `settings.payment_tables` (and are
+   * not on a shared device, the page decides) and their email for the password again.
+   */
+  readonly person?: { readonly canMarkPaymentTables: boolean; readonly email: string }
 }
 
 /**
@@ -158,6 +169,7 @@ async function toRow(
   menu: MenuShown | null,
   routeMenuId: string | null,
   canReveal: boolean,
+  bar: TableRowView['bar'],
 ): Promise<TableRowView> {
   // A hidden table keeps its code for when it is shown again, but its code leads nowhere now.
   const text = code === null || !active ? null : codeAddress(baseUrl, code)
@@ -176,6 +188,21 @@ async function toRow(
     qrSvg: text === null ? null : await render(text),
     menu,
     routeMenuId,
+    isPaymentTable: table.isPaymentTable,
+    bar,
+  }
+}
+
+/** The payment-table part of the tab, only where a connector can take payments (never by hand). */
+function payingOf(
+  board: PaymentTableBoard | null,
+  person: TablesScope['person'],
+): TablesView['paying'] {
+  if (board === null) return null
+  return {
+    canMark: person?.canMarkPaymentTables === true,
+    email: person?.email ?? '',
+    missing: board.queuesMissing.map((queue) => ({ name: queue.barName })),
   }
 }
 
@@ -194,14 +221,19 @@ export async function loadTablesView(
   render: (text: string) => Promise<string> = qrSvg,
   reveal: RevealCodes = revealNothing,
 ): Promise<TablesView> {
-  const [areas, tables, summaries, routes, resolved, till] = await Promise.all([
+  const [areas, tables, summaries, routes, resolved, till, offer] = await Promise.all([
     listVenueAreas(scope.pool, scope.tenantId, scope.venue.id),
     listVenueTables(scope.pool, scope.tenantId, scope.venue.id),
     listMenus(scope.pool, scope.tenantId, scope.venue.id),
     listMenuRoutes(scope.pool, scope.tenantId, scope.venue.id),
     resolveRoutes(scope.pool, scope.tenantId, scope.venue.id),
     tillLabelOfVenue(scope.pool, scope.tenantId, scope.venue.id),
+    readPayingOffer(scope.pool, scope.tenantId, scope.venue.id),
   ])
+  // Payment tables are read only where a connector can take payments, never at a venue by hand.
+  const board = offer.offered
+    ? await readPaymentTableBoard(scope.pool, scope.tenantId, scope.venue.id)
+    : null
   const baseUrl = codeBaseUrl(defaultBaseUrl)
   const choices = menuChoices(summaries, scope.venue.name)
   const names = new Map(choices.map((menu) => [menu.id, menu.name] as const))
@@ -243,6 +275,7 @@ export async function loadTablesView(
         shown(names, resolvedId, level),
         own,
         scope.canManage,
+        board?.barOfTable.get(table.id) ?? null,
       )
     }),
   )
@@ -280,6 +313,7 @@ export async function loadTablesView(
     sourceLabel: till ?? '',
     baseUrl,
     menus: choices,
+    paying: payingOf(board, scope.person),
     halls,
     total: rows.length,
     coded: withCode.length,
