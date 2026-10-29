@@ -548,6 +548,19 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
           'update restro.payment_accounts set checks = $2::jsonb where venue_id = $1',
           [world.venueId, JSON.stringify(checks)],
         )
+      // The legal details as seeded: put back in the `finally`, so one failed assertion here can not
+      // leave every later test with paying off.
+      const kept = (
+        await world.owner.query<{ legal: unknown }>(
+          `select settings -> 'legalDetails' as legal from restro.venues where id = $1`,
+          [world.venueId],
+        )
+      ).rows[0]?.legal
+      const restoreLegal = () =>
+        world.owner.query(
+          `update restro.venues set settings = jsonb_set(settings, '{legalDetails}', $2::jsonb) where id = $1`,
+          [world.venueId, JSON.stringify(kept)],
+        )
       try {
         for (const checks of [
           {},
@@ -560,34 +573,20 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
         }
         // Every check but the legal details: with one detail missing paying is not offered (#198).
         await setChecks(ready)
-        const legalOf = async () =>
-          (
-            await world.owner.query<{ legal: unknown }>(
-              `select settings -> 'legalDetails' as legal from restro.venues where id = $1`,
-              [world.venueId],
-            )
-          ).rows[0]?.legal
-        const kept = await legalOf()
         for (const field of ['name', 'eik', 'address', 'privacyUrl']) {
           await world.owner.query(
             `update restro.venues set settings = jsonb_set(settings, '{legalDetails}', (settings -> 'legalDetails') - $2::text) where id = $1`,
             [world.venueId, field],
           )
           expect(await refusal(await start(phone(), ['L1'])), field).toBe('paying_not_offered')
-          await world.owner.query(
-            `update restro.venues set settings = jsonb_set(settings, '{legalDetails}', $2::jsonb) where id = $1`,
-            [world.venueId, JSON.stringify(kept)],
-          )
+          await restoreLegal()
         }
         await world.owner.query(
           `update restro.venues set settings = settings - 'legalDetails' where id = $1`,
           [world.venueId],
         )
         expect(await refusal(await start(phone(), ['L1']))).toBe('paying_not_offered')
-        await world.owner.query(
-          `update restro.venues set settings = jsonb_set(settings, '{legalDetails}', $2::jsonb) where id = $1`,
-          [world.venueId, JSON.stringify(kept)],
-        )
+        await restoreLegal()
         // Every check but the payment tables: the till's table is no longer marked.
         await setChecks(ready)
         await world.owner.query('update restro.tables set is_payment_table = false where id = $1', [
@@ -595,6 +594,7 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
         ])
         expect(await refusal(await start(phone(), ['L1']))).toBe('paying_not_offered')
       } finally {
+        await restoreLegal()
         await setChecks(ready)
         await world.owner.query('update restro.tables set is_payment_table = true where id = $1', [
           world.tables[3],

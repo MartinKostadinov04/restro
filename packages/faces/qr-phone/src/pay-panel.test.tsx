@@ -367,11 +367,32 @@ describe('the review of #195 (D127)', () => {
     }
   })
 
-  it('draws no legal links while the host sends no legal details', async () => {
+  it('draws neither the processor line nor the links while the host sends no legal details', async () => {
     const { page } = await drawRecording(
       payingState({ paying: { ...payingState().paying!, legal: null } }),
     )
     expect(page.querySelector('[data-slot="pay.legal"]')).toBeNull()
+    expect(page.textContent).not.toContain('Payment processed by')
+  })
+
+  it('carries the processor line and both links on the card screen too (#198, log 1.6)', async () => {
+    const withCard = (legal: boolean) =>
+      payingState({
+        payment: payScenarioPayment(),
+        ...(legal ? {} : { paying: { ...payingState().paying!, legal: null } }),
+      })
+    const { page } = await drawRecording(withCard(true))
+    expect(page.querySelector('[data-pay-screen="card"]')).not.toBeNull()
+    const legal = page.querySelector('[data-pay-screen="card"] [data-slot="pay.legal"]')
+    expect(page.textContent).toContain(`Payment processed by Stripe for ${PAYING_LEGAL.name}.`)
+    expect(legal?.querySelector('summary')?.textContent).toBe(words.legalDetailsLink)
+    expect(legal?.textContent).toContain(PAYING_LEGAL.address)
+    expect(legal?.querySelector('a')?.getAttribute('href')).toBe(PAYING_LEGAL.privacyUrl)
+    unmount()
+    const bare = await drawRecording(withCard(false))
+    expect(bare.page.querySelector('[data-pay-screen="card"]')).not.toBeNull()
+    expect(bare.page.querySelector('[data-slot="pay.legal"]')).toBeNull()
+    expect(bare.page.textContent).not.toContain('Payment processed by')
   })
 
   it('says why the bill is hidden without a location pass, with Allow location and Call a waiter', async () => {

@@ -163,9 +163,30 @@ describe('choosing', () => {
     }
   })
 
-  it('draws no legal links while the host sends no legal details', () => {
+  it('draws neither the processor line nor the links while the host sends no legal details', () => {
     const { sheet } = openPay(fakeHost({ ...base(), paying: payingOf({ legal: null }) }))
     expect(sheet.querySelector('[data-slot="pay.legal"]')).toBeNull()
+    expect(sheet.textContent).not.toContain('Payment processed by')
+  })
+
+  it('carries the processor line and both links on the card screen too (#198, log 1.6)', () => {
+    const { sheet } = openPay(fakeHost({ ...base(), payment: paymentOf() }))
+    expect(sheet.querySelector('[data-pay-screen="card"]')).not.toBeNull()
+    const legal = sheet.querySelector('[data-slot="pay.legal"]') as HTMLElement
+    expect(sheet.textContent).toContain(
+      `Payment processed by The processor for ${PAYING_LEGAL.name}.`,
+    )
+    expect(legal.querySelector('summary')?.textContent).toBe('About the venue')
+    expect(legal.textContent).toContain(PAYING_LEGAL.address)
+    expect(legal.querySelector('a')?.getAttribute('href')).toBe(PAYING_LEGAL.privacyUrl)
+    cleanup()
+    resetPage()
+    const bare = openPay(
+      fakeHost({ ...base(), paying: payingOf({ legal: null }), payment: paymentOf() }),
+    )
+    expect(bare.sheet.querySelector('[data-pay-screen="card"]')).not.toBeNull()
+    expect(bare.sheet.querySelector('[data-slot="pay.legal"]')).toBeNull()
+    expect(bare.sheet.textContent).not.toContain('Payment processed by')
   })
 })
 

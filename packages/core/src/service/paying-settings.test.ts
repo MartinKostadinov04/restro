@@ -169,6 +169,42 @@ describe.skipIf(!hasDatabase)('the paying choices command (as the restro_app rol
     expect(readLegalDetails(settings)).toEqual(LEGAL)
   })
 
+  it('refuses to clear the details while the venue has a connected payment account (#198)', async () => {
+    await run({
+      type: 'settings.paying_set',
+      changes: { legalDetails: LEGAL },
+      providerMinMinor: 50,
+    })
+    await world.owner.query(
+      `insert into restro.payment_accounts
+         (tenant_id, venue_id, provider_kind, account_ref, state, checks, connected_at, source, actor, job_id)
+       values ($1, $2, 'sim-pay', 'acct_legal_clear', 'connected', '{}'::jsonb, now(), 'restro', 'system', 'test-seed')`,
+      [world.tenantId, world.venueId],
+    )
+    try {
+      expect(
+        await run({
+          type: 'settings.paying_set',
+          changes: { legalDetails: null },
+          providerMinMinor: 50,
+        }),
+      ).toMatchObject({ status: 'refused', code: 'invalid_settings' })
+      expect(readLegalDetails(await stored())).toEqual(LEGAL)
+      // Replacing them is still fine.
+      expect(
+        await run({
+          type: 'settings.paying_set',
+          changes: { legalDetails: { ...LEGAL, name: 'Club 2 EOOD' } },
+          providerMinMinor: 50,
+        }),
+      ).toMatchObject({ status: 'accepted' })
+    } finally {
+      await world.owner.query('delete from restro.payment_accounts where venue_id = $1', [
+        world.venueId,
+      ])
+    }
+  })
+
   it('clears the details with null', async () => {
     await run({
       type: 'settings.paying_set',

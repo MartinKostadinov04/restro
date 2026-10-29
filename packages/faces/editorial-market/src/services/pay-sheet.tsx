@@ -23,6 +23,8 @@ import {
   offersPay,
   offersReceiptEmail,
   type PayFormSlot,
+  type PayingStrings,
+  type PayingView,
   type PaymentView,
   type PayScreen,
   type Picks,
@@ -95,6 +97,36 @@ const CONFIRMATION_ID = 'ro-pay-confirmation'
 
 /** "×2" for a line of more than one. */
 const mark = (quantity: string) => (quantity === '1' ? '' : ` ×${quantity}`)
+
+/**
+ * Who processes the payment and for which legal entity, with the links to the legal details and
+ * the privacy notice (#198, D127 1.6): drawn wherever the guest can enter a card, so the choosing
+ * screen and the card screen both carry it.
+ */
+function LegalBlock({ paying, w }: { readonly paying: PayingView; readonly w: PayingStrings }) {
+  // Without the legal details the line would name the wrong entity (the venue's trade name): the
+  // host sends them whenever paying is offered, so nothing is drawn only where it is not.
+  const { legal, processor } = paying
+  if (legal === null) return null
+  return (
+    <>
+      {processor === null ? null : (
+        <p className="ro-allergy">{w.legalProcessor(processor, legal.name)}</p>
+      )}
+      <div className="ro-allergy" data-slot="pay.legal">
+        <details>
+          <summary>{w.legalDetailsLink}</summary>
+          <p>{legal.name}</p>
+          <p>{w.legalEik(legal.eik)}</p>
+          <p>{legal.address}</p>
+        </details>
+        <a href={legal.privacyUrl} target="_blank" rel="noopener noreferrer">
+          {w.legalPrivacyLink}
+        </a>
+      </div>
+    </>
+  )
+}
 
 /**
  * The lines paid in the app in this sitting (D127 1.2): greyed under "Paid in the app", on every
@@ -464,24 +496,7 @@ export function PaySheet() {
             <b>{money(totals.totalMinor)}</b>
           </div>
           <p className="ro-allergy">{w.legalPrices}</p>
-          {paying.processor === null ? null : (
-            <p className="ro-allergy">
-              {w.legalProcessor(paying.processor, paying.legal?.name ?? paying.venueName)}
-            </p>
-          )}
-          {paying.legal === null ? null : (
-            <div className="ro-allergy" data-slot="pay.legal">
-              <details>
-                <summary>{w.legalDetailsLink}</summary>
-                <p>{paying.legal.name}</p>
-                <p>{w.legalEik(paying.legal.eik)}</p>
-                <p>{paying.legal.address}</p>
-              </details>
-              <a href={paying.legal.privacyUrl} target="_blank" rel="noopener noreferrer">
-                {w.legalPrivacyLink}
-              </a>
-            </div>
-          )}
+          <LegalBlock paying={paying} w={w} />
           {asking === null ? (
             <button
               type="button"
@@ -653,6 +668,7 @@ function PaymentScreen({
             <>
               {priced}
               <p className="ro-allergy">{w.legalPrices}</p>
+              {o.state.paying == null ? null : <LegalBlock paying={o.state.paying} w={w} />}
               {binding.payForm === undefined || payment.amountMinor === null ? null : (
                 <FormSlot
                   slot={binding.payForm}

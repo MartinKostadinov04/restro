@@ -84,7 +84,14 @@ export function PayingLegalCard({
     const previous = view.legal
     run(() => savePayingAction({ venueId: view.venueId, changes: { legalDetails: trimmed } }), {
       done: t('st_saved'),
-      undo: () => savePayingAction({ venueId: view.venueId, changes: { legalDetails: previous } }),
+      // The first save has nothing to go back to: clearing the details is not offered (a connected
+      // account's paying would go off with no signal, #198).
+      ...(previous === null
+        ? {}
+        : {
+            undo: () =>
+              savePayingAction({ venueId: view.venueId, changes: { legalDetails: previous } }),
+          }),
     })
   }
 
