@@ -53,7 +53,7 @@ export type TableCommand =
   | { readonly type: 'receipt.brought'; readonly paymentId: string }
   | { readonly type: 'receipt.unbrought'; readonly paymentId: string; readonly undo?: UndoToken }
   | { readonly type: 'payment.storno_done'; readonly refundId: string }
-  | { readonly type: 'payment.storno_undo'; readonly refundId: string; readonly undo?: UndoToken }
+  | { readonly type: 'payment.storno_undo'; readonly refundId: string; readonly undo: UndoToken }
   | { readonly type: 'alert.done'; readonly alertId: string }
   | {
       readonly type: 'payment.answer'

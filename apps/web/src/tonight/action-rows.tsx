@@ -222,7 +222,16 @@ export function ActionRowItem({
                     pin: {
                       level: 'manager' as const,
                       title: t('st_ok'),
-                      body: t('st_b', { source: view.source }),
+                      // The manager confirming is told the true amount, tip included, which the
+                      // row itself leaves out for a reader who sees no tips (Martin 10-29).
+                      body: `${t('st_d', {
+                        amt: money(storno.chargeMinor, view.currency),
+                        table: name,
+                        date: dateText(storno.serviceDate),
+                        rcpt: storno.receiptNumber ?? dash,
+                        rcptTime: storno.receiptTime ?? dash,
+                        fm: storno.fiscalMemoryNumber ?? dash,
+                      })} ${t('st_b', { source: view.source })}`,
                     },
                   }
                 : {}),
@@ -231,6 +240,7 @@ export function ActionRowItem({
               done: t('st_toast'),
               undo: (_, undo, pin) =>
                 stornoUndoAction({ venueId: view.venueId, refundId: storno.refundId, undo, pin }),
+              // Only a write that logged an entry has a token to undo with.
               undoWhen: wroteSomething,
             })
           }

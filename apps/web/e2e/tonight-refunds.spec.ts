@@ -1,14 +1,20 @@
-// Refunds and disputes on Tonight (#222; decision log 5.1–5.17), on a production build: four
-// captured card payments as `payment.observe` leaves them (`refunds` night of
-// scripts/seed-tonight-e2e.ts). Table 1 was partly refunded in the provider's dashboard and its
-// storno is not made; Table 2's refund has its storno already; Table 3's payment is disputed and
-// open with the provider's answer-by date in five days; Table 4's dispute was lost.
+// Refunds and disputes on Tonight (#222; decision log 5.1–5.17), on a production build. Four
+// captured card payments (`refunds` night of scripts/seed-tonight-e2e.ts) are made real in the
+// simulated provider by a worker-side harness (apps/worker/src/e2e/refunds-harness.ts), which then
+// plays the venue's Dashboard and the guest's bank with sim-pay's own functions: Table 1 and Table 2
+// are partly refunded (€5.00, €3.00), Table 3's payment is disputed, Table 4's dispute is opened and
+// lost. Each one reaches Tonight the way it does in service: the provider's notice is stored, the
+// worker's notice job reads the payment back from the provider, and `payment.observe` records it.
 //
-// The owner reads the storno row and the dispute row; a waiter's own phone reads neither; on the
+// The owner reads the storno rows and the dispute row; a waiter's own phone reads none; on the
 // shared tablet "Storno done" asks a manager's PIN (a staff PIN is told so), saves at once, and its
 // 8-second toast offers an Undo that brings the row back; the dispute opens the payment's sheet
-// with its refunds, its state and the "Dispute evidence" text; the end of the night lists the
-// refund with no storno under "To fix" and sections 5 and 6. The admin is read in English.
+// with the "Dispute evidence" text; the end of the night lists the refund with no storno under "To
+// fix" and sections 5 and 6; a refund that fails after its storno asks the manager to check with
+// the accountant. The admin is read in English.
+import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+
 import { type BrowserContext, expect, type Locator, type Page, test } from '@playwright/test'
 
 import { runScriptWith } from './global-setup'
@@ -96,11 +102,38 @@ async function typePin(page: Page, pin: string) {
   await page.keyboard.type(pin)
 }
 
+let harness: ChildProcessWithoutNullStreams
+const events: Record<string, unknown>[] = []
+
+/** Waits for the harness's JSON line with `event` (and `command`, when given). */
+async function harnessSaid(event: string, command?: string, timeout = 120_000) {
+  await expect
+    .poll(
+      () =>
+        events.find(
+          (line) =>
+            line.event === 'refunds_harness_failed' ||
+            (line.event === event && (command === undefined || line.command === command)),
+        ) ?? null,
+      { timeout },
+    )
+    .not.toBeNull()
+  const failed = events.find((line) => line.event === 'refunds_harness_failed')
+  if (failed) throw new Error(`the refunds harness failed: ${JSON.stringify(failed)}`)
+}
+
+/** One command to the harness: the venue's Dashboard or the guest's bank acts, the worker reads it back. */
+async function outside(command: string) {
+  harness.stdin.write(`${command}\n`)
+  await harnessSaid('refunds_harness_done', command)
+}
+
 let tablet: { context: BrowserContext; page: Page }
 let waiter: { context: BrowserContext; page: Page }
 let owner: { context: BrowserContext; page: Page }
 
 test.beforeAll(async ({ browser }) => {
+  test.setTimeout(240_000)
   seed('seed')
   waiter = await person(browser, TONIGHT_WAITER_EMAIL)
   tablet = await person(browser, TONIGHT_TABLET_EMAIL)
@@ -108,9 +141,47 @@ test.beforeAll(async ({ browser }) => {
   // The bar tablet's session becomes a shared device, as the owner's "mark this device" does.
   seed('device', TONIGHT_TABLET_EMAIL)
   seed('night', 'refunds')
+
+  const workerDir = fileURLToPath(new URL('../../worker/', import.meta.url))
+  harness = spawn(process.execPath, ['--import', 'tsx', 'src/e2e/refunds-harness.ts'], {
+    cwd: workerDir,
+    env: { ...process.env, LOG_LEVEL: 'warn' },
+  })
+  let buffer = ''
+  harness.stdout.setEncoding('utf8')
+  harness.stdout.on('data', (chunk: string) => {
+    buffer += chunk
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+    for (const line of lines) {
+      if (line.trim().startsWith('{')) events.push(JSON.parse(line) as Record<string, unknown>)
+    }
+  })
+  let stderr = ''
+  harness.stderr.setEncoding('utf8')
+  harness.stderr.on('data', (chunk: string) => {
+    stderr = (stderr + chunk).slice(-4_000)
+  })
+  harness.on('exit', (exitCode) => {
+    if (exitCode !== 0) events.push({ event: 'refunds_harness_failed', exitCode, stderr })
+  })
+  await harnessSaid('refunds_harness_ready')
+  // The venue refunds Tables 1 and 2 in its Dashboard, the guest's bank disputes Tables 3 and 4,
+  // and the dispute of Table 4 is lost.
+  await outside('refund 1 500')
+  await outside('refund 2 300')
+  await outside('dispute 3')
+  await outside('dispute 4')
+  await outside('close 4 lost')
 })
 
 test.afterAll(async () => {
+  if (harness !== undefined && harness.exitCode === null) {
+    const exited = new Promise((resolve) => harness.once('exit', resolve))
+    harness.stdin.end()
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 30_000))])
+    if (harness.exitCode === null) harness.kill()
+  }
   await waiter?.context.close()
   await tablet?.context.close()
   await owner?.context.close()
@@ -119,10 +190,10 @@ test.afterAll(async () => {
 test('the owner reads the storno of a refund and the card dispute, with what each needs', async () => {
   const { page } = owner
   await open(page)
-  // Table 2's storno was made and Table 4's dispute was lost: neither has a row.
-  await expect(rows(page)).toHaveCount(2)
-  await expect(rowOf(page, '2')).toHaveCount(0)
+  // Both refunds wait for their storno and Table 3's dispute is open; Table 4's was lost, so it has no row.
+  await expect(rows(page)).toHaveCount(3)
   await expect(rowOf(page, '4')).toHaveCount(0)
+  await expect(rowOf(page, '2')).toContainText(/Refund of €3\.00 for Table 2/)
 
   const storno = rowOf(page, '1')
   await expect(storno).toHaveAttribute('data-kind', 'storno')
@@ -185,8 +256,9 @@ test('the dispute opens the payment’s sheet with the refunds, the state and th
 test('on the tablet "Storno done" asks a manager’s PIN, saves at once, and Undo brings the row back', async () => {
   const { page } = tablet
   await open(page)
-  // The tablet reads both rows; only the storno has a button there (the evidence is a manager's).
-  await expect(rows(page)).toHaveCount(2)
+  // The tablet reads all three; only the stornos have a button there (the evidence is a manager's).
+  // It is staff-level: it reads the refund and the payment without the tip.
+  await expect(rows(page)).toHaveCount(3)
   await expect(rowOf(page, '3').getByRole('button')).toHaveCount(0)
 
   const done = new Taps()
@@ -200,14 +272,14 @@ test('on the tablet "Storno done" asks a manager’s PIN, saves at once, and Und
   await typePin(page, '4321')
   await expect(toast(page, 'Storno recorded')).toBeVisible()
   await expect(rowOf(page, '1')).toHaveCount(0)
-  await expect(rows(page)).toHaveCount(1)
+  await expect(rows(page)).toHaveCount(2)
   expect(done.count).toBe(1)
 
   // The Undo (inside its own toast) takes the answer back as the same manager.
   const undo = new Taps()
   await undo.tap(toast(page, 'Storno recorded').getByRole('button', { name: 'Undo' }))
   await expect(rowOf(page, '1')).toHaveCount(1)
-  await expect(rows(page)).toHaveCount(2)
+  await expect(rows(page)).toHaveCount(3)
   expect(undo.count).toBe(1)
 
   // Answered again, it stays answered after a reload.
@@ -230,13 +302,13 @@ test('the Log words the storno and its Undo', async () => {
 })
 
 test('the end of the night lists the refund with no storno and the dispute, with their sections', async () => {
-  seed('night', 'refunds')
   const { page } = owner
   await open(page, 'night')
   // "To fix": one line for the refund with no storno, no amount.
   const fix = page.getByTestId('night-fix-list')
+  // Table 1's was answered on the tablet; Table 2's waits.
   await expect(fix.getByTestId('night-fix-storno')).toHaveCount(1)
-  await expect(fix.getByTestId('night-fix-storno')).toContainText('Table 1')
+  await expect(fix.getByTestId('night-fix-storno')).toContainText('Table 2')
   await expect(fix.getByTestId('night-fix-storno')).toContainText('storno not done')
   await expect(fix.getByTestId('night-fix-storno')).not.toContainText('€')
 
@@ -246,6 +318,7 @@ test('the end of the night lists the refund with no storno and the dispute, with
   await expect(refunds).toContainText('storno not done')
   await expect(refunds).toContainText(/Storno done · /)
   await expect(refunds).toContainText('€5.00')
+  await expect(refunds).toContainText('€3.00')
 
   // Section 6: the disputes opened on the night, each with its answer-by date, then how many are open.
   const disputes = page.getByTestId('night-disputes-list')
@@ -258,4 +331,22 @@ test('the end of the night lists the refund with no storno and the dispute, with
   await expect(page.getByTestId('payment-sheet')).toBeVisible()
   await expect(page.getByTestId('payment-refunds')).toContainText(/Refunded|Partly refunded/)
   await page.keyboard.press('Escape')
+})
+
+test('a refund that fails at the provider after its storno asks the manager to check with the accountant', async () => {
+  const { page } = owner
+  await open(page)
+  await rowOf(page, '2').getByRole('button', { name: 'Storno done' }).click()
+  await expect(toast(page, 'Storno recorded')).toBeVisible()
+  await expect(rowOf(page, '2')).toHaveCount(0)
+  // The provider says the refund of Table 2 did not go through: the worker reads the total back.
+  await outside('refund-fails 2 300')
+  await page.reload()
+  await page.waitForLoadState('networkidle')
+  const failed = rows(page).filter({ hasText: "didn't go through" })
+  await expect(failed).toHaveCount(1)
+  await expect(failed).toHaveAttribute('data-kind', 'refund_failed')
+  await expect(failed).toContainText(/A refund of €3\.00 didn't go through at .+\./)
+  await expect(failed).toContainText('check with your accountant')
+  await expect(failed.getByRole('button')).toHaveCount(0)
 })

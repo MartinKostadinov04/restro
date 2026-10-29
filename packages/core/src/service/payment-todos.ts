@@ -9,6 +9,20 @@ import { logEntries, paymentRefunds, payments, type ReadTx, venueTables } from '
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull } from 'drizzle-orm'
 
 import { paymentNumberOf } from './payment-number'
+import { withoutTipMinor } from './staff-amount'
+
+/**
+ * A refund's amount for a reader who sees no tips: at most the payment less its tip, so a refund
+ * of the whole payment never gives the tip away (#220).
+ */
+export function refundShownMinor(
+  refundMinor: number,
+  capturedMinor: number,
+  tipMinor: number,
+): number {
+  const billMinor = withoutTipMinor(capturedMinor, tipMinor) ?? 0
+  return Math.min(refundMinor, billMinor)
+}
 
 /** The most rows one read returns: a night's refunds are far below it. */
 export const MAX_TODOS = 2000
@@ -21,8 +35,16 @@ export interface RefundToDo {
   readonly tableId: string
   readonly name: string | null
   readonly number: string | null
-  /** The refund's amount, in minor units. */
+  /**
+   * The refund's amount as the reader may see it: for one who sees no tips, at most the payment
+   * less its tip (#220). The true amount is `chargeMinor`.
+   */
   readonly amountMinor: number
+  /** The refund's true amount: only the manager's PIN sheet shows it (Martin 10-29). */
+  readonly chargeMinor: number
+  /** What the payment was captured for and its tip, to take the tip off a reader's amount. */
+  readonly capturedMinor: number
+  readonly tipMinor: number
   readonly currency: string
   /** The payment's service day: the "night of" the storno asks for. */
   readonly serviceDate: string
@@ -40,7 +62,11 @@ export interface RefundFailedAfterStorno {
   readonly tableId: string
   readonly name: string | null
   readonly number: string | null
+  /** As the reader may see it, like {@link RefundToDo.amountMinor}. */
   readonly amountMinor: number
+  readonly chargeMinor: number
+  readonly capturedMinor: number
+  readonly tipMinor: number
   readonly currency: string
   readonly failedAt: Date
   readonly serviceDate: string
@@ -101,6 +127,8 @@ export async function refundsToDo(tx: ReadTx, venueId: string): Promise<readonly
       name: venueTables.name,
       number: venueTables.number,
       amountMinor: paymentRefunds.amountMinor,
+      capturedMinor: payments.capturedMinor,
+      tipMinor: payments.tipMinor,
       currency: payments.currency,
       serviceDate: payments.serviceDate,
       receiptNumber: payments.receiptNumber,
@@ -121,8 +149,10 @@ export async function refundsToDo(tx: ReadTx, venueId: string): Promise<readonly
     .orderBy(asc(paymentRefunds.seenAt), asc(paymentRefunds.id))
     .limit(MAX_TODOS)
   const times = await receiptTimes(tx, venueId, [...new Set(rows.map((row) => row.paymentId))])
-  return rows.map(({ settledAt, ...row }) => ({
+  return rows.map(({ settledAt, capturedMinor, ...row }) => ({
     ...row,
+    chargeMinor: row.amountMinor,
+    capturedMinor: capturedMinor ?? 0,
     paymentNumber: paymentNumberOf(row.paymentId),
     receiptAt: times.get(row.paymentId) ?? settledAt,
   }))
@@ -145,6 +175,8 @@ export async function refundsFailedAfterStorno(
       name: venueTables.name,
       number: venueTables.number,
       amountMinor: paymentRefunds.amountMinor,
+      capturedMinor: payments.capturedMinor,
+      tipMinor: payments.tipMinor,
       currency: payments.currency,
       failedAt: paymentRefunds.failedAt,
       serviceDate: paymentRefunds.serviceDate,
@@ -162,7 +194,18 @@ export async function refundsFailedAfterStorno(
     .orderBy(asc(paymentRefunds.failedAt), asc(paymentRefunds.id))
     .limit(MAX_TODOS)
     .then((rows) =>
-      rows.flatMap((row) => (row.failedAt === null ? [] : [{ ...row, failedAt: row.failedAt }])),
+      rows.flatMap((row) =>
+        row.failedAt === null
+          ? []
+          : [
+              {
+                ...row,
+                failedAt: row.failedAt,
+                chargeMinor: row.amountMinor,
+                capturedMinor: row.capturedMinor ?? 0,
+              },
+            ],
+      ),
     )
 }
 

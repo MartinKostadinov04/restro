@@ -289,6 +289,19 @@ export async function handleProviderNotice(
     return 'waiting'
   }
   if (result.status === 'accepted') {
+    if (result.details.refundsUnmatched === 1) {
+      // The provider's refund total fell by an amount no refund row has: nothing was marked and
+      // no row was made. Amounts are minor units in fields, never in the message.
+      log.warn(
+        {
+          ...about,
+          paymentId: payment.paymentId,
+          refundedMinor: payment.refundedMinor,
+          capturedMinor: payment.capturedMinor,
+        },
+        'a refund total fell by an amount no refund row matches; no refund was marked',
+      )
+    }
     return handled(result.details.changed === true ? 'recorded' : 'unchanged')
   }
   if (TRANSIENT_REFUSALS.includes(result.code)) return 'waiting'

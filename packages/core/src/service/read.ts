@@ -58,6 +58,7 @@ import {
   disputesToDo,
   type RefundFailedAfterStorno,
   type RefundToDo,
+  refundShownMinor,
   refundsFailedAfterStorno,
   refundsToDo,
 } from './payment-todos'
@@ -904,11 +905,23 @@ export async function readTonight(
             disputesToDo(tx, venue.id),
           ])
           const readsTips = held.has('night.view_full') && grants.device !== true
+          // The rows show at most the payment less its tip to those who read no tips; the true
+          // amount stays in `chargeMinor`, for a manager's PIN to confirm (Martin 10-29).
+          const shown = <
+            T extends { amountMinor: number; capturedMinor: number; tipMinor: number },
+          >(
+            row: T,
+          ): T =>
+            readsTips
+              ? row
+              : {
+                  ...row,
+                  amountMinor: refundShownMinor(row.amountMinor, row.capturedMinor, row.tipMinor),
+                }
           return {
-            storno: reads[0],
-            failed: reads[1].filter(
-              (row) => serviceDate(row.failedAt, venue.timezone, venue.serviceDayEndsAt) === day,
-            ),
+            storno: reads[0].map(shown),
+            // A refund that failed after its storno stays for three days, whatever the night.
+            failed: reads[1].map(shown),
             disputes: readsTips
               ? reads[2]
               : reads[2].map((row) => ({

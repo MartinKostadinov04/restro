@@ -213,36 +213,27 @@ export async function seedPayNight(
 }
 
 /**
- * Refunds and disputes read back from the provider (#222), as `payment.observe` leaves them:
- * Table 1 was partly refunded (€5.00, seen a few minutes ago, its storno not made), Table 2 was
- * refunded and its storno made long ago (no row), Table 3's payment is disputed and open with the
- * provider's answer-by date in five days (with an item, its steps and its bank check for the
- * evidence), Table 4's dispute was lost (no row).
+ * The payments of the refunds and disputes test (#222): four captured card payments, one at each of
+ * Tables 1 to 4, whose provider ids are still to be made. Nothing of a refund or a dispute is
+ * written here: the test's worker-side harness (`apps/worker/src/e2e/refunds-harness.ts`) makes
+ * each payment real in the simulated provider and then plays the venue's Dashboard and the
+ * guest's bank, and the worker's notice job records what it reads back through `payment.observe`.
+ * Table 3's payment also holds an item and its steps, for the evidence.
  */
 async function seedRefundsNight(world: PayNightWorld): Promise<void> {
   const { owner, tenantId, venueId, day, tables, sitting } = world
-  const payment = async (
-    number: string,
-    fields: {
-      readonly refundedMinor?: number
-      readonly dispute?: 'open' | 'lost'
-      readonly receiptNumber?: string
-    },
-  ) => {
+  const payment = async (number: string, receiptNumber: string) => {
     const sittingId = await sitting(number)
     const id = newId('py')
     await owner.query(
       `insert into restro.payments
          (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
-          amount_minor, tip_minor, captured_minor, refunded_minor, dispute, dispute_opened_at,
-          dispute_due_at, currency, provider_kind, provider_payment_ref, receipt_number,
-          fiscal_memory_number, three_ds_result, authorisation_code, settled_at, source, actor,
-          job_id)
-       values ($1, $2, $3, $4, $5, $6, 'on_bill', 'captured', $7, 3800, 200, 3800, $8, $9,
-               case when $9::text is not null then now() - interval '2 hours' end,
-               case when $9::text = 'open' then now() + interval '5 days' end,
-               'EUR', 'sim-pay', $10, $11, 'FM-77881', 'authenticated', 'A1B2C3', now(), 'worker',
-               'system', 'e2e-seed')`,
+          amount_minor, tip_minor, captured_minor, currency, provider_kind, provider_payment_ref,
+          receipt_number, fiscal_memory_number, three_ds_result, authorisation_code, settled_at,
+          source, actor, job_id)
+       values ($1, $2, $3, $4, $5, $6, 'on_bill', 'captured', $7, 3800, 200, 3800, 'EUR',
+               'sim-pay', $8, $9, 'FM-77881', 'authenticated', 'A1B2C3', now(), 'worker', 'system',
+               'e2e-seed')`,
       [
         id,
         tenantId,
@@ -251,31 +242,16 @@ async function seedRefundsNight(world: PayNightWorld): Promise<void> {
         sittingId,
         day,
         createHash('sha256').update(id).digest('hex'),
-        fields.refundedMinor ?? 0,
-        fields.dispute ?? null,
-        `pi_e2e_${id.slice(3)}`,
-        fields.receiptNumber ?? 'R-000123',
+        `pending_${id.slice(3)}`,
+        receiptNumber,
       ],
     )
-    return { id, tableId: tables[number] as string, sittingId }
+    return { id, tableId: tables[number] as string }
   }
-  const refund = (paymentId: string, amountMinor: number, minutesAgo: number, storno: boolean) =>
-    owner.query(
-      `insert into restro.payment_refunds
-         (id, tenant_id, venue_id, payment_id, amount_minor, seen_at, service_date, storno_at,
-          storno_by, source, actor, job_id)
-       values ($1, $2, $3, $4, $5, now() - make_interval(mins => $6), $7,
-               case when $8::boolean then now() - make_interval(mins => $6) end,
-               case when $8::boolean then 'system' end, 'worker', 'system', 'e2e-seed')`,
-      [newId('rf'), tenantId, venueId, paymentId, amountMinor, minutesAgo, day, storno],
-    )
-
-  const refunded = await payment('1', { refundedMinor: 500 })
-  await refund(refunded.id, 500, 8, false)
-  const answered = await payment('2', { refundedMinor: 300, receiptNumber: 'R-000124' })
-  await refund(answered.id, 300, 90, true)
-
-  const disputed = await payment('3', { dispute: 'open', receiptNumber: 'R-000125' })
+  await payment('1', 'R-000123')
+  await payment('2', 'R-000124')
+  const disputed = await payment('3', 'R-000125')
+  await payment('4', 'R-000126')
   await owner.query(
     `insert into restro.payment_lines
        (tenant_id, venue_id, payment_id, position, pos_line_ref, quantity, pos_amount_minor,
@@ -297,5 +273,4 @@ async function seedRefundsNight(world: PayNightWorld): Promise<void> {
       [tenantId, venueId, day, disputed.id, disputed.tableId, state, minutes],
     )
   }
-  await payment('4', { dispute: 'lost', receiptNumber: 'R-000126' })
 }

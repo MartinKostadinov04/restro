@@ -997,51 +997,54 @@ export async function readPaymentDetail(
             closedAt: extra?.disputeClosedAt ?? null,
           }
     const evidenceWho = (by: Who): EvidenceWho => by
-    const evidence: DisputeEvidenceInput | null = mayRead('money.follow_up')
-      ? {
-          paymentNumber: paymentNumberOf(row.id),
-          serviceDate: row.serviceDate,
-          timeZone: reader.venue.timezone,
-          currency: row.currency as DisputeEvidenceInput['currency'],
-          amountMinor: payment.amountMinor,
-          tipMinor: payment.tipMinor ?? 0,
-          capturedMinor: payment.capturedMinor,
-          table: payment.table,
-          tableNumbered: payment.numbered,
-          payTable: payment.payTable,
-          payTableNumbered: row.payTableName === null && row.payTableNumber !== null,
-          bar: payment.bar,
-          lines: lines.map((line) => ({
-            name: line.name,
-            quantity: line.quantity,
-            amountMinor: line.amountMinor,
-          })),
-          steps: stepViews.map((step) => ({ ...step, who: evidenceWho(step.who) })),
-          threeDs: extra?.threeDsResult ?? null,
-          providerPaymentRef: extra?.providerPaymentRef ?? null,
-          authorisationCode: extra?.authorisationCode ?? null,
-          receiptNumber: row.receiptNumber,
-          fiscalMemoryNumber: extra?.fiscalMemoryNumber ?? null,
-          dispute:
-            dispute === null
-              ? null
-              : {
-                  state: dispute.state as 'open' | 'won' | 'lost',
-                  openedAt: dispute.openedAt,
-                  dueAt: dispute.dueAt,
-                  closedAt: dispute.closedAt,
-                },
-          refunds: refunds.map((refund) => ({
-            amountMinor: refund.amountMinor,
-            seenAt: refund.seenAt,
-            failed: refund.failed,
-            storno:
-              refund.storno === null
+    // The text that goes to the bank carries the true charge, tip included: only for a reader of
+    // the whole night who answers money (#222).
+    const evidence: DisputeEvidenceInput | null =
+      mayRead('money.follow_up') && full
+        ? {
+            paymentNumber: paymentNumberOf(row.id),
+            serviceDate: row.serviceDate,
+            timeZone: reader.venue.timezone,
+            currency: row.currency as DisputeEvidenceInput['currency'],
+            amountMinor: payment.amountMinor,
+            tipMinor: payment.tipMinor ?? 0,
+            capturedMinor: payment.capturedMinor,
+            table: payment.table,
+            tableNumbered: payment.numbered,
+            payTable: payment.payTable,
+            payTableNumbered: row.payTableName === null && row.payTableNumber !== null,
+            bar: payment.bar,
+            lines: lines.map((line) => ({
+              name: line.name,
+              quantity: line.quantity,
+              amountMinor: line.amountMinor,
+            })),
+            steps: stepViews.map((step) => ({ ...step, who: evidenceWho(step.who) })),
+            threeDs: extra?.threeDsResult ?? null,
+            providerPaymentRef: extra?.providerPaymentRef ?? null,
+            authorisationCode: extra?.authorisationCode ?? null,
+            receiptNumber: row.receiptNumber,
+            fiscalMemoryNumber: extra?.fiscalMemoryNumber ?? null,
+            dispute:
+              dispute === null
                 ? null
-                : { who: evidenceWho(refund.storno.who), at: refund.storno.at },
-          })),
-        }
-      : null
+                : {
+                    state: dispute.state as 'open' | 'won' | 'lost',
+                    openedAt: dispute.openedAt,
+                    dueAt: dispute.dueAt,
+                    closedAt: dispute.closedAt,
+                  },
+            refunds: refunds.map((refund) => ({
+              amountMinor: refund.amountMinor,
+              seenAt: refund.seenAt,
+              failed: refund.failed,
+              storno:
+                refund.storno === null
+                  ? null
+                  : { who: evidenceWho(refund.storno.who), at: refund.storno.at },
+            })),
+          }
+        : null
     return {
       ok: true,
       access: accessOf(reader),

@@ -73,8 +73,10 @@ export interface ActionRow {
     readonly refundId: string
     readonly paymentId: string
     readonly paymentNumber: string
-    /** The refund's amount. */
+    /** The refund's amount, without the tip for a reader who sees none. */
     readonly amountMinor: number
+    /** The refund's true amount: the manager's PIN sheet alone shows it. */
+    readonly chargeMinor: number
     /** The payment's service day, `YYYY-MM-DD`. */
     readonly serviceDate: string
     /** What the storno at the till asks for; null where the POS gave none. */
@@ -529,6 +531,7 @@ export function buildTonightView(input: {
         paymentId: refund.paymentId,
         paymentNumber: refund.paymentNumber,
         amountMinor: refund.amountMinor,
+        chargeMinor: refund.chargeMinor,
         serviceDate: refund.serviceDate,
         receiptNumber: refund.receiptNumber,
         receiptTime: stamp,

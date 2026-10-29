@@ -67,7 +67,8 @@ const storno: ActionRow = {
     refundId: 'rf_0123456789ABCDEFGHIJKL',
     paymentId: 'py_1',
     paymentNumber: 'AB3CD',
-    amountMinor: 500,
+    amountMinor: 400,
+    chargeMinor: 500,
     serviceDate: '2026-10-28',
     receiptNumber: 'R-000123',
     receiptTime: '2026-10-28 22:15',
@@ -123,7 +124,7 @@ describe('the storno row', () => {
     expect(screen.getByText('Make the storno in Mistral')).toBeTruthy()
     expect(
       screen.getByText(
-        /Refund of .*5\.00.* for Table 7, night of 28 October\. Receipt R-000123 of 2026-10-28 22:15, fiscal memory FM-77881\./,
+        /Refund of .*4\.00.* for Table 7, night of 28 October\. Receipt R-000123 of 2026-10-28 22:15, fiscal memory FM-77881\./,
       ),
     ).toBeTruthy()
   })
@@ -176,8 +177,11 @@ describe('the storno row', () => {
     draw(storno, tablet)
     await userEvent.click(screen.getByRole('button', { name: 'Storno done' }))
     expect(screen.getByText("Enter a manager's PIN")).toBeTruthy()
+    // The manager confirming is told the true amount (5.00), which the row (4.00) leaves out.
     expect(
-      screen.getByText("We record that the storno is done in Mistral. Restro doesn't check it."),
+      screen.getByText(
+        /Refund of .*5\.00.* for Table 7, night of 28 October\. .* We record that the storno is done in Mistral\. Restro doesn't check it\./,
+      ),
     ).toBeTruthy()
     await userEvent.keyboard('4321')
     await waitFor(() => expect(stornoDoneAction).toHaveBeenCalled())

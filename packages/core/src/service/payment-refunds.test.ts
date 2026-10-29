@@ -13,7 +13,7 @@ import { hasDatabase } from '../apply/test-database'
 import { newId } from '../ids'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import type { ServiceActor, ServiceContext } from './context'
-import { applyService, readLog, readTonight, type ServiceCommand } from './index'
+import { applyService, readLog, readPaymentDetail, readTonight, type ServiceCommand } from './index'
 import { DEFAULT_ROLE_PERMISSIONS } from './permissions'
 
 describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', () => {
@@ -68,16 +68,19 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
   }
 
   /** A captured card payment of 20.00 with the POS's receipt and fiscal memory numbers. */
-  async function captured(retainUntil: string | null = null): Promise<{ id: string; ref: string }> {
+  async function captured(
+    retainUntil: string | null = null,
+    options: { tipMinor?: number; refundedMinor?: number } = {},
+  ): Promise<{ id: string; ref: string }> {
     const s = await sitting()
     const id = newId('py')
     const ref = `simpay_${randomUUID().replaceAll('-', '')}`
     await world.owner.query(
       `insert into restro.payments
          (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
-          amount_minor, captured_minor, currency, provider_kind, provider_payment_ref,
+          amount_minor, tip_minor, captured_minor, refunded_minor, currency, provider_kind, provider_payment_ref,
           receipt_number, fiscal_memory_number, settled_at, retain_until, source, actor, job_id)
-       values ($1, $2, $3, $4, $5, $6, 'on_bill', 'captured', $7, 2000, 2000, 'EUR', 'sim-pay',
+       values ($1, $2, $3, $4, $5, $6, 'on_bill', 'captured', $7, 2000, $10, 2000, $11, 'EUR', 'sim-pay',
                $8, 'R-000777', 'FM-12345', now(), $9::timestamptz, 'restro', 'system', 'test-seed')`,
       [
         id,
@@ -89,6 +92,8 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
         createHash('sha256').update(id).digest('hex'),
         ref,
         retainUntil,
+        options.tipMinor ?? 0,
+        options.refundedMinor ?? 0,
       ],
     )
     return { id, ref }
@@ -110,6 +115,13 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
     disputeDueAt: null,
     ...reading,
   })
+  const stored = async (id: string) =>
+    (
+      await world.owner.query<{ refunded_minor: string }>(
+        'select refunded_minor from restro.payments where id = $1',
+        [id],
+      )
+    ).rows[0] as { refunded_minor: string }
   const refundRows = async (paymentId: string) =>
     (
       await world.owner.query<{
@@ -183,37 +195,70 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
     expect((await refundRows(batch.id)).map((r) => r.amount_minor)).toEqual(['1500'])
   })
 
-  it('marks the newest row "didn\'t go through" when the refund total falls, and closes its alert', async () => {
+  it('marks only the row whose amount the total fell by, and never invents one', async () => {
     const target = await captured()
     await run(observe(target, { refundedMinor: 500 }), worker())
-    await run(observe(target, { refundedMinor: 1_200 }), worker())
-    expect(await run(observe(target, { refundedMinor: 500 }), worker())).toMatchObject({
+    await run(observe(target, { refundedMinor: 800 }), worker())
+    // The first refund fails: 800 falls to 300, by exactly the first row's 500.
+    expect(await run(observe(target, { refundedMinor: 300 }), worker())).toMatchObject({
       status: 'accepted',
-      details: { refundsFailed: 1 },
+      details: { refundsFailed: 1, refundsAdded: 0, refundsUnmatched: 0 },
     })
     const rows = await refundRows(target.id)
     expect(rows.map((r) => [r.amount_minor, r.failed_at !== null])).toEqual([
-      ['500', false],
-      ['700', true],
+      ['500', true],
+      ['300', false],
     ])
     const alerts = await alertsOf(target.id, 'payment_refunded')
-    expect(alerts.map((a) => a.done_at !== null)).toEqual([false, true])
+    expect(alerts.map((a) => a.done_at !== null)).toEqual([true, false])
     expect(await logKinds(target.id, 'payment.refund_seen')).toMatchObject([
       { to_state: 'seen' },
       { to_state: 'seen' },
-      { to_state: 'failed', details: { amountMinor: 700 } },
+      { to_state: 'failed', details: { amountMinor: 500 } },
     ])
     // It rises again by the same amount: a new row, not the failed one back.
-    await run(observe(target, { refundedMinor: 1_200 }), worker())
-    expect((await refundRows(target.id)).map((r) => r.amount_minor)).toEqual(['500', '700', '700'])
+    await run(observe(target, { refundedMinor: 800 }), worker())
+    expect((await refundRows(target.id)).map((r) => r.amount_minor)).toEqual(['500', '300', '500'])
+  })
+
+  it('marks nothing and makes no row when the total falls by an amount no row has', async () => {
+    const target = await captured()
+    await run(observe(target, { refundedMinor: 500 }), worker())
+    await run(observe(target, { refundedMinor: 800 }), worker())
+    const answer = await run(observe(target, { refundedMinor: 600 }), worker())
+    expect(answer).toMatchObject({
+      status: 'accepted',
+      details: { changed: true, refundsFailed: 0, refundsAdded: 0, refundsUnmatched: 1 },
+    })
+    const rows = await refundRows(target.id)
+    expect(rows.map((r) => [r.amount_minor, r.failed_at])).toEqual([
+      ['500', null],
+      ['300', null],
+    ])
+    // The stored total follows the provider's, and a rise from it makes one row for the rise.
+    expect((await stored(target.id)).refunded_minor).toBe('600')
+    await run(observe(target, { refundedMinor: 700 }), worker())
+    expect((await refundRows(target.id)).map((r) => r.amount_minor)).toEqual(['500', '300', '100'])
+  })
+
+  it('counts a refund made before the rows existed as recorded, and rows only later rises', async () => {
+    const target = await captured(null, { refundedMinor: 500 })
+    expect(await run(observe(target, { refundedMinor: 500 }), worker())).toMatchObject({
+      status: 'accepted',
+      details: { changed: false },
+    })
+    expect(await refundRows(target.id)).toEqual([])
+    await run(observe(target, { refundedMinor: 800 }), worker())
+    expect((await refundRows(target.id)).map((r) => r.amount_minor)).toEqual(['300'])
+    expect(await alertsOf(target.id, 'payment_refunded')).toHaveLength(1)
   })
 
   describe('"Storno done"', () => {
     const done = (refundId: string) => ({ type: 'payment.storno_done', refundId })
-    const undo = (refundId: string, token?: { entry: number }) => ({
+    const undo = (refundId: string, token: { entry: number }) => ({
       type: 'payment.storno_undo',
       refundId,
-      ...(token === undefined ? {} : { undo: token }),
+      undo: token,
     })
 
     it('records who and when, closes the alert, is refused a second time and is taken back by Undo', async () => {
@@ -283,6 +328,17 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
         status: 'refused',
         code: 'refund_failed',
       })
+    })
+
+    it('has no Undo without the token it was answered with', async () => {
+      const target = await captured()
+      await run(observe(target, { refundedMinor: 500 }), worker())
+      const refundId = (await refundRows(target.id))[0]?.id as string
+      await run(done(refundId), context(user(managerId)))
+      expect(
+        await run({ type: 'payment.storno_undo', refundId }, context(user(managerId))),
+      ).toMatchObject({ status: 'refused', code: 'invalid_command' })
+      expect((await refundRows(target.id))[0]?.storno_at).toBeInstanceOf(Date)
     })
   })
 
@@ -400,6 +456,84 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
     })
   })
 
+  describe('what a reader who sees no tips is shown', () => {
+    const readAs = async (actor: ServiceActor) => {
+      const result = await readTonight(world.app, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        actor,
+      })
+      if (!result.ok) throw new Error(result.code)
+      return result.tonight
+    }
+    const tabletActor = (): ServiceActor => ({
+      kind: 'user',
+      userId: deviceUserId,
+      sessionId: deviceSession,
+    })
+
+    it('takes the tip off a refund of the whole payment on the tablet, and keeps the true amount apart', async () => {
+      const target = await captured(null, { tipMinor: 200 })
+      await run(observe(target, { refundedMinor: 2_000 }), worker())
+      const tablet = await readAs(tabletActor())
+      const row = tablet.refunds?.storno.find((entry) => entry.paymentId === target.id)
+      // The bill is 18.00 of the 20.00 charged: the row shows no more, the PIN sheet the true 20.00.
+      expect(row).toMatchObject({ amountMinor: 1_800, chargeMinor: 2_000 })
+      const manager = await readAs(user(managerId))
+      expect(manager.refunds?.storno.find((entry) => entry.paymentId === target.id)).toMatchObject({
+        amountMinor: 2_000,
+        chargeMinor: 2_000,
+      })
+      // A smaller refund is shown as it is.
+      const part = await captured(null, { tipMinor: 200 })
+      await run(observe(part, { refundedMinor: 500 }), worker())
+      const again = await readAs(tabletActor())
+      expect(again.refunds?.storno.find((entry) => entry.paymentId === part.id)).toMatchObject({
+        amountMinor: 500,
+        chargeMinor: 500,
+      })
+    })
+
+    it('shows a refund that failed after its storno for three days, whatever the night', async () => {
+      const target = await captured()
+      await run(observe(target, { refundedMinor: 500 }), worker())
+      const refundId = (await refundRows(target.id))[0]?.id as string
+      await run({ type: 'payment.storno_done', refundId }, context(user(managerId)))
+      await run(observe(target, { refundedMinor: 0 }), worker())
+      const failed = async () =>
+        (await readAs(user(managerId))).refunds?.failed.filter((row) => row.paymentId === target.id)
+      expect(await failed()).toHaveLength(1)
+      await world.owner.query(
+        "update restro.payment_refunds set failed_at = now() - interval '2 days' where id = $1",
+        [refundId],
+      )
+      expect(await failed()).toHaveLength(1)
+      await world.owner.query(
+        "update restro.payment_refunds set failed_at = now() - interval '4 days' where id = $1",
+        [refundId],
+      )
+      expect(await failed()).toHaveLength(0)
+    })
+
+    it('gives the dispute evidence only to a reader of the whole night who answers money', async () => {
+      const target = await captured()
+      const detailFor = async (userId: string) => {
+        const read = await readPaymentDetail(world.app, {
+          tenantId: world.tenantId,
+          venueId: world.venueId,
+          actor: user(userId),
+          paymentId: target.id,
+        })
+        if (!read.ok || read.detail === null) throw new Error('no detail')
+        return read.detail
+      }
+      expect((await detailFor(managerId)).evidence).not.toBeNull()
+      const followUpOnly = await world.addUser('member')
+      await world.addStaff(['log.view', 'night.view', 'money.follow_up'], followUpOnly)
+      expect((await detailFor(followUpOnly)).evidence).toBeNull()
+    })
+  })
+
   describe('the Log', () => {
     const search = async (userId: string, text: string) => {
       const result = await readLog(world.app, {
@@ -424,6 +558,26 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
       const logger = await world.addUser('member')
       await world.addStaff(['log.view'], logger)
       expect(await search(logger, target.ref)).toEqual([])
+    })
+
+    it('finds the payment on any day, by the provider’s id alone', async () => {
+      const target = await captured()
+      await run(observe(target, { refundedMinor: 500 }), worker())
+      const onAnotherDay = (search: string) =>
+        readLog(world.app, {
+          tenantId: world.tenantId,
+          venueId: world.venueId,
+          actor: user(managerId),
+          day: '2020-01-01',
+          search,
+        })
+      const found = await onAnotherDay(target.ref)
+      if (!found.ok) throw new Error(found.code)
+      expect(found.page.rows.map((line) => line.kind)).toEqual(['payment.refund_seen'])
+      // Any other word still looks at the day asked for only.
+      const none = await onAnotherDay('K7Q')
+      if (!none.ok) throw new Error(none.code)
+      expect(none.page.rows).toEqual([])
     })
 
     it('hides the refund lines from a reader who sees no tips', async () => {

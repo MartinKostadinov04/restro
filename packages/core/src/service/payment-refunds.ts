@@ -12,7 +12,7 @@
 // then the refund rows of the payment.
 
 import { alerts, logEntries, paymentRefunds } from '@restro/db'
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema, newId } from '../ids'
@@ -80,69 +80,58 @@ export async function openAlertsOf(
 
 /**
  * Brings the payment's refund rows in line with the provider's refund total (`targetMinor`, an
- * absolute reading): the rows not failed add up to it afterwards.
- * - A total above them is a new refund: one row for the rise (two refunds read back at once make
+ * absolute reading), measured from the total stored before this reading:
+ * - A total above it is a new refund: one row for the rise (two refunds read back at once make
  *   one), one `record` Log entry and one alert for the venue's group. A duplicate or out-of-order
- *   notice reads the same total and so adds nothing.
- * - A total below them is a refund that did not go through: the newest rows are marked until the
- *   rest add up, their alert closes, and a row already answered is left for the accountant.
+ *   notice reads the same total and so adds nothing. A refund made before the rows existed (a
+ *   stored total and no row) counts as recorded; rows are made only for later rises.
+ * - A total below it is a refund that did not go through. Only the newest active row of exactly
+ *   that amount is marked, its alert closes, and a row already answered is left for the
+ *   accountant. A fall no row matches marks nothing and makes no row (`unmatched`: the worker logs
+ *   it); the rows are never invented from a fall. A reading that marks rows adds none.
  */
 export async function reconcileRefunds(
   stx: ServiceTx,
   locked: Locked,
   targetMinor: number,
-): Promise<{ readonly added: number; readonly failed: number }> {
+): Promise<{ readonly added: number; readonly failed: number; readonly unmatched: number }> {
   const { payment } = locked
-  const rows = await stx.tx
-    .select()
-    .from(paymentRefunds)
-    .where(eq(paymentRefunds.paymentId, payment.id))
-    .orderBy(asc(paymentRefunds.seenAt), asc(paymentRefunds.id))
-    .for('update')
-  const active = rows.filter((row) => row.failedAt === null)
-  let sum = active.reduce((total, row) => total + row.amountMinor, 0)
-  let failed = 0
-  if (sum > targetMinor) {
-    const failing: RefundRow[] = []
-    for (const row of [...active].reverse()) {
-      if (sum <= targetMinor) break
-      failing.push(row)
-      sum -= row.amountMinor
-    }
-    if (failing.length > 0) {
-      await stx.tx
-        .update(paymentRefunds)
-        .set({ failedAt: sql`now()`, ...stx.provenance, updatedAt: sql`now()` })
-        .where(
-          inArray(
-            paymentRefunds.id,
-            failing.map((row) => row.id),
-          ),
-        )
-      for (const row of failing) {
-        await stx.log({
-          kind: 'payment.refund_seen',
-          paymentId: payment.id,
-          tableId: payment.tableId,
-          sittingId: payment.sittingId,
-          toState: 'failed',
-          details: {
-            refundId: row.id,
-            amountMinor: row.amountMinor,
-            providerKind: payment.providerKind,
-          },
-        })
-        await closeAlertRows(
-          stx,
-          await openAlertsOf(stx, payment.id, PAYMENT_REFUNDED_KIND, row.id),
-        )
-      }
-      failed = failing.length
-    }
+  const previousMinor = payment.refundedMinor
+  if (targetMinor < previousMinor) {
+    const fallMinor = previousMinor - targetMinor
+    const rows = await stx.tx
+      .select()
+      .from(paymentRefunds)
+      .where(and(eq(paymentRefunds.paymentId, payment.id), isNull(paymentRefunds.failedAt)))
+      .orderBy(desc(paymentRefunds.seenAt), desc(paymentRefunds.id))
+      .for('update')
+    const failing = rows.find((row) => row.amountMinor === fallMinor)
+    if (failing === undefined) return { added: 0, failed: 0, unmatched: 1 }
+    await stx.tx
+      .update(paymentRefunds)
+      .set({ failedAt: sql`now()`, ...stx.provenance, updatedAt: sql`now()` })
+      .where(eq(paymentRefunds.id, failing.id))
+    await stx.log({
+      kind: 'payment.refund_seen',
+      paymentId: payment.id,
+      tableId: payment.tableId,
+      sittingId: payment.sittingId,
+      toState: 'failed',
+      details: {
+        refundId: failing.id,
+        amountMinor: failing.amountMinor,
+        providerKind: payment.providerKind,
+      },
+    })
+    await closeAlertRows(
+      stx,
+      await openAlertsOf(stx, payment.id, PAYMENT_REFUNDED_KIND, failing.id),
+    )
+    return { added: 0, failed: 1, unmatched: 0 }
   }
-  if (sum >= targetMinor) return { added: 0, failed }
+  if (targetMinor === previousMinor) return { added: 0, failed: 0, unmatched: 0 }
   const id = newId('rf')
-  const amountMinor = targetMinor - sum
+  const amountMinor = targetMinor - previousMinor
   await stx.tx.insert(paymentRefunds).values({
     id,
     tenantId: stx.tenantId,
@@ -181,7 +170,7 @@ export async function reconcileRefunds(
     ...stx.provenance,
     updatedAt: sql`now()`,
   })
-  return { added: 1, failed }
+  return { added: 1, failed: 0, unmatched: 0 }
 }
 
 const StornoSchema = (type: 'payment.storno_done' | 'payment.storno_undo') =>
@@ -254,13 +243,14 @@ export function paymentStornoDone() {
 }
 
 /**
- * `payment.storno_undo`: takes the answer back. With the `undo` token "Storno done" answered with
- * it is refused `undo_expired` after 30 seconds and `undo_stale` when the storno was answered or
- * taken back again since (#219); without a token it is a normal command.
+ * `payment.storno_undo`: takes the answer back. It needs the `undo` token "Storno done" answered
+ * with (like `tables.undo_open_all`), so nobody can quietly wipe someone else's answer: it is
+ * refused `undo_expired` after 30 seconds and `undo_stale` when the storno was answered or taken
+ * back again since (#219).
  */
 export function paymentStornoUndo() {
   return defineCommand({
-    schema: StornoSchema('payment.storno_undo').extend({ undo: UndoTokenSchema.optional() }),
+    schema: StornoSchema('payment.storno_undo').extend({ undo: UndoTokenSchema }),
     origins: ['staff'],
     permission: 'money.follow_up',
     idempotency: 'by_nature',

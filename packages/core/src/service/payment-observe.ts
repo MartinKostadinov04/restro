@@ -89,7 +89,7 @@ export function paymentObserve() {
 
       const refunds =
         payment.refundedMinor === command.refundedMinor
-          ? { added: 0, failed: 0 }
+          ? { added: 0, failed: 0, unmatched: 0 }
           : await reconcileRefunds(stx, locked, command.refundedMinor)
       const dispute = await observeDispute(stx, locked, command.dispute, dueAt)
 
@@ -110,6 +110,7 @@ export function paymentObserve() {
           dispute: command.dispute,
           refundsAdded: refunds.added,
           refundsFailed: refunds.failed,
+          refundsUnmatched: refunds.unmatched,
         },
       })
     },

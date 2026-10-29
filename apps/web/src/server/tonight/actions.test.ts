@@ -271,12 +271,16 @@ describe('"Storno done" (#222)', () => {
     runTableCommand.mockResolvedValue({ ok: true, details: { refundId: REFUND, changed: true } })
     await stornoDoneAction({ venueId: VENUE, refundId: REFUND })
     await stornoUndoAction({ venueId: VENUE, refundId: REFUND, undo: { entry: 4821 } })
-    await stornoUndoAction({ venueId: VENUE, refundId: REFUND })
     expect(runTableCommand.mock.calls.map((call) => call[1])).toEqual([
       { type: 'payment.storno_done', refundId: REFUND },
       { type: 'payment.storno_undo', refundId: REFUND, undo: { entry: 4821 } },
-      { type: 'payment.storno_undo', refundId: REFUND },
     ])
+    // An Undo without the token it was answered with is refused before any command.
+    expect(await stornoUndoAction({ venueId: VENUE, refundId: REFUND })).toEqual({
+      ok: false,
+      error: 'invalid',
+    })
+    expect(runTableCommand).toHaveBeenCalledTimes(2)
     expect(queuePaymentStep).not.toHaveBeenCalled()
   })
 

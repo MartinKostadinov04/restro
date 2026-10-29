@@ -649,20 +649,26 @@ export async function readLog(
       .where(
         and(
           eq(logEntries.venueId, reader.venue.id),
-          eq(logEntries.serviceDate, day),
           inArray(logEntries.kind, [...logKindsOf(group)]),
           // A refund's amount may hold the tip: those who read no tips never see the line (#222).
           fullNight ? undefined : ne(logEntries.kind, 'payment.refund_seen'),
-          q === ''
-            ? undefined
-            : or(
-                ilike(sentOrders.reference, `${like(q)}%`),
-                ilike(venueTables.number, `${like(q)}%`),
-                ilike(venueTables.name, `%${like(q)}%`),
-                // The provider's payment id, typed exactly, which the provider's dispute shows:
-                // for managers and owners only (decision log 5.14).
-                reader.held.has('money.follow_up') ? eq(payments.providerPaymentRef, q) : undefined,
-              ),
+          or(
+            and(
+              eq(logEntries.serviceDate, day),
+              q === ''
+                ? undefined
+                : or(
+                    ilike(sentOrders.reference, `${like(q)}%`),
+                    ilike(venueTables.number, `${like(q)}%`),
+                    ilike(venueTables.name, `%${like(q)}%`),
+                  ),
+            ),
+            // The provider's payment id, typed exactly, which the provider's dispute shows: it
+            // finds the payment on any day of the venue, for managers and owners only (log 5.14).
+            q !== '' && reader.held.has('money.follow_up')
+              ? eq(payments.providerPaymentRef, q)
+              : undefined,
+          ),
         ),
       )
       .orderBy(desc(logEntries.seq))

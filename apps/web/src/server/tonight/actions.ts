@@ -300,7 +300,8 @@ export async function tableBillAction(
   }
 }
 
-const OnRefund = z.strictObject({ venueId, refundId: idSchema('rf'), pin, undo })
+const OnRefund = z.strictObject({ venueId, refundId: idSchema('rf'), pin })
+const OnRefundUndo = OnRefund.extend({ undo: z.strictObject({ entry: z.int().positive() }) })
 
 /**
  * "Storno done" (#222): a manager or owner says the storno of a refund was made at the till. A
@@ -315,17 +316,16 @@ export async function stornoDoneAction(input: unknown): Promise<TonightResult> {
   )
 }
 
-/** Undo of "Storno done": the refund waits for its storno again. */
+/**
+ * Undo of "Storno done": the refund waits for its storno again. It needs the token the answer was
+ * given with, so nobody can wipe someone else's answer.
+ */
 export async function stornoUndoAction(input: unknown): Promise<TonightResult> {
-  const parsed = OnRefund.safeParse(input)
+  const parsed = OnRefundUndo.safeParse(input)
   if (!parsed.success) return INVALID
   const { refundId, undo: token } = parsed.data
   return perform(parsed.data, (scope) =>
-    command(scope, {
-      type: 'payment.storno_undo',
-      refundId,
-      ...(token === undefined ? {} : { undo: token }),
-    }),
+    command(scope, { type: 'payment.storno_undo', refundId, undo: token }),
   )
 }
 
