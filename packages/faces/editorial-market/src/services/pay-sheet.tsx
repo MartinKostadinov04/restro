@@ -332,7 +332,9 @@ export function PaySheet() {
             ? w.belowMinimum(money(paying.minCardMinor))
             : block === 'tip_too_big'
               ? w.tipTooBig
-              : null
+              : block === 'bad_email'
+                ? w.emailInvalid
+                : null
   const free = freeLines(bill)
   // Everything is paid: nothing is free to pay and the sitting has paid lines, so the choosing, the
   // totals and Pay go, and the bill shows what was paid (D127 1.2).
@@ -442,6 +444,7 @@ export function PaySheet() {
                 maxLength={254}
                 data-slot="pay.receipt.email"
                 aria-invalid={block === 'bad_email'}
+                aria-describedby={block === 'bad_email' ? 'ro-receipt-email-help' : undefined}
                 onChange={(event) => setReceiptEmail(event.target.value)}
               />
             </label>
@@ -490,7 +493,12 @@ export function PaySheet() {
             </div>
           )}
           {blockWords === null ? null : (
-            <p className="ro-notice" role="status" data-slot="pay.blocked">
+            <p
+              className="ro-notice"
+              role="status"
+              id="ro-receipt-email-help"
+              data-slot="pay.blocked"
+            >
               {blockWords}
             </p>
           )}

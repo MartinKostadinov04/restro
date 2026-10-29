@@ -840,6 +840,10 @@ describe('the venue’s electronic receipt (#186, D127)', () => {
 
     fireEvent.change(field(sheet) as HTMLElement, { target: { value: 'ana@' } })
     expect(field(sheet)?.getAttribute('aria-invalid')).toBe('true')
+    // The reason is on the screen and the field points at it.
+    const help = sheet.querySelector('[data-slot="pay.blocked"]')
+    expect(help?.textContent).toBe('Check the email address')
+    expect(field(sheet)?.getAttribute('aria-describedby')).toBe(help?.id)
     expect(payButton(sheet, 'Pay €22.50').hasAttribute('disabled')).toBe(true)
 
     fireEvent.change(field(sheet) as HTMLElement, { target: { value: ' ana@example.com ' } })

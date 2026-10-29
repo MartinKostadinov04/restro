@@ -126,7 +126,7 @@ import type { Job } from 'pg-boss'
 import type { SimPolicy } from '../config'
 import type { PaymentProviders } from '../connectors'
 import type { Logger } from '../logger'
-import { EmailSendError, type EmailSender } from '../receipts/email-sender'
+import { EmailSendError, type EmailSender, RECEIPT_CALL_TIMEOUT_MS } from '../receipts/email-sender'
 import { assertSimAllowed, serviceConnectorFor, serviceContext } from '../service-connectors'
 import type { Limiter } from '../sync/limiter'
 import { type Bounded, bounded } from './connection'
@@ -162,6 +162,17 @@ export const PAYMENT_RUN_MS = 120_000
 /** The provider's own limit on one call: the Stripe client's timeout, with no retries of its own. */
 const PROVIDER_CALL_MS = 20_000
 
+/** The default waits between a receipt send's tries (a busy service passes in seconds). */
+const RECEIPT_RETRY_DELAYS_MS: readonly number[] = [1_000, 4_000]
+
+/**
+ * The longest the receipt send takes after the close (#186): each try the service's own limit,
+ * and the waits between them. It runs inside the close step, so a step's worst case includes it.
+ */
+export const RECEIPT_SEND_MS =
+  (RECEIPT_RETRY_DELAYS_MS.length + 1) * RECEIPT_CALL_TIMEOUT_MS +
+  RECEIPT_RETRY_DELAYS_MS.reduce((sum, wait) => sum + wait, 0)
+
 /**
  * The longest one route step takes for these timings: the last check's three POS reads and the
  * hold's read at the provider, the pause and the close, each POS call with its turn at the budget.
@@ -169,14 +180,14 @@ const PROVIDER_CALL_MS = 20_000
 export function paymentStepMs(timings: ServiceTimings = SERVICE_TIMINGS): number {
   const read = BUDGET_WAIT_MS + timings.readTimeoutMs
   const write = BUDGET_WAIT_MS + timings.writeTimeoutMs
-  return 3 * read + PROVIDER_CALL_MS + PAYMENT_WRITE_PAUSE_MS + write
+  return 3 * read + PROVIDER_CALL_MS + PAYMENT_WRITE_PAUSE_MS + write + RECEIPT_SEND_MS
 }
 
 /**
  * How long pg-boss lets one prepare run go before it fails it and runs it again: past the run's
  * deadline and one step begun just before it, with a margin (as `order-send`'s five minutes).
  */
-export const PAYMENT_PREPARE_EXPIRE_SECONDS = 5 * 60
+export const PAYMENT_PREPARE_EXPIRE_SECONDS = 6 * 60
 
 export interface PaymentJobDeps {
   readonly sim: SimPolicy
@@ -1559,9 +1570,6 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
   }
   return 'next'
 }
-
-/** The default waits between a receipt send's tries (a busy service passes in seconds). */
-const RECEIPT_RETRY_DELAYS_MS: readonly number[] = [1_000, 4_000]
 
 /**
  * What became of the guest's electronic receipt after a done close (#186), recorded as the

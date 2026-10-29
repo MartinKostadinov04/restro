@@ -267,6 +267,8 @@ export interface PayingStrings {
   readonly paidReceipt: string
   /** The pay screen's optional email field (#186): "Receipt by email (optional)". */
   readonly receiptEmail: string
+  /** Under the field when the address typed is not valid; Pay stays greyed (the lead's words, awaiting Martin). */
+  readonly emailInvalid: string
   /** The Paid screen's line where Restro sent the POS's receipt file to the guest's email (#186). */
   readonly paidReceiptEmailed: (email: string) => string
   /** The same where the POS sends the receipt itself and Restro can only say it was asked (#186). */
@@ -612,6 +614,7 @@ const EN: Strings = {
       paidNumber: 'Payment number',
       paidReceipt: 'Show this number to your waiter. Your waiter brings your receipt.',
       receiptEmail: 'Receipt by email (optional)',
+      emailInvalid: 'Check the email address',
       paidReceiptEmailed: (email) =>
         `Show this number to your waiter. Your receipt was sent to ${email}.`,
       paidReceiptRequested: (email) =>
@@ -952,6 +955,7 @@ const BG: Strings = {
       paidNumber: 'Номер на плащането',
       paidReceipt: 'Покажете този номер на сервитьора. Сервитьорът ще ви донесе касовата бележка.',
       receiptEmail: 'Касова бележка по имейл (по желание)',
+      emailInvalid: 'Проверете имейл адреса',
       paidReceiptEmailed: (email) =>
         `Покажете този номер на сервитьора. Касовата бележка е изпратена на ${email}.`,
       paidReceiptRequested: (email) =>

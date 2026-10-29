@@ -63,7 +63,9 @@ interface ResendOptions {
 }
 
 const API = 'https://api.resend.com/emails'
-const CALL_TIMEOUT_MS = 15_000
+/** How long the service gets to answer one call before it is given up. */
+export const RECEIPT_CALL_TIMEOUT_MS = 15_000
+const CALL_TIMEOUT_MS = RECEIPT_CALL_TIMEOUT_MS
 /** The longest display name Restro puts on a sender; a venue's name is cut here, never refused. */
 const MAX_SENDER_NAME = 60
 /** What the service accepts as an idempotency key (its own rule: 256 characters at most). */

@@ -35,7 +35,7 @@ import {
   guestPayment,
   guestState,
 } from '@restro/core/service'
-import { createPool, type DbPool } from '@restro/db'
+import { createPool, type DbPool, PAYMENT_EMAIL_STATES } from '@restro/db'
 import {
   createSimPayProvider,
   SIM_PAY_KIND,
@@ -463,21 +463,27 @@ describe.skipIf(!hasDatabase).each([
     expect(receiptBill()?.receipt).toMatchObject({ email: null, delivery: null })
   })
 
-  it('refuses an address that is not one, and one where the POS issues no electronic receipt', async () => {
+  it('refuses an address that is not one; where the POS no longer issues the receipt the address is dropped and the guest pays with paper', async () => {
     for (const bad of ['not an email', 'a@example.test, b@example.test', ' a@example.test']) {
       const refused = await pay(bad)
       expect(refused).toEqual({ id: null, code: 'invalid_command' })
     }
-    // The capability recorded as not declared: the phone was never offered the field.
+    // The capability recorded as not declared since the phone was offered the field: the Pay is
+    // accepted, the address is dropped (never stored), and the close is the paper one.
     await query(
       `update restro.integrations set config = jsonb_set(config, '{service_capabilities,electronic_receipt}', 'false') where id = $1`,
       [demo.integrationId],
     )
+    let id: string | null = null
     try {
-      expect(await pay(EMAIL)).toEqual({ id: null, code: 'invalid_command' })
+      const started = await pay(EMAIL)
+      expect(started.code).toBeNull()
+      id = started.id
     } finally {
       await readFloor()
     }
+    if (id === null) throw new Error('the Pay was refused')
+    expect((await stored(id))?.receipt_email).toBeNull()
     expect(await wherever(EMAIL)).toEqual([])
     expect(await wherever('not an email')).toEqual([])
   })
@@ -548,6 +554,16 @@ describe.skipIf(!hasDatabase).each([
         id,
       ]),
     ).rejects.toThrow(/payments_receipt_email/)
+  })
+
+  it('the trigger erases in exactly the states the check lets the address stay in', async () => {
+    const [{ def }] = (await query<{ def: string }>(
+      `select pg_get_functiondef('restro.payments_erase_receipt_email()'::regprocedure) as def`,
+    )) as [{ def: string }]
+    const list = /NOT IN \(([^)]*)\)/.exec(def)?.[1] ?? ''
+    const erased = [...list.matchAll(/'([a-z_]+)'/g)].map((m) => m[1] as string)
+    expect(erased.length).toBeGreaterThan(0)
+    expect([...erased].sort()).toEqual([...PAYMENT_EMAIL_STATES].sort())
   })
 
   it('a payment that never reaches its close loses the address once it is older than any payment takes', async () => {

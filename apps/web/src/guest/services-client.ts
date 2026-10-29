@@ -412,6 +412,9 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
   const durable = deps.durable ?? deps.memory
   /** This phone's payment handle and what the last poll of its payment answered. */
   let handle: string | null = readHandle()
+  // An address outlives no handle: one whose handle expired or never held is forgotten at once
+  // (the memory cannot list its keys, so another table's stale address waits for its own visit).
+  if (handle === null) durable?.remove(payEmailKey(deps.code))
   /** The address this phone gave with its payment, for the Paid screen's line (#186). */
   let receiptEmail: string | null =
     handle === null ? null : (durable?.get(payEmailKey(deps.code)) ?? null)

@@ -571,6 +571,7 @@ describe('the receipt email (#186, D127)', () => {
     }
     const en = stringsFor('en_US').services.paying
     expect(en.receiptEmail).toBe('Receipt by email (optional)')
+    expect(en.emailInvalid).toBe('Check the email address')
     expect(en.paidReceiptEmailed('x@y.z')).toBe(
       'Show this number to your waiter. Your receipt was sent to x@y.z.',
     )
@@ -579,6 +580,7 @@ describe('the receipt email (#186, D127)', () => {
     )
     const bg = stringsFor('bg_BG').services.paying
     expect(bg.receiptEmail).toBe('Касова бележка по имейл (по желание)')
+    expect(bg.emailInvalid).toBe('Проверете имейл адреса')
     expect(bg.paidReceiptRequested('x@y.z')).toContain('Поискахте касова бележка на x@y.z.')
   })
 })

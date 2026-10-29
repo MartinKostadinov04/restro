@@ -569,8 +569,9 @@ export function PayPanel(props: PayPanelProps): ReactNode {
             ? words.belowMinimum(money(paying.minCardMinor))
             : block === 'tip_too_big'
               ? words.tipTooBig
-              : // 'bad_email': the field says it (no word in the guide for it yet).
-                null
+              : block === 'bad_email'
+                ? words.emailInvalid
+                : null
   const all = free.length > 0 && free.every((line) => picks.has(line.id))
   // Everything is paid: nothing is free to pay and the sitting has paid lines, so "Nothing on your
   // bill yet", the choosing, the totals and Pay go, and the bill shows what was paid (D127 1.2).
@@ -690,6 +691,7 @@ export function PayPanel(props: PayPanelProps): ReactNode {
                   maxLength={254}
                   data-slot="pay.receipt.email"
                   aria-invalid={block === 'bad_email' ? 'true' : undefined}
+                  aria-describedby={block === 'bad_email' ? 'rq-receipt-email-help' : undefined}
                   onChange={(event) => setReceiptEmail(event.target.value)}
                 />
               </label>
@@ -740,7 +742,7 @@ export function PayPanel(props: PayPanelProps): ReactNode {
             </div>
           )}
           {blockWords === null ? null : (
-            <p className="rq-note" data-slot="pay.blocked" role="status">
+            <p className="rq-note" id="rq-receipt-email-help" data-slot="pay.blocked" role="status">
               {blockWords}
             </p>
           )}

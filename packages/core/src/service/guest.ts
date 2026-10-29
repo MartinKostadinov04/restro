@@ -43,13 +43,14 @@ import {
   type DbPool,
   guestTableByCodeHash,
   paymentLines,
+  paymentSteps,
   payments,
   sentOrders,
   sittings,
   venues,
   withTenant,
 } from '@restro/db'
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 
 import { TABLE_TOKEN_PATTERN } from '../guest-files'
 import type { LocalizedText } from '../locales'
@@ -80,7 +81,6 @@ import { paymentNumberOf } from './payment-number'
 import { readTableState, type TableStateRead, type TableStateUnchanged } from './read'
 import type { ServiceResult } from './results'
 import { loadSendMenu } from './send-menu'
-import { readTableCapabilities } from './table-capabilities'
 
 /** The screens a phone polls from (design §6): the menu polls slower than the order and the bill. */
 export const GUEST_VIEWS = ['menu', 'order', 'bill'] as const
@@ -1487,11 +1487,18 @@ export async function guestPayment(
       .select({ timezone: venues.timezone })
       .from(venues)
       .where(eq(venues.id, target.venueId))
-    const capabilities = await readTableCapabilities(tx, target.tableId)
+    // What went out is what the worker recorded at the close (`receiptEmail` step): the file was
+    // sent by Restro (`file_sent`) or the POS was asked to send it (`pos_sent`).
+    const [receiptStep] = await tx
+      .select({ outcome: paymentSteps.outcome, answer: paymentSteps.answer })
+      .from(paymentSteps)
+      .where(and(eq(paymentSteps.paymentId, payment.id), eq(paymentSteps.step, 'receiptEmail')))
+      .orderBy(desc(paymentSteps.seq))
+      .limit(1)
     return {
       payment,
       lines,
-      capabilities,
+      receiptStep,
       now: new Date(),
       bills: reading?.bills,
       timeZone: venue?.timezone ?? 'Europe/Sofia',
@@ -1552,10 +1559,14 @@ export async function guestPayment(
     // A captured payment whose paper receipt is not to be brought had its electronic one go out
     // (the worker passes that at the capture, #186, #200).
     receiptEmailed:
-      payment.state === 'captured' && payment.receiptToBringAt === null
-        ? found.capabilities.electronicReceiptFile
+      payment.state === 'captured' &&
+      payment.receiptToBringAt === null &&
+      found.receiptStep?.outcome === 'done'
+        ? found.receiptStep.answer === 'file_sent'
           ? 'sent'
-          : 'requested'
+          : found.receiptStep.answer === 'pos_sent'
+            ? 'requested'
+            : null
         : null,
     timeZone: found.timeZone,
     form:

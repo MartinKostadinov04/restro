@@ -215,6 +215,7 @@ Decided in #45 (D127, "The guest's bill screen"; Martin read them in the prototy
 | `receipt_email` | Pay screen, only where the POS can issue an electronic receipt | Касова бележка по имейл (по желание) | Receipt by email (optional) |
 | `paid_receipt_emailed` | Paid, when an email was given (replaces `paid_receipt`'s second sentence) | Касовата бележка е изпратена на {email}. | Your receipt was sent to {email}. |
 | `confirm_receipt_emailed` | Confirmation page, when an email was given (replaces `confirm_not_receipt`'s second sentence) | Касовата бележка е изпратена на {email}. | Your receipt was sent to {email}. |
+| `email_invalid` | Pay screen, under the receipt field when an address is typed and is not valid (the lead's words, awaiting Martin; Pay stays greyed) | Проверете имейл адреса | Check the email address |
 | `paid_receipt_requested` | Paid, where the POS sends the receipt itself (Martin 10-29; replaces `paid_receipt`'s second sentence) | Поискахте касова бележка на {email}. | Your receipt was requested to {email}. |
 | `confirm_receipt_requested` | Confirmation page, where the POS sends the receipt itself (Martin 10-29; replaces `confirm_not_receipt`'s second sentence) | Поискахте касова бележка на {email}. | Your receipt was requested to {email}. |
 | `back_to_bill` | Buttons | Към сметката | Back to the bill |

@@ -717,6 +717,10 @@ describe('the venue’s electronic receipt (#186, D127)', () => {
 
     await type(field(page), 'ana@')
     expect(field(page)?.getAttribute('aria-invalid')).toBe('true')
+    // The reason is on the screen and the field points at it.
+    const help = page.querySelector('[data-slot="pay.blocked"]')
+    expect(help?.textContent).toBe('Check the email address')
+    expect(field(page)?.getAttribute('aria-describedby')).toBe(help?.id)
     expect(page.querySelector<HTMLButtonElement>('[data-slot="pay.start"]')?.disabled).toBe(true)
 
     await type(field(page), ' ana@example.com ')

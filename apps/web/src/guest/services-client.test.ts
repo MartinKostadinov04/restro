@@ -895,6 +895,26 @@ describe('paying (#110, #114, D127)', () => {
     expect(mem.store.has(payEmailKey(CODE))).toBe(false)
   })
 
+  it('forgets an address whose handle expired or never held, at startup (#186)', () => {
+    const mem = memory({
+      [payHandleKey(CODE)]: `${HANDLE}|${1_000_000 - 1}`,
+      [payEmailKey(CODE)]: 'ana@example.com',
+    })
+    harness(server(), { memory: memory(), durable: mem })
+    expect(mem.store.has(payHandleKey(CODE))).toBe(false)
+    expect(mem.store.has(payEmailKey(CODE))).toBe(false)
+    const none = memory({ [payEmailKey(CODE)]: 'bo@example.com' })
+    harness(server(), { memory: memory(), durable: none })
+    expect(none.store.has(payEmailKey(CODE))).toBe(false)
+    // A live handle keeps its address.
+    const live = memory({
+      [payHandleKey(CODE)]: `${HANDLE}|${1_000_000 + 3_600_000}`,
+      [payEmailKey(CODE)]: 'cy@example.com',
+    })
+    harness(server(), { memory: memory(), durable: live })
+    expect(live.store.get(payEmailKey(CODE))).toBe('cy@example.com')
+  })
+
   it('pays without an address: nothing is kept, and a page reloaded finds the payment with none', async () => {
     const mem = memory()
     const h = harness(server(), { memory: memory(), durable: mem })

@@ -365,9 +365,9 @@ export function payStart() {
       seen: z.array(SeenLineSchema).min(1).max(200),
       tip: TipSchema,
       /**
-       * The guest's email for the venue's electronic receipt (D127, #186): one valid address, only
-       * where the connector declares `electronicReceipt` (else the command is invalid: the phone
-       * was never offered the field). Personal data: kept on the payment only until the close
+       * The guest's email for the venue's electronic receipt (D127, #186): one valid address. Kept
+       * only where the table's connector declares `electronicReceipt` (else it is dropped and the
+       * guest pays with paper). Personal data: kept on the payment only until the close
        * (`payments.receipt_email`), never logged and never in a Log entry.
        */
       receiptEmail: ReceiptEmailSchema.optional(),
@@ -496,10 +496,10 @@ export function payStart() {
       // No tip where the POS can't put it on the receipt (D127): the phone was told none is possible.
       const capabilities = await readTableCapabilities(stx.tx, command.tableId)
       if (tipMinor > 0 && !capabilities.recordTipOnClose) return refuse('tip_not_offered')
-      // No email where the POS can't issue an electronic receipt: the phone was never offered it.
-      if (command.receiptEmail !== undefined && !capabilities.electronicReceipt) {
-        return refused(command.actionId, 'invalid_command')
-      }
+      // Where the table's POS can no longer issue an electronic receipt (the recorded capability
+      // changed since the phone was offered the field), the address is dropped and the guest pays
+      // with paper: never a refused Pay for a field the phone was offered.
+      const receiptEmail = capabilities.electronicReceipt ? (command.receiptEmail ?? null) : null
       const amountMinor = addMinor(linesMinor, tipMinor)
       // The venue's own floor here; the provider's minimum is checked when the worker prices it.
       const floor = readPayingSettings(stx.venue.settings).minCardMinor ?? 0
@@ -520,7 +520,7 @@ export function payStart() {
         handleHash: command.handleHash,
         actionId: command.actionId,
         tipMinor,
-        receiptEmail: command.receiptEmail ?? null,
+        receiptEmail,
         currency,
         providerKind: account.providerKind,
         ...stx.provenance,

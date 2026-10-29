@@ -84,6 +84,11 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
     config.receiptEmail === null || config.receiptEmail === undefined
       ? null
       : createResendSender(config.receiptEmail)
+  if (receiptSender === null) {
+    log.warn(
+      'RECEIPT_FROM_ADDRESS is not set: no receipt file is emailed, and no guest is offered the receipt email where a POS returns the file',
+    )
+  }
   const floorJobs = [
     ...createFloorJobs({ sim: config.sim, receiptSender: receiptSender !== null }),
     ...(billIdKey === null ? [] : createReadingJobs({ sim: config.sim, billIdKey })),

@@ -194,17 +194,25 @@ export async function recoverPayments(
         const target = { tenantId, venueId: row.venueId, paymentId: row.id } as const
         try {
           if (row.emailKept === true) {
-            await applyService(
-              env.pool,
-              { type: 'payment.erase_receipt_email', paymentId: row.id },
-              {
-                tenantId,
-                venueId: row.venueId,
-                origin: 'worker',
-                actor: { kind: 'system' },
-                jobId: `payment-recovery-${row.id}`,
-              },
-            )
+            // Its own try: an erase that fails must never block this payment's recovery.
+            try {
+              await applyService(
+                env.pool,
+                { type: 'payment.erase_receipt_email', paymentId: row.id },
+                {
+                  tenantId,
+                  venueId: row.venueId,
+                  origin: 'worker',
+                  actor: { kind: 'system' },
+                  jobId: `payment-recovery-${row.id}`,
+                },
+              )
+            } catch (error) {
+              env.log.warn(
+                { paymentId: row.id, error: error instanceof Error ? error.name : 'error' },
+                'the guest’s receipt email could not be erased',
+              )
+            }
           }
           const actions = recoveryActions({
             kind: row.kind,
