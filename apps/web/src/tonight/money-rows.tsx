@@ -116,6 +116,9 @@ export function useMoneyRowParts(
   if (m === undefined) return null
 
   const amt = money(m.amountMinor ?? 0, view.currency)
+  // The confirmation tells who confirms what the card really bears, tip included (Martin 10-29);
+  // the row itself keeps the staff amount.
+  const charge = m.chargeMinor === null ? amt : money(m.chargeMinor, view.currency)
   const title = t(moneyTitleKey(m))
   const earlier = m.earlier === null ? null : t('m_earlier', { date: dateText(m.earlier) })
 
@@ -170,7 +173,7 @@ export function useMoneyRowParts(
                 level: 'manager' as const,
                 title: t(choice === 'ok' ? words.okLabel : words.noLabel),
                 body: t(choice === 'ok' ? words.okBody : words.noBody, {
-                  amt,
+                  amt: charge,
                   table: name,
                   source: view.source,
                 }),
@@ -189,7 +192,7 @@ export function useMoneyRowParts(
           router.refresh()
           return result
         },
-        done: t(choice === 'ok' ? words.okToast : words.noToast, { amt }),
+        done: t(choice === 'ok' ? words.okToast : words.noToast, { amt: charge }),
       })
     }
     return {

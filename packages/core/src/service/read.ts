@@ -56,6 +56,7 @@ import { loadPayingConnection } from './payment-connection'
 import type { Permission } from './permissions'
 import { type ReceiptToBring, receiptsToBring } from './receipt-rows'
 import { sentOrderLinesOf } from './send'
+import { withoutTipMinor } from './staff-amount'
 import { readTableCapabilities } from './table-capabilities'
 import { orderedKinds } from './waiter-call'
 
@@ -707,9 +708,27 @@ const PAYMENT_QUESTION_KINDS: readonly string[] = [
   PAYMENT_LINES_NOT_BACK_KIND,
 ]
 
-/** An alert's details without the tips: Staff, and so a shared device, never see them. */
-function withoutTips(details: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(details).filter(([key]) => !key.startsWith('tip')))
+/**
+ * An alert's details without the tips: Staff, and so a shared device, never see them. A payment
+ * alert's `amountMinor` is the charge with the tip in it, so the tip comes off it too (#220):
+ * the total would give the tip away next to the bill. Whoever may confirm the alert's answer also
+ * gets `chargeMinor`, the true charge, for the confirmation.
+ */
+function withoutTips(
+  details: Record<string, unknown>,
+  mayConfirm: boolean,
+): Record<string, unknown> {
+  const { amountMinor, tipMinor } = details
+  const kept = Object.fromEntries(Object.entries(details).filter(([key]) => !key.startsWith('tip')))
+  if (typeof amountMinor !== 'number' || typeof tipMinor !== 'number') return kept
+  // Whoever confirms the answer (a manager's PIN on the shared device, or the right on a phone) is
+  // told the true charge in the confirmation, as the guest's card will bear it (Martin 10-29); the
+  // row itself stays without the tip.
+  return {
+    ...kept,
+    amountMinor: withoutTipMinor(amountMinor, tipMinor),
+    ...(mayConfirm ? { chargeMinor: amountMinor } : {}),
+  }
 }
 
 /** How many Log entries Tonight shows at once. */
@@ -841,7 +860,15 @@ export async function readTonight(
           .orderBy(waiterCalls.calledAt)
       : null
 
-    const receipts = held.has('alerts.answer') ? await receiptsToBring(tx, venue.id, day) : null
+    // The row's amount is the charge: with its tip only for those who read the whole night (#220).
+    const receipts = held.has('alerts.answer')
+      ? await receiptsToBring(
+          tx,
+          venue.id,
+          day,
+          held.has('night.view_full') && grants.device !== true,
+        )
+      : null
 
     const active = await tx
       .select({
@@ -947,11 +974,20 @@ export async function readTonight(
             PAYMENT_QUESTION_KINDS.includes(alert.kind),
         )
         .map((alert) =>
-          // A tip is for those who answer the alert: not a shared device, not a waiter who only
-          // sees that a payment question waits (#115).
+          // A tip is for those who answer the alert and read the whole night: not a shared device,
+          // not a waiter who only sees that a payment question waits (#115), not a role without
+          // `night.view_full` (#220).
           grants.device === true ||
+          !held.has('night.view_full') ||
           (alert.permission !== null && !held.has(alert.permission as Permission))
-            ? { ...alert, details: withoutTips(alert.details) }
+            ? {
+                ...alert,
+                details: withoutTips(
+                  alert.details,
+                  grants.device === true ||
+                    (alert.permission !== null && held.has(alert.permission as Permission)),
+                ),
+              }
             : alert,
         ),
       landedLate: landed.flatMap((row) =>

@@ -225,13 +225,19 @@ describe.skipIf(!hasDatabase)('the service read side (as the restro_app role)', 
     await world.addSharedDevice(session)
     const device = await tonightOf(user(ownerId, session))
     const money = device.alerts.find((alert) => alert.kind === 'payment_unconfirmed')
-    expect(money?.details).toMatchObject({ amountMinor: 3800 })
+    // The charge less its tip (#220): the total would give the tip away.
+    expect(money?.details).toMatchObject({ amountMinor: 3600 })
     expect(money?.details).not.toHaveProperty('tipMinor')
+    // The device's confirmation, behind a manager's PIN, is told the true charge (Martin 10-29).
+    expect(money?.details).toMatchObject({ chargeMinor: 3800 })
     // A member with Staff's rights on a phone of their own sees that a payment question waits (#115),
     // without a tip, but no other manager's alert.
     const phone = await tonightOf(user(waiterId))
     const seen = phone.alerts.find((alert) => alert.kind === 'payment_unconfirmed')
     expect(seen?.details).not.toHaveProperty('tipMinor')
+    expect(seen?.details).toMatchObject({ amountMinor: 3600 })
+    // A waiter does not confirm: no true charge.
+    expect(seen?.details).not.toHaveProperty('chargeMinor')
     await world.owner.query(
       "update restro.alerts set kind = 'payment_capture_failed' where kind = 'payment_unconfirmed' and tenant_id = $1",
       [world.tenantId],

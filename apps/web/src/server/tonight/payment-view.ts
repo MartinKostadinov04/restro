@@ -145,10 +145,11 @@ function payFixRow(fix: NightPayFix, timezone: string): ActionRow | null {
       paymentId: payment.id,
       question: fix.question,
       amountMinor: payment.amountMinor,
+      chargeMinor: fix.chargeMinor,
       reference: payment.reference,
       holdUntil: variant === 'question' ? holdOf(payment.captureBefore, timezone) : null,
       holdAt: variant === 'question' ? (payment.captureBefore?.getTime() ?? null) : null,
-      earlier: null,
+      earlier: fix.earlier,
       charged: false,
     },
   }

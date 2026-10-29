@@ -8,7 +8,8 @@
 //   of a sent order.
 // - the Log: `log.view`.
 // - the end of the night: `night.view` (sections 1–3 and part 1's totals, no tips) or
-//   `night.view_full` (all). Money lines of part 2 are carried only for `money.follow_up`.
+//   `night.view_full` (all). Money lines of part 2 are carried only for `money.follow_up` together with
+//   `night.view_full`: its totals hold the tips (#220).
 //
 // Times are `Date`s; the screen words them in the venue's zone.
 
@@ -42,6 +43,7 @@ import type { Permission } from './permissions'
 import type { TonightRefusal } from './read'
 import { sentOrderLinesOf } from './sent-lines'
 import { type ServiceDayTotals, serviceDayTotals } from './service-day-close'
+import { withoutTipMinor } from './staff-amount'
 
 /** The states that never reached the bill: what "Not added" counts. */
 export const NOT_ADDED_STATES = ['not_sent', 'unconfirmed'] as const
@@ -553,7 +555,7 @@ export interface LogLine {
   readonly cause: string | null
   /** The staff member, role or device a settings entry is about, by name. */
   readonly subject: string | null
-  /** A payment's amount without the tip, in minor units. */
+  /** A payment's amount in minor units: with the tip for `night.view_full`, else without it. */
   readonly amountMinor: number | null
   /** The sent orders a closed night held. */
   readonly sentOrdersOfDay: number | null
@@ -616,6 +618,8 @@ export async function readLog(
     const group: LogGroup | null = isLogGroup(input.group) ? input.group : null
     const q = (input.search ?? '').trim()
     const limit = Math.min(Math.max(input.limit ?? PAGE_SIZE, 1), MAX_ROWS)
+    // A payment's amount carries its tip: the tip comes off for those who never see tips (#220).
+    const fullNight = reader.held.has('night.view_full')
     const found = await tx
       .select({
         seq: logEntries.seq,
@@ -634,6 +638,7 @@ export async function readLog(
         via: logEntries.via,
         details: logEntries.details,
         amountMinor: payments.amountMinor,
+        tipMinor: payments.tipMinor,
       })
       .from(logEntries)
       .leftJoin(venueTables, eq(venueTables.id, logEntries.tableId))
@@ -773,7 +778,9 @@ export async function readLog(
                     : { kind: 'venue', name: null },
             cause: row.kind === 'pause.started' ? row.reason : detailText(row.details, 'cause'),
             subject: subjectKey === null ? null : (subjectName.get(subjectKey) ?? null),
-            amountMinor: row.amountMinor ?? null,
+            amountMinor: fullNight
+              ? (row.amountMinor ?? null)
+              : withoutTipMinor(row.amountMinor ?? null, row.tipMinor ?? 0),
             sentOrdersOfDay: typeof sentOrdersOfDay === 'number' ? sentOrdersOfDay : null,
             callKinds: callKindsOf(row.kind, row.details),
           }
@@ -807,7 +814,7 @@ export interface NightFixRow {
   readonly answer: SentOrderRow['answer']
 }
 
-/** What part 2 fills in: carried only for `money.follow_up`, counted live or from the close. */
+/** What part 2 fills in: carried only for `money.follow_up` and `night.view_full` (it holds the tips), counted live or from the close. */
 export interface NightMoney {
   readonly payments: number
   readonly capturedMinor: number
@@ -1040,15 +1047,16 @@ export async function readNight(
         fix,
         sent: { counts: sent.counts, notAdded: sent },
         totals: part1,
-        money: reader.held.has('money.follow_up')
-          ? {
-              payments: paymentCount,
-              capturedMinor,
-              tipMinor,
-              paymentsUnconfirmed,
-              unconfirmedMinor,
-            }
-          : null,
+        money:
+          reader.held.has('money.follow_up') && reader.held.has('night.view_full')
+            ? {
+                payments: paymentCount,
+                capturedMinor,
+                tipMinor,
+                paymentsUnconfirmed,
+                unconfirmedMinor,
+              }
+            : null,
       },
     } as const
   })

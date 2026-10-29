@@ -209,7 +209,8 @@ describe.skipIf(!hasDatabase)('Bring the receipt (as the restro_app role)', () =
     if (!read.ok) throw new Error(read.code)
     expect(read.receipts.find((receipt) => receipt.paymentId === printed)).toMatchObject({
       receiptNumber: null,
-      amountMinor: 1450,
+      // 14.50 charged, 1.00 of it tip: staff read the bill without the tip (#220).
+      amountMinor: 1350,
     })
     expect(await run(brought(printed), context(user(staffId)))).toMatchObject({
       details: { changed: true },
@@ -385,7 +386,7 @@ describe.skipIf(!hasDatabase)('Bring the receipt (as the restro_app role)', () =
       tableId: world.tables[1],
       receiptNumber: 'R-000123',
       // What was charged, not what was held.
-      amountMinor: 1450,
+      amountMinor: 1350,
       currency: 'EUR',
     })
     const refusedRead = await readReceiptsToBring(world.app, {

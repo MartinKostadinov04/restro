@@ -132,9 +132,13 @@ test("a waiter's own phone sees the questions and who answers them, with no butt
   await expect(rowOf(page, '3')).toContainText('Is the order on the till?')
   await expect(rowOf(page, '3')).toContainText('Paid first · order P3X1')
   await expect(rowOf(page, '1')).toContainText('Was the receipt printed?')
-  await expect(rowOf(page, '1')).toContainText('€38.00 on hold')
+  // The payment is €38.00 with a €2.00 tip; staff never see the tip (decision log 3.4), so a waiter
+  // reads the bill without it.
+  await expect(rowOf(page, '1')).toContainText('€36.00 on hold')
 })
 
+// The shared tablet is staff-level: its rows show the bill without the tip (€38.00 charged, €2.00
+// of it tip), but a manager confirming a PIN there is told the true charge (Martin 10-29).
 test("on the tablet a manager's PIN answers: receipt printed / no receipt, on the till / not on the till", async () => {
   const { page } = tablet
   await openPay(page)
@@ -147,6 +151,8 @@ test("on the tablet a manager's PIN answers: receipt printed / no receipt, on th
       .count(),
   ).toBe(0)
   await expect(rowOf(page, '1').getByRole('button')).toHaveText(['Receipt printed', 'No receipt'])
+  // The row's own text stays without the tip.
+  await expect(rowOf(page, '1')).toContainText('€36.00 on hold')
   await expect(rowOf(page, '3').getByRole('button')).toHaveText(['On the till', 'Not on the till'])
 
   // Receipt printed: one tap and the PIN, which names the consequence. A staff PIN is told so.
@@ -191,6 +197,8 @@ test("on the tablet a manager's PIN answers: receipt printed / no receipt, on th
 test("an owner answers in one tap, and the Log words a till answer as the till's", async () => {
   const { page } = owner
   await openPay(page)
+  // The owner reads the whole payment, tip included (staff read €36.00 on the same row).
+  await expect(rowOf(page, '1')).toContainText('€38.00 on hold')
   const printed = new Taps()
   await printed.tap(rowOf(page, '1').getByRole('button', { name: 'Receipt printed' }))
   await expect(toast(page, 'Card charged €38.00')).toBeVisible()

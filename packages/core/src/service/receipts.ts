@@ -35,7 +35,8 @@ export async function readReceiptsToBring(
     if (!opened.ok) return opened
     const { held, today } = opened.reader
     if (!held.has('alerts.answer')) return { ok: false, code: 'permission_denied' } as const
-    return { ok: true, receipts: await receiptsToBring(tx, input.venueId, today) } as const
+    const full = held.has('night.view_full') && !opened.reader.device
+    return { ok: true, receipts: await receiptsToBring(tx, input.venueId, today, full) } as const
   })
 }
 
