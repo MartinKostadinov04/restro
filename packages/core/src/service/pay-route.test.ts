@@ -688,6 +688,51 @@ describe.skipIf(!hasDatabase)('answering an unconfirmed close (as the restro_app
     })
   })
 
+  it("asks an unknown close's question afresh after an answered one, never twice beside an open one", async () => {
+    const closeUnknown = (id: string) =>
+      applyService(
+        world.app,
+        {
+          type: 'payment.closed',
+          paymentId: id,
+          outcome: 'unknown',
+          code: null,
+          receiptNumber: null,
+          fiscalMemoryNumber: null,
+        },
+        worker(),
+      )
+    const earlier = async (id: string, done: boolean) =>
+      world.owner.query(
+        `insert into restro.alerts
+           (id, tenant_id, venue_id, service_date, kind, audience, subject_id, permission, details,
+            done_at, source, actor, job_id)
+         values ($1, $2, $3, current_date, 'payment_unconfirmed', 'venue', $4, 'money.follow_up',
+            '{}'::jsonb, $5, 'restro', 'system', 'test-seed')`,
+        [newId('al'), world.tenantId, world.venueId, id, done ? new Date() : null],
+      )
+    const questions = async (id: string) =>
+      (
+        await world.owner.query<{ open: boolean }>(
+          `select done_at is null as open from restro.alerts
+            where subject_id = $1 and kind = 'payment_unconfirmed' order by open`,
+          [id],
+        )
+      ).rows.map((row) => row.open)
+    // An earlier question answered (a pay-first round's entry, #113): a fresh one is asked.
+    const answered = await payment('checked')
+    await earlier(answered, true)
+    expect((await closeUnknown(answered)).result).toMatchObject({
+      details: { changed: true, state: 'unconfirmed' },
+    })
+    expect(await questions(answered)).toEqual([false, true])
+    // One still open: it stays the only one.
+    const open = await payment('checked')
+    await earlier(open, false)
+    expect((await closeUnknown(open)).result).toMatchObject({ details: { changed: true } })
+    expect(await questions(open)).toEqual([true])
+  })
+
   it("tells Restro's team once about a payment stuck in the worker's own states", async () => {
     const stuck = (id: string) =>
       applyService(world.app, { type: 'payment.stuck', paymentId: id }, worker())
