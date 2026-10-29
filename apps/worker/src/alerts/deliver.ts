@@ -55,6 +55,7 @@ import {
 } from '@restro/db'
 import { and, eq, gt, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm'
 
+import { providerDisplayName } from '../connectors'
 import type { Logger } from '../logger'
 import type { DeviceSubscription, PushSender } from './push'
 import { type PushRecipient, pushTargets } from './push-targets'
@@ -453,6 +454,9 @@ function messageOf(input: StepInput, alert: LoadedAlert): AlertMessage {
     venueName: venue.name,
     tableLabel: tableId === null ? null : (words.tableLabels.get(tableId) ?? null),
     source: words.source,
+    provider: providerDisplayName(
+      typeof alert.details.providerKind === 'string' ? alert.details.providerKind : null,
+    ),
   }
   const base = alertMessage(
     { kind: alert.planned.kind, details: alert.details },

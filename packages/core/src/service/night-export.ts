@@ -127,6 +127,7 @@ export type NightPayWhat =
   | 'expired'
   | 'no_receipt'
   | 'receipt_not_brought'
+  | 'storno_not_done'
 
 interface Words {
   readonly head: (venue: string, date: string) => string
@@ -147,6 +148,7 @@ const PAY_WHAT: Readonly<Record<AlertLocale, Readonly<Record<NightPayWhat, strin
     expired: 'задържаната сума изтече преди някой да отговори',
     no_receipt: 'таксувано, без номер на бележка',
     receipt_not_brought: 'бележката не е занесена',
+    storno_not_done: 'сторното не е направено',
   },
   en: {
     unconfirmed: 'not confirmed',
@@ -156,6 +158,7 @@ const PAY_WHAT: Readonly<Record<AlertLocale, Readonly<Record<NightPayWhat, strin
     expired: 'a card hold ran out before anyone answered',
     no_receipt: 'charged, no receipt number',
     receipt_not_brought: 'receipt not brought',
+    storno_not_done: 'storno not done',
   },
 }
 

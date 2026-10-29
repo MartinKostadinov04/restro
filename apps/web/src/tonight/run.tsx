@@ -39,10 +39,15 @@ export interface RunSpec {
   /** The toast after it worked. */
   readonly done: string
   /**
-   * The inverse write, given what the write answered and its undo token; without one the toast has
-   * no Undo. Send the token on, so core can refuse a late or stale Undo.
+   * The inverse write, given what the write answered, its undo token and the PIN the write was
+   * entered with (the same person undoes it, on a shared device); without one the toast has no
+   * Undo. Send the token on, so core can refuse a late or stale Undo.
    */
-  readonly undo?: (done: Accepted, token: UndoToken | undefined) => Promise<TonightResult>
+  readonly undo?: (
+    done: Accepted,
+    token: UndoToken | undefined,
+    pin: string | undefined,
+  ) => Promise<TonightResult>
   /**
    * Whether the toast offers its Undo, given what the write answered: a repeat that changed
    * nothing (`changed: false`) must not undo someone else's mark. Left out: always.
@@ -68,7 +73,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false)
 
   const finish = useCallback(
-    (spec: RunSpec, done: Accepted) => {
+    (spec: RunSpec, done: Accepted, pin?: string) => {
       const { undo } = spec
       toast(spec.done, {
         id: spec.id,
@@ -78,7 +83,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
               action: {
                 label: t('undo'),
                 onClick: () => {
-                  void undo(done, undoTokenOf(done)).then((result) => {
+                  void undo(done, undoTokenOf(done), pin).then((result) => {
                     if (!result.ok) {
                       toast.error(
                         failureText(result.error, result.retryAfterSeconds, result.details),
@@ -103,7 +108,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
       setBusy(true)
       try {
         const result = await spec.act(pin)
-        if (result.ok) finish(spec, result)
+        if (result.ok) finish(spec, result, pin)
         return result
       } finally {
         setBusy(false)

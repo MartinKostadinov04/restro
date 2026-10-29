@@ -34,6 +34,8 @@ import {
   pauseOrderingAction,
   receiptBroughtAction,
   receiptUnbroughtAction,
+  stornoDoneAction,
+  stornoUndoAction,
   undoOpenAllAction,
 } from './actions'
 
@@ -257,6 +259,47 @@ describe('the undo token of a staff Undo (#219)', () => {
         ok: false,
         error: 'invalid',
       })
+    }
+    expect(runTableCommand).not.toHaveBeenCalled()
+  })
+})
+
+describe('"Storno done" (#222)', () => {
+  const REFUND = 'rf_0123456789ABCDEFGHIJKL'
+
+  it('sends the answer of the refund, and the Undo with its token', async () => {
+    runTableCommand.mockResolvedValue({ ok: true, details: { refundId: REFUND, changed: true } })
+    await stornoDoneAction({ venueId: VENUE, refundId: REFUND })
+    await stornoUndoAction({ venueId: VENUE, refundId: REFUND, undo: { entry: 4821 } })
+    expect(runTableCommand.mock.calls.map((call) => call[1])).toEqual([
+      { type: 'payment.storno_done', refundId: REFUND },
+      { type: 'payment.storno_undo', refundId: REFUND, undo: { entry: 4821 } },
+    ])
+    // An Undo without the token it was answered with is refused before any command.
+    expect(await stornoUndoAction({ venueId: VENUE, refundId: REFUND })).toEqual({
+      ok: false,
+      error: 'invalid',
+    })
+    expect(runTableCommand).toHaveBeenCalledTimes(2)
+    expect(queuePaymentStep).not.toHaveBeenCalled()
+  })
+
+  it('passes a second answer on as refused', async () => {
+    runTableCommand.mockResolvedValueOnce({ ok: false, error: 'storno_answered' })
+    expect(await stornoDoneAction({ venueId: VENUE, refundId: REFUND })).toEqual({
+      ok: false,
+      error: 'storno_answered',
+    })
+  })
+
+  it('refuses an id of another kind or an extra field before any command', async () => {
+    for (const input of [
+      { venueId: VENUE, refundId: PAYMENT },
+      { venueId: VENUE },
+      { venueId: VENUE, refundId: REFUND, amountMinor: 100 },
+      { venueId: VENUE, refundId: REFUND, pin: '12' },
+    ]) {
+      expect(await stornoDoneAction(input)).toEqual({ ok: false, error: 'invalid' })
     }
     expect(runTableCommand).not.toHaveBeenCalled()
   })

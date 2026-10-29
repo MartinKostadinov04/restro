@@ -379,3 +379,40 @@ describe("a pay-first round's question (#113, #115)", () => {
     }
   })
 })
+
+describe('the refund and dispute alerts (#222)', () => {
+  const refunded = {
+    kind: 'payment_refunded',
+    // An amount in the details never reaches the group (decision log 5.8).
+    details: { refundId: 'rf_1', amountMinor: 1234, providerKind: 'sim-pay' },
+  }
+  const disputed = {
+    kind: 'payment_disputed',
+    details: { paymentDate: '2026-10-28', amountMinor: 4600 },
+  }
+
+  it('tells the group the table, the provider and the POS, with no amount', () => {
+    expect(alertMessage(refunded, { ...context('en'), provider: 'Stripe' }, 'new').title).toBe(
+      'Table 7: a refund was made in Stripe. Make the storno in barsy.',
+    )
+    expect(alertMessage(refunded, { ...context('bg'), provider: 'Stripe' }, 'new').title).toBe(
+      'Маса 7: направено е връщане в Stripe. Направете сторно в barsy.',
+    )
+    expect(alertMessage(refunded, context('en'), 'new').title).toContain('the payment provider')
+  })
+
+  it('tells the group the table and the payment’s day, with no amount', () => {
+    expect(alertMessage(disputed, context('en'), 'new').title).toBe(
+      'Table 7: card dispute on a payment of 28 Oct 2026. A manager sees the evidence in Restro.',
+    )
+    expect(alertMessage(disputed, context('bg'), 'new').title).toBe(
+      'Маса 7: спор по картово плащане от 28.10.2026. Мениджър вижда доказателствата в Restro.',
+    )
+    for (const alert of [refunded, disputed]) {
+      for (const locale of ['en', 'bg'] as const) {
+        const message = alertMessage(alert, context(locale), 'new')
+        expect(`${message.title}${message.body}`).not.toMatch(/1234|12\.34|4600|46\.00/)
+      }
+    }
+  })
+})

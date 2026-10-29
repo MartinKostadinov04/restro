@@ -300,6 +300,35 @@ export async function tableBillAction(
   }
 }
 
+const OnRefund = z.strictObject({ venueId, refundId: idSchema('rf'), pin })
+const OnRefundUndo = OnRefund.extend({ undo: z.strictObject({ entry: z.int().positive() }) })
+
+/**
+ * "Storno done" (#222): a manager or owner says the storno of a refund was made at the till. A
+ * manager's PIN on a shared device; the Log names who. A second answer is refused
+ * (`storno_answered`). Restro never checks the POS.
+ */
+export async function stornoDoneAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnRefund.safeParse(input)
+  if (!parsed.success) return INVALID
+  return perform(parsed.data, (scope) =>
+    command(scope, { type: 'payment.storno_done', refundId: parsed.data.refundId }),
+  )
+}
+
+/**
+ * Undo of "Storno done": the refund waits for its storno again. It needs the token the answer was
+ * given with, so nobody can wipe someone else's answer.
+ */
+export async function stornoUndoAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnRefundUndo.safeParse(input)
+  if (!parsed.success) return INVALID
+  const { refundId, undo: token } = parsed.data
+  return perform(parsed.data, (scope) =>
+    command(scope, { type: 'payment.storno_undo', refundId, undo: token }),
+  )
+}
+
 const OnAlert = z.strictObject({ venueId, alertId: idSchema('al'), pin })
 const OnPayment = z.strictObject({
   venueId,

@@ -16,7 +16,7 @@ import {
   type ThreeDsResult,
 } from '@restro/core'
 
-import type { StripeAccount, StripeCharge, StripePaymentIntent } from './api'
+import type { StripeAccount, StripeCharge, StripeDispute, StripePaymentIntent } from './api'
 
 /** The metadata key that carries our payment id on the PaymentIntent (design §10). */
 export const PAYMENT_METADATA_KEY = 'restro_payment'
@@ -104,6 +104,16 @@ export function disputeState(status: string): PaymentDisputeState | null | 'unkn
   }
 }
 
+/**
+ * Until when the venue may answer a dispute (#222): `evidence_details.due_by`, a Unix time
+ * (https://docs.stripe.com/api/disputes/object.md#dispute_object-evidence_details-due_by). Stripe
+ * gives 0 or none where the bank allows no answer; that is no date, never a date in 1970.
+ */
+export function disputeDueAt(dispute: StripeDispute): string | null {
+  const dueBy = dispute.evidence_details?.due_by ?? 0
+  return dueBy > 0 ? new Date(dueBy * 1000).toISOString() : null
+}
+
 /** Our payment id from the intent's metadata, or null when the intent is not one Restro made. */
 export function paymentIdOf(intent: StripePaymentIntent): ProviderPayment['paymentId'] | null {
   const parsed = PaymentIdSchema.safeParse(intent.metadata?.[PAYMENT_METADATA_KEY])
@@ -112,12 +122,14 @@ export function paymentIdOf(intent: StripePaymentIntent): ProviderPayment['payme
 
 /**
  * The payment as the seam has it. `charge` is the intent's latest charge (expanded), and
- * `dispute` the latest dispute's state, read separately; both may be absent.
+ * `dispute` the latest dispute's state and `disputeDueAt` its answer-by date, read separately; all
+ * may be absent.
  */
 export function providerPayment(
   intent: StripePaymentIntent,
   charge: StripeCharge | null,
   dispute: PaymentDisputeState | null,
+  dueAt: string | null = null,
 ): Mapped<ProviderPayment> {
   const status = paymentStatus(intent)
   if (status === null) return { ok: false, reason: `unknown payment status ${intent.status}` }
@@ -139,6 +151,7 @@ export function providerPayment(
     capturedMinor: status === 'captured' ? intent.amount_received : 0,
     refundedMinor: charge?.amount_refunded ?? 0,
     dispute: status === 'captured' ? dispute : null,
+    disputeDueAt: status === 'captured' && dispute !== null ? dueAt : null,
     captureBefore: captureBefore === null ? null : new Date(captureBefore * 1000).toISOString(),
     threeDs: threeDsResult(card?.three_d_secure?.result),
     authorisationCode:

@@ -55,6 +55,7 @@ import { checkStripeKey, withoutSecrets } from './config'
 import { classify, detailOf, failedWrite, isMissing, type WriteStep } from './errors'
 import {
   connectionStatus,
+  disputeDueAt,
   disputeState,
   type Mapped,
   PAYMENT_METADATA_KEY,
@@ -176,7 +177,9 @@ export function createStripeProvider(options: StripeProviderOptions): PaymentPro
   async function latestDispute(
     accountRef: ProviderRef,
     intentId: string,
-  ): Promise<Mapped<PaymentDisputeState | null>> {
+  ): Promise<
+    Mapped<{ readonly state: PaymentDisputeState; readonly dueAt: string | null } | null>
+  > {
     // GET /v1/disputes?payment_intent=…: newest first (https://docs.stripe.com/api/disputes/list.md).
     const disputes = await get(listSchema(DisputeSchema), () =>
       stripe.disputes.list({ payment_intent: intentId, limit: 10 }, on(accountRef)),
@@ -186,7 +189,7 @@ export function createStripeProvider(options: StripeProviderOptions): PaymentPro
     if (latest === undefined) return { ok: true, value: null }
     const state = disputeState(latest.status)
     if (state === 'unknown') return { ok: false, reason: `unknown dispute status ${latest.status}` }
-    return { ok: true, value: state }
+    return { ok: true, value: state === null ? null : { state, dueAt: disputeDueAt(latest) } }
   }
 
   /** The payment from an intent: its latest charge read too where it was not expanded. */
@@ -206,12 +209,14 @@ export function createStripeProvider(options: StripeProviderOptions): PaymentPro
       charge = intent.latest_charge ?? null
     }
     let dispute: PaymentDisputeState | null = null
+    let dueAt: string | null = null
     if (intent.status === 'succeeded') {
       const latest = await latestDispute(accountRef, intent.id)
       if (!latest.ok) return latest
-      dispute = latest.value
+      dispute = latest.value?.state ?? null
+      dueAt = latest.value?.dueAt ?? null
     }
-    return providerPayment(intent, charge, dispute)
+    return providerPayment(intent, charge, dispute, dueAt)
   }
 
   /** Reads an intent by id with its latest charge. */

@@ -166,6 +166,12 @@ export const ProviderPaymentSchema = z
     refundedMinor: MinorSchema,
     /** The latest dispute on the payment, as it stands now; null for none. Only once captured. */
     dispute: z.enum(PAYMENT_DISPUTE_STATES).nullable(),
+    /**
+     * Until when the venue may answer the dispute, as the provider says (#222; Stripe:
+     * `evidence_details.due_by`); null for no dispute, and where the provider gives no date (a
+     * closed dispute, or a bank that allows no answer).
+     */
+    disputeDueAt: InstantSchema.nullable(),
     /** When the provider drops the hold uncaptured, once it is held and the provider says. */
     captureBefore: InstantSchema.nullable(),
     threeDs: z.enum(THREE_DS_RESULTS).nullable(),
@@ -195,6 +201,9 @@ export const ProviderPaymentSchema = z
     }
     if (payment.dispute !== null && payment.status !== 'captured') {
       problem('only a captured payment can be disputed', 'dispute')
+    }
+    if (payment.disputeDueAt !== null && payment.dispute === null) {
+      problem('an answer-by date needs a dispute', 'disputeDueAt')
     }
   })
 export type ProviderPayment = z.output<typeof ProviderPaymentSchema>

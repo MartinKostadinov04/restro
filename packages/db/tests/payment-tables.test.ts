@@ -17,6 +17,7 @@ import {
   locks,
   paymentAccounts,
   paymentLines,
+  paymentRefunds,
   paymentSteps,
   payments,
   sentOrders,
@@ -178,6 +179,14 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
         step: 'createHold',
         outcome: 'attempting',
         idempotencyKey: `${f.paymentId}:hold`,
+        ...PROVENANCE,
+      })
+      await tx.insert(paymentRefunds).values({
+        ...base,
+        id: testId('rf'),
+        paymentId: f.paymentId,
+        amountMinor: 300,
+        serviceDate: DAY,
         ...PROVENANCE,
       })
       await tx.insert(paymentAccounts).values({
@@ -599,5 +608,40 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
     )
     expect(rows).toEqual([{ open: false, source: 'guest', actor: 'guest', job_id: 'req_settle' }])
     await withTenantWrite(app, a.tenantId, (tx) => tx.insert(paymentLines).values(line(second.id)))
+  })
+  it('keeps a refund row to a rise, its storno to a person and a dispute time to an opened dispute (migration 0042)', async () => {
+    const refund = (fields: Partial<typeof paymentRefunds.$inferInsert>) =>
+      withTenantWrite(app, a.tenantId, (tx) =>
+        tx.insert(paymentRefunds).values({
+          tenantId: a.tenantId,
+          venueId: a.venueId,
+          id: testId('rf'),
+          paymentId: a.paymentId,
+          amountMinor: 100,
+          serviceDate: DAY,
+          ...PROVENANCE,
+          ...fields,
+        }),
+      )
+    for (const [fields, error] of [
+      [{ amountMinor: 0 }, /payment_refunds_amount/],
+      [{ id: 'rf_not valid' }, /payment_refunds_id_format/],
+      [{ stornoAt: new Date() }, /payment_refunds_storno/],
+      [{ stornoAt: new Date(), stornoBy: 'a name' }, /payment_refunds_storno/],
+      [{ stornoBy: 'user:us_1' }, /payment_refunds_storno/],
+      [{ source: 'nobody' }, /payment_refunds_source/],
+    ] as const) {
+      expect(await databaseError(refund(fields)), JSON.stringify(fields)).toMatch(error)
+    }
+    await refund({ stornoAt: new Date(), stornoBy: 'staff:sm_1' })
+    // A closing time or an answer-by date needs an opening time (migration 0042).
+    for (const patch of [{ disputeClosedAt: new Date() }, { disputeDueAt: new Date() }] as const) {
+      const message = await databaseError(
+        withTenantWrite(app, a.tenantId, (tx) =>
+          tx.update(payments).set(patch).where(eq(payments.id, a.paymentId)),
+        ),
+      )
+      expect(message, JSON.stringify(patch)).toMatch(/payments_dispute_times/)
+    }
   })
 })

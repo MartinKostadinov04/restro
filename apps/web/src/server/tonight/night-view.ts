@@ -21,6 +21,8 @@ import {
   type Who,
 } from '@restro/core/service'
 
+import { providerDisplayName } from '@/connectors/notices'
+
 import type { ActionRow, Can } from './view'
 
 /** The venue's own time, `HH:mm`, whatever the server's zone is (the CLAUDE.md time rule). */
@@ -355,6 +357,13 @@ export interface LogLineView {
   readonly paymentAnswer: PaymentAnswerCode | null
   /** The payment a line is about, for its sheet. */
   readonly paymentId: string | null
+  /** The payment provider's name for a refund or dispute line (#222); null where it is not known. */
+  readonly provider: string | null
+  /** A dispute line's state (`payment.dispute`), a refund line's `failed` (#222). */
+  readonly disputeState: 'open' | 'won' | 'lost' | 'none' | null
+  readonly refundFailed: boolean
+  /** A storno line taken back by Undo (#222). */
+  readonly stornoUndone: boolean
   readonly sentOrdersOfDay: number | null
   /** A waiter call entry's kinds (#180): the one asked for, or all of a call that ended. */
   readonly callKinds: readonly string[]
@@ -420,6 +429,15 @@ export function logLineView(
     paymentState: line.kind === 'payment.state' ? line.toState : null,
     paymentAnswer: line.kind === 'payment.answered' ? answerCodeOf(line.toState) : null,
     paymentId: line.paymentId,
+    provider: providerDisplayName(line.providerKind),
+    disputeState:
+      line.kind === 'payment.dispute'
+        ? line.toState === 'open' || line.toState === 'won' || line.toState === 'lost'
+          ? line.toState
+          : 'none'
+        : null,
+    refundFailed: line.kind === 'payment.refund_seen' && line.toState === 'failed',
+    stornoUndone: line.kind === 'payment.storno' && line.toState === 'open',
     sentOrdersOfDay: line.sentOrdersOfDay,
     callKinds: line.callKinds,
     ...(line.kind === 'receipt.brought'

@@ -273,6 +273,7 @@ export async function handleProviderNotice(
         capturedMinor: payment.capturedMinor,
         refundedMinor: payment.refundedMinor,
         dispute: payment.dispute,
+        disputeDueAt: payment.disputeDueAt,
       },
       {
         tenantId: venue.tenantId,
@@ -288,6 +289,23 @@ export async function handleProviderNotice(
     return 'waiting'
   }
   if (result.status === 'accepted') {
+    if (
+      typeof result.details.refundsUnmatched === 'number' &&
+      result.details.refundsUnmatched > 0
+    ) {
+      // The provider's refund total fell by an amount no refund row has: nothing was marked and
+      // no row was made. Amounts are minor units in fields, never in the message.
+      log.warn(
+        {
+          ...about,
+          paymentId: payment.paymentId,
+          storedMinor: result.details.storedMinor ?? null,
+          refundedMinor: payment.refundedMinor,
+          capturedMinor: payment.capturedMinor,
+        },
+        'a refund total fell by an amount no refund row matches; no refund was marked',
+      )
+    }
     return handled(result.details.changed === true ? 'recorded' : 'unchanged')
   }
   if (TRANSIENT_REFUSALS.includes(result.code)) return 'waiting'

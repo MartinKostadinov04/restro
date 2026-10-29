@@ -776,6 +776,11 @@ export const disputeReadBackCheck = check(async (run) => {
     run.expectNotice('the opened dispute', opened, 'dispute')
     const open = await run.expectSubject('the opened dispute', opened, paymentId, ref)
     run.expect(open.dispute === 'open', `an opened dispute reads ${open.dispute}, not open`)
+    // The venue answers by a date the provider gives (#222): an open dispute reads one.
+    run.expect(
+      open.disputeDueAt !== null && !Number.isNaN(Date.parse(open.disputeDueAt)),
+      `an opened dispute reads no answer-by date (${open.disputeDueAt})`,
+    )
     if (opened.objectRef === null) return
     const closed = await closes(run.account, opened.objectRef, outcome)
     run.expectNotice('the closed dispute', closed, 'dispute')

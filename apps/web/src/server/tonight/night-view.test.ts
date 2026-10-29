@@ -197,6 +197,7 @@ const line = (fields: Partial<LogLine> = {}): LogLine => ({
   cause: null,
   subject: null,
   amountMinor: null,
+  providerKind: null,
   sentOrdersOfDay: null,
   callKinds: [],
   ...fields,

@@ -160,6 +160,7 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
     capturedMinor: 2_000,
     refundedMinor,
     dispute,
+    disputeDueAt: dispute === null ? null : '2026-11-05T09:00:00.000Z',
     captureBefore: null,
     threeDs: 'authenticated',
     authorisationCode: null,
@@ -234,6 +235,37 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
     expect(await run()).toMatchObject({ recorded: 0, unchanged: 0 })
   })
 
+  it('marks the refund whose amount the total fell by, and warns, marking none, when no row has it (#222)', async () => {
+    const target = await payment()
+    const rows = () =>
+      query<{ amount_minor: string; failed: boolean }>(
+        `select amount_minor, failed_at is not null as failed from restro.payment_refunds
+          where payment_id = $1 order by seen_at, id`,
+        [target.id],
+      )
+    readings.set('rf_a', reading(target, 500))
+    await notice('refund', 'rf_a')
+    await run()
+    readings.set('rf_b', reading(target, 800))
+    await notice('refund', 'rf_b')
+    await run()
+    // The first refund fails: the total falls by its 500, and only that row is marked.
+    readings.set('rf_c', reading(target, 300))
+    await notice('refund', 'rf_c')
+    expect(await run()).toMatchObject({ recorded: 1 })
+    expect(await rows()).toEqual([
+      { amount_minor: '500', failed: true },
+      { amount_minor: '300', failed: false },
+    ])
+    // A fall by an amount no row has marks nothing and makes no row; the worker warns.
+    logLines.length = 0
+    readings.set('rf_d', reading(target, 100))
+    await notice('refund', 'rf_d')
+    expect(await run()).toMatchObject({ recorded: 1 })
+    expect((await rows()).map((row) => row.failed)).toEqual([true, false])
+    expect(logLines.join('')).toContain('no refund row matches')
+  })
+
   it("queues a guest payment's check for a payment notice, and leaves it waiting without a queue", async () => {
     const target = await payment(false)
     readings.set('pi_1', {
@@ -280,6 +312,15 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
     await notice('dispute', 'dp_1')
     await run()
     expect(await stored(target.id)).toMatchObject({ dispute: 'open' })
+    // The provider's answer-by date and the opening time are kept (#222).
+    const [times] = await query<{ opened: Date | null; due: Date | null; closed: Date | null }>(
+      `select dispute_opened_at as opened, dispute_due_at as due, dispute_closed_at as closed
+         from restro.payments where id = $1`,
+      [target.id],
+    )
+    expect(times?.opened).toBeInstanceOf(Date)
+    expect(times?.due?.toISOString()).toBe('2026-11-05T09:00:00.000Z')
+    expect(times?.closed).toBeNull()
     readings.set('dp_1', reading(target, 0, 'lost'))
     await notice('dispute', 'dp_1')
     await run()

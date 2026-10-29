@@ -188,6 +188,109 @@ describe('Needs you, in the order of what costs most to leave', () => {
     expect(view(tonight({ receipts: null })).rows).toEqual([])
   })
 
+  it('puts the storno, the dispute and a refund that failed at rank 5, with what the storno needs (#222)', () => {
+    const t = tonight({
+      waiterCalls: [
+        {
+          id: 'wc_1',
+          tableId: 'tb_000000000000000000003',
+          kinds: ['waiter'] as const,
+          calledAt: new Date('2026-10-27T21:00:00Z'),
+        },
+      ],
+      refunds: {
+        storno: [
+          {
+            refundId: 'rf_B',
+            paymentId: 'py_1',
+            paymentNumber: 'AB3CD',
+            tableId: 'tb_000000000000000000001',
+            name: null,
+            number: '1',
+            amountMinor: 500,
+            chargeMinor: 500,
+            capturedMinor: 3800,
+            tipMinor: 200,
+            currency: 'EUR',
+            serviceDate: '2026-10-26',
+            receiptNumber: 'R-000123',
+            receiptAt: new Date('2026-10-26T20:15:00Z'),
+            fiscalMemoryNumber: 'FM-77881',
+            seenAt: new Date('2026-10-27T21:10:00Z'),
+          },
+        ],
+        failed: [
+          {
+            refundId: 'rf_C',
+            paymentId: 'py_1',
+            tableId: 'tb_000000000000000000001',
+            name: null,
+            number: '1',
+            amountMinor: 700,
+            chargeMinor: 700,
+            capturedMinor: 3800,
+            tipMinor: 200,
+            currency: 'EUR',
+            failedAt: new Date('2026-10-27T21:25:00Z'),
+            serviceDate: '2026-10-26',
+          },
+        ],
+        disputes: [
+          {
+            paymentId: 'py_9',
+            paymentNumber: 'KQ7MD',
+            tableId: 'tb_000000000000000000003',
+            name: null,
+            number: '3',
+            amountMinor: 4600,
+            tipMinor: 0,
+            currency: 'EUR',
+            serviceDate: '2026-10-25',
+            openedAt: new Date('2026-10-27T20:30:00Z'),
+            dueAt: new Date('2026-11-04T09:00:00Z'),
+          },
+        ],
+      },
+    })
+    const { rows } = view(t)
+    expect(rows.map((row) => row.kind)).toEqual(['call', 'dispute', 'storno', 'refund_failed'])
+    expect(ROW_RANK.storno).toBe(5)
+    expect(ROW_RANK.dispute).toBe(5)
+    expect(ROW_RANK.refund_failed).toBe(5)
+    expect(ROW_RANK.storno).toBeLessThan(ROW_RANK.stopped)
+    expect(rows[2]?.storno).toEqual({
+      refundId: 'rf_B',
+      paymentId: 'py_1',
+      paymentNumber: 'AB3CD',
+      amountMinor: 500,
+      chargeMinor: 500,
+      serviceDate: '2026-10-26',
+      receiptNumber: 'R-000123',
+      // The receipt's day and time in the venue's own zone.
+      receiptTime: '2026-10-26 22:15',
+      fiscalMemoryNumber: 'FM-77881',
+    })
+    expect(rows[1]?.dispute).toEqual({
+      paymentId: 'py_9',
+      paymentNumber: 'KQ7MD',
+      amountMinor: 4600,
+      serviceDate: '2026-10-25',
+      due: { date: '2026-11-04', time: '11:00' },
+    })
+    expect(rows[3]?.refundFailed).toEqual({
+      refundId: 'rf_C',
+      paymentId: 'py_1',
+      amountMinor: 700,
+    })
+    // None of them turns a tile red, and a waiter's own phone is given none.
+    expect(
+      view(t)
+        .groups.flatMap((g) => g.tables)
+        .map((x) => x.state),
+    ).not.toContain('payment')
+    expect(view(tonight({ refunds: null })).rows).toEqual([])
+  })
+
   it('orders calls of one rank oldest first', () => {
     const t = tonight({
       waiterCalls: [

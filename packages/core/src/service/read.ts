@@ -54,6 +54,15 @@ import {
 } from './pay-first'
 import { payingPausedAt } from './paying-pause'
 import { loadPayingConnection } from './payment-connection'
+import {
+  type DisputeToDo,
+  disputesToDo,
+  type RefundFailedAfterStorno,
+  type RefundToDo,
+  refundShownMinor,
+  refundsFailedAfterStorno,
+  refundsToDo,
+} from './payment-todos'
 import type { Permission } from './permissions'
 import { type ReceiptToBring, receiptsToBring } from './receipt-rows'
 import { sentOrderLinesOf } from './send'
@@ -669,6 +678,16 @@ export interface Tonight {
    * Brought (`alerts.answer`); null otherwise.
    */
   readonly receipts: readonly ReceiptToBring[] | null
+  /**
+   * Refunds the venue made in its provider's dashboard that still wait for a storno (#222), the
+   * ones that did not go through after their storno was made (tonight's only), and the disputes
+   * still open: for managers and owners (`money.follow_up`) and a shared device, null otherwise.
+   */
+  readonly refunds?: {
+    readonly storno: readonly RefundToDo[]
+    readonly failed: readonly RefundFailedAfterStorno[]
+    readonly disputes: readonly DisputeToDo[]
+  } | null
   /** Open waiter calls, for those who answer them (`alerts.answer`); null otherwise. */
   readonly waiterCalls:
     | readonly {
@@ -873,6 +892,51 @@ export async function readTonight(
         )
       : null
 
+    // The storno and dispute to-dos: managers and owners, and the shared tablet (a manager's PIN
+    // answers there); never a staff member's own phone (screen 1, Q7). Amounts of a payment come
+    // without the tip for those who read no tips (#220).
+    const followsUp = held.has('money.follow_up') || grants.device === true
+    const refundTodos = followsUp
+      ? await (async () => {
+          const reads = await Promise.all([
+            refundsToDo(tx, venue.id),
+            refundsFailedAfterStorno(
+              tx,
+              venue.id,
+              new Date((input.now ?? new Date()).getTime() - 3 * 24 * 60 * 60 * 1000),
+            ),
+            disputesToDo(tx, venue.id),
+          ])
+          const readsTips = held.has('night.view_full') && grants.device !== true
+          // The rows show at most the payment less its tip to those who read no tips; the true
+          // amount stays in `chargeMinor`, for a manager's PIN to confirm (Martin 10-29).
+          const shown = <
+            T extends { amountMinor: number; capturedMinor: number; tipMinor: number },
+          >(
+            row: T,
+          ): T =>
+            readsTips
+              ? row
+              : {
+                  ...row,
+                  amountMinor: refundShownMinor(row.amountMinor, row.capturedMinor, row.tipMinor),
+                  tipMinor: 0,
+                }
+          return {
+            storno: reads[0].map(shown),
+            // A refund that failed after its storno stays for three days, whatever the night.
+            failed: reads[1].map(shown),
+            disputes: readsTips
+              ? reads[2]
+              : reads[2].map((row) => ({
+                  ...row,
+                  amountMinor: withoutTipMinor(row.amountMinor, row.tipMinor),
+                  tipMinor: 0,
+                })),
+          }
+        })()
+      : null
+
     const active = await tx
       .select({
         id: pauses.id,
@@ -997,6 +1061,7 @@ export async function readTonight(
         row.sentOrderId === null ? [] : [{ sentOrderId: row.sentOrderId, at: row.at }],
       ),
       receipts,
+      refunds: refundTodos,
       waiterCalls:
         calls === null ? null : calls.map((call) => ({ ...call, kinds: orderedKinds(call.kinds) })),
       paying,
