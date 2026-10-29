@@ -292,6 +292,89 @@ describe.skipIf(!hasDatabase)('the Undo window of Tonight (as the restro_app rol
       expect(await run({ type: 'tables.undo_open_all' })).toMatchObject({ code: 'invalid_command' })
       for (const index of [0, 2, 3]) expect(await isOpen(table(index))).toBe(true)
       await accepted({ type: 'tables.undo_open_all', undo: tokenOf(opened) })
+      await closeEverything()
+    })
+
+    it('counts a round rung at the POS, a payment and a guest call as use', async () => {
+      const sittingOf = async (index: number) =>
+        (
+          await world.owner.query<{ id: string }>(
+            'select id from restro.sittings where table_id = $1 and ended_at is null',
+            [table(index)],
+          )
+        ).rows[0]?.id as string
+      const opened = await accepted({ type: 'tables.open_all' })
+
+      // A round already rung at the POS.
+      await world.owner.query('update restro.sittings set had_bill_lines = true where id = $1', [
+        await sittingOf(0),
+      ])
+      expect(await undoAll(tokenOf(opened))).toMatchObject({ code: 'undo_stale' })
+      await world.owner.query('update restro.sittings set had_bill_lines = false')
+
+      // A payment on the sitting.
+      const paymentId = newId('py')
+      await world.owner.query(
+        `insert into restro.payments
+           (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
+            amount_minor, tip_minor, currency, provider_kind, source, actor, job_id)
+         values ($1, $2, $3, $4, $5, $6, 'on_bill', 'closed', $7, 1500, 0, 'EUR', 'sim-pay',
+            'restro', 'system', 'test-seed')`,
+        [
+          paymentId,
+          world.tenantId,
+          world.venueId,
+          table(1),
+          await sittingOf(1),
+          day,
+          createHash('sha256').update(paymentId).digest('hex'),
+        ],
+      )
+      expect(await undoAll(tokenOf(opened))).toMatchObject({
+        code: 'undo_stale',
+        details: { count: 1, tables: table(1) },
+      })
+      await world.owner.query('delete from restro.payments where id = $1', [paymentId])
+
+      // A guest's call, which is a Log entry for the sitting from another job.
+      await world.owner.query(
+        `insert into restro.log_entries
+           (tenant_id, venue_id, service_date, kind, table_id, sitting_id, details, retention,
+            source, actor, job_id)
+         values ($1, $2, $3, 'waiter_call.called', $4, $5, '{}'::jsonb, 'night', 'guest', 'guest',
+            'guest-call')`,
+        [world.tenantId, world.venueId, day, table(2), await sittingOf(2)],
+      )
+      expect(await undoAll(tokenOf(opened))).toMatchObject({
+        code: 'undo_stale',
+        details: { count: 1, tables: table(2) },
+      })
+
+      // Each time nothing was ended.
+      for (const index of [0, 1, 2, 3]) expect(await isOpen(table(index))).toBe(true)
+      await closeEverything()
+    })
+
+    it('refuses an Open all token of another venue as expired', async () => {
+      const { provisionVenue } = await import('../apply/provision')
+      const other = await provisionVenue(world.app, world.tenantId, {
+        name: 'Other club',
+        slug: `other-${randomUUID().slice(0, 8)}`,
+      })
+      const { rows } = await world.owner.query<{ seq: string }>(
+        `insert into restro.log_entries
+           (tenant_id, venue_id, service_date, kind, details, retention, source, actor, job_id)
+         values ($1, $2, $3, 'sitting.opened', '{"how":"all"}'::jsonb, 'night', 'staff',
+            'user:other', 'other-venue-job')
+         returning seq`,
+        [world.tenantId, other.id, day],
+      )
+      const opened = await accepted({ type: 'tables.open_all' })
+      expect(await undoAll({ entry: Number(rows[0]?.seq) })).toMatchObject({
+        code: 'undo_expired',
+      })
+      for (const index of [0, 1, 2, 3]) expect(await isOpen(table(index))).toBe(true)
+      await accepted({ type: 'tables.undo_open_all', undo: tokenOf(opened) })
     })
 
     it('is too late after the window, and ends nothing', async () => {

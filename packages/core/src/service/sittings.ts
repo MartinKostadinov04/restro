@@ -314,14 +314,16 @@ async function tokenEntry(stx: ServiceTx, token: UndoToken) {
 
 /**
  * Whether anyone but staff has been at this open sitting since the token's entry: lines in its
- * cart, a sent order or a payment of it, or a Log entry for it from another job. Opening a table
- * and a bare scan of its code leave none of these. The caller holds the sitting and its order row.
+ * cart, a round already rung at the POS (`hadBillLines`), a sent order or a payment of it, or a Log
+ * entry for it from another job. Opening a table and a bare scan of its code leave none of these.
+ * The caller holds the sitting and its order row.
  */
 async function sittingHasActivity(
   stx: ServiceTx,
   sitting: Sitting,
   entry: number,
 ): Promise<boolean> {
+  if (sitting.hadBillLines) return true
   const order = await stx.rows.tableOrder(sitting.tableId)
   if (order !== null && order.lines.length > 0) return true
   const [sent] = await stx.tx

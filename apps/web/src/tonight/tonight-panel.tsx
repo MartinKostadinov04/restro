@@ -236,8 +236,15 @@ function Content({ view }: { view: TonightView }) {
         : {}),
       act: (pin) => openAllTablesAction({ venueId: view.venueId, pin }),
       done: t('oa_toast', { k: closedIds.length }),
-      undo: (_, undo) => undoOpenAllAction({ venueId: view.venueId, undo }),
-      undoWhen: wroteSomething,
+      // On a shared device Open all names a person by their PIN, and its Undo would have to name
+      // the same person: it has no PIN to do so, so the toast offers none there (#219).
+      ...(view.device
+        ? {}
+        : {
+            undo: (_: unknown, undo: UndoToken | undefined) =>
+              undoOpenAllAction({ venueId: view.venueId, undo }),
+            undoWhen: wroteSomething,
+          }),
     })
   }
   function confirmCloseAll() {

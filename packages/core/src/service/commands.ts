@@ -387,7 +387,6 @@ export const SERVICE_COMMANDS = {
     origins: ['staff'],
     permission: 'tables.open_close',
     idempotency: 'by_nature',
-    quickOnSharedDevice: true,
     handle: undoOpenAll,
   }),
   'tables.close_all': staffOnVenue('tables.close_all', 'tables.open_close', closeAllTables),
