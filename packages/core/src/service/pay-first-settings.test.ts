@@ -10,7 +10,12 @@ import { newId } from '../ids'
 import { DEFAULT_PAY_FIRST_SETTINGS, readPayFirstSettings } from '../pay-first-settings'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import type { ServiceActor, ServiceContext } from './context'
-import { applyService, readPayFirstOverview, type ServiceCommand } from './index'
+import {
+  applyService,
+  readPayFirstOverview,
+  readPayFirstTablesBoard,
+  type ServiceCommand,
+} from './index'
 
 describe.skipIf(!hasDatabase)('the pay-first command (as the restro_app role)', () => {
   let world: ServiceWorld
@@ -256,5 +261,52 @@ describe.skipIf(!hasDatabase)('the pay-first command (as the restro_app role)', 
       } as ServiceActor),
     ).toMatchObject({ status: 'refused', code: 'own_sign_in_required' })
     expect(await stored()).toEqual(before)
+  })
+
+  it("tells Tables & QR which tables can be paid first: only where paying is on and the table's POS opens a bill (#217)", async () => {
+    const board = async () =>
+      readPayFirstTablesBoard(world.app, world.tenantId, world.venueId, await stored())
+    // No POS and no account yet: nothing can be paid first anywhere.
+    expect(await board()).toMatchObject({ possible: false, capable: new Set() })
+
+    await world.declareCapabilities({ notesReachTicket: true, firstItemsOpenBill: true })
+    await world.owner.query(
+      `insert into restro.payment_accounts
+         (tenant_id, venue_id, provider_kind, account_ref, state, checks, connected_at, source, actor, job_id)
+       values ($1, $2, 'sim-pay', 'acct_pftables', 'lost_access', '{}'::jsonb, now(), 'restro', 'system', 'test-seed')`,
+      [world.tenantId, world.venueId],
+    )
+    try {
+      // Paused (lost access) still shows the rows. Every live table of the POS can take it; the
+      // one an earlier test archived cannot.
+      const on = await board()
+      expect(on.possible).toBe(true)
+      expect(on.capable.has(tableA)).toBe(true)
+      expect(on.capable.has(tableC)).toBe(true)
+      expect(on.capable.has(tableB)).toBe(false)
+      expect(on.settings).toEqual(await payFirst())
+
+      // A table the POS no longer serves gets no row.
+      await world.owner.query(`update restro.places set state = 'deleted' where table_id = $1`, [
+        tableA,
+      ])
+      const after = await board()
+      expect(after.capable.has(tableA)).toBe(false)
+      expect(after.capable.has(tableC)).toBe(true)
+
+      // A POS that can't open a bill that names itself, or a disconnected account: no rows at all.
+      await world.declareCapabilities({ notesReachTicket: true, firstItemsOpenBill: false })
+      expect(await board()).toMatchObject({ possible: false, capable: new Set() })
+      await world.declareCapabilities({ notesReachTicket: true, firstItemsOpenBill: true })
+      await world.owner.query(
+        `update restro.payment_accounts set state = 'disconnected' where venue_id = $1`,
+        [world.venueId],
+      )
+      expect(await board()).toMatchObject({ possible: false, capable: new Set() })
+    } finally {
+      await world.owner.query('delete from restro.payment_accounts where venue_id = $1', [
+        world.venueId,
+      ])
+    }
   })
 })

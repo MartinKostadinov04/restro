@@ -7,13 +7,14 @@
 // (Paying), an area's or a table's `settings.payment_tables` (Tables & QR). One `settings.changed`
 // `record` Log entry per change. Undo calls the same command with the previous value.
 
-import { areas, type DbPool, venueTables, withTenant } from '@restro/db'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { areas, type DbPool, integrations, places, venueTables, withTenant } from '@restro/db'
+import { and, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { PayFirstSettingsError, patchPayFirstSettingsIn } from '../apply/pay-first-settings'
 import { idSchema } from '../ids'
 import { type PayFirstSettings, readPayFirstSettings } from '../pay-first-settings'
+import { readServiceCapabilities } from '../service-capabilities-config'
 import { PAYMENT_MODES } from '../templates/venue-menu'
 import type { ServiceTx } from './definition'
 import { payFirstPossibleAt } from './pay-first'
@@ -140,6 +141,60 @@ export async function readPayFirstOverview(
       possible,
       settings: { itemMode: settings.itemMode, applies: settings.applies },
       overrides: liveAreas.length + liveTables.length,
+    }
+  })
+}
+
+/** What Tables & QR needs to draw its pay-first rows (#217). */
+export interface PayFirstTablesBoard {
+  /** Pay first can take effect at the venue (as the Paying card): card payments on, a POS that opens a bill. */
+  readonly possible: boolean
+  /** The tables whose POS declares `firstItemsOpenBill`: only these get a row. */
+  readonly capable: ReadonlySet<string>
+  /** The bar (`br_…`) the POS gives each of those tables, for a stored bar choice (Send applies it). */
+  readonly barOfTable: ReadonlyMap<string, string>
+  readonly settings: PayFirstSettings
+}
+
+/** Which tables of the venue can be paid first, and the venue's pay-first settings. Reads only. */
+export async function readPayFirstTablesBoard(
+  pool: DbPool,
+  tenantId: string,
+  venueId: string,
+  venueSettings: Readonly<Record<string, unknown>>,
+): Promise<PayFirstTablesBoard> {
+  const settings = readPayFirstSettings(venueSettings)
+  return withTenant(pool, tenantId, async (tx) => {
+    const possible = await payFirstPossibleAt(tx, venueId)
+    if (!possible) {
+      return {
+        possible,
+        capable: new Set<string>(),
+        barOfTable: new Map<string, string>(),
+        settings,
+      }
+    }
+    const rows = await tx
+      .select({ tableId: venueTables.id, barId: venueTables.barId, config: integrations.config })
+      .from(venueTables)
+      .innerJoin(places, eq(places.tableId, venueTables.id))
+      .innerJoin(integrations, eq(integrations.id, places.integrationId))
+      .where(
+        and(
+          eq(venueTables.venueId, venueId),
+          isNull(venueTables.archivedAt),
+          ne(places.state, 'deleted'),
+          isNull(integrations.removedAt),
+        ),
+      )
+    const live = rows.filter((row) => readServiceCapabilities(row.config).firstItemsOpenBill)
+    return {
+      possible,
+      capable: new Set(live.map((row) => row.tableId)),
+      barOfTable: new Map(
+        live.flatMap((row) => (row.barId === null ? [] : [[row.tableId, row.barId] as const])),
+      ),
+      settings,
     }
   })
 }

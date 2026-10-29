@@ -291,7 +291,9 @@ export {
 export {
   PayFirstChangeSchema,
   type PayFirstOverview,
+  type PayFirstTablesBoard,
   readPayFirstOverview,
+  readPayFirstTablesBoard,
 } from './pay-first-settings'
 export {
   type LastCheck,

@@ -14,10 +14,14 @@
 import { createHash } from 'node:crypto'
 
 import {
+  type AreaId,
+  type BarId,
   JOB_NAMES,
   type JobPayload,
   newId,
+  type PayFirstSettings,
   type ProducedJobName,
+  payFirstAppliesAt,
   type TenantId,
   type VenueId,
 } from '@restro/core'
@@ -54,6 +58,7 @@ import {
   applyService,
   type PaymentTableBoard,
   type RefusalCode,
+  readPayFirstTablesBoard,
   readPayingOffer,
   readPaymentTableBoard,
 } from '@restro/core/service'
@@ -71,6 +76,7 @@ import type {
   MenuChoice,
   MenuLevel,
   MenuShown,
+  PayFirstShown,
   RevealCodesResult,
   RevealedCode,
   TableRowView,
@@ -84,7 +90,7 @@ export interface TablesScope {
   readonly pool: DbPool
   /** The person's organisation: never taken from the request. */
   readonly tenantId: string
-  readonly venue: Pick<Venue, 'id' | 'name'>
+  readonly venue: Pick<Venue, 'id' | 'name'> & Partial<Pick<Venue, 'settings'>>
   /** An owner or admin of the organisation. */
   readonly canManage: boolean
   /** The signed-in person and their session, for a re-issue's Log entry; null when not known. */
@@ -170,6 +176,7 @@ async function toRow(
   routeMenuId: string | null,
   canReveal: boolean,
   bar: TableRowView['bar'],
+  payFirst: PayFirstShown | null,
 ): Promise<TableRowView> {
   // A hidden table keeps its code for when it is shown again, but its code leads nowhere now.
   const text = code === null || !active ? null : codeAddress(baseUrl, code)
@@ -190,6 +197,7 @@ async function toRow(
     routeMenuId,
     isPaymentTable: table.isPaymentTable,
     bar,
+    payFirst,
   }
 }
 
@@ -203,6 +211,42 @@ function payingOf(
     canMark: person?.canMarkPaymentTables === true,
     email: person?.email ?? '',
     missing: board.queuesMissing.map((queue) => ({ name: queue.barName })),
+  }
+}
+
+/** Pay first at a table that can take it: its own choice, what holds there, and what it would inherit. */
+function payFirstOfTable(
+  settings: PayFirstSettings,
+  table: VenueTable,
+  barId: string | undefined,
+): PayFirstShown {
+  const place = {
+    tableId: table.id,
+    barId: (barId as BarId | undefined) ?? null,
+    areaId: table.areaId as AreaId,
+  }
+  const reading = payFirstAppliesAt(settings, place)
+  const { [table.id]: own, ...otherTables } = settings.tables
+  const inherited = payFirstAppliesAt({ ...settings, tables: otherTables }, place)
+  return {
+    own: own ?? null,
+    applies: reading.applies,
+    level: reading.level,
+    inherited: {
+      applies: inherited.applies,
+      level: inherited.level === 'table' ? 'venue' : inherited.level,
+    },
+  }
+}
+
+/** Pay first for an area: its own choice over the venue's. */
+function payFirstOfArea(settings: PayFirstSettings, areaId: string): PayFirstShown {
+  const own = settings.groups[areaId as AreaId] ?? null
+  return {
+    own,
+    applies: own ?? settings.applies,
+    level: own === null ? 'venue' : 'area',
+    inherited: { applies: settings.applies, level: 'venue' },
   }
 }
 
@@ -221,15 +265,19 @@ export async function loadTablesView(
   render: (text: string) => Promise<string> = qrSvg,
   reveal: RevealCodes = revealNothing,
 ): Promise<TablesView> {
-  const [areas, tables, summaries, routes, resolved, till, offer] = await Promise.all([
-    listVenueAreas(scope.pool, scope.tenantId, scope.venue.id),
-    listVenueTables(scope.pool, scope.tenantId, scope.venue.id),
-    listMenus(scope.pool, scope.tenantId, scope.venue.id),
-    listMenuRoutes(scope.pool, scope.tenantId, scope.venue.id),
-    resolveRoutes(scope.pool, scope.tenantId, scope.venue.id),
-    tillLabelOfVenue(scope.pool, scope.tenantId, scope.venue.id),
-    readPayingOffer(scope.pool, scope.tenantId, scope.venue.id),
-  ])
+  const [areas, tables, summaries, routes, resolved, till, offer, payFirstBoard] =
+    await Promise.all([
+      listVenueAreas(scope.pool, scope.tenantId, scope.venue.id),
+      listVenueTables(scope.pool, scope.tenantId, scope.venue.id),
+      listMenus(scope.pool, scope.tenantId, scope.venue.id),
+      listMenuRoutes(scope.pool, scope.tenantId, scope.venue.id),
+      resolveRoutes(scope.pool, scope.tenantId, scope.venue.id),
+      tillLabelOfVenue(scope.pool, scope.tenantId, scope.venue.id),
+      readPayingOffer(scope.pool, scope.tenantId, scope.venue.id),
+      scope.venue.settings === undefined
+        ? null
+        : readPayFirstTablesBoard(scope.pool, scope.tenantId, scope.venue.id, scope.venue.settings),
+    ])
   // Payment tables are read only where a connector can take payments, never at a venue by hand.
   const board = offer.offered
     ? await readPaymentTableBoard(scope.pool, scope.tenantId, scope.venue.id)
@@ -257,6 +305,14 @@ export async function loadTablesView(
       : new Map<string, string>()
   const rows = await Promise.all(
     tables.map((table) => {
+      const bar = board?.barOfTable.get(table.id) ?? null
+      const payFirst =
+        payFirstBoard !== null &&
+        payFirstBoard.possible &&
+        !table.isPaymentTable &&
+        payFirstBoard.capable.has(table.id)
+          ? payFirstOfTable(payFirstBoard.settings, table, payFirstBoard.barOfTable.get(table.id))
+          : null
       const active = isActive(table)
       const resolvedId = resolved.tables.get(table.id) ?? null
       const own = routeOfTable.get(table.id) ?? null
@@ -275,7 +331,8 @@ export async function loadTablesView(
         shown(names, resolvedId, level),
         own,
         scope.canManage,
-        board?.barOfTable.get(table.id) ?? null,
+        bar,
+        payFirst,
       )
     }),
   )
@@ -296,6 +353,11 @@ export async function loadTablesView(
       isPublic: !area.hidden,
       menu: shown(names, resolvedId, own !== null && own === resolvedId ? 'area' : 'venue'),
       routeMenuId: own,
+      payFirst:
+        payFirstBoard !== null &&
+        (rowsByArea.get(area.id) ?? []).some((row) => row.payFirst !== null)
+          ? payFirstOfArea(payFirstBoard.settings, area.id)
+          : null,
       tables: rowsByArea.get(area.id) ?? [],
     }
   })
@@ -314,6 +376,9 @@ export async function loadTablesView(
     baseUrl,
     menus: choices,
     paying: payingOf(board, scope.person),
+    payFirst: payFirstBoard?.possible
+      ? { canSet: scope.person?.canMarkPaymentTables === true, email: scope.person?.email ?? '' }
+      : null,
     halls,
     total: rows.length,
     coded: withCode.length,

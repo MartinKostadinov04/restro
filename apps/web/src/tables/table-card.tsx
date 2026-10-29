@@ -45,9 +45,10 @@ import {
   setTableNumberAction,
   turnOffCodeAction,
 } from '@/server/tables/actions'
-import type { MenuChoice, TableRowView } from '@/server/tables/view'
+import type { MenuChoice, PayFirstTabView, TableRowView } from '@/server/tables/view'
 
 import { ConfirmDialog } from './confirm-dialog'
+import { PayFirstPicker } from './pay-first-picker'
 import { QrDialog } from './qr-dialog'
 import { QrPicture } from './qr-picture'
 import { RoutePicker } from './route-picker'
@@ -69,6 +70,7 @@ export function TableCard({
   fromTill,
   areaPublic,
   payment,
+  payFirst,
   menus,
   otherAreas,
   index,
@@ -83,6 +85,8 @@ export function TableCard({
   areaPublic: boolean
   /** Payment tables, where a connector can take payments; null elsewhere. */
   payment: PaymentTableAccess | null
+  /** Pay first rows, where pay first can take effect; null elsewhere. */
+  payFirst: PayFirstTabView | null
   menus: readonly MenuChoice[]
   /** The venue's other areas, for "Move to …". */
   otherAreas: readonly { readonly id: string; readonly name: string; readonly tableCount: number }[]
@@ -395,6 +399,16 @@ export function TableCard({
           canManage={canManage}
         />
       )}
+      {payFirst !== null && row.payFirst !== null && !isPaymentTable ? (
+        <PayFirstPicker
+          venueId={venueId}
+          target={{ tableId: row.id }}
+          targetName={t('route.table', { table: shown })}
+          payFirst={row.payFirst}
+          canSet={payFirst.canSet}
+          email={payFirst.email}
+        />
+      ) : null}
 
       <QrDialog row={row} open={enlarged} onOpenChange={setEnlarged} />
       {paymentTable.dialog}
