@@ -43,3 +43,15 @@ describe('paymentProviders (#107)', () => {
     }
   })
 })
+
+describe('the simulated provider (#116)', () => {
+  it('is built only with WORKER_PAYMENTS_SIM=on, and never in production', () => {
+    expect(paymentProviders({ PAYMENTS_ENV: 'test' }).size).toBe(0)
+    expect([
+      ...paymentProviders({ PAYMENTS_ENV: 'test', WORKER_PAYMENTS_SIM: 'on' }).keys(),
+    ]).toEqual(['sim-pay'])
+    expect(() =>
+      paymentProviders({ PAYMENTS_ENV: 'production', WORKER_PAYMENTS_SIM: 'on' }),
+    ).toThrow()
+  })
+})

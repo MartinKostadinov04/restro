@@ -43,6 +43,7 @@ import {
 import { PAYMENT_ACCOUNT_LOST_KIND } from './alert-rules'
 import type { ServiceTx } from './definition'
 import { accepted, refused, type ServiceResult } from './results'
+import { readVenueCapabilities } from './table-capabilities'
 
 /** The permission every account action needs (D125 2.2). */
 export const CONNECT_PERMISSION = 'settings.connect_payments' as const
@@ -134,6 +135,29 @@ export async function readPayingConnection(
   venueId: string,
 ): Promise<PayingConnection> {
   return withTenant(pool, tenantId, (tx) => loadPayingConnection(tx, venueId))
+}
+
+/** What the venue's POS lets paying do (D122 §3), for the Paying section to be listed (#116). */
+export interface PayingOffer {
+  /** A POS serving the venue closes a bill with the card payment type and moves lines to a payment table. */
+  readonly offered: boolean
+  /** A POS serving the venue puts a tip on the same receipt. */
+  readonly tips: boolean
+}
+
+/** Whether paying is offered at the venue at all: never at a venue no POS serves. */
+export async function readPayingOffer(
+  pool: DbPool,
+  tenantId: string,
+  venueId: string,
+): Promise<PayingOffer> {
+  const pos = await withTenant(pool, tenantId, (tx) => readVenueCapabilities(tx, venueId))
+  return {
+    offered: pos.some(
+      (capabilities) => capabilities.closeWithPaymentType && capabilities.moveLinesToTable,
+    ),
+    tips: pos.some((capabilities) => capabilities.recordTipOnClose),
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
