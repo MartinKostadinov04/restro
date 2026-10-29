@@ -59,8 +59,10 @@ export interface SimSwitches {
   readonly receiptNumberOnClose: boolean
   /** Q25. On: a close succeeds while the fiscal printer fails, with no receipt. */
   readonly closeSucceedsWithoutPrinter: boolean
-  /** Q38. On: a close may ask for an electronic receipt to an email address. */
+  /** Q38. On: a close may ask for an electronic receipt to an email address; the POS sends it. */
   readonly electronicReceipt: boolean
+  /** Q38. On, with `electronicReceipt`: the close answers the receipt as a file instead of sending it. */
+  readonly electronicReceiptFile: boolean
   /** Q35. On: a close may carry a note. */
   readonly closeCarriesNote: boolean
   /** Q20. On: one close may carry several payments. */
@@ -109,6 +111,7 @@ export const CAUTIOUS: SimSwitches = Object.freeze({
   receiptNumberOnClose: false,
   closeSucceedsWithoutPrinter: true,
   electronicReceipt: false,
+  electronicReceiptFile: false,
   closeCarriesNote: false,
   severalPaymentsPerClose: false,
   tipAsLine: false,
@@ -145,6 +148,9 @@ export function switchesOf(
   if (switches.startsInTrainingMode && !switches.trainingMode) {
     throw new Error('startsInTrainingMode needs trainingMode: a POS without one cannot start in it')
   }
+  if (switches.electronicReceiptFile && !switches.electronicReceipt) {
+    throw new Error('electronicReceiptFile needs electronicReceipt: the file is the receipt')
+  }
   if (switches.movePartialQuantity && !switches.moveLines && switches.billsPerTable === 'one') {
     throw new Error('movePartialQuantity needs a way to move rows (moveLines or several bills)')
   }
@@ -176,7 +182,8 @@ export function capabilitiesOf(switches: SimSwitches): ServiceCapabilities {
     readClosedBills: switches.readClosedBills,
     notesReachTicket: switches.notesReachTicket,
     receiptNumberOnClose: switches.receiptNumberOnClose,
-    electronicFiscalReceipt: switches.electronicReceipt,
+    electronicReceipt: switches.electronicReceipt,
+    electronicReceiptFile: switches.electronicReceipt && switches.electronicReceiptFile,
     trainingMode: switches.trainingMode,
     closeWithPaymentType: switches.closeWithPaymentType,
     openPayCloseInOneCall: switches.oneCallSale,

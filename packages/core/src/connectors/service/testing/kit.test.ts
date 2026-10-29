@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { NO_SERVICE_CAPABILITIES, type ServiceCapabilities } from '../capabilities'
 import type { ServiceConnector } from '../connector'
 import { posRef } from '../pos-ref'
+import type { PayAndCloseResult } from '../schemas'
 import {
   capabilitiesCheck,
   floorCheck,
@@ -12,6 +13,8 @@ import {
   tableFailedPartCheck,
 } from './checks-read'
 import {
+  electronicReceiptCheck,
+  KIT_RECEIPT_EMAIL,
   KIT_TIP_MINOR,
   newBillReferenceCheck,
   paymentRouteCheck,
@@ -22,7 +25,14 @@ import {
 } from './checks-write'
 import { posIdLeaks, waiterActionProblems } from './guard'
 import { serviceConnectorSuite } from './suite'
-import { TOY_CAPABILITIES, TOY_TIP_ITEM, ToyPos, toyConnector, toyHarness } from './toy-pos'
+import {
+  TOY_CAPABILITIES,
+  TOY_RECEIPT_FILE,
+  TOY_TIP_ITEM,
+  ToyPos,
+  toyConnector,
+  toyHarness,
+} from './toy-pos'
 
 /** One bill per table: lines are isolated by moving them to a payment table, whole lines only. */
 const ONE_BILL: ServiceCapabilities = {
@@ -39,6 +49,15 @@ const TIP_ON_CLOSE: ServiceCapabilities = {
   recordTipOnClose: true,
 }
 
+/** The same, and the POS sends the electronic receipt itself (D127, #186). */
+const POS_SENDS_RECEIPT: ServiceCapabilities = { ...TIP_ON_CLOSE, electronicReceipt: true }
+
+/** The same, and the close returns the POS's receipt file for Restro to send. */
+const RETURNS_RECEIPT_FILE: ServiceCapabilities = {
+  ...POS_SENDS_RECEIPT,
+  electronicReceiptFile: true,
+}
+
 // The kit on a connector that is right (the whole suite passes) and on connectors that are wrong
 // on purpose (each check finds its fault). The toy POS is the kit's own test double, not #68.
 
@@ -51,6 +70,19 @@ serviceConnectorSuite(
 )
 serviceConnectorSuite(
   toyHarness((pos) => toyConnector(pos, TIP_ON_CLOSE), 'toy recording a tip on close'),
+)
+
+serviceConnectorSuite(
+  toyHarness(
+    (pos) => toyConnector(pos, POS_SENDS_RECEIPT),
+    'toy whose POS sends the electronic receipt',
+  ),
+)
+serviceConnectorSuite(
+  toyHarness(
+    (pos) => toyConnector(pos, RETURNS_RECEIPT_FILE),
+    'toy whose close returns the electronic receipt file',
+  ),
 )
 
 function variant(
@@ -325,6 +357,112 @@ describe('the kit catches a connector that is wrong', () => {
       ),
     ).toBe(true)
     expect(problems).toContain('a refused tip still wrote to the POS: bills.close')
+  })
+
+  it('an email closed onto the bill where electronicReceipt is not declared', async () => {
+    const harness = variant(
+      (pos) => ({
+        payAndClose(ctx, request) {
+          return toyConnector(pos, POS_SENDS_RECEIPT).payAndClose(ctx, request)
+        },
+      }),
+      TIP_ON_CLOSE,
+    )
+    const problems = await electronicReceiptCheck(harness)
+    expect(
+      problems.some((p) =>
+        p.startsWith('electronicReceipt is not declared, but a close with an email came back done'),
+      ),
+    ).toBe(true)
+    expect(problems).toContain('a refused email still wrote to the POS: bills.close')
+  })
+
+  it('the POS sends the receipt: the toy POS got the kit address, once, and the paper close sent none', async () => {
+    let toy: ToyPos | undefined
+    const harness = toyHarness((pos) => {
+      toy = pos
+      return toyConnector(pos, POS_SENDS_RECEIPT)
+    })
+    expect(await electronicReceiptCheck(harness)).toStrictEqual([])
+    expect(toy?.receiptsSent).toStrictEqual([KIT_RECEIPT_EMAIL])
+  })
+
+  it('a receipt outcome the declaration does not allow, or none, or one with no email', async () => {
+    const answer = (
+      caps: ServiceCapabilities,
+      change: (result: PayAndCloseResult, hasEmail: boolean) => PayAndCloseResult,
+    ) =>
+      variant(
+        (_pos, base) => ({
+          async payAndClose(ctx, request) {
+            const outcome = await base.payAndClose(ctx, request)
+            if (outcome.kind !== 'done') return outcome
+            return {
+              kind: 'done',
+              result: change(outcome.result, request.receiptEmail !== undefined),
+            }
+          },
+        }),
+        caps,
+      )
+    const dropped = answer(RETURNS_RECEIPT_FILE, (result) => ({
+      receiptNumber: result.receiptNumber,
+      electronicReceipt: 'file',
+    }))
+    expect(await electronicReceiptCheck(dropped)).toContain(
+      "the close says 'file' but gave no receipt file",
+    )
+    const silent = answer(POS_SENDS_RECEIPT, (result, hasEmail) =>
+      hasEmail ? { receiptNumber: result.receiptNumber } : result,
+    )
+    expect(await electronicReceiptCheck(silent)).toContain(
+      'the close was given an email but did not say whether the receipt was issued',
+    )
+    const claimsSent = answer(RETURNS_RECEIPT_FILE, (result, hasEmail) =>
+      hasEmail ? { receiptNumber: result.receiptNumber, electronicReceipt: 'sent' } : result,
+    )
+    expect(await electronicReceiptCheck(claimsSent)).toContain(
+      "the close says 'sent', but electronicReceiptFile is declared: the file comes back",
+    )
+    const wrongShape = answer(POS_SENDS_RECEIPT, (result, hasEmail) =>
+      hasEmail
+        ? {
+            receiptNumber: result.receiptNumber,
+            electronicReceipt: 'file',
+            receiptFile: TOY_RECEIPT_FILE,
+          }
+        : result,
+    )
+    expect(await electronicReceiptCheck(wrongShape)).toContain(
+      'the close gives a receipt file, but electronicReceiptFile is not declared',
+    )
+    const unasked = answer(POS_SENDS_RECEIPT, (result) => ({
+      ...result,
+      electronicReceipt: 'sent',
+    }))
+    expect(await electronicReceiptCheck(unasked)).toContain(
+      'a close without an email gave an electronic receipt or a receipt file',
+    )
+    // Honest about a receipt that was not issued: no problem.
+    const notIssued = answer(RETURNS_RECEIPT_FILE, (result, hasEmail) =>
+      hasEmail ? { receiptNumber: result.receiptNumber, electronicReceipt: 'not_issued' } : result,
+    )
+    expect(await electronicReceiptCheck(notIssued)).toStrictEqual([])
+  })
+
+  it('a POS that cannot close at all is not blamed for refusing an email', async () => {
+    const harness = toyHarness((pos) =>
+      toyConnector(pos, { ...ONE_BILL, closeWithPaymentType: false }),
+    )
+    expect(await electronicReceiptCheck(harness)).toStrictEqual([])
+  })
+  it('a file shape declared without the capability', async () => {
+    const harness = toyHarness((pos) =>
+      toyConnector(pos, { ...TIP_ON_CLOSE, electronicReceiptFile: true }),
+    )
+    expect(await electronicReceiptCheck(harness)).toContain(
+      'electronicReceiptFile is declared without electronicReceipt',
+    )
   })
 
   it('a tip dropped on close where recordTipOnClose is declared', async () => {

@@ -41,6 +41,8 @@ export interface RecordedServiceCapabilities {
    * and that route is the only one built today, so paying is offered only where this is declared (#116).
    */
   readonly moveLinesToTable: boolean
+  /** The close can ask the POS for an electronic receipt to the guest's email (D127, #186). */
+  readonly electronicReceipt: boolean
 }
 
 /** Nothing declared: the cautious answer. */
@@ -50,6 +52,7 @@ export const NO_RECORDED_SERVICE_CAPABILITIES: RecordedServiceCapabilities = Obj
   recordTipOnClose: false,
   closeWithPaymentType: false,
   moveLinesToTable: false,
+  electronicReceipt: false,
 })
 
 function snakeCase(name: string): string {
@@ -76,5 +79,6 @@ export function readServiceCapabilities(config: unknown): RecordedServiceCapabil
     recordTipOnClose: stored.record_tip_on_close === true,
     closeWithPaymentType: stored.close_with_payment_type === true,
     moveLinesToTable: stored.move_lines_to_table === true,
+    electronicReceipt: stored.electronic_receipt === true,
   }
 }

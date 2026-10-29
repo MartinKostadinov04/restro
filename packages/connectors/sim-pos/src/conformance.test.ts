@@ -41,9 +41,17 @@ const tipOverHttp = {
   base: 'http://pilot-tip.sim-pos.localhost',
   ...engineOf('pilot', { tipAsLine: true }),
 }
+// The electronic receipt (D127, #186): the POS sends it, and the close returns its file.
+const sendsInProcess = engineOf('pilot', { electronicReceipt: true })
+const fileInProcess = engineOf('pilot', { electronicReceipt: true, electronicReceiptFile: true })
+const fileOverHttp = {
+  base: 'http://pilot-file.sim-pos.localhost',
+  ...engineOf('pilot', { electronicReceipt: true, electronicReceiptFile: true }),
+}
 const server = setupServer(
   ...overHttp.flatMap(({ engine, base }) => simPosHandlers(engine, base)),
   ...simPosHandlers(tipOverHttp.engine, tipOverHttp.base),
+  ...simPosHandlers(fileOverHttp.engine, fileOverHttp.base),
 )
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
@@ -73,6 +81,31 @@ serviceConnectorSuite(
     engine: tipOverHttp.engine,
     clock: tipOverHttp.clock,
     transport: fetchTransport(tipOverHttp.base, { env: 'test' }),
+  }),
+)
+
+serviceConnectorSuite(
+  simPosHarness({
+    name: 'sim-pos pilot whose POS sends the electronic receipt, in process',
+    engine: sendsInProcess.engine,
+    clock: sendsInProcess.clock,
+    transport: inProcessTransport(sendsInProcess.engine),
+  }),
+)
+serviceConnectorSuite(
+  simPosHarness({
+    name: 'sim-pos pilot whose close returns the receipt file, in process',
+    engine: fileInProcess.engine,
+    clock: fileInProcess.clock,
+    transport: inProcessTransport(fileInProcess.engine),
+  }),
+)
+serviceConnectorSuite(
+  simPosHarness({
+    name: 'sim-pos pilot whose close returns the receipt file, over HTTP',
+    engine: fileOverHttp.engine,
+    clock: fileOverHttp.clock,
+    transport: fetchTransport(fileOverHttp.base, { env: 'test' }),
   }),
 )
 

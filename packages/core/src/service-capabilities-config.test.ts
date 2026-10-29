@@ -34,6 +34,7 @@ describe('the recorded service capabilities (#78)', () => {
       recordTipOnClose: false,
       closeWithPaymentType: false,
       moveLinesToTable: false,
+      electronicReceipt: false,
     })
     expect(
       readServiceCapabilities({
@@ -48,6 +49,7 @@ describe('the recorded service capabilities (#78)', () => {
       recordTipOnClose: false,
       closeWithPaymentType: false,
       moveLinesToTable: false,
+      electronicReceipt: false,
     })
     expect(
       readServiceCapabilities({
@@ -57,5 +59,14 @@ describe('the recorded service capabilities (#78)', () => {
         }),
       }),
     ).toMatchObject({ recordTipOnClose: true })
+    expect(
+      readServiceCapabilities({
+        service_capabilities: storedServiceCapabilities({
+          ...NO_SERVICE_CAPABILITIES,
+          electronicReceipt: true,
+          electronicReceiptFile: true,
+        }),
+      }),
+    ).toMatchObject({ electronicReceipt: true })
   })
 })

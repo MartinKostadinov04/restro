@@ -78,7 +78,13 @@ export interface SimBill {
   chargeMinor: number
   lockedBy: string | null
   payments: SimPayment[]
-  receipt: { readonly number: string | null; readonly email: string | null } | null
+  receipt: {
+    readonly number: string | null
+    /** The address the electronic receipt was issued to (the POS's own record, not Restro's). */
+    readonly email: string | null
+    /** Whether the POS sent it itself, or returned its file to the caller. */
+    readonly delivery: 'sent' | 'returned' | null
+  } | null
   closedAt: string | null
   /** The service day it was opened in (`closeDay` starts the next). */
   readonly day: number

@@ -34,8 +34,20 @@ export const SERVICE_CAPABILITIES = [
   'notesReachTicket',
   /** Receipt number on close. */
   'receiptNumberOnClose',
-  /** Electronic fiscal receipt. */
-  'electronicFiscalReceipt',
+  /**
+   * The close takes the guest's email and asks the POS to issue the sale as an electronic receipt
+   * from the venue's fiscal device (D127, #186). The POS sends it itself, unless
+   * `electronicReceiptFile` is also declared. Undeclared, a close with an email is refused
+   * `not_supported` before any write, and no email field is offered. No real POS declares it
+   * until its provider confirms it (open-items Q84).
+   */
+  'electronicReceipt',
+  /**
+   * With `electronicReceipt`: the close does not send the receipt but returns the POS's own file,
+   * which Restro sends unchanged through its email service (D127, #186). Never without
+   * `electronicReceipt`.
+   */
+  'electronicReceiptFile',
   /** Training mode: the POS has one (the probe then reports the current mode, D124 §5). */
   'trainingMode',
   /** Close a bill with a chosen payment type. */

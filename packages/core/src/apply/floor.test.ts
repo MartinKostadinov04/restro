@@ -362,6 +362,7 @@ describe.skipIf(!hasDatabase)('the floor reading (as the restro_app role)', () =
       recordTipOnClose: false,
       closeWithPaymentType: false,
       moveLinesToTable: false,
+      electronicReceipt: false,
     })
 
     expect(await tick(declared)).toMatchObject({ kind: 'applied', capabilitiesRecorded: true })
@@ -372,6 +373,7 @@ describe.skipIf(!hasDatabase)('the floor reading (as the restro_app role)', () =
       recordTipOnClose: false,
       closeWithPaymentType: false,
       moveLinesToTable: false,
+      electronicReceipt: false,
     })
     expect(config.service_capabilities).toMatchObject({ notes_reach_ticket: true })
     expect(readSyncState(config, at.bid)).toEqual({ cursor })
@@ -387,6 +389,7 @@ describe.skipIf(!hasDatabase)('the floor reading (as the restro_app role)', () =
       recordTipOnClose: false,
       closeWithPaymentType: false,
       moveLinesToTable: false,
+      electronicReceipt: false,
     })
     expect(readSyncState(await configOf(), at.bid)).toEqual({ cursor })
   })
