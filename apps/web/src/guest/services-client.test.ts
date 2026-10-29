@@ -18,6 +18,7 @@ import {
   PAY_RECENT_KEY,
   PAY_RETURNED_KEY,
   POLL_BACKOFF_MS,
+  payEmailKey,
   payHandleKey,
   payRecentKey,
   type TableServicesDeps,
@@ -44,6 +45,7 @@ function tableState(version: number, lines: Lines = [], location: LocationState 
       payingProvider: null,
       minCardMinor: 50,
       tips: false,
+      receiptEmail: false,
       night: { state: 'open', at: null },
     },
     location: {
@@ -729,6 +731,7 @@ describe('paying (#110, #114, D127)', () => {
     tipMinor: 0,
     lines: [{ name: { en_US: 'House wine' }, quantity: '1', amountMinor: 2250 }],
     paidAt: null,
+    receiptEmailed: null,
     timeZone: 'Europe/Sofia',
     form: {
       provider: 'stripe',
@@ -852,6 +855,55 @@ describe('paying (#110, #114, D127)', () => {
       provider: 'stripe',
       values: { clientSecret: 'pi_x_secret_y', account: 'acct_1A' },
     })
+  })
+
+  it('keeps the address given for the venue’s electronic receipt with the handle, names it on the paid screen, and forgets it with the handle (#186)', async () => {
+    const mem = memory()
+    const paid = payment({
+      state: 'captured',
+      form: null,
+      receiptEmailed: 'sent',
+      paidAt: '2026-10-29T19:42:00.000Z',
+    })
+    const h = harness(server({ payment: () => json(200, paid) }), {
+      memory: memory(),
+      durable: mem,
+    })
+    h.client.start()
+    await h.tick()
+    const result = await h.client.dispatch({
+      ...(start() as Extract<GuestCommand, { kind: 'pay.start' }>),
+      receiptEmail: 'ana@example.com',
+    })
+    expect(result).toMatchObject({ status: 'accepted' })
+    // The address went to the server in the command, once; here it waits for the Paid screen.
+    expect(mem.store.get(payEmailKey(CODE))).toBe('ana@example.com')
+    await h.tick()
+    expect(h.client.getState().payment).toMatchObject({
+      state: 'captured',
+      receiptEmailed: 'sent',
+      receiptEmail: 'ana@example.com',
+    })
+    // The payment's reads never carry the address back to the server.
+    for (const call of h.calls.filter((c) => c.url.endsWith('/payment'))) {
+      expect(String(call.init.body ?? '')).not.toContain('ana@example.com')
+      expect(call.url).not.toContain('ana@example.com')
+    }
+    // Forgetting the payment forgets the address with it.
+    h.client.dismissPayment()
+    expect(mem.store.has(payHandleKey(CODE))).toBe(false)
+    expect(mem.store.has(payEmailKey(CODE))).toBe(false)
+  })
+
+  it('pays without an address: nothing is kept, and a page reloaded finds the payment with none', async () => {
+    const mem = memory()
+    const h = harness(server(), { memory: memory(), durable: mem })
+    h.client.start()
+    await h.tick()
+    await h.client.dispatch(start())
+    expect(mem.store.has(payEmailKey(CODE))).toBe(false)
+    await h.tick()
+    expect(h.client.getState().payment).toMatchObject({ receiptEmail: null })
   })
 
   it('sends pay.returned and pay.cancel with the handle, and rejects them locally without one', async () => {

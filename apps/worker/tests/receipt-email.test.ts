@@ -32,6 +32,7 @@ import {
   GuestLimiter,
   type GuestLimitName,
   guestAct,
+  guestPayment,
   guestState,
 } from '@restro/core/service'
 import { createPool, type DbPool } from '@restro/db'
@@ -277,6 +278,7 @@ describe.skipIf(!hasDatabase).each([
   }
 
   /** A guest's Pay of the second line, with or without an email; the result is the payment's id. */
+  let lastHandle: string | null = null
   async function pay(receiptEmail?: string): Promise<{ id: string | null; code: string | null }> {
     const state = await guestState(pool, { code, view: 'bill', limiter: LOOSE })
     if (!state.ok || state.answer.unchanged) throw new Error('no state')
@@ -305,6 +307,7 @@ describe.skipIf(!hasDatabase).each([
       humanCheck: async () => 'passed',
     })
     if (!answer.ok) throw new Error(`the Pay failed: ${answer.code}`)
+    lastHandle = answer.handle
     if (answer.result.status !== 'accepted') return { id: null, code: answer.result.code ?? null }
     return { id: answer.result.subjectId as string, code: null }
   }
@@ -364,6 +367,12 @@ describe.skipIf(!hasDatabase).each([
         [id],
       )
     ).map((row) => `${row.step}:${row.outcome}${row.answer === null ? '' : `:${row.answer}`}`)
+  /** What the paying phone's own payment says of the receipt, as the guest page reads it. */
+  async function receiptEmailed() {
+    const answer = await guestPayment(pool, { code, handle: lastHandle ?? '', limiter: LOOSE })
+    if (!answer.ok) throw new Error('the payment was not read')
+    return answer.answer.receiptEmailed
+  }
   const receiptBill = () => sim.host.engine.state.bills.find((bill) => bill.receipt !== null)
 
   /**
@@ -417,6 +426,8 @@ describe.skipIf(!hasDatabase).each([
     const row = await drive(id)
     expect(row).toMatchObject({ state: 'captured', receipt_email: null, to_bring: false })
     expect(await steps(id)).toContain(`receiptEmail:done:${file ? 'file_sent' : 'pos_sent'}`)
+    // The paying phone is told what went out: Restro sent the file, or the POS was asked to send it.
+    expect(await receiptEmailed()).toBe(file ? 'sent' : 'requested')
     // The POS got the address with the close; the receipt is the POS's own.
     expect(receiptBill()?.receipt).toMatchObject({
       email: EMAIL,
@@ -447,6 +458,7 @@ describe.skipIf(!hasDatabase).each([
     const row = await drive(id)
     expect(row).toMatchObject({ state: 'captured', receipt_email: null, to_bring: true })
     expect((await steps(id)).some((step) => step.startsWith('receiptEmail'))).toBe(false)
+    expect(await receiptEmailed()).toBeNull()
     expect(sender.sent).toHaveLength(0)
     expect(receiptBill()?.receipt).toMatchObject({ email: null, delivery: null })
   })
@@ -476,6 +488,7 @@ describe.skipIf(!hasDatabase).each([
     const row = await drive(id)
     expect(row).toMatchObject({ state: 'captured', receipt_email: null, to_bring: true })
     expect(await steps(id)).toContain('receiptEmail:refused:not_issued')
+    expect(await receiptEmailed()).toBeNull()
     expect(sender.sent).toHaveLength(0)
     expect(await wherever(EMAIL)).toEqual([])
   })

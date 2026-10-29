@@ -52,11 +52,6 @@ export interface ConfirmationInput {
   readonly words: PayingStrings
   /** "Other item" (`strings.services.otherItem`): the name of a line that has none. */
   readonly otherItem: string
-  /**
-   * The address the venue's electronic receipt went to, where there is one (#186): the note then
-   * says the receipt was sent there. Nothing sets it before a connector declares the receipt.
-   */
-  readonly receiptEmail?: string | null
 }
 
 /** "×2" after a name for a line of more than one. */
@@ -102,9 +97,13 @@ export function confirmationOf(input: ConfirmationInput): ConfirmationView | nul
     paidBy: words.paidByCard,
     number: { label: words.paidNumber, value: payment.number },
     note:
-      input.receiptEmail == null
+      payment.receiptEmailed === null ||
+      payment.receiptEmail === null ||
+      payment.receiptEmail === ''
         ? words.confirmNotReceipt
-        : words.confirmReceiptEmailed(input.receiptEmail),
+        : payment.receiptEmailed === 'sent'
+          ? words.confirmReceiptEmailed(payment.receiptEmail)
+          : words.confirmReceiptRequested(payment.receiptEmail),
     saveLabel: words.confirmSave,
   }
 }

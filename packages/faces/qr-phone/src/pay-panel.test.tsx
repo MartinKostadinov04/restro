@@ -654,3 +654,136 @@ describe('the Payment confirmation (#197, D127 1.4)', () => {
     expect(document.activeElement).toBe(page.querySelector('[data-slot="pay.confirmation.toggle"]'))
   })
 })
+
+describe('the venue’s electronic receipt (#186, D127)', () => {
+  const sent: GuestCommand[] = []
+  const withReceipt = (changes: Partial<ServiceState> = {}) =>
+    payingState({
+      paying: { ...payingState().paying!, electronicReceipt: true },
+      ...changes,
+    })
+  const field = (page: HTMLElement) =>
+    page.querySelector<HTMLInputElement>('[data-slot="pay.receipt.email"]')
+  const type = (input: HTMLInputElement | null, text: string) =>
+    act(async () => {
+      if (input === null) return
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, text)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+  const click = (page: HTMLElement, selector: string) =>
+    act(async () => page.querySelector<HTMLElement>(selector)?.click())
+
+  async function drawRecording(state: ServiceState) {
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+    const services: ServiceBinding = {
+      state,
+      dispatch: (command) => {
+        sent.push(command)
+        return Promise.resolve({
+          actionId: command.actionId,
+          status: 'accepted' as const,
+          message: null,
+          ref: null,
+        })
+      },
+    }
+    await act(async () => root?.render(<QrPhoneFace view={view} services={services} />))
+    return host
+  }
+
+  it('draws the email field only where the host offers it, under the guide’s words', async () => {
+    const on = await draw(withReceipt())
+    const input = field(on)
+    expect(input?.type).toBe('email')
+    expect(
+      on.querySelector('[data-slot="pay.receipt.email"]')?.closest('label')?.textContent,
+    ).toContain('Receipt by email (optional)')
+    expect(input?.value).toBe('')
+    unmount()
+    const off = await draw(payingState())
+    expect(field(off)).toBeNull()
+    expect(off.textContent).not.toContain('Receipt by email')
+  })
+
+  it('sends the typed address with Pay, nothing when it is empty, and greys Pay for a bad one', async () => {
+    sent.length = 0
+    const page = await drawRecording(withReceipt())
+    await click(page, '[data-slot="pay.whole"]')
+    await click(page, '[data-slot="pay.start"]')
+    expect(sent.at(-1)).toMatchObject({ kind: 'pay.start' })
+    expect('receiptEmail' in (sent.at(-1) ?? {})).toBe(false)
+
+    await type(field(page), 'ana@')
+    expect(field(page)?.getAttribute('aria-invalid')).toBe('true')
+    expect(page.querySelector<HTMLButtonElement>('[data-slot="pay.start"]')?.disabled).toBe(true)
+
+    await type(field(page), ' ana@example.com ')
+    expect(field(page)?.getAttribute('aria-invalid')).toBeNull()
+    expect(page.querySelector<HTMLButtonElement>('[data-slot="pay.start"]')?.disabled).toBe(false)
+    await click(page, '[data-slot="pay.start"]')
+    expect(sent.at(-1)).toMatchObject({ kind: 'pay.start', receiptEmail: 'ana@example.com' })
+  })
+
+  it('never sends an address where none is offered, however it was typed before', async () => {
+    sent.length = 0
+    const page = await drawRecording(withReceipt())
+    await click(page, '[data-slot="pay.whole"]')
+    await type(field(page), 'ana@example.com')
+    // The host no longer offers it (the table's POS changed): the field goes, the address with it.
+    unmount()
+    const off = await drawRecording(payingState())
+    await click(off, '[data-slot="pay.whole"]')
+    await click(off, '[data-slot="pay.start"]')
+    expect('receiptEmail' in (sent.at(-1) ?? {})).toBe(false)
+  })
+
+  const paid = (receiptEmailed: 'sent' | 'requested' | null, receiptEmail: string | null) =>
+    payingState({
+      payment: payScenarioPayment({
+        state: 'captured',
+        form: null,
+        tipMinor: 250,
+        amountMinor: 2500,
+        paidAt: '2026-10-29T19:42:00.000Z',
+        receiptEmailed,
+        receiptEmail,
+      }),
+    })
+
+  it('says on the Paid screen what went out: sent, requested, or the waiter’s paper', async () => {
+    const sentTo = await draw(paid('sent', 'ana@example.com'))
+    expect(sentTo.querySelector('[data-slot="pay.receipt.line"]')?.textContent).toBe(
+      'Show this number to your waiter. Your receipt was sent to ana@example.com.',
+    )
+    unmount()
+    const requested = await draw(paid('requested', 'ana@example.com'))
+    expect(requested.querySelector('[data-slot="pay.receipt.line"]')?.textContent).toBe(
+      'Show this number to your waiter. Your receipt was requested to ana@example.com.',
+    )
+    unmount()
+    const paper = await draw(paid(null, null))
+    expect(paper.querySelector('[data-slot="pay.receipt.line"]')?.textContent).toBe(
+      words.paidReceipt,
+    )
+  })
+
+  it('says it on the confirmation page too, never looking like a receipt', async () => {
+    for (const [kind, expected] of [
+      ['sent', words.confirmReceiptEmailed('ana@example.com')],
+      ['requested', words.confirmReceiptRequested('ana@example.com')],
+    ] as const) {
+      const page = await draw(paid(kind, 'ana@example.com'))
+      await act(async () => {
+        page
+          .querySelector('[data-slot="pay.confirmation.toggle"]')
+          ?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      })
+      const note = page.querySelector('[data-slot="pay.confirmation.note"]')?.textContent ?? ''
+      expect(note).toBe(expected)
+      for (const pattern of RECEIPT_LOOK) expect(note).not.toMatch(pattern)
+      unmount()
+    }
+  })
+})

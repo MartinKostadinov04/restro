@@ -7,13 +7,16 @@ import {
   freeLines,
   NO_TIP,
   offersPay,
+  offersReceiptEmail,
   PAY_ENDS,
+  paidReceiptText,
   payBlock,
   payFormLocale,
   paymentIsFinal,
   payScreen,
   payStartCommand,
   pickWhole,
+  receiptEmailOf,
   reconcilePicks,
   refusalText,
   sameAmountAgo,
@@ -84,6 +87,8 @@ function payment(changes: Partial<PaymentView>): PaymentView {
     tipMinor: 250,
     lines: [],
     paidAt: null,
+    receiptEmailed: null,
+    receiptEmail: null,
     timeZone: 'Europe/Sofia',
     form: { confirmSeconds: 120 },
     ...changes,
@@ -499,3 +504,81 @@ describe('the words Martin approved on 10-29 (#114)', () => {
 })
 
 const RECEIPT_LIKE = /фискал|fiscal|(?<!\p{L})бон/u
+
+describe('the receipt email (#186, D127)', () => {
+  const picks = pickWhole(new Map(), bill([{ id: 1, amountMinor: 1250 }]))
+  const on: PayingView = { ...PAYING, electronicReceipt: true }
+  const b = bill([{ id: 1, amountMinor: 1250 }])
+
+  it('reads what was typed: nothing, one valid address (trimmed), or a bad one', () => {
+    expect(receiptEmailOf('', true)).toEqual({ kind: 'none' })
+    expect(receiptEmailOf('   ', true)).toEqual({ kind: 'none' })
+    expect(receiptEmailOf(' ana@example.com ', true)).toEqual({
+      kind: 'valid',
+      email: 'ana@example.com',
+    })
+    for (const bad of ['ana', 'ana@', 'ana@example.com, bo@example.com', 'a b@example.com']) {
+      expect(receiptEmailOf(bad, true)).toEqual({ kind: 'invalid' })
+    }
+    // Where no field is offered, whatever is in it is no address.
+    expect(receiptEmailOf('ana@example.com', false)).toEqual({ kind: 'none' })
+    expect(receiptEmailOf('not an address', false)).toEqual({ kind: 'none' })
+  })
+
+  it('offers the field only where the host says the receipt can be issued', () => {
+    expect(offersReceiptEmail(on)).toBe(true)
+    expect(offersReceiptEmail(PAYING)).toBe(false)
+    expect(offersReceiptEmail(null)).toBe(false)
+    expect(offersReceiptEmail(undefined)).toBe(false)
+  })
+
+  it('puts a valid address on the pay.start, and only where it is offered', () => {
+    const send = (typed: string | null, offered: boolean) =>
+      payStartCommand(uuid, picks, NO_TIP, false, typed, offered)
+    expect(send('ana@example.com', true).receiptEmail).toBe('ana@example.com')
+    expect(send(' ana@example.com ', true).receiptEmail).toBe('ana@example.com')
+    expect('receiptEmail' in send('', true)).toBe(false)
+    expect('receiptEmail' in send(null, true)).toBe(false)
+    expect('receiptEmail' in send('ana@example.com', false)).toBe(false)
+    expect('receiptEmail' in send('nonsense', true)).toBe(false)
+    // The wire schema takes exactly what the shell builds.
+    expect(GuestCommandSchema.safeParse(send('ana@example.com', true)).success).toBe(true)
+    expect(
+      GuestCommandSchema.safeParse({ ...send(null, true), receiptEmail: 'nonsense' }).success,
+    ).toBe(false)
+  })
+
+  it('greys Pay for a bad address typed, never silently dropping it, and not for none', () => {
+    expect(payBlock(on, b, picks, NO_TIP, false, 'ana@example.com')).toBeNull()
+    expect(payBlock(on, b, picks, NO_TIP, false, '')).toBeNull()
+    expect(payBlock(on, b, picks, NO_TIP, false, 'ana@')).toBe('bad_email')
+    // No field here: what is in it does not matter.
+    expect(payBlock(PAYING, b, picks, NO_TIP, false, 'ana@')).toBeNull()
+  })
+
+  it('words the Paid line by what went out: sent, requested, or the waiter’s paper', () => {
+    for (const locale of ['en_US', 'bg_BG'] as const) {
+      const words = stringsFor(locale).services.paying
+      const paid = (receiptEmailed: 'sent' | 'requested' | null, receiptEmail: string | null) =>
+        paidReceiptText(payment({ state: 'captured', receiptEmailed, receiptEmail }), words)
+      expect(paid('sent', 'ana@example.com')).toBe(words.paidReceiptEmailed('ana@example.com'))
+      expect(paid('requested', 'ana@example.com')).toBe(
+        words.paidReceiptRequested('ana@example.com'),
+      )
+      expect(paid(null, 'ana@example.com')).toBe(words.paidReceipt)
+      expect(paid('sent', null)).toBe(words.paidReceipt)
+      expect(paid('sent', 'ana@example.com')).toContain('ana@example.com')
+    }
+    const en = stringsFor('en_US').services.paying
+    expect(en.receiptEmail).toBe('Receipt by email (optional)')
+    expect(en.paidReceiptEmailed('x@y.z')).toBe(
+      'Show this number to your waiter. Your receipt was sent to x@y.z.',
+    )
+    expect(en.paidReceiptRequested('x@y.z')).toBe(
+      'Show this number to your waiter. Your receipt was requested to x@y.z.',
+    )
+    const bg = stringsFor('bg_BG').services.paying
+    expect(bg.receiptEmail).toBe('Касова бележка по имейл (по желание)')
+    expect(bg.paidReceiptRequested('x@y.z')).toContain('Поискахте касова бележка на x@y.z.')
+  })
+})

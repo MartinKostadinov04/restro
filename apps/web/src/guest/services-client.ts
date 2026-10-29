@@ -139,6 +139,16 @@ export const PAY_RECENT_KEY = 'restro.payRecent'
 /** The key of one table's last payment. */
 export const payRecentKey = (code: string): string => `${PAY_RECENT_KEY}.${code}`
 
+/**
+ * The address this phone gave for the venue's electronic receipt (#186), durable like the handle and
+ * removed with it: the server erases its copy at the close, so the Paid screen's "sent to …" line
+ * is worded from this one, kept only in the guest's own browser and never sent again.
+ */
+export const PAY_EMAIL_KEY = 'restro.payEmail'
+
+/** The key of one table's receipt address. */
+export const payEmailKey = (code: string): string => `${PAY_EMAIL_KEY}.${code}`
+
 /** When a day has no end the server named, a handle is kept this long (hours). */
 const DEFAULT_KEEP_HOURS = 6
 
@@ -203,7 +213,7 @@ function tableBillOf(bill: GuestTableState['bill']): TableBillView | null {
 }
 
 /** The paying phone's payment as the face sees it: the provider's form values stay behind. */
-function paymentViewOf(answer: GuestPaymentAnswer): PaymentView {
+function paymentViewOf(answer: GuestPaymentAnswer, receiptEmail: string | null): PaymentView {
   return {
     id: answer.id,
     mode: answer.mode,
@@ -215,6 +225,8 @@ function paymentViewOf(answer: GuestPaymentAnswer): PaymentView {
     tipMinor: answer.tipMinor,
     lines: answer.lines,
     paidAt: answer.paidAt,
+    receiptEmailed: answer.receiptEmailed,
+    receiptEmail,
     timeZone: answer.timeZone,
     form: answer.form === null ? null : { confirmSeconds: answer.form.confirmSeconds },
   }
@@ -400,6 +412,9 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
   const durable = deps.durable ?? deps.memory
   /** This phone's payment handle and what the last poll of its payment answered. */
   let handle: string | null = readHandle()
+  /** The address this phone gave with its payment, for the Paid screen's line (#186). */
+  let receiptEmail: string | null =
+    handle === null ? null : (durable?.get(payEmailKey(deps.code)) ?? null)
   /** The state of an unconfirmed payment the guest sent away with "Back to the bill". */
   let hidden: { readonly id: string; readonly state: string } | null = null
   let payment: GuestPaymentAnswer | null = null
@@ -463,7 +478,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       minCardMinor: from.ordering.minCardMinor,
       processor: processorName(from.ordering.payingProvider),
       venueName: from.location.venueName,
-      electronicReceipt: false,
+      electronicReceipt: from.ordering.receiptEmail,
       recent: recent(),
     }
   }
@@ -474,6 +489,8 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     hidden = null
     if (next === null) {
       durable?.remove(payHandleKey(deps.code))
+      durable?.remove(payEmailKey(deps.code))
+      receiptEmail = null
       return
     }
     const hours = DEFAULT_KEEP_HOURS * 3_600
@@ -525,7 +542,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
         lastAnswerAt = deps.now()
         payment = answer
         noteRecent(answer)
-        if (paymentIsFinal(paymentViewOf(answer))) schedule(0)
+        if (paymentIsFinal(paymentViewOf(answer, receiptEmail))) schedule(0)
         // Unconfirmed is read on: a manager's answer moves it to captured or released.
         else wait = answer.next
       }
@@ -545,7 +562,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       revision: server?.version ?? 0,
       tableBill: server === null ? null : tableBillOf(server.bill),
       paying: server === null || retired ? null : payingView(server),
-      payment: payment === null || isHidden(payment) ? null : paymentViewOf(payment),
+      payment: payment === null || isHidden(payment) ? null : paymentViewOf(payment, receiptEmail),
       order: server?.order == null ? null : orderView(server.order, pending, now),
       requests: server?.waiterCall == null ? [] : requestsOf(server.waiterCall),
       ordering: retired
@@ -769,6 +786,10 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     // The payment this phone started: its handle is kept, and its payment is read until it is final.
     if (command.kind === 'pay.start' && body.handle !== null) {
       keepHandle(body.handle)
+      // The address the guest gave, kept as long as the handle (the line after Paid names it).
+      receiptEmail = command.receiptEmail ?? null
+      if (receiptEmail === null) durable?.remove(payEmailKey(deps.code))
+      else durable?.set(payEmailKey(deps.code), receiptEmail)
       payment = null
       recentNoted = null
       schedulePay(0)

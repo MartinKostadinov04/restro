@@ -80,6 +80,7 @@ import { paymentNumberOf } from './payment-number'
 import { readTableState, type TableStateRead, type TableStateUnchanged } from './read'
 import type { ServiceResult } from './results'
 import { loadSendMenu } from './send-menu'
+import { readTableCapabilities } from './table-capabilities'
 
 /** The screens a phone polls from (design §6): the menu polls slower than the order and the bill. */
 export const GUEST_VIEWS = ['menu', 'order', 'bill'] as const
@@ -143,6 +144,8 @@ export interface GuestTableState {
     readonly notesAndOptions: boolean
     /** A tip can be given when paying here (D127: the POS records it on the receipt); else none. */
     readonly tips: boolean
+    /** An email for the venue's electronic receipt can be given when paying here (D127, #186). */
+    readonly receiptEmail: boolean
     /** The venue's night (#82): "Last orders at 04:30", "closed for tonight", opening later. */
     readonly night: GuestNight
     /** Whether pay-first items can be paid at Send here now (#113, #114); no ids. */
@@ -496,6 +499,7 @@ export function projectGuestState(
       state: read.sitting === null ? 'closed' : read.pauses.length > 0 ? 'paused' : 'on',
       notesAndOptions: read.notesAndOptions,
       tips: read.tips,
+      receiptEmail: read.receiptEmail,
       payFirst: read.sitting === null ? 'off' : read.payFirst.state,
       paying: read.sitting === null ? 'off' : read.paying.state,
       payingProvider: read.paying.state === 'off' ? null : read.paying.provider,
@@ -1363,6 +1367,12 @@ export interface GuestPaymentView {
   }[]
   /** When it was captured (an ISO instant), or null: the Payment confirmation's time. */
   readonly paidAt: string | null
+  /**
+   * The guest's electronic receipt, once paid (D127, #186): `sent` where Restro sent the POS's
+   * file, `requested` where the POS sends it itself; null where none went out and the waiter
+   * brings paper (the guest gave no email, or no receipt was issued).
+   */
+  readonly receiptEmailed: 'sent' | 'requested' | null
   /** The venue's time zone (IANA): the confirmation shows the time there (D127 1.4). */
   readonly timeZone: string
   /** The card form: only while the payment awaits the guest. */
@@ -1477,9 +1487,11 @@ export async function guestPayment(
       .select({ timezone: venues.timezone })
       .from(venues)
       .where(eq(venues.id, target.venueId))
+    const capabilities = await readTableCapabilities(tx, target.tableId)
     return {
       payment,
       lines,
+      capabilities,
       now: new Date(),
       bills: reading?.bills,
       timeZone: venue?.timezone ?? 'Europe/Sofia',
@@ -1537,6 +1549,14 @@ export async function guestPayment(
           ]
     }),
     paidAt: payment.state === 'captured' ? (payment.settledAt?.toISOString() ?? null) : null,
+    // A captured payment whose paper receipt is not to be brought had its electronic one go out
+    // (the worker passes that at the capture, #186, #200).
+    receiptEmailed:
+      payment.state === 'captured' && payment.receiptToBringAt === null
+        ? found.capabilities.electronicReceiptFile
+          ? 'sent'
+          : 'requested'
+        : null,
     timeZone: found.timeZone,
     form:
       payment.state === 'awaiting_guest' && payment.formValues !== null
