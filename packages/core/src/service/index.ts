@@ -310,9 +310,13 @@ export {
   loadPayingConnection,
   type PayingConnection,
   type PayingOffer,
+  type PaymentTableBoard,
+  type PaymentTableQueues,
   paymentTableFacts,
+  type QueueWithoutPaymentTable,
   readPayingConnection,
   readPayingOffer,
+  readPaymentTableBoard,
 } from './payment-connection'
 export { PAYMENT_NUMBER_LENGTH, paymentNumberOf } from './payment-number'
 export {

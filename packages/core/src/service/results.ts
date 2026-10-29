@@ -42,6 +42,8 @@ export const REFUSAL_CODES = [
   'table_vanished',
   /** The table is open for phones: close it before it becomes a payment table. */
   'table_open',
+  /** A payment holds this payment table: it cannot stop being one until the payment is done. */
+  'payment_table_busy',
   /** A row it needs is locked by another write longer than `lock_timeout`; try again. */
   'busy',
   /** The command exists but its ticket has not built it yet. */

@@ -55,6 +55,10 @@ export interface TableRowView {
   readonly menu: MenuShown | null
   /** The menu the table's own entry names, or null (it takes its area's). */
   readonly routeMenuId: string | null
+  /** A payment table of its bar (D122 §8): only Restro uses it, hidden and without a code. */
+  readonly isPaymentTable: boolean
+  /** The bar the POS gives the table (D124), or null when it names none. */
+  readonly bar: { readonly id: string; readonly name: string } | null
 }
 
 /** The tables of one area (D95), in the area's order. */
@@ -69,6 +73,19 @@ export interface HallView {
   /** The menu the area's own entry names, or null (it takes the venue's live menu). */
   readonly routeMenuId: string | null
   readonly tables: readonly TableRowView[]
+}
+
+/** What paying adds to the tab; null where the venue's connector can't take payments (D122 §3). */
+export interface PaymentTablesView {
+  /** The signed-in person holds `settings.payment_tables` on their own sign-in (never a PIN). */
+  readonly canMark: boolean
+  /** The signed-in person's email, for the password again. */
+  readonly email: string
+  /**
+   * The queues with guest tables but no payment table, bars by name and the tables with no bar
+   * last (`name` null). Empty once every queue has one.
+   */
+  readonly missing: readonly { readonly name: string | null }[]
 }
 
 /** The whole tab. */
@@ -88,6 +105,8 @@ export interface TablesView {
   readonly baseUrl: string | null
   /** The venue's menus a route can name, in the venue's order. */
   readonly menus: readonly MenuChoice[]
+  /** Payment tables: null where no connector takes payments, and always at a venue made by hand. */
+  readonly paying: PaymentTablesView | null
   readonly halls: readonly HallView[]
   readonly total: number
   /** Tables with a code that leads somewhere (a hidden table's paused code is not counted). */

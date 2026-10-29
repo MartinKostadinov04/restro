@@ -144,7 +144,14 @@ export default async function VenueWorkspacePage({
             ),
             tables: tablesOpen ? (
               <Suspense fallback={<TablesSkeleton />}>
-                <TablesTab tenantId={organization.id} role={organization.role} venue={venue} />
+                <TablesTab
+                  tenantId={organization.id}
+                  role={organization.role}
+                  venue={venue}
+                  userId={user.id}
+                  sessionId={sessionId}
+                  email={user.email}
+                />
               </Suspense>
             ) : (
               <TablesSkeleton />

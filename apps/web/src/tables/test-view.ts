@@ -32,6 +32,8 @@ export function row(overrides: Partial<TableRowView> & { id: string }): TableRow
     qrSvg: null,
     menu: VENUE_MENU,
     routeMenuId: null,
+    isPaymentTable: false,
+    bar: null,
     ...overrides,
   }
 }
@@ -64,6 +66,7 @@ export function view(overrides: Partial<TablesView> = {}): TablesView {
     sourceLabel: SAMPLE_TILL_LABEL,
     baseUrl: 'http://localhost:3000',
     menus: MENUS,
+    paying: null,
     halls: [
       hall({
         id: 'ar_0000000000000000000001',

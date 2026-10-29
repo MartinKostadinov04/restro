@@ -116,7 +116,7 @@ export function useSettingsRun(email: string) {
             : {
                 action: {
                   label: t('st_undo'),
-                  onClick: () => run(undo, {}),
+                  onClick: () => run(undo, { words: options.words }),
                 },
               }),
         })
