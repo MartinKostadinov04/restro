@@ -1,10 +1,8 @@
-// Turnstile on the guest page (D119, D121; ticket #76): a token for an on-the-bill Send, nothing
-// else. The script loads only at the first Send, from Cloudflare's address, and each Send runs a
+// Turnstile on the guest page (D119, D121; tickets #76, #114): a token for an on-the-bill Send or a
+// Pay, nothing else. The script loads only at the first Send, from Cloudflare's address, and each Send runs a
 // fresh widget (a token works once) and removes it after. Invisible mode is the widget's setting
 // in Cloudflare's dashboard; `interaction-only` shows the widget only if Cloudflare must ask.
 // Docs: https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/
-
-import { TURNSTILE_SEND_ACTION } from '@restro/shell'
 
 const SCRIPT_URL = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
 
@@ -41,9 +39,9 @@ function load(): Promise<TurnstileApi | null> {
 /** A token getter for the services client, or undefined without a site key (Sends then fail). */
 export function turnstileTokens(
   siteKey: string | undefined,
-): (() => Promise<string | null>) | undefined {
+): ((action: string) => Promise<string | null>) | undefined {
   if (siteKey === undefined || siteKey === '') return undefined
-  return async () => {
+  return async (action) => {
     const api = await load()
     if (api === null) return null
     const container = document.createElement('div')
@@ -59,7 +57,7 @@ export function turnstileTokens(
       const timer = setTimeout(() => finish(null), TOKEN_TIMEOUT_MS)
       widgetId = api.render(container, {
         sitekey: siteKey,
-        action: TURNSTILE_SEND_ACTION,
+        action,
         execution: 'execute',
         appearance: 'interaction-only',
         'feedback-enabled': false,

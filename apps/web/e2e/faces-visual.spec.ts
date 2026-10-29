@@ -43,8 +43,8 @@ import {
 //
 // The spec finds everything through the face contract (guide §5.5 and §7.3): `data-face`, `data-item`,
 // `data-slot` (`item.name`, `item.allergens`, `item.open`, `item.add`, `menu.filters`, `menu.bag`,
-// `menu.bill`, `menu.pay`, `menu.call_waiter`, `menu.language`, `pay.method`, `pay.receipt_open`,
-// `pay.receipt`) and the dialog role. What the contract has no marker for is driven another way
+// `menu.bill`, `menu.pay`, `menu.call_waiter`, `menu.language`, `pay.whole`, `pay.start`, `pay.form`,
+// `pay.number`) and the dialog role. What the contract has no marker for is driven another way
 // (the menu's layout through the snapshot, D92) or skipped with a named reason.
 //
 //   presets  the designer's four and a custom one from three colours

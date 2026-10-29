@@ -13,6 +13,13 @@
 //      `pay_harness_paid` line; `bills` prints the payment tables' bills on the POS
 //      (`pay_harness_bills`). Closing stdin stops everything.
 //
+// With `PAY_HARNESS_PAGE=1` (apps/web/e2e/guest-pay-card.spec.ts, #114) the run also publishes a
+// qr-phone menu and prints the guest page's path with the ready line (`path`), so a browser can be
+// the guest. With `PAY_HARNESS_PROVIDER=stripe` the venue is connected to the Stripe sandbox account
+// named by `STRIPE_E2E_ACCOUNT` and the worker pays through the real provider (`STRIPE_SECRET_KEY`,
+// `PAYMENTS_ENV=test`): nothing on the card side is played by this process then, the page's own card
+// form is the guest. Sandbox keys only; the provider refuses a live key outside production.
+//
 // With `PAY_HARNESS_MODE=pay-first` (apps/web/e2e/guest-pay-first.spec.ts, #113) the POS runs the
 // `pay-first` scenario (its first items open a bill that names itself), table 1 has no round, and
 // step 2 publishes a menu of one item, the POS's Aperol Spritz, paid first: its id is in the ready
@@ -27,6 +34,7 @@ import {
   DEFAULT_ORDERING_SETTINGS,
   hashTableCode,
   type IntegrationId,
+  menuPath,
   newId,
   newTableToken,
   providerRef,
@@ -50,9 +58,11 @@ import {
 import { createPool } from '@restro/db'
 import { createSimPayProvider, SIM_PAY_KIND, SimPayEngine } from '@restro/sim-pay'
 import { createSimServer } from '@restro/sim-pos'
+import { STRIPE_KIND } from '@restro/stripe'
 import pg from 'pg'
 
 import { loadConfig } from '../config'
+import { paymentProviders } from '../connectors'
 import { InstanceBudgets, readFloorOf } from '../jobs/floor'
 import { createPaymentJobs } from '../jobs/payments'
 import { createReadingJobs, ReadingBudgets, readTableOf } from '../jobs/readings'
@@ -67,6 +77,10 @@ const PAYMENT_TABLES = ['39001', 'pay main 2']
 const PAY_FIRST = process.env.PAY_HARNESS_MODE === 'pay-first'
 const SCENARIO = PAY_FIRST ? 'pay-first' : 'demo-bar'
 const PAY_FIRST_ARTICLE = { id: '2002', name: 'Aperol Spritz', priceMinor: 1_100 }
+/** The run that publishes a menu and prints the guest page's path (#114). */
+const PAGE = process.env.PAY_HARNESS_PAGE === '1'
+/** The run through the real provider's sandbox (#114): its connected account comes from the env. */
+const STRIPE = process.env.PAY_HARNESS_PROVIDER === 'stripe'
 /** This run's key for the bill's line ids (the e2e worker reads no bill). */
 const BILL_ID_KEY = `e2e-pay-harness-${randomUUID()}`.padEnd(48, 'x')
 const SEED = ['restro', 'system', 'e2e-pay-harness'] as const
@@ -170,11 +184,13 @@ async function main(): Promise<void> {
   )
   const account = engine.addAccount()
   engine.finishConnecting(account)
+  const accountKind = STRIPE ? STRIPE_KIND : SIM_PAY_KIND
+  const accountRef = STRIPE ? required('STRIPE_E2E_ACCOUNT') : account.provider
   await query(
     `insert into restro.payment_accounts
        (tenant_id, venue_id, provider_kind, account_ref, state, checks, connected_at, source, actor, job_id)
      values ($1, $2, $3, $4, 'connected', '{"cardPayments":true,"ticks":{"cardTypeInTill":{"at":"2026-10-27T00:00:00Z","by":"system"},"receiptEmailsOff":{"at":"2026-10-27T00:00:00Z","by":"system"}}}'::jsonb, now(), $5, $6, $7)`,
-    [tenantId, venueId, SIM_PAY_KIND, account.provider, ...SEED],
+    [tenantId, venueId, accountKind, accountRef, ...SEED],
   )
 
   // The table's code and its sitting, as the staff's "Open table" would leave them.
@@ -193,9 +209,10 @@ async function main(): Promise<void> {
 
   // 2. The waiter's round, read onto the bill; for pay-first, the menu with its one item.
   let itemId: string | null = null
-  if (PAY_FIRST) {
+  if (PAY_FIRST || PAGE) {
     itemId = await publishPayFirstMenu(pool, { tenantId, venueId, integrationId })
-  } else {
+  }
+  if (!PAY_FIRST) {
     sim.host.engine.waiter.addRound(POS_TABLE, [
       { article: '2001' },
       { article: '2002', quantity: '2' },
@@ -224,7 +241,10 @@ async function main(): Promise<void> {
       schedules: false,
       jobs: [
         ...createReadingJobs({ sim: config.sim, billIdKey: BILL_ID_KEY }),
-        ...createPaymentJobs({ sim: config.sim, providers: new Map([[SIM_PAY_KIND, provider]]) }),
+        ...createPaymentJobs({
+          sim: config.sim,
+          providers: STRIPE ? paymentProviders(process.env) : new Map([[SIM_PAY_KIND, provider]]),
+        }),
       ],
     },
   )
@@ -241,7 +261,12 @@ async function main(): Promise<void> {
   }
 
   // 4. Ready, then the test's commands.
-  print({ event: 'pay_harness_ready', code, itemId })
+  print({
+    event: 'pay_harness_ready',
+    code,
+    itemId,
+    ...(PAGE ? { path: menuPath({ slug: venue.slug, publicId: venue.publicId }) } : {}),
+  })
   const lines = createInterface({ input: process.stdin })
   lines.on('line', (line) => {
     const [command, paymentId] = line.trim().split(/\s+/)

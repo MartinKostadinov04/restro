@@ -75,7 +75,8 @@ import {
   sealLocationPass,
 } from './location-pass'
 import { isFinalPaymentState } from './pay'
-import type { PayFirstState } from './pay-first'
+import type { PayFirstState, PayingState } from './pay-first'
+import { paymentNumberOf } from './payment-number'
 import { readTableState, type TableStateRead, type TableStateUnchanged } from './read'
 import type { ServiceResult } from './results'
 import { loadSendMenu } from './send-menu'
@@ -146,6 +147,15 @@ export interface GuestTableState {
     readonly night: GuestNight
     /** Whether pay-first items can be paid at Send here now (#113, #114); no ids. */
     readonly payFirst: PayFirstState
+    /**
+     * Paying on the bill (#114): `on`, `paused` or `off`, with no ids; the phone shows Pay greyed
+     * or "Ask your waiter to pay" from it. The server refuses a Pay either way.
+     */
+    readonly paying: PayingState
+    /** The provider's kind (a public word) when paying is offered, so the screen names it. */
+    readonly payingProvider: string | null
+    /** The smallest card payment here, in minor units: Pay is greyed below it. */
+    readonly minCardMinor: number
   }
   readonly location: GuestLocation
   /** The table's order; null without a pass where the venue checks location (D122 §4). */
@@ -185,6 +195,8 @@ export interface GuestTableState {
     }[]
     /** Seconds since it was sent, for the time "Show this to your waiter" gives. */
     readonly sentAgoSeconds: number
+    /** A pay-first round that is on the POS but whose card was not charged ("No receipt", #114). */
+    readonly unpaid?: true
   }[]
   /**
    * The table's latest waiter call while it is open, and for a few minutes after it was handled
@@ -456,6 +468,7 @@ export function projectGuestState(
             ref: sent.reference,
             lines: sent.lines,
             sentAgoSeconds: seconds(now - sent.createdAt.getTime()),
+            ...(sent.unpaid ? { unpaid: true as const } : {}),
           },
         ]
   })
@@ -477,6 +490,9 @@ export function projectGuestState(
       notesAndOptions: read.notesAndOptions,
       tips: read.tips,
       payFirst: read.sitting === null ? 'off' : read.payFirst.state,
+      paying: read.sitting === null ? 'off' : read.paying.state,
+      payingProvider: read.paying.state === 'off' ? null : read.paying.provider,
+      minCardMinor: read.paying.minCardMinor,
       night,
     },
     location,
@@ -1313,6 +1329,10 @@ async function payAct(
 /** What the paying phone sees of its payment (the shell's `GuestPaymentAnswer`). */
 export interface GuestPaymentView {
   readonly id: string
+  /** `pay_first`: the payment of a round paid at Send; `bill`: lines of the table's bill. */
+  readonly mode: 'bill' | 'pay_first'
+  /** The short number the guest shows the waiter on the Paid screen (`paymentNumberOf`). */
+  readonly number: string
   readonly state: string
   readonly reason: string | null
   readonly currency: string
@@ -1453,6 +1473,8 @@ export async function guestPayment(
   }
   const answer: GuestPaymentView = {
     id: payment.id,
+    mode: payment.kind === 'pay_first' ? 'pay_first' : 'bill',
+    number: paymentNumberOf(payment.id),
     state: payment.state,
     reason: payment.reason,
     currency: payment.currency,

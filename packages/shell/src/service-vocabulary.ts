@@ -1,25 +1,7 @@
-// The fixed word lists of the services contract (services.ts): pay scopes and methods, receipt
+// The fixed word lists of the services contract (services.ts): pay methods, receipt
 // actions and the statuses of a bill line and a waiter request. They live in a file of their own
 // with no imports, so the interface strings (strings.ts) can be keyed by them without a cycle
 // (services.ts reaches strings.ts through money.ts). Import them from `./services`.
-
-/** How much of the table a guest pays for. */
-export const PAY_SCOPES = ['full', 'split', 'mine'] as const
-
-/** One pay scope: the whole table, an equal share, or only the guest's own items. */
-export type PayScope = (typeof PAY_SCOPES)[number]
-
-/** How a guest pays. `waiter` means "I pay the waiter at the table". */
-export const PAY_METHODS = ['apple', 'google', 'card', 'waiter'] as const
-
-/** One payment method. */
-export type PayMethod = (typeof PAY_METHODS)[number]
-
-/** What a receipt can be turned into. */
-export const RECEIPT_ACTIONS = ['pdf', 'email', 'print'] as const
-
-/** One receipt action. */
-export type ReceiptAction = (typeof RECEIPT_ACTIONS)[number]
 
 /** What the kitchen has done with one bill line. */
 export const BILL_LINE_STATUSES = ['received', 'preparing', 'served', 'cancelled'] as const
@@ -90,9 +72,80 @@ export const GUEST_REFUSAL_CODES = [
   'duplicate_order',
   /** Send (#78): over the venue's cap or past its pace; the table pauses for "ask your waiter". */
   'guard_tripped',
+  /** Pay (#110, D127): paying in the app is not offered here: "Ask your waiter to pay." */
+  'paying_not_offered',
+  /** Pay: card payments are paused while ordering goes on. */
+  'paying_paused',
+  /** Pay: a picked line is already in some phone's payment. */
+  'being_paid',
+  /** Pay: the bill changed since the phone opened it; the fresh bill is drawn. */
+  'bill_changed',
+  /** Pay: below the venue's smallest card payment. */
+  'below_minimum',
+  /** Pay: part of a line, a part-paid bill or a whole-bill discount: the waiter splits it. */
+  'ask_waiter_to_split',
+  /** Pay: Turnstile's check failed. */
+  'turnstile',
+  /** Pay: the table's sitting ended. */
+  'sitting_ended',
+  /** Cancel: the hold is already made, the payment is being processed. */
+  'too_late',
+  /** Pay: the payment named by the phone's handle is not known. */
+  'unknown_payment',
+  /** Pay or Send (#113): a tip where the POS cannot record one. */
+  'tip_not_offered',
   /** Not available yet. */
   'not_built',
 ] as const
 
 /** One of the refusal codes a face words. */
 export type GuestRefusalCode = (typeof GUEST_REFUSAL_CODES)[number]
+
+/**
+ * The states of a payment a paying phone sees (the database's, D127; design §4). `captured` is
+ * paid; `released` and the unfinished ones are worded by `payScreen` (paying.ts).
+ */
+export const PAYMENT_STATES = [
+  'requested',
+  'priced',
+  'awaiting_guest',
+  'held',
+  'queued',
+  'isolated',
+  'entered',
+  'checked',
+  'closed',
+  'cancelling',
+  'captured',
+  'released',
+  'unconfirmed',
+  'stranded',
+  'capture_failed',
+] as const
+
+/** One state of a payment. */
+export type PaymentState = (typeof PAYMENT_STATES)[number]
+
+/** How a payment ended with nothing charged (the words are `strings.services.paying.ended`). */
+export const PAY_ENDS = [
+  'busy',
+  'paying_paused',
+  'check_failed',
+  'isolate_refused',
+  'no_receipt',
+  'expired',
+  'cancelled',
+  /** Pay-first (#113): the round could not be entered, or an item ran out. */
+  'enter_refused',
+  'item_unavailable',
+  /** Released after the pricing: below the venue's smallest card payment (words carry the amount). */
+  'below_minimum',
+  /** Pay-first: the round reached the till and the manager ended it "No receipt" (Martin 10-29). */
+  'pay_first_unpaid',
+  /** Paying was switched off at the venue while the payment waited. */
+  'paying_off',
+  'other',
+] as const
+
+/** One way a payment ended with nothing charged. */
+export type PayEnd = (typeof PAY_ENDS)[number]

@@ -20,6 +20,13 @@
 //   asks again. The pass the server hands back is kept in the tab's session storage and sent in
 //   `X-Restro-Pass`; every command carries `X-Restro-Phone`, the value made at load. A Send asks
 //   the page for Turnstile's token first.
+// - Paying (#110, #114, D127): the payment handle comes in the answer to the phone's `pay.start` and
+//   is kept in the tab's session storage (never in an address), so a closed or reloaded page comes
+//   back to where the payment stands. While it is not final the client polls `GET
+//   /api/guest/payment` with it and the face sees the payment as `state.payment`; the provider's
+//   form values stay here (`formValues`) for the page to fill the form slot. `pay.returned` and
+//   `pay.cancel` carry the handle in `X-Restro-Payment`. After a redirect back from the card form
+//   the page has set a marker, and the client sends `pay.returned` once.
 // - Send (#77, D122 §5): the table's sent orders come with the state, and the client marks the ones
 //   this phone's Sends made (`mine`, from the accepted answer's subject), so only this phone shows
 //   "Sending…". The mark lives in this page's memory: a reload shows them as any phone's.
@@ -40,22 +47,34 @@ import {
   type CommandResult,
   EMPTY_SERVICE_STATE,
   GUEST_PASS_HEADER,
+  GUEST_PAYMENT_HEADER,
   GUEST_PHONE_HEADER,
   type GuestActionAnswer,
   GuestActionAnswerSchema,
   type GuestApiView,
   type GuestCheck,
   type GuestCommand,
+  type GuestPaymentAnswer,
+  GuestPaymentAnswerSchema,
   GuestStateAnswerSchema,
   type GuestTableState,
   type LocationControls,
   type LocationView,
   type OrderLineView,
+  PAYMENT_HANDLE_PATTERN,
+  type PayingView,
+  type PaymentView,
+  paymentIsFinal,
   type RequestView,
   type SentOrderView,
   type ServiceState,
   TABLE_AUTH_SCHEME,
+  type TableBillView,
+  TURNSTILE_PAY_ACTION,
+  TURNSTILE_SEND_ACTION,
 } from '@restro/shell'
+
+import { processorName } from '../connectors/card-forms'
 
 /** The back-off after failed polls, in milliseconds; the last one repeats. */
 export const POLL_BACKOFF_MS = [4_000, 8_000, 16_000, 30_000] as const
@@ -79,10 +98,15 @@ export interface TableServicesDeps {
   readonly phone: string
   /** The tab's session storage, or none; failures inside are the page's to swallow. */
   readonly memory?: SessionMemory
+  /**
+   * The browser's local storage for what must outlive the tab for the sitting: the payment handle
+   * and the last payment (see `PAY_HANDLE_KEY`). Falls back to `memory` when absent.
+   */
+  readonly durable?: SessionMemory
   /** The phone's position, or null when the guest refused it or it took too long. */
   readonly locate?: () => Promise<GuestPosition | null>
   /** Turnstile's token for a Send, or null when the widget gave none. */
-  readonly humanToken?: () => Promise<string | null>
+  readonly humanToken?: (action: string) => Promise<string | null>
 }
 
 /** What the client keeps in the tab's session storage. */
@@ -94,6 +118,29 @@ export interface SessionMemory {
 
 /** The session storage key of the location pass. */
 export const PASS_KEY = 'restro.locationPass'
+
+/**
+ * The durable key of this phone's payment handle (D127 2.2, log 2.2): in the browser's local
+ * storage for the sitting, so a page closed and opened again finds its payment; never in an
+ * address. One per table code, ending with the service day. A device with no local storage keeps
+ * nothing.
+ */
+export const PAY_HANDLE_KEY = 'restro.payHandle'
+
+/** The key of one table's handle. */
+export const payHandleKey = (code: string): string => `${PAY_HANDLE_KEY}.${code}`
+
+/** Set by the page when it came back from a redirect of the card form: send `pay.returned` once. */
+export const PAY_RETURNED_KEY = 'restro.payReturned'
+
+/** The last payment this phone was paid for: `<id>:<amountMinor>:<at ms>`, durable like the handle. */
+export const PAY_RECENT_KEY = 'restro.payRecent'
+
+/** The key of one table's last payment. */
+export const payRecentKey = (code: string): string => `${PAY_RECENT_KEY}.${code}`
+
+/** When a day has no end the server named, a handle is kept this long (hours). */
+const DEFAULT_KEEP_HOURS = 6
 
 /** The session storage key of the guest's consent answer, kept until the service day ends. */
 export const CONSENT_KEY = 'restro.locationConsent'
@@ -112,10 +159,62 @@ export interface TableServices {
   readonly dispatch: (command: GuestCommand) => Promise<CommandResult>
   /** The answers to the location screens. */
   readonly location: LocationControls
+  /** This phone's payment: the provider's form values while it awaits the card, or null. */
+  readonly formValues: () => PayFormValues | null
+  /** "Back to the bill": forgets the payment's screen (and its handle) once it is final. */
+  readonly dismissPayment: () => void
   /** Starts polling (again): when the page shows. */
   readonly start: () => void
   /** Stops polling: when the page hides or goes away. */
   readonly stop: () => void
+}
+
+/** What the page needs to fill the card form: which provider's and its values. Never a face's. */
+export interface PayFormValues {
+  readonly provider: string
+  readonly values: Readonly<Record<string, string>>
+}
+
+/** The table's bill as the face draws it (our ids and the POS's own amounts). */
+function tableBillOf(bill: GuestTableState['bill']): TableBillView | null {
+  if (bill === null) return null
+  return {
+    readAgoSeconds: bill.readAgoSeconds,
+    complete: bill.complete,
+    currency: 'EUR',
+    totalMinor: bill.totalMinor,
+    paidMinor: bill.paidMinor,
+    owedMinor: bill.owedMinor,
+    parts: bill.parts.map((part) => ({
+      id: part.id,
+      beingPaid: part.beingPaid,
+      totalMinor: part.totalMinor,
+      paidMinor: part.paidMinor,
+      lines: part.lines.map((line) => ({
+        id: line.id,
+        name: line.name,
+        quantity: line.quantity,
+        amountMinor: line.amountMinor,
+        beingPaid: line.beingPaid,
+      })),
+    })),
+  }
+}
+
+/** The paying phone's payment as the face sees it: the provider's form values stay behind. */
+function paymentViewOf(answer: GuestPaymentAnswer): PaymentView {
+  return {
+    id: answer.id,
+    mode: answer.mode,
+    number: answer.number,
+    state: answer.state,
+    reason: answer.reason,
+    currency: answer.currency as PaymentView['currency'],
+    amountMinor: answer.amountMinor,
+    tipMinor: answer.tipMinor,
+    lines: answer.lines,
+    form: answer.form === null ? null : { confirmSeconds: answer.form.confirmSeconds },
+  }
 }
 
 /** The kinds drawn before the server answers. */
@@ -130,7 +229,10 @@ const OPTIMISTIC = new Set([
 type Pending = { readonly actionId: string; readonly edit: OrderEdit }
 
 /** The commands the server may answer `location_needed`: additions, changes and a Send. */
-const LOCATED = new Set(['order.add', 'order.change', 'order.restore', 'order.send'])
+const LOCATED = new Set(['order.add', 'order.change', 'order.restore', 'order.send', 'pay.start'])
+
+/** The commands that name the phone's payment by its handle. */
+const BY_HANDLE = new Set(['pay.returned', 'pay.cancel'])
 
 type Consent = LocationView['consent']
 
@@ -292,6 +394,15 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
   /** The next poll asks for the whole state: the location changed under an unchanged version. */
   let whole = false
   let pass: string | null = deps.memory?.get(PASS_KEY) ?? null
+  const durable = deps.durable ?? deps.memory
+  /** This phone's payment handle and what the last poll of its payment answered. */
+  let handle: string | null = readHandle()
+  /** The state of an unconfirmed payment the guest sent away with "Back to the bill". */
+  let hidden: { readonly id: string; readonly state: string } | null = null
+  let payment: GuestPaymentAnswer | null = null
+  let cancelPayTimer: (() => void) | null = null
+  let payPolling = false
+  let recentNoted: string | null = null
   let prompt: LocationView['prompt'] = 'none'
   /** The sent orders this phone's Sends made. */
   const mine = new Set<string>()
@@ -320,11 +431,118 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
 
   const offline = () => running && deps.now() - lastAnswerAt > OFFLINE_AFTER_MS
 
+  /** The handle kept for this table, unless the service day it was kept for has ended. */
+  function readHandle(): string | null {
+    const kept = durable?.get(payHandleKey(deps.code))
+    if (kept == null) return null
+    const [value, until] = kept.split('|')
+    if (value === undefined || !(Number(until) > deps.now())) {
+      durable?.remove(payHandleKey(deps.code))
+      return null
+    }
+    return PAYMENT_HANDLE_PATTERN.test(value) ? value : null
+  }
+
+  /** The last payment this phone was paid for, from the durable memory. */
+  function recent(): PayingView['recent'] {
+    const kept = durable?.get(payRecentKey(deps.code))
+    if (kept == null) return null
+    const [, amount, at] = kept.split(':')
+    const amountMinor = Number(amount)
+    const startedAt = Number(at)
+    if (!Number.isSafeInteger(amountMinor) || !Number.isFinite(startedAt)) return null
+    return { amountMinor, agoSeconds: Math.max(0, Math.round((deps.now() - startedAt) / 1000)) }
+  }
+
+  function payingView(from: GuestTableState): PayingView {
+    return {
+      state: from.ordering.paying,
+      minCardMinor: from.ordering.minCardMinor,
+      processor: processorName(from.ordering.payingProvider),
+      venueName: from.location.venueName,
+      electronicReceipt: false,
+      recent: recent(),
+    }
+  }
+
+  /** Keeps the handle until the service day ends, or forgets it. */
+  function keepHandle(next: string | null): void {
+    handle = next
+    hidden = null
+    if (next === null) {
+      durable?.remove(payHandleKey(deps.code))
+      return
+    }
+    const hours = DEFAULT_KEEP_HOURS * 3_600
+    const seconds = Math.max(60, server?.location.dayEndsInSeconds ?? hours)
+    durable?.set(payHandleKey(deps.code), `${next}|${deps.now() + seconds * 1000}`)
+  }
+
+  /** Notes the payment once it is paid, for the "same amount" check (D127). */
+  function noteRecent(answer: GuestPaymentAnswer): void {
+    if (answer.amountMinor === null || answer.state !== 'captured') return
+    if (recentNoted === answer.id) return
+    recentNoted = answer.id
+    durable?.set(payRecentKey(deps.code), `${answer.id}:${answer.amountMinor}:${deps.now()}`)
+  }
+
+  /** The payment is the unconfirmed one the guest sent away, and it has not moved since. */
+  function isHidden(answer: GuestPaymentAnswer): boolean {
+    return hidden !== null && hidden.id === answer.id && hidden.state === answer.state
+  }
+
+  function schedulePay(ms: number): void {
+    cancelPayTimer?.()
+    cancelPayTimer = running && handle !== null ? deps.setTimer(pollPayment, ms) : null
+  }
+
+  /** Reads this phone's payment by its handle until it is final. */
+  async function pollPayment(): Promise<void> {
+    if (!running || retired || payPolling || handle === null) return
+    payPolling = true
+    let wait: number | null = null
+    try {
+      const response = await deps.fetch(`${base}/api/guest/payment`, {
+        method: 'GET',
+        headers: { ...headers(), [GUEST_PAYMENT_HEADER]: handle },
+        cache: 'no-store',
+        referrerPolicy: 'no-referrer',
+      })
+      if (response.status === 401) {
+        retired = true
+      } else if (response.status === 404) {
+        // The payment is not known (its day ended, or another table's): the phone forgets it.
+        payment = null
+        keepHandle(null)
+      } else if (!response.ok) {
+        wait = backoff(retryAfterOf(response))
+      } else {
+        const answer = GuestPaymentAnswerSchema.parse(await response.json())
+        failures = 0
+        lastAnswerAt = deps.now()
+        payment = answer
+        noteRecent(answer)
+        if (paymentIsFinal(paymentViewOf(answer))) schedule(0)
+        // Unconfirmed is read on: a manager's answer moves it to captured or released.
+        else wait = answer.next
+      }
+    } catch {
+      wait = backoff(null)
+    } finally {
+      payPolling = false
+    }
+    recompute()
+    if (wait !== null) schedulePay(wait)
+  }
+
   function recompute(): void {
     const now = deps.now()
     state = {
       ...EMPTY_SERVICE_STATE,
       revision: server?.version ?? 0,
+      tableBill: server === null ? null : tableBillOf(server.bill),
+      paying: server === null || retired ? null : payingView(server),
+      payment: payment === null || isHidden(payment) ? null : paymentViewOf(payment),
       order: server?.order == null ? null : orderView(server.order, pending, now),
       requests: server?.waiterCall == null ? [] : requestsOf(server.waiterCall),
       ordering: retired
@@ -348,6 +566,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
           lines: sent.lines,
           sentAt: now - sent.sentAgoSeconds * 1000,
           mine: mine.has(sent.id),
+          ...(sent.unpaid === true ? { unpaid: true as const } : {}),
         }),
       ),
       location:
@@ -446,6 +665,9 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       method: 'POST',
       headers: {
         ...headers(),
+        ...(BY_HANDLE.has(command.kind) && handle !== null
+          ? { [GUEST_PAYMENT_HEADER]: handle }
+          : {}),
         [GUEST_PHONE_HEADER]: deps.phone,
         'Content-Type': 'application/json',
       },
@@ -490,13 +712,18 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     })
 
     if (retired) return settle(answer('rejected', 'code_retired'))
+    // A payment is named by the handle only this phone holds: without one there is nothing to name.
+    if (BY_HANDLE.has(command.kind) && handle === null) {
+      return settle(answer('rejected', 'unknown_payment'))
+    }
     const check: { location?: GuestPosition; consentVersion?: string; humanToken?: string } = {}
     if (position !== null) {
       check.location = position
       check.consentVersion = LOCATION_CONSENT_VERSION
     }
-    if (command.kind === 'order.send' && deps.humanToken !== undefined) {
-      const token = await deps.humanToken().catch(() => null)
+    if ((command.kind === 'order.send' || command.kind === 'pay.start') && deps.humanToken) {
+      const action = command.kind === 'pay.start' ? TURNSTILE_PAY_ACTION : TURNSTILE_SEND_ACTION
+      const token = await deps.humanToken(action).catch(() => null)
       if (token !== null) check.humanToken = token
     }
     let response: Response
@@ -536,6 +763,15 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       mine.add(body.result.subjectId)
     }
     if (body.state !== null) accept(body.state)
+    // The payment this phone started: its handle is kept, and its payment is read until it is final.
+    if (command.kind === 'pay.start' && body.handle !== null) {
+      keepHandle(body.handle)
+      payment = null
+      recentNoted = null
+      schedulePay(0)
+    } else if (command.kind === 'pay.returned' || command.kind === 'pay.cancel') {
+      schedulePay(0)
+    }
     return settle(
       answer(body.result.status, body.result.code, {
         ref: body.result.ref,
@@ -619,16 +855,45 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     },
     dispatch,
     location,
+    formValues() {
+      return payment?.form == null
+        ? null
+        : { provider: payment.form.provider, values: payment.form.values }
+    },
+    dismissPayment() {
+      // "The venue is checking the payment" is not an end: the handle stays and the payment is read
+      // on, and its screen comes back when the manager's answer moves it.
+      if (payment !== null && payment.state === 'unconfirmed') {
+        hidden = { id: payment.id, state: payment.state }
+        recompute()
+        return
+      }
+      payment = null
+      keepHandle(null)
+      cancelPayTimer?.()
+      cancelPayTimer = null
+      recompute()
+    },
     start() {
       if (running || retired) return
       running = true
       lastAnswerAt = deps.now()
       schedule(0)
+      if (handle !== null) {
+        schedulePay(0)
+        // Back from a redirect of the card form: the phone's word is a nudge (D127).
+        if (deps.memory?.get(PAY_RETURNED_KEY) != null) {
+          deps.memory.remove(PAY_RETURNED_KEY)
+          void dispatch({ kind: 'pay.returned', actionId: crypto.randomUUID() })
+        }
+      }
     },
     stop() {
       running = false
       cancelTimer?.()
       cancelTimer = null
+      cancelPayTimer?.()
+      cancelPayTimer = null
       recompute()
     },
   }
