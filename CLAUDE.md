@@ -27,7 +27,7 @@ The guest template's service screens (bag, bill, call a waiter, pay, receipt) ex
 **POS venue vs hand-made venue (D64, D87, D89, D90, D92):** a venue's source is fixed at creation. On a POS venue, Restro may hide, rename over the POS's text, reorder, move items between sections, add its own sections and enrich, but never creates, deletes or re-prices the POS's items or sections. A hand-made venue has full control.
 
 ## The nine rules (non-negotiable)
-1. **One write path.** Every change from every source goes through `core.apply(changeSet)`. Nothing else writes `field_values`, `events`, resolved documents or snapshots.
+1. **One write path per kind of data.** Every menu change from every source goes through `core.apply(changeSet)`; every service write (orders, sent orders, locks, readings, payments, the Log) goes through `applyService(command)` in `core/service` (D122 §9). Nothing else writes `field_values`, `events`, resolved documents, snapshots or service rows.
 2. **Provenance.** Every stored value carries its layer, source and job (NOT NULL). `events` is append-only. Service data (orders, payments, the Log) has no layer: it carries its source, actor and job (D122 §9).
 3. **POS ids stay in the backend.** Snapshots, the shell, faces and URLs carry only our prefixed ids (`nd_`, `as_`, `sn_`, `tb_`) and public fields: no POS ids, internal names, cost prices or internal fields. One exception (D75): when barsy has no public name for an item, option or category, its own name (`article_name`, `cat_name`) is shown and the composer warns.
 4. **The shell reads only snapshots.** Guest pages never read the database; they read the published files (snapshot, live overlay, indexes) and the context.
