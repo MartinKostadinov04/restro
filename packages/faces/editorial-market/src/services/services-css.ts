@@ -899,6 +899,19 @@ export const SERVICES_CSS = `
   font-size: 13px;
   opacity: 0.75;
 }
+/* The legal block's two controls (#198): the Privacy link and the "About the venue" disclosure keep
+   the hint's look but are 44 px to tap. */
+.rm .ro-allergy a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.rm .ro-allergy summary {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding-block: 12px;
+  cursor: pointer;
+}
 .rm .ro-methods {
   display: grid;
   gap: 9px;
