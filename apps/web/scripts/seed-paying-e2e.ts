@@ -2,8 +2,9 @@
 //
 //   seed             an organisation "Paying Club" of its own with one venue on the simulated POS
 //                    (it declares that it closes a bill with a payment type and moves lines to a
-//                    payment table, so Settings lists Paying), three tables, an owner, and a
-//                    member whose role may not connect payments (the read-only view). Idempotent.
+//                    payment table, so Settings lists Paying), three tables, an owner, a member
+//                    whose role may not connect payments (the read-only view), and a member who
+//                    holds the venue's Owner role (it marks payment tables, #215). Idempotent.
 //
 // The venue's payment account is set by `e2e/paying-account.ts`: the paying tables are written by
 // core/service alone (write-targets.test.ts), and fixtures in an `e2e` folder are the one place a
@@ -33,6 +34,7 @@ const VENUE = { name: 'Paying Club Sofia', slug: 'paying-club' }
 const EMAILS = {
   owner: 'paying-owner@demo-club.test',
   viewer: 'paying-viewer@demo-club.test',
+  venueOwner: 'paying-venue-owner@demo-club.test',
 } as const
 const SEED = ['restro', 'system', 'e2e-seed'] as const
 const HOST = 'paying-club.seed.test'
@@ -78,6 +80,7 @@ async function seed(): Promise<void> {
   try {
     const ownerId = await ensureUser(auth, EMAILS.owner, 'Paying Owner', password)
     const viewerId = await ensureUser(auth, EMAILS.viewer, 'Paying Viewer', password)
+    const venueOwnerId = await ensureUser(auth, EMAILS.venueOwner, 'Paying Venue Owner', password)
     const [found] = await db
       .select({ id: authOrganization.id })
       .from(authOrganization)
@@ -93,6 +96,7 @@ async function seed(): Promise<void> {
     for (const [userId, role] of [
       [ownerId, 'owner'],
       [viewerId, 'member'],
+      [venueOwnerId, 'member'],
     ] as const) {
       const [membership] = await db
         .select({ id: authMember.id })
@@ -157,23 +161,41 @@ async function seed(): Promise<void> {
       ],
     )
 
-    // The viewer: a staff member whose role may open and close tables and nothing else.
-    const staff = await owner.query<{ id: string }>(
-      'select id from restro.staff_members where tenant_id = $1 and user_id = $2',
-      [tenantId, viewerId],
-    )
-    if (staff.rows.length === 0) {
+    // Two staff members: the viewer, whose role may open and close tables and nothing else, and
+    // the venue owner, an organisation member who holds the venue's Owner role (so, unlike an
+    // organisation owner or admin, the rights come from the venue role alone).
+    const staffRoles = [
+      {
+        userId: viewerId,
+        name: 'Paying Viewer',
+        role: 'Floor',
+        permissions: ['tables.open_close'],
+      },
+      {
+        userId: venueOwnerId,
+        name: 'Paying Venue Owner',
+        role: 'Owner',
+        // What an Owner role holds that this test needs; the others are not reached from Tables & QR.
+        permissions: ['tables.open_close', 'settings.payment_tables'],
+      },
+    ]
+    for (const person of staffRoles) {
+      const staff = await owner.query<{ id: string }>(
+        'select id from restro.staff_members where tenant_id = $1 and user_id = $2',
+        [tenantId, person.userId],
+      )
+      if (staff.rows.length > 0) continue
       const staffId = newId('sm')
       const roleId = newId('rl')
       await owner.query(
         `insert into restro.staff_members (id, tenant_id, display_name, user_id, source, actor, job_id)
-         values ($1, $2, 'Paying Viewer', $3, $4, $5, $6)`,
-        [staffId, tenantId, viewerId, ...SEED],
+         values ($1, $2, $3, $4, $5, $6, $7)`,
+        [staffId, tenantId, person.name, person.userId, ...SEED],
       )
       await owner.query(
         `insert into restro.venue_roles (id, tenant_id, venue_id, name, permissions, source, actor, job_id)
-         values ($1, $2, $3, 'Floor', $4::jsonb, $5, $6, $7)`,
-        [roleId, tenantId, venueId, JSON.stringify(['tables.open_close']), ...SEED],
+         values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)`,
+        [roleId, tenantId, venueId, person.role, JSON.stringify(person.permissions), ...SEED],
       )
       await owner.query(
         `insert into restro.staff_assignments (tenant_id, staff_member_id, venue_id, role_id, source, actor, job_id)

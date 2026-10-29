@@ -334,6 +334,46 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
       expect(read.halls[0]?.tables[2]).toMatchObject({ number: '—', isPublic: false })
     })
 
+    it('carries payment tables only where the venue’s POS can take payments (#215)', async () => {
+      const before = await owner.query<{ config: Record<string, unknown> }>(
+        'select config from restro.integrations where id = $1',
+        [integrationId],
+      )
+      // The barsy test integration declares nothing for paying, and a venue made by hand has no POS.
+      const plain = await view()
+      expect(plain.paying).toBeNull()
+      expect((await handView()).paying).toBeNull()
+      expect(plain.halls.flatMap((hall) => hall.tables).every((row) => !row.isPaymentTable)).toBe(
+        true,
+      )
+
+      await owner.query(
+        `update restro.integrations
+            set config = config || jsonb_build_object('service_capabilities', $2::jsonb)
+          where id = $1`,
+        [
+          integrationId,
+          JSON.stringify({ close_with_payment_type: true, move_lines_to_table: true }),
+        ],
+      )
+      try {
+        // No bar is known, so the tables with no bar are the one queue without a payment table.
+        const offered = await view({ person: { canMarkPaymentTables: true, email: 'o@club.test' } })
+        expect(offered.paying).toEqual({
+          canMark: true,
+          email: 'o@club.test',
+          missing: [{ name: null }],
+        })
+        expect((await view()).paying).toMatchObject({ canMark: false, email: '' })
+        expect((await handView()).paying).toBeNull()
+      } finally {
+        await owner.query('update restro.integrations set config = $2 where id = $1', [
+          integrationId,
+          before.rows[0]?.config,
+        ])
+      }
+    })
+
     it("another organisation's tab is empty, and a member who may not manage reads without acting", async () => {
       const other = await loadTablesView(
         { ...(await scope()), tenantId: otherTenant },
