@@ -19,6 +19,11 @@ export const LEGAL_PRIVACY_URL_MAX = 500
 /** ЕИК: 9 or 13 digits. */
 export const EIK_PATTERN = /^(\d{9}|\d{13})$/
 
+/** A pasted ЕИК without spaces (people paste "123 456 789"). */
+export function normalizeEik(value: string): string {
+  return value.replace(/\s+/g, '')
+}
+
 /** Whether `value` has the shape of an ЕИК (length and digits only). */
 export function isEik(value: string): boolean {
   return EIK_PATTERN.test(value)
@@ -69,7 +74,7 @@ export type LegalField = keyof LegalDraft
 export function legalProblems(draft: LegalDraft): Partial<Record<LegalField, 'required' | 'bad'>> {
   const problems: Partial<Record<LegalField, 'required' | 'bad'>> = {}
   const name = draft.name.trim()
-  const eik = draft.eik.trim()
+  const eik = normalizeEik(draft.eik)
   const address = draft.address.trim()
   const link = draft.privacyUrl.trim()
   if (name === '') problems.name = 'required'

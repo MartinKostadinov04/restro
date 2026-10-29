@@ -5,7 +5,15 @@
 // a control per field). It shows "Unsaved" and warns before leaving with unsaved edits. All four
 // must be filled before card payments can start; the missing list counts them as one check.
 // The guest side (the pay screen's link to these) is #195's and not drawn here.
-import { type LegalDraft, type LegalField, legalProblems } from '@restro/core'
+import {
+  LEGAL_ADDRESS_MAX,
+  LEGAL_NAME_MAX,
+  LEGAL_PRIVACY_URL_MAX,
+  type LegalDraft,
+  type LegalField,
+  legalProblems,
+  normalizeEik,
+} from '@restro/core'
 import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
 
@@ -56,7 +64,7 @@ export function PayingLegalCard({
 
   const trimmed: LegalDraft = {
     name: draft.name.trim(),
-    eik: draft.eik.trim(),
+    eik: normalizeEik(draft.eik),
     address: draft.address.trim(),
     privacyUrl: draft.privacyUrl.trim(),
   }
@@ -80,11 +88,17 @@ export function PayingLegalCard({
     })
   }
 
-  const fields: { field: LegalField; label: string; inputMode?: 'numeric' | 'url' }[] = [
-    { field: 'name', label: t('pa_legal_name') },
-    { field: 'eik', label: t('pa_eik'), inputMode: 'numeric' },
-    { field: 'address', label: t('pa_address') },
-    { field: 'privacyUrl', label: t('pa_privacy'), inputMode: 'url' },
+  const fields: {
+    field: LegalField
+    label: string
+    max: number
+    inputMode?: 'numeric' | 'url'
+  }[] = [
+    { field: 'name', label: t('pa_legal_name'), max: LEGAL_NAME_MAX },
+    // 13 digits, and room for the spaces of a pasted "123 456 789".
+    { field: 'eik', label: t('pa_eik'), max: 20, inputMode: 'numeric' },
+    { field: 'address', label: t('pa_address'), max: LEGAL_ADDRESS_MAX },
+    { field: 'privacyUrl', label: t('pa_privacy'), max: LEGAL_PRIVACY_URL_MAX, inputMode: 'url' },
   ]
 
   if (!can) {
@@ -122,7 +136,7 @@ export function PayingLegalCard({
         <p className="text-sm text-muted-foreground">{t('pa_legal_d')}</p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        {fields.map(({ field, label, inputMode }) => {
+        {fields.map(({ field, label, max, inputMode }) => {
           const key = problemKey(field, problems[field])
           const id = `pay-legal-${field}`
           return (
@@ -139,6 +153,7 @@ export function PayingLegalCard({
                 id={id}
                 value={draft[field]}
                 inputMode={inputMode}
+                maxLength={max}
                 autoComplete="off"
                 aria-invalid={key === null ? undefined : true}
                 aria-describedby={key === null ? undefined : `${id}-problem`}

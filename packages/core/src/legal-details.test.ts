@@ -5,6 +5,7 @@ import {
   isHttpsLink,
   LegalDetailsSchema,
   legalProblems,
+  normalizeEik,
   readLegalDetails,
 } from './legal-details'
 
@@ -22,6 +23,12 @@ describe('the venue legal details (#198)', () => {
     for (const bad of ['', '12345678', '1234567890', '12345678901234', '12345678a', ' 123456789']) {
       expect(isEik(bad)).toBe(false)
     }
+  })
+
+  it('strips spaces from a pasted ЕИК before the check', () => {
+    expect(normalizeEik(' 123 456 789 ')).toBe('123456789')
+    expect(legalProblems({ ...FULL, eik: '123 456 789' })).toEqual({})
+    expect(legalProblems({ ...FULL, eik: '123 456 78' })).toEqual({ eik: 'bad' })
   })
 
   it('takes a full https link', () => {

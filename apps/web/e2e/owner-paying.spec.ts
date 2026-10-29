@@ -16,8 +16,9 @@ import { ADMIN_EMAIL, ADMIN_PASSWORD, VENUE_NAME } from './support'
 //   two ticks (with Undo), Tables & QR and the venue's details; the details are saved from their
 //   card (a malformed ЕИК is refused under its field); the smallest card payment is changed in
 //   place and refused below the provider's minimum; Disconnect asks first.
-//   A role without `settings.connect_payments` sees it all read-only; a hand-made venue has no
-//   Paying section; no sideways scroll at 390 px.
+//   A role without `settings.connect_payments` sees it all read-only; a POS venue whose POS
+//   declares nothing for paying has no Paying section (a venue no POS serves is a core test,
+//   service/paying-settings.test.ts); no sideways scroll at 390 px.
 //
 // With SCREENSHOT_DIR set, it saves the screenshots there.
 test.describe.configure({ mode: 'serial' })
@@ -226,7 +227,7 @@ test('a role without the right sees everything read-only', async ({ browser }) =
   await context.close()
 })
 
-test('a hand-made venue has no Paying section', async ({ browser }) => {
+test('a POS venue whose POS can’t take payments has no Paying section', async ({ browser }) => {
   const { context, page } = await open(browser, ADMIN_EMAIL)
   await page
     .getByRole('link', { name: new RegExp(VENUE_NAME) })

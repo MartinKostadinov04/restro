@@ -24,6 +24,7 @@ export async function PayingSection({
   connection: 'return' | 'refresh' | undefined
 }) {
   const view = await loadPayingView({ tenantId, venue, canConnect, email }).catch(() => null)
-  if (view === null) return <SectionFailed what="settings" />
+  // No provider to name (none set for this deployment): there is nothing to connect to.
+  if (view === null || view.provider === '') return <SectionFailed what="settings" />
   return <PayingPanel view={view} connection={connection} />
 }

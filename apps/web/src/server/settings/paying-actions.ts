@@ -161,7 +161,10 @@ export async function savePayingAction(input: unknown): Promise<SettingsResult> 
     if (venue === null) return { ok: false, error: 'venue_missing' } as const
     const connection = await readPayingConnection(scope.pool, scope.tenantId, scope.venueId)
     const currency = CURRENCIES.find((c): c is Currency => c === venue.currency) ?? 'EUR'
-    const providerMinMinor = providerOf(connection.providerKind)?.minimumMinor(currency) ?? 0
+    const provider = providerOf(connection.providerKind)
+    // Without a known provider there is no minimum to hold the amount to: nothing is saved.
+    if (provider === null) return { ok: false, error: 'no_provider' } as const
+    const providerMinMinor = provider.minimumMinor(currency)
     const result = await runSettingsCommand(scope, {
       type: 'settings.paying_set',
       changes: parsed.data.changes,

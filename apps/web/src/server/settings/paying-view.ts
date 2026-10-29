@@ -28,8 +28,9 @@ export interface PayingCheckView {
 
 /**
  * What can still be missing before paying turns on: D125's four checks, then the venue's legal
- * details (#198) as one more. Decided here, on the server, so the screen only draws it and #198's
- * refusal in `pay.start` can reuse it.
+ * details (#198) as one more. Decided here, on the server, so the screen only draws it. The
+ * predicate moves into core with #198, which makes `pay.start` refuse on it too (core cannot import
+ * this folder).
  */
 export type PayingMissing = PayingCheck | 'legalDetails'
 
@@ -42,8 +43,6 @@ export interface PayingView {
   /** The four checks in D125's order; paying is on only when all pass. */
   readonly checks: readonly PayingCheckView[]
   readonly missing: readonly PayingMissing[]
-  /** The provider's own words for what it still asks of the owner. */
-  readonly providerMissing: readonly string[]
   /** True only when the account is connected and every check passes. */
   readonly payingOn: boolean
   /** Why paying is paused on a lost account: "Reconnect" is offered. */
@@ -90,7 +89,6 @@ export async function loadPayingView(input: {
     accountName: connection.accountName,
     checks: readiness.checks.map(({ check, passed, source }) => ({ check, passed, source })),
     missing: legal === null ? [...readiness.missing, 'legalDetails'] : readiness.missing,
-    providerMissing: readiness.providerMissing,
     payingOn: readiness.on && legal !== null,
     lostReason: connection.state === 'lost_access' ? connection.checks.lostReason : null,
     canConnect: input.canConnect,

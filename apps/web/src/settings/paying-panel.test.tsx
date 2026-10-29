@@ -62,7 +62,6 @@ function view(overrides: Partial<PayingView> = {}): PayingView {
       { check: 'paymentTables', passed: passed('paymentTables'), source: 'venue' },
       { check: 'receiptEmailsOff', passed: passed('receiptEmailsOff'), source: 'owner' },
     ],
-    providerMissing: ['business details'],
     payingOn: false,
     lostReason: null,
     canConnect: true,
@@ -219,6 +218,34 @@ describe('Settings › Paying', () => {
     renderWithIntl(<PayingPanel view={view({ state: 'connecting' })} connection="refresh" />)
     expect(screen.getByTestId('paying-connecting').textContent).toContain('form timed out')
     expect(screen.getByRole('button', { name: 'Continue in Testpay' })).toBeTruthy()
+  })
+
+  it('drops ?connection=refresh from the address once it has said so', async () => {
+    renderWithIntl(<PayingPanel view={view({ state: 'connecting' })} connection="refresh" />)
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith(expect.stringContaining('section=paying')),
+    )
+    expect(replace.mock.calls[0]?.[0]).not.toContain('connection=')
+    expect(screen.getByTestId('paying-connecting').textContent).toContain('form timed out')
+  })
+
+  it('stops the details fields at their stored lengths and strips spaces from a pasted ЕИК', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<PayingPanel view={view()} connection={undefined} />)
+    expect(screen.getByLabelText('Legal name').getAttribute('maxlength')).toBe('200')
+    expect(screen.getByLabelText('Registered address').getAttribute('maxlength')).toBe('300')
+    expect(screen.getByLabelText('Privacy notice link').getAttribute('maxlength')).toBe('500')
+    await user.type(screen.getByLabelText('Legal name'), LEGAL.name)
+    await user.type(screen.getByLabelText('ЕИК (company number)'), '123 456 789')
+    await user.type(screen.getByLabelText('Registered address'), LEGAL.address)
+    await user.type(screen.getByLabelText('Privacy notice link'), LEGAL.privacyUrl)
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(savePayingAction).toHaveBeenCalledWith({
+        venueId: VENUE,
+        changes: { legalDetails: LEGAL },
+      }),
+    )
   })
 
   it('disconnects only after the dialog, and words a payment in flight', async () => {

@@ -11,7 +11,7 @@ import { readLegalDetails } from '../legal-details'
 import { readPayingSettings } from '../paying-settings'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import type { ServiceActor, ServiceContext } from './context'
-import { applyService, type ServiceCommand } from './index'
+import { applyService, readPayingOffer, type ServiceCommand } from './index'
 
 const LEGAL = {
   name: 'Club Nights EOOD',
@@ -170,5 +170,24 @@ describe.skipIf(!hasDatabase)('the paying choices command (as the restro_app rol
         new Date(Date.now() - 16 * 60_000),
       ),
     ).toMatchObject({ status: 'refused', code: 'sign_in_again' })
+  })
+
+  it('offers paying only where a POS serving the venue declares what it needs', async () => {
+    // A venue no POS serves (a hand-made venue) has nothing declared.
+    expect(await readPayingOffer(world.app, world.tenantId, world.venueId)).toEqual({
+      offered: false,
+      tips: false,
+    })
+    await world.declareCapabilities({ closeWithPaymentType: true })
+    expect((await readPayingOffer(world.app, world.tenantId, world.venueId)).offered).toBe(false)
+    await world.declareCapabilities({
+      closeWithPaymentType: true,
+      moveLinesToTable: true,
+      recordTipOnClose: true,
+    })
+    expect(await readPayingOffer(world.app, world.tenantId, world.venueId)).toEqual({
+      offered: true,
+      tips: true,
+    })
   })
 })

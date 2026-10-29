@@ -34,9 +34,12 @@ export interface RecordedServiceCapabilities {
   readonly firstItemsOpenBill: boolean
   /** A tip reaches the fiscal receipt on the close (D127): else a tip above 0 is refused. */
   readonly recordTipOnClose: boolean
-  /** A bill closes with the card payment type (D125 2.3, #116): else paying is not offered. */
+  /** A bill closes with the card payment type (D125 2.3, #116): else paying is not offered at the venue. */
   readonly closeWithPaymentType: boolean
-  /** Lines move to a payment table, the route every in-app payment takes (D122 §8, #116). */
+  /**
+   * Lines move to another table. D122 §8 sends a payment through a payment table at a one-bill POS,
+   * and that route is the only one built today, so paying is offered only where this is declared (#116).
+   */
   readonly moveLinesToTable: boolean
 }
 

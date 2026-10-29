@@ -87,6 +87,8 @@ export function PayingPanel({
   const [minText, setMinText] = useState('')
   const [minProblem, setMinProblem] = useState<'low' | 'high' | 'bad' | null>(null)
   const returned = useRef(false)
+  // The form's link timed out: shown once, then the address is cleaned like the return's.
+  const [expiredSeen] = useState(connection === 'refresh')
 
   /** The words for the refusals this screen words itself (the others use the shared sentences). */
   const words = (error: string): string | undefined => {
@@ -111,6 +113,11 @@ export function PayingPanel({
       onFail: () => router.replace(`${pathname}${SECTION_QUERY}`),
     })
   }, [connection, can])
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per refresh
+  useEffect(() => {
+    if (connection === 'refresh') router.replace(`${pathname}${SECTION_QUERY}`)
+  }, [connection])
 
   /** Leaves for the provider's hosted form (connect, continue and reconnect are one call). */
   function leave() {
@@ -165,9 +172,10 @@ export function PayingPanel({
   const connected = state === 'connected'
   const connecting = state === 'connecting'
   const never = state === null || state === 'disconnected'
-  const providerAsks = connected && view.checks[0]?.passed === false
+  const providerAsks =
+    connected && view.checks.find((standing) => standing.check === 'cardPayments')?.passed === false
   const missing = view.payingOn ? [] : missingItems(view)
-  const expired = connection === 'refresh' && (connecting || connected)
+  const expired = expiredSeen && (connecting || connected)
 
   return (
     <div className="grid gap-4" data-testid="paying-panel" aria-busy={pending}>
