@@ -17,6 +17,8 @@
 // A guest command's `tableId` is never the phone's word: the guest API resolves the table code
 // and puts the table it found into the command (D121).
 
+import { logEntries } from '@restro/db'
+import { inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema } from '../ids'
@@ -37,7 +39,12 @@ import {
   syncPauseAlerts,
 } from './alerts'
 import { closeAtClosingHour } from './closing-hour'
-import { type CommandDefinition, type CommandHandler, defineCommand } from './definition'
+import {
+  type CommandDefinition,
+  type CommandHandler,
+  defineCommand,
+  type ServiceTx,
+} from './definition'
 import { tableReturned, tableVanished } from './floor-pause'
 import { markNightReportSent } from './night-report-sent'
 import { editOrder, type OrderEditCommand, tidyTableOrder } from './order'
@@ -103,11 +110,12 @@ import { sentOrderAnswer } from './sent-order-answer'
 import { closeServiceDay } from './service-day-close'
 import {
   closeAllTables,
-  closeTable,
+  closeTableUndoing,
   markPaymentTable,
   newGuests,
   openAllTables,
   openTable,
+  undoOpenAll,
 } from './sittings'
 import {
   addStaff,
@@ -133,6 +141,7 @@ import {
 } from './staff'
 import { stockNotice } from './stock'
 import { MAX_REVEALED_CODES, reissueTableCode, revealTableCodes } from './table-codes'
+import { changedSince, type UndoToken, UndoTokenSchema } from './undo'
 import { callWaiter, lapseWaiterCall, waiterCallDone } from './waiter-call'
 
 const tableId = idSchema('tb')
@@ -180,6 +189,43 @@ function staffOnTable<T extends string>(
     permission,
     idempotency: 'by_nature',
     ...(quickOnSharedDevice ? { quickOnSharedDevice } : {}),
+    handle,
+  })
+}
+
+/**
+ * Open and close, each the other's Undo in Tonight (#219): the write answers with an undo token (the
+ * Log entry that says the table opened, or its sitting ended), and the inverse takes it back.
+ * - The Undo of a close (`table.open` with a token) is refused `undo_stale` when the table's
+ *   sitting began or ended again since, by anyone.
+ * - The Undo of an open (`table.close` with a token) is `closeTableUndoing`: it also checks guests.
+ */
+function openOrClose(
+  type: 'table.open' | 'table.close',
+  handle: CommandHandler<{
+    readonly type: 'table.open' | 'table.close'
+    readonly tableId: string
+    readonly undo?: UndoToken | undefined
+  }>,
+) {
+  return defineCommand({
+    schema: z.strictObject({ type: z.literal(type), tableId, undo: UndoTokenSchema.optional() }),
+    origins: ['staff'],
+    permission: 'tables.open_close',
+    idempotency: 'by_nature',
+    quickOnSharedDevice: true,
+    undoable: { kinds: [type === 'table.open' ? 'sitting.opened' : 'sitting.ended'] },
+    ...(type === 'table.open'
+      ? {
+          undoStale: (stx: ServiceTx, command: { readonly tableId: string }, entry: number) =>
+            changedSince(
+              stx,
+              entry,
+              sql`${logEntries.tableId} = ${command.tableId}
+                and ${inArray(logEntries.kind, ['sitting.opened', 'sitting.ended'])}`,
+            ),
+        }
+      : {}),
     handle,
   })
 }
@@ -311,8 +357,8 @@ export const SERVICE_COMMANDS = {
   // #73: open for phones, the sitting and its end by staff. "Open" on an open table says who
   // opened it; "New guests" names the sitting it ends, so a repeat after the new group sat down
   // changes nothing.
-  'table.open': staffOnTable('table.open', 'tables.open_close', openTable, true),
-  'table.close': staffOnTable('table.close', 'tables.open_close', closeTable, true),
+  'table.open': openOrClose('table.open', openTable),
+  'table.close': openOrClose('table.close', closeTableUndoing),
   'table.new_guests': defineCommand({
     schema: z.strictObject({
       type: z.literal('table.new_guests'),
@@ -325,7 +371,24 @@ export const SERVICE_COMMANDS = {
     idempotency: 'by_nature',
     handle: newGuests,
   }),
-  'tables.open_all': staffOnVenue('tables.open_all', 'tables.open_close', openAllTables),
+  // Open all answers with an undo token too: its Undo is `table.close` per table (#219).
+  'tables.open_all': defineCommand({
+    schema: z.strictObject({ type: z.literal('tables.open_all') }),
+    origins: ['staff'],
+    permission: 'tables.open_close',
+    idempotency: 'by_nature',
+    undoable: { kinds: ['sitting.opened'] },
+    handle: openAllTables,
+  }),
+  // #219: the Undo of Open all, in one transaction: ends the sittings that Open all opened, if none
+  // has seen a guest, else none. The token is required, and must be Open all's.
+  'tables.undo_open_all': defineCommand({
+    schema: z.strictObject({ type: z.literal('tables.undo_open_all'), undo: UndoTokenSchema }),
+    origins: ['staff'],
+    permission: 'tables.open_close',
+    idempotency: 'by_nature',
+    handle: undoOpenAll,
+  }),
   'tables.close_all': staffOnVenue('tables.close_all', 'tables.open_close', closeAllTables),
   // #73: a payment table (D122 §7, §8) is a menu-side mark (core/apply hides the table and retires
   // its code), run here for the permission and the `record` Log entry. A settings change: the

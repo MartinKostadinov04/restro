@@ -2,18 +2,32 @@
 
 // How every write of Tonight runs (plan §3, §5): a quick one saves at once and answers with the
 // 8-second toast; one that must name a person on a shared device first opens the PIN sheet, which
-// is its confirmation; only an answer that moves money gets no Undo (part 2's). A write
+// is its confirmation; only an answer that moves money gets no Undo (part 2's). The Undo sends the
+// write's token back, and core refuses it after 30 seconds or when the thing changed (#219). A write
 // that fails is the error toast that stays, with a close button, and the row stays where it was.
 import { useTranslations } from 'next-intl'
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
-import type { TonightResult } from '@/server/tonight/tables'
+import type { TonightResult, UndoToken } from '@/server/tonight/tables'
 
 import { useFailureText } from './failure'
 import { type PinLevel, PinSheet } from './pin-sheet'
 
 type Accepted = Extract<TonightResult, { ok: true }>
+
+/**
+ * The token a write answered with (#219): the Log entry it wrote. The Undo sends it back, and core
+ * refuses the Undo once the write is 30 seconds old or the thing was changed again since. Absent
+ * when the write changed nothing.
+ */
+export function undoTokenOf(done: Accepted): UndoToken | undefined {
+  const entry = done.details.undoEntry
+  return typeof entry === 'number' ? { entry } : undefined
+}
+
+/** `undoWhen` for a write that offers Undo only when it wrote something (it has a token). */
+export const wroteSomething = (done: Accepted) => undoTokenOf(done) !== undefined
 
 /** One write. */
 export interface RunSpec {
@@ -24,8 +38,11 @@ export interface RunSpec {
   readonly act: (pin?: string) => Promise<TonightResult>
   /** The toast after it worked. */
   readonly done: string
-  /** The inverse write, given what the write answered; without one the toast has no Undo. */
-  readonly undo?: (done: Accepted) => Promise<TonightResult>
+  /**
+   * The inverse write, given what the write answered and its undo token; without one the toast has
+   * no Undo. Send the token on, so core can refuse a late or stale Undo.
+   */
+  readonly undo?: (done: Accepted, token: UndoToken | undefined) => Promise<TonightResult>
   /**
    * Whether the toast offers its Undo, given what the write answered: a repeat that changed
    * nothing (`changed: false`) must not undo someone else's mark. Left out: always.
@@ -61,7 +78,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
               action: {
                 label: t('undo'),
                 onClick: () => {
-                  void undo(done).then((result) => {
+                  void undo(done, undoTokenOf(done)).then((result) => {
                     if (!result.ok) {
                       toast.error(
                         failureText(result.error, result.retryAfterSeconds, result.details),

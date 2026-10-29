@@ -44,7 +44,7 @@ import type { TableSheetBill } from '@/server/tonight/load'
 import type { TableTile, TonightView } from '@/server/tonight/view'
 
 import { useMoney } from './money'
-import { useTonightRun } from './run'
+import { useTonightRun, wroteSomething } from './run'
 import { useTableName } from './table-name'
 
 export function TableSheet({
@@ -106,7 +106,8 @@ export function TableSheet({
             id: `table:${tile.id}`,
             act: () => closeTableAction({ venueId: view.venueId, tableId: tile.id }),
             done: t('t_closed', { table: name }),
-            undo: () => openTableAction({ venueId: view.venueId, tableId: tile.id }),
+            undo: (_, undo) => openTableAction({ venueId: view.venueId, tableId: tile.id, undo }),
+            undoWhen: wroteSomething,
           })
         }}
       >

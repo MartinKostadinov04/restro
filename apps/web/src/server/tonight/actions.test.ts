@@ -27,9 +27,14 @@ vi.mock('./tables', () => ({ runTableCommand, markPaymentTable: vi.fn() }))
 
 import {
   answerPaymentAction,
+  closeTableAction,
   doneAlertAction,
+  liftOrderingAction,
+  openTableAction,
+  pauseOrderingAction,
   receiptBroughtAction,
   receiptUnbroughtAction,
+  undoOpenAllAction,
 } from './actions'
 
 const VENUE = 'vn_0123456789ABCDEFGHIJKL'
@@ -173,6 +178,85 @@ describe('marking a paper receipt Brought (#200)', () => {
       { venueId: VENUE },
     ]) {
       expect(await receiptBroughtAction(input)).toEqual({ ok: false, error: 'invalid' })
+    }
+    expect(runTableCommand).not.toHaveBeenCalled()
+  })
+})
+
+describe('the undo token of a staff Undo (#219)', () => {
+  const TABLE = 'tb_0123456789ABCDEFGHIJKL'
+  const PAUSE = 'pa_0123456789ABCDEFGHIJKL'
+  const BAR = 'br_0123456789ABCDEFGHIJKL'
+  const ok = { ok: true, details: {} }
+
+  it('sends the token on with each inverse command, and none when there is none', async () => {
+    const undo = { entry: 4821 }
+    runTableCommand.mockResolvedValue(ok)
+    await closeTableAction({ venueId: VENUE, tableId: TABLE, undo })
+    await openTableAction({ venueId: VENUE, tableId: TABLE, undo })
+    await pauseOrderingAction({ venueId: VENUE, barId: BAR, undo })
+    await liftOrderingAction({ venueId: VENUE, pauseId: PAUSE, undo })
+    await receiptUnbroughtAction({ venueId: VENUE, paymentId: PAYMENT, undo })
+    await openTableAction({ venueId: VENUE, tableId: TABLE })
+    expect(runTableCommand.mock.calls.map((call) => call[1])).toEqual([
+      { type: 'table.close', tableId: TABLE, undo },
+      { type: 'table.open', tableId: TABLE, undo },
+      { type: 'ordering.pause', barId: BAR, undo },
+      { type: 'ordering.lift', pauseId: PAUSE, undo },
+      { type: 'receipt.unbrought', paymentId: PAYMENT, undo },
+      { type: 'table.open', tableId: TABLE },
+    ])
+  })
+
+  it('undoes Open all with one command that carries only its token', async () => {
+    const undo = { entry: 77 }
+    runTableCommand.mockResolvedValueOnce({ ok: true, details: { closed: 4, skipped: 0 } })
+    expect(await undoOpenAllAction({ venueId: VENUE, undo })).toEqual({
+      ok: true,
+      details: { closed: 4, skipped: 0 },
+    })
+    expect(runTableCommand).toHaveBeenCalledTimes(1)
+    expect(runTableCommand.mock.calls[0]?.[1]).toEqual({ type: 'tables.undo_open_all', undo })
+  })
+
+  it('passes on the refusal of an Open all a guest has used, with the tables it names', async () => {
+    runTableCommand.mockResolvedValueOnce({
+      ok: false,
+      error: 'undo_stale',
+      details: { count: 1, tables: TABLE },
+    })
+    expect(await undoOpenAllAction({ venueId: VENUE, undo: { entry: 77 } })).toEqual({
+      ok: false,
+      error: 'undo_stale',
+      details: { count: 1, tables: TABLE },
+    })
+  })
+
+  it("refuses Open all's Undo without a token, or with a list of tables, before any command", async () => {
+    for (const input of [
+      { venueId: VENUE },
+      { venueId: VENUE, undo: { entry: 77 }, tableIds: [TABLE] },
+    ]) {
+      expect(await undoOpenAllAction(input)).toEqual({ ok: false, error: 'invalid' })
+    }
+    expect(runTableCommand).not.toHaveBeenCalled()
+  })
+
+  it('passes on the two refusals as they are', async () => {
+    for (const error of ['undo_expired', 'undo_stale']) {
+      runTableCommand.mockResolvedValueOnce({ ok: false, error })
+      expect(
+        await closeTableAction({ venueId: VENUE, tableId: TABLE, undo: { entry: 1 } }),
+      ).toEqual({ ok: false, error })
+    }
+  })
+
+  it('refuses a token that is not a Log entry number before any command', async () => {
+    for (const undo of [{ entry: 0 }, { entry: 1.5 }, { entry: '4' }, { entry: 1, at: 'x' }]) {
+      expect(await closeTableAction({ venueId: VENUE, tableId: TABLE, undo })).toEqual({
+        ok: false,
+        error: 'invalid',
+      })
     }
     expect(runTableCommand).not.toHaveBeenCalled()
   })

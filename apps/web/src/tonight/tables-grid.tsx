@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils'
 import { closeTableAction, openTableAction } from '@/server/tonight/actions'
 import type { BarGroup, TableTile, TileState, TonightView } from '@/server/tonight/view'
 
-import { useTonightRun } from './run'
+import { useTonightRun, wroteSomething } from './run'
 import { useTableName } from './table-name'
 import { TableSheet } from './table-sheet'
 
@@ -95,7 +95,8 @@ function Tile({ tile, view, onOpen }: { tile: TableTile; view: TonightView; onOp
           id: `table:${tile.id}`,
           act: () => openTableAction({ venueId: view.venueId, tableId: tile.id }),
           done: t('t_open', { table: name }),
-          undo: () => closeTableAction({ venueId: view.venueId, tableId: tile.id }),
+          undo: (_, undo) => closeTableAction({ venueId: view.venueId, tableId: tile.id, undo }),
+          undoWhen: wroteSomething,
         })
       }}
     >
