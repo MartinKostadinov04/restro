@@ -305,9 +305,13 @@ export {
   loadPayingConnection,
   type PayingConnection,
   type PayingOffer,
+  type PaymentTableBoard,
+  type PaymentTableQueues,
   paymentTableFacts,
+  type QueueWithoutPaymentTable,
   readPayingConnection,
   readPayingOffer,
+  readPaymentTableBoard,
 } from './payment-connection'
 export {
   DEFAULT_ROLE_KINDS,

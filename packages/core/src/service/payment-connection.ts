@@ -24,8 +24,16 @@
 
 import { randomUUID } from 'node:crypto'
 
-import { alerts, type DbPool, paymentAccounts, payments, venueTables, withTenant } from '@restro/db'
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import {
+  alerts,
+  bars,
+  type DbPool,
+  paymentAccounts,
+  payments,
+  venueTables,
+  withTenant,
+} from '@restro/db'
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { newId } from '../ids'
@@ -66,11 +74,24 @@ async function lockAccount(stx: ServiceTx, lock: 'update' | 'share'): Promise<Ac
   return row ?? null
 }
 
+/** A queue (a bar, or the tables with no bar) that has guest tables but no payment table yet. */
+export interface QueueWithoutPaymentTable {
+  /** Our `br_` id of the bar; null for the tables the POS gives no bar. */
+  readonly barId: string | null
+  /** The POS's name for the bar; null for the no-bar queue. */
+  readonly barName: string | null
+}
+
+/** `PaymentTableFacts` with the queues that still lack a payment table, named, in the bars' order. */
+export interface PaymentTableQueues extends PaymentTableFacts {
+  readonly queuesMissing: readonly QueueWithoutPaymentTable[]
+}
+
 /** The venue's own tables' side of "payment tables are marked" (D125 2.3). */
 export async function paymentTableFacts(
   tx: Pick<ServiceTx['tx'], 'select'>,
   venueId: string,
-): Promise<PaymentTableFacts> {
+): Promise<PaymentTableQueues> {
   const tables = await tx
     .select({
       barId: venueTables.barId,
@@ -85,10 +106,59 @@ export async function paymentTableFacts(
   const needing = new Set(
     tables.filter((t) => !t.isPaymentTable && !t.hidden).map((t) => queueOf(t.barId)),
   )
+  const missing = [...needing].filter((queue) => !served.has(queue))
+  const barIds = missing.filter((queue) => queue !== '-')
+  const named =
+    barIds.length === 0
+      ? []
+      : await tx
+          .select({ id: bars.id, name: bars.name })
+          .from(bars)
+          .where(and(eq(bars.venueId, venueId), inArray(bars.id, barIds)))
+  const nameOf = new Map(named.map((bar) => [bar.id, bar.name] as const))
   return {
     paymentTables: tables.filter((t) => t.isPaymentTable).length,
-    queuesWithoutOne: [...needing].filter((queue) => !served.has(queue)).length,
+    queuesWithoutOne: missing.length,
+    queuesMissing: missing
+      .map((queue) => ({
+        barId: queue === '-' ? null : queue,
+        barName: queue === '-' ? null : (nameOf.get(queue) ?? null),
+      }))
+      // Bars by name, the no-bar queue last: the same order on every read.
+      .sort(
+        (a, b) =>
+          Number(a.barId === null) - Number(b.barId === null) ||
+          (a.barName ?? '').localeCompare(b.barName ?? '') ||
+          (a.barId ?? '').localeCompare(b.barId ?? ''),
+      ),
   }
+}
+
+/** What Tables & QR shows about payment tables: the queues still lacking one, and each table's bar. */
+export interface PaymentTableBoard {
+  readonly queuesMissing: readonly QueueWithoutPaymentTable[]
+  /** Our `tb_` id of every table the POS gave a bar, with that bar. */
+  readonly barOfTable: ReadonlyMap<string, { readonly id: string; readonly name: string }>
+}
+
+/** Reads the board for the signed-in person's tenant, in one transaction. */
+export async function readPaymentTableBoard(
+  pool: DbPool,
+  tenantId: string,
+  venueId: string,
+): Promise<PaymentTableBoard> {
+  return withTenant(pool, tenantId, async (tx) => {
+    const facts = await paymentTableFacts(tx, venueId)
+    const rows = await tx
+      .select({ tableId: venueTables.id, barId: bars.id, barName: bars.name })
+      .from(venueTables)
+      .innerJoin(bars, eq(bars.id, venueTables.barId))
+      .where(and(eq(venueTables.venueId, venueId), isNull(venueTables.archivedAt)))
+    return {
+      queuesMissing: facts.queuesMissing,
+      barOfTable: new Map(rows.map((r) => [r.tableId, { id: r.barId, name: r.barName }] as const)),
+    }
+  })
 }
 
 /** A venue's account as the settings and `pay.start` read it. */
