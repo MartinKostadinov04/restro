@@ -126,6 +126,11 @@ async function harnessSaid(event: string, command?: string, timeout = 120_000) {
 async function outside(command: string) {
   harness.stdin.write(`${command}\n`)
   await harnessSaid('refunds_harness_done', command)
+  // The worker's notice step must have recorded this very notice (a miss fails the command).
+  const done = events.find(
+    (line) => line.event === 'refunds_harness_done' && line.command === command,
+  )
+  expect(done?.result, `the harness did not record "${command}"`).toEqual({ outcome: 'recorded' })
 }
 
 let tablet: { context: BrowserContext; page: Page }
@@ -285,7 +290,7 @@ test('on the tablet "Storno done" asks a manager’s PIN, saves at once, and Und
   // Answered again, it stays answered after a reload.
   await rowOf(page, '1').getByRole('button', { name: 'Storno done' }).click()
   await typePin(page, '4321')
-  await expect(toast(page, 'Storno recorded').first()).toBeVisible()
+  await expect(toast(page, 'Storno recorded')).toBeVisible()
   await expect(rowOf(page, '1')).toHaveCount(0)
   await page.reload()
   await page.waitForLoadState('networkidle')

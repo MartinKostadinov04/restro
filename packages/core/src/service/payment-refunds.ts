@@ -16,11 +16,12 @@ import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema, newId } from '../ids'
+import { subtractMinor } from '../money'
 import { PAYMENT_REFUNDED_KIND } from './alert-rules'
 import { defineCommand, type ServiceTx } from './definition'
 import { type Locked, lockRoute, refusedLock } from './pay-route'
 import { accepted, refused, type ServiceResult } from './results'
-import { changedSince, UndoTokenSchema } from './undo'
+import { changedSince, tokenEntry, UndoTokenSchema } from './undo'
 
 const refundId = idSchema('rf')
 
@@ -89,6 +90,13 @@ export async function openAlertsOf(
  *   that amount is marked, its alert closes, and a row already answered is left for the
  *   accountant. A fall no row matches marks nothing and makes no row (`unmatched`: the worker logs
  *   it); the rows are never invented from a fall. A reading that marks rows adds none.
+ *
+ * Known limit: the total is one number, so a refund that fails and a new one made before the next
+ * reading cancel out in it. With a 500 refund stored, a failed 500 and a new 800 refund read as
+ * 500 → 800: a 300 row is added and the 500 is not marked. A failed 500 and a new 300 read as
+ * 500 → 300, a fall by 200 no row has: it is unmatched, and the new refund gets no row. Telling
+ * them apart needs the provider's refunds one by one, by their ids (the follow-up in the Stripe
+ * knowledge file, open item 12).
  */
 export async function reconcileRefunds(
   stx: ServiceTx,
@@ -98,7 +106,7 @@ export async function reconcileRefunds(
   const { payment } = locked
   const previousMinor = payment.refundedMinor
   if (targetMinor < previousMinor) {
-    const fallMinor = previousMinor - targetMinor
+    const fallMinor = subtractMinor(previousMinor, targetMinor)
     const rows = await stx.tx
       .select()
       .from(paymentRefunds)
@@ -131,7 +139,7 @@ export async function reconcileRefunds(
   }
   if (targetMinor === previousMinor) return { added: 0, failed: 0, unmatched: 0 }
   const id = newId('rf')
-  const amountMinor = targetMinor - previousMinor
+  const amountMinor = subtractMinor(targetMinor, previousMinor)
   await stx.tx.insert(paymentRefunds).values({
     id,
     tenantId: stx.tenantId,
@@ -261,6 +269,19 @@ export function paymentStornoUndo() {
         sql`${logEntries.kind} = 'payment.storno'
           and ${logEntries.details} ->> 'refundId' = ${command.refundId}`,
       ),
-    handle: (stx, command) => markStorno(stx, command, false),
+    async handle(stx, command) {
+      // The token must be the Log entry "Storno done" wrote for this very refund: any other
+      // recent entry's number would otherwise let one answer wipe another's.
+      const given = await tokenEntry(stx, command.undo)
+      if (
+        given === null ||
+        given.kind !== 'payment.storno' ||
+        given.toState !== 'done' ||
+        given.details.refundId !== command.refundId
+      ) {
+        return refused(null, 'invalid_command')
+      }
+      return markStorno(stx, command, false)
+    },
   })
 }

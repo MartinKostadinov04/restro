@@ -221,6 +221,19 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
     expect((await refundRows(target.id)).map((r) => r.amount_minor)).toEqual(['500', '300', '500'])
   })
 
+  it('pins the known limit: a failed refund and a new one read together do not mark the failed one', async () => {
+    const target = await captured()
+    await run(observe(target, { refundedMinor: 500 }), worker())
+    // The 500 failed and 800 was refunded before the next reading: 500 → 800 reads as a rise of 300.
+    await run(observe(target, { refundedMinor: 800 }), worker())
+    expect(
+      (await refundRows(target.id)).map((r) => [r.amount_minor, r.failed_at !== null]),
+    ).toEqual([
+      ['500', false],
+      ['300', false],
+    ])
+  })
+
   it('marks nothing and makes no row when the total falls by an amount no row has', async () => {
     const target = await captured()
     await run(observe(target, { refundedMinor: 500 }), worker())
@@ -328,6 +341,49 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
         status: 'refused',
         code: 'refund_failed',
       })
+    })
+
+    it('takes the Undo only with the token of the very answer it takes back', async () => {
+      const a = await captured()
+      const b = await captured()
+      await run(observe(a, { refundedMinor: 500 }), worker())
+      await run(observe(b, { refundedMinor: 300 }), worker())
+      const refundA = (await refundRows(a.id))[0]?.id as string
+      const refundB = (await refundRows(b.id))[0]?.id as string
+      const tokenOf = async (refundId: string) => {
+        const answer = await run(done(refundId), context(user(managerId)))
+        return {
+          entry: (answer as unknown as { details: { undoEntry: number } }).details.undoEntry,
+        }
+      }
+      const tokenA = await tokenOf(refundA)
+      const tokenB = await tokenOf(refundB)
+      // A's answer cannot be taken back with B's token, nor with the Log entry of the refund itself.
+      const refundSeen = (
+        await world.owner.query<{ seq: string }>(
+          "select seq from restro.log_entries where payment_id = $1 and kind = 'payment.refund_seen'",
+          [a.id],
+        )
+      ).rows[0]
+      for (const entry of [tokenB.entry, Number(refundSeen?.seq)]) {
+        expect(await run(undo(refundA, { entry }), context(user(managerId)))).toMatchObject({
+          status: 'refused',
+          code: 'invalid_command',
+        })
+      }
+      // An entry this venue does not have is expired.
+      expect(
+        await run(undo(refundA, { entry: 999_999_999 }), context(user(managerId))),
+      ).toMatchObject({ status: 'refused', code: 'undo_expired' })
+      expect((await refundRows(a.id))[0]?.storno_at).toBeInstanceOf(Date)
+      expect((await refundRows(b.id))[0]?.storno_at).toBeInstanceOf(Date)
+      // Its own token takes it back, and only it.
+      expect(await run(undo(refundA, tokenA), context(user(managerId)))).toMatchObject({
+        status: 'accepted',
+        details: { changed: true },
+      })
+      expect((await refundRows(a.id))[0]?.storno_at).toBeNull()
+      expect((await refundRows(b.id))[0]?.storno_at).toBeInstanceOf(Date)
     })
 
     it('has no Undo without the token it was answered with', async () => {

@@ -63,3 +63,23 @@ export async function changedSince(
     .limit(1)
   return found !== undefined
 }
+
+/**
+ * The Log entry a token names: its kind, state, table, sitting, job and details; null when this
+ * venue has none. An inverse command checks that the entry is the one its own write logged (kind,
+ * state and the thing it touched), so a token of any other recent entry undoes nothing.
+ */
+export async function tokenEntry(stx: ServiceTx, token: UndoToken) {
+  const [entry] = await stx.tx
+    .select({
+      kind: logEntries.kind,
+      toState: logEntries.toState,
+      tableId: logEntries.tableId,
+      sittingId: logEntries.sittingId,
+      jobId: logEntries.jobId,
+      details: logEntries.details,
+    })
+    .from(logEntries)
+    .where(and(eq(logEntries.seq, token.entry), eq(logEntries.venueId, stx.venueId)))
+  return entry ?? null
+}

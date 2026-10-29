@@ -917,6 +917,7 @@ export async function readTonight(
               : {
                   ...row,
                   amountMinor: refundShownMinor(row.amountMinor, row.capturedMinor, row.tipMinor),
+                  tipMinor: 0,
                 }
           return {
             storno: reads[0].map(shown),

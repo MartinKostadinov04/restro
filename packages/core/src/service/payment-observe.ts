@@ -111,6 +111,7 @@ export function paymentObserve() {
           refundsAdded: refunds.added,
           refundsFailed: refunds.failed,
           refundsUnmatched: refunds.unmatched,
+          storedMinor: payment.refundedMinor,
         },
       })
     },

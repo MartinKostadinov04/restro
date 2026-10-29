@@ -23,6 +23,7 @@ import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
 
 import { type ProviderRef, providerRef } from '@restro/core'
+import { paymentAccountVenues, unhandledProviderNotices } from '@restro/core/service'
 import { recordProviderNotice } from '@restro/core/service/notices'
 import { createPool } from '@restro/db'
 import {
@@ -34,7 +35,7 @@ import {
 } from '@restro/sim-pay'
 import pg from 'pg'
 
-import { handleProviderNotices } from '../jobs/provider-notices'
+import { handleProviderNotice } from '../jobs/provider-notices'
 import { createLogger } from '../logger'
 
 const SEED = ['restro', 'system', 'e2e-refunds-harness'] as const
@@ -137,8 +138,14 @@ async function main(): Promise<void> {
     byTable.set(row.number, { id: row.id, ref })
   }
 
-  /** The provider's notice, stored as the route does, then the worker's step reads it back. */
-  async function deliver(event: SimPayEvent): Promise<Record<string, number>> {
+  /**
+   * The provider's notice, stored as the route does, then read back by the worker's own step for
+   * that notice alone: the e2e worker beside this process runs the same job with an engine of its
+   * own, which knows none of this account's payments and would mark a notice it picked up first
+   * "not ours". Taking the notice by its id at once leaves it a window of milliseconds; a miss
+   * fails the command here, with its reason.
+   */
+  async function deliver(event: SimPayEvent): Promise<Record<string, unknown>> {
     const stored = await recordProviderNotice(pool, {
       providerKind: SIM_PAY_KIND,
       live: false,
@@ -146,11 +153,30 @@ async function main(): Promise<void> {
       jobId: `e2e-refunds-harness-${randomUUID()}`,
     })
     if (stored !== 'recorded') throw new Error(`the notice ${event.id} was stored before`)
-    const counts = await handleProviderNotices(
-      { pool, log, now: () => new Date(), jobId: 'e2e-refunds-harness' },
+    const waiting = await unhandledProviderNotices(pool, {
+      limit: 100,
+      afterSeq: 0,
+      providerKinds: [SIM_PAY_KIND],
+    })
+    const notice = waiting.find((entry) => entry.eventId === event.id)
+    if (notice === undefined) {
+      throw new Error(`the notice ${event.id} was taken by another worker before this one read it`)
+    }
+    const outcome = await handleProviderNotice(
+      {
+        pool,
+        log,
+        now: () => new Date(),
+        jobId: 'e2e-refunds-harness',
+        accounts: (kind) => paymentAccountVenues(pool, kind),
+      },
+      notice,
       { providers: new Map([[SIM_PAY_KIND, provider]]) },
     )
-    return { ...counts }
+    if (outcome !== 'recorded') {
+      throw new Error(`the notice ${event.id} was not recorded: ${outcome}`)
+    }
+    return { outcome }
   }
 
   const disputes = new Map<string, ProviderRef>()
@@ -160,7 +186,7 @@ async function main(): Promise<void> {
     return found
   }
 
-  async function command(line: string): Promise<Record<string, number>> {
+  async function command(line: string): Promise<Record<string, unknown>> {
     const [name, table, argument] = line.trim().split(/\s+/)
     const target = payment(table)
     switch (name) {
@@ -193,7 +219,7 @@ async function main(): Promise<void> {
     if (line.trim() === '') return
     queue = queue.then(async () => {
       try {
-        print({ event: 'refunds_harness_done', command: line.trim(), counts: await command(line) })
+        print({ event: 'refunds_harness_done', command: line.trim(), result: await command(line) })
       } catch (error) {
         print({
           event: 'refunds_harness_failed',
