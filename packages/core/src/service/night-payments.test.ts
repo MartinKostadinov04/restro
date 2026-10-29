@@ -12,7 +12,7 @@ import { newId } from '../ids'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import type { ServiceActor } from './context'
 import { readNightPayments, readPaymentDetail } from './night-payments'
-import { readNight } from './night-read'
+import { readLog, readNight } from './night-read'
 import { readTonight } from './read'
 
 describe.skipIf(!hasDatabase)('the payment reads of Tonight (as the restro_app role)', () => {
@@ -20,6 +20,7 @@ describe.skipIf(!hasDatabase)('the payment reads of Tonight (as the restro_app r
   let staffUser: string
   let managerUser: string
   let waiterUser: string
+  let loggerUser: string
   let day: string
   const ids: Record<string, string> = {}
   const sittings = new Map<string, string>()
@@ -116,6 +117,7 @@ describe.skipIf(!hasDatabase)('the payment reads of Tonight (as the restro_app r
           paymentId,
           tableId,
           amountMinor: 3800,
+          tipMinor: 200,
           captureBefore: '2026-11-02T20:00:00Z',
           ...fields.details,
         }),
@@ -134,6 +136,8 @@ describe.skipIf(!hasDatabase)('the payment reads of Tonight (as the restro_app r
     await world.addStaff(['night.view_full', 'log.view', 'money.follow_up'], managerUser)
     waiterUser = await world.addUser('member')
     await world.addStaff(['alerts.answer'], waiterUser)
+    loggerUser = await world.addUser('member')
+    await world.addStaff(['log.view'], loggerUser)
 
     const first = await readNight(world.app, input(user(staffUser)))
     if (!first.ok) throw new Error(`refused: ${first.code}`)
@@ -226,6 +230,56 @@ describe.skipIf(!hasDatabase)('the payment reads of Tonight (as the restro_app r
     const manager = await readNightPayments(world.app, { ...input(user(managerUser)), all: 100 })
     if (!manager.ok) throw new Error(manager.code)
     expect(manager.payments.rows.some((row) => row.tipMinor === 200)).toBe(true)
+  })
+
+  it('gives staff every amount of a payment without its tip, so total minus lines gives none away', async () => {
+    const staff = await readNightPayments(world.app, { ...input(user(staffUser)), all: 100 })
+    if (!staff.ok) throw new Error(staff.code)
+    const manager = await readNightPayments(world.app, { ...input(user(managerUser)), all: 100 })
+    if (!manager.ok) throw new Error(manager.code)
+    // Every seeded payment is 38.00 with a 2.00 tip; the captured ones were charged 38.00 too.
+    expect(manager.payments.rows.every((row) => row.amountMinor === 3800)).toBe(true)
+    expect(staff.payments.rows.every((row) => row.amountMinor === 3600)).toBe(true)
+    expect(staff.payments.rows.flatMap((row) => row.capturedMinor ?? [])).toEqual([3600, 3600])
+    expect(manager.payments.rows.flatMap((row) => row.capturedMinor ?? [])).toEqual([3800, 3800])
+    // The rows To fix are the same payments.
+    expect(staff.payments.fix.every((fix) => fix.payment.amountMinor === 3600)).toBe(true)
+    expect(manager.payments.fix.every((fix) => fix.payment.amountMinor === 3800)).toBe(true)
+  })
+
+  it("gives staff a payment sheet's total without the tip", async () => {
+    const staff = await readPaymentDetail(world.app, {
+      ...input(user(staffUser)),
+      paymentId: ids.captured as string,
+    })
+    if (!staff.ok) throw new Error(staff.code)
+    expect(staff.detail?.payment).toMatchObject({ amountMinor: 3600, tipMinor: null })
+    const manager = await readPaymentDetail(world.app, {
+      ...input(user(managerUser)),
+      paymentId: ids.captured as string,
+    })
+    if (!manager.ok) throw new Error(manager.code)
+    expect(manager.detail?.payment).toMatchObject({ amountMinor: 3800, tipMinor: 200 })
+  })
+
+  it("gives Tonight's money rows and the Log's payment line the amount without the tip to staff", async () => {
+    const waiter = await readTonight(world.app, input(user(waiterUser)))
+    if (!waiter.ok) throw new Error(waiter.code)
+    const question = waiter.tonight.alerts.find((alert) => alert.kind === 'payment_unconfirmed')
+    expect(question?.details).toMatchObject({ amountMinor: 3600 })
+    expect(question?.details).not.toHaveProperty('tipMinor')
+    const manager = await readTonight(world.app, input(user(managerUser)))
+    if (!manager.ok) throw new Error(manager.code)
+    const asked = manager.tonight.alerts.find((alert) => alert.kind === 'payment_unconfirmed')
+    expect(asked?.details).toMatchObject({ amountMinor: 3800, tipMinor: 200 })
+
+    const amountOfPayment = async (who: string) => {
+      const log = await readLog(world.app, input(user(who)))
+      if (!log.ok) throw new Error(log.code)
+      return log.page.rows.find((line) => line.kind === 'payment.state')?.amountMinor
+    }
+    expect(await amountOfPayment(loggerUser)).toBe(3600)
+    expect(await amountOfPayment(managerUser)).toBe(3800)
   })
 
   it('reads the money alerts with their answers, the refunds and the disputes for managers', async () => {

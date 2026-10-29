@@ -56,6 +56,7 @@ import { loadPayingConnection } from './payment-connection'
 import type { Permission } from './permissions'
 import { type ReceiptToBring, receiptsToBring } from './receipt-rows'
 import { sentOrderLinesOf } from './send'
+import { withoutTipMinor } from './staff-amount'
 import { readTableCapabilities } from './table-capabilities'
 import { orderedKinds } from './waiter-call'
 
@@ -704,9 +705,17 @@ const PAYMENT_QUESTION_KINDS: readonly string[] = [
   PAYMENT_LINES_NOT_BACK_KIND,
 ]
 
-/** An alert's details without the tips: Staff, and so a shared device, never see them. */
+/**
+ * An alert's details without the tips: Staff, and so a shared device, never see them. A payment
+ * alert's `amountMinor` is the charge with the tip in it, so the tip comes off it too (#220):
+ * the total would give the tip away next to the bill.
+ */
 function withoutTips(details: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(details).filter(([key]) => !key.startsWith('tip')))
+  const { amountMinor, tipMinor } = details
+  const kept = Object.fromEntries(Object.entries(details).filter(([key]) => !key.startsWith('tip')))
+  return typeof amountMinor === 'number' && typeof tipMinor === 'number'
+    ? { ...kept, amountMinor: withoutTipMinor(amountMinor, tipMinor) }
+    : kept
 }
 
 /** How many Log entries Tonight shows at once. */
@@ -944,9 +953,11 @@ export async function readTonight(
             PAYMENT_QUESTION_KINDS.includes(alert.kind),
         )
         .map((alert) =>
-          // A tip is for those who answer the alert: not a shared device, not a waiter who only
-          // sees that a payment question waits (#115).
+          // A tip is for those who answer the alert and read the whole night: not a shared device,
+          // not a waiter who only sees that a payment question waits (#115), not a role without
+          // `night.view_full` (#220).
           grants.device === true ||
+          !held.has('night.view_full') ||
           (alert.permission !== null && !held.has(alert.permission as Permission))
             ? { ...alert, details: withoutTips(alert.details) }
             : alert,

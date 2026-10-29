@@ -42,6 +42,7 @@ import type { Permission } from './permissions'
 import type { TonightRefusal } from './read'
 import { sentOrderLinesOf } from './sent-lines'
 import { type ServiceDayTotals, serviceDayTotals } from './service-day-close'
+import { withoutTipMinor } from './staff-amount'
 
 /** The states that never reached the bill: what "Not added" counts. */
 export const NOT_ADDED_STATES = ['not_sent', 'unconfirmed'] as const
@@ -553,7 +554,7 @@ export interface LogLine {
   readonly cause: string | null
   /** The staff member, role or device a settings entry is about, by name. */
   readonly subject: string | null
-  /** A payment's amount without the tip, in minor units. */
+  /** A payment's amount in minor units: with the tip for `night.view_full`, else without it. */
   readonly amountMinor: number | null
   /** The sent orders a closed night held. */
   readonly sentOrdersOfDay: number | null
@@ -616,6 +617,8 @@ export async function readLog(
     const group: LogGroup | null = isLogGroup(input.group) ? input.group : null
     const q = (input.search ?? '').trim()
     const limit = Math.min(Math.max(input.limit ?? PAGE_SIZE, 1), MAX_ROWS)
+    // A payment's amount carries its tip: the tip comes off for those who never see tips (#220).
+    const fullNight = reader.held.has('night.view_full')
     const found = await tx
       .select({
         seq: logEntries.seq,
@@ -634,6 +637,7 @@ export async function readLog(
         via: logEntries.via,
         details: logEntries.details,
         amountMinor: payments.amountMinor,
+        tipMinor: payments.tipMinor,
       })
       .from(logEntries)
       .leftJoin(venueTables, eq(venueTables.id, logEntries.tableId))
@@ -773,7 +777,9 @@ export async function readLog(
                     : { kind: 'venue', name: null },
             cause: row.kind === 'pause.started' ? row.reason : detailText(row.details, 'cause'),
             subject: subjectKey === null ? null : (subjectName.get(subjectKey) ?? null),
-            amountMinor: row.amountMinor ?? null,
+            amountMinor: fullNight
+              ? (row.amountMinor ?? null)
+              : withoutTipMinor(row.amountMinor ?? null, row.tipMinor ?? 0),
             sentOrdersOfDay: typeof sentOrdersOfDay === 'number' ? sentOrdersOfDay : null,
             callKinds: callKindsOf(row.kind, row.details),
           }
