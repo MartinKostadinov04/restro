@@ -26,6 +26,13 @@ export interface PayingCheckView {
   readonly source: CheckStanding['source']
 }
 
+/**
+ * What can still be missing before paying turns on: D125's four checks, then the venue's legal
+ * details (#198) as one more. Decided here, on the server, so the screen only draws it and #198's
+ * refusal in `pay.start` can reuse it.
+ */
+export type PayingMissing = PayingCheck | 'legalDetails'
+
 /** Everything the Paying section draws about the account. */
 export interface PayingView {
   readonly venueId: string
@@ -34,7 +41,7 @@ export interface PayingView {
   readonly accountName: string | null
   /** The four checks in D125's order; paying is on only when all pass. */
   readonly checks: readonly PayingCheckView[]
-  readonly missing: readonly PayingCheck[]
+  readonly missing: readonly PayingMissing[]
   /** The provider's own words for what it still asks of the owner. */
   readonly providerMissing: readonly string[]
   /** True only when the account is connected and every check passes. */
@@ -82,7 +89,7 @@ export async function loadPayingView(input: {
     state: connection.state,
     accountName: connection.accountName,
     checks: readiness.checks.map(({ check, passed, source }) => ({ check, passed, source })),
-    missing: readiness.missing,
+    missing: legal === null ? [...readiness.missing, 'legalDetails'] : readiness.missing,
     providerMissing: readiness.providerMissing,
     payingOn: readiness.on && legal !== null,
     lostReason: connection.state === 'lost_access' ? connection.checks.lostReason : null,

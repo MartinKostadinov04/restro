@@ -46,8 +46,12 @@ const OK = { ok: true, details: {} } as const
 
 /** A view of a connected account whose card checks are all missing, as the loader would send it. */
 function view(overrides: Partial<PayingView> = {}): PayingView {
-  const passed = (check: PayingView['checks'][number]['check']) =>
-    overrides.missing === undefined ? false : !overrides.missing.includes(check)
+  // `missing` in an override names the failing checks; the server adds the details while unsaved.
+  const failing = (
+    overrides.missing ?? ['cardPayments', 'cardTypeInTill', 'paymentTables', 'receiptEmailsOff']
+  ).filter((check) => check !== 'legalDetails')
+  const legal = overrides.legal ?? null
+  const passed = (check: PayingView['checks'][number]['check']) => !failing.includes(check)
   return {
     venueId: VENUE,
     state: 'connected',
@@ -58,7 +62,6 @@ function view(overrides: Partial<PayingView> = {}): PayingView {
       { check: 'paymentTables', passed: passed('paymentTables'), source: 'venue' },
       { check: 'receiptEmailsOff', passed: passed('receiptEmailsOff'), source: 'owner' },
     ],
-    missing: ['cardPayments', 'cardTypeInTill', 'paymentTables', 'receiptEmailsOff'],
     providerMissing: ['business details'],
     payingOn: false,
     lostReason: null,
@@ -69,9 +72,10 @@ function view(overrides: Partial<PayingView> = {}): PayingView {
     provider: 'Testpay',
     source: 'Testtill',
     tips: false,
-    legal: null,
     email: 'owner@example.com',
     ...overrides,
+    legal,
+    missing: legal === null ? [...failing, 'legalDetails'] : failing,
   }
 }
 

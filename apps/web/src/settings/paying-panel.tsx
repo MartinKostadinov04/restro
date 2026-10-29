@@ -440,18 +440,14 @@ export function PayingPanel({
   )
 }
 
-/** The checks not yet passed, each as its own item, then the venue's details. */
+/** The server's missing list as items, in its order: D125's checks, then the venue's details. */
 function missingItems(view: PayingView): Missing[] {
-  const items: Missing[] = []
-  for (const standing of view.checks) {
-    if (standing.passed) continue
-    if (standing.check === 'cardPayments') {
-      items.push(view.state === 'connected' ? 'card' : 'account')
-    } else if (standing.check === 'paymentTables') items.push('tables')
-    else items.push(standing.check)
-  }
-  if (view.legal === null) items.push('details')
-  return items
+  return view.missing.map((check): Missing => {
+    if (check === 'cardPayments') return view.state === 'connected' ? 'card' : 'account'
+    if (check === 'paymentTables') return 'tables'
+    if (check === 'legalDetails') return 'details'
+    return check
+  })
 }
 
 /** One of the owner's two ticks: saves at once, with Undo. */
