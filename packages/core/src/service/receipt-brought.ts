@@ -9,14 +9,15 @@
 //
 // Locks: the table's rows first, then the payment (`lockRoute`, as the paying route does).
 
-import { payments } from '@restro/db'
-import { eq } from 'drizzle-orm'
+import { logEntries, payments } from '@restro/db'
+import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema } from '../ids'
 import { defineCommand, type ServiceTx } from './definition'
 import { lockRoute, refusedLock } from './pay-route'
 import { accepted, refused, type ServiceResult } from './results'
+import { changedSince, UndoTokenSchema } from './undo'
 
 const paymentId = idSchema('py')
 
@@ -69,21 +70,29 @@ export function receiptBrought() {
     permission: 'alerts.answer',
     quickOnSharedDevice: true,
     idempotency: 'by_nature',
+    undoable: { kinds: ['receipt.brought'] },
     handle: (stx, command) => mark(stx, command, true),
   })
 }
 
 /**
- * `receipt.unbrought`: Undo of Brought. The server sets no time limit on it, like Tonight's other
- * Undos; the screen offers it for the toast's 8 seconds.
+ * `receipt.unbrought`: Undo of Brought. With the `undo` token Brought answered with it is refused
+ * `undo_expired` after 30 seconds and `undo_stale` when the receipt was marked or put back again
+ * since (#219); without a token it is a normal command.
  */
 export function receiptUnbrought() {
   return defineCommand({
-    schema: ReceiptSchema('receipt.unbrought'),
+    schema: ReceiptSchema('receipt.unbrought').extend({ undo: UndoTokenSchema.optional() }),
     origins: ['staff'],
     permission: 'alerts.answer',
     quickOnSharedDevice: true,
     idempotency: 'by_nature',
+    undoStale: (stx, command, entry) =>
+      changedSince(
+        stx,
+        entry,
+        sql`${logEntries.kind} = 'receipt.brought' and ${logEntries.paymentId} = ${command.paymentId}`,
+      ),
     handle: (stx, command) => mark(stx, command, false),
   })
 }

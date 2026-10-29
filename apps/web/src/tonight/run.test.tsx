@@ -4,14 +4,14 @@
 // give Undo, or it would take back another device's mark. Without a rule (`undoWhen`) the toast
 // always offers it, as the other Undos of the screen do. Sonner is a stand-in that records the
 // toasts.
-import { screen, waitFor } from '@testing-library/react'
+import { cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { TonightResult } from '@/server/tonight/tables'
 import { renderWithIntl } from '@/test-utils'
 
-import { RunProvider, type RunSpec, useTonightRun } from './run'
+import { RunProvider, type RunSpec, useTonightRun, wroteSomething } from './run'
 
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { error: vi.fn() }))
 vi.mock('sonner', () => ({ toast }))
@@ -73,6 +73,48 @@ describe('the toast after a write', () => {
       undo: vi.fn(async () => answered(true)),
     })
     expect(changed.action?.label).toBe('Undo')
+  })
+
+  it('hands the undo token of the write to its Undo, and offers none when it wrote nothing', async () => {
+    const undo = vi.fn(async () => answered(true))
+    const [, options] = await tap({
+      act: async (): Promise<TonightResult> => ({
+        ok: true,
+        details: { undoEntry: 4821, undoAt: '2026-10-29T20:00:00.000Z' },
+      }),
+      undo,
+      undoWhen: wroteSomething,
+    })
+    expect(options.action?.label).toBe('Undo')
+    ;(options.action as unknown as { onClick: () => void }).onClick()
+    expect(undo).toHaveBeenCalledWith(expect.anything(), { entry: 4821 })
+
+    cleanup()
+    toast.mockClear()
+    const [, repeat] = await tap({
+      act: async () => answered(false),
+      undo: vi.fn(async () => answered(true)),
+      undoWhen: wroteSomething,
+    })
+    expect(repeat.action).toBeUndefined()
+  })
+
+  it('shows the words of the two Undo refusals in the error toast', async () => {
+    for (const [error, text] of [
+      ['undo_expired', 'Too late to undo.'],
+      ['undo_stale', 'Someone else has changed this since.'],
+    ] as const) {
+      cleanup()
+      toast.mockClear()
+      toast.error.mockClear()
+      const [, options] = await tap({
+        act: async (): Promise<TonightResult> => ({ ok: true, details: { undoEntry: 1 } }),
+        undo: vi.fn(async (): Promise<TonightResult> => ({ ok: false, error })),
+      })
+      ;(options.action as unknown as { onClick: () => void }).onClick()
+      await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
+      expect(toast.error.mock.calls[0]?.[0]).toBe(text)
+    }
   })
 
   it('offers none for a write that has no inverse', async () => {

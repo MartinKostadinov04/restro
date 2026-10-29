@@ -10,7 +10,7 @@ import type { z } from 'zod'
 import type { VenueLockStrength } from '../apply/venue-lock'
 import type { ServiceActor, ServiceOrigin, Via } from './context'
 import type { LeaseTx } from './leases'
-import type { LogEntryInput } from './log'
+import type { LogEntryInput, LogKind } from './log'
 import type { Permission } from './permissions'
 import type { ServiceResult } from './results'
 import type { SendMenu } from './send-menu'
@@ -63,6 +63,11 @@ export interface ServiceTx extends LeaseTx {
   /** Appends a Log entry with this command's venue, day and provenance. */
   log(entry: LogEntryInput): Promise<void>
   /**
+   * The last Log entry of one of these kinds this command appended (its place and time), or null
+   * when it logged none of them.
+   */
+  lastLogged(kinds: readonly LogKind[]): { readonly seq: number; readonly at: Date } | null
+  /**
    * Sets writes aside for the handler's refusal: they run after its savepoint is rolled back, in
    * the same transaction, so what a refusal leaves behind (a guard trip's pause, Log entry and
    * alert, #78) is kept while the rest of the handler's writes are not. Never run when the handler
@@ -114,6 +119,21 @@ export interface CommandDefinition<S extends z.ZodType = z.ZodType> {
    */
   readonly quickOnSharedDevice?: boolean
   readonly idempotency: Idempotency
+  /**
+   * A staff write whose Undo Tonight offers (#219): when it came via Tonight and logged an entry
+   * of one of these kinds, the accepted answer carries `undoEntry` (the last such entry's `seq`)
+   * and `undoAt` (its time), which the inverse command sends back as its `undo` token. A write
+   * that logged none of them (a repeat that found it done) has no token and so no Undo. The kind
+   * is the one that says the thing the Undo reverses was done, never just the last entry.
+   */
+  readonly undoable?: { readonly kinds: readonly LogKind[] }
+  /**
+   * For an inverse command that takes an `undo` token: whether the thing it touched changed after
+   * the token's entry. Run after the handler wrote, under the handler's own locks, so a change
+   * committed meanwhile is seen or waited for; true rolls the handler back and the answer is
+   * `undo_stale`. Use `changedSince`, which leaves out this command's own entries.
+   */
+  undoStale?(stx: ServiceTx, command: z.infer<S>, entry: number): Promise<boolean>
   /**
    * The oldest a command may be, in milliseconds since the guest's tap (its `ageMs`): an older one
    * is refused `stale_action` after the repeat check, so a phone back from a lost signal never

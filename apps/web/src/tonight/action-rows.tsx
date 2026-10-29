@@ -43,7 +43,7 @@ import type { ActionRow, RowKind } from '@/server/tonight/view'
 import { callKindsText } from './call-kinds'
 import { useMoney } from './money'
 import { MONEY_ICONS, type MoneyFrame, useMoneyRowParts } from './money-rows'
-import { useTonightRun } from './run'
+import { useTonightRun, wroteSomething } from './run'
 import { SentOrderAnswers } from './sent-order-answers'
 import { useTableName } from './table-name'
 
@@ -160,9 +160,13 @@ export function ActionRowItem({
               act: () =>
                 receiptBroughtAction({ venueId: view.venueId, paymentId: receipt.paymentId }),
               done: t('r_toast', { table: name }),
-              undo: () =>
-                receiptUnbroughtAction({ venueId: view.venueId, paymentId: receipt.paymentId }),
-              undoWhen: (done) => done.details.changed === true,
+              undo: (_, undo) =>
+                receiptUnbroughtAction({
+                  venueId: view.venueId,
+                  paymentId: receipt.paymentId,
+                  undo,
+                }),
+              undoWhen: (done) => done.details.changed === true && wroteSomething(done),
             })
           }
         >

@@ -119,30 +119,35 @@ export async function appendLogEntry(
   tx: WriteTx,
   scope: LogEntryScope,
   input: LogEntryInput,
-): Promise<void> {
+): Promise<{ readonly seq: number; readonly at: Date }> {
   const entry = LogEntryInputSchema.parse(input)
   if (scope.via !== null && !(VIA_VALUES as readonly string[]).includes(scope.via)) {
     throw new TypeError(`unknown via ${scope.via}`)
   }
-  await tx.insert(logEntries).values({
-    tenantId: scope.tenantId,
-    venueId: scope.venueId,
-    serviceDate: scope.serviceDate,
-    kind: entry.kind,
-    sentOrderId: entry.sentOrderId ?? null,
-    paymentId: entry.paymentId ?? null,
-    tableId: entry.tableId ?? null,
-    sittingId: entry.sittingId ?? null,
-    fromState: entry.fromState ?? null,
-    toState: entry.toState ?? null,
-    reason: entry.reason ?? null,
-    via: scope.via,
-    details: entry.details ?? {},
-    retention: retentionOf(entry.kind),
-    source: scope.provenance.source,
-    actor: scope.provenance.actor,
-    jobId: scope.provenance.jobId,
-  })
+  const [row] = await tx
+    .insert(logEntries)
+    .values({
+      tenantId: scope.tenantId,
+      venueId: scope.venueId,
+      serviceDate: scope.serviceDate,
+      kind: entry.kind,
+      sentOrderId: entry.sentOrderId ?? null,
+      paymentId: entry.paymentId ?? null,
+      tableId: entry.tableId ?? null,
+      sittingId: entry.sittingId ?? null,
+      fromState: entry.fromState ?? null,
+      toState: entry.toState ?? null,
+      reason: entry.reason ?? null,
+      via: scope.via,
+      details: entry.details ?? {},
+      retention: retentionOf(entry.kind),
+      source: scope.provenance.source,
+      actor: scope.provenance.actor,
+      jobId: scope.provenance.jobId,
+    })
+    .returning({ seq: logEntries.seq, at: logEntries.at })
+  if (row === undefined) throw new Error('the Log entry could not be written')
+  return row
 }
 
 /**

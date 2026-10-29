@@ -2070,6 +2070,8 @@
       "bar_missing": "That bar is gone. The page will refresh.",
       "alert_missing": "That alert is already closed.",
       "no_receipt_to_bring": "There's no receipt to bring for this payment. The page will refresh.",
+      "undo_expired": "Too late to undo.",
+      "undo_stale": "Someone else has changed this since.",
       "venue_missing": "This venue isn't available any more.",
       "invalid": "Not saved. Reload the page and try again."
     },

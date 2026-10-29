@@ -15,6 +15,9 @@ import { applyService, readTableState, type ServiceCommand } from './index'
 
 const { publicKey } = generateKeyPairSync('x25519')
 
+/** What a Tonight write that offers Undo adds to its answer (#219). */
+const undoToken = { undoEntry: expect.any(Number), undoAt: expect.any(String) }
+
 describe.skipIf(!hasDatabase)('tables open for phones (as the restro_app role)', () => {
   let world: ServiceWorld
   let ownerId: string
@@ -106,7 +109,10 @@ describe.skipIf(!hasDatabase)('tables open for phones (as the restro_app role)',
     expect(await versionOf(tableId)).toBeGreaterThan(before)
 
     const again = await accepted({ type: 'table.open', tableId }, user(managerId))
-    expect(again).toEqual({ ...first, opened: false })
+    // A repeat wrote nothing, so it has no undo token to hand on.
+    const { undoEntry: _entry, undoAt: _at, ...firstAnswer } = first
+    expect(first).toMatchObject(undoToken)
+    expect(again).toEqual({ ...firstAnswer, opened: false })
     expect(await logOf(String(first.sittingId))).toEqual([
       {
         kind: 'sitting.opened',
@@ -136,6 +142,7 @@ describe.skipIf(!hasDatabase)('tables open for phones (as the restro_app role)',
     expect(await accepted({ type: 'table.close', tableId }, user(managerId))).toEqual({
       closed: true,
       sittingId: sitting.id,
+      ...undoToken,
     })
     expect(await openSittingOf(tableId)).toBeNull()
     expect(await sittingRow(sitting.id)).toMatchObject({
@@ -205,6 +212,7 @@ describe.skipIf(!hasDatabase)('tables open for phones (as the restro_app role)',
       opened: 2,
       alreadyOpen: 1,
       skipped: 1,
+      ...undoToken,
     })
     for (const index of [0, 1, 2]) expect(await openSittingOf(table(index))).not.toBeNull()
     expect(await openSittingOf(table(3))).toBeNull()

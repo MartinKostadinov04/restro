@@ -27,12 +27,21 @@ import type { DbPool } from '@restro/db'
 
 import { logError } from '../log'
 
+/**
+ * The Log entry an accepted write answered with (`undoEntry`): the Undo sends it back so core can
+ * refuse it once the write is 30 seconds old or the thing was changed again (#219).
+ */
+export interface UndoToken {
+  readonly entry: number
+}
+
 /** A table command Tonight sends; the venue is the scope's. */
 export type TableCommand =
-  | { readonly type: 'table.open'; readonly tableId: string }
-  | { readonly type: 'table.close'; readonly tableId: string }
+  | { readonly type: 'table.open'; readonly tableId: string; readonly undo?: UndoToken }
+  | { readonly type: 'table.close'; readonly tableId: string; readonly undo?: UndoToken }
   | { readonly type: 'table.new_guests'; readonly tableId: string; readonly sittingId?: string }
   | { readonly type: 'tables.open_all' }
+  | { readonly type: 'tables.undo_open_all'; readonly undo: UndoToken }
   | { readonly type: 'tables.close_all' }
   | { readonly type: 'table.resume'; readonly tableId: string }
   | {
@@ -42,7 +51,7 @@ export type TableCommand =
     }
   | { readonly type: 'waiter_call.done'; readonly waiterCallId: string }
   | { readonly type: 'receipt.brought'; readonly paymentId: string }
-  | { readonly type: 'receipt.unbrought'; readonly paymentId: string }
+  | { readonly type: 'receipt.unbrought'; readonly paymentId: string; readonly undo?: UndoToken }
   | { readonly type: 'alert.done'; readonly alertId: string }
   | {
       readonly type: 'payment.answer'
@@ -50,8 +59,8 @@ export type TableCommand =
       readonly answering: 'close' | 'lines_not_back'
       readonly answer: 'receipt_printed' | 'no_receipt' | 'on_till' | 'not_on_till'
     }
-  | { readonly type: 'ordering.pause'; readonly barId: string | null }
-  | { readonly type: 'ordering.lift'; readonly pauseId: string }
+  | { readonly type: 'ordering.pause'; readonly barId: string | null; readonly undo?: UndoToken }
+  | { readonly type: 'ordering.lift'; readonly pauseId: string; readonly undo?: UndoToken }
 
 /** Who acts at which venue. The tenant is the person's organisation, never the request's. */
 export interface TonightScope {

@@ -34,7 +34,11 @@ const pin = z
   .regex(/^\d{4}$/)
   .optional()
 
+/** The token a write answered with, sent back by its Undo (#219). */
+const undo = z.strictObject({ entry: z.int().positive() }).optional()
+
 const OnTable = z.strictObject({ venueId, tableId, pin })
+const OnTableUndo = OnTable.extend({ undo })
 const NewGuests = z.strictObject({ venueId, tableId, sittingId: idSchema('st').optional(), pin })
 const OnVenue = z.strictObject({ venueId, pin })
 const MarkPayment = z.strictObject({ venueId, tableId, isPaymentTable: z.boolean() })
@@ -94,19 +98,29 @@ function command(scope: TonightScope, value: TableCommand): Promise<TonightResul
 
 /** Opens a table for phones; on an open table, says who opened it. */
 export async function openTableAction(input: unknown): Promise<TonightResult> {
-  const parsed = OnTable.safeParse(input)
+  const parsed = OnTableUndo.safeParse(input)
   if (!parsed.success) return INVALID
+  const { tableId: table, undo: token } = parsed.data
   return perform(parsed.data, (scope) =>
-    command(scope, { type: 'table.open', tableId: parsed.data.tableId }),
+    command(scope, {
+      type: 'table.open',
+      tableId: table,
+      ...(token === undefined ? {} : { undo: token }),
+    }),
   )
 }
 
 /** Closes a table for phones: its sitting ends, its unsent order goes. */
 export async function closeTableAction(input: unknown): Promise<TonightResult> {
-  const parsed = OnTable.safeParse(input)
+  const parsed = OnTableUndo.safeParse(input)
   if (!parsed.success) return INVALID
+  const { tableId: table, undo: token } = parsed.data
   return perform(parsed.data, (scope) =>
-    command(scope, { type: 'table.close', tableId: parsed.data.tableId }),
+    command(scope, {
+      type: 'table.close',
+      tableId: table,
+      ...(token === undefined ? {} : { undo: token }),
+    }),
   )
 }
 
@@ -149,15 +163,15 @@ export async function markPaymentTableAction(input: unknown): Promise<TonightRes
 }
 
 const OnCall = z.strictObject({ venueId, waiterCallId: idSchema('wc'), pin })
-const OnPause = z.strictObject({ venueId, pauseId: idSchema('pa'), pin })
-const OnBar = z.strictObject({ venueId, barId: idSchema('br').nullable(), pin })
+const OnPause = z.strictObject({ venueId, pauseId: idSchema('pa'), pin, undo })
+const OnBar = z.strictObject({ venueId, barId: idSchema('br').nullable(), pin, undo })
 const OnSentOrder = z.strictObject({
   venueId,
   sentOrderId: idSchema('so'),
   answer: z.enum(['found', 'not_found']),
   pin,
 })
-const OnTables = z.strictObject({ venueId, tableIds: z.array(tableId).min(1).max(200), pin })
+const UndoOpenAll = z.strictObject({ venueId, pin, undo: undo.unwrap() })
 const OnTableRead = z.strictObject({ venueId, tableId })
 
 /** Marks a waiter call handled: no PIN, the device's account is named in the Log (D122 §7). */
@@ -169,7 +183,7 @@ export async function handleWaiterCallAction(input: unknown): Promise<TonightRes
   )
 }
 
-const OnReceipt = z.strictObject({ venueId, paymentId: idSchema('py') })
+const OnReceipt = z.strictObject({ venueId, paymentId: idSchema('py'), undo })
 
 /**
  * Marks a payment's paper receipt Brought (#200): no PIN, even on a shared device; the Log names
@@ -187,8 +201,13 @@ export async function receiptBroughtAction(input: unknown): Promise<TonightResul
 export async function receiptUnbroughtAction(input: unknown): Promise<TonightResult> {
   const parsed = OnReceipt.safeParse(input)
   if (!parsed.success) return INVALID
+  const { paymentId, undo: token } = parsed.data
   return perform(parsed.data, (scope) =>
-    command(scope, { type: 'receipt.unbrought', paymentId: parsed.data.paymentId }),
+    command(scope, {
+      type: 'receipt.unbrought',
+      paymentId,
+      ...(token === undefined ? {} : { undo: token }),
+    }),
   )
 }
 
@@ -196,8 +215,13 @@ export async function receiptUnbroughtAction(input: unknown): Promise<TonightRes
 export async function pauseOrderingAction(input: unknown): Promise<TonightResult> {
   const parsed = OnBar.safeParse(input)
   if (!parsed.success) return INVALID
+  const { barId, undo: token } = parsed.data
   return perform(parsed.data, (scope) =>
-    command(scope, { type: 'ordering.pause', barId: parsed.data.barId }),
+    command(scope, {
+      type: 'ordering.pause',
+      barId,
+      ...(token === undefined ? {} : { undo: token }),
+    }),
   )
 }
 
@@ -205,8 +229,13 @@ export async function pauseOrderingAction(input: unknown): Promise<TonightResult
 export async function liftOrderingAction(input: unknown): Promise<TonightResult> {
   const parsed = OnPause.safeParse(input)
   if (!parsed.success) return INVALID
+  const { pauseId, undo: token } = parsed.data
   return perform(parsed.data, (scope) =>
-    command(scope, { type: 'ordering.lift', pauseId: parsed.data.pauseId }),
+    command(scope, {
+      type: 'ordering.lift',
+      pauseId,
+      ...(token === undefined ? {} : { undo: token }),
+    }),
   )
 }
 
@@ -237,20 +266,17 @@ export async function answerSentOrderAction(input: unknown): Promise<TonightResu
 }
 
 /**
- * Undoes "Open all": closes the tables that were closed when it was pressed. Each is a
- * `table.close` of the same person, stopping at the first refusal.
+ * Undoes "Open all" with its token (#219): one command ends the sittings Open all began, all or
+ * none. If a guest has used one of them it ends none and answers `undo_stale`; a table closed or
+ * opened again by someone else is left alone.
  */
 export async function undoOpenAllAction(input: unknown): Promise<TonightResult> {
-  const parsed = OnTables.safeParse(input)
+  const parsed = UndoOpenAll.safeParse(input)
   if (!parsed.success) return INVALID
-  return perform(parsed.data, async (scope) => {
-    let last: TonightResult = { ok: true, details: {} }
-    for (const id of parsed.data.tableIds) {
-      last = await command(scope, { type: 'table.close', tableId: id })
-      if (!last.ok) return last
-    }
-    return last
-  })
+  const { undo: token } = parsed.data
+  return perform(parsed.data, (scope) =>
+    command(scope, { type: 'tables.undo_open_all', undo: token }),
+  )
 }
 
 /** The bill of a table as last read, for its sheet (read-only). */

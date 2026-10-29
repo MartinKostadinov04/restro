@@ -35,13 +35,14 @@ import {
   pauseOrderingAction,
   undoOpenAllAction,
 } from '@/server/tonight/actions'
+import type { UndoToken } from '@/server/tonight/tables'
 import type { TonightView } from '@/server/tonight/view'
 
 import { ActionRowItem, OutOfStockNotice, useAgo } from './action-rows'
 import { callKindsText } from './call-kinds'
 import { moneyTitleKey } from './money-rows'
 import { PauseBanners } from './pause-banners'
-import { RunProvider, useTonightRun } from './run'
+import { RunProvider, useTonightRun, wroteSomething } from './run'
 import { useTableName } from './table-name'
 import { TablesGrid } from './tables-grid'
 
@@ -94,8 +95,16 @@ function PauseMenu({ view }: { view: TonightView }) {
       // Lifting needs a manager; without that right the toast has no Undo.
       ...(view.can.lift && !view.device
         ? {
-            undo: (done: { details: Record<string, string | number | boolean | null> }) =>
-              liftOrderingAction({ venueId: view.venueId, pauseId: String(done.details.pauseId) }),
+            undo: (
+              done: { details: Record<string, string | number | boolean | null> },
+              undo: UndoToken | undefined,
+            ) =>
+              liftOrderingAction({
+                venueId: view.venueId,
+                pauseId: String(done.details.pauseId),
+                undo,
+              }),
+            undoWhen: wroteSomething,
           }
         : {}),
     })
@@ -227,7 +236,15 @@ function Content({ view }: { view: TonightView }) {
         : {}),
       act: (pin) => openAllTablesAction({ venueId: view.venueId, pin }),
       done: t('oa_toast', { k: closedIds.length }),
-      undo: () => undoOpenAllAction({ venueId: view.venueId, tableIds: closedIds }),
+      // On a shared device Open all names a person by their PIN, and its Undo would have to name
+      // the same person: it has no PIN to do so, so the toast offers none there (#219).
+      ...(view.device
+        ? {}
+        : {
+            undo: (_: unknown, undo: UndoToken | undefined) =>
+              undoOpenAllAction({ venueId: view.venueId, undo }),
+            undoWhen: wroteSomething,
+          }),
     })
   }
   function confirmCloseAll() {
