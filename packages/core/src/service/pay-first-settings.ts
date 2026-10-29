@@ -151,6 +151,8 @@ export interface PayFirstTablesBoard {
   readonly possible: boolean
   /** The tables whose POS declares `firstItemsOpenBill`: only these get a row. */
   readonly capable: ReadonlySet<string>
+  /** The bar (`br_…`) the POS gives each of those tables, for a stored bar choice (Send applies it). */
+  readonly barOfTable: ReadonlyMap<string, string>
   readonly settings: PayFirstSettings
 }
 
@@ -164,9 +166,16 @@ export async function readPayFirstTablesBoard(
   const settings = readPayFirstSettings(venueSettings)
   return withTenant(pool, tenantId, async (tx) => {
     const possible = await payFirstPossibleAt(tx, venueId)
-    if (!possible) return { possible, capable: new Set<string>(), settings }
+    if (!possible) {
+      return {
+        possible,
+        capable: new Set<string>(),
+        barOfTable: new Map<string, string>(),
+        settings,
+      }
+    }
     const rows = await tx
-      .select({ tableId: venueTables.id, config: integrations.config })
+      .select({ tableId: venueTables.id, barId: venueTables.barId, config: integrations.config })
       .from(venueTables)
       .innerJoin(places, eq(places.tableId, venueTables.id))
       .innerJoin(integrations, eq(integrations.id, places.integrationId))
@@ -178,12 +187,12 @@ export async function readPayFirstTablesBoard(
           isNull(integrations.removedAt),
         ),
       )
+    const live = rows.filter((row) => readServiceCapabilities(row.config).firstItemsOpenBill)
     return {
       possible,
-      capable: new Set(
-        rows
-          .filter((row) => readServiceCapabilities(row.config).firstItemsOpenBill)
-          .map((row) => row.tableId),
+      capable: new Set(live.map((row) => row.tableId)),
+      barOfTable: new Map(
+        live.flatMap((row) => (row.barId === null ? [] : [[row.tableId, row.barId] as const])),
       ),
       settings,
     }

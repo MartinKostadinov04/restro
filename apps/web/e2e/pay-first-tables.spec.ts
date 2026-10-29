@@ -81,7 +81,9 @@ async function saved(page: Page, act: () => Promise<unknown>) {
   const answered = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
-      response.request().headers()['next-action'] !== undefined,
+      response.request().headers()['next-action'] !== undefined &&
+      // The pay-first save only: the codes reveal on load is a server action too.
+      (response.request().postData() ?? '').includes('"change"'),
   )
   await act()
   await answered
@@ -149,11 +151,12 @@ test('PF4: an area to pay first or not in 2 taps, with Undo; its tables follow i
   )
   // The choice is kept across a reload.
   await page.reload()
+  await page.waitForLoadState('networkidle')
   await expect(areaRow(page).getByTestId('pay-first-select')).toHaveText(
     `Предварително плащане: ${OFF}`,
   )
 
-  // Undo, from its own toast, puts the area back to following the venue.
+  // Undo, from its own toast, puts the area back to Off.
   await choose(page, areaRow(page), 'Включено')
   const toast = toastOf(page, 'Предварително плащане за зона Hall: Включено')
   await expect(toast).toBeVisible()

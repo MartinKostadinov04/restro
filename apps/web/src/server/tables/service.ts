@@ -218,11 +218,11 @@ function payingOf(
 function payFirstOfTable(
   settings: PayFirstSettings,
   table: VenueTable,
-  bar: TableRowView['bar'],
+  barId: string | undefined,
 ): PayFirstShown {
   const place = {
     tableId: table.id,
-    barId: (bar?.id as BarId | undefined) ?? null,
+    barId: (barId as BarId | undefined) ?? null,
     areaId: table.areaId as AreaId,
   }
   const reading = payFirstAppliesAt(settings, place)
@@ -311,7 +311,7 @@ export async function loadTablesView(
         payFirstBoard.possible &&
         !table.isPaymentTable &&
         payFirstBoard.capable.has(table.id)
-          ? payFirstOfTable(payFirstBoard.settings, table, bar)
+          ? payFirstOfTable(payFirstBoard.settings, table, payFirstBoard.barOfTable.get(table.id))
           : null
       const active = isActive(table)
       const resolvedId = resolved.tables.get(table.id) ?? null

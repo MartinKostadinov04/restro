@@ -393,6 +393,7 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
         }
       }
       const { areas: areaIds, tables: tableIds } = await ids()
+      let barId: string | null = null
       const setPayFirst = (payFirst: object) =>
         owner.query(
           `update restro.venues set settings = settings || jsonb_build_object('payFirst', $2::jsonb) where id = $1`,
@@ -465,6 +466,31 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
         // Main hall follows the venue (off).
         expect(set.halls[0]?.payFirst).toMatchObject({ own: null, applies: false, level: 'venue' })
 
+        // A stored bar choice is honoured on screen as Send honours it, though paying is not
+        // "offered" here (no payment-table board is read): table 2's bar is off, over its area.
+        expect(set.paying).toBeNull()
+        barId = newId('br')
+        await owner.query(
+          `insert into restro.bars (id, tenant_id, venue_id, name, source_key) values ($1, $2, $3, 'Roof bar', $1)`,
+          [barId, tenant, venue.id],
+        )
+        await owner.query('update restro.tables set bar_id = $2 where id = $1', [
+          tableIds['2'],
+          barId,
+        ])
+        await setPayFirst({
+          itemMode: 'on_bill',
+          applies: false,
+          groups: { [areaIds.Terrace ?? '']: true, [barId]: false },
+          tables: { [tableIds['10'] ?? '']: false },
+        })
+        expect((await view()).halls[1]?.tables.find((r) => r.number === '2')?.payFirst).toEqual({
+          own: null,
+          applies: false,
+          level: 'bar',
+          inherited: { applies: false, level: 'bar' },
+        })
+
         // A payment table has no row, and a venue made by hand has none at all.
         await owner.query('update restro.tables set is_payment_table = true where id = $1', [
           tableIds['10'],
@@ -484,6 +510,10 @@ describe.skipIf(!hasDatabase)('the Tables & QR tab service (as the restro_app ro
         await owner.query('update restro.tables set is_payment_table = false where id = $1', [
           tableIds['10'],
         ])
+        if (barId !== null) {
+          await owner.query('update restro.tables set bar_id = null where id = $1', [tableIds['2']])
+          await owner.query('delete from restro.bars where id = $1', [barId])
+        }
         await owner.query('delete from restro.payment_accounts where venue_id = $1', [venue.id])
         await owner.query('update restro.integrations set config = $2 where id = $1', [
           integrationId,
