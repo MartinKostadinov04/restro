@@ -175,6 +175,28 @@ describe("the Log's sentences", () => {
     )
   })
 
+  it('words a receipt marked Brought, and its Undo by the state the line carries (#200)', () => {
+    const en = context('en', new Set())
+    const bg = context('bg', new Set())
+    const marked = { receipt: { undone: false, paymentNumber: 'KQ7MD' } }
+    const undone = { receipt: { undone: true, paymentNumber: 'KQ7MD' } }
+    // Screen 1's `r_toast` for the mark; a line without the optional field reads as the mark.
+    expect(logSentence(line('receipt.brought', marked), en)).toBe('Receipt for Table 7 brought')
+    expect(logSentence(line('receipt.brought'), en)).toBe('Receipt for Table 7 brought')
+    expect(logSentence(line('receipt.brought', marked), bg)).toBe('Бележката за Маса 7 е занесена')
+    // The lead's words for Undo, awaiting Martin: who, and the number the guest shows.
+    expect(logSentence(line('receipt.brought', undone), en)).toBe(
+      'Maria undid "receipt brought" · payment KQ7MD',
+    )
+    expect(logSentence(line('receipt.brought', undone), bg)).toBe(
+      'Maria отмени „донесена бележка" · плащане KQ7MD',
+    )
+    // No amount anywhere in either.
+    for (const entry of [marked, undone]) {
+      expect(logSentence(line('receipt.brought', entry), en)).not.toMatch(/[€\d]{2,}/)
+    }
+  })
+
   it('names the scope of a pause and its cause', () => {
     const en = context('en', new Set())
     expect(

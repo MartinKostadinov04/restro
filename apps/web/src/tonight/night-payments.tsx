@@ -83,7 +83,21 @@ export function NightPayFixRows({
         >
           {t('nt_fix_pay', {
             table: tableName(entry.table, entry.numbered),
-            what: t('nt_fix_norcpt'),
+            // The payment number joins the line so it reads as the same payment as its "receipt not
+            // brought" line, in words that already exist.
+            what: `${t('nt_fix_norcpt')} · ${t('py_number', { ref: entry.paymentNumber })}`,
+          })}
+        </li>
+      ))}
+      {payments.notBrought.map((entry) => (
+        <li
+          key={entry.paymentId}
+          className="rounded-lg border bg-card p-4 text-sm"
+          data-testid="night-fix-notbrought"
+        >
+          {t('nt_fix_pay', {
+            table: tableName(entry.table, entry.numbered),
+            what: t('nt_fix_notbrought', { n: entry.paymentNumber }),
           })}
         </li>
       ))}

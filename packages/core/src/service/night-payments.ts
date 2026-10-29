@@ -55,6 +55,7 @@ import { payingPausedAt } from './paying-pause'
 import { loadPayingConnection } from './payment-connection'
 import { paymentNumberOf } from './payment-number'
 import type { Permission } from './permissions'
+import { type ReceiptNotBrought, receiptsNotBrought } from './receipt-rows'
 
 /** The kinds of alert that are about one payment (their subject is the payment). */
 export const PAYMENT_ALERT_KINDS = [
@@ -176,6 +177,8 @@ export interface NightPayments {
   }
   /** What to fix, from the payments' states. */
   readonly fix: readonly NightPayFix[]
+  /** Paper receipts of the day never marked Brought (#200): table and payment number, no amount. */
+  readonly notBrought: readonly ReceiptNotBrought[]
   /** The ones that did not end charged first; every payment after "Show all" (`all`). */
   readonly rows: readonly NightPaymentRow[]
   readonly hasMore: boolean
@@ -433,6 +436,7 @@ export async function readNightPayments(
     const pageSize = limit ?? PAYMENTS_MAX_ROWS
     const rows = listed.slice(0, pageSize).map((row) => rowOf(row, full))
 
+    const notBrought = (await receiptsNotBrought(tx, venue.id, day)).rows
     const money = full ? await moneySections(tx, venue.id, day) : null
     const paying = day === reader.today ? await payingProblem(tx, venue.id) : null
 
@@ -449,6 +453,7 @@ export async function readNightPayments(
           unconfirmed: Number(counts?.unconfirmed ?? 0),
         },
         fix,
+        notBrought,
         rows,
         hasMore: listed.length > pageSize,
         paying,
@@ -732,6 +737,8 @@ export async function readNightPaymentsReport(
     readonly name: string | null
     readonly number: string | null
     readonly what: NightPayWhat
+    /** The payment number, for the receipts not brought. */
+    readonly paymentNumber?: string
   }[]
 }> {
   return withTenant(pool, input.tenantId, async (tx) => {
@@ -744,19 +751,37 @@ export async function readNightPaymentsReport(
       .where(and(inDay, FIX_CONDITION))
       .orderBy(asc(payments.createdAt), asc(payments.id))
       .limit(PAYMENTS_MAX_ROWS)
+    const notBrought = (await receiptsNotBrought(tx, input.venueId, input.day)).rows
     return {
       taken: Number(taken?.n ?? 0),
-      fix: rows.flatMap((row) => {
-        const problem = problemOf(row)
-        if (problem === null) return []
-        // The group may hold staff, who are not shown these rows: counts of the rest only.
-        if (problem === 'capture_failed' || problem === 'expired') return []
-        const what: NightPayWhat =
-          problem === 'unconfirmed' && questionOf(row.reason) === 'lines_not_back'
-            ? 'lines_not_back'
-            : problem
-        return [{ name: row.tableName, number: row.tableNumber, what }]
-      }),
+      fix: [
+        ...rows.flatMap((row) => {
+          const problem = problemOf(row)
+          if (problem === null) return []
+          // The group may hold staff, who are not shown these rows: counts of the rest only.
+          if (problem === 'capture_failed' || problem === 'expired') return []
+          const what: NightPayWhat =
+            problem === 'unconfirmed' && questionOf(row.reason) === 'lines_not_back'
+              ? 'lines_not_back'
+              : problem
+          // A payment with no receipt number carries its payment number, so a reader sees it is the
+          // same payment as its "receipt not brought" line.
+          return [
+            {
+              name: row.tableName,
+              number: row.tableNumber,
+              what,
+              ...(what === 'no_receipt' ? { paymentNumber: paymentNumberOf(row.id) } : {}),
+            },
+          ]
+        }),
+        ...notBrought.map((row) => ({
+          name: row.name,
+          number: row.number,
+          what: 'receipt_not_brought' as const,
+          paymentNumber: row.paymentNumber,
+        })),
+      ],
     }
   })
 }
