@@ -3,6 +3,8 @@
 import { readTableState, readTonight, type TonightRefusal } from '@restro/core/service'
 import type { Venue } from '@restro/db'
 
+import { providerDisplayName } from '@/connectors/notices'
+
 import { getPool } from '../db'
 import { tillLabelOfVenue } from '../tables/service'
 import { buildTonightView, type TonightView } from './view'
@@ -37,6 +39,7 @@ export async function loadTonightView(input: {
       timezone: input.venue.timezone,
       source: source ?? '',
       currency: input.venue.currency,
+      provider: providerDisplayName(read.tonight.payingProvider),
       now,
     }),
   }

@@ -124,4 +124,32 @@ describe('the message at the close of the service day', () => {
     // The facts of the message have no field that could hold one.
     expect(Object.keys(base).filter((key) => /minor|amount|tip/i.test(key))).toEqual([])
   })
+
+  it('adds the payments as counts and words, with no amount (#115)', () => {
+    const payments = {
+      taken: 41,
+      fix: [
+        { table: 'Table 7', what: 'unconfirmed' as const },
+        { table: null, what: 'capture_failed' as const },
+      ],
+    }
+    expect(nightMessage('en', { ...base, fix: [], payments })).toBe(
+      [
+        'Club Luna · night of 26 October',
+        'Sent orders: 84 (added 79, not sent 3, unconfirmed 2)',
+        'Payments: 41 taken, 2 to fix',
+        'To fix (2):',
+        '· Payment, Table 7: not confirmed',
+        '· Payment: card not charged after the bill closed',
+      ].join('\n'),
+    )
+    expect(nightMessage('bg', { ...base, fix: [], payments: { taken: 3, fix: [] } })).toBe(
+      [
+        'Club Luna · вечерта на 26 октомври',
+        'Поръчки: 84 (добавени 79, неизпратени 3, непотвърдени 2)',
+        'Плащания: 3 взети, 0 за оправяне',
+        'Няма нищо за оправяне.',
+      ].join('\n'),
+    )
+  })
 })

@@ -281,6 +281,13 @@
       "when": 1793235634608,
       "tag": "0039_receipt_brought",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793238669225,
+      "tag": "0040_paid_lines",
+      "breakpoints": true
     }
   ]
 }

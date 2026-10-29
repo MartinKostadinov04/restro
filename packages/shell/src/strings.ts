@@ -265,6 +265,21 @@ export interface PayingStrings {
   readonly paid: string
   readonly paidNumber: string
   readonly paidReceipt: string
+  /** The bill's section of lines paid in the app in this sitting (D127 1.2). */
+  readonly paidInApp: string
+  /** The Paid screen's button and the title of the Payment confirmation (D127 1.4). */
+  readonly confirmTitle: string
+  readonly paidByCard: string
+  /** "This is not your receipt. Your waiter brings the venue's receipt." */
+  readonly confirmNotReceipt: string
+  /** The same line where an electronic receipt went to an email (#186). */
+  readonly confirmReceiptEmailed: (email: string) => string
+  readonly confirmSave: string
+  /**
+   * A Save that failed (the lead's words, awaiting Martin 10-30). No "Saved" line exists: the
+   * phone's share sheet or download already shows it worked.
+   */
+  readonly confirmSaveFailed: string
   readonly backToBill: string
   readonly checkingTitle: string
   readonly checkingBody: string
@@ -588,6 +603,14 @@ const EN: Strings = {
       paid: 'Paid',
       paidNumber: 'Payment number',
       paidReceipt: 'Show this number to your waiter. Your waiter brings your receipt.',
+      paidInApp: 'Paid in the app',
+      confirmTitle: 'Payment confirmation',
+      paidByCard: 'Paid by card',
+      confirmNotReceipt: 'This is not your receipt. Your waiter brings the venue’s receipt.',
+      confirmReceiptEmailed: (email) =>
+        `This is not your receipt. Your receipt was sent to ${email}.`,
+      confirmSave: 'Save',
+      confirmSaveFailed: 'Couldn’t save. Try again.',
       backToBill: 'Back to the bill',
       checkingTitle: 'The venue is checking the payment',
       checkingBody: 'You don’t need to do anything. If you have a question, call a waiter.',
@@ -913,6 +936,15 @@ const BG: Strings = {
       paid: 'Платено',
       paidNumber: 'Номер на плащането',
       paidReceipt: 'Покажете този номер на сервитьора. Сервитьорът ще ви донесе касовата бележка.',
+      paidInApp: 'Платено в приложението',
+      confirmTitle: 'Потвърждение за плащане',
+      paidByCard: 'Платено с карта',
+      confirmNotReceipt:
+        'Това не е касова бележка. Касовата бележка за плащането ви носи сервитьорът.',
+      confirmReceiptEmailed: (email) =>
+        `Това не е касова бележка. Касовата бележка е изпратена на ${email}.`,
+      confirmSave: 'Запази',
+      confirmSaveFailed: 'Не успяхме да запазим. Опитайте отново.',
       backToBill: 'Към сметката',
       checkingTitle: 'Заведението проверява плащането',
       checkingBody: 'Не е нужно да правите нищо. Ако имате въпрос, повикайте сервитьор.',

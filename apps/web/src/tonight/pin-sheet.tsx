@@ -64,7 +64,7 @@ export function PinSheet({
           ? t('pin.staff')
           : result.error === 'pin_wrong'
             ? t('pin.wrong')
-            : failureText(result.error, result.retryAfterSeconds),
+            : failureText(result.error, result.retryAfterSeconds, result.details),
       )
     },
     [failureText, level, onSubmit, t],

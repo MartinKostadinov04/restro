@@ -34,6 +34,13 @@ export interface RecordedServiceCapabilities {
   readonly firstItemsOpenBill: boolean
   /** A tip reaches the fiscal receipt on the close (D127): else a tip above 0 is refused. */
   readonly recordTipOnClose: boolean
+  /** A bill closes with the card payment type (D125 2.3, #116): else paying is not offered at the venue. */
+  readonly closeWithPaymentType: boolean
+  /**
+   * Lines move to another table. D122 §8 sends a payment through a payment table at a one-bill POS,
+   * and that route is the only one built today, so paying is offered only where this is declared (#116).
+   */
+  readonly moveLinesToTable: boolean
   /** The close can ask the POS for an electronic receipt to the guest's email (D127, #186). */
   readonly electronicReceipt: boolean
 }
@@ -43,6 +50,8 @@ export const NO_RECORDED_SERVICE_CAPABILITIES: RecordedServiceCapabilities = Obj
   notesReachTicket: false,
   firstItemsOpenBill: false,
   recordTipOnClose: false,
+  closeWithPaymentType: false,
+  moveLinesToTable: false,
   electronicReceipt: false,
 })
 
@@ -68,6 +77,8 @@ export function readServiceCapabilities(config: unknown): RecordedServiceCapabil
     notesReachTicket: stored.notes_reach_ticket === true,
     firstItemsOpenBill: stored.first_items_open_bill === true,
     recordTipOnClose: stored.record_tip_on_close === true,
+    closeWithPaymentType: stored.close_with_payment_type === true,
+    moveLinesToTable: stored.move_lines_to_table === true,
     electronicReceipt: stored.electronic_receipt === true,
   }
 }

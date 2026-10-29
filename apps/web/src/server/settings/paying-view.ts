@@ -4,13 +4,19 @@
 import {
   type AccountState,
   type CheckStanding,
+  CURRENCIES,
+  type Currency,
+  type LegalDetails,
   type PayingCheck,
+  readLegalDetails,
   readPayingSettings,
 } from '@restro/core'
-import { readPayingConnection } from '@restro/core/service'
+import { readPayingConnection, readPayingOffer } from '@restro/core/service'
 import type { Venue } from '@restro/db'
 
+import { providerOf } from '../../connectors/providers'
 import { getPool } from '../db'
+import { tillLabelOfVenue } from '../tables/service'
 
 /** One check as the section lists it. */
 export interface PayingCheckView {
@@ -20,6 +26,14 @@ export interface PayingCheckView {
   readonly source: CheckStanding['source']
 }
 
+/**
+ * What can still be missing before paying turns on: D125's four checks, then the venue's legal
+ * details (#198) as one more. Decided here, on the server, so the screen only draws it. The
+ * predicate moves into core with #198, which makes `pay.start` refuse on it too (core cannot import
+ * this folder).
+ */
+export type PayingMissing = PayingCheck | 'legalDetails'
+
 /** Everything the Paying section draws about the account. */
 export interface PayingView {
   readonly venueId: string
@@ -28,9 +42,7 @@ export interface PayingView {
   readonly accountName: string | null
   /** The four checks in D125's order; paying is on only when all pass. */
   readonly checks: readonly PayingCheckView[]
-  readonly missing: readonly PayingCheck[]
-  /** The provider's own words for what it still asks of the owner. */
-  readonly providerMissing: readonly string[]
+  readonly missing: readonly PayingMissing[]
   /** True only when the account is connected and every check passes. */
   readonly payingOn: boolean
   /** Why paying is paused on a lost account: "Reconnect" is offered. */
@@ -39,6 +51,20 @@ export interface PayingView {
   readonly canConnect: boolean
   /** The smallest card payment the owner chose (#104), minor units, or null for the provider's. */
   readonly minCardMinor: number | null
+  /** The provider's smallest card payment in the venue's currency, minor units. */
+  readonly providerMinimumMinor: number
+  /** The venue's currency. */
+  readonly currency: string
+  /** The name that fills `{provider}`. */
+  readonly provider: string
+  /** The POS's name that fills `{source}`. */
+  readonly source: string
+  /** A POS serving the venue puts a tip on the same receipt. */
+  readonly tips: boolean
+  /** The venue's legal details (#198), or null until all four are filled in. */
+  readonly legal: LegalDetails | null
+  /** The signed-in person's email, for the password again. */
+  readonly email: string
 }
 
 /** The venue's Paying view. */
@@ -46,19 +72,33 @@ export async function loadPayingView(input: {
   readonly tenantId: string
   readonly venue: Venue
   readonly canConnect: boolean
+  readonly email: string
 }): Promise<PayingView> {
   const connection = await readPayingConnection(getPool(), input.tenantId, input.venue.id)
   const { readiness } = connection
+  const legal = readLegalDetails(input.venue.settings)
+  const currency = CURRENCIES.find((c): c is Currency => c === input.venue.currency) ?? 'EUR'
+  const provider = providerOf(connection.providerKind)
+  const [offer, source] = await Promise.all([
+    readPayingOffer(getPool(), input.tenantId, input.venue.id),
+    tillLabelOfVenue(getPool(), input.tenantId, input.venue.id),
+  ])
   return {
     venueId: input.venue.id,
     state: connection.state,
     accountName: connection.accountName,
     checks: readiness.checks.map(({ check, passed, source }) => ({ check, passed, source })),
-    missing: readiness.missing,
-    providerMissing: readiness.providerMissing,
-    payingOn: readiness.on,
+    missing: legal === null ? [...readiness.missing, 'legalDetails'] : readiness.missing,
+    payingOn: readiness.on && legal !== null,
     lostReason: connection.state === 'lost_access' ? connection.checks.lostReason : null,
     canConnect: input.canConnect,
     minCardMinor: readPayingSettings(input.venue.settings).minCardMinor,
+    providerMinimumMinor: provider?.minimumMinor(currency) ?? 0,
+    currency: input.venue.currency,
+    provider: provider?.label ?? connection.providerKind ?? '',
+    source: source ?? '',
+    tips: offer.tips,
+    legal,
+    email: input.email,
   }
 }

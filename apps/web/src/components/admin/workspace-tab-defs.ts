@@ -8,6 +8,7 @@ import {
   ClockIcon,
   CloudUploadIcon,
   ConciergeBellIcon,
+  CreditCardIcon,
   HistoryIcon,
   LayoutListIcon,
   ListChecksIcon,
@@ -65,13 +66,14 @@ export function workspaceTabOf(requested: unknown): WorkspaceTabValue {
  * The sections of the Settings tab (D97, #87): General, Hours, Ordering, Staff and roles, Alerts,
  * Publish (only for a venue with a till) and Versioning, in the order of
  * docs/deliverables/2026-10-27-owner-settings-grouping.md. Paying (#116) goes between Ordering and
- * Staff and roles. Hours and Ordering are read-only for a role without `settings.guards`; Staff
+ * Staff and roles, only where the venue's POS can take card payments. Hours and Ordering are read-only for a role without `settings.guards`; Staff
  * and roles and Alerts are left out for a role without `settings.roles` or `settings.alerts`.
  */
 export const SETTINGS_SECTION_DEFS = [
   { value: 'general', labelKey: 'workspace.settingsSections.general', icon: SlidersHorizontalIcon },
   { value: 'hours', labelKey: 'ownerSettings.st_hours', icon: ClockIcon },
   { value: 'ordering', labelKey: 'ownerSettings.st_ordering', icon: ListChecksIcon },
+  { value: 'paying', labelKey: 'ownerSettings.pa_title', icon: CreditCardIcon },
   { value: 'staff', labelKey: 'ownerSettings.sf_title', icon: UsersIcon },
   { value: 'alerts', labelKey: 'ownerSettings.al_title', icon: BellIcon },
   { value: 'publish', labelKey: 'workspace.settingsSections.publish', icon: CloudUploadIcon },
@@ -89,6 +91,11 @@ export interface SettingsRights {
   readonly roles: boolean
   /** `settings.alerts`: Alerts. */
   readonly alerts: boolean
+  /**
+   * The venue's POS can take card payments (D122 §3, #116): Paying is listed for every role then,
+   * read-only without `settings.connect_payments`. Never at a venue no POS serves.
+   */
+  readonly paying?: boolean
 }
 
 /** No rights: what the Settings tab assumes until the page has read them. */
@@ -103,6 +110,7 @@ export function settingsSectionsOf(
     if (value === 'publish') return hasTill
     if (value === 'staff') return rights.roles
     if (value === 'alerts') return rights.alerts
+    if (value === 'paying') return rights.paying === true
     return true
   })
 }

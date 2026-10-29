@@ -6,11 +6,21 @@ import type { CallWaiterKind } from '@restro/core'
 import type { Tonight } from '@restro/core/service'
 
 /**
- * The rows of "Needs you", most costly to leave first (plan §4): a money alert (part 2, #115,
- * rank 0), a sent order to check, an approval, a paused table, a waiter call, then the to-dos
- * (storno, dispute, receipts to bring: part 2, rank 5). A row of part 2 slots in by its rank.
+ * The rows of "Needs you", most costly to leave first (plan §4; paying plan 2026-10-29): a payment
+ * question, a card not charged after the bill closed, items stuck on a payment table, then part 1's
+ * sent order to check, approval, paused table and waiter call, and last a payment stopped before
+ * closing (shown under "Later"). The to-dos (storno, dispute, receipts to bring) wait for #54, #200.
  */
-export const ROW_RANK = { check: 1, approval: 2, paused: 3, call: 4 } as const
+export const ROW_RANK = {
+  pay: 0,
+  failed: 0.3,
+  stuck: 0.6,
+  check: 1,
+  approval: 2,
+  paused: 3,
+  call: 4,
+  stopped: 6,
+} as const
 
 /** What a row of "Needs you" is. */
 export type RowKind = keyof typeof ROW_RANK
@@ -40,13 +50,44 @@ export interface ActionRow {
     /** When Restro found it on the bill by itself (#135), `HH:mm` in the venue's zone; staff still answer. */
     readonly landedAt: string | null
   }
+  /** A payment's question or money alert (#115). */
+  readonly money?: MoneyRow
   readonly waiterCallId?: string
   /** A waiter call's requests (#180), in the venue's list order. */
   readonly callKinds?: readonly CallWaiterKind[]
 }
 
-/** The words a table's tile can show, in the order they win (plan §5; money is part 2's). */
-export type TileState = 'closed' | 'open' | 'paused' | 'check' | 'approval' | 'call'
+/** What a money row asks: a payment question, or one of the alerts that only need acknowledging. */
+export type MoneyVariant =
+  | 'question'
+  | 'stuck'
+  | 'stopped'
+  | 'capture_failed'
+  | 'hold_expired'
+  | 'release_refused'
+
+/** The facts of a money row (`ActionRow.money`), from its alert; plain data, our ids only. */
+export interface MoneyRow {
+  readonly variant: MoneyVariant
+  readonly alertId: string
+  readonly paymentId: string
+  /** Which question a `question` variant asks (a pay-first round asks about the till). */
+  readonly question: 'close' | 'till' | 'lines_not_back' | null
+  readonly amountMinor: number | null
+  /** A pay-first round's order reference. */
+  readonly reference: string | null
+  /** Until when the card's hold lasts, in the venue's zone; null when not known. */
+  readonly holdUntil: { readonly date: string; readonly time: string } | null
+  /** The hold's end as a timestamp, to put the soonest first. */
+  readonly holdAt: number | null
+  /** The service day it was raised on, when that is not tonight. */
+  readonly earlier: string | null
+  /** A refused release of a card that was charged after all. */
+  readonly charged: boolean
+}
+
+/** The words a table's tile can show, in the order they win (plan §5; `payment` is red, #115). */
+export type TileState = 'closed' | 'open' | 'paused' | 'check' | 'approval' | 'call' | 'payment'
 
 /** One table's tile. */
 export interface TableTile {
@@ -88,6 +129,8 @@ export interface Can {
   readonly pause: boolean
   readonly lift: boolean
   readonly answer: boolean
+  /** `money.follow_up`: answers the payment questions and the owners' money alerts (#115). */
+  readonly followUp: boolean
 }
 
 /** Everything the Tonight screen draws. */
@@ -97,9 +140,20 @@ export interface TonightView {
   readonly source: string
   /** The venue's currency, for the amounts a row shows. */
   readonly currency: string
+  /** The payment provider's name for `{provider}`, or null when it is not known. */
+  readonly provider: string | null
   readonly device: boolean
   readonly can: Can
   readonly banners: readonly PauseBanner[]
+  /**
+   * Why card payments in the app are stopped, for every role; null while they flow and while
+   * Restro's own connection pause shows (a venue pause already stops paying, D120).
+   */
+  readonly paying: {
+    readonly state: 'paused' | 'lost' | 'restricted'
+    /** The person holds `settings.connect_payments`: "Reconnect" is offered. */
+    readonly canReconnect: boolean
+  } | null
   readonly rows: readonly ActionRow[]
   /** Items the POS says ran out, in the order they ran out; empty for none (plan §12 A). */
   readonly outOfStock: readonly string[]
@@ -119,6 +173,76 @@ const OUT_OF_STOCK = 'item_out_of_stock'
 const STAFF_CAUSE = 'staff'
 const GUARD_CAUSE = 'guard_tripped'
 const UNCONFIRMED_CAUSE = 'order_unconfirmed'
+
+const MONEY_ROW_KIND = {
+  question: 'pay',
+  capture_failed: 'failed',
+  hold_expired: 'failed',
+  release_refused: 'failed',
+  stuck: 'stuck',
+  stopped: 'stopped',
+} as const satisfies Record<MoneyVariant, keyof typeof ROW_RANK>
+
+/** The money row each payment alert kind is; undefined for any other alert. */
+export const MONEY_VARIANT: Readonly<Record<string, MoneyVariant>> = {
+  payment_unconfirmed: 'question',
+  payment_lines_not_back: 'question',
+  payment_stranded: 'stuck',
+  payment_check_failed: 'stopped',
+  payment_capture_failed: 'capture_failed',
+  payment_hold_expired: 'hold_expired',
+  payment_release_refused: 'release_refused',
+}
+
+/** Until when a card's hold lasts, as a day and a time in the venue's zone; null when unknown. */
+export function holdOf(
+  before: Date | null,
+  timezone: string,
+): { readonly date: string; readonly time: string } | null {
+  if (before === null || Number.isNaN(before.getTime())) return null
+  return {
+    date: new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(before),
+    time: new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+      timeZone: timezone,
+    }).format(before),
+  }
+}
+
+/** The row of a payment alert, or null for any other alert. */
+function moneyRowOf(
+  alert: Tonight['alerts'][number],
+  timezone: string,
+  tonight: string,
+): MoneyRow | null {
+  const variant = MONEY_VARIANT[alert.kind]
+  if (variant === undefined) return null
+  const { details } = alert
+  const before = typeof details.captureBefore === 'string' ? new Date(details.captureBefore) : null
+  const hold = holdOf(before, timezone)
+  const amount = details.amountMinor
+  return {
+    variant,
+    alertId: alert.id,
+    paymentId: alert.subjectId,
+    question:
+      variant !== 'question'
+        ? null
+        : alert.kind === 'payment_lines_not_back'
+          ? 'lines_not_back'
+          : details.question === 'till'
+            ? 'till'
+            : 'close',
+    amountMinor: typeof amount === 'number' ? amount : null,
+    reference: text(details.reference) || null,
+    holdUntil: variant === 'question' ? hold : null,
+    holdAt: variant === 'question' && before !== null ? before.getTime() : null,
+    earlier: alert.serviceDate === tonight ? null : alert.serviceDate,
+    charged: details.code === 'already_captured',
+  }
+}
 
 function text(value: unknown): string {
   return typeof value === 'string' ? value : ''
@@ -146,6 +270,7 @@ export function buildTonightView(input: {
   readonly timezone: string
   readonly source: string
   readonly currency: string
+  readonly provider?: string | null
   readonly now: Date
 }): TonightView {
   const { tonight, timezone } = input
@@ -165,6 +290,7 @@ export function buildTonightView(input: {
     pause: held.has('ordering.pause'),
     lift: held.has('ordering.lift'),
     answer: held.has('alerts.answer'),
+    followUp: held.has('money.follow_up'),
   }
   const labelOf = new Map(tonight.tables.map((table) => [table.id, table.label]))
   const numberedOf = new Set(
@@ -221,7 +347,8 @@ export function buildTonightView(input: {
   const rows: ActionRow[] = []
   const stateOf = new Map<string, TileState>()
   const raise = (tableId: string, state: TileState) => {
-    const rank = (s: TileState) => ['open', 'call', 'paused', 'approval', 'check'].indexOf(s)
+    const rank = (s: TileState) =>
+      ['open', 'call', 'paused', 'approval', 'check', 'payment'].indexOf(s)
     const current = stateOf.get(tableId)
     if (current === undefined || rank(state) > rank(current)) stateOf.set(tableId, state)
   }
@@ -232,6 +359,22 @@ export function buildTonightView(input: {
     if (alert.kind === OUT_OF_STOCK) {
       const name = text(alert.details.name)
       if (name !== '') out.push({ at: alert.raisedAt, name })
+      continue
+    }
+    const money = moneyRowOf(alert, input.timezone, tonight.serviceDate)
+    if (money !== null) {
+      const moneyTable = text(alert.details.tableId)
+      rows.push({
+        id: alert.id,
+        kind: MONEY_ROW_KIND[money.variant],
+        tableId: moneyTable,
+        table: labelOf.get(moneyTable) ?? '',
+        numbered: numberedOf.has(moneyTable),
+        at: alert.raisedAt.toISOString(),
+        money,
+      })
+      // Only a question that waits for an answer turns the table's tile red.
+      if (money.variant === 'question') raise(moneyTable, 'payment')
       continue
     }
     if (alert.kind !== ORDER_UNCONFIRMED) continue
@@ -298,7 +441,12 @@ export function buildTonightView(input: {
   }
   rows.sort(
     (a, b) =>
-      ROW_RANK[a.kind] - ROW_RANK[b.kind] || a.at.localeCompare(b.at) || a.id.localeCompare(b.id),
+      ROW_RANK[a.kind] - ROW_RANK[b.kind] ||
+      // A payment question whose hold ends soonest comes first.
+      (a.money?.holdAt ?? Number.POSITIVE_INFINITY) -
+        (b.money?.holdAt ?? Number.POSITIVE_INFINITY) ||
+      a.at.localeCompare(b.at) ||
+      a.id.localeCompare(b.id),
   )
 
   const sentCount = new Map<string, number>()
@@ -335,9 +483,14 @@ export function buildTonightView(input: {
     venueId: input.venueId,
     source: input.source,
     currency: input.currency,
+    provider: input.provider ?? null,
     device: tonight.device,
     can,
     banners,
+    paying:
+      tonight.paying === null || restro.length > 0
+        ? null
+        : { state: tonight.paying, canReconnect: held.has('settings.connect_payments') },
     rows,
     outOfStock: out.sort((a, b) => a.at.getTime() - b.at.getTime()).map((entry) => entry.name),
     groups,

@@ -232,6 +232,13 @@ export interface GuestTableState {
         readonly beingPaid: boolean
       }[]
     }[]
+    /** The lines paid in the app in this sitting (D127 1.2): never who paid. */
+    readonly paidLines: readonly {
+      /** The line's name per language; null is "Other item", worded by the shell. */
+      readonly name: LocalizedText | null
+      readonly quantity: string
+      readonly amountMinor: number
+    }[]
   } | null
 }
 
@@ -576,6 +583,11 @@ export function projectGuestState(
                 amountMinor: line.amountMinor,
                 beingPaid: line.beingPaid,
               })),
+            })),
+            paidLines: bill.paidLines.map((line) => ({
+              name: line.name,
+              quantity: shownQuantity(line.quantity),
+              amountMinor: line.amountMinor,
             })),
           },
   }
@@ -1339,10 +1351,15 @@ export interface GuestPaymentView {
   readonly amountMinor: number | null
   readonly tipMinor: number
   readonly lines: readonly {
-    readonly name: string
+    /** The line's name per language; null is "Other item", worded by the shell. */
+    readonly name: LocalizedText | null
     readonly quantity: string
     readonly amountMinor: number
   }[]
+  /** When it was captured (an ISO instant), or null: the Payment confirmation's time. */
+  readonly paidAt: string | null
+  /** The venue's time zone (IANA): the confirmation shows the time there (D127 1.4). */
+  readonly timeZone: string
   /** The card form: only while the payment awaits the guest. */
   readonly form: {
     readonly provider: string
@@ -1438,9 +1455,11 @@ export async function guestPayment(
     const lines = await tx
       .select({
         ref: paymentLines.posLineRef,
-        name: paymentLines.displayName,
+        name: paymentLines.name,
         quantity: paymentLines.quantity,
         amountMinor: paymentLines.posAmountMinor,
+        closedQuantity: paymentLines.closedQuantity,
+        closedMinor: paymentLines.closedMinor,
       })
       .from(paymentLines)
       .where(eq(paymentLines.paymentId, payment.id))
@@ -1449,7 +1468,17 @@ export async function guestPayment(
       .select({ bills: billReadings.bills })
       .from(billReadings)
       .where(eq(billReadings.tableId, target.tableId))
-    return { payment, lines, now: new Date(), bills: reading?.bills }
+    const [venue] = await tx
+      .select({ timezone: venues.timezone })
+      .from(venues)
+      .where(eq(venues.id, target.venueId))
+    return {
+      payment,
+      lines,
+      now: new Date(),
+      bills: reading?.bills,
+      timeZone: venue?.timezone ?? 'Europe/Sofia',
+    }
   })
   if (found === null) return { ok: false, code: 'unknown_payment' }
   const { payment, lines } = found
@@ -1480,11 +1509,30 @@ export async function guestPayment(
     currency: payment.currency,
     amountMinor: payment.amountMinor,
     tipMinor: payment.tipMinor,
-    lines: lines.map((line) => ({
-      name: line.name,
-      quantity: shownQuantity(line.quantity),
-      amountMinor: line.amountMinor,
-    })),
+    // A captured payment shows the lines the POS closed, at what it closed them for, so the lines
+    // plus the tip are the total (#197); before that, the lines the guest confirmed.
+    lines: lines.flatMap((line) => {
+      if (payment.state !== 'captured') {
+        return [
+          {
+            name: line.name,
+            quantity: shownQuantity(line.quantity),
+            amountMinor: line.amountMinor,
+          },
+        ]
+      }
+      return line.closedMinor === null || line.closedQuantity === null
+        ? []
+        : [
+            {
+              name: line.name,
+              quantity: shownQuantity(line.closedQuantity),
+              amountMinor: line.closedMinor,
+            },
+          ]
+    }),
+    paidAt: payment.state === 'captured' ? (payment.settledAt?.toISOString() ?? null) : null,
+    timeZone: found.timeZone,
     form:
       payment.state === 'awaiting_guest' && payment.formValues !== null
         ? {

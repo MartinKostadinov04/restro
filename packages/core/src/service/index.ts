@@ -212,6 +212,23 @@ export {
   nightMessage,
 } from './night-export'
 export {
+  type NightMoneyAlert,
+  type NightMoneySections,
+  type NightPayFix,
+  type NightPaymentRow,
+  type NightPayments,
+  type NightPayProblem,
+  PAYMENT_ALERT_KINDS,
+  PAYMENTS_PAGE_SIZE,
+  type PaymentDetail,
+  type PaymentStep,
+  type PayQuestion,
+  questionOf,
+  readNightPayments,
+  readNightPaymentsReport,
+  readPaymentDetail,
+} from './night-payments'
+export {
   ANSWER_REASONS,
   canReadNight,
   type ExportDays,
@@ -287,8 +304,10 @@ export {
   CONNECT_PERMISSION,
   loadPayingConnection,
   type PayingConnection,
+  type PayingOffer,
   paymentTableFacts,
   readPayingConnection,
+  readPayingOffer,
 } from './payment-connection'
 export {
   DEFAULT_ROLE_KINDS,

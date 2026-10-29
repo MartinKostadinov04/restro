@@ -26,6 +26,7 @@ import pg from 'pg'
 import { createAuth } from '../src/server/auth'
 import { getAuthDb, getPool } from '../src/server/db'
 import { authModelId } from '../src/server/ids'
+import { seedPayNight } from './e2e/tonight-pay-night'
 import { assertDevEnvironment, readAdminCredentials } from './lib/guard'
 
 const ORGANIZATION = { name: 'Tonight Club', slug: 'tonight-club' }
@@ -296,13 +297,26 @@ const NIGHT_TABLES = [
   'alerts',
   'pauses',
   'service_days',
+  'payment_steps',
+  'payment_lines',
+  'payments',
   'sent_orders',
   'table_orders',
   'sittings',
 ] as const
 
 /** What each night puts on the screen. */
-const NIGHTS = ['empty', 'busy', 'bar-paused', 'restro-paused', 'many', 'flow', 'crowd'] as const
+const NIGHTS = [
+  'empty',
+  'busy',
+  'bar-paused',
+  'restro-paused',
+  'many',
+  'flow',
+  'crowd',
+  'pay',
+  'pay-stuck',
+] as const
 
 async function night(name: string): Promise<void> {
   if (!(NIGHTS as readonly string[]).includes(name)) {
@@ -803,6 +817,9 @@ async function night(name: string): Promise<void> {
         )
         await sentOrder(number, id, 'awaiting_approval', `MN${number}0`)
       }
+    }
+    if (name === 'pay' || name === 'pay-stuck') {
+      await seedPayNight({ owner, tenantId, venueId, day, tables, sitting }, name)
     }
     if (name === 'flow' || name === 'crowd') await flow(name)
     console.log(JSON.stringify({ level: 'info', event: 'seed_tonight_e2e_night', name }))

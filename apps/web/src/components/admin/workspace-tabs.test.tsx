@@ -175,6 +175,31 @@ describe('SettingsSections: the sections of the Settings tab in the URL (D97)', 
     expect(settingsSectionOf('staff', true, { roles: false, alerts: true })).toBe('general')
   })
 
+  it('lists Paying between Ordering and Staff and roles, only where the POS can take card payments', () => {
+    navigation.search = 'tab=settings'
+    renderWithIntl(
+      <SettingsSections
+        hasTill
+        rights={{ roles: true, alerts: false, paying: true }}
+        contents={sections}
+      />,
+    )
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'General',
+      'Hours',
+      'Ordering',
+      'Paying',
+      'Staff and roles',
+      'Publish',
+      'Versioning',
+    ])
+    expect(settingsSectionOf('paying', true, { roles: false, alerts: false, paying: true })).toBe(
+      'paying',
+    )
+    // A hand-made venue (nothing offered): the link opens General.
+    expect(settingsSectionOf('paying', false, { roles: true, alerts: true })).toBe('general')
+  })
+
   it('opens the section in ?section= and writes a choice to the URL, keeping ?tab=', async () => {
     navigation.search = 'tab=settings&section=versioning'
     renderWithIntl(<SettingsSections hasTill contents={sections} />)

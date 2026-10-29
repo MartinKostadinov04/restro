@@ -41,6 +41,7 @@ import {
   paymentLines,
   paymentSteps,
   payments,
+  sentOrders,
   venueTables,
 } from '@restro/db'
 import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm'
@@ -250,6 +251,28 @@ export async function move(
 }
 
 /**
+ * Records what the POS closed, line by line (#197), keyed by the line's place in the payment (from
+ * 1): the quantity and amount it closed. A line not in `closed` was dropped or voided by the POS
+ * and reads as not paid. Run again (a re-check) it replaces what an earlier check recorded.
+ */
+export async function markClosed(
+  stx: ServiceTx,
+  paymentId: string,
+  closed: ReadonlyMap<number, { readonly quantity: string; readonly amountMinor: number }>,
+): Promise<void> {
+  await stx.tx
+    .update(paymentLines)
+    .set({ closedMinor: null, closedQuantity: null })
+    .where(eq(paymentLines.paymentId, paymentId))
+  for (const [position, line] of closed) {
+    await stx.tx
+      .update(paymentLines)
+      .set({ closedMinor: line.amountMinor, closedQuantity: line.quantity })
+      .where(and(eq(paymentLines.paymentId, paymentId), eq(paymentLines.position, position)))
+  }
+}
+
+/**
  * Raises one alert of `kind` about the payment, once (its key is claimed by `lockRoute`). `again`
  * raises a new one where the earlier is done: the same question asked a second time (#113).
  */
@@ -264,6 +287,8 @@ export async function raise(
   const earlier = locked.alerts.get(kind)
   if (earlier !== undefined && (!again || earlier.doneAt === null)) return
   const { payment } = locked
+  // A pay-first round's order, as staff know it by its short reference (Tonight's meta line).
+  const reference = await referenceOf(stx, payment.sentOrderId)
   await stx.tx.insert(alerts).values({
     id: newId('al'),
     tenantId: stx.tenantId,
@@ -282,6 +307,7 @@ export async function raise(
       tipMinor: payment.tipMinor,
       currency: payment.currency,
       captureBefore: payment.captureBefore?.toISOString() ?? null,
+      ...(reference === null ? {} : { reference }),
       ...more,
     },
     ...stx.provenance,
@@ -293,6 +319,16 @@ export async function raise(
     sittingId: payment.sittingId,
     reason: kind,
   })
+}
+
+/** The reference of a payment's sent order (a pay-first round), or null. */
+async function referenceOf(stx: ServiceTx, sentOrderId: string | null): Promise<string | null> {
+  if (sentOrderId === null) return null
+  const [order] = await stx.tx
+    .select({ reference: sentOrders.reference })
+    .from(sentOrders)
+    .where(eq(sentOrders.id, sentOrderId))
+  return order?.reference ?? null
 }
 
 /** An accepted answer naming the payment and where it stands. */
@@ -586,7 +622,13 @@ const lineKey = (line: { readonly quantity: string; readonly amountMinor: number
 
 /** The outcome of the last check: the lines found, or why it failed. */
 export type LastCheck =
-  | { readonly ok: true; readonly foundMinor: number; readonly voided: number }
+  | {
+      readonly ok: true
+      readonly foundMinor: number
+      readonly voided: number
+      /** Indexes into `confirmed` of the lines the isolated bill holds: those the POS closes. */
+      readonly found: readonly number[]
+    }
   | { readonly ok: false; readonly why: string }
 
 /**
@@ -626,20 +668,22 @@ export function lastCheck(input: {
   const wanted = new Map<string, number>()
   for (const line of bill.lines) wanted.set(lineKey(line), (wanted.get(lineKey(line)) ?? 0) + 1)
   const missing: (typeof input.confirmed)[number][] = []
+  const found: number[] = []
   let foundMinor = 0
-  for (const line of input.confirmed) {
+  for (const [index, line] of input.confirmed.entries()) {
     const key = lineKey(line)
     const left = wanted.get(key) ?? 0
     if (left > 0) {
       wanted.set(key, left - 1)
       foundMinor = addMinor(foundMinor, line.amountMinor)
+      found.push(index)
     } else {
       missing.push(line)
     }
   }
   // A line on the isolated bill that the guest didn't confirm (a round slipped in, a change).
   if ([...wanted.values()].some((left) => left > 0)) return { ok: false, why: 'extra_line' }
-  if (missing.length === 0) return { ok: true, foundMinor, voided: 0 }
+  if (missing.length === 0) return { ok: true, foundMinor, voided: 0, found }
   const realRefs = new Set(input.real.map((line) => line.pos))
   const realKeys = new Set(input.real.map(lineKey))
   const voided = missing.every(
@@ -648,7 +692,7 @@ export function lastCheck(input: {
   if (!voided) return { ok: false, why: 'line_missing' }
   if (!input.partialCapture) return { ok: false, why: 'partial_not_supported' }
   if (foundMinor <= 0) return { ok: false, why: 'no_lines' }
-  return { ok: true, foundMinor, voided: missing.length }
+  return { ok: true, foundMinor, voided: missing.length, found }
 }
 
 /**
@@ -695,12 +739,14 @@ export function paymentChecked() {
       }
       const confirmed = await stx.tx
         .select({
+          position: paymentLines.position,
           pos: paymentLines.posLineRef,
           quantity: paymentLines.quantity,
           amountMinor: paymentLines.posAmountMinor,
         })
         .from(paymentLines)
         .where(eq(paymentLines.paymentId, payment.id))
+        .orderBy(paymentLines.position)
       const check = lastCheck({
         confirmed,
         isolated: command.isolated,
@@ -716,6 +762,25 @@ export function paymentChecked() {
       const amountMinor = addMinor(check.foundMinor, payment.tipMinor)
       // A hold that no longer covers the amount: the bill must not close (no receipt, no capture).
       if (command.heldMinor < amountMinor) return failed('hold_lost')
+      // What the POS will close, line by line (#197): a voided line is not paid, so it is never
+      // shown as paid; the lines closed plus the tip are what is captured.
+      await markClosed(
+        stx,
+        payment.id,
+        new Map(
+          check.found.flatMap((index) => {
+            const line = confirmed[index]
+            return line === undefined
+              ? []
+              : [
+                  [
+                    line.position,
+                    { quantity: line.quantity, amountMinor: line.amountMinor },
+                  ] as const,
+                ]
+          }),
+        ),
+      )
       const lowered = amountMinor !== payment.amountMinor
       if (again && !lowered) return at(payment, 'checked', false, { amountMinor })
       await move(

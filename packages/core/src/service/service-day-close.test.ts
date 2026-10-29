@@ -225,6 +225,9 @@ describe.skipIf(!hasDatabase)('closing a service day (as the restro_app role)', 
       payments: 1,
       capturedMinor: 1200,
       tipMinor: 200,
+      // A held card is not unconfirmed: only a settled `unconfirmed` payment counts (#115).
+      paymentsUnconfirmed: 0,
+      unconfirmedMinor: 0,
     })
     expect(day?.mismatches).toBe(0)
     const logged = await rows<{ details: Record<string, unknown>; retention: string }>(

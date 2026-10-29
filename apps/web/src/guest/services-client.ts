@@ -198,6 +198,7 @@ function tableBillOf(bill: GuestTableState['bill']): TableBillView | null {
         beingPaid: line.beingPaid,
       })),
     })),
+    paidLines: bill.paidLines,
   }
 }
 
@@ -213,6 +214,8 @@ function paymentViewOf(answer: GuestPaymentAnswer): PaymentView {
     amountMinor: answer.amountMinor,
     tipMinor: answer.tipMinor,
     lines: answer.lines,
+    paidAt: answer.paidAt,
+    timeZone: answer.timeZone,
     form: answer.form === null ? null : { confirmSeconds: answer.form.confirmSeconds },
   }
 }

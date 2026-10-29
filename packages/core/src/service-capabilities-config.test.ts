@@ -32,6 +32,8 @@ describe('the recorded service capabilities (#78)', () => {
       notesReachTicket: true,
       firstItemsOpenBill: false,
       recordTipOnClose: false,
+      closeWithPaymentType: false,
+      moveLinesToTable: false,
       electronicReceipt: false,
     })
     expect(
@@ -45,6 +47,8 @@ describe('the recorded service capabilities (#78)', () => {
       notesReachTicket: false,
       firstItemsOpenBill: true,
       recordTipOnClose: false,
+      closeWithPaymentType: false,
+      moveLinesToTable: false,
       electronicReceipt: false,
     })
     expect(
