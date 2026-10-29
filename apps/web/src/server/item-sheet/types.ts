@@ -2,7 +2,7 @@
 // only (it crosses the server/client boundary as JSON): field definitions, resolved values with
 // their provenance, issues, the translation grid, the image with a short-lived URL. No external ids,
 // no storage keys, no internal names beyond the template's own `internal_note` field (rule 3).
-import type { FieldDefinition, Locale, LocalizedText } from '@restro/core'
+import type { FieldDefinition, Locale, LocalizedText, PaymentMode } from '@restro/core'
 
 /**
  * Where the item sheet's actions look: the venue (its live menu), or the venue and the menu the
@@ -138,6 +138,11 @@ export interface ItemSheetData {
   readonly sale: SheetSale
   /** The name shown is the till's own, because the till has no public one (D75). Warns only. */
   readonly nameFromTill: boolean
+  /**
+   * The venue's item default, shown beside "Same as the venue" (#218). Null where pay first can't
+   * take effect (D122 §8): the Payment mode row is then not on the sheet at all.
+   */
+  readonly payFirstDefault: PaymentMode | null
   readonly fields: readonly SheetField[]
   readonly issues: readonly SheetIssue[]
   readonly translations: readonly TranslationRow[]

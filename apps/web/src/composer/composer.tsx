@@ -28,6 +28,7 @@ import {
   type LocalizedText,
   type NodeId,
   newId,
+  type PaymentMode,
   type SectionLayout,
   type TagId,
 } from '@restro/core'
@@ -92,6 +93,7 @@ import { ItemSheet } from './item-sheet'
 import { itemName, sectionTitle } from './labels'
 import { NewItemDialog } from './new-item-dialog'
 import { NewSectionDialog } from './new-section-dialog'
+import { setItemPaymentModeAction } from './payment-mode-actions'
 import { type KeyedId, keyAtEnd, planKeys } from './plan'
 import { type ComposerOp, reduceView } from './reducer'
 import { SectionTree } from './section-tree'
@@ -131,6 +133,8 @@ interface ComposerProps {
   readonly hasTill: boolean
   /** The person may delete sections of the venue's own and items made by hand (owner or admin). */
   readonly canDelete: boolean
+  /** The venue's item default where pay first can take effect (D122 §8); null = no such row. */
+  readonly payFirstDefault: PaymentMode | null
 }
 
 /** The section to open first: the one in the URL, else the first one, else Unsorted. */
@@ -151,8 +155,11 @@ export function Composer({
   canCreateItem,
   hasTill,
   canDelete,
+  payFirstDefault,
 }: ComposerProps) {
   const t = useTranslations('composer')
+  const owner = useTranslations('ownerSettings')
+  const modes = useTranslations('options.payment_mode')
   const uiLocale = useLocale()
   const locale = toDataLocale(isAdminLocale(uiLocale) ? uiLocale : 'bg')
   const searchParams = useSearchParams()
@@ -477,6 +484,33 @@ export function Composer({
     },
     openTagsPanel: () => setTagsOpen(true),
 
+    setPaymentMode: (itemIds, mode) => {
+      if (payFirstDefault === null || itemIds.length === 0) return
+      const inSentence = (value: PaymentMode) =>
+        uiLocale === 'bg' ? modes(value).toLocaleLowerCase('bg') : modes(value)
+      startTransition(async () => {
+        let result: ActionResult
+        try {
+          result = await setItemPaymentModeAction({ venueId, itemIds: [...itemIds], mode })
+        } catch {
+          result = { ok: false, error: 'failed' }
+        }
+        if (!result.ok) {
+          toast.error(t(`errors.${result.error}`, { source: view.tillLabel }))
+          return
+        }
+        toast.success(
+          owner('pf_sel_toast', {
+            count: itemIds.length,
+            mode:
+              mode === null
+                ? owner('pf_i_same', { mode: inSentence(payFirstDefault) })
+                : inSentence(mode),
+          }),
+        )
+      })
+    },
+
     setSoldOut: (itemIds, soldOut) => {
       if (!canMarkSoldOut) return
       // An item the till has off sale is not ours to touch (rule 5): nothing to mark or clear.
@@ -710,6 +744,7 @@ export function Composer({
           canCreateItem: mayCreateItem,
           hasTill,
           canDelete,
+          payFirstDefault,
           renaming,
         }}
       >

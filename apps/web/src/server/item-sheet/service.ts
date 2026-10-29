@@ -24,6 +24,7 @@ import {
   newId,
   type ResolvedField,
   type ResolvedItem,
+  readPayFirstSettings,
   readsLayer,
   resolve,
   saleStateOf,
@@ -339,6 +340,7 @@ export async function loadItemSheet(
   const payFirst = await withTenant(scope.pool, scope.tenantId, (tx) =>
     payFirstPossibleAt(tx, scope.venueId),
   )
+  const payFirstDefault = payFirst ? readPayFirstSettings(state.venue.settings).itemMode : null
   const fields = ITEM_FIELDS.filter(
     (definition) => payFirst || definition.key !== 'payment_mode',
   ).map((definition) => buildField(state, scope.itemId, definition))
@@ -357,6 +359,7 @@ export async function loadItemSheet(
     visible: state.item.visible,
     sale: { ...saleStateOf(state.item.fields.for_sale), canMark: scope.canMarkSoldOut === true },
     nameFromTill: state.nameFromTill,
+    payFirstDefault,
     fields,
     issues: state.item.issues.map((issue) => ({
       code: issue.code,
