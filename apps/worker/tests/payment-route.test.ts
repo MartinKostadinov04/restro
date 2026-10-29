@@ -1012,24 +1012,103 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     expect(rowsOn(POS_TABLE)).toEqual(['2001'])
   })
 
-  it('fails a capture whose server error the provider keeps under its key once the hold is gone', async () => {
-    const id = await held(1)
-    fault({ on: 'closeBill', fault: { kind: 'landsThenHangs' } })
-    expect((await drive(id)).row).toMatchObject({ state: 'unconfirmed', reason: 'close_unknown' })
-    expect(await answer(id, 'receipt_printed')).toMatchObject({ status: 'accepted' })
-    // The capture's server error is answered again for its key; the hold runs out meanwhile.
-    engine.fault('capture', { kind: 'server_error' })
-    payClock.advance(engine.switches.holdDays * 24 * 60 * 60 * 1000)
-    const { row } = await drive(id)
-    expect(row).toMatchObject({ state: 'capture_failed', reason: 'not_held', settled: true })
-    expect(await steps(id)).toContain('capture:unknown:unknown')
-    expect(await alertsOf(id)).toEqual([
-      'payment_capture_failed:money.follow_up',
-      'payment_unconfirmed:money.follow_up',
-    ])
-    expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
-      expect.objectContaining({ status: 'released', capturedMinor: 0 }),
-    ])
+  describe('a capture whose server error the provider keeps under its key, the hold gone', () => {
+    /** Unconfirmed, a manager's "Receipt printed", and the capture's next call a server error. */
+    async function receiptPrinted() {
+      const id = await held(1)
+      fault({ on: 'closeBill', fault: { kind: 'landsThenHangs' } })
+      expect((await drive(id)).row).toMatchObject({ state: 'unconfirmed', reason: 'close_unknown' })
+      expect(await answer(id, 'receipt_printed')).toMatchObject({ status: 'accepted' })
+      engine.fault('capture', { kind: 'server_error' })
+      return id
+    }
+    const holdOf = (id: string) => engine.paymentsOf(providerRef(accountRef), id as never)[0]
+
+    it('ran out: the capture failed (hold_expired), never tried again forever', async () => {
+      const id = await receiptPrinted()
+      payClock.advance(engine.switches.holdDays * 24 * 60 * 60 * 1000)
+      // The worker's clock past the capture deadline too.
+      const before = clock
+      clock = new Date(Date.parse(holdOf(id)?.captureBefore ?? '') + 1_000)
+      try {
+        const { row } = await drive(id)
+        expect(row).toMatchObject({
+          state: 'capture_failed',
+          reason: 'hold_expired',
+          settled: true,
+        })
+      } finally {
+        clock = before
+      }
+      expect(await steps(id)).toContain('capture:unknown:gone')
+      expect(await alertsOf(id)).toEqual([
+        'payment_capture_failed:money.follow_up',
+        'payment_unconfirmed:money.follow_up',
+      ])
+      expect(holdOf(id)).toMatchObject({ status: 'released', capturedMinor: 0 })
+    })
+
+    it('the payment read failed at the provider: the capture failed (not_held)', async () => {
+      const id = await receiptPrinted()
+      // The provider shows the payment failed.
+      const failing = new Proxy(provider, {
+        get(target, name) {
+          const value = Reflect.get(target, name, target)
+          if (name !== 'readPayment' || typeof value !== 'function') {
+            return typeof value === 'function' ? value.bind(target) : value
+          }
+          return async (...args: Parameters<typeof provider.readPayment>) => {
+            const read = await provider.readPayment(...args)
+            if (!read.complete) return read
+            return { ...read, value: { ...read.value, status: 'failed' as const, heldMinor: 0 } }
+          }
+        },
+      })
+      const { row } = await drive(id, 40, { providers: new Map([[SIM_PAY_KIND, failing]]) })
+      expect(row).toMatchObject({ state: 'capture_failed', reason: 'not_held' })
+      expect(await steps(id)).toContain('capture:unknown:gone')
+      expect(await alertsOf(id)).toContain('payment_capture_failed:money.follow_up')
+    })
+
+    it('a read that fails part-way concludes nothing: tried again, then failed once it reads', async () => {
+      const id = await receiptPrinted()
+      payClock.advance(engine.switches.holdDays * 24 * 60 * 60 * 1000)
+      engine.failReads()
+      const { row, retries } = await drive(id, 3)
+      expect(row).toMatchObject({ state: 'unconfirmed', reason: 'receipt_printed' })
+      expect(retries).toEqual(Array(3).fill('the capture has an unknown outcome'))
+      expect(await steps(id)).not.toContain('capture:unknown:gone')
+      expect(await alertsOf(id)).not.toContain('payment_capture_failed:money.follow_up')
+      // The reads come back; the server error stays under the key.
+      engine.clearFaults()
+      expect((await drive(id)).row).toMatchObject({ state: 'capture_failed' })
+      expect(await steps(id)).toContain('capture:unknown:gone')
+    })
+
+    it('after a close the POS confirmed, the hold cancelled at the provider: failed (not_held)', async () => {
+      const id = await held(1)
+      const paymentRef = providerRef((await stored(id))?.provider_payment_ref ?? '')
+      engine.fault('capture', { kind: 'server_error' })
+      let done = false
+      beforeCall = (method) => {
+        if (method !== 'payAndClose' || done) return
+        done = true
+        // Cancelled at the provider after the hold was read for the close.
+        engine.release({
+          accountRef: providerRef(accountRef),
+          paymentRef,
+          idempotencyKey: `${id}:outside`,
+        })
+      }
+      const { row } = await drive(id)
+      expect(row).toMatchObject({ state: 'capture_failed', reason: 'not_held', settled: true })
+      expect(await steps(id)).toEqual(
+        expect.arrayContaining(['payAndClose:done', 'capture:unknown:gone']),
+      )
+      expect(await alertsOf(id)).toEqual(['payment_capture_failed:money.follow_up'])
+      // The bill is closed: nothing is put back.
+      expect(rowsOn(POS_TABLE)).toEqual(['2001'])
+    })
   })
 
   it('waits while a send holds the real table’s turn, then moves the lines', async () => {
