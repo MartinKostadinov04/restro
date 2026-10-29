@@ -2819,8 +2819,22 @@ export const paymentLines = restro.table(
     quantity: numeric('quantity', { precision: 21, scale: 6 }).notNull(),
     /** The POS's own amount for that quantity, never price × quantity (D127 3.2). */
     posAmountMinor: bigint('pos_amount_minor', { mode: 'number' }).notNull(),
-    /** The name the guest saw. */
+    /** The name the guest saw (one language, as picked at pricing): the record of what was shown. */
     displayName: text('display_name').notNull(),
+    /**
+     * The line's name in every language of the menu (a `LocalizedText`), so each phone shows it in
+     * its guest's language (#197); null is "Other item", worded by the shell (D75).
+     */
+    name: jsonb('name').$type<Record<string, string> | null>(),
+    /**
+     * What the POS closed this line for (#197): set by the last check from the lines it matched on
+     * the payment table, at the POS's own amount, so the lines paid plus the tip are what was
+     * captured. Null until checked, and for a line the POS dropped (a voided one): such a line was
+     * not paid and is never shown as paid.
+     */
+    closedMinor: bigint('closed_minor', { mode: 'number' }),
+    /** The quantity the POS closed (a pay-first round's line may close for fewer); set with `closed_minor`. */
+    closedQuantity: numeric('closed_quantity', { precision: 21, scale: 6 }),
     /**
      * True while its payment is not final; the database clears it when the payment settles. A POS
      * line is in one open payment at a time (D127 5.2): the unique index below refuses a second.
@@ -2847,6 +2861,14 @@ export const paymentLines = restro.table(
       .where(sql`${t.open} and ${t.posLineRef} is not null`),
     check('payment_lines_position', sql`${t.position} >= 1`),
     check('payment_lines_quantity', sql`${t.quantity} > 0`),
+    check(
+      'payment_lines_closed',
+      sql`(${t.closedMinor} is null) = (${t.closedQuantity} is null) and (${t.closedQuantity} is null or ${t.closedQuantity} > 0)`,
+    ),
+    check(
+      'payment_lines_name',
+      sql`${t.name} is null or (jsonb_typeof(${t.name}) = 'object' and ${t.name} <> '{}'::jsonb)`,
+    ),
     check(
       'payment_lines_pos_line_ref',
       sql`${t.posLineRef} is null or char_length(${t.posLineRef}) between 1 and 255`,

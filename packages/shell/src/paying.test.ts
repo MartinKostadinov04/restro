@@ -59,6 +59,7 @@ function bill(
         })),
       },
     ],
+    paidLines: [],
   }
 }
 
@@ -82,6 +83,8 @@ function payment(changes: Partial<PaymentView>): PaymentView {
     amountMinor: 2750,
     tipMinor: 250,
     lines: [],
+    paidAt: null,
+    timeZone: 'Europe/Sofia',
     form: { confirmSeconds: 120 },
     ...changes,
   }

@@ -1,3 +1,4 @@
+import { PAID_LINES_MAX } from '@restro/core'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -120,6 +121,34 @@ describe('the guest API wire shapes (#75)', () => {
     expect(GuestActionAnswerSchema.parse({ ...answer, handle }).handle).toBe(handle)
   })
 
+  it('carries the sitting’s paid lines by name per language, with no payer and at most PAID_LINES_MAX (#197)', () => {
+    const bill = {
+      readAgoSeconds: 3,
+      complete: true,
+      currency: 'EUR',
+      totalMinor: 0,
+      paidMinor: 1_800,
+      owedMinor: 0,
+      parts: [],
+      paidLines: [
+        { name: { en_US: 'Gin tonic', bg_BG: 'Джин тоник' }, quantity: '2', amountMinor: 1_800 },
+        { name: null, quantity: '1', amountMinor: 900 },
+      ],
+    }
+    const state = { ...STATE, bill }
+    expect(GuestStateAnswerSchema.parse(state)).toEqual(state)
+    const withPayer = {
+      ...bill,
+      paidLines: [{ ...bill.paidLines[0], payer: 'Ana' }],
+    }
+    expect(GuestStateAnswerSchema.safeParse({ ...STATE, bill: withPayer }).success).toBe(false)
+    const tooMany = {
+      ...bill,
+      paidLines: Array.from({ length: PAID_LINES_MAX + 1 }, () => bill.paidLines[1]),
+    }
+    expect(GuestStateAnswerSchema.safeParse({ ...STATE, bill: tooMany }).success).toBe(false)
+  })
+
   it('hides the order and the bill while the phone has no pass (#76)', () => {
     const needed = {
       ...STATE,
@@ -186,7 +215,11 @@ describe('the guest API wire shapes (#75)', () => {
       currency: 'EUR',
       amountMinor: 1_430,
       tipMinor: 130,
-      lines: [{ name: 'Gin tonic', quantity: '2', amountMinor: 1_000 }],
+      lines: [
+        { name: { en_US: 'Gin tonic', bg_BG: 'Джин тоник' }, quantity: '2', amountMinor: 1_000 },
+      ],
+      paidAt: null,
+      timeZone: 'Europe/Sofia',
       form: { provider: 'stripe', values: { clientSecret: 'pi_x_secret_y' }, confirmSeconds: 120 },
       next: 1_000,
     }
