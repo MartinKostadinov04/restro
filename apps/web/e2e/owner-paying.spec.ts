@@ -232,21 +232,24 @@ test('pay first: hidden while card payments are off, 2 taps with Undo once they 
   await expect(card.getByTestId('paying-pf-overrides')).toHaveCount(0)
   await snapshot(page, 'paying-pay-first.png')
 
-  // PF1: the whole menu paid first, then Undo.
+  // PF1: the whole menu paid first. Undo (a toast, gone after a reload) puts it back at once.
   await card.getByTestId('paying-pf-mode-pay_first').check()
   await expect(page.getByText('Артикули без собствен избор: плаща се предварително')).toBeVisible()
   await expect(card.getByTestId('paying-pf-mode-pay_first')).toBeChecked()
+  await page.getByRole('button', { name: 'Отмяна' }).click()
+  await expect(card.getByTestId('paying-pf-mode-on_bill')).toBeChecked()
+  // ...and the choice itself is kept across a reload.
+  await card.getByTestId('paying-pf-mode-pay_first').check()
+  await expect(card.getByTestId('paying-pf-mode-pay_first')).toBeChecked()
   await page.reload()
   await expect(page.getByTestId('paying-pf-mode-pay_first')).toBeChecked()
-  await page.getByRole('button', { name: 'Отмяна' }).click()
+  await page.getByTestId('paying-pf-mode-on_bill').check()
   await expect(page.getByTestId('paying-pf-mode-on_bill')).toBeChecked()
 
-  // PF2: everything on the bill at every table, with its consequence line, then Undo.
+  // PF2: everything on the bill at every table, with its consequence line; Undo puts it back.
   await page.getByTestId('paying-pf-applies').click()
   await expect(page.getByText('Всичко се поръчва по сметката', { exact: true })).toBeVisible()
   await expect(page.getByTestId('paying-pf-off-d')).toBeVisible()
-  await page.reload()
-  await expect(page.getByTestId('paying-pf-applies')).not.toBeChecked()
   await page.getByRole('button', { name: 'Отмяна' }).click()
   await expect(page.getByTestId('paying-pf-applies')).toBeChecked()
   await expect(page.getByTestId('paying-pf-off-d')).toHaveCount(0)

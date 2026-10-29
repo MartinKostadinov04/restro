@@ -40,9 +40,22 @@ export const SetPayFirstSchema = z.strictObject({
 
 type SetPayFirst = z.infer<typeof SetPayFirstSchema>
 
+/** A change read once: where it sits (the Log's `level`), the value it sets, the group it names. */
+function describe(change: SetPayFirst['change']): {
+  readonly level: 'item_mode' | 'venue' | 'group' | 'table'
+  readonly value: string | boolean | null
+  readonly group?: string
+} {
+  if ('itemMode' in change) return { level: 'item_mode', value: change.itemMode }
+  if ('applies' in change) return { level: 'venue', value: change.applies }
+  if ('group' in change) return { level: 'group', value: change.value, group: change.group }
+  return { level: 'table', value: change.value }
+}
+
 /** The permission a change needs: the venue's choices by paying, an area's or a table's by tables. */
 export function payFirstPermissionOf(command: SetPayFirst): Permission {
-  return 'itemMode' in command.change || 'applies' in command.change
+  const { level } = describe(command.change)
+  return level === 'item_mode' || level === 'venue'
     ? 'settings.connect_payments'
     : 'settings.payment_tables'
 }
@@ -58,28 +71,15 @@ export async function setPayFirst(stx: ServiceTx, command: SetPayFirst): Promise
   try {
     const done = await patchPayFirstSettingsIn(stx.tx, stx.venueId, change)
     if (done.changed) {
-      const level =
-        'itemMode' in change
-          ? 'item_mode'
-          : 'applies' in change
-            ? 'venue'
-            : 'group' in change
-              ? 'group'
-              : 'table'
+      const { level, value, group } = describe(change)
       await stx.log({
         kind: 'settings.changed',
         reason: 'pay_first',
         ...('table' in change ? { tableId: change.table } : {}),
         details: {
           level,
-          ...('group' in change ? { group: change.group } : {}),
-          value: logValue(
-            'itemMode' in change
-              ? change.itemMode
-              : 'applies' in change
-                ? change.applies
-                : change.value,
-          ),
+          ...(group === undefined ? {} : { group }),
+          value: logValue(value),
           previous: logValue(done.previous),
         },
       })
