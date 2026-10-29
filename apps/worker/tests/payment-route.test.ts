@@ -341,7 +341,8 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     // What earlier tests left: their payments over, their payment tables free.
     await query(
       `update restro.payments set state = 'released', reason = 'test', form_values = null,
-         payment_table_id = null, settled_at = coalesce(settled_at, now())
+         payment_table_id = null, settled_at = coalesce(settled_at, now()),
+         receipt_to_bring_at = null
        where venue_id = $1`,
       [demo.venueId],
     )

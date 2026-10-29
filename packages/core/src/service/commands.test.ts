@@ -33,6 +33,9 @@ describe('the service commands', () => {
       .sort()
     expect(quick).toEqual([
       'ordering.pause',
+      // D122 §7: "Handled" and "Brought" are the two quick answers that name no person (#200).
+      'receipt.brought',
+      'receipt.unbrought',
       'table.close',
       'table.new_guests',
       'table.open',
