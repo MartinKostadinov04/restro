@@ -6,7 +6,10 @@
 // short code; no POS id, no guest data.
 import type { CsvRow } from '@restro/core/service'
 
+import { PAYMENT_STATE_WORDS, releaseReasonWord } from '@/tonight/payment-state-words'
+
 import type { NightView, SentRowView, WhoView } from './night-view'
+import type { PaymentRowView } from './payment-view'
 
 /** The translator of the `tonight` messages. */
 export type Say = (key: string, values?: Record<string, string | number>) => string
@@ -52,11 +55,37 @@ export function sentCsvRow(
   }
 }
 
-/** The rows of one night. `sent` is every sent order of the day (the page shows the not added first). */
+/** One payment as a row of the CSV (#115): our `py_` id as its reference, never a provider's. */
+export function paymentCsvRow(row: PaymentRowView, say: Say): CsvRow {
+  const stateKey = PAYMENT_STATE_WORDS[row.state]
+  const reason = releaseReasonWord(say, row.reason)
+  return {
+    section: say('nt_pay'),
+    time: row.time,
+    table: tableText(say, row.table, row.numbered),
+    reference: row.id,
+    what: say('py_title', { table: tableText(say, row.table, row.numbered) }),
+    state: stateKey === undefined ? '' : say(stateKey),
+    reason: reason ?? '',
+    ...(row.amountMinor === null ? {} : { amountMinor: row.amountMinor }),
+    ...(row.tipMinor === null ? {} : { tipMinor: row.tipMinor }),
+    detail: row.receiptNumber ?? '',
+  }
+}
+
+/**
+ * The rows of one night. `sent` is every sent order of the day (the page shows the not added first)
+ * and `payments` every payment of it (#115), after the sent orders as on the page.
+ */
 export function nightCsvRows(
   night: NightView,
   sent: readonly SentRowView[],
-  input: { readonly say: Say; readonly source: string; readonly timezone: string },
+  input: {
+    readonly say: Say
+    readonly source: string
+    readonly timezone: string
+    readonly payments?: readonly PaymentRowView[]
+  },
 ): CsvRow[] {
   const { say, source } = input
   const clock = new Intl.DateTimeFormat('en-GB', {
@@ -98,6 +127,7 @@ export function nightCsvRows(
   }
 
   for (const row of sent) rows.push(sentCsvRow(row, { say, source }))
+  for (const row of input.payments ?? []) rows.push(paymentCsvRow(row, say))
 
   const totals = night.totals
   const section = say('nt_totals')
@@ -117,5 +147,15 @@ export function nightCsvRows(
     count(say('nt_t_pauses'), totals.pauses),
     count(say('nt_t_alerts'), totals.alerts),
   )
+  const money = night.money
+  if (money !== null) {
+    rows.push(
+      count(say('nt_t_payments'), money.payments),
+      { section, what: say('nt_t_captured'), amountMinor: money.capturedMinor },
+      { section, what: say('nt_t_tips'), amountMinor: money.tipMinor },
+      count(say('nt_t_unconf_pay'), money.paymentsUnconfirmed),
+      { section, what: say('nt_t_unconf_amt'), amountMinor: money.unconfirmedMinor },
+    )
+  }
   return rows
 }

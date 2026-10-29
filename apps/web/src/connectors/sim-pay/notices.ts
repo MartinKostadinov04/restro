@@ -41,6 +41,7 @@ function parseEvent(rawBody: string): z.output<typeof SimPayEventSchema> | null 
 
 export const noticeConnector: NoticeConnector = {
   kind: 'sim-pay',
+  displayName: 'Sim Pay',
 
   offered: (env) => env !== 'production',
 

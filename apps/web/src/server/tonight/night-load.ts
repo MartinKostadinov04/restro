@@ -44,7 +44,7 @@ export type NightResult<T> =
   | ({ readonly ok: true; readonly frame: Frame } & T)
   | { readonly ok: false; readonly code: string }
 
-const sourceOf = async (scope: NightScope, access: NightAccess): Promise<string> =>
+export const sourceOf = async (scope: NightScope, access: NightAccess): Promise<string> =>
   (await tillLabelOfVenue(getPool(), scope.tenantId, access.venue.id)) ?? scope.sourceNone
 
 /** What the screens need of the actor, without reading any of the screens. */

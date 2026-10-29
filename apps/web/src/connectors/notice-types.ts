@@ -14,6 +14,8 @@ export type NoticeEnv = Readonly<Record<string, string | undefined>>
 
 /** A payment provider's notice side in the web app. */
 export interface NoticeConnector extends ProviderNoticeVerifier {
+  /** The provider's name as staff read it in a sentence ("…through Stripe"), for `{provider}`. */
+  readonly displayName?: string
   /** False where this deployment must not take the provider's notices (the simulator in production). */
   offered(env: PaymentsEnv): boolean
   /** The endpoint's signing secret here, or null when none is set. Never logged. */

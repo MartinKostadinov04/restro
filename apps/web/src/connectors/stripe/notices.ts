@@ -63,6 +63,7 @@ function parseEvent(rawBody: string): z.output<typeof StripeEventSchema> | null 
 
 export const noticeConnector: NoticeConnector = {
   kind: 'stripe',
+  displayName: 'Stripe',
 
   offered: () => true,
 

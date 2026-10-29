@@ -54,6 +54,7 @@ const logLine = (fields: Partial<LogLineView> = {}): LogLineView => ({
   amountMinor: null,
   paymentState: null,
   paymentAnswer: null,
+  paymentId: null,
   sentOrdersOfDay: null,
   callKinds: [],
   ...fields,
@@ -151,7 +152,13 @@ describe('the Log export', () => {
       [
         {
           day: '2026-10-26',
-          rows: [logLine({ kind: 'payment.answered', paymentAnswer: 'ok', amountMinor: 4200 })],
+          rows: [
+            logLine({
+              kind: 'payment.answered',
+              paymentAnswer: 'receipt_printed',
+              amountMinor: 4200,
+            }),
+          ],
         },
       ],
       context as never,

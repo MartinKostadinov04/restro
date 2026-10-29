@@ -118,10 +118,26 @@ export interface WhoView {
   readonly telegram: boolean
 }
 
-/** A manager's answers that confirm a payment's money: the receipt, or the round on the till. */
-const CONFIRMING_ANSWERS: readonly string[] = ['receipt_printed', 'on_till']
+/** A manager's answers to a payment, as the Log keeps them (`payment.answer`). */
+export const PAYMENT_ANSWER_CODES = [
+  'receipt_printed',
+  'no_receipt',
+  'on_till',
+  'not_on_till',
+] as const
 
-const whoView = (who: Who, via: string | null): WhoView => ({ who, telegram: via === 'telegram' })
+/** One answer a manager gave about a payment. */
+export type PaymentAnswerCode = (typeof PAYMENT_ANSWER_CODES)[number]
+
+const answerCodeOf = (value: string | null): PaymentAnswerCode | null =>
+  (PAYMENT_ANSWER_CODES as readonly (string | null)[]).includes(value)
+    ? (value as PaymentAnswerCode)
+    : null
+
+export const whoView = (who: Who, via: string | null): WhoView => ({
+  who,
+  telegram: via === 'telegram',
+})
 
 // ───────────────────────────────── sent orders ─────────────────────────────────
 
@@ -133,6 +149,8 @@ export interface Frame {
   readonly currency: string
   readonly device: boolean
   readonly can: Can
+  /** `settings.connect_payments`: the end of night's "paying is still paused" row offers Reconnect. */
+  readonly canConnect: boolean
   /** `log.view` and `night.view_full`: the Log's "Export" is drawn only then (#87). */
   readonly canExport: boolean
   readonly timezone: string
@@ -159,7 +177,9 @@ export function frameOf(
       pause: held.has('ordering.pause'),
       lift: held.has('ordering.lift'),
       answer: held.has('alerts.answer'),
+      followUp: held.has('money.follow_up'),
     },
+    canConnect: held.has('settings.connect_payments'),
     canExport: held.has('log.view') && held.has('night.view_full'),
     timezone: access.venue.timezone,
     today: access.today,
@@ -330,7 +350,10 @@ export interface LogLineView {
   readonly amountMinor: number | null
   /** Part 2's payment state word key (empty until #115 fills `PAYMENT_STATE_WORDS`). */
   readonly paymentState: string | null
-  readonly paymentAnswer: 'ok' | 'no' | null
+  /** The answer a manager gave, by its own words: never a receipt word for a till answer. */
+  readonly paymentAnswer: PaymentAnswerCode | null
+  /** The payment a line is about, for its sheet. */
+  readonly paymentId: string | null
   readonly sentOrdersOfDay: number | null
   /** A waiter call entry's kinds (#180): the one asked for, or all of a call that ended. */
   readonly callKinds: readonly string[]
@@ -389,13 +412,8 @@ export function logLineView(
     subject: line.subject,
     amountMinor: line.amountMinor,
     paymentState: line.kind === 'payment.state' ? line.toState : null,
-    // "Receipt printed" and "on the till" (#113) confirm the money; the others release it.
-    paymentAnswer:
-      line.kind === 'payment.answered'
-        ? CONFIRMING_ANSWERS.includes(line.toState ?? '')
-          ? 'ok'
-          : 'no'
-        : null,
+    paymentAnswer: line.kind === 'payment.answered' ? answerCodeOf(line.toState) : null,
+    paymentId: line.paymentId,
     sentOrdersOfDay: line.sentOrdersOfDay,
     callKinds: line.callKinds,
   }
@@ -442,6 +460,8 @@ export interface NightView {
   readonly answered: readonly AnsweredFixView[]
   readonly sent: SentListView
   readonly totals: NightRead['totals']
+  /** Payments, captured, tips and the unconfirmed: `money.follow_up` only, else null. */
+  readonly money: NightRead['money']
 }
 
 function fixRow(row: NightFixRow, clock: ReturnType<typeof clockIn>): ActionRow {
@@ -490,5 +510,6 @@ export function nightView(night: NightRead, timezone: string): NightView {
     ),
     sent: sentListView(night.sent.notAdded, timezone),
     totals: night.totals,
+    money: night.money,
   }
 }

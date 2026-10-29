@@ -75,6 +75,8 @@ interface Strings {
   readonly outOfStock: (source: string, item: string | null) => string
   readonly paymentUnconfirmed: (table: string) => string
   readonly paymentUnconfirmedBody: (source: string) => string
+  /** A pay-first round whose entry is not known: is it on its payment table? (#113, #115) */
+  readonly paymentUnconfirmedTillBody: (source: string) => string
   readonly paymentLinesNotBack: (table: string) => string
   readonly paymentLinesNotBackBody: (source: string) => string
   readonly paymentCheckFailed: (table: string) => string
@@ -124,6 +126,8 @@ const EN: Strings = {
   paymentUnconfirmed: (table) => `${table}: a card payment is unconfirmed`,
   paymentUnconfirmedBody: (source) =>
     `Check in ${source} whether its receipt printed, then answer in Restro.`,
+  paymentUnconfirmedTillBody: (source) =>
+    `Check in ${source} whether the order is on its payment table, then answer in Restro.`,
   paymentLinesNotBack: (table) => `${table}: a card payment’s items are not back on the table`,
   paymentLinesNotBackBody: (source) =>
     `The bill may have closed after all. Check again in ${source} whether its receipt printed, then answer in Restro.`,
@@ -192,6 +196,8 @@ const BG: Strings = {
   paymentUnconfirmed: (table) => `${table}: плащане с карта без потвърждение`,
   paymentUnconfirmedBody: (source) =>
     `Проверете в ${source} дали бележката е отпечатана и отговорете в Restro.`,
+  paymentUnconfirmedTillBody: (source) =>
+    `Проверете в ${source} дали поръчката е на масата ѝ за плащане и отговорете в Restro.`,
   paymentLinesNotBack: (table) => `${table}: артикулите на плащане с карта не са върнати на масата`,
   paymentLinesNotBackBody: (source) =>
     `Сметката може все пак да е приключена. Проверете отново в ${source} дали бележката е отпечатана и отговорете в Restro.`,
@@ -308,7 +314,14 @@ export function alertMessage(alert: AlertWords, context: MessageContext, step: S
     case 'item_out_of_stock':
       return { title: words.outOfStock(source, asText(alert.details.name)), body: '' }
     case 'payment_unconfirmed':
-      return { title: words.paymentUnconfirmed(table), body: words.paymentUnconfirmedBody(source) }
+      return {
+        title: words.paymentUnconfirmed(table),
+        // A pay-first round before any close asks whether it is on the till, not about a receipt.
+        body:
+          alert.details.question === 'till'
+            ? words.paymentUnconfirmedTillBody(source)
+            : words.paymentUnconfirmedBody(source),
+      }
     case 'payment_lines_not_back':
       return {
         title: words.paymentLinesNotBack(table),

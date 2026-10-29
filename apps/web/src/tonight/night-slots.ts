@@ -31,6 +31,8 @@ export interface NightSectionSlot {
 export interface NightSlots {
   /** More rows in "To fix" (a payment captured with no receipt number, …). */
   readonly fix: ReactNode
+  /** How many rows `fix` holds, for the section's count. */
+  readonly fixCount: number
   /** Sections 3–6, in order, whichever it has. */
   readonly sections: readonly NightSectionSlot[]
   /** More rows in "Totals" (payments, captured, tips: `money.follow_up` only). */
@@ -38,7 +40,7 @@ export interface NightSlots {
 }
 
 /** Nothing from part 2 yet. */
-export const NO_SLOTS: NightSlots = { fix: null, sections: [], totals: null }
+export const NO_SLOTS: NightSlots = { fix: null, fixCount: 0, sections: [], totals: null }
 
 /** The part 2 sections a role may see: manager-only ones are dropped for staff. */
 export function visibleSections(

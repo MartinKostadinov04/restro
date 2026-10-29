@@ -39,6 +39,7 @@ import type { TonightView } from '@/server/tonight/view'
 
 import { ActionRowItem, OutOfStockNotice, useAgo } from './action-rows'
 import { callKindsText } from './call-kinds'
+import { moneyTitleKey } from './money-rows'
 import { PauseBanners } from './pause-banners'
 import { RunProvider, useTonightRun } from './run'
 import { useTableName } from './table-name'
@@ -169,16 +170,18 @@ function Content({ view }: { view: TonightView }) {
     setAnnouncement(
       fresh
         .map((row) =>
-          row.kind === 'call'
-            ? t('c_t', {
-                table: tableName(row.table, row.numbered),
-                kinds: callKindsText(t, row.callKinds ?? ['waiter']),
-              })
-            : row.kind === 'paused'
-              ? t('g_t', { table: tableName(row.table, row.numbered) })
-              : row.kind === 'approval'
-                ? t('a_t')
-                : t('s_t'),
+          row.money !== undefined
+            ? t(moneyTitleKey(row.money))
+            : row.kind === 'call'
+              ? t('c_t', {
+                  table: tableName(row.table, row.numbered),
+                  kinds: callKindsText(t, row.callKinds ?? ['waiter']),
+                })
+              : row.kind === 'paused'
+                ? t('g_t', { table: tableName(row.table, row.numbered) })
+                : row.kind === 'approval'
+                  ? t('a_t')
+                  : t('s_t'),
         )
         .join('. '),
     )
@@ -203,6 +206,9 @@ function Content({ view }: { view: TonightView }) {
   // The empty block (with its one filled "Open all") shows while nothing waits at all; a stock notice
   // alone keeps the header's button, so a night with a notice can still be opened.
   const emptyShown = view.rows.length === 0 && view.outOfStock.length === 0
+  // A payment stopped before closing waits under "Later", with the stock notice (paying plan).
+  const nowRows = view.rows.filter((row) => row.kind !== 'stopped')
+  const laterRows = view.rows.filter((row) => row.kind === 'stopped')
   const emptyNight = emptyShown && nothingOpen && view.tableCount > 0
 
   function openAll() {
@@ -273,13 +279,13 @@ function Content({ view }: { view: TonightView }) {
         </Empty>
       ) : (
         <>
-          {view.rows.length > 0 ? (
+          {nowRows.length > 0 ? (
             <>
-              {view.outOfStock.length > 0 ? (
+              {view.outOfStock.length > 0 || laterRows.length > 0 ? (
                 <h3 className="text-sm font-medium text-muted-foreground">{t('now')}</h3>
               ) : null}
               <ul className="space-y-3">
-                {view.rows.map((row, index) => (
+                {nowRows.map((row, index) => (
                   <ActionRowItem
                     key={row.id}
                     row={row}
@@ -291,13 +297,24 @@ function Content({ view }: { view: TonightView }) {
               </ul>
             </>
           ) : null}
-          {view.outOfStock.length > 0 ? (
+          {view.outOfStock.length > 0 || laterRows.length > 0 ? (
             <>
               {view.rows.length > 0 ? (
                 <h3 className="text-sm font-medium text-muted-foreground">{t('later')}</h3>
               ) : null}
-              <ul>
-                <OutOfStockNotice names={view.outOfStock} source={view.source} />
+              <ul className="space-y-3">
+                {laterRows.map((row) => (
+                  <ActionRowItem
+                    key={row.id}
+                    row={row}
+                    view={view}
+                    primary={false}
+                    ago={ago(row.at)}
+                  />
+                ))}
+                {view.outOfStock.length > 0 ? (
+                  <OutOfStockNotice names={view.outOfStock} source={view.source} />
+                ) : null}
               </ul>
             </>
           ) : null}
