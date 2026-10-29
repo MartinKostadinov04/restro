@@ -315,6 +315,7 @@ const NIGHTS = [
   'flow',
   'crowd',
   'pay',
+  'pay-stuck',
 ] as const
 
 async function night(name: string): Promise<void> {
@@ -817,8 +818,8 @@ async function night(name: string): Promise<void> {
         await sentOrder(number, id, 'awaiting_approval', `MN${number}0`)
       }
     }
-    if (name === 'pay') {
-      await seedPayNight({ owner, tenantId, venueId, day, tables, sitting })
+    if (name === 'pay' || name === 'pay-stuck') {
+      await seedPayNight({ owner, tenantId, venueId, day, tables, sitting }, name)
     }
     if (name === 'flow' || name === 'crowd') await flow(name)
     console.log(JSON.stringify({ level: 'info', event: 'seed_tonight_e2e_night', name }))

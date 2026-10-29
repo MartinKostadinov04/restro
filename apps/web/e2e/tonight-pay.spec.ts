@@ -75,8 +75,8 @@ async function person(
 
 const venueUrl = (page: Page) => page.url().replace(/\?.*$/, '')
 
-async function openPay(page: Page, view = 'actions') {
-  seed('night', 'pay')
+async function openPay(page: Page, view = 'actions', night = 'pay') {
+  seed('night', night)
   const suffix = view === 'actions' ? '' : `&view=${view}`
   await page.goto(`${venueUrl(page)}?tab=tonight${suffix}`)
   await expect(page.locator('[aria-label="Sections of Tonight"]:visible').first()).toBeVisible()
@@ -255,4 +255,20 @@ test('the end of the night lists the payment to fix and answers it, with the mon
   await expect(page.getByTestId('payment-sheet')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('payment-sheet')).toHaveCount(0)
+})
+
+test("items stuck on a payment table are marked moved back with the person's own PIN", async () => {
+  const { page } = tablet
+  await openPay(page, 'actions', 'pay-stuck')
+  const row = rows(page).filter({ hasText: 'Items stuck on a payment table' })
+  await expect(row).toHaveCount(1)
+  await expect(row).toContainText('Table 5')
+  const moved = new Taps()
+  await moved.tap(row.getByRole('button', { name: 'Moved back' }))
+  const sheet = page.getByTestId('pin-sheet')
+  await expect(sheet).toContainText('Enter your PIN')
+  await typePin(page, '1234')
+  await expect(toast(page, 'Items moved back')).toBeVisible()
+  await expect(rows(page)).toHaveCount(0)
+  expect(moved.count).toBe(1)
 })

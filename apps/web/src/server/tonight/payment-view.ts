@@ -216,6 +216,8 @@ export function reasonsWithoutWord(
 /** One payment for its sheet (the Log's and the end of the night's). */
 export interface PaymentDetailView {
   readonly row: PaymentRowView
+  /** The number the guest shows the waiter on the Paid screen. */
+  readonly number: string
   readonly lines: readonly {
     readonly name: string
     readonly quantity: string
@@ -234,6 +236,7 @@ export function paymentDetailView(detail: PaymentDetail, timezone: string): Paym
   const clock = clockIn(timezone)
   return {
     row: paymentRowView(detail.payment, clock),
+    number: detail.number,
     lines: detail.lines.map((line) => ({
       name: line.name,
       quantity: line.quantity,

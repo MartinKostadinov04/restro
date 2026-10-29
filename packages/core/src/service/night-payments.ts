@@ -53,6 +53,7 @@ import {
 import { PAYMENT_UNCONFIRMED_REASONS } from './pay-route'
 import { payingPausedAt } from './paying-pause'
 import { loadPayingConnection } from './payment-connection'
+import { paymentNumberOf } from './payment-number'
 import type { Permission } from './permissions'
 
 /** The kinds of alert that are about one payment (their subject is the payment). */
@@ -294,13 +295,34 @@ export function problemOf(row: {
   return null
 }
 
-const FIX_CONDITION = or(
+/** A person pressed Done on the payment's alert of that kind (a day's close clearing it is not). */
+const doneByPerson = (kind: string) =>
+  sql`exists (select 1 from ${alerts} a where a.subject_id = ${payments.id} and a.kind = ${kind}
+    and a.done_at is not null and not jsonb_exists(a.details, 'clearedAt'))`
+
+/** The payment was told to a person: its alert of that kind exists. */
+const toldBy = (kind: string) =>
+  sql`exists (select 1 from ${alerts} a where a.subject_id = ${payments.id} and a.kind = ${kind})`
+
+/**
+ * What the end of the night lists, from the payments' states and never from the alerts alone: a
+ * cleared alert drops nothing (#162), but a row leaves once a person has dealt with it. A hold that
+ * ran out is a problem only where it was told to someone (`payment_hold_expired`): an abandoned
+ * checkout ends released/expired with no alert and nobody to fix it.
+ */
+export const FIX_CONDITION = or(
   and(
     eq(payments.state, 'unconfirmed'),
     inArray(payments.reason, [...PAYMENT_UNCONFIRMED_REASONS]),
   ),
-  inArray(payments.state, ['capture_failed', 'stranded']),
-  and(eq(payments.state, 'released'), eq(payments.reason, 'expired')),
+  and(eq(payments.state, 'capture_failed'), sql`not ${doneByPerson(PAYMENT_CAPTURE_FAILED_KIND)}`),
+  and(eq(payments.state, 'stranded'), sql`not ${doneByPerson(PAYMENT_STRANDED_KIND)}`),
+  and(
+    eq(payments.state, 'released'),
+    eq(payments.reason, 'expired'),
+    toldBy(PAYMENT_HOLD_EXPIRED_KIND),
+    sql`not ${doneByPerson(PAYMENT_HOLD_EXPIRED_KIND)}`,
+  ),
   and(eq(payments.state, 'captured'), sql`${payments.receiptNumber} is null`),
 )
 
@@ -375,9 +397,13 @@ export async function readNightPayments(
               ),
             )
             .orderBy(desc(alerts.raisedAt))
+    // A card not charged after close and a hold that ran out are the owners' and managers': the
+    // end of the night follows Tonight's rows (a waiter never sees them).
+    const sees = reader.held.has('money.follow_up') || reader.device
     const fix = fixRows.flatMap((row): NightPayFix[] => {
       const problem = problemOf(row)
       if (problem === null) return []
+      if ((problem === 'capture_failed' || problem === 'expired') && !sees) return []
       const kinds = ALERT_OF_PROBLEM[problem]
       const alert = openAlerts.find(
         (candidate) =>
@@ -497,10 +523,13 @@ async function moneySections(
     ...answers.map((answer) => answer.actor),
     ...raised.flatMap((row) => (row.doneBy === null ? [] : [row.doneBy])),
   ])
-  const answered = (paymentId: string, answering: string) =>
+  // The first answer at or after the alert was raised: a pay-first round asks its question again
+  // with a new alert, and the earlier answer belongs to the earlier one.
+  const answered = (paymentId: string, answering: string, notBefore: Date) =>
     answers.find(
       (answer) =>
         answer.paymentId === paymentId &&
+        answer.at.getTime() >= notBefore.getTime() &&
         (answer.details.answering ?? 'close') === answering &&
         (ANSWER_CODES as readonly (string | null)[]).includes(answer.reason),
     )
@@ -521,7 +550,7 @@ async function moneySections(
           ? 'lines_not_back'
           : null
     if (question !== null) {
-      const answer = answered(row.subjectId, question)
+      const answer = answered(row.subjectId, question, row.raisedAt)
       if (answer !== undefined) {
         return {
           ...base,
@@ -602,6 +631,8 @@ export interface PaymentStep {
 /** Everything about one payment (the Log's and the end of the night's sheet). */
 export interface PaymentDetail {
   readonly payment: NightPaymentRow
+  /** The number the guest shows the waiter on the Paid screen (`paymentNumberOf`). */
+  readonly number: string
   readonly lines: readonly {
     readonly name: string
     readonly quantity: string
@@ -670,6 +701,7 @@ export async function readPaymentDetail(
       access: accessOf(reader),
       detail: {
         payment: rowOf(row, full),
+        number: paymentNumberOf(row.id),
         lines,
         steps: steps.map((step) => ({
           at: step.at,
@@ -717,6 +749,8 @@ export async function readNightPaymentsReport(
       fix: rows.flatMap((row) => {
         const problem = problemOf(row)
         if (problem === null) return []
+        // The group may hold staff, who are not shown these rows: counts of the rest only.
+        if (problem === 'capture_failed' || problem === 'expired') return []
         const what: NightPayWhat =
           problem === 'unconfirmed' && questionOf(row.reason) === 'lines_not_back'
             ? 'lines_not_back'

@@ -18,8 +18,49 @@ export interface PayNightWorld {
   readonly sitting: (number: string) => Promise<string>
 }
 
-export async function seedPayNight(world: PayNightWorld): Promise<void> {
+export async function seedPayNight(
+  world: PayNightWorld,
+  scene: 'pay' | 'pay-stuck' = 'pay',
+): Promise<void> {
   const { owner, tenantId, venueId, day, tables, sitting } = world
+  if (scene === 'pay-stuck') {
+    // Items stuck on a payment table at Table 5: a staff member marks them moved back.
+    const sittingId = await sitting('5')
+    const id = newId('py')
+    await owner.query(
+      `insert into restro.payments
+         (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, reason,
+          handle_hash, amount_minor, tip_minor, currency, provider_kind, settled_at, source, actor,
+          job_id)
+       values ($1, $2, $3, $4, $5, $6, 'on_bill', 'stranded', 'stranded', $7, 3800, 200, 'EUR',
+               'sim-pay', now(), 'worker', 'system', 'e2e-seed')`,
+      [
+        id,
+        tenantId,
+        venueId,
+        tables['5'],
+        sittingId,
+        day,
+        createHash('sha256').update(id).digest('hex'),
+      ],
+    )
+    await owner.query(
+      `insert into restro.alerts
+         (id, tenant_id, venue_id, service_date, kind, audience, subject_id, permission, details,
+          raised_at, source, actor, job_id)
+       values ($1, $2, $3, $4, 'payment_stranded', 'venue', $5, 'alerts.answer', $6::jsonb,
+               now() - interval '2 minutes', 'worker', 'system', 'e2e-seed')`,
+      [
+        newId('al'),
+        tenantId,
+        venueId,
+        day,
+        id,
+        JSON.stringify({ paymentId: id, tableId: tables['5'], amountMinor: 3800, currency: 'EUR' }),
+      ],
+    )
+    return
+  }
   // Four card payments that wait for a manager (#115): Tables 1 and 2 closed on the till with no
   // answer (a receipt?), Tables 3 and 4 paid first with an order nobody knows is on the till.
   // Each has its alert, as the payment route raises it; the hold ends in five days.

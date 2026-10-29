@@ -32,6 +32,7 @@ import { and, eq, inArray, isNotNull, isNull, notInArray, sql } from 'drizzle-or
 import { ruleOf } from './alert-rules'
 import type { ServiceTx } from './definition'
 import { appendLogEntry, recordRetainUntil } from './log'
+import { PAYMENT_UNCONFIRMED_REASONS } from './pay-route'
 import { accepted, refused, type ServiceResult } from './results'
 import { SETTLED_STATES } from './sent-order'
 
@@ -72,6 +73,12 @@ export async function serviceDayTotals(
   venueId: string,
   day: string,
 ): Promise<ServiceDayTotals> {
+  // Only a payment still waiting for a person's answer counts as unconfirmed: one answered waits
+  // for the worker (its reason is then the answer).
+  const unconfirmedReasons = sql.join(
+    PAYMENT_UNCONFIRMED_REASONS.map((reason) => sql`${reason}`),
+    sql`, `,
+  )
   const result = await tx.execute<Record<keyof ServiceDayTotals, string>>(sql`
     select
       (select count(*) from restro.sittings
@@ -104,11 +111,11 @@ export async function serviceDayTotals(
         where venue_id = ${venueId} and service_date = ${day} and captured_minor is not null)
         as "tipMinor",
       (select count(*) from restro.payments
-        where venue_id = ${venueId} and service_date = ${day} and state = 'unconfirmed')
-        as "paymentsUnconfirmed",
+        where venue_id = ${venueId} and service_date = ${day} and state = 'unconfirmed'
+        and reason in (${unconfirmedReasons})) as "paymentsUnconfirmed",
       (select coalesce(sum(amount_minor), 0) from restro.payments
-        where venue_id = ${venueId} and service_date = ${day} and state = 'unconfirmed')
-        as "unconfirmedMinor"`)
+        where venue_id = ${venueId} and service_date = ${day} and state = 'unconfirmed'
+        and reason in (${unconfirmedReasons})) as "unconfirmedMinor"`)
   const row = result.rows[0]
   if (row === undefined) throw new Error('the day totals query returned no row')
   return Object.fromEntries(

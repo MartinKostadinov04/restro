@@ -143,7 +143,7 @@ export function PaymentSheet({
   const title = detail
     ? t('py_title', { table: tableName(detail.row.table, detail.row.numbered) })
     : t('loading')
-  const sub = detail ? t('py_number', { ref: paymentId.slice(-6).toUpperCase() }) : ''
+  const sub = detail ? t('py_number', { ref: detail.number }) : ''
   const body = detail ? <Body detail={detail} frame={frame} /> : null
   const close = (
     <Button type="button" variant="outline" className="h-12" onClick={onClose}>
