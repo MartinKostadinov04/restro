@@ -205,6 +205,7 @@ function tableBillOf(store: Store, view: ViewModel): TableBillView | null {
     paidMinor: 0,
     owedMinor: total,
     parts: [{ id: 'demo-bill', beingPaid: false, totalMinor: total, paidMinor: 0, lines }],
+    paidLines: [],
   }
 }
 
@@ -400,6 +401,8 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
               quantity: String(line.qty),
               amountMinor: line.totalMinor,
             })),
+            paidAt: null,
+            timeZone: 'Europe/Sofia',
             form: { confirmSeconds: 120 },
           }
           paidLines.current = picked

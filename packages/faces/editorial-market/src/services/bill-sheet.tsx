@@ -3,8 +3,11 @@
 // face never adds a round of its own (a round the guest just sent appears here when the host's
 // state has it), and a guest round that the state lists twice is drawn once.
 
+import { payMoney } from '@restro/shell'
+
 import { Text } from '../parts'
 import { distinctRounds, keyed } from './bill'
+import { PaidInApp } from './pay-sheet'
 import { useServicesRequired } from './provider'
 
 export function BillSheet() {
@@ -60,6 +63,13 @@ export function BillSheet() {
             <b>{bill.total.text}</b>
           </div>
         </>
+      )}
+      {state.tableBill == null ? null : (
+        // The lines paid in the app in this sitting stay on the bill, greyed (D127 1.2).
+        <PaidInApp
+          lines={state.tableBill.paidLines}
+          money={(minor) => payMoney(minor, state.tableBill?.currency ?? 'EUR', locale)}
+        />
       )}
       {features.pay && owed !== null ? (
         <button

@@ -12,7 +12,9 @@
 // The look is the template agent's, later (D122); this is the functional screen.
 
 import {
+  type ConfirmationView,
   choosePay,
+  confirmationOf,
   fallbackChain,
   freeLines,
   type Locale,
@@ -32,8 +34,11 @@ import {
   pickWhole,
   reconcilePicks,
   refusalText,
+  type SaveOutcome,
   sameAmountAgo,
+  saveConfirmation,
   type TableBillLineView,
+  type TableBillView,
   TIP_PERCENTS,
   type TipChoice,
   togglePick,
@@ -84,6 +89,103 @@ function FormSlot({
 
 /** "×2" for a line of more than one. */
 const mark = (quantity: string) => (quantity === '1' ? '' : ` ×${quantity}`)
+
+/**
+ * The lines paid in the app in this sitting (D127 1.2): greyed under "Paid in the app", on every
+ * phone at the table, with no payer named. They stay until the sitting ends.
+ */
+export function PaidInApp({
+  lines,
+  money,
+}: {
+  readonly lines: TableBillView['paidLines']
+  readonly money: (minor: number) => string
+}) {
+  const { words } = useServicesRequired()
+  if (lines.length === 0) return null
+  return (
+    <section data-slot="bill.paid">
+      <h4 className="ro-h">{words.paying.paidInApp}</h4>
+      <ul className="ro-lines">
+        {lines.map((line, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a paid line has no id of its own (rule 3)
+          <li key={index} data-paid-in-app="" aria-disabled="true">
+            {line.name}
+            {mark(line.quantity)} · {money(line.amountMinor)}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+/**
+ * The Payment confirmation (D127 1.4): Restro's own page with the venue, the time, the lines, the
+ * tip, the total, "Paid by card" and the payment number, and Save. It saves an image on the phone
+ * and leaves no link; it is not a receipt and does not look like one.
+ */
+function Confirmation({ view }: { readonly view: ConfirmationView }) {
+  const [saving, setSaving] = useState(false)
+  const alive = useRef(true)
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+    }
+  }, [])
+  async function save() {
+    setSaving(true)
+    let outcome: SaveOutcome | null = null
+    try {
+      outcome = await saveConfirmation(view)
+    } catch {
+      // No success is shown for a save that failed; the guest taps Save again.
+    }
+    if (alive.current) setSaving(false)
+    return outcome
+  }
+  return (
+    <article className="ro-confirm" data-slot="pay.confirmation">
+      <h3 className="ro-h">{view.title}</h3>
+      {view.venue === null ? null : <p data-slot="pay.confirmation.venue">{view.venue}</p>}
+      {view.when === null ? null : <p data-slot="pay.confirmation.when">{view.when}</p>}
+      <ul className="ro-lines">
+        {view.lines.map((line, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a payment's lines have no id of their own
+          <li key={index}>
+            {line.text} · {line.amount}
+          </li>
+        ))}
+      </ul>
+      {view.tip === null ? null : (
+        <div className="ro-sum">
+          <span>{view.tip.label}</span>
+          <b>{view.tip.amount}</b>
+        </div>
+      )}
+      <div className="ro-sum is-big">
+        <span>{view.total.label}</span>
+        <b>{view.total.amount}</b>
+      </div>
+      <p>{view.paidBy}</p>
+      <p>
+        {view.number.label}: <b className="ro-pay-number">{view.number.value}</b>
+      </p>
+      <p className="ro-allergy" data-slot="pay.confirmation.note">
+        {view.note}
+      </p>
+      <button
+        type="button"
+        className="ro-primary is-wide"
+        data-slot="pay.confirmation.save"
+        disabled={saving}
+        onClick={() => void save()}
+      >
+        <span>{view.saveLabel}</span>
+      </button>
+    </article>
+  )
+}
 
 export function PaySheet() {
   const o = useServicesRequired()
@@ -330,6 +432,7 @@ export function PaySheet() {
           )}
         </>
       )}
+      <PaidInApp lines={bill.paidLines} money={money} />
       {refusal === null ? null : (
         <p className="ro-notice is-bad" role="alert">
           {refusal}
@@ -406,8 +509,15 @@ function PaymentScreen({
   const { words, run, binding } = o
   const w = words.paying
   const [refusal, setRefusal] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState(false)
   const screen: PayScreen = payScreen(payment)
   const dismiss = () => binding.payControls?.dismiss()
+  const confirmation = confirmationOf({
+    payment,
+    venueName: o.state.paying?.venueName ?? null,
+    locale: o.locale,
+    words: w,
+  })
   const call = <CallWaiter />
   const back = (
     <button type="button" className="ro-ghost" data-slot="pay.back" onClick={dismiss}>
@@ -493,15 +603,32 @@ function PaymentScreen({
       return (
         <Screen kind="paid">
           <StatePanel tone="ok" title={w.paid}>
-            <p>{w.paidNumber}</p>
-            <p className="ro-pay-number" data-slot="pay.number">
-              {payment.number}
-            </p>
-            {o.tableLabel === null || o.tableLabel.trim() === '' ? null : (
-              <p data-slot="pay.table">{o.guest.table(o.tableLabel)}</p>
+            {confirming && confirmation !== null ? (
+              <Confirmation view={confirmation} />
+            ) : (
+              <>
+                <p>{w.paidNumber}</p>
+                <p className="ro-pay-number" data-slot="pay.number">
+                  {payment.number}
+                </p>
+                {o.tableLabel === null || o.tableLabel.trim() === '' ? null : (
+                  <p data-slot="pay.table">{o.guest.table(o.tableLabel)}</p>
+                )}
+                {priced}
+                <p>{w.paidReceipt}</p>
+              </>
             )}
-            {priced}
-            <p>{w.paidReceipt}</p>
+            {confirmation === null ? null : (
+              <button
+                type="button"
+                className="ro-ghost"
+                data-slot="pay.confirmation.toggle"
+                aria-expanded={confirming}
+                onClick={() => setConfirming(!confirming)}
+              >
+                {w.confirmTitle}
+              </button>
+            )}
             {back}
           </StatePanel>
         </Screen>

@@ -546,9 +546,22 @@ export const SERVICES_CSS = `
 .rm .ro-lines li[data-available="false"] {
   opacity: 0.75;
 }
-.rm .ro-lines li[data-being-paid] {
-  /* A line in some phone's payment (D127): greyed, nothing to tick. */
+.rm .ro-lines li[data-being-paid],
+.rm .ro-lines li[data-paid-in-app] {
+  /* A line in some phone's payment, or already paid in the app (D127): greyed, nothing to tick. */
   opacity: 0.6;
+}
+.rm .ro-confirm {
+  /* The Payment confirmation (D127 1.4): a plain card, nothing of a receipt's look. */
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 12px;
+  text-align: left;
+}
+.rm .ro-confirm p {
+  margin: 0;
 }
 .rm .ro-lines label {
   display: flex;

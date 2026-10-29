@@ -444,6 +444,8 @@ describe('the payment handle', () => {
       amountMinor: 1_430,
       tipMinor: 130,
       lines: [{ name: 'Gin tonic', quantity: '2', amountMinor: 1_000 }],
+      paidAt: null,
+      timeZone: 'Europe/Sofia',
       form: { provider: 'sim', values: { clientSecret: 'secret' }, confirmSeconds: 120 },
       next: 1_000,
     }

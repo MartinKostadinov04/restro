@@ -29,7 +29,7 @@ import {
   waiterCalls,
   withTenant,
 } from '@restro/db'
-import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 
 import type { AreaId, BarId, TableId } from '../ids'
 import { payFirstApplies, readPayFirstSettings } from '../pay-first-settings'
@@ -405,6 +405,27 @@ export async function readTableState(
               ),
             )
     const beingPaid = new Set(greyed.flatMap((line) => (line.ref === null ? [] : [line.ref])))
+    // The lines paid in the app in this sitting (D127 1.2): the captured payments' lines, oldest
+    // payment first. They name no payer: the payment's handle and provider values stay behind.
+    const paidLines =
+      sitting === undefined
+        ? []
+        : await tx
+            .select({
+              name: paymentLines.displayName,
+              quantity: paymentLines.quantity,
+              amountMinor: paymentLines.posAmountMinor,
+            })
+            .from(paymentLines)
+            .innerJoin(
+              payments,
+              and(
+                eq(payments.tenantId, paymentLines.tenantId),
+                eq(payments.id, paymentLines.paymentId),
+              ),
+            )
+            .where(and(eq(payments.sittingId, sitting.id), eq(payments.state, 'captured')))
+            .orderBy(asc(payments.settledAt), asc(payments.id), asc(paymentLines.position))
     const backendValues = billBackendValues(stored)
     for (const payment of open) {
       if (payment.ref !== null) backendValues.add(payment.ref)
@@ -511,6 +532,7 @@ export async function readTableState(
               complete: reading.complete,
               bills: stored,
               beingPaid,
+              paidLines,
             }),
       backendValues,
     }

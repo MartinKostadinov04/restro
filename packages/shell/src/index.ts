@@ -26,6 +26,24 @@ export {
 } from './bag'
 export { buildViewModel } from './build'
 export {
+  browserSaveEnv,
+  CONFIRMATION_WIDTH,
+  type ConfirmationCanvas,
+  type ConfirmationInput,
+  type ConfirmationLine,
+  type ConfirmationView,
+  confirmationImage,
+  confirmationOf,
+  confirmationWords,
+  drawConfirmation,
+  formatPaidAt,
+  type SaveCanvas,
+  type SaveEnv,
+  type SaveOutcome,
+  type SaveShare,
+  saveConfirmation,
+} from './confirmation'
+export {
   CapabilitiesSchema,
   CHANNELS,
   type Channel,
@@ -171,6 +189,7 @@ export {
   type OrderLine,
   type OrderLineView,
   PAYMENT_STATES,
+  type PaidLineView,
   type PayFormHandle,
   type PayFormProps,
   type PayFormSlot,

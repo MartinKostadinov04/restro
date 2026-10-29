@@ -387,6 +387,18 @@ export interface TableBillLineView {
   readonly beingPaid: boolean
 }
 
+/**
+ * One line paid in the app in this sitting (D127 1.2, "Paid in the app"): the name the guest saw,
+ * the quantity and the amount. It names no payer and carries no id (rule 3); it stays on the bill
+ * until the sitting ends.
+ */
+export interface PaidLineView {
+  readonly name: string
+  /** The quantity as decimal text ("2", "0.5"). */
+  readonly quantity: string
+  readonly amountMinor: number
+}
+
 /** One bill of the table (a table may hold several on the POS). */
 export interface TableBillPartView {
   readonly id: string
@@ -409,6 +421,8 @@ export interface TableBillView {
   /** "Left to pay". */
   readonly owedMinor: number
   readonly parts: readonly TableBillPartView[]
+  /** The lines paid in the app in this sitting, greyed under "Paid in the app" on every phone. */
+  readonly paidLines: readonly PaidLineView[]
 }
 
 /** Paying on the bill as the host says it (#114). */
@@ -456,6 +470,10 @@ export interface PaymentView {
   readonly amountMinor: number | null
   readonly tipMinor: number
   readonly lines: readonly PaymentLineView[]
+  /** When it reached its final state (an ISO instant), or null: the confirmation's time. */
+  readonly paidAt: string | null
+  /** The venue's time zone (IANA): the Payment confirmation shows the time there (D127 1.4). */
+  readonly timeZone: string
   /** The card form is ready for the guest (the state is `awaiting_guest`); the slot is filled. */
   readonly form: { readonly confirmSeconds: number } | null
 }

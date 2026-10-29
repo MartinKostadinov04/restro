@@ -5,7 +5,14 @@
 // phone saw them, and the screens that follow are this phone's payment state: the card form is the
 // page's (a slot), "Paid" is only a captured payment, and a failure never says it.
 
-import { payingBill, payingView, payScenarios } from '@restro/shell/testing'
+import {
+  PAID_LINES,
+  payingBill,
+  payingView,
+  payScenarios,
+  RECEIPT_LOOK,
+  recordSaving,
+} from '@restro/shell/testing'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -13,6 +20,7 @@ import {
   drawFace,
   type FakeHost,
   fakeHost,
+  orderingView,
   payingOf,
   paymentOf,
   resetPage,
@@ -523,4 +531,140 @@ describe('every stage of a payment (the contract every face passes)', () => {
       )
     })
   }
+})
+
+describe('paid in the app (#197, D127 1.2)', () => {
+  it('draws the sitting’s paid lines greyed under "Paid in the app" on the pay sheet, naming no payer', () => {
+    const host = fakeHost({
+      ...base(),
+      tableBill: tableBillOf(undefined, { paidLines: PAID_LINES }),
+    })
+    const { sheet } = openPay(host)
+    const section = sheet.querySelector('[data-slot="bill.paid"]')
+    expect(section?.querySelector('h4')?.textContent).toBe('Paid in the app')
+    const rows = [...(section?.querySelectorAll('li') ?? [])]
+    expect(rows.map((row) => row.textContent)).toEqual([
+      'Gin & tonic ×2 · €18.00',
+      'Nachos · €9.00',
+    ])
+    for (const row of rows) {
+      expect(row.getAttribute('aria-disabled')).toBe('true')
+      expect(row.hasAttribute('data-paid-in-app')).toBe(true)
+      // Greyed: nothing to tick.
+      expect(row.querySelector('input')).toBeNull()
+    }
+    // The ticks are the open lines' only.
+    expect(within(sheet).getAllByRole('checkbox')).toHaveLength(2)
+  })
+
+  it('draws them on the bill as well, even when nothing is left to pay', () => {
+    const host = fakeHost({
+      tableBill: tableBillOf([], { paidLines: PAID_LINES }),
+      paying: payingOf(),
+      ordering: { state: 'on' as const, tips: true },
+    })
+    drawFace(host)
+    fireEvent.click(screen.getByRole('button', { name: 'Table order' }))
+    const bill = screen.getByRole('dialog', { name: 'Table order' })
+    expect(bill.querySelector('[data-slot="bill.paid"]')?.textContent).toContain('Nachos · €9.00')
+  })
+
+  it('draws nothing for a bill with no paid lines', () => {
+    const { sheet } = openPay(fakeHost(base()))
+    expect(sheet.querySelector('[data-slot="bill.paid"]')).toBeNull()
+    expect(sheet.textContent).not.toContain('Paid in the app')
+  })
+})
+
+describe('the Payment confirmation (#197, D127 1.4)', () => {
+  const paid = () =>
+    fakeHost({
+      ...base(),
+      payment: paymentOf({
+        state: 'captured',
+        form: null,
+        tipMinor: 250,
+        amountMinor: 2500,
+        paidAt: '2026-10-29T19:42:00.000Z',
+      }),
+    })
+
+  it('is offered on the Paid screen, and only there', () => {
+    const { sheet } = openPay(paid())
+    expect(within(sheet).getByRole('button', { name: 'Payment confirmation' })).toBeTruthy()
+    cleanup()
+    for (const scenario of payScenarios().filter((s) => s.screen !== 'paid')) {
+      const host = fakeHost({ ...base(), payment: scenario.payment })
+      const { sheet: other } = openPay(host)
+      expect(other.querySelector('[data-slot="pay.confirmation.toggle"]'), scenario.name).toBeNull()
+      cleanup()
+    }
+  })
+
+  it('shows the venue, the time on its clock, the lines, tip, total, "Paid by card" and the number', () => {
+    const { sheet } = openPay(paid())
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Payment confirmation' }))
+    const page = sheet.querySelector('[data-slot="pay.confirmation"]') as HTMLElement
+    expect(within(page).getByText('Payment confirmation')).toBeTruthy()
+    expect(page.querySelector('[data-slot="pay.confirmation.venue"]')?.textContent).toBe('Club X')
+    // 19:42 UTC is 21:42 in Sofia.
+    expect(page.querySelector('[data-slot="pay.confirmation.when"]')?.textContent).toContain('9:42')
+    expect(page.textContent).toContain('House wine · €12.50')
+    expect(page.textContent).toContain('Tip€2.50')
+    expect(page.textContent).toContain('Total€25.00')
+    expect(page.textContent).toContain('Paid by card')
+    expect(page.textContent).toContain('Payment number: K7Q4M')
+    expect(page.querySelector('[data-slot="pay.confirmation.note"]')?.textContent).toBe(
+      'This is not your receipt. Your waiter brings the venue’s receipt.',
+    )
+    expect(within(page).getByRole('button', { name: 'Save' })).toBeTruthy()
+  })
+
+  it('does not look like a receipt: no tax header, VAT, receipt number, QR code, link or fiscal word', () => {
+    const { sheet } = openPay(paid())
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Payment confirmation' }))
+    const page = sheet.querySelector('[data-slot="pay.confirmation"]') as HTMLElement
+    for (const pattern of RECEIPT_LOOK) {
+      expect(page.textContent ?? '', String(pattern)).not.toMatch(pattern)
+    }
+    expect(page.querySelector('a, img, canvas, svg, iframe')).toBeNull()
+  })
+
+  it('says the same in Bulgarian, with no "бон" and no "фискал"', () => {
+    drawFace(paid(), orderingView('bg_BG'))
+    fireEvent.click(document.querySelector('[data-slot="menu.pay"]') as HTMLElement)
+    const sheet = screen.getByRole('dialog')
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Потвърждение за плащане' }))
+    const confirmation = sheet.querySelector('[data-slot="pay.confirmation"]') as HTMLElement
+    expect(confirmation.textContent).toContain('Платено с карта')
+    expect(confirmation.textContent).toContain('Номер на плащането: K7Q4M')
+    expect(confirmation.textContent).toContain(
+      'Това не е касова бележка. Касовата бележка за плащането ви носи сервитьорът.',
+    )
+    expect(confirmation.textContent).toContain('Запази')
+    for (const pattern of RECEIPT_LOOK) expect(confirmation.textContent ?? '').not.toMatch(pattern)
+    expect(sheet.textContent).not.toMatch(/(?<!\p{L})бон/u)
+  })
+
+  it('saves an image on the phone through a blob file, drops its link, and sends nothing', async () => {
+    const record = recordSaving()
+    const fetch = vi.fn()
+    vi.stubGlobal('fetch', fetch)
+    try {
+      const host = paid()
+      const { sheet } = openPay(host)
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Payment confirmation' }))
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Save' }))
+      await waitFor(() => expect(record.downloads).toHaveLength(1))
+      expect(record.downloads[0]).toEqual({ href: 'blob:test/1', name: 'payment-K7Q4M.png' })
+      expect(record.images).toHaveLength(1)
+      // No server link: nothing was fetched and no command went to the host.
+      expect(fetch).not.toHaveBeenCalled()
+      expect(host.of('pay.start')).toHaveLength(0)
+      await waitFor(() => expect(record.revoked).toEqual(['blob:test/1']), { timeout: 3_000 })
+    } finally {
+      record.restore()
+      vi.unstubAllGlobals()
+    }
+  })
 })

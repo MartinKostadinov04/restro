@@ -164,6 +164,23 @@ describe('storedBills and billView', () => {
     expect(forbiddenPaths({ '7001': 1 }, forbidden)).toEqual(['$.<key>'])
   })
 
+  it('carries the sitting’s paid lines with a name, quantity and amount and never a payer (D127 1.2)', () => {
+    expect(view.paidLines).toEqual([])
+    const paid = billView({
+      readAt: new Date('2026-10-26T21:00:00Z'),
+      complete: true,
+      bills: stored,
+      paidLines: [
+        { name: 'Gin & tonic', quantity: '2', amountMinor: 1800 },
+        { name: 'Nachos', quantity: '1', amountMinor: 900 },
+      ],
+    })
+    expect(paid.paidLines).toHaveLength(2)
+    expect(Object.keys(paid.paidLines[0] ?? {}).sort()).toEqual(['amountMinor', 'name', 'quantity'])
+    // Rule 3: the view with paid lines still holds nothing the POS gave.
+    expect(forbiddenPaths(paid, billBackendValues(stored))).toEqual([])
+  })
+
   it('reads back what it stored, and a row that no longer parses as no bill', () => {
     expect(parseStoredBills(JSON.parse(JSON.stringify(stored)))).toEqual(stored)
     expect(parseStoredBills([{ id: 'nope' }])).toEqual([])

@@ -9,7 +9,13 @@
 // Nothing here knows a provider: the form is the page's, and a face imports no provider library.
 
 import type { PayScreen } from '../src/paying'
-import type { PayingView, PaymentView, ServiceState, TableBillView } from '../src/services'
+import type {
+  PaidLineView,
+  PayingView,
+  PaymentView,
+  ServiceState,
+  TableBillView,
+} from '../src/services'
 import { EMPTY_SERVICE_STATE, PAYMENT_STATES } from '../src/services'
 
 const bn = (n: number) => `bn_${String(n).padStart(22, '0')}`
@@ -40,6 +46,7 @@ export function payingBill(changes: Partial<TableBillView> = {}): TableBillView 
     paidMinor: 0,
     owedMinor: 2250,
     parts: [{ id: 'bill-1', beingPaid: false, totalMinor: 2250, paidMinor: 0, lines }],
+    paidLines: [],
     ...changes,
   }
 }
@@ -82,6 +89,8 @@ export function payment(changes: Partial<PaymentView> = {}): PaymentView {
       { name: 'House wine', quantity: '1', amountMinor: 1250 },
       { name: 'Mojito', quantity: '1', amountMinor: 1000 },
     ],
+    paidAt: null,
+    timeZone: 'Europe/Sofia',
     form: { confirmSeconds: 120 },
     ...changes,
   }
@@ -130,7 +139,13 @@ export function payScenarios(): readonly PayScenario[] {
     checked: [of('checked', 'waiting')],
     closed: [of('closed', 'waiting')],
     cancelling: [of('cancelling', 'waiting')],
-    captured: [of('captured', 'paid', { tipMinor: 250, amountMinor: 2500 })],
+    captured: [
+      of('captured', 'paid', {
+        tipMinor: 250,
+        amountMinor: 2500,
+        paidAt: '2026-10-29T19:42:00.000Z',
+      }),
+    ],
     released: [
       of('released', 'ended', { reason: 'busy' }),
       of('released', 'ended', { reason: 'check_failed' }),
@@ -143,4 +158,110 @@ export function payScenarios(): readonly PayScenario[] {
     capture_failed: [of('capture_failed', 'checking')],
   }
   return PAYMENT_STATES.flatMap((state) => byState[state])
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Paid in the app, and the Payment confirmation (#197, D127 1.2 and 1.4)
+ * ------------------------------------------------------------------------------------------- */
+
+/** Two lines paid in the app in this sitting: a name, a quantity and an amount, never a payer. */
+export const PAID_LINES: readonly PaidLineView[] = [
+  { name: 'Gin & tonic', quantity: '2', amountMinor: 1800 },
+  { name: 'Nachos', quantity: '1', amountMinor: 900 },
+]
+
+/**
+ * What the Payment confirmation must never say or show (D127 1.4, Н-18 чл. 7а): "бон" and any form
+ * of "фискален" (and its English), the tax office's header, VAT lines, a receipt number, a unique
+ * sale number or a QR code.
+ */
+export const RECEIPT_LOOK: readonly RegExp[] = [
+  /(?<!\p{L})бон/iu,
+  /фискал/iu,
+  /fiscal/i,
+  /ЕИК|EIK/u,
+  /ДДС|\bVAT\b/u,
+  /УНП/u,
+  /\bQR\b/i,
+  /receipt (number|no\b)/i,
+]
+
+/** What a recorded Save did: the files it handed to the phone, and every link it made. */
+export interface SaveRecord {
+  /** A file the phone was handed to keep (a download). */
+  readonly downloads: { readonly href: string; readonly name: string }[]
+  /** Every object URL made and every one revoked. */
+  readonly made: string[]
+  readonly revoked: string[]
+  /** The PNG blobs drawn. */
+  readonly images: Blob[]
+  /** Puts the browser's own functions back. */
+  readonly restore: () => void
+}
+
+/**
+ * Stands in for the phone's canvas, object URLs and link click, so a face's Save can be tested in
+ * a DOM with none of them: it records what Save handed over and what links it made.
+ */
+export function recordSaving(): SaveRecord {
+  const downloads: SaveRecord['downloads'] = []
+  const made: string[] = []
+  const revoked: string[] = []
+  const images: Blob[] = []
+  // The DOM's own classes, reached through the global scope: the shell compiles without the DOM.
+  const dom = globalThis as unknown as {
+    HTMLCanvasElement: { prototype: Record<string, unknown> }
+    HTMLAnchorElement: {
+      prototype: { click(this: { href: string; download: string }): void }
+    }
+  }
+  const proto = dom.HTMLCanvasElement.prototype
+  const anchor = dom.HTMLAnchorElement.prototype
+  const before = {
+    getContext: proto.getContext,
+    toBlob: proto.toBlob,
+    click: anchor.click,
+    create: URL.createObjectURL,
+    revoke: URL.revokeObjectURL,
+  }
+  const context = {
+    fillStyle: '',
+    font: '',
+    textAlign: 'left',
+    textBaseline: 'alphabetic',
+    fillRect: () => undefined,
+    fillText: () => undefined,
+    scale: () => undefined,
+    measureText: (text: string) => ({ width: text.length * 7 }),
+  }
+  proto.getContext = () => context
+  proto.toBlob = (done: (blob: Blob | null) => void) => {
+    const blob = new Blob(['png'], { type: 'image/png' })
+    images.push(blob)
+    done(blob)
+  }
+  URL.createObjectURL = () => {
+    const url = `blob:test/${made.length + 1}`
+    made.push(url)
+    return url
+  }
+  URL.revokeObjectURL = (url: string) => {
+    revoked.push(url)
+  }
+  anchor.click = function click(this: { href: string; download: string }) {
+    downloads.push({ href: this.href, name: this.download })
+  }
+  return {
+    downloads,
+    made,
+    revoked,
+    images,
+    restore: () => {
+      proto.getContext = before.getContext
+      proto.toBlob = before.toBlob
+      anchor.click = before.click
+      URL.createObjectURL = before.create
+      URL.revokeObjectURL = before.revoke
+    },
+  }
 }

@@ -186,6 +186,8 @@ describe('the guest API wire shapes (#75)', () => {
       amountMinor: 1_430,
       tipMinor: 130,
       lines: [{ name: 'Gin tonic', quantity: '2', amountMinor: 1_000 }],
+      paidAt: null,
+      timeZone: 'Europe/Sofia',
       form: { provider: 'stripe', values: { clientSecret: 'pi_x_secret_y' }, confirmSeconds: 120 },
       next: 1_000,
     }

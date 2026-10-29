@@ -230,6 +230,12 @@ export interface GuestTableState {
         readonly beingPaid: boolean
       }[]
     }[]
+    /** The lines paid in the app in this sitting (D127 1.2): never who paid. */
+    readonly paidLines: readonly {
+      readonly name: string
+      readonly quantity: string
+      readonly amountMinor: number
+    }[]
   } | null
 }
 
@@ -573,6 +579,11 @@ export function projectGuestState(
                 amountMinor: line.amountMinor,
                 beingPaid: line.beingPaid,
               })),
+            })),
+            paidLines: bill.paidLines.map((line) => ({
+              name: line.name,
+              quantity: shownQuantity(line.quantity),
+              amountMinor: line.amountMinor,
             })),
           },
   }
@@ -1338,6 +1349,10 @@ export interface GuestPaymentView {
     readonly quantity: string
     readonly amountMinor: number
   }[]
+  /** When it reached its final state (an ISO instant), or null: the Payment confirmation's time. */
+  readonly paidAt: string | null
+  /** The venue's time zone (IANA): the confirmation shows the time there (D127 1.4). */
+  readonly timeZone: string
   /** The card form: only while the payment awaits the guest. */
   readonly form: {
     readonly provider: string
@@ -1444,7 +1459,17 @@ export async function guestPayment(
       .select({ bills: billReadings.bills })
       .from(billReadings)
       .where(eq(billReadings.tableId, target.tableId))
-    return { payment, lines, now: new Date(), bills: reading?.bills }
+    const [venue] = await tx
+      .select({ timezone: venues.timezone })
+      .from(venues)
+      .where(eq(venues.id, target.venueId))
+    return {
+      payment,
+      lines,
+      now: new Date(),
+      bills: reading?.bills,
+      timeZone: venue?.timezone ?? 'Europe/Sofia',
+    }
   })
   if (found === null) return { ok: false, code: 'unknown_payment' }
   const { payment, lines } = found
@@ -1479,6 +1504,8 @@ export async function guestPayment(
       quantity: shownQuantity(line.quantity),
       amountMinor: line.amountMinor,
     })),
+    paidAt: payment.settledAt?.toISOString() ?? null,
+    timeZone: found.timeZone,
     form:
       payment.state === 'awaiting_guest' && payment.formValues !== null
         ? {

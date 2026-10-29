@@ -231,6 +231,16 @@ export const GuestTableStateSchema = z.strictObject({
           }),
         )
         .max(50),
+      /** The lines paid in the app in this sitting (D127 1.2): never who paid. */
+      paidLines: z
+        .array(
+          z.strictObject({
+            name: z.string().max(200),
+            quantity: z.string().max(32),
+            amountMinor: minor,
+          }),
+        )
+        .max(500),
     })
     .nullable(),
 })
@@ -363,6 +373,10 @@ export const GuestPaymentAnswerSchema = z.strictObject({
       }),
     )
     .max(SERVICE_LIMITS.payLines),
+  /** When the payment reached its final state (an ISO instant), or null: the confirmation's time. */
+  paidAt: z.iso.datetime().nullable(),
+  /** The venue's time zone (IANA): the Payment confirmation shows the time there (D127 1.4). */
+  timeZone: z.string().min(1).max(64),
   /** The card form: which provider's, and the values it needs. Only while `awaiting_guest`. */
   form: z
     .strictObject({
