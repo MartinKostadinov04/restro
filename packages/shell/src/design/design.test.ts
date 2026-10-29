@@ -6,7 +6,7 @@ import { DesignValuesSchema, StyleValuesSchema } from './schema'
 import { StyleFileSchema } from './style'
 import { PREMADE_STYLES } from './styles'
 
-// The contract's equality with D129 is scripts/design-contract.test.ts's job; this file checks what
+// The contract's equality with D130 is scripts/design-contract.test.ts's job; this file checks what
 // the shell exports from it: the schemas, the Style format, the marker lookup.
 
 /** A design on Basic: every choice option at its first value. */

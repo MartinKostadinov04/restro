@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { PremadeStyleId, StyleValues } from './contract'
 import { PremadeStyleIdSchema, StyleValuesSchema } from './schema'
 
-// The Style file (D127): how one of Restro's premade Styles is written. One file per Style in
+// The Style file (D128): how one of Restro's premade Styles is written. One file per Style in
 // ./styles/, named for its id, holding one value for every option that a Style sets: no colours, no
 // Advanced roles, no logo and no body font, which are the venue's brand. A header lists every way
 // the Style departs from the look it reproduces ("none" for a Style that reproduces nothing).

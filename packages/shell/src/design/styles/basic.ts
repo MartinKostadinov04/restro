@@ -1,8 +1,8 @@
 import type { StyleFile } from '../style'
 
-// Basic (D127): the base. A plain, well-working menu any venue can use, and the Style every venue
+// Basic (D128): the base. A plain, well-working menu any venue can use, and the Style every venue
 // starts on. Its value for each option is the first value of that option's row in the contract
-// (D129: "Basic's values are the first value of each row"); scripts/design-contract.test.ts holds
+// (D130: "Basic's values are the first value of each row"); scripts/design-contract.test.ts holds
 // the two equal. It reproduces no earlier look, so it departs from none.
 
 export const basicStyle = {

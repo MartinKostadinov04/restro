@@ -1,8 +1,8 @@
 import type { StyleFile } from '../style'
 
-// Editorial (D127): Editorial Market as drawn today, as a preset over Basic. Its values are the
+// Editorial (D128): Editorial Market as drawn today, as a preset over Basic. Its values are the
 // options spec's section 4 column (docs/deliverables/2026-10-27-menu-design-options-spec.md) with
-// the review's defaults for the options it ditched and the spec's four corrections (D129, first
+// the review's defaults for the options it ditched and the spec's four corrections (D130, first
 // bullet), so that it draws Editorial Market as the guest sees it now:
 //   - the call kinds are icon beside word in a two-column grid: the `list` value, not `tiles`;
 //   - Send and Pay are accent today while the "+" and the order bar are ink, which one Buttons

@@ -32,7 +32,7 @@ export const DesignValuesSchema = z.strictObject(
   pageSchemas(() => true),
 ) as unknown as z.ZodType<DesignValues>
 
-/** The values a Style gives: a design's, without the body font (the venue's brand, D127). */
+/** The values a Style gives: a design's, without the body font (the venue's brand, D128). */
 export const StyleValuesSchema = z.strictObject(
   pageSchemas((option) => option.brand !== true),
 ) as unknown as z.ZodType<StyleValues>

@@ -1,5 +1,5 @@
-// The design contract (D127, D128, D129): the one list of what a venue can choose for its guest
-// page. 14 pages, 48 options, the allowed values of each (Basic's value first, D129's order), the
+// The design contract (D128, D129, D130): the one list of what a venue can choose for its guest
+// page. 14 pages, 48 options, the allowed values of each (Basic's value first, D130's order), the
 // `data-design-part` markers each page owns, and the English and Bulgarian label of every page,
 // option and value (.claude/skills/template-review/references/copy-rules.md).
 //
@@ -7,11 +7,11 @@
 // renderer, the Studio's pages and tiles, the leak guard's allowed words and every Style file.
 // Nothing else in the repo lists an option's values, except the theme's font list in core, which
 // packages/shell/src/design/design.test.ts holds equal until the theme record retires.
-// docs/decisions/D129.md is the same table in words; scripts/design-contract.test.ts fails when
+// docs/decisions/D130.md is the same table in words; scripts/design-contract.test.ts fails when
 // either changes alone.
 //
 // Mirrors the Platform's passport-design-contract.json, without the passport's `show` parts
-// (content is content, D128) and without a mode gate (Simple hides pages, it never ignores a
+// (content is content, D129) and without a mode gate (Simple hides pages, it never ignores a
 // stored value). Pure data: no imports, so a script can read it.
 
 /** The English and the Bulgarian text of one name. */
@@ -30,7 +30,7 @@ export interface DesignChoiceOption extends DesignLabel {
   readonly id: string
   readonly kind: 'choice'
   readonly values: readonly [DesignValue, ...DesignValue[]]
-  /** The venue's own brand, which no Style sets (D127): the body font. */
+  /** The venue's own brand, which no Style sets (D128): the body font. */
   readonly brand?: true
 }
 
@@ -88,7 +88,7 @@ const PLAYFAIR = { id: 'playfair-display', en: 'Playfair Display', bg: 'Playfair
 const LORA = { id: 'lora', en: 'Lora', bg: 'Lora' } as const
 const UNBOUNDED = { id: 'unbounded', en: 'Unbounded', bg: 'Unbounded' } as const
 
-/** The pages, in the order the Studio shows them; the options in D129's order. */
+/** The pages, in the order the Studio shows them; the options in D130's order. */
 export const DESIGN_PAGES = [
   {
     id: 'general',
@@ -655,7 +655,7 @@ export type DesignValues = {
   }
 }
 
-/** What a Style file gives: a value for every option but the body font (D127), no colours or logo. */
+/** What a Style file gives: a value for every option but the body font (D128), no colours or logo. */
 export type StyleValues = {
   [P in DesignPageEntry as P['id']]: {
     [O in StyleChoicesOf<P> as O['id']]: O['values'][number]['id']

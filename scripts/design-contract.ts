@@ -4,7 +4,7 @@ import {
   DESIGN_TOKEN_MAX,
 } from '../packages/shell/src/design/contract'
 
-// The checks behind scripts/design-contract.test.ts (D127, D129, D67). Each takes plain data and
+// The checks behind scripts/design-contract.test.ts (D128, D130, D67). Each takes plain data and
 // returns the problems it finds, so the test can plant a difference and see the check fail.
 
 export interface ValueLike {
@@ -30,19 +30,19 @@ export interface PageLike {
   readonly options: readonly OptionLike[]
 }
 
-/** One row of the table in docs/decisions/D129.md. */
-export interface D129Row {
+/** One row of the table in docs/decisions/D130.md. */
+export interface D130Row {
   readonly page: string
   readonly option: string
   readonly values: string
 }
 
-/** The rows of D129's option table, in order. */
-export function readD129Table(markdown: string): D129Row[] {
+/** The rows of D130's option table, in order. */
+export function readD130Table(markdown: string): D130Row[] {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n')
   const start = lines.findIndex((line) => /^\|\s*Page\s*\|\s*Option\s*\|\s*Values/.test(line))
   if (start < 0) return []
-  const rows: D129Row[] = []
+  const rows: D130Row[] = []
   for (const line of lines.slice(start + 2)) {
     if (!line.startsWith('|')) break
     const [page = '', option = '', values = ''] = line
@@ -60,28 +60,28 @@ const csv = (text: string): string[] => text.split(',').map((word) => word.trim(
 const idsOf = (option: OptionLike): string[] => (option.values ?? []).map((value) => value.id)
 
 /**
- * Pages, options, values and their order, compared with D129's table. The table's English names
+ * Pages, options, values and their order, compared with D130's table. The table's English names
  * are the contract's English labels; its "same, or one of the six" is `same` and the body fonts;
  * its Style row lists the premade Styles before the semicolon; its Colours row is the free value.
  */
-export function checkAgainstD129(pages: readonly PageLike[], rows: readonly D129Row[]): string[] {
+export function checkAgainstD130(pages: readonly PageLike[], rows: readonly D130Row[]): string[] {
   const problems: string[] = []
   const options = pages.flatMap((page) => page.options.map((option) => ({ page, option })))
   if (options.length !== rows.length) {
-    problems.push(`D129 has ${rows.length} options, the contract has ${options.length}`)
+    problems.push(`D130 has ${rows.length} options, the contract has ${options.length}`)
   }
   const fonts = idsOf(
     options.find((entry) => entry.option.id === 'body_font')?.option ?? ({} as OptionLike),
   )
   for (let i = 0; i < Math.min(options.length, rows.length); i++) {
     const { page, option } = options[i] as (typeof options)[number]
-    const row = rows[i] as D129Row
+    const row = rows[i] as D130Row
     const at = `row ${i + 1} (${row.page} / ${row.option})`
     if (page.en !== row.page) problems.push(`${at}: the contract's page is "${page.en}"`)
     if (option.en !== row.option) problems.push(`${at}: the contract's option is "${option.en}"`)
     if (option.kind === 'colours') {
       if (!/^the venue['’]s three colours/.test(row.values)) {
-        problems.push(`${at}: the contract has a free colours option, D129 does not`)
+        problems.push(`${at}: the contract has a free colours option, D130 does not`)
       }
       continue
     }
@@ -92,7 +92,7 @@ export function checkAgainstD129(pages: readonly PageLike[], rows: readonly D129
     const actual = idsOf(option)
     if (expected.join(',') !== actual.join(',')) {
       problems.push(
-        `${at}: D129 lists ${expected.join(', ')}; the contract lists ${actual.join(', ')}`,
+        `${at}: D130 lists ${expected.join(', ')}; the contract lists ${actual.join(', ')}`,
       )
     }
   }
@@ -180,7 +180,7 @@ export function checkLabels(pages: readonly PageLike[]): string[] {
 /**
  * A Style file against the contract: a known Style id, a list of departures, and for every page and
  * option the Style sets exactly one value from the option's list, written as a short lower-case
- * token. It names no option the contract lacks, and sets no body font, colour, role or logo (D127).
+ * token. It names no option the contract lacks, and sets no body font, colour, role or logo (D128).
  */
 export function checkStyle(
   style: { id?: unknown; departures?: unknown; values?: unknown },
