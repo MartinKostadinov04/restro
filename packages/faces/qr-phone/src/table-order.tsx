@@ -18,8 +18,8 @@
 import {
   type CommandResult,
   type GuestCommand,
-  isGuestRefusalCode,
   isOutOfStock,
+  refusalText,
   refusedOutOfStock,
   type SentOrderView,
   type ServiceBinding,
@@ -79,7 +79,9 @@ export function useOrderCommands(
         setNotice(strings.refusedOther)
         return null
       }
-      if (result.status === 'rejected') {
+      // A pay command's refusal is worded where the guest paid (the bill panel), not as the
+      // order's notice.
+      if (result.status === 'rejected' && !command.kind.startsWith('pay.')) {
         const code = result.code ?? null
         // The location panel answers these itself (the consent screen, the failed check), and the
         // order panel the duplicate check.
@@ -97,9 +99,7 @@ export function useOrderCommands(
         setNotice(
           named !== undefined
             ? strings.itemUnavailableNamed(named)
-            : code !== null && isGuestRefusalCode(code)
-              ? strings.refusals[code]
-              : strings.refusedOther,
+            : refusalText(strings, code, { command: command.kind }),
         )
       }
       return result
@@ -117,7 +117,7 @@ export function sentWords(sent: SentOrderView, strings: ServiceStrings): string 
     case 'awaiting_approval':
       return strings.sentAwaitingApproval
     case 'added':
-      return strings.sentAdded
+      return sent.unpaid === true ? strings.sentUnpaid : strings.sentAdded
     case 'not_sent':
       if (sent.reason === 'ordering_paused') return strings.sentNotSentPaused
       if (sent.reason === 'item_unavailable') return strings.sentNotSentOutOfStock

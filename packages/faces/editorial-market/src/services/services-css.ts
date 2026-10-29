@@ -546,6 +546,32 @@ export const SERVICES_CSS = `
 .rm .ro-lines li[data-available="false"] {
   opacity: 0.75;
 }
+.rm .ro-lines li[data-being-paid] {
+  /* A line in some phone's payment (D127): greyed, nothing to tick. */
+  opacity: 0.6;
+}
+.rm .ro-lines label {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 44px;
+}
+.rm .ro-lines input[type="checkbox"] {
+  /* Drawn by us so its edge shows at 3:1 on every theme: 54 % of the text colour, as the inputs'. */
+  appearance: none;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  border: 2px solid color-mix(in srgb, currentColor 54%, transparent);
+  border-radius: 6px;
+  background: transparent;
+}
+.rm .ro-lines input[type="checkbox"]:checked {
+  border-color: currentColor;
+  background: var(--rm-accent);
+  box-shadow: inset 0 0 0 3px var(--rm-bg);
+}
 .rm .ro-line-main {
   display: grid;
   gap: 4px;
@@ -726,6 +752,8 @@ export const SERVICES_CSS = `
 }
 .rm .ro-choicegrid [aria-checked="true"],
 .rm .ro-tips [aria-checked="true"],
+.rm .ro-tips [aria-pressed="true"],
+.rm .ro-sheet .ro-ghost[aria-pressed="true"],
 .rm .ro-scope [aria-checked="true"] {
   /* The chosen one: the accent fill, and a ring in the sheet's own text colour, so it stands out by
      more than hue (the accent can be as light as the sheet itself: 1.06:1 on Botanical dark). */

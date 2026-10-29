@@ -64,7 +64,7 @@ export type Who =
 /** The refusals of these reads. */
 export type NightRefusal = TonightRefusal
 
-interface Reader {
+export interface Reader {
   readonly venue: {
     readonly id: string
     readonly name: string
@@ -94,11 +94,11 @@ const accessOf = (reader: Reader): NightAccess => ({
   today: reader.today,
 })
 
-type Opened =
+export type Opened =
   | { readonly ok: true; readonly reader: Reader }
   | { readonly ok: false; readonly code: NightRefusal }
 
-interface ReadInput {
+export interface ReadInput {
   readonly tenantId: string
   readonly venueId: string
   readonly actor: ServiceActor
@@ -106,7 +106,7 @@ interface ReadInput {
 }
 
 /** The actor's grants at the venue, as `readTonight` checks them. */
-async function open(tx: ReadTx, input: ReadInput): Promise<Opened> {
+export async function open(tx: ReadTx, input: ReadInput): Promise<Opened> {
   if (
     input.actor.kind !== 'user' &&
     input.actor.kind !== 'staff' &&
@@ -154,7 +154,7 @@ export async function readNightAccess(
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 
 /** The day asked for, or today: a day that is not a date, or lies ahead, is today. */
-function dayOf(asked: string | undefined, today: string): string {
+export function dayOf(asked: string | undefined, today: string): string {
   return asked !== undefined && DAY.test(asked) && asked <= today ? asked : today
 }
 

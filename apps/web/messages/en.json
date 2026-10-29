@@ -2136,6 +2136,7 @@
     "lg_call": "{table} asked for: {kinds}",
     "lg_call_done": "Call at {table} handled ({kinds})",
     "lg_call_lapsed": "Call at {table} ran out ({kinds})",
+    "lg_receipt_brought": "Receipt for {table} brought",
     "lg_day_closed": "The night closed: {n} sent orders",
     "lg_guard": "A guard stopped {what}",
     "lg_settings": "Settings changed: {what}",

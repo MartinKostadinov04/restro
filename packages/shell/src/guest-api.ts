@@ -12,16 +12,17 @@
 // `X-Restro-Payment`, never in an address or a body; `GET /api/guest/payment` answers that phone
 // alone, with its payment and, while the card is being collected, the provider's form values.
 
-import {
-  DecimalQuantitySchema,
-  GuestPositionSchema,
-  idSchema,
-  LocalizedTextSchema,
-} from '@restro/core'
+import { GuestPositionSchema, idSchema, LocalizedTextSchema } from '@restro/core'
 import { z } from 'zod'
 import { SERVICE_KINDS } from './features'
-import { GUEST_REFUSAL_CODES } from './service-vocabulary'
-import { GuestCommandSchema, SERVICE_LIMITS } from './services'
+import { GUEST_REFUSAL_CODES, PAYMENT_STATES } from './service-vocabulary'
+import {
+  GuestCommandSchema,
+  PayCancelSchema,
+  PayReturnedSchema,
+  PayStartSchema,
+  SERVICE_LIMITS,
+} from './services'
 
 /** The largest request body the API reads, in bytes. */
 export const GUEST_API_MAX_BYTES = 8 * 1024
@@ -105,6 +106,18 @@ export const GuestTableStateSchema = z.strictObject({
      * applies here and paying is on; `paused` while paying is paused; else `off`. No ids.
      */
     payFirst: z.enum(['on', 'paused', 'off']),
+    /**
+     * Paying on the bill (#114): `on`, `paused` (card payments paused, ordering goes on) or `off`
+     * (not offered here). No ids. The server refuses a Pay in either of the last two.
+     */
+    paying: z.enum(['on', 'paused', 'off']),
+    /** The provider's kind (a public word, no id) when paying is offered: the screen names it. */
+    payingProvider: z
+      .string()
+      .regex(/^[a-z][a-z0-9_-]{0,31}$/)
+      .nullable(),
+    /** The smallest card payment here in minor units: Pay is greyed below it. */
+    minCardMinor: z.int().positive(),
     /** A tip can be given when paying here (D127: the POS records it on the receipt). */
     tips: z.boolean(),
     /** The venue's night (#82): `at` is the wall-clock time the words name, `HH:MM`. */
@@ -174,6 +187,8 @@ export const GuestTableStateSchema = z.strictObject({
           )
           .max(SERVICE_LIMITS.lines),
         sentAgoSeconds: seconds,
+        /** A pay-first round on the POS whose card was not charged ("No receipt", #114). */
+        unpaid: z.literal(true).optional(),
       }),
     )
     .max(50),
@@ -268,53 +283,16 @@ export const GuestCheckSchema = z.strictObject({
 /** What the page adds to a command. */
 export type GuestCheck = z.output<typeof GuestCheckSchema>
 
-/** A bill line's id (`bn_`), as the table's state shows it. */
-const BillLineIdSchema = idSchema('bn')
-
-/** The most bill lines one payment picks. */
-const PAY_LINES_MAX = 200
-
 /**
- * The guest's pay commands (#110, D127; design §3). `pay.start` picks whole lines of the bill (a
- * line's whole quantity, as the bill shows it) or the whole bill, and sends every picked line as the
- * phone saw it (the knock, D111). At most one of `tipMinor` and `tipPercent` is set; neither is no
- * tip (it starts at zero, D127). `pay.returned` and `pay.cancel` name the payment by the handle in
- * `X-Restro-Payment`.
+ * The guest's pay commands (#110, D127; design §3), defined with the face contract's commands
+ * (services.ts): `pay.start` picks whole lines of the bill or the whole bill and sends each line as
+ * the phone saw it (the knock, D111); `pay.returned` and `pay.cancel` name the payment by the
+ * handle in `X-Restro-Payment`.
  */
 export const GuestPayCommandSchema = z.discriminatedUnion('kind', [
-  z
-    .strictObject({
-      kind: z.literal('pay.start'),
-      actionId: z.uuid(),
-      pick: z.discriminatedUnion('kind', [
-        z.strictObject({
-          kind: z.literal('lines'),
-          lines: z
-            .array(z.strictObject({ lineId: BillLineIdSchema, quantity: DecimalQuantitySchema }))
-            .min(1)
-            .max(PAY_LINES_MAX),
-        }),
-        z.strictObject({ kind: z.literal('whole') }),
-      ]),
-      seen: z
-        .array(
-          z.strictObject({
-            lineId: BillLineIdSchema,
-            quantity: DecimalQuantitySchema,
-            amountMinor: minor,
-          }),
-        )
-        .min(1)
-        .max(PAY_LINES_MAX),
-      tipMinor: z.int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable(),
-      tipPercent: z.int().min(1).max(SERVICE_LIMITS.tipPercentMax).nullable(),
-    })
-    .refine((command) => command.tipMinor === null || command.tipPercent === null, {
-      message: 'set either tipMinor or tipPercent, not both',
-      path: ['tipPercent'],
-    }),
-  z.strictObject({ kind: z.literal('pay.returned'), actionId: z.uuid() }),
-  z.strictObject({ kind: z.literal('pay.cancel'), actionId: z.uuid() }),
+  PayStartSchema,
+  PayReturnedSchema,
+  PayCancelSchema,
 ])
 
 /** A guest pay command. */
@@ -322,11 +300,8 @@ export type GuestPayCommand = z.input<typeof GuestPayCommandSchema>
 
 /** The body of `POST /api/guest/actions`. */
 export const GuestActionRequestSchema = z.strictObject({
-  /**
-   * A face's command, or a pay command. The pay commands come first: the face contract's own
-   * `pay.start` (a quote and a method, D71) still parses as the face's and is answered `not_built`.
-   */
-  command: z.union([GuestPayCommandSchema, GuestCommandSchema]),
+  /** A face's command: the pay commands are the contract's own (services.ts). */
+  command: GuestCommandSchema,
   /** Milliseconds since the guest's tap (a retry sends the same tap's age, grown). */
   ageMs: z.int().nonnegative().max(MAX_AGE_MS),
   view: z.enum(GUEST_API_VIEWS).default('order'),
@@ -362,23 +337,7 @@ export const GuestActionAnswerSchema = z.strictObject({
 export type GuestActionAnswer = z.output<typeof GuestActionAnswerSchema>
 
 /** The states of a payment a paying phone sees (the database's, D127; design §4). */
-export const GUEST_PAYMENT_STATES = [
-  'requested',
-  'priced',
-  'awaiting_guest',
-  'held',
-  'queued',
-  'isolated',
-  'entered',
-  'checked',
-  'closed',
-  'cancelling',
-  'captured',
-  'released',
-  'unconfirmed',
-  'stranded',
-  'capture_failed',
-] as const
+export const GUEST_PAYMENT_STATES = PAYMENT_STATES
 
 /**
  * What `GET /api/guest/payment` answers the paying phone with 200 (#110): where its payment stands,
@@ -388,6 +347,10 @@ export const GUEST_PAYMENT_STATES = [
  */
 export const GuestPaymentAnswerSchema = z.strictObject({
   id: idSchema('py'),
+  /** `pay_first`: a round paid at Send; `bill`: lines of the table's bill. */
+  mode: z.enum(['bill', 'pay_first']),
+  /** The short number the guest shows the waiter (five letters), the same for the same payment. */
+  number: z.string().regex(/^[A-Z0-9]{5}$/),
   state: z.enum(GUEST_PAYMENT_STATES),
   /** Why the payment ended or is ending (`bill_changed`, `cancelled`, `expired`...), or null. */
   reason: z.string().max(64).nullable(),
@@ -403,7 +366,7 @@ export const GuestPaymentAnswerSchema = z.strictObject({
         amountMinor: minor,
       }),
     )
-    .max(PAY_LINES_MAX),
+    .max(SERVICE_LIMITS.payLines),
   /** The card form: which provider's, and the values it needs. Only while `awaiting_guest`. */
   form: z
     .strictObject({

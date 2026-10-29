@@ -2136,6 +2136,7 @@
     "lg_call": "{table} поиска: {kinds}",
     "lg_call_done": "Повикването от {table} е прието ({kinds})",
     "lg_call_lapsed": "Повикването от {table} изтече ({kinds})",
+    "lg_receipt_brought": "Бележката за {table} е занесена",
     "lg_day_closed": "Вечерта приключи: {n} поръчки",
     "lg_guard": "Защита спря {what}",
     "lg_settings": "Променени настройки: {what}",
