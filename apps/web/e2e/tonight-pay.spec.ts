@@ -173,7 +173,7 @@ test("on the tablet a manager's PIN answers: receipt printed / no receipt, on th
   expect(noReceipt.count).toBe(1)
 
   const onTill = new Taps()
-  await onTill.tap(rowOf(page, '3').getByRole('button', { name: 'On the till' }))
+  await onTill.tap(rowOf(page, '3').getByRole('button', { name: 'On the till', exact: true }))
   await expect(sheet).toContainText('closes it and charges the card €38.00')
   await typePin(page, '4321')
   await expect(toast(page, 'Saved: on the till')).toBeVisible()
@@ -199,7 +199,7 @@ test("an owner answers in one tap, and the Log words a till answer as the till's
   expect(printed.count).toBe(1)
 
   const onTill = new Taps()
-  await onTill.tap(rowOf(page, '3').getByRole('button', { name: 'On the till' }))
+  await onTill.tap(rowOf(page, '3').getByRole('button', { name: 'On the till', exact: true }))
   await expect(toast(page, 'Saved: on the till')).toBeVisible()
   const notOnTill = new Taps()
   await notOnTill.tap(rowOf(page, '4').getByRole('button', { name: 'Not on the till' }))
