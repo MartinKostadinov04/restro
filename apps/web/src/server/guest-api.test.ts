@@ -447,7 +447,7 @@ describe('the payment handle', () => {
       tipMinor: 130,
       lines: [{ name: { en_US: 'Gin tonic' }, quantity: '2', amountMinor: 1_000 }],
       paidAt: null,
-    receiptEmailed: null,
+      receiptEmailed: null,
       timeZone: 'Europe/Sofia',
       form: { provider: 'sim', values: { clientSecret: 'secret' }, confirmSeconds: 120 },
       next: 1_000,
