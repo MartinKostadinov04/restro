@@ -158,14 +158,20 @@ test('PF6 and PF7: one item paid first, and back to the venue, in 2 taps each, w
   // Again, and it is still there after a reload (saved, not just shown).
   await saved(page, 'payment_mode', () => page.getByTestId('payment-mode-pay_first').check())
   await expect(toastOf(page, 'Начин на плащане: плаща се предварително')).toBeVisible()
-  await page.reload()
+  await openComposer(page)
+  await itemRow(page, 'Негрони').getByRole('button', { name: 'Негрони', exact: true }).click()
   await expect(page.getByTestId('item-sheet-details')).toBeVisible()
   await expect(page.getByTestId('payment-mode-pay_first')).toBeChecked()
 
-  // PF7: back to the venue's choice, 2 taps (the sheet is open on the same item).
+  // PF7: back to the venue's choice, 2 taps from Structure (the item's name, "Same as the venue").
+  await openComposer(page)
+  await itemRow(page, 'Негрони').getByRole('button', { name: 'Негрони', exact: true }).click()
+  await expect(page.getByTestId('item-sheet-details')).toBeVisible()
   await saved(page, 'payment_mode', () => page.getByTestId('payment-mode-same').check())
-  await expect(toastOf(page, 'Начин на плащане: Като на заведението (по сметката)')).toBeVisible()
-  await page.reload()
+  // In a sentence, so lower case.
+  await expect(toastOf(page, 'Начин на плащане: като на заведението (по сметката)')).toBeVisible()
+  await openComposer(page)
+  await itemRow(page, 'Негрони').getByRole('button', { name: 'Негрони', exact: true }).click()
   await expect(page.getByTestId('payment-mode-same')).toBeChecked()
   await context.close()
 })
@@ -203,14 +209,13 @@ test('PF8: several items at once from the selection bar, one change', async ({ b
   }
 
   // Taking it away from the same three is one change too.
-  await page.reload()
-  await expect(page.getByTestId('composer')).toBeVisible()
+  await openComposer(page)
   for (const name of ['Мохито', 'Шприц', 'Кола']) {
     await itemRow(page, name).getByTestId('item-select').check()
   }
   await page.getByTestId('payment-mode').click()
   await saved(page, 'itemIds', () => page.getByTestId('payment-mode-option-same').click())
-  await expect(toastOf(page, '3 артикула: Като на заведението (по сметката)')).toBeVisible()
+  await expect(toastOf(page, '3 артикула: като на заведението (по сметката)')).toBeVisible()
   await context.close()
 })
 

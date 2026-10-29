@@ -496,15 +496,23 @@ export function Composer({
           result = { ok: false, error: 'failed' }
         }
         if (!result.ok) {
-          toast.error(t(`errors.${result.error}`, { source: view.tillLabel }))
+          toast.error(
+            result.error === 'failed' || result.error === 'rejected'
+              ? owner('pf_err_save')
+              : t(`errors.${result.error}`, { source: view.tillLabel }),
+          )
           return
         }
+        // In a sentence: lower case in Bulgarian, "Като на заведението" too (the plan's words).
+        const same = owner('pf_i_same', { mode: inSentence(payFirstDefault) })
         toast.success(
           owner('pf_sel_toast', {
             count: itemIds.length,
             mode:
               mode === null
-                ? owner('pf_i_same', { mode: inSentence(payFirstDefault) })
+                ? uiLocale === 'bg'
+                  ? same.toLocaleLowerCase('bg')
+                  : same
                 : inSentence(mode),
           }),
         )

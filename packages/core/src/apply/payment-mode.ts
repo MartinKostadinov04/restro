@@ -2,12 +2,14 @@
 // mode…". The mode is the item field `payment_mode`, Restro's own on every venue (owner `builder`),
 // so it goes in the manual layer, master scope. ONE atomic change set through apply() (rule 1), as
 // `setItemTags` does for tags: either every ticked item gets the mode or none does. `null` = "same
-// as the venue": it clears our value. An item that already holds it is left out (nothing is
-// written for it). It takes effect at the menu's next Publish, as every composer change does.
+// as the venue": it clears our value. An item that already holds it is written as before and
+// apply() reports it as unchanged (not applied). An item that sits in other venues' menus only is
+// refused (`unknown_item`); one placed nowhere is allowed. It takes effect at the menu's next
+// Publish, as every composer change does.
 
 import { type DbPool, nodes } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { ActorSchema, type ChangeSet, type ChangeSetOp } from '../change-set'
@@ -79,7 +81,7 @@ export async function setItemPaymentMode(
         locked.refused === 'venue_archived' ? 'venue_archived' : 'unknown_venue',
       )
     }
-    await assertActiveItems(tx, unique)
+    await assertActiveItems(tx, venueId, unique)
     const ops: ChangeSetOp[] = unique.map((id) =>
       mode === null
         ? {
@@ -110,7 +112,7 @@ export async function setItemPaymentMode(
   })
 }
 
-async function assertActiveItems(tx: WriteTx, ids: readonly string[]) {
+async function assertActiveItems(tx: WriteTx, venueId: string, ids: readonly string[]) {
   const rows = await tx
     .select({ id: nodes.id })
     .from(nodes)
@@ -123,5 +125,30 @@ async function assertActiveItems(tx: WriteTx, ids: readonly string[]) {
     )
   if (rows.length !== ids.length) {
     throw new PaymentModeError('every id must be an active item of this tenant', 'unknown_item')
+  }
+  // The venues whose menus hold each item (the same walk up from its placements as apply()'s tag
+  // check). An item that sits in some venue's menu but not this one is another venue's.
+  const found = await tx.execute<{ item_id: string; venue_id: string }>(sql`
+    with recursive up as (
+      select p.item_id, n.id, n.parent_id
+      from restro.placements p join restro.nodes n on n.id = p.section_id
+      where p.item_id = any(${sql.param([...ids])}::text[])
+      union
+      select up.item_id, n.id, n.parent_id
+      from up join restro.nodes n on n.id = up.parent_id
+    )
+    select distinct up.item_id, m.venue_id
+    from up join restro.menus m on m.id = up.id
+    where up.parent_id is null`)
+  const venuesOf = new Map<string, Set<string>>()
+  for (const row of found.rows) {
+    const held = venuesOf.get(row.item_id) ?? new Set<string>()
+    held.add(row.venue_id)
+    venuesOf.set(row.item_id, held)
+  }
+  for (const venues of venuesOf.values()) {
+    if (!venues.has(venueId)) {
+      throw new PaymentModeError("an item is in another venue's menu only", 'unknown_item')
+    }
   }
 }

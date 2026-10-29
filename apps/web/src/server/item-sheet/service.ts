@@ -485,6 +485,13 @@ export async function saveField(
   if (!found) return failed('not_found')
   // An image has a file behind it: it is attached on the Media tab, with the upload.
   if (found.definition.type === 'image') return failed('read_only')
+  // The payment mode is on the sheet only where pay first can take effect (D122 §8): not to be made up.
+  if (
+    found.definition.key === 'payment_mode' &&
+    !(await withTenant(scope.pool, scope.tenantId, (tx) => payFirstPossibleAt(tx, scope.venueId)))
+  ) {
+    return failed('read_only')
+  }
   const edited = input.value === null ? undefined : input.value
   if (
     edited !== undefined &&

@@ -137,6 +137,7 @@ export function ItemSheet({
   const t = useTranslations('itemSheet')
   const owner = useTranslations('ownerSettings')
   const inSentence = useModeInSentence()
+  const uiLocale = useLocale()
   const params = useParams<{ venueId?: string }>()
   const venueId = venueIdProp ?? (typeof params.venueId === 'string' ? params.venueId : undefined)
   // Where the actions look: the venue, and the composer's menu when there is one.
@@ -183,7 +184,12 @@ export function ItemSheet({
 
   /** Runs a save; shows its refreshed data, or says why nothing changed. True when it saved. */
   const run = useCallback(
-    async (task: Promise<SheetResult>, success?: string): Promise<boolean> => {
+    async (
+      task: Promise<SheetResult>,
+      success?: string,
+      /** A sentence for a refusal this save words itself. */
+      words?: (error: string) => string | undefined,
+    ): Promise<boolean> => {
       setBusy(true)
       try {
         const result = await task
@@ -192,10 +198,10 @@ export function ItemSheet({
           if (success) toast.success(success)
           return true
         }
-        toast.error(t(`errors.${result.error}`, { source }))
+        toast.error(words?.(result.error) ?? t(`errors.${result.error}`, { source }))
         return false
       } catch {
-        toast.error(t('errors.failed'))
+        toast.error(words?.('failed') ?? t('errors.failed'))
         return false
       } finally {
         setBusy(false)
@@ -239,17 +245,28 @@ export function ItemSheet({
       data?.fields.find((field) => field.key === 'payment_mode')?.value,
     )
     const venueMode = data?.payFirstDefault
+    const same = owner('pf_i_same', { mode: venueMode ? inSentence(venueMode) : '' })
+    // In a sentence: lower case in Bulgarian, "Като на заведението" too (the plan's words).
     const mode =
-      next === null
-        ? owner('pf_i_same', { mode: venueMode ? inSentence(venueMode) : '' })
-        : inSentence(next)
-    const saved = await run(saveItemFieldAction(target, itemId, 'payment_mode', next))
+      next === null ? (uiLocale === 'bg' ? same.toLocaleLowerCase('bg') : same) : inSentence(next)
+    const words = (error: string) =>
+      error === 'failed' || error === 'refused' ? owner('pf_err_save') : undefined
+    const saved = await run(
+      saveItemFieldAction(target, itemId, 'payment_mode', next),
+      undefined,
+      words,
+    )
     if (saved) {
       toast.success(owner('pf_i_toast', { mode }), {
         id: `payment_mode:${itemId}`,
         action: {
           label: owner('st_undo'),
-          onClick: () => void run(saveItemFieldAction(target, itemId, 'payment_mode', previous)),
+          onClick: () =>
+            void run(
+              saveItemFieldAction(target, itemId, 'payment_mode', previous),
+              undefined,
+              words,
+            ),
         },
       })
     }

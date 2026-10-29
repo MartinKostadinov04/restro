@@ -9,6 +9,7 @@ import { ApplyError, PaymentModeError, setItemPaymentMode } from '@restro/core/a
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
+import { readItemPayFirstDefault } from '@/server/composer/pay-first'
 import { getPool } from '@/server/db'
 import { logError } from '@/server/log'
 import { requireTenant } from '@/server/session'
@@ -32,6 +33,10 @@ export async function setItemPaymentModeAction(input: unknown): Promise<ActionRe
     const { organization, user } = await requireTenant()
     const venue = await getVenue(organization.id, venueId)
     if (!venue) return { ok: false, error: 'not_found' }
+    // Where pay first can't take effect the row isn't on the screen: refuse a request that made it up.
+    if ((await readItemPayFirstDefault(getPool(), organization.id, venue)) === null) {
+      return { ok: false, error: 'invalid' }
+    }
     try {
       await setItemPaymentMode(getPool(), organization.id, {
         venueId: venue.id,
