@@ -26,11 +26,11 @@ import {
   type PosRef,
   posRef,
   type Reading,
-  ReceiptFileSchema,
   type Refusal,
   type RefusalCode,
   type RefusalScope,
   type ServiceConnector,
+  safeReceiptFile,
   samePosRef,
   subtractMinor,
   type TableBills,
@@ -106,7 +106,9 @@ const MoveAnswer = z.object({ bill: Id })
 const CloseAnswer = z.object({
   bill: Id,
   receipt: z.string().min(1).optional(),
-  receiptFile: ReceiptFileSchema.optional(),
+  electronicReceipt: z.enum(['issued', 'not_issued']).optional(),
+  // Checked on its own (`safeReceiptFile`): a bad file never fails a finished close.
+  receiptFile: z.unknown().optional(),
 })
 const PingAnswer = z.object({ mode: z.enum(['live', 'training']).optional() })
 const ErrorAnswer = z.object({
@@ -544,14 +546,22 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
       const answer = parse(CloseAnswer, sent.body, 'the close')
       inFlight.delete(request.isolated.ref.pos)
       const receiptNumber = capabilities.receiptNumberOnClose ? (answer.receipt ?? null) : null
-      // The POS's file, passed on as it came, only where this POS returns it for an email.
-      const receiptFile =
-        capabilities.electronicReceiptFile && request.receiptEmail !== undefined
-          ? answer.receiptFile
-          : undefined
+      if (request.receiptEmail === undefined) return { kind: 'done', result: { receiptNumber } }
+      // The close is done whatever became of the receipt. A receipt not issued, or a file Restro
+      // cannot pass on, is "not issued": the waiter brings paper (D127, #186).
+      if (answer.electronicReceipt !== 'issued') {
+        return { kind: 'done', result: { receiptNumber, electronicReceipt: 'not_issued' } }
+      }
+      if (!capabilities.electronicReceiptFile) {
+        return { kind: 'done', result: { receiptNumber, electronicReceipt: 'sent' } }
+      }
+      const receiptFile = safeReceiptFile(answer.receiptFile)
       return {
         kind: 'done',
-        result: { receiptNumber, ...(receiptFile === undefined ? {} : { receiptFile }) },
+        result:
+          receiptFile === null
+            ? { receiptNumber, electronicReceipt: 'not_issued' }
+            : { receiptNumber, electronicReceipt: 'file', receiptFile },
       }
     },
 

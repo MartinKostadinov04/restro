@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
+import { createFakeEmailSender } from '../../tests/fake-email-sender'
 import {
-  createFakeEmailSender,
   createResendSender,
   EmailSendError,
+  type ReceiptMessage,
   receiptWords,
   senderName,
 } from './email-sender'
@@ -51,11 +52,21 @@ function sender(reply: Parameters<typeof fakeFetch>[0]) {
   }
 }
 
-const MESSAGE = {
+const MESSAGE: ReceiptMessage = {
   to: GUEST,
   venueName: 'Club "Нощ"',
   file: FILE,
   idempotencyKey: 'py_abc',
+}
+
+/** What a send to the service answering `reply` throws, or null. */
+async function thrownBy(reply: Parameters<typeof fakeFetch>[0], message = MESSAGE) {
+  const { calls, sender: send } = sender(reply)
+  const error = await send.sendReceipt(message).then(
+    () => null,
+    (caught: unknown) => caught,
+  )
+  return { error, calls }
 }
 
 describe('the Resend sender (#186)', () => {
@@ -85,51 +96,111 @@ describe('the Resend sender (#186)', () => {
     )
   })
 
-  it('refuses a file that is not a receipt file, and one too large, before any call', async () => {
-    const { calls, sender: send } = sender({})
-    await expect(
-      send.sendReceipt({ ...MESSAGE, file: { ...FILE, filename: '../../etc/passwd' } }),
-    ).rejects.toThrow()
+  describe('a message it cannot send is a final EmailSendError, before any call, never naming the address', () => {
     const big = Buffer.alloc(2_000_001, 1).toString('base64')
-    await expect(
-      send.sendReceipt({ ...MESSAGE, file: { ...FILE, contentBase64: big } }),
-    ).rejects.toBeInstanceOf(EmailSendError)
-    expect(calls).toHaveLength(0)
+    it.each([
+      ['an address that is not one', { ...MESSAGE, to: 'not an address' }],
+      ['two addresses', { ...MESSAGE, to: 'a@example.test, b@example.test' }],
+      ['an unsafe file name', { ...MESSAGE, file: { ...FILE, filename: '../../etc/passwd' } }],
+      ['a file of another type', { ...MESSAGE, file: { ...FILE, contentType: 'image/png' } }],
+      ['a file too large', { ...MESSAGE, file: { ...FILE, contentBase64: big } }],
+      ['a key with a space', { ...MESSAGE, idempotencyKey: 'py abc' }],
+      ['a key with a line break', { ...MESSAGE, idempotencyKey: 'py_abc\nx-injected: 1' }],
+      ['a key past 256 characters', { ...MESSAGE, idempotencyKey: 'k'.repeat(257) }],
+      ['an empty key', { ...MESSAGE, idempotencyKey: '' }],
+    ] as [string, ReceiptMessage][])('%s', async (_name, message) => {
+      const { error, calls } = await thrownBy({}, message)
+      expect(error).toBeInstanceOf(EmailSendError)
+      expect(error).toMatchObject({ status: null, retryable: false })
+      expect((error as Error).message).not.toContain('example.test')
+      expect(calls).toHaveLength(0)
+    })
+
+    it('a key of the allowed characters goes out', async () => {
+      const { error, calls } = await thrownBy({}, { ...MESSAGE, idempotencyKey: 'py_a.b:c/d-1' })
+      expect(error).toBeNull()
+      expect(calls).toHaveLength(1)
+    })
   })
 
   it('an unreachable service is retryable and its error holds neither the address nor the key', async () => {
-    const { sender: send } = sender('throw')
-    const error = await send.sendReceipt(MESSAGE).catch((caught: unknown) => caught)
+    const { error } = await thrownBy('throw')
     expect(error).toBeInstanceOf(EmailSendError)
     expect(error).toMatchObject({ status: null, retryable: true })
-    expect(String((error as Error).message)).not.toContain(GUEST)
-    expect(String((error as Error).message)).not.toContain(KEY)
+    expect((error as Error).message).not.toContain(GUEST)
+    expect((error as Error).message).not.toContain(KEY)
   })
 
-  it('a refusal is not retryable, a busy service is, and neither repeats what the service said', async () => {
-    const echo = { name: 'validation_error', message: `The \`to\` field ${GUEST} is invalid` }
-    const refused = await sender({ status: 422, json: echo })
-      .sender.sendReceipt(MESSAGE)
-      .catch((caught: unknown) => caught)
-    expect(refused).toMatchObject({ status: 422, retryable: false })
-    expect((refused as Error).message).toContain('validation_error')
-    expect((refused as Error).message).not.toContain(GUEST)
-    for (const status of [429, 500, 503]) {
-      const busy = await sender({ status, json: {} })
-        .sender.sendReceipt(MESSAGE)
-        .catch((caught: unknown) => caught)
-      expect(busy).toMatchObject({ status, retryable: true })
-    }
+  describe('what the service answers decides whether the same send could still work', () => {
+    const echo = `The \`to\` field ${GUEST} is invalid`
+    it.each([
+      [409, 'concurrent_idempotent_requests', true],
+      [409, 'invalid_idempotent_request', false],
+      [409, 'something_else', false],
+      [429, 'rate_limit_exceeded', true],
+      [429, 'daily_quota_exceeded', false],
+      [429, 'monthly_quota_exceeded', false],
+      [429, undefined, true],
+      [422, 'validation_error', false],
+      [400, 'missing_required_field', false],
+      [401, 'invalid_api_key', false],
+      [403, 'invalid_from_address', false],
+      [500, 'internal_server_error', true],
+      [503, undefined, true],
+    ] as [number, string | undefined, boolean][])(
+      '%s %s: retryable %s, and neither the message nor the address is repeated',
+      async (status, name, retryable) => {
+        const { error } = await thrownBy({
+          status,
+          json: name === undefined ? {} : { name, message: echo, statusCode: status },
+        })
+        expect(error).toBeInstanceOf(EmailSendError)
+        expect(error).toMatchObject({ status, retryable })
+        expect((error as Error).message).not.toContain(GUEST)
+        if (name !== undefined) expect((error as Error).message).toContain(name)
+      },
+    )
+
+    it('an answer that is not JSON still gives its status', async () => {
+      const { sender: send } = {
+        sender: createResendSender({
+          apiKey: KEY,
+          fromAddress: 'receipts@mail.restro.example',
+          fetch: async () => new Response('<html>bad gateway</html>', { status: 502 }),
+        }),
+      }
+      await expect(send.sendReceipt(MESSAGE)).rejects.toMatchObject({
+        status: 502,
+        retryable: true,
+      })
+    })
+
+    it('an error name that is not a plain code is not repeated', async () => {
+      const { error } = await thrownBy({ status: 422, json: { name: `bad ${GUEST}` } })
+      expect((error as Error).message).not.toContain(GUEST)
+      expect(error).toMatchObject({ status: 422, retryable: false })
+    })
+
+    it('an accepted message without an id in the answer is still accepted', async () => {
+      const { error } = await thrownBy({ status: 200, json: {} })
+      expect(error).toBeNull()
+    })
   })
 
-  it('cleans the venue name for a header and falls back to Restro', () => {
+  it('cleans the venue name for a header, cuts it by code point, and falls back to Restro', () => {
     expect(senderName('  Club <Нощ>, "Bar"; \\ ')).toBe('Club Нощ Bar')
     expect(senderName('\u0000‮')).toBe('Restro')
     expect(senderName('x'.repeat(200))).toHaveLength(60)
+    // Sixty-one emoji: cut at sixty whole ones, never a lone half of a pair.
+    const cut = senderName('😀'.repeat(61))
+    expect(Array.from(cut)).toHaveLength(60)
+    expect(cut).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/)
     expect(receiptWords('Club').subject).toContain('Club')
   })
+})
 
-  it('the fake sender remembers what it was given and can be told to fail', async () => {
+describe('the fake sender (tests only)', () => {
+  it('remembers what it was given and can be told to fail', async () => {
     const fake = createFakeEmailSender()
     await fake.sendReceipt(MESSAGE)
     expect(fake.sent).toEqual([MESSAGE])

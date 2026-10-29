@@ -143,7 +143,7 @@ describe('loadConfig', () => {
     expect(lines.join('\n')).not.toMatch(/s3cret|my-chat|plain/)
   })
 
-  it('reads the receipt email settings (#186), both or none, and keeps the key out of the errors', () => {
+  it('reads the receipt email settings (#186): the address switches it on and needs the key, the key alone does not', () => {
     const key = `re_${'k'.repeat(30)}`
     const from = 'receipts@mail.restro.example'
     expect(
@@ -155,7 +155,8 @@ describe('loadConfig', () => {
     ).toEqual({ apiKey: key, fromAddress: from })
     const names = (env: Record<string, string>) =>
       problemsOf({ DATABASE_URL: URL, ...env }).map((line) => line.split(' ')[0])
-    expect(names({ RESEND_API_KEY: key })).toEqual(['RECEIPT_FROM_ADDRESS'])
+    // The key alone is the stack's email key for other mail: receipts stay off.
+    expect(loadConfig({ DATABASE_URL: URL, RESEND_API_KEY: key }).receiptEmail).toBeNull()
     expect(names({ RECEIPT_FROM_ADDRESS: from })).toEqual(['RESEND_API_KEY'])
     const lines = problemsOf({
       DATABASE_URL: URL,

@@ -496,9 +496,12 @@ export const KIT_RECEIPT_EMAIL = 'kit-guest@example.test'
 /**
  * An electronic receipt on close (D127, #186), on a bill isolated as the payment route does it:
  *   - `electronicReceiptFile` is declared only with `electronicReceipt`;
- *   - where `electronicReceipt` is declared, a close with an email is done, and its result carries
- *     the POS's receipt file exactly where `electronicReceiptFile` is declared;
- *   - undeclared, a close with an email is refused `not_supported` and nothing reaches the POS.
+ *   - a close without an email gives no file and no receipt outcome, whatever is declared;
+ *   - where `electronicReceipt` is declared, a close with an email is done and says what became of
+ *     the receipt: `sent` (the POS sends it) or `file` (with the POS's file, only where
+ *     `electronicReceiptFile` is declared), or `not_issued`, never a claim of `sent` that is not so;
+ *   - undeclared, a close with an email is refused `not_supported` and nothing reaches the POS
+ *     (checked only where the POS can close at all: else the refusal could be for another reason).
  */
 export const electronicReceiptCheck: Check<WriteHarness> = async (harness) => {
   const connector: ServiceConnector = harness.connector
@@ -507,6 +510,34 @@ export const electronicReceiptCheck: Check<WriteHarness> = async (harness) => {
   if (caps.electronicReceiptFile && !caps.electronicReceipt) {
     problems.push('electronicReceiptFile is declared without electronicReceipt')
   }
+  const canClose = caps.closeWithPaymentType && isolationRoute(caps) !== 'none'
+  if (!canClose && !caps.electronicReceipt) return problems
+  if (!canClose) {
+    return [
+      ...problems,
+      'electronicReceipt is declared, but the POS cannot isolate a bill and close it',
+    ]
+  }
+
+  // A close without an email: the paper close, whatever is declared.
+  const paper = await tipSetUp(harness)
+  if (typeof paper === 'string') return [...problems, paper]
+  const plain = await connector.payAndClose(kitContext(harness), {
+    isolated: paper.handle,
+    amountMinor: paper.linesMinor,
+    tipMinor: 0,
+    paymentType: null,
+    ref: 'kit-close-paper',
+  })
+  problems.push(...outcomeProblems(CloseOutcomeSchema, 'the close without an email', plain))
+  if (plain.kind === 'done') {
+    if (plain.result.receiptFile !== undefined || plain.result.electronicReceipt !== undefined) {
+      problems.push('a close without an email gave an electronic receipt or a receipt file')
+    }
+  } else {
+    problems.push(`the close without an email came back ${describe(plain)}`)
+  }
+
   const setUp = await tipSetUp(harness)
   if (typeof setUp === 'string') return [...problems, setUp]
   const callsBefore = harness.pos.calls().length
@@ -537,12 +568,18 @@ export const electronicReceiptCheck: Check<WriteHarness> = async (harness) => {
   if (outcome.kind !== 'done') {
     return [...problems, `the close with an email came back ${describe(outcome)}`]
   }
-  const file = outcome.result.receiptFile
-  if (caps.electronicReceiptFile && file === undefined) {
-    problems.push('electronicReceiptFile is declared, but the close gave no receipt file')
-  }
-  if (!caps.electronicReceiptFile && file !== undefined) {
+  const { electronicReceipt, receiptFile } = outcome.result
+  if (electronicReceipt === undefined) {
+    problems.push('the close was given an email but did not say whether the receipt was issued')
+  } else if (electronicReceipt === 'file' && !caps.electronicReceiptFile) {
     problems.push('the close gives a receipt file, but electronicReceiptFile is not declared')
+  } else if (electronicReceipt === 'sent' && caps.electronicReceiptFile) {
+    problems.push(
+      "the close says 'sent', but electronicReceiptFile is declared: the file comes back",
+    )
+  }
+  if (caps.electronicReceiptFile && electronicReceipt === 'file' && receiptFile === undefined) {
+    problems.push("the close says 'file' but gave no receipt file")
   }
   return problems
 }

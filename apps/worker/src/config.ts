@@ -86,13 +86,15 @@ export interface WorkerConfig {
    */
   readonly alerts?: AlertsConfig
   /**
-   * The email service the venue's electronic receipt goes through (RESEND_API_KEY and
-   * RECEIPT_FROM_ADDRESS, #186), or null: no receipt file is emailed. Never logged: a secret.
+   * The email service the venue's electronic receipt goes through (#186), or null: no receipt file
+   * is emailed. RECEIPT_FROM_ADDRESS switches receipt emails on; RESEND_API_KEY is the stack's one
+   * email key (it will serve login links and the digest too) and is needed only when that is set.
+   * Never logged: a secret.
    */
   readonly receiptEmail?: ReceiptEmailConfig | null
 }
 
-/** Where a receipt file is emailed from (#186; D127): both settings, or none. */
+/** Where a receipt file is emailed from (#186; D127). */
 export interface ReceiptEmailConfig {
   /** The email service's API key. A secret. */
   readonly apiKey: string
@@ -209,8 +211,7 @@ const BAD_TELEGRAM_CHAT = 'must be a Telegram chat id: digits, with a minus sign
 const BAD_HEALTHCHECKS_URL = 'must be an https:// address.'
 const BAD_RESEND_KEY = 'must be a Resend API key (it starts with re_).'
 const BAD_RECEIPT_FROM = 'must be one email address on the sending domain verified with Resend.'
-const RESEND_KEY_MISSING = 'is not set. It goes with RECEIPT_FROM_ADDRESS.'
-const RECEIPT_FROM_MISSING = 'is not set. It goes with RESEND_API_KEY.'
+const RESEND_KEY_MISSING = 'is not set. Receipt emails (RECEIPT_FROM_ADDRESS) need it.'
 const BAD_VAPID_PUBLIC_KEY =
   'must be a base64url public key (pnpm exec web-push generate-vapid-keys).'
 const BAD_VAPID_PRIVATE_KEY = 'must be a base64url private key. It goes with VAPID_PUBLIC_KEY.'
@@ -439,9 +440,6 @@ function environmentSchema(defaultWorkerId: () => string) {
       if (env.VAPID_PUBLIC_KEY !== undefined && env.VAPID_SUBJECT === undefined) {
         issue('VAPID_SUBJECT', BAD_VAPID_SUBJECT)
       }
-      if (env.RESEND_API_KEY !== undefined && env.RECEIPT_FROM_ADDRESS === undefined) {
-        issue('RECEIPT_FROM_ADDRESS', RECEIPT_FROM_MISSING)
-      }
       if (env.RESEND_API_KEY === undefined && env.RECEIPT_FROM_ADDRESS !== undefined) {
         issue('RESEND_API_KEY', RESEND_KEY_MISSING)
       }
@@ -577,7 +575,7 @@ function describeIssue(issue: z.core.$ZodIssue): string {
  * | `TELEGRAM_BOT_TOKEN` | the alerts bot's token (#83); without it nothing goes to Telegram | unset |
  * | `TELEGRAM_TEAM_CHAT_ID` | the Restro team's Telegram chat; without it the team is not messaged | unset |
  * | `HEALTHCHECKS_PING_URL` | the https address pinged every minute (the outside watchdog) | unset |
- * | `RESEND_API_KEY`, `RECEIPT_FROM_ADDRESS` | the email service for the venue's electronic receipt (both, or none); without them no receipt file is emailed (#186) | unset |
+ * | `RESEND_API_KEY`, `RECEIPT_FROM_ADDRESS` | the email service for the venue's electronic receipt ; RECEIPT_FROM_ADDRESS switches receipt emails on and needs the key; without it no receipt file is emailed (#186) | unset |
  * | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Web Push identity (all three, or none) | unset |
  */
 export function loadConfig(

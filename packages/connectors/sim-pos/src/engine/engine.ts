@@ -736,10 +736,15 @@ export class SimEngine {
     return {
       bill: bill.id,
       ...(receipt !== null && s.receiptNumberOnClose ? { receipt } : {}),
-      // The POS's own file, where it returns it rather than sending: with a receipt printed.
-      ...(receipt !== null && call.receiptEmail !== null && s.electronicReceiptFile
-        ? { receiptFile: receiptFileOf(receipt) }
-        : {}),
+      ...(call.receiptEmail === null
+        ? {}
+        : {
+            // Issued only with a receipt printed; the file shape returns the POS's own file.
+            electronicReceipt: receipt === null ? 'not_issued' : 'issued',
+            ...(receipt !== null && s.electronicReceiptFile
+              ? { receiptFile: receiptFileOf(receipt) }
+              : {}),
+          }),
     }
   }
 

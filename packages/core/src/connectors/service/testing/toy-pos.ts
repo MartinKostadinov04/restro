@@ -402,11 +402,15 @@ export function toyConnector(pos: ToyPos, capabilities = TOY_CAPABILITIES): Serv
           return { kind: 'done', result: { receiptNumber: null } }
         if (!capabilities.electronicReceiptFile) {
           pos.receiptsSent.push(request.receiptEmail)
-          return { kind: 'done', result: { receiptNumber: null } }
+          return { kind: 'done', result: { receiptNumber: null, electronicReceipt: 'sent' } }
         }
         return {
           kind: 'done',
-          result: { receiptNumber: null, receiptFile: TOY_RECEIPT_FILE },
+          result: {
+            receiptNumber: null,
+            electronicReceipt: 'file',
+            receiptFile: TOY_RECEIPT_FILE,
+          },
         }
       })
     },

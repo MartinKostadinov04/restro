@@ -72,8 +72,9 @@ export interface ServiceConnector extends ServiceReader {
    * Adding the tip is part of taking the payment, as a waiter does at the till (D110). A second
    * close is refused. With a `receiptEmail` it asks the POS for the sale as an electronic receipt
    * (`electronicReceipt`, D127): the POS sends it, or, with `electronicReceiptFile`, the result
-   * carries the POS's file for Restro to send. Undeclared, an email is refused `not_supported`
-   * before any write. The email goes nowhere but into that one call.
+   * carries the POS's file for Restro to send. The result says which came of it
+   * (`electronicReceipt`: `sent`, `file` or `not_issued`). Undeclared, an email is refused
+   * `not_supported` before any write. The email goes nowhere but into that one call.
    */
   payAndClose(
     ctx: ServiceContext,

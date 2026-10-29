@@ -12,8 +12,10 @@ import {
   FloorSchema,
   OrderQuantitySchema,
   PayAndCloseRequestSchema,
+  PayAndCloseResultSchema,
   RefusalSchema,
   readingSchema,
+  safeReceiptFile,
   writeOutcomeSchema,
 } from './schemas'
 import { SERVICE_TIMING_SOURCES, SERVICE_TIMINGS, ServiceTimingsSchema } from './timings'
@@ -126,5 +128,56 @@ describe('the seam schemas', () => {
     for (const actions of Object.values(SERVICE_WRITE_STEPS)) {
       for (const action of actions) expect(WAITER_ACTIONS).toContain(action)
     }
+  })
+})
+
+describe('the receipt file a connector passes on (#186)', () => {
+  const pdf = Buffer.from('%PDF-1.4 receipt').toString('base64')
+  const file = { filename: 'receipt-1.pdf', contentType: 'application/pdf', contentBase64: pdf }
+
+  it('passes a good file on unchanged', () => {
+    expect(safeReceiptFile(file)).toStrictEqual(file)
+  })
+
+  it('makes the name safe and unwraps base64 lines rather than refusing the file', () => {
+    expect(safeReceiptFile({ ...file, filename: 'my receipt.pdf' })?.filename).toBe(
+      'my_receipt.pdf',
+    )
+    expect(safeReceiptFile({ ...file, filename: '../../etc/passwd' })?.filename).toBe('etc_passwd')
+    expect(safeReceiptFile({ ...file, filename: 'бележка.pdf' })?.filename).toMatch(
+      /^[A-Za-z0-9._-]+$/,
+    )
+    expect(safeReceiptFile({ ...file, filename: '!!!' })?.filename).toBe('receipt')
+    expect(safeReceiptFile({ ...file, filename: 'x'.repeat(500) })?.filename).toHaveLength(120)
+    const wrapped = `${pdf.slice(0, 8)}\r\n${pdf.slice(8)}`
+    expect(safeReceiptFile({ ...file, contentBase64: wrapped })?.contentBase64).toBe(pdf)
+  })
+
+  it('is null, never a throw, for anything it cannot pass on', () => {
+    for (const bad of [
+      null,
+      'a string',
+      {},
+      { ...file, contentType: 'application/octet-stream' },
+      { ...file, contentBase64: 'not base64!' },
+      { ...file, contentBase64: 'A'.repeat(2_800_000) },
+      { ...file, contentBase64: 42 },
+      { ...file, filename: undefined },
+    ]) {
+      expect(safeReceiptFile(bad)).toBeNull()
+    }
+  })
+
+  it('a result carries a file exactly with the outcome file', () => {
+    const parsed = (result: unknown) => PayAndCloseResultSchema.safeParse(result).success
+    expect(parsed({ receiptNumber: null })).toBe(true)
+    expect(parsed({ receiptNumber: null, electronicReceipt: 'sent' })).toBe(true)
+    expect(parsed({ receiptNumber: null, electronicReceipt: 'not_issued' })).toBe(true)
+    expect(parsed({ receiptNumber: null, electronicReceipt: 'file', receiptFile: file })).toBe(true)
+    expect(parsed({ receiptNumber: null, electronicReceipt: 'file' })).toBe(false)
+    expect(parsed({ receiptNumber: null, electronicReceipt: 'sent', receiptFile: file })).toBe(
+      false,
+    )
+    expect(parsed({ receiptNumber: null, receiptFile: file })).toBe(false)
   })
 })

@@ -24,14 +24,28 @@ const AMOUNT = 900
 
 type Harness = WriteHarness & { readonly engine: SimEngine }
 
-function receiptHarness(changes: Partial<SimSwitches>): Harness {
+/** The POS's close answer as the wire sends it; a test may change it before the connector reads it. */
+type CloseAnswer = Record<string, unknown>
+
+function receiptHarness(
+  changes: Partial<SimSwitches>,
+  changeAnswer: (answer: CloseAnswer) => CloseAnswer = (answer) => answer,
+): Harness {
   const clock = new ManualClock()
   const engine = new SimEngine({ switches: switchesOf('pilot', changes), clock })
+  const direct = inProcessTransport(engine)
   const harness = simPosHarness({
     name: 'receipt',
     engine,
     clock,
-    transport: inProcessTransport(engine),
+    transport: async (request) => {
+      const response = await direct(request)
+      if (!request.path.endsWith('/close') || response.status !== 200) return response
+      return {
+        ...response,
+        body: JSON.stringify(changeAnswer(JSON.parse(response.body) as CloseAnswer)),
+      }
+    },
   })
   return { ...harness, engine }
 }
@@ -90,6 +104,7 @@ describe('the electronic receipt on close (D127, #186)', () => {
     })
     const outcome = await connector.payAndClose(ctx, close(handle, GUEST))
     if (outcome.kind !== 'done') throw new Error(`the close came back ${outcome.kind}`)
+    expect(outcome.result.electronicReceipt).toBe('sent')
     expect(outcome.result.receiptFile).toBeUndefined()
     const bill = engine.state.bills.find((b) => b.id === handle.ref.pos)
     expect(bill?.receipt).toMatchObject({ email: GUEST, delivery: 'sent' })
@@ -109,6 +124,7 @@ describe('the electronic receipt on close (D127, #186)', () => {
     const outcome = await connector.payAndClose(ctx, close(handle, GUEST))
     if (outcome.kind !== 'done') throw new Error(`the close came back ${outcome.kind}`)
     const file = outcome.result.receiptFile
+    expect(outcome.result.electronicReceipt).toBe('file')
     expect(file).toMatchObject({ contentType: 'application/pdf' })
     expect(file?.filename).toBe(`receipt-${outcome.result.receiptNumber}.pdf`)
     expect(Buffer.from(file?.contentBase64 ?? '', 'base64').toString()).toContain(
@@ -124,8 +140,49 @@ describe('the electronic receipt on close (D127, #186)', () => {
     const outcome = await connector.payAndClose(ctx, close(handle))
     if (outcome.kind !== 'done') throw new Error(`the close came back ${outcome.kind}`)
     expect(outcome.result.receiptFile).toBeUndefined()
+    expect(outcome.result.electronicReceipt).toBeUndefined()
     const bill = engine.state.bills.find((b) => b.id === handle.ref.pos)
     expect(bill?.receipt).toMatchObject({ email: null, delivery: null })
+  })
+
+  it.each([
+    { shape: 'the POS sends it', changes: {} },
+    { shape: 'the close returns the file', changes: { electronicReceiptFile: true } },
+  ])(
+    'the printer is down ($shape): the close is done, the receipt is not issued, no file comes back',
+    async ({ changes }) => {
+      const harness = receiptHarness({ electronicReceipt: true, ...changes })
+      const { ctx, connector, handle, engine } = await isolated(harness)
+      engine.waiter.setPrinterDown(true)
+      const outcome = await connector.payAndClose(ctx, close(handle, GUEST))
+      if (outcome.kind !== 'done') throw new Error(`the close came back ${outcome.kind}`)
+      expect(outcome.result).toStrictEqual({ receiptNumber: null, electronicReceipt: 'not_issued' })
+      const bill = engine.state.bills.find((b) => b.id === handle.ref.pos)
+      expect(bill?.state).toBe('closed')
+      expect(bill?.receipt).toMatchObject({ email: null, delivery: null })
+    },
+  )
+
+  it.each([
+    ['a Cyrillic filename', { filename: 'бележка 1.pdf' }, 'file'],
+    ['a spaced filename', { filename: 'my receipt.pdf' }, 'file'],
+    ['wrapped base64', { contentBase64: 'JVBERi0x\nLjQg\r\nc2lt' }, 'file'],
+    ['an octet-stream type', { contentType: 'application/octet-stream' }, 'not_issued'],
+    ['a file too large', { contentBase64: 'A'.repeat(2_800_000) }, 'not_issued'],
+    ['bytes that are not base64', { contentBase64: 'not base64 at all!' }, 'not_issued'],
+    ['no file at all', { filename: undefined, contentBase64: undefined }, 'not_issued'],
+  ])('%s never turns a finished close into unknown', async (_name, change, expected) => {
+    const harness = receiptHarness(
+      { electronicReceipt: true, electronicReceiptFile: true, receiptNumberOnClose: true },
+      (answer) => ({ ...answer, receiptFile: { ...(answer.receiptFile as object), ...change } }),
+    )
+    const { ctx, connector, handle, engine } = await isolated(harness)
+    const outcome = await connector.payAndClose(ctx, close(handle, GUEST))
+    if (outcome.kind !== 'done') throw new Error(`the close came back ${outcome.kind}`)
+    expect(outcome.result.electronicReceipt).toBe(expected)
+    expect(outcome.result.receiptFile !== undefined).toBe(expected === 'file')
+    expect(outcome.result.receiptFile?.filename ?? '').toMatch(/^[A-Za-z0-9._-]*$/)
+    expect(engine.state.bills.find((b) => b.id === handle.ref.pos)?.state).toBe('closed')
   })
 
   it('the POS issues no electronic receipt: an email is refused not_supported before any write', async () => {
