@@ -4,9 +4,10 @@
 //                    (it declares that it closes a bill with a payment type and moves lines to a
 //                    payment table, so Settings lists Paying), three tables, an owner, and a
 //                    member whose role may not connect payments (the read-only view). Idempotent.
-//   account <state>  `none` (never connected: the venue's payment account, ticks, legal details and
-//                    smallest card payment removed) or `connected` (an account the provider has
-//                    not finished: its name, no card payments yet).
+//
+// The venue's payment account is set by `e2e/paying-account.ts`: the paying tables are written by
+// core/service alone (write-targets.test.ts), and fixtures in an `e2e` folder are the one place a
+// test sets one up, as the pay harness does.
 //
 // Written the way the service paths write it, as the database owner. Like `db:seed:dev` this
 // refuses to run unless NODE_ENV is development and the database is on this machine. No provider
@@ -69,20 +70,6 @@ function ownerPool(): pg.Pool {
   if (!url) throw new Error('seed-paying-e2e needs DATABASE_URL_OWNER (see .env.example).')
   assertDevEnvironment({ ...process.env, DATABASE_URL: url })
   return new pg.Pool({ connectionString: url, max: 1 })
-}
-
-async function target(): Promise<{ tenantId: string; venueId: string }> {
-  const [organization] = await getAuthDb()
-    .select({ id: authOrganization.id })
-    .from(authOrganization)
-    .where(eq(authOrganization.slug, ORGANIZATION.slug))
-    .limit(1)
-  if (!organization) throw new Error('Run the `seed` step first: there is no Paying Club.')
-  const [venue] = await withTenant(getPool(), organization.id, (tx) =>
-    tx.select({ id: venues.id }).from(venues).where(eq(venues.slug, VENUE.slug)).limit(1),
-  )
-  if (!venue) throw new Error('Run the `seed` step first: there is no venue.')
-  return { tenantId: organization.id, venueId: venue.id }
 }
 
 async function seed(): Promise<void> {
@@ -223,38 +210,8 @@ async function seed(): Promise<void> {
   }
 }
 
-async function account(state: string): Promise<void> {
-  if (state !== 'none' && state !== 'connected') {
-    throw new Error('account <none|connected>')
-  }
-  const { tenantId, venueId } = await target()
-  const owner = ownerPool()
-  try {
-    await owner.query('delete from restro.payment_accounts where venue_id = $1', [venueId])
-    await owner.query(
-      `update restro.venues set settings = settings - 'legalDetails' - 'paying' where id = $1`,
-      [venueId],
-    )
-    if (state === 'connected') {
-      await owner.query(
-        `insert into restro.payment_accounts
-           (tenant_id, venue_id, provider_kind, account_ref, state, account_name, checks, connected_at, source, actor, job_id)
-         values ($1, $2, 'sim-pay', 'simpay_seed_1', 'connected', 'Paying Club Ltd', '{"cardPayments":false,"missing":["business details"]}'::jsonb, now(), $3, $4, $5)`,
-        [tenantId, venueId, ...SEED],
-      )
-    }
-  } finally {
-    await owner.end()
-  }
-}
-
-const [step, argument] = process.argv.slice(2)
-const run =
-  step === 'seed'
-    ? seed()
-    : step === 'account' && argument !== undefined
-      ? account(argument)
-      : Promise.reject(new Error('seed | account <none|connected>'))
+const [step] = process.argv.slice(2)
+const run = step === 'seed' ? seed() : Promise.reject(new Error('seed'))
 run
   .then(async () => {
     await getPool().end()

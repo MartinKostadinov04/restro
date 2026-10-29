@@ -78,7 +78,7 @@ async function snapshot(page: Page, name: string) {
 
 test('seeds the venue and finds it', async ({ browser }) => {
   runScript('./scripts/seed-paying-e2e.ts', 'seed')
-  runScript('./scripts/seed-paying-e2e.ts', 'account', 'none')
+  runScript('./e2e/paying-account.ts', 'none')
   const { context, page } = await open(browser, OWNER)
   await page
     .getByRole('link', { name: new RegExp(PAYING_VENUE) })
@@ -207,7 +207,7 @@ test('Disconnect asks first, then the venue is as never connected', async ({ bro
 })
 
 test('a role without the right sees everything read-only', async ({ browser }) => {
-  runScript('./scripts/seed-paying-e2e.ts', 'account', 'connected')
+  runScript('./e2e/paying-account.ts', 'connected')
   const { context, page } = await open(browser, VIEWER, 390, 844)
   await page.goto(paying())
   const panel = page.getByTestId('paying-panel')
