@@ -3,11 +3,12 @@
 // `readPaymentDetail` by pure functions so the rows, the words and the roles can be tested without a
 // database. Plain data, safe to send to the browser: our ids and public fields only (rule 3), times
 // as text in the venue's zone, money as minor units.
-import type {
-  NightPayFix,
-  NightPaymentRow,
-  NightPayments,
-  PaymentDetail,
+import {
+  type NightPayFix,
+  type NightPaymentRow,
+  type NightPayments,
+  type PaymentDetail,
+  paymentNumberOf,
 } from '@restro/core/service'
 
 import { clockIn, type WhoView, whoView } from './night-view'
@@ -96,6 +97,7 @@ export interface PaymentsView {
   /** A payment charged with no receipt number: a line, no answer. */
   readonly noReceipt: readonly {
     readonly paymentId: string
+    readonly paymentNumber: string
     readonly table: string
     readonly numbered: boolean
   }[]
@@ -166,6 +168,7 @@ export function paymentsView(read: NightPayments, timezone: string): PaymentsVie
       .filter((fix) => fix.problem === 'no_receipt')
       .map((fix) => ({
         paymentId: fix.payment.id,
+        paymentNumber: paymentNumberOf(fix.payment.id),
         table: fix.payment.table,
         numbered: fix.payment.numbered,
       })),

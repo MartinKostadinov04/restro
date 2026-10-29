@@ -153,6 +153,24 @@ describe('the message at the close of the service day', () => {
     )
   })
 
+  it('gives a payment charged with no receipt number its payment number (#200)', () => {
+    const payments = {
+      taken: 1,
+      fix: [{ table: 'Table 7', what: 'no_receipt' as const, paymentNumber: 'KQ7MD' }],
+    }
+    expect(nightMessage('en', { ...base, fix: [], payments })).toContain(
+      '· Payment, Table 7: charged, no receipt number · payment KQ7MD',
+    )
+    // Without a number the line reads as before.
+    expect(
+      nightMessage('en', {
+        ...base,
+        fix: [],
+        payments: { taken: 1, fix: [{ table: 'Table 7', what: 'no_receipt' as const }] },
+      }),
+    ).toMatch(/· Payment, Table 7: charged, no receipt number$/)
+  })
+
   it('lists the receipts not brought by table and payment number, with no amount (#200)', () => {
     const payments = {
       taken: 2,

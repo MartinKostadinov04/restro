@@ -480,13 +480,26 @@ describe.skipIf(!hasDatabase)('Bring the receipt (as the restro_app role)', () =
     if (!read.ok) throw new Error(read.code)
     expect(read.payments.notBrought.map((entry) => entry.paymentId)).toEqual([left])
     expect(read.payments.notBrought[0]?.paymentNumber).toBe(paymentNumberOf(left))
+    // A payment charged with no receipt number carries its payment number too, so a reader sees it
+    // is the same payment as its "receipt not brought" line.
+    const noNumber = await closed(null, 1, '2002-03-04')
+    await capture(noNumber)
+    await run(brought(noNumber), context(user(staffId)))
+    const withNumbers = await readNightPaymentsReport(world.app, {
+      tenantId: world.tenantId,
+      venueId: world.venueId,
+      day: '2002-03-04',
+    })
+    expect(withNumbers.fix).toContainEqual(
+      expect.objectContaining({ what: 'no_receipt', paymentNumber: paymentNumberOf(noNumber) }),
+    )
     // The group's message gets the table and the number, never an amount.
     const report = await readNightPaymentsReport(world.app, {
       tenantId: world.tenantId,
       venueId: world.venueId,
       day: '2002-03-04',
     })
-    expect(report.fix).toEqual([
+    expect(report.fix.filter((line) => line.what === 'receipt_not_brought')).toEqual([
       expect.objectContaining({
         what: 'receipt_not_brought',
         number: '2',

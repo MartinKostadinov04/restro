@@ -2069,7 +2069,7 @@
       "restro_pause": "Restro lifts this pause by itself. You don't need to do anything.",
       "bar_missing": "That bar is gone. The page will refresh.",
       "alert_missing": "That alert is already closed.",
-      "no_receipt_to_bring": "That receipt is already brought. The page will refresh.",
+      "no_receipt_to_bring": "There's no receipt to bring for this payment. The page will refresh.",
       "venue_missing": "This venue isn't available any more.",
       "invalid": "Not saved. Reload the page and try again."
     },

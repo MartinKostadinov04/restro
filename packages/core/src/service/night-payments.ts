@@ -764,7 +764,16 @@ export async function readNightPaymentsReport(
             problem === 'unconfirmed' && questionOf(row.reason) === 'lines_not_back'
               ? 'lines_not_back'
               : problem
-          return [{ name: row.tableName, number: row.tableNumber, what }]
+          // A payment with no receipt number carries its payment number, so a reader sees it is the
+          // same payment as its "receipt not brought" line.
+          return [
+            {
+              name: row.tableName,
+              number: row.tableNumber,
+              what,
+              ...(what === 'no_receipt' ? { paymentNumber: paymentNumberOf(row.id) } : {}),
+            },
+          ]
         }),
         ...notBrought.map((row) => ({
           name: row.name,
