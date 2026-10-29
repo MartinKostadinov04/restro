@@ -807,6 +807,9 @@ export function paymentCaptured() {
       outcome: z.enum(['captured', 'refused']),
       capturedMinor: MinorSchema.nullable(),
       code: CodeSchema.nullable(),
+      // #186 sets it when the guest's electronic receipt was sent: no paper receipt is then
+      // brought (#200). Until the worker passes it, every capture raises "Bring the receipt".
+      electronicReceipt: z.boolean().default(false),
     }),
     origins: ['worker'],
     permission: null,
@@ -826,7 +829,16 @@ export function paymentCaptured() {
         if (captured === null || payment.amountMinor === null || captured > payment.amountMinor) {
           return refused(null, 'payment_mismatch', { reason: 'captured_amount' })
         }
-        await move(stx, locked, 'captured', { capturedMinor: captured })
+        // A paper receipt is to be brought when the close gave its number and none was sent by
+        // email (#200); a capture with no number is the end of night's "no receipt number" fix.
+        const toBring = payment.receiptNumber !== null && !command.electronicReceipt
+        await move(
+          stx,
+          locked,
+          'captured',
+          { capturedMinor: captured, ...(toBring ? { receiptToBringAt: await stx.dbNow() } : {}) },
+          toBring ? { receiptToBring: true } : undefined,
+        )
         return at(payment, 'captured', true)
       }
       await move(stx, locked, 'capture_failed', { reason: command.code ?? 'capture_refused' })

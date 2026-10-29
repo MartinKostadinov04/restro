@@ -22,6 +22,8 @@ export const LOG_KIND_GROUP = {
   'waiter_call.called': 'orders',
   'waiter_call.done': 'orders',
   'waiter_call.lapsed': 'orders',
+  // Handled-like staff work at a table (the Money filter holds the payment's own kinds).
+  'receipt.brought': 'orders',
   'service_day.closed': 'orders',
   'payment.state': 'money',
   'payment.answered': 'money',

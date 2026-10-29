@@ -2688,6 +2688,14 @@ export const payments = restro.table(
     /** Dispute evidence read from the provider at capture: the bank's check and its code. */
     threeDsResult: text('three_ds_result'),
     authorisationCode: text('authorisation_code'),
+    /**
+     * When the venue's paper receipt became one to bring (#200): set at capture, when the receipt
+     * number was read and no electronic receipt was sent. Null for any other payment.
+     */
+    receiptToBringAt: timestamp('receipt_to_bring_at', { withTimezone: true }),
+    /** When staff marked the paper receipt Brought, and the account that did (the shared device's own, or a person). */
+    receiptBroughtAt: timestamp('receipt_brought_at', { withTimezone: true }),
+    receiptBroughtBy: text('receipt_brought_by'),
     /** When it reached a final state. */
     settledAt: timestamp('settled_at', { withTimezone: true }),
     /** Set when it is final: 18 months on (D122 §8, D127 4.2); the purge only compares it. */
@@ -2730,6 +2738,10 @@ export const payments = restro.table(
     index('payments_open_idx').on(t.venueId, t.state).where(sql`${t.settledAt} is null`),
     index('payments_table_id_created_at_idx').on(t.tableId, t.createdAt.desc()),
     index('payments_retain_until_idx').on(t.retainUntil),
+    // "Bring the receipt" on Tonight and the end of night: the receipts not marked Brought (#200).
+    index('payments_receipt_open_idx')
+      .on(t.venueId, t.serviceDate)
+      .where(sql`${t.receiptToBringAt} is not null and ${t.receiptBroughtAt} is null`),
     check('payments_id_format', sql`${t.id} ~ '^py_[0-9A-Za-z]+$'`),
     check('payments_kind', sql`${t.kind} in ('on_bill', 'pay_first')`),
     check('payments_state', sql`${t.state} in ${sqlWords(PAYMENT_STATES)}`),
@@ -2769,6 +2781,10 @@ export const payments = restro.table(
     check(
       'payments_evidence',
       sql`(${t.threeDsResult} is null or ${t.threeDsResult} ~ ${NAME_PATTERN}) and (${t.authorisationCode} is null or char_length(${t.authorisationCode}) between 1 and 64)`,
+    ),
+    check(
+      'payments_receipt_brought',
+      sql`(${t.receiptBroughtAt} is null) = (${t.receiptBroughtBy} is null) and (${t.receiptBroughtAt} is null or ${t.receiptToBringAt} is not null) and (${t.receiptBroughtBy} is null or ${t.receiptBroughtBy} ~ ${SERVICE_ACTOR_PATTERN}) and (${t.receiptToBringAt} is null or ${t.receiptNumber} is not null)`,
     ),
     check(
       'payments_form_values',
