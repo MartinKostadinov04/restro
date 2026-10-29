@@ -14,7 +14,6 @@ import {
   eur,
   fakeHost,
   orderingView,
-  receiptOf,
   resetPage,
   text,
 } from './test-kit'
@@ -176,20 +175,11 @@ describe('the bill sheet', () => {
     expect(within(sheet).queryByRole('button', { name: /^Pay/ })).toBeNull()
   })
 
-  it('offers "Pay" and the receipt only when the venue has pay on', () => {
+  it('offers "Pay" only when the venue has pay on', () => {
     const noPay = { ...view, features: { ...view.features, pay: false } }
-    drawFace(fakeHost({ bill: billOf([staff], 1850), receipt: receiptOf() }), noPay)
+    drawFace(fakeHost({ bill: billOf([staff], 1850) }), noPay)
     const sheet = openBill()
     expect(within(sheet).queryByRole('button', { name: /^Pay/ })).toBeNull()
-    expect(within(sheet).queryByRole('button', { name: 'View receipt' })).toBeNull()
-  })
-
-  it('offers the receipt once the host has one', () => {
-    drawFace(fakeHost({ bill: billOf([staff], 0), receipt: receiptOf() }))
-    const sheet = openBill()
-    fireEvent.click(within(sheet).getByRole('button', { name: 'View receipt' }))
-    expect(screen.getByRole('dialog', { name: 'Receipt' })).toBeTruthy()
-    expect(screen.queryByRole('dialog', { name: 'Table order' })).toBeNull()
   })
 
   it('draws the bill in Bulgarian, with the words of the language', () => {

@@ -26,6 +26,7 @@ import {
   sectionDomId,
   themeVariables,
 } from './model'
+import { PayPanel } from './pay-panel'
 import { OrderPanel, useOrderCommands } from './table-order'
 
 /**
@@ -452,6 +453,18 @@ export function QrPhoneFace(props: QrPhoneFaceProps) {
             </div>
           ) : null}
         </main>
+
+        {orderingOn ? (
+          <PayPanel
+            services={services}
+            locale={locale}
+            words={stringsFor(locale).services.paying}
+            serviceWords={serviceStrings}
+            tableText={tableLabel == null ? null : strings.table(tableLabel)}
+            callWaiter={view.features.callWaiter !== null}
+            send={send}
+          />
+        ) : null}
 
         {orderingOn ? (
           <OrderPanel

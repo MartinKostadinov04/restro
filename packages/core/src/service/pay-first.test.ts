@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import { projectGuestState } from './guest'
-import { billIsRound, payFirstCheck, payFirstStateOf, payFirstTableNote } from './pay-first'
+import {
+  billIsRound,
+  payFirstCheck,
+  payFirstStateOf,
+  payFirstTableNote,
+  payingStateOf,
+} from './pay-first'
 import type { TableStateRead } from './read'
 
 type Connection = Parameters<typeof payFirstStateOf>[1]
@@ -25,6 +31,20 @@ describe('whether a table offers pay-first items (#113, #114)', () => {
     expect(payFirstStateOf(open, connection('lost_access'), false)).toBe('paused')
     expect(payFirstStateOf(open, connection(), true)).toBe('paused')
     expect(payFirstStateOf(open, connection(), false)).toBe('on')
+  })
+})
+
+describe('whether paying on the bill is offered (#114)', () => {
+  it('is off until the venue is connected and every check passes, with no provider none', () => {
+    expect(payingStateOf(connection('connected', false), false)).toBe('off')
+    expect(payingStateOf(connection('connected', true, null), false)).toBe('off')
+  })
+
+  it('is paused while the account lost access or paying is paused, else on', () => {
+    expect(payingStateOf(connection('lost_access'), false)).toBe('paused')
+    expect(payingStateOf(connection('lost_access', false), false)).toBe('paused')
+    expect(payingStateOf(connection(), true)).toBe('paused')
+    expect(payingStateOf(connection(), false)).toBe('on')
   })
 })
 
@@ -153,6 +173,7 @@ describe("what the phone hears of a pay-first round's sent order (#113)", () => 
     pauses: [],
     notesAndOptions: true,
     payFirst: { state: 'on', items: new Set(['nd_gin']) },
+    paying: { state: 'on', provider: 'sim-pay', minCardMinor: 50 },
     reading: null,
     bill: null,
     backendValues: new Set(),
@@ -166,5 +187,17 @@ describe("what the phone hears of a pay-first round's sent order (#113)", () => 
       'so_on_bill_unconfirmed',
       'so_on_bill_added',
     ])
+  })
+
+  it('tells a round on the POS whose payment ended "No receipt" apart: ordered, not paid (#114)', () => {
+    const withUnpaid = {
+      ...read,
+      sentOrders: [
+        { ...sent('pay_first', 'added'), unpaid: true },
+        { ...sent('on_bill', 'added'), unpaid: false },
+      ],
+    } as unknown as TableStateRead
+    const shown = projectGuestState(withUnpaid, 'order').sentOrders
+    expect(shown.map((one) => one.unpaid)).toEqual([true, undefined])
   })
 })

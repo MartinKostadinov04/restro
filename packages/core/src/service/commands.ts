@@ -94,6 +94,7 @@ import {
 import { paymentObserve } from './payment-observe'
 import { preOpeningAlert } from './pre-opening'
 import { recordReading } from './readings'
+import { receiptBrought, receiptUnbrought } from './receipt-brought'
 import { sendOrder } from './send'
 import { SENT_ORDER_COMMANDS } from './sent-order'
 import { sentOrderAnswer } from './sent-order-answer'
@@ -406,6 +407,10 @@ export const SERVICE_COMMANDS = {
     idempotency: 'by_nature',
     handle: waiterCallDone,
   }),
+  // #200: staff mark a captured payment's paper receipt Brought (no PIN on a shared device), and
+  // Undo it.
+  'receipt.brought': receiptBrought(),
+  'receipt.unbrought': receiptUnbrought(),
   // #70: the one writer of `tables.code_generation`. A repeat issues yet another code, which is
   // what a manager pressing "new code" twice asks for.
   'table_code.reissue': defineCommand({

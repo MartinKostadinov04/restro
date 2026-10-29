@@ -97,6 +97,8 @@ export const SENTENCES = {
     c.say('lg_call_done', { table: c.table(l), kinds: callKindsText(c.say, l.callKinds) }),
   'waiter_call.lapsed': (l, c) =>
     c.say('lg_call_lapsed', { table: c.table(l), kinds: callKindsText(c.say, l.callKinds) }),
+  // Screen 1's `r_toast`, as Martin confirmed for the Log (#200). Undo's line is worded in phase 2.
+  'receipt.brought': (l, c) => c.say('lg_receipt_brought', { table: c.table(l) }),
   'service_day.closed': (l, c) => c.say('lg_day_closed', { n: l.sentOrdersOfDay ?? 0 }),
   'guard.tripped': (l, c) => c.say('lg_guard', { what: c.say(`lg_g_${l.guard ?? 'other'}`) }),
   'settings.changed': (l, c) =>
