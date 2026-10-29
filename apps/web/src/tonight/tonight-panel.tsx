@@ -40,6 +40,7 @@ import type { TonightView } from '@/server/tonight/view'
 
 import { ActionRowItem, OutOfStockNotice, useAgo } from './action-rows'
 import { callKindsText } from './call-kinds'
+import { useMoney } from './money'
 import { moneyTitleKey } from './money-rows'
 import { PauseBanners } from './pause-banners'
 import { RunProvider, useTonightRun, wroteSomething } from './run'
@@ -150,6 +151,7 @@ function PauseMenu({ view }: { view: TonightView }) {
 
 function Content({ view }: { view: TonightView }) {
   const t = useTranslations('tonight')
+  const money = useMoney()
   const router = useRouter()
   const { run, busy } = useTonightRun()
   const ago = useAgo(view.now)
@@ -188,16 +190,25 @@ function Content({ view }: { view: TonightView }) {
                 })
               : row.kind === 'receipt'
                 ? t('r_t')
-                : row.kind === 'paused'
-                  ? t('g_t', { table: tableName(row.table, row.numbered) })
-                  : row.kind === 'approval'
-                    ? t('a_t')
-                    : t('s_t'),
+                : row.kind === 'storno'
+                  ? t('st_t', { source: view.source })
+                  : row.kind === 'dispute'
+                    ? t('d_t')
+                    : row.kind === 'refund_failed'
+                      ? t('rf_fail_t', {
+                          amt: money(row.refundFailed?.amountMinor ?? 0, view.currency),
+                          provider: view.provider ?? t('pb_provider_none'),
+                        })
+                      : row.kind === 'paused'
+                        ? t('g_t', { table: tableName(row.table, row.numbered) })
+                        : row.kind === 'approval'
+                          ? t('a_t')
+                          : t('s_t'),
         )
         .join('. '),
     )
     if (!readMuted()) beep()
-  }, [view.rows, t, tableName])
+  }, [view.rows, view.source, view.provider, view.currency, money, t, tableName])
 
   const toggleMute = useCallback(() => {
     const next = !muted

@@ -59,6 +59,8 @@ export const DisputeSchema = z.looseObject({
   status: z.string(),
   payment_intent: z.string().nullish(),
   created: z.int(),
+  /** `due_by` is the date evidence must be in by; 0 or absent where the bank allows no answer. */
+  evidence_details: z.looseObject({ due_by: z.int().nullish() }).nullish(),
 })
 export type StripeDispute = z.output<typeof DisputeSchema>
 

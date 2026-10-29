@@ -298,6 +298,7 @@ async function deleteRows(tx: PurgeTx, table: string, where: SQL): Promise<reado
  * staff members are not the venue's and stay (the staff step lets them go).
  */
 const VENUE_SERVICE_TABLES = [
+  'payment_refunds',
   'payment_steps',
   'payment_lines',
   'payments',
@@ -358,6 +359,7 @@ async function deleteDuePayments(
             (select id from restro.payments where venue_id = ${venueId} and ${paymentDue(now)})`,
     ),
   )
+  count(counts, 'payment_refunds', await deleteRows(tx, 'payment_refunds', due))
   count(counts, 'payment_steps', await deleteRows(tx, 'payment_steps', due))
   count(counts, 'payment_lines', await deleteRows(tx, 'payment_lines', due))
   count(

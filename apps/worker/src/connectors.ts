@@ -12,6 +12,21 @@ import { createStripeProvider, STRIPE_KIND } from '@restro/stripe'
 
 export { barsyVenues as tillVenueLinks } from '@restro/db'
 
+/**
+ * The provider's name for a sentence (`{provider}`, #222): the group's message about a refund names
+ * the place the venue made it. The web app keeps the same names (`apps/web/src/connectors`).
+ */
+export function providerDisplayName(kind: string | null): string | null {
+  switch (kind) {
+    case STRIPE_KIND:
+      return 'Stripe'
+    case SIM_PAY_KIND:
+      return 'Sim Pay'
+    default:
+      return null
+  }
+}
+
 /** The payment providers the worker pays through, by kind (`payments.provider_kind`). */
 export type PaymentProviders = ReadonlyMap<string, PaymentProvider>
 

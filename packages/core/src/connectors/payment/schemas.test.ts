@@ -26,6 +26,7 @@ const held = {
   capturedMinor: 0,
   refundedMinor: 0,
   dispute: null,
+  disputeDueAt: null,
   captureBefore: '2026-11-01T21:00:00.000Z',
   threeDs: 'authenticated',
   authorisationCode: 'A1B2C3',

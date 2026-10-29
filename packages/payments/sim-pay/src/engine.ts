@@ -48,6 +48,9 @@ import type { SimPayEvent } from './notices'
 
 const DAY_MS = 86_400_000
 
+/** How long the simulated bank gives the venue to answer a dispute (#222). */
+const DISPUTE_DAYS = 14
+
 /** What the simulated provider declares; each starts on the cautious answer. */
 export interface SimPaySwitches {
   /** The hold window, in days. */
@@ -140,7 +143,10 @@ export class SimPayEngine {
   readonly #faults = new Map<SimPayStep, SimPayFault>()
   /** A refund or a dispute's ref to its payment's (and a dispute's state). */
   readonly #refunds = new Map<string, { readonly payment: string }>()
-  readonly #disputes = new Map<string, { readonly payment: string; state: PaymentDisputeState }>()
+  readonly #disputes = new Map<
+    string,
+    { readonly payment: string; state: PaymentDisputeState; readonly dueAt: Date }
+  >()
   /** The notices the provider sent and nobody took yet. */
   #outbox: SimPayEvent[] = []
   #failReads = false
@@ -278,6 +284,31 @@ export class SimPayEngine {
       this.#refunds.set(ref, { payment: payment.ref.provider })
       return this.#send('refund.made', payment.account, ref, this.switches.refundNotices)
     },
+    /**
+     * A refund the venue made does not go through at the provider (#222): the refund total falls
+     * back by that amount, and the provider sends its notice. A choice of the simulator: whether
+     * a real provider lowers the total on a failed refund is for its documentation.
+     */
+    refundFails: (
+      accountRef: ProviderRef,
+      paymentRef: ProviderRef,
+      amountMinor: number,
+    ): SimPayEvent => {
+      const payment = this.#capturedPayment(accountRef, paymentRef)
+      if (
+        !Number.isSafeInteger(amountMinor) ||
+        amountMinor <= 0 ||
+        amountMinor > payment.refundedMinor
+      ) {
+        throw new Error(
+          `a refund of ${amountMinor} failed where ${payment.refundedMinor} is refunded`,
+        )
+      }
+      payment.refundedMinor = subtractMinor(payment.refundedMinor, amountMinor)
+      const ref = `simrefund_${this.#tag()}`
+      this.#refunds.set(ref, { payment: payment.ref.provider })
+      return this.#send('refund.failed', payment.account, ref, this.switches.refundNotices)
+    },
   }
 
   readonly bank = {
@@ -285,7 +316,11 @@ export class SimPayEngine {
     opensDispute: (accountRef: ProviderRef, paymentRef: ProviderRef): SimPayEvent => {
       const payment = this.#capturedPayment(accountRef, paymentRef)
       const ref = `simdispute_${this.#tag()}`
-      this.#disputes.set(ref, { payment: payment.ref.provider, state: 'open' })
+      this.#disputes.set(ref, {
+        payment: payment.ref.provider,
+        state: 'open',
+        dueAt: new Date(this.#clock.now().getTime() + DISPUTE_DAYS * DAY_MS),
+      })
       payment.disputeRef = ref
       return this.#send('dispute.opened', payment.account, ref, true)
     },
@@ -634,6 +669,10 @@ export class SimPayEngine {
         payment.disputeRef === null
           ? null
           : (this.#disputes.get(payment.disputeRef)?.state ?? null),
+      disputeDueAt:
+        payment.disputeRef === null
+          ? null
+          : (this.#disputes.get(payment.disputeRef)?.dueAt.toISOString() ?? null),
       captureBefore: payment.captureBefore?.toISOString() ?? null,
       threeDs: payment.threeDs,
       authorisationCode: payment.authorisationCode,

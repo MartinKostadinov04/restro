@@ -104,6 +104,7 @@ function toyHarness(bug?: Bug): PaymentHarness {
           capturedMinor: 0,
           refundedMinor: 0,
           dispute: null,
+          disputeDueAt: null,
           captureBefore: null,
           threeDs: null,
           authorisationCode: null,

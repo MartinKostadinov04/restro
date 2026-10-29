@@ -158,6 +158,13 @@ describe.skipIf(!hasDatabase)('the payment reads of Tonight (as the restro_app r
       receiptNumber: 'R-1001',
       refundedMinor: 500,
     })
+    // The refund as `payment.observe` recorded it (#222): one row, its storno not made yet.
+    await world.owner.query(
+      `insert into restro.payment_refunds
+         (id, tenant_id, venue_id, payment_id, amount_minor, service_date, source, actor, job_id)
+       values ($1, $2, $3, $4, 500, $5, 'worker', 'system', 'test-seed')`,
+      [`rf_${randomUUID().replaceAll('-', '')}`, world.tenantId, world.venueId, captured.id, day],
+    )
     await addPayment('noReceipt', {
       tableIndex: 1,
       state: 'captured',
@@ -353,7 +360,11 @@ describe.skipIf(!hasDatabase)('the payment reads of Tonight (as the restro_app r
       // Cleared by the day's close: nobody answered it.
       ['payment_capture_failed', true],
     ])
-    expect(money?.refunds.map((refund) => refund.refundedMinor)).toEqual([500])
+    expect(money?.refunds.map((refund) => [refund.amountMinor, refund.storno === null])).toEqual([
+      [500, true],
+    ])
+    // The refund with no storno is also a line of "To fix" (decision log 5.17).
+    expect(read.payments.stornoFix).toHaveLength(1)
     expect(money?.disputes.rows).toHaveLength(1)
     expect(money?.disputes.openCount).toBe(1)
   })

@@ -32,7 +32,7 @@ import {
   venueTables,
   withTenant,
 } from '@restro/db'
-import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, ne, or, sql } from 'drizzle-orm'
 
 import { serviceDate } from '../service-day'
 import type { ServiceActor } from './context'
@@ -557,6 +557,8 @@ export interface LogLine {
   readonly subject: string | null
   /** A payment's amount in minor units: with the tip for `night.view_full`, else without it. */
   readonly amountMinor: number | null
+  /** The provider a payment's refund or dispute entry names (its kind); null for any other entry. */
+  readonly providerKind: string | null
   /** The sent orders a closed night held. */
   readonly sentOrdersOfDay: number | null
   /**
@@ -647,15 +649,26 @@ export async function readLog(
       .where(
         and(
           eq(logEntries.venueId, reader.venue.id),
-          eq(logEntries.serviceDate, day),
           inArray(logEntries.kind, [...logKindsOf(group)]),
-          q === ''
-            ? undefined
-            : or(
-                ilike(sentOrders.reference, `${like(q)}%`),
-                ilike(venueTables.number, `${like(q)}%`),
-                ilike(venueTables.name, `%${like(q)}%`),
-              ),
+          // A refund's amount may hold the tip: those who read no tips never see the line (#222).
+          fullNight ? undefined : ne(logEntries.kind, 'payment.refund_seen'),
+          or(
+            and(
+              eq(logEntries.serviceDate, day),
+              q === ''
+                ? undefined
+                : or(
+                    ilike(sentOrders.reference, `${like(q)}%`),
+                    ilike(venueTables.number, `${like(q)}%`),
+                    ilike(venueTables.name, `%${like(q)}%`),
+                  ),
+            ),
+            // The provider's payment id, typed exactly, which the provider's dispute shows: it
+            // finds the payment on any day of the venue, for managers and owners only (log 5.14).
+            q !== '' && reader.held.has('money.follow_up')
+              ? eq(payments.providerPaymentRef, q)
+              : undefined,
+          ),
         ),
       )
       .orderBy(desc(logEntries.seq))
@@ -778,9 +791,14 @@ export async function readLog(
                     : { kind: 'venue', name: null },
             cause: row.kind === 'pause.started' ? row.reason : detailText(row.details, 'cause'),
             subject: subjectKey === null ? null : (subjectName.get(subjectKey) ?? null),
-            amountMinor: fullNight
-              ? (row.amountMinor ?? null)
-              : withoutTipMinor(row.amountMinor ?? null, row.tipMinor ?? 0),
+            // A refund line names the refund's own amount, not the payment's (#222).
+            amountMinor:
+              row.kind === 'payment.refund_seen' && typeof row.details.amountMinor === 'number'
+                ? row.details.amountMinor
+                : fullNight
+                  ? (row.amountMinor ?? null)
+                  : withoutTipMinor(row.amountMinor ?? null, row.tipMinor ?? 0),
+            providerKind: detailText(row.details, 'providerKind'),
             sentOrdersOfDay: typeof sentOrdersOfDay === 'number' ? sentOrdersOfDay : null,
             callKinds: callKindsOf(row.kind, row.details),
           }

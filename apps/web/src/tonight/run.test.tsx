@@ -87,7 +87,8 @@ describe('the toast after a write', () => {
     })
     expect(options.action?.label).toBe('Undo')
     ;(options.action as unknown as { onClick: () => void }).onClick()
-    expect(undo).toHaveBeenCalledWith(expect.anything(), { entry: 4821 })
+    // No PIN was asked, so the Undo has none to send on.
+    expect(undo).toHaveBeenCalledWith(expect.anything(), { entry: 4821 }, undefined)
 
     cleanup()
     toast.mockClear()
@@ -97,6 +98,37 @@ describe('the toast after a write', () => {
       undoWhen: wroteSomething,
     })
     expect(repeat.action).toBeUndefined()
+  })
+
+  it('hands the PIN the write was entered with to its Undo, so the same person takes it back', async () => {
+    const undo = vi.fn(async () => answered(true))
+    const act = vi.fn(
+      async (_pin?: string): Promise<TonightResult> => ({
+        ok: true,
+        details: { undoEntry: 77, undoAt: '2026-10-29T20:00:00.000Z' },
+      }),
+    )
+    renderWithIntl(
+      <RunProvider>
+        <Button
+          spec={{
+            id: 'storno:rf_1',
+            done: 'Storno recorded',
+            pin: { level: 'manager', title: 'Storno done', body: 'We record it.' },
+            act,
+            undo,
+            undoWhen: wroteSomething,
+          }}
+        />
+      </RunProvider>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'go' }))
+    await userEvent.keyboard('4321')
+    await waitFor(() => expect(act).toHaveBeenCalledWith('4321'))
+    await waitFor(() => expect(toast).toHaveBeenCalledTimes(1))
+    const options = toast.mock.calls[0]?.[1] as { action?: { onClick: () => void } }
+    options.action?.onClick()
+    expect(undo).toHaveBeenCalledWith(expect.anything(), { entry: 77 }, '4321')
   })
 
   it('shows the words of the two Undo refusals in the error toast', async () => {

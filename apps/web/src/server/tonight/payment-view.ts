@@ -4,12 +4,16 @@
 // database. Plain data, safe to send to the browser: our ids and public fields only (rule 3), times
 // as text in the venue's zone, money as minor units.
 import {
+  type DisputeEvidenceInput,
+  disputeEvidenceText,
   type NightPayFix,
   type NightPaymentRow,
   type NightPayments,
   type PaymentDetail,
   paymentNumberOf,
 } from '@restro/core/service'
+
+import { providerDisplayName } from '@/connectors/notices'
 
 import { clockIn, type WhoView, whoView } from './night-view'
 import { type ActionRow, holdOf, MONEY_VARIANT, type MoneyVariant } from './view'
@@ -70,21 +74,39 @@ export interface MoneyAlertView {
 /** The money sections of the night (4–6), for managers and owners. */
 export interface MoneySectionsView {
   readonly alerts: readonly MoneyAlertView[]
-  readonly refunds: readonly {
-    readonly paymentId: string
-    readonly table: string
-    readonly numbered: boolean
-    readonly refundedMinor: number
-    readonly currency: string
-  }[]
+  /** The day's refunds, then the earlier ones still waiting for a storno (#222). */
+  readonly refunds: readonly RefundRowView[]
+  /** The disputes opened on the day (#222). */
   readonly disputes: readonly {
     readonly paymentId: string
+    readonly paymentNumber: string
     readonly table: string
     readonly numbered: boolean
     readonly amountMinor: number | null
     readonly currency: string
+    readonly state: string
+    /** The payment's service day. */
+    readonly serviceDate: string
+    /** The provider's answer-by date in the venue's zone; null where it gave none. */
+    readonly due: { readonly date: string; readonly time: string } | null
   }[]
   readonly openDisputes: number
+}
+
+/** One refund of section 5. */
+export interface RefundRowView {
+  readonly refundId: string
+  readonly paymentId: string
+  readonly paymentNumber: string
+  readonly table: string
+  readonly numbered: boolean
+  readonly amountMinor: number
+  readonly currency: string
+  readonly receiptNumber: string | null
+  readonly serviceDate: string
+  readonly earlier: boolean
+  readonly failed: boolean
+  readonly storno: { readonly by: WhoView; readonly time: string } | null
 }
 
 /** The payments of one night as the page draws them. */
@@ -108,9 +130,19 @@ export interface PaymentsView {
     readonly table: string
     readonly numbered: boolean
   }[]
+  /** Refunds still waiting for a storno, from any day: a line each, no answer here (#222). */
+  readonly stornoFix: readonly {
+    readonly refundId: string
+    readonly paymentId: string
+    readonly paymentNumber: string
+    readonly table: string
+    readonly numbered: boolean
+  }[]
   readonly rows: readonly PaymentRowView[]
   readonly hasMore: boolean
   readonly paying: NightPayments['paying']
+  /** The payment provider's name for `{provider}`, or null where it is not known. */
+  readonly provider: string | null
   readonly money: MoneySectionsView | null
 }
 
@@ -179,9 +211,17 @@ export function paymentsView(read: NightPayments, timezone: string): PaymentsVie
       table: entry.name ?? entry.number ?? '',
       numbered: entry.name === null && entry.number !== null,
     })),
+    stornoFix: read.stornoFix.map((fix) => ({
+      refundId: fix.refundId,
+      paymentId: fix.paymentId,
+      paymentNumber: fix.paymentNumber,
+      table: fix.table,
+      numbered: fix.numbered,
+    })),
     rows: read.rows.map((row) => paymentRowView(row, clock)),
     hasMore: read.hasMore,
     paying: read.paying,
+    provider: providerDisplayName(read.providerKind),
     money:
       read.money === null
         ? null
@@ -207,8 +247,39 @@ export function paymentsView(read: NightPayments, timezone: string): PaymentsVie
                 },
               ]
             }),
-            refunds: read.money.refunds,
-            disputes: read.money.disputes.rows,
+            refunds: read.money.refunds.map(
+              (refund): RefundRowView => ({
+                refundId: refund.refundId,
+                paymentId: refund.paymentId,
+                paymentNumber: refund.paymentNumber,
+                table: refund.table,
+                numbered: refund.numbered,
+                amountMinor: refund.amountMinor,
+                currency: refund.currency,
+                receiptNumber: refund.receiptNumber,
+                serviceDate: refund.serviceDate,
+                earlier: refund.earlier,
+                failed: refund.failed,
+                storno:
+                  refund.storno === null
+                    ? null
+                    : {
+                        by: whoView(refund.storno.who, refund.storno.via),
+                        time: clock(refund.storno.at) ?? '',
+                      },
+              }),
+            ),
+            disputes: read.money.disputes.rows.map((dispute) => ({
+              paymentId: dispute.paymentId,
+              paymentNumber: dispute.paymentNumber,
+              table: dispute.table,
+              numbered: dispute.numbered,
+              amountMinor: dispute.amountMinor,
+              currency: dispute.currency,
+              state: dispute.state,
+              serviceDate: dispute.serviceDate,
+              due: holdOf(dispute.dueAt, timezone),
+            })),
             openDisputes: read.money.disputes.openCount,
           },
   }
@@ -247,6 +318,30 @@ export interface PaymentDetailView {
     readonly reason: string | null
     readonly by: WhoView
   }[]
+  /** The payment provider's name for `{provider}`, or null where it is not known. */
+  readonly provider: string | null
+  /** The refunds the venue made at the provider, oldest first (#222). */
+  readonly refunds: readonly {
+    readonly amountMinor: number
+    readonly time: string
+    readonly failed: boolean
+    readonly storno: { readonly by: WhoView; readonly time: string } | null
+  }[]
+  /** Where a dispute stands (#222); null for none. */
+  readonly dispute: {
+    readonly state: string
+    readonly due: { readonly date: string; readonly time: string } | null
+  } | null
+  /**
+   * The "Dispute evidence" text in both languages (#222), for `money.follow_up` only; the sheet
+   * copies and prints the one for the screen's language, or the English one on request.
+   */
+  readonly evidence: { readonly bg: string; readonly en: string } | null
+}
+
+/** The evidence text of a payment in both languages. */
+export function evidenceTexts(evidence: DisputeEvidenceInput): { bg: string; en: string } {
+  return { bg: disputeEvidenceText(evidence, 'bg'), en: disputeEvidenceText(evidence, 'en') }
 }
 
 export function paymentDetailView(detail: PaymentDetail, timezone: string): PaymentDetailView {
@@ -266,5 +361,23 @@ export function paymentDetailView(detail: PaymentDetail, timezone: string): Paym
       reason: step.reason,
       by: whoView(step.who, step.via),
     })),
+    provider: providerDisplayName(detail.providerKind),
+    refunds: detail.refunds.map((refund) => ({
+      amountMinor: refund.amountMinor,
+      time: clock(refund.seenAt) ?? '',
+      failed: refund.failed,
+      storno:
+        refund.storno === null
+          ? null
+          : {
+              by: whoView(refund.storno.who, refund.storno.via),
+              time: clock(refund.storno.at) ?? '',
+            },
+    })),
+    dispute:
+      detail.dispute === null
+        ? null
+        : { state: detail.dispute.state, due: holdOf(detail.dispute.dueAt, timezone) },
+    evidence: detail.evidence === null ? null : evidenceTexts(detail.evidence),
   }
 }

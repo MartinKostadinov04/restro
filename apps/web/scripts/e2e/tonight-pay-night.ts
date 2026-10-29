@@ -20,9 +20,13 @@ export interface PayNightWorld {
 
 export async function seedPayNight(
   world: PayNightWorld,
-  scene: 'pay' | 'pay-stuck' | 'receipts' = 'pay',
+  scene: 'pay' | 'pay-stuck' | 'receipts' | 'refunds' = 'pay',
 ): Promise<void> {
   const { owner, tenantId, venueId, day, tables, sitting } = world
+  if (scene === 'refunds') {
+    await seedRefundsNight(world)
+    return
+  }
   if (scene === 'receipts') {
     // Paper receipts to bring (#200), as a capture leaves them: Table 1's has the POS's receipt
     // number, Table 2's has none (a manager answered "Receipt printed"), Table 3's was brought
@@ -206,4 +210,67 @@ export async function seedPayNight(
   await payment('2', 'on_bill', 'close_unknown', null, 5)
   await payment('3', 'pay_first', 'enter_unknown', 'P3X1', 4)
   await payment('4', 'pay_first', 'enter_unknown', 'P4X2', 3)
+}
+
+/**
+ * The payments of the refunds and disputes test (#222): four captured card payments, one at each of
+ * Tables 1 to 4, whose provider ids are still to be made. Nothing of a refund or a dispute is
+ * written here: the test's worker-side harness (`apps/worker/src/e2e/refunds-harness.ts`) makes
+ * each payment real in the simulated provider and then plays the venue's Dashboard and the
+ * guest's bank, and the worker's notice job records what it reads back through `payment.observe`.
+ * Table 3's payment also holds an item and its steps, for the evidence.
+ */
+async function seedRefundsNight(world: PayNightWorld): Promise<void> {
+  const { owner, tenantId, venueId, day, tables, sitting } = world
+  const payment = async (number: string, receiptNumber: string) => {
+    const sittingId = await sitting(number)
+    const id = newId('py')
+    await owner.query(
+      `insert into restro.payments
+         (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
+          amount_minor, tip_minor, captured_minor, currency, provider_kind, provider_payment_ref,
+          receipt_number, fiscal_memory_number, three_ds_result, authorisation_code, settled_at,
+          source, actor, job_id)
+       values ($1, $2, $3, $4, $5, $6, 'on_bill', 'captured', $7, 3800, 200, 3800, 'EUR',
+               'sim-pay', $8, $9, 'FM-77881', 'authenticated', 'A1B2C3', now(), 'worker', 'system',
+               'e2e-seed')`,
+      [
+        id,
+        tenantId,
+        venueId,
+        tables[number],
+        sittingId,
+        day,
+        createHash('sha256').update(id).digest('hex'),
+        `pending_${id.slice(3)}`,
+        receiptNumber,
+      ],
+    )
+    return { id, tableId: tables[number] as string }
+  }
+  await payment('1', 'R-000123')
+  await payment('2', 'R-000124')
+  const disputed = await payment('3', 'R-000125')
+  await payment('4', 'R-000126')
+  await owner.query(
+    `insert into restro.payment_lines
+       (tenant_id, venue_id, payment_id, position, pos_line_ref, quantity, pos_amount_minor,
+        display_name, source, actor, job_id)
+     values ($1, $2, $3, 1, 'e2e-line-1', 2, 3600, 'Gin tonic', 'worker', 'system', 'e2e-seed')`,
+    [tenantId, venueId, disputed.id],
+  )
+  for (const [state, minutes] of [
+    ['held', 40],
+    ['closed', 30],
+    ['captured', 29],
+  ] as const) {
+    await owner.query(
+      `insert into restro.log_entries
+         (tenant_id, venue_id, service_date, at, kind, payment_id, table_id, to_state, details,
+          retention, source, actor, job_id)
+       values ($1, $2, $3, now() - make_interval(mins => $7), 'payment.state', $4, $5, $6,
+               '{}'::jsonb, 'record', 'worker', 'system', 'e2e-seed')`,
+      [tenantId, venueId, day, disputed.id, disputed.tableId, state, minutes],
+    )
+  }
 }

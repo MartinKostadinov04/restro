@@ -43,7 +43,7 @@ import { lockLeases } from './leases'
 import { LIFT_REASONS, liftTablePauses } from './pauses'
 import { accepted, type ResultDetails, refused, type ServiceResult } from './results'
 import type { Sitting } from './rows'
-import { changedSince, type UndoToken } from './undo'
+import { changedSince, tokenEntry, type UndoToken } from './undo'
 
 /** Why a sitting ended (the `end_reason` column's list). */
 export const SITTING_END_REASONS = [
@@ -295,21 +295,6 @@ export async function closeTable(
   }
   await endSitting(stx, open, 'staff_closed')
   return accepted(null, { details: { closed: true, sittingId: open.id } })
-}
-
-/** The Log entry a token names: its kind, table, sitting, job and details; null when none. */
-async function tokenEntry(stx: ServiceTx, token: UndoToken) {
-  const [entry] = await stx.tx
-    .select({
-      kind: logEntries.kind,
-      tableId: logEntries.tableId,
-      sittingId: logEntries.sittingId,
-      jobId: logEntries.jobId,
-      details: logEntries.details,
-    })
-    .from(logEntries)
-    .where(and(eq(logEntries.seq, token.entry), eq(logEntries.venueId, stx.venueId)))
-  return entry ?? null
 }
 
 /**

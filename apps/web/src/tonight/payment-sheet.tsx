@@ -30,16 +30,27 @@ import type { Frame } from '@/server/tonight/night-view'
 import { paymentDetailAction } from '@/server/tonight/payment-actions'
 import type { PaymentDetailView } from '@/server/tonight/payment-view'
 
+import { useDateText } from './day-picker'
+import { DisputeEvidence } from './dispute-evidence'
 import { useMoney } from './money'
 import { PAYMENT_ANSWER_WORDS, PAYMENT_STATE_WORDS, releaseReasonWord } from './payment-state-words'
 import { useTableName } from './table-name'
 import { useWho } from './who'
 
-function Body({ detail, frame }: { detail: PaymentDetailView; frame: Frame }) {
+type SheetFrame = Pick<Frame, 'venueId' | 'currency'>
+
+function Body({ detail, frame }: { detail: PaymentDetailView; frame: SheetFrame }) {
   const t = useTranslations('tonight')
   const money = useMoney()
   const who = useWho()
+  const dateText = useDateText()
   const { row } = detail
+  const provider = detail.provider ?? t('pb_provider_none')
+  // What the venue refunded at the provider, not counting a refund that did not go through.
+  const refundedMinor = detail.refunds.reduce(
+    (total, refund) => (refund.failed ? total : total + refund.amountMinor),
+    0,
+  )
   const say = (key: string, values?: Record<string, string | number>) => t(key, values)
   const stateKey = PAYMENT_STATE_WORDS[row.state]
   const reason = releaseReasonWord(say, row.reason)
@@ -85,6 +96,55 @@ function Body({ detail, frame }: { detail: PaymentDetailView; frame: Frame }) {
           <span>{money(row.amountMinor, row.currency)}</span>
         </p>
       )}
+      {detail.refunds.length === 0 ? null : (
+        <section className="space-y-1" data-testid="payment-refunds">
+          {refundedMinor === 0 ? null : (
+            <p className="font-medium">
+              {row.amountMinor !== null && refundedMinor < row.amountMinor
+                ? t('py_refunded_part', {
+                    amt: money(refundedMinor, row.currency),
+                    total: money(row.amountMinor, row.currency),
+                  })
+                : t('py_refunded', { amt: money(refundedMinor, row.currency) })}
+            </p>
+          )}
+          <ul className="space-y-1 text-muted-foreground">
+            {detail.refunds.map((refund, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: the refunds of a fixed list
+              <li key={index} className="[overflow-wrap:anywhere]">
+                <span className="tabular-nums">{refund.time}</span>
+                {' · '}
+                {money(refund.amountMinor, row.currency)}
+                {' · '}
+                {refund.failed
+                  ? t('py_refund_failed', { provider })
+                  : refund.storno === null
+                    ? t('nt_fix_storno')
+                    : t('py_storno', { who: who(refund.storno.by), time: refund.storno.time })}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {detail.dispute === null ? null : (
+        <section className="space-y-1" data-testid="payment-dispute">
+          <p className="font-medium">
+            {detail.dispute.state === 'won'
+              ? t('d_won')
+              : detail.dispute.state === 'lost'
+                ? t('d_lost')
+                : t('py_disputed')}
+          </p>
+          {detail.dispute.state === 'open' && detail.dispute.due !== null ? (
+            <p className="text-muted-foreground">
+              {t('d_due', { provider, date: dateText(detail.dispute.due.date) })}
+            </p>
+          ) : null}
+        </section>
+      )}
+      {detail.evidence === null ? null : (
+        <DisputeEvidence evidence={detail.evidence} provider={detail.provider} />
+      )}
       {detail.steps.length === 0 ? null : (
         <section className="space-y-1">
           <h3 className="font-medium">{t('py_steps')}</h3>
@@ -123,7 +183,7 @@ export function PaymentSheet({
   paymentId,
   onClose,
 }: {
-  frame: Frame
+  frame: SheetFrame
   paymentId: string
   onClose: () => void
 }) {

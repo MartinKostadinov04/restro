@@ -63,6 +63,11 @@ export const LOG_KINDS = {
   // and the staff's answers to an unconfirmed close. Money records, kept with the payment.
   'payment.state': 'record',
   'payment.answered': 'record',
+  // A refund the venue made in its provider's dashboard, read back (lg_pay_refund), its storno
+  // done or put back (lg_pay_storno), and a dispute opened or closed (lg_pay_dispute) (#222).
+  'payment.refund_seen': 'record',
+  'payment.storno': 'record',
+  'payment.dispute': 'record',
 } as const satisfies Record<string, LogRetention>
 
 /** One kind of Log entry. */

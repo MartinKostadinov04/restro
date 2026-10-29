@@ -58,6 +58,10 @@ const line = (kind: LogLineView['kind'], fields: Partial<LogLineView> = {}): Log
   amountMinor: null,
   paymentState: null,
   paymentAnswer: null,
+  provider: null,
+  disputeState: null,
+  refundFailed: false,
+  stornoUndone: false,
   paymentId: null,
   sentOrdersOfDay: null,
   callKinds: [],
@@ -268,6 +272,44 @@ describe("the Log's sentences", () => {
     const bg = context('bg', new Set())
     expect(logSentence(line('payment.answered', { paymentAnswer: 'on_till' }), bg)).toContain(
       'В касата е',
+    )
+  })
+})
+
+describe('the sentences of refunds, stornos and disputes (#222)', () => {
+  const used = new Set<string>()
+  const en = (l: LogLineView) => logSentence(l, context('en', used))
+  const bgText = (l: LogLineView) => logSentence(l, context('bg', used))
+
+  it('words a refund with its amount and the provider it was made in, and one that failed', () => {
+    const refund = line('payment.refund_seen', { amountMinor: 500, provider: 'Stripe' })
+    expect(en(refund)).toBe('Refund of €5.00 made in Stripe')
+    expect(bgText(refund)).toBe('Връщане на €5.00, направено в Stripe')
+    // A provider the screen does not know is named plainly, never left as a gap.
+    expect(en(line('payment.refund_seen', { amountMinor: 500 }))).toBe(
+      'Refund of €5.00 made in the payment provider',
+    )
+    expect(en(line('payment.refund_seen', { amountMinor: 500, refundFailed: true }))).toBe(
+      "The refund didn't go through at the payment provider",
+    )
+  })
+
+  it('words a storno done and taken back', () => {
+    expect(en(line('payment.storno'))).toBe('Storno done')
+    expect(bgText(line('payment.storno'))).toBe('Сторно направено')
+    expect(en(line('payment.storno', { stornoUndone: true }))).toBe('Storno taken back')
+  })
+
+  it('words a dispute by where it stands', () => {
+    expect(en(line('payment.dispute', { disputeState: 'open' }))).toBe('Card dispute: Disputed')
+    expect(en(line('payment.dispute', { disputeState: 'won' }))).toMatch(
+      /^Card dispute: Dispute won: the venue keeps the money\.$/,
+    )
+    expect(en(line('payment.dispute', { disputeState: 'lost' }))).toMatch(
+      /^Card dispute: Dispute lost: the money went back to the guest's bank\./,
+    )
+    expect(bgText(line('payment.dispute', { disputeState: 'open' }))).toBe(
+      'Спор по плащането: Оспорено',
     )
   })
 })

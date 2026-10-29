@@ -35,6 +35,8 @@ export interface MessageContext {
   readonly tableLabel: string | null
   /** The POS's name for staff (D82). */
   readonly source: string
+  /** The payment provider's name for `{provider}` (#222), or null where it is not known. */
+  readonly provider?: string | null
 }
 
 /** The alert as the words read it. */
@@ -98,6 +100,14 @@ interface Strings {
   readonly paymentStuck: (venue: string, table: string) => string
   readonly paymentAccountLost: (venue: string) => string
   readonly paymentAccountLostBody: (reason: 'access_removed' | 'account_restricted') => string
+  /** A refund made in the provider's dashboard (#222): the group is told, with no amount. */
+  readonly paymentRefunded: (table: string, provider: string, source: string) => string
+  /** A card dispute (#222): the table and the payment's day, with no amount. */
+  readonly paymentDisputed: (table: string, date: string) => string
+  /** `{provider}` where the provider's name is not known. */
+  readonly providerNone: string
+  /** A calendar day (`YYYY-MM-DD`) as the language writes it. */
+  readonly day: (date: string) => string
   readonly reminder: (title: string) => string
   readonly digest: (count: number, venue: string) => string
   readonly done: (who: string, time: string) => string
@@ -162,6 +172,12 @@ const EN: Strings = {
     reason === 'access_removed'
       ? 'Restro lost access to the venue’s payment account. Open Settings, Paying, and choose Reconnect.'
       : 'The payment account can’t take card payments now. Open Settings, Paying, to see what is missing and choose Reconnect.',
+  paymentRefunded: (table, provider, source) =>
+    `${table}: a refund was made in ${provider}. Make the storno in ${source}.`,
+  paymentDisputed: (table, date) =>
+    `${table}: card dispute on a payment of ${date}. A manager sees the evidence in Restro.`,
+  providerNone: 'the payment provider',
+  day: (date) => dayWords(date, 'en-GB'),
   reminder: (title) => `Reminder: ${title}`,
   digest: (count, venue) => `${count} alerts at ${venue}`,
   done: (who, time) => `Done by ${who}, ${time}`,
@@ -232,6 +248,12 @@ const BG: Strings = {
     reason === 'access_removed'
       ? 'Restro загуби достъп до платежната сметка на обекта. Отворете Настройки, Плащане, и изберете Свържи отново.'
       : 'Платежната сметка не може да приема плащания с карта. Отворете Настройки, Плащане, за да видите какво липсва, и изберете Свържи отново.',
+  paymentRefunded: (table, provider, source) =>
+    `${table}: направено е връщане в ${provider}. Направете сторно в ${source}.`,
+  paymentDisputed: (table, date) =>
+    `${table}: спор по картово плащане от ${date}. Мениджър вижда доказателствата в Restro.`,
+  providerNone: 'доставчика на плащания',
+  day: (date) => dayWords(date, 'bg-BG'),
   reminder: (title) => `Напомняне: ${title}`,
   digest: (count, venue) => `${count} сигнала в ${venue}`,
   done: (who, time) => `Готово от ${who}, ${time}`,
@@ -247,6 +269,22 @@ const BG: Strings = {
     done: 'Готово.',
     failed: 'Нещо се обърка. Опитайте отново в Restro.',
   },
+}
+
+/** A calendar day (`YYYY-MM-DD`) in the words of a language; the text itself if it is not one. */
+function dayWords(date: string, locale: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
+  if (match === null) return date
+  // Bulgarian dates are written numerically, `28.10.2026`; its short month name carries a "г." of
+  // its own that would double the sentence's full stop.
+  if (locale === 'bg-BG') return `${match[3]}.${match[2]}.${match[1]}`
+  const at = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
+  return new Intl.DateTimeFormat(locale, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(at)
 }
 
 const TABLES: Readonly<Record<AlertLocale, Strings>> = { bg: BG, en: EN }
@@ -362,6 +400,16 @@ export function alertMessage(alert: AlertWords, context: MessageContext, step: S
       return { title: words.paymentStuck(venueName, table), body: '' }
     case 'paying_unstable':
       return { title: words.payingUnstable(venueName), body: '' }
+    case 'payment_refunded':
+      return {
+        title: words.paymentRefunded(table, context.provider ?? words.providerNone, source),
+        body: '',
+      }
+    case 'payment_disputed':
+      return {
+        title: words.paymentDisputed(table, words.day(asText(alert.details.paymentDate) ?? '')),
+        body: '',
+      }
     case 'payment_account_lost':
       return {
         title: words.paymentAccountLost(venueName),
