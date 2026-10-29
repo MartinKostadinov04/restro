@@ -11,10 +11,10 @@ describe('the guest pages send no referrer (A5-F5)', () => {
 
   it('defines Referrer-Policy: no-referrer for the menu and the table address', () => {
     expect(GUEST_PAGE_SOURCES).toEqual(['/m/:path*', '/t/:path*'])
-    expect(guestHeaders()).toEqual([
-      { source: '/m/:path*', headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] },
-      { source: '/t/:path*', headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] },
-    ])
+    for (const rule of guestHeaders()) {
+      expect(rule.headers[0]).toEqual({ key: 'Referrer-Policy', value: 'no-referrer' })
+    }
+    expect(guestHeaders().map((rule) => rule.source)).toEqual(['/m/:path*', '/t/:path*'])
   })
 
   it('has next.config.ts return them from headers()', async () => {

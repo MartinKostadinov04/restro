@@ -380,7 +380,7 @@ function build(scen){
   tables.push({n,bar:n<=half?1:2,open,paused:false,since:open?(['23:10','23:40','00:05','00:30','01:15'][n%5]):null,orders:open?(n%4)+1:0,bill:open?4600+((n*1730)%9000):0});
  }
  const A=[];let id=0;const add=o=>A.push(Object.assign({id:'a'+(++id)},o));
- let paused=null;
+ const paused=null;
  if(scen==='empty'||scen==='loading'){}
  else if(scen==='unreachable'){
   add({kind:'call',table:12,age:2});add({kind:'storno',table:7,age:1500,amt:1200,rcpt:'0001234'});

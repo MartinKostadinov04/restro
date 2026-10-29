@@ -31,6 +31,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChosenFace, preloadFace } from '@/faces/chosen-face'
 import { faceEntry } from '@/faces/registry'
 import { FONT_STACKS } from '@/fonts'
+import { cleanAddressBar } from '../connectors/card-forms'
 import { CDN_BASE } from './cdn'
 import {
   buildContext,
@@ -56,6 +57,7 @@ import {
   loadSnapshot,
   refetchLiveForSnapshot,
 } from './load'
+import { PAY_RETURNED_KEY } from './services-client'
 import { SHARED_ORDER_FACES, useTableServices } from './use-table-services'
 
 type Phase =
@@ -120,6 +122,16 @@ export function GuestMenu(props: GuestMenuProps) {
   const deps = useMemo<LoadDeps>(() => ({ fetch: (url) => fetch(url), base: CDN_BASE }), [])
 
   useEffect(() => {
+    // Back from a redirect of the card form: its values come out of the address before the
+    // page asks for anything (#114, design §11), and the tab notes that the guest came back so the
+    // services client sends `pay.returned`.
+    if (cleanAddressBar(window.location, window.history)) {
+      try {
+        tabStorage()?.setItem(PAY_RETURNED_KEY, '1')
+      } catch {
+        // Nothing kept: the payment's poll still finds where it stands.
+      }
+    }
     // A table code in the query (a link of before #70) goes into the fragment, out of the address
     // the page's later requests and a shared link would carry.
     const moved = withCodeInFragment(window.location.href)
