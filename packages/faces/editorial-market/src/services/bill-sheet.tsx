@@ -3,8 +3,11 @@
 // face never adds a round of its own (a round the guest just sent appears here when the host's
 // state has it), and a guest round that the state lists twice is drawn once.
 
+import { payMoney } from '@restro/shell'
+
 import { Text } from '../parts'
 import { distinctRounds, keyed } from './bill'
+import { PaidInApp } from './pay-sheet'
 import { useServicesRequired } from './provider'
 
 export function BillSheet() {
@@ -12,13 +15,18 @@ export function BillSheet() {
   const { words, state, locale, features } = o
   const rounds = distinctRounds(state.bill)
   const bill = state.bill
+  const paidLines = state.tableBill?.paidLines ?? []
   // What the table owes, as the host states it; nothing when the bill is empty or settled.
   const owed = bill !== null && bill.total.minor > 0 ? bill.total : null
   return (
     <div className="ro-sheet">
       <p className="rm-overlay-intro">{words.tabIntro}</p>
       {rounds.length === 0 || bill === null ? (
-        <p className="ro-empty">{words.emptyTab}</p>
+        // Nothing left on the bill but lines paid in the app: they say what happened, so no
+        // "nothing ordered" over them.
+        paidLines.length > 0 ? null : (
+          <p className="ro-empty">{words.emptyTab}</p>
+        )
       ) : (
         <>
           {rounds.map((round, index) => (
@@ -60,6 +68,13 @@ export function BillSheet() {
             <b>{bill.total.text}</b>
           </div>
         </>
+      )}
+      {state.tableBill == null ? null : (
+        // The lines paid in the app in this sitting stay on the bill, greyed (D127 1.2).
+        <PaidInApp
+          lines={state.tableBill.paidLines}
+          money={(minor) => payMoney(minor, state.tableBill?.currency ?? 'EUR', locale)}
+        />
       )}
       {features.pay && owed !== null ? (
         <button

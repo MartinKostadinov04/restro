@@ -15,6 +15,7 @@ import {
   addMinor,
   type Currency,
   type Locale,
+  type LocalizedText,
   localeToBcp47,
   percentOfMinor,
   sumSignedMinor,
@@ -23,6 +24,7 @@ import {
 import { viewMinor } from './money'
 import { PAY_ENDS, type PayEnd } from './service-vocabulary'
 import type { PayingStrings, ServiceStrings } from './strings'
+import { fallbackChain, pickText } from './text'
 
 export { PAY_ENDS, type PayEnd }
 
@@ -303,6 +305,19 @@ export function sameAmountAgo(
   if (recent == null || recent.amountMinor !== totalMinor) return null
   if (recent.agoSeconds >= SAME_AMOUNT_MINUTES * 60) return null
   return Math.max(1, Math.round(recent.agoSeconds / 60))
+}
+
+/**
+ * A paid or paying line's name for the guest's language: its text per language, else "Other item"
+ * (worded by the shell, D75).
+ */
+export function lineNameText(
+  name: LocalizedText | null,
+  locale: Locale,
+  otherItem: string,
+): string {
+  const picked = name === null ? null : pickText(name, fallbackChain(locale, locale, []))
+  return picked?.text ?? otherItem
 }
 
 /** An amount of the paying screens as text for the guest's language ("27,50 EUR" / "27.50 EUR"). */

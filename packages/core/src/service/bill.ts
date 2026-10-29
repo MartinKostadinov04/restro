@@ -210,6 +210,31 @@ export interface BillPartView {
   readonly lines: readonly BillLineView[]
 }
 
+/**
+ * A line's name as a payment line keeps it (#197): its non-empty texts per language, or null for
+ * "Other item" (worded by the shell, D75). Never an empty object.
+ */
+export function paymentLineName(
+  name: LocalizedText | null | undefined,
+): Record<string, string> | null {
+  const kept = Object.entries(name ?? {}).filter(
+    (entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1] !== '',
+  )
+  return kept.length === 0 ? null : Object.fromEntries(kept)
+}
+
+/**
+ * A line paid in the app in this sitting (D127 1.2): the name the guest saw, the quantity and the
+ * amount, and never who paid. It carries no id: nothing acts on it, and a POS line's id is backend.
+ */
+export interface PaidLineView {
+  /** The line's name per language; null is "Other item", worded by the shell. */
+  readonly name: Record<string, string> | null
+  /** Decimal text ("2", "0.5"). */
+  readonly quantity: string
+  readonly amountMinor: number
+}
+
 /** The table's bill as a phone sees it. */
 export interface BillView {
   /** When the bill shown was read. */
@@ -222,6 +247,8 @@ export interface BillView {
   readonly paidMinor: number
   readonly owedMinor: number
   readonly bills: readonly BillPartView[]
+  /** The sitting's captured payments' lines, oldest payment first; they stay until it ends. */
+  readonly paidLines: readonly PaidLineView[]
 }
 
 /** The phones' view of stored bills: our ids and names, the POS's amounts, nothing backend. */
@@ -231,6 +258,8 @@ export function billView(input: {
   readonly bills: readonly StoredBill[]
   /** *Backend*: the POS lines in a payment that isn't final (`payment_lines.open`). */
   readonly beingPaid?: ReadonlySet<string>
+  /** The lines of the sitting's captured payments (`payment_lines`; never a payer). */
+  readonly paidLines?: readonly PaidLineView[]
 }): BillView {
   // The POS's amounts are signed (rule 8: through the money module).
   const totalMinor = sumSignedMinor(input.bills.map((bill) => bill.totalMinor))
@@ -255,6 +284,7 @@ export function billView(input: {
         beingPaid: input.beingPaid?.has(line.pos) ?? false,
       })),
     })),
+    paidLines: input.paidLines ?? [],
   }
 }
 
@@ -267,6 +297,7 @@ const VIEW_KEYS = [
   'paidMinor',
   'owedMinor',
   'bills',
+  'paidLines',
   'id',
   'beingPaid',
   'lines',

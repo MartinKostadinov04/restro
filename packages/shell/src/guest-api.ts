@@ -12,7 +12,7 @@
 // `X-Restro-Payment`, never in an address or a body; `GET /api/guest/payment` answers that phone
 // alone, with its payment and, while the card is being collected, the provider's form values.
 
-import { GuestPositionSchema, idSchema, LocalizedTextSchema } from '@restro/core'
+import { GuestPositionSchema, idSchema, LocalizedTextSchema, PAID_LINES_MAX } from '@restro/core'
 import { z } from 'zod'
 import { SERVICE_KINDS } from './features'
 import { GUEST_REFUSAL_CODES, PAYMENT_STATES } from './service-vocabulary'
@@ -233,6 +233,17 @@ export const GuestTableStateSchema = z.strictObject({
           }),
         )
         .max(50),
+      /** The lines paid in the app in this sitting (D127 1.2): never who paid. */
+      paidLines: z
+        .array(
+          z.strictObject({
+            /** The line's name per language; null is "Other item", worded by the shell. */
+            name: LocalizedTextSchema.nullable(),
+            quantity: z.string().max(32),
+            amountMinor: minor,
+          }),
+        )
+        .max(PAID_LINES_MAX),
     })
     .nullable(),
 })
@@ -361,12 +372,17 @@ export const GuestPaymentAnswerSchema = z.strictObject({
   lines: z
     .array(
       z.strictObject({
-        name: z.string().max(200),
+        /** The line's name per language; null is "Other item", worded by the shell. */
+        name: LocalizedTextSchema.nullable(),
         quantity: z.string().max(32),
         amountMinor: minor,
       }),
     )
     .max(SERVICE_LIMITS.payLines),
+  /** When the payment reached its final state (an ISO instant), or null: the confirmation's time. */
+  paidAt: z.iso.datetime().nullable(),
+  /** The venue's time zone (IANA): the Payment confirmation shows the time there (D127 1.4). */
+  timeZone: z.string().min(1).max(64),
   /** The card form: which provider's, and the values it needs. Only while `awaiting_guest`. */
   form: z
     .strictObject({
