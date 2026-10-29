@@ -28,6 +28,7 @@ import {
   type LocalizedText,
   type NodeId,
   newId,
+  type PaymentMode,
   type SectionLayout,
   type TagId,
 } from '@restro/core'
@@ -49,6 +50,7 @@ import { pickLocalized } from '@/fields/localized'
 import { parseMoneyInput } from '@/fields/money-input'
 import { TillLabelProvider } from '@/fields/till-label'
 import { isAdminLocale, toDataLocale } from '@/i18n/locales'
+import { cn } from '@/lib/utils'
 import type { ActionResult } from './action-result'
 import {
   createItemAction,
@@ -92,6 +94,7 @@ import { ItemSheet } from './item-sheet'
 import { itemName, sectionTitle } from './labels'
 import { NewItemDialog } from './new-item-dialog'
 import { NewSectionDialog } from './new-section-dialog'
+import { setItemPaymentModeAction } from './payment-mode-actions'
 import { type KeyedId, keyAtEnd, planKeys } from './plan'
 import { type ComposerOp, reduceView } from './reducer'
 import { SectionTree } from './section-tree'
@@ -131,6 +134,8 @@ interface ComposerProps {
   readonly hasTill: boolean
   /** The person may delete sections of the venue's own and items made by hand (owner or admin). */
   readonly canDelete: boolean
+  /** The venue's item default where pay first can take effect (D122 §8); null = no such row. */
+  readonly payFirstDefault: PaymentMode | null
 }
 
 /** The section to open first: the one in the URL, else the first one, else Unsorted. */
@@ -151,8 +156,11 @@ export function Composer({
   canCreateItem,
   hasTill,
   canDelete,
+  payFirstDefault,
 }: ComposerProps) {
   const t = useTranslations('composer')
+  const owner = useTranslations('ownerSettings')
+  const modes = useTranslations('options.payment_mode')
   const uiLocale = useLocale()
   const locale = toDataLocale(isAdminLocale(uiLocale) ? uiLocale : 'bg')
   const searchParams = useSearchParams()
@@ -477,6 +485,41 @@ export function Composer({
     },
     openTagsPanel: () => setTagsOpen(true),
 
+    setPaymentMode: (itemIds, mode) => {
+      if (payFirstDefault === null || itemIds.length === 0) return
+      const inSentence = (value: PaymentMode) =>
+        uiLocale === 'bg' ? modes(value).toLocaleLowerCase('bg') : modes(value)
+      startTransition(async () => {
+        let result: ActionResult
+        try {
+          result = await setItemPaymentModeAction({ venueId, itemIds: [...itemIds], mode })
+        } catch {
+          result = { ok: false, error: 'failed' }
+        }
+        if (!result.ok) {
+          toast.error(
+            result.error === 'failed' || result.error === 'rejected'
+              ? owner('pf_err_save')
+              : t(`errors.${result.error}`, { source: view.tillLabel }),
+          )
+          return
+        }
+        // In a sentence: lower case in Bulgarian, "Като на заведението" too (the plan's words).
+        const same = owner('pf_i_same', { mode: inSentence(payFirstDefault) })
+        toast.success(
+          owner('pf_sel_toast', {
+            count: itemIds.length,
+            mode:
+              mode === null
+                ? uiLocale === 'bg'
+                  ? same.toLocaleLowerCase('bg')
+                  : same
+                : inSentence(mode),
+          }),
+        )
+      })
+    },
+
     setSoldOut: (itemIds, soldOut) => {
       if (!canMarkSoldOut) return
       // An item the till has off sale is not ours to touch (rule 5): nothing to mark or clear.
@@ -710,6 +753,7 @@ export function Composer({
           canCreateItem: mayCreateItem,
           hasTill,
           canDelete,
+          payFirstDefault,
           renaming,
         }}
       >
@@ -719,7 +763,15 @@ export function Composer({
           onDragEnd={onDragEnd}
           dragHandleUsageInstructions={t('dnd.instructions')}
         >
-          <div className="grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]" data-testid="composer">
+          <div
+            // The selection bar is fixed to the bottom of the screen: while it shows, the page
+            // scrolls far enough for the last rows to clear it (taller on a phone, where it wraps).
+            className={cn(
+              'grid gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]',
+              selected.size > 0 && 'pb-40 sm:pb-24',
+            )}
+            data-testid="composer"
+          >
             <aside className="grid content-start gap-3">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-muted-foreground">{t('sections')}</h2>

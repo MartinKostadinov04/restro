@@ -22,6 +22,7 @@ import type { ItemSheetData, SheetField } from '@/server/item-sheet/types'
 
 import { NameFromTillNotice } from './badges'
 import { ItemSheetIssues } from './item-sheet-issues'
+import { type ItemPaymentChoice, ItemPaymentModeRow } from './item-sheet-payment-mode'
 import { ItemSheetSale } from './item-sheet-sale'
 import { badgeProvenance } from './item-sheet-support'
 
@@ -39,6 +40,8 @@ export interface ItemSheetDetailsTabProps {
   onOpenMedia: () => void
   /** Marks the item sold out tonight (`true`) or takes our mark off (`false`, D46). */
   onSoldOut: (soldOut: boolean) => Promise<boolean>
+  /** Saves the item's payment mode (`null` = same as the venue); resolves true when saved (#218). */
+  onPaymentMode: (mode: ItemPaymentChoice) => Promise<boolean>
 }
 
 /** Languages whose text comes from different places: shown one by one under the badge. */
@@ -139,6 +142,7 @@ export function ItemSheetDetailsTab({
   onKeep,
   onOpenMedia,
   onSoldOut,
+  onPaymentMode,
 }: ItemSheetDetailsTabProps) {
   const t = useTranslations('itemSheet.details')
   const [editing, setEditing] = useState<string | null>(null)
@@ -162,6 +166,18 @@ export function ItemSheetDetailsTab({
                 const field = byKey.get(key)
                 if (!field) return null
                 const editable = field.access.kind === 'edit'
+                // Radio cards instead of the generic editor: one tap, saved at once (#218).
+                if (key === 'payment_mode' && editable && data.payFirstDefault !== null) {
+                  return (
+                    <ItemPaymentModeRow
+                      key={key}
+                      field={field}
+                      venueMode={data.payFirstDefault}
+                      busy={busy}
+                      onChange={onPaymentMode}
+                    />
+                  )
+                }
                 return (
                   <FieldRow
                     key={key}
