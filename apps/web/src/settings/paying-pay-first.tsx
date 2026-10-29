@@ -9,7 +9,7 @@
 import { PAYMENT_MODES, type PaymentMode } from '@restro/core'
 import Link from 'next/link'
 import { useLocale, useTranslations } from 'next-intl'
-import { useId } from 'react'
+import { useEffect, useId, useState } from 'react'
 
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -34,6 +34,13 @@ export function PayingPayFirstCard({
   const { pending, run } = runner
   const can = view.canConnect
   const venueId = view.venueId
+  // What the controls show: the choice at once, before the server answers. It follows the saved
+  // value when that changes (this save, an Undo, another owner) and returns to it if a save fails.
+  const [shown, setShown] = useState({ itemMode: card.itemMode, applies: card.applies })
+  useEffect(() => {
+    setShown({ itemMode: card.itemMode, applies: card.applies })
+  }, [card.itemMode, card.applies])
+  const backToSaved = () => setShown({ itemMode: card.itemMode, applies: card.applies })
 
   /** The option's label inside a sentence: lower case in Bulgarian, as the plan words it. */
   const inSentence = (mode: PaymentMode): string =>
@@ -44,18 +51,22 @@ export function PayingPayFirstCard({
   function setItemMode(next: PaymentMode) {
     const previous = card.itemMode
     if (next === previous) return
+    setShown((now) => ({ ...now, itemMode: next }))
     run(() => savePayFirstAction({ venueId, change: { itemMode: next } }), {
       done: t('pf_toast_default', { mode: inSentence(next) }),
       words,
+      onFail: backToSaved,
       undo: () => savePayFirstAction({ venueId, change: { itemMode: previous } }),
     })
   }
 
   function setApplies(next: boolean) {
     const previous = card.applies
+    setShown((now) => ({ ...now, applies: next }))
     run(() => savePayFirstAction({ venueId, change: { applies: next } }), {
       done: next ? t('pf_toast_on') : t('pf_toast_off'),
       words,
+      onFail: backToSaved,
       undo: () => savePayFirstAction({ venueId, change: { applies: previous } }),
     })
   }
@@ -70,7 +81,7 @@ export function PayingPayFirstCard({
       <fieldset className="grid gap-2" disabled={pending}>
         <legend className="mb-2 text-sm font-medium">{t('pf_default_t')}</legend>
         {PAYMENT_MODES.map((mode) => {
-          const checked = card.itemMode === mode
+          const checked = shown.itemMode === mode
           // Read-only: only the venue's choice is shown, as text.
           if (!can && !checked) return null
           return can ? (
@@ -108,7 +119,7 @@ export function PayingPayFirstCard({
           {can ? (
             <Switch
               id="pay-first-applies"
-              checked={card.applies}
+              checked={shown.applies}
               disabled={pending}
               onCheckedChange={setApplies}
               data-testid="paying-pf-applies"
@@ -119,7 +130,7 @@ export function PayingPayFirstCard({
             </span>
           )}
         </div>
-        {card.applies ? null : (
+        {shown.applies ? null : (
           <p className="text-sm text-muted-foreground" data-testid="paying-pf-off-d">
             {t('pf_applies_off_d')}
           </p>

@@ -385,6 +385,32 @@ describe('Settings › Paying', () => {
       )
     })
 
+    it('shows the chosen mode and switch before the server answers, and rolls back a refusal', async () => {
+      let answer: (value: { ok: false; error: string }) => void = () => {}
+      vi.mocked(savePayFirstAction).mockImplementation(
+        () => new Promise((resolve) => (answer = resolve)),
+      )
+      const user = userEvent.setup()
+      renderWithIntl(<PayingPanel view={view({ payFirst: card })} connection={undefined} />)
+      const mode = screen.getByTestId('paying-pf-mode-pay_first') as HTMLInputElement
+      await user.click(mode)
+      expect(mode.checked).toBe(true)
+      answer({ ok: false, error: 'permission_denied' })
+      await waitFor(() => expect(mode.checked).toBe(false))
+      expect((screen.getByTestId('paying-pf-mode-on_bill') as HTMLInputElement).checked).toBe(true)
+      expect(toast.error).toHaveBeenCalled()
+
+      vi.mocked(savePayFirstAction).mockImplementation(
+        () => new Promise((resolve) => (answer = resolve)),
+      )
+      const applies = within(screen.getByTestId('paying-pay-first')).getByRole('switch')
+      await user.click(applies)
+      expect(applies.getAttribute('aria-checked')).toBe('false')
+      expect(screen.getByTestId('paying-pf-off-d')).toBeTruthy()
+      answer({ ok: false, error: 'permission_denied' })
+      await waitFor(() => expect(applies.getAttribute('aria-checked')).toBe('true'))
+    })
+
     it('saves the switch at once, with Undo, and says what off means', async () => {
       const user = userEvent.setup()
       renderWithIntl(<PayingPanel view={view({ payFirst: card })} connection={undefined} />)
