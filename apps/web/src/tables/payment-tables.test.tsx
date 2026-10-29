@@ -291,12 +291,44 @@ describe('payment tables on Tables & QR', () => {
     expect(screen.queryByTestId('unmark-payment-table')).toBeNull()
   })
 
+  it('gives a person with the mark but not the organisation’s manage right the mark item alone', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<TablesPanel view={payingView({ canManage: false })} />)
+    await menuOf(user, CODED)
+    expect(screen.getByTestId('mark-payment-table')).toBeTruthy()
+    for (const gone of ['create-code', 'new-code', 'toggle-hidden', 'move-up', 'move-down']) {
+      expect(screen.queryByTestId(gone)).toBeNull()
+    }
+    expect(screen.queryByTestId('delete-table')).toBeNull()
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1)
+  })
+
+  it('has no menu for a person with neither right', () => {
+    renderWithIntl(
+      <TablesPanel view={payingView({ canManage: false, paying: paying({ canMark: false }) })} />,
+    )
+    expect(screen.queryByTestId('table-menu')).toBeNull()
+  })
+
+  it('keeps a payment table free of codes and Show even where paying is no longer offered', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<TablesPanel view={payingView({ paying: null })} />)
+    await menuOf(user, PAYMENT)
+    expect(screen.queryByTestId('create-code')).toBeNull()
+    expect(screen.queryByTestId('toggle-hidden')).toBeNull()
+    expect(within(cardOf(PAYMENT)).queryByTestId('route-picker')).toBeNull()
+    // The badge of the mark stays; the bar badge and the mark item need paying.
+    expect(within(cardOf(PAYMENT)).getByTestId('payment-table-badge')).toBeTruthy()
+    expect(within(cardOf(PAYMENT)).queryByTestId('table-bar')).toBeNull()
+    expect(screen.queryByTestId('unmark-payment-table')).toBeNull()
+  })
+
   it('shows none of it where no connector takes payments', async () => {
     const user = userEvent.setup()
-    // The same rows, but the view says paying is not offered here.
+    // The same rows, but the view says paying is not offered here (the row that is a payment table
+    // keeps its own badge, see the test above).
     renderWithIntl(<TablesPanel view={payingView({ paying: null })} />)
     expect(screen.queryByTestId('payment-tables-banner')).toBeNull()
-    expect(screen.queryByTestId('payment-table-badge')).toBeNull()
     expect(screen.queryByTestId('table-bar')).toBeNull()
     await menuOf(user, CODED)
     expect(screen.queryByTestId('mark-payment-table')).toBeNull()

@@ -17,6 +17,8 @@ import { ADMIN_EMAIL, ADMIN_PASSWORD, VENUE_NAME } from './support'
 //        stays hidden and without a code.
 //   PT3  the banner names the bars without a payment table, and is gone once each has one.
 //   PT4  a member without `settings.payment_tables` sees the badges and the banner, no menu items.
+//        An organisation member who holds the venue's Owner role can mark (the right is the venue
+//        role's, not the organisation's), and their menu holds nothing else of an owner's.
 //   A card of a payment table offers neither a code nor Show; a venue whose POS can't take
 //   payments shows none of it; no sideways scroll at 390 px.
 //
@@ -26,6 +28,7 @@ test.setTimeout(240_000)
 
 const OWNER = 'paying-owner@demo-club.test'
 const VIEWER = 'paying-viewer@demo-club.test'
+const VENUE_OWNER = 'paying-venue-owner@demo-club.test'
 const PAYING_VENUE = 'Paying Club Sofia'
 
 let venueId = ''
@@ -38,7 +41,8 @@ async function signIn(page: Page, email: string) {
     await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
     await page.getByRole('button', { name: 'Вход' }).click()
     try {
-      await expect(page).toHaveURL(/\/venues$/, { timeout: 8_000 })
+      // A person who holds more than an operator's rights lands on the venue itself.
+      await expect(page).toHaveURL(/\/venues(\/vn_[^/?]+)?(\?.*)?$/, { timeout: 8_000 })
       return
     } catch {
       await page.waitForTimeout(10_000)
@@ -213,6 +217,29 @@ test('an older sign-in asks for the password, then the mark goes through; the ba
   await expect(page.getByTestId('payment-tables-banner')).toHaveCount(0)
   await snapshot(page, 'payment-tables-all-marked-phone.png')
   await noSidewaysScroll(page)
+  await context.close()
+})
+
+test('a member with the venue’s Owner role can mark a table; their menu holds only that', async ({
+  browser,
+}) => {
+  const { context, page } = await open(browser, VENUE_OWNER)
+  await page.goto(tables())
+  await expect(page.getByTestId('tables-tab')).toBeVisible()
+  await card(page, 2).getByTestId('table-menu').click()
+  // Not an owner or admin of the organisation: no codes, Hide, moves or Delete.
+  await expect(page.getByTestId('mark-payment-table')).toBeVisible()
+  await expect(page.getByTestId('create-code')).toHaveCount(0)
+  await expect(page.getByTestId('toggle-hidden')).toHaveCount(0)
+  await expect(page.getByTestId('move-up')).toHaveCount(0)
+  await expect(page.getByTestId('delete-table')).toHaveCount(0)
+  await page.getByTestId('mark-payment-table').click()
+  await page
+    .getByTestId('confirm-payment-table')
+    .getByRole('button', { name: 'Използвай за плащане' })
+    .click()
+  await expect(page.getByText('Маса 2 е маса за плащане')).toBeVisible()
+  await expect(card(page, 2).getByTestId('payment-table-badge')).toBeVisible()
   await context.close()
 })
 

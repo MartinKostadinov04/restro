@@ -108,7 +108,10 @@ export function TableCard({
     email: payment?.email ?? '',
   })
   const pending = running || paymentTable.pending
-  const isPaymentTable = payment !== null && row.isPaymentTable
+  // A payment table never gets a code, Show or a menu back, even if the connector stops offering paying.
+  const isPaymentTable = row.isPaymentTable
+  // The mark is the venue role's right; the rest of the menu is the organisation's owners and admins.
+  const canMark = payment?.canMark === true
   const barName = row.bar?.name ?? tp('pt_no_bar_group')
 
   // After a change the page brings the saved values back; show them.
@@ -241,7 +244,7 @@ export function TableCard({
           )}
         </div>
 
-        {canManage ? (
+        {canManage || canMark ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -257,7 +260,7 @@ export function TableCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-52">
-              {isPaymentTable ? null : hasCode ? (
+              {!canManage || isPaymentTable ? null : hasCode ? (
                 <>
                   <DropdownMenuItem onSelect={() => setConfirm('new')} data-testid="new-code">
                     {t('row.newCode')}
@@ -277,7 +280,7 @@ export function TableCard({
                   {t('row.createCode')}
                 </DropdownMenuItem>
               )}
-              {payment?.canMark ? (
+              {canMark ? (
                 <DropdownMenuItem
                   onSelect={() => (isPaymentTable ? paymentTable.unmark() : setConfirm('payment'))}
                   data-testid={isPaymentTable ? 'unmark-payment-table' : 'mark-payment-table'}
@@ -286,7 +289,7 @@ export function TableCard({
                   {isPaymentTable ? tp('pt_unmark') : tp('pt_mark')}
                 </DropdownMenuItem>
               ) : null}
-              {isPaymentTable ? null : (
+              {!canManage || isPaymentTable ? null : (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -304,47 +307,51 @@ export function TableCard({
                   </DropdownMenuItem>
                 </>
               )}
-              <DropdownMenuItem
-                disabled={index === 0}
-                onSelect={() => move(undefined, index - 1, t('row.moved'))}
-                data-testid="move-up"
-              >
-                <ArrowUpIcon aria-hidden />
-                {t('row.moveUp')}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={index >= count - 1}
-                onSelect={() => move(undefined, index + 1, t('row.moved'))}
-                data-testid="move-down"
-              >
-                <ArrowDownIcon aria-hidden />
-                {t('row.moveDown')}
-              </DropdownMenuItem>
-              {fromTill
-                ? null
-                : otherAreas.map((area) => (
-                    <DropdownMenuItem
-                      key={area.id}
-                      onSelect={() => move(area.id, area.tableCount, t('row.moved'))}
-                      data-testid="move-to-area"
-                    >
-                      <MoveRightIcon aria-hidden />
-                      {t('row.moveTo', { area: area.name })}
-                    </DropdownMenuItem>
-                  ))}
-              {fromTill ? null : (
+              {canManage ? (
                 <>
-                  <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    variant="destructive"
-                    onSelect={() => setConfirm('delete')}
-                    data-testid="delete-table"
+                    disabled={index === 0}
+                    onSelect={() => move(undefined, index - 1, t('row.moved'))}
+                    data-testid="move-up"
                   >
-                    <Trash2Icon aria-hidden />
-                    {t('row.delete')}
+                    <ArrowUpIcon aria-hidden />
+                    {t('row.moveUp')}
                   </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={index >= count - 1}
+                    onSelect={() => move(undefined, index + 1, t('row.moved'))}
+                    data-testid="move-down"
+                  >
+                    <ArrowDownIcon aria-hidden />
+                    {t('row.moveDown')}
+                  </DropdownMenuItem>
+                  {fromTill
+                    ? null
+                    : otherAreas.map((area) => (
+                        <DropdownMenuItem
+                          key={area.id}
+                          onSelect={() => move(area.id, area.tableCount, t('row.moved'))}
+                          data-testid="move-to-area"
+                        >
+                          <MoveRightIcon aria-hidden />
+                          {t('row.moveTo', { area: area.name })}
+                        </DropdownMenuItem>
+                      ))}
+                  {fromTill ? null : (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onSelect={() => setConfirm('delete')}
+                        data-testid="delete-table"
+                      >
+                        <Trash2Icon aria-hidden />
+                        {t('row.delete')}
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </>
-              )}
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
