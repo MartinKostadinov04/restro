@@ -29,6 +29,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { QrPhoneFace } from './face'
 import { QR_PHONE_MANIFEST } from './manifest'
+import { sentWords } from './table-order'
 
 // `act` needs this flag in a test that is not run by Testing Library.
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -376,9 +377,38 @@ describe('the review of #195 (D127)', () => {
     expect(recorded).toEqual([
       {
         locale: 'en',
-        failedText: 'The card form could not load. Nothing was charged. Ask your waiter.',
+        failedText: 'The card form didn’t load. Try again or ask your waiter.',
       },
     ])
+  })
+
+  it('shows a pay-first round ended "No receipt" as ordered and unpaid, on the screen and in the sent orders', async () => {
+    const { page } = await drawRecording(
+      payingState({
+        payment: payScenarioPayment({
+          state: 'released',
+          reason: 'no_receipt',
+          mode: 'pay_first',
+          form: null,
+        }),
+      }),
+    )
+    expect(page.querySelector('[data-pay-end="pay_first_unpaid"]')?.textContent).toContain(
+      'Nothing was charged. Your order went through, and your waiter will take the payment.',
+    )
+    expect(page.querySelector('[data-slot="pay.again"]')).toBeNull()
+    const words = stringsFor('en_US').services
+    const sent = {
+      id: 'so_00000000000000000000a' as never,
+      state: 'added' as const,
+      reason: null,
+      ref: 'K7Q',
+      lines: [],
+      sentAt: 0,
+      mine: false,
+    }
+    expect(sentWords(sent, words)).toBe('Added to your bill')
+    expect(sentWords({ ...sent, unpaid: true }, words)).toBe('Ordered, not paid: pay your waiter')
   })
 })
 

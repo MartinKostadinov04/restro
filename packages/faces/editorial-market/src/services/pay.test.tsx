@@ -364,7 +364,23 @@ describe("this phone's payment", () => {
         'The payment wasn’t completed. Nothing was charged. Any amount your bank reserved will be released.',
         false,
       ],
-      ['item_unavailable', 'Something ran out. Nothing was charged. Ask your waiter.', false],
+      [
+        'item_unavailable',
+        'Something ran out, so nothing was sent and nothing was charged. Pay for the rest when you’re ready.',
+        false,
+      ],
+      [
+        'enter_refused',
+        'We couldn’t send this order. Nothing was charged. Please call a waiter.',
+        false,
+      ],
+      ['cancelled', 'Payment cancelled. Nothing was charged.', false],
+      ['paying_not_offered', 'Ask your waiter to pay.', false],
+      [
+        'below_minimum',
+        'Card payments start at €0.50. Nothing was charged. Add an item or ask your waiter.',
+        false,
+      ],
     ]
     for (const [reason, words, again] of cases) {
       const host = fakeHost({
@@ -380,6 +396,35 @@ describe("this phone's payment", () => {
       expect(within(sheet).getByRole('button', { name: 'Back to the bill' })).toBeTruthy()
       cleanup()
     }
+  })
+
+  it('words a pay-first round ended "No receipt" as ordered and not charged, and a bill payment as not completed', () => {
+    const first = fakeHost({
+      ...base(),
+      payment: paymentOf({
+        state: 'released',
+        reason: 'no_receipt',
+        mode: 'pay_first',
+        form: null,
+      }),
+    })
+    const { sheet } = openPay(first)
+    expect(
+      within(sheet).getByText(
+        'Nothing was charged. Your order went through, and your waiter will take the payment.',
+      ),
+    ).toBeTruthy()
+    expect(within(sheet).queryByRole('button', { name: 'Pay again' })).toBeNull()
+    cleanup()
+    const bill = fakeHost({
+      ...base(),
+      payment: paymentOf({ state: 'released', reason: 'no_receipt', mode: 'bill', form: null }),
+    })
+    expect(
+      within(openPay(bill).sheet).getByText(
+        'The payment wasn’t completed. Nothing was charged. Any amount your bank reserved will be released.',
+      ),
+    ).toBeTruthy()
   })
 
   it('offers Call a waiter on the failure screens where the venue takes calls', async () => {
@@ -505,7 +550,7 @@ describe('the review of #195 (D127)', () => {
     openPay(host)
     expect(host.forms[0]).toMatchObject({ locale: 'en' })
     expect(host.forms[0]?.failedText).toBe(
-      'The card form could not load. Nothing was charged. Ask your waiter.',
+      'The card form didn’t load. Try again or ask your waiter.',
     )
   })
 })

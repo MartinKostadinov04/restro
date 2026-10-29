@@ -720,6 +720,7 @@ describe('paying (#110, #114, D127)', () => {
 
   const payment = (changes: Record<string, unknown> = {}) => ({
     id: PY,
+    mode: 'bill',
     number: 'K7Q4M',
     state: 'awaiting_guest',
     reason: null,

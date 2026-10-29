@@ -146,6 +146,7 @@ export {
 } from './palette'
 export {
   choosePay,
+  endText,
   freeLines,
   NO_TIP,
   offersPay,

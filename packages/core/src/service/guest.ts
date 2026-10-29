@@ -195,6 +195,8 @@ export interface GuestTableState {
     }[]
     /** Seconds since it was sent, for the time "Show this to your waiter" gives. */
     readonly sentAgoSeconds: number
+    /** A pay-first round that is on the POS but whose card was not charged ("No receipt", #114). */
+    readonly unpaid?: true
   }[]
   /**
    * The table's latest waiter call while it is open, and for a few minutes after it was handled
@@ -472,6 +474,7 @@ export function projectGuestState(
             ref: sent.reference,
             lines: sent.lines,
             sentAgoSeconds: seconds(now - sent.createdAt.getTime()),
+            ...(sent.unpaid ? { unpaid: true as const } : {}),
           },
         ]
   })
@@ -1337,6 +1340,8 @@ async function payAct(
 /** What the paying phone sees of its payment (the shell's `GuestPaymentAnswer`). */
 export interface GuestPaymentView {
   readonly id: string
+  /** `pay_first`: the payment of a round paid at Send; `bill`: lines of the table's bill. */
+  readonly mode: 'bill' | 'pay_first'
   /** The short number the guest shows the waiter on the Paid screen (`paymentNumberOf`). */
   readonly number: string
   readonly state: string
@@ -1493,6 +1498,7 @@ export async function guestPayment(
   }
   const answer: GuestPaymentView = {
     id: payment.id,
+    mode: payment.kind === 'pay_first' ? 'pay_first' : 'bill',
     number: paymentNumberOf(payment.id),
     state: payment.state,
     reason: payment.reason,

@@ -47,6 +47,8 @@ export type StripeLoader = (
 
 /** The part of Stripe's Elements the form uses. */
 export interface ElementsLike {
+  /** Stripe's `elements.update`: the options that may change while the form is open. */
+  update: (options: { locale: string }) => void
   create: (type: 'payment', options?: Record<string, unknown>) => PaymentElementLike
 }
 
@@ -165,6 +167,8 @@ export function mountStripeCardForm(
       button.textContent = next.label
       button.className = next.buttonClass
       failedText = next.failedText
+      // A language switch while the form is open changes Stripe's own text too.
+      elements?.update({ locale: next.locale })
     },
     unmount: () => {
       alive = false

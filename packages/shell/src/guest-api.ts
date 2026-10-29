@@ -187,6 +187,8 @@ export const GuestTableStateSchema = z.strictObject({
           )
           .max(SERVICE_LIMITS.lines),
         sentAgoSeconds: seconds,
+        /** A pay-first round on the POS whose card was not charged ("No receipt", #114). */
+        unpaid: z.literal(true).optional(),
       }),
     )
     .max(50),
@@ -355,6 +357,8 @@ export const GUEST_PAYMENT_STATES = PAYMENT_STATES
  */
 export const GuestPaymentAnswerSchema = z.strictObject({
   id: idSchema('py'),
+  /** `pay_first`: a round paid at Send; `bill`: lines of the table's bill. */
+  mode: z.enum(['bill', 'pay_first']),
   /** The short number the guest shows the waiter (five letters), the same for the same payment. */
   number: z.string().regex(/^[A-Z0-9]{5}$/),
   state: z.enum(GUEST_PAYMENT_STATES),

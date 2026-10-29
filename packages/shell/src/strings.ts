@@ -190,6 +190,8 @@ export interface ServiceStrings {
   /** A sent order in flight, on the other phones. */
   readonly beingSent: string
   readonly sentAdded: string
+  /** A pay-first round on the POS whose card was not charged ("No receipt", Martin 10-29). */
+  readonly sentUnpaid: string
   /** Only where the POS approves orders at the bar. */
   readonly sentAwaitingApproval: string
   readonly sentNotSent: string
@@ -277,7 +279,9 @@ export interface PayingStrings {
   readonly checkingTitle: string
   readonly checkingBody: string
   /** Ended with nothing charged, by how it ended. */
-  readonly ended: { readonly [E in PayEnd]: string }
+  readonly ended: { readonly [E in Exclude<PayEnd, 'below_minimum'>]: string }
+  /** Released after the pricing, below the venue's smallest card payment (`min` the amount). */
+  readonly endedBelowMinimum: (min: string) => string
   readonly payAgain: string
   readonly locationTitle: string
   readonly locationBody: string
@@ -285,11 +289,9 @@ export interface PayingStrings {
   readonly callWaiter: string
   /** Pay: "Too many tries. Wait a moment and try again." (the guide's `rate_limited`). */
   readonly rateLimited: string
-  /**
-   * PLACEHOLDERS, not Martin's words yet (the lead is getting them): the tip is more than the
-   * chosen lines, and the card form could not load.
-   */
+  /** The greyed Pay's reason when the tip is more than the amount (Martin 10-29). */
   readonly tipTooBig: string
+  /** What the card form says when it could not load (Martin 10-29). */
   readonly cardFormFailed: string
 }
 
@@ -506,6 +508,7 @@ const EN: Strings = {
     sendingNow: 'Sending…',
     beingSent: 'Being sent',
     sentAdded: 'Added to your bill',
+    sentUnpaid: 'Ordered, not paid: pay your waiter',
     sentAwaitingApproval: 'Waiting for the bar to take it',
     sentNotSent: 'We couldn’t send your order, please call a waiter.',
     sentNotSentPaused: 'Ordering is paused, please call a waiter.',
@@ -558,8 +561,8 @@ const EN: Strings = {
         'Your visit at this table has ended. If you’re still here, scan the code again.',
       too_late: 'Too late to cancel: the payment is being processed.',
       unknown_payment: 'We can’t find this payment. Ask your waiter.',
-      // PLACEHOLDER (words pending): a tip where the POS cannot record one.
-      tip_not_offered: 'A tip is not possible here. Nothing was charged.',
+      // Martin 10-29.
+      tip_not_offered: 'A tip can’t be added right now. Pay without a tip.',
       not_built: 'This is not available yet.',
     },
     refusedOther: 'That did not work. Try again.',
@@ -617,17 +620,22 @@ const EN: Strings = {
         // The guide has no words of its own for a payment the guest cancelled or for a pay-first
         // release it has not worded yet (the lead drafts them): the calm general ones, true
         // wherever a payment was released.
-        cancelled: 'Nothing was charged.',
-        // PLACEHOLDERS (words pending): the pay-first release reasons and paying switched off.
-        enter_refused: 'We couldn’t prepare this payment. Nothing was charged. Ask your waiter.',
-        item_unavailable: 'Something ran out. Nothing was charged. Ask your waiter.',
-        paying_off:
-          'Card payments are not available right now. Nothing was charged. Ask your waiter.',
+        // Martin 10-29: the guest's own cancel, the pay-first release reasons, paying switched
+        // off, and a pay-first round that reached the till and ended "No receipt".
+        cancelled: 'Payment cancelled. Nothing was charged.',
+        enter_refused: 'We couldn’t send this order. Nothing was charged. Please call a waiter.',
+        item_unavailable:
+          'Something ran out, so nothing was sent and nothing was charged. Pay for the rest when you’re ready.',
+        paying_off: 'Ask your waiter to pay.',
+        pay_first_unpaid:
+          'Nothing was charged. Your order went through, and your waiter will take the payment.',
         other: 'We couldn’t prepare this payment. Nothing was charged. Ask your waiter.',
       },
+      endedBelowMinimum: (min) =>
+        `Card payments start at ${min}. Nothing was charged. Add an item or ask your waiter.`,
       rateLimited: 'Too many tries. Wait a moment and try again.',
-      tipTooBig: 'The tip is more than the lines you chose.',
-      cardFormFailed: 'The card form could not load. Nothing was charged. Ask your waiter.',
+      tipTooBig: 'The tip can’t be more than the amount you’re paying.',
+      cardFormFailed: 'The card form didn’t load. Try again or ask your waiter.',
       payAgain: 'Pay again',
       locationTitle: 'The bill shows only at the table',
       locationBody:
@@ -829,6 +837,7 @@ const BG: Strings = {
     sendingNow: 'Изпраща се…',
     beingSent: 'Изпраща се',
     sentAdded: 'Добавено към сметката ви',
+    sentUnpaid: 'Поръчано, без плащане: платете на сервитьора',
     sentAwaitingApproval: 'Чака бара да я приеме',
     sentNotSent: 'Не успяхме да изпратим поръчката ви, моля, повикайте сервитьор.',
     sentNotSentPaused: 'Поръчките са спрени, моля, повикайте сервитьор.',
@@ -883,8 +892,8 @@ const BG: Strings = {
         'Посещението ви на тази маса приключи. Ако сте още тук, сканирайте кода отново.',
       too_late: 'Вече е късно за отказ: плащането се обработва.',
       unknown_payment: 'Не намираме това плащане. Попитайте сервитьора.',
-      // PLACEHOLDER (words pending): a tip where the POS cannot record one.
-      tip_not_offered: 'Бакшиш тук не е възможен. Картата ви не е таксувана.',
+      // Martin 10-29.
+      tip_not_offered: 'В момента не може да се добави бакшиш. Платете без бакшиш.',
       not_built: 'Това още не е налично.',
     },
     refusedOther: 'Не се получи. Опитайте отново.',
@@ -943,20 +952,24 @@ const BG: Strings = {
         no_receipt:
           'Плащането не беше завършено. Картата ви не е таксувана. Ако банката е запазила сума, тя ще бъде освободена.',
         expired: 'Времето изтече. Картата ви не е таксувана.',
-        cancelled: 'Картата ви не е таксувана.',
-        // PLACEHOLDERS (words pending): the pay-first release reasons and paying switched off.
+        // Martin 10-29: the guest's own cancel, the pay-first release reasons, paying switched
+        // off, and a pay-first round that reached the till and ended "No receipt".
+        cancelled: 'Плащането е отменено. Картата ви не е таксувана.',
         enter_refused:
-          'Не успяхме да подготвим плащането. Картата ви не е таксувана. Попитайте сервитьора.',
-        item_unavailable: 'Нещо се изчерпа. Картата ви не е таксувана. Попитайте сервитьора.',
-        paying_off:
-          'Плащането с карта не е налично в момента. Картата ви не е таксувана. Попитайте сервитьора.',
+          'Не успяхме да изпратим поръчката. Картата ви не е таксувана. Моля, повикайте сервитьор.',
+        item_unavailable:
+          'Нещо се изчерпа, затова нищо не е изпратено и картата ви не е таксувана. Платете останалото, когато сте готови.',
+        paying_off: 'За да платите, попитайте сервитьора.',
+        pay_first_unpaid:
+          'Картата ви не е таксувана. Поръчката е приета, сервитьорът ще вземе плащането.',
         other:
           'Не успяхме да подготвим плащането. Картата ви не е таксувана. Попитайте сервитьора.',
       },
+      endedBelowMinimum: (min) =>
+        `Плащането с карта е от ${min} нагоре. Картата ви не е таксувана. Добавете артикул или попитайте сервитьора.`,
       rateLimited: 'Твърде много опити. Изчакайте малко и опитайте отново.',
-      tipTooBig: 'Бакшишът е повече от избраните редове.',
-      cardFormFailed:
-        'Формата за картата не се зареди. Картата ви не е таксувана. Попитайте сервитьора.',
+      tipTooBig: 'Бакшишът не може да е повече от сумата за плащане.',
+      cardFormFailed: 'Формата за карта не се зареди. Опитайте отново или попитайте сервитьора.',
       payAgain: 'Плати отново',
       locationTitle: 'Сметката се вижда само на масата',
       locationBody:
