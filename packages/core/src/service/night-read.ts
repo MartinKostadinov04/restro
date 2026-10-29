@@ -916,6 +916,8 @@ export async function readNight(
         and(
           eq(sentOrders.venueId, venue.id),
           eq(sentOrders.serviceDate, day),
+          // A pay-first round is answered through its payment (#113), which To fix lists itself.
+          eq(sentOrders.kind, 'on_bill'),
           today
             ? eq(sentOrders.state, 'unconfirmed')
             : or(
@@ -1104,6 +1106,7 @@ export async function readNightReport(
         and(
           eq(sentOrders.venueId, venue.id),
           eq(sentOrders.serviceDate, input.day),
+          eq(sentOrders.kind, 'on_bill'),
           eq(sentOrders.state, 'unconfirmed'),
         ),
       )
