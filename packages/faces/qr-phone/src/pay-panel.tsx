@@ -19,6 +19,7 @@
 
 import {
   choosePay,
+  endText,
   fallbackChain,
   freeLines,
   type Locale,
@@ -249,7 +250,13 @@ function PaymentScreen({
     case 'ended':
       return (
         <section className="rq-order" data-pay-screen="ended" data-pay-end={screen.end}>
-          <p role="status">{words.ended[screen.end]}</p>
+          <p role="status">
+            {endText(
+              words,
+              screen.end,
+              services?.state.paying == null ? null : money(services.state.paying.minCardMinor),
+            )}
+          </p>
           {/* "Pay again" goes back to choosing with the ticks kept: Pay then takes the guarded path. */}
           {screen.again ? (
             <>

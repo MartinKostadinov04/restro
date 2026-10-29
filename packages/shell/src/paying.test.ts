@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   choosePay,
+  endText,
   freeLines,
   NO_TIP,
   offersPay,
@@ -73,6 +74,7 @@ const PAYING: PayingView = {
 function payment(changes: Partial<PaymentView>): PaymentView {
   return {
     id: 'py_1',
+    mode: 'bill',
     number: 'K7Q4M',
     state: 'awaiting_guest',
     reason: null,
@@ -301,8 +303,10 @@ describe("the guest words of the bill and paying (the guide's table, 10-28)", ()
   it('has Bulgarian and English for each end, the amounts and the counted words', () => {
     for (const locale of ['bg_BG', 'en_US'] as const) {
       const words = stringsFor(locale).services.paying
-      expect(Object.keys(words.ended).sort()).toEqual([...PAY_ENDS].sort())
-      for (const end of PAY_ENDS) expect(words.ended[end].trim(), end).not.toBe('')
+      expect(Object.keys(words.ended).sort()).toEqual(
+        PAY_ENDS.filter((end) => end !== 'below_minimum').sort(),
+      )
+      for (const end of PAY_ENDS) expect(endText(words, end, '0,50 EUR').trim(), end).not.toBe('')
       expect(words.payX('27,50 EUR')).toContain('27,50 EUR')
       expect(words.updated(7)).toContain('7')
       expect(words.sameQuestion(4)).toContain('4')
@@ -397,6 +401,97 @@ describe("the guest words of the bill and paying (the guide's table, 10-28)", ()
   it('names the card form’s language without its region', () => {
     expect(payFormLocale('bg_BG')).toBe('bg')
     expect(payFormLocale('en_US')).toBe('en')
+  })
+})
+
+describe('the words Martin approved on 10-29 (#114)', () => {
+  const en = stringsFor('en_US').services
+  const bg = stringsFor('bg_BG').services
+
+  it('has each of them, in both languages, as he gave them', () => {
+    expect(en.paying.ended.cancelled).toBe('Payment cancelled. Nothing was charged.')
+    expect(bg.paying.ended.cancelled).toBe('Плащането е отменено. Картата ви не е таксувана.')
+    expect(en.paying.ended.enter_refused).toBe(
+      'We couldn’t send this order. Nothing was charged. Please call a waiter.',
+    )
+    expect(bg.paying.ended.enter_refused).toBe(
+      'Не успяхме да изпратим поръчката. Картата ви не е таксувана. Моля, повикайте сервитьор.',
+    )
+    expect(en.paying.ended.item_unavailable).toBe(
+      'Something ran out, so nothing was sent and nothing was charged. Pay for the rest when you’re ready.',
+    )
+    expect(bg.paying.ended.item_unavailable).toBe(
+      'Нещо се изчерпа, затова нищо не е изпратено и картата ви не е таксувана. Платете останалото, когато сте готови.',
+    )
+    expect(en.paying.endedBelowMinimum('0.50 EUR')).toBe(
+      'Card payments start at 0.50 EUR. Nothing was charged. Add an item or ask your waiter.',
+    )
+    expect(bg.paying.endedBelowMinimum('0,50 EUR')).toBe(
+      'Плащането с карта е от 0,50 EUR нагоре. Картата ви не е таксувана. Добавете артикул или попитайте сервитьора.',
+    )
+    expect(en.paying.ended.paying_off).toBe('Ask your waiter to pay.')
+    expect(bg.paying.ended.paying_off).toBe('За да платите, попитайте сервитьора.')
+    expect(en.paying.tipTooBig).toBe('The tip can’t be more than the amount you’re paying.')
+    expect(bg.paying.tipTooBig).toBe('Бакшишът не може да е повече от сумата за плащане.')
+    expect(en.refusals.tip_not_offered).toBe('A tip can’t be added right now. Pay without a tip.')
+    expect(bg.refusals.tip_not_offered).toBe(
+      'В момента не може да се добави бакшиш. Платете без бакшиш.',
+    )
+    expect(en.paying.cardFormFailed).toBe(
+      'The card form didn’t load. Try again or ask your waiter.',
+    )
+    expect(bg.paying.cardFormFailed).toBe(
+      'Формата за карта не се зареди. Опитайте отново или попитайте сервитьора.',
+    )
+    expect(en.sentUnpaid).toBe('Ordered, not paid: pay your waiter')
+    expect(bg.sentUnpaid).toBe('Поръчано, без плащане: платете на сервитьора')
+    expect(en.paying.ended.pay_first_unpaid).toBe(
+      'Nothing was charged. Your order went through, and your waiter will take the payment.',
+    )
+    expect(bg.paying.ended.pay_first_unpaid).toBe(
+      'Картата ви не е таксувана. Поръчката е приета, сервитьорът ще вземе плащането.',
+    )
+  })
+
+  it('says no receipt word in them (Н-18 чл. 7а)', () => {
+    for (const words of [en, bg]) {
+      const all = [
+        words.sentUnpaid,
+        words.refusals.tip_not_offered,
+        words.paying.tipTooBig,
+        words.paying.cardFormFailed,
+        words.paying.endedBelowMinimum('0,50 EUR'),
+        ...Object.values(words.paying.ended),
+      ]
+      for (const text of all) expect(text.toLowerCase(), text).not.toMatch(RECEIPT_LIKE)
+    }
+  })
+
+  it('shows a pay-first round ended "No receipt" as ordered and unpaid, and nothing else that way', () => {
+    const released = (reason: string, mode: 'bill' | 'pay_first') =>
+      payScreen(payment({ state: 'released', reason, mode, form: null }))
+    expect(released('no_receipt', 'pay_first')).toEqual({
+      kind: 'ended',
+      end: 'pay_first_unpaid',
+      again: false,
+    })
+    // On the bill, "No receipt" is the payment that was not completed; a round the till never took
+    // (Not on the till) was not ordered, so "your order went through" would be untrue.
+    expect(released('no_receipt', 'bill')).toMatchObject({ end: 'no_receipt' })
+    expect(released('not_on_till', 'pay_first')).toMatchObject({ end: 'no_receipt' })
+    expect(released('below_minimum', 'pay_first')).toEqual({
+      kind: 'ended',
+      end: 'below_minimum',
+      again: false,
+    })
+  })
+
+  it('words a release below the minimum with the venue’s amount, else the general line', () => {
+    expect(endText(en.paying, 'below_minimum', '1.00 EUR')).toBe(
+      'Card payments start at 1.00 EUR. Nothing was charged. Add an item or ask your waiter.',
+    )
+    expect(endText(en.paying, 'below_minimum', null)).toBe(en.paying.ended.other)
+    expect(endText(en.paying, 'busy', null)).toBe(en.paying.ended.busy)
   })
 })
 

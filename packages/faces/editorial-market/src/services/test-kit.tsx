@@ -235,6 +235,7 @@ export function payingOf(changes: Partial<PayingView> = {}): PayingView {
 export function paymentOf(changes: Partial<PaymentView> = {}): PaymentView {
   return {
     id: 'py_1',
+    mode: 'bill',
     number: 'K7Q4M',
     state: 'awaiting_guest',
     reason: null,

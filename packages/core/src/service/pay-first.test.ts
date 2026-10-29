@@ -188,4 +188,16 @@ describe("what the phone hears of a pay-first round's sent order (#113)", () => 
       'so_on_bill_added',
     ])
   })
+
+  it('tells a round on the POS whose payment ended "No receipt" apart: ordered, not paid (#114)', () => {
+    const withUnpaid = {
+      ...read,
+      sentOrders: [
+        { ...sent('pay_first', 'added'), unpaid: true },
+        { ...sent('on_bill', 'added'), unpaid: false },
+      ],
+    } as unknown as TableStateRead
+    const shown = projectGuestState(withUnpaid, 'order').sentOrders
+    expect(shown.map((one) => one.unpaid)).toEqual([true, undefined])
+  })
 })

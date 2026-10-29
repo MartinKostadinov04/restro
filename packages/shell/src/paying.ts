@@ -22,7 +22,7 @@ import {
 
 import { viewMinor } from './money'
 import { PAY_ENDS, type PayEnd } from './service-vocabulary'
-import type { ServiceStrings } from './strings'
+import type { PayingStrings, ServiceStrings } from './strings'
 
 export { PAY_ENDS, type PayEnd }
 
@@ -229,6 +229,7 @@ const ENDS: Readonly<Record<string, { end: PayEnd; again: boolean }>> = {
   busy: { end: 'busy', again: true },
   paying_paused: { end: 'paying_paused', again: false },
   paying_not_offered: { end: 'paying_off', again: false },
+  below_minimum: { end: 'below_minimum', again: false },
   enter_refused: { end: 'enter_refused', again: false },
   item_unavailable: { end: 'item_unavailable', again: false },
   bill_changed: { end: 'check_failed', again: true },
@@ -267,6 +268,11 @@ export function payScreen(payment: PaymentView): PayScreen {
     case 'capture_failed':
       return { kind: 'checking' }
     case 'released': {
+      // A pay-first round that reached the till and was ended "No receipt" is ordered and unpaid:
+      // its own words, never "The payment wasn't completed" (Martin 10-29).
+      if (payment.mode === 'pay_first' && payment.reason === 'no_receipt') {
+        return { kind: 'ended', end: 'pay_first_unpaid', again: false }
+      }
       const known = payment.reason === null ? undefined : ENDS[payment.reason]
       return { kind: 'ended', end: known?.end ?? 'other', again: known?.again ?? false }
     }
@@ -329,4 +335,15 @@ export function refusalText(
   return Object.hasOwn(words.refusals, code)
     ? words.refusals[code as keyof typeof words.refusals]
     : words.refusedOther
+}
+
+/**
+ * The words of a payment that ended with nothing charged. `below_minimum` carries the venue's own
+ * smallest card payment (`minCard`, the amount as text); without it the general line shows.
+ */
+export function endText(words: PayingStrings, end: PayEnd, minCard: string | null): string {
+  if (end === 'below_minimum') {
+    return minCard === null ? words.ended.other : words.endedBelowMinimum(minCard)
+  }
+  return words.ended[end]
 }

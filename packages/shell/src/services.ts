@@ -446,6 +446,8 @@ export interface PaymentLineView {
  */
 export interface PaymentView {
   readonly id: string
+  /** `pay_first`: a round paid at Send; `bill`: lines of the table's bill. */
+  readonly mode: 'bill' | 'pay_first'
   /** The short number the guest shows the waiter. */
   readonly number: string
   readonly state: PaymentState
@@ -528,6 +530,11 @@ export interface SentOrderView {
   readonly sentAt: number
   /** Sent from this phone: only this phone shows "Sending…" (D122 §5). */
   readonly mine: boolean
+  /**
+   * A pay-first round on the POS whose payment a manager ended "No receipt": ordered, the card not
+   * charged. The phone says so instead of "Added to your bill" (#114, Martin 10-29).
+   */
+  readonly unpaid?: true
 }
 
 /** Where the phone stands with the location check (#76), and what the face shows for it. */
@@ -632,7 +639,10 @@ export interface ServiceState {
 
 /** The guest's own controls over this phone's payment screen. */
 export interface PayControls {
-  /** "Back to the bill": the payment's screen goes away; a reload no longer returns to it. */
+  /**
+   * "Back to the bill": the payment's screen goes away. Once the payment is final a reload no longer
+   * returns to it; an unconfirmed one keeps its handle, so a reload does come back to it.
+   */
   readonly dismiss: () => void
 }
 

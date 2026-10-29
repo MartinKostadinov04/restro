@@ -13,6 +13,7 @@
 
 import {
   choosePay,
+  endText,
   fallbackChain,
   freeLines,
   type Locale,
@@ -518,7 +519,14 @@ function PaymentScreen({
     case 'ended':
       return (
         <Screen kind="ended" end={screen.end}>
-          <StatePanel tone="bad" title={w.ended[screen.end]}>
+          <StatePanel
+            tone="bad"
+            title={endText(
+              w,
+              screen.end,
+              o.state.paying == null ? null : money(o.state.paying.minCardMinor),
+            )}
+          >
             {screen.again ? (
               <button
                 type="button"

@@ -117,7 +117,7 @@ export function sentWords(sent: SentOrderView, strings: ServiceStrings): string 
     case 'awaiting_approval':
       return strings.sentAwaitingApproval
     case 'added':
-      return strings.sentAdded
+      return sent.unpaid === true ? strings.sentUnpaid : strings.sentAdded
     case 'not_sent':
       if (sent.reason === 'ordering_paused') return strings.sentNotSentPaused
       if (sent.reason === 'item_unavailable') return strings.sentNotSentOutOfStock

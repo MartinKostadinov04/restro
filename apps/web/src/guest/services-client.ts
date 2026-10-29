@@ -205,6 +205,7 @@ function tableBillOf(bill: GuestTableState['bill']): TableBillView | null {
 function paymentViewOf(answer: GuestPaymentAnswer): PaymentView {
   return {
     id: answer.id,
+    mode: answer.mode,
     number: answer.number,
     state: answer.state,
     reason: answer.reason,
@@ -565,6 +566,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
           lines: sent.lines,
           sentAt: now - sent.sentAgoSeconds * 1000,
           mine: mine.has(sent.id),
+          ...(sent.unpaid === true ? { unpaid: true as const } : {}),
         }),
       ),
       location:

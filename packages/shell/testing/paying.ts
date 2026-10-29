@@ -72,6 +72,7 @@ export function payingState(changes: Partial<ServiceState> = {}): ServiceState {
 export function payment(changes: Partial<PaymentView> = {}): PaymentView {
   return {
     id: 'py_0000000000000000000001',
+    mode: 'bill',
     number: 'K7Q4M',
     state: 'awaiting_guest',
     reason: null,

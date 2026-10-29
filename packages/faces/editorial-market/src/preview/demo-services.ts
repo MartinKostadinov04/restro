@@ -389,6 +389,7 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
             (command.tipPercent === null ? 0 : ratioOfMinor(linesMinor, command.tipPercent, 100))
           const payment: PaymentView = {
             id: nextId('py-demo'),
+            mode: 'bill',
             number: 'DEMO7',
             state: 'awaiting_guest',
             reason: null,

@@ -179,6 +179,7 @@ describe('the guest API wire shapes (#75)', () => {
   it('answers the paying phone its payment, the form only as the provider’s values (#110)', () => {
     const answer = {
       id: `py_${'0'.repeat(22)}`,
+      mode: 'bill',
       number: 'K7Q4M',
       state: 'awaiting_guest',
       reason: null,

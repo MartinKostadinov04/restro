@@ -32,7 +32,11 @@ function fakeStripe(confirm: () => Promise<{ error?: { message?: string } }>) {
     NonNullable<Awaited<ReturnType<StripeLoader>>>['confirmPayment']
   >[0][] = []
   const options: { clientSecret: string; locale: string }[] = []
+  const updates: { locale: string }[] = []
   const elements: ElementsLike = {
+    update: (given) => {
+      updates.push(given)
+    },
     create: () => {
       const element = {
         mounted: null as HTMLElement | null,
@@ -63,7 +67,7 @@ function fakeStripe(confirm: () => Promise<{ error?: { message?: string } }>) {
       return confirm()
     },
   }))
-  return { load, created, confirmations, options }
+  return { load, created, confirmations, options, updates }
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -161,9 +165,11 @@ describe('mounting', () => {
     const target = document.createElement('div')
     const handle = mountStripeCardForm(target, PROPS, context(), stripe.load)
     await flush()
-    handle.update({ ...PROPS, label: 'Pay €25.00', buttonClass: 'other' })
+    handle.update({ ...PROPS, label: 'Pay €25.00', buttonClass: 'other', locale: 'en' })
     expect(buttonOf(target).textContent).toBe('Pay €25.00')
     expect(buttonOf(target).className).toBe('other')
+    // A language switch while the form is open changes Stripe's own text too.
+    expect(stripe.updates).toEqual([{ locale: 'en' }])
     handle.unmount()
     expect(stripe.created[0]?.destroyed).toBe(true)
     expect(target.childElementCount).toBe(0)

@@ -123,6 +123,11 @@ export interface TableStateRead {
     readonly reference: string
     readonly createdAt: Date
     readonly settledAt: Date | null
+    /**
+     * A pay-first round on the POS whose payment a manager ended "No receipt" (#113, #114): the
+     * round is ordered and the card was not charged, so the phone says "Ordered, not paid".
+     */
+    readonly unpaid: boolean
     /** What was sent: our item and option ids and the quantity, never the stored names. */
     readonly lines: readonly {
       readonly itemId: string
@@ -328,6 +333,23 @@ export async function readTableState(
             .from(sentOrders)
             .where(eq(sentOrders.sittingId, sitting.id))
             .orderBy(desc(sentOrders.createdAt))
+    const payFirstIds = sent.filter((row) => row.kind === 'pay_first').map((row) => row.id)
+    const unpaid = new Set(
+      payFirstIds.length === 0
+        ? []
+        : (
+            await tx
+              .select({ sentOrderId: payments.sentOrderId })
+              .from(payments)
+              .where(
+                and(
+                  inArray(payments.sentOrderId, payFirstIds),
+                  eq(payments.state, 'released'),
+                  eq(payments.reason, 'no_receipt'),
+                ),
+              )
+          ).flatMap((row) => (row.sentOrderId === null ? [] : [row.sentOrderId])),
+    )
 
     const [call] =
       sitting === undefined
@@ -466,6 +488,7 @@ export async function readTableState(
             },
       sentOrders: sent.map(({ lines, ...row }) => ({
         ...row,
+        unpaid: unpaid.has(row.id),
         lines: sentOrderLinesOf(lines).map((line) => ({
           itemId: line.itemId,
           optionIds: line.optionIds,

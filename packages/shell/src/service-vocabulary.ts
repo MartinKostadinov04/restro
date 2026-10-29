@@ -138,6 +138,10 @@ export const PAY_ENDS = [
   /** Pay-first (#113): the round could not be entered, or an item ran out. */
   'enter_refused',
   'item_unavailable',
+  /** Released after the pricing: below the venue's smallest card payment (words carry the amount). */
+  'below_minimum',
+  /** Pay-first: the round reached the till and the manager ended it "No receipt" (Martin 10-29). */
+  'pay_first_unpaid',
   /** Paying was switched off at the venue while the payment waited. */
   'paying_off',
   'other',
