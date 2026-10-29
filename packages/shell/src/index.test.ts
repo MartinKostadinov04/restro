@@ -33,8 +33,9 @@ describe('@restro/shell public surface', () => {
     for (const name of [
       'GuestCommandSchema',
       'EMPTY_SERVICE_STATE',
-      'PAY_SCOPES',
-      'PAY_METHODS',
+      'PAYMENT_STATES',
+      'choosePay',
+      'payScreen',
       'SERVICE_LIMITS',
       'bagReducer',
       'bagEstimate',

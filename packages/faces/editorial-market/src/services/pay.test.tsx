@@ -1,24 +1,23 @@
 // @vitest-environment jsdom
 
-// Paying (brief SH-06 test 6): the amounts and the methods are the host's quote; a failure never
-// shows "Paid"; "Paid" needs an accepted pay.start and a receipt; the processing screen always clears.
+// Paying from the bill (#45, #114, D127): the lines are the POS's own, the guest ticks them, the tip
+// starts at none and is only offered where the POS records one, Pay sends the ticked lines as the
+// phone saw them, and the screens that follow are this phone's payment state: the card form is the
+// page's (a slot), "Paid" is only a captured payment, and a failure never says it.
 
+import { payingBill, payingView, payScenarios } from '@restro/shell/testing'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { SERVICE_TIMEOUT_MS } from './command'
 import {
-  billLine,
-  billOf,
-  billRound,
   drawFace,
-  eur,
   type FakeHost,
   fakeHost,
-  quoteOf,
-  receiptOf,
+  payingOf,
+  paymentOf,
   resetPage,
-  text,
+  tableBillOf,
+  tableLine,
 } from './test-kit'
 
 vi.setConfig({ testTimeout: 15_000 })
@@ -31,377 +30,542 @@ afterEach(() => {
   document.body.style.overflow = ''
 })
 
-const bill = billOf(
-  [billRound('s1', 'staff', [billLine('w1', 'House wine', 2, 2000, 'served')])],
-  2000,
-)
-const PAID = 'Payment complete'
+const bn = (n: number) => `bn_${String(n).padStart(22, '0')}`
 
-/** Opens the pay sheet and gives it the host's first quote. */
-async function openPay(host: FakeHost, quote = quoteOf()) {
+/** Opens the pay sheet on a table bill of €12.50 and €10.00. */
+function openPay(host: FakeHost) {
   const page = drawFace(host)
   fireEvent.click(screen.getByRole('button', { name: 'Pay' }))
-  const sheet = screen.getByRole('dialog', { name: 'Pay' })
-  await waitFor(() => expect(host.of('pay.quote')).toHaveLength(1))
-  await act(async () => host.of('pay.quote')[0]?.answer())
-  page.update({ quote })
-  return { page, sheet }
+  return { page, sheet: screen.getByRole('dialog', { name: 'Pay' }) }
 }
-const method = (sheet: HTMLElement, name: string) => within(sheet).getByRole('button', { name })
-const quotes = (host: FakeHost) => host.of('pay.quote').map((call) => call.command)
+const base = () => ({
+  tableBill: tableBillOf(),
+  paying: payingOf(),
+  ordering: { state: 'on' as const, tips: true },
+})
+const payButton = (sheet: HTMLElement, name: RegExp | string) =>
+  within(sheet).getByRole('button', { name })
 
-describe('the quote', () => {
-  it('is asked for on arrival, for the whole table with no choices made', async () => {
-    const host = fakeHost({ bill })
+describe('choosing', () => {
+  it('shows the POS lines with nothing ticked, nothing tipped, and Pay greyed with its reason', () => {
+    const { sheet } = openPay(fakeHost(base()))
+    expect(within(sheet).getByText('What are you paying for?')).toBeTruthy()
+    expect(within(sheet).getByText(/House wine · €12\.50/)).toBeTruthy()
+    for (const box of within(sheet).getAllByRole('checkbox') as HTMLInputElement[]) {
+      expect(box.checked).toBe(false)
+    }
+    for (const preset of sheet.querySelectorAll('[data-slot="pay.tip.preset"]')) {
+      expect(preset.getAttribute('aria-pressed')).toBe('false')
+    }
+    expect(payButton(sheet, /^Pay /).hasAttribute('disabled')).toBe(true)
+    expect(within(sheet).getByText('Choose at least one line.')).toBeTruthy()
+  })
+
+  it('ticks lines, adds up the preview and rounds the 5, 10 and 15 % presets half-up', () => {
+    const host = fakeHost({
+      ...base(),
+      tableBill: tableBillOf([tableLine(1, 'Gin', 2450)]),
+    })
+    const { sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'The whole bill' }))
+    expect(within(sheet).getByRole('button', { name: 'Pay €24.50' })).toBeTruthy()
+    fireEvent.click(within(sheet).getByRole('button', { name: '15 %' }))
+    expect(within(sheet).getByRole('button', { name: 'Pay €28.18' })).toBeTruthy() // 3,675 → 3,68
+    fireEvent.click(within(sheet).getByRole('button', { name: '15 %' })) // tapping it again clears it
+    expect(within(sheet).getByRole('button', { name: 'Pay €24.50' })).toBeTruthy()
+    fireEvent.click(within(sheet).getByRole('button', { name: '5 %' }))
+    expect(within(sheet).getByRole('button', { name: 'Pay €25.73' })).toBeTruthy() // 1,225 → 1,23
+  })
+
+  it('offers no tip where the POS cannot record one', () => {
+    const { sheet } = openPay(fakeHost({ ...base(), ordering: { state: 'on', tips: false } }))
+    expect(sheet.querySelector('[data-slot="pay.tip.row"]')).toBeNull()
+    expect(within(sheet).queryByText('Tip: goes to the venue')).toBeNull()
+  })
+
+  it('greys a line in a payment that is not final, without a tick', () => {
+    const host = fakeHost({
+      ...base(),
+      tableBill: tableBillOf([
+        tableLine(1, 'Wine', 900),
+        tableLine(2, 'Gin', 700, { beingPaid: true }),
+      ]),
+    })
+    const { sheet } = openPay(host)
+    expect(within(sheet).getAllByRole('checkbox')).toHaveLength(1)
+    expect(within(sheet).getByText(/Gin · €7\.00 · Being paid/)).toBeTruthy()
+  })
+
+  it('greys Pay below the smallest card payment, measured on the lines plus the tip', () => {
+    const host = fakeHost({ ...base(), tableBill: tableBillOf([tableLine(1, 'Sweet', 30)]) })
+    const { sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('checkbox'))
+    expect(payButton(sheet, /^Pay /).hasAttribute('disabled')).toBe(true)
+    expect(
+      within(sheet).getByText('Card payments start at €0.50. Add an item or ask your waiter.'),
+    ).toBeTruthy()
+  })
+
+  it('has no Pay while paying is off at the venue, and a calm line while it is paused', () => {
+    const off = openPay(fakeHost({ ...base(), paying: payingOf({ state: 'off' }) }))
+    expect(within(off.sheet).getByText('Ask your waiter to pay.')).toBeTruthy()
+    expect(off.sheet.querySelector('[data-slot="pay.start"]')).toBeNull()
+    cleanup()
+    const paused = openPay(fakeHost({ ...base(), paying: payingOf({ state: 'paused' }) }))
+    expect(
+      within(paused.sheet).getByText('Card payments are paused right now. Ask your waiter.'),
+    ).toBeTruthy()
+    expect(payButton(paused.sheet, /^Pay /).hasAttribute('disabled')).toBe(true)
+  })
+
+  it('names who processes the payment, and the law lines', () => {
+    const { sheet } = openPay(
+      fakeHost({
+        ...base(),
+        location: { state: 'held', prompt: 'none', consent: 'allowed', venueName: 'Club X' },
+      }),
+    )
+    expect(
+      within(sheet).getByText('Prices in EUR incl. VAT. Complaints and refunds: the venue.'),
+    ).toBeTruthy()
+    expect(within(sheet).getByText('Payment processed by The processor for Club X.')).toBeTruthy()
+  })
+})
+
+describe('Pay', () => {
+  it('sends pay.start with each ticked line as the phone saw it, and the tip as a percent', async () => {
+    const host = fakeHost(base())
+    const { sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'The whole bill' }))
+    fireEvent.click(within(sheet).getByRole('button', { name: '10 %' }))
+    fireEvent.click(payButton(sheet, 'Pay €24.75'))
+    await waitFor(() => expect(host.of('pay.start')).toHaveLength(1))
+    expect(host.of('pay.start')[0]?.command).toMatchObject({
+      kind: 'pay.start',
+      pick: {
+        kind: 'lines',
+        lines: [
+          { lineId: bn(1), quantity: '1' },
+          { lineId: bn(2), quantity: '1' },
+        ],
+      },
+      seen: [
+        { lineId: bn(1), quantity: '1', amountMinor: 1250 },
+        { lineId: bn(2), quantity: '1', amountMinor: 1000 },
+      ],
+      tipPercent: 10,
+      tipMinor: null,
+    })
+  })
+
+  it('sends an amount tip as an amount, and no tip as neither', async () => {
+    const host = fakeHost(base())
+    const { sheet } = openPay(host)
+    fireEvent.click(within(sheet).getAllByRole('checkbox')[0] as HTMLElement)
+    fireEvent.change(within(sheet).getByLabelText('Other amount'), { target: { value: '1,50' } })
+    fireEvent.click(payButton(sheet, 'Pay €14.00'))
+    await waitFor(() => expect(host.of('pay.start')).toHaveLength(1))
+    expect(host.of('pay.start')[0]?.command).toMatchObject({ tipMinor: 150, tipPercent: null })
+  })
+
+  it('words a refusal by its code and shows no success of its own', async () => {
+    const host = fakeHost(base())
+    const { sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'The whole bill' }))
+    fireEvent.click(payButton(sheet, 'Pay €22.50'))
+    await waitFor(() => expect(host.of('pay.start')).toHaveLength(1))
+    await act(async () =>
+      host.of('pay.start')[0]?.answer({ status: 'rejected', code: 'bill_changed' }),
+    )
+    expect(within(sheet).getByText('Your bill changed since you opened it.')).toBeTruthy()
+    expect(sheet.textContent).not.toContain('Paid')
+    // The ticks stay: nothing cleared them, the bill did not change under them.
+    expect((within(sheet).getAllByRole('checkbox')[0] as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('asks first when the same amount was paid in the last 15 minutes', async () => {
+    const host = fakeHost({
+      ...base(),
+      paying: payingOf({ recent: { amountMinor: 2250, agoSeconds: 240 } }),
+    })
+    const { sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'The whole bill' }))
+    fireEvent.click(payButton(sheet, 'Pay €22.50'))
+    expect(within(sheet).getByText('Same amount as 4 minutes ago. Pay again?')).toBeTruthy()
+    expect(host.of('pay.start')).toHaveLength(0)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Back' }))
+    expect(host.of('pay.start')).toHaveLength(0)
+    fireEvent.click(payButton(sheet, 'Pay €22.50'))
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Yes, pay' }))
+    await waitFor(() => expect(host.of('pay.start')).toHaveLength(1))
+  })
+
+  it("keeps a friend's new round from clearing a tick, and clears one whose line changed", () => {
+    const host = fakeHost(base())
+    const { page, sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'The whole bill' }))
+    page.update({
+      tableBill: tableBillOf([
+        tableLine(1, 'House wine', 1250),
+        tableLine(2, 'Mojito', 1000),
+        tableLine(3, 'Gin', 800),
+      ]),
+    })
+    const boxes = within(screen.getByRole('dialog', { name: 'Pay' })).getAllByRole(
+      'checkbox',
+    ) as HTMLInputElement[]
+    expect(boxes.map((box) => box.checked)).toEqual([true, true, false])
+    page.update({
+      tableBill: tableBillOf([tableLine(1, 'House wine', 1250), tableLine(2, 'Mojito', 1200)]),
+    })
+    const after = within(screen.getByRole('dialog', { name: 'Pay' })).getAllByRole(
+      'checkbox',
+    ) as HTMLInputElement[]
+    expect(after.map((box) => box.checked)).toEqual([true, false])
+  })
+})
+
+describe("this phone's payment", () => {
+  const screens = (host: FakeHost) => {
     drawFace(host)
     fireEvent.click(screen.getByRole('button', { name: 'Pay' }))
-    await waitFor(() => expect(host.of('pay.quote')).toHaveLength(1))
-    expect(quotes(host)[0]).toMatchObject({
-      kind: 'pay.quote',
-      scope: 'full',
-      people: null,
-      tipPercent: null,
-      tipMinor: null,
-      promo: null,
-    })
-    // Until the host's state has a quote there is nothing to pay with.
-    const sheet = screen.getByRole('dialog', { name: 'Pay' })
-    expect(within(sheet).getByText('Updating the amount')).toBeTruthy()
-    expect(within(sheet).queryByRole('button', { name: 'Card' })).toBeNull()
+    return screen.getByRole('dialog', { name: 'Pay' })
+  }
+
+  it('says "Preparing your bill…" with Pay later until the card form is ready', () => {
+    const sheet = screens(
+      fakeHost({
+        ...base(),
+        payment: paymentOf({ state: 'requested', form: null, amountMinor: null }),
+      }),
+    )
+    expect(within(sheet).getByText('Preparing your bill…')).toBeTruthy()
+    expect(within(sheet).getByRole('button', { name: 'Pay later' })).toBeTruthy()
   })
 
-  it("shows the host's amounts as they are: subtotal, tip, VAT and total", async () => {
-    const quote = quoteOf({
-      subtotal: eur(1234),
-      tip: eur(123),
-      vat: [{ rate: '20%', amount: eur(206) }],
-      total: eur(1357),
-    })
-    const { sheet } = await openPay(fakeHost({ bill }), quote)
-    const rows = [...sheet.querySelectorAll('.ro-sum')].map((row) => row.textContent)
-    expect(rows).toEqual([
-      'Subtotal€12.34',
-      'Tip for the team€1.23',
-      'incl. VAT 20%€2.06',
-      'Total€13.57',
-    ])
+  it("places the form slot with the face's label while the card is awaited, once", () => {
+    const host = fakeHost({ ...base(), payment: paymentOf() })
+    const { page, sheet } = openPay(host)
+    expect(within(sheet).getByText(/House wine · €12\.50/)).toBeTruthy()
+    expect(host.forms).toHaveLength(1)
+    expect(host.forms[0]).toMatchObject({ label: 'Pay €22.50', mounted: true })
+    expect(sheet.querySelector('[data-slot="pay.form"]')).toBe(host.forms[0]?.target)
+    // The poll brings a new state: the form stays mounted, it is not made again.
+    page.update({ payment: paymentOf({ tipMinor: 0 }) })
+    expect(host.forms).toHaveLength(1)
+    expect(host.forms[0]?.mounted).toBe(true)
   })
 
-  it('offers only the methods of the quote, in its order', async () => {
-    const { sheet } = await openPay(fakeHost({ bill }), quoteOf({ methods: ['card', 'waiter'] }))
-    const names = within(sheet)
-      .getAllByRole('button')
-      .map((button) => button.textContent)
-      .filter((label) =>
-        ['Apple Pay', 'Google Pay', 'Card', 'Pay the waiter at the table'].includes(label ?? ''),
-      )
-    expect(names).toEqual(['Card', 'Pay the waiter at the table'])
-    expect(within(sheet).queryByRole('button', { name: 'Apple Pay' })).toBeNull()
-  })
-
-  it('marks each method control pay.method, with the method (contract markers, T90)', async () => {
-    const { sheet } = await openPay(fakeHost({ bill }), quoteOf({ methods: ['card', 'waiter'] }))
-    const marked = [...sheet.querySelectorAll('[data-slot="pay.method"]')]
-    expect(marked.map((element) => element.tagName)).toEqual(['BUTTON', 'BUTTON'])
-    expect(marked.map((element) => element.getAttribute('data-method'))).toEqual(['card', 'waiter'])
-  })
-
-  it('has no method at all when the quote has none', async () => {
-    const { sheet } = await openPay(fakeHost({ bill }), quoteOf({ methods: [] }))
-    for (const name of ['Apple Pay', 'Google Pay', 'Card', 'Pay the waiter at the table']) {
-      expect(within(sheet).queryByRole('button', { name })).toBeNull()
+  it('takes the form away when the card is held, and shows one waiting state', () => {
+    const host = fakeHost({ ...base(), payment: paymentOf() })
+    const { page } = openPay(host)
+    page.update({ payment: paymentOf({ state: 'held', form: null }) })
+    expect(host.forms[0]?.mounted).toBe(false)
+    for (const state of ['held', 'queued', 'isolated', 'checked', 'closed'] as const) {
+      page.update({ payment: paymentOf({ state, form: null }) })
+      const sheet = screen.getByRole('dialog', { name: 'Pay' })
+      expect(within(sheet).getByText('Processing your payment…'), state).toBeTruthy()
+      expect(within(sheet).queryByRole('button', { name: 'Pay later' }), state).toBeNull()
     }
   })
 
-  it('asks for a new quote when the guest changes the share, the people, the tip or the code', async () => {
-    const host = fakeHost({ bill })
-    const { page, sheet } = await openPay(host)
-
-    fireEvent.click(within(sheet).getByRole('radio', { name: 'Split equally' }))
-    await waitFor(() => expect(host.of('pay.quote')).toHaveLength(2))
-    expect(quotes(host)[1]).toMatchObject({ scope: 'split', people: 2 })
-
-    fireEvent.click(within(sheet).getByRole('button', { name: 'One more: People' }))
-    await waitFor(() => expect(host.of('pay.quote')).toHaveLength(3))
-    expect(quotes(host)[2]).toMatchObject({ scope: 'split', people: 3 })
-
-    fireEvent.click(within(sheet).getByRole('radio', { name: '15%' }))
-    await waitFor(() => expect(host.of('pay.quote')).toHaveLength(4))
-    expect(quotes(host)[3]).toMatchObject({
-      scope: 'split',
-      people: 3,
-      tipPercent: 15,
-      tipMinor: null,
-    })
-
-    fireEvent.click(within(sheet).getByRole('radio', { name: 'No tip' }))
-    await waitFor(() => expect(host.of('pay.quote')).toHaveLength(5))
-    expect(quotes(host)[4]).toMatchObject({ tipPercent: 0, tipMinor: null })
-
-    fireEvent.click(within(sheet).getByRole('radio', { name: 'My items' }))
-    await waitFor(() => expect(host.of('pay.quote')).toHaveLength(6))
-    expect(quotes(host)[5]).toMatchObject({ scope: 'mine', people: null, tipPercent: 0 })
-    expect(page).toBeDefined()
+  it('sends pay.cancel from Pay later and goes back to the bill when it is accepted', async () => {
+    const host = fakeHost({ ...base(), payment: paymentOf() })
+    const { sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Pay later' }))
+    await waitFor(() => expect(host.of('pay.cancel')).toHaveLength(1))
+    await act(async () => host.of('pay.cancel')[0]?.answer())
+    expect(host.dismissed()).toBe(1)
   })
 
-  it('waits for a pause before it asks for a custom tip, and sends it as an exact amount', async () => {
-    const host = fakeHost({ bill })
-    const { sheet } = await openPay(host)
-    fireEvent.click(within(sheet).getByRole('radio', { name: 'Custom' }))
-    await waitFor(() => expect(host.of('pay.quote')).toHaveLength(2)) // custom, still the host's own tip
-    expect(quotes(host)[1]).toMatchObject({ tipPercent: null, tipMinor: null })
-
-    vi.useFakeTimers()
-    const input = within(sheet).getByRole('textbox', { name: 'Custom tip amount' })
-    fireEvent.change(input, { target: { value: '2,5' } })
-    fireEvent.change(input, { target: { value: '2,50' } })
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(100)
-    })
-    expect(host.of('pay.quote')).toHaveLength(2) // still typing
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(600)
-    })
-    expect(host.of('pay.quote')).toHaveLength(3)
-    expect(quotes(host)[2]).toMatchObject({ tipPercent: null, tipMinor: 250 })
-    // Something that is not an amount asks for the host's own tip, not for a wrong one.
-    fireEvent.change(input, { target: { value: '2,5x' } })
-    expect(input.getAttribute('aria-invalid')).toBe('true')
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(600)
-    })
-    expect(quotes(host)[3]).toMatchObject({ tipMinor: null })
-  })
-
-  it('does not let the guest pay a quote that is for something else than they chose', async () => {
-    const host = fakeHost({ bill })
-    const { page, sheet } = await openPay(host)
-    expect(method(sheet, 'Card').hasAttribute('disabled')).toBe(false)
-    fireEvent.click(within(sheet).getByRole('radio', { name: 'Split equally' }))
-    await waitFor(() => expect(host.of('pay.quote')).toHaveLength(2))
-    // The old quote (the whole table) is still in the state; the new one is on its way.
-    expect(method(sheet, 'Card').hasAttribute('disabled')).toBe(true)
-    await act(async () => host.of('pay.quote')[1]?.answer())
-    expect(method(sheet, 'Card').hasAttribute('disabled')).toBe(true) // answered, but the state still shows the old one
-    expect(within(sheet).getByRole('button', { name: 'Try again' })).toBeTruthy()
-    page.update({ quote: quoteOf({ id: 'q-2', scope: 'split', people: 2, total: eur(1100) }) })
-    expect(method(sheet, 'Card').hasAttribute('disabled')).toBe(false)
-    expect(sheet.textContent).toContain('Total (per person)€11.00')
-    // A split of 3 needs a quote for 3.
-    fireEvent.click(within(sheet).getByRole('button', { name: 'One more: People' }))
-    expect(method(sheet, 'Card').hasAttribute('disabled')).toBe(true)
-  })
-
-  it('says so when the quote could not be had, and asks again on request', async () => {
-    const host = fakeHost({ bill })
-    drawFace(host)
-    fireEvent.click(screen.getByRole('button', { name: 'Pay' }))
-    await waitFor(() => expect(host.of('pay.quote')).toHaveLength(1))
-    await act(async () => host.of('pay.quote')[0]?.fail())
-    const sheet = screen.getByRole('dialog', { name: 'Pay' })
-    expect(within(sheet).getByRole('alert').textContent).toContain('could not get the amount')
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Try again' }))
-    await waitFor(() => expect(host.of('pay.quote')).toHaveLength(2))
-    // The same question keeps its actionId.
-    expect(host.of('pay.quote')[1]?.command.actionId).toBe(
-      host.of('pay.quote')[0]?.command.actionId,
+  it('stays on the payment when the cancel is too late', async () => {
+    const host = fakeHost({ ...base(), payment: paymentOf() })
+    const { sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Pay later' }))
+    await waitFor(() => expect(host.of('pay.cancel')).toHaveLength(1))
+    await act(async () =>
+      host.of('pay.cancel')[0]?.answer({ status: 'rejected', code: 'too_late' }),
     )
-  })
-
-  it('has nothing to pay, and asks for nothing, when the table owes nothing', () => {
-    const host = fakeHost({ bill: billOf([], 0) })
-    drawFace(host)
-    fireEvent.click(screen.getByRole('button', { name: 'Pay' }))
     expect(
-      within(screen.getByRole('dialog', { name: 'Pay' })).getByText('There is nothing to pay yet.'),
+      within(sheet).getByText('Too late to cancel: the payment is being processed.'),
     ).toBeTruthy()
-    expect(host.calls).toHaveLength(0)
+    expect(host.dismissed()).toBe(0)
   })
 
-  it('shows no tip section when the host offers no tip', async () => {
-    const { sheet } = await openPay(fakeHost({ bill }), quoteOf({ tipOptions: [], tip: eur(0) }))
-    expect(within(sheet).queryByRole('radiogroup', { name: 'Tip for the team' })).toBeNull()
-    expect(sheet.textContent).not.toContain('Tip for the team')
-  })
-
-  it("shows the tip button that is the host's own default as on", async () => {
-    const { sheet } = await openPay(fakeHost({ bill }))
-    expect(within(sheet).getByRole('radio', { name: '10%' }).getAttribute('aria-checked')).toBe(
-      'true',
-    )
-    expect(within(sheet).getByRole('radio', { name: '5%' }).getAttribute('aria-checked')).toBe(
-      'false',
-    )
-  })
-})
-
-describe('the promo code', () => {
-  it('is shown only when the quote has a promo slot, whether or not a code was tried', async () => {
-    const { page, sheet } = await openPay(fakeHost({ bill }))
-    expect(within(sheet).queryByLabelText('Promo code')).toBeNull()
-    page.update({ quote: quoteOf({ promo: { code: '', accepted: false, message: null } }) })
-    expect(within(sheet).getByLabelText('Promo code')).toBeTruthy()
+  it('says Paid only for a captured payment, with the number, the lines and the receipt line', () => {
+    const host = fakeHost({ ...base(), payment: paymentOf({ state: 'closed', form: null }) })
+    const { page } = openPay(host)
+    expect(screen.queryByText('Paid')).toBeNull()
     page.update({
-      quote: quoteOf({
-        promo: { code: 'NOPE', accepted: false, message: text('Not valid today.') },
+      payment: paymentOf({ state: 'captured', form: null, tipMinor: 250, amountMinor: 2500 }),
+    })
+    const sheet = screen.getByRole('dialog', { name: 'Pay' })
+    expect(within(sheet).getByText('Paid')).toBeTruthy()
+    expect(sheet.querySelector('[data-slot="pay.number"]')?.textContent).toBe('K7Q4M')
+    expect(
+      within(sheet).getByText('Show this number to your waiter. Your waiter brings your receipt.'),
+    ).toBeTruthy()
+    expect(sheet.textContent).toContain('Tip€2.50')
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Back to the bill' }))
+    expect(host.dismissed()).toBe(1)
+  })
+
+  it('shows one calm screen when the venue is checking the payment, never asking to pay twice', () => {
+    for (const state of ['unconfirmed', 'stranded', 'capture_failed'] as const) {
+      const host = fakeHost({ ...base(), payment: paymentOf({ state, form: null }) })
+      const { sheet } = openPay(host)
+      expect(within(sheet).getByText('The venue is checking the payment'), state).toBeTruthy()
+      expect(
+        within(sheet).getByText(
+          'You don’t need to do anything. If you have a question, call a waiter.',
+        ),
+        state,
+      ).toBeTruthy()
+      expect(within(sheet).queryByRole('button', { name: 'Pay again' }), state).toBeNull()
+      expect(sheet.textContent).not.toMatch(/captured|stranded|unconfirmed/)
+      cleanup()
+    }
+  })
+
+  it('words each end with nothing charged, offering Pay again only where it is safe', () => {
+    const cases: [string | null, string, boolean][] = [
+      ['busy', 'Paying in the app is busy, try again in a minute or call a waiter.', true],
+      [
+        'check_failed',
+        'Your bill changed just before paying. Nothing was charged. Check the bill and try again.',
+        true,
+      ],
+      [
+        'bill_changed',
+        'Your bill changed just before paying. Nothing was charged. Check the bill and try again.',
+        true,
+      ],
+      ['expired', 'Your time ran out. Nothing was charged.', true],
+      [
+        'paying_paused',
+        'Card payments are paused right now. Nothing was charged. Ask your waiter.',
+        false,
+      ],
+      [
+        'isolate_refused',
+        'We couldn’t prepare this payment. Nothing was charged. Ask your waiter.',
+        false,
+      ],
+      [
+        'not_on_till',
+        'The payment wasn’t completed. Nothing was charged. Any amount your bank reserved will be released.',
+        false,
+      ],
+      [
+        'item_unavailable',
+        'Something ran out, so nothing was sent and nothing was charged. Pay for the rest when you’re ready.',
+        false,
+      ],
+      [
+        'enter_refused',
+        'We couldn’t send this order. Nothing was charged. Please call a waiter.',
+        false,
+      ],
+      ['cancelled', 'Payment cancelled. Nothing was charged.', false],
+      ['paying_not_offered', 'Ask your waiter to pay.', false],
+      [
+        'below_minimum',
+        'Card payments start at €0.50. Nothing was charged. Add an item or ask your waiter.',
+        false,
+      ],
+    ]
+    for (const [reason, words, again] of cases) {
+      const host = fakeHost({
+        ...base(),
+        payment: paymentOf({ state: 'released', reason, form: null }),
+      })
+      const { sheet } = openPay(host)
+      expect(within(sheet).getByText(words), String(reason)).toBeTruthy()
+      expect(
+        within(sheet).queryByRole('button', { name: 'Pay again' }) !== null,
+        String(reason),
+      ).toBe(again)
+      expect(within(sheet).getByRole('button', { name: 'Back to the bill' })).toBeTruthy()
+      cleanup()
+    }
+  })
+
+  it('words a pay-first round ended "No receipt" as ordered and not charged, and a bill payment as not completed', () => {
+    const first = fakeHost({
+      ...base(),
+      payment: paymentOf({
+        state: 'released',
+        reason: 'no_receipt',
+        mode: 'pay_first',
+        form: null,
       }),
     })
-    expect(sheet.textContent).toContain('This code did not work Not valid today.')
-    page.update({ quote: quoteOf({ promo: { code: 'GOOD', accepted: true, message: null } }) })
-    expect(sheet.textContent).toContain('Code applied')
+    const { sheet } = openPay(first)
+    expect(
+      within(sheet).getByText(
+        'Nothing was charged. Your order went through, and your waiter will take the payment.',
+      ),
+    ).toBeTruthy()
+    expect(within(sheet).queryByRole('button', { name: 'Pay again' })).toBeNull()
+    cleanup()
+    const bill = fakeHost({
+      ...base(),
+      payment: paymentOf({ state: 'released', reason: 'no_receipt', mode: 'bill', form: null }),
+    })
+    expect(
+      within(openPay(bill).sheet).getByText(
+        'The payment wasn’t completed. Nothing was charged. Any amount your bank reserved will be released.',
+      ),
+    ).toBeTruthy()
   })
 
-  it('sends the code with the next quote', async () => {
-    const host = fakeHost({ bill })
-    const { sheet } = await openPay(
-      host,
-      quoteOf({ promo: { code: '', accepted: false, message: null } }),
-    )
-    fireEvent.change(within(sheet).getByLabelText('Promo code'), { target: { value: '  DEMO10 ' } })
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Apply' }))
-    await waitFor(() => expect(host.of('pay.quote')).toHaveLength(2))
-    expect(quotes(host)[1]).toMatchObject({ promo: 'DEMO10' })
+  it('offers Call a waiter on the failure screens where the venue takes calls', async () => {
+    const host = fakeHost({
+      ...base(),
+      payment: paymentOf({ state: 'released', reason: 'busy', form: null }),
+    })
+    const { sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Call a waiter' }))
+    await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
+    expect(host.of('service.request')[0]?.command).toMatchObject({ request: 'waiter' })
   })
 })
 
-describe('paying', () => {
-  async function paying(extra: Partial<Parameters<typeof quoteOf>[0]> = {}, hostState = { bill }) {
-    const host = fakeHost(hostState)
-    const { page, sheet } = await openPay(host, quoteOf(extra))
-    fireEvent.click(method(sheet, 'Card'))
+describe('the review of #195 (D127)', () => {
+  const greyed = (n: number) =>
+    tableBillOf([
+      tableLine(1, 'House wine', 1250, { beingPaid: n >= 1 }),
+      tableLine(2, 'Mojito', 1000, { beingPaid: n >= 1 }),
+    ])
+
+  it('"Pay again" goes back to choosing with the ticks kept, and Pay takes the guarded path', async () => {
+    const host = fakeHost(base())
+    const { page, sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'The whole bill' }))
+    fireEvent.click(payButton(sheet, 'Pay €22.50'))
     await waitFor(() => expect(host.of('pay.start')).toHaveLength(1))
-    return { host, page, sheet, call: host.of('pay.start')[0] }
-  }
-
-  it("sends pay.start with the quote's id and the method, and shows processing until the host answers", async () => {
-    const { sheet, call } = await paying()
-    expect(call?.command).toMatchObject({ kind: 'pay.start', quoteId: 'q-1', method: 'card' })
-    expect(call?.command.actionId).toMatch(/^[0-9a-f-]{36}$/)
-    expect(within(sheet).getByText('Processing your payment')).toBeTruthy()
-    expect(within(sheet).getByText('€22.00')).toBeTruthy()
-    expect(sheet.textContent).not.toContain(PAID)
-  })
-
-  it('says "Payment complete" only after the host accepted AND its state holds a new receipt', async () => {
-    const { page, sheet, call } = await paying()
-    await act(async () => call?.answer())
-    // Accepted, no receipt yet: not paid.
-    expect(sheet.textContent).not.toContain(PAID)
-    expect(within(sheet).getByText('We are waiting for your payment to be confirmed.')).toBeTruthy()
-    page.update({ receipt: receiptOf() })
-    expect(within(sheet).getByText(PAID)).toBeTruthy()
-    expect(within(sheet).getByRole('button', { name: 'View receipt' })).toBeTruthy()
-    expect(within(sheet).getByRole('button', { name: 'Back to menu' })).toBeTruthy()
-    // The paid screen marks the way on to the receipt, and shows no method any more (T90).
-    const open = sheet.querySelectorAll('[data-slot="pay.receipt_open"]')
-    expect([...open].map((element) => element.textContent)).toEqual(['View receipt'])
-    expect(sheet.querySelector('[data-slot="pay.method"]')).toBeNull()
-  })
-
-  it('does not take a receipt that was there before for this payment', async () => {
-    const old = receiptOf({ id: 'rc-old' })
-    const { page, sheet, call } = await paying({}, { bill, receipt: old } as never)
-    await act(async () => call?.answer())
-    expect(sheet.textContent).not.toContain(PAID)
-    page.update({ receipt: receiptOf({ id: 'rc-new' }) })
-    expect(within(sheet).getByText(PAID)).toBeTruthy()
-  })
-
-  it("does not say paid when the receipt comes without the host's acceptance", async () => {
-    const { page, sheet, call } = await paying()
-    page.update({ receipt: receiptOf() })
-    expect(sheet.textContent).not.toContain(PAID)
-    expect(within(sheet).getByText('Processing your payment')).toBeTruthy()
-    await act(async () => call?.answer({ status: 'rejected' }))
-    expect(sheet.textContent).not.toContain(PAID)
-    expect(within(sheet).getByText('Payment did not go through')).toBeTruthy()
-  })
-
-  it('shows a failure, not "Paid", when the host rejects, with its reason; a retry is a new payment', async () => {
-    const { host, sheet, call } = await paying()
-    await act(async () =>
-      call?.answer({ status: 'rejected', message: text('The card was declined.') }),
+    await act(async () => host.of('pay.start')[0]?.answer())
+    // The payment runs: the server marks its own lines being paid (it must not empty the ticks).
+    page.update({ tableBill: greyed(1), payment: paymentOf({ state: 'held', form: null }) })
+    page.update({ payment: paymentOf({ state: 'released', reason: 'busy', form: null }) })
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Pay' })).getByRole('button', {
+        name: 'Pay again',
+      }),
     )
-    expect(sheet.textContent).not.toContain(PAID)
-    expect(within(sheet).getByRole('alert').textContent).toContain('Payment did not go through')
-    expect(sheet.textContent).toContain('The card was declined.')
-    expect(within(sheet).queryByText('Processing your payment')).toBeNull()
-
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Try again' }))
-    await waitFor(() => expect(host.of('pay.start')).toHaveLength(2))
-    expect(host.of('pay.start')[1]?.command.actionId).not.toBe(call?.command.actionId)
-  })
-
-  it('clears the processing screen after a throw, never says "Paid", and retries with the same actionId', async () => {
-    const { host, sheet, call } = await paying()
-    expect(within(sheet).getByText('Processing your payment')).toBeTruthy()
-    await act(async () => call?.fail())
-    expect(within(sheet).queryByText('Processing your payment')).toBeNull()
-    expect(sheet.textContent).not.toContain(PAID)
-    expect(within(sheet).getByRole('alert').textContent).toContain(
-      'We could not confirm your payment',
-    )
-
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Try again' }))
-    await waitFor(() => expect(host.of('pay.start')).toHaveLength(2))
-    expect(host.of('pay.start')[1]?.command).toEqual(call?.command)
-
-    // Back to the methods: nothing was lost, and a different method is a different payment.
-    await act(async () => host.of('pay.start')[1]?.fail())
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Pay with' }))
-    expect(method(sheet, 'Card')).toBeTruthy()
-  })
-
-  it('treats no answer in time as an unknown outcome, not as paid and not as nothing charged', async () => {
-    const host = fakeHost({ bill })
-    const { sheet } = await openPay(host)
-    vi.useFakeTimers()
-    fireEvent.click(method(sheet, 'Card'))
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(SERVICE_TIMEOUT_MS + 10)
-    })
-    expect(within(sheet).queryByText('Processing your payment')).toBeNull()
-    expect(sheet.textContent).not.toContain(PAID)
-    expect(within(sheet).getByRole('alert').textContent).toContain(
-      'We could not confirm your payment',
-    )
-    expect(sheet.textContent).not.toMatch(/nothing was charged/i)
-  })
-
-  it('waits when the host has the payment but has not decided, and can ask again with the same actionId', async () => {
-    const { host, page, sheet, call } = await paying()
-    await act(async () => call?.answer({ status: 'pending' }))
-    expect(sheet.textContent).not.toContain(PAID)
-    expect(within(sheet).getByText('We are waiting for your payment to be confirmed.')).toBeTruthy()
-    // A receipt does not make it paid: the host has not accepted.
-    page.update({ receipt: receiptOf() })
-    expect(sheet.textContent).not.toContain(PAID)
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Try again' }))
-    await waitFor(() => expect(host.of('pay.start')).toHaveLength(2))
-    expect(host.of('pay.start')[1]?.command.actionId).toBe(call?.command.actionId)
-    await act(async () => host.of('pay.start')[1]?.answer())
-    expect(within(sheet).getByText(PAID)).toBeTruthy()
-  })
-
-  it('sends one payment for two quick taps', async () => {
-    const host = fakeHost({ bill })
-    const { sheet } = await openPay(host)
-    const card = method(sheet, 'Card')
-    fireEvent.click(card)
-    fireEvent.click(card)
-    await waitFor(() => expect(host.of('pay.start')).toHaveLength(1))
-    await act(async () => {})
+    expect(host.dismissed()).toBe(1)
+    // It sent nothing itself.
     expect(host.of('pay.start')).toHaveLength(1)
+    // The host drops the payment and the lines are free again.
+    page.update({ tableBill: greyed(0), payment: null })
+    const back = screen.getByRole('dialog', { name: 'Pay' })
+    const boxes = within(back).getAllByRole('checkbox') as HTMLInputElement[]
+    expect(boxes.map((box) => box.checked)).toEqual([true, true])
+    fireEvent.click(payButton(back, 'Pay €22.50'))
+    await waitFor(() => expect(host.of('pay.start')).toHaveLength(2))
+    expect(host.of('pay.start')[1]?.command.pick).toEqual({
+      kind: 'lines',
+      lines: [
+        { lineId: bn(1), quantity: '1' },
+        { lineId: bn(2), quantity: '1' },
+      ],
+    })
   })
 
-  it('goes on to the receipt from "Payment complete"', async () => {
-    const { page, sheet, call } = await paying()
-    await act(async () => call?.answer())
-    page.update({ receipt: receiptOf() })
-    fireEvent.click(within(sheet).getByRole('button', { name: 'View receipt' }))
-    const receipt = await screen.findByRole('dialog', { name: 'Receipt' })
-    expect(receipt.textContent).toContain('Test venue')
-    expect(receipt.querySelectorAll('[data-slot="pay.receipt"]')).toHaveLength(1)
-    expect(screen.queryByRole('dialog', { name: 'Pay' })).toBeNull()
+  it('never sends a tip where none is offered, however it was chosen before', async () => {
+    const host = fakeHost(base())
+    const { page, sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'The whole bill' }))
+    fireEvent.click(within(sheet).getByRole('button', { name: '10 %' }))
+    page.update({ ordering: { state: 'on', tips: false } })
+    const after = screen.getByRole('dialog', { name: 'Pay' })
+    expect(after.querySelector('[data-slot="pay.tip.row"]')).toBeNull()
+    fireEvent.click(payButton(after, 'Pay €22.50'))
+    await waitFor(() => expect(host.of('pay.start')).toHaveLength(1))
+    expect(host.of('pay.start')[0]?.command).toMatchObject({ tipPercent: null, tipMinor: null })
   })
+
+  it('words the venue\'s smallest payment and "too many tries" from the shell\'s one helper', async () => {
+    const host = fakeHost({ ...base(), paying: payingOf({ minCardMinor: 100 }) })
+    const { sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'The whole bill' }))
+    fireEvent.click(payButton(sheet, 'Pay €22.50'))
+    await waitFor(() => expect(host.of('pay.start')).toHaveLength(1))
+    await act(async () =>
+      host.of('pay.start')[0]?.answer({ status: 'rejected', code: 'below_minimum' }),
+    )
+    expect(
+      within(sheet).getByText('Card payments start at €1.00. Add an item or ask your waiter.'),
+    ).toBeTruthy()
+    fireEvent.click(payButton(sheet, 'Pay €22.50'))
+    await waitFor(() => expect(host.of('pay.start')).toHaveLength(2))
+    await act(async () =>
+      host.of('pay.start')[1]?.answer({ status: 'rejected', code: 'rate_limited' }),
+    )
+    expect(within(sheet).getByText('Too many tries. Wait a moment and try again.')).toBeTruthy()
+  })
+
+  it('names the venue on the processor line from the paying state, never "for ."', () => {
+    const { sheet } = openPay(fakeHost({ ...base(), paying: payingOf({ venueName: 'Club X' }) }))
+    expect(within(sheet).getByText('Payment processed by The processor for Club X.')).toBeTruthy()
+  })
+
+  it('says why the bill is hidden without a location pass, with Allow location and Call a waiter', () => {
+    const host = fakeHost({
+      location: { state: 'needed', prompt: 'none', consent: 'unknown', venueName: 'Club X' },
+      tableBill: null,
+      paying: payingOf(),
+    })
+    const { sheet } = openPay(host)
+    expect(within(sheet).getByText('The bill shows only at the table')).toBeTruthy()
+    expect(within(sheet).getByRole('button', { name: 'Call a waiter' })).toBeTruthy()
+    expect(sheet.querySelector('[data-slot="pay.start"]')).toBeNull()
+  })
+
+  it('draws the table on the Paid screen', () => {
+    const host = fakeHost({ ...base(), payment: paymentOf({ state: 'captured', form: null }) })
+    drawFace(host, undefined, { tableLabel: '12' })
+    fireEvent.click(screen.getByRole('button', { name: 'Pay' }))
+    const sheet = screen.getByRole('dialog', { name: 'Pay' })
+    expect(sheet.querySelector('[data-slot="pay.table"]')?.textContent).toBe('Table 12')
+  })
+
+  it('offers Call a waiter on the card screen too', async () => {
+    const host = fakeHost({ ...base(), payment: paymentOf() })
+    const { sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Call a waiter' }))
+    await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
+  })
+
+  it("gives the card form the guest's language and the failure words", () => {
+    const host = fakeHost({ ...base(), payment: paymentOf() })
+    openPay(host)
+    expect(host.forms[0]).toMatchObject({ locale: 'en' })
+    expect(host.forms[0]?.failedText).toBe(
+      'The card form didn’t load. Try again or ask your waiter.',
+    )
+  })
+})
+
+describe('every stage of a payment (the contract every face passes)', () => {
+  for (const scenario of payScenarios()) {
+    it(`draws ${scenario.name}: the slot ${scenario.slot ? 'is' : 'is not'} mounted, Paid ${scenario.paid ? 'shows' : 'does not show'}`, () => {
+      const host = fakeHost({
+        tableBill: payingBill(),
+        paying: payingView(),
+        payment: scenario.payment,
+      })
+      drawFace(host)
+      fireEvent.click(screen.getByRole('button', { name: 'Pay' }))
+      const sheet = screen.getByRole('dialog', { name: 'Pay' })
+      expect(sheet.querySelector('[data-pay-screen]')?.getAttribute('data-pay-screen')).toBe(
+        scenario.screen,
+      )
+      expect(host.forms.length).toBe(scenario.slot ? 1 : 0)
+      expect(sheet.querySelector('[data-slot="pay.number"]') !== null).toBe(scenario.paid)
+      expect(sheet.textContent).not.toMatch(
+        /\b(isolated|queued|stranded|capture_failed|unconfirmed|entered)\b/,
+      )
+    })
+  }
 })

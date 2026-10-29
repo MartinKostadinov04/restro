@@ -153,78 +153,27 @@ describe('the demo host', () => {
     expect(within(sheet).getByText('Request cancelled')).toBeTruthy()
   })
 
-  it("quotes the table with core's integers: tip, VAT inside the price, a split and the code DEMO10", async () => {
+  it('pays ticked lines through the form slot: held, then captured, and the paid lines leave the bill', async () => {
     render(<Demo />)
     click('Pay')
     const sheet = dialog('Pay')
+    // Nothing is ticked to start with and no tip is chosen; Pay says why it is greyed.
+    expect(within(sheet).getByRole('button', { name: /^Pay / }).hasAttribute('disabled')).toBe(true)
+    expect(within(sheet).getByText('Choose at least one line.')).toBeTruthy()
+    fireEvent.click(within(sheet).getByRole('button', { name: 'The whole bill' }))
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Pay €22.30' }))
     await later(0)
-    await later(DEMO_DELAYS.quote)
-    // 22,30 + the default tip of 10 % (2,23); the VAT is the 20 % that is in the price (3,72).
-    expect(sheet.textContent).toContain('Subtotal€22.30')
-    expect(sheet.textContent).toContain('Tip for the team€2.23')
-    expect(sheet.textContent).toContain('incl. VAT 20%€3.72')
-    expect(sheet.textContent).toContain('Total€24.53')
-    expect(
-      within(sheet)
-        .getAllByRole('button')
-        .map((b) => b.textContent),
-    ).toEqual(
-      expect.arrayContaining(['Apple Pay', 'Google Pay', 'Card', 'Pay the waiter at the table']),
-    )
-
-    fireEvent.click(within(sheet).getByRole('radio', { name: 'Split equally' }))
-    await later(0)
-    await later(DEMO_DELAYS.quote)
-    expect(sheet.textContent).toContain('Subtotal€11.15') // 22,30 ÷ 2
-    fireEvent.click(within(sheet).getByRole('radio', { name: 'Full table' }))
-    await later(0)
-    await later(DEMO_DELAYS.quote)
-
-    fireEvent.click(within(sheet).getByRole('radio', { name: '15%' }))
-    await later(0)
-    await later(DEMO_DELAYS.quote)
-    expect(sheet.textContent).toContain('Tip for the team€3.35') // 15 % of 22,30 = 3,345, half-up
-
-    fireEvent.change(within(sheet).getByLabelText('Promo code'), { target: { value: 'demo10' } })
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Apply' }))
-    await later(0)
-    await later(DEMO_DELAYS.quote)
-    expect(sheet.textContent).toContain('Code applied')
-    expect(sheet.textContent).toContain('Subtotal€20.07') // 22,30 − 10 % (2,23)
-  })
-
-  it('takes a payment after a moment, issues a receipt and settles the table', async () => {
-    render(<Demo />)
-    click('Pay')
-    const sheet = dialog('Pay')
-    await later(0)
-    await later(DEMO_DELAYS.quote)
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Card' }))
-    await later(0)
-    expect(within(sheet).getByText('Processing your payment')).toBeTruthy()
-    expect(sheet.textContent).not.toContain('Payment complete')
     await later(DEMO_DELAYS.pay)
-    expect(within(sheet).getByText('Payment complete')).toBeTruthy()
-
-    fireEvent.click(within(sheet).getByRole('button', { name: 'View receipt' }))
-    const receipt = dialog('Receipt')
-    expect(receipt.querySelector('.ro-preview')?.textContent).toBe('Preview')
-    expect(receipt.textContent).toContain('Demo venue')
-    expect(receipt.textContent).toContain('2× Glass of house wine')
-    expect(receipt.textContent).toContain('Total€24.53')
-    expect(receipt.textContent).toContain('Paid withCard')
-    fireEvent.click(within(receipt).getByRole('button', { name: 'Email receipt' }))
+    expect(sheet.textContent).not.toContain('Paid')
+    // The card form is the slot's: the demo's is one button with the face's label.
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Pay €22.30' }))
     await later(0)
-    await later(DEMO_DELAYS.receiptAction)
-    expect(within(receipt).getByRole('status').textContent).toBe('Demo: sent to your phone.')
-
-    fireEvent.click(within(receipt).getByRole('button', { name: 'Back to menu' }))
-    await act(async () => {
-      window.history.back()
-      await vi.advanceTimersByTimeAsync(0)
-    })
-    click('Table order')
-    expect(within(dialog('Table order')).getByText('Nothing has been ordered yet.')).toBeTruthy()
+    expect(within(sheet).getByText('Processing your payment…')).toBeTruthy()
+    await later(DEMO_DELAYS.capture)
+    expect(within(sheet).getByText('Paid')).toBeTruthy()
+    expect(sheet.textContent).toContain('DEMO7')
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Back to the bill' }))
+    expect(within(sheet).queryByText('Paid')).toBeNull()
   })
 
   it('leaves no timer running when it is taken away', async () => {
