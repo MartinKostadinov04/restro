@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import { ADMIN_EMAIL, ADMIN_PASSWORD } from './support'
@@ -11,16 +11,11 @@ export function runScript(script: string, ...args: string[]): string {
   return runScriptWith({}, script, ...args)
 }
 
-/** The same, with extra environment variables. */
-export function runScriptWith(
-  extraEnv: Record<string, string>,
-  script: string,
-  ...args: string[]
-): string {
-  const webDir = fileURLToPath(new URL('..', import.meta.url))
-  const result = spawnSync(
-    process.execPath,
-    [
+/** The node arguments and options that run a dev script (see `runScript`). */
+function scriptInvocation(extraEnv: Record<string, string>, script: string, args: string[]) {
+  return {
+    command: process.execPath,
+    args: [
       '--disable-warning=ExperimentalWarning',
       // apply() uses constructor parameter properties, which Node's default type stripping
       // refuses; this flag transforms them instead.
@@ -32,9 +27,8 @@ export function runScriptWith(
       script,
       ...args,
     ],
-    {
-      cwd: webDir,
-      encoding: 'utf8',
+    options: {
+      cwd: fileURLToPath(new URL('..', import.meta.url)),
       env: {
         ...process.env,
         ...extraEnv,
@@ -44,7 +38,26 @@ export function runScriptWith(
           process.env.BETTER_AUTH_SECRET ?? 'e2e-only-secret-not-used-anywhere-else-0123456789',
       },
     },
-  )
+  }
+}
+
+/**
+ * Starts a dev script that stays running, so that a test pays its start-up (several seconds of
+ * loading the platform's code) once, not on every call. The caller talks to it over stdin/stdout.
+ */
+export function startScript(script: string, ...args: string[]) {
+  const { command, args: nodeArgs, options } = scriptInvocation({}, script, args)
+  return spawn(command, nodeArgs, { ...options, stdio: ['pipe', 'pipe', 'pipe'] })
+}
+
+/** The same, with extra environment variables. */
+export function runScriptWith(
+  extraEnv: Record<string, string>,
+  script: string,
+  ...args: string[]
+): string {
+  const { command, args: nodeArgs, options } = scriptInvocation(extraEnv, script, args)
+  const result = spawnSync(command, nodeArgs, { ...options, encoding: 'utf8' })
   if (result.status !== 0) {
     throw new Error(`${script} failed:\n${result.stdout}\n${result.stderr}`)
   }
