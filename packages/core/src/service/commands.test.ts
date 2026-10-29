@@ -131,6 +131,7 @@ describe('the service commands', () => {
       { itemMode: 'later' },
       { table: AREA, value: true },
       { group: TABLE, value: true },
+      { group: 'br_0123456789ABCDEFGHIJKL', value: true },
       { table: TABLE },
       { applies: 'yes' },
     ]) {

@@ -8,7 +8,7 @@
 // (no key, no account id). Disconnecting and the owner's ticks of the checks Restro cannot read
 // (D125 2.3) are service commands, run here as the signed-in person.
 import { CURRENCIES, type Currency, idSchema, OWNER_TICKS } from '@restro/core'
-import { readPayingConnection } from '@restro/core/service'
+import { PayFirstChangeSchema, readPayingConnection } from '@restro/core/service'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -177,8 +177,8 @@ export async function savePayingAction(input: unknown): Promise<SettingsResult> 
 
 const SavePayFirst = z.strictObject({
   venueId,
-  /** One change: the command checks its shape (`itemMode`, `applies`, a group or a table). */
-  change: z.unknown(),
+  /** One change: `itemMode`, `applies`, an area's choice or a table's. */
+  change: PayFirstChangeSchema,
 })
 
 /**

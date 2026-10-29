@@ -13,11 +13,7 @@ import { z } from 'zod'
 
 import { PayFirstSettingsError, patchPayFirstSettingsIn } from '../apply/pay-first-settings'
 import { idSchema } from '../ids'
-import {
-  PayFirstGroupIdSchema,
-  type PayFirstSettings,
-  readPayFirstSettings,
-} from '../pay-first-settings'
+import { type PayFirstSettings, readPayFirstSettings } from '../pay-first-settings'
 import { PAYMENT_MODES } from '../templates/venue-menu'
 import type { ServiceTx } from './definition'
 import { payFirstPossibleAt } from './pay-first'
@@ -28,7 +24,8 @@ import { accepted, refused, type ServiceResult } from './results'
 export const PayFirstChangeSchema = z.union([
   z.strictObject({ itemMode: z.enum(PAYMENT_MODES) }),
   z.strictObject({ applies: z.boolean() }),
-  z.strictObject({ group: PayFirstGroupIdSchema, value: z.boolean().nullable() }),
+  // A hall only: no screen sets a bar's choice (Martin's Q2); a stored bar value is still honoured.
+  z.strictObject({ group: idSchema('ar'), value: z.boolean().nullable() }),
   z.strictObject({ table: idSchema('tb'), value: z.boolean().nullable() }),
 ])
 

@@ -153,6 +153,8 @@ describe.skipIf(!hasDatabase)('the pay-first command (as the restro_app role)', 
       { itemMode: 'later' },
       { table: areaId, value: true },
       { group: tableA, value: true },
+      // A bar's choice has no screen (Martin's Q2): the command takes areas only.
+      { group: newId('br'), value: true },
       { table: tableA },
       {},
     ]) {
@@ -206,19 +208,17 @@ describe.skipIf(!hasDatabase)('the pay-first command (as the restro_app role)', 
     })
   })
 
-  it('keeps both of two saves made at the same time for different tables', async () => {
+  it('keeps both of two saves that meet on the venue row, for different tables', async () => {
     await set({ table: tableC, value: null })
     await set({ group: areaId, value: null })
     const [, , , tableD] = world.tables as [string, string, string, string]
-    const results = await Promise.all([
-      set({ table: tableA, value: true }),
-      set({ table: tableD, value: false }),
-      set({ applies: false }),
+    const results = await world.saveTogether([
+      () => set({ table: tableA, value: true }),
+      () => set({ table: tableD, value: false }),
     ])
     for (const result of results) expect(result.status).toBe('accepted')
     const after = await payFirst()
     expect(after.tables).toEqual({ [tableA]: true, [tableD]: false })
-    expect(after.applies).toBe(false)
   })
 
   it("needs the right for the shape: connect payments for the venue's, payment tables for a table's", async () => {

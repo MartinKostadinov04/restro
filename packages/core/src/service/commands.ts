@@ -444,6 +444,8 @@ export const SERVICE_COMMANDS = {
     }),
     origins: ['staff'],
     permission: 'settings.guards',
+    // Rewrites `venues.settings` read-modify-write: queue on the row instead of upgrading a shared lock.
+    venueLock: 'update',
     freshSignIn: true,
     idempotency: 'by_nature',
     handle: setOrderingRules,
@@ -455,6 +457,8 @@ export const SERVICE_COMMANDS = {
     }),
     origins: ['staff'],
     permission: 'settings.alerts',
+    // Rewrites `venues.settings` read-modify-write: queue on the row instead of upgrading a shared lock.
+    venueLock: 'update',
     freshSignIn: true,
     idempotency: 'by_nature',
     handle: setAlertSettings,
@@ -490,6 +494,8 @@ export const SERVICE_COMMANDS = {
     schema: SetPayingSchema,
     origins: ['staff'],
     permission: CONNECT_PERMISSION,
+    // Rewrites `venues.settings` read-modify-write: queue on the row instead of upgrading a shared lock.
+    venueLock: 'update',
     freshSignIn: true,
     idempotency: 'by_nature',
     handle: setPayingChoices,
@@ -502,7 +508,9 @@ export const SERVICE_COMMANDS = {
     origins: ['staff'],
     permission: CONNECT_PERMISSION,
     permissionOf: payFirstPermissionOf,
+    // Rewrites `venues.settings` read-modify-write: queue on the row instead of upgrading a shared lock.
     venueLock: 'update',
+
     freshSignIn: true,
     idempotency: 'by_nature',
     handle: setPayFirst,
@@ -650,6 +658,8 @@ export const SERVICE_COMMANDS = {
     schema: TelegramLinkSchema,
     origins: ['worker'],
     permission: null,
+    // Rewrites `venues.settings` read-modify-write: queue on the row instead of upgrading a shared lock.
+    venueLock: 'update',
     idempotency: 'by_state',
     handle: telegramLink,
   }),
