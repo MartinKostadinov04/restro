@@ -30,6 +30,7 @@ import {
   offersReceiptEmail,
   type PayFormSlot,
   type PayingStrings,
+  type PayingView,
   type PaymentView,
   type PayScreen,
   type Picks,
@@ -249,6 +250,42 @@ function FormSlot({
   return <div ref={holder} data-slot="pay.form" />
 }
 
+/**
+ * Who processes the payment and for which legal entity, with the links to the legal details and
+ * the privacy notice (#198, D127 1.6): drawn wherever the guest can enter a card, so the choosing
+ * screen and the card screen both carry it.
+ */
+function LegalBlock({
+  paying,
+  words,
+}: {
+  readonly paying: PayingView
+  readonly words: PayingStrings
+}) {
+  // Without the legal details the line would name the wrong entity (the venue's trade name): the
+  // host sends them whenever paying is offered, so nothing is drawn only where it is not.
+  const { legal, processor } = paying
+  if (legal === null) return null
+  return (
+    <>
+      {processor === null ? null : (
+        <p className="rq-order-hint">{words.legalProcessor(processor, legal.name)}</p>
+      )}
+      <div className="rq-order-hint" data-slot="pay.legal">
+        <details>
+          <summary>{words.legalDetailsLink}</summary>
+          <p>{legal.name}</p>
+          <p>{words.legalEik(legal.eik)}</p>
+          <p>{legal.address}</p>
+        </details>
+        <a href={legal.privacyUrl} target="_blank" rel="noopener noreferrer">
+          {words.legalPrivacyLink}
+        </a>
+      </div>
+    </>
+  )
+}
+
 /** The lines, tip and total of a payment, as the server priced them. */
 function Priced({
   payment,
@@ -343,6 +380,9 @@ function PaymentScreen({
                 money={money}
               />
               <p className="rq-order-hint">{words.legalPrices}</p>
+              {services?.state.paying == null ? null : (
+                <LegalBlock paying={services.state.paying} words={words} />
+              )}
               {services?.payForm === undefined || payment.amountMinor === null ? null : (
                 <FormSlot
                   slot={services.payForm}
@@ -711,11 +751,7 @@ export function PayPanel(props: PayPanelProps): ReactNode {
             </b>
           </p>
           <p className="rq-order-hint">{words.legalPrices}</p>
-          {paying.processor === null ? null : (
-            <p className="rq-order-hint">
-              {words.legalProcessor(paying.processor, paying.venueName)}
-            </p>
-          )}
+          <LegalBlock paying={paying} words={words} />
           {askingSame === null ? (
             <button
               type="button"

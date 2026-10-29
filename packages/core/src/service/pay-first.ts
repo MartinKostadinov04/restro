@@ -22,6 +22,7 @@ import { z } from 'zod'
 
 import { resolveRoutesIn } from '../apply/menu-routes'
 import { idSchema, newId, type TableId } from '../ids'
+import type { LegalDetails } from '../legal-details'
 import { addMinor } from '../money'
 import { readPayingSettings } from '../paying-settings'
 import { DecimalQuantitySchema } from '../quantity'
@@ -122,10 +123,20 @@ export async function payFirstPossibleAt(tx: ReadTx, venueId: string): Promise<b
 export async function payingOffer(
   tx: ReadTx,
   input: { readonly venueId: string; readonly paused: boolean },
-): Promise<{ readonly state: PayingState; readonly provider: string | null }> {
+): Promise<{
+  readonly state: PayingState
+  readonly provider: string | null
+  /** The venue's legal details (#198, D127 log 1.6) while paying is offered, else null. */
+  readonly legal: LegalDetails | null
+}> {
   const connection = await loadPayingConnection(tx, input.venueId)
   const paused = input.paused || (await payingPausedAt(tx, input.venueId))
-  return { state: payingStateOf(connection, paused), provider: connection.providerKind }
+  const state = payingStateOf(connection, paused)
+  return {
+    state,
+    provider: connection.providerKind,
+    legal: state === 'off' ? null : connection.legal,
+  }
 }
 
 /** `payFirstStateOf` for a table, read in the caller's transaction. */

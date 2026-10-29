@@ -66,6 +66,18 @@ try {
       `update restro.tables set is_payment_table = true, hidden = true, qr_code_hash = null where id = $1`,
       [table.id],
     )
+    // Paying is on only with the venue's legal details filled in (#198).
+    await owner.query(`update restro.venues set settings = settings || $2::jsonb where id = $1`, [
+      venue.id,
+      JSON.stringify({
+        legalDetails: {
+          name: 'Paying Club EOOD',
+          eik: '123456789',
+          address: 'Sofia, 1 Vitosha Blvd',
+          privacyUrl: 'https://paying-club.example/privacy',
+        },
+      }),
+    ])
     const tick = JSON.stringify({ at: new Date().toISOString(), by: 'e2e' })
     await owner.query(
       `insert into restro.payment_accounts

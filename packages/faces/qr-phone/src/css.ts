@@ -154,6 +154,9 @@ export const FACE_CSS = `
 .rq-order-lines { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px; }
 .rq-order-controls { display: inline-flex; gap: 6px; margin-left: 8px; }
 .rq-order-hint { color: var(--rq-muted, GrayText); }
+/* The legal block's two controls (ticket 198): the hint's look, 44px to tap. */
+[data-slot="pay.legal"] a { display: inline-flex; align-items: center; min-height: 44px; }
+[data-slot="pay.legal"] summary { box-sizing: border-box; min-height: 44px; padding-block: 12px; cursor: pointer; }
 /* Lines already paid (D127 1.2): greyed, nothing to tick. The confirmation (D127 1.4): a plain card. */
 .rq-order-lines li[data-paid-in-app] { color: var(--rq-muted, GrayText); }
 .rq-confirm { display: grid; gap: 8px; margin: 8px 0; padding: 16px; border: 1px solid var(--rq-border, ButtonBorder); border-radius: var(--rq-radius, 8px); }

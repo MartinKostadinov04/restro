@@ -49,6 +49,7 @@ function state(version = 1) {
       payFirst: 'off',
       paying: 'off',
       payingProvider: null,
+      payingLegal: null,
       minCardMinor: 50,
       tips: false,
       receiptEmail: false,

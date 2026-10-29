@@ -481,6 +481,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       minCardMinor: from.ordering.minCardMinor,
       processor: processorName(from.ordering.payingProvider),
       venueName: from.location.venueName,
+      legal: from.ordering.payingLegal,
       electronicReceipt: from.ordering.receiptEmail,
       recent: recent(),
     }

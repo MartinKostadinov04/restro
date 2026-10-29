@@ -187,7 +187,17 @@ describe("what the phone hears of a pay-first round's sent order (#113)", () => 
     pauses: [],
     notesAndOptions: true,
     payFirst: { state: 'on', items: new Set(['nd_gin']) },
-    paying: { state: 'on', provider: 'sim-pay', minCardMinor: 50 },
+    paying: {
+      state: 'on',
+      provider: 'sim-pay',
+      legal: {
+        name: 'Club EOOD',
+        eik: '123456789',
+        address: 'Sofia, 1 Vitosha Blvd',
+        privacyUrl: 'https://club.example/privacy',
+      },
+      minCardMinor: 50,
+    },
     reading: null,
     bill: null,
     backendValues: new Set(),
@@ -201,6 +211,21 @@ describe("what the phone hears of a pay-first round's sent order (#113)", () => 
       'so_on_bill_unconfirmed',
       'so_on_bill_added',
     ])
+  })
+
+  it('sends the legal details only while paying is offered, as the four public fields (#198, rule 3)', () => {
+    const on = projectGuestState(read, 'order').ordering
+    expect(on.payingLegal).toStrictEqual({
+      name: 'Club EOOD',
+      eik: '123456789',
+      address: 'Sofia, 1 Vitosha Blvd',
+      privacyUrl: 'https://club.example/privacy',
+    })
+    const off = projectGuestState(
+      { ...read, paying: { ...read.paying, state: 'off' } } as unknown as TableStateRead,
+      'order',
+    ).ordering
+    expect(off.payingLegal).toBeNull()
   })
 
   it('tells a round on the POS whose payment ended "No receipt" apart: ordered, not paid (#114)', () => {

@@ -115,6 +115,27 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
       world.tables[3],
       on,
     ])
+  /** The venue's legal details filled in, or taken out (#198). */
+  const setLegal = (filled: boolean) =>
+    filled
+      ? world.owner.query(
+          'update restro.venues set settings = settings || $2::jsonb where id = $1',
+          [
+            world.venueId,
+            JSON.stringify({
+              legalDetails: {
+                name: 'Club EOOD',
+                eik: '123456789',
+                address: 'Sofia, 1 Vitosha Blvd',
+                privacyUrl: 'https://club.example/privacy',
+              },
+            }),
+          ],
+        )
+      : world.owner.query(
+          "update restro.venues set settings = settings - 'legalDetails' where id = $1",
+          [world.venueId],
+        )
   const tick = (check: 'cardTypeInTill' | 'receiptEmailsOff', done = true) =>
     run({ type: 'payment_account.tick', check, done })
 
@@ -296,30 +317,41 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
     it('lists what is missing, and is on only once the card, the till, the tables and the emails are done', async () => {
       await connected(true)
       await markPaymentTable(false)
+      await setLegal(false)
       let paying = await connection()
       expect(paying.readiness.on).toBe(false)
-      // The card is read from the provider; the rest is missing: two ticks and the tables.
+      // The card is read from the provider; the rest is missing: two ticks, the tables and the
+      // venue's legal details (#198).
       expect(paying.readiness.missing).toEqual([
         'cardTypeInTill',
         'paymentTables',
         'receiptEmailsOff',
+        'legalDetails',
       ])
 
       await tick('cardTypeInTill')
       await tick('receiptEmailsOff')
       paying = await connection()
-      expect(paying.readiness.missing).toEqual(['paymentTables'])
+      expect(paying.readiness.missing).toEqual(['paymentTables', 'legalDetails'])
       expect(paying.readiness.on).toBe(false)
 
       await markPaymentTable(true)
       paying = await connection()
+      expect(paying.readiness.missing).toEqual(['legalDetails'])
+      expect(paying.readiness.on).toBe(false)
+      expect(paying.legal).toBeNull()
+
+      await setLegal(true)
+      paying = await connection()
       expect(paying.readiness.missing).toEqual([])
       expect(paying.readiness.on).toBe(true)
+      expect(paying.legal).toMatchObject({ name: 'Club EOOD', eik: '123456789' })
     })
 
     it('takes a tick back, and a card the provider does not allow keeps it off', async () => {
       await connected(false)
       await markPaymentTable(true)
+      await setLegal(true)
       await tick('cardTypeInTill')
       await tick('receiptEmailsOff')
       let paying = await connection()

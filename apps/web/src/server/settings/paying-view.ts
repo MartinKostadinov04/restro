@@ -8,8 +8,8 @@ import {
   type Currency,
   type LegalDetails,
   type PayingCheck,
+  type PayingMissing,
   type PaymentMode,
-  readLegalDetails,
   readPayingSettings,
 } from '@restro/core'
 import { readPayFirstOverview, readPayingConnection, readPayingOffer } from '@restro/core/service'
@@ -26,14 +26,6 @@ export interface PayingCheckView {
   /** `owner`: the owner ticks it; `provider` and `venue` are read by Restro. */
   readonly source: CheckStanding['source']
 }
-
-/**
- * What can still be missing before paying turns on: D125's four checks, then the venue's legal
- * details (#198) as one more. Decided here, on the server, so the screen only draws it. The
- * predicate moves into core with #198, which makes `pay.start` refuse on it too (core cannot import
- * this folder).
- */
-export type PayingMissing = PayingCheck | 'legalDetails'
 
 /**
  * The "Pay first" card (#216): the venue's item default, whether pay first applies at every table,
@@ -93,7 +85,6 @@ export async function loadPayingView(input: {
 }): Promise<PayingView> {
   const connection = await readPayingConnection(getPool(), input.tenantId, input.venue.id)
   const { readiness } = connection
-  const legal = readLegalDetails(input.venue.settings)
   const currency = CURRENCIES.find((c): c is Currency => c === input.venue.currency) ?? 'EUR'
   const provider = providerOf(connection.providerKind)
   const [offer, source, payFirst] = await Promise.all([
@@ -106,8 +97,8 @@ export async function loadPayingView(input: {
     state: connection.state,
     accountName: connection.accountName,
     checks: readiness.checks.map(({ check, passed, source }) => ({ check, passed, source })),
-    missing: legal === null ? [...readiness.missing, 'legalDetails'] : readiness.missing,
-    payingOn: readiness.on && legal !== null,
+    missing: readiness.missing,
+    payingOn: readiness.on,
     lostReason: connection.state === 'lost_access' ? connection.checks.lostReason : null,
     canConnect: input.canConnect,
     minCardMinor: readPayingSettings(input.venue.settings).minCardMinor,
@@ -116,7 +107,7 @@ export async function loadPayingView(input: {
     provider: provider?.label ?? connection.providerKind ?? '',
     source: source ?? '',
     tips: offer.tips,
-    legal,
+    legal: connection.legal,
     payFirst: payFirst.possible
       ? {
           itemMode: payFirst.settings.itemMode,

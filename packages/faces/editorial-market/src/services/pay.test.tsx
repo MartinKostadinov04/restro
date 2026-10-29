@@ -5,8 +5,10 @@
 // phone saw them, and the screens that follow are this phone's payment state: the card form is the
 // page's (a slot), "Paid" is only a captured payment, and a failure never says it.
 
+import { stringsFor } from '@restro/shell'
 import {
   PAID_LINES,
+  PAYING_LEGAL,
   payingBill,
   payingView,
   payScenarios,
@@ -136,7 +138,55 @@ describe('choosing', () => {
     expect(
       within(sheet).getByText('Prices in EUR incl. VAT. Complaints and refunds: the venue.'),
     ).toBeTruthy()
-    expect(within(sheet).getByText('Payment processed by The processor for Club X.')).toBeTruthy()
+    expect(
+      within(sheet).getByText('Payment processed by The processor for Club X EOOD.'),
+    ).toBeTruthy()
+  })
+
+  it('links the legal details and the privacy notice, in English and in Bulgarian (#198)', () => {
+    for (const locale of ['en_US', 'bg_BG'] as const) {
+      const w = stringsFor(locale).services.paying
+      cleanup()
+      resetPage()
+      drawFace(fakeHost(base()), orderingView(locale))
+      fireEvent.click(document.querySelector('[data-slot="menu.pay"]') as HTMLElement)
+      const sheet = screen.getByRole('dialog')
+      const legal = sheet.querySelector('[data-slot="pay.legal"]') as HTMLElement
+      expect(sheet.textContent).toContain(w.legalProcessor('The processor', PAYING_LEGAL.name))
+      expect(legal.querySelector('summary')?.textContent).toBe(w.legalDetailsLink)
+      expect(legal.textContent).toContain(PAYING_LEGAL.name)
+      expect(legal.textContent).toContain(w.legalEik(PAYING_LEGAL.eik))
+      expect(legal.textContent).toContain(PAYING_LEGAL.address)
+      const privacy = legal.querySelector('a') as HTMLAnchorElement
+      expect(privacy.textContent).toBe(w.legalPrivacyLink)
+      expect(privacy.getAttribute('href')).toBe(PAYING_LEGAL.privacyUrl)
+    }
+  })
+
+  it('draws neither the processor line nor the links while the host sends no legal details', () => {
+    const { sheet } = openPay(fakeHost({ ...base(), paying: payingOf({ legal: null }) }))
+    expect(sheet.querySelector('[data-slot="pay.legal"]')).toBeNull()
+    expect(sheet.textContent).not.toContain('Payment processed by')
+  })
+
+  it('carries the processor line and both links on the card screen too (#198, log 1.6)', () => {
+    const { sheet } = openPay(fakeHost({ ...base(), payment: paymentOf() }))
+    expect(sheet.querySelector('[data-pay-screen="card"]')).not.toBeNull()
+    const legal = sheet.querySelector('[data-slot="pay.legal"]') as HTMLElement
+    expect(sheet.textContent).toContain(
+      `Payment processed by The processor for ${PAYING_LEGAL.name}.`,
+    )
+    expect(legal.querySelector('summary')?.textContent).toBe('About the venue')
+    expect(legal.textContent).toContain(PAYING_LEGAL.address)
+    expect(legal.querySelector('a')?.getAttribute('href')).toBe(PAYING_LEGAL.privacyUrl)
+    cleanup()
+    resetPage()
+    const bare = openPay(
+      fakeHost({ ...base(), paying: payingOf({ legal: null }), payment: paymentOf() }),
+    )
+    expect(bare.sheet.querySelector('[data-pay-screen="card"]')).not.toBeNull()
+    expect(bare.sheet.querySelector('[data-slot="pay.legal"]')).toBeNull()
+    expect(bare.sheet.textContent).not.toContain('Payment processed by')
   })
 })
 
@@ -515,7 +565,9 @@ describe('the review of #195 (D127)', () => {
 
   it('names the venue on the processor line from the paying state, never "for ."', () => {
     const { sheet } = openPay(fakeHost({ ...base(), paying: payingOf({ venueName: 'Club X' }) }))
-    expect(within(sheet).getByText('Payment processed by The processor for Club X.')).toBeTruthy()
+    expect(
+      within(sheet).getByText('Payment processed by The processor for Club X EOOD.'),
+    ).toBeTruthy()
   })
 
   it('says why the bill is hidden without a location pass, with Allow location and Call a waiter', () => {

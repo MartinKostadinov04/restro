@@ -201,6 +201,7 @@ export {
   type PayFormHandle,
   type PayFormProps,
   type PayFormSlot,
+  type PayingLegal,
   type PayingView,
   type PaymentLineView,
   type PaymentState,

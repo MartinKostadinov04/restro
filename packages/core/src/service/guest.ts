@@ -53,6 +53,7 @@ import {
 import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 
 import { TABLE_TOKEN_PATTERN } from '../guest-files'
+import type { LegalDetails } from '../legal-details'
 import type { LocalizedText } from '../locales'
 import {
   type GuestPosition,
@@ -157,6 +158,12 @@ export interface GuestTableState {
     readonly paying: PayingState
     /** The provider's kind (a public word) when paying is offered, so the screen names it. */
     readonly payingProvider: string | null
+    /**
+     * The venue's legal details while paying is offered (#198, D127 log 1.6): who the payment is
+     * processed for. Public fields only: the legal name, ЕИК, registered address and the privacy
+     * notice link.
+     */
+    readonly payingLegal: LegalDetails | null
     /** The smallest card payment here, in minor units: Pay is greyed below it. */
     readonly minCardMinor: number
   }
@@ -503,6 +510,7 @@ export function projectGuestState(
       payFirst: read.sitting === null ? 'off' : read.payFirst.state,
       paying: read.sitting === null ? 'off' : read.paying.state,
       payingProvider: read.paying.state === 'off' ? null : read.paying.provider,
+      payingLegal: read.paying.state === 'off' ? null : read.paying.legal,
       minCardMinor: read.paying.minCardMinor,
       night,
     },

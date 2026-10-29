@@ -3,6 +3,7 @@
 // stored value that does not parse reads as nothing done; any state but connected is off.
 import { describe, expect, it } from 'vitest'
 
+import type { LegalDetails } from './legal-details'
 import {
   type AccountChecks,
   NO_CHECKS,
@@ -20,12 +21,23 @@ const READY: AccountChecks = {
 }
 const MARKED: PaymentTableFacts = { paymentTables: 2, queuesWithoutOne: 0 }
 const NONE: PaymentTableFacts = { paymentTables: 0, queuesWithoutOne: 0 }
+const LEGAL: LegalDetails = {
+  name: 'Club EOOD',
+  eik: '123456789',
+  address: 'Sofia, 1 Vitosha Blvd',
+  privacyUrl: 'https://club.example/privacy',
+}
 
 describe('payingReadiness', () => {
   it('is off for an account nobody ticked, listing every check in D125’s order', () => {
-    const readiness = payingReadiness({ state: 'connected', checks: NO_CHECKS, tables: NONE })
+    const readiness = payingReadiness({
+      state: 'connected',
+      checks: NO_CHECKS,
+      tables: NONE,
+      legalDetails: null,
+    })
     expect(readiness.on).toBe(false)
-    expect(readiness.missing).toEqual(PAYING_CHECKS)
+    expect(readiness.missing).toEqual([...PAYING_CHECKS, 'legalDetails'])
     expect(readiness.checks.map((c) => [c.check, c.source])).toEqual([
       ['cardPayments', 'provider'],
       ['cardTypeInTill', 'owner'],
@@ -35,18 +47,44 @@ describe('payingReadiness', () => {
   })
 
   it('is on only when the account is connected and all four pass', () => {
-    expect(payingReadiness({ state: 'connected', checks: READY, tables: MARKED })).toMatchObject({
+    expect(
+      payingReadiness({ state: 'connected', checks: READY, tables: MARKED, legalDetails: LEGAL }),
+    ).toMatchObject({
       on: true,
       missing: [],
     })
     for (const state of ['connecting', 'lost_access', 'disconnected', null] as const) {
-      expect(payingReadiness({ state, checks: READY, tables: MARKED }).on).toBe(false)
+      expect(
+        payingReadiness({ state, checks: READY, tables: MARKED, legalDetails: LEGAL }).on,
+      ).toBe(false)
     }
+  })
+
+  it('stays off while any legal detail is missing, and names it last (#198, D127 log 1.6)', () => {
+    const off = payingReadiness({
+      state: 'connected',
+      checks: READY,
+      tables: MARKED,
+      legalDetails: null,
+    })
+    expect(off).toMatchObject({ on: false, missing: ['legalDetails'] })
+    const all = payingReadiness({
+      state: 'connected',
+      checks: NO_CHECKS,
+      tables: NONE,
+      legalDetails: null,
+    })
+    expect(all.missing.at(-1)).toBe('legalDetails')
   })
 
   it('names the one check that is missing', () => {
     const without = (change: Partial<AccountChecks>, tables = MARKED) =>
-      payingReadiness({ state: 'connected', checks: { ...READY, ...change }, tables }).missing
+      payingReadiness({
+        state: 'connected',
+        checks: { ...READY, ...change },
+        tables,
+        legalDetails: LEGAL,
+      }).missing
     expect(without({ cardPayments: false })).toEqual(['cardPayments'])
     expect(without({ ticks: { cardTypeInTill: null, receiptEmailsOff: TICK } })).toEqual([
       'cardTypeInTill',
@@ -62,6 +100,7 @@ describe('payingReadiness', () => {
       state: 'connected',
       checks: READY,
       tables: { paymentTables: 1, queuesWithoutOne: 1 },
+      legalDetails: LEGAL,
     })
     expect(queues.missing).toEqual(['paymentTables'])
   })
@@ -69,13 +108,19 @@ describe('payingReadiness', () => {
   it('shows the provider’s words only while card payments are not allowed', () => {
     const waiting = { ...READY, cardPayments: false, missing: ['bank account'] }
     expect(
-      payingReadiness({ state: 'connected', checks: waiting, tables: MARKED }).providerMissing,
+      payingReadiness({
+        state: 'connected',
+        checks: waiting,
+        tables: MARKED,
+        legalDetails: LEGAL,
+      }).providerMissing,
     ).toEqual(['bank account'])
     expect(
       payingReadiness({
         state: 'connected',
         checks: { ...READY, missing: ['stale'] },
         tables: MARKED,
+        legalDetails: LEGAL,
       }).providerMissing,
     ).toEqual([])
   })

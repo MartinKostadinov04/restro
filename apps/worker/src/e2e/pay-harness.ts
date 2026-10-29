@@ -186,6 +186,11 @@ async function main(): Promise<void> {
   engine.finishConnecting(account)
   const accountKind = STRIPE ? STRIPE_KIND : SIM_PAY_KIND
   const accountRef = STRIPE ? required('STRIPE_E2E_ACCOUNT') : account.provider
+  // The venue's legal details are part of what turns paying on (#198).
+  await query(
+    `update restro.venues set settings = settings || '{"legalDetails":{"name":"Club EOOD","eik":"123456789","address":"Sofia, 1 Vitosha Blvd","privacyUrl":"https://club.example/privacy"}}'::jsonb where id = $1`,
+    [venueId],
+  )
   await query(
     `insert into restro.payment_accounts
        (tenant_id, venue_id, provider_kind, account_ref, state, checks, connected_at, source, actor, job_id)
