@@ -17,11 +17,11 @@ The ordering stage branch `or/foundation` against `main`: 207 commits, about 70 
 
 Not in scope: the menu designer (`st/foundation`, another lead; its own, lighter review when it is done), the parked Mistral connector, staging and production.
 
-## 2. The frozen commit
+## 2. The pinned commit
 
-The review runs against **one pinned commit** of `or/foundation`. From the freeze until the fix wave is merged, `or/foundation` takes **review fixes only**. A delta pass on a moving target is where things slip.
+The review runs against **one pinned commit** of `or/foundation`, so every agent reads the same code. No freeze is imposed (Martin 10-30): part 2 is finishing on its own, the menu designer builds on its own branch, and `docs/agents/lead.md` already keeps new feature work off a finished build until Martin accepts it. Fixes from the review come as `or/rr-*` pull requests.
 
-Part 2 finished in the night of 10-29 (#114, #115, #116, #186 and the electronic receipt all merged; 28 pull requests in one day). The freeze happens when the last two land: #235 (the Demo Bar seed that lets a phone order, and the acceptance guides) and #236 (#234, "Got it" on a failed refund). Of #117's six sandbox checks, 1–3 are done; 4–6 need a staging address and a real phone, so they are Martin's step and stay outside the review.
+Part 2 finished in the night of 10-29 (#114, #115, #116, #186 and the electronic receipt all merged; 28 pull requests in one day). Phase 0 starts on the tip of 10-30 morning; when the last two part 2 pull requests land (#235, the Demo Bar seed and the acceptance guides; #236, "Got it" on a failed refund), the pin moves to that tip before phase 1, and the two are read as a delta. Anything merged after that gets the same short delta read. Of #117's six sandbox checks, 1–3 are done; 4–6 need a staging address and a real phone, so they are Martin's step and stay outside the review.
 
 A read-only worktree at the pinned commit (`.claude/worktrees/rr-pinned`) is shared by every reading agent; every agent that runs code gets its own worktree.
 
@@ -31,7 +31,7 @@ A read-only worktree at the pinned commit (`.claude/worktrees/rr-pinned`) is sha
 
 | Phase | Runs tests | What | Agents |
 |---|---|---|---|
-| **0 Freeze and index** (half a day) | slots free | pin the commit; tell both leads; create the review folder; mechanical indices; static security scan; CI retry mining; migration replay; the state-machine audit begins | A1, A2, A3, A4, A6 |
+| **0 Pin and index** (half a day) | slots free | pin the commit; tell both leads; create the review folder; mechanical indices; static security scan; CI retry mining; migration replay; the state-machine audit begins | A1, A2, A3, A4, A6 |
 | **1 Robustness** (about a day) | **both slots, nothing else** | the robustness runner writes and keeps the loops; readers work alongside | A5; A6, A10a–c, A11 read |
 | **2 Attack and walk** (about a day) | one slot each | the security attack; the behaviour walk, then the flake re-runs | A7; A8 then A9 |
 | **3 Quorum and tickets** (half a day) | none | every candidate judged (§7); tickets written | lead + verifiers |
@@ -119,7 +119,7 @@ Only this decision gets a quorum; everything else is one agent plus the lead. Th
 
 ## 9. What Martin decided (10-30)
 
-1. **The freeze:** yes. Written for #195 and #196; by the morning of 10-30 part 2 had finished, so the freeze follows #235 and #236 instead (§2).
+1. **The freeze:** first yes, then withdrawn the same morning: part 2 was finishing on its own and the designer builds elsewhere, so no rule is imposed on the leads; the review pins a commit and reads later merges as a delta (§2).
 2. **Rule 1's text:** yes. CLAUDE.md said every change goes through `core.apply()`; D122 §9 added `applyService()` as the service data's write path. The line now names both, so the readers don't report it ten times.
 3. **The decision-number collision** (`or/foundation` D124 and D127, how the guest page pays, against the designer's D127–D130): the three leads had already settled it on 10-29 the same way, before this plan reached Martin. The designer's four become D128–D131 on `st/foundation`; ordering and paying number new decisions from D132; the Design lead cuts `st/foundation` from `or/foundation`'s tip and re-merges as it lands.
 4. **Days of machine time:** yes; keep-awake on, the review runs through the nights, pausing at usage limits.
