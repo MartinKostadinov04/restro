@@ -262,6 +262,8 @@ describe.skipIf(!hasDatabase)('the item sheet against Postgres (as the restro_ap
         const keys = (await sheet(linked)).fields.map((f) => f.key)
         expect(keys).toContain('payment_mode')
         expect(keys.indexOf('payment_mode')).toBeGreaterThan(keys.indexOf('order_mode'))
+        // The venue's item default, for "Same as the venue" (#218): on the bill until it's set.
+        expect((await sheet(linked)).payFirstDefault).toBe('on_bill')
       } finally {
         payFirst.possible = false
       }

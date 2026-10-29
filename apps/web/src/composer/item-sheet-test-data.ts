@@ -49,6 +49,7 @@ export function sheetData(
     visible: true,
     sale: { soldOutTonight: false, offSale: null, canMark: true },
     nameFromTill: false,
+    payFirstDefault: null,
     issues: [],
     translations: [],
     image: null,
