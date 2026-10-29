@@ -60,6 +60,11 @@ export function noticeConnectorFor(kind: string, env: PaymentsEnv): NoticeConnec
   return connector !== undefined && connector.offered(env) ? connector : null
 }
 
+/** The provider's name for a sentence (`{provider}`), or null for a kind with none. */
+export function providerDisplayName(kind: string | null): string | null {
+  return kind === null ? null : (BY_KIND.get(kind)?.displayName ?? null)
+}
+
 /** The deployment's environment (`PAYMENTS_ENV`), or null when unset or unknown. */
 export function paymentsEnv(
   env: Readonly<Record<string, string | undefined>> = process.env,

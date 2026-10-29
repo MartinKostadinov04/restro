@@ -8,7 +8,7 @@ import { formatMoney, type Locale } from '@restro/core'
 import type { CsvRow } from '@restro/core/service'
 
 import { logSentence } from '@/tonight/log-sentence'
-import { PAYMENT_STATE_WORDS } from '@/tonight/payment-state-words'
+import { paymentStateWords } from '@/tonight/payment-state-words'
 
 import { sentCsvRow, tableText, whoText } from './night-csv'
 import type { LogLineView, SentRowView } from './night-view'
@@ -49,7 +49,7 @@ export function logExportRows(
         who: (by) => whoText(say, by),
         money: (minor) => formatMoney(minor, input.currency, input.locale),
         source: input.source,
-        paymentStates: PAYMENT_STATE_WORDS,
+        paymentStates: paymentStateWords(say),
       })
       if (sentence === null) continue
       rows.push({

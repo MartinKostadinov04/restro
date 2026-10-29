@@ -42,6 +42,12 @@ export type TableCommand =
     }
   | { readonly type: 'waiter_call.done'; readonly waiterCallId: string }
   | { readonly type: 'alert.done'; readonly alertId: string }
+  | {
+      readonly type: 'payment.answer'
+      readonly paymentId: string
+      readonly answering: 'close' | 'lines_not_back'
+      readonly answer: 'receipt_printed' | 'no_receipt' | 'on_till' | 'not_on_till'
+    }
   | { readonly type: 'ordering.pause'; readonly barId: string | null }
   | { readonly type: 'ordering.lift'; readonly pauseId: string }
 
@@ -82,12 +88,18 @@ export type TonightResult =
       readonly error: RefusalCode | PinRefusal | 'invalid' | 'failed' | (string & {})
       /** For `device_waiting`: how long the device waits before the next PIN. */
       readonly retryAfterSeconds?: number
+      /** What the refusal says beside its code (the answer someone gave first, the state moved to). */
+      readonly details?: Extract<ServiceResult, { status: 'refused' }>['details']
     }
 
 function answer(result: ServiceResult): TonightResult {
   return result.status === 'accepted'
     ? { ok: true, details: result.details }
-    : { ok: false, error: result.code }
+    : {
+        ok: false,
+        error: result.code,
+        ...(Object.keys(result.details).length === 0 ? {} : { details: result.details }),
+      }
 }
 
 async function run(scope: TonightScope, command: unknown): Promise<ServiceResult> {

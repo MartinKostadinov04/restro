@@ -418,7 +418,14 @@ export function paymentEntered() {
         return at(payment, 'cancelling', true)
       }
       await move(stx, locked, 'unconfirmed', { reason: 'enter_unknown' }, { code: command.code })
-      await raise(stx, locked, PAYMENT_UNCONFIRMED_KIND, 'money.follow_up', {}, true)
+      await raise(
+        stx,
+        locked,
+        PAYMENT_UNCONFIRMED_KIND,
+        'money.follow_up',
+        { question: 'till' },
+        true,
+      )
       await movePayFirstSentOrder(stx, payment, ['waiting'], 'unconfirmed', {
         reason: 'enter_unknown',
       })
@@ -642,7 +649,14 @@ export function paymentPayFirstChecked() {
           { reason: 'entered_check_failed' },
           { why: check.why },
         )
-        await raise(stx, locked, PAYMENT_UNCONFIRMED_KIND, 'money.follow_up', {}, true)
+        await raise(
+          stx,
+          locked,
+          PAYMENT_UNCONFIRMED_KIND,
+          'money.follow_up',
+          { question: 'till' },
+          true,
+        )
         return at(payment, 'unconfirmed', true, { reason: 'entered_check_failed', why: check.why })
       }
       // What the POS closed, line by line (#197): a dropped line is not paid, a lowered one is

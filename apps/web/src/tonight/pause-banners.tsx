@@ -4,7 +4,8 @@
 // per active pause, stacked at the top and not dismissible. Restro's own pause has no button
 // (nobody at the venue can lift it, D122 §6); a staff pause has "Resume ordering": a manager's
 // PIN on the shared tablet, one tap for a manager on their own session, no button for anyone else.
-import { CirclePauseIcon, OctagonAlertIcon } from 'lucide-react'
+import { CirclePauseIcon, CreditCardIcon, OctagonAlertIcon } from 'lucide-react'
+import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
@@ -56,10 +57,53 @@ function StaffBanner({ banner, view }: { banner: PauseBanner; view: TonightView 
   )
 }
 
+/**
+ * Card payments in the app are stopped (#115; paying plan Q5): shown to every role so a waiter
+ * takes the payment at the till, stacked under any ordering pause, not dismissible. "Reconnect"
+ * only for the person who may connect payments; anyone else reads who does (`pb_who`).
+ */
+function PayingBanner({ view }: { view: TonightView }) {
+  const t = useTranslations('tonight')
+  const paying = view.paying
+  if (paying === null) return null
+  const provider = view.provider ?? t('pb_provider_none')
+  const words = { source: view.source, provider }
+  const text =
+    paying.state === 'paused'
+      ? t('pb_paused', words)
+      : paying.state === 'lost'
+        ? t('pb_lost', words)
+        : t('pb_restricted', words)
+  return (
+    <div
+      role="status"
+      className="flex flex-col gap-3 rounded-lg border bg-info/10 p-4 sm:flex-row sm:items-center"
+      data-testid="pause-banner"
+      data-kind="paying"
+      data-state={paying.state}
+    >
+      <CreditCardIcon aria-hidden className="size-5 shrink-0 text-info" />
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className="text-base [overflow-wrap:anywhere]">{text}</p>
+        {paying.state !== 'paused' && !paying.canReconnect ? (
+          <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">{t('pb_who')}</p>
+        ) : null}
+      </div>
+      {paying.state !== 'paused' && paying.canReconnect ? (
+        <Button asChild variant="outline" className="h-12 whitespace-normal">
+          <Link href={`/venues/${view.venueId}?tab=settings&section=paying`}>
+            {t('pb_reconnect')}
+          </Link>
+        </Button>
+      ) : null}
+    </div>
+  )
+}
+
 /** The banners at the top of Tonight. */
 export function PauseBanners({ view }: { view: TonightView }) {
   const t = useTranslations('tonight')
-  if (view.banners.length === 0) return null
+  if (view.banners.length === 0 && view.paying === null) return null
   return (
     <div className="space-y-2" data-testid="pause-banners">
       {view.banners.map((banner) =>
@@ -80,6 +124,7 @@ export function PauseBanners({ view }: { view: TonightView }) {
           <StaffBanner key={banner.id} banner={banner} view={view} />
         ),
       )}
+      <PayingBanner view={view} />
     </div>
   )
 }
