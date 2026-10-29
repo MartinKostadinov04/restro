@@ -47,6 +47,9 @@ function state(version = 1) {
       state: 'on',
       notesAndOptions: false,
       payFirst: 'off',
+      paying: 'off',
+      payingProvider: null,
+      minCardMinor: 50,
       tips: false,
       night: { state: 'open', at: null },
     },
@@ -433,6 +436,8 @@ describe('the payment handle', () => {
 
   it('answers the paying phone its payment, and 404 a handle core does not know', async () => {
     const answer = {
+      mode: 'bill',
+      number: 'K7Q4M',
       id: newId('py'),
       state: 'awaiting_guest',
       reason: null,

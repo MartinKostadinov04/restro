@@ -1,5 +1,5 @@
 // The services layer of the face: the guest's bag, the service sheets that live in the address
-// (`#bag`, `#tab`, `#call`, `#pay`, `#receipt`) and the way a command goes to the host. It is a
+// (`#bag`, `#tab`, `#call`, `#pay`) and the way a command goes to the host. It is a
 // provider around the whole face, so a quick-add button in a card, the buttons in the header, the
 // bar at the bottom and the sheets all share one bag.
 //
@@ -47,7 +47,7 @@ import { newActionId, type Outcome, runCommand, SERVICE_TIMEOUT_MS } from './com
  * ------------------------------------------------------------------------------------------- */
 
 /** The service sheets, by their address. */
-export const SHEETS = ['bag', 'tab', 'call', 'pay', 'receipt'] as const
+export const SHEETS = ['bag', 'tab', 'call', 'pay'] as const
 
 /** One service sheet. */
 export type Sheet = (typeof SHEETS)[number]
@@ -73,7 +73,6 @@ export function sheetAllowed(features: ViewFeatures, sheet: Sheet): boolean {
     case 'call':
       return features.callWaiter !== null
     case 'pay':
-    case 'receipt':
       return features.pay
   }
 }
@@ -113,6 +112,10 @@ const IDLE: SendState = { status: 'idle' }
 export interface Services {
   readonly view: ViewModel
   readonly state: ServiceState
+  /** The confirmed table's label ("12"), or null. */
+  readonly tableLabel: string | null
+  /** The host's binding: the form slot and the payment's controls (#114). */
+  readonly binding: ServiceBinding
   readonly words: ServiceStrings
   readonly guest: GuestStrings
   readonly locale: Locale
@@ -159,11 +162,14 @@ export function useServicesRequired(): Services {
 export function ServicesProvider({
   view,
   services,
+  tableLabel,
   openDish,
   dishOpen,
   children,
 }: {
   readonly view: ViewModel
+  /** The confirmed table's label, or null. */
+  readonly tableLabel: string | null
   /** The host's binding, or undefined: the face then draws no service at all. */
   readonly services: ServiceBinding | undefined
   /** Opens the dish page (the element that asked gets the focus back). */
@@ -174,7 +180,13 @@ export function ServicesProvider({
 }) {
   if (!servicesShown(view, services) || services === undefined) return <>{children}</>
   return (
-    <ActiveServices view={view} services={services} openDish={openDish} dishOpen={dishOpen}>
+    <ActiveServices
+      view={view}
+      services={services}
+      tableLabel={tableLabel}
+      openDish={openDish}
+      dishOpen={dishOpen}
+    >
       {children}
     </ActiveServices>
   )
@@ -183,11 +195,13 @@ export function ServicesProvider({
 function ActiveServices({
   view,
   services,
+  tableLabel,
   openDish,
   dishOpen,
   children,
 }: {
   readonly view: ViewModel
+  readonly tableLabel: string | null
   readonly services: ServiceBinding
   readonly openDish: (itemId: string, opener: HTMLElement) => void
   readonly dishOpen: boolean
@@ -356,6 +370,8 @@ function ActiveServices({
     () => ({
       view,
       state,
+      tableLabel,
+      binding: services,
       words: strings.services,
       guest: strings.guest,
       locale: view.locale,
@@ -379,6 +395,8 @@ function ActiveServices({
     [
       view,
       state,
+      tableLabel,
+      services,
       strings,
       features,
       run,

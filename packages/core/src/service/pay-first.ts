@@ -68,6 +68,22 @@ import { readTableCapabilities, readVenueCapabilities } from './table-capabiliti
 /** Whether a table offers pay-first items now, as a phone is told it (no ids, #114). */
 export type PayFirstState = 'on' | 'paused' | 'off'
 
+/** Whether paying in the app is offered at a venue now, as a phone is told it (no ids, #114). */
+export type PayingState = PayFirstState
+
+/**
+ * Whether paying is offered, from the venue's connection alone: `off` while it is not connected or
+ * a check fails, `paused` while the account lost access or ordering or paying is paused (#112).
+ */
+export function payingStateOf(
+  connection: Pick<PayingConnection, 'state' | 'providerKind' | 'readiness'>,
+  paused: boolean,
+): PayingState {
+  if (connection.state === 'lost_access') return 'paused'
+  if (!connection.readiness.on || connection.providerKind === null) return 'off'
+  return paused ? 'paused' : 'on'
+}
+
 /**
  * Whether the table offers pay-first items, from what its POS declared and the venue's paying:
  * `off` where the POS can't open a bill that names itself, or paying is off; `paused` while the
@@ -80,9 +96,7 @@ export function payFirstStateOf(
   paused: boolean,
 ): PayFirstState {
   if (!capabilities.firstItemsOpenBill) return 'off'
-  if (connection.state === 'lost_access') return 'paused'
-  if (!connection.readiness.on || connection.providerKind === null) return 'off'
-  return paused ? 'paused' : 'on'
+  return payingStateOf(connection, paused)
 }
 
 /**
@@ -97,6 +111,19 @@ export async function payFirstPossibleAt(tx: ReadTx, venueId: string): Promise<b
     (connection.readiness.on || connection.state === 'lost_access')
   if (!offered) return false
   return (await readVenueCapabilities(tx, venueId)).some((pos) => pos.firstItemsOpenBill)
+}
+
+/**
+ * `payingStateOf` for a venue, read in the caller's transaction, with the provider's kind (`stripe`:
+ * a public word, no id) so the pay screen can name who processes the payment.
+ */
+export async function payingOffer(
+  tx: ReadTx,
+  input: { readonly venueId: string; readonly paused: boolean },
+): Promise<{ readonly state: PayingState; readonly provider: string | null }> {
+  const connection = await loadPayingConnection(tx, input.venueId)
+  const paused = input.paused || (await payingPausedAt(tx, input.venueId))
+  return { state: payingStateOf(connection, paused), provider: connection.providerKind }
 }
 
 /** `payFirstStateOf` for a table, read in the caller's transaction. */
