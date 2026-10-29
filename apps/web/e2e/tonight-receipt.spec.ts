@@ -113,8 +113,9 @@ test('a captured payment shows "Bring the receipt" with the number the guest sho
   await expect(rowOf(page, '3')).toHaveCount(0)
   for (const row of await rows(page).all()) {
     await expect(row).toContainText('Bring the receipt')
-    // The payment number (five letters or digits) and what was charged, tip included.
-    await expect(row).toContainText(/paid from the phone with ref [A-Z0-9]{5}, €38\.00\./)
+    // The payment number (five letters or digits) and what was charged. The tablet is a staff-level
+    // device: it reads the bill without the €2.00 tip (decision log 3.4); the owner reads €38.00.
+    await expect(row).toContainText(/paid from the phone with ref [A-Z0-9]{5}, €36\.00\./)
     await expect(row.getByRole('button')).toHaveText(['Brought'])
   }
   // The POS's receipt number is shown where it gave one.
@@ -124,6 +125,16 @@ test('a captured payment shows "Bring the receipt" with the number the guest sho
   await expect(
     page.locator('[data-testid="table-tile"][aria-label^="Table 1"]'),
   ).not.toHaveAttribute('data-state', 'payment')
+})
+
+test('the owner reads what was charged on the same rows, tip included', async () => {
+  const { page } = owner
+  await open(page)
+  const receipts = rows(page).filter({ hasText: 'Bring the receipt' })
+  await expect(receipts).toHaveCount(2)
+  for (const row of await receipts.all()) {
+    await expect(row).toContainText(/paid from the phone with ref [A-Z0-9]{5}, €38\.00\./)
+  }
 })
 
 test('one tap on "Brought" clears the row with no PIN, and Undo brings it back', async () => {
