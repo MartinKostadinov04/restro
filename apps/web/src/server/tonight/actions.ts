@@ -169,6 +169,29 @@ export async function handleWaiterCallAction(input: unknown): Promise<TonightRes
   )
 }
 
+const OnReceipt = z.strictObject({ venueId, paymentId: idSchema('py') })
+
+/**
+ * Marks a payment's paper receipt Brought (#200): no PIN, even on a shared device; the Log names
+ * the device's account (D122 §7). A repeat changes nothing (`changed: false`).
+ */
+export async function receiptBroughtAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnReceipt.safeParse(input)
+  if (!parsed.success) return INVALID
+  return perform(parsed.data, (scope) =>
+    command(scope, { type: 'receipt.brought', paymentId: parsed.data.paymentId }),
+  )
+}
+
+/** Undo of "Brought": the receipt is to be brought again. */
+export async function receiptUnbroughtAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnReceipt.safeParse(input)
+  if (!parsed.success) return INVALID
+  return perform(parsed.data, (scope) =>
+    command(scope, { type: 'receipt.unbrought', paymentId: parsed.data.paymentId }),
+  )
+}
+
 /** Pauses ordering at every bar (`barId` null) or one. Only makes the menu more cautious. */
 export async function pauseOrderingAction(input: unknown): Promise<TonightResult> {
   const parsed = OnBar.safeParse(input)

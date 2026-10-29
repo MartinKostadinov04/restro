@@ -26,6 +26,11 @@ export interface RunSpec {
   readonly done: string
   /** The inverse write, given what the write answered; without one the toast has no Undo. */
   readonly undo?: (done: Accepted) => Promise<TonightResult>
+  /**
+   * Whether the toast offers its Undo, given what the write answered: a repeat that changed
+   * nothing (`changed: false`) must not undo someone else's mark. Left out: always.
+   */
+  readonly undoWhen?: (done: Accepted) => boolean
 }
 
 type Run = (spec: RunSpec) => void
@@ -50,7 +55,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
       const { undo } = spec
       toast(spec.done, {
         id: spec.id,
-        ...(undo === undefined
+        ...(undo === undefined || spec.undoWhen?.(done) === false
           ? {}
           : {
               action: {

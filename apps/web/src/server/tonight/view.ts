@@ -9,7 +9,8 @@ import type { Tonight } from '@restro/core/service'
  * The rows of "Needs you", most costly to leave first (plan §4; paying plan 2026-10-29): a payment
  * question, a card not charged after the bill closed, items stuck on a payment table, then part 1's
  * sent order to check, approval, paused table and waiter call, and last a payment stopped before
- * closing (shown under "Later"). The to-dos (storno, dispute, receipts to bring) wait for #54, #200.
+ * closing (shown under "Later"). The to-dos come last of the rows that need a person now: a
+ * receipt to bring (#200); the storno and the dispute wait for #54.
  */
 export const ROW_RANK = {
   pay: 0,
@@ -19,6 +20,7 @@ export const ROW_RANK = {
   approval: 2,
   paused: 3,
   call: 4,
+  receipt: 5,
   stopped: 6,
 } as const
 
@@ -53,6 +55,16 @@ export interface ActionRow {
   /** A payment's question or money alert (#115). */
   readonly money?: MoneyRow
   readonly waiterCallId?: string
+  /** A captured payment's paper receipt to bring (#200). */
+  readonly receipt?: {
+    readonly paymentId: string
+    /** The number the guest shows the waiter. */
+    readonly paymentNumber: string
+    /** The POS's receipt number, when the close gave one. */
+    readonly receiptNumber: string | null
+    /** What was charged, tip included. */
+    readonly amountMinor: number
+  }
   /** A waiter call's requests (#180), in the venue's list order. */
   readonly callKinds?: readonly CallWaiterKind[]
 }
@@ -438,6 +450,22 @@ export function buildTonightView(input: {
       callKinds: call.kinds,
     })
     raise(call.tableId, 'call')
+  }
+  for (const receipt of tonight.receipts ?? []) {
+    rows.push({
+      id: `receipt:${receipt.paymentId}`,
+      kind: 'receipt',
+      tableId: receipt.tableId,
+      table: labelOf.get(receipt.tableId) ?? '',
+      numbered: numberedOf.has(receipt.tableId),
+      at: receipt.raisedAt.toISOString(),
+      receipt: {
+        paymentId: receipt.paymentId,
+        paymentNumber: receipt.paymentNumber,
+        receiptNumber: receipt.receiptNumber,
+        amountMinor: receipt.amountMinor,
+      },
+    })
   }
   rows.sort(
     (a, b) =>

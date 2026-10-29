@@ -18,8 +18,11 @@ import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import type { ServiceActor, ServiceContext } from './context'
 import {
   applyService,
+  readNightPayments,
+  readNightPaymentsReport,
   readReceiptsNotBrought,
   readReceiptsToBring,
+  readTonight,
   type ServiceCommand,
 } from './index'
 import { paymentNumberOf } from './payment-number'
@@ -444,6 +447,66 @@ describe.skipIf(!hasDatabase)('Bring the receipt (as the restro_app role)', () =
         asked,
       ).toContain(mine)
     }
+  })
+
+  it('puts the receipts on Tonight for those who answer, and takes a marked one off it', async () => {
+    const id = await toBring(1)
+    const tonight = async (actor: ServiceActor) => {
+      const read = await readTonight(world.app, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        actor,
+      })
+      if (!read.ok) throw new Error(read.code)
+      return read.tonight.receipts
+    }
+    expect((await tonight(user(staffId)))?.map((receipt) => receipt.paymentId)).toContain(id)
+    // Someone who holds no `alerts.answer` is given none, not an empty list.
+    expect(await tonight(user(mayNotId))).toBeNull()
+    await run(brought(id), context(user(staffId)))
+    expect((await tonight(user(staffId)))?.map((receipt) => receipt.paymentId)).not.toContain(id)
+  })
+
+  it('lists the receipts not brought on the end of the night’s payments and in the group’s message', async () => {
+    const left = await toBring(1, '2002-03-04')
+    const done = await toBring(2, '2002-03-04')
+    await run(brought(done), context(user(staffId)))
+    const read = await readNightPayments(world.app, {
+      tenantId: world.tenantId,
+      venueId: world.venueId,
+      actor: user(staffId),
+      day: '2002-03-04',
+    })
+    if (!read.ok) throw new Error(read.code)
+    expect(read.payments.notBrought.map((entry) => entry.paymentId)).toEqual([left])
+    expect(read.payments.notBrought[0]?.paymentNumber).toBe(paymentNumberOf(left))
+    // A payment charged with no receipt number carries its payment number too, so a reader sees it
+    // is the same payment as its "receipt not brought" line.
+    const noNumber = await closed(null, 1, '2002-03-04')
+    await capture(noNumber)
+    await run(brought(noNumber), context(user(staffId)))
+    const withNumbers = await readNightPaymentsReport(world.app, {
+      tenantId: world.tenantId,
+      venueId: world.venueId,
+      day: '2002-03-04',
+    })
+    expect(withNumbers.fix).toContainEqual(
+      expect.objectContaining({ what: 'no_receipt', paymentNumber: paymentNumberOf(noNumber) }),
+    )
+    // The group's message gets the table and the number, never an amount.
+    const report = await readNightPaymentsReport(world.app, {
+      tenantId: world.tenantId,
+      venueId: world.venueId,
+      day: '2002-03-04',
+    })
+    expect(report.fix.filter((line) => line.what === 'receipt_not_brought')).toEqual([
+      expect.objectContaining({
+        what: 'receipt_not_brought',
+        number: '2',
+        paymentNumber: paymentNumberOf(left),
+      }),
+    ])
+    expect(JSON.stringify(report)).not.toMatch(/1450|amount|tip/)
   })
 
   it('is kept honest by the table: Brought needs a receipt to bring and an account, a receipt to bring a captured payment', async () => {

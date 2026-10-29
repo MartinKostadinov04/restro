@@ -29,7 +29,10 @@ export async function nightSlots(
   const t = await getTranslations('tonight')
   const { payments } = read
   const fixCount =
-    payments.fix.length + payments.noReceipt.length + (payments.paying === null ? 0 : 1)
+    payments.fix.length +
+    payments.noReceipt.length +
+    payments.notBrought.length +
+    (payments.paying === null ? 0 : 1)
 
   const sections: NightSectionSlot[] = [
     {

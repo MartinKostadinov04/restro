@@ -1,10 +1,11 @@
-// "Bring the receipt" and "Brought" (#200; D122 §7, D127 4.4; Tonight screen 1, S7). A payment
-// captured with a receipt number from the POS and no electronic receipt sent (`payment.captured`
-// sets `receiptToBringAt`) leaves a paper receipt for the waiter to bring to the payer, who shows
-// the payment number. Staff mark it Brought, the same shape as Handled on a waiter call: once for
-// the payment, no PIN on a shared device (the Log names the device's account), a repeat changes
-// nothing. Undo (the 8 s toast) puts it back. The payment row carries the mark, so the day's
-// receipts not brought are one read of `payments`.
+// "Bring the receipt" and "Brought" (#200; D122 §7, D127 4.4; Tonight screen 1, S7). Every capture
+// of a payment (`payment.captured`) on which no electronic receipt was sent leaves a paper receipt
+// for the waiter to bring to the payer, who shows the payment number (`receiptToBringAt`). The
+// POS's receipt number is shown where it gave one and is never required: a capture with none is
+// no refusal. Staff mark it Brought, the same shape as Handled on a waiter call: once for the
+// payment, no PIN on a shared device (the Log names the device's account), a repeat changes
+// nothing. Undo puts it back. The payment row carries the mark, so the day's receipts not brought
+// are one read of `payments`.
 //
 // Locks: the table's rows first, then the payment (`lockRoute`, as the paying route does).
 
@@ -58,8 +59,8 @@ async function mark(
 
 /**
  * `receipt.brought`: staff mark the payment's paper receipt Brought. Refused
- * `no_receipt_to_bring` for a payment that never left one (not captured, no receipt number, or its
- * electronic receipt was sent).
+ * `no_receipt_to_bring` for a payment that never left one (not captured yet, or its electronic
+ * receipt was sent); a missing receipt number is no reason to refuse.
  */
 export function receiptBrought() {
   return defineCommand({
@@ -72,7 +73,10 @@ export function receiptBrought() {
   })
 }
 
-/** `receipt.unbrought`: Undo of Brought, within the toast's 8 seconds on the screen. */
+/**
+ * `receipt.unbrought`: Undo of Brought. The server sets no time limit on it, like Tonight's other
+ * Undos; the screen offers it for the toast's 8 seconds.
+ */
 export function receiptUnbrought() {
   return defineCommand({
     schema: ReceiptSchema('receipt.unbrought'),

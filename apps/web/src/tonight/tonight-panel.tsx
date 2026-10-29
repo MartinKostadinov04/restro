@@ -177,11 +177,13 @@ function Content({ view }: { view: TonightView }) {
                   table: tableName(row.table, row.numbered),
                   kinds: callKindsText(t, row.callKinds ?? ['waiter']),
                 })
-              : row.kind === 'paused'
-                ? t('g_t', { table: tableName(row.table, row.numbered) })
-                : row.kind === 'approval'
-                  ? t('a_t')
-                  : t('s_t'),
+              : row.kind === 'receipt'
+                ? t('r_t')
+                : row.kind === 'paused'
+                  ? t('g_t', { table: tableName(row.table, row.numbered) })
+                  : row.kind === 'approval'
+                    ? t('a_t')
+                    : t('s_t'),
         )
         .join('. '),
     )
