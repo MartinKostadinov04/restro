@@ -303,6 +303,7 @@ export {
   PAYMENT_UNCONFIRMED_REASONS,
   PAYMENT_WRITE_PAUSE_MS,
   paymentTurnSeconds,
+  RECEIPT_EMAIL_KEPT_MS,
 } from './pay-route'
 export { payingPaused } from './paying-pause'
 export {

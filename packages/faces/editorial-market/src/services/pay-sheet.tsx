@@ -21,11 +21,13 @@ import {
   lineNameText,
   NO_TIP,
   offersPay,
+  offersReceiptEmail,
   type PayFormSlot,
   type PaymentView,
   type PayScreen,
   type Picks,
   type PreparedConfirmation,
+  paidReceiptText,
   parseMinor,
   payBlock,
   payFormLocale,
@@ -232,6 +234,7 @@ export function PaySheet() {
   const paying = state.paying ?? null
   const payment = state.payment ?? null
   const tipsOffered = state.ordering?.tips === true
+  const receiptEmailOffered = offersReceiptEmail(paying)
   const money = useMemo(
     () => (minor: number) => payMoney(minor, bill?.currency ?? 'EUR', locale),
     [bill?.currency, locale],
@@ -240,6 +243,7 @@ export function PaySheet() {
   const [picks, setPicks] = useState<Picks>(new Map())
   const [tip, setTip] = useState<TipChoice>(NO_TIP)
   const [other, setOther] = useState('')
+  const [receiptEmail, setReceiptEmail] = useState('')
   const [asking, setAsking] = useState<number | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -285,7 +289,9 @@ export function PaySheet() {
     setBusy(true)
     setAsking(null)
     try {
-      await send(payStartCommand(newActionId(), picks, tip, tipsOffered))
+      await send(
+        payStartCommand(newActionId(), picks, tip, tipsOffered, receiptEmail, receiptEmailOffered),
+      )
     } finally {
       if (alive.current) setBusy(false)
     }
@@ -314,7 +320,7 @@ export function PaySheet() {
   if (bill === null || paying === null) return <p className="ro-empty">{words.nothingToPay}</p>
 
   const totals = choosePay(picks, tip, tipsOffered)
-  const block = payBlock(paying, bill, picks, tip, tipsOffered)
+  const block = payBlock(paying, bill, picks, tip, tipsOffered, receiptEmail)
   const blockWords =
     block === 'cards_paused'
       ? w.cardsPaused
@@ -326,7 +332,9 @@ export function PaySheet() {
             ? w.belowMinimum(money(paying.minCardMinor))
             : block === 'tip_too_big'
               ? w.tipTooBig
-              : null
+              : block === 'bad_email'
+                ? w.emailInvalid
+                : null
   const free = freeLines(bill)
   // Everything is paid: nothing is free to pay and the sitting has paid lines, so the choosing, the
   // totals and Pay go, and the bill shows what was paid (D127 1.2).
@@ -425,6 +433,22 @@ export function PaySheet() {
               </label>
             </fieldset>
           ) : null}
+          {receiptEmailOffered ? (
+            <label className="ro-input">
+              <span>{w.receiptEmail}</span>
+              <input
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                value={receiptEmail}
+                maxLength={254}
+                data-slot="pay.receipt.email"
+                aria-invalid={block === 'bad_email'}
+                aria-describedby={block === 'bad_email' ? 'ro-receipt-email-help' : undefined}
+                onChange={(event) => setReceiptEmail(event.target.value)}
+              />
+            </label>
+          ) : null}
           <div className="ro-sum">
             <span>{w.yourItems}</span>
             <b>{money(totals.itemsMinor)}</b>
@@ -469,7 +493,12 @@ export function PaySheet() {
             </div>
           )}
           {blockWords === null ? null : (
-            <p className="ro-notice" role="status" data-slot="pay.blocked">
+            <p
+              className="ro-notice"
+              role="status"
+              id="ro-receipt-email-help"
+              data-slot="pay.blocked"
+            >
               {blockWords}
             </p>
           )}
@@ -672,7 +701,7 @@ function PaymentScreen({
                   <p data-slot="pay.table">{o.guest.table(o.tableLabel)}</p>
                 )}
                 {priced}
-                <p>{w.paidReceipt}</p>
+                <p data-slot="pay.receipt.line">{paidReceiptText(payment, w)}</p>
               </>
             )}
             {confirmation === null || confirming ? null : (

@@ -337,7 +337,10 @@ describe.skipIf(!hasDatabase)('paid lines are what the POS closed (as the restro
     expect(sums(answer)).toBe(1_400)
     // Nothing identifies a payer or the POS.
     const text = JSON.stringify(await friendState())
-    for (const ref of ['L1', 'L2', 'till name', handle]) expect(text).not.toContain(ref)
+    // Whole JSON string values: a random id can contain the letters of a short ref (`rd_…L1…`).
+    for (const ref of ['L1', 'L2', 'till name', handle]) {
+      expect(text).not.toContain(JSON.stringify(ref))
+    }
   })
 
   it('records the check again when it is re-run, replacing what the first run recorded', async () => {

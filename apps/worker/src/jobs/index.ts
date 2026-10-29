@@ -24,6 +24,7 @@ import { createAssetStore, createPublishStore } from '@restro/assets'
 import { ConfigError, requireSealKeys, type SealKeys, type WorkerConfig } from '../config'
 import { paymentProviders } from '../connectors'
 import type { Logger } from '../logger'
+import { createResendSender } from '../receipts/email-sender'
 import { createAlertJobs, telegramClientOf } from './alerts'
 import { createBarsyJobs } from './barsy'
 import { createConnectionJobs } from './connection'
@@ -76,16 +77,28 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
   if (config.posSync && billIdKey === null) {
     log.warn('BILL_ID_KEY is not set: the table reading jobs are not registered')
   }
+  // The venue's electronic receipt (#186): where a connector returns the POS's file, it is emailed
+  // through the stack's email service; with no sender (RECEIPT_FROM_ADDRESS unset) no guest is
+  // offered the email field there.
+  const receiptSender =
+    config.receiptEmail === null || config.receiptEmail === undefined
+      ? null
+      : createResendSender(config.receiptEmail)
+  if (receiptSender === null) {
+    log.warn(
+      'RECEIPT_FROM_ADDRESS is not set: no receipt file is emailed, and no guest is offered the receipt email where a POS returns the file',
+    )
+  }
   const floorJobs = [
-    ...createFloorJobs({ sim: config.sim }),
+    ...createFloorJobs({ sim: config.sim, receiptSender: receiptSender !== null }),
     ...(billIdKey === null ? [] : createReadingJobs({ sim: config.sim, billIdKey })),
     // Paying (#110) prices from a fresh POS reading and holds through a provider; the recovery
     // (#112) takes every open payment on from its last step.
     ...(providers.size === 0
       ? []
       : [
-          ...createPaymentJobs({ sim: config.sim, providers }),
-          createPaymentRecoveryJob({ sim: config.sim, providers }),
+          ...createPaymentJobs({ sim: config.sim, providers, receiptSender }),
+          createPaymentRecoveryJob({ sim: config.sim, providers, receiptSender }),
         ]),
   ]
   // The Send (#77) needs no credentials either (the simulated POS has none); like the readings, a
