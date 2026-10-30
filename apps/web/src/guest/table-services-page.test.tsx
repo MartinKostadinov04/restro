@@ -14,7 +14,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import { DEFAULT_FACE_ID, faceEntry } from '@/faces/registry'
 
-import { buildContext } from './context'
+import { buildContext, hasTableService } from './context'
 import { GuestMenu } from './guest-menu'
 import { files } from './load'
 import { SHARED_ORDER_FACES } from './use-table-services'
@@ -56,6 +56,12 @@ function published(name: 'features-on' | 'features-off') {
     ]),
   }
 }
+
+const pointerOf = (snapshot: MenuSnapshot) => ({
+  snapshot_id: snapshot.snapshot.id,
+  version: snapshot.snapshot.version,
+  hash: snapshot.snapshot.hash,
+})
 
 /** What the guest API answers for a table: an order with the given lines. */
 function tableState(itemId: string | null): GuestTableState {
@@ -171,18 +177,36 @@ describe('a table link on Editorial Market', () => {
     }
   })
 
-  it('stays menu-only for a venue whose own ordering switch is off, though the table is bound', async () => {
+  it('stays menu-only for a venue with every table service off, and asks the guest API for nothing', async () => {
     const { bodies } = published('features-off')
     serve(bodies, tableState(null))
     visit(`#t=${TOKEN}`)
     render(<GuestMenu venue={PARAM} />)
     expect(await screen.findByText('Hummus')).toBeTruthy()
-    await waitFor(() => expect(guestCalls().length).toBeGreaterThan(0))
+    // Give a poll time to show up if one was going to.
+    await new Promise((done) => setTimeout(done, 200))
     expect(slot('item.add')).toBeNull()
     for (const name of ['menu.bag', 'menu.bill', 'menu.pay', 'menu.call_waiter']) {
       expect(slot(name), name).toBeNull()
     }
     expect(document.querySelector('.ro-bagbar')).toBeNull()
+    expect(guestCalls()).toEqual([])
+  })
+
+  it.each([
+    ['ordering', { ordering: true }],
+    ['the bill', { bill: true }],
+    ['paying', { pay: true }],
+    ['calling a waiter', { call_waiter: { enabled: true, kinds: ['waiter' as const] } }],
+  ])('still binds the table when only %s is on', async (_name, on) => {
+    const { snapshot, bodies } = published('features-off')
+    const only: MenuSnapshot = { ...snapshot, features: { ...snapshot.features, ...on } as never }
+    bodies.set(files.snapshot('/cdn', pointerOf(snapshot)), only)
+    serve(bodies, tableState(null))
+    visit(`#t=${TOKEN}`)
+    render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Hummus')).toBeTruthy()
+    await waitFor(() => expect(guestCalls().length).toBeGreaterThan(0))
   })
 
   it('stays menu-only on a page with no table, and asks the guest API for nothing', async () => {
@@ -207,6 +231,25 @@ describe('a table link on Editorial Market', () => {
     expect(slot('item.add')).toBeNull()
     expect(slot('menu.bill')).toBeNull()
     expect(guestCalls()).toEqual([])
+  })
+})
+
+describe('which venues are asked the guest API about (hasTableService)', () => {
+  const off = { filters: true, bill: false, ordering: false, pay: false }
+  it('is off for a snapshot that has not loaded, has no features, or has every service off', () => {
+    expect(hasTableService(undefined)).toBe(false)
+    expect(hasTableService(null)).toBe(false)
+    expect(hasTableService({})).toBe(false)
+    expect(hasTableService({ ...off, call_waiter: { enabled: false } })).toBe(false)
+    expect(hasTableService(fixture('features-off').snapshot.features)).toBe(false)
+  })
+
+  it('is on as soon as one service is', () => {
+    expect(hasTableService({ ...off, ordering: true })).toBe(true)
+    expect(hasTableService({ ...off, bill: true })).toBe(true)
+    expect(hasTableService({ ...off, pay: true })).toBe(true)
+    expect(hasTableService({ ...off, call_waiter: { enabled: true } })).toBe(true)
+    expect(hasTableService(fixture('features-on').snapshot.features)).toBe(true)
   })
 })
 

@@ -81,6 +81,32 @@ export function readTableToken(search: string, fragment = ''): string | null {
   return null
 }
 
+/**
+ * Whether the venue switched at least one table service on (ordering, the bill, paying or calling
+ * a waiter). A page asks the guest API for the table's state only then: a venue with every service
+ * off is a menu and nothing else, so it is never polled. A snapshot without `features` (published
+ * before D71) or one that has not loaded yet counts as off, as the venue's default does.
+ */
+export function hasTableService(
+  features:
+    | {
+        readonly ordering?: boolean
+        readonly bill?: boolean
+        readonly pay?: boolean
+        readonly call_waiter?: { readonly enabled?: boolean }
+      }
+    | null
+    | undefined,
+): boolean {
+  if (features === null || features === undefined) return false
+  return (
+    features.ordering === true ||
+    features.bill === true ||
+    features.pay === true ||
+    features.call_waiter?.enabled === true
+  )
+}
+
 /** The address with a table code in its query moved into the fragment, or null when it has none. */
 export function withCodeInFragment(href: string): string | null {
   const url = new URL(href)
