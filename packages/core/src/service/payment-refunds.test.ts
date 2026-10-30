@@ -7,6 +7,7 @@
 // managers and the shared tablet and not for a waiter. Skipped without a database.
 import { createHash, randomUUID } from 'node:crypto'
 
+import fc from 'fast-check'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { hasDatabase } from '../apply/test-database'
@@ -21,7 +22,16 @@ import {
   readTonight,
   type ServiceCommand,
 } from './index'
+import { disputeRetainUntil } from './payment-observe'
 import { DEFAULT_ROLE_PERMISSIONS } from './permissions'
+
+describe('how long a closed dispute keeps its payment', () => {
+  it('is six months, to the day (D122 §8)', () => {
+    expect(disputeRetainUntil(new Date('2026-03-15T10:00:00.000Z')).toISOString()).toBe(
+      '2026-09-15T10:00:00.000Z',
+    )
+  })
+})
 
 describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', () => {
   let world: ServiceWorld
@@ -240,6 +250,54 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
       ['300', false],
     ])
   })
+
+  // Hot spot 10 (RR-1): each row is a storno to-do, so what is still to storno must be what the
+  // provider says was refunded, after every reading, whatever happened between two readings: the
+  // venue's refunds made and failed, in any batch. Today's rows follow one total, not refunds.
+  // RR-1: red until its fix; the fix removes .fails.
+  it.fails('keeps the active refund rows adding up to the provider’s total after every reading', async () => {
+    const op = fc.oneof(
+      fc.record({ kind: fc.constant('made' as const), minor: fc.constantFrom(100, 200, 300, 500) }),
+      fc.record({ kind: fc.constant('failed' as const), which: fc.nat({ max: 5 }) }),
+    )
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(fc.array(op, { minLength: 1, maxLength: 2 }), { minLength: 1, maxLength: 4 }),
+        async (readings) => {
+          const target = await captured()
+          const refunds: number[] = []
+          const total = () => refunds.reduce((sum, minor) => sum + minor, 0)
+          for (const reading of readings) {
+            for (const event of reading) {
+              if (event.kind === 'made' && total() + event.minor <= 2_000) refunds.push(event.minor)
+              if (event.kind === 'failed' && refunds.length > 0) {
+                refunds.splice(event.which % refunds.length, 1)
+              }
+            }
+            await run(observe(target, { refundedMinor: total() }), worker())
+            const active = (await refundRows(target.id)).filter((row) => row.failed_at === null)
+            expect(active.reduce((sum, row) => sum + Number(row.amount_minor), 0)).toBe(total())
+          }
+        },
+      ),
+      {
+        numRuns: 40,
+        // The claim's case: a 500 refund made, then it fails and a new 100 is made before the next
+        // reading. The to-do stays 500; the provider's total is 100.
+        examples: [
+          [
+            [
+              [{ kind: 'made', minor: 500 }],
+              [
+                { kind: 'failed', which: 0 },
+                { kind: 'made', minor: 100 },
+              ],
+            ],
+          ],
+        ],
+      },
+    )
+  }, 120_000)
 
   it('marks nothing and makes no row when the total falls by an amount no row has', async () => {
     const target = await captured()

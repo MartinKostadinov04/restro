@@ -135,6 +135,18 @@ describe('providerPayment', () => {
     })
   })
 
+  it('reads what the hold can capture, not what was asked', () => {
+    const mapped = providerPayment(
+      intent({ status: 'requires_capture', amount: 1050, amount_capturable: 900 }),
+      charge(),
+      null,
+    )
+    expect(mapped).toEqual({
+      ok: true,
+      value: expect.objectContaining({ amountMinor: 1050, heldMinor: 900 }),
+    })
+  })
+
   it('reads a partly captured payment with the refunds made on its charge, and its dispute', () => {
     const mapped = providerPayment(
       intent({ status: 'succeeded', amount_received: 750 }),

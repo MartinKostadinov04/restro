@@ -6,6 +6,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const runTableCommand = vi.hoisted(() => vi.fn())
 const queuePaymentStep = vi.hoisted(() => vi.fn())
+const getVenue = vi.hoisted(() =>
+  vi.fn(async (_tenant: string, id: string): Promise<{ id: string } | null> => ({ id })),
+)
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('../db', () => ({ getPool: () => ({}) }))
@@ -20,7 +23,7 @@ vi.mock('../session', () => ({
   }),
 }))
 vi.mock('../staff/service', () => ({ identifyAtSharedDevice: vi.fn() }))
-vi.mock('../venues', () => ({ getVenue: async (_tenant: string, id: string) => ({ id }) }))
+vi.mock('../venues', () => ({ getVenue }))
 vi.mock('../guest-api', () => ({ queuePaymentStep }))
 vi.mock('./load', () => ({ loadTableBill: vi.fn() }))
 vi.mock('./tables', () => ({ runTableCommand, markPaymentTable: vi.fn() }))
@@ -132,6 +135,16 @@ describe('acknowledging an alert (Moved back, Seen, Sorted)', () => {
     const result = await doneAlertAction({ venueId: VENUE, alertId: ALERT })
     expect(result.ok).toBe(true)
     expect(runTableCommand.mock.calls[0]?.[1]).toEqual({ type: 'alert.done', alertId: ALERT })
+    expect(queuePaymentStep).not.toHaveBeenCalled()
+  })
+
+  it('sends no command for a venue the organisation cannot see', async () => {
+    getVenue.mockResolvedValueOnce(null)
+    expect(await doneAlertAction({ venueId: VENUE, alertId: ALERT })).toEqual({
+      ok: false,
+      error: 'venue_missing',
+    })
+    expect(runTableCommand).not.toHaveBeenCalled()
     expect(queuePaymentStep).not.toHaveBeenCalled()
   })
 

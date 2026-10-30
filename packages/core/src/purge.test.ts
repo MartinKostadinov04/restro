@@ -5,6 +5,8 @@ import {
   CHANGE_LOG_DAYS,
   cutoff,
   isDue,
+  MENU_BIN_DAYS,
+  TABLE_BIN_DAYS,
   VENUE_BIN_DAYS,
   VERSION_PURGE_DAYS,
   VERSIONS_KEPT,
@@ -27,6 +29,18 @@ function row(version: number, ageDays: number, overrides: Partial<VersionRow> = 
     ...overrides,
   }
 }
+
+describe('how long the bin keeps things (D83)', () => {
+  it('is 30 days for a venue, a menu and a table, and 61 for the change log', () => {
+    expect([VENUE_BIN_DAYS, MENU_BIN_DAYS, TABLE_BIN_DAYS, CHANGE_LOG_DAYS]).toEqual([
+      30, 30, 30, 61,
+    ])
+    expect(isDue(daysAgo(29), NOW, VENUE_BIN_DAYS)).toBe(false)
+    expect(isDue(daysAgo(29), NOW, MENU_BIN_DAYS)).toBe(false)
+    expect(isDue(daysAgo(29), NOW, TABLE_BIN_DAYS)).toBe(false)
+    expect(isDue(daysAgo(59), NOW, CHANGE_LOG_DAYS)).toBe(false)
+  })
+})
 
 describe('what is due (D83)', () => {
   it('a venue is due 30 days after its deletion, not before; nothing undated is due', () => {
