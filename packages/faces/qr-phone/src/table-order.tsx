@@ -16,6 +16,7 @@
 // action naming that sent order.
 
 import {
+  ANSWER_LOST_CODE,
   type CommandResult,
   type GuestCommand,
   isOutOfStock,
@@ -23,6 +24,7 @@ import {
   refusedOutOfStock,
   type SentOrderView,
   type ServiceBinding,
+  type ServiceState,
   type ServiceStrings,
   type ViewItem,
   type ViewModel,
@@ -78,6 +80,16 @@ export function useOrderCommands(
       } catch {
         setNotice(strings.refusedOther)
         return null
+      }
+      // A Send whose answer was lost (D120): the order may already be in the POS, so the guest is
+      // told to call a waiter, never "Try again".
+      if (
+        result.status === 'pending' &&
+        result.code === ANSWER_LOST_CODE &&
+        command.kind === 'order.send'
+      ) {
+        setNotice(strings.sendLost)
+        return result
       }
       // A pay command's refusal is worded where the guest paid (the bill panel), not as the
       // order's notice.
@@ -257,6 +269,10 @@ export function OrderPanel({
     return () => clearTimeout(timer)
   }, [asked])
   const order = services?.state.order ?? null
+  const offline = services?.state.offline === true
+  // A Send whose answer was lost (D120) says its own line in place of the general weak-signal one
+  // (D122: "Nothing new was sent yet" would be false), and the bag is not offered for a re-send.
+  const sendLost = services?.state.sendLost ?? null
   const ordering = services?.state.ordering?.state ?? 'on'
   const night = services?.state.ordering?.night
   const phonesMayOrder =
@@ -303,7 +319,12 @@ export function OrderPanel({
   return (
     <section className="rq-order" data-slot="menu.bag" aria-label={strings.tableOrder}>
       <h2>{strings.tableOrder}</h2>
-      {services?.state.offline === true ? (
+      {sendLost !== null ? (
+        <p className="rq-note" role="alert" data-send-lost="">
+          {strings.sendLost}
+          {sendLost.ref === null ? null : ` ${strings.reference(sendLost.ref)}`}
+        </p>
+      ) : offline ? (
         <p className="rq-note" role="status">
           {strings.offline}
         </p>
@@ -331,7 +352,7 @@ export function OrderPanel({
           {strings.orderingOpensAt(night.at)}
         </p>
       ) : null}
-      {notice !== null ? (
+      {notice !== null && !(sendLost !== null && notice === strings.sendLost) ? (
         <p className="rq-note" role="alert" data-order-notice="">
           {notice}
         </p>
@@ -426,12 +447,12 @@ export function OrderPanel({
           onSend={() => void sendOrder(asked.of)}
           onCancel={() => setAsked(null)}
         />
-      ) : count > 0 && ordering === 'on' && phonesMayOrder ? (
+      ) : count > 0 && ordering === 'on' && phonesMayOrder && sendLost === null ? (
         <button
           type="button"
           className="rq-send"
           data-send=""
-          disabled={sending}
+          disabled={sending || offline}
           onClick={() => void sendOrder()}
         >
           {sending
@@ -443,6 +464,36 @@ export function OrderPanel({
       ) : null}
       <SentOrders services={services} strings={strings} nameOf={nameOf} />
     </section>
+  )
+}
+
+/** Whether the bill panel is drawn: the host has the table's bill or this phone's payment. */
+export function billShown(state: ServiceState | undefined): boolean {
+  return state?.tableBill != null || state?.payment != null
+}
+
+/**
+ * "Stop location check" (D119): one small control that drops the phone's pass and ends the check
+ * for the service day. Only where the host can stop it (`location.stop`).
+ */
+export function StopLocationCheck({
+  services,
+  strings,
+}: {
+  readonly services: ServiceBinding | undefined
+  readonly strings: ServiceStrings
+}) {
+  const stop = services?.location?.stop
+  if (stop === undefined) return null
+  return (
+    <button
+      type="button"
+      className="rq-order-hint"
+      data-slot="location.stop"
+      onClick={() => stop()}
+    >
+      {strings.locationStop}
+    </button>
   )
 }
 
@@ -467,6 +518,8 @@ export function LocationPanel({
   const location = services?.state.location ?? null
   const controls = services?.location
   if (location === null || controls === undefined) return null
+  // The notice D119 says the details sit behind: the pay screen's link, to the same address.
+  const privacyUrl = services?.state.paying?.legal?.privacyUrl ?? null
   switch (location.prompt) {
     case 'consent':
       return (
@@ -476,7 +529,17 @@ export function LocationPanel({
           aria-modal="false"
           data-location-prompt="consent"
         >
-          <p>{strings.locationConsent(location.venueName)}</p>
+          <p>
+            {strings.locationConsent(location.venueName)}
+            {privacyUrl === null ? null : (
+              <>
+                {' '}
+                <a href={privacyUrl} target="_blank" rel="noopener noreferrer">
+                  {strings.paying.legalPrivacyLink}
+                </a>
+              </>
+            )}
+          </p>
           <button type="button" onClick={() => void controls.allow()}>
             {strings.locationAllow}
           </button>{' '}
@@ -515,10 +578,19 @@ export function LocationPanel({
           )}
           <button type="button" onClick={() => controls.dismiss()}>
             {strings.locationCancel}
-          </button>
+          </button>{' '}
+          <StopLocationCheck services={services} strings={strings} />
         </div>
       )
     case 'none':
+      if (location.state === 'held') {
+        // The stop is on the bill where one is drawn; without a bill it sits here.
+        return billShown(services?.state) ? null : (
+          <div className="rq-location" data-location-prompt="none">
+            <StopLocationCheck services={services} strings={strings} />
+          </div>
+        )
+      }
       return location.state === 'needed' ? (
         <div className="rq-location" data-location-prompt="none">
           <p className="rq-order-hint">{strings.locationNeeded}</p>
