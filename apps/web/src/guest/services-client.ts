@@ -696,6 +696,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
               prompt,
               consent: consent(),
               venueName: server.location.venueName,
+              privacyUrl: server.location.privacyUrl,
             },
     }
     for (const listener of listeners) listener()

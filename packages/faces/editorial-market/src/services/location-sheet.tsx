@@ -3,7 +3,7 @@
 // asks for it when an edit comes back `location_needed`, and the guest's own "Allow location" tap
 // (`location.reopen`) asks for it again.
 //
-// - `consent`: D122's text ending with the Privacy link (the same notice as the pay screen), Allow
+// - `consent`: D122's text ending with the Privacy link (`location.privacyUrl`), Allow
 //   and Not now. Closing the sheet is not an answer: it only goes back (`dismiss`).
 // - `checking`: "Checking your location…".
 // - `failed`: Call a waiter where the venue takes calls (else the still card "Please order from
@@ -48,8 +48,9 @@ export function LocationSheet() {
   }, [prompt, dismiss])
   if (o === null || controls === undefined || location === null || prompt === 'none') return null
   const { words, guest, state } = o
-  // The notice the consent text says the details sit behind: the pay screen's link, same address.
-  const privacyUrl = state.paying?.legal?.privacyUrl ?? null
+  // The notice the consent text says the details sit behind (the location's own field: it is there
+  // whatever paying is).
+  const privacyUrl = location.privacyUrl ?? null
   const title =
     prompt === 'consent'
       ? words.locationAllowAgain

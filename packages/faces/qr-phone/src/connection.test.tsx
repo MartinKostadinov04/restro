@@ -16,7 +16,7 @@ import {
   stringsFor,
   type ViewModel,
 } from '@restro/shell'
-import { fixture, PAYING_LEGAL, payingState } from '@restro/shell/testing'
+import { fixture, payingState } from '@restro/shell/testing'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -60,10 +60,13 @@ const ORDER = {
   earlier: null,
 }
 
+const PRIVACY = 'https://club-nova.example/privacy'
+
 const location = (
   prompt: 'none' | 'consent' | 'checking' | 'failed',
   state: 'needed' | 'held' = 'needed',
-) => ({ state, prompt, consent: 'unknown' as const, venueName: 'Club Nova' })
+  privacyUrl: string | null = PRIVACY,
+) => ({ state, prompt, consent: 'unknown' as const, venueName: 'Club Nova', privacyUrl })
 
 interface Calls {
   readonly stopped: { n: number }
@@ -124,18 +127,15 @@ const base = (changes: Partial<ServiceState> = {}): ServiceState => ({
 })
 
 describe('the consent screen carries the Privacy link (RR-48, D119, D121)', () => {
-  const consent = () =>
-    base({
-      paying: payingState().paying,
-      location: location('consent'),
-    })
+  // The link comes with the location, whatever paying is: paying is off here (RR-48).
+  const consent = () => base({ paying: null, location: location('consent') })
 
-  it('ends D122’s text with the Privacy link to the same notice as the pay screen', async () => {
+  it('ends D122’s text with the Privacy link where the venue checks and paying is off', async () => {
     const page = await draw(consent())
     const panel = page.querySelector('[data-location-prompt="consent"]')
     const link = panel?.querySelector('a')
     expect(link?.textContent).toBe(en.paying.legalPrivacyLink)
-    expect(link?.getAttribute('href')).toBe(PAYING_LEGAL.privacyUrl)
+    expect(link?.getAttribute('href')).toBe(PRIVACY)
     expect(link?.getAttribute('target')).toBe('_blank')
     expect(link?.getAttribute('rel')).toContain('noopener')
     // The wording stays D122's: the link follows the text and the buttons stay.
@@ -151,8 +151,8 @@ describe('the consent screen carries the Privacy link (RR-48, D119, D121)', () =
     )
   })
 
-  it('draws no link where the host has no notice to point at (no legal details)', async () => {
-    const page = await draw(base({ location: location('consent') }))
+  it('draws no link where the venue has no privacy notice', async () => {
+    const page = await draw(base({ location: location('consent', 'needed', null) }))
     expect(page.querySelector('[data-location-prompt="consent"] a')).toBeNull()
   })
 })

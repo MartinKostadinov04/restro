@@ -36,22 +36,26 @@ const bg = stringsFor('bg_BG').services
 const view = orderingView()
 const hummus = itemNamed(view, 'Hummus')
 
+const PRIVACY = 'https://club-x.example/privacy'
+
 const location = (
   prompt: 'none' | 'consent' | 'checking' | 'failed',
   state: 'needed' | 'held' = 'needed',
-) => ({ state, prompt, consent: 'unknown' as const, venueName: 'Club X' })
+  privacyUrl: string | null = PRIVACY,
+) => ({ state, prompt, consent: 'unknown' as const, venueName: 'Club X', privacyUrl })
 
 describe('the location sheet (RR-48, D119, D121, D122)', () => {
   const draw = (host: FakeHost, locale: 'en_US' | 'bg_BG' = 'en_US') =>
     drawFace(host, orderingView(locale))
 
-  it('asks for consent in D122’s words with the Privacy link to the pay screen’s notice, Allow and Not now', () => {
-    const host = fakeHost({ location: location('consent'), paying: payingOf() })
+  it('asks for consent in D122’s words with the Privacy link where paying is off, Allow and Not now', () => {
+    // The link comes with the location, whatever paying is (RR-48).
+    const host = fakeHost({ location: location('consent'), paying: null })
     draw(host)
     const sheet = screen.getByRole('dialog', { name: en.locationAllowAgain })
     expect(sheet.textContent).toContain('Club X and Restro check your location')
     const link = within(sheet).getByRole('link', { name: en.paying.legalPrivacyLink })
-    expect(link.getAttribute('href')).toBe('https://club-x.example/privacy')
+    expect(link.getAttribute('href')).toBe(PRIVACY)
     expect(link.getAttribute('target')).toBe('_blank')
     expect(link.getAttribute('rel')).toContain('noopener')
     fireEvent.click(within(sheet).getByRole('button', { name: en.locationAllow }))
@@ -60,7 +64,7 @@ describe('the location sheet (RR-48, D119, D121, D122)', () => {
   })
 
   it('says it in Bulgarian', () => {
-    const host = fakeHost({ location: location('consent'), paying: payingOf() })
+    const host = fakeHost({ location: location('consent'), paying: null })
     draw(host, 'bg_BG')
     const sheet = screen.getByRole('dialog', { name: bg.locationAllowAgain })
     expect(within(sheet).getByRole('link', { name: bg.paying.legalPrivacyLink })).toBeTruthy()
@@ -68,8 +72,8 @@ describe('the location sheet (RR-48, D119, D121, D122)', () => {
     expect(within(sheet).getByRole('button', { name: bg.locationNotNow })).toBeTruthy()
   })
 
-  it('draws no link where the host has no notice to point at', () => {
-    draw(fakeHost({ location: location('consent') }))
+  it('draws no link where the venue has no privacy notice', () => {
+    draw(fakeHost({ location: location('consent', 'needed', null), paying: payingOf() }))
     const sheet = screen.getByRole('dialog', { name: en.locationAllowAgain })
     expect(within(sheet).queryByRole('link')).toBeNull()
   })

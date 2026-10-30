@@ -617,6 +617,11 @@ export interface LocationView {
   readonly consent: 'unknown' | 'allowed' | 'declined'
   /** The venue's name, for the consent text. */
   readonly venueName: string
+  /**
+   * The venue's privacy notice, a full `https://` link: the consent text ends with it (D119,
+   * D121), whatever paying is. Absent or null: no link is drawn.
+   */
+  readonly privacyUrl?: string | null
 }
 
 /** The guest's answers to the location screens; the host does the rest. */

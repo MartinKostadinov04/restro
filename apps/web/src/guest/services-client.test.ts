@@ -54,6 +54,7 @@ function tableState(version: number, lines: Lines = [], location: LocationState 
       passSeconds: location === 'held' ? 7_000 : null,
       dayEndsInSeconds: 3_600,
       venueName: 'Club',
+      privacyUrl: 'https://club.example/privacy',
     },
     order: location === 'needed' ? null : { lines, removed: [], earlier: null },
     sentOrders: [],
@@ -532,6 +533,7 @@ describe('the services client and the location check', () => {
       prompt: 'none',
       consent: 'unknown',
       venueName: 'Club',
+      privacyUrl: 'https://club.example/privacy',
     })
     const command = add()
     expect(await h.client.dispatch(command)).toMatchObject({ code: 'location_needed' })

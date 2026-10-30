@@ -518,8 +518,9 @@ export function LocationPanel({
   const location = services?.state.location ?? null
   const controls = services?.location
   if (location === null || controls === undefined) return null
-  // The notice D119 says the details sit behind: the pay screen's link, to the same address.
-  const privacyUrl = services?.state.paying?.legal?.privacyUrl ?? null
+  // The notice D119 says the details sit behind (the location's own field: it is there whatever
+  // paying is).
+  const privacyUrl = location.privacyUrl ?? null
   switch (location.prompt) {
     case 'consent':
       return (
