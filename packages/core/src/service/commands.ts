@@ -63,6 +63,7 @@ import {
   resumeTable,
   sweepPauses,
   transitionPause,
+  undoPause,
 } from './pauses'
 import {
   payCancel,
@@ -148,7 +149,7 @@ import {
 import { stockNotice } from './stock'
 import { MAX_REVEALED_CODES, reissueTableCode, revealTableCodes } from './table-codes'
 import { changedSince, type UndoToken, UndoTokenSchema } from './undo'
-import { callWaiter, lapseWaiterCall, waiterCallDone } from './waiter-call'
+import { callWaiter, lapseWaiterCall, waiterCallDone, waiterCallUndone } from './waiter-call'
 
 const tableId = idSchema('tb')
 const actionId = z.uuid()
@@ -415,6 +416,7 @@ export const SERVICE_COMMANDS = {
   'table.resume': staffOnTable('table.resume', 'tables.resume', resumeTable),
   'ordering.pause': pauseOrdering(),
   'ordering.lift': liftOrdering(),
+  'ordering.undo_pause': undoPause(),
   // #85: staff settle an Unconfirmed sent order: "Found on the bill" or "Not on the bill".
   'sent_order.answer': sentOrderAnswer(),
   // #83: Done in Tonight or from the venue's Telegram group (`via`), and what the worker sends.
@@ -476,7 +478,28 @@ export const SERVICE_COMMANDS = {
     permission: 'alerts.answer',
     quickOnSharedDevice: true,
     idempotency: 'by_nature',
+    undoable: { kinds: ['waiter_call.done'] },
     handle: waiterCallDone,
+  }),
+  // RR-58: the Undo of "Handled", on a shared device as "Handled" itself is.
+  'waiter_call.undone': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('waiter_call.undone'),
+      waiterCallId: idSchema('wc'),
+      undo: UndoTokenSchema,
+    }),
+    origins: ['staff'],
+    permission: 'alerts.answer',
+    quickOnSharedDevice: true,
+    idempotency: 'by_nature',
+    undoStale: (stx, command, entry) =>
+      changedSince(
+        stx,
+        entry,
+        sql`${logEntries.kind} = 'waiter_call.done'
+          and ${logEntries.details} ->> 'waiterCallId' = ${command.waiterCallId}`,
+      ),
+    handle: waiterCallUndone,
   }),
   // #200: staff mark a captured payment's paper receipt Brought (no PIN on a shared device), and
   // Undo it.

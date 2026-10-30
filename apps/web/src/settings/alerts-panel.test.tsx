@@ -221,7 +221,7 @@ describe('Settings › Alerts', () => {
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
         "Couldn't reach the group. Check the bot is still in it.",
-        { duration: Number.POSITIVE_INFINITY },
+        { duration: Number.POSITIVE_INFINITY, closeButton: true },
       ),
     )
   })
@@ -287,6 +287,7 @@ describe('Settings › Alerts', () => {
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith("Telegram isn't set up for this installation yet.", {
         duration: Number.POSITIVE_INFINITY,
+        closeButton: true,
       }),
     )
   })

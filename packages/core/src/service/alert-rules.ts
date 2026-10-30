@@ -81,6 +81,31 @@ export const PAYMENT_REFUNDED_KIND = 'payment_refunded'
  */
 export const PAYMENT_DISPUTED_KIND = 'payment_disputed'
 
+/**
+ * The money alerts (D122 §7): the kinds about one card payment, the same seven Tonight's actions
+ * read and its red rows show. A refund's or a dispute's paperwork, paying paused and a lost account
+ * are not among them.
+ */
+export const PAYMENT_ALERT_KINDS = [
+  PAYMENT_UNCONFIRMED_KIND,
+  PAYMENT_LINES_NOT_BACK_KIND,
+  PAYMENT_CHECK_FAILED_KIND,
+  PAYMENT_STRANDED_KIND,
+  PAYMENT_CAPTURE_FAILED_KIND,
+  PAYMENT_RELEASE_REFUSED_KIND,
+  PAYMENT_HOLD_EXPIRED_KIND,
+] as const
+
+/** The Restro team's own alerts (D122 §7): only the team reads them, in the Log too. */
+export const TEAM_ALERT_KINDS = [
+  ORDER_RATE_KIND,
+  ORDER_PACE_KIND,
+  CONNECTION_UNSTABLE_KIND,
+  PAYING_UNSTABLE_KIND,
+  TABLE_CODE_BLOCK_KIND,
+  PAYMENT_STUCK_KIND,
+] as const
+
 const MINUTE = 60_000
 
 /** How one receiver is told about one kind. */
@@ -120,13 +145,13 @@ export interface KindRule {
    * it (#112).
    */
   readonly closesByAnswer: boolean
-  /** Told even outside service hours (D120: the pre-opening check only). */
+  /** Told even outside service hours (D120: the pre-opening check; D122 §7: money alerts). */
   readonly outsideServiceHours: boolean
   /**
-   * Reminded again as the card's hold runs out (design §5.3): at half the time left and with 24
-   * hours left, from the `captureBefore` in the alert's details (#112).
+   * A money alert (D122 §7): told outside service hours too, and repeated every 5 minutes until a
+   * person closes it, so the day's close leaves it open and a closed venue never drops it.
    */
-  readonly holdExpiryReminders?: boolean
+  readonly untilDone?: boolean
 }
 
 const staffPush = (reminder: ReceiverRule['reminder'] = null): ReceiverRule => ({
@@ -137,6 +162,15 @@ const staffPush = (reminder: ReceiverRule['reminder'] = null): ReceiverRule => (
 const venueGroup: ReceiverRule = { firstDelayMs: 0, minGapMs: 0, reminder: null }
 const teamDigest = (): ReceiverRule => ({ firstDelayMs: 0, minGapMs: 10 * MINUTE, reminder: null })
 
+/** How often a money alert is repeated until a person closes it (D122 §7). */
+export const MONEY_REPEAT_MS = 5 * MINUTE
+
+const moneyRepeat = (ownersOnly: boolean): NonNullable<ReceiverRule['reminder']> => ({
+  afterMs: MONEY_REPEAT_MS,
+  max: Number.POSITIVE_INFINITY,
+  ownersOnly,
+})
+
 const NOBODY: KindRule = {
   push: null,
   venueTelegram: null,
@@ -146,6 +180,24 @@ const NOBODY: KindRule = {
   closesItself: false,
   closesByAnswer: false,
   outsideServiceHours: false,
+}
+
+const staffMoney = (rule: Partial<KindRule> = {}): KindRule => ({
+  ...NOBODY,
+  outsideServiceHours: true,
+  untilDone: true,
+  push: staffPush(moneyRepeat(false)),
+  venueTelegram: { ...venueGroup, reminder: moneyRepeat(false) },
+  team: teamDigest(),
+  ...rule,
+})
+
+const ownersMoney: KindRule = {
+  ...NOBODY,
+  outsideServiceHours: true,
+  untilDone: true,
+  push: { firstDelayMs: 0, minGapMs: 0, reminder: moneyRepeat(true), ownersOnly: true },
+  team: { firstDelayMs: 0, minGapMs: 0, reminder: null },
 }
 
 /** The rule of every kind this ticket knows; {@link ruleOf} falls back by audience. */
@@ -193,71 +245,18 @@ export const ALERT_RULES: Readonly<Record<string, KindRule>> = {
   // Tonight is told about stock (#80); a phone is not.
   [OUT_OF_STOCK_KIND]: NOBODY,
   // Money the staff must act on (#111): an unconfirmed close (asked again when the items are not
-  // back, #153) and stuck lines are reminded once after 10 minutes, as an Unconfirmed order is
-  // (D120); a stopped payment is told once.
-  // Both questions are answered, never marked Done, and remind again as the hold runs out (#112).
-  [PAYMENT_UNCONFIRMED_KIND]: {
-    ...NOBODY,
-    closesByAnswer: true,
-    push: staffPush({ afterMs: 10 * MINUTE, max: 1, ownersOnly: false }),
-    venueTelegram: venueGroup,
-    team: teamDigest(),
-    holdExpiryReminders: true,
-  },
-  [PAYMENT_LINES_NOT_BACK_KIND]: {
-    ...NOBODY,
-    closesByAnswer: true,
-    push: staffPush({ afterMs: 10 * MINUTE, max: 1, ownersOnly: false }),
-    venueTelegram: venueGroup,
-    team: teamDigest(),
-    holdExpiryReminders: true,
-  },
-  [PAYMENT_STRANDED_KIND]: {
-    ...NOBODY,
-    push: staffPush({ afterMs: 10 * MINUTE, max: 1, ownersOnly: false }),
-    venueTelegram: venueGroup,
-    team: teamDigest(),
-  },
-  [PAYMENT_CHECK_FAILED_KIND]: {
-    ...NOBODY,
-    push: staffPush(),
-    venueTelegram: venueGroup,
-    team: teamDigest(),
-  },
-  // A capture that failed is the owners' (the money of a closed bill): pushed to them at once,
-  // reminded once after an hour, and the Restro team is told at once; not the venue's group.
-  [PAYMENT_CAPTURE_FAILED_KIND]: {
-    ...NOBODY,
-    push: {
-      firstDelayMs: 0,
-      minGapMs: 0,
-      reminder: { afterMs: 60 * MINUTE, max: 1, ownersOnly: true },
-      ownersOnly: true,
-    },
-    team: { firstDelayMs: 0, minGapMs: 0, reminder: null },
-  },
-  // A hold that ran out unanswered is the owners' too (#112), told as a failed capture is.
-  [PAYMENT_HOLD_EXPIRED_KIND]: {
-    ...NOBODY,
-    push: {
-      firstDelayMs: 0,
-      minGapMs: 0,
-      reminder: { afterMs: 60 * MINUTE, max: 1, ownersOnly: true },
-      ownersOnly: true,
-    },
-    team: { firstDelayMs: 0, minGapMs: 0, reminder: null },
-  },
-  // A hold the provider would not release is the owners' too (#112), told as a failed capture is.
-  [PAYMENT_RELEASE_REFUSED_KIND]: {
-    ...NOBODY,
-    push: {
-      firstDelayMs: 0,
-      minGapMs: 0,
-      reminder: { afterMs: 60 * MINUTE, max: 1, ownersOnly: true },
-      ownersOnly: true,
-    },
-    team: { firstDelayMs: 0, minGapMs: 0, reminder: null },
-  },
+  // back, #153), stuck lines and a stopped payment. D122 §7 over D120: outside quiet hours too, and
+  // repeated every 5 minutes until Done (the two questions until they are answered, never Done).
+  [PAYMENT_UNCONFIRMED_KIND]: staffMoney({ closesByAnswer: true }),
+  [PAYMENT_LINES_NOT_BACK_KIND]: staffMoney({ closesByAnswer: true }),
+  [PAYMENT_STRANDED_KIND]: staffMoney(),
+  [PAYMENT_CHECK_FAILED_KIND]: staffMoney(),
+  // A capture that failed is the owners' (the money of a closed bill): pushed to them at once and
+  // repeated as every money alert is; the Restro team is told once; not the venue's group. A hold
+  // that ran out unanswered and a hold the provider would not release are told the same way (#112).
+  [PAYMENT_CAPTURE_FAILED_KIND]: ownersMoney,
+  [PAYMENT_HOLD_EXPIRED_KIND]: ownersMoney,
+  [PAYMENT_RELEASE_REFUSED_KIND]: ownersMoney,
   // Paying paused (#112) is told as an ordering pause is, to the ticked accounts (owners and
   // managers, D127 3.8) and the team; not the venue's group, since ordering goes on.
   [PAYING_PAUSED_KIND]: {

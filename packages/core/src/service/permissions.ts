@@ -65,13 +65,15 @@ export function isSettingsPermission(permission: Permission): boolean {
 
 /**
  * What Restro's admin team holds at any venue (D122 §7; spec #64, 12): it adds roles, changes
- * rights and manages staff PINs (`settings.roles`), lifts any pause (`ordering.lift`), and
- * connects a venue's payment account (`settings.connect_payments`, D125 2.2).
+ * rights and manages staff PINs (`settings.roles`), lifts any pause (`ordering.lift`), connects a
+ * venue's payment account (`settings.connect_payments`, D125 2.2), and reads the Log, where its
+ * own alerts are (`log.view`, RR-55).
  */
 export const OPERATOR_PERMISSIONS: readonly Permission[] = [
   'settings.roles',
   'ordering.lift',
   'settings.connect_payments',
+  'log.view',
 ]
 
 /** The default roles every venue has (D122 §7; decision log 4.4: the names are Martin's). */

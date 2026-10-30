@@ -387,4 +387,105 @@ describe.skipIf(!hasDatabase)('Call a waiter (as the restro_app role)', () => {
       details: { kinds: 'ice,water' },
     })
   })
+
+  describe('the Undo of Handled (RR-58)', () => {
+    const undone = (id: string, undo: { entry: number }) =>
+      ({ type: 'waiter_call.undone', waiterCallId: id, undo }) as ServiceCommand
+    const handled = async (id: string) => {
+      const result = await run(done(id), staff(ownerId))
+      if (result.status !== 'accepted') throw new Error(`refused: ${JSON.stringify(result)}`)
+      return { entry: Number(result.details.undoEntry) }
+    }
+    const newCall = async (index: number) => {
+      await world.owner.query(
+        "update restro.waiter_calls set state = 'lapsed' where table_id = $1 and state = 'open'",
+        [tableId(index)],
+      )
+      await world.owner.query(
+        'update restro.sittings set ended_at = now(), end_reason = $2 where table_id = $1 and ended_at is null',
+        [tableId(index), 'staff_closed'],
+      )
+      await world.openSitting(tableId(index))
+      await setOrdering({ locationCheck: false })
+      const call = (await tap(index)).state?.waiterCall
+      if (call == null) throw new Error('no call')
+      return call
+    }
+
+    it('opens the same call again, with a Log entry the Log can word apart', async () => {
+      const call = await newCall(2)
+      const token = await handled(call.id)
+      expect(token.entry).toBeGreaterThan(0)
+      const result = await run(undone(call.id, token), staff(ownerId))
+      expect(result).toMatchObject({
+        status: 'accepted',
+        details: { state: 'open', changed: true },
+      })
+      expect((await stateOf(2)).waiterCall).toMatchObject({ id: call.id, state: 'open' })
+      const { rows } = await world.owner.query<{ done_at: Date | null; done_by: string | null }>(
+        'select done_at, done_by from restro.waiter_calls where id = $1',
+        [call.id],
+      )
+      expect(rows[0]).toEqual({ done_at: null, done_by: null })
+      expect((await logOf(2)).at(-1)).toMatchObject({
+        kind: 'waiter_call.done',
+        details: { waiterCallId: call.id },
+      })
+      const { rows: last } = await world.owner.query<{ to_state: string }>(
+        'select to_state from restro.log_entries where table_id = $1 order by seq desc limit 1',
+        [tableId(2)],
+      )
+      expect(last[0]?.to_state).toBe('open')
+      // And Handled again works.
+      expect(await run(done(call.id), staff(ownerId))).toMatchObject({ status: 'accepted' })
+    })
+
+    it('is quick on a tablet, as Handled is', async () => {
+      const call = await newCall(2)
+      const session = `sess-${randomUUID()}`
+      await world.addSharedDevice(session)
+      const account = await world.addUser('member')
+      const tablet: ServiceActor = { kind: 'user', userId: account, sessionId: session }
+      const context = { ...staff(account), actor: tablet }
+      const first = await run(done(call.id), context)
+      if (first.status !== 'accepted') throw new Error(`refused: ${JSON.stringify(first)}`)
+      expect(
+        await run(undone(call.id, { entry: Number(first.details.undoEntry) }), context),
+      ).toMatchObject({ status: 'accepted', details: { changed: true } })
+    })
+
+    it('is refused when the table called again, or with a token not of this answer', async () => {
+      const call = await newCall(2)
+      const token = await handled(call.id)
+      const next = (await tap(2)).state?.waiterCall
+      expect(next?.id).not.toBe(call.id)
+      expect(await run(undone(call.id, token), staff(ownerId))).toMatchObject({
+        code: 'undo_stale',
+      })
+      expect((await stateOf(2)).waiterCall).toMatchObject({ id: next?.id, state: 'open' })
+
+      // The token of the other call's answer.
+      const other = await handled(next?.id as string)
+      expect(await run(undone(call.id, other), staff(ownerId))).toMatchObject({
+        code: 'undo_stale',
+      })
+    })
+
+    it('is refused for someone else’s answer, and once the sitting ended', async () => {
+      const call = await newCall(2)
+      const token = await handled(call.id)
+      const otherId = await world.addUser('member')
+      await world.addStaff(['alerts.answer'], otherId)
+      expect(await run(undone(call.id, token), staff(otherId))).toMatchObject({
+        code: 'undo_stale',
+      })
+      await world.owner.query(
+        'update restro.sittings set ended_at = now(), end_reason = $2 where table_id = $1 and ended_at is null',
+        [tableId(2), 'staff_closed'],
+      )
+      expect(await run(undone(call.id, token), staff(ownerId))).toMatchObject({
+        code: 'undo_stale',
+      })
+    })
+  })
 })

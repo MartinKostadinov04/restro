@@ -849,6 +849,17 @@ export const ATTACKS: readonly Attack[] = [
     },
   },
   {
+    action: 'undoWaiterCallAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return tonight.undoWaiterCallAction({
+        venueId: x.id,
+        waiterCallId: x.waiterCall,
+        undo: { entry: 1 },
+      })
+    },
+  },
+  {
     action: 'receiptBroughtAction',
     call: (v) => {
       const x = v.venues[0]
@@ -874,6 +885,20 @@ export const ATTACKS: readonly Attack[] = [
     call: (v) => {
       const x = v.venues[0]
       return tonight.liftOrderingAction({ venueId: x.id, pauseId: x.pause })
+    },
+  },
+  {
+    action: 'liftRestroPauseAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return tonight.liftRestroPauseAction({ venueId: x.id, pauseId: x.pause })
+    },
+  },
+  {
+    action: 'undoPauseAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return tonight.undoPauseAction({ venueId: x.id, pauseId: x.pause, undo: { entry: 1 } })
     },
   },
   {
@@ -976,6 +1001,17 @@ export const ATTACKS: readonly Attack[] = [
     call: (v) => {
       const x = v.venues[0]
       return paymentsRead.paymentDetailAction({ venueId: x.id, paymentId: x.payment })
+    },
+  },
+  {
+    action: 'paymentEvidenceAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return paymentsRead.paymentEvidenceAction({
+        venueId: x.id,
+        paymentId: x.payment,
+        pin: '1234',
+      })
     },
   },
 
@@ -1750,6 +1786,15 @@ export const MIXED: readonly Attack[] = [
       }),
   },
   {
+    action: 'undoWaiterCallAction',
+    call: (v, a) =>
+      tonight.undoWaiterCallAction({
+        venueId: a.venues[0].id,
+        waiterCallId: v.venues[0].waiterCall,
+        undo: { entry: 1 },
+      }),
+  },
+  {
     action: 'receiptBroughtAction',
     call: (v, a) =>
       tonight.receiptBroughtAction({ venueId: a.venues[0].id, paymentId: v.venues[0].payment }),
@@ -1764,6 +1809,20 @@ export const MIXED: readonly Attack[] = [
     action: 'liftOrderingAction',
     call: (v, a) =>
       tonight.liftOrderingAction({ venueId: a.venues[0].id, pauseId: v.venues[0].pause }),
+  },
+  {
+    action: 'liftRestroPauseAction',
+    call: (v, a) =>
+      tonight.liftRestroPauseAction({ venueId: a.venues[0].id, pauseId: v.venues[0].pause }),
+  },
+  {
+    action: 'undoPauseAction',
+    call: (v, a) =>
+      tonight.undoPauseAction({
+        venueId: a.venues[0].id,
+        pauseId: v.venues[0].pause,
+        undo: { entry: 1 },
+      }),
   },
   {
     action: 'resumeTableAction',
