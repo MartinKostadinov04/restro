@@ -24,7 +24,7 @@ import {
   rowsMentioning,
   type SeededOrg,
   seedOrg,
-} from './attack-world'
+} from './tests/attack-world'
 
 vi.mock('@/server/session', async () => (await import('./attack-session')).sessionModule)
 vi.mock('next/cache', async () => (await import('./attack-session')).cacheModule)

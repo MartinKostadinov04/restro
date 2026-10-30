@@ -19,7 +19,7 @@ import type pg from 'pg'
 import { createItemAction, createSectionAction } from '@/composer/actions'
 import { createTagAction } from '@/composer/tag-actions'
 
-import { asked } from './attack-session'
+import { asked } from '../attack-session'
 
 const SEED = ['restro', 'system', 'attack-seed'] as const
 

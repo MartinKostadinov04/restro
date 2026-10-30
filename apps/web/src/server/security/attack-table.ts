@@ -30,7 +30,7 @@ import * as night from '@/server/tonight/night-actions'
 import * as paymentsRead from '@/server/tonight/payment-actions'
 import * as venues from '@/server/venues-actions'
 
-import type { SeededOrg } from './attack-world'
+import type { SeededOrg } from './tests/attack-world'
 
 export interface Attack {
   /** The exported name of the action. */

@@ -14,7 +14,7 @@ import { getPool } from '../db'
 import { handleGuestAction, handleGuestState } from '../guest-api'
 import { hasDatabase, openOwnerPool, useTestServerEnvironment } from '../test-database'
 import { asked, refusingFetch, seen } from './attack-session'
-import { removeOrgs, type SeededOrg, seedOrg } from './attack-world'
+import { removeOrgs, type SeededOrg, seedOrg } from './tests/attack-world'
 
 vi.mock('@/server/session', async () => (await import('./attack-session')).sessionModule)
 vi.mock('next/cache', async () => (await import('./attack-session')).cacheModule)

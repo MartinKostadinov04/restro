@@ -13,7 +13,7 @@ import { getPool } from '../db'
 import { handleGuestAction, handleGuestPayment, handleGuestState } from '../guest-api'
 import { hasDatabase, openOwnerPool, useTestServerEnvironment } from '../test-database'
 import { refusingFetch } from './attack-session'
-import { removeOrgs, type SeededOrg, type SeededVenue, seedOrg } from './attack-world'
+import { removeOrgs, type SeededOrg, type SeededVenue, seedOrg } from './tests/attack-world'
 
 vi.mock('@/server/session', async () => (await import('./attack-session')).sessionModule)
 vi.mock('next/cache', async () => (await import('./attack-session')).cacheModule)
