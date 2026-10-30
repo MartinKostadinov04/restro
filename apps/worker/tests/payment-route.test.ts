@@ -62,6 +62,7 @@ import {
   guestAct,
   guestPayment,
   guestState,
+  HOLD_READ_TRIES,
   LEASE_MARGIN_MS,
 } from '@restro/core/service'
 import { recordProviderNotice } from '@restro/core/service/notices'
@@ -1478,12 +1479,91 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         }) as ServiceConnector
       }
 
+    // RR-11: a bill the guest confirmed with its discount line pays through at its signed total.
+    // The simulator has no discounts, so the connector adds the line to what it reads, keeps it out
+    // of the move, and closes for what the simulator's own rows come to.
+    it('a bill with a discount pays through to capture at its signed total', async () => {
+      const line = {
+        ref: { pos: 'discount-1' },
+        item: null,
+        name: 'Discount',
+        quantity: '1',
+        amountMinor: -100,
+        enteredBy: 'staff',
+        enteredAt: null,
+        restroRef: null,
+      }
+      let moved = false
+      const withDiscount = <T extends { totalMinor: number; lines: unknown[] }>(bill: T): T => ({
+        ...bill,
+        totalMinor: bill.totalMinor - 100,
+        lines: [...bill.lines, line],
+      })
+      const discounted: typeof connectorFor = (integration, simPolicy) => {
+        const real = connectorFor(integration, simPolicy)
+        return {
+          ...real,
+          readTable: async (context, table) => {
+            const answer = await real.readTable(context, table)
+            const here = table.pos === POS_TABLE ? !moved : moved
+            const [bill, ...others] = answer.complete ? answer.value.bills : []
+            if (!answer.complete || bill === undefined || !here) return answer
+            return { ...answer, value: { ...answer.value, bills: [withDiscount(bill), ...others] } }
+          },
+          readIsolated: async (context, handle) => {
+            const answer = await real.readIsolated(context, handle)
+            if (!answer.complete || answer.value.bill === null || !moved) return answer
+            return {
+              ...answer,
+              value: { ...answer.value, bill: withDiscount(answer.value.bill) },
+            }
+          },
+          isolateLines: async (context, request) => {
+            const answer = await real.isolateLines(context, {
+              ...request,
+              picks: request.picks.filter((pick) => pick.line.pos !== line.ref.pos),
+            })
+            moved = true
+            return answer
+          },
+          payAndClose: (context, request) =>
+            real.payAndClose(context, { ...request, amountMinor: request.amountMinor + 100 }),
+        }
+      }
+      simClock.advance(1100)
+      clock = new Date(clock.getTime() + TABLE_READ_MIN_GAP_MS + 1)
+      await readTableOf(
+        { pool, log, now: () => clock },
+        { tenantId, venueId: demo.venueId, tableId },
+        {
+          sim: policy,
+          billIdKey: KEY,
+          budgets: new InstanceBudgets(),
+          readingBudgets: new ReadingBudgets(),
+          connectorFor: discounted,
+        },
+      )
+      const shown = await lines()
+      expect(shown.map((shownLine) => shownLine.amountMinor)).toContain(-100)
+      const total = shown.reduce((sum, shownLine) => sum + shownLine.amountMinor, 0)
+      const id = await tryHeld('all', null, { connectorFor: discounted })
+      if (id === null) throw new Error('the Pay was refused')
+      const { row } = await drive(id, 40, { connectorFor: discounted })
+      expect(row).toMatchObject({
+        settled: true,
+        state: 'captured',
+        amount_minor: String(total),
+        captured_minor: String(total),
+        payment_table_id: null,
+      })
+      expect(await alertsOf(id)).toEqual([])
+    })
+
     // RR-11: a discount line (negative, as `BillLineSchema` allows) on the isolated bill: a
     // waiter's discount given on the payment table before the last check. The guest did not
     // confirm it, so the check fails, the lines go back and the card is released; the route must
     // never throw on the signed amount and leave the card held with the payment `isolated`.
-    // RR-11: red until its fix; the fix removes .fails.
-    it.fails('a discount line on the isolated bill fails the check and releases the card', async () => {
+    it('a discount line on the isolated bill fails the check and releases the card', async () => {
       const id = await held(1)
       const discounted = editingIsolated((bill) => ({
         ...bill,
@@ -1797,47 +1877,112 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     })
   })
 
-  // Repair-review, hot spot 4 (RR-12): only the payment's own bill is ever moved back. The move's
-  // answer is lost and it never landed; a waiter parks a bill of their own on the payment table.
-  // That bill is not the payment's: it is not read as the move landing, and never lands on the
-  // guest's table.
   // Repair-review, RR-18 (D125: lost access; D127: nobody is left guessing): the provider will not
-  // show the hold any more (the venue's access is gone) while the payment is past `held`. The job
-  // can only try again; the guest's lines stand moved off their table.
-  // RR-18: red until its fix; the fix removes .fails.
-  it.fails('a hold the provider stops showing, past held: someone is told, the lines do not just wait', async () => {
+  // show the hold any more (the venue's access is gone) while the payment is past `held`. The reads
+  // are bounded; then the check fails as any other does: the guest's lines go back and a manager is
+  // told. The hold is neither released nor captured on that read, whatever the time.
+  it('a hold the provider stops showing, past held: someone is told, the lines do not just wait', async () => {
     const id = await held(1)
+    let reads = 0
     const lost = new Proxy(provider, {
       get(target, name) {
         const value = Reflect.get(target, name, target)
         if (name === 'readPayment') {
-          return async () => ({
-            complete: false as const,
-            reason: 'access to the account was lost',
-          })
+          return async () => {
+            reads += 1
+            return {
+              complete: false as const,
+              reason: 'access to the account was lost',
+            }
+          }
         }
         return typeof value === 'function' ? value.bind(target) : value
       },
     })
     const overrides = { providers: new Map([[SIM_PAY_KIND, lost]]) }
-    for (let pass_ = 0; pass_ < 6; pass_ += 1) {
+    const once = async () => {
       try {
         await preparePayment(env(), target(id), deps(overrides))
       } catch (error) {
         if (!(error instanceof PaymentStepRetry)) throw error
       }
+      await pass(id, BETWEEN_RUNS_MS)
+    }
+    // Inside the tries the lines wait: a provider that answers again goes on to the close.
+    for (let run = 0; run < 40 && reads < HOLD_READ_TRIES - 1; run += 1) await once()
+    expect(reads).toBe(HOLD_READ_TRIES - 1)
+    expect(await stored(id)).toMatchObject({ state: 'isolated', reason: null })
+    expect(await alertsOf(id)).toEqual([])
+    // The last of them ends the route's own way: the lines go back, a manager is told.
+    for (let run = 0; run < 40 && (await stored(id))?.state !== 'cancelling'; run += 1) await once()
+    expect(await stored(id)).toMatchObject({ state: 'cancelling', reason: 'check_failed' })
+    expect(rowsOn(POS_TABLE)).toEqual(['2001', '2002'])
+    expect(await alertsOf(id)).toEqual(['payment_check_failed:alerts.answer'])
+    // Half an hour on: the hold read again, never released or captured, and Restro's team told.
+    await withOwnerClient(db.ownerUrl, async (client) => {
+      await client.query('begin')
+      await client.query('set local session_replication_role = replica')
+      await client.query(
+        `update restro.payments set updated_at = updated_at - interval '30 minutes' where id = $1`,
+        [id],
+      )
+      await client.query('commit')
+    })
+    for (let pass_ = 0; pass_ < 6; pass_ += 1) {
+      await once()
       await pass(id, 5 * 60_000)
       await recoverPayments({ pool, log, now: () => clock, queue }, deps(overrides))
     }
-    const row = await stored(id)
-    // Half an hour on, with the guest's lines on the payment table.
-    expect(row?.state).toBe('isolated')
-    expect(rowsOn(POS_TABLE)).toEqual(['2001'])
-    expect(await alertsOf(id)).not.toEqual([])
+    expect(await stored(id)).toMatchObject({ state: 'cancelling', reason: 'check_failed' })
+    expect(await alertsOf(id)).toEqual(['payment_check_failed:alerts.answer', 'payment_stuck:null'])
+    expect(calls('closeBill')).toBe(0)
+    expect((await steps(id)).filter((step) => /^(release|capture):/.test(step))).toEqual([])
+    expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+      expect.objectContaining({ status: 'held' }),
+    ])
   })
 
-  // RR-12: red until its fix; the fix removes .fails.
-  it.fails('a move that never landed, a waiter’s bill on the payment table: never moved to the guest', async () => {
+  // The double's own refusal: the hold is not on the account the venue has now. Once a read shows
+  // it again it is released, on that read.
+  it('a hold not on the venue’s account now: not released until a read shows it', async () => {
+    const id = await held(1)
+    await query(`update restro.payment_accounts set account_ref = $1 where venue_id = $2`, [
+      `${accountRef}_other`,
+      demo.venueId,
+    ])
+    try {
+      for (let run = 0; run < 40 && (await stored(id))?.state !== 'cancelling'; run += 1) {
+        try {
+          await preparePayment(env(), target(id), deps())
+        } catch (error) {
+          if (!(error instanceof PaymentStepRetry)) throw error
+        }
+        await pass(id, BETWEEN_RUNS_MS)
+      }
+      expect(await stored(id)).toMatchObject({ state: 'cancelling', reason: 'check_failed' })
+      expect(rowsOn(POS_TABLE)).toEqual(['2001', '2002'])
+      expect((await steps(id)).filter((step) => step.startsWith('release:'))).toEqual([])
+      expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+        expect.objectContaining({ status: 'held' }),
+      ])
+    } finally {
+      await query(`update restro.payment_accounts set account_ref = $1 where venue_id = $2`, [
+        accountRef,
+        demo.venueId,
+      ])
+    }
+    await drive(id)
+    expect(await stored(id)).toMatchObject({ state: 'released', reason: 'check_failed' })
+    expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+      expect.objectContaining({ status: 'released' }),
+    ])
+  })
+
+  // Repair-review, hot spot 4 (RR-12): only the payment's own bill is ever moved back. The move's
+  // answer is lost and it never landed; a waiter parks a bill of their own on the payment table.
+  // That bill is not the payment's: it is not read as the move landing, and never lands on the
+  // guest's table.
+  it('a move that never landed, a waiter’s bill on the payment table: never moved to the guest', async () => {
     const id = await held(1)
     fault({ on: 'moveRows', fault: { kind: 'hang' } })
     try {
@@ -1856,6 +2001,57 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     expect(PAYMENT_TABLES.flatMap((table) => rowsOn(table))).toEqual(['2003', '2003'])
     expect(calls('closeBill')).toBe(0)
     expect(row?.state).toBe('released')
+    expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+      expect.objectContaining({ status: 'released' }),
+    ])
+    expect(await alertsOf(id)).toEqual(['payment_check_failed:alerts.answer'])
+  })
+
+  /** Once the move landed, a waiter's bill of its own beside it (a POS with several per table). */
+  function waitersBillBeside(amountMinor: number | null) {
+    let done = false
+    beforeCall = (method, args) => {
+      if (method !== 'readTable' || done) return
+      const table = args[1] as { pos: string }
+      if (!PAYMENT_TABLES.includes(table.pos) || rowsOn(table.pos).length === 0) return
+      done = true
+      const bill = sim.host.engine.state.bills.find(
+        (candidate) => candidate.table === table.pos && candidate.state === 'open',
+      )
+      if (bill === undefined) return
+      sim.host.engine.state.bills.push({
+        ...bill,
+        id: 'waiters-bill',
+        rows: bill.rows.map((row) => ({
+          ...row,
+          id: 'waiters-row',
+          article: '2003',
+          amountMinor: amountMinor ?? row.amountMinor,
+        })),
+      })
+    }
+  }
+
+  // The check fails on the two bills. Only the payment's own goes back.
+  it('a failed check with a waiter’s bill on the payment table: only the payment’s bill goes back', async () => {
+    const id = await held(1)
+    waitersBillBeside(777)
+    const { row } = await drive(id)
+    expect(row).toMatchObject({ state: 'released', reason: 'check_failed' })
+    expect(rowsOn(POS_TABLE)).toEqual(['2001', '2002'])
+    expect(PAYMENT_TABLES.flatMap((table) => rowsOn(table))).toEqual(['2003'])
+    expect(await alertsOf(id)).toEqual(['payment_check_failed:alerts.answer'])
+  })
+
+  // Two bills the same to the line: which one the payment moved can't be told, so neither moves.
+  it('a waiter’s bill the same as the payment’s: neither moves, staff are told', async () => {
+    const id = await held(1)
+    waitersBillBeside(null)
+    const { row } = await drive(id)
+    expect(row).toMatchObject({ state: 'stranded' })
+    expect(PAYMENT_TABLES.flatMap((table) => rowsOn(table))).toHaveLength(2)
+    expect(calls('closeBill')).toBe(0)
+    expect((await alertsOf(id)).length).toBeGreaterThan(0)
     expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
       expect.objectContaining({ status: 'released' }),
     ])

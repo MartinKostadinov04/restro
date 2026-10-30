@@ -48,6 +48,9 @@ export const LOG_KIND_GROUP = {
   'table_code.revealed': 'settings',
   // A lease changing hands is the engine's bookkeeping, not something that happened at the venue.
   'lease.taken_over': null,
+  // A hold read that said nothing: the route's own count of its tries. A manager's alert says what
+  // came of it, and six identical lines would say nothing more.
+  'payment.hold_unread': null,
 } as const satisfies Record<LogKind, LogGroup | null>
 
 /** The kinds the venue sees, in `LOG_KINDS` order. */

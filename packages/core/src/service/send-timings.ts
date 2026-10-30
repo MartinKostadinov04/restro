@@ -31,8 +31,9 @@ export const LEASE_MARGIN_MS = 15_000
 
 export interface SlotLeaseSeconds {
   /**
-   * From `sent_order.start`: the probe the breaker may ask for first (#79, after a write timed
-   * out), then the availability read (#80) and the read before the round, with its tries and pauses.
+   * From `sent_order.start`: the wait for the POS's turn among the tables, the probe the breaker
+   * may ask for first (#79, after a write timed out), then the availability read (#80) and the read
+   * before the round, with its tries and pauses.
    */
   readonly start: number
   /** From `sending`: the write, and the one more try after a closed bill. */
@@ -49,7 +50,8 @@ export function slotLeaseSeconds(timings: ServiceTimings = SERVICE_TIMINGS): Slo
   const seconds = (ms: number) => Math.ceil((ms + LEASE_MARGIN_MS) / 1_000)
   return {
     start: seconds(
-      probe +
+      BUDGET_WAIT_MS +
+        probe +
         (AVAILABILITY_READS + BEFORE_READ_TRIES) * read +
         (BEFORE_READ_TRIES - 1) * BEFORE_READ_PAUSE_MS,
     ),

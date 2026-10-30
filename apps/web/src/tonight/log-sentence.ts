@@ -1,7 +1,7 @@
 // The Log's sentences (Log plan §8): one per kind of `LOG_KINDS`, made from the semantic parts of
 // a line (`LogLineView`) and the plan's strings. Pure: the translator, the table's name and the
-// money are passed in. `lease.taken_over` has no sentence and never shows (D120); every other
-// kind has one, and the compiler and a test both fail when a kind has none, so "Something
+// money are passed in. `lease.taken_over` and `payment.hold_unread` have no sentence and never show
+// (D120); every other kind has one, and the compiler and a test both fail when a kind has none, so "Something
 // happened (kind)" can never be drawn.
 import type { LogLineView } from '@/server/tonight/night-view'
 
@@ -77,7 +77,7 @@ const PAYMENT_ANSWER_LOG_WORDS = {
   not_on_till: 'lg_pay_notill',
 } as const
 
-/** The sentence of each shown kind; `null` is the one kind that never shows. */
+/** The sentence of each shown kind; `null` is a kind that never shows. */
 export const SENTENCES = {
   'sitting.opened': (l, c) => c.say('lg_opened', { table: c.table(l) }),
   'sitting.ended': (l, c) => c.say('lg_ended', { table: c.table(l) }),
@@ -160,6 +160,7 @@ export const SENTENCES = {
       ),
     }),
   'lease.taken_over': null,
+  'payment.hold_unread': null,
 } as const satisfies Record<LogKind, Sentence | null>
 
 /** The sentence of a line; null for the kind that never shows. */

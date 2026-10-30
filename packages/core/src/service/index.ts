@@ -306,6 +306,7 @@ export {
   readPayFirstTablesBoard,
 } from './pay-first-settings'
 export {
+  HOLD_READ_TRIES,
   type LastCheck,
   lastCheck,
   PAYMENT_ANSWERS,
