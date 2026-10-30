@@ -377,5 +377,3 @@ async function insertSentOrder(
   })
   return { id, reference }
 }
-
-/** The notes of a sent order's lines, by line id. */
