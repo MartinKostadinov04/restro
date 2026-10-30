@@ -2931,7 +2931,9 @@ export const paymentLines = restro.table(
     /** The quantity the POS closed (a pay-first round's line may close for fewer); set with `closed_minor`. */
     closedQuantity: numeric('closed_quantity', { precision: 21, scale: 6 }),
     /**
-     * True while its payment is not final; the database clears it when the payment settles. A POS
+     * True while its payment claims it; the database clears it when the payment ends (`captured`,
+     * `released`, `stranded` or `capture_failed`). An `unconfirmed` payment is settled but has not
+     * ended: a manager's answer can still capture its card, so its lines stay claimed (0044). A POS
      * line is in one open payment at a time (D127 5.2): the unique index below refuses a second.
      */
     open: boolean('open').notNull().default(true),

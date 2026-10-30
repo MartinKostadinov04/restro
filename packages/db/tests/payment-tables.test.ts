@@ -6,6 +6,7 @@
 import { randomBytes } from 'node:crypto'
 
 import { eq, sql } from 'drizzle-orm'
+import type { PgUpdateSetSource } from 'drizzle-orm/pg-core'
 import pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
@@ -609,6 +610,67 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
     expect(rows).toEqual([{ open: false, source: 'guest', actor: 'guest', job_id: 'req_settle' }])
     await withTenantWrite(app, a.tenantId, (tx) => tx.insert(paymentLines).values(line(second.id)))
   })
+
+  it('keeps an unconfirmed payment’s lines claimed, and frees them only at its end (migration 0044)', async () => {
+    const settled = { settledAt: sql`now()`, retainUntil: sql`now() + interval '18 months'` }
+    const unsettled = { settledAt: null, retainUntil: null }
+    const open = async (id: string) =>
+      (
+        await owner.query('select open from restro.payment_lines where payment_id = $1', [id])
+      ).rows.map((row) => (row as { open: boolean }).open)
+    const move = (id: string, state: string, fields: PgUpdateSetSource<typeof payments>) =>
+      withTenantWrite(app, a.tenantId, (tx) =>
+        tx
+          .update(payments)
+          .set({ state, ...fields })
+          .where(eq(payments.id, id)),
+      )
+    for (const [end, fromCancelling] of [
+      ['captured', false],
+      ['released', false],
+      ['released', true],
+      ['stranded', false],
+      ['stranded', true],
+      ['capture_failed', false],
+    ] as const) {
+      const ref = `line-${end}-${fromCancelling}`
+      const line = (paymentId: string) => ({
+        tenantId: a.tenantId,
+        venueId: a.venueId,
+        paymentId,
+        position: 1,
+        posLineRef: ref,
+        quantity: '1',
+        posAmountMinor: 500,
+        displayName: 'Beer',
+        ...PROVENANCE,
+      })
+      const payment = paymentRow(a)
+      const other = paymentRow(a)
+      await withTenantWrite(app, a.tenantId, async (tx) => {
+        await tx.insert(payments).values([payment, other])
+        await tx.insert(paymentLines).values(line(payment.id))
+      })
+      const claim = () =>
+        withTenantWrite(app, a.tenantId, (tx) => tx.insert(paymentLines).values(line(other.id)))
+      // `unconfirmed` is settled, and its line stays claimed: another payment can't take it.
+      await move(payment.id, 'unconfirmed', { reason: 'close_unknown', ...settled })
+      expect(await open(payment.id), end).toEqual([true])
+      expect(await databaseError(claim()), end).toMatch(/payment_lines_open_line_unique/)
+      if (fromCancelling) {
+        // "No receipt": back to not settled on the way out, the line still claimed.
+        await move(payment.id, 'cancelling', { reason: 'no_receipt', ...unsettled })
+        expect(await open(payment.id), end).toEqual([true])
+        await move(payment.id, end, { reason: 'no_receipt', ...settled })
+      } else {
+        // From `unconfirmed`, `settled_at` is set already: only the state says it ended.
+        await move(payment.id, end, { reason: 'answered' })
+      }
+      expect(await open(payment.id), end).toEqual([false])
+      await claim()
+    }
+  })
+
   it('keeps a refund row to a rise, its storno to a person and a dispute time to an opened dispute (migration 0042)', async () => {
     const refund = (fields: Partial<typeof paymentRefunds.$inferInsert>) =>
       withTenantWrite(app, a.tenantId, (tx) =>
