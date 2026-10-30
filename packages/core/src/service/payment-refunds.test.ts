@@ -280,7 +280,22 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
           }
         },
       ),
-      { numRuns: 40 },
+      {
+        numRuns: 40,
+        // The claim's case: a 500 refund made, then it fails and a new 100 is made before the next
+        // reading. The to-do stays 500; the provider's total is 100.
+        examples: [
+          [
+            [
+              [{ kind: 'made', minor: 500 }],
+              [
+                { kind: 'failed', which: 0 },
+                { kind: 'made', minor: 100 },
+              ],
+            ],
+          ],
+        ],
+      },
     )
   }, 120_000)
 

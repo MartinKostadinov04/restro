@@ -354,7 +354,8 @@ describe('the night across the clock changes, minute by minute (Europe/Sofia)', 
           last = day
         }
       }),
-      { numRuns: 96 },
+      // 03:15 to 03:45 sit in the repeated hour (Sofia, 25 Oct): each round hits the bug.
+      { numRuns: 96, examples: [['03:30']] },
     )
   })
 })
