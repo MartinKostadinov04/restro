@@ -11,6 +11,8 @@ describe('the guest limits in memory', () => {
       // #110: one Pay per 15 s and 5 in 10 minutes per phone (D127 §Limits).
       payGap: { max: 1, windowMs: 15_000 },
       pays: { max: 5, windowMs: 600_000 },
+      // RR-26: the failed human checks the 10 Sends in 10 minutes used to stop.
+      humanFails: { max: 10, windowMs: 600_000 },
       locationTries: { max: 5, windowMs: 600_000 },
       codeRequests: { max: 20, windowMs: 1_000 },
     })
@@ -45,6 +47,29 @@ describe('the guest limits in memory', () => {
     for (let n = 0; n < 20; n += 1) expect(limiter.take('code', ['codeRequests'], 0).ok).toBe(true)
     expect(limiter.take('code', ['codeRequests'], 999)).toEqual({ ok: false, retryAfterMs: 1 })
     expect(limiter.take('code', ['codeRequests'], 1_000).ok).toBe(true)
+  })
+
+  it('gives a hit back by its time, once, and leaves the other hits (RR-26)', () => {
+    const limiter = new GuestLimiter()
+    const send = ['sendGap', 'sends'] as const
+    expect(limiter.take('phone', send, 1_000).ok).toBe(true)
+    limiter.giveBack('phone', send, 1_000)
+    expect(limiter.take('phone', send, 1_001).ok).toBe(true)
+    // A hit that isn't there frees nothing, and the Send that went out still holds the 15 s.
+    limiter.giveBack('phone', send, 1_000)
+    expect(limiter.take('phone', send, 1_002)).toEqual({ ok: false, retryAfterMs: 14_999 })
+  })
+
+  it('remembers the last Send until it is forgotten, and clear forgets it', () => {
+    const limiter = new GuestLimiter()
+    expect(limiter.lastSend('phone')).toBeNull()
+    limiter.setLastSend('phone', { sentOrderId: 'so_1', at: 5 })
+    expect(limiter.lastSend('phone')).toEqual({ sentOrderId: 'so_1', at: 5 })
+    limiter.forgetLastSend('phone')
+    expect(limiter.lastSend('phone')).toBeNull()
+    limiter.setLastSend('phone', { sentOrderId: 'so_2', at: 6 })
+    limiter.clear()
+    expect(limiter.lastSend('phone')).toBeNull()
   })
 
   it('forgets everything on clear', () => {

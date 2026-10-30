@@ -11,6 +11,8 @@ import { describe, expect, it } from 'vitest'
 import {
   CONSENT_KEY,
   createTableServices,
+  LOCATION_BLOCKED,
+  locateWith,
   newPhoneValue,
   OFFLINE_AFTER_MS,
   PASS_KEY,
@@ -348,7 +350,8 @@ describe('the services client', () => {
     const h = harness(() => json(401, { code: 'code_retired' }))
     h.client.start()
     await h.tick()
-    expect(h.client.getState().ordering).toEqual({ state: 'closed' })
+    // Closed for good, and the face can say why: the code is no longer in use (D121, RR-58).
+    expect(h.client.getState().ordering).toEqual({ state: 'closed', retired: true })
     expect(h.nextWait()).toBeUndefined()
     const calls = h.calls.length
     expect(await h.client.dispatch(add())).toMatchObject({
@@ -396,6 +399,7 @@ describe('the services client', () => {
           ref: 'K7Q',
           lines: [{ itemId: ITEM, optionIds: [], qty: 2 }],
           sentAgoSeconds: 30,
+          sentClock: '19:42',
         },
       ],
     })
@@ -431,6 +435,7 @@ describe('the services client', () => {
         ref: 'K7Q',
         lines: [{ itemId: ITEM, optionIds: [], qty: 2 }],
         sentAt: 1_000_000 - 30_000,
+        sentClock: '19:42',
         mine: true,
       },
     ])
@@ -552,7 +557,7 @@ describe('the services client and the location check', () => {
       consent: 'allowed',
     })
     expect(kept.kept.get(PASS_KEY)).toBe('pass-1')
-    expect(kept.kept.get(CONSENT_KEY)).toMatch(/^allowed:v1:\d+$/)
+    expect(kept.kept.get(`${CONSENT_KEY}:Club`)).toMatch(/^allowed:v1:\d+$/)
     // The pass goes back on the next poll, never in the address.
     await h.tick()
     expect(server.headers.at(-1)).toMatchObject({ 'X-Restro-Pass': 'pass-1' })
@@ -563,7 +568,7 @@ describe('the services client and the location check', () => {
     const server = checkingServer()
     const dayEnds = 1_000_000 + 3_600_000
     const h = harness(server.answer, {
-      memory: memory({ [CONSENT_KEY]: `allowed:${LOCATION_CONSENT_VERSION}:${dayEnds}` }),
+      memory: memory({ [`${CONSENT_KEY}:Club`]: `allowed:${LOCATION_CONSENT_VERSION}:${dayEnds}` }),
       locate: async () => AT_THE_BAR,
     })
     h.client.start()
@@ -574,7 +579,9 @@ describe('the services client and the location check', () => {
 
   it('asks again for consent to an older text, or after the service day ended', async () => {
     for (const seed of [`allowed:v0:${2_000_000}`, `allowed:${LOCATION_CONSENT_VERSION}:999999`]) {
-      const h = harness(checkingServer().answer, { memory: memory({ [CONSENT_KEY]: seed }) })
+      const h = harness(checkingServer().answer, {
+        memory: memory({ [`${CONSENT_KEY}:Club`]: seed }),
+      })
       h.client.start()
       await h.tick()
       await h.client.dispatch(add())
@@ -613,6 +620,152 @@ describe('the services client and the location check', () => {
     // Nothing waits: "Allow" gets the pass with the phone's own check.
     expect(await h.client.location.allow()).toBeNull()
     expect(kept.kept.get(PASS_KEY)).toBe('pass-1')
+  })
+
+  describe('the answer lasts per phone per service day (RR-58, D119)', () => {
+    const allowedToday = `allowed:${LOCATION_CONSENT_VERSION}:${1_000_000 + 3_600_000}`
+
+    it('is not asked again in a new tab, whose pass starts empty', async () => {
+      const durable = memory()
+      const first = harness(checkingServer().answer, {
+        memory: memory(),
+        durable,
+        locate: async () => AT_THE_BAR,
+      })
+      first.client.start()
+      await first.tick()
+      await first.client.dispatch(add())
+      await first.client.location.allow()
+      expect(durable.kept.get(`${CONSENT_KEY}:Club`)).toMatch(/^allowed:/)
+      // The pass stays the tab's; only the answer outlives it.
+      expect(durable.kept.has(PASS_KEY)).toBe(false)
+
+      const server = checkingServer()
+      const tab = harness(server.answer, {
+        memory: memory(),
+        durable,
+        locate: async () => AT_THE_BAR,
+      })
+      tab.client.start()
+      await tab.tick()
+      expect(tab.client.getState().location).toMatchObject({ prompt: 'none', consent: 'allowed' })
+      expect(await tab.client.dispatch(add())).toMatchObject({ status: 'accepted' })
+      expect(tab.client.getState().location?.prompt).toBe('none')
+    })
+
+    it('keeps "Not now" for the new tab too', async () => {
+      const durable = memory()
+      const first = harness(checkingServer().answer, { memory: memory(), durable })
+      first.client.start()
+      await first.tick()
+      await first.client.dispatch(add())
+      first.client.location.decline()
+      const tab = harness(checkingServer().answer, { memory: memory(), durable })
+      tab.client.start()
+      await tab.tick()
+      expect(await tab.client.dispatch(add())).toMatchObject({ code: 'location_needed' })
+      expect(tab.client.getState().location).toMatchObject({ prompt: 'none', consent: 'declined' })
+    })
+
+    it('never carries one venue’s answer to another: the consent names the venue', async () => {
+      const durable = memory({ [`${CONSENT_KEY}:Another club`]: allowedToday })
+      const h = harness(checkingServer().answer, { memory: memory(), durable })
+      h.client.start()
+      await h.tick()
+      await h.client.dispatch(add())
+      expect(h.client.getState().location).toMatchObject({ prompt: 'consent', consent: 'unknown' })
+    })
+
+    it('forgets the answer once the service day has ended', async () => {
+      const key = `${CONSENT_KEY}:Club`
+      const durable = memory({ [key]: `allowed:${LOCATION_CONSENT_VERSION}:999999` })
+      const h = harness(checkingServer().answer, { memory: memory(), durable })
+      h.client.start()
+      await h.tick()
+      expect(h.client.getState().location?.consent).toBe('unknown')
+      expect(durable.kept.has(key)).toBe(false)
+    })
+
+    it('counts a browser that blocks location as a refusal, and only the guest’s tap asks again', async () => {
+      const asked: string[] = []
+      const durable = memory()
+      const h = harness(checkingServer().answer, {
+        memory: memory(),
+        durable,
+        locate: async () => {
+          asked.push('browser')
+          return LOCATION_BLOCKED
+        },
+      })
+      h.client.start()
+      await h.tick()
+      await h.client.dispatch(add())
+      expect(await h.client.location.allow()).toMatchObject({ code: 'location_failed' })
+      expect(asked).toHaveLength(1)
+      // The failed screen this once, with the refusal remembered.
+      expect(h.client.getState().location).toMatchObject({ prompt: 'failed', consent: 'declined' })
+      h.client.location.dismiss()
+
+      // A later edit doesn't ask the browser, nor the guest; nor does a new tab.
+      expect(await h.client.dispatch(add())).toMatchObject({ code: 'location_needed' })
+      expect(asked).toHaveLength(1)
+      expect(h.client.getState().location?.prompt).toBe('none')
+      const tab = harness(checkingServer().answer, {
+        memory: memory(),
+        durable,
+        locate: async () => {
+          asked.push('browser')
+          return LOCATION_BLOCKED
+        },
+      })
+      tab.client.start()
+      await tab.tick()
+      expect(await tab.client.dispatch(add())).toMatchObject({ code: 'location_needed' })
+      expect(asked).toHaveLength(1)
+
+      // The guest's own "Allow location" tap does ask, and is refused again.
+      h.client.location.reopen()
+      await h.client.location.allow()
+      expect(asked).toHaveLength(2)
+      expect(h.client.getState().location).toMatchObject({ prompt: 'failed', consent: 'declined' })
+    })
+
+    it('doesn’t take a slow or missing fix for a refusal: the next edit tries again', async () => {
+      const asked: string[] = []
+      const durable = memory({ [`${CONSENT_KEY}:Club`]: allowedToday })
+      const h = harness(checkingServer().answer, {
+        memory: memory(),
+        durable,
+        locate: async () => {
+          asked.push('browser')
+          return null
+        },
+      })
+      h.client.start()
+      await h.tick()
+      expect(await h.client.dispatch(add())).toMatchObject({ code: 'location_failed' })
+      expect(h.client.getState().location).toMatchObject({ prompt: 'failed', consent: 'allowed' })
+      h.client.location.dismiss()
+      await h.client.dispatch(add())
+      expect(asked).toHaveLength(2)
+    })
+
+    it('reads the browser’s answer: denied or no API is blocked, anything else says nothing', async () => {
+      const denied = { code: 1, PERMISSION_DENIED: 1 } as GeolocationPositionError
+      const timedOut = { code: 3, PERMISSION_DENIED: 1 } as GeolocationPositionError
+      const failing = (error: GeolocationPositionError) => ({
+        getCurrentPosition: (_ok: PositionCallback, fail?: PositionErrorCallback | null) =>
+          fail?.(error),
+      })
+      expect(await locateWith(undefined)).toBe(LOCATION_BLOCKED)
+      expect(await locateWith(failing(denied))).toBe(LOCATION_BLOCKED)
+      expect(await locateWith(failing(timedOut))).toBeNull()
+      const coords = { latitude: 42.6977, longitude: 23.3219, accuracy: 20 }
+      const found = {
+        getCurrentPosition: (ok: PositionCallback) => ok({ coords } as GeolocationPosition),
+      }
+      expect(await locateWith(found)).toEqual(AT_THE_BAR)
+    })
   })
 
   it('drops a kept pass the server no longer holds', async () => {
@@ -1318,6 +1471,7 @@ describe('a Send whose answer was lost (RR-50, D120)', () => {
     ref: 'K7Q',
     lines: [{ itemId: ITEM, optionIds: [], qty: 1 }],
     sentAgoSeconds: 1,
+    sentClock: '19:42',
   })
 
   it('answers a Send that threw as lost, and the state says so, with no reference to show', async () => {

@@ -6,13 +6,13 @@
 // shared order. The page gives the client what only a browser has (#76): the phone value made at
 // load, the tab's session storage, the phone's position and Turnstile's token.
 
-import { type GuestPosition, LOCATE_TIMEOUT_MS } from '@restro/core'
 import type { PayFormSlot, ServiceBinding } from '@restro/shell'
 import { useEffect, useMemo, useSyncExternalStore } from 'react'
 
 import { cardFormFor, cardReturnUrl } from '../connectors/card-forms'
 import {
   createTableServices,
+  locateWith,
   newPhoneValue,
   PAY_RETURNED_KEY,
   type SessionMemory,
@@ -60,7 +60,8 @@ const sessionMemory: SessionMemory = {
 
 /**
  * The browser's local storage: what outlives the tab for the sitting (the payment handle, D127 log
- * 2.2). A private window or blocked storage just remembers nothing.
+ * 2.2) and the guest's answer to the consent screen (D119). A private window or blocked storage
+ * just remembers nothing.
  */
 const localMemory: SessionMemory = {
   get(key) {
@@ -74,7 +75,8 @@ const localMemory: SessionMemory = {
     try {
       window.localStorage.setItem(key, value)
     } catch {
-      // Nothing kept: the payment is found again by the tab's own poll only.
+      // Nothing kept: the payment is found again by the tab's own poll only, and the guest is asked
+      // again.
     }
   },
   remove(key) {
@@ -84,26 +86,6 @@ const localMemory: SessionMemory = {
       // Nothing was kept.
     }
   },
-}
-
-/** The phone's position, precise, within about 10 s; null when refused, unavailable or slow. */
-function locate(): Promise<GuestPosition | null> {
-  return new Promise((resolve) => {
-    if (!('geolocation' in navigator)) {
-      resolve(null)
-      return
-    }
-    navigator.geolocation.getCurrentPosition(
-      (position) =>
-        resolve({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          accuracyM: position.coords.accuracy,
-        }),
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: LOCATE_TIMEOUT_MS, maximumAge: 0 },
-    )
-  })
 }
 
 /**
@@ -147,7 +129,7 @@ export function useTableServices(code: string | null): ServiceBinding | undefine
       phone: phoneValue(),
       memory: sessionMemory,
       durable: localMemory,
-      locate,
+      locate: () => locateWith('geolocation' in navigator ? navigator.geolocation : undefined),
       ...(humanToken === undefined ? {} : { humanToken }),
     })
   }, [code])
