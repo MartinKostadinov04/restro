@@ -58,7 +58,11 @@ describe.skipIf(!hasDatabase)('a tablet at another venue of the organisation (RR
   it('at another venue a settings command moves nothing', async () => {
     const { result } = await applyService(
       world.app,
-      { type: 'settings.paying_set', changes: { minCardMinor: 100 }, providerMinMinor: 50 } as never,
+      {
+        type: 'settings.paying_set',
+        changes: { minCardMinor: 100 },
+        providerMinMinor: 50,
+      } as never,
       {
         tenantId: world.tenantId,
         venueId: otherVenue,
