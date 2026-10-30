@@ -262,10 +262,10 @@ test('the dispute opens the payment’s sheet with the refunds, the state and th
 test('on the tablet "Storno done" asks a manager’s PIN, saves at once, and Undo brings the row back', async () => {
   const { page } = tablet
   await open(page)
-  // The tablet reads all three; only the stornos have a button there (the evidence is a manager's).
-  // It is staff-level: it reads the refund and the payment without the tip.
+  // The tablet reads all three, and each has its button: the evidence is a manager's, so it asks a
+  // manager's PIN (RR-58). It is staff-level: it reads the refund and the payment without the tip.
   await expect(rows(page)).toHaveCount(3)
-  await expect(rowOf(page, '3').getByRole('button')).toHaveCount(0)
+  await expect(rowOf(page, '3').getByRole('button')).toHaveText(['See the evidence'])
 
   const done = new Taps()
   await done.tap(rowOf(page, '1').getByRole('button', { name: 'Storno done' }))
