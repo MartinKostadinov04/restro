@@ -5,6 +5,11 @@
 // database is asked, so a wrong order is found by the first test that runs it, not by a deadlock
 // on a busy night.
 //
+// The ledger has no rank for a table's row, because opening a table holds it before its sitting. For
+// a payment table the rule is by hand: its lease comes before its row. A claim's write of
+// `payment_table_id` takes the row through the foreign key, after the lease, so an unmark takes the
+// lease first too (`markPaymentTable`), and they queue at the lease.
+//
 // Pure: no I/O. `rows.ts` asks the ledger before every `FOR UPDATE` / `FOR SHARE`.
 
 /**

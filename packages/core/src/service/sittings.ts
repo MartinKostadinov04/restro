@@ -230,10 +230,12 @@ export async function endSitting(
     if (emptied !== undefined) stx.rows.rememberOrder(emptied)
     stx.rows.touch(sitting.tableId)
   }
+  // The sitting's bill goes with it. What is left is no reading of the POS, so its time goes to the
+  // epoch, "never read well" (`reading.record`): it can't stand for a table with no POS bill.
   stx.rows.claim('bill_reading', [sitting.tableId])
   await stx.tx
     .update(billReadings)
-    .set({ bills: [], ...stx.provenance })
+    .set({ bills: [], readAt: sql`to_timestamp(0)`, ...stx.provenance })
     .where(eq(billReadings.tableId, sitting.tableId))
   await stx.tx
     .update(sittings)
@@ -526,7 +528,7 @@ async function sittingsWithOpenPayment(
 /**
  * Whether a payment holds this payment table: the lease its payment owns from `queued` until the
  * payment is final and the table reads empty (D127), or a payment of the table that is not final.
- * Takes the lease row after the table row, as the lock order has it.
+ * Takes the lease row, which comes before the table row (`lock-order.ts`).
  */
 async function paymentHoldsTable(stx: ServiceTx, tableId: string): Promise<boolean> {
   const key = { scope: 'payment_table', key: tableId } as const
@@ -551,6 +553,11 @@ export async function markPaymentTable(
   stx: ServiceTx,
   command: { readonly tableId: string; readonly isPaymentTable: boolean },
 ): Promise<ServiceResult> {
+  // An unmark waits at the lease like a claim, before it holds the table row a claim's foreign key
+  // wants (`lock-order.ts`). A mark takes no lease: it holds the table row to find no sitting open.
+  if (!command.isPaymentTable && (await paymentHoldsTable(stx, command.tableId))) {
+    return refused(null, 'payment_table_busy')
+  }
   await stx.tx
     .select({ id: venueTables.id })
     .from(venueTables)
@@ -558,9 +565,6 @@ export async function markPaymentTable(
     .for('update')
   if (command.isPaymentTable && (await stx.rows.openSitting(command.tableId, 'share')) !== null) {
     return refused(null, 'table_open')
-  }
-  if (!command.isPaymentTable && (await paymentHoldsTable(stx, command.tableId))) {
-    return refused(null, 'payment_table_busy')
   }
   const change = await setPaymentTableIn(stx.tx, command.tableId, command.isPaymentTable)
   if (!change.ok) {

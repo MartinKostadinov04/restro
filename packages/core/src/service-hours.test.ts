@@ -136,7 +136,8 @@ describe('serviceNightAt', () => {
     expect((night.lastOrdersAt as Date).getTime()).toBeLessThanOrEqual(
       at('2026-03-29T01:30:00Z').getTime(),
     )
-    expect((night.closesAt as Date).getTime()).toBeGreaterThan(
+    // Both are inside the skipped hour, so both are the jump itself: never out of order.
+    expect((night.closesAt as Date).getTime()).toBeGreaterThanOrEqual(
       (night.lastOrdersAt as Date).getTime(),
     )
   })
@@ -324,8 +325,7 @@ describe('the night across the clock changes, minute by minute (Europe/Sofia)', 
     )
   })
 
-  // RR-65: red until its fix; the fix removes .fails.
-  it.fails('keeps last orders before closing on the spring change: a night of 03:30 and 04:00', () => {
+  it('keeps last orders before closing on the spring change: a night of 03:30 and 04:00', () => {
     const night = serviceNightAt(new Date('2027-03-28T00:00:00Z'), {
       timeZone: ZONE,
       dayEndsAt: '07:00',
@@ -339,8 +339,7 @@ describe('the night across the clock changes, minute by minute (Europe/Sofia)', 
     expect(night.lastOrdersAt?.getTime()).toBeLessThanOrEqual(night.closesAt?.getTime() as number)
   })
 
-  // RR-66: red until its fix; the fix removes .fails.
-  it.fails('never takes the service day back, whatever hour the venue ends its day', () => {
+  it('never takes the service day back, whatever hour the venue ends its day', () => {
     fc.assert(
       fc.property(clockTime, (dayEndsAt) => {
         let last = ''
@@ -357,5 +356,39 @@ describe('the night across the clock changes, minute by minute (Europe/Sofia)', 
       // 03:15 to 03:45 sit in the repeated hour (Sofia, 25 Oct): each round hits the bug.
       { numRuns: 96, examples: [['03:30']] },
     )
+  })
+
+  it('never takes the service day back on the spring change either', () => {
+    fc.assert(
+      fc.property(clockTime, (dayEndsAt) => {
+        let last = ''
+        for (
+          let t = Date.parse('2027-03-27T20:00:00Z');
+          t <= Date.parse('2027-03-28T08:00:00Z');
+          t += 5 * 60_000
+        ) {
+          const day = serviceDate(new Date(t), ZONE, dayEndsAt)
+          expect(day >= last, `${new Date(t).toISOString()}: ${day} after ${last}`).toBe(true)
+          last = day
+        }
+      }),
+      // 03:00 to 03:59 do not exist on 28 March 2027 in Sofia.
+      { numRuns: 96, examples: [['03:30']] },
+    )
+  })
+
+  it('keeps last orders before closing on the autumn change: a night of 03:30 and 04:00', () => {
+    const night = serviceNightAt(new Date('2026-10-24T22:00:00Z'), {
+      timeZone: ZONE,
+      dayEndsAt: '07:00',
+      hours: Object.fromEntries(
+        Object.keys(CLOSED_DAYS).map((day) => [
+          day,
+          { opens: '22:00', lastOrders: '03:30', closes: '04:00' },
+        ]),
+      ) as unknown as ServiceHours,
+    })
+    expect(night.lastOrdersAt?.toISOString()).toBe('2026-10-25T01:30:00.000Z')
+    expect(night.closesAt?.toISOString()).toBe('2026-10-25T02:00:00.000Z')
   })
 })

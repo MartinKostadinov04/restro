@@ -292,7 +292,8 @@ const ENDS: Readonly<Record<string, { end: PayEnd; again: boolean }>> = {
   bill_changed: { end: 'check_failed', again: true },
   check_failed: { end: 'check_failed', again: true },
   isolate_refused: { end: 'isolate_refused', again: false },
-  not_on_till: { end: 'no_receipt', again: false },
+  // The round is certainly not on the till, its lines back in the bag (D116): it can go again.
+  not_on_till: { end: 'no_receipt', again: true },
   no_receipt: { end: 'no_receipt', again: false },
   expired: { end: 'expired', again: true },
   cancelled: { end: 'cancelled', again: false },

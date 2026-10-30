@@ -47,6 +47,7 @@ import {
   payments,
   sentOrders,
   sittings,
+  tableOrders,
   venues,
   withTenant,
 } from '@restro/db'
@@ -92,7 +93,10 @@ export type GuestView = (typeof GUEST_VIEWS)[number]
 /** The poll cadence (D121, design §6): 2 s on the order and the bill or while a Send is in flight. */
 export const GUEST_POLL_MS = { fast: 2_000, menu: 10_000 } as const
 
-/** How long a sent order that ended stays in the state (D122 §2: 15 minutes). */
+/**
+ * How long a sent order that ended stays in the state (D122 §2: 15 minutes). One waiting for the
+ * bar's approval has not ended for the guest: its card stays, as Restro sets no time limit (D116).
+ */
 const ENDED_SENT_ORDER_MS = 15 * 60_000
 
 /** How long a waiter call that ended (handled, lapsed) stays in the state, so a phone sees it. */
@@ -486,13 +490,15 @@ export function projectGuestState(
     read.sitting === null || read.order === null
       ? null
       : orderFromRow({ ...read.order, earlier: read.order.earlier })
+  const pastEndedWindow = (sent: { readonly settledAt: Date | null }) =>
+    sent.settledAt !== null && now - sent.settledAt.getTime() > ENDED_SENT_ORDER_MS
   const sentOrders = (sees ? read.sentOrders : []).flatMap((sent) => {
     const state = SENT_ORDER_STATES[sent.state]
     if (state === undefined) return []
     // A pay-first round not on the bill (#113): waiting for its payment, Not sent or unconfirmed,
     // the payment's own screen speaks for it, never a word of a sent order's.
     if (sent.kind === 'pay_first' && PAY_FIRST_UNSHOWN.includes(sent.state)) return []
-    const ended = sent.settledAt !== null && now - sent.settledAt.getTime() > ENDED_SENT_ORDER_MS
+    const ended = sent.state !== 'awaiting_approval' && pastEndedWindow(sent)
     return ended
       ? []
       : [
@@ -507,9 +513,12 @@ export function projectGuestState(
           },
         ]
   })
-  const inFlight = sentOrders.some(
-    (sent) => sent.state === 'sending' || sent.state === 'awaiting_approval',
-  )
+  // The fast poll follows an approval for the 15 minutes it always did; after that only the card
+  // stays, or a bar that never answers would keep the phone on it all night.
+  const inFlight =
+    sentOrders.some((sent) => sent.state === 'sending') ||
+    (sees &&
+      read.sentOrders.some((sent) => sent.state === 'awaiting_approval' && !pastEndedWindow(sent)))
   const bill = sees ? read.bill : null
   // An item paid first at this table (#113): the face sends it with Pay, or offers it through
   // the waiter while pay-first is off.
@@ -902,8 +911,9 @@ const GUARDED_HERE: ReadonlySet<string> = new Set(['location.check'])
 /**
  * True for a command that must come from a phone at the venue (D121, D122 §4): one that adds or
  * changes a line, a Send with on-the-bill lines, and the phone's own check. Removing a line and
- * Undo never are. A Send of pay-first lines alone is not (#113): it is paid before it goes.
- * An addition is located whatever its item: the order does not know yet how it will be sent.
+ * Undo never are (a change that takes a line to nothing is a removal: `changeRemovesLine`). A Send
+ * of pay-first lines alone is not (#113): it is paid before it goes. An addition is located
+ * whatever its item: the order does not know yet how it will be sent.
  */
 function isLocated(command: GuestActInput['command'], type: string): boolean {
   if (type === 'order.send') return !Array.isArray(command.lines) || command.lines.length > 0
@@ -913,6 +923,30 @@ function isLocated(command: GuestActInput['command'], type: string): boolean {
     type === 'order.restore' ||
     type === 'location.check'
   )
+}
+
+/**
+ * True when an `order.change` takes a line of the sitting's order to nothing, which removes it
+ * (`order.remove` by another name), so it needs no location (D122 §7). Read before the engine's
+ * lock, which is safe: a negative change can only take away, never add, whatever the line holds by
+ * then. A line this order does not hold is no removal: the check stays.
+ */
+async function changeRemovesLine(
+  pool: DbPool,
+  target: CodeTarget,
+  sittingId: string | null,
+  command: GuestActInput['command'],
+): Promise<boolean> {
+  if (command.type !== 'order.change' || sittingId === null) return false
+  const { delta, lineId } = command
+  if (typeof delta !== 'number' || delta >= 0) return false
+  const row = await withTenant(pool, target.tenantId, async (tx) => {
+    const [found] = await tx.select().from(tableOrders).where(eq(tableOrders.sittingId, sittingId))
+    return found ?? null
+  })
+  if (row === null) return false
+  const line = orderFromRow(row).lines.find((other) => other.id === lineId)
+  return line !== undefined && line.removedAt === null && line.qty + delta <= 0
 }
 
 /** The pay-first part of a Send as the shell's schema parsed it (#113), or null. */
@@ -1017,7 +1051,11 @@ export async function guestAct(
   const checks = guard.settings.locationCheck
   let claims = checks ? heldClaims(input.pass, input.passKey, target, guard.sittingId, now) : null
   let pass: string | null = null
-  const located = checks && isLocated(input.command, type) && !repeatSend
+  const located =
+    checks &&
+    isLocated(input.command, type) &&
+    !repeatSend &&
+    !(await changeRemovesLine(pool, target, guard.sittingId, input.command))
 
   if (located && claims === null) {
     if (position === undefined || input.check?.consentVersion !== LOCATION_CONSENT_VERSION) {
