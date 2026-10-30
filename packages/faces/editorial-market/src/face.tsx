@@ -29,8 +29,9 @@ import {
   allItems,
   bcp47,
   countVisible,
+  designAttributes,
+  designVariables,
   type Filters,
-  generalAttributes,
   hasVisibleItems,
   isFiltering,
   isStrip,
@@ -159,11 +160,12 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
       strings,
       assetBase,
       layout,
+      bleedPhotos: view.design.photos?.frame !== 'inset',
       isVisible: (item: ViewItem) => matchesFilters(item, filters),
       openDish: dish.open,
       openAllergens,
     }),
-    [locale, strings, assetBase, layout, filters, dish.open, openAllergens],
+    [locale, strings, assetBase, layout, view.design, filters, dish.open, openAllergens],
   )
 
   // A section the composer marks horizontal is a photo-led strip (D92). The layout switch, when
@@ -188,9 +190,14 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
       data-layout={layout}
       data-scheme={scheme}
       data-services={serviceBarShown(view, services) ? 'bar' : undefined}
-      {...generalAttributes(view.design)}
+      {...designAttributes(view.design)}
       lang={bcp47(locale)}
-      style={themeVariables(view.theme, fontStacks) as CSSProperties}
+      style={
+        {
+          ...themeVariables(view.theme, fontStacks),
+          ...designVariables(view.design),
+        } as CSSProperties
+      }
     >
       {/* biome-ignore lint/security/noDangerouslySetInnerHtml: constant stylesheets from css.ts and services/services-css.ts, no user input; React would escape `>` and quotes in them */}
       <style dangerouslySetInnerHTML={{ __html: css }} />

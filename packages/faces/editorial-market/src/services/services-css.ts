@@ -124,6 +124,30 @@ export const SERVICES_CSS = `
   z-index: 3;
   margin: 0;
 }
+/* Where the copy is a wrapping row (D130: the price at the end, a portion beside it) the "+" is one
+   of its parts, right after the price and the portion. */
+.rm[data-layout][data-items-price-place="end"] .rm-item-copy > .ro-quick,
+.rm[data-layout][data-items-portion-place="beside"] .rm-item-copy > .ro-quick {
+  flex: 0 0 auto;
+  order: 4;
+  align-self: center;
+  margin: 0 0 0 auto;
+}
+.rm[data-layout="two"][data-items-portion-place="beside"]
+  .rm-section:not(.is-feature)
+  .rm-item.has-photo
+  .rm-item-copy
+  > .ro-quick {
+  margin-left: auto;
+}
+/* On a card the list's thumbnail sits 14 px in, and the "+" stays on its corner. */
+.rm[data-layout="list"][data-items-frame="cards"]
+  .rm-section:not(.is-feature)
+  .rm-item.has-photo
+  .ro-quick {
+  top: calc(14px + 96px - 42px);
+  right: 18px;
+}
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .ro-quick .ro-plus {
   --ro-circle: 36px;
 }
@@ -132,6 +156,18 @@ export const SERVICES_CSS = `
 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.is-text .ro-quick {
   margin-top: -40px;
+}
+.rm[data-layout="list"][data-items-price-place="end"]
+  .rm-section:not(.is-feature)
+  .rm-item.is-text
+  .rm-item-copy
+  > .ro-quick,
+.rm[data-layout="list"][data-items-portion-place="beside"]
+  .rm-section:not(.is-feature)
+  .rm-item.is-text
+  .rm-item-copy
+  > .ro-quick {
+  margin-top: 0;
 }
 
 /* The quantity stepper: 44 px buttons, compact on a dish card (with a 44 px tap area). */

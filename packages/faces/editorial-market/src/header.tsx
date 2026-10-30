@@ -42,7 +42,7 @@ export function Header({
             image={logo}
             assetBase={assetBase}
             page={locale}
-            sizes="80px"
+            sizes={view.design.header?.logo_size === 'l' ? '144px' : '80px'}
             className="rm-logo"
             loading="eager"
             part="header.logo"

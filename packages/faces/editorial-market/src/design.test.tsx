@@ -14,10 +14,11 @@ import type { ViewModel } from '@restro/shell'
 import {
   BASIC_DESIGN_VALUES,
   type ContractHost,
+  designCases,
   designView,
   type Fixture,
   fingerprint,
-  firstRootAttributes,
+  firstDesignAttributes,
   neverListFixtures,
   resolvedCss,
   runDesignContract,
@@ -35,7 +36,7 @@ import { EDITORIAL_MARKET_MANIFEST } from './manifest'
 import { SERVICES_CSS } from './services/services-css'
 import { richFixture } from './test-views'
 
-/** What the renderer draws so far (ticket 3): General, and the Items page's Layout and Guest switch. */
+/** What the renderer draws so far (tickets 3 and 4): General and the browsing pages. */
 const DRAWN = {
   general: [
     'screen',
@@ -48,10 +49,27 @@ const DRAWN = {
     'text_size',
     'buttons',
   ],
-  items: ['layout', 'guest_switch'],
+  header: ['band', 'arrangement', 'title_size', 'logo_size'],
+  navigation: ['marker', 'band'],
+  sections: ['header', 'title_size', 'title_case', 'strip_card_size'],
+  items: [
+    'frame',
+    'name_size',
+    'name_weight',
+    'name_case',
+    'price_place',
+    'portion_place',
+    'description_lines',
+    'layout',
+    'guest_switch',
+  ],
+  photos: ['shape', 'fit', 'backdrop', 'frame', 'corners'],
+  labels: ['labels'],
+  dish: ['photo'],
+  sheets: ['sheets'],
 } as const
 
-/** The tokens General's values set on the root. */
+/** The tokens the options' values set on the root. */
 const TOKENS = [
   '--rm-font-heading',
   '--rm-heading-weight',
@@ -65,6 +83,44 @@ const TOKENS = [
   '--rm-on-button',
   '--rm-button-mark',
   '--rm-on-button-mark',
+  '--rm-ink',
+  '--rm-page',
+  '--rm-panel',
+  '--rm-title-size',
+  '--rm-title-narrow',
+  '--rm-title-leading',
+  '--rm-logo-width',
+  '--rm-logo-height',
+  '--rm-nav-weight',
+  '--rm-section-title',
+  '--rm-section-title-narrow',
+  '--rm-strip-card',
+  '--rm-strip-card-max',
+  '--rm-strip-card-wide',
+  '--rm-strip-card-narrow',
+  '--rm-item-rule',
+  '--rm-name-text',
+  '--rm-name-list',
+  '--rm-name-one',
+  '--rm-name-two',
+  '--rm-name-two-narrow',
+  '--rm-name-strip',
+  '--rm-name-weight',
+  '--rm-name-case',
+  '--rm-name-tracking',
+  '--rm-price-photo',
+  '--rm-price-strip',
+  '--rm-photo-shape',
+  '--rm-photo-fit',
+  '--rm-photo-backdrop',
+  '--rm-photo-pad',
+  '--rm-photo-pad-two',
+  '--rm-photo-pad-two-narrow',
+  '--rm-dish-photo-pad',
+  '--rm-photo-box-corners',
+  '--rm-photo-corners',
+  '--rm-mark-offset',
+  '--rm-mark-room',
 ]
 
 const CSS = `${EDITORIAL_CSS}\n${SERVICES_CSS}`
@@ -107,7 +163,7 @@ const fixtures = [richFixture(), ...neverListFixtures()]
 const editorial = styleCases().find((style) => style.id === 'style:editorial')
 
 /** A fixture's rendering in the form it is stored. Only the 300-item menu is kept as a fingerprint. */
-function stored(html: string, name: string, first = firstRootAttributes()): string {
+function stored(html: string, name: string, first = firstDesignAttributes()): string {
   const text = storedRendering(html, first)
   return name === 'big-menu' ? `${fingerprint(text)}\n` : text
 }
@@ -125,10 +181,11 @@ describe('the never-list (D130)', () => {
       fixtures,
     })
     expect(report.failures).toEqual([])
-    // Guards against a sweep that checks nothing: two Styles and 21 values off Basic's.
-    expect(report.cases).toBeGreaterThanOrEqual(21)
+    // Guards against a sweep that checks nothing: two Styles and every value off Basic's.
+    expect(report.cases).toBe(designCases(DRAWN).length)
+    expect(report.cases).toBeGreaterThanOrEqual(68)
     expect(report.renders).toBe(report.cases * fixtures.length)
-  }, 600_000)
+  }, 900_000)
 
   it('inverts an ink button on an ink sheet: page fill, ink writing (D130)', () => {
     expect(EDITORIAL_CSS).toMatch(
@@ -137,14 +194,14 @@ describe('the never-list (D130)', () => {
   })
 })
 
-describe('the root carries General (D130)', () => {
-  it('has one data attribute per General option, and the theme tokens follow the values', () => {
+describe('the root carries the design (D130)', () => {
+  it('has one data attribute per option, and the theme tokens follow the values', () => {
     const view = designView(
       withDesign(richFixture(), BASIC_DESIGN_VALUES),
       EDITORIAL_MARKET_MANIFEST,
     )
     const attrs = rootOf(render(view))
-    for (const [attribute, value] of Object.entries(firstRootAttributes())) {
+    for (const [attribute, value] of Object.entries(firstDesignAttributes())) {
       expect(attrs[attribute], attribute).toBe(value)
     }
     expect(attrs['data-style']).toBeUndefined()
@@ -177,7 +234,7 @@ describe('a new option never changes an existing look (D130)', () => {
     general: { ...BASIC_DESIGN_VALUES.general, throwaway: value },
   })
   const THROWAWAY_CSS = `${CSS}\n.rm[data-throwaway="second"] { --rm-type: 2; }\n`
-  const first = firstRootAttributes({ ...BASIC_DESIGN_VALUES.general, throwaway: 'first' })
+  const first = firstDesignAttributes({ ...BASIC_DESIGN_VALUES.general, throwaway: 'first' })
   const basic = designView(
     withDesign(richFixture(), BASIC_DESIGN_VALUES),
     EDITORIAL_MARKET_MANIFEST,
@@ -226,13 +283,16 @@ describe("Editorial against today's look (D128)", () => {
         }
   const values = editorial?.values ?? BASIC_DESIGN_VALUES
 
-  /** Today had neither the General attributes on its root nor the parts' markers. */
+  /** Today had neither the design's attributes on its root nor the parts' markers. */
+  const designAttributeNames = Object.keys(firstDesignAttributes())
   const asToday = (html: string) =>
     storedRendering(html, {})
       .replace(/ data-design-part="[^"]*"/g, '')
-      .replace(
-        / data-(?:screen|body-font|heading-font|heading-weight|corners|depth|density|text-size|buttons)="[^"]*"/g,
-        '',
+      .replace(/<div [^>]*data-face=[^>]*>/, (root) =>
+        designAttributeNames.reduce(
+          (text, attribute) => text.replace(new RegExp(` ${attribute}="[^"]*"`), ''),
+          root,
+        ),
       )
 
   for (const fixture of fixtures.filter((candidate) => candidate.name !== 'big-menu')) {
@@ -258,6 +318,30 @@ describe("Editorial against today's look (D128)", () => {
       added: [],
       removed: [],
     })
+  })
+})
+
+describe('every value of every option, as stored (D130)', () => {
+  const rendering = designCases(DRAWN).map((one) => {
+    const view = designView(withDesign(richFixture(), one.values), EDITORIAL_MARKET_MANIFEST)
+    const html = render(view)
+    const css = resolvedCss(CSS, ROOT, rootOf(html), TOKENS)
+    return `${one.id} ${fingerprint(stored(renderBrowsing(view), 'x'))} ${fingerprint(css)}`
+  })
+
+  it('moves only with a change that means to move a look', async () => {
+    await expect(`${rendering.join('\n')}\n`).toMatchFileSnapshot(join(here, 'options.snap'))
+  })
+
+  it('gives every value a look of its own: the markup or the stylesheet moves', () => {
+    const basic = rendering.find((line) => line.startsWith('style:basic')) ?? ''
+    const look = (line: string) => line.slice(line.indexOf(' '))
+    const same = rendering.filter(
+      (line) => !line.startsWith('style:') && look(line) === look(basic),
+    )
+    // Each value draws differently from Basic, in the markup or the stylesheet (`body_font` and
+    // `screen` through the root's own attributes). A value left out of the stylesheet shows here.
+    expect(same.map((line) => line.split(' ')[0])).toEqual([])
   })
 })
 

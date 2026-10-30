@@ -14,6 +14,8 @@ export interface PageContext {
   readonly assetBase: string
   /** How the items of a section are laid out now (the photos' `sizes` follow it). */
   readonly layout: Layout
+  /** Whether a photo fills its box (the Photos page's frame), which widens it by its margin. */
+  readonly bleedPhotos: boolean
   /** Whether an item passes the guest's filters; one that does not stays in the markup, hidden. */
   readonly isVisible: (item: ViewItem) => boolean
   /** Opens the dish page for an item (the element that asked gets the focus back). */

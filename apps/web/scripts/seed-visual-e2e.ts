@@ -1,7 +1,7 @@
 // Fixtures for the accessibility and visual audit of the renderer (brief SH-07, #171). Five menus in
 // Editorial, one per theme (the designer's four presets and one made from three colours), and one
-// for each Style and each value of the General options (`DESIGN_VARIANTS`), all with the same
-// content: photo cards in the strip and in every layout, a scheduled item, two sold-out ones that
+// for each Style and each value of the options the renderer draws (`DESIGN_VARIANTS`), all with the
+// same content: photo cards in the strip and in every layout, a scheduled item, two sold-out ones that
 // the page leaves out (D131), a 60-character Cyrillic name with a photo and one without, a dish with
 // all fourteen allergens and two groups of choices, a sub-section, tags and dietary labels for the
 // filter sheet, and a table code. They are written straight into the e2e publish folder

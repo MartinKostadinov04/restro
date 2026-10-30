@@ -66,7 +66,7 @@ export function Item({
             image={image}
             assetBase={assetBase}
             page={locale}
-            sizes={photoSizes(ctx.layout, strip)}
+            sizes={photoSizes(ctx.layout, strip, ctx.bleedPhotos)}
             loading={priority ? 'eager' : 'lazy'}
           />
           {hasBadges ? <Badges item={item} ctx={ctx} /> : null}

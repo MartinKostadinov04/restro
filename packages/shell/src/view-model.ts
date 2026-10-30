@@ -230,7 +230,7 @@ export interface ViewModel {
   readonly ordering: { readonly enabled: boolean }
   /** R15: which guest controls the face may draw. Everything not switched on is off. */
   readonly features: ViewFeatures
-  /** D92: the menu's layout, a setting of the menu in the composer (no longer a face option). */
+  /** The menu's layout and guest switch, from the design (D129; no longer a face option). */
   readonly layout: ViewLayout
   readonly theme: ViewTheme
   /** The venue's design (D129, D130): a value for every option; Basic's for an older snapshot. */
