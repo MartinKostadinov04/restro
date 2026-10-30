@@ -699,6 +699,39 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
     expect((await orderLines()).map((line) => [line.itemId, line.qty])).toContainEqual([itemA, 1])
   })
 
+  // Repair-review, RR-33 (spec #64 §8: a waiter's identical round in the window is Unconfirmed,
+  // never Added): the round never lands; a waiter enters the same round during the read-back.
+  it("a waiter's identical round alone in the read-back window is not Added", async () => {
+    sim.host.engine.faults.clear()
+    firstItem()
+    const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+    sim.host.engine.faults.add({ on: 'addRows', fault: { kind: 'hang' } })
+    let waiter = false
+    const outcomes = await sendTableOrders(
+      env(),
+      { tenantId, venueId: demo.venueId, tableId },
+      {
+        ...deps(),
+        sleep: async (ms: number) => {
+          await deps().sleep(ms)
+          if (!waiter) {
+            waiter = true
+            sim.host.engine.waiter.addRound(POS_TABLE, [{ article: ARTICLE_A }])
+          }
+        },
+      },
+    )
+    sim.host.engine.faults.clear()
+    expect(onBill()).toEqual([
+      [FIRST, 1000],
+      [ARTICLE_A, 1000],
+    ])
+    // Nothing tells this round from Restro's: a false Added is drinks that never come.
+    expect(outcomes).toEqual([
+      { kind: 'settled', sentOrderId: id, state: 'unconfirmed', reason: 'check_ambiguous' },
+    ])
+  })
+
   it('never sends an item the POS has no link for', async () => {
     const id = await waiting([
       { itemId: itemA, qty: 1, unitMinor: 1050 },

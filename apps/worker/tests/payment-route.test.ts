@@ -1647,6 +1647,37 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
   // answer is lost and it never landed; a waiter parks a bill of their own on the payment table.
   // That bill is not the payment's: it is not read as the move landing, and never lands on the
   // guest's table.
+  // Repair-review, RR-18 (D125: lost access; D127: nobody is left guessing): the provider will not
+  // show the hold any more (the venue's access is gone) while the payment is past `held`. The job
+  // can only try again; the guest's lines stand moved off their table.
+  it('a hold the provider stops showing, past held: someone is told, the lines do not just wait', async () => {
+    const id = await held(1)
+    const lost = new Proxy(provider, {
+      get(target, name) {
+        const value = Reflect.get(target, name, target)
+        if (name === 'readPayment') {
+          return async () => ({ complete: false as const, reason: 'access to the account was lost' })
+        }
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
+    const overrides = { providers: new Map([[SIM_PAY_KIND, lost]]) }
+    for (let pass_ = 0; pass_ < 6; pass_ += 1) {
+      try {
+        await preparePayment(env(), target(id), deps(overrides))
+      } catch (error) {
+        if (!(error instanceof PaymentStepRetry)) throw error
+      }
+      await pass(id, 5 * 60_000)
+      await recoverPayments({ pool, log, now: () => clock, queue }, deps(overrides))
+    }
+    const row = await stored(id)
+    // Half an hour on, with the guest's lines on the payment table.
+    expect(row?.state).toBe('isolated')
+    expect(rowsOn(POS_TABLE)).toEqual(['2001'])
+    expect(await alertsOf(id)).not.toEqual([])
+  })
+
   it('a move that never landed, a waiter’s bill on the payment table: never moved to the guest', async () => {
     const id = await held(1)
     fault({ on: 'moveRows', fault: { kind: 'hang' } })
