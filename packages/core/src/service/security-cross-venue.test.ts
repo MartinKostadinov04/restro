@@ -41,6 +41,11 @@ type Row = {
 }
 
 const STAFF: readonly [string, (row: Row) => Record<string, unknown>][] = [
+  // RR-73: read by id alone, a role at venue 1 settled venue 2's Unconfirmed round.
+  [
+    'sent_order.answer',
+    (r) => ({ type: 'sent_order.answer', sentOrderId: r.sentOrder, answer: 'not_found' }),
+  ],
   [
     'payment.answer',
     (r) => ({
@@ -94,6 +99,11 @@ const STAFF: readonly [string, (row: Row) => Record<string, unknown>][] = [
 ]
 
 const WORKER: readonly [string, (row: Row) => Record<string, unknown>][] = [
+  // RR-73: a job carries its order's own venue; another venue's id is simply not there.
+  [
+    'sent_order.transition',
+    (r) => ({ type: 'sent_order.transition', sentOrderId: r.sentOrder, fence: 1, to: 'sending' }),
+  ],
   [
     'payment.claim_table',
     (r) => ({ type: 'payment.claim_table', paymentId: r.payment, freeTables: [] }),
