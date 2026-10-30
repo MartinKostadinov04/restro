@@ -50,7 +50,7 @@ import {
 import { createSimServer, ManualClock as SimPosClock, type SimServer } from '@restro/sim-pos'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
+import { readFloorOf } from '../src/jobs/floor'
 import { PaymentBreakers, watchedProvider } from '../src/jobs/payment-breaker'
 import { FINAL_TABLE_READ_SECONDS, recoverPayments } from '../src/jobs/payment-recovery'
 import { checkPayment, type PaymentJobDeps, preparePayment } from '../src/jobs/payments'
@@ -66,6 +66,7 @@ import {
   testSlug,
   withOwnerClient,
 } from './database'
+import { simBudgets } from './sim-pace'
 
 allowSlowSetup()
 
@@ -114,7 +115,7 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
   const deps = (overrides: Partial<PaymentJobDeps> = {}): PaymentJobDeps => ({
     sim: policy,
     providers: new Map([[SIM_PAY_KIND, provider]]),
-    budgets: new InstanceBudgets(),
+    budgets: simBudgets(simClock),
     ...overrides,
   })
   const target = (paymentId: string): PaymentJob => ({
@@ -148,7 +149,7 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
     const floor = await readFloorOf(
       { pool, log, now: () => clock },
       { tenantId, ...demo },
-      { sim: policy, budgets: new InstanceBudgets() },
+      { sim: policy, budgets: simBudgets(simClock) },
     )
     expect(floor.kind).toBe('read')
     const [table] = await query<{ id: `tb_${string}` }>(
@@ -234,7 +235,7 @@ describe.skipIf(!hasDatabase)('the payment jobs', () => {
       {
         sim: policy,
         billIdKey: KEY,
-        budgets: new InstanceBudgets(),
+        budgets: simBudgets(simClock),
         readingBudgets: new ReadingBudgets(),
       },
     )

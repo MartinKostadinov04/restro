@@ -14,10 +14,14 @@
 // 3. `sending` is written, then the round is added once, with the sent order's id as the
 //    reference where the POS keeps one (`ownLineReference`) or deduplicates (`idempotentAdd`);
 // 4. done → Added (Awaiting approval where the POS declares `approvalAtBar`); a definite "no" →
-//    Not sent with the POS's code (a closed bill is tried once more: nothing was written);
+//    Not sent with the POS's code (a closed or locked bill is tried again, past that bill, on the
+//    next open one or a new one, D115: nothing was written); a read inside the add that failed,
+//    or a definite busy, never went out: Not sent (`pos_unreachable`, D116);
 //    unknown → `checking`, and the table is read back for about a minute (`readBackWindowMs`):
 //    the round found → Added; anything Restro can't tell from staff's (a waiter's identical
 //    round) → Unconfirmed; nothing within the window → Unconfirmed. Never sent again (D115).
+//    After Added a reading of the table is queued, so every phone sees the round (D116); the
+//    table's gap between readings still applies.
 // Every POS call is bounded here (its turn at the instance's budget, then its timeout) and the
 // read-back ends on a clock deadline, so a run settles within its slot lease (`send-timings.ts`
 // in core derives each lease from the same timings): the sweep never settles a sent order this
@@ -28,7 +32,7 @@
 // The connection's breaker (#79, ./breaker.ts) hears every call: a read or an add that answered
 // is a good call, one that failed or came late a failed call, an add that timed out a write
 // timeout, a refusal of the login or the venue pauses at once, an Unconfirmed order counts toward
-// the pause. A paused connection sends nothing: the sent order is Not sent (`ordering_paused`),
+// the pause; a definite busy says nothing of the connection, so it hears nothing. A paused connection sends nothing: the sent order is Not sent (`ordering_paused`),
 // also when the pause lands between the start and `sending`. After a write timed out the next
 // order waits for a good probe, run here before the read.
 // Stock (#80, `stock.ts`): where the connector declares `itemAvailability`, the lines' items are
@@ -47,6 +51,7 @@ import {
   type OrderLine,
   type OrderSendJob,
   OrderSendJobSchema,
+  type PosRef,
   posRef,
   prepareJob,
   type Reading,
@@ -61,6 +66,7 @@ import {
   TableBillsSchema,
 } from '@restro/core'
 import {
+  ADD_TRIES,
   applyService,
   BEFORE_READ_PAUSE_MS,
   BEFORE_READ_TRIES,
@@ -143,6 +149,27 @@ const sleepFor = (ms: number) => new Promise<void>((resolve) => setTimeout(resol
 
 /** The refusal scopes that are the connection's, not the round's: they pause at once. */
 const LOGIN_SCOPES: ReadonlySet<string> = new Set(['login', 'venue'])
+
+/** How long after Added the reading waits, so the round's own calls have left the POS's second. */
+const READING_AFTER_ADDED_SECONDS = 2
+
+/** Queues a reading of the table after Added (D116). A failure changes nothing of the outcome. */
+async function queueReading(env: SendEnvironment, payload: OrderSendJob): Promise<void> {
+  if (env.queue === undefined) return
+  try {
+    const job = prepareJob(JOB_NAMES.tableRead, {
+      tenantId: payload.tenantId,
+      venueId: payload.venueId,
+      tableId: payload.tableId,
+    })
+    await env.queue.send(JOB_NAMES.tableRead, job.data, {
+      singletonKey: job.singletonKey,
+      startAfter: READING_AFTER_ADDED_SECONDS,
+    })
+  } catch (error) {
+    env.log.warn({ tableId: payload.tableId, err: error }, 'a table read could not be queued')
+  }
+}
 
 /** What the worker knows of one sent order before it calls the POS. */
 interface Prepared {
@@ -243,12 +270,17 @@ async function sendOne(
 
   const timings = deps.timings ?? SERVICE_TIMINGS
   const sleep = deps.sleep ?? sleepFor
-  const budget = (deps.budgets ?? SHARED_BUDGETS).forInstance(prepared.integrationId)
+  const budgets = deps.budgets ?? SHARED_BUDGETS
+  const budget = budgets.forInstance(prepared.integrationId)
   const breakers = deps.breakers ?? SHARED_BREAKERS
   const connection = { tenantId: payload.tenantId, integrationId: prepared.integrationId }
   const record = (event: BreakerEvent) => breakers.record(env, connection, event)
   const clock = deps.clock ?? (() => env.now().getTime())
-  const context = serviceContext(env.now, timings)
+  const context = serviceContext(
+    env.now,
+    budgets.paceOf(prepared.integrationId, prepared.connector),
+    timings,
+  )
 
   // A write timed out on this connection: a good probe first.
   if ((await breakers.gate(env, connection)) === 'hold') {
@@ -276,7 +308,7 @@ async function sendOne(
   const availability = await readAvailability(
     prepared.connector,
     budget,
-    env.now,
+    context,
     timings,
     prepared.lines.map((line) => line.item),
     (call) => record({ kind: 'call', ...call }),
@@ -316,6 +348,8 @@ async function sendOne(
         }
       }
       const parsed = readingSchema(TableBillsSchema).safeParse(answer.value)
+      // A definite busy says nothing of the connection, as with no turn: no failed call.
+      if (parsed.success && !parsed.data.complete && parsed.data.busy === true) return parsed.data
       const complete = parsed.success && parsed.data.complete
       await record({ kind: 'call', ok: complete, elapsedMs: clock() - started })
       return parsed.success
@@ -348,18 +382,27 @@ async function sendOne(
     return { kind: 'settled', sentOrderId, state: 'not_sent', reason: 'ordering_paused' }
   }
 
+  const excludeBills: PosRef[] = []
   const request = {
     table: prepared.table,
     lines: [...prepared.lines],
     ref: sentOrderId,
     serviceDayStartsAt: prepared.serviceDayStartsAt.toISOString(),
-    excludeBills: [],
   }
   const capabilities = prepared.connector.capabilities
+  const added = async (extra: {
+    readonly posBillRef?: string
+    readonly matchedLines?: readonly string[]
+  }) => {
+    const to = capabilities.approvalAtBar ? 'awaiting_approval' : 'added'
+    const settled = await settle(to, null, extra)
+    if (to === 'added' && settled.kind === 'settled') await queueReading(env, payload)
+    return settled
+  }
   const add = async () => {
     try {
       const answer = await bounded(budget, timings.writeTimeoutMs, () =>
-        prepared.connector.addLines(context, request),
+        prepared.connector.addLines(context, { ...request, excludeBills: [...excludeBills] }),
       )
       if (answer.kind === 'answered') return answer.value
       // No turn: the round never left. Late: it may still land, so it is read back.
@@ -373,14 +416,38 @@ async function sendOne(
     }
   }
   let outcome = await add()
-  if (outcome.kind === 'refused' && outcome.refusal.code === 'bill_closed') {
-    // The bill closed between the read and the add; nothing was written, so one more try.
-    outcome = await add()
+  // The bill closed or was locked between the read and the add; nothing was written, so the table
+  // is read again and the round goes on the next open bill or a new one (D115). Where neither is
+  // allowed, what stopped the round is the reason it is Not sent.
+  for (
+    let tries = 1;
+    tries < ADD_TRIES &&
+    outcome.kind === 'refused' &&
+    (outcome.refusal.code === 'bill_closed' || outcome.refusal.code === 'bill_locked');
+    tries++
+  ) {
+    const { bill, code } = outcome.refusal
+    if (bill !== undefined) excludeBills.push(bill)
+    // A locked bill the connector does not name would be chosen again.
+    else if (code === 'bill_locked') break
+    const next = await add()
+    if (
+      code === 'bill_locked' &&
+      next.kind === 'refused' &&
+      next.refusal.code === 'needs_first_item'
+    ) {
+      break
+    }
+    outcome = next
   }
   // A read-back holds no other table up.
   turn.release()
   if (outcome.kind === 'no_turn') return settle('not_sent', 'pos_unreachable')
-  if (outcome.kind === 'refused' && LOGIN_SCOPES.has(outcome.refusal.scope)) {
+  if (outcome.kind === 'refused' && outcome.refusal.code === 'busy') {
+    // A definite busy says nothing of the connection, as with no turn.
+  } else if (outcome.kind === 'refused' && outcome.refusal.code === 'read_failed') {
+    await record({ kind: 'call', ok: false })
+  } else if (outcome.kind === 'refused' && LOGIN_SCOPES.has(outcome.refusal.scope)) {
     // The login or the venue was refused: the connection pauses at once.
     await record({ kind: 'refused', cause: outcome.refusal.code })
   } else if (outcome.kind === 'unknown') {
@@ -389,8 +456,7 @@ async function sendOne(
     await record({ kind: 'call', ok: true })
   }
   if (outcome.kind === 'done') {
-    const posBillRef = outcome.result.bill === null ? {} : { posBillRef: outcome.result.bill.pos }
-    return settle(capabilities.approvalAtBar ? 'awaiting_approval' : 'added', null, posBillRef)
+    return added(outcome.result.bill === null ? {} : { posBillRef: outcome.result.bill.pos })
   }
   if (outcome.kind === 'refused') {
     const { refusal } = outcome
@@ -401,6 +467,10 @@ async function sendOne(
         { itemId: line.itemId, name: line.name, available: false },
       ])
       return outOfStock([line.itemId])
+    }
+    // Nothing went out, and the POS said nothing of the round (D116).
+    if (refusal.code === 'busy' || refusal.code === 'read_failed') {
+      return settle('not_sent', 'pos_unreachable')
     }
     return settle('not_sent', refusal.code)
   }
@@ -429,7 +499,7 @@ async function sendOne(
       capabilities,
     })
     if (verdict.kind === 'landed') {
-      return settle(capabilities.approvalAtBar ? 'awaiting_approval' : 'added', null, {
+      return added({
         ...(verdict.bill === null ? {} : { posBillRef: verdict.bill.pos }),
         matchedLines: verdict.lines.map((line) => line.pos),
       })

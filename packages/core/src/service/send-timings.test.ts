@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { SERVICE_TIMINGS } from '../timings'
 import {
+  ADD_TRIES,
   AVAILABILITY_READS,
   BEFORE_READ_PAUSE_MS,
   BEFORE_READ_TRIES,
@@ -24,8 +25,8 @@ describe('the slot lease of each state', () => {
         (BEFORE_READ_TRIES - 1) * BEFORE_READ_PAUSE_MS +
         LEASE_MARGIN_MS,
     )
-    // The write, and its one more try after a closed bill.
-    expect(lease.sending * 1_000).toBeGreaterThanOrEqual(2 * write + LEASE_MARGIN_MS)
+    // The write, and its further tries after a closed or locked bill.
+    expect(lease.sending * 1_000).toBeGreaterThanOrEqual(ADD_TRIES * write + LEASE_MARGIN_MS)
     // The window, and the last read it started.
     expect(lease.checking * 1_000).toBeGreaterThanOrEqual(
       SERVICE_TIMINGS.readBackWindowMs + read + LEASE_MARGIN_MS,
