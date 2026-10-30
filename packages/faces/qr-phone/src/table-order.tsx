@@ -20,6 +20,7 @@ import {
   type CommandResult,
   type GuestCommand,
   isOutOfStock,
+  LOST_SEND_HOLD_MS,
   refusalText,
   refusedOutOfStock,
   type SentOrderView,
@@ -29,7 +30,7 @@ import {
   type ViewItem,
   type ViewModel,
 } from '@restro/shell'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 /** A command before its action id is made (one per kind, as the union says). */
 export type CommandDraft = GuestCommand extends infer C
@@ -69,11 +70,30 @@ export function useOrderCommands(
   view?: ViewModel,
 ) {
   const [notice, setNotice] = useState<string | null>(null)
+  // The last Send's answer was lost, before the host's state says so (it draws the line from then).
+  // It is no notice: the line is `state.sendLost`'s, and this only bridges the moment before it.
+  const [answerLost, setAnswerLost] = useState(false)
+  const hostLost = services?.state.sendLost != null
+  const hostSaid = useRef(false)
+  useEffect(() => {
+    if (hostLost) hostSaid.current = true
+    else if (hostSaid.current) {
+      hostSaid.current = false
+      setAnswerLost(false)
+    }
+  }, [hostLost])
+  // A host that never says it still lets the guest send again after the hold (D120).
+  useEffect(() => {
+    if (!answerLost) return
+    const timer = setTimeout(() => setAnswerLost(false), LOST_SEND_HOLD_MS)
+    return () => clearTimeout(timer)
+  }, [answerLost])
   const items = useMemo(() => (view === undefined ? null : itemsById(view)), [view])
   const send = useCallback(
     async (command: CommandDraft): Promise<CommandResult | null> => {
       if (services === undefined) return null
       setNotice(null)
+      setAnswerLost(false)
       let result: CommandResult
       try {
         result = await services.dispatch({ ...command, actionId: newActionId() } as GuestCommand)
@@ -88,7 +108,7 @@ export function useOrderCommands(
         result.code === ANSWER_LOST_CODE &&
         command.kind === 'order.send'
       ) {
-        setNotice(strings.sendLost)
+        setAnswerLost(true)
         return result
       }
       // A pay command's refusal is worded where the guest paid (the bill panel), not as the
@@ -118,7 +138,7 @@ export function useOrderCommands(
     },
     [services, strings, items],
   )
-  return { send, notice }
+  return { send, notice, answerLost }
 }
 
 /** What a sent order says on this phone (D116, D122 §5). */
@@ -250,12 +270,15 @@ export function OrderPanel({
   strings,
   send,
   notice,
+  answerLost,
 }: {
   readonly view: ViewModel
   readonly services: ServiceBinding | undefined
   readonly strings: ServiceStrings
   readonly send: (command: CommandDraft) => Promise<CommandResult | null>
   readonly notice: string | null
+  /** The last Send's answer was lost and the host's state does not say so yet. */
+  readonly answerLost: boolean
 }) {
   const items = useMemo(() => itemsById(view), [view])
   const [sending, setSending] = useState(false)
@@ -272,7 +295,8 @@ export function OrderPanel({
   const offline = services?.state.offline === true
   // A Send whose answer was lost (D120) says its own line in place of the general weak-signal one
   // (D122: "Nothing new was sent yet" would be false), and the bag is not offered for a re-send.
-  const sendLost = services?.state.sendLost ?? null
+  const hostSendLost = services?.state.sendLost ?? null
+  const sendLost = hostSendLost ?? (answerLost ? { ref: null } : null)
   const ordering = services?.state.ordering?.state ?? 'on'
   const night = services?.state.ordering?.night
   const phonesMayOrder =
@@ -352,7 +376,7 @@ export function OrderPanel({
           {strings.orderingOpensAt(night.at)}
         </p>
       ) : null}
-      {notice !== null && !(sendLost !== null && notice === strings.sendLost) ? (
+      {notice !== null ? (
         <p className="rq-note" role="alert" data-order-notice="">
           {notice}
         </p>

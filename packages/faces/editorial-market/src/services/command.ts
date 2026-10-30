@@ -8,12 +8,6 @@ import type { CommandResult, GuestCommand } from '@restro/shell'
 /** How long the face waits for the host's answer before it calls the outcome unknown. */
 export const SERVICE_TIMEOUT_MS = 15_000
 
-/**
- * How long a lost Send keeps the bag from sending again (D120: "in a few minutes"). After it the
- * guest may send again (the host's duplicate check, D117, still asks if the first one did land).
- */
-export const LOST_SEND_HOLD_MS = 180_000
-
 /** A uuid for one user action (version 4). */
 export function newActionId(): string {
   const webCrypto = globalThis.crypto

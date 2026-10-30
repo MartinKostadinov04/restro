@@ -12,7 +12,7 @@
 // "Stop location check" is also on the bill (bill-sheet.tsx). The face shows no position, pass or
 // token: it only calls the host's controls (`binding.location`).
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 import { Overlay } from '../overlay'
 import { newActionId } from './command'
@@ -46,7 +46,18 @@ export function LocationSheet() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [prompt, dismiss])
-  if (o === null || controls === undefined || location === null || prompt === 'none') return null
+  // Back from the location sheet, the focus goes to the close control of the sheet under it.
+  const wasUp = useRef(false)
+  const up = o !== null && controls !== undefined && location !== null && prompt !== 'none'
+  useEffect(() => {
+    if (wasUp.current && !up) {
+      document
+        .querySelector<HTMLElement>('.rm-overlay .rm-overlay-head button')
+        ?.focus({ preventScroll: true })
+    }
+    wasUp.current = up
+  }, [up])
+  if (!up) return null
   const { words, guest, state } = o
   // The notice the consent text says the details sit behind (the location's own field: it is there
   // whatever paying is).

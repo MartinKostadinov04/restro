@@ -15,6 +15,7 @@ import {
   bagReducer,
   type GuestCommand,
   type GuestStrings,
+  LOST_SEND_HOLD_MS,
   type Locale,
   OFFLINE_CODE,
   orderLines,
@@ -42,13 +43,7 @@ import {
 } from 'react'
 
 import { type HashRoute, useHashRoute } from '../use-dish-route'
-import {
-  LOST_SEND_HOLD_MS,
-  newActionId,
-  type Outcome,
-  runCommand,
-  SERVICE_TIMEOUT_MS,
-} from './command'
+import { newActionId, type Outcome, runCommand, SERVICE_TIMEOUT_MS } from './command'
 
 /* ---------------------------------------------------------------------------------------------
  * Sheets
@@ -392,15 +387,17 @@ function ActiveServices({
     if (!dishOpen) setEditing(null)
   }, [dishOpen])
 
-  // Escape closes the sheet.
+  // Escape closes the sheet, unless the location sheet is over it: that one is the top and takes the key.
+  const locationUp =
+    services?.location !== undefined && state.location != null && state.location.prompt !== 'none'
   useEffect(() => {
-    if (sheet === null) return
+    if (sheet === null || locationUp) return
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') closeSheet()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [sheet, closeSheet])
+  }, [sheet, closeSheet, locationUp])
 
   const canOrder = useCallback(
     (item: ViewItem) => features.ordering && item.order.controls,

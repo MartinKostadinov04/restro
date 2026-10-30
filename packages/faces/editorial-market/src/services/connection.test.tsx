@@ -5,11 +5,10 @@
 // the failed check) for the host's `location.prompt`, the Stop location check control, a lost Send's
 // line (D120), Send and Pay greyed while offline (D121), and the screen the face has open.
 
-import { stringsFor } from '@restro/shell'
+import { LOST_SEND_HOLD_MS, stringsFor } from '@restro/shell'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { LOST_SEND_HOLD_MS } from './command'
 import {
   drawFace,
   type FakeHost,
@@ -125,6 +124,46 @@ describe('the location sheet (RR-48, D119, D121, D122)', () => {
     expect(host.located).toEqual(['reopen'])
     page.update({ location: location('consent') })
     expect(screen.getByRole('dialog', { name: en.locationAllowAgain })).toBeTruthy()
+  })
+})
+
+describe('the location sheet over another sheet (RR-48)', () => {
+  /** The pay sheet open, then the location sheet stacked over it. */
+  function stacked() {
+    const host = fakeHost({ location: location('none'), tableBill: null, paying: payingOf() })
+    const page = drawFace(host)
+    fireEvent.click(screen.getByRole('button', { name: 'Pay' }))
+    page.update({ location: location('consent') })
+    return { host, page }
+  }
+
+  it('closes only the top sheet on Escape, and hands the focus back to the sheet under it', async () => {
+    const { host, page } = stacked()
+    expect(screen.getByRole('dialog', { name: en.locationAllowAgain })).toBeTruthy()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(host.located).toContain('dismiss')
+    // The pay sheet stays: the host has not yet dropped the prompt, and Escape did not close it.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.getByRole('dialog', { name: 'Pay' })).toBeTruthy()
+    expect(window.location.hash).toBe('#pay')
+    page.update({ location: location('none') })
+    expect(screen.queryByRole('dialog', { name: en.locationAllowAgain })).toBeNull()
+    const pay = screen.getByRole('dialog', { name: 'Pay' })
+    expect(document.activeElement).toBe(within(pay).getByRole('button', { name: 'Close' }))
+  })
+
+  it('leaves the page unlocked when the lower sheet closes first (the back button)', async () => {
+    const { page } = stacked()
+    expect(document.body.style.overflow).toBe('hidden')
+    await act(async () => {
+      window.history.back()
+    })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Pay' })).toBeNull())
+    // The location sheet is still up: the page stays locked behind it.
+    expect(document.body.style.overflow).toBe('hidden')
+    page.update({ location: location('none') })
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(document.body.style.overflow).toBe('')
   })
 })
 

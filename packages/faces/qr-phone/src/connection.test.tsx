@@ -230,6 +230,37 @@ describe('a Send whose answer was lost (RR-50, D120)', () => {
     expect(page.textContent).toContain(bg.sendLost)
   })
 
+  it('shows the line from the command’s own answer before the host’s state has it, and drops it with the host', async () => {
+    const state = base({ order: ORDER })
+    const lostAnswer = (command: { actionId: string }) =>
+      Promise.resolve({
+        actionId: command.actionId,
+        status: 'pending' as const,
+        message: null,
+        ref: null,
+        code: 'answer_lost',
+      })
+    const services: ServiceBinding = { state, dispatch: lostAnswer, setScreen: () => {} }
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+    const render = (next: ServiceState) =>
+      act(async () =>
+        root?.render(<QrPhoneFace view={view} services={{ ...services, state: next }} />),
+      )
+    await render(state)
+    await act(async () => host?.querySelector<HTMLButtonElement>('[data-send]')?.click())
+    // The host has not rendered the loss yet: the face still says the line, once, as no notice.
+    expect(host.textContent).toContain(en.sendLost)
+    expect(host.querySelectorAll('[data-order-notice]')).toHaveLength(0)
+    // The host's state says it, then lets go: the line goes with it, and no stale notice appears.
+    await render({ ...state, sendLost: { ref: null } })
+    expect(host.textContent).toContain(en.sendLost)
+    await render(state)
+    expect(host.textContent).not.toContain(en.sendLost)
+    expect(host.querySelectorAll('[data-order-notice]')).toHaveLength(0)
+  })
+
   it('keeps D122’s weak-connection line for the general weak signal', async () => {
     const page = await draw(base({ order: ORDER, offline: true }))
     expect(page.textContent).toContain(en.offline)
@@ -277,5 +308,12 @@ describe('the screen the face has open (RR-52, D121)', () => {
     const off = { ...view, features: { ...view.features, ordering: false } }
     await draw(base(), { calls, shown: off })
     expect(calls.screens.at(-1)).toBe('menu')
+  })
+
+  it('tells the host the bill when the bill panel is drawn, ordering on or off', async () => {
+    const calls: Calls = { stopped: { n: 0 }, screens: [] }
+    const off = { ...view, features: { ...view.features, ordering: false } }
+    await draw(payingState(), { calls, shown: off })
+    expect(calls.screens.at(-1)).toBe('bill')
   })
 })

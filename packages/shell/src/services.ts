@@ -773,6 +773,12 @@ export type GuestScreen = 'menu' | 'bag' | 'bill'
 export const ANSWER_LOST_CODE = 'answer_lost'
 
 /**
+ * How long a lost Send keeps the phone from sending again (D120: "in a few minutes"). After it the
+ * guest may send again (the host's duplicate check, D117, still asks if the first one did land).
+ */
+export const LOST_SEND_HOLD_MS = 180_000
+
+/**
  * The code of a Send or Pay the host did not make because the phone is offline (D121: "Send and Pay
  * are blocked, never queued"): `status` is `rejected` and nothing was sent.
  */

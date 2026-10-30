@@ -14,8 +14,9 @@
 //   menu the default (`order` while the order has lines, else `menu`).
 // - A Send whose answer is lost (the request threw, timed out, came back 5xx or unreadable; RR-50,
 //   D120) is answered `pending` with `answer_lost` and shown as `state.sendLost`: the order may
-//   already be in the POS, so no second Send goes out until it shows up as a sent order of the
-//   table, or a few minutes of answers found nothing (`LOST_SEND_HOLD_MS`).
+//   already be in the POS, so no second Send goes out for `LOST_SEND_HOLD_MS` and a poll that
+//   answered since (the table's sent orders carry no action id: another phone's order cannot be
+//   told from this one's, so the time limit alone lets go).
 // - "Stop location check" (`location.stop`, D119) drops the pass and remembers "declined".
 // - An order edit (`order.add`, `.change`, `.remove`, `.undo`, `.restore`) is drawn at once
 //   (optimistic: the shared reducer of `@restro/core`, with the same new line id the server will
@@ -71,6 +72,7 @@ import {
   type GuestScreen,
   GuestStateAnswerSchema,
   type GuestTableState,
+  LOST_SEND_HOLD_MS,
   type LocationControls,
   type LocationView,
   OFFLINE_CODE,
@@ -98,13 +100,6 @@ export const OFFLINE_AFTER_MS = 10_000
 
 /** A request that has not answered after this long is aborted (D121: "about 10 seconds"). */
 export const REQUEST_TIMEOUT_MS = 10_000
-
-/**
- * How long a lost Send keeps the phone from sending again (D120: "in a few minutes"): the later of
- * this and a poll that answered since. The Send's own request is long gone by then (it was aborted
- * or failed), so a late landing is not to be feared.
- */
-export const LOST_SEND_HOLD_MS = 180_000
 
 /** What the client needs from the page; tests pass their own. */
 export interface TableServicesDeps {
@@ -431,10 +426,17 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
   let pending: Pending[] = []
   let retired = false
   let lastAnswerAt = deps.now()
+  /** When the oldest request still without an answer went out, or null: nothing is outstanding. */
+  let awaitingSince: number | null = null
+  /** Counts the location stops: a poll that went out before one has its answer discarded. */
+  let generation = 0
   /** Turns `offline` on at the 10 s mark when no request ends to compute it (RR-51). */
   let cancelWatch: (() => void) | null = null
-  /** A Send of this phone whose answer was lost: the table's sent orders then, and when. */
-  let lost: { readonly at: number; readonly sentIds: ReadonlySet<string> } | null = null
+  /**
+   * A Send of this phone whose answer was lost, and when. The table's sent orders carry no action id,
+   * so this phone's order cannot be told from another's: only the hold's time limit lets go.
+   */
+  let lost: { readonly at: number } | null = null
   /** The screen the face says is open, or null: the default cadence. */
   let screen: GuestScreen | null = null
   let failures = 0
@@ -486,12 +488,17 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     else deps.memory?.set(PASS_KEY, next)
   }
 
-  const offline = () => running && deps.now() - lastAnswerAt > OFFLINE_AFTER_MS
+  // Offline is about 10 s without an answer to a request that went out (or keeps failing), never the
+  // idle gap before the next scheduled poll.
+  const offline = () =>
+    running && awaitingSince !== null && deps.now() - awaitingSince > OFFLINE_AFTER_MS
 
-  /** Notes an answer from the server and arms the watch that turns `offline` on if none follows. */
+  /** Notes an answer from the server: nothing is awaited any more, and the watch is let go. */
   function answered(): void {
     lastAnswerAt = deps.now()
-    armWatch()
+    awaitingSince = null
+    cancelWatch?.()
+    cancelWatch = null
   }
 
   function armWatch(): void {
@@ -529,6 +536,11 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
 
   /** A request of the guest API that gives up after about 10 s. */
   function request(url: string, init: RequestInit): Promise<Response> {
+    // The first request with no answer yet starts the clock, and the watch turns offline on with it.
+    if (awaitingSince === null) {
+      awaitingSince = deps.now()
+      armWatch()
+    }
     const controller = new AbortController()
     return guarded(deps.fetch(url, { ...init, signal: controller.signal }), () =>
       controller.abort(),
@@ -722,8 +734,6 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
   function accept(next: GuestTableState): void {
     if (server !== null && next.version < server.version) return
     server = next
-    // The Send whose answer was lost has landed: the table's sent orders carry it now (D120).
-    if (lost !== null && next.sentOrders.some((sent) => !lost?.sentIds.has(sent.id))) lost = null
     // The server saw no pass that holds: the one kept is dead (its sitting ended, or the code).
     if (next.location.state === 'needed' && pass !== null) keepPass(null)
   }
@@ -745,6 +755,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     polling = true
     let wait: number
     const asked = view()
+    const born = generation
     try {
       const since = server === null || whole ? '' : `&since=${server.version}`
       whole = false
@@ -765,19 +776,26 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
         const answer = GuestStateAnswerSchema.parse(await readJson(response))
         failures = 0
         answered()
-        // An edit on its way brings its own fresh state; a poll from before it would draw it twice.
-        if (!answer.unchanged && pending.length === 0) accept(answer)
-        if (
-          answer.unchanged &&
-          server !== null &&
-          (answer.location !== server.location.state ||
-            answer.night !== server.ordering.night.state)
-        ) {
+        if (born !== generation) {
+          // The location check was stopped while this poll was out: its answer is of the old pass,
+          // so it is dropped and the whole state is asked for again at once.
           whole = true
           wait = 0
         } else {
-          // The face opened another screen while this one was out: ask again for that one at once.
-          wait = view() === asked ? answer.next : 0
+          // An edit on its way brings its own fresh state; a poll from before it would draw it twice.
+          if (!answer.unchanged && pending.length === 0) accept(answer)
+          if (
+            answer.unchanged &&
+            server !== null &&
+            (answer.location !== server.location.state ||
+              answer.night !== server.ordering.night.state)
+          ) {
+            whole = true
+            wait = 0
+          } else {
+            // The face opened another screen while this one was out: ask again for that one at once.
+            wait = view() === asked ? answer.next : 0
+          }
         }
       }
     } catch {
@@ -843,7 +861,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     /** The outcome is unknown: for a Send the order may already be in the POS (D120). */
     const unknown = (): CommandResult => {
       if (command.kind === 'order.send') {
-        lost = { at: deps.now(), sentIds: new Set((server?.sentOrders ?? []).map((o) => o.id)) }
+        lost = { at: deps.now() }
       }
       return settle(answer('pending', ANSWER_LOST_CODE))
     }
@@ -1006,6 +1024,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       // asks for the whole state without the pass and confirms it).
       keepPass(null)
       remember('declined')
+      generation += 1
       waiting = null
       prompt = 'none'
       if (server !== null) {
@@ -1074,6 +1093,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     },
     stop() {
       running = false
+      awaitingSince = null
       cancelWatch?.()
       cancelWatch = null
       cancelTimer?.()
