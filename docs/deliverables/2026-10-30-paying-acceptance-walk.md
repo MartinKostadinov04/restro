@@ -4,7 +4,7 @@
 
 Everything in spec #102 is built on the branch `or/foundation`. This page says how to set up a local database for paying and what to look at, screen by screen. Each check is one thing to see; if it is not as written, note it and go on. Part 1 (ordering onto the bill, Tonight) is the Ordering lead's walk; this one assumes a guest can already order onto a table's bill.
 
-**The guest page here is the plain test template, and a real venue can't order or pay on it yet.** Ordering and paying reach the server only from the hidden test template; the demo seed puts Demo Bar on it. On Editorial Market, the template a real venue uses, the bill, Pay and Call a waiter stay off until the menu designer's #239 lands (the repair review's RR-60). Judge what the guest can do and the words, not the look.
+**The guest page here is the plain test template, and a real venue can't order or pay on it yet.** Ordering and paying reach the server only from the hidden test template; the demo seed puts Demo Bar on it. On the templates a real venue uses, the bill, Pay and Call a waiter stay off until the menu designer's renderer lands (#171, #239; the repair review's RR-60). Judge what the guest can do and the words, not the look. Before any pilot you check ordering and paying again on the renderer, on both Basic and Editorial (named on #171).
 
 Two kinds of check:
 - **Local:** your PC, the simulated POS (`sim-pos`) and the simulated payment provider (`sim-pay`). No card, no Stripe. Sections A to F.
