@@ -91,7 +91,6 @@ export interface PaymentProvider {
     accountRef: ProviderRef,
     notice: ProviderNotice,
   ): Promise<Reading<ProviderPayment | null>>
-  /** Capture once, at most the hold, idempotent by key: the only step that moves money. */
   /**
    * Every refund of a payment as the provider lists it now, oldest first, by the provider's own id
    * (#261). A read only: Restro never makes a refund. A list that could not be read to its end, or
@@ -101,6 +100,7 @@ export interface PaymentProvider {
     accountRef: ProviderRef,
     paymentRef: ProviderRef,
   ): Promise<Reading<readonly ProviderRefund[]>>
+  /** Capture once, at most the hold, idempotent by key: the only step that moves money. */
   capture(request: CaptureRequest): Promise<PaymentWriteOutcome<ProviderPayment>>
   /** Release a payment that is not captured, idempotent by key; nothing moves. */
   release(request: ReleaseRequest): Promise<PaymentWriteOutcome<ProviderPayment>>
