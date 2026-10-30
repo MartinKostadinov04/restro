@@ -10,17 +10,20 @@ Two kinds of check:
 
 ## Before you start (once)
 
+Do the ordering guide first ([2026-10-30-ordering-acceptance-walk](2026-10-30-ordering-acceptance-walk.md)): paying starts from a table with an order on its bill. Steps 1 to 6 are the same in both guides; you need them once.
+
 1. **Check out the branch and install:** `git checkout or/foundation`, `pnpm install`.
 2. **The local Postgres** must run (`pnpm db:local` in its own terminal).
-3. **A separate database for this walk,** not `restro_accept` (its Demo Club is linked to the real barsy demo installation). Create an empty one, say `restro_accept_pay`, point `DATABASE_URL_OWNER` at it and run `pnpm db:migrate` and `pnpm db:roles` yourself.
-4. **The demo data:** `pnpm db:seed:dev` (with the demo menu, so without `SEED_DEMO_MENU=0`). It makes **Demo Bar**, a venue on the simulated POS. Its bars and tables come from the simulator, read by the worker.
-5. **`.env.local`,** besides the database lines:
+3. **A separate database for this walk,** not `restro_accept` (its Demo Club is linked to the real barsy demo installation). Create an empty one, say `restro_accept_pay`, point `DATABASE_URL_OWNER` and `DATABASE_URL` at it and run `pnpm db:migrate` and `pnpm db:roles` yourself.
+4. **The demo data:** `pnpm db:seed:dev` (with the demo menu, so without `SEED_DEMO_MENU=0`). It makes **Demo Bar**, a venue on the simulated POS, with ordering, Call a waiter, the bill and paying switched on for guests, drawn by the plain test template (the real guest template comes with the menu designer). Its bars and tables come from the simulator, read by the worker.
+5. **Run, each in its own terminal:** `pnpm sim:serve` (the simulated POS), `pnpm dev` (the web app and the worker). Open http://localhost:3000 and sign in as the owner (`owner@demo-club.test`).
+6. **Publish Demo Bar once:** Demo Bar › Composer › Publish, so the guest page takes the test template and the guest services.
+7. **The paying lines in `.env.local`,** then restart `pnpm dev`:
    - `PAYMENTS_ENV=development` and `PAYMENTS_PROVIDER=sim-pay` (the simulated provider; Section G switches to Stripe);
    - the Turnstile test keys stay as `.env.example` has them (local only);
    - `SIM_PAY_NOTICE_SECRET` as `.env.example` shows.
-6. **Run, each in its own terminal:** `pnpm sim:serve` (the simulated POS), `pnpm dev` (the web app and the worker). Open http://localhost:3000 and sign in as the owner (`owner@demo-club.test`).
-7. **A phone for the guest:** set `PUBLIC_BASE_URL` to this PC's network address (for example http://192.168.1.20:3000) to scan from your phone on the same Wi-Fi, or open the table's guest address in a narrow browser window. Two phones (or two browser windows) for Section C.
-8. **Acting as the waiter at the till:** `pnpm sim-pos waiter add-round --table 7 --items 2001:2,2502` puts a round on table 7's bill; `pnpm sim-pos ops` lists the rest.
+8. **A phone for the guest:** set `PUBLIC_BASE_URL` to this PC's network address (for example http://192.168.1.20:3000) to scan from your phone on the same Wi-Fi, or open the table's guest address in a narrow browser window. Two phones (or two browser windows) for Section C.
+9. **Acting as the waiter at the till:** `pnpm sim-pos waiter add-round --table 7 --items 2001:2,2502` puts a round on table 7's bill; `pnpm sim-pos ops` lists the rest.
 
 ## A. The owner's settings: Demo Bar › Settings › Paying
 
@@ -44,7 +47,7 @@ Two kinds of check:
 
 ## C. The guest pays (phone)
 
-Open a table, have the waiter put a round on (step 8 above), and open the table's page on the phone.
+Open a table, have the waiter put a round on (step 9 above), and open the table's page on the phone.
 
 - **The bill:** "Your table's bill", with "Updated {n} s ago"; the lines and amounts are the till's own.
 - **Pay:** "What are you paying for?" with your lines to tick and "The whole bill". Nothing ticked: "Choose at least one line."
