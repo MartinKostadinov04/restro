@@ -90,7 +90,6 @@ import {
   BUDGET_WAIT_MS,
   billIsRound,
   HOLD_READ_TRIES,
-  HOLD_UNREAD_REASON,
   isFinalPaymentState,
   LEASE_MARGIN_MS,
   PAYMENT_CONFIRM_MS,
@@ -360,8 +359,7 @@ async function holdWentUnread(env: PaymentEnvironment, target: PaymentJob): Prom
         and(
           eq(logEntries.venueId, target.venueId),
           eq(logEntries.paymentId, target.paymentId),
-          eq(logEntries.kind, 'payment.state'),
-          eq(logEntries.reason, HOLD_UNREAD_REASON),
+          eq(logEntries.kind, 'payment.hold_unread'),
         ),
       )
       .limit(1),

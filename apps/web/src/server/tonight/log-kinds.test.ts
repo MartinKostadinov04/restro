@@ -1,6 +1,7 @@
 // The Log screen has a sentence for every kind of `LOG_KINDS` (#86; Log plan §5 "A code with no
 // sentence"): add a kind to core's list without a sentence and this fails, so "Something happened
-// (kind)" is never shown. `lease.taken_over` alone has none, and never shows (D120).
+// (kind)" is never shown. `lease.taken_over` and `payment.hold_unread` alone have none, and never
+// show (D120).
 import { LOG_KIND_GROUP, LOG_KINDS } from '@restro/core/service'
 import { describe, expect, it } from 'vitest'
 
@@ -18,7 +19,7 @@ describe('every kind of the Log has its place on the screen', () => {
     const hidden = Object.entries(LOG_KIND_GROUP)
       .filter(([, group]) => group === null)
       .map(([kind]) => kind)
-    expect(noSentence).toEqual(['lease.taken_over'])
+    expect(noSentence).toEqual(['lease.taken_over', 'payment.hold_unread'])
     expect(hidden).toEqual(noSentence)
   })
 })

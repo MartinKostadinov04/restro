@@ -616,7 +616,7 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
     expect(calls('closeBill')).toBe(0)
     expect(holdOf(id)).toEqual([expect.objectContaining({ status: 'held' })])
     const [tries] = await query<{ count: string }>(
-      `select count(*) from restro.log_entries where payment_id = $1 and reason = 'hold_unread'`,
+      `select count(*) from restro.log_entries where payment_id = $1 and kind = 'payment.hold_unread'`,
       [id],
     )
     expect(Number(tries?.count)).toBe(HOLD_READ_TRIES)

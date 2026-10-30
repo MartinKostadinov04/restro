@@ -706,26 +706,19 @@ export function lastCheck(input: {
 }
 
 /**
- * `payment.checked`: the worker's reading of the isolated bill and a fresh one of the real table.
- * `isolated` → `checked` (the amount lowered for voided lines), or stopped `check_failed` with a
- * staff alert, for the worker to move the lines back and release the hold.
- */
-/**
  * How often the last check asks for a hold the provider won't show before it gives up (RR-18): a
  * job's own tries (its first and `retryLimit` 5), about a minute. A provider that is only slow has
  * its answer by then, and the guest is not left waiting on one that has stopped answering.
  */
 export const HOLD_READ_TRIES = 6
 
-/** The Log's reason for one such failed read: the count of them is what bounds the tries. */
-export const HOLD_UNREAD_REASON = 'hold_unread'
-
 /** The check's failure for a hold that could not be read. */
 export const HOLD_UNREADABLE = 'hold_unreadable'
 
 /**
  * `payment.hold_unread`: the provider did not show a payment's hold at the last check (D125: lost
- * access; a read that says nothing about the hold). Logged, and answers how many times so far: at
+ * access; a read that says nothing about the hold). Logged under its own kind, which only Restro's
+ * team sees, and answers how many times so far: the count is what bounds the tries. At
  * `HOLD_READ_TRIES` the worker sends the check with no hold (`failed`, a manager told). A read that
  * says nothing never settles a hold: `cancel` reads it again before any release.
  */
@@ -739,7 +732,12 @@ export function paymentHoldUnread() {
       const locked = await lockRoute(stx, command.paymentId)
       if (refusedLock(locked)) return locked
       const { payment } = locked
-      await logPayment(stx, payment, payment.state, HOLD_UNREAD_REASON)
+      await stx.log({
+        kind: 'payment.hold_unread',
+        paymentId: payment.id,
+        tableId: payment.tableId,
+        sittingId: payment.sittingId,
+      })
       const [row] = await stx.tx
         .select({ tries: count() })
         .from(logEntries)
@@ -747,8 +745,7 @@ export function paymentHoldUnread() {
           and(
             eq(logEntries.venueId, stx.venueId),
             eq(logEntries.paymentId, payment.id),
-            eq(logEntries.kind, 'payment.state'),
-            eq(logEntries.reason, HOLD_UNREAD_REASON),
+            eq(logEntries.kind, 'payment.hold_unread'),
           ),
         )
       return at(payment, payment.state, true, { tries: row?.tries ?? 0 })
@@ -756,6 +753,11 @@ export function paymentHoldUnread() {
   })
 }
 
+/**
+ * `payment.checked`: the worker's reading of the isolated bill and a fresh one of the real table.
+ * `isolated` → `checked` (the amount lowered for voided lines), or stopped `check_failed` with a
+ * staff alert, for the worker to move the lines back and release the hold.
+ */
 export function paymentChecked() {
   return defineCommand({
     schema: z.strictObject({

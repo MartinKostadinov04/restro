@@ -26,7 +26,6 @@
 import { JOB_NAMES, prepareJob, providerRef } from '@restro/core'
 import {
   applyService,
-  HOLD_UNREAD_REASON,
   isFinalPaymentState,
   PAYMENT_UNCONFIRMED_REASONS,
   RECEIPT_EMAIL_KEPT_MS,
@@ -186,7 +185,7 @@ export async function recoverPayments(
             holdUnread: sql<boolean>`${payments.state} = 'cancelling' and exists (select 1
             from restro.log_entries l
             where l.venue_id = ${payments.venueId} and l.payment_id = ${payments.id}
-              and l.kind = 'payment.state' and l.reason = ${HOLD_UNREAD_REASON})`,
+              and l.kind = 'payment.hold_unread')`,
           })
           .from(payments)
           .where(
