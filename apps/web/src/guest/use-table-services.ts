@@ -181,6 +181,7 @@ export function useTableServices(code: string | null): ServiceBinding | undefine
             state,
             dispatch: services.dispatch,
             location: services.location,
+            setScreen: services.setScreen,
             payForm,
             payControls: { dismiss: services.dismissPayment },
           },

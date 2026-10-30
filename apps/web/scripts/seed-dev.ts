@@ -8,8 +8,8 @@
 // `provisionVenue`, and the venue's menu with core's `provisionMenu` and `apply()` (a made-up
 // barsy integration and pull: see lib/demo-menu.ts). It connects as the app role (DATABASE_URL),
 // like the web app.
-import { menuPath } from '@restro/core'
-import { provisionTenant, provisionVenue } from '@restro/core/apply'
+import { CALL_WAITER_KINDS, menuPath, type VenueId } from '@restro/core'
+import { provisionTenant, provisionVenue, setGuestFeatures } from '@restro/core/apply'
 import { authMember, authOrganization, venues, withTenant } from '@restro/db'
 import { and, eq } from 'drizzle-orm'
 
@@ -110,6 +110,23 @@ async function main(): Promise<void> {
   // through apply() from the same scenario file the simulator loads; its bars and tables come
   // from the simulator through the worker's floor reading (start `pnpm sim:serve` and the worker).
   const demoBar = seedsDemoBar(process.env) ? await seedDemoBar(pool, organizationId) : null
+
+  // 7. Demo Bar's guest services on, for the ordering and paying walks from a phone. The change
+  // reaches guests with the next publish. Its page draws the default template, which shows them
+  // once #239 lands.
+  if (demoBar !== null) {
+    const demoBarId = demoBar.venueId as VenueId
+    await setGuestFeatures(pool, organizationId, {
+      venueId: demoBarId,
+      features: {
+        filters: true,
+        call_waiter: { enabled: true, kinds: [...CALL_WAITER_KINDS] },
+        bill: true,
+        ordering: true,
+        pay: true,
+      },
+    })
+  }
 
   console.log(
     JSON.stringify({

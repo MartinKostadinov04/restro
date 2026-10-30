@@ -7,14 +7,31 @@
 // managers and the shared tablet and not for a waiter. Skipped without a database.
 import { createHash, randomUUID } from 'node:crypto'
 
+import fc from 'fast-check'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { hasDatabase } from '../apply/test-database'
 import { newId } from '../ids'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import type { ServiceActor, ServiceContext } from './context'
-import { applyService, readLog, readPaymentDetail, readTonight, type ServiceCommand } from './index'
+import {
+  applyService,
+  readLog,
+  readNightPayments,
+  readPaymentDetail,
+  readTonight,
+  type ServiceCommand,
+} from './index'
+import { disputeRetainUntil } from './payment-observe'
 import { DEFAULT_ROLE_PERMISSIONS } from './permissions'
+
+describe('how long a closed dispute keeps its payment', () => {
+  it('is six months, to the day (D122 §8)', () => {
+    expect(disputeRetainUntil(new Date('2026-03-15T10:00:00.000Z')).toISOString()).toBe(
+      '2026-09-15T10:00:00.000Z',
+    )
+  })
+})
 
 describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', () => {
   let world: ServiceWorld
@@ -234,6 +251,54 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
     ])
   })
 
+  // Hot spot 10 (RR-1): each row is a storno to-do, so what is still to storno must be what the
+  // provider says was refunded, after every reading, whatever happened between two readings: the
+  // venue's refunds made and failed, in any batch. Today's rows follow one total, not refunds.
+  // RR-1: red until its fix; the fix removes .fails.
+  it.fails('keeps the active refund rows adding up to the provider’s total after every reading', async () => {
+    const op = fc.oneof(
+      fc.record({ kind: fc.constant('made' as const), minor: fc.constantFrom(100, 200, 300, 500) }),
+      fc.record({ kind: fc.constant('failed' as const), which: fc.nat({ max: 5 }) }),
+    )
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(fc.array(op, { minLength: 1, maxLength: 2 }), { minLength: 1, maxLength: 4 }),
+        async (readings) => {
+          const target = await captured()
+          const refunds: number[] = []
+          const total = () => refunds.reduce((sum, minor) => sum + minor, 0)
+          for (const reading of readings) {
+            for (const event of reading) {
+              if (event.kind === 'made' && total() + event.minor <= 2_000) refunds.push(event.minor)
+              if (event.kind === 'failed' && refunds.length > 0) {
+                refunds.splice(event.which % refunds.length, 1)
+              }
+            }
+            await run(observe(target, { refundedMinor: total() }), worker())
+            const active = (await refundRows(target.id)).filter((row) => row.failed_at === null)
+            expect(active.reduce((sum, row) => sum + Number(row.amount_minor), 0)).toBe(total())
+          }
+        },
+      ),
+      {
+        numRuns: 40,
+        // The claim's case: a 500 refund made, then it fails and a new 100 is made before the next
+        // reading. The to-do stays 500; the provider's total is 100.
+        examples: [
+          [
+            [
+              [{ kind: 'made', minor: 500 }],
+              [
+                { kind: 'failed', which: 0 },
+                { kind: 'made', minor: 100 },
+              ],
+            ],
+          ],
+        ],
+      },
+    )
+  }, 120_000)
+
   it('marks nothing and makes no row when the total falls by an amount no row has', async () => {
     const target = await captured()
     await run(observe(target, { refundedMinor: 500 }), worker())
@@ -395,6 +460,181 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
         await run({ type: 'payment.storno_undo', refundId }, context(user(managerId))),
       ).toMatchObject({ status: 'refused', code: 'invalid_command' })
       expect((await refundRows(target.id))[0]?.storno_at).toBeInstanceOf(Date)
+    })
+  })
+
+  describe('"Got it" on a refund that did not go through (#234)', () => {
+    const seen = (refundId: string) => ({ type: 'payment.refund_failed_seen', refundId })
+    const unsee = (refundId: string, token: { entry: number }) => ({
+      type: 'payment.refund_failed_seen_undo',
+      refundId,
+      undo: token,
+    })
+    const failedRows = async (actor: ServiceActor, paymentId: string) => {
+      const result = await readTonight(world.app, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        actor,
+      })
+      if (!result.ok) throw new Error(result.code)
+      return result.tonight.refunds?.failed.filter((row) => row.paymentId === paymentId) ?? []
+    }
+    const tabletActor = (): ServiceActor => ({
+      kind: 'user',
+      userId: deviceUserId,
+      sessionId: deviceSession,
+    })
+    /** A refund whose storno was made and which then did not go through at the provider. */
+    async function failedAfterStorno() {
+      const target = await captured()
+      await run(observe(target, { refundedMinor: 500 }), worker())
+      const refundId = (await refundRows(target.id))[0]?.id as string
+      await run({ type: 'payment.storno_done', refundId }, context(user(managerId)))
+      await run(observe(target, { refundedMinor: 0 }), worker())
+      return { target, refundId }
+    }
+
+    it('takes the row off Tonight, writes the Log line, changes nothing a second time and comes back with Undo', async () => {
+      const { target, refundId } = await failedAfterStorno()
+      expect(await failedRows(user(managerId), target.id)).toHaveLength(1)
+      // The tablet reads it too (a read that failed would throw), before anyone said Got it.
+      expect(await failedRows(tabletActor(), target.id)).toHaveLength(1)
+
+      const answer = await run(seen(refundId), context(user(managerId)))
+      expect(answer).toMatchObject({ status: 'accepted', details: { changed: true } })
+      const token = {
+        entry: (answer as unknown as { details: { undoEntry: number } }).details.undoEntry,
+      }
+      expect(token.entry).toBeGreaterThan(0)
+      expect(await failedRows(user(managerId), target.id)).toHaveLength(0)
+      // The tablet, a manager's PIN there, no longer sees it either.
+      expect(await failedRows(tabletActor(), target.id)).toHaveLength(0)
+      expect(await logKinds(target.id, 'payment.refund_failed_seen')).toMatchObject([
+        { to_state: 'seen', details: { refundId } },
+      ])
+      // One money line in the Log, with no amount in it.
+      const log = await readLog(world.app, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        actor: user(managerId),
+        search: target.ref,
+      })
+      if (!log.ok) throw new Error(log.code)
+      expect(
+        log.page.rows.filter((line) => line.kind === 'payment.refund_failed_seen'),
+      ).toHaveLength(1)
+
+      // The end of the night marks it seen, with who (the refund is of the payment's day).
+      const night = await readNightPayments(world.app, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        actor: user(managerId),
+      })
+      if (!night.ok) throw new Error(night.code)
+      const nightRefund = night.payments.money?.refunds.find((row) => row.refundId === refundId)
+      expect(nightRefund).toMatchObject({ failed: true, seen: { via: 'tonight' } })
+      expect(nightRefund?.seen?.at).toBeInstanceOf(Date)
+
+      // A second "Got it" changes nothing: no new Log entry, and no token to undo with.
+      const again = await run(seen(refundId), context(user(managerId)))
+      expect(again).toMatchObject({ status: 'accepted', details: { changed: false } })
+      expect(
+        (again as unknown as { details: Record<string, unknown> }).details.undoEntry,
+      ).toBeUndefined()
+      expect(await logKinds(target.id, 'payment.refund_failed_seen')).toHaveLength(1)
+
+      // Undo brings the row back, and writes its own entry.
+      expect(await run(unsee(refundId, token), context(user(managerId)))).toMatchObject({
+        status: 'accepted',
+        details: { changed: true },
+      })
+      expect(await failedRows(user(managerId), target.id)).toHaveLength(1)
+      expect(await logKinds(target.id, 'payment.refund_failed_seen')).toMatchObject([
+        { to_state: 'seen' },
+        { to_state: 'open' },
+      ])
+      // The old token is now stale if the refund is answered again.
+      await run(seen(refundId), context(user(managerId)))
+      expect(await run(unsee(refundId, token), context(user(managerId)))).toMatchObject({
+        status: 'refused',
+        code: 'undo_stale',
+      })
+      expect(await failedRows(user(managerId), target.id)).toHaveLength(0)
+    })
+
+    it('refuses a waiter, a refund that is not failed or failed before its storno, and one this venue does not have', async () => {
+      const { target, refundId } = await failedAfterStorno()
+      expect(await run(seen(refundId), context(user(staffUserId)))).toMatchObject({
+        status: 'refused',
+        code: 'permission_denied',
+      })
+      expect(await failedRows(user(managerId), target.id)).toHaveLength(1)
+      expect(await run(seen(newId('rf')), context(user(managerId)))).toMatchObject({
+        status: 'refused',
+        code: 'refund_missing',
+      })
+      const live = await captured()
+      await run(observe(live, { refundedMinor: 300 }), worker())
+      const liveId = (await refundRows(live.id))[0]?.id as string
+      expect(await run(seen(liveId), context(user(managerId)))).toMatchObject({
+        status: 'refused',
+        code: 'refund_not_failed',
+      })
+      // A refund that failed before its storno was made is not on Tonight's list, so no Got it.
+      const early = await captured()
+      await run(observe(early, { refundedMinor: 400 }), worker())
+      await run(observe(early, { refundedMinor: 0 }), worker())
+      const earlyId = (await refundRows(early.id))[0]?.id as string
+      expect((await refundRows(early.id))[0]?.failed_at).toBeInstanceOf(Date)
+      expect(await run(seen(earlyId), context(user(managerId)))).toMatchObject({
+        status: 'refused',
+        code: 'invalid_command',
+      })
+      expect(await logKinds(early.id, 'payment.refund_failed_seen')).toHaveLength(0)
+    })
+
+    it('takes the Undo only with the token of the very "Got it" it takes back', async () => {
+      const a = await failedAfterStorno()
+      const b = await failedAfterStorno()
+      const tokenOf = async (refundId: string) => ({
+        entry: (
+          (await run(seen(refundId), context(user(managerId)))) as unknown as {
+            details: { undoEntry: number }
+          }
+        ).details.undoEntry,
+      })
+      const tokenA = await tokenOf(a.refundId)
+      const tokenB = await tokenOf(b.refundId)
+      expect(await run(unsee(a.refundId, tokenB), context(user(managerId)))).toMatchObject({
+        status: 'refused',
+        code: 'invalid_command',
+      })
+      expect(
+        await run(unsee(a.refundId, { entry: 999_999_999 }), context(user(managerId))),
+      ).toMatchObject({ status: 'refused', code: 'undo_expired' })
+      expect(await failedRows(user(managerId), a.target.id)).toHaveLength(0)
+      expect(await run(unsee(a.refundId, tokenA), context(user(managerId)))).toMatchObject({
+        status: 'accepted',
+        details: { changed: true },
+      })
+      expect(await failedRows(user(managerId), a.target.id)).toHaveLength(1)
+      expect(await failedRows(user(managerId), b.target.id)).toHaveLength(0)
+    })
+
+    it('still leaves after three days when nobody said Got it, and a seen one stays gone', async () => {
+      const { target, refundId } = await failedAfterStorno()
+      await world.owner.query(
+        "update restro.payment_refunds set failed_at = now() - interval '4 days' where id = $1",
+        [refundId],
+      )
+      expect(await failedRows(user(managerId), target.id)).toHaveLength(0)
+      await world.owner.query(
+        "update restro.payment_refunds set failed_at = now() - interval '2 days' where id = $1",
+        [refundId],
+      )
+      expect(await failedRows(user(managerId), target.id)).toHaveLength(1)
+      await run(seen(refundId), context(user(managerId)))
+      expect(await failedRows(user(managerId), target.id)).toHaveLength(0)
     })
   })
 

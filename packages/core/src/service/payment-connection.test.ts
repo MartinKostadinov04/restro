@@ -791,6 +791,74 @@ describe.skipIf(!hasDatabase)('connecting a payment account (as the restro_app r
       expect(await account()).toMatchObject({ state: 'connecting', account_ref: ACCOUNT })
     })
 
+    /** The table's open sitting: the seeded payments of these loops share it. */
+    const sittingOf = async (tableId: string) =>
+      (
+        await world.owner.query<{ id: string }>(
+          'select id from restro.sittings where table_id = $1 and ended_at is null',
+          [tableId],
+        )
+      ).rows[0]?.id ?? (await world.openSitting(tableId))
+
+    // RR-38: every state in which a guest is mid-payment, not only the first one.
+    it.each([
+      'requested',
+      'priced',
+      'awaiting_guest',
+      'held',
+      'queued',
+      'isolated',
+      'checked',
+      'closed',
+      'cancelling',
+    ])('refuses Disconnect while a payment is %s', async (state) => {
+      await connected(true)
+      const tableId = world.tables[2] as string
+      const sittingId = await sittingOf(tableId)
+      const paymentId = `py_${randomUUID().replaceAll('-', '').slice(0, 20)}`
+      await world.owner.query(
+        `insert into restro.payments
+           (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
+            currency, provider_kind, source, actor, job_id)
+         values ($1, $2, $3, $4, $5, current_date, 'on_bill', $6,
+                 encode(sha256(convert_to($1, 'UTF8')), 'hex'), 'EUR', 'sim-pay',
+                 'restro', 'system', 'test-seed')`,
+        [paymentId, world.tenantId, world.venueId, tableId, sittingId, state],
+      )
+      const answer = await run({ type: 'payment_account.disconnect' })
+      const after = (await account())?.state
+      await world.owner.query(
+        `update restro.payments set state = 'released', settled_at = now() where id = $1`,
+        [paymentId],
+      )
+      expect(answer).toMatchObject({ status: 'refused', code: 'payment_in_flight' })
+      expect(after).toBe('connected')
+    })
+
+    // D125: "An owner's own "Disconnect" waits until no guest is mid-payment." An unconfirmed
+    // payment still has the guest's card held, and "Receipt printed" still captures it.
+    it('refuses Disconnect while a card is held on an unconfirmed payment nobody has answered', async () => {
+      await connected(true)
+      const tableId = world.tables[2] as string
+      const sittingId = await sittingOf(tableId)
+      const paymentId = `py_${randomUUID().replaceAll('-', '').slice(0, 20)}`
+      await world.owner.query(
+        `insert into restro.payments
+           (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, reason,
+            handle_hash, currency, provider_kind, settled_at, source, actor, job_id)
+         values ($1, $2, $3, $4, $5, current_date, 'on_bill', 'unconfirmed', 'close_unknown',
+                 encode(sha256(convert_to($1, 'UTF8')), 'hex'), 'EUR', 'sim-pay', now(),
+                 'restro', 'system', 'test-seed')`,
+        [paymentId, world.tenantId, world.venueId, tableId, sittingId],
+      )
+      const answer = await run({ type: 'payment_account.disconnect' })
+      await world.owner.query(
+        `update restro.payments set state = 'released', reason = 'test' where id = $1`,
+        [paymentId],
+      )
+      expect(answer).toMatchObject({ status: 'refused', code: 'payment_in_flight' })
+    })
+
     it('is refused while any payment of the venue is not final, and goes through once it is', async () => {
       await connected(true)
       const tableId = world.tables[0] as string

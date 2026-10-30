@@ -1,6 +1,8 @@
+import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_ORDERING_SETTINGS, type ServiceHours } from './ordering-settings'
+import { serviceDate } from './service-day'
 import {
   guestNight,
   hoursConfigured,
@@ -128,11 +130,15 @@ describe('serviceNightAt', () => {
       sat: { opens: '22:00', lastOrders: '03:30', closes: '03:45' },
     }
     const night = serviceNightAt(at('2026-03-28T21:00:00Z'), config(jump))
-    expect(night.lastOrdersAt!.getTime()).toBeGreaterThanOrEqual(
+    expect((night.lastOrdersAt as Date).getTime()).toBeGreaterThanOrEqual(
       at('2026-03-29T01:00:00Z').getTime(),
     )
-    expect(night.lastOrdersAt!.getTime()).toBeLessThanOrEqual(at('2026-03-29T01:30:00Z').getTime())
-    expect(night.closesAt!.getTime()).toBeGreaterThan(night.lastOrdersAt!.getTime())
+    expect((night.lastOrdersAt as Date).getTime()).toBeLessThanOrEqual(
+      at('2026-03-29T01:30:00Z').getTime(),
+    )
+    expect((night.closesAt as Date).getTime()).toBeGreaterThan(
+      (night.lastOrdersAt as Date).getTime(),
+    )
   })
 
   it('names the next change', () => {
@@ -254,5 +260,102 @@ describe('guestNight', () => {
     expect(phonesMaySend({ state: 'last_orders', at: '04:30' })).toBe(true)
     expect(phonesMaySend({ state: 'opens_later', at: '22:00' })).toBe(false)
     expect(phonesMaySend({ state: 'closed', at: null })).toBe(false)
+  })
+})
+
+// Repair-review, hot spot 7: every minute across the clock changes, for any hours of a night. The
+// service day never goes back, a phase of the night never goes back, and a table closed stays
+// closed; the wall-clock times stay in the order the venue set them.
+describe('the night across the clock changes, minute by minute (Europe/Sofia)', () => {
+  const ZONE = 'Europe/Sofia'
+  const RANK = {
+    closed_night: 0,
+    before_opening: 0,
+    open: 1,
+    last_orders_soon: 2,
+    ordering_closed: 3,
+  } as const
+  const clockTime = fc
+    .tuple(fc.integer({ min: 0, max: 23 }), fc.constantFrom(0, 15, 30, 45))
+    .map(([h, m]) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+  /** Minutes after the service day's start at 07:00: how the night's times are ordered. */
+  const after7 = (time: string) => {
+    const [h = 0, m = 0] = time.split(':').map(Number)
+    return (h * 60 + m - 7 * 60 + 24 * 60) % (24 * 60)
+  }
+  const hours = fc
+    .uniqueArray(clockTime, { minLength: 3, maxLength: 3, selector: after7 })
+    .map((times) => [...times].sort((a, b) => after7(a) - after7(b)))
+    .map(([opens, lastOrders, closes]) => ({ opens, lastOrders, closes }) as typeof NIGHT)
+  const CHANGES = [
+    // The autumn change: 04:00 back to 03:00 on 25 October 2026.
+    ['2026-10-24T04:30:00Z', '2026-10-25T05:30:00Z'],
+    // The spring change: 03:00 on to 04:00 on 28 March 2027.
+    ['2027-03-27T04:30:00Z', '2027-03-28T05:30:00Z'],
+  ] as const
+
+  it.each(CHANGES)('walks from %s to %s', (from, to) => {
+    fc.assert(
+      fc.property(hours, (night) => {
+        const clock = {
+          timeZone: ZONE,
+          dayEndsAt: '07:00',
+          hours: Object.fromEntries(
+            Object.keys(CLOSED_DAYS).map((day) => [day, night]),
+          ) as unknown as ServiceHours,
+        }
+        let last: ReturnType<typeof serviceNightAt> | null = null
+        for (let t = Date.parse(from); t <= Date.parse(to); t += 5 * 60_000) {
+          const at = serviceNightAt(new Date(t), clock)
+          // Each time of the night belongs to the night it was set for.
+          expect(serviceDate(at.opensAt as Date, ZONE, '07:00')).toBe(at.serviceDate)
+          expect(serviceDate(at.closesAt as Date, ZONE, '07:00')).toBe(at.serviceDate)
+          if (last !== null) {
+            expect(at.serviceDate >= last.serviceDate).toBe(true)
+            if (at.serviceDate === last.serviceDate) {
+              expect(RANK[at.phase]).toBeGreaterThanOrEqual(RANK[last.phase])
+              if (last.tablesClosed) expect(at.tablesClosed).toBe(true)
+            }
+          }
+          last = at
+        }
+      }),
+      { numRuns: 40 },
+    )
+  })
+
+  // RR-65: red until its fix; the fix removes .fails.
+  it.fails('keeps last orders before closing on the spring change: a night of 03:30 and 04:00', () => {
+    const night = serviceNightAt(new Date('2027-03-28T00:00:00Z'), {
+      timeZone: ZONE,
+      dayEndsAt: '07:00',
+      hours: Object.fromEntries(
+        Object.keys(CLOSED_DAYS).map((day) => [
+          day,
+          { opens: '22:00', lastOrders: '03:30', closes: '04:00' },
+        ]),
+      ) as unknown as ServiceHours,
+    })
+    expect(night.lastOrdersAt?.getTime()).toBeLessThanOrEqual(night.closesAt?.getTime() as number)
+  })
+
+  // RR-66: red until its fix; the fix removes .fails.
+  it.fails('never takes the service day back, whatever hour the venue ends its day', () => {
+    fc.assert(
+      fc.property(clockTime, (dayEndsAt) => {
+        let last = ''
+        for (
+          let t = Date.parse('2026-10-24T20:00:00Z');
+          t <= Date.parse('2026-10-25T08:00:00Z');
+          t += 5 * 60_000
+        ) {
+          const day = serviceDate(new Date(t), ZONE, dayEndsAt)
+          expect(day >= last, `${new Date(t).toISOString()}: ${day} after ${last}`).toBe(true)
+          last = day
+        }
+      }),
+      // 03:15 to 03:45 sit in the repeated hour (Sofia, 25 Oct): each round hits the bug.
+      { numRuns: 96, examples: [['03:30']] },
+    )
   })
 })

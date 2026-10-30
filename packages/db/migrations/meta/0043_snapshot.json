@@ -1,5 +1,5 @@
 {
-  "id": "ea0f0cba-6df2-44e8-acbe-954d4f53e43d",
+  "id": "f8449aaf-7559-4431-ba3a-8340e93d038b",
   "prevId": "399a51cc-f020-4003-b9f1-1b705611ab0e",
   "version": "7",
   "dialect": "postgresql",
@@ -1620,7 +1620,7 @@
           "name": "node_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "op": {
           "name": "op",
@@ -1742,15 +1742,7 @@
       "checkConstraints": {
         "events_op": {
           "name": "events_op",
-          "value": "\"restro\".\"events\".\"op\" in ('setField', 'clearField', 'createNode', 'setPlacement', 'removePlacement', 'moveNode', 'setNodeStatus', 'linkSource', 'unlinkSource', 'setLinkState', 'setDesign')"
-        },
-        "events_node_only_for_document_ops": {
-          "name": "events_node_only_for_document_ops",
-          "value": "(\"restro\".\"events\".\"op\" = 'setDesign') = (\"restro\".\"events\".\"node_id\" is null)"
-        },
-        "events_design_scope": {
-          "name": "events_design_scope",
-          "value": "\"restro\".\"events\".\"op\" <> 'setDesign' or (\"restro\".\"events\".\"scope\" ~ '^venue:vn_[0-9A-Za-z]+$' and \"restro\".\"events\".\"field_key\" = 'design' and \"restro\".\"events\".\"layer\" = 'manual')"
+          "value": "\"restro\".\"events\".\"op\" in ('setField', 'clearField', 'createNode', 'setPlacement', 'removePlacement', 'moveNode', 'setNodeStatus', 'linkSource', 'unlinkSource', 'setLinkState')"
         },
         "events_field_key": {
           "name": "events_field_key",

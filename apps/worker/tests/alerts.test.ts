@@ -354,6 +354,13 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
       expect(sent.filter((m) => m.chatId === VENUE_CHAT)).toHaveLength(0)
     })
 
+    it('is still waiting at 8 seconds', async () => {
+      await seedAlert('order_unconfirmed', { secondsAgo: 8 })
+      await pass()
+      expect(pushed).toHaveLength(0)
+      expect(sent.filter((m) => m.chatId === VENUE_CHAT)).toHaveLength(0)
+    })
+
     it('reminds once after 10 minutes if nobody acted', async () => {
       await seedAlert('order_unconfirmed')
       await pass()

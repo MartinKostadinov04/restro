@@ -83,7 +83,7 @@ export const venues = restro.table(
      * Venue settings that are not columns of their own (S3-03). `design` is the venue's design
      * record (D129, core's `DesignRecordSchema`): the look of the guest menu, written only by
      * core's `apply()` (`setDesign`); the publisher turns it into the snapshot's theme and
-     * `design` block. It replaced `theme` and `presentation` (migration 0043).
+     * `design` block. It replaced `theme` and `presentation` (migration 0044).
      */
     settings: jsonb('settings')
       .$type<Record<string, unknown>>()
@@ -679,7 +679,7 @@ export const menus = restro.table(
     sortKey: byteOrderText('sort_key').notNull().default('a0'),
     /**
      * Menu settings that are not columns of their own. Nothing reads or writes it since D129: the
-     * layout and the guest switch moved to the venue's design record (migration 0043 copied the
+     * layout and the guest switch moved to the venue's design record (migration 0044 copied the
      * live menu's), and what older rows hold stays as it was.
      */
     settings: jsonb('settings')
@@ -950,7 +950,7 @@ export const EVENT_OPS = [
  * change (`source` is `till:<integration>`), the status text for a status change. `node_id` is
  * the node that changed (the item, for a placement).
  *
- * `setDesign` (D129, migration 0043) is about a venue, not a node: `node_id` is null (and only
+ * `setDesign` (D129, migration 0044) is about a venue, not a node: `node_id` is null (and only
  * there, `events_node_only_for_document_ops`), `field_key` is `design`, the layer `manual`, the
  * scope the venue's (`venue:<vn_ id>`, which is how the purge finds it), and the old and new
  * values are the design record before (null for the first) and after.
@@ -2948,7 +2948,9 @@ export const paymentLines = restro.table(
     /** The quantity the POS closed (a pay-first round's line may close for fewer); set with `closed_minor`. */
     closedQuantity: numeric('closed_quantity', { precision: 21, scale: 6 }),
     /**
-     * True while its payment is not final; the database clears it when the payment settles. A POS
+     * True while its payment claims it; the database clears it when the payment ends (`captured`,
+     * `released`, `stranded` or `capture_failed`). An `unconfirmed` payment is settled but has not
+     * ended: a manager's answer can still capture its card, so its lines stay claimed (0043). A POS
      * line is in one open payment at a time (D127 5.2): the unique index below refuses a second.
      */
     open: boolean('open').notNull().default(true),

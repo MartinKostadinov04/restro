@@ -179,6 +179,26 @@ describe('choosing what to pay (#45, D127)', () => {
     expect(payBlock(PAYING, b, picks, NO_TIP, true)).toBe(null)
   })
 
+  it('greys Pay while the phone is offline (D121: blocked, never queued), before any other reason', () => {
+    const picks = pickWhole(new Map(), b)
+    expect(payBlock(PAYING, b, picks, NO_TIP, true, '', true)).toBe('offline')
+    // Offline comes first, and online it is not a block at all.
+    expect(payBlock({ ...PAYING, state: 'paused' }, b, picks, NO_TIP, true, '', true)).toBe(
+      'offline',
+    )
+    expect(payBlock(PAYING, b, picks, NO_TIP, true, '', false)).toBe(null)
+  })
+
+  it('words the client’s own refusals: offline is the weak-connection line, a lost answer is D120’s', () => {
+    for (const lang of ['en_US', 'bg_BG'] as const) {
+      const words = stringsFor(lang).services
+      expect(refusalText(words, 'offline', { command: 'order.send' })).toBe(words.offline)
+      expect(refusalText(words, 'answer_lost', { command: 'order.send' })).toBe(words.sendLost)
+      // Never an invitation to try again: the order may already be in the POS (D120).
+      expect(words.sendLost).not.toMatch(/try again|опитай/i)
+    }
+  })
+
   it("keeps the ticks across a friend's new round and clears only a line that changed or went", () => {
     const picks = pickWhole(new Map(), b)
     const friendAdded = bill([

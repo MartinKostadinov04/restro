@@ -617,6 +617,11 @@ export interface LocationView {
   readonly consent: 'unknown' | 'allowed' | 'declined'
   /** The venue's name, for the consent text. */
   readonly venueName: string
+  /**
+   * The venue's privacy notice, a full `https://` link: the consent text ends with it (D119,
+   * D121), whatever paying is. Absent or null: no link is drawn.
+   */
+  readonly privacyUrl?: string | null
 }
 
 /** The guest's answers to the location screens; the host does the rest. */
@@ -633,6 +638,14 @@ export interface LocationControls {
   readonly reopen: () => void
   /** "Cancel" on the failed check: back to the order. */
   readonly dismiss: () => void
+  /**
+   * "Stop location check" (D119; the consent text promises "You can stop anytime"): the phone drops
+   * its location pass and remembers the choice for the service day, as "Not now" does. After it,
+   * an on-the-bill edit takes the refused path (the order and the bill are hidden, and the guest's
+   * own "Allow location" tap reopens consent). Absent where the host cannot stop the check: the
+   * face then draws no stop control.
+   */
+  readonly stop?: () => void
 }
 
 /** Everything the host knows that a face may draw. */
@@ -698,6 +711,13 @@ export interface ServiceState {
   readonly location?: LocationView | null
   /** The table's sent orders (#77), newest first; absent where the host has none. */
   readonly sentOrders?: readonly SentOrderView[]
+  /**
+   * A Send of this phone whose answer was lost (D120): the order may already be in the POS. While
+   * it is set the face says `strings.sendLost` (with the reference when `ref` is not null) instead
+   * of the general weak-signal line, and offers no re-send. The host clears it after a few minutes
+   * and an answer since: the table's sent orders can't tell this phone's order from another's.
+   */
+  readonly sendLost?: { readonly ref: string | null } | null
 }
 
 /** The guest's own controls over this phone's payment screen. */
@@ -739,6 +759,31 @@ export interface PayFormSlot {
   readonly mount: (target: object, props: PayFormProps) => PayFormHandle
 }
 
+/**
+ * The screen a face has open, for the host's polling (D121): the bag and the bill are asked for
+ * every 2 seconds and the menu every 10, and opening the bill asks for a fresh reading of it.
+ */
+export type GuestScreen = 'menu' | 'bag' | 'bill'
+
+/**
+ * The code of a command whose answer was lost (the request threw, timed out or came back unusable):
+ * `status` is `pending`. For a Send the order may already be in the POS, so the face says
+ * `strings.sendLost` and never "Try again" (D120).
+ */
+export const ANSWER_LOST_CODE = 'answer_lost'
+
+/**
+ * How long a lost Send keeps the phone from sending again (D120: "in a few minutes"). After it the
+ * guest may send again (the host's duplicate check, D117, still asks if the first one did land).
+ */
+export const LOST_SEND_HOLD_MS = 180_000
+
+/**
+ * The code of a Send or Pay the host did not make because the phone is offline (D121: "Send and Pay
+ * are blocked, never queued"): `status` is `rejected` and nothing was sent.
+ */
+export const OFFLINE_CODE = 'offline'
+
 /** What a host binds to a face: the state to draw and the way to send a command. */
 export interface ServiceBinding {
   readonly state: ServiceState
@@ -755,6 +800,12 @@ export interface ServiceBinding {
   readonly payControls?: PayControls
   /** The answers to the location screens (#76); absent where the host does not check. */
   readonly location?: LocationControls
+  /**
+   * Tells the host which screen the face has open (RR-52, D121). A face calls it when the screen
+   * changes (and once at mount); a face that never does keeps the host's default cadence (the bag
+   * while the order has lines, else the menu). Absent where the host does not poll.
+   */
+  readonly setScreen?: (screen: GuestScreen) => void
 }
 
 /** A state with nothing in it: no bill, no request, no payment. */

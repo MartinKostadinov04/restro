@@ -101,7 +101,12 @@ import {
   tickCheck,
 } from './payment-connection'
 import { paymentObserve } from './payment-observe'
-import { paymentStornoDone, paymentStornoUndo } from './payment-refunds'
+import {
+  paymentRefundFailedSeen,
+  paymentRefundFailedSeenUndo,
+  paymentStornoDone,
+  paymentStornoUndo,
+} from './payment-refunds'
 import { preOpeningAlert } from './pre-opening'
 import { recordReading } from './readings'
 import { receiptBrought, receiptUnbrought } from './receipt-brought'
@@ -674,6 +679,9 @@ export const SERVICE_COMMANDS = {
   // #222: a refund's storno, said done by a manager or owner (Undo within the window).
   'payment.storno_done': paymentStornoDone(),
   'payment.storno_undo': paymentStornoUndo(),
+  // #234: a refund that did not go through, seen by a manager or owner (Undo within the window).
+  'payment.refund_failed_seen': paymentRefundFailedSeen(),
+  'payment.refund_failed_seen_undo': paymentRefundFailedSeenUndo(),
   // #110: the worker's steps from `requested` to `held`, each a compare-and-set on the payment.
   'payment.price': paymentPrice(),
   'payment.hold_created': paymentHoldCreated(),

@@ -1,6 +1,6 @@
 // Two shapes the snapshot carries beside the theme (brief SH-01 §8):
 // - `presentation` (D69): which template (face) the venue chose and the face's options. Retired
-//   by the design record (D129, migration 0043): no longer stored or published, kept so that a
+//   by the design record (D129, migration 0044): no longer stored or published, kept so that a
 //   snapshot published before it still parses;
 // - `guest_features` (D71): which guest services the venue switched on, in `venues.settings`,
 //   published as the snapshot's `features`.
