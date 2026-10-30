@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { projectGuestState } from './guest'
+import { GUEST_POLL_MS, projectGuestState } from './guest'
 import {
   billIsRound,
   payFirstCheck,
@@ -233,6 +233,29 @@ describe("what the phone hears of a pay-first round's sent order (#113)", () => 
       'order',
     ).ordering
     expect(off.payingLegal).toBeNull()
+  })
+
+  it("keeps a card waiting for the bar's approval showing: Restro sets no time limit (RR-25)", () => {
+    const settledAt = new Date(now.getTime() - 5 * 60 * 60_000)
+    const old = (state: string) => ({ ...sent('on_bill', state), settledAt })
+    const shown = projectGuestState(
+      {
+        ...read,
+        sentOrders: [old('awaiting_approval'), old('added'), old('not_sent')],
+      } as unknown as TableStateRead,
+      'menu',
+    )
+    expect(shown.sentOrders.map((one) => one.id)).toEqual(['so_on_bill_awaiting_approval'])
+    // Past the 15 minutes it stays on the card only: the phone goes back to its usual poll.
+    expect(shown.next).toBe(GUEST_POLL_MS.menu)
+    const fresh = projectGuestState(
+      {
+        ...read,
+        sentOrders: [{ ...sent('on_bill', 'awaiting_approval'), settledAt: now }],
+      } as unknown as TableStateRead,
+      'menu',
+    )
+    expect(fresh.next).toBe(GUEST_POLL_MS.fast)
   })
 
   it('tells a round on the POS whose payment ended "No receipt" apart: ordered, not paid (#114)', () => {
