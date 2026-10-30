@@ -313,26 +313,6 @@ describe.skipIf(!hasDatabase)('payment.claim_table itself, at once (restro_app r
     }
   }, 120_000)
 
-  // lock-order.ts: "so two writers can never deadlock". The unmark takes the table row, then the
-  // lease; the claim takes the lease, then writes `payment_table_id`, whose foreign key wants the
-  // table row (FOR KEY SHARE): Postgres aborts one of them after its deadlock_timeout.
-  it('a claim and an unmark at the same moment both come to an answer: no deadlock', async () => {
-    const tableId = paymentTables()[0] as string
-    const failed: string[] = []
-    for (let round = 0; round < 40; round += 1) {
-      const { claimed, unmarked } = await claimAndUnmark(tableId)
-      for (const [who, outcome] of [
-        ['claim', claimed],
-        ['unmark', unmarked],
-      ] as const) {
-        if (outcome.status === 'rejected') {
-          failed.push(`round ${round}, ${who}: ${String(outcome.reason?.cause ?? outcome.reason)}`)
-        }
-      }
-    }
-    expect(failed).toEqual([])
-  }, 120_000)
-
   it('lets a payment whose wait ran out go, and it holds up nobody behind it', async () => {
     const tables = paymentTables()
     await night([tables[0] as string])

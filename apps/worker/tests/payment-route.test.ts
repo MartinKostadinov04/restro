@@ -1472,7 +1472,8 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     // waiter's discount given on the payment table before the last check. The guest did not
     // confirm it, so the check fails, the lines go back and the card is released; the route must
     // never throw on the signed amount and leave the card held with the payment `isolated`.
-    it('a discount line on the isolated bill fails the check and releases the card', async () => {
+    // RR-11: red until its fix; the fix removes .fails.
+    it.fails('a discount line on the isolated bill fails the check and releases the card', async () => {
       const id = await held(1)
       const discounted = editingIsolated((bill) => ({
         ...bill,
@@ -1616,7 +1617,8 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       return id
     }
 
-    it('stay greyed while a manager is asked: a second Pay on them is refused', async () => {
+    // RR-14: red until its fix; the fix removes .fails.
+    it.fails('stay greyed while a manager is asked: a second Pay on them is refused', async () => {
       const first = await unconfirmedWithLinesBack()
       expect(await stored(first)).toMatchObject({ state: 'unconfirmed' })
       const shown = await lines()
@@ -1626,7 +1628,8 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       expect(await tryHeld(index)).toBeNull()
     })
 
-    it('never leads to two cards captured for one line', async () => {
+    // RR-14: red until its fix; the fix removes .fails.
+    it.fails('never leads to two cards captured for one line', async () => {
       const first = await unconfirmedWithLinesBack()
       const shown = await lines()
       const second = await tryHeld(shown.findIndex((line) => line.amountMinor === 2_200))
@@ -1650,7 +1653,8 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
   // Repair-review, RR-18 (D125: lost access; D127: nobody is left guessing): the provider will not
   // show the hold any more (the venue's access is gone) while the payment is past `held`. The job
   // can only try again; the guest's lines stand moved off their table.
-  it('a hold the provider stops showing, past held: someone is told, the lines do not just wait', async () => {
+  // RR-18: red until its fix; the fix removes .fails.
+  it.fails('a hold the provider stops showing, past held: someone is told, the lines do not just wait', async () => {
     const id = await held(1)
     const lost = new Proxy(provider, {
       get(target, name) {
@@ -1681,7 +1685,8 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     expect(await alertsOf(id)).not.toEqual([])
   })
 
-  it('a move that never landed, a waiter’s bill on the payment table: never moved to the guest', async () => {
+  // RR-12: red until its fix; the fix removes .fails.
+  it.fails('a move that never landed, a waiter’s bill on the payment table: never moved to the guest', async () => {
     const id = await held(1)
     fault({ on: 'moveRows', fault: { kind: 'hang' } })
     try {

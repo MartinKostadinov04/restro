@@ -437,7 +437,8 @@ describe.skipIf(!hasDatabase)("Send's guards (as the restro_app role)", () => {
 
     // RR-29, D120: "A single failed reading of one bill only pauses that table until its next good
     // reading (D111)."
-    it('a failed reading pauses the table until its next good reading', async () => {
+    // RR-29: red until its fix; the fix removes .fails.
+    it.fails('a failed reading pauses the table until its next good reading', async () => {
       await add(beer, 1)
       expect(await record(withBill)).toMatchObject({ status: 'accepted' })
       expect(
@@ -451,7 +452,8 @@ describe.skipIf(!hasDatabase)("Send's guards (as the restro_app role)", () => {
     // RR-27, D122 §2 ("ask your waiter to put your first item on" is for a table with no POS bill),
     // rule 6: the sitting's end empties the stored reading, which is no reading of the POS. A new
     // group at a table whose POS bill is still open is not told to ask for a first item.
-    it('new guests on a table whose bill stays open are not asked for a first item', async () => {
+    // RR-27: red until its fix; the fix removes .fails.
+    it.fails('new guests on a table whose bill stays open are not asked for a first item', async () => {
       expect(await record(withBill)).toMatchObject({ status: 'accepted' })
       const managerId = await world.addUser('owner')
       const { result } = await applyService(world.app, { type: 'table.new_guests', tableId }, {

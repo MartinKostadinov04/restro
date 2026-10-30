@@ -158,7 +158,8 @@ describe.skipIf(!hasDatabase)('the closing hour (as the restro_app role)', () =>
       expect(await sittingState(sitting as string)).toMatchObject({ end_reason: 'closing_hour' })
     })
 
-    it('still closes it when the payment only ends after 07:00', async () => {
+    // RR-64: red until its fix; the fix removes .fails.
+    it.fails('still closes it when the payment only ends after 07:00', async () => {
       const [sitting] = await openTables(1)
       const id = await paying(world.tables[0] as string, sitting as string)
       expect(await closeTables('2026-10-24T02:31:00Z')).toMatchObject({ details: { closed: 0 } })

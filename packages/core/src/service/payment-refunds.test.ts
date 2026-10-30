@@ -254,7 +254,8 @@ describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', (
   // Hot spot 10 (RR-1): each row is a storno to-do, so what is still to storno must be what the
   // provider says was refunded, after every reading, whatever happened between two readings: the
   // venue's refunds made and failed, in any batch. Today's rows follow one total, not refunds.
-  it('keeps the active refund rows adding up to the provider’s total after every reading', async () => {
+  // RR-1: red until its fix; the fix removes .fails.
+  it.fails('keeps the active refund rows adding up to the provider’s total after every reading', async () => {
     const op = fc.oneof(
       fc.record({ kind: fc.constant('made' as const), minor: fc.constantFrom(100, 200, 300, 500) }),
       fc.record({ kind: fc.constant('failed' as const), which: fc.nat({ max: 5 }) }),

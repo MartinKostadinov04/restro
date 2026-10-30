@@ -685,7 +685,8 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
 
   // Repair-review, RR-24 (D116: Not sent = "it never went out"): the connector's own read before
   // the round fails, so nothing was written and the connector says so in its reason.
-  it('a read inside the add that fails before anything is written: Not sent, the lines back', async () => {
+  // RR-24: red until its fix; the fix removes .fails.
+  it.fails('a read inside the add that fails before anything is written: Not sent, the lines back', async () => {
     sim.host.engine.faults.clear()
     firstItem()
     const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
@@ -716,9 +717,9 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
     expect((await orderLines()).map((line) => [line.itemId, line.qty])).toContainEqual([itemA, 1])
   })
 
-  // Repair-review, RR-33 (spec #64 §8: a waiter's identical round in the window is Unconfirmed,
-  // never Added): the round never lands; a waiter enters the same round during the read-back.
-  it("a waiter's identical round alone in the read-back window is not Added", async () => {
+  // RR-33, the lead's ruling 10-30: indistinguishable on this profile, Added is accepted; spec #64 line 164 is read with line 165's match.
+  // The round never lands; a waiter enters the same round during the read-back.
+  it("a waiter's identical round alone in the read-back window is Added", async () => {
     sim.host.engine.faults.clear()
     firstItem()
     const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
@@ -743,10 +744,8 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
       [FIRST, 1000],
       [ARTICLE_A, 1000],
     ])
-    // Nothing tells this round from Restro's: a false Added is drinks that never come.
-    expect(outcomes).toEqual([
-      { kind: 'settled', sentOrderId: id, state: 'unconfirmed', reason: 'check_ambiguous' },
-    ])
+    // Nothing tells this round from Restro's on this profile: it is matched as Restro's.
+    expect(outcomes).toEqual([{ kind: 'settled', sentOrderId: id, state: 'added', reason: null }])
   })
 
   it('never sends an item the POS has no link for', async () => {

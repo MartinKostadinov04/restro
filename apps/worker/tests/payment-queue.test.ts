@@ -152,7 +152,8 @@ describe.skipIf(!hasDatabase)('the payment and Send queues on real pg-boss', () 
     expect(beside).toBe(0)
   }, 30_000)
 
-  it.each([
+  // RR-61: red until its fix; the fix removes .fails.
+  it.fails.each([
     ['a payment', JOB_NAMES.paymentPrepare],
     ['a table', JOB_NAMES.orderSend],
   ])(

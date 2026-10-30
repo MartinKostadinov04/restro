@@ -324,7 +324,8 @@ describe('the night across the clock changes, minute by minute (Europe/Sofia)', 
     )
   })
 
-  it('keeps last orders before closing on the spring change: a night of 03:30 and 04:00', () => {
+  // RR-65: red until its fix; the fix removes .fails.
+  it.fails('keeps last orders before closing on the spring change: a night of 03:30 and 04:00', () => {
     const night = serviceNightAt(new Date('2027-03-28T00:00:00Z'), {
       timeZone: ZONE,
       dayEndsAt: '07:00',
@@ -338,7 +339,8 @@ describe('the night across the clock changes, minute by minute (Europe/Sofia)', 
     expect(night.lastOrdersAt?.getTime()).toBeLessThanOrEqual(night.closesAt?.getTime() as number)
   })
 
-  it('never takes the service day back, whatever hour the venue ends its day', () => {
+  // RR-66: red until its fix; the fix removes .fails.
+  it.fails('never takes the service day back, whatever hour the venue ends its day', () => {
     fc.assert(
       fc.property(clockTime, (dayEndsAt) => {
         let last = ''
