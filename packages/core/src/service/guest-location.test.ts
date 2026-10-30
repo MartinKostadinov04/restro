@@ -245,6 +245,34 @@ describe.skipIf(!hasDatabase)('the location check and the guest limits (as restr
     expect(undone.state).toMatchObject({ location: { state: 'needed' }, order: null })
   })
 
+  it('lets a phone take a line to nothing without a pass, and no less (RR-32)', async () => {
+    const { pass, lineId } = await locatedAdd()
+    expect((await act({ type: 'order.change', lineId, delta: 1 }, { pass })).result.status).toBe(
+      'accepted',
+    )
+    // Two of it: taking one away keeps the line, so it is a change like any other.
+    expect((await act({ type: 'order.change', lineId, delta: -1 })).result).toMatchObject({
+      status: 'rejected',
+      code: 'location_needed',
+    })
+    // A rise is located, and so is a line this order does not hold.
+    expect((await act({ type: 'order.change', lineId, delta: 1 })).result.code).toBe(
+      'location_needed',
+    )
+    expect((await act({ type: 'order.change', lineId: newId('ol'), delta: -1 })).result.code).toBe(
+      'location_needed',
+    )
+    // Taking all of it away removes the line: never located (D122 §7).
+    const gone = await act({ type: 'order.change', lineId, delta: -2 })
+    expect(gone.result.status).toBe('accepted')
+    const undone = await act({ type: 'order.undo', lineId })
+    expect(undone.result.status).toBe('accepted')
+    expect((await act({ type: 'order.change', lineId, delta: -1 }, { pass })).result.status).toBe(
+      'accepted',
+    )
+    expect((await act({ type: 'order.change', lineId, delta: -1 })).result.status).toBe('accepted')
+  })
+
   it('kills the pass when the sitting ends: it never outlives its sitting', async () => {
     const { pass } = await locatedAdd()
     await endSitting()

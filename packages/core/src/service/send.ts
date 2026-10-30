@@ -28,7 +28,7 @@
 import { randomInt } from 'node:crypto'
 
 import { sentOrderNotes, sentOrders, venueTables } from '@restro/db'
-import { eq, inArray } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 
 import { type AreaId, type BarId, newId, type TableId } from '../ids'
 import { readOrderingSettings } from '../ordering-settings'
@@ -88,7 +88,12 @@ export const SEND_REFUSALS = [
   ...PAY_FIRST_SEND_REFUSALS,
 ] as const
 
-export { type SentOrderLine, SentOrderLineSchema, sentOrderLinesOf } from './sent-lines'
+export {
+  type SentOrderLine,
+  SentOrderLineSchema,
+  sentOrderLinesOf,
+  sentOrderNotesOf,
+} from './sent-lines'
 
 /** The `order.send` command, as its schema parses it. */
 export interface SendCommand {
@@ -371,17 +376,4 @@ async function insertSentOrder(
     details: { lines: input.lines.length, totalMinor: input.totalMinor },
   })
   return { id, reference }
-}
-
-/** The notes of a sent order's lines, by line id. */
-export async function sentOrderNotesOf(
-  stx: ServiceTx,
-  sentOrderIds: readonly string[],
-): Promise<Map<string, string>> {
-  if (sentOrderIds.length === 0) return new Map()
-  const rows = await stx.tx
-    .select({ lineId: sentOrderNotes.lineId, note: sentOrderNotes.note })
-    .from(sentOrderNotes)
-    .where(inArray(sentOrderNotes.sentOrderId, [...sentOrderIds]))
-  return new Map(rows.map((row) => [row.lineId, row.note]))
 }
