@@ -5,10 +5,12 @@
 // address with `history.replaceState` before it asks for anything else or loads anything else.
 //
 // The fixture is scripts/seed-send-e2e.ts (a venue on the simulated POS with a table and a code),
-// the same page the Send specs use.
+// the same page the Send specs use. It runs on each template that draws the shared order
+// (guest-faces.ts, #239).
 import { devices, expect, test } from '@playwright/test'
 
 import { runScript } from './global-setup'
+import { faceRoot, ORDER_FACES, type OrderFace } from './guest-faces'
 
 test.use({ ...devices['Pixel 7'] })
 
@@ -20,8 +22,8 @@ const RETURN_QUERY =
   'payment_intent=pi_return_test&payment_intent_client_secret=pi_return_test_secret_x&redirect_status=succeeded'
 const SECRET = 'pi_return_test_secret_x'
 
-function seed(): { path: string; code: string } {
-  const output = runScript('./scripts/seed-send-e2e.ts', 'seed', SIM)
+function seed(face: OrderFace): { path: string; code: string } {
+  const output = runScript('./scripts/seed-send-e2e.ts', 'seed', SIM, face)
   const line = output
     .split('\n')
     .reverse()
@@ -30,67 +32,75 @@ function seed(): { path: string; code: string } {
   return JSON.parse(line) as { path: string; code: string }
 }
 
-test('the provider values leave the address before anything else is asked for', async ({
-  page,
-}) => {
-  const { path, code } = seed()
-  const asked: string[] = []
-  page.on('request', (request) => {
-    // The first document is the address as the browser had it; everything after it is the page's.
-    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) return
-    asked.push(request.url())
+for (const face of ORDER_FACES) {
+  test.describe(`on ${face}`, () => {
+    test('the provider values leave the address before anything else is asked for', async ({
+      page,
+    }) => {
+      const { path, code } = seed(face)
+      const asked: string[] = []
+      page.on('request', (request) => {
+        // The first document is the address as the browser had it; everything after it is the page's.
+        if (request.isNavigationRequest() && request.frame() === page.mainFrame()) return
+        asked.push(request.url())
+      })
+
+      await page.goto(`${path}?lang=en&${RETURN_QUERY}#t=${code}`)
+      await expect(faceRoot(page, face)).toBeVisible()
+
+      // The address bar holds nothing of the provider's, and still holds the guest's language and table.
+      const url = new URL(page.url())
+      expect(url.search).toBe('?lang=en')
+      expect(url.hash).toContain(code)
+      expect(page.url()).not.toContain('payment_intent')
+      expect(page.url()).not.toContain(SECRET)
+
+      // No request the page made carried them: not the menu's files, not the guest API, not a font.
+      expect(asked.length).toBeGreaterThan(0)
+      expect(
+        asked.filter(
+          (requested) => requested.includes(SECRET) || requested.includes('payment_intent'),
+        ),
+      ).toEqual([])
+
+      // The tab noted that the guest came back, so a payment of this phone's would be read at once.
+      const marker = await page.evaluate(() => window.sessionStorage.getItem('restro.payReturned'))
+      expect(marker).toBe('1')
+      // And the secret was kept nowhere.
+      const kept = await page.evaluate(() =>
+        JSON.stringify({ ...window.sessionStorage, ...window.localStorage }),
+      )
+      expect(kept).not.toContain(SECRET)
+    })
+
+    test('an ordinary address is left alone', async ({ page }) => {
+      const { path, code } = seed(face)
+      await page.goto(`${path}?lang=en#t=${code}`)
+      await expect(faceRoot(page, face)).toBeVisible()
+      expect(new URL(page.url()).search).toBe('?lang=en')
+      expect(
+        await page.evaluate(() => window.sessionStorage.getItem('restro.payReturned')),
+      ).toBeNull()
+    })
+
+    test('the guest pages carry the card form’s Content-Security-Policy and nothing wider', async ({
+      page,
+    }) => {
+      const { path, code } = seed(face)
+      const response = await page.goto(`${path}?lang=en#t=${code}`)
+      const policy = response?.headers()['content-security-policy'] ?? ''
+      expect(policy).toContain('script-src')
+      expect(policy).toContain('https://js.stripe.com')
+      expect(policy).toContain('https://api.stripe.com')
+      expect(policy).toContain('https://hooks.stripe.com')
+      // Only these three directives: images, fonts and styles are not restricted by it.
+      expect(policy.split('; ').map((part) => part.split(' ')[0])).toEqual([
+        'script-src',
+        'frame-src',
+        'connect-src',
+      ])
+      // The page still works under it: the menu shows and no script was blocked.
+      await expect(faceRoot(page, face)).toBeVisible()
+    })
   })
-
-  await page.goto(`${path}?lang=en&${RETURN_QUERY}#t=${code}`)
-  await expect(page.locator('[data-face="qr-phone"]').first()).toBeVisible()
-
-  // The address bar holds nothing of the provider's, and still holds the guest's language and table.
-  const url = new URL(page.url())
-  expect(url.search).toBe('?lang=en')
-  expect(url.hash).toContain(code)
-  expect(page.url()).not.toContain('payment_intent')
-  expect(page.url()).not.toContain(SECRET)
-
-  // No request the page made carried them: not the menu's files, not the guest API, not a font.
-  expect(asked.length).toBeGreaterThan(0)
-  expect(
-    asked.filter((requested) => requested.includes(SECRET) || requested.includes('payment_intent')),
-  ).toEqual([])
-
-  // The tab noted that the guest came back, so a payment of this phone's would be read at once.
-  const marker = await page.evaluate(() => window.sessionStorage.getItem('restro.payReturned'))
-  expect(marker).toBe('1')
-  // And the secret was kept nowhere.
-  const kept = await page.evaluate(() =>
-    JSON.stringify({ ...window.sessionStorage, ...window.localStorage }),
-  )
-  expect(kept).not.toContain(SECRET)
-})
-
-test('an ordinary address is left alone', async ({ page }) => {
-  const { path, code } = seed()
-  await page.goto(`${path}?lang=en#t=${code}`)
-  await expect(page.locator('[data-face="qr-phone"]').first()).toBeVisible()
-  expect(new URL(page.url()).search).toBe('?lang=en')
-  expect(await page.evaluate(() => window.sessionStorage.getItem('restro.payReturned'))).toBeNull()
-})
-
-test('the guest pages carry the card form’s Content-Security-Policy and nothing wider', async ({
-  page,
-}) => {
-  const { path, code } = seed()
-  const response = await page.goto(`${path}?lang=en#t=${code}`)
-  const policy = response?.headers()['content-security-policy'] ?? ''
-  expect(policy).toContain('script-src')
-  expect(policy).toContain('https://js.stripe.com')
-  expect(policy).toContain('https://api.stripe.com')
-  expect(policy).toContain('https://hooks.stripe.com')
-  // Only these three directives: images, fonts and styles are not restricted by it.
-  expect(policy.split('; ').map((part) => part.split(' ')[0])).toEqual([
-    'script-src',
-    'frame-src',
-    'connect-src',
-  ])
-  // The page still works under it: the menu shows and no script was blocked.
-  await expect(page.locator('[data-face="qr-phone"]').first()).toBeVisible()
-})
+}

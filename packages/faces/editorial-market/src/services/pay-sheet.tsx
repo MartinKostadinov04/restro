@@ -587,7 +587,7 @@ function Screen({
 }
 
 /** Call a waiter: the way on from every failure screen of paying (D127), where the venue takes calls. */
-function CallWaiter() {
+export function CallWaiter() {
   const o = useServicesRequired()
   if (o.features.callWaiter === null) return null
   return (

@@ -5,7 +5,7 @@
 // the failed check) for the host's `location.prompt`, the Stop location check control, a lost Send's
 // line (D120), Send and Pay greyed while offline (D121), and the screen the face has open.
 
-import { LOST_SEND_HOLD_MS, stringsFor } from '@restro/shell'
+import { LOST_SEND_HOLD_MS, type ServiceState, stringsFor } from '@restro/shell'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -15,6 +15,8 @@ import {
   fakeHost,
   itemNamed,
   orderingView,
+  orderLine,
+  orderOf,
   payingOf,
   resetPage,
   tableBillOf,
@@ -184,6 +186,8 @@ describe('Stop location check (RR-49, D119)', () => {
     expect(within(bill).queryByRole('button', { name: en.locationStop })).toBeNull()
     // And the bill says why it is empty, with the guest's own Allow location.
     expect(within(bill).getByRole('button', { name: en.paying.allowLocation })).toBeTruthy()
+    // And Call a waiter, where the venue takes calls, as the reference template's hidden bill has it.
+    expect(within(bill).getByRole('button', { name: en.paying.callWaiter })).toBeTruthy()
   })
 
   it('says it in Bulgarian', () => {
@@ -194,18 +198,22 @@ describe('Stop location check (RR-49, D119)', () => {
   })
 })
 
+/** A host whose table order holds one Hummus (the host's, not the face's). */
+const withHummus = (initial: Partial<ServiceState> = {}) =>
+  fakeHost({ order: orderOf([orderLine(hummus)]), ...initial })
+const SEND = /^Send 1 item$/
+
 describe('a Send whose answer was lost (RR-50, D120)', () => {
   const sendIt = async (host: FakeHost) => {
     drawFace(host)
-    fireEvent.click(screen.getByRole('button', { name: `Add ${hummus.name.text}` }))
     fireEvent.click(screen.getByRole('button', { name: /View bag/ }))
     const sheet = screen.getByRole('dialog', { name: 'Your bag' })
-    fireEvent.click(within(sheet).getByRole('button', { name: /Send to kitchen/ }))
+    fireEvent.click(within(sheet).getByRole('button', { name: SEND }))
     return sheet
   }
 
   it('says D120’s line, never "Try again" and never "Nothing new was sent", and offers no re-send', async () => {
-    const host = fakeHost()
+    const host = withHummus()
     const sheet = await sendIt(host)
     await act(async () => host.of('order.send')[0]?.fail())
     const alert = within(sheet).getByRole('alert')
@@ -215,16 +223,13 @@ describe('a Send whose answer was lost (RR-50, D120)', () => {
       expect(text).not.toContain('Nothing new was sent')
       expect(text).not.toContain('was not confirmed')
     }
-    expect(
-      within(sheet)
-        .getByRole('button', { name: /Send to kitchen/ })
-        .hasAttribute('disabled'),
-    ).toBe(true)
+    // No Send is offered until the hold is over.
+    expect(within(sheet).queryByRole('button', { name: SEND })).toBeNull()
     expect(host.of('order.send')).toHaveLength(1)
   })
 
   it('says the line for the client’s own lost answer (pending, answer_lost) too', async () => {
-    const host = fakeHost()
+    const host = withHummus()
     const sheet = await sendIt(host)
     await act(async () =>
       host.of('order.send')[0]?.answer({ status: 'pending', code: 'answer_lost' }),
@@ -233,9 +238,8 @@ describe('a Send whose answer was lost (RR-50, D120)', () => {
   })
 
   it('names the reference when the host has one', async () => {
-    const host = fakeHost()
+    const host = withHummus()
     const page = drawFace(host)
-    fireEvent.click(screen.getByRole('button', { name: `Add ${hummus.name.text}` }))
     fireEvent.click(screen.getByRole('button', { name: /View bag/ }))
     const sheet = screen.getByRole('dialog', { name: 'Your bag' })
     page.update({ sendLost: { ref: 'K7Q' } })
@@ -243,7 +247,7 @@ describe('a Send whose answer was lost (RR-50, D120)', () => {
   })
 
   it('offers Send again after a few minutes (the hold is over)', async () => {
-    const host = fakeHost()
+    const host = withHummus()
     const sheet = await sendIt(host)
     vi.useFakeTimers()
     await act(async () => host.of('order.send')[0]?.fail())
@@ -252,17 +256,12 @@ describe('a Send whose answer was lost (RR-50, D120)', () => {
       await vi.advanceTimersByTimeAsync(LOST_SEND_HOLD_MS + 10)
     })
     expect(within(sheet).queryByRole('alert')).toBeNull()
-    expect(
-      within(sheet)
-        .getByRole('button', { name: /Send to kitchen/ })
-        .hasAttribute('disabled'),
-    ).toBe(false)
+    expect(within(sheet).getByRole('button', { name: SEND }).hasAttribute('disabled')).toBe(false)
   })
 
   it('says it in Bulgarian', () => {
-    const host = fakeHost({ sendLost: { ref: null } })
+    const host = withHummus({ sendLost: { ref: null } })
     drawFace(host, orderingView('bg_BG'))
-    fireEvent.click(screen.getByRole('button', { name: bg.addNamed('Хумус') }))
     fireEvent.click(screen.getByRole('button', { name: new RegExp(bg.viewBag) }))
     expect(screen.getByRole('dialog').textContent).toContain(bg.sendLost)
   })
@@ -270,23 +269,18 @@ describe('a Send whose answer was lost (RR-50, D120)', () => {
 
 describe('Send and Pay greyed while offline (RR-51, D120, D121)', () => {
   it('greys Send in the bag with the weak-connection line, and keeps the bag editable', () => {
-    const host = fakeHost({ offline: true })
+    const host = withHummus({ offline: true })
     drawFace(host)
-    fireEvent.click(screen.getByRole('button', { name: `Add ${hummus.name.text}` }))
     fireEvent.click(screen.getByRole('button', { name: /View bag/ }))
     const sheet = screen.getByRole('dialog', { name: 'Your bag' })
-    expect(
-      within(sheet)
-        .getByRole('button', { name: /Send to kitchen/ })
-        .hasAttribute('disabled'),
-    ).toBe(true)
+    expect(within(sheet).getByRole('button', { name: SEND }).hasAttribute('disabled')).toBe(true)
     expect(sheet.querySelector('[data-slot="send.offline"]')?.textContent).toBe(en.offline)
     expect(
       within(sheet)
         .getByRole('button', { name: /^Remove/ })
         .hasAttribute('disabled'),
     ).toBe(false)
-    fireEvent.click(within(sheet).getByRole('button', { name: /Send to kitchen/ }))
+    fireEvent.click(within(sheet).getByRole('button', { name: SEND }))
     expect(host.of('order.send')).toHaveLength(0)
   })
 
@@ -307,10 +301,9 @@ describe('Send and Pay greyed while offline (RR-51, D120, D121)', () => {
 
 describe('the screen the face has open (RR-52, D121)', () => {
   it('tells the host the bag, the bill and the menu as the guest moves between them', async () => {
-    const host = fakeHost({ tableBill: tableBillOf(), paying: payingOf() })
+    const host = withHummus({ tableBill: tableBillOf(), paying: payingOf() })
     drawFace(host)
     expect(host.screens.at(-1)).toBe('menu')
-    fireEvent.click(screen.getByRole('button', { name: 'Add Hummus' }))
     fireEvent.click(screen.getByRole('button', { name: /View bag/ }))
     expect(host.screens.at(-1)).toBe('bag')
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))

@@ -1,4 +1,11 @@
-import type { ViewModel, ViewText } from '@restro/shell'
+import {
+  EMPTY_SERVICE_STATE,
+  type OrderLineView,
+  type SentOrderView,
+  type ServiceState,
+  type ViewModel,
+  type ViewText,
+} from '@restro/shell'
 import {
   type ContractHost,
   faceContractSuite,
@@ -340,6 +347,82 @@ describe('the service controls (R15, D71, D72)', () => {
     expect(
       withAttribute(root, 'data-slot', 'item.add').every((control) => control.tag === 'button'),
     ).toBe(true)
+  })
+})
+
+describe('the table’s order on the first render (D117, #239)', () => {
+  const view = viewOf(fixture('features-on'))
+  const orderable = itemsOf(view).filter((item) => item.order.controls)
+  const bound = (state: Partial<ServiceState>) => ({
+    ...stubServices(),
+    state: { ...EMPTY_SERVICE_STATE, ...state },
+  })
+  const drawn = (state: Partial<ServiceState>) =>
+    parseHtml(renderToStaticMarkup(<EditorialMarketFace view={view} services={bound(state)} />))
+  const lineFor = (
+    itemId: string,
+    qty = 1,
+    changes: Partial<OrderLineView> = {},
+  ): OrderLineView => ({
+    id: `ol_${itemId.slice(-8)}`,
+    itemId: itemId as OrderLineView['itemId'],
+    optionIds: [],
+    qty,
+    note: '',
+    mode: 'on_bill',
+    held: false,
+    pending: false,
+    ...changes,
+  })
+
+  it('draws the bag’s place in the bar empty while the table’s order has no line', () => {
+    const root = drawn({ order: { lines: [], removed: [], earlier: null } })
+    const slot = withAttribute(root, 'data-slot', 'menu.bag')
+    expect(slot).toHaveLength(1)
+    expect(withAttribute(slot[0] as HtmlElement, 'class', 'ro-bagbtn')).toHaveLength(0)
+    expect(withAttribute(root, 'class', 'ro-bagbar')[0]?.attrs['data-bag']).toBe('false')
+  })
+
+  it('draws the host’s lines as the count and the estimate in the bar, and a counter on the dish', () => {
+    const [first, second] = orderable
+    expect(first && second).toBeTruthy()
+    const lines = [lineFor(first?.id ?? '', 2), lineFor(second?.id ?? '')]
+    const root = drawn({ order: { lines, removed: [], earlier: null } })
+    const button = withAttribute(root, 'class', 'ro-bagbtn')
+    expect(button).toHaveLength(1)
+    expect(textOf(button[0] as HtmlElement)).toContain('3')
+    expect(textOf(button[0] as HtmlElement)).toContain('approx.')
+    // The two dishes in the order show their counters; the rest keep the "+".
+    const counters = withAttribute(root, 'class', 'ro-stepper is-sm')
+    expect(counters).toHaveLength(2)
+    expect(withAttribute(root, 'data-slot', 'item.add')).toHaveLength(orderable.length - 2)
+  })
+
+  it('has the bag button for a sent order alone, and for the reason the order is hidden', () => {
+    const [first] = orderable
+    const sent: SentOrderView = {
+      id: 'so_1',
+      state: 'added',
+      reason: null,
+      ref: 'K7Q',
+      lines: [{ itemId: (first?.id ?? '') as OrderLineView['itemId'], optionIds: [], qty: 1 }],
+      sentAt: 0,
+      mine: false,
+    }
+    expect(withAttribute(drawn({ sentOrders: [sent] }), 'class', 'ro-bagbtn')).toHaveLength(1)
+    const needed = drawn({
+      order: null,
+      location: { state: 'needed', prompt: 'none', consent: 'declined', venueName: 'X' },
+    })
+    expect(withAttribute(needed, 'class', 'ro-bagbtn')).toHaveLength(1)
+  })
+
+  it('says "Order this from your waiter" in place of the "+" on a dish that needs a choice, where the POS takes none', () => {
+    const choosy = orderable.filter((item) => item.modifierGroups.some((group) => group.required))
+    const root = drawn({ ordering: { state: 'on' } })
+    expect(withAttribute(root, 'data-slot', 'item.order_from_waiter')).toHaveLength(choosy.length)
+    const withChoices = drawn({ ordering: { state: 'on', notesAndOptions: true } })
+    expect(withAttribute(withChoices, 'data-slot', 'item.order_from_waiter')).toHaveLength(0)
   })
 })
 

@@ -197,7 +197,6 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
         services={services}
         tableLabel={tableLabel}
         openDish={dish.open}
-        dishOpen={dish.isOpen}
       >
         <Header
           view={view}

@@ -130,7 +130,7 @@ async function ensureTable(pool: ReturnType<typeof getPool>, venueId: string): P
   return made.table.id
 }
 
-async function seed(): Promise<void> {
+async function seed(face: string): Promise<void> {
   assertDevEnvironment(process.env)
   const ownerUrl = process.env.DATABASE_URL_OWNER
   if (!ownerUrl) throw new Error('seed-order-e2e needs DATABASE_URL_OWNER (see .env.example).')
@@ -181,7 +181,8 @@ async function seed(): Promise<void> {
     await owner.end()
   }
 
-  // The phones' menu: the fixture under ids of its own, drawn by the reference template.
+  // The phones' menu: the fixture under ids of its own, drawn by the template the test asks for
+  // (the reference template unless the test names another, #239).
   const store = await createPublishStore(publishStoreConfig(process.env))
   const base = fixture('features-on').snapshot
   const ids = {
@@ -193,7 +194,7 @@ async function seed(): Promise<void> {
     ...base,
     snapshot: { ...base.snapshot, id: ids.snapshot, menu_id: ids.menu, venue_id: ids.venue },
     menu: { ...base.menu, id: ids.menu },
-    presentation: { face: 'qr-phone', options: {} },
+    presentation: { face, options: {} },
   }
   const put = (file: string, value: unknown) =>
     store.put(file, new TextEncoder().encode(JSON.stringify(value)), publishPutOptions(file))
@@ -227,12 +228,12 @@ async function seed(): Promise<void> {
   )
 }
 
-const [step] = process.argv.slice(2)
-if (step !== 'seed') {
-  console.error(`seed-order-e2e: unknown step "${step}" (seed)`)
+const [step, face = 'qr-phone'] = process.argv.slice(2)
+if (step !== 'seed' || !/^[a-z][a-z0-9-]{0,31}$/.test(face)) {
+  console.error(`seed-order-e2e: unknown step "${step}" (seed [template id])`)
   process.exit(1)
 }
-seed()
+seed(face)
   .then(async () => {
     await getPool().end()
     process.exit(0)

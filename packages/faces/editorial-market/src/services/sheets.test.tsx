@@ -13,7 +13,10 @@ import {
   billRound,
   drawFace,
   fakeHost,
+  itemNamed,
   orderingView,
+  orderLine,
+  orderOf,
   payingOf,
   resetPage,
   tableBillOf,
@@ -34,6 +37,8 @@ const withBill: Partial<ServiceState> = {
   bill,
   tableBill: tableBillOf(),
   paying: payingOf(),
+  // The table's order has a line, so the bag has a button in the bar.
+  order: orderOf([orderLine(itemNamed(view, 'Hummus'))]),
 }
 
 /** Every sheet: the name of the button that opens it, the title of the dialog, and a way to open it. */
@@ -42,9 +47,6 @@ const SHEETS: { name: string; title: string; open: () => HTMLElement }[] = [
     name: 'bag',
     title: 'Your bag',
     open: () => {
-      // The first time Hummus is added; the bag keeps it after that.
-      const add = screen.queryByRole('button', { name: 'Add Hummus' })
-      if (add !== null) fireEvent.click(add)
       const opener = screen.getByRole('button', { name: /View bag/ })
       fireEvent.click(opener)
       return opener

@@ -84,6 +84,10 @@ const SCENARIO = PAY_FIRST ? 'pay-first' : 'demo-bar'
 const PAY_FIRST_ARTICLE = { id: '2002', name: 'Aperol Spritz', priceMinor: 1_100 }
 /** The run that publishes a menu and prints the guest page's path (#114). */
 const PAGE = process.env.PAY_HARNESS_PAGE === '1'
+/** The template that run draws: the reference template unless the spec names another (#239). */
+const PAGE_FACE = /^[a-z][a-z0-9-]{0,31}$/.test(process.env.PAY_HARNESS_FACE ?? '')
+  ? (process.env.PAY_HARNESS_FACE as string)
+  : 'qr-phone'
 /** The run through the real provider's sandbox (#114): its connected account comes from the env. */
 const STRIPE = process.env.PAY_HARNESS_PROVIDER === 'stripe'
 /** This run's key for the bill's line ids (the e2e worker reads no bill). */
@@ -420,7 +424,7 @@ async function publishPayFirstMenu(
       new TextEncoder().encode(
         JSON.stringify({
           ...published.snapshot.body,
-          presentation: { face: 'qr-phone', options: {} },
+          presentation: { face: PAGE_FACE, options: {} },
         }),
       ),
       publishPutOptions(file),

@@ -72,7 +72,7 @@ export function LocationSheet() {
     <Overlay key="location" title={title} closeLabel={guest.close} onClose={controls.dismiss}>
       <PreviewMarker show={state.preview} words={words} />
       {prompt === 'consent' ? (
-        <div className="ro-sheet" data-slot="location.consent">
+        <div className="ro-sheet" data-slot="location.consent" data-location-prompt="consent">
           <p>
             {words.locationConsent(location.venueName)}
             {privacyUrl === null ? null : (
@@ -96,9 +96,13 @@ export function LocationSheet() {
           </button>
         </div>
       ) : null}
-      {prompt === 'checking' ? <StatePanel tone="wait" title={words.locationChecking} /> : null}
+      {prompt === 'checking' ? (
+        <div data-location-prompt="checking">
+          <StatePanel tone="wait" title={words.locationChecking} />
+        </div>
+      ) : null}
       {prompt === 'failed' ? (
-        <div className="ro-sheet" data-slot="location.failed">
+        <div className="ro-sheet" data-slot="location.failed" data-location-prompt="failed">
           <StatePanel tone="bad" title={words.locationFailed} hint={words.locationWhy}>
             {o.features.callWaiter !== null ? (
               <button
@@ -117,7 +121,7 @@ export function LocationSheet() {
                 {words.locationCallWaiter}
               </button>
             ) : (
-              <p className="ro-notice" data-slot="location.still-card">
+              <p className="ro-notice" data-slot="location.still-card" data-location-still-card="">
                 {words.locationOrderFromWaiter}
               </p>
             )}

@@ -1,15 +1,17 @@
 // The ordering part of the dish page: the choice groups (with their limits and a message when the
 // guest has not chosen enough), a note for the kitchen, a quantity and "Add to bag" with the price
 // as it moves. It replaces the page's read-only list of choices whenever ordering is on for the
-// dish. Editing a line of the bag opens this page with the line's choices filled in.
+// dish. The line goes onto the table's order (`order.add`, with the choices and the note). Where
+// the POS's ticket takes neither (#78) the page draws no choices and no note field: it says the
+// staff are told instead, and a dish that needs a choice is ordered from the waiter.
 
 import {
   draftPrice,
   groupValid,
+  needsChoices,
   SERVICE_LIMITS,
   type Selection,
   selectedOptionIds,
-  selectionOf,
   selectionValid,
   toggleOption,
   type ViewItem,
@@ -32,15 +34,22 @@ export function DishOrder({
   readonly onDone: () => void
 }) {
   const o = useServices()
-  const edit = o?.editing?.itemId === item.id ? o.editing : null
-  const [selection, setSelection] = useState<Selection>(() =>
-    edit === null ? {} : selectionOf(item.modifierGroups, edit.optionIds),
-  )
-  const [qty, setQty] = useState(edit?.qty ?? 1)
-  const [note, setNote] = useState(edit?.note ?? '')
+  const [selection, setSelection] = useState<Selection>({})
+  const [qty, setQty] = useState(1)
+  const [note, setNote] = useState('')
   const [tried, setTried] = useState(false)
   if (o === null) return null
   const { words, locale } = o
+
+  // Where the ticket takes no choices and no note, the page draws neither.
+  const choices = o.notesAndOptions
+  if (!choices && needsChoices(item)) {
+    return (
+      <p className="ro-notice" data-slot="item.order_from_waiter">
+        {words.orderFromWaiter}
+      </p>
+    )
+  }
 
   const valid = selectionValid(item.modifierGroups, selection)
   const optionIds = selectedOptionIds(item.modifierGroups, selection)
@@ -54,15 +63,13 @@ export function DishOrder({
       setTried(true)
       return
     }
-    const line = { itemId: item.id, qty, optionIds, note }
-    o.editBag(edit === null ? { type: 'add', line } : { type: 'replace', key: edit.key, line })
-    o.stopEditing()
+    void o.add(item, choices ? { optionIds, qty, note } : { qty })
     onDone()
   }
 
   return (
     <div className="ro-dish">
-      {item.modifierGroups.map((group) => {
+      {(choices ? item.modifierGroups : []).map((group) => {
         const picked = selection[group.id] ?? []
         const invalid = tried && !groupValid(group, picked)
         const required = group.required || group.min > 0
@@ -116,16 +123,22 @@ export function DishOrder({
           </fieldset>
         )
       })}
-      <label className="ro-note">
-        <span>{words.note}</span>
-        <textarea
-          rows={2}
-          value={note}
-          maxLength={SERVICE_LIMITS.note}
-          placeholder={words.notePlaceholder}
-          onChange={(event) => setNote(event.target.value)}
-        />
-      </label>
+      {choices ? (
+        <label className="ro-note">
+          <span>{words.note}</span>
+          <textarea
+            rows={2}
+            value={note}
+            maxLength={SERVICE_LIMITS.note}
+            placeholder={words.notePlaceholder}
+            onChange={(event) => setNote(event.target.value)}
+          />
+        </label>
+      ) : (
+        <p className="ro-allergy" data-notes-at-staff="">
+          {words.notesAtStaff}
+        </p>
+      )}
       <div className="ro-dish-bar">
         <Stepper value={qty} min={1} onChange={setQty} label={item.name.text} words={words} />
         <button type="button" className="ro-primary" onClick={add} aria-disabled={!valid}>
