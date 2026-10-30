@@ -156,6 +156,7 @@ export async function loadLog(
       timezone: read.access.venue.timezone,
       locale,
       source,
+      venueName: read.access.venue.name,
     }),
   }
 }

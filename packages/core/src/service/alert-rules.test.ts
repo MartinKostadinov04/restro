@@ -8,7 +8,9 @@ import {
   ORDER_RATE_KIND,
   ORDER_UNCONFIRMED_KIND,
   PAUSED_KIND,
+  PAYMENT_ALERT_KINDS,
   ruleOf,
+  TEAM_ALERT_KINDS,
   serviceHoursWindow,
 } from './alert-rules'
 import { ORDER_RATE_ALERT } from './order-rate'
@@ -30,6 +32,30 @@ describe('the kinds other tickets raise', () => {
     expect(ORDER_RATE_KIND).toBe(ORDER_RATE_ALERT)
     expect(ORDER_PACE_KIND).toBe(ORDER_PACE_ALERT)
     expect(CONNECTION_UNSTABLE_KIND).toBe(CONNECTION_UNSTABLE_ALERT)
+  })
+})
+
+describe('the money alerts (D122 §7)', () => {
+  it('are told outside service hours and repeated until Done: those seven, no other kind', () => {
+    const repeating = Object.entries(ALERT_RULES)
+      .filter(([, rule]) => rule.untilDone === true)
+      .map(([kind]) => kind)
+    expect(repeating.sort()).toEqual([...PAYMENT_ALERT_KINDS].sort())
+    for (const kind of PAYMENT_ALERT_KINDS) {
+      const rule = ruleOf(kind, 'venue')
+      expect(rule.outsideServiceHours).toBe(true)
+      expect(rule.push?.reminder).toMatchObject({ afterMs: 5 * 60_000, max: Infinity })
+      expect(rule.team?.reminder).toBeNull()
+    }
+  })
+})
+
+describe('the team’s own alerts (D122 §7)', () => {
+  it('list every kind told to the team alone', () => {
+    const teamOnly = Object.entries(ALERT_RULES)
+      .filter(([, rule]) => rule.team !== null && rule.push === null && rule.venueTelegram === null)
+      .map(([kind]) => kind)
+    expect([...TEAM_ALERT_KINDS].sort()).toEqual([...teamOnly, 'payment_stuck'].sort())
   })
 })
 
@@ -80,11 +106,11 @@ describe('ruleOf (D120: who is told, how often)', () => {
     expect(ruleOf(PAUSED_KIND, 'venue').closesByAnswer).toBe(false)
   })
 
-  it('lets only the pre-opening check outside service hours', () => {
+  it('lets only the pre-opening check and the money alerts outside service hours', () => {
     const outside = Object.entries(ALERT_RULES)
       .filter(([, rule]) => rule.outsideServiceHours)
       .map(([kind]) => kind)
-    expect(outside).toEqual(['pre_opening_check'])
+    expect(outside.sort()).toEqual(['pre_opening_check', ...PAYMENT_ALERT_KINDS].sort())
   })
 })
 

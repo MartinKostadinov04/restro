@@ -505,6 +505,66 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
     })
   })
 
+  describe('a money alert (D122 §7)', () => {
+    const markDone = async (id: string) => {
+      const { result } = await applyService(
+        pool,
+        { type: 'alert.done', alertId: id },
+        user(ownerId),
+      )
+      if (result.status !== 'accepted') throw new Error(`done refused: ${result.code}`)
+    }
+
+    afterAll(() => setOrdering({}))
+
+    it('is told after closing and repeats at 5 minutes, with Done, until Done', async () => {
+      await setOrdering({ serviceHours: CLOSED_ALL_WEEK })
+      const id = await seedAlert('payment_stranded', { permission: 'money.follow_up' })
+      await pass()
+      const toGroup = () => sent.filter((m) => m.chatId === VENUE_CHAT)
+      expect(toGroup()).toHaveLength(1)
+      expect(pushed.length).toBeGreaterThan(0)
+      expect((await rowOf(id))?.details.delivery).not.toHaveProperty('suppressed')
+
+      offsetMs = 4 * 60_000
+      await pass()
+      expect(toGroup()).toHaveLength(1)
+
+      offsetMs = 5 * 60_000 + 1_000
+      const pushesBefore = pushed.length
+      await pass()
+      expect(toGroup()).toHaveLength(2)
+      expect(toGroup()[1]).toMatchObject({ doneFor: id })
+      expect(pushed.length).toBeGreaterThan(pushesBefore)
+
+      offsetMs = 10 * 60_000 + 2_000
+      await pass()
+      expect(toGroup()).toHaveLength(3)
+
+      await markDone(id)
+      offsetMs = 20 * 60_000
+      const pushesAtDone = pushed.length
+      await pass()
+      expect(toGroup()).toHaveLength(3)
+      expect(pushed.length).toBe(pushesAtDone)
+    })
+
+    it('a non-money alert after closing is still not delivered', async () => {
+      await setOrdering({ serviceHours: CLOSED_ALL_WEEK })
+      const id = await seedAlert('payment_refunded')
+      expect(await pass()).toBe(0)
+      expect((await rowOf(id))?.details.delivery).toEqual({ suppressed: true })
+    })
+  })
+
+  describe('a tap on a push', () => {
+    it('opens the venue’s Log (D120)', async () => {
+      await seedAlert('order_unconfirmed')
+      await pass()
+      expect(pushed[0]?.payload.url).toBe(`/venues/${venueId}?tab=tonight&view=log`)
+    })
+  })
+
   describe('the Restro team’s own alerts', () => {
     it('go to the team’s chat only, grouped', async () => {
       await seedAlert('order_pace', { audience: 'restro' })

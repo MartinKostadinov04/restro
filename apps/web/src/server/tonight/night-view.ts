@@ -18,6 +18,7 @@ import {
   type SentOrderDetail,
   type SentOrderPage,
   type SentOrderRow,
+  tableLabel,
   type Who,
 } from '@restro/core/service'
 
@@ -391,6 +392,7 @@ export function logLineView(
     readonly clock: ReturnType<typeof clockIn>
     readonly locale: AlertLocale
     readonly source: string
+    readonly venueName: string
   },
 ): LogLineView {
   const alerting =
@@ -419,8 +421,25 @@ export function logLineView(
     cause: line.cause === null ? null : (CAUSE_WORDS[line.cause] ?? null),
     alertTitle: alerting
       ? alertMessage(
-          { kind: line.reason ?? '', details: {} },
-          { locale: input.locale, venueName: '', tableLabel: null, source: input.source },
+          {
+            kind: line.reason ?? '',
+            details: line.scope?.kind === 'bar' ? { scope: 'bar', barName: line.scope.name } : {},
+          },
+          {
+            locale: input.locale,
+            venueName: input.venueName,
+            tableLabel:
+              line.table === null
+                ? null
+                : tableLabel(
+                    input.locale,
+                    line.numbered
+                      ? { name: null, number: line.table }
+                      : { name: line.table, number: null },
+                  ),
+            source: input.source,
+            provider: providerDisplayName(line.providerKind),
+          },
           'new',
         ).title
       : null,
@@ -456,14 +475,24 @@ export function logLineView(
 
 export function logView(
   page: LogPage,
-  input: { readonly timezone: string; readonly locale: AlertLocale; readonly source: string },
+  input: {
+    readonly timezone: string
+    readonly locale: AlertLocale
+    readonly source: string
+    readonly venueName: string
+  },
 ): LogView {
   const clock = clockIn(input.timezone)
   return {
     day: page.day,
     today: page.today,
     rows: page.rows.map((line) =>
-      logLineView(line, { clock, locale: input.locale, source: input.source }),
+      logLineView(line, {
+        clock,
+        locale: input.locale,
+        source: input.source,
+        venueName: input.venueName,
+      }),
     ),
     hasMore: page.hasMore,
     days: page.days,

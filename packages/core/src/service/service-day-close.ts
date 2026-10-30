@@ -20,8 +20,9 @@
 // The night's open venue alerts are cleared with the close (#162; Martin 10-27): each gets `done_at`
 // and one `alert.cleared` Log line, so nobody presses Done on yesterday's alerts and the next night
 // starts clean. Not cleared: an alert that ends by itself (a pause, `closesItself`), one only an
-// answer closes (the payment questions a card hold waits on, `closesByAnswer`) and Restro's own
-// (`audience = 'restro'`). A close that is refused clears nothing.
+// answer closes (the payment questions a card hold waits on, `closesByAnswer`), a money alert, which
+// repeats until a person closes it (`untilDone`, D122 §7), and Restro's own (`audience = 'restro'`).
+// A close that is refused clears nothing.
 //
 // Locks, in the fixed order: the day's sittings (by table), its sent orders, the alerts to clear,
 // its payments.
@@ -148,7 +149,7 @@ async function lockAlertsToClear(stx: ServiceTx, day: string) {
     open
       .filter((row) => {
         const rule = ruleOf(row.kind, 'venue')
-        return !rule.closesItself && !rule.closesByAnswer
+        return !rule.closesItself && !rule.closesByAnswer && rule.untilDone !== true
       })
       .map((row) => row.id),
   )
