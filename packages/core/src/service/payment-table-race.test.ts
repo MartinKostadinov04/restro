@@ -123,12 +123,12 @@ describe.skipIf(!hasDatabase)('a payment table: claim and unmark at once (restro
     const midway = gate()
     // The unmark of `markPaymentTable`, held open before it commits.
     const unmarking = inTx(async (stx) => {
+      await lockLeases(stx, [{ scope: 'payment_table', key: tableId }])
       await stx.tx
         .select({ id: venueTables.id })
         .from(venueTables)
         .where(eq(venueTables.id, tableId))
         .for('update')
-      await lockLeases(stx, [{ scope: 'payment_table', key: tableId }])
       const change = await setPaymentTableIn(stx.tx, tableId, false)
       await midway.passed
       return change.ok
@@ -318,6 +318,26 @@ describe.skipIf(!hasDatabase)('payment.claim_table itself, at once (restro_app r
         expect(marked).toBe(true)
       }
     }
+  }, 120_000)
+
+  // lock-order.ts: "so two writers can never deadlock". Both take the lease row first; the claim
+  // then writes `payment_table_id`, whose foreign key wants the table row (FOR KEY SHARE), so an
+  // unmark that held the table row before the lease would deadlock with it (RR-62).
+  it('a claim and an unmark at the same moment both come to an answer: no deadlock', async () => {
+    const tableId = paymentTables()[0] as string
+    const failed: string[] = []
+    for (let round = 0; round < 40; round += 1) {
+      const { claimed, unmarked } = await claimAndUnmark(tableId)
+      for (const [who, outcome] of [
+        ['claim', claimed],
+        ['unmark', unmarked],
+      ] as const) {
+        if (outcome.status === 'rejected') {
+          failed.push(`round ${round}, ${who}: ${String(outcome.reason?.cause ?? outcome.reason)}`)
+        }
+      }
+    }
+    expect(failed).toEqual([])
   }, 120_000)
 
   it('lets a payment whose wait ran out go, and it holds up nobody behind it', async () => {

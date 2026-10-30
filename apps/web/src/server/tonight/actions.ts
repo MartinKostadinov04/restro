@@ -6,7 +6,7 @@
 // action; then it calls tables.ts, whose service write path checks the permission. The mark of a
 // payment table is a settings change: it takes no PIN, only the person's own sign-in.
 import { idSchema } from '@restro/core'
-import { paymentWorkerJob, type ServiceActor } from '@restro/core/service'
+import { paymentWorkerJob, readVenueAccess, type ServiceActor } from '@restro/core/service'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -286,12 +286,24 @@ export async function tableBillAction(
   const parsed = OnTableRead.safeParse(input)
   if (!parsed.success) return { ok: false }
   try {
-    const { organization } = await requireTenant()
+    const { organization, user, sessionId } = await requireTenant()
     const venue = await getVenue(organization.id, parsed.data.venueId)
     if (!venue) return { ok: false }
+    // As Tonight's own reads ask: a quick answer, so its tablet reads, and another venue's doesn't
+    // (RR-84).
+    const access = await readVenueAccess(getPool(), {
+      tenantId: organization.id,
+      venueId: venue.id,
+      actor: { kind: 'user', userId: user.id, sessionId },
+    })
+    if (!access.ok) return { ok: false }
     return {
       ok: true,
-      bill: await loadTableBill({ tenantId: organization.id, tableId: parsed.data.tableId }),
+      bill: await loadTableBill({
+        tenantId: organization.id,
+        venueId: venue.id,
+        tableId: parsed.data.tableId,
+      }),
     }
   } catch (error) {
     if (error instanceof Error && 'digest' in error) throw error

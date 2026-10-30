@@ -70,14 +70,15 @@ const line = (kind: LogLineView['kind'], fields: Partial<LogLineView> = {}): Log
 })
 
 const SHOWN = (Object.keys(SENTENCES) as LogLineView['kind'][]).filter(
-  (kind) => kind !== 'lease.taken_over',
+  (kind) => kind !== 'lease.taken_over' && kind !== 'payment.hold_unread',
 )
 
 describe("the Log's sentences", () => {
   // That the table covers every kind of `LOG_KINDS` is pinned in the server's tests
   // (server/tonight/log-kinds.test.ts), which may import core's service entry.
-  it('has one for every shown kind, and the lease alone has none', () => {
+  it('has one for every shown kind, and the lease and the failed hold reads alone have none', () => {
     expect(SENTENCES['lease.taken_over']).toBeNull()
+    expect(SENTENCES['payment.hold_unread']).toBeNull()
     for (const kind of SHOWN) {
       expect(SENTENCES[kind], kind).toBeTypeOf('function')
     }
@@ -85,6 +86,7 @@ describe("the Log's sentences", () => {
 
   it('never shows a lease taken over', () => {
     expect(logSentence(line('lease.taken_over'), context('en', new Set()))).toBeNull()
+    expect(logSentence(line('payment.hold_unread'), context('en', new Set()))).toBeNull()
   })
 
   for (const locale of ['en', 'bg'] as const) {

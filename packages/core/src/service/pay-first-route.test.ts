@@ -711,6 +711,107 @@ describe.skipIf(!hasDatabase)('pay-first items (as the restro_app role)', () => 
     ).toMatchObject({ status: 'accepted', details: { state: 'released' } })
   })
 
+  it('"not on the till" puts the lines back in the bag, releases the card, and Try again sends once (RR-13)', async () => {
+    const id = await split()
+    await queued(id)
+    await recordStep(id, 'addLines', 'unknown')
+    await step({
+      type: 'payment.entered',
+      paymentId: id,
+      outcome: 'unknown',
+      billRef: null,
+      code: 'not_found',
+    })
+    const firstSent = (await payment(id))?.sent_order_id
+    // The POS may still hold the round: nothing comes back until a manager has looked.
+    expect(await orderLines()).toEqual([])
+
+    expect((await answer(id, 'not_on_till')).result).toMatchObject({ status: 'accepted' })
+    expect(await orderLines()).toEqual([['gin', 2, null]])
+    // A second tap changes nothing: the lines come back once.
+    expect((await answer(id, 'not_on_till')).result).toMatchObject({
+      status: 'accepted',
+      details: { changed: false },
+    })
+    expect(await orderLines()).toEqual([['gin', 2, null]])
+
+    // The card is released by the worker's next step, with the round's lines still in the bag.
+    expect(
+      await step({
+        type: 'payment.settle',
+        paymentId: id,
+        from: 'cancelling',
+        reason: 'cancelled',
+      }),
+    ).toMatchObject({ status: 'accepted', details: { state: 'released' } })
+    expect(await payment(id)).toMatchObject({ state: 'released', reason: 'not_on_till' })
+    expect(await orderLines()).toEqual([['gin', 2, null]])
+
+    // Try again: one new payment for the same round, on a sent order of its own.
+    const again = await send([], [line(gin, 2)])
+    expect(again.result).toMatchObject({ status: 'accepted' })
+    const next = again.result.details.paymentId as string
+    expect(next).not.toBe(id)
+    expect((await payment(next))?.sent_order_id).not.toBe(firstSent)
+    expect(await orderLines()).toEqual([['gin', 2, next]])
+    // A second tap finds nothing left to send: the round went once.
+    expect((await send([], [line(gin, 2)])).result).toMatchObject({ status: 'refused' })
+    const { rows } = await world.owner.query(
+      `select count(*)::int as n from restro.payments where sitting_id = $1 and state <> 'released'`,
+      [sittingId],
+    )
+    expect(rows[0]).toEqual({ n: 1 })
+  })
+
+  it('merges the returned lines into the bag and, for a later group, gives nothing back (RR-13)', async () => {
+    const id = await split()
+    await queued(id)
+    await recordStep(id, 'addLines', 'unknown')
+    await step({
+      type: 'payment.entered',
+      paymentId: id,
+      outcome: 'unknown',
+      billRef: null,
+      code: 'not_found',
+    })
+    // A friend ordered the same again meanwhile: the bag holds one line of three.
+    await add(gin, 1)
+    expect((await answer(id, 'not_on_till')).result).toMatchObject({ status: 'accepted' })
+    expect(await orderLines()).toEqual([['gin', 3, null]])
+
+    await step({ type: 'payment.settle', paymentId: id, from: 'cancelling', reason: 'cancelled' })
+    await world.owner.query(`update restro.payments set payment_table_id = null where id = $1`, [
+      id,
+    ])
+    await send([], [line(gin, 3)]).then(({ result }) =>
+      expect(result).toMatchObject({ status: 'accepted' }),
+    )
+    const [other] = (
+      await world.owner.query<{ id: string }>(
+        `select id from restro.payments where sitting_id = $1 and state = 'requested'`,
+        [sittingId],
+      )
+    ).rows
+    const otherId = other?.id as string
+    await queued(otherId)
+    await recordStep(otherId, 'addLines', 'unknown')
+    await step({
+      type: 'payment.entered',
+      paymentId: otherId,
+      outcome: 'unknown',
+      billRef: null,
+      code: 'not_found',
+    })
+    // A new group sits down before the manager answers: it never gets the last group's lines.
+    await world.owner.query(
+      `update restro.sittings set ended_at = now(), end_reason = 'staff_closed' where id = $1`,
+      [sittingId],
+    )
+    sittingId = await world.openSitting(tableId)
+    expect((await answer(otherId, 'not_on_till')).result).toMatchObject({ status: 'accepted' })
+    expect(await orderLines()).toEqual([])
+  })
+
   it('"on the till" after an unknown entry takes the round on to its check, its sent order Added', async () => {
     const id = await split()
     await queued(id)

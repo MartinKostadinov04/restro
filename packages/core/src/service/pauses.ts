@@ -11,7 +11,9 @@
 // - **Staff pause** (`ordering.pause`): all bars (scope `venue`) or one (scope `bar`); a manager
 //   lifts it (`ordering.lift`). A pause Restro started has no button: only Restro's admin team
 //   lifts one by hand.
-// - **Table pause**, two kinds besides the vanished table (`floor-pause.ts`):
+// - **Table pause**, three kinds besides the vanished table (`floor-pause.ts`):
+//   - a failed reading (D111, D120): lifts at the table's next good reading (`readings.ts`), a staff
+//     resume, or the sitting's end;
 //   - Unconfirmed (`order_unconfirmed`, D120): lifts at a waiter's act in the POS (where the
 //     connector declares who entered a line), a staff resume (`table.resume`), all its POS bills
 //     closed, or 15 minutes (`sweep`);
@@ -37,6 +39,8 @@ import { changedSince, UndoTokenSchema } from './undo'
 
 /** The cause of a staff pause. */
 export const STAFF_PAUSE_CAUSE = 'staff'
+/** The cause of the table pause a failed reading starts: the staff's words for a POS not answering. */
+export const READING_FAILED_CAUSE = 'pos_unreachable'
 /** How long an Unconfirmed sent order pauses its table at most (D120). */
 export const UNCONFIRMED_PAUSE_MS = 15 * 60_000
 /** The alert to Restro's admin team when a connection pauses for the third time in 30 minutes. */
@@ -51,6 +55,7 @@ export const LIFT_REASONS = {
   billsClosed: 'bills_closed',
   waiterActed: 'waiter_acted',
   sittingEnded: 'sitting_ended',
+  goodReading: 'good_reading',
 } as const
 
 /** Table pauses that a resume and the sitting's end leave alone: they lift by themselves. */

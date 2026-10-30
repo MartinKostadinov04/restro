@@ -2,11 +2,13 @@
 // ends as its payment's route says. The payment owns it: the send worker never takes it up.
 // - Entered on a payment table → `added`, with the POS bill it opened (kept in the row, rule 3).
 // - Ended before the POS → `not_sent`; its entry unknown → `unconfirmed` until a manager answers.
+// - A manager says it is not on the till → `not_sent`, its lines back in the bag (D116).
 
 import { sentOrders } from '@restro/db'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 
 import type { ServiceTx } from './definition'
+import { giveLinesBack } from './sent-lines'
 
 /** What a pay-first sent order moves by: its payment's row. */
 interface PayFirstPayment {
@@ -55,7 +57,9 @@ export async function movePayFirstSentOrder(
 /**
  * A manager answered a pay-first payment whose round was unconfirmed: "Receipt printed" and "on
  * the till" mean the round is on the POS (`added`); "No receipt" means the guest is not charged
- * for it, and "not on the till" that the round is not on the POS (any more), so it is Not sent.
+ * for it, and "not on the till" that the round is not on the POS (any more), so it is Not sent and
+ * its lines return to the bag, once, with Try again (D116). "No receipt" gives nothing back: staff
+ * deal with the round where it is. No answer here touches the POS.
  */
 export async function settlePayFirstSentOrder(
   stx: ServiceTx,
@@ -68,5 +72,10 @@ export async function settlePayFirstSentOrder(
     return
   }
   const from = answer === 'not_on_till' ? ['unconfirmed', 'added'] : ['unconfirmed']
-  await movePayFirstSentOrder(stx, payment, from, 'not_sent', { reason: answer })
+  const moved = await movePayFirstSentOrder(stx, payment, from, 'not_sent', { reason: answer })
+  if (!moved || answer !== 'not_on_till' || payment.sentOrderId === null) return
+  await giveLinesBack(
+    stx,
+    await stx.tx.select().from(sentOrders).where(eq(sentOrders.id, payment.sentOrderId)),
+  )
 }

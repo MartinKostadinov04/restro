@@ -34,6 +34,7 @@ import {
 import {
   applyService,
   DEFAULT_ROLE_PERMISSIONS,
+  HOLD_READ_TRIES,
   type SendMenu,
   type ServiceContext,
 } from '@restro/core/service'
@@ -594,6 +595,31 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
     await drive(id, 3)
     expect(await stored(id)).toMatchObject({ state: 'unconfirmed' })
     expect(holdOf(id)).toEqual([expect.objectContaining({ status: 'held' })])
+  })
+
+  // RR-18: the provider won't show the hold. A bounded number of tries, then what any failed check
+  // of an entered round does: a manager is asked, the hold neither charged nor released.
+  it('a hold the provider stops showing: unconfirmed for a manager, never charged or released', async () => {
+    const id = await held()
+    await query(`update restro.payment_accounts set account_ref = $1 where venue_id = $2`, [
+      `${accountRef}_other`,
+      demo.venueId,
+    ])
+    const row = await drive(id).finally(() =>
+      query(`update restro.payment_accounts set account_ref = $1 where venue_id = $2`, [
+        accountRef,
+        demo.venueId,
+      ]),
+    )
+    expect(row).toMatchObject({ state: 'unconfirmed', reason: 'entered_check_failed' })
+    expect(await alertsOf(id)).toEqual(['payment_unconfirmed:money.follow_up'])
+    expect(calls('closeBill')).toBe(0)
+    expect(holdOf(id)).toEqual([expect.objectContaining({ status: 'held' })])
+    const [tries] = await query<{ count: string }>(
+      `select count(*) from restro.log_entries where payment_id = $1 and kind = 'payment.hold_unread'`,
+      [id],
+    )
+    expect(Number(tries?.count)).toBe(HOLD_READ_TRIES)
   })
 
   it('waits while a waiter has the payment tables, and enters the round once one is free', async () => {

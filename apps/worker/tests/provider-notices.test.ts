@@ -301,7 +301,7 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
       {
         name: 'payment-check',
         data: { tenantId, venueId, paymentId: target.id },
-        options: { singletonKey: target.id },
+        options: { singletonKey: target.id, group: { id: target.id } },
       },
     ])
   })

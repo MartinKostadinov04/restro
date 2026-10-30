@@ -53,6 +53,8 @@ export function payingBreaker() {
     }),
     origins: ['worker'],
     permission: null,
+    // `progress` is the breaker's own memory: phones are told nothing by it.
+    payingState: (command) => command.action !== 'progress',
     idempotency: 'by_state',
     async handle(stx, command) {
       stx.rows.claim('alert', [`${PAYING_PAUSED_KIND}:${stx.venueId}`])

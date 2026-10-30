@@ -26,6 +26,7 @@ import { createSimServer, ManualClock, type SimFault, type SimServer } from '@re
 import fc from 'fast-check'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
+import { APP_POOL_MAX, ROUTE_RUNS_AT_ONCE } from '../src/connection'
 import { ConnectionBreakers } from '../src/jobs/breaker'
 import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
 import { sendTableOrders, slotTargets } from '../src/jobs/order-send'
@@ -50,14 +51,25 @@ const ARTICLE_B = '2002'
 /** The waiter's first item: on the pilot profile only a waiter opens a POS bill. */
 const FIRST = '2003'
 
+/** A door a test opens once. */
+function gate() {
+  let open = () => {}
+  const opened = new Promise<void>((resolve) => {
+    open = resolve
+  })
+  return { opened, open }
+}
+
 describe.skipIf(!hasDatabase)('the Send job', () => {
   let db: TestDatabase
   let pool: DbPool
   let sim: SimServer
+  let otherSim: SimServer
   const simClock = new ManualClock()
   const tenantId = newId('tn')
   let log: Awaited<ReturnType<typeof createLogger>>
   let demo: { venueId: VenueId; integrationId: IntegrationId }
+  let secondLogin: { venueId: VenueId; integrationId: IntegrationId }
   let tableId: `tb_${string}`
   let sittingId: string
   let references = 0
@@ -130,6 +142,39 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
     if (table === undefined) throw new Error('no table 1')
     tableId = table.id
 
+    // A second POS with its own login and venue (`several tables at once`).
+    otherSim = createSimServer({ scenario: 'demo-bar', print: () => {}, clock: simClock })
+    const otherIntegration = (
+      await createIntegration(pool, tenantId, {
+        kind: 'sim',
+        host: `127.0.0.1:${await otherSim.listen(0)}`,
+      })
+    ).id
+    const otherVenue = await provisionVenue(pool, tenantId, {
+      name: 'Other Bar',
+      slug: testSlug('send-other'),
+    })
+    await upsertBarsyVenues(pool, tenantId, otherIntegration, [{ bid: 1, name: 'Other Bar' }])
+    expect((await mapBarsyVenue(pool, tenantId, otherIntegration, 1, otherVenue.id)).ok).toBe(true)
+    secondLogin = {
+      venueId: otherVenue.id as VenueId,
+      integrationId: otherIntegration as IntegrationId,
+    }
+    await setFloorSource(pool, tenantId, {
+      venueId: secondLogin.venueId,
+      source: { halls: null, bars: null, paymentTables: [] },
+    })
+    simClock.advance(1100)
+    expect(
+      (
+        await readFloorOf(
+          env(),
+          { tenantId, ...secondLogin },
+          { sim: policy, budgets: new InstanceBudgets() },
+        )
+      ).kind,
+    ).toBe('read')
+
     // Two menu items linked to the POS's articles (what a menu sync writes), and one without.
     await query(
       `insert into restro.nodes (id, tenant_id, node_type) values ($1, $4, 'item'), ($2, $4, 'item'), ($3, $4, 'item')`,
@@ -140,10 +185,16 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
        values ($1, $2, 'article', $3, $4), ($1, $2, 'article', $5, $6)`,
       [tenantId, integrationId, ARTICLE_A, itemA, ARTICLE_B, itemB],
     )
+    await query(
+      `insert into restro.source_links (tenant_id, integration_id, external_type, external_id, node_id)
+       values ($1, $2, 'article', $3, $4)`,
+      [tenantId, otherIntegration, ARTICLE_A, itemA],
+    )
   })
 
   afterAll(async () => {
     await sim?.close()
+    await otherSim?.close()
     await pool?.end()
     await db?.drop()
   })
@@ -176,7 +227,10 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
   }
 
   /** A waiting sent order of the open sitting, as a guest's Send writes it. */
-  async function waiting(lines: { itemId: string; qty: number; unitMinor: number }[]) {
+  async function waiting(
+    lines: { itemId: string; qty: number; unitMinor: number }[],
+    on: { tableId: `tb_${string}`; sittingId: string; venueId?: string } = { tableId, sittingId },
+  ) {
     const id = newId('so')
     const stored = lines.map((line) => ({
       id: newId('ol'),
@@ -198,9 +252,9 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
       [
         id,
         tenantId,
-        demo.venueId,
-        tableId,
-        sittingId,
+        on.venueId ?? demo.venueId,
+        on.tableId,
+        on.sittingId,
         new Date().toISOString().slice(0, 10),
         reference,
         JSON.stringify(stored),
@@ -715,6 +769,279 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
       { kind: 'settled', sentOrderId: id, state: 'not_sent', reason: 'pos_unreachable' },
     ])
     expect((await orderLines()).map((line) => [line.itemId, line.qty])).toContainEqual([itemA, 1])
+  })
+
+  // Repair-review, RR-61: several runs at once on the worker (`ROUTE_RUNS_AT_ONCE`), on a pool as
+  // small as the worker's (`APP_POOL_MAX`), so a run that held a connection across a POS call, or
+  // took a second one, would stop the others here.
+  describe('several tables at once', () => {
+    let smallPool: DbPool
+    const small = () => ({ pool: smallPool, log, now: () => new Date() })
+    const article = [{ itemId: itemA, qty: 1, unitMinor: 1050 }]
+
+    beforeAll(() => {
+      smallPool = createPool(db.appUrl, {
+        applicationName: 'restro-worker-order-send-small',
+        max: APP_POOL_MAX,
+      })
+    })
+    afterAll(async () => {
+      await smallPool?.end()
+    })
+
+    /** A table with its sitting open and a waiter's first item on its POS bill. */
+    async function openTable(number: string, venueId: string = demo.venueId, pos = sim) {
+      const [table] = await query<{ id: `tb_${string}`; pos: string }>(
+        `select t.id, p.place_id as pos from restro.tables t
+           join restro.places p on p.table_id = t.id
+          where t.venue_id = $1 and t.number = $2`,
+        [venueId, number],
+      )
+      if (table === undefined) throw new Error(`no table ${number}`)
+      await query(
+        `update restro.sittings set ended_at = now(), end_reason = 'staff_closed'
+          where table_id = $1 and ended_at is null`,
+        [table.id],
+      )
+      const sitting = newId('st')
+      await query(
+        `insert into restro.sittings (id, tenant_id, venue_id, table_id, service_date, opened_how, source, actor, job_id)
+         values ($1, $2, $3, $4, $5, 'one', 'staff', 'system', 'test')`,
+        [sitting, tenantId, venueId, table.id, new Date().toISOString().slice(0, 10)],
+      )
+      pos.host.engine.waiter.addRound(table.pos, [{ article: FIRST }])
+      simClock.advance(1100)
+      return { tableId: table.id, sittingId: sitting, pos: table.pos, venueId }
+    }
+
+    /** The calls on the POS per login: how many at most were in flight at once. */
+    function watched() {
+      const inFlight = new Map<string, number>()
+      const most = new Map<string, number>()
+      const during = async <T>(login: string, call: () => Promise<T>) => {
+        const now = (inFlight.get(login) ?? 0) + 1
+        inFlight.set(login, now)
+        most.set(login, Math.max(most.get(login) ?? 0, now))
+        // Past the simulator's rate limit: its limit is another question than the overlap here.
+        simClock.advance(1_100)
+        try {
+          return await call()
+        } finally {
+          inFlight.set(login, (inFlight.get(login) ?? 1) - 1)
+        }
+      }
+      const connectorFor: typeof serviceConnectorFor = (integration, policy) => {
+        const real = serviceConnectorFor(integration, policy)
+        return {
+          ...real,
+          readTable: (context, table) =>
+            during(integration.host, () => real.readTable(context, table)),
+          addLines: (context, request) =>
+            during(integration.host, () => real.addLines(context, request)),
+        }
+      }
+      return { connectorFor, most }
+    }
+
+    it('a table stuck reading back holds up no other table, and the POS is called one at a time', async () => {
+      sim.host.engine.faults.clear()
+      const first = await openTable('1')
+      const second = await openTable('2')
+      const firstOrder = await waiting(article, first)
+      const secondOrder = await waiting(article, second)
+      const { connectorFor, most } = watched()
+      const stillReading = gate()
+      const inWindow = gate()
+      const shared = { ...deps(), budgets: new InstanceBudgets() }
+      const hung = sendTableOrders(
+        small(),
+        { tenantId, venueId: demo.venueId, tableId: first.tableId },
+        {
+          ...shared,
+          // The round lands and the answer is lost: the run reads back, and waits there.
+          connectorFor: (integration, policy) => {
+            const real = connectorFor(integration, policy)
+            return {
+              ...real,
+              addLines: async (context, request) => {
+                await real.addLines(context, request)
+                throw new Error('the answer was lost')
+              },
+            }
+          },
+          sleep: async (ms) => {
+            inWindow.open()
+            await stillReading.opened
+            await shared.sleep(ms)
+          },
+        },
+      )
+      await inWindow.opened
+      const beside = await sendTableOrders(
+        small(),
+        { tenantId, venueId: demo.venueId, tableId: second.tableId },
+        { ...shared, connectorFor },
+      )
+      expect(beside).toEqual([
+        { kind: 'settled', sentOrderId: secondOrder, state: 'added', reason: null },
+      ])
+      expect((await sentOrder(firstOrder))?.state).toBe('checking')
+      stillReading.open()
+      expect(await hung).toEqual([
+        { kind: 'settled', sentOrderId: firstOrder, state: 'added', reason: null },
+      ])
+      expect(addCalls()).toBe(2)
+      expect([...most.values()]).toEqual([1])
+    })
+
+    // On the simulator's default limit (one call at a time, five a second). A table read is two
+    // calls and a round three, so two tables' calls taking turns use the second up: the round's
+    // own read was answered "busy", the round's outcome unknown, and ordering paused. With one
+    // chain at a time per login each table is what it was when the queue ran one at a time.
+    it.each([1, ROUTE_RUNS_AT_ONCE])(
+      'many tables at %d at once on a strict POS: every order Added, none Unconfirmed',
+      async (atOnce) => {
+        sim.host.engine.faults.clear()
+        const tables = []
+        for (const number of ['1', '2', '3', '4', '5', '6', '7', '8']) {
+          tables.push(await openTable(number))
+        }
+        for (const table of tables) await waiting(article, table)
+        // The simulator's second goes by as real ones go by.
+        let last = Date.now()
+        const inRealTime: typeof serviceConnectorFor = (integration, policy) => {
+          const real = serviceConnectorFor(integration, policy)
+          const moved = () => {
+            const now = Date.now()
+            simClock.advance(now - last)
+            last = now
+          }
+          return {
+            ...real,
+            readTable: (context, table) => {
+              moved()
+              return real.readTable(context, table)
+            },
+            addLines: (context, request) => {
+              moved()
+              return real.addLines(context, request)
+            },
+          }
+        }
+        const runDeps = {
+          sim: policy,
+          budgets: new InstanceBudgets(),
+          breakers: new ConnectionBreakers(() => 0.5),
+          connectorFor: inRealTime,
+        }
+        const queue = [...tables]
+        const outcomes = (
+          await Promise.all(
+            Array.from({ length: atOnce }, async () => {
+              const sent = []
+              for (let table = queue.shift(); table !== undefined; table = queue.shift()) {
+                sent.push(
+                  ...(await sendTableOrders(
+                    small(),
+                    { tenantId, venueId: demo.venueId, tableId: table.tableId },
+                    runDeps,
+                  )),
+                )
+              }
+              return sent
+            }),
+          )
+        ).flat()
+        expect(
+          outcomes.map((outcome) => (outcome.kind === 'settled' ? outcome.state : outcome.kind)),
+        ).toEqual(tables.map(() => 'added'))
+        expect(addCalls()).toBe(tables.length)
+      },
+      60_000,
+    )
+
+    it("a call hung on one login does not hold another login's table", async () => {
+      sim.host.engine.faults.clear()
+      const first = await openTable('1')
+      otherSim.host.load('demo-bar')
+      const second = await openTable('2', secondLogin.venueId, otherSim)
+      const firstOrder = await waiting(article, first)
+      const secondOrder = await waiting(article, second)
+      const { connectorFor, most } = watched()
+      const callEnds = gate()
+      const called = gate()
+      const shared = { ...deps(), budgets: new InstanceBudgets() }
+      const hung = sendTableOrders(
+        small(),
+        { tenantId, venueId: demo.venueId, tableId: first.tableId },
+        {
+          ...shared,
+          connectorFor: (integration, policy) => {
+            const real = connectorFor(integration, policy)
+            return {
+              ...real,
+              addLines: async (context, request) => {
+                called.open()
+                await callEnds.opened
+                return real.addLines(context, request)
+              },
+            }
+          },
+        },
+      )
+      await called.opened
+      expect(
+        await sendTableOrders(
+          small(),
+          { tenantId, venueId: secondLogin.venueId, tableId: second.tableId },
+          { ...shared, connectorFor },
+        ),
+      ).toEqual([{ kind: 'settled', sentOrderId: secondOrder, state: 'added', reason: null }])
+      callEnds.open()
+      const [outcome] = await hung
+      expect(outcome).toMatchObject({ kind: 'settled', sentOrderId: firstOrder })
+      // Each login's calls went one at a time, the two logins' side by side.
+      expect([...most.values()]).toEqual([1, 1])
+    })
+
+    it('two runs on one table: one round at a time, each order on the POS once', async () => {
+      sim.host.engine.faults.clear()
+      const first = await openTable('1')
+      const orders = [
+        await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }], first),
+        await waiting([{ itemId: itemB, qty: 1, unitMinor: 1100 }], first),
+      ]
+      const { connectorFor, most } = watched()
+      const job = { tenantId, venueId: demo.venueId, tableId: first.tableId }
+      let adding = 0
+      let mostAdding = 0
+      const both = { ...deps(), budgets: new InstanceBudgets() }
+      const oneAtATime: typeof serviceConnectorFor = (integration, policy) => {
+        const real = connectorFor(integration, policy)
+        return {
+          ...real,
+          addLines: async (context, request) => {
+            adding += 1
+            mostAdding = Math.max(mostAdding, adding)
+            try {
+              return await real.addLines(context, request)
+            } finally {
+              adding -= 1
+            }
+          },
+        }
+      }
+      await Promise.all([
+        sendTableOrders(small(), job, { ...both, connectorFor: oneAtATime }),
+        sendTableOrders(small(), job, { ...both, connectorFor: oneAtATime }),
+      ])
+      // The slot lets one order through at a time; what the second run left, a later run sends.
+      await sendTableOrders(small(), job, { ...both, connectorFor: oneAtATime })
+      expect(mostAdding).toBe(1)
+      expect([...most.values()]).toEqual([1])
+      for (const id of orders) expect((await sentOrder(id))?.state).toBe('added')
+      expect(addCalls()).toBe(2)
+    })
   })
 
   // RR-33, the lead's ruling 10-30: indistinguishable on this profile, Added is accepted; spec #64 line 164 is read with line 165's match.

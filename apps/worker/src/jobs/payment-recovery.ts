@@ -7,15 +7,15 @@
 // nothing behind: the prepare step reads what was recorded and acts from there (a hold asked for
 // once, a close never sent twice, an unknown write read back). A pass:
 // - queues `payment-prepare` for a payment the worker has a step for and nobody touched for a
-//   minute (a crashed run, a lost job), and tells Restro's team once when one stays `requested`,
-//   `priced` or `cancelling` for 10 minutes all the same;
+//   minute (a crashed run, a lost job), and tells Restro's team once when one stays in any state a
+//   run can be left in for 10 minutes all the same (not one that waits for a table);
 // - queues `payment-check` for a payment at the card form nobody looked at for a minute, and for a
 //   hold past its capture deadline while it waits for a table or a manager's answer (it settles
 //   `released`, reason `expired`, when the provider shows the hold gone);
 // - reads the payment table of a final payment whose lines are still on it 5 minutes later, not at
 //   once (#166), so a table that stays busy spends the POS's call budget only every 5 minutes;
 // - reads a cancelled payment whose release the provider refused back every 10 minutes, never
-//   releasing it again;
+//   releasing it again, and likewise one whose hold the last check could not read (RR-18);
 // - names a payment table held by a payment that no longer owns it (it has no deadline): logged
 //   for Restro's team, never freed by guess;
 // - probes a paused payment provider when its breaker says one is due (./payment-breaker.ts).
@@ -49,7 +49,7 @@ import { defineJob, type JobDefinition, type JobQueue } from './types'
 
 /** A payment nobody touched for this long is taken on again. */
 export const PAYMENT_STALE_MS = 60_000
-/** A payment still `requested`, `priced` or `cancelling` this long after its last change is stuck. */
+/** A payment a run can be left in, this long after its last change all the same, is stuck. */
 export const PAYMENT_STUCK_MS = 10 * 60_000
 /** How often a hold whose release the provider refused is read back. */
 export const RELEASE_READ_BACK_SECONDS = 10 * 60
@@ -60,9 +60,6 @@ export const RELEASE_READ_BACK_SECONDS = 10 * 60
 export const FINAL_TABLE_READ_SECONDS = 5 * 60
 /** The gap between the two passes of one tick. */
 export const RECOVERY_EVERY_MS = 30_000
-
-/** The states the worker alone moves on: one that stays in them is stuck. */
-const STUCK_STATES: readonly string[] = ['requested', 'priced', 'cancelling']
 
 /** What one pass reads of a payment. */
 export interface RecoveryRow {
@@ -79,6 +76,8 @@ export interface RecoveryRow {
   readonly captureDue: boolean
   /** Its latest release was refused (not `not_found`): it is read back, never released again. */
   readonly releaseRefused: boolean
+  /** The last check could not read its hold: released only once a read shows it (`cancel`). */
+  readonly holdUnread: boolean
 }
 
 /** What a pass does about a payment. */
@@ -88,6 +87,9 @@ export type RecoveryAction = 'prepare' | 'read_back_later' | 'free_later' | 'che
 export function recoveryActions(row: RecoveryRow): readonly RecoveryAction[] {
   if (row.state === 'awaiting_guest') return row.idleMs >= PAYMENT_STALE_MS ? ['check'] : []
   if (row.state === 'cancelling' && row.releaseRefused) return ['read_back_later']
+  if (row.state === 'cancelling' && row.holdUnread) {
+    return row.changedMs >= PAYMENT_STUCK_MS ? ['read_back_later', 'stuck'] : ['read_back_later']
+  }
   const waiting = (row.state === 'held' || row.state === 'queued') && row.paymentTableId === null
   const asking =
     row.state === 'unconfirmed' &&
@@ -104,7 +106,8 @@ export function recoveryActions(row: RecoveryRow): readonly RecoveryAction[] {
   ) {
     return ['free_later']
   }
-  return STUCK_STATES.includes(row.state) && row.changedMs >= PAYMENT_STUCK_MS
+  // Every state a run can be left in; a payment waiting for a table has nothing wrong with it.
+  return !waiting && !isFinalPaymentState(row.state) && row.changedMs >= PAYMENT_STUCK_MS
     ? ['prepare', 'stuck']
     : ['prepare']
 }
@@ -179,6 +182,10 @@ export async function recoverPayments(
             from restro.payment_steps s
             where s.payment_id = ${payments.id} and s.step = 'release'
             order by s.seq desc limit 1), false)`,
+            holdUnread: sql<boolean>`${payments.state} = 'cancelling' and exists (select 1
+            from restro.log_entries l
+            where l.venue_id = ${payments.venueId} and l.payment_id = ${payments.id}
+              and l.kind = 'payment.hold_unread')`,
           })
           .from(payments)
           .where(
@@ -223,6 +230,7 @@ export async function recoverPayments(
             changedMs: ms(row.changedMs),
             captureDue: row.captureDue === true,
             releaseRefused: row.releaseRefused === true,
+            holdUnread: row.holdUnread === true,
           })
           for (const action of actions) {
             if (action === 'check') {
@@ -329,6 +337,7 @@ async function send(
   const job = prepareJob(name, target)
   const id = await env.queue.send(name, job.data, {
     singletonKey: job.singletonKey,
+    ...(job.group === undefined ? {} : { group: job.group }),
     ...(afterSeconds > 0 ? { startAfter: afterSeconds } : {}),
   })
   return id !== null

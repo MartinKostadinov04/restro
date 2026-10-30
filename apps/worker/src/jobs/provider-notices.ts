@@ -254,7 +254,10 @@ export async function handleProviderNotice(
         venueId: venue.venueId,
         paymentId: payment.paymentId,
       })
-      await env.queue.send(JOB_NAMES.paymentCheck, job.data, { singletonKey: job.singletonKey })
+      await env.queue.send(JOB_NAMES.paymentCheck, job.data, {
+        singletonKey: job.singletonKey,
+        ...(job.group === undefined ? {} : { group: job.group }),
+      })
     } catch (error) {
       log.warn({ ...about, err: error }, "a guest payment's check could not be queued")
       return 'waiting'

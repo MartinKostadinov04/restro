@@ -108,7 +108,10 @@ export interface ReceiptEmailConfig {
  * Healthchecks address Restro pings no watchdog.
  */
 export interface AlertsConfig {
-  /** The bot's token (TELEGRAM_BOT_TOKEN). A secret: never logged, never in a URL we log. */
+  /**
+   * The bot's token (TELEGRAM_BOT_TOKEN), also what Telegram links are signed with. A secret: never
+   * logged, never in a URL we log.
+   */
   readonly telegramToken: string | null
   /** The Restro team's own chat (TELEGRAM_TEAM_CHAT_ID), negative for a group. */
   readonly teamChatId: string | null

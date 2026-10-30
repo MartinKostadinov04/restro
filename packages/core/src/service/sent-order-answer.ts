@@ -44,7 +44,7 @@ async function answer(
   const [found] = await stx.tx
     .select({ tableId: sentOrders.tableId })
     .from(sentOrders)
-    .where(eq(sentOrders.id, command.sentOrderId))
+    .where(and(eq(sentOrders.id, command.sentOrderId), eq(sentOrders.venueId, stx.venueId)))
   if (found === undefined) return refused(null, 'sent_order_missing')
   await stx.rows.tableOrder(found.tableId)
   const sent = (await stx.rows.sentOrders([command.sentOrderId])).get(command.sentOrderId)

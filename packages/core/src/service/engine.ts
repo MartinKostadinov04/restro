@@ -49,6 +49,7 @@ import type { CommandRegistry, ServiceTx } from './definition'
 import { resolveGrants } from './grants'
 import { appendLogEntry } from './log'
 import { tripOrderRate } from './order-rate'
+import { watchPayingState } from './paying-phones'
 import { isSettingsPermission } from './permissions'
 import { accepted, refused, type ServiceResult } from './results'
 import { RowLocks } from './rows'
@@ -305,6 +306,12 @@ export async function executeCommand(
         throw new Refusal(refused(actionId, 'undo_expired'))
       }
 
+      // Held before the handler's own locks: the fixed order puts the tables' orders first.
+      const payingMoved =
+        definition.payingState === true || definition.payingState?.(parsed.data) === true
+          ? await watchPayingState(stx)
+          : null
+
       await tx.execute(sql`savepoint service_command`)
       let result: ServiceResult
       try {
@@ -340,6 +347,7 @@ export async function executeCommand(
         }
       }
 
+      if (result.status === 'accepted') await payingMoved?.()
       const versions = await rows.bumpTouched()
       if (ring && command.tableId !== undefined && actionId !== null) {
         const order = rows.heldOrder(command.tableId)

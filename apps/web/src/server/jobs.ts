@@ -26,7 +26,7 @@ export interface JobSender {
   send(
     name: string,
     data: object,
-    options: { singletonKey: string; startAfter?: number },
+    options: { singletonKey: string; startAfter?: number; group?: { readonly id: string } },
   ): Promise<string | null>
 }
 
@@ -81,6 +81,8 @@ export async function enqueueJob<N extends ProducedJobName>(
     singletonKey: prepared.singletonKey,
     // An automatic publish waits out its merge window (core/jobs.ts); every other job starts at once.
     ...(prepared.startAfter === undefined ? {} : { startAfter: prepared.startAfter }),
+    // The route's queues run one run at a time per key, several keys at once (core/jobs.ts).
+    ...(prepared.group === undefined ? {} : { group: prepared.group }),
   })
 }
 
