@@ -30,6 +30,7 @@ import {
   type PaymentCheck,
   partialCaptureCheck,
   reconnectCheck,
+  refundListCheck,
   refundReadBackCheck,
   refusedCheck,
   releaseCheck,
@@ -118,6 +119,13 @@ export function paymentProviderSuite(harness: PaymentHarness): void {
       outside.refundsInDashboard !== undefined,
       "a refund in the venue's dashboard reads back as the total refunded",
       refundReadBackCheck,
+      harness,
+      "refund in the venue's dashboard",
+    )
+    checkIf(
+      outside.refundsInDashboard !== undefined,
+      "a payment's refunds list one by one, oldest first",
+      refundListCheck,
       harness,
       "refund in the venue's dashboard",
     )
