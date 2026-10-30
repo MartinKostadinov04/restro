@@ -714,8 +714,8 @@ export interface ServiceState {
   /**
    * A Send of this phone whose answer was lost (D120): the order may already be in the POS. While
    * it is set the face says `strings.sendLost` (with the reference when `ref` is not null) instead
-   * of the general weak-signal line, and offers no re-send. The host clears it when the order
-   * shows up as a sent order of the table, or after a few minutes of answers that find nothing.
+   * of the general weak-signal line, and offers no re-send. The host clears it after a few minutes
+   * and an answer since: the table's sent orders can't tell this phone's order from another's.
    */
   readonly sendLost?: { readonly ref: string | null } | null
 }
