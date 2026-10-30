@@ -23,7 +23,7 @@ import { MenuSnapshotSchema } from '../snapshot/schema'
 import { apply } from './apply'
 import { createAsset } from './create-asset'
 import { type ProvisionedMenu, provisionMenu, provisionTenant, provisionVenue } from './provision'
-import { publishMenu } from './publish'
+import { loadDraft, PublishError, publishMenu } from './publish'
 import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 import { archiveVenue } from './venue-lifecycle'
 
@@ -324,6 +324,8 @@ describe.skipIf(!hasDatabase)('the design record (as the restro_app role)', () =
       }
       const { result } = await save(venueId, 0, unreadable)
       expect(result.rejected[0]?.code).toBe('unreadable')
+      expect(result.rejected[0]?.issues?.length).toBeGreaterThan(0)
+      expect(result.rejected[0]?.issues?.[0]).toMatchObject({ mode: 'light', fg: 'text' })
       expect(await storedSettings(venueId)).toEqual({})
     })
 
@@ -379,6 +381,46 @@ describe.skipIf(!hasDatabase)('the design record (as the restro_app role)', () =
       expect(published.snapshot.body?.design).toEqual(values)
       expect(published.snapshot.body?.layout).toEqual({ default: 'one', guest_switch: false })
       expect(published.snapshot.body).not.toHaveProperty('presentation')
+    })
+
+    it('is refused while the stored design is not valid, and a save repairs it', async () => {
+      const snapshotCount = async () =>
+        (await owner.query('select id from restro.snapshots where venue_id = $1', [venueId])).rows
+          .length
+      const before = await snapshotCount()
+      await save(venueId, 0, { ...DEFAULT_DESIGN, colors: COLOURS })
+      const valid = await settingsOf(tenant, venueId)
+      const record = (valid as { design: Record<string, unknown> }).design
+      const offContract = {
+        ...record,
+        values: {
+          ...BASIC_DESIGN_VALUES,
+          items: { ...BASIC_DESIGN_VALUES.items, layout: 'grid' },
+        },
+      }
+      for (const design of [offContract, { revision: 1 }, null]) {
+        await owner.query(
+          `update restro.venues set settings = jsonb_set(settings, '{design}', $2::jsonb) where id = $1`,
+          [venueId, JSON.stringify(design)],
+        )
+        const refusal = await publish().catch((error: unknown) => error)
+        expect(refusal, JSON.stringify(design)).toBeInstanceOf(PublishError)
+        expect((refusal as PublishError).code).toBe('invalid_design')
+        expect((refusal as PublishError).message).not.toContain('grid')
+      }
+      expect(await snapshotCount()).toBe(before)
+
+      // The draft still draws, and the editor's next save replaces the value.
+      await owner.query(
+        `update restro.venues set settings = jsonb_set(settings, '{design}', $2::jsonb) where id = $1`,
+        [venueId, JSON.stringify(offContract)],
+      )
+      const draft = await loadDraft(app, tenant, { menuId: menu.id, venueId })
+      expect(draft.snapshot.design).toEqual(BASIC_DESIGN_VALUES)
+      const { result } = await save(venueId, 1, { ...DEFAULT_DESIGN, colors: COLOURS })
+      expect(result.applied).toBe(1)
+      expect(await publish()).toMatchObject({ status: 'published' })
+      expect(await snapshotCount()).toBe(before + 1)
     })
 
     it('never carries the record’s provenance, revision or Style', async () => {

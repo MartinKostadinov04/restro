@@ -45,6 +45,7 @@ describe('toPublishRunView', () => {
   it.each([
     ['publish refused: no_visible_items (V10)', 'no_visible_items'],
     ['publish refused: menu_blocked (missing_root)', 'menu_blocked'],
+    ['publish refused: invalid_design', 'invalid_design'],
     ['publish refused: held_outdated', 'held_outdated'],
     ['publish refused: held_not_found', 'held_not_found'],
     ['publish refused: unsafe_snapshot', 'unsafe_snapshot'],

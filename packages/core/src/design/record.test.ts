@@ -16,6 +16,7 @@ import {
   depthOfShadow,
   designContentOf,
   designThemeOf,
+  hasInvalidDesign,
   readDesign,
   readDesignRecord,
   sameDesign,
@@ -83,6 +84,32 @@ describe('reading a venue’s settings', () => {
     expect(readDesign(settings)).toEqual({ revision: 3, design: DEFAULT_DESIGN })
     expect(readDesign({ design: { revision: 'x' } }).revision).toBe(0)
     expect(readDesign({ design: { revision: -2 } }).revision).toBe(0)
+  })
+})
+
+describe('a stored design that is not a record', () => {
+  it('is invalid when a value or an option is off the contract, or it is no record at all', () => {
+    const { items } = BASIC_DESIGN_VALUES
+    for (const design of [
+      record({ values: { ...BASIC_DESIGN_VALUES, items: { ...items, layout: 'grid' } } }),
+      record({ values: { ...BASIC_DESIGN_VALUES, items: { ...items, sparkle: 'on' } } }),
+      record({ style: 'nope' }),
+      { revision: 3 },
+      null,
+      'x',
+    ]) {
+      expect(hasInvalidDesign({ design }), JSON.stringify(design)).toBe(true)
+    }
+  })
+
+  it('is not invalid when the venue has no design, or a record lacking a newer option', () => {
+    for (const settings of [{}, null, undefined, 'x', [], { theme: { brand: '#aabbcc' } }]) {
+      expect(hasInvalidDesign(settings), JSON.stringify(settings)).toBe(false)
+    }
+    expect(hasInvalidDesign({ design: record() })).toBe(false)
+    const { layout: _layout, ...otherItems } = BASIC_DESIGN_VALUES.items
+    const older = { design: record({ values: { ...BASIC_DESIGN_VALUES, items: otherItems } }) }
+    expect(hasInvalidDesign(older)).toBe(false)
   })
 })
 

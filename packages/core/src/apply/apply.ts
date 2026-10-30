@@ -95,7 +95,7 @@ import type { RejectionCode } from '../result'
 import { sortKeyBetween } from '../sort-keys'
 import { findField, type Template } from '../template'
 import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
-import { validateRoles } from '../theme/roles'
+import { type PairIssue, validateRoles } from '../theme/roles'
 import { themeRolesOf } from '../theme/settings'
 import { validateWrite } from '../validate-write'
 import { lockTenantDocument } from './lock'
@@ -157,7 +157,10 @@ export type ApplyRejectionCode =
    * between). The rejection carries the stored design (`storedDesign`) for the editor to reload.
    */
   | 'stale_revision'
-  /** setDesign: a text-on-colour pair of the design would not read (an Advanced override). */
+  /**
+   * setDesign: a text-on-colour pair of the design would not read (an Advanced override). The
+   * rejection carries the pairs (`issues`) for the editor to show.
+   */
   | 'unreadable'
   /** setDesign: a new logo that is not a stored image of this tenant. */
   | 'logo_not_usable'
@@ -176,6 +179,8 @@ export interface ApplyRejection {
   readonly fieldKey?: string
   /** `stale_revision` only: the design as stored, with its revision, for the editor to reload. */
   readonly storedDesign?: StoredDesign
+  /** `unreadable` only: the text-on-colour pairs that do not read. */
+  readonly issues?: readonly PairIssue[]
 }
 
 /**
@@ -312,6 +317,7 @@ type Outcome =
       readonly code: ApplyRejectionCode
       readonly reason: string
       readonly storedDesign?: StoredDesign
+      readonly issues?: readonly PairIssue[]
     }
 
 const APPLIED: Outcome = { kind: 'applied' }
@@ -934,6 +940,7 @@ class Run {
           reason: outcome.reason,
           ...this.rejectionTarget(op),
           ...(outcome.storedDesign === undefined ? {} : { storedDesign: outcome.storedDesign }),
+          ...(outcome.issues === undefined ? {} : { issues: outcome.issues }),
         })
       } else if (outcome.kind === 'applied') {
         this.applied += 1
@@ -1581,7 +1588,12 @@ class Run {
         (issue) =>
           `${issue.mode} ${issue.fg} on ${issue.bg} ${issue.ratio}:1 (needs ${issue.min}:1)`,
       )
-      return refused('unreadable', `these colours do not read: ${pairs.join('; ')}`)
+      return {
+        kind: 'rejected',
+        code: 'unreadable',
+        reason: `these colours do not read: ${pairs.join('; ')}`,
+        issues,
+      }
     }
     // A logo already stored is kept even if its file has gone since; only a new one is checked.
     const logo = design.logo_asset_id

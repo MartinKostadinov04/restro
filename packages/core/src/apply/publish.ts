@@ -35,7 +35,7 @@ import { z } from 'zod'
 
 import { parseAssetVariants } from '../asset-variants'
 import type { DesignValues } from '../design/contract'
-import { designThemeOf, readDesign } from '../design/record'
+import { designThemeOf, hasInvalidDesign, readDesign } from '../design/record'
 import { FIELD_VALUE_SCHEMAS } from '../field-types/catalog'
 import { type AssetId, idSchema, type NodeId, newId, type SnapshotId, type VenueId } from '../ids'
 import { venueLanguages } from '../languages'
@@ -146,6 +146,8 @@ export type PublishErrorCode =
   | 'venue_archived'
   /** The menu cannot be resolved for this venue (missing root, template, locales …). */
   | 'menu_blocked'
+  /** The venue's stored design is not a valid record (D129): saving the design again repairs it. */
+  | 'invalid_design'
   /** V10: no item would be visible. */
   | 'no_visible_items'
   /** The snapshot failed the strict schema or the leak guard (rule 3). */
@@ -286,6 +288,24 @@ async function refuseArchivedVenue(tx: WriteTx, venueId: string): Promise<void> 
   const locked = await lockLiveVenue(tx, venueId)
   if (locked.refused === 'venue_archived') {
     throw new PublishError('venue_archived', venueRefusalText(venueId, 'venue_archived'))
+  }
+}
+
+/**
+ * Refuses to publish a venue whose stored design is not a valid record: guests would get Basic
+ * without anyone having chosen it. Only a publish: the draft and the live overlay read on, and the
+ * editor's next save replaces the value.
+ */
+async function refuseInvalidDesign(tx: WriteTx, venueId: string): Promise<void> {
+  const [venue] = await tx
+    .select({ settings: venues.settings })
+    .from(venues)
+    .where(eq(venues.id, venueId))
+  if (venue !== undefined && hasInvalidDesign(venue.settings)) {
+    throw new PublishError(
+      'invalid_design',
+      `the design stored for ${venueId} is not valid; save the design again, then publish`,
+    )
   }
 }
 
@@ -668,7 +688,8 @@ async function prepareSnapshot(
 
 /**
  * Publishes one menu for one venue (see the file header). Returns what happened; throws a
- * `PublishError` (nothing written) when the input, the menu, V10 or the leak guard refuses.
+ * `PublishError` (nothing written) when the input, the menu, the stored design, V10 or the leak
+ * guard refuses.
  *
  * With `approveHold` (manual only), the held snapshot is approved: if the document still gives
  * exactly its content, it moves from `held` to `published` and becomes current; if the document
@@ -685,6 +706,7 @@ export async function publishMenu(
   return withTenantWrite(pool, tenantId, async (tx) => {
     await lockPublish(tx, tenantId, menuId, venueId)
     await refuseArchivedVenue(tx, venueId)
+    await refuseInvalidDesign(tx, venueId)
     const version = await nextVersion(tx, menuId, venueId)
     const { snapshot } = await prepareSnapshot(
       tx,
@@ -1001,7 +1023,8 @@ export interface Draft {
  * The draft of a menu + venue: the document resolved and built exactly as `publishMenu` would,
  * without writing anything (the Publish tab's preview and its "changes waiting"). Throws the same
  * `PublishError`s a publish would (`menu_not_found`, `menu_blocked`, `no_visible_items`,
- * `unsafe_snapshot`); V11 is not checked, it only concerns automatic publishes.
+ * `unsafe_snapshot`), except `invalid_design`: it draws an invalid stored design as Basic. V11 is
+ * not checked, it only concerns automatic publishes.
  */
 export async function loadDraft(
   pool: DbPool,

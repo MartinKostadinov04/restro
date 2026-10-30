@@ -155,10 +155,19 @@ export function readDesignRecord(settings: unknown): DesignRecord | null {
 }
 
 /**
+ * Whether the venue holds a design that is not a valid record: a value or an option later removed
+ * from the contract, or a hand-edited row. The publisher refuses such a venue (`invalid_design`)
+ * rather than publish it as Basic.
+ */
+export function hasInvalidDesign(settings: unknown): boolean {
+  return storedValue(settings) !== undefined && readDesignRecord(settings) === null
+}
+
+/**
  * A venue's design from its `settings`: the record's content and revision, or Basic at revision
- * 0 when it has none. A stored value that is not a valid record (only a hand-edited row could
- * cause that) reads as Basic but keeps its revision, so the next save replaces it rather than
- * being refused as stale forever.
+ * 0 when it has none. A stored value that is not a valid record (`hasInvalidDesign`) reads as Basic
+ * here, for the editor, but keeps its revision, so the next save replaces it rather than being
+ * refused as stale forever. Publishing it is refused.
  */
 export function readDesign(settings: unknown): StoredDesign {
   const record = readDesignRecord(settings)

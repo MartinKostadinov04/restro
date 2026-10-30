@@ -26,10 +26,8 @@ import {
   type PairIssue,
   readDesign,
   type StoredDesign,
-  themeRolesOf,
   type VenueTheme,
   VenueThemeSchema,
-  validateRoles,
 } from '@restro/core'
 import { apply } from '@restro/core/apply'
 import { assets, type DbPool, type Venue, venues, withTenant } from '@restro/db'
@@ -73,7 +71,16 @@ export async function loadVenueLogo(
   venue: Pick<Venue, 'settings'>,
   store: () => Promise<Pick<AssetStore, 'getUrl'>>,
 ): Promise<DesignLogo | null> {
-  const logoId = readDesign(venue.settings).design.logo_asset_id
+  return logoOf(pool, tenantId, readDesign(venue.settings).design.logo_asset_id, store)
+}
+
+/** A logo with a signed link to it: null when there is none, or the asset is not stored. */
+async function logoOf(
+  pool: DbPool,
+  tenantId: string,
+  logoId: string | null,
+  store: () => Promise<Pick<AssetStore, 'getUrl'>>,
+): Promise<DesignLogo | null> {
   if (logoId === null) return null
   const [row] = await withTenant(pool, tenantId, (tx) =>
     tx.select().from(assets).where(eq(assets.id, logoId)),
@@ -96,11 +103,21 @@ export async function loadDesign(
   store: () => Promise<Pick<AssetStore, 'getUrl'>>,
   role: string | null | undefined,
 ): Promise<DesignView> {
-  const { revision, design } = readDesign(venue.settings)
+  return designView(pool, tenantId, readDesign(venue.settings), store, role)
+}
+
+/** A stored design as the tab shows it. */
+async function designView(
+  pool: DbPool,
+  tenantId: string,
+  { revision, design }: StoredDesign,
+  store: () => Promise<Pick<AssetStore, 'getUrl'>>,
+  role: string | null | undefined,
+): Promise<DesignView> {
   return {
     revision,
     theme: designThemeOf(design),
-    logo: await loadVenueLogo(pool, tenantId, venue, store),
+    logo: await logoOf(pool, tenantId, design.logo_asset_id, store),
     canEdit: canManageIntegration(role),
   }
 }
@@ -117,8 +134,11 @@ async function storedSettings(
   return row ?? null
 }
 
-/** What a design save can be refused for, in the tab's words. */
-type DesignRefusal = 'not_found' | 'stale' | 'logo_not_usable' | 'unreadable' | 'invalid'
+/** What a design save can be refused for, in the tab's words, with what `apply` answered. */
+type DesignRefusal =
+  | { readonly refused: 'not_found' | 'logo_not_usable' | 'invalid' }
+  | { readonly refused: 'stale'; readonly stored: StoredDesign }
+  | { readonly refused: 'unreadable'; readonly issues: readonly PairIssue[] }
 
 /** Saves a whole design through `apply` (rule 1). The new revision, or why it was refused. */
 async function saveDesign(
@@ -130,9 +150,7 @@ async function saveDesign(
     readonly design: DesignContent
     readonly actor: Actor
   },
-): Promise<
-  { readonly ok: true; readonly stored: StoredDesign } | { readonly refused: DesignRefusal }
-> {
+): Promise<{ readonly ok: true; readonly stored: StoredDesign } | DesignRefusal> {
   const changeSet: ChangeSet = {
     id: newId('cs'),
     source: 'manual',
@@ -160,25 +178,21 @@ async function saveDesign(
       },
     }
   }
-  switch (rejected.code) {
-    case 'stale_revision':
-      return { refused: 'stale' }
-    case 'unknown_venue':
-      return { refused: 'not_found' }
-    case 'logo_not_usable':
-      return { refused: 'logo_not_usable' }
-    case 'unreadable':
-      return { refused: 'unreadable' }
-    default:
-      return { refused: 'invalid' }
+  if (rejected.code === 'stale_revision' && rejected.storedDesign !== undefined) {
+    return { refused: 'stale', stored: rejected.storedDesign }
   }
+  if (rejected.code === 'unreadable' && rejected.issues !== undefined) {
+    return { refused: 'unreadable', issues: rejected.issues }
+  }
+  if (rejected.code === 'unknown_venue') return { refused: 'not_found' }
+  if (rejected.code === 'logo_not_usable') return { refused: 'logo_not_usable' }
+  return { refused: 'invalid' }
 }
 
 // --- The look ------------------------------------------------------------------------------------
 
 /**
  * A complete look: the core schema, with the v2 fields the form always sends made required. A
- * look with the three colours also says which preset it started from (or null for custom), and a
  * look is built either from the three colours or from one brand colour, never both.
  */
 export const FullThemeSchema = VenueThemeSchema.required({
@@ -186,15 +200,10 @@ export const FullThemeSchema = VenueThemeSchema.required({
   radius: true,
   shadow: true,
   scheme: true,
+}).refine((theme) => theme.colors === undefined || theme.brand === undefined, {
+  message: 'a look is built from three colours or from a brand colour, not both',
+  path: ['brand'],
 })
-  .refine((theme) => theme.colors === undefined || theme.preset !== undefined, {
-    message: 'a look with three colours names its preset, or null',
-    path: ['preset'],
-  })
-  .refine((theme) => theme.colors === undefined || theme.brand === undefined, {
-    message: 'a look is built from three colours or from a brand colour, not both',
-    path: ['brand'],
-  })
 
 type FullTheme = z.output<typeof FullThemeSchema>
 
@@ -260,31 +269,26 @@ export async function saveLook(
   if (!theme.success) return { ok: false, error: 'invalid' }
   const venue = await storedSettings(pool, tenantId, input.venueId)
   if (venue === null) return { ok: false, error: 'not_found' }
-  const stale = async (): Promise<LookResult> => {
-    const fresh = await storedSettings(pool, tenantId, input.venueId)
-    return {
-      ok: false,
-      error: 'stale',
-      view: await loadDesign(pool, tenantId, fresh ?? venue, view.store, view.role),
-    }
-  }
+  const stale = async (current: StoredDesign): Promise<LookResult> => ({
+    ok: false,
+    error: 'stale',
+    view: await designView(pool, tenantId, current, view.store, view.role),
+  })
   const stored = readDesign(venue.settings)
   // The look is laid over the record read here, so it must be the one the tab started from.
-  if (stored.revision !== input.expectedRevision) return stale()
-
-  const design = designWithLook(stored.design, theme.data)
-  const issues = validateRoles(themeRolesOf(designThemeOf(design)))
-  if (issues.length > 0) return { ok: false, error: 'unreadable', issues }
+  if (stored.revision !== input.expectedRevision) return stale(stored)
 
   const saved = await saveDesign(pool, tenantId, {
     venueId: input.venueId,
     expectedRevision: input.expectedRevision,
-    design,
+    design: designWithLook(stored.design, theme.data),
     actor: input.actor,
   })
   if ('ok' in saved) return { ok: true, revision: saved.stored.revision }
-  if (saved.refused === 'stale') return stale()
-  if (saved.refused === 'unreadable') return { ok: false, error: 'unreadable', issues: [] }
+  if (saved.refused === 'stale') return stale(saved.stored)
+  if (saved.refused === 'unreadable') {
+    return { ok: false, error: 'unreadable', issues: saved.issues }
+  }
   return { ok: false, error: saved.refused }
 }
 

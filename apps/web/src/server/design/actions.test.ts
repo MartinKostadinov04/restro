@@ -183,6 +183,20 @@ describe.skipIf(!hasDatabase)('the Design tab’s actions (as the restro_app rol
       })
     })
 
+    it('of two looks saved at once keeps one, and tells the other what is stored', async () => {
+      const results = await Promise.all([
+        saveLookAction({ venueId, expectedRevision: 0, theme: wholeTheme({ font: 'manrope' }) }),
+        saveLookAction({ venueId, expectedRevision: 0, theme: wholeTheme({ font: 'lora' }) }),
+      ])
+      const kept = results.findIndex((result) => result.ok)
+      expect(kept).not.toBe(-1)
+      expect(results[1 - kept]).toMatchObject({
+        ok: false,
+        error: 'stale',
+        view: { revision: 1, theme: { font: kept === 0 ? 'manrope' : 'lora' } },
+      })
+    })
+
     it('refuses a stale revision with the stored design and writes nothing', async () => {
       await saveNow({ font: 'manrope' })
       const result = await saveLookAction({
@@ -228,7 +242,6 @@ describe.skipIf(!hasDatabase)('the Design tab’s actions (as the restro_app rol
         ['no corners', { ...complete, radius: undefined }],
         ['no shadow', { ...complete, shadow: undefined }],
         ['no light/dark policy', { ...complete, scheme: undefined }],
-        ['three colours without saying which preset', { ...complete, preset: undefined }],
         ['three colours and a brand colour', { ...complete, brand: '#2563eb' }],
         ['null (that would drop the look)', null],
       ]
