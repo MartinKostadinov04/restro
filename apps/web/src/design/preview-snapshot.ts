@@ -1,8 +1,8 @@
 // The draft snapshot with the UNSAVED look applied in memory (brief SH-05a). The server builds the
 // draft from what is saved; the tab lays the form's look over it, the way the publisher would
 // write it (`snapshotThemeOf` in core/apply/publish.ts): the palette of the colours, the eight roles
-// of both screens, the font family, corners, shadow and the light/dark policy, and the template
-// with its options. The logo stays as saved: a new logo has no photo variants until it is saved.
+// of both screens, the font family, corners, shadow and the light/dark policy. The logo stays as
+// saved: a new logo has no photo variants until it is saved.
 // Pure; the draft is not changed.
 import {
   fontFamilyOf,
@@ -13,17 +13,7 @@ import {
   type VenueTheme,
 } from '@restro/core'
 
-import type { OptionValues } from './template-options'
-
-export function previewSnapshot(
-  draft: MenuSnapshot,
-  look: {
-    readonly theme: VenueTheme
-    readonly face: string
-    readonly options: OptionValues
-  },
-): MenuSnapshot {
-  const { theme } = look
+export function previewSnapshot(draft: MenuSnapshot, theme: VenueTheme): MenuSnapshot {
   return {
     ...draft,
     theme: {
@@ -35,6 +25,5 @@ export function previewSnapshot(
       roles: themeRolesOf(theme),
       scheme: theme.scheme ?? 'auto',
     },
-    presentation: { face: look.face, options: { ...look.options } },
   }
 }

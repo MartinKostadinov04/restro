@@ -12,7 +12,13 @@
 //
 // Like `db:seed:dev` this refuses to run unless NODE_ENV is development and the database is on
 // this machine. It prints one JSON line with the menu's path and the code (`seed_send_e2e_done`).
-import { createPublishStore, publishStoreConfig, writeTableTokenFile } from '@restro/assets'
+import {
+  createPublishStore,
+  publishPutOptions,
+  publishStoreConfig,
+  snapshotPath,
+  writeTableTokenFile,
+} from '@restro/assets'
 import {
   DEFAULT_ORDERING_SETTINGS,
   hashTableCode,
@@ -32,7 +38,6 @@ import {
   provisionTenant,
   publishMenu,
   setGuestFeatures,
-  setVenuePresentation,
   startJobRun,
   updateIntegration,
 } from '@restro/core/apply'
@@ -181,12 +186,10 @@ async function seed(simHost: string): Promise<void> {
       ],
     )
 
-    // The menu, drawn by the reference template (the one with the Send) with the venue's ordering
-    // on, published as the publish job does: the snapshot, then its files.
-    await setVenuePresentation(pool, TENANT_ID, {
-      venueId: demo.venueId,
-      presentation: { face: 'qr-phone', options: {} },
-    })
+    // The menu with the venue's ordering on, published as the publish job does: the snapshot, then
+    // its files. It is drawn by the reference template (the one with the Send): new snapshots name
+    // no template (D129), so its file says so before the files are written, as the other seeds'
+    // files do; the file writer leaves a snapshot file that exists alone.
     await setGuestFeatures(pool, TENANT_ID, {
       venueId: demo.venueId,
       features: {
@@ -206,6 +209,17 @@ async function seed(simHost: string): Promise<void> {
     })
     if (published.status === 'held') throw new Error('the Send e2e menu was held, not published')
     const store = await createPublishStore(publishStoreConfig(process.env))
+    const snapshotFile = snapshotPath(published.snapshot.id)
+    await store.put(
+      snapshotFile,
+      new TextEncoder().encode(
+        JSON.stringify({
+          ...published.snapshot.body,
+          presentation: { face: 'qr-phone', options: {} },
+        }),
+      ),
+      publishPutOptions(snapshotFile),
+    )
     const deps = { pool, store, now: () => new Date() }
     const scope = { tenantId: TENANT_ID, menuId: menu.id, venueId: demo.venueId }
     await writePublishFiles(deps, scope)

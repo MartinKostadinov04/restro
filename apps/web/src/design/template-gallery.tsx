@@ -3,10 +3,9 @@
 // The template chooser at the top of the Design tab (D69, D92, brief S7): collapsed to one line,
 // "Template: <name>" with "Change". Open, it is the gallery: one card per template a venue may
 // choose (the registry's visible entries), each with its picture, name and description in the
-// interface language, an "In use" badge on the template the venue has, "Preview" (a phone pop-up
-// with the venue's own menu, the tab opens it) and a button to use the others. Only one template
-// exists today; the chooser is still a gallery, so a second one is a registry entry and nothing
-// here changes.
+// interface language, an "In use" badge on the template the venue has and "Preview" (a phone pop-up
+// with the venue's own menu, the tab opens it). Only one template exists and no choice is stored any
+// more (D129: the design record replaced it; Styles come with the Studio).
 import { CheckIcon, ChevronDownIcon } from 'lucide-react'
 import { useLocale, useTranslations } from 'next-intl'
 import { useState } from 'react'
@@ -21,16 +20,11 @@ import { resolveAdminLocale } from '@/i18n/locales'
 export function TemplateChooser({
   current,
   canEdit,
-  pending,
-  onChoose,
   onPreview,
 }: {
   /** The id of the template the venue has. */
   current: string
   canEdit: boolean
-  /** A template is being saved. */
-  pending: boolean
-  onChoose: (entry: FaceEntry) => void
   /** Opens the phone pop-up of a template. */
   onPreview: (entry: FaceEntry) => void
 }) {
@@ -38,7 +32,6 @@ export function TemplateChooser({
   const locale = resolveAdminLocale(useLocale())
   const [open, setOpen] = useState(false)
   const faces = visibleFaces()
-  const hiddenInUse = !faces.some((entry) => entry.id === current)
 
   return (
     <Card className="py-4" data-testid="design-templates">
@@ -60,11 +53,6 @@ export function TemplateChooser({
               </Button>
             </CollapsibleTrigger>
           </div>
-          {hiddenInUse ? (
-            <p className="text-sm text-muted-foreground" data-testid="design-hidden-template">
-              {t('hiddenInUse')}
-            </p>
-          ) : null}
           <CollapsibleContent className="grid gap-3">
             <p className="text-sm text-muted-foreground">{t('description')}</p>
             <ul className="grid gap-4 sm:grid-cols-2" data-testid="design-gallery">
@@ -106,20 +94,6 @@ export function TemplateChooser({
                         >
                           {t('preview')}
                         </Button>
-                        {canEdit ? (
-                          <Button
-                            type="button"
-                            variant={inUse ? 'secondary' : 'default'}
-                            disabled={inUse || pending}
-                            onClick={() => {
-                              onChoose(entry)
-                              setOpen(false)
-                            }}
-                            aria-label={inUse ? undefined : t('useNamed', { name })}
-                          >
-                            {inUse ? t('inUse') : t('use')}
-                          </Button>
-                        ) : null}
                       </div>
                     </div>
                   </li>

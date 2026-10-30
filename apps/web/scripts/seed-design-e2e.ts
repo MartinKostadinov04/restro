@@ -185,7 +185,7 @@ async function seed(): Promise<void> {
   const owner = new pg.Pool({ connectionString: ownerUrl, max: 1 })
   try {
     await owner.query(
-      `update restro.venues set settings = settings - 'theme' - 'presentation' where id = $1`,
+      `update restro.venues set settings = settings - 'design' where id = $1`,
       [venue.id],
     )
     // The menu's layout is the composer's (D92, brief S6): none set (two columns, with the switch).

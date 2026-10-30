@@ -9,7 +9,7 @@
 // - "Menu layout" is the layout guests start in (a list, one column, two columns) and whether
 //   they may switch it (D92: once a template option, now a setting of the menu). Saved at once
 //   with S4's menu actions; it reaches guests with the menu's next publish.
-import { MENU_LAYOUTS, type MenuLayout, type MenuSettings } from '@restro/core'
+import { SNAPSHOT_MENU_LAYOUTS, type SnapshotLayout } from '@restro/core'
 import { SettingsIcon } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Segmented } from '@/design/segmented'
-import { setMenuSettingsAction } from '@/server/menus-actions'
+import { saveLayoutAction } from '@/server/design/actions'
 
 import { ITEM_PARAM, SECTION_PARAM } from './item-param'
 
@@ -44,19 +44,12 @@ export interface MenuChoice {
 /** The query parameter that names the composer's menu. */
 export const MENU_PARAM = 'menu'
 
-/**
- * The layout a menu that set none starts in, and whether guests may switch it: core's
- * `DEFAULT_MENU_LAYOUT` (two columns, with the switch: the look from before D92).
- */
-const DEFAULT_LAYOUT: MenuLayout = 'two_columns'
-const DEFAULT_SWITCH = true
-
 export function MenuBar({
   venueId,
   venueName,
   menus,
   currentId,
-  settings,
+  layout,
   canEdit,
 }: {
   venueId: string
@@ -64,8 +57,8 @@ export function MenuBar({
   venueName: string
   menus: readonly MenuChoice[]
   currentId: string
-  /** The open menu's settings as saved (a key left out is the default). */
-  settings: MenuSettings
+  /** The layout guests start in and whether they may switch it: the venue's design (D129). */
+  layout: SnapshotLayout
   /** Owners and admins change the layout; everyone sees it. */
   canEdit: boolean
 }) {
@@ -77,10 +70,7 @@ export function MenuBar({
   const ids = useId()
   const [, startNavigation] = useTransition()
   const [pending, startSaving] = useTransition()
-  const saved = {
-    layout: settings.layout ?? DEFAULT_LAYOUT,
-    layoutSwitch: settings.layout_switch ?? DEFAULT_SWITCH,
-  }
+  const saved = { layout: layout.default, layoutSwitch: layout.guest_switch }
   // What the controls show: the saved settings until a change, then the change (and back to the
   // saved ones if it fails).
   const [shown, setShown] = useState(saved)
@@ -101,10 +91,10 @@ export function MenuBar({
     const before = shown
     setShown(next)
     startSaving(async () => {
-      const result = await setMenuSettingsAction({
+      const result = await saveLayoutAction({
         venueId,
-        menuId: currentId,
-        settings: { layout: next.layout, layout_switch: next.layoutSwitch },
+        layout: next.layout,
+        guestSwitch: next.layoutSwitch,
       }).catch(() => ({ ok: false, error: 'failed' }) as const)
       if (result.ok) {
         toast.success(t('saved'))
@@ -162,13 +152,13 @@ export function MenuBar({
           <Segmented
             label={t('layout')}
             value={shown.layout}
-            options={MENU_LAYOUTS.map((layout) => ({
-              value: layout,
-              label: t(`layouts.${layout}`),
+            options={SNAPSHOT_MENU_LAYOUTS.map((word) => ({
+              value: word,
+              label: t(`layouts.${word}`),
             }))}
             disabled={!canEdit || pending}
-            onChange={(layout) => {
-              if (layout !== shown.layout) save({ ...shown, layout })
+            onChange={(word) => {
+              if (word !== shown.layout) save({ ...shown, layout: word })
             }}
           />
           <div className="flex items-center gap-2">

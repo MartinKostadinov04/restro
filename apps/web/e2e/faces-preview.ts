@@ -50,9 +50,7 @@ async function withOwnerPool(run: (pool: pg.Pool) => Promise<void>): Promise<voi
 }
 
 /**
- * Every service on, and the run's template (`FACE_ID`) chosen, in the demo venue's own settings: the draft the
- * preview is built from has them. (A hidden template cannot be picked in the Design tab, so the
- * settings are written here, the way the seeds do.)
+ * Every service on, in the demo venue's own settings: the draft the preview is built from has them.
  */
 export async function servicesOn(): Promise<void> {
   await withOwnerPool(async (pool) => {
@@ -60,7 +58,6 @@ export async function servicesOn(): Promise<void> {
       `update restro.venues set settings = coalesce(settings, '{}'::jsonb) || $1::jsonb where slug = $2`,
       [
         JSON.stringify({
-          presentation: { face: FACE_ID, options: {} },
           guest_features: {
             filters: true,
             call_waiter: {
@@ -78,11 +75,11 @@ export async function servicesOn(): Promise<void> {
   })
 }
 
-/** The demo venue goes back to the services and the template it has by default (none on, filters on). */
+/** The demo venue goes back to the services it has by default (none on, filters on). */
 export async function servicesBack(): Promise<void> {
   await withOwnerPool(async (pool) => {
     await pool.query(
-      `update restro.venues set settings = settings - 'guest_features' - 'presentation' where slug = $1`,
+      `update restro.venues set settings = settings - 'guest_features' where slug = $1`,
       [GUEST_SLUG],
     )
   })

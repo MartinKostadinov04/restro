@@ -4,7 +4,7 @@
 //   - Font: a dropdown of the short list of six fonts with Cyrillic letters (`THEME_FONTS`), each
 //     name drawn in its own font (`FONT_STACKS`: our own files, guests' phones never call Google),
 //     with a sample line in both alphabets under it.
-//   - Corners 0-24 px and shadow 0-5: sliders with the number beside them. The corner radius is
+//   - Corners 0-24 px in steps of 8 and shadow 0-1: sliders with the number beside them. The corner radius is
 //     the face's base radius (the handover §10: photo frames, sheets and buttons scale from it);
 //     the shadow is the menu column's shadow on larger screens, not an elevation scale.
 //   - Screen: follow the guest's phone (default), always light or always dark. The policy only
@@ -12,7 +12,6 @@
 import {
   THEME_FONTS,
   THEME_SCHEMES,
-  THEME_SHADOW,
   type ThemeFontId,
   type ThemeScheme,
 } from '@restro/core'
@@ -31,8 +30,11 @@ import { FONT_STACKS } from '@/fonts'
 
 import { Segmented } from './segmented'
 
-/** The corner slider's range (core accepts up to 32; the tab offers a calmer 24). */
+// The sliders move in the steps the design record holds (D130's Corners and Depth; core's
+// `CORNER_RADIUS` and `DEPTH_SHADOW`): a value between them would save as the nearest one.
 const RADIUS_MAX = 24
+const RADIUS_STEP = 8
+const SHADOW_MAX = 1
 
 export function StylePanel({
   font,
@@ -57,8 +59,6 @@ export function StylePanel({
 }) {
   const t = useTranslations('design.style')
   const id = useId()
-  // A radius saved above the slider's range (core allows 32) keeps its place on the slider.
-  const radiusMax = Math.max(RADIUS_MAX, radius)
   const chosen = THEME_FONTS.find((entry) => entry.id === font) ?? THEME_FONTS[0]
 
   return (
@@ -119,8 +119,8 @@ export function StylePanel({
             id={`${id}-radius`}
             type="range"
             min={0}
-            max={radiusMax}
-            step={1}
+            max={RADIUS_MAX}
+            step={RADIUS_STEP}
             value={radius}
             disabled={!canEdit}
             onChange={(event) => onRadius(Number(event.target.value))}
@@ -144,8 +144,8 @@ export function StylePanel({
           <input
             id={`${id}-shadow`}
             type="range"
-            min={THEME_SHADOW.min}
-            max={THEME_SHADOW.max}
+            min={0}
+            max={SHADOW_MAX}
             step={1}
             value={shadow}
             disabled={!canEdit}

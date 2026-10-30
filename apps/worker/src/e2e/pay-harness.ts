@@ -31,6 +31,12 @@ import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
 
 import {
+  createPublishStore,
+  publishPutOptions,
+  publishStoreConfig,
+  snapshotPath,
+} from '@restro/assets'
+import {
   DEFAULT_ORDERING_SETTINGS,
   hashTableCode,
   type IntegrationId,
@@ -51,7 +57,6 @@ import {
   publishMenu,
   setFloorSource,
   setGuestFeatures,
-  setVenuePresentation,
   updateIntegration,
   upsertBarsyVenues,
 } from '@restro/core/apply'
@@ -388,10 +393,6 @@ async function publishPayFirstMenu(
       throw new Error(`the pay-first menu was refused: ${JSON.stringify(applied.rejected)}`)
     }
   }
-  await setVenuePresentation(pool, tenantId, {
-    venueId,
-    presentation: { face: 'qr-phone', options: {} },
-  })
   await setGuestFeatures(pool, tenantId, {
     venueId,
     features: {
@@ -409,6 +410,22 @@ async function publishPayFirstMenu(
     actor: 'system',
   })
   if (published.status === 'held') throw new Error('the pay-first menu was held, not published')
+  if (PAGE) {
+    // The page's run draws the reference template: new snapshots name no template (D129), so the
+    // published file says so. The file writer leaves a snapshot file that exists alone.
+    const store = await createPublishStore(publishStoreConfig(process.env))
+    const file = snapshotPath(published.snapshot.id)
+    await store.put(
+      file,
+      new TextEncoder().encode(
+        JSON.stringify({
+          ...published.snapshot.body,
+          presentation: { face: 'qr-phone', options: {} },
+        }),
+      ),
+      publishPutOptions(file),
+    )
+  }
   return item
 }
 

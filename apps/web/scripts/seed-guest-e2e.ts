@@ -35,14 +35,16 @@ import {
 } from '@restro/assets'
 import {
   type ChangeSet,
+  DEFAULT_DESIGN,
   hashTableCode,
   menuPath,
   type NodeId,
   newId,
+  readDesign,
   type SnapshotId,
   type VenueId,
 } from '@restro/core'
-import { apply, createAsset, provisionMenu, publishMenu, setVenueTheme } from '@restro/core/apply'
+import { apply, createAsset, provisionMenu, publishMenu } from '@restro/core/apply'
 import { authOrganization, sourceLinks, venues, withTenant } from '@restro/db'
 import { fixture } from '@restro/shell/testing'
 import { and, eq, inArray } from 'drizzle-orm'
@@ -105,7 +107,7 @@ async function main(): Promise<void> {
   const tenantId = organization.id
   const [venue] = await withTenant(pool, tenantId, (tx) =>
     tx
-      .select({ id: venues.id, publicId: venues.publicId })
+      .select({ id: venues.id, publicId: venues.publicId, settings: venues.settings })
       .from(venues)
       .where(eq(venues.slug, GUEST_SLUG))
       .limit(1),
@@ -204,10 +206,22 @@ async function main(): Promise<void> {
   if (result.rejected.length > 0) throw new Error('the guest e2e fixtures were refused')
 
   // --- the look, a table code, and the publish ---------------------------------------------
-  await setVenueTheme(pool, tenantId, {
-    venueId: venue.id as never,
-    theme: { brand: GUEST_BRAND, logo_asset_id: LOGO.id },
+  const look = await apply(pool, tenantId, {
+    id: newId('cs'),
+    source: 'manual',
+    jobId: newId('jb'),
+    actor: 'system',
+    observedAt: new Date().toISOString(),
+    ops: [
+      {
+        op: 'setDesign',
+        venueId: venue.id as never,
+        expectedRevision: readDesign(venue.settings).revision,
+        design: { ...DEFAULT_DESIGN, brand: GUEST_BRAND, logo_asset_id: LOGO.id },
+      },
+    ],
   })
+  if (look.rejected.length > 0) throw new Error('the guest e2e look was refused')
   const published = await publishMenu(pool, tenantId, {
     menuId: menu.id,
     venueId: venue.id as never,

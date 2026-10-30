@@ -1,10 +1,10 @@
 'use client'
 
-// The Design tab (briefs SH-05a and S7; D69, D70, D92, D93): the venue's template and its look,
-// edited beside a sticky phone preview of what is not saved yet. It is the composer's Design
-// subtab. In Martin's order:
+// The Design tab (briefs SH-05a and S7; D70, D92, D93, D129): the venue's look, edited beside a
+// sticky phone preview of what is not saved yet. It is the composer's Design subtab. In Martin's
+// order:
 //
-//   - the template chooser, collapsed to one line; its templates open a phone pop-up each;
+//   - the template, collapsed to one line, which opens a phone pop-up of it;
 //   - card 1, the logo and the header name of the open menu;
 //   - card 2, the guest functions (the composer's card, restyled in place);
 //   - card 3, font, corners, shadow and screen;
@@ -12,14 +12,15 @@
 //     worked out from them under "Advanced".
 //
 // What is saved when, and by what:
-//   - the template and its look options save when chosen (`chooseTemplateAction`);
 //   - the header name saves with its own button (`renameMenuAction`);
 //   - the guest functions save with their own button (the composer's actions);
 //   - the look (colours, font, corners, shadow, screen, logo) saves together with "Save look":
 //     always the WHOLE look, never part of one, and never while a pair of colours does not read.
+//     It names the revision the tab loaded: another person's save in between refuses it, and the
+//     tab reloads the stored design and says so.
 //
 // A saved change reaches guests with the next publish, like any hand edit.
-import type { GuestFeatures, Presentation, VenueTheme } from '@restro/core'
+import type { GuestFeatures, VenueTheme } from '@restro/core'
 import { useLocale, useTranslations } from 'next-intl'
 import { type ReactNode, useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -27,18 +28,16 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { GuestFeaturesCard } from '@/composer/guest-features-panel'
-import { type FaceEntry, faceEntry } from '@/faces/registry'
+import { DEFAULT_FACE_ID, type FaceEntry } from '@/faces/registry'
 import { resolveAdminLocale } from '@/i18n/locales'
 import type { PreviewScheme } from '@/publish/draft-face'
-import { chooseTemplateAction, saveLookAction } from '@/server/design/actions'
-import type { DesignView, LookResult, TemplateError } from '@/server/design/service'
+import { saveLookAction } from '@/server/design/actions'
+import type { DesignView, LookResult } from '@/server/design/service'
 
 import { ColourPanel } from './colour-panel'
 import { DesignPreview } from './design-preview'
-import { featureOptionsOf } from './feature-options'
 import { HeaderNameField, type HeaderNameMenu } from './header-name-field'
 import { LogoField, type LogoState } from './logo-field'
-import { LookOptions } from './look-options'
 import {
   isBrandOnlyLook,
   isValidLook,
@@ -51,7 +50,6 @@ import { usePreviewDraft } from './preview-draft'
 import { useIssueText } from './role-panel'
 import { StylePanel } from './style-panel'
 import { TemplateChooser } from './template-gallery'
-import { lookOptionsOf, mergeOptions, type OptionValues } from './template-options'
 import { TemplatePreviewDialog } from './template-preview-dialog'
 
 /** One card of the tab. */
@@ -115,6 +113,8 @@ export function DesignPanel({
   const [savedHere, setSavedHere] = useState(false)
   const [lookError, setLookError] = useState<Extract<LookResult, { ok: false }> | null>(null)
   const [saving, startSaving] = useTransition()
+  // The revision this form started from; a save names it (D129).
+  const [revision, setRevision] = useState(initial.revision)
 
   const view = useMemo(() => lookViewOf(state), [state])
   // While a box holds half a colour the look has no value; the roles and the preview keep the
@@ -141,80 +141,41 @@ export function DesignPanel({
     change({ ...state, logoAssetId: next?.assetId ?? null })
   }
 
+  function reload(stored: DesignView) {
+    const next = lookStateOf(stored.theme)
+    setState(next)
+    setLogo(stored.logo)
+    setRevision(stored.revision)
+    setSavedKey(isBrandOnlyLook(stored.theme) ? null : keyOf(lookViewOf(next).theme))
+    setSavedHere(false)
+  }
+
   function onSave() {
     const theme = view.theme
     if (!canSave || theme === null) return
     setLookError(null)
     startSaving(async () => {
-      const result = await saveLookAction({ venueId, theme })
+      const result = await saveLookAction({ venueId, expectedRevision: revision, theme })
       if (result.ok) {
+        setRevision(result.revision)
         setSavedKey(keyOf(theme))
         setSavedHere(true)
         toast.success(t('saved'))
       } else {
+        // Someone saved in between: the form takes the stored design, and says so.
+        if (result.error === 'stale') reload(result.view)
         setLookError(result)
       }
     })
   }
 
-  // --- The template ---
-  const [face, setFace] = useState(initial.presentation.face)
-  const [savedPresentation, setSavedPresentation] = useState<Presentation>(initial.presentation)
-  const entry = faceEntry(face)
-  const [lookOptions, setLookOptions] = useState<OptionValues>(() =>
-    lookOptionsOf(faceEntry(initial.presentation.face).manifest, initial.presentation.options),
-  )
-  const [templateError, setTemplateError] = useState<TemplateError | null>(null)
-  const [templatePending, startTemplate] = useTransition()
-
-  function saveTemplate(nextFace: string, nextOptions: OptionValues) {
-    const before = { face, options: lookOptions }
-    setFace(nextFace)
-    setLookOptions(nextOptions)
-    setTemplateError(null)
-    startTemplate(async () => {
-      const result = await chooseTemplateAction({
-        venueId,
-        face: nextFace,
-        lookOptions: nextOptions,
-      })
-      if (result.ok) {
-        setSavedPresentation(result.presentation)
-        toast.success(t('saved'))
-      } else {
-        setFace(before.face)
-        setLookOptions(before.options)
-        setTemplateError(result.error)
-      }
-    })
-  }
-
-  function chooseFace(next: FaceEntry) {
-    saveTemplate(next.id, lookOptionsOf(next.manifest, lookOptions))
-  }
-
   // --- The preview ---
   const { draft, refreshing, refresh } = usePreviewDraft(venueId, menu?.id ?? null)
   const [previewScheme, setPreviewScheme] = useState<PreviewScheme>(
-    initial.theme?.scheme === 'dark' ? 'dark' : 'light',
+    initial.theme.scheme === 'dark' ? 'dark' : 'light',
   )
-  const previewOptions = useMemo(
-    () => mergeOptions(entry.manifest, savedPresentation, lookOptions),
-    [entry, savedPresentation, lookOptions],
-  )
-  // The template whose pop-up is open, drawn with its own look options.
+  // The template whose pop-up is open.
   const [previewing, setPreviewing] = useState<FaceEntry | null>(null)
-  const popupOptions = useMemo(
-    () =>
-      previewing === null
-        ? previewOptions
-        : mergeOptions(
-            previewing.manifest,
-            savedPresentation,
-            lookOptionsOf(previewing.manifest, previewing.id === face ? lookOptions : undefined),
-          ),
-    [previewing, previewOptions, savedPresentation, face, lookOptions],
-  )
 
   const lookErrorText = lookError === null ? null : t(`errors.${lookError.error}`)
 
@@ -230,30 +191,7 @@ export function DesignPanel({
           </p>
         )}
 
-        <div className="grid gap-3">
-          <TemplateChooser
-            current={face}
-            canEdit={canEdit}
-            pending={templatePending}
-            onChoose={chooseFace}
-            onPreview={setPreviewing}
-          />
-          <LookOptions
-            manifest={entry.manifest}
-            values={lookOptions}
-            disabled={!canEdit || templatePending}
-            onChange={(next) => saveTemplate(face, next)}
-          />
-          {templateError ? (
-            <p
-              role="alert"
-              className="text-sm text-destructive"
-              data-testid="design-template-error"
-            >
-              {t(`errors.${templateError}`)}
-            </p>
-          ) : null}
-        </div>
+        <TemplateChooser current={DEFAULT_FACE_ID} canEdit={canEdit} onPreview={setPreviewing} />
 
         <Section
           title={t('logoName.title')}
@@ -278,14 +216,7 @@ export function DesignPanel({
           />
         </Section>
 
-        <GuestFeaturesCard
-          // Another template declares other feature switches.
-          key={face}
-          venueId={venueId}
-          features={features}
-          options={featureOptionsOf(entry.manifest, savedPresentation)}
-          canEdit={canEdit}
-        />
+        <GuestFeaturesCard venueId={venueId} features={features} canEdit={canEdit} />
 
         <Section
           title={t('style.title')}
@@ -385,8 +316,6 @@ export function DesignPanel({
           onRefresh={refresh}
           menuName={menu === null ? null : (menu.name ?? venueName)}
           theme={shown.theme}
-          face={face}
-          options={previewOptions}
           scheme={previewScheme}
           onScheme={setPreviewScheme}
         />
@@ -398,11 +327,7 @@ export function DesignPanel({
         draft={draft}
         onRetry={refresh}
         theme={shown.theme}
-        options={popupOptions}
         scheme={previewScheme}
-        inUse={previewing?.id === face}
-        canChoose={canEdit && !templatePending}
-        onChoose={chooseFace}
         onClose={() => setPreviewing(null)}
       />
     </div>

@@ -23,45 +23,50 @@ export type FontKind = (typeof FONT_KINDS)[number]
 /** One font id: a value of the contract's Body font option. */
 export type ThemeFontId = DesignValues['general']['body_font']
 
-/** One font of the list. */
-export interface ThemeFont {
-  /** The stored id: kebab-case, the contract's value. */
-  readonly id: ThemeFontId
-  /** The family name, as the snapshot carries it. */
-  readonly family: string
-  readonly kind: FontKind
-}
-
 /** The family and kind of each font id. */
-const FONT_FACES: { readonly [Id in ThemeFontId]: Omit<ThemeFont, 'id'> } = {
+const FONT_FACES = {
   inter: { family: 'Inter', kind: 'sans' },
   manrope: { family: 'Manrope', kind: 'sans' },
   montserrat: { family: 'Montserrat', kind: 'sans' },
   'playfair-display': { family: 'Playfair Display', kind: 'serif' },
   lora: { family: 'Lora', kind: 'serif' },
   unbounded: { family: 'Unbounded', kind: 'display' },
+} as const satisfies {
+  readonly [Id in ThemeFontId]: { readonly family: string; readonly kind: FontKind }
+}
+
+/** One font family, as the snapshot carries it. */
+export type ThemeFontFamily = (typeof FONT_FACES)[ThemeFontId]['family']
+
+/** One font of the list. */
+export interface ThemeFont {
+  /** The stored id: kebab-case, the contract's value. */
+  readonly id: ThemeFontId
+  /** The family name, as the snapshot carries it. */
+  readonly family: ThemeFontFamily
+  readonly kind: FontKind
 }
 
 /** The contract's Body font values, in its order (Basic's, the default, first). */
-function bodyFontIds(): ThemeFontId[] {
+function themeFonts(): readonly [ThemeFont, ...ThemeFont[]] {
   const option = DESIGN_PAGES[0].options.find((entry) => entry.id === 'body_font')
   if (option === undefined || option.kind !== 'choice') {
     throw new Error('the design contract has no Body font option')
   }
-  return option.values.map((value) => value.id as ThemeFontId)
+  const font = (id: ThemeFontId): ThemeFont => ({ id, ...FONT_FACES[id] })
+  const [first, ...rest] = option.values.map((value) => font(value.id as ThemeFontId))
+  if (first === undefined) throw new Error('the design contract has no Body font value')
+  return [first, ...rest]
 }
 
 /** The fonts a venue can choose, in the contract's order, the default first. */
-export const THEME_FONTS: readonly ThemeFont[] = bodyFontIds().map((id) => ({
-  id,
-  ...FONT_FACES[id],
-}))
+export const THEME_FONTS = themeFonts()
 
 /** The font a venue gets until it chooses one: Basic's Body font, the family `DEFAULT_THEME` publishes. */
 export const DEFAULT_FONT_ID: ThemeFontId = 'inter'
 
 /** The family of a font id; the default family for an id not on the list. */
 export function fontFamilyOf(id: string | undefined): string {
-  const font = THEME_FONTS.find((entry) => entry.id === id)
-  return (font ?? { family: FONT_FACES[DEFAULT_FONT_ID].family }).family
+  const font = THEME_FONTS.find((entry) => entry.id === id) ?? THEME_FONTS[0]
+  return font.family
 }
