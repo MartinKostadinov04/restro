@@ -91,6 +91,7 @@ Status moves `candidate → verifying → confirmed | dropped | observation → 
 | RR-81 | A8 (RR-A8-7) | admin: two small links | low | breadcrumb "Venues"; Ordering "See on a map" | D123 44 px floor | 49 x 20 px and 90 x 17 px at 390 px | `behaviour/o-390-set-ordering.jpg` | observation (B, both): the breadcrumb has `tap-area`; the map link is inline, which the touch-target spec exempts |
 | RR-82 | A8 (RR-A8-8) | guest: closed table | low | `qr-phone` order block | D119 order of asking | A table closed for phones first offers location, then consent, and only below says it isn't taking orders | `behaviour/rr35-guest-closed-table-switch-off.jpg` | observation (B, both): D119 sets no order of asking; the closed note already shows |
 | RR-83 | A7 tier A check | tablet: menu writes without a PIN | high (proposed) | composer and publish actions; the workspace page hides only Settings on a shared device | D122 §7: a shared device asks for a PIN, staff need no account | The tablet's session belongs to an account holding `settings.roles`, and composer and publish actions check only the organisation role, so a waiter at the tablet could edit and publish the menu with no PIN | read, not run | candidate: the fixer writes the red test first; tier A on that test |
+| RR-84 | F6 (reported with RR-83) | tablet: other admin writes, another venue | high | `packages/core/src/service/grants.ts:148`; `apps/web/src/server/tables/actions.ts`, `integration/actions.ts`, `venues-actions.ts`, `organization-actions.ts` | D122 §7, §9: a PIN unlocks Tonight only, never settings | A tablet still runs the Tables, venue and integration actions with no PIN, and a venue 2 tablet on an owner's account changed venue 1's settings with no PIN | F6 ran it; the lead read `grants.ts` | confirmed (A): being fixed in #255 |
 
 ## Observations
 
@@ -193,3 +194,4 @@ True but not a defect: a smell, a missing test, an awkward screen. Martin picks 
 | RR-80 | B | not real | real | lead (Opus): real, low | confirmed |
 | RR-81 | B | observation | observation | none | observation |
 | RR-82 | B | observation | observation | none | observation |
+| RR-84 | A | Opus: real, high |  | none | confirmed |
