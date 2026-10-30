@@ -35,6 +35,9 @@ describe('the service commands', () => {
       'ordering.pause',
       // RR-58: the Undo of a quick answer is as quick as the answer, and needs its token.
       'ordering.undo_pause',
+      // D120, RR-86: the bar's tablet gets push, so its account subscribes it. `push.revoke` stays
+      // out: one tap with no PIN and no name would silence the tablet's money alerts (D122 §7).
+      'push.subscribe',
       // D122 §7: "Handled" and "Brought" are the two quick answers that name no person (#200).
       'receipt.brought',
       'receipt.unbrought',
@@ -44,6 +47,7 @@ describe('the service commands', () => {
       'waiter_call.done',
       'waiter_call.undone',
     ])
+    expect(quick).not.toContain('push.revoke')
     for (const type of quick) {
       const definition = SERVICE_COMMANDS[type as keyof typeof SERVICE_COMMANDS]
       expect(definition.origins, type).toEqual(['staff'])

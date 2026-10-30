@@ -449,11 +449,14 @@ export const SERVICE_COMMANDS = {
     handle: syncPauseAlerts,
   }),
   // #83: a signed-in account's installed device for Web Push (D122 §7).
+  // D120 names the bar's tablet for push (RR-86): its account subscribes this device with no PIN.
+  // `push.revoke` is not quick: one tap with no name would silence the tablet's money alerts.
   'push.subscribe': defineCommand({
     schema: PushSubscribeSchema,
     origins: ['staff'],
     permission: 'alerts.answer',
     idempotency: 'by_nature',
+    quickOnSharedDevice: true,
     handle: pushSubscribe,
   }),
   'push.revoke': defineCommand({

@@ -5,7 +5,8 @@ import { randomUUID } from 'node:crypto'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { hasDatabase } from '../apply/test-database'
+import { provisionVenue } from '../apply/provision'
+import { hasDatabase, testSlug } from '../apply/test-database'
 import { newId } from '../ids'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import { readDelivery } from './alert-delivery'
@@ -358,6 +359,61 @@ describe.skipIf(!hasDatabase)('alerts (as the restro_app role)', () => {
       )
       expect(result).toMatchObject({ status: 'refused', code: 'account_required' })
       expect(await stored(device.endpoint)).toBeUndefined()
+    })
+
+    describe('on the bar tablet (D120, RR-86)', () => {
+      const onTablet = (userId: string, sessionId: string): ServiceContext => ({
+        ...user(userId),
+        actor: { kind: 'user', userId, sessionId },
+      })
+
+      it('lets the tablet’s account subscribe with no PIN: the row lands on that account', async () => {
+        const device = subscription(5)
+        const sessionId = `shared-${randomUUID()}`
+        await world.addSharedDevice(sessionId)
+        const { result } = await applyService(
+          world.app,
+          { type: 'push.subscribe', ...device },
+          onTablet(plainId, sessionId),
+        )
+        expect(result.status).toBe('accepted')
+        expect((await stored(device.endpoint))?.user_id).toBe(plainId)
+      })
+
+      it('still asks a PIN to end it: no silent, nameless Off (D122 §7)', async () => {
+        const device = subscription(6)
+        const sessionId = `shared-${randomUUID()}`
+        await world.addSharedDevice(sessionId)
+        await applyService(
+          world.app,
+          { type: 'push.subscribe', ...device },
+          onTablet(ownerId, sessionId),
+        )
+        const { result } = await applyService(
+          world.app,
+          { type: 'push.revoke', endpointHash: endpointHashOf(device.endpoint) },
+          onTablet(ownerId, sessionId),
+        )
+        expect(result).toMatchObject({ status: 'refused', code: 'pin_required' })
+        expect((await stored(device.endpoint))?.revoked_at).toBeNull()
+      })
+
+      it('refuses the tablet of another venue, and stores nothing (RR-84)', async () => {
+        const other = await provisionVenue(world.app, world.tenantId, {
+          name: 'Second club',
+          slug: testSlug('alerts-second'),
+        })
+        const sessionId = `shared-${randomUUID()}`
+        await world.addSharedDevice(sessionId)
+        const device = subscription(7)
+        const { result } = await applyService(
+          world.app,
+          { type: 'push.subscribe', ...device },
+          { ...onTablet(ownerId, sessionId), venueId: other.id },
+        )
+        expect(result).toMatchObject({ status: 'refused', code: 'actor_unknown' })
+        expect(await stored(device.endpoint)).toBeUndefined()
+      })
     })
 
     it('ends a device for its own account, never for another, and for the worker', async () => {

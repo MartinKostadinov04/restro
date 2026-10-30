@@ -61,6 +61,21 @@ const KEYS = (id: string) => [{ id, key: 'a1' }]
 
 /** All the victim's ids. */
 export const ATTACKS: readonly Attack[] = [
+  // A staff device for Web Push (RR-86).
+  {
+    action: 'subscribePushAction',
+    call: (v) =>
+      tonight.subscribePushAction({
+        venueId: v.venues[0].id,
+        endpoint: v.pushEndpoint,
+        p256dh: `B${'p'.repeat(86)}`,
+        auth: 'a'.repeat(22),
+      }),
+  },
+  {
+    action: 'revokePushAction',
+    call: (v) => tonight.revokePushAction({ venueId: v.venues[0].id, endpoint: v.pushEndpoint }),
+  },
   // The composer.
   {
     action: 'placeItemAction',
@@ -1068,6 +1083,11 @@ export const ATTACKS: readonly Attack[] = [
 
 /** The attacker's own venue and menu, the victim's child ids. */
 export const MIXED: readonly Attack[] = [
+  {
+    action: 'revokePushAction',
+    how: "the victim's device from my venue",
+    call: (v, a) => tonight.revokePushAction({ venueId: a.venues[0].id, endpoint: v.pushEndpoint }),
+  },
   {
     action: 'placeItemAction',
     how: "victim's item into my section",

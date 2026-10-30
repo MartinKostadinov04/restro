@@ -6,7 +6,13 @@
 // action; then it calls tables.ts, whose service write path checks the permission. The mark of a
 // payment table is a settings change: it takes no PIN, only the person's own sign-in.
 import { idSchema } from '@restro/core'
-import { paymentWorkerJob, readVenueAccess, type ServiceActor } from '@restro/core/service'
+import {
+  endpointHashOf,
+  PushSubscribeSchema,
+  paymentWorkerJob,
+  readVenueAccess,
+  type ServiceActor,
+} from '@restro/core/service'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -42,6 +48,9 @@ const OnTableUndo = OnTable.extend({ undo })
 const NewGuests = z.strictObject({ venueId, tableId, sittingId: idSchema('st').optional(), pin })
 const OnVenue = z.strictObject({ venueId, pin })
 const MarkPayment = z.strictObject({ venueId, tableId, isPaymentTable: z.boolean() })
+
+const PushDevice = PushSubscribeSchema.omit({ type: true }).extend({ venueId })
+const PushEnd = PushDevice.pick({ venueId: true, endpoint: true })
 
 const INVALID: TonightResult = { ok: false, error: 'invalid' }
 const NOT_FOUND: TonightResult = { ok: false, error: 'venue_missing' }
@@ -456,4 +465,26 @@ export async function answerPaymentAction(input: unknown): Promise<TonightResult
     }
     return result
   })
+}
+
+/**
+ * Registers this browser for the signed-in account's alerts (RR-86, D120), or says it again so a
+ * rotated endpoint doesn't silently stop. On a shared device that is the device's own account, with
+ * no PIN, at the device's own venue: core refuses any other.
+ */
+export async function subscribePushAction(input: unknown): Promise<TonightResult> {
+  const parsed = PushDevice.safeParse(input)
+  if (!parsed.success) return INVALID
+  const { endpoint, p256dh, auth } = parsed.data
+  return perform(parsed.data, (scope) =>
+    command(scope, { type: 'push.subscribe', endpoint, p256dh, auth }),
+  )
+}
+
+/** Ends this browser's alerts on a person's own sign-in. A shared device needs a PIN: refused. */
+export async function revokePushAction(input: unknown): Promise<TonightResult> {
+  const parsed = PushEnd.safeParse(input)
+  if (!parsed.success) return INVALID
+  const endpointHash = endpointHashOf(parsed.data.endpoint)
+  return perform(parsed.data, (scope) => command(scope, { type: 'push.revoke', endpointHash }))
 }

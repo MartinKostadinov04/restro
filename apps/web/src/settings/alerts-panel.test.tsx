@@ -94,7 +94,7 @@ describe('Settings › Alerts', () => {
     expect(within(list).getAllByRole('listitem')).toHaveLength(2)
     expect(within(list).getByText('2 devices')).toBeTruthy()
     expect(
-      within(list).getByText('No device yet: open Restro on the phone and install it.'),
+      within(list).getByText('No device yet: open Tonight on their phone and tap Turn on.'),
     ).toBeTruthy()
     expect(within(list).queryByText('Only a PIN')).toBeNull()
     expect(within(list).getByRole('switch', { name: 'Maria' }).getAttribute('aria-checked')).toBe(

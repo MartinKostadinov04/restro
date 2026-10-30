@@ -42,6 +42,7 @@ import { callKindsText } from './call-kinds'
 import { useMoney } from './money'
 import { moneyTitleKey } from './money-rows'
 import { PauseBanners } from './pause-banners'
+import { PushControl } from './push-control'
 import { RunProvider, useTonightRun, wroteSomething } from './run'
 import { useTableName } from './table-name'
 import { TablesGrid } from './tables-grid'
@@ -141,7 +142,7 @@ function PauseMenu({ view }: { view: TonightView }) {
   )
 }
 
-function Content({ view }: { view: TonightView }) {
+function Content({ view, pushKey }: { view: TonightView; pushKey: string | undefined }) {
   const t = useTranslations('tonight')
   const money = useMoney()
   const router = useRouter()
@@ -405,6 +406,9 @@ function Content({ view }: { view: TonightView }) {
         </div>
       </div>
       <PauseBanners view={view} />
+      {pushKey === undefined ? null : (
+        <PushControl venueId={view.venueId} pushKey={pushKey} sharedDevice={view.device} />
+      )}
       <p role="status" aria-live="polite" className="sr-only" data-testid="announcement">
         {announcement}
       </p>
@@ -474,13 +478,20 @@ function Content({ view }: { view: TonightView }) {
 }
 
 /** The Tonight screen for one venue. */
-export function TonightPanel({ view }: { view: TonightView }) {
+export function TonightPanel({
+  view,
+  pushKey,
+}: {
+  view: TonightView
+  /** The Web Push public key, for whoever may answer alerts; without it the control doesn't show. */
+  pushKey?: string | undefined
+}) {
   const t = useTranslations('tonight')
   // A venue with no POS still reads right where a sentence names its system.
   const named = view.source === '' ? { ...view, source: t('source_none') } : view
   return (
     <RunProvider>
-      <Content view={named} />
+      <Content view={named} pushKey={pushKey} />
     </RunProvider>
   )
 }

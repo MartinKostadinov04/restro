@@ -52,6 +52,10 @@ describe('proxy (the optimistic sign-in gate)', () => {
       '/cdn/anything-without-an-extension',
       '/favicon.ico',
       '/logo.png',
+      // Staff devices fetch these with no sign-in: the browser asks for them itself (RR-86).
+      '/sw.js',
+      '/manifest.webmanifest',
+      '/icons/icon-192.png',
     ]) {
       expect(matcher.test(path), path).toBe(false)
     }
