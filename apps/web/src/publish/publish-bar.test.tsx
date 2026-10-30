@@ -25,10 +25,13 @@ beforeEach(() => {
   actions.publishNowAction.mockResolvedValue({ ok: true, queued: true })
 })
 
-function render(view: PublishBarView, options: { busy?: BusyView; locale?: 'bg' } = {}) {
+function render(
+  view: PublishBarView,
+  options: { busy?: BusyView; locale?: 'bg'; onlyWhatWorks?: boolean } = {},
+) {
   renderWithIntl(
     <PublisherProvider venueId={VENUE_ID} state={{ lastRun: null, busy: options.busy ?? null }}>
-      <PublishBar view={view} />
+      <PublishBar view={view} onlyWhatWorks={options.onlyWhatWorks ?? false} />
     </PublisherProvider>,
     options.locale === undefined ? {} : { locale: options.locale },
   )
@@ -247,6 +250,53 @@ describe('the Publish bar with several menus', () => {
     )
     expect(button().disabled).toBe(true)
     expect(reason()).toBe('Up to date: every menu is published as it is.')
+  })
+})
+
+describe('on Tonight, only what works (RR-80)', () => {
+  const tonight = (view: PublishBarView, busy?: BusyView) =>
+    render(view, { onlyWhatWorks: true, ...(busy === undefined ? {} : { busy }) })
+
+  it('draws the working link and button, and the words on what waits', () => {
+    tonight(barView())
+    expect(screen.getByTestId('guest-link').getAttribute('href')).toBe('/m/demo-org/demo-club')
+    expect(button().disabled).toBe(false)
+    expect(reason()).toBe('1 change waiting')
+  })
+
+  it('has no Publish when nothing waits, and still the guest page', () => {
+    tonight(barView({ menus: [barMenu({ changes: 0, identical: true, published: true })] }))
+    expect(screen.getByTestId('guest-link')).toBeTruthy()
+    expect(screen.queryByTestId('publish-button')).toBeNull()
+    expect(screen.queryByTestId('publish-block-reason')).toBeNull()
+  })
+
+  it('draws nothing at all when nothing can be pressed', () => {
+    tonight(barView({ menus: [] }))
+    expect(screen.queryByTestId('publish-bar')).toBeNull()
+    expect(document.querySelector(':disabled')).toBeNull()
+  })
+
+  it('says it is publishing, with no greyed button', () => {
+    tonight(barView(), 'publish')
+    expect(screen.queryByTestId('publish-button')).toBeNull()
+    expect(screen.getByTestId('publish-block-reason').getAttribute('data-block')).toBe('busy')
+    expect(document.querySelector(':disabled')).toBeNull()
+  })
+
+  it('lists only the menus that can be published in the dropdown', async () => {
+    const user = userEvent.setup()
+    tonight(
+      barView({
+        menus: [
+          barMenu({ menuId: 'nd_a', name: 'Drinks' }),
+          barMenu({ menuId: 'nd_b', name: 'Food', changes: 0, identical: true, published: true }),
+        ],
+      }),
+    )
+    await user.click(button())
+    const rows = await screen.findAllByTestId('publish-menu-row')
+    expect(rows.map((row) => row.getAttribute('data-menu'))).toEqual(['nd_a'])
   })
 })
 

@@ -7,6 +7,7 @@ import { type Browser, expect, type Page, test } from '@playwright/test'
 
 import { runScriptWith } from './global-setup'
 import {
+  ADMIN_EMAIL,
   ADMIN_PASSWORD,
   TONIGHT_OWNER_EMAIL,
   TONIGHT_PIN_PEPPER,
@@ -37,7 +38,7 @@ async function signIn(browser: Browser, email: string): Promise<Page> {
     await page.getByRole('button', { name: 'Вход' }).click()
     try {
       await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=tonight|\/venues$/, {
-        timeout: 8_000,
+        timeout: 30_000,
       })
       await context.addCookies([
         { name: 'NEXT_LOCALE', value: 'en', url: new URL(page.url()).origin },
@@ -50,16 +51,25 @@ async function signIn(browser: Browser, email: string): Promise<Page> {
   throw new Error(`could not sign in as ${email}`)
 }
 
+/** A bar still streaming in has a hidden copy for a moment: only what is on screen counts. */
+function onScreen(page: Page, testId: string) {
+  return page.getByTestId(testId).filter({ visible: true })
+}
+
 let waiter: Page
 let owner: Page
 let venuePath: string
 
 test.beforeAll(async ({ browser }) => {
+  // Two scripts and two sign-ins take more than a hook's own 30 seconds on a busy machine.
+  test.setTimeout(240_000)
   seed('seed')
   seed('night', 'empty')
   waiter = await signIn(browser, TONIGHT_WAITER_EMAIL)
-  venuePath = new URL(waiter.url()).pathname
   owner = await signIn(browser, TONIGHT_OWNER_EMAIL)
+  await owner.goto('/venues')
+  const href = await owner.getByRole('link', { name: 'Open' }).first().getAttribute('href')
+  venuePath = href ?? ''
 })
 
 test.afterAll(async () => {
@@ -67,79 +77,111 @@ test.afterAll(async () => {
   await owner?.context().close()
 })
 
-test('the header at 200% text stays inside a 390 px phone (RR-79)', async ({}, testInfo) => {
+test('the header at 200% text stays inside a 390 px phone (RR-79)', async () => {
   await owner.goto(`${venuePath}?tab=composer`)
-  await expect(owner.getByTestId('guest-link')).toBeVisible()
+  await expect(onScreen(owner, 'guest-link')).toBeVisible({ timeout: 30_000 })
   await owner.evaluate(() => {
     document.documentElement.style.fontSize = '200%'
   })
-  const sideways = await owner.evaluate(() => ({
-    scroll: document.documentElement.scrollWidth,
-    client: document.documentElement.clientWidth,
-  }))
-  expect(sideways.scroll).toBeLessThanOrEqual(sideways.client)
+  // Once the page has settled at the new size there is no sideways scroll.
+  await expect
+    .poll(() =>
+      owner.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      ),
+    )
+    .toBe(0)
   for (const testId of ['guest-link', 'publish-button']) {
-    const box = await owner.getByTestId(testId).boundingBox()
+    const box = await onScreen(owner, testId).boundingBox()
     expect(box, testId).not.toBeNull()
     expect((box?.x ?? 0) + (box?.width ?? 0), testId).toBeLessThanOrEqual(PHONE.width)
   }
-  await owner.screenshot({ path: testInfo.outputPath('rr-79-header-200-percent.png') })
+  await owner.screenshot({ path: test.info().outputPath('rr-79-header-200-percent.png') })
 })
 
-test('on Tonight a waiter is not offered Publish at all (RR-80)', async ({}, testInfo) => {
+test('on Tonight a waiter is not offered Publish at all (RR-80)', async () => {
   await waiter.goto(`${venuePath}?tab=tonight`)
-  await expect(waiter.getByTestId('tonight')).toBeVisible()
+  await expect(onScreen(waiter, 'tonight')).toBeVisible({ timeout: 30_000 })
   await expect(waiter.getByTestId('publish-bar')).toHaveCount(0)
   await expect(waiter.getByTestId('publish-button')).toHaveCount(0)
   await expect(waiter.getByTestId('tonight-publish')).toHaveCount(0)
-  await waiter.screenshot({ path: testInfo.outputPath('rr-80-waiter-tonight.png') })
+  await waiter.screenshot({ path: test.info().outputPath('rr-80-waiter-tonight.png') })
 })
 
-test('on Tonight the owner’s Publish follows the night’s work (RR-80)', async ({}, testInfo) => {
+test('on Tonight an owner with nothing to press sees no greyed Publish (RR-80)', async () => {
+  // The fixture's venue has no menu: everywhere else the bar says so with its buttons off.
   await owner.goto(`${venuePath}?tab=tonight`)
-  const work = owner.getByTestId('tonight')
-  await expect(work).toBeVisible()
-  const publish = owner.getByTestId('publish-button')
-  await expect(publish).toBeVisible()
-  const workBox = await work.boundingBox()
-  const publishBox = await publish.boundingBox()
-  expect(publishBox?.y ?? 0).toBeGreaterThanOrEqual((workBox?.y ?? 0) + (workBox?.height ?? 0))
-  await owner.screenshot({ path: testInfo.outputPath('rr-80-owner-tonight.png'), fullPage: true })
+  await expect(onScreen(owner, 'tonight')).toBeVisible({ timeout: 30_000 })
+  await expect(owner.locator('[hidden][id*="S:"]')).toHaveCount(0)
+  await expect(owner.getByTestId('publish-button')).toHaveCount(0)
+  await expect(owner.getByTestId('guest-link')).toHaveCount(0)
+  await expect(owner.getByTestId('tonight-publish')).toBeHidden()
+  await owner.screenshot({
+    path: test.info().outputPath('rr-80-owner-nothing-to-press.png'),
+    fullPage: true,
+  })
   // Elsewhere it still heads the page.
   await owner.goto(`${venuePath}?tab=settings`)
-  await expect(owner.getByTestId('publish-button')).toBeVisible()
+  await expect(onScreen(owner, 'publish-button')).toBeVisible({ timeout: 30_000 })
   await expect(owner.getByTestId('tonight-publish')).toHaveCount(0)
+})
+
+test('on Tonight what an owner can press follows the night’s work (RR-80)', async ({ browser }) => {
+  // The demo venue has a menu: published or not, there is a guest page or a Publish to press.
+  const demo = await signIn(browser, ADMIN_EMAIL)
+  await demo.goto('/venues')
+  const open = demo.getByRole('link', { name: 'Open' }).first()
+  await demo.goto(`${(await open.getAttribute('href')) ?? ''}?tab=tonight`)
+  const work = onScreen(demo, 'tonight')
+  await expect(work).toBeVisible({ timeout: 30_000 })
+  const section = onScreen(demo, 'tonight-publish')
+  await expect(section).toBeVisible({ timeout: 30_000 })
+  await expect(section.getByRole('button').or(section.getByRole('link')).first()).toBeVisible()
+  await expect(section.locator(':disabled')).toHaveCount(0)
+  await expect(demo.getByRole('combobox').nth(1)).toContainText('Actions and tables')
+  const workBox = await work.boundingBox()
+  const sectionBox = await section.boundingBox()
+  expect(sectionBox?.y ?? 0).toBeGreaterThanOrEqual((workBox?.y ?? 0) + (workBox?.height ?? 0))
+  await demo.screenshot({
+    path: test.info().outputPath('rr-80-owner-tonight.png'),
+    fullPage: true,
+  })
+  await demo.context().close()
 })
 
 test('a tablet with an owner’s account is not offered what it would be refused (RR-85)', async ({
   browser,
-}, testInfo) => {
+}) => {
   const tablet = await signIn(browser, TONIGHT_OWNER_EMAIL)
   // The newest session of the account becomes a shared device, as "mark this device" does.
   seed('device', TONIGHT_OWNER_EMAIL)
 
   await tablet.goto('/venues')
-  await expect(tablet.getByRole('heading', { level: 1 })).toBeVisible()
+  await expect(tablet.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 30_000 })
   await expect(tablet.getByTestId('new-venue')).toHaveCount(0)
   await tablet.getByRole('button', { name: /sidebar/i }).click()
   await expect(tablet.getByTestId('venue-nav-item').first()).toBeVisible()
   await expect(tablet.getByTestId('venue-nav-new')).toHaveCount(0)
   await expect(tablet.getByTestId('nav-settings')).toHaveCount(0)
-  await tablet.screenshot({ path: testInfo.outputPath('rr-85-tablet-menu.png') })
+  await tablet.waitForTimeout(500) // the side sheet slides in
+  await tablet.screenshot({ path: test.info().outputPath('rr-85-tablet-menu.png') })
 
   // The old links: the organisation's Settings say what they need, the venue's land on Tonight.
   await tablet.goto('/settings')
-  await expect(tablet.getByTestId('settings-own-signin')).toBeVisible()
+  await expect(tablet.getByTestId('settings-own-signin')).toBeVisible({ timeout: 30_000 })
   await expect(tablet.getByTestId('settings-content')).toHaveCount(0)
-  await tablet.screenshot({ path: testInfo.outputPath('rr-85-tablet-settings.png') })
+  await tablet.screenshot({ path: test.info().outputPath('rr-85-tablet-settings.png') })
 
   await tablet.goto(`${venuePath}?tab=settings`)
   await expect(tablet).toHaveURL(/\?tab=tonight$/)
-  await expect(tablet.getByRole('tab')).toHaveText(['Tonight'])
+  // Tonight is all it has, so there is no choosing a tab.
+  await expect(onScreen(tablet, 'tonight')).toBeVisible({ timeout: 30_000 })
+  await expect(tablet.getByRole('combobox', { name: 'Switch tab' })).toHaveCount(0)
   await expect(tablet.getByTestId('publish-button')).toHaveCount(0)
+  await tablet.screenshot({ path: test.info().outputPath('rr-85-tablet-tonight.png') })
 
   // The owner's own phone is what it was.
   await owner.goto('/venues')
-  await expect(owner.getByTestId('new-venue')).toBeVisible()
+  await expect(onScreen(owner, 'new-venue')).toBeVisible({ timeout: 30_000 })
   await tablet.context().close()
 })

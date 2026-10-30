@@ -269,6 +269,7 @@ describe('Settings › Staff and roles', () => {
         "You can't change Ana: they hold rights you don't.",
         {
           duration: Number.POSITIVE_INFINITY,
+          closeButton: true,
         },
       ),
     )
