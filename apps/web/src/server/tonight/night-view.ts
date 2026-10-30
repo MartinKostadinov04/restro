@@ -277,6 +277,8 @@ export interface SentDetailView {
     readonly options: readonly string[]
     readonly note: string | null
   }[]
+  /** The POS bill it joined, as staff know it there; null until it has joined one. */
+  readonly billRef: string | null
   readonly steps: readonly StepView[]
 }
 
@@ -290,6 +292,7 @@ export function sentDetailView(detail: SentOrderDetail, timezone: string): SentD
       options: line.optionNames,
       note: line.note,
     })),
+    billRef: detail.posBillRef,
     steps: detail.steps.map((step) => ({
       time: clock(step.at) ?? '',
       landedLate: step.kind === 'sent_order.landed_late',
@@ -370,6 +373,8 @@ export interface LogLineView {
   readonly sentOrdersOfDay: number | null
   /** A waiter call entry's kinds (#180): the one asked for, or all of a call that ended. */
   readonly callKinds: readonly string[]
+  /** The Undo of "Handled" (RR-58): a `waiter_call.done` line that opens the call again. */
+  readonly callUndone: boolean
   /**
    * A paper receipt's mark (#200), for `receipt.brought` lines only: `undone` is Undo of the mark
    * (the receipt is to be brought again), `paymentNumber` the number the guest shows.
@@ -462,6 +467,7 @@ export function logLineView(
     refundSeenUndone: line.kind === 'payment.refund_failed_seen' && line.toState === 'open',
     sentOrdersOfDay: line.sentOrdersOfDay,
     callKinds: line.callKinds,
+    callUndone: line.kind === 'waiter_call.done' && line.toState === 'open',
     ...(line.kind === 'receipt.brought'
       ? {
           receipt: {

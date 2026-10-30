@@ -60,6 +60,7 @@ async function perform(
     const venue = await getVenue(organization.id, input.venueId)
     if (!venue) return NOT_FOUND
     let actor: ServiceActor = { kind: 'user', userId: user.id, sessionId }
+    let named: string | null = null
     if (input.pin !== undefined) {
       const identity = await identifyAtSharedDevice({
         tenantId: organization.id,
@@ -74,6 +75,7 @@ async function perform(
           : { ok: false, error: identity.code }
       }
       actor = { kind: 'staff', staffMemberId: identity.staffMemberId, sessionId }
+      named = identity.name
     }
     const result = await act({
       pool: getPool(),
@@ -83,7 +85,10 @@ async function perform(
       signedInAt,
     })
     if (result.ok) revalidatePath(`/venues/${venue.id}`)
-    return result
+    // The toast names whom the PIN named (plan §5: "· {who}").
+    return result.ok && named !== null
+      ? { ...result, details: { ...result.details, who: named } }
+      : result
   } catch (error) {
     // redirect() and notFound() are control flow, not failures.
     if (error instanceof Error && 'digest' in error) throw error
@@ -163,7 +168,7 @@ export async function markPaymentTableAction(input: unknown): Promise<TonightRes
 }
 
 const OnCall = z.strictObject({ venueId, waiterCallId: idSchema('wc'), pin })
-const OnPause = z.strictObject({ venueId, pauseId: idSchema('pa'), pin, undo })
+const OnPause = z.strictObject({ venueId, pauseId: idSchema('pa'), pin })
 const OnBar = z.strictObject({ venueId, barId: idSchema('br').nullable(), pin, undo })
 const OnSentOrder = z.strictObject({
   venueId,
@@ -180,6 +185,18 @@ export async function handleWaiterCallAction(input: unknown): Promise<TonightRes
   if (!parsed.success) return INVALID
   return perform(parsed.data, (scope) =>
     command(scope, { type: 'waiter_call.done', waiterCallId: parsed.data.waiterCallId }),
+  )
+}
+
+const UndoCall = z.strictObject({ venueId, waiterCallId: idSchema('wc'), undo: undo.unwrap() })
+
+/** The Undo of "Handled" (RR-58): no PIN, as "Handled" itself. */
+export async function undoWaiterCallAction(input: unknown): Promise<TonightResult> {
+  const parsed = UndoCall.safeParse(input)
+  if (!parsed.success) return INVALID
+  const { waiterCallId, undo: token } = parsed.data
+  return perform(parsed.data, (scope) =>
+    command(scope, { type: 'waiter_call.undone', waiterCallId, undo: token }),
   )
 }
 
@@ -229,13 +246,19 @@ export async function pauseOrderingAction(input: unknown): Promise<TonightResult
 export async function liftOrderingAction(input: unknown): Promise<TonightResult> {
   const parsed = OnPause.safeParse(input)
   if (!parsed.success) return INVALID
+  const { pauseId } = parsed.data
+  return perform(parsed.data, (scope) => command(scope, { type: 'ordering.lift', pauseId }))
+}
+
+const UndoPause = z.strictObject({ venueId, pauseId: idSchema('pa'), undo: undo.unwrap() })
+
+/** The Undo of the person's own pause (RR-58): no PIN and no manager, inside its 30 seconds. */
+export async function undoPauseAction(input: unknown): Promise<TonightResult> {
+  const parsed = UndoPause.safeParse(input)
+  if (!parsed.success) return INVALID
   const { pauseId, undo: token } = parsed.data
   return perform(parsed.data, (scope) =>
-    command(scope, {
-      type: 'ordering.lift',
-      pauseId,
-      ...(token === undefined ? {} : { undo: token }),
-    }),
+    command(scope, { type: 'ordering.undo_pause', pauseId, undo: token }),
   )
 }
 

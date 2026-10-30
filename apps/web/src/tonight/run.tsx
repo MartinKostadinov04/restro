@@ -4,7 +4,8 @@
 // 8-second toast; one that must name a person on a shared device first opens the PIN sheet, which
 // is its confirmation; only an answer that moves money gets no Undo (part 2's). The Undo sends the
 // write's token back, and core refuses it after 30 seconds or when the thing changed (#219). A write
-// that fails is the error toast that stays, with a close button, and the row stays where it was.
+// that fails is the error toast that stays, with a close button, and the row stays where it was. A
+// write that never reached the server (no connection, RR-78) is such a failure too.
 import { useTranslations } from 'next-intl'
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -28,6 +29,10 @@ export function undoTokenOf(done: Accepted): UndoToken | undefined {
 
 /** `undoWhen` for a write that offers Undo only when it wrote something (it has a token). */
 export const wroteSomething = (done: Accepted) => undoTokenOf(done) !== undefined
+
+/** A write's answer, or `failed` when it never came: the action's promise rejected (RR-78). */
+const attempt = (write: () => Promise<TonightResult>): Promise<TonightResult> =>
+  write().catch((): TonightResult => ({ ok: false, error: 'failed' }))
 
 /** One write. */
 export interface RunSpec {
@@ -75,7 +80,9 @@ export function RunProvider({ children }: { children: ReactNode }) {
   const finish = useCallback(
     (spec: RunSpec, done: Accepted, pin?: string) => {
       const { undo } = spec
-      toast(spec.done, {
+      // Whom a PIN named: the toast says so, on the tablet everyone shares (plan §5).
+      const who = done.details.who
+      toast(typeof who === 'string' ? t('toast_who', { text: spec.done, who }) : spec.done, {
         id: spec.id,
         ...(undo === undefined || spec.undoWhen?.(done) === false
           ? {}
@@ -83,7 +90,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
               action: {
                 label: t('undo'),
                 onClick: () => {
-                  void undo(done, undoTokenOf(done), pin).then((result) => {
+                  void attempt(() => undo(done, undoTokenOf(done), pin)).then((result) => {
                     if (!result.ok) {
                       toast.error(
                         failureText(result.error, result.retryAfterSeconds, result.details),
@@ -107,7 +114,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
     async (spec: RunSpec, pin?: string): Promise<TonightResult> => {
       setBusy(true)
       try {
-        const result = await spec.act(pin)
+        const result = await attempt(() => spec.act(pin))
         if (result.ok) finish(spec, result, pin)
         return result
       } finally {

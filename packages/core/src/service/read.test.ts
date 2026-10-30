@@ -203,6 +203,37 @@ describe.skipIf(!hasDatabase)('the service read side (as the restro_app role)', 
     ])
   })
 
+  it('names an owner’s own pause, never a shared device’s account (RR-77)', async () => {
+    const session = `sess-${randomUUID()}`
+    const deviceAccount = await world.addUser('member')
+    await world.owner.query(
+      `insert into restro.auth_session (id, token, user_id, expires_at, updated_at)
+       values ($1, $2, $3, now() + interval '1 day', now())`,
+      [session, `tok-${session}`, deviceAccount],
+    )
+    await world.addSharedDevice(session)
+    const insert = `insert into restro.pauses
+        (id, tenant_id, venue_id, service_date, scope, target_id, cause, restro_started, source, actor, job_id)
+       values ($1, $2, $3, $4, 'venue', $3, 'staff', false, 'staff', $5, 'test-seed')`
+    const byOwner = newId('pa')
+    const byDevice = newId('pa')
+    await world.owner.query(insert, [byOwner, world.tenantId, world.venueId, day, `user:${ownerId}`])
+    const tonight = await tonightOf(user(ownerId))
+    expect(tonight.pauses.find((pause) => pause.id === byOwner)?.startedBy).toBe('Test person')
+    await world.owner.query('delete from restro.pauses where id = $1', [byOwner])
+
+    await world.owner.query(insert, [
+      byDevice,
+      world.tenantId,
+      world.venueId,
+      day,
+      `user:${deviceAccount}`,
+    ])
+    const onDevice = await tonightOf(user(ownerId))
+    expect(onDevice.pauses.find((pause) => pause.id === byDevice)?.startedBy).toBeNull()
+    await world.owner.query('delete from restro.pauses where id = $1', [byDevice])
+  })
+
   it('shows a shared device the money alerts and the managers’ to-dos, without a tip; a staff phone not (#85)', async () => {
     const subject = newId('py')
     const seed = ['worker', 'system', 'test-seed']

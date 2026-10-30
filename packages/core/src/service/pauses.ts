@@ -35,7 +35,7 @@ import { TABLE_VANISHED_CAUSE } from './floor-pause'
 import { COVERED_VENUES_KEY } from './pause-scope'
 import { accepted, refused, type ServiceResult } from './results'
 import { ORDER_UNCONFIRMED_CAUSE, settleWaiting } from './sent-order'
-import { changedSince, UndoTokenSchema } from './undo'
+import { changedSince, tokenEntry, UndoTokenSchema } from './undo'
 
 /** The cause of a staff pause. */
 export const STAFF_PAUSE_CAUSE = 'staff'
@@ -247,16 +247,32 @@ export function pauseOrdering() {
  */
 export function liftOrdering() {
   return defineCommand({
-    schema: z.strictObject({
-      type: z.literal('ordering.lift'),
-      pauseId: idSchema('pa'),
-      undo: UndoTokenSchema.optional(),
-    }),
+    schema: z.strictObject({ type: z.literal('ordering.lift'), pauseId: idSchema('pa') }),
     origins: ['staff'],
     permission: 'ordering.lift',
     idempotency: 'by_nature',
     undoable: { kinds: ['pause.lifted'] },
-    // With an `undo` token this is the Undo of a pause (#219): stale when the pause was lifted since.
+    handle: (stx, command) => liftPause(stx, command.pauseId),
+  })
+}
+
+/**
+ * The Undo of the person's own pause (RR-58): whoever paused may take it back for 30 seconds, a
+ * waiter and the tablet's own account too, though lifting a pause is a manager's. Only with the
+ * token of that very pause, written by the same actor: later on it is a manager's lift.
+ */
+export function undoPause() {
+  return defineCommand({
+    schema: z.strictObject({
+      type: z.literal('ordering.undo_pause'),
+      pauseId: idSchema('pa'),
+      undo: UndoTokenSchema,
+    }),
+    origins: ['staff'],
+    permission: 'ordering.pause',
+    quickOnSharedDevice: true,
+    idempotency: 'by_nature',
+    // Stale when the pause was lifted since.
     undoStale: (stx, command, entry) =>
       changedSince(
         stx,
@@ -265,55 +281,68 @@ export function liftOrdering() {
           and ${logEntries.details} ->> 'pauseId' = ${command.pauseId}`,
       ),
     async handle(stx, command) {
-      const [pause] = await stx.tx.select().from(pauses).where(eq(pauses.id, command.pauseId))
-      if (pause === undefined) return refused(null, 'pause_missing')
-      // A pause of another venue (a connection pause is every venue's it covers).
-      const ours =
-        pause.scope === 'connection'
-          ? pause.venueId === stx.venueId || coveredVenues(pause.details).includes(stx.venueId)
-          : pause.venueId === stx.venueId
-      if (!ours) return refused(null, 'pause_missing')
-      const tables =
-        pause.scope === 'table'
-          ? [pause.targetId]
-          : await tablesOf(stx, pause.scope === 'bar' ? pause.targetId : null)
-      if (pause.liftedAt !== null) {
-        return accepted(null, { details: { pauseId: pause.id, lifted: false, already: true } })
+      const entry = await tokenEntry(stx, command.undo)
+      if (
+        entry?.kind !== 'pause.started' ||
+        entry.details.pauseId !== command.pauseId ||
+        entry.actor !== stx.provenance.actor
+      ) {
+        return refused(null, 'undo_stale')
       }
-      if (pause.restroStarted && stx.actor.kind !== 'operator') {
-        return refused(null, 'restro_pause')
-      }
-      const held = await holdTables(stx, tables)
-      stx.rows.claim('pause', [`${pause.scope}:${pause.targetId}:${pause.cause}`])
-      const [locked] = await stx.tx
-        .select({ liftedAt: pauses.liftedAt })
-        .from(pauses)
-        .where(eq(pauses.id, pause.id))
-        .for('update')
-      if (locked === undefined || locked.liftedAt !== null) {
-        return accepted(null, { details: { pauseId: pause.id, lifted: false, already: true } })
-      }
-      await stx.tx
-        .update(pauses)
-        .set({
-          liftedAt: sql`now()`,
-          liftedBy: stx.provenance.actor,
-          liftReason: LIFT_REASONS.lifted,
-          nextProbeAt: null,
-          ...stx.provenance,
-          updatedAt: sql`now()`,
-        })
-        .where(eq(pauses.id, pause.id))
-      await stx.log({
-        kind: 'pause.lifted',
-        ...(pause.scope === 'table' ? { tableId: pause.targetId } : {}),
-        reason: LIFT_REASONS.lifted,
-        details: { pauseId: pause.id, scope: pause.scope, cause: pause.cause },
-      })
-      touchAll(stx, held)
-      return accepted(null, { details: { pauseId: pause.id, lifted: true, already: false } })
+      return liftPause(stx, command.pauseId)
     },
   })
+}
+
+/** Lifts one pause of this venue; a Restro pause only for Restro's admin team. */
+async function liftPause(stx: ServiceTx, pauseId: string): Promise<ServiceResult> {
+  const [pause] = await stx.tx.select().from(pauses).where(eq(pauses.id, pauseId))
+  if (pause === undefined) return refused(null, 'pause_missing')
+  // A pause of another venue (a connection pause is every venue's it covers).
+  const ours =
+    pause.scope === 'connection'
+      ? pause.venueId === stx.venueId || coveredVenues(pause.details).includes(stx.venueId)
+      : pause.venueId === stx.venueId
+  if (!ours) return refused(null, 'pause_missing')
+  const tables =
+    pause.scope === 'table'
+      ? [pause.targetId]
+      : await tablesOf(stx, pause.scope === 'bar' ? pause.targetId : null)
+  if (pause.liftedAt !== null) {
+    return accepted(null, { details: { pauseId: pause.id, lifted: false, already: true } })
+  }
+  if (pause.restroStarted && stx.actor.kind !== 'operator') {
+    return refused(null, 'restro_pause')
+  }
+  const held = await holdTables(stx, tables)
+  stx.rows.claim('pause', [`${pause.scope}:${pause.targetId}:${pause.cause}`])
+  const [locked] = await stx.tx
+    .select({ liftedAt: pauses.liftedAt })
+    .from(pauses)
+    .where(eq(pauses.id, pause.id))
+    .for('update')
+  if (locked === undefined || locked.liftedAt !== null) {
+    return accepted(null, { details: { pauseId: pause.id, lifted: false, already: true } })
+  }
+  await stx.tx
+    .update(pauses)
+    .set({
+      liftedAt: sql`now()`,
+      liftedBy: stx.provenance.actor,
+      liftReason: LIFT_REASONS.lifted,
+      nextProbeAt: null,
+      ...stx.provenance,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(pauses.id, pause.id))
+  await stx.log({
+    kind: 'pause.lifted',
+    ...(pause.scope === 'table' ? { tableId: pause.targetId } : {}),
+    reason: LIFT_REASONS.lifted,
+    details: { pauseId: pause.id, scope: pause.scope, cause: pause.cause },
+  })
+  touchAll(stx, held)
+  return accepted(null, { details: { pauseId: pause.id, lifted: true, already: false } })
 }
 
 /** `table.resume`: staff lift the table's Unconfirmed and guard pauses (never a vanished table's). */

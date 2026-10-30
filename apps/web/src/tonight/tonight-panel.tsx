@@ -30,12 +30,11 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/u
 import { cn } from '@/lib/utils'
 import {
   closeAllTablesAction,
-  liftOrderingAction,
   openAllTablesAction,
   pauseOrderingAction,
   undoOpenAllAction,
+  undoPauseAction,
 } from '@/server/tonight/actions'
-import type { UndoToken } from '@/server/tonight/tables'
 import type { TonightView } from '@/server/tonight/view'
 
 import { ActionRowItem, OutOfStockNotice, useAgo } from './action-rows'
@@ -93,21 +92,14 @@ function PauseMenu({ view }: { view: TonightView }) {
       id: `pause:${barId ?? 'all'}`,
       act: () => pauseOrderingAction({ venueId: view.venueId, barId }),
       done: t('p_toast', { scope: name }),
-      // Lifting needs a manager; without that right the toast has no Undo.
-      ...(view.can.lift && !view.device
-        ? {
-            undo: (
-              done: { details: Record<string, string | number | boolean | null> },
-              undo: UndoToken | undefined,
-            ) =>
-              liftOrderingAction({
-                venueId: view.venueId,
-                pauseId: String(done.details.pauseId),
-                undo,
-              }),
-            undoWhen: wroteSomething,
-          }
-        : {}),
+      // The person's own pause, whatever their role and on the tablet too; the token decides.
+      undo: (done, undo) =>
+        undoPauseAction({
+          venueId: view.venueId,
+          pauseId: String(done.details.pauseId),
+          undo,
+        }),
+      undoWhen: wroteSomething,
     })
   }
 
@@ -247,15 +239,9 @@ function Content({ view }: { view: TonightView }) {
         : {}),
       act: (pin) => openAllTablesAction({ venueId: view.venueId, pin }),
       done: t('oa_toast', { k: closedIds.length }),
-      // On a shared device Open all names a person by their PIN, and its Undo would have to name
-      // the same person: it has no PIN to do so, so the toast offers none there (#219).
-      ...(view.device
-        ? {}
-        : {
-            undo: (_: unknown, undo: UndoToken | undefined) =>
-              undoOpenAllAction({ venueId: view.venueId, undo }),
-            undoWhen: wroteSomething,
-          }),
+      // On a shared device the Undo names the same person, with the PIN of the write.
+      undo: (_, undo, pin) => undoOpenAllAction({ venueId: view.venueId, undo, pin }),
+      undoWhen: wroteSomething,
     })
   }
   function confirmCloseAll() {

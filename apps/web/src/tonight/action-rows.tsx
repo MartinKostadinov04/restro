@@ -37,6 +37,7 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile'
 import {
   handleWaiterCallAction,
+  undoWaiterCallAction,
   receiptBroughtAction,
   receiptUnbroughtAction,
   refundFailedSeenAction,
@@ -135,6 +136,13 @@ export function ActionRowItem({
               act: () =>
                 handleWaiterCallAction({ venueId: view.venueId, waiterCallId: row.waiterCallId }),
               done: t('c_toast', { table: name }),
+              undo: (_, undo) =>
+                undoWaiterCallAction({
+                  venueId: view.venueId,
+                  waiterCallId: row.waiterCallId,
+                  undo,
+                }),
+              undoWhen: wroteSomething,
             })
           }
         >
