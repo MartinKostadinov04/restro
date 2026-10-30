@@ -1592,6 +1592,57 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     })
   })
 
+  // Repair-review, RR-14: a line is never in two payments (D112), and `unconfirmed` is not over: a
+  // manager is still asked, and "Receipt printed" still captures its hold. So its lines stay
+  // greyed while the question stands, even when they read back on the real table.
+  describe('an unconfirmed payment’s lines', () => {
+    async function unconfirmedWithLinesBack() {
+      const id = await held(1)
+      fault({ on: 'closeBill', fault: { kind: 'hang' } })
+      expect((await drive(id)).row).toMatchObject({ state: 'unconfirmed', reason: 'close_unknown' })
+      // A waiter puts the lines back on the guest's table while the manager is still asked.
+      const till = sim.host.engine
+      const onPaymentTable = till.state.bills.filter(
+        (bill) => PAYMENT_TABLES.includes(bill.table) && bill.state === 'open',
+      )
+      for (const bill of onPaymentTable) {
+        till.waiter.moveLines(
+          bill.id,
+          bill.rows.map((row) => ({ row: row.id })),
+          POS_TABLE,
+        )
+      }
+      await read()
+      return id
+    }
+
+    it('stay greyed while a manager is asked: a second Pay on them is refused', async () => {
+      const first = await unconfirmedWithLinesBack()
+      expect(await stored(first)).toMatchObject({ state: 'unconfirmed' })
+      const shown = await lines()
+      expect(shown.map((line) => line.amountMinor)).toContain(2_200)
+      const index = shown.findIndex((line) => line.amountMinor === 2_200)
+      expect(shown[index]?.beingPaid).toBe(true)
+      expect(await tryHeld(index)).toBeNull()
+    })
+
+    it('never leads to two cards captured for one line', async () => {
+      const first = await unconfirmedWithLinesBack()
+      const shown = await lines()
+      const second = await tryHeld(shown.findIndex((line) => line.amountMinor === 2_200))
+      if (second !== null) await drive(second)
+      expect((await answer(first, 'receipt_printed')).status).toBe('accepted')
+      await drive(first)
+      const captured = (
+        await query<{ id: string }>(
+          `select id from restro.payments where id = any($1) and state = 'captured'`,
+          [[first, second].filter((id) => id !== null)],
+        )
+      ).map((row) => row.id)
+      expect(captured.length).toBeLessThanOrEqual(1)
+    })
+  })
+
   describe('the model', () => {
     /** A timeout, an error or a refusal at each POS write; `from: 2` is the move back. */
     const POS_FAULTS: FaultRule[] = [
