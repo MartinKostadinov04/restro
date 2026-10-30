@@ -14,6 +14,7 @@ import { enqueueJob } from '../jobs'
 import { logError } from '../log'
 import { canPublishMenu } from '../roles'
 import { requireTenant } from '../session'
+import { onSharedDevice } from '../staff/shared-device'
 import { getVenue } from '../venues'
 import {
   approveHeld,
@@ -31,7 +32,7 @@ import {
 
 const venueIdSchema = idSchema('vn')
 
-type ScopeError = 'invalid' | 'not_found' | 'failed'
+type ScopeError = 'invalid' | 'not_found' | 'failed' | 'not_allowed'
 
 /** Runs one function for a venue of the signed-in person's organisation. */
 async function withScope<T>(
@@ -42,9 +43,13 @@ async function withScope<T>(
   const parsed = venueIdSchema.safeParse(venue)
   if (!parsed.success) return onError('invalid')
   try {
-    const { organization, user } = await requireTenant()
+    const { organization, user, sessionId } = await requireTenant()
     const found = await getVenue(organization.id, parsed.data)
     if (!found) return onError('not_found')
+    // A shared tablet neither publishes nor previews drafts (D122 §7, RR-83), whoever's account it
+    // holds.
+    if (await onSharedDevice({ tenantId: organization.id, sessionId }))
+      return onError('not_allowed')
     const scope: PublishScope = {
       pool: getPool(),
       tenantId: organization.id,

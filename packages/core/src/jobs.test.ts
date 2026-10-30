@@ -59,6 +59,7 @@ describe('job names and payloads', () => {
     const job = prepareJob(JOB_NAMES.orderSend, { tenantId, venueId, tableId })
     expect(job.singletonKey).toBe(tableId)
     expect(STATELY_JOBS.has(JOB_NAMES.orderSend)).toBe(true)
+    expect(job.group).toEqual({ id: tableId })
     expect(isProducedJob(JOB_NAMES.orderSlotSweep)).toBe(false)
   })
 

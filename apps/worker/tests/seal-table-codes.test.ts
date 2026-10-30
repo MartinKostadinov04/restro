@@ -176,6 +176,11 @@ describe.skipIf(!hasDatabase)('table codes stored in plain before #70', () => {
         'insert into restro.auth_member (id, organization_id, user_id, role) values ($1, $2, $3, $4)',
         [`mb-${userId}`, world.tenantId, userId, 'owner'],
       )
+      // A real sign-in: the internal endpoints look the session up (RR-10).
+      await world.query(
+        "insert into restro.auth_session (id, expires_at, token, user_id) values ($1, now() + interval '1 hour', $2, $3)",
+        [`sess-${userId}`, `tok-${userId}`, userId],
+      )
       return userId
     }
     const removeUser = (userId: string) =>
@@ -194,7 +199,7 @@ describe.skipIf(!hasDatabase)('table codes stored in plain before #70', () => {
           {
             ...venue(),
             tableIds: tables.map((table) => table.id),
-            actor: { kind: 'user', userId, sessionId: `sess-${randomUUID()}` },
+            actor: { kind: 'user', userId, sessionId: `sess-${userId}` },
           },
         )
         if (answer.status !== 'accepted') throw new Error(`refused: ${answer.code}`)
@@ -228,6 +233,10 @@ describe.skipIf(!hasDatabase)('table codes stored in plain before #70', () => {
         'Stranger',
         `${stranger}@example.test`,
       ])
+      await world.query(
+        "insert into restro.auth_session (id, expires_at, token, user_id) values ($1, now() + interval '1 hour', $2, $3)",
+        [`sess-${stranger}`, `tok-${stranger}`, stranger],
+      )
       const userId = await addOwner()
       try {
         const keys = { pool: world.pool, privateKey: world.keys.privateKey }
@@ -235,13 +244,13 @@ describe.skipIf(!hasDatabase)('table codes stored in plain before #70', () => {
         const asStranger = await revealTableCodes(keys, {
           ...base,
           tableIds: [table.id],
-          actor: { kind: 'user', userId: stranger, sessionId: 'sess-stranger' },
+          actor: { kind: 'user', userId: stranger, sessionId: `sess-${stranger}` },
         })
         expect(asStranger.status).toBe('refused')
         const foreign = await revealTableCodes(keys, {
           ...base,
           tableIds: [newId('tb')],
-          actor: { kind: 'user', userId, sessionId: 'sess-owner' },
+          actor: { kind: 'user', userId, sessionId: `sess-${userId}` },
         })
         expect(foreign).toEqual({ status: 'refused', code: 'table_missing' })
       } finally {
@@ -253,7 +262,7 @@ describe.skipIf(!hasDatabase)('table codes stored in plain before #70', () => {
     it('opens a staff PIN for an owner signed in within 15 minutes, and logs it (#72)', async () => {
       const pepper = 'a-test-pepper-of-at-least-32-characters'
       const userId = await addOwner()
-      const actor = { kind: 'user', userId, sessionId: `sess-${randomUUID()}` } as const
+      const actor = { kind: 'user', userId, sessionId: `sess-${userId}` } as const
       const signedInAt = new Date()
       try {
         const { result } = await applyService(

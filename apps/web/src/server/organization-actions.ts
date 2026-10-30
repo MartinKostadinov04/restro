@@ -45,6 +45,7 @@ import { logError } from './log'
 import type { UpdateOrganizationResult } from './organization-actions-result'
 import { canManageOrganization } from './roles'
 import { requireTenant } from './session'
+import { onSharedDevice } from './staff/shared-device'
 import { listVenues } from './venues'
 
 const UpdateOrganizationInput = z
@@ -126,8 +127,11 @@ export async function updateOrganizationAction(input: {
   if (!parsed.success) return { ok: false, error: 'invalid' }
   const { name, slug } = parsed.data
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
     if (!canManageOrganization(organization.role)) return { ok: false, error: 'not_allowed' }
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'not_allowed' }
+    }
     const pool = getPool()
     const tenantId = organization.id
     const before: OrganizationAddress | null = await organizationAddress(pool, tenantId)

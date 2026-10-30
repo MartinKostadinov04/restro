@@ -5,6 +5,7 @@
 // with Zod, and call the service. Every write is a change set through `apply()` (U4); after one,
 // the venue page is revalidated so the composer behind the sheet shows the new values.
 import { FIELD_KEY_PATTERN, isId, LOCALES, LocalizedTextSchema, type VenueId } from '@restro/core'
+import { itemsOfVenue } from '@restro/core/apply'
 import { authMember, authUser } from '@restro/db'
 import { and, eq, inArray } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
@@ -17,6 +18,7 @@ import { logError } from '../log'
 import { canMarkSoldOut } from '../roles'
 import { requireTenant } from '../session'
 import { setItemsSoldOut } from '../sold-out/service'
+import { onSharedDevice } from '../staff/shared-device'
 import { venueHasTill } from '../venues'
 import {
   keepOverride,
@@ -76,8 +78,16 @@ async function userNames(
   return new Map(rows.map((row) => [row.id, row.name]))
 }
 
-async function session(ids: z.infer<typeof Ids>): Promise<Session> {
-  const { user, organization } = await requireTenant()
+/**
+ * The sheet's session, or why there is none: a shared tablet never edits the menu (D122 §7, RR-83),
+ * and an item of another venue is not this venue's sheet (RR-72; the tenant's rows are all the
+ * database hides).
+ */
+async function session(ids: z.infer<typeof Ids>): Promise<Session | 'not_allowed' | 'not_found'> {
+  const { user, organization, sessionId } = await requireTenant()
+  if (await onSharedDevice({ tenantId: organization.id, sessionId })) return 'not_allowed'
+  const ours = await itemsOfVenue(getPool(), organization.id, ids.venueId, [ids.itemId])
+  if (!ours.has(ids.itemId)) return 'not_found'
   return {
     scope: {
       pool: getPool(),
@@ -101,7 +111,9 @@ async function save(
   run: (session: Session) => Promise<SheetResult>,
 ): Promise<SheetResult> {
   try {
-    const result = await run(await session(ids))
+    const opened = await session(ids)
+    if (typeof opened === 'string') return { ok: false, error: opened }
+    const result = await run(opened)
     if (result.ok) revalidatePath(`/venues/${ids.venueId}`)
     return result
   } catch (error) {
@@ -122,8 +134,9 @@ export async function loadItemSheetAction(
 ): Promise<ItemSheetData | null> {
   const ids = idsOf(target, itemId)
   if (!ids.success) return null
-  const { scope, services } = await session(ids.data)
-  return loadItemSheet(scope, services)
+  const opened = await session(ids.data)
+  if (typeof opened === 'string') return null
+  return loadItemSheet(opened.scope, opened.services)
 }
 
 /** The next page of the item's history, newest first (`before` = the last `seq` already shown). */
@@ -135,8 +148,9 @@ export async function loadItemHistoryAction(
   const ids = idsOf(target, itemId)
   const cursor = z.int().positive().optional().safeParse(before)
   if (!ids.success || !cursor.success) return { entries: [], nextBefore: null }
-  const { scope, services } = await session(ids.data)
-  return loadHistory(scope, services, cursor.data)
+  const opened = await session(ids.data)
+  if (typeof opened === 'string') return { entries: [], nextBefore: null }
+  return loadHistory(opened.scope, opened.services, cursor.data)
 }
 
 /** Saves the whole value of a field from the field editor (`null` = cleared). */

@@ -2,11 +2,16 @@
 // A4): `t.me/<bot>?startgroup=<code>` for the venue's group, `t.me/<bot>?start=<code>` for a person.
 // The code is signed with a key made from a secret the worker already holds, so nothing new is
 // stored: what it names (the venue, and for a person the staff member), what it is for, and when it
-// ends (15 minutes) are in the code, and a keyed hash covers them. It is 46 bytes in base64url, 62
-// characters of A–Z a–z 0–9 _ - : inside Telegram's 64.
+// ends (15 minutes, to the millisecond) are in the code, and a keyed hash covers them. It is 48 bytes
+// in base64url, 64 characters of A–Z a–z 0–9 _ - : Telegram's limit.
 //
-// A code is used once: the poller remembers the ones it has accepted until they run out, and a
-// group or a person already linked is a change of nothing. Nothing here logs a code.
+// A code is used once: the poller remembers the ones it has accepted until they run out, a restart
+// forgets those but `telegram.link` refuses a link made before the group's or the person's latest
+// link in the Log (RR-9), and a group or a person already linked is a change of nothing. Nothing
+// here logs a code.
+//
+// The secret is the bot's own token (RR-10): the service token the web app holds, which is enough to
+// ask the internal endpoints, can't make a link for any person at any venue.
 
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
@@ -28,9 +33,26 @@ export interface LinkClaims {
   readonly expiresAt: Date
 }
 
-/** Minutes since 2026-01-01 UTC fit in three bytes for 31 years. */
+const LINK_MS = LINK_MINUTES * 60_000
+
+/** When a link was made: its end less its life. */
+export function linkIssuedAt(claims: Pick<LinkClaims, 'expiresAt'>): Date {
+  return new Date(claims.expiresAt.getTime() - LINK_MS)
+}
+
+/** The secret links are signed with, where linking is on (RR-10): never the service token. */
+export function linkSecretOf(config: {
+  readonly alerts?: { readonly telegramToken: string | null } | null
+}): string | null {
+  return config.alerts?.telegramToken ?? null
+}
+
+/** Milliseconds since 2026-01-01 UTC fit in five bytes for 34 years. */
 const EPOCH_MS = Date.UTC(2026, 0, 1)
-const MINUTE_MS = 60_000
+const TIME_BYTES = 5
+const VENUE_AT = 1 + TIME_BYTES
+const STAFF_AT = VENUE_AT + 16
+const SIGNED_BYTES = STAFF_AT + 16
 const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 const BODY = /^[0-9A-Za-z]{22}$/
 const MAC_BYTES = 10
@@ -76,14 +98,11 @@ export function makeLinkCode(
     input.staffMemberId === undefined ? new Uint8Array(16) : bodyBytes(input.staffMemberId)
   if (venue === null || staff === null)
     throw new TypeError('a link names a venue and a person by id')
-  const minutes = Math.floor((input.now.getTime() - EPOCH_MS) / MINUTE_MS) + LINK_MINUTES
-  const bytes = new Uint8Array(36)
+  const bytes = Buffer.alloc(SIGNED_BYTES)
   bytes[0] = PURPOSES.indexOf(input.purpose)
-  bytes[1] = (minutes >> 16) & 0xff
-  bytes[2] = (minutes >> 8) & 0xff
-  bytes[3] = minutes & 0xff
-  bytes.set(venue, 4)
-  bytes.set(staff, 20)
+  bytes.writeUIntBE(input.now.getTime() - EPOCH_MS + LINK_MS, 1, TIME_BYTES)
+  bytes.set(venue, VENUE_AT)
+  bytes.set(staff, STAFF_AT)
   return Buffer.concat([bytes, mac(secret, bytes)]).toString('base64url')
 }
 
@@ -98,15 +117,15 @@ export function openLinkCode(
 ): LinkClaims | 'expired' | null {
   if (!CODE_PATTERN.test(code)) return null
   const raw = Buffer.from(code, 'base64url')
-  if (raw.length !== 36 + MAC_BYTES || raw.toString('base64url') !== code) return null
-  const bytes = raw.subarray(0, 36)
-  if (!timingSafeEqual(raw.subarray(36), mac(secret, bytes))) return null
+  if (raw.length !== SIGNED_BYTES + MAC_BYTES || raw.toString('base64url') !== code) return null
+  const bytes = raw.subarray(0, SIGNED_BYTES)
+  if (!timingSafeEqual(raw.subarray(SIGNED_BYTES), mac(secret, bytes))) return null
   const purpose = PURPOSES[bytes[0] ?? 255]
   if (purpose === undefined) return null
-  const minutes = ((bytes[1] ?? 0) << 16) | ((bytes[2] ?? 0) << 8) | (bytes[3] ?? 0)
-  const expiresAt = new Date(EPOCH_MS + minutes * MINUTE_MS)
-  const venueId = idFromBytes('vn', bytes.subarray(4, 20))
-  const staffMemberId = purpose === 'person' ? idFromBytes('sm', bytes.subarray(20, 36)) : null
+  const expiresAt = new Date(EPOCH_MS + bytes.readUIntBE(1, TIME_BYTES))
+  const venueId = idFromBytes('vn', bytes.subarray(VENUE_AT, STAFF_AT))
+  const staffMemberId =
+    purpose === 'person' ? idFromBytes('sm', bytes.subarray(STAFF_AT, SIGNED_BYTES)) : null
   if (!isId('vn', venueId)) return null
   if (now.getTime() >= expiresAt.getTime()) return 'expired'
   return { purpose, venueId, staffMemberId, expiresAt }

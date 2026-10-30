@@ -297,7 +297,8 @@ describe("the payment's screens (#110, D127)", () => {
       end: 'isolate_refused',
       again: false,
     })
-    expect(ended('not_on_till')).toEqual({ kind: 'ended', end: 'no_receipt', again: false })
+    // Not on the till: the round's lines are back in the bag (D116), so it can go again.
+    expect(ended('not_on_till')).toEqual({ kind: 'ended', end: 'no_receipt', again: true })
     expect(ended('cancelled')).toEqual({ kind: 'ended', end: 'cancelled', again: false })
     // A reason the guide has no words for is worded calmly, never as a step of the till.
     expect(ended('item_unavailable')).toEqual({

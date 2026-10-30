@@ -13,6 +13,7 @@ import { readItemPayFirstDefault } from '@/server/composer/pay-first'
 import { getPool } from '@/server/db'
 import { logError } from '@/server/log'
 import { requireTenant } from '@/server/session'
+import { onSharedDevice } from '@/server/staff/shared-device'
 import { getVenue } from '@/server/venues'
 
 import type { ActionResult } from './action-result'
@@ -30,7 +31,10 @@ export async function setItemPaymentModeAction(input: unknown): Promise<ActionRe
   if (!parsed.success) return { ok: false, error: 'invalid' }
   const { venueId, itemIds, mode } = parsed.data
   try {
-    const { organization, user } = await requireTenant()
+    const { organization, user, sessionId } = await requireTenant()
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'not_allowed' }
+    }
     const venue = await getVenue(organization.id, venueId)
     if (!venue) return { ok: false, error: 'not_found' }
     // Where pay first can't take effect the row isn't on the screen: refuse a request that made it up.

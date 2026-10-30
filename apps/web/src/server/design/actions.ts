@@ -15,6 +15,7 @@ import { getPool } from '../db'
 import { logError } from '../log'
 import { canManageIntegration } from '../roles'
 import { requireTenant } from '../session'
+import { onSharedDevice } from '../staff/shared-device'
 import { getVenue } from '../venues'
 import {
   FullThemeSchema,
@@ -43,8 +44,11 @@ export async function saveLookAction(input: unknown): Promise<LookResult> {
   const parsed = LookInput.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'invalid' }
   try {
-    const { organization, user } = await requireTenant()
+    const { organization, sessionId, user } = await requireTenant()
     if (!canManageIntegration(organization.role)) return { ok: false, error: 'forbidden' }
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'forbidden' }
+    }
     const venue = await getVenue(organization.id, parsed.data.venueId)
     if (!venue) return { ok: false, error: 'not_found' }
     const result = await saveLook(
@@ -68,8 +72,11 @@ export async function saveLayoutAction(input: unknown): Promise<LayoutResult> {
   const parsed = LayoutInput.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'invalid' }
   try {
-    const { organization, user } = await requireTenant()
+    const { organization, sessionId, user } = await requireTenant()
     if (!canManageIntegration(organization.role)) return { ok: false, error: 'not_allowed' }
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'not_allowed' }
+    }
     const venue = await getVenue(organization.id, parsed.data.venueId)
     if (!venue) return { ok: false, error: 'unknown_venue' }
     const result = await saveLayout(getPool(), organization.id, {

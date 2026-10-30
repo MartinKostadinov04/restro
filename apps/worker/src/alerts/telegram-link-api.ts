@@ -19,6 +19,7 @@ import { type DbPool, staffAssignments, venues, withTenant } from '@restro/db'
 import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 
+import { sessionIsLive } from '../session-check'
 import type { TelegramClient } from './telegram'
 import { TelegramError } from './telegram'
 import { makeLinkCode } from './telegram-link'
@@ -65,7 +66,7 @@ export type TelegramApiAnswer =
 export interface TelegramApiDeps {
   readonly pool: DbPool
   readonly telegram: TelegramClient
-  /** The link-signing secret (REVEAL_SERVICE_TOKEN). */
+  /** The link-signing secret (`linkSecretOf`: the bot's token, never the service token). */
   readonly secret: string
   readonly now: () => Date
 }
@@ -82,6 +83,9 @@ export function createTelegramApi(
   }
 
   return async (request) => {
+    if (!(await sessionIsLive(deps.pool, request.actor))) {
+      return { status: 'refused', code: 'session_unknown' }
+    }
     const context: ServiceContext = {
       tenantId: request.tenantId,
       venueId: request.venueId,
