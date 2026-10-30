@@ -836,7 +836,7 @@
       "menu": "Menu",
       "live": "Live",
       "manage": "Manage menus",
-      "layout": "Menu layout",
+      "layout": "Layout for all menus",
       "layouts": {
         "list": "List",
         "one": "One column",

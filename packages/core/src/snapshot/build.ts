@@ -115,7 +115,8 @@ export interface SnapshotContext {
 /**
  * The layout of a snapshot built without a design (D92): the look menus had before the layout
  * became a setting (the Editorial Market's old option defaults), two columns, and guests may
- * switch it. The publisher always has a design, so only a builder test meets it.
+ * switch it. The publisher always has a design, so only a builder test meets it: a new venue
+ * starts on Basic's list.
  */
 export const DEFAULT_MENU_LAYOUT: SnapshotLayout = Object.freeze({
   default: 'two',

@@ -155,7 +155,7 @@ describe('the template chooser', () => {
   it('draws no look options for the Editorial Market: its layout is the menu’s setting (D92)', () => {
     setup()
     expect(screen.queryByTestId('design-look-options')).toBeNull()
-    expect(screen.queryByRole('group', { name: 'Menu layout' })).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Layout for all menus' })).toBeNull()
   })
 
   it('"Preview" opens a phone pop-up with the venue’s menu in that template, and saves nothing', async () => {

@@ -34,10 +34,9 @@ vi.mock('next/cache', () => ({ revalidatePath: (path: string) => revalidated.pus
 const midnight = THEME_PRESETS.find((preset) => preset.id === 'midnight')
 if (midnight === undefined) throw new Error('the Midnight preset is missing')
 
-/** A whole look, the way the Design tab builds one for the Midnight preset. */
+/** A whole look, built from the Midnight colours. */
 const wholeTheme = (fields: Record<string, unknown> = {}) => ({
   logo_asset_id: null,
-  preset: 'midnight',
   colors: midnight.colours,
   overrides: midnight.overrides,
   font: 'lora',

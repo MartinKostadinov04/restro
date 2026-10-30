@@ -525,8 +525,8 @@ async function loadState(tx: WriteTx, set: ChangeSet, template: Template): Promi
     state.venues.add(row.id)
     if (row.archivedAt !== null) state.archivedVenues.add(row.id)
   }
-  // The design records a setDesign names, locked for update (in id order, after the share locks
-  // above, which this transaction already holds): a concurrent save waits, then sees this revision.
+  // The design records a setDesign names, locked in id order (after the share locks above, which
+  // this transaction already holds): a concurrent save waits, then sees this revision.
   const designVenues = [
     ...new Set(set.ops.flatMap((op) => (op.op === 'setDesign' ? [op.venueId] : []))),
   ].sort()
@@ -536,7 +536,7 @@ async function loadState(tx: WriteTx, set: ChangeSet, template: Template): Promi
       .from(venues)
       .where(anyOf(venues.id, designVenues))
       .orderBy(asc(venues.id))
-      .for('update')) {
+      .for('no key update')) {
       state.designs.set(row.id, {
         record: readDesignRecord(row.settings),
         stored: readDesign(row.settings),

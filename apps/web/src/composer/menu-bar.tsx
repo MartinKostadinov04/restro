@@ -6,7 +6,7 @@
 // - The switcher lists the venue's menus in use (a binned one is not offered), the live one
 //   marked; choosing one opens it (`?menu=`), and the open section and item are the old menu's,
 //   so they go. Menus are added, renamed, ordered and binned in Settings › General.
-// - "Menu layout" is the layout guests start in (a list, one column, two columns) and whether
+// - "Layout for all menus" is the layout guests start in (a list, one column, two columns) and whether
 //   they may switch it (D129: two values of the venue's design record, so every menu of the venue
 //   shares them). Saved at once through `setDesign`; it reaches guests with the next publish.
 import { SNAPSHOT_MENU_LAYOUTS, type SnapshotLayout } from '@restro/core'

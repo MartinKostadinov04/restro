@@ -302,7 +302,7 @@ export type LayoutResult =
   | { readonly ok: false; readonly error: LayoutError }
 
 /**
- * Saves the layout guests start in and whether they may switch it (the composer's "Menu layout"):
+ * Saves the layout guests start in and whether they may switch it (the composer's layout control):
  * the Items page's two values of the record as stored now. Every venue's, a till venue's too; it
  * reaches guests with the next publish.
  */
