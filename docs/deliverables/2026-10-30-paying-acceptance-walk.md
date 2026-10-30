@@ -66,11 +66,10 @@ Open a table, have the waiter put a round on (step 9 above), and open the table'
 
 ## D. Pay first (phone)
 
-Set an item to Pay first (Section B) and order it from the phone.
+**You can't walk this one yet: the guest's pay-first screen isn't built.** The settings in Section B and the server side are done. The server side is tested by calling the guest API directly, not from a screen (card held, the round entered on a payment table, checked, closed, captured). No template sends a pay-first order yet. The screen comes with the menu designer's renderer.
 
-- **At Send** the phone asks for the card first; the order reaches the till only after the card is held.
-- **Paid:** the order sits closed on a payment table of its bar; the phone shows the payment number. Pay-first payments take paper receipts only (no email).
-- **Without paying** (Paying not ready): the item says "Order this from your waiter".
+- **What you see today:** set an item to Pay first and add it from the phone. The line says "Order this from your waiter", on every table and whether or not Paying is ready, and it doesn't go with the Send.
+- **What you check on the renderer, before any pilot:** Send reads "Send and pay {x}" and one tap sends the rest and opens the payment. The tip row sits on the order screen. "Pay later" leaves the line in the order as "Not ordered until paid" with "Pay {x}". The order reaches the till only after the card is held. Once paid, the order sits closed on a payment table of its bar and the phone shows the payment number; pay-first payments take paper receipts only (no email). Where pay first is off or paused, the item says "Order this from your waiter".
 
 ## E. Tonight (tablet and a manager's phone)
 
@@ -79,7 +78,7 @@ Most of these need a payment that went wrong. With the simulator, the Ordering l
 - **"Payment not confirmed"** on top of "Needs you": the bill's close couldn't be proven. "Receipt printed" captures; "No receipt" releases the hold. A pay-first order asks "Is the order on the till?" with "On the till" / "Not on the till". On the shared tablet a manager's PIN is asked, and the PIN confirmation shows the true charge with the tip; staff rows stay tip-free (your 10-29 answer). A waiter's own phone shows "A manager or owner answers this." and no buttons.
 - **The paying banner** for everyone when card payments pause or access is lost, with "Reconnect" only for those allowed to connect payments.
 - **"Bring the receipt" / "Brought"** after a paid payment.
-- **Refunds and disputes made in the venue's Stripe Dashboard:** "Storno done" on the payment, the dispute to-do and "Dispute evidence". A refund that failed at the bank shows a row; until the "Got it" button (Martin 10-30) is built, it leaves by itself after three days.
+- **Refunds and disputes made in the venue's Stripe Dashboard:** "Storno done" on the payment, the dispute to-do and "Dispute evidence". A refund that failed at the bank shows a row until someone taps "Got it" (Martin 10-30; it can be undone), or for three days at most.
 - **Undo:** each staff Undo works within its time window; afterwards «Твърде късно за отмяна.» / "Too late to undo.", and «Някой друг вече промени това.» / "Someone else has changed this since." when someone else changed it first (Martin 10-30).
 - **End of night:** the payments, "To fix" (including earlier nights' open questions, marked «От вечерта на {date}» / "From the night of {date}"), the released payments with their reason, refunds and disputes, the totals. Staff see every amount without the tip; owners see the tip. The CSV export follows the same rule.
 - **Log:** each payment step that matters (held, closed, captured, released, unconfirmed, staff answers), and the payment sheet with everything about one payment.
