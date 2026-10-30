@@ -3004,7 +3004,10 @@ export const paymentSteps = restro.table(
     /** The call, e.g. `createHold`, `isolateLines`, `payAndClose`, `capture`. */
     step: text('step').notNull(),
     outcome: text('outcome').notNull(),
-    /** The connector's or provider's answer in short: a code, never a raw response. */
+    /**
+     * The connector's or provider's answer in short: a code, never a raw response. *Backend*: on a
+     * `payAndClose` `attempting` row, the POS reference of the bill it closes (rule 3).
+     */
     answer: text('answer'),
     /** The idempotency key the call carried. */
     idempotencyKey: text('idempotency_key'),

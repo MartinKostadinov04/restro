@@ -990,7 +990,9 @@ export async function closeAttempted(stx: ServiceTx, id: string): Promise<boolea
 /**
  * `payment.step`: one POS or provider write, recorded `attempting` before the call and with its outcome
  * after (append-only, D127 3.9). The answer is a short code, never the provider's response; the
- * form's values never go here. A move back's `attempting` row carries the lines it moves (#153).
+ * form's values never go here. A move back's `attempting` row carries the lines it moves (#153); a
+ * close's `attempting` row carries, as its answer, the POS reference of the bill it closes, so a
+ * closed bill can later be told for this close's (D127's third proof, backend only: rule 3).
  */
 export function paymentStep() {
   return defineCommand({
@@ -1000,10 +1002,17 @@ export function paymentStep() {
         paymentId,
         step: z.enum(PAYMENT_STEP_NAMES),
         outcome: z.enum(['attempting', 'done', 'refused', 'unknown']),
-        answer: CodeSchema.nullable(),
+        answer: PosRefSchema.nullable(),
         idempotencyKey: ProviderRefTextSchema,
         lines: PaymentStepLinesSchema.nullable().default(null),
       })
+      .refine(
+        (command) =>
+          command.answer === null ||
+          CodeSchema.safeParse(command.answer).success ||
+          (command.step === 'payAndClose' && command.outcome === 'attempting'),
+        { message: 'an answer is a code; only a close, before the call, names its bill' },
+      )
       .refine(
         (command) =>
           command.lines === null ||

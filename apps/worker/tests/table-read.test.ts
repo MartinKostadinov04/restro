@@ -15,11 +15,13 @@ import {
 } from '@restro/core/apply'
 import { createPool, type DbPool } from '@restro/db'
 import { createSimServer, ManualClock, type SimServer } from '@restro/sim-pos'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
+import { ConnectionBreakers } from '../src/jobs/breaker'
+import { readFloorOf } from '../src/jobs/floor'
 import { ReadingBudgets, readTableOf, TABLE_READ_MIN_GAP_MS } from '../src/jobs/readings'
 import { createLogger } from '../src/logger'
+import { serviceConnectorFor } from '../src/service-connectors'
 import {
   allowSlowSetup,
   createTestDatabase,
@@ -28,6 +30,7 @@ import {
   testSlug,
   withOwnerClient,
 } from './database'
+import { simBudgets } from './sim-pace'
 
 allowSlowSetup()
 
@@ -81,7 +84,7 @@ describe.skipIf(!hasDatabase)('the table reading job', () => {
     const floor = await readFloorOf(
       env(),
       { tenantId, ...demo },
-      { sim: policy, budgets: new InstanceBudgets() },
+      { sim: policy, budgets: simBudgets(simClock) },
     )
     expect(floor.kind).toBe('read')
     const [table] = await query<{ id: `tb_${string}` }>(
@@ -113,7 +116,7 @@ describe.skipIf(!hasDatabase)('the table reading job', () => {
       {
         sim: deps.sim ?? policy,
         billIdKey: KEY,
-        budgets: new InstanceBudgets(),
+        budgets: simBudgets(simClock),
         readingBudgets: deps.readingBudgets ?? new ReadingBudgets(),
       },
     )
@@ -189,9 +192,10 @@ describe.skipIf(!hasDatabase)('the table reading job', () => {
     expect(await sittingOf(sittingId)).toMatchObject({ ended_at: null })
   })
 
-  it('reads a table at most once in the gap, and an instance within its budget', async () => {
+  it('reads a table at most once in the gap, and only with room in the login budget', async () => {
     await freshSitting()
-    const budgets = new ReadingBudgets({ burst: 1, perSecond: 0 })
+    const budgets = new ReadingBudgets()
+    const instance = simBudgets(simClock)
     simClock.advance(1100)
     const now = clock
     const once = () =>
@@ -201,17 +205,73 @@ describe.skipIf(!hasDatabase)('the table reading job', () => {
         {
           sim: policy,
           billIdKey: KEY,
-          budgets: new InstanceBudgets(),
+          budgets: instance,
           readingBudgets: budgets,
         },
       )
     expect(await once()).toMatchObject({ kind: 'recorded' })
     expect(await once()).toEqual({ kind: 'skipped', reason: 'the table was read moments ago' })
     clock = new Date(now.getTime() + TABLE_READ_MIN_GAP_MS + 1)
+    // A chain has used this second's calls: the read is skipped, and it asked the POS nothing.
+    simClock.advance(1100)
+    const pace = instance.paceOf(demo.integrationId, { callsPerSecond: 5 })
+    for (let call = 0; call < 5; call++) await pace(new AbortController().signal)
+    const calls = sim.host.engine.calls().length
     expect(await once()).toEqual({
       kind: 'skipped',
       reason: "the instance's reading budget is spent",
     })
+    expect(sim.host.engine.calls().length).toBe(calls)
+    // A skipped read did not count as the table's read: the next second it goes through.
+    simClock.advance(1100)
+    expect(await once()).toMatchObject({ kind: 'recorded' })
+  })
+
+  // RR-67: on the simulator a rate-limit answer comes before anything is done, so it says nothing
+  // of the table or the connection: the same as a read the budget skipped.
+  it('a rate-limit answer on a reading: skipped, no pause, no breaker count', async () => {
+    const sittingId = await freshSitting()
+    sim.host.engine.waiter.addRound(POS_TABLE, [{ article: '2001' }])
+    expect(await read()).toMatchObject({ complete: true })
+    const good = await readingRow()
+    const breakers = new ConnectionBreakers(() => 0.5)
+    const record = vi.spyOn(breakers, 'record')
+    simClock.advance(1100)
+    clock = new Date(clock.getTime() + TABLE_READ_MIN_GAP_MS + 1)
+    const outcome = await readTableOf(
+      env(),
+      { tenantId, venueId: demo.venueId, tableId },
+      {
+        sim: policy,
+        billIdKey: KEY,
+        budgets: simBudgets(simClock),
+        readingBudgets: new ReadingBudgets(),
+        breakers,
+        connectorFor: (integration, simPolicy) => {
+          const real = serviceConnectorFor(integration, simPolicy)
+          return {
+            ...real,
+            readTable: async (context, table) => {
+              // The login's second is used up, by calls this run's budget did not see.
+              for (let call = 0; call < 5; call++) {
+                await real.probe({ now: context.now, timings: context.timings })
+              }
+              return real.readTable(context, table)
+            },
+          }
+        },
+      },
+    )
+    expect(outcome).toEqual({ kind: 'skipped', reason: 'the POS was busy' })
+    expect(sim.host.engine.calls().at(-1)?.status).toBe(429)
+    expect(record).not.toHaveBeenCalled()
+    expect(await readingRow()).toEqual(good)
+    expect(await sittingOf(sittingId)).toMatchObject({ ended_at: null })
+    expect(
+      await query('select cause from restro.pauses where target_id = $1 and lifted_at is null', [
+        tableId,
+      ]),
+    ).toEqual([])
   })
 
   it('refuses a sim instance in production before the POS is asked', async () => {
@@ -255,6 +315,14 @@ describe.skipIf(!hasDatabase)('the table reading job', () => {
         fault: plan.fault,
       })
       const outcome = await read()
+      if (outcome.kind === 'skipped') {
+        // A definite busy on a call of the read is a read skipped: nothing is recorded at all.
+        expect(plan.fault.kind, JSON.stringify(plan)).toBe('refuse')
+        expect(await sittingOf(sittingId)).toMatchObject({ ended_at: null })
+        expect(await readingRow()).toEqual(good)
+        partials += 1
+        continue
+      }
       if (outcome.kind !== 'recorded') throw new Error(`not recorded: ${JSON.stringify(outcome)}`)
       // A plan that missed every call (a fault from the second call of a one-call read, an item
       // dropped from an empty list) gave a complete reading: not this test's case.

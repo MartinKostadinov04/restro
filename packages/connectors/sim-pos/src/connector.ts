@@ -11,6 +11,10 @@
 //     module, from the exact text of each JSON number (rule 8).
 //   - Writes go through `./write` only (D110); an undefined behaviour of the POS (501), or a
 //     request it calls malformed, throws: that is a bug here, never a guess.
+//   - Every call on the wire takes its place in the login's per-second budget first (`ctx.pace`).
+//     The simulated POS answers a rate limit `busy` before it does anything (its engine checks
+//     the limit first; test-POS design §2.6 lists `busy` among the refusals), so here, and only
+//     here, that answer is a definite "no": nothing was written. No other POS is assumed to do so.
 
 import {
   addMinor,
@@ -30,6 +34,7 @@ import {
   type RefusalCode,
   type RefusalScope,
   type ServiceConnector,
+  type ServiceContext,
   safeReceiptFile,
   samePosRef,
   subtractMinor,
@@ -91,6 +96,7 @@ const TableItem = z.object({
 })
 const BarItem = z.object({ id: Id, name: z.string().min(1) })
 const BillItem = z.object({ id: Id, total: Money, paid: Money })
+const ClosedBillItem = BillItem.extend({ receipt: z.string().min(1).max(200).optional() })
 const RowItem = z.object({
   id: Id,
   article: Id,
@@ -150,6 +156,7 @@ function refusal(
 /** A definite refusal where the POS said one; else `unknown`. Throws on what is our bug. */
 function failureOf(sent: Sent): Failure {
   if (sent.kind === 'lost') return { kind: 'unknown', reason: sent.reason }
+  if (sent.kind === 'not_left') return refusal('busy', 'bill', 'the call never left: no room left')
   const body = ErrorAnswer.safeParse(sent.body)
   const error = body.success ? body.data.error : 'unreadable'
   const detail = body.success ? (body.data.detail ?? null) : null
@@ -178,8 +185,12 @@ function failureOf(sent: Sent): Failure {
       if (error === 'amount_mismatch') return refusal('amount_mismatch', 'bill', detail)
       if (error === 'fiscal_device') return refusal('fiscal_device', 'venue', detail)
       break
+    case 429:
+      // Answered before anything is done (the engine's first check), so nothing was written.
+      if (error === 'busy') return refusal('busy', 'bill', detail)
+      break
   }
-  // Busy, failed, offline or anything else: the POS did not say it didn't (D115).
+  // Failed, offline or anything else: the POS did not say it didn't (D115).
   return { kind: 'unknown', reason: `the POS answered ${sent.status} ${error}`.slice(0, 500) }
 }
 
@@ -199,10 +210,13 @@ async function within<T>(ms: number, run: (signal: AbortSignal) => Promise<T>): 
 
 type Listed<T> =
   | { readonly ok: true; readonly items: T[] }
-  | { readonly ok: false; readonly reason: string }
+  | { readonly ok: false; readonly reason: string; readonly busy: boolean }
 
-function incomplete(reason: string): { readonly complete: false; readonly reason: string } {
-  return { complete: false, reason: reason.slice(0, 500) }
+function incomplete(
+  reason: string,
+  busy = false,
+): { readonly complete: false; readonly reason: string; readonly busy?: true } {
+  return { complete: false, reason: reason.slice(0, 500), ...(busy ? { busy: true as const } : {}) }
 }
 
 function unknown(reason: string): { readonly kind: 'unknown'; readonly reason: string } {
@@ -226,11 +240,16 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
   const client: SimClient = simClient(options.transport, options.login)
   const currency: Currency = options.currency ?? 'EUR'
   const restro = new Set(options.restroLogins ?? [options.login.user])
+
+  /** The client for one seam call: each call on the wire waits for its place in the budget. */
+  const paced = ({ pace }: ServiceContext): SimClient =>
+    pace === undefined ? client : simClient(options.transport, options.login, pace)
   /** Isolated bills of payments in flight: id → the bill and table they came from. */
   const inFlight = new Map<string, { readonly origin: string; readonly table: string }>()
 
   /** Every item of a paged list, or why the reading is incomplete (rule 6). */
   async function list<T>(
+    calls: SimClient,
     path: string,
     item: z.ZodType<T>,
     signal: AbortSignal,
@@ -238,17 +257,20 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
     const items: T[] = []
     let stated: { pages: number; count: number } | null = null
     for (let page = 1; stated === null || page <= stated.pages; page += 1) {
-      const sent = await client.get(`${path}${path.includes('?') ? '&' : '?'}page=${page}`, signal)
+      const sent = await calls.get(`${path}${path.includes('?') ? '&' : '?'}page=${page}`, signal)
       if (!ok(sent)) {
         const failure = failureOf(sent)
-        return {
-          ok: false,
-          reason: failure.kind === 'unknown' ? failure.reason : `refused ${failure.refusal.code}`,
-        }
+        return failure.kind === 'unknown'
+          ? { ok: false, reason: failure.reason, busy: false }
+          : {
+              ok: false,
+              reason: `refused ${failure.refusal.code}`,
+              busy: failure.refusal.code === 'busy',
+            }
       }
       const answer = parse(PageShape, sent.body, `page ${page} of ${path}`)
       if (stated !== null && (answer.pages !== stated.pages || answer.count !== stated.count)) {
-        return { ok: false, reason: `${path} changed while it was read` }
+        return { ok: false, reason: `${path} changed while it was read`, busy: false }
       }
       stated = { pages: answer.pages, count: answer.count }
       items.push(...answer.items.map((value) => parse(item, value, `an item of ${path}`)))
@@ -257,18 +279,28 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
       return {
         ok: false,
         reason: `${path} gave ${items.length} items of the ${stated?.count ?? 0} it states`,
+        busy: false,
       }
     }
     return { ok: true, items }
   }
 
-  async function tableBills(table: PosRef, signal: AbortSignal): Promise<Reading<TableBills>> {
-    const heads = await list(`/api/tables/${segment(table.pos)}/bills?state=open`, BillItem, signal)
-    if (!heads.ok) return incomplete(heads.reason)
+  async function tableBills(
+    calls: SimClient,
+    table: PosRef,
+    signal: AbortSignal,
+  ): Promise<Reading<TableBills>> {
+    const heads = await list(
+      calls,
+      `/api/tables/${segment(table.pos)}/bills?state=open`,
+      BillItem,
+      signal,
+    )
+    if (!heads.ok) return incomplete(heads.reason, heads.busy)
     const bills: PosBill[] = []
     for (const head of heads.items) {
-      const rows = await list(`/api/bills/${segment(head.id)}/rows`, RowItem, signal)
-      if (!rows.ok) return incomplete(rows.reason)
+      const rows = await list(calls, `/api/bills/${segment(head.id)}/rows`, RowItem, signal)
+      if (!rows.ok) return incomplete(rows.reason, rows.busy)
       bills.push({
         ref: posRef(head.id),
         totalMinor: head.total,
@@ -297,13 +329,43 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
     return { complete: true, value: { table, currency, bills } }
   }
 
+  /** The bill if it is among the table's closed ones (Q24), else null. */
+  const readClosedBill: ServiceConnector['readClosedBill'] = (ctx, bill) =>
+    within(ctx.timings.readTimeoutMs, async (signal) => {
+      const calls = paced(ctx)
+      const heads = await list(
+        calls,
+        `/api/tables/${segment(bill.table.pos)}/bills?state=closed`,
+        ClosedBillItem,
+        signal,
+      )
+      if (!heads.ok) return incomplete(heads.reason, heads.busy)
+      const head = heads.items.find((closed) => closed.id === bill.ref.pos)
+      if (head === undefined) return { complete: true, value: null }
+      const rows = await list(calls, `/api/bills/${segment(head.id)}/rows`, RowItem, signal)
+      if (!rows.ok) return incomplete(rows.reason, rows.busy)
+      return {
+        complete: true,
+        value: {
+          ref: bill.ref,
+          totalMinor: head.total,
+          receiptNumber: capabilities.receiptNumberOnClose ? (head.receipt ?? null) : null,
+          restroRefs: capabilities.ownLineReference
+            ? rows.items.flatMap((row) => (row.ref ? [row.ref] : []))
+            : [],
+        },
+      }
+    })
+
   return {
     kind: SIM_KIND,
     capabilities,
+    callsPerSecond: options.switches.rateLimit.perSecond,
+    ...(capabilities.readClosedBills ? { readClosedBill } : {}),
 
     async probe(ctx) {
       const sent = await within(ctx.timings.probeBudgetMs, (signal) =>
-        client.get('/api/ping', signal),
+        paced(ctx).get('/api/ping', signal),
       )
       if (!ok(sent)) {
         const failure = failureOf(sent)
@@ -320,12 +382,13 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
 
     async readFloor(ctx): Promise<Reading<Floor>> {
       return within(ctx.timings.readTimeoutMs, async (signal) => {
-        const tables = await list('/api/tables', TableItem, signal)
-        if (!tables.ok) return incomplete(tables.reason)
+        const calls = paced(ctx)
+        const tables = await list(calls, '/api/tables', TableItem, signal)
+        if (!tables.ok) return incomplete(tables.reason, tables.busy)
         let bars: FloorBar[] = []
         if (capabilities.tableBar) {
-          const listed = await list('/api/bars', BarItem, signal)
-          if (!listed.ok) return incomplete(listed.reason)
+          const listed = await list(calls, '/api/bars', BarItem, signal)
+          if (!listed.ok) return incomplete(listed.reason, listed.busy)
           bars = listed.items.map((bar) => ({ ref: posRef(bar.id), name: bar.name }))
         }
         const floor: FloorTable[] = tables.items.map((table) => ({
@@ -341,12 +404,12 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
     },
 
     readTable(ctx, table) {
-      return within(ctx.timings.readTimeoutMs, (signal) => tableBills(table, signal))
+      return within(ctx.timings.readTimeoutMs, (signal) => tableBills(paced(ctx), table, signal))
     },
 
     async readIsolated(ctx, isolated) {
       const reading = await within(ctx.timings.readTimeoutMs, (signal) =>
-        tableBills(isolated.table, signal),
+        tableBills(paced(ctx), isolated.table, signal),
       )
       if (!reading.complete) return reading
       const bill = reading.value.bills.find((b) => samePosRef(b.ref, isolated.ref)) ?? null
@@ -359,13 +422,21 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
           return refusal('not_supported', 'line', 'notes and options do not reach the bar', index)
         }
       }
-      const before = await within(ctx.timings.readTimeoutMs, (signal) =>
-        tableBills(request.table, signal),
-      )
-      if (!before.complete) {
-        return unknown(
-          `the table read incomplete before the round, which was not sent: ${before.reason}`,
+      // Nothing is written before this read answers: a read that fails here is a definite "no"
+      // (D116: Not sent, "it never went out"), and a busy one stays what it is.
+      let before: Reading<TableBills>
+      try {
+        before = await within(ctx.timings.readTimeoutMs, (signal) =>
+          tableBills(paced(ctx), request.table, signal),
         )
+      } catch (error) {
+        if (error instanceof SimPosConnectorError && error.code === 'unexpected_answer') {
+          return refusal('read_failed', 'bill', error.message)
+        }
+        throw error
+      }
+      if (!before.complete) {
+        return refusal(before.busy === true ? 'busy' : 'read_failed', 'bill', before.reason)
       }
       const target = chooseTargetBill({
         bills: before.value.bills,
@@ -389,9 +460,17 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
         ...(capabilities.idempotentAdd ? { ref: request.ref } : {}),
       }
       const sent = await within(ctx.timings.writeTimeoutMs, (signal) =>
-        write.postRows(client, request.table.pos, body, signal),
+        write.postRows(paced(ctx), request.table.pos, body, signal),
       )
-      if (!ok(sent)) return failureOf(sent)
+      if (!ok(sent)) {
+        const failure = failureOf(sent)
+        // Names the bill it chose, so the platform can ask for the next one (D115).
+        return failure.kind === 'refused' &&
+          target.kind === 'join' &&
+          (failure.refusal.code === 'bill_closed' || failure.refusal.code === 'bill_locked')
+          ? { kind: 'refused', refusal: { ...failure.refusal, bill: target.bill } }
+          : failure
+      }
       const answer = parse(AddAnswer, sent.body, 'the add')
       return { kind: 'done', result: { bill: posRef(answer.bill), opened: answer.opened } }
     },
@@ -410,7 +489,7 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
         return refusal('not_supported', 'bill', 'the picks come from more than one POS bill')
       }
       const real = await within(ctx.timings.readTimeoutMs, (signal) =>
-        tableBills(request.table, signal),
+        tableBills(paced(ctx), request.table, signal),
       )
       if (!real.complete)
         return unknown(`the table read incomplete, nothing was moved: ${real.reason}`)
@@ -448,7 +527,7 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
       let target: PosRef = request.table
       if (paymentTable !== null) {
         const busy = await within(ctx.timings.readTimeoutMs, (signal) =>
-          tableBills(paymentTable, signal),
+          tableBills(paced(ctx), paymentTable, signal),
         )
         if (!busy.complete) return unknown(`the payment table read incomplete: ${busy.reason}`)
         if (busy.value.bills.length > 0) {
@@ -461,7 +540,7 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
         to: split ? { table: request.table.pos, bill: 'new' } : { table: target.pos },
       }
       const sent = await within(ctx.timings.writeTimeoutMs, (signal) =>
-        write.moveRows(client, bill.ref.pos, body, signal),
+        write.moveRows(paced(ctx), bill.ref.pos, body, signal),
       )
       if (!ok(sent)) return failureOf(sent)
       const answer = parse(MoveAnswer, sent.body, 'the move')
@@ -487,7 +566,7 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
         // this amount gets no tip row; then the row, as a waiter adds it at the till, then the
         // close. A tip row that landed before a failed close stays for staff (undoIsolate).
         const reading = await within(ctx.timings.readTimeoutMs, (signal) =>
-          tableBills(request.isolated.table, signal),
+          tableBills(paced(ctx), request.isolated.table, signal),
         )
         if (!reading.complete) {
           return unknown(
@@ -525,7 +604,7 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
             ...(capabilities.idempotentAdd ? { ref: `${request.ref}-tip` } : {}),
           }
           const added = await within(ctx.timings.writeTimeoutMs, (signal) =>
-            write.postRows(client, request.isolated.table.pos, tip, signal),
+            write.postRows(paced(ctx), request.isolated.table.pos, tip, signal),
           )
           if (!ok(added)) return failureOf(added)
         }
@@ -540,7 +619,7 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
         ...(request.receiptEmail === undefined ? {} : { receiptEmail: request.receiptEmail }),
       }
       const sent = await within(ctx.timings.writeTimeoutMs, (signal) =>
-        write.closeBill(client, request.isolated.ref.pos, body, signal),
+        write.closeBill(paced(ctx), request.isolated.ref.pos, body, signal),
       )
       if (!ok(sent)) return failureOf(sent)
       const answer = parse(CloseAnswer, sent.body, 'the close')
@@ -567,7 +646,7 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
 
     async undoIsolate(ctx, request) {
       const reading = await within(ctx.timings.readTimeoutMs, (signal) =>
-        tableBills(request.isolated.table, signal),
+        tableBills(paced(ctx), request.isolated.table, signal),
       )
       if (!reading.complete) return unknown(`the isolated bill read incomplete: ${reading.reason}`)
       const isolated = reading.value.bills.find((b) => samePosRef(b.ref, request.isolated.ref))
@@ -582,7 +661,7 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
         let to: { table: string; bill?: string } = { table: request.table.pos }
         if (capabilities.severalBillsPerTable) {
           const real = await within(ctx.timings.readTimeoutMs, (signal) =>
-            tableBills(request.table, signal),
+            tableBills(paced(ctx), request.table, signal),
           )
           if (!real.complete) return unknown(`the table read incomplete: ${real.reason}`)
           const origin = inFlight.get(request.isolated.ref.pos)?.origin
@@ -591,7 +670,7 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
         }
         const body = { rows: isolated.lines.map((line) => ({ row: line.ref.pos })), to }
         const sent = await within(ctx.timings.writeTimeoutMs, (signal) =>
-          write.moveRows(client, isolated.ref.pos, body, signal),
+          write.moveRows(paced(ctx), isolated.ref.pos, body, signal),
         )
         if (!ok(sent)) return failureOf(sent)
       }

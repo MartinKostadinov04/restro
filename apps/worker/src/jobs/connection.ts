@@ -129,20 +129,27 @@ export interface ProbeDeps {
 export async function probeOnce(
   env: Pick<BreakerEnvironment, 'log' | 'now'>,
   ref: ConnectionRef,
-  connector: Pick<ServiceReader, 'probe'>,
+  connector: Pick<ServiceReader, 'probe' | 'callsPerSecond'>,
   deps: ProbeDeps,
 ): Promise<ProbeVerdict | 'no_turn'> {
-  const budget = (deps.budgets ?? SHARED_BUDGETS).forInstance(ref.integrationId)
+  const budgets = deps.budgets ?? SHARED_BUDGETS
+  const budget = budgets.forInstance(ref.integrationId)
   const clock = deps.clock ?? (() => performance.now())
   try {
     const answer = await bounded(budget, BREAKER.probeBudgetMs, async () => {
       const started = clock()
-      const result = await connector.probe(serviceContext(env.now))
+      const result = await connector.probe(
+        serviceContext(env.now, budgets.paceOf(ref.integrationId, connector)),
+      )
       return { result, elapsedMs: clock() - started }
     })
     if (answer.kind === 'no_turn') return 'no_turn'
     if (answer.kind === 'late') return { outcome: 'bad', cause: null }
     const parsed = ProbeResultSchema.safeParse(answer.value.result)
+    // A definite busy says nothing of the connection: the probe is tried again, as with no turn.
+    if (parsed.success && parsed.data.kind === 'refused' && parsed.data.refusal.code === 'busy') {
+      return 'no_turn'
+    }
     return parsed.success
       ? judgeProbe(parsed.data, answer.value.elapsedMs)
       : { outcome: 'bad', cause: null }
@@ -156,7 +163,7 @@ export async function probeOnce(
 export async function probeConnection(
   env: BreakerEnvironment,
   ref: ConnectionRef,
-  connector: Pick<ServiceReader, 'probe'>,
+  connector: Pick<ServiceReader, 'probe' | 'callsPerSecond'>,
   deps: ProbeDeps,
 ): Promise<ProbeVerdict['outcome'] | 'no_turn'> {
   const verdict = await probeOnce(env, ref, connector, deps)

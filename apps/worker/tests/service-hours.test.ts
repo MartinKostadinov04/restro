@@ -154,6 +154,32 @@ describe.skipIf(!hasDatabase)('the venue night jobs', () => {
       expect(await closeTablesAtClosingHour(pool, new Date('2026-10-24T02:31:00Z'), quiet)).toBe(0)
     })
 
+    it('closes a table kept for a payment when the payment ends, past 07:00 (D122)', async () => {
+      const paymentId = newId('py')
+      const [table] = await query<{ table_id: string }>(
+        'select table_id from restro.sittings where id = $1',
+        [sittingIds[0]],
+      )
+      await query(
+        `insert into restro.payments
+           (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
+            currency, provider_kind, source, actor, job_id)
+         values ($1, $2, $3, $4, $5, '2026-10-23', 'on_bill', 'held', $6, 'EUR', 'sim', 'guest',
+                 'guest', 'test-seed')`,
+        [paymentId, tenantId, venueId, table?.table_id, sittingIds[0], 'a'.repeat(64)],
+      )
+      expect(await closeTablesAtClosingHour(pool, new Date('2026-10-24T02:30:00Z'), quiet)).toBe(2)
+      expect((await endState(sittingIds[0] as string))?.ended_at).toBeNull()
+      // 07:01 in Sofia: the service day is over and the payment still going, so nothing yet.
+      expect(await closeTablesAtClosingHour(pool, new Date('2026-10-24T04:01:00Z'), quiet)).toBe(0)
+      await query(
+        `update restro.payments set state = 'captured', settled_at = now() where id = $1`,
+        [paymentId],
+      )
+      expect(await closeTablesAtClosingHour(pool, new Date('2026-10-24T04:02:00Z'), quiet)).toBe(1)
+      expect((await endState(sittingIds[0] as string))?.end_reason).toBe('closing_hour')
+    })
+
     it('leaves a venue with no hours alone', async () => {
       await closeTablesAtClosingHour(pool, new Date('2026-10-24T03:00:00Z'), quiet)
       expect((await endState(untouchedSitting))?.ended_at).toBeNull()

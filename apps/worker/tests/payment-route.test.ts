@@ -85,12 +85,13 @@ import {
   ManualClock as SimPosClock,
   type SimServer,
   SimSetupError,
+  type SimSwitches,
   UndefinedBehaviour,
 } from '@restro/sim-pos'
 import fc from 'fast-check'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
+import { readFloorOf } from '../src/jobs/floor'
 import { recoverPayments } from '../src/jobs/payment-recovery'
 import {
   checkPayment,
@@ -115,6 +116,7 @@ import {
   testSlug,
   withOwnerClient,
 } from './database'
+import { simBudgets } from './sim-pace'
 
 allowSlowSetup()
 
@@ -215,7 +217,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
   const deps = (overrides: Partial<PaymentJobDeps> = {}): PaymentJobDeps => ({
     sim: policy,
     providers: new Map([[SIM_PAY_KIND, provider]]),
-    budgets: new InstanceBudgets(),
+    budgets: simBudgets(simClock),
     connectorFor,
     timings: TIMINGS,
     // The route's pause before a write passes on the simulator's clock (its per-second limit).
@@ -258,7 +260,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     const floor = await readFloorOf(
       { pool, log, now: () => clock },
       { tenantId, ...demo },
-      { sim: policy, budgets: new InstanceBudgets() },
+      { sim: policy, budgets: simBudgets(simClock) },
     )
     expect(floor.kind).toBe('read')
     const [table] = await query<{ id: `tb_${string}` }>(
@@ -393,7 +395,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       {
         sim: policy,
         billIdKey: KEY,
-        budgets: new InstanceBudgets(),
+        budgets: simBudgets(simClock),
         readingBudgets: new ReadingBudgets(),
       },
     )
@@ -598,7 +600,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       'createHold:done',
       'isolateLines:attempting',
       'isolateLines:done',
-      'payAndClose:attempting',
+      expect.stringMatching(/^payAndClose:attempting:/),
       'payAndClose:done',
       'capture:attempting',
       'capture:done',
@@ -775,6 +777,166 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         payment_table_id: null,
       })
       expect(rowsOn(POS_TABLE)).toEqual(['2001'])
+    })
+
+    // RR-15, RR-22 (D127): the third proof of a close, where the connector reads closed bills.
+    describe('an unknown close, on a POS that reads closed bills', () => {
+      const TIP_ITEM = '2999'
+      /** A till with these switches, table 1's round on it, and a connector that matches. */
+      async function till(switches: Partial<SimSwitches>, seam: Partial<ServiceConnector> = {}) {
+        const scenario = loadScenarioFile('demo-bar')
+        const all = {
+          ...scenario.switches,
+          lateLandingMs: LATE_LANDING_MS,
+          readClosedBills: true,
+          ...switches,
+        }
+        sim.host.engine = buildEngine({ ...scenario, switches: all }, { clock: simClock })
+        sim.host.engine.waiter.addRound(POS_TABLE, [
+          { article: '2001' },
+          { article: '2002', quantity: '2' },
+        ])
+        await read()
+        const connector: typeof connectorFor = (integration, simPolicy) => {
+          const real = createSimPosConnector({
+            transport: fetchTransport(`http://${integration.host}`, {
+              env: simPolicy.env,
+              allowHosts: simPolicy.allowHosts,
+            }),
+            login: readingLogin(scenario),
+            switches: all,
+            tipItem: TIP_ITEM,
+          })
+          return new Proxy(
+            { ...real, ...seam },
+            {
+              get(target, name, receiver) {
+                const value = Reflect.get(target, name, receiver)
+                if (typeof value !== 'function') return value
+                return (...args: unknown[]) => {
+                  simClock.advance(CALL_MS)
+                  return value.apply(target, args)
+                }
+              },
+            },
+          ) as ServiceConnector
+        }
+        return connector
+      }
+      const receiptOf = async (id: string) =>
+        (
+          await query<{ receipt_number: string | null }>(
+            'select receipt_number from restro.payments where id = $1',
+            [id],
+          )
+        )[0]?.receipt_number
+
+      it('a closed bill with a receipt number captures it, with no one asked', async () => {
+        const connectorFor = await till({ receiptNumberOnClose: true })
+        const id = await held(1)
+        fault({ on: 'closeBill', fault: { kind: 'landsThenHangs' } })
+        const { row } = await drive(id, 40, { connectorFor })
+        expect(row).toMatchObject({ state: 'captured', captured_minor: '2200' })
+        expect(await receiptOf(id)).not.toBeNull()
+        expect(await alertsOf(id)).toEqual([])
+        expect(calls('closeBill')).toBe(1)
+      })
+
+      it("a closed bill with Restro's reference and no receipt number captures it", async () => {
+        const connectorFor = await till({ lineCarriesCallerRef: true, tipAsLine: true })
+        const tips = (on: boolean) =>
+          query(
+            `update restro.integrations
+                set config = jsonb_set(config, '{service_capabilities,record_tip_on_close}', $2::jsonb)
+              where id = $1`,
+            [demo.integrationId, JSON.stringify(on)],
+          )
+        await tips(true)
+        let id: string | null
+        try {
+          id = await tryHeld(1, 50, { connectorFor })
+        } finally {
+          await tips(false)
+        }
+        if (id === null) throw new Error('the tipped Pay was refused')
+        fault({ on: 'closeBill', fault: { kind: 'landsThenHangs' } })
+        const { row } = await drive(id, 40, { connectorFor })
+        expect(row).toMatchObject({ state: 'captured', captured_minor: '2250' })
+        expect(await receiptOf(id)).toBeNull()
+        expect(await alertsOf(id)).toEqual([])
+      })
+
+      it('a closed bill with neither stays Payment unconfirmed, and its table empty is no proof', async () => {
+        const connectorFor = await till({})
+        const id = await held(1)
+        fault({ on: 'closeBill', fault: { kind: 'landsThenHangs' } })
+        const { row } = await drive(id, 40, { connectorFor })
+        expect(row).toMatchObject({ state: 'unconfirmed', reason: 'close_unknown' })
+        expect(paymentTablesEmpty()).toBe(true)
+        expect(
+          sim.host.engine.state.bills.filter(
+            (bill) => bill.state !== 'open' && bill.payments.length > 0,
+          ),
+        ).toHaveLength(1)
+        expect(await alertsOf(id)).toEqual(['payment_unconfirmed:money.follow_up'])
+      })
+
+      it('a payment table emptied by a waiter stays Payment unconfirmed', async () => {
+        const connectorFor = await till({ receiptNumberOnClose: true })
+        const id = await held(1)
+        fault({ on: 'closeBill', fault: { kind: 'hang' } })
+        // The close never lands; a waiter takes the lines back to the real table.
+        const run = await drive(id, 3, { connectorFor })
+        expect(run.row?.state).not.toBe('captured')
+        const moved = sim.host.engine.state.bills.find(
+          (bill) => PAYMENT_TABLES.includes(bill.table) && bill.state === 'open',
+        )
+        if (moved === undefined) throw new Error('expected the bill on the payment table')
+        sim.host.engine.waiter.moveLines(
+          moved.id,
+          moved.rows.map((row) => ({ row: row.id })),
+          POS_TABLE,
+        )
+        expect(paymentTablesEmpty()).toBe(true)
+        const { row } = await drive(id, 40, { connectorFor })
+        expect(row).toMatchObject({ state: 'unconfirmed', reason: 'close_unknown' })
+      })
+
+      it("another payment's closed bill on the payment table, with a receipt number, proves nothing", async () => {
+        const connectorFor = await till({ receiptNumberOnClose: true })
+        for (const table of PAYMENT_TABLES) {
+          const { bill } = sim.host.engine.waiter.addRound(table, [{ article: '2002' }])
+          sim.host.engine.waiter.closeBill(bill, 'card')
+        }
+        const id = await held(1)
+        fault({ on: 'closeBill', fault: { kind: 'hang' } })
+        const { row } = await drive(id, 40, { connectorFor })
+        expect(row).toMatchObject({ state: 'unconfirmed', reason: 'close_unknown' })
+      })
+
+      it('a read of the closed bills that fails concludes nothing', async () => {
+        const connectorFor = await till(
+          { receiptNumberOnClose: true },
+          {
+            readClosedBill: async () => {
+              throw new Error('no answer')
+            },
+          },
+        )
+        const id = await held(1)
+        fault({ on: 'closeBill', fault: { kind: 'landsThenHangs' } })
+        const { row } = await drive(id, 40, { connectorFor })
+        expect(row).toMatchObject({ state: 'unconfirmed', reason: 'close_unknown' })
+      })
+
+      it('a connector without the capability behaves as today, whatever the POS shows', async () => {
+        const connectorFor = await till({ readClosedBills: false, receiptNumberOnClose: true })
+        const id = await held(1)
+        fault({ on: 'closeBill', fault: { kind: 'landsThenHangs' } })
+        const { row } = await drive(id, 40, { connectorFor })
+        expect(row).toMatchObject({ state: 'unconfirmed', reason: 'close_unknown' })
+        expect(await alertsOf(id)).toEqual(['payment_unconfirmed:money.follow_up'])
+      })
     })
 
     it('the close, landing after the read-back window, then "No receipt": the hold stays', async () => {
@@ -1538,7 +1700,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         {
           sim: policy,
           billIdKey: KEY,
-          budgets: new InstanceBudgets(),
+          budgets: simBudgets(simClock),
           readingBudgets: new ReadingBudgets(),
           connectorFor: discounted,
         },

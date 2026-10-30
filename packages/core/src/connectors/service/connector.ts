@@ -12,6 +12,7 @@ import type {
   AddLinesRequest,
   AddLinesResult,
   Availability,
+  ClosedBill,
   EmptyResult,
   Floor,
   IsolatedBill,
@@ -28,12 +29,25 @@ import type {
 } from './schemas'
 import type { ServiceTimings } from './timings'
 
+/**
+ * The calls a second a connector with no figure of its own gets (`callsPerSecond`). Unknown for
+ * every real POS: none has stated a limit yet. This is the cautious value the test POS's `cautious`
+ * profile holds to, not a fact about any POS.
+ */
+export const CAUTIOUS_CALLS_PER_SECOND = 5
+
 /** What the platform hands a connector on every call. */
 export interface ServiceContext {
   /** The platform's clock (injected, so tests and the simulator share one). */
   now(): Date
   /** The seam's timings, from platform configuration (`SERVICE_TIMINGS`). */
   readonly timings: ServiceTimings
+  /**
+   * Waits for room in the login's per-second budget, shared by every call of the worker. A
+   * connector asks once per call on the wire, right before it leaves, since one seam call may be
+   * several. False when `signal` ended first: that call never left.
+   */
+  pace?(signal: AbortSignal): Promise<boolean>
 }
 
 /** The reading side: everything the platform asks without changing the POS. */
@@ -42,6 +56,11 @@ export interface ServiceReader {
   readonly kind: string
   /** What the POS lets Restro do and read (D122 §3), read at wiring time. */
   readonly capabilities: ServiceCapabilities
+  /**
+   * The calls a second one POS login may make, where the POS states a limit; left out, the worker
+   * keeps to `CAUTIOUS_CALLS_PER_SECOND`.
+   */
+  readonly callsPerSecond?: number
   /** A cheap POS read through the same path as an order. Never writes (rule 7, D120). */
   probe(ctx: ServiceContext): Promise<ProbeResult>
   /** Tables, payment tables and, where the POS knows them, bars. */
@@ -50,6 +69,11 @@ export interface ServiceReader {
   readTable(ctx: ServiceContext, table: PosRef): Promise<Reading<TableBills>>
   /** Item availability right before an order; present only where `itemAvailability` is declared. */
   readAvailability?(ctx: ServiceContext, items: readonly PosRef[]): Promise<Reading<Availability>>
+  /**
+   * The bill on this table if it is closed, else null; present only where `readClosedBills` is
+   * declared. Never a guess: a bill that can't be found is null, and null proves nothing.
+   */
+  readClosedBill?(ctx: ServiceContext, bill: IsolatedHandle): Promise<Reading<ClosedBill | null>>
 }
 
 /** The whole interface: the reads and the four waiter-action writes. */
