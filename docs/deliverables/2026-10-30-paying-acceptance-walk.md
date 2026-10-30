@@ -66,7 +66,7 @@ Open a table, have the waiter put a round on (step 9 above), and open the table'
 
 ## D. Pay first (phone)
 
-**You can't walk this one yet: the guest's pay-first screen isn't built.** The settings in Section B and the server side are done. The server side is tested by calling the guest API directly, not from a screen (card held, the round entered on a payment table, checked, closed, captured). No template sends a pay-first order yet. The screen comes with the menu designer's renderer.
+**You can't walk this one yet: the guest's pay-first screen isn't built.** The settings in Section B and the server side are done. The server side is tested by calling the guest API directly, not from a screen (card held, the round entered on a payment table, checked, closed, captured). No template sends a pay-first order yet. The screen comes with the menu designer's renderer (#258, after #171).
 
 - **What you see today:** set an item to Pay first and add it from the phone. The line says "Order this from your waiter", on every table and whether or not Paying is ready, and it doesn't go with the Send.
 - **What you check on the renderer, before any pilot:** Send reads "Send and pay {x}" and one tap sends the rest and opens the payment. The tip row sits on the order screen. "Pay later" leaves the line in the order as "Not ordered until paid" with "Pay {x}". The order reaches the till only after the card is held. Once paid, the order sits closed on a payment table of its bar and the phone shows the payment number; pay-first payments take paper receipts only (no email). Where pay first is off or paused, the item says "Order this from your waiter".
