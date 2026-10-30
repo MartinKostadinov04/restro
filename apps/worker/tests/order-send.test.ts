@@ -835,9 +835,9 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
         return {
           ...real,
           readTable: (context, table) =>
-            during(integration.id, () => real.readTable(context, table)),
+            during(integration.host, () => real.readTable(context, table)),
           addLines: (context, request) =>
-            during(integration.id, () => real.addLines(context, request)),
+            during(integration.host, () => real.addLines(context, request)),
         }
       }
       return { connectorFor, most }
@@ -952,8 +952,9 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
             }),
           )
         ).flat()
-        expect(outcomes.map((outcome) => (outcome.kind === 'settled' ? outcome.state : outcome.kind)))
-          .toEqual(tables.map(() => 'added'))
+        expect(
+          outcomes.map((outcome) => (outcome.kind === 'settled' ? outcome.state : outcome.kind)),
+        ).toEqual(tables.map(() => 'added'))
         expect(addCalls()).toBe(tables.length)
       },
       60_000,

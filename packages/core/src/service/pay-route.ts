@@ -44,7 +44,7 @@ import {
   sentOrders,
   venueTables,
 } from '@restro/db'
-import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, count, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema, newId } from '../ids'
@@ -691,9 +691,7 @@ export function lastCheck(input: {
   // A line on the isolated bill that the guest didn't confirm (a round slipped in, a change).
   if ([...wanted.values()].some((left) => left > 0)) return { ok: false, why: 'extra_line' }
   // Signed, as at `pay.start`: a discount line is negative (rule 8).
-  const foundMinor = sumSignedMinor(
-    found.map((index) => input.confirmed[index]?.amountMinor ?? 0),
-  )
+  const foundMinor = sumSignedMinor(found.map((index) => input.confirmed[index]?.amountMinor ?? 0))
   // Nothing to capture: all that is left is a discount.
   if (foundMinor <= 0) return { ok: false, why: 'no_lines' }
   if (missing.length === 0) return { ok: true, foundMinor, voided: 0, found }
@@ -712,6 +710,52 @@ export function lastCheck(input: {
  * `isolated` → `checked` (the amount lowered for voided lines), or stopped `check_failed` with a
  * staff alert, for the worker to move the lines back and release the hold.
  */
+/**
+ * How often the last check asks for a hold the provider won't show before it gives up (RR-18): a
+ * job's own tries (its first and `retryLimit` 5), about a minute. A provider that is only slow has
+ * its answer by then, and the guest is not left waiting on one that has stopped answering.
+ */
+export const HOLD_READ_TRIES = 6
+
+/** The Log's reason for one such failed read: the count of them is what bounds the tries. */
+export const HOLD_UNREAD_REASON = 'hold_unread'
+
+/** The check's failure for a hold that could not be read. */
+export const HOLD_UNREADABLE = 'hold_unreadable'
+
+/**
+ * `payment.hold_unread`: the provider did not show a payment's hold at the last check (D125: lost
+ * access; a read that says nothing about the hold). Logged, and answers how many times so far: at
+ * `HOLD_READ_TRIES` the worker sends the check with no hold (`failed`, a manager told). A read that
+ * says nothing never settles a hold: `cancel` reads it again before any release.
+ */
+export function paymentHoldUnread() {
+  return defineCommand({
+    schema: z.strictObject({ type: z.literal('payment.hold_unread'), paymentId }),
+    origins: ['worker'],
+    permission: null,
+    idempotency: 'by_state',
+    async handle(stx, command) {
+      const locked = await lockRoute(stx, command.paymentId)
+      if (refusedLock(locked)) return locked
+      const { payment } = locked
+      await logPayment(stx, payment, payment.state, HOLD_UNREAD_REASON)
+      const [row] = await stx.tx
+        .select({ tries: count() })
+        .from(logEntries)
+        .where(
+          and(
+            eq(logEntries.venueId, stx.venueId),
+            eq(logEntries.paymentId, payment.id),
+            eq(logEntries.kind, 'payment.state'),
+            eq(logEntries.reason, HOLD_UNREAD_REASON),
+          ),
+        )
+      return at(payment, payment.state, true, { tries: row?.tries ?? 0 })
+    },
+  })
+}
+
 export function paymentChecked() {
   return defineCommand({
     schema: z.strictObject({
@@ -730,9 +774,10 @@ export function paymentChecked() {
       partialCapture: z.boolean(),
       /**
        * What the provider holds now, read right before the close: zero for a hold that is no
-       * longer `held` (cancelled or run out at the provider). Below the amount, nothing closes.
+       * longer `held` (cancelled or run out at the provider), null for one it would not show
+       * `HOLD_READ_TRIES` times over. Below the amount, nothing closes.
        */
-      heldMinor: MinorSchema,
+      heldMinor: MinorSchema.nullable(),
     }),
     origins: ['worker'],
     permission: null,
@@ -772,6 +817,8 @@ export function paymentChecked() {
       }
       if (!check.ok) return failed(check.why)
       const amountMinor = addMinor(check.foundMinor, payment.tipMinor)
+      // A hold nobody can read: the bill must not close, and nothing here says what became of it.
+      if (command.heldMinor === null) return failed(HOLD_UNREADABLE)
       // A hold that no longer covers the amount: the bill must not close (no receipt, no capture).
       if (command.heldMinor < amountMinor) return failed('hold_lost')
       // What the POS will close, line by line (#197): a voided line is not paid, so it is never
@@ -1263,13 +1310,11 @@ export function paymentExpired() {
   })
 }
 
-/** The states a payment may stay in only briefly: the worker's own, with no guest or staff wait. */
-const STUCK_STATES: readonly string[] = ['requested', 'priced', 'cancelling']
-
 /**
  * `payment.stuck`: the recovery tried a payment again and it still stays where it was past its
  * bound (#112). Restro's team is told once; the payment itself is not changed (the recovery keeps
- * trying it).
+ * trying it). Any state a run can be left in counts; a final one, or one that waits for the guest or
+ * for a free payment table, does not.
  */
 export function paymentStuck() {
   return defineCommand({
@@ -1281,7 +1326,12 @@ export function paymentStuck() {
       const locked = await lockRoute(stx, command.paymentId, { alertKinds: [PAYMENT_STUCK_KIND] })
       if (refusedLock(locked)) return locked
       const { payment } = locked
-      if (!STUCK_STATES.includes(payment.state) || locked.alerts.has(PAYMENT_STUCK_KIND)) {
+      const waits =
+        isFinalPaymentState(payment.state) ||
+        payment.state === 'awaiting_guest' ||
+        ((payment.state === 'held' || payment.state === 'queued') &&
+          payment.paymentTableId === null)
+      if (waits || locked.alerts.has(PAYMENT_STUCK_KIND)) {
         return at(payment, payment.state, false)
       }
       const id = newId('al')
@@ -1351,6 +1401,7 @@ export const PAY_ROUTE_COMMANDS = {
   'payment.turn': paymentTurn(),
   'payment.isolated': paymentIsolated(),
   'payment.checked': paymentChecked(),
+  'payment.hold_unread': paymentHoldUnread(),
   'payment.closed': paymentClosed(),
   'payment.captured': paymentCaptured(),
   'payment.undone': paymentUndone(),

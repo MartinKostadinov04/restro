@@ -86,6 +86,7 @@ import { and, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-or
 import type { Job } from 'pg-boss'
 
 import type { SimPolicy } from '../config'
+import { ROUTE_RUNS_AT_ONCE } from '../connection'
 import type { Logger } from '../logger'
 import {
   assertSimAllowed,
@@ -95,7 +96,6 @@ import {
 } from '../service-connectors'
 import { type ConnectionBreakers, SHARED_BREAKERS } from './breaker'
 import { bounded, probeConnection } from './connection'
-import { ROUTE_RUNS_AT_ONCE } from '../connection'
 import { connectionPaused, type InstanceBudgets, PosTurn, SHARED_BUDGETS } from './floor'
 import { noteStock, readAvailability } from './stock'
 import { defineJob, type JobDefinition, type JobQueue, type WorkerContext } from './types'
@@ -615,7 +615,11 @@ export function createSendJobs(deps: SendJobDeps): JobDefinition[] {
         retentionSeconds: 10 * 60,
         deleteAfterSeconds: 60 * 60,
       },
-      work: { pollingIntervalSeconds: 1, localConcurrency: ROUTE_RUNS_AT_ONCE, groupConcurrency: 1 },
+      work: {
+        pollingIntervalSeconds: 1,
+        localConcurrency: ROUTE_RUNS_AT_ONCE,
+        groupConcurrency: 1,
+      },
     },
     async handler(jobs: Job<OrderSendJob>[], context: WorkerContext) {
       for (const job of jobs) {

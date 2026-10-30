@@ -61,6 +61,7 @@ import {
   type GuestLimitName,
   guestAct,
   guestState,
+  HOLD_READ_TRIES,
   LEASE_MARGIN_MS,
 } from '@restro/core/service'
 import { recordProviderNotice } from '@restro/core/service/notices'
@@ -1725,46 +1726,111 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     })
   })
 
-  // Repair-review, hot spot 4 (RR-12): only the payment's own bill is ever moved back. The move's
-  // answer is lost and it never landed; a waiter parks a bill of their own on the payment table.
-  // That bill is not the payment's: it is not read as the move landing, and never lands on the
-  // guest's table.
   // Repair-review, RR-18 (D125: lost access; D127: nobody is left guessing): the provider will not
-  // show the hold any more (the venue's access is gone) while the payment is past `held`. The job
-  // can only try again; the guest's lines stand moved off their table.
-  // RR-18: red until its fix; the fix removes .fails.
-  it.fails('a hold the provider stops showing, past held: someone is told, the lines do not just wait', async () => {
+  // show the hold any more (the venue's access is gone) while the payment is past `held`. The reads
+  // are bounded; then the check fails as any other does: the guest's lines go back and a manager is
+  // told. The hold is neither released nor captured on that read, whatever the time.
+  it('a hold the provider stops showing, past held: someone is told, the lines do not just wait', async () => {
     const id = await held(1)
+    let reads = 0
     const lost = new Proxy(provider, {
       get(target, name) {
         const value = Reflect.get(target, name, target)
         if (name === 'readPayment') {
-          return async () => ({
-            complete: false as const,
-            reason: 'access to the account was lost',
-          })
+          return async () => {
+            reads += 1
+            return {
+              complete: false as const,
+              reason: 'access to the account was lost',
+            }
+          }
         }
         return typeof value === 'function' ? value.bind(target) : value
       },
     })
     const overrides = { providers: new Map([[SIM_PAY_KIND, lost]]) }
-    for (let pass_ = 0; pass_ < 6; pass_ += 1) {
+    const once = async () => {
       try {
         await preparePayment(env(), target(id), deps(overrides))
       } catch (error) {
         if (!(error instanceof PaymentStepRetry)) throw error
       }
+      await pass(id, BETWEEN_RUNS_MS)
+    }
+    // Inside the tries the lines wait: a provider that answers again goes on to the close.
+    for (let run = 0; run < 40 && reads < HOLD_READ_TRIES - 1; run += 1) await once()
+    expect(reads).toBe(HOLD_READ_TRIES - 1)
+    expect(await stored(id)).toMatchObject({ state: 'isolated', reason: null })
+    expect(await alertsOf(id)).toEqual([])
+    // The last of them ends the route's own way: the lines go back, a manager is told.
+    for (let run = 0; run < 40 && (await stored(id))?.state !== 'cancelling'; run += 1) await once()
+    expect(await stored(id)).toMatchObject({ state: 'cancelling', reason: 'check_failed' })
+    expect(rowsOn(POS_TABLE)).toEqual(['2001', '2002'])
+    expect(await alertsOf(id)).toEqual(['payment_check_failed:alerts.answer'])
+    // Half an hour on: the hold read again, never released or captured, and Restro's team told.
+    await withOwnerClient(db.ownerUrl, async (client) => {
+      await client.query('begin')
+      await client.query('set local session_replication_role = replica')
+      await client.query(
+        `update restro.payments set updated_at = updated_at - interval '30 minutes' where id = $1`,
+        [id],
+      )
+      await client.query('commit')
+    })
+    for (let pass_ = 0; pass_ < 6; pass_ += 1) {
+      await once()
       await pass(id, 5 * 60_000)
       await recoverPayments({ pool, log, now: () => clock, queue }, deps(overrides))
     }
-    const row = await stored(id)
-    // Half an hour on, with the guest's lines on the payment table.
-    expect(row?.state).toBe('isolated')
-    expect(rowsOn(POS_TABLE)).toEqual(['2001'])
-    expect(await alertsOf(id)).not.toEqual([])
+    expect(await stored(id)).toMatchObject({ state: 'cancelling', reason: 'check_failed' })
+    expect(await alertsOf(id)).toEqual(['payment_check_failed:alerts.answer', 'payment_stuck:null'])
+    expect(calls('closeBill')).toBe(0)
+    expect((await steps(id)).filter((step) => /^(release|capture):/.test(step))).toEqual([])
+    expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+      expect.objectContaining({ status: 'held' }),
+    ])
   })
 
-  // RR-12: red until its fix; the fix removes .fails.
+  // The double's own refusal: the hold is not on the account the venue has now. Once a read shows
+  // it again it is released, on that read.
+  it('a hold not on the venue’s account now: not released until a read shows it', async () => {
+    const id = await held(1)
+    await query(`update restro.payment_accounts set account_ref = $1 where venue_id = $2`, [
+      `${accountRef}_other`,
+      demo.venueId,
+    ])
+    try {
+      for (let run = 0; run < 40 && (await stored(id))?.state !== 'cancelling'; run += 1) {
+        try {
+          await preparePayment(env(), target(id), deps())
+        } catch (error) {
+          if (!(error instanceof PaymentStepRetry)) throw error
+        }
+        await pass(id, BETWEEN_RUNS_MS)
+      }
+      expect(await stored(id)).toMatchObject({ state: 'cancelling', reason: 'check_failed' })
+      expect(rowsOn(POS_TABLE)).toEqual(['2001', '2002'])
+      expect((await steps(id)).filter((step) => step.startsWith('release:'))).toEqual([])
+      expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+        expect.objectContaining({ status: 'held' }),
+      ])
+    } finally {
+      await query(`update restro.payment_accounts set account_ref = $1 where venue_id = $2`, [
+        accountRef,
+        demo.venueId,
+      ])
+    }
+    await drive(id)
+    expect(await stored(id)).toMatchObject({ state: 'released', reason: 'check_failed' })
+    expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+      expect.objectContaining({ status: 'released' }),
+    ])
+  })
+
+  // Repair-review, hot spot 4 (RR-12): only the payment's own bill is ever moved back. The move's
+  // answer is lost and it never landed; a waiter parks a bill of their own on the payment table.
+  // That bill is not the payment's: it is not read as the move landing, and never lands on the
+  // guest's table.
   it('a move that never landed, a waiter’s bill on the payment table: never moved to the guest', async () => {
     const id = await held(1)
     fault({ on: 'moveRows', fault: { kind: 'hang' } })

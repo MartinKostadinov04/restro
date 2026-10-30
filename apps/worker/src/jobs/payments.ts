@@ -57,7 +57,6 @@
 
 import {
   addMinor,
-  sumSignedMinor,
   CURRENCIES,
   type Currency,
   IsolatedBillSchema,
@@ -80,6 +79,7 @@ import {
   type ServiceConnector,
   type ServiceTimings,
   serviceDayStartsAt,
+  sumSignedMinor,
   type TableBills,
   TableBillsSchema,
   type WriteOutcome,
@@ -89,6 +89,8 @@ import {
   applyService,
   BUDGET_WAIT_MS,
   billIsRound,
+  HOLD_READ_TRIES,
+  HOLD_UNREAD_REASON,
   isFinalPaymentState,
   LEASE_MARGIN_MS,
   PAYMENT_CONFIRM_MS,
@@ -109,6 +111,7 @@ import {
   type DbPool,
   integrations,
   locks,
+  logEntries,
   paymentAccounts,
   paymentLines,
   paymentSteps,
@@ -125,13 +128,13 @@ import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import type { Job } from 'pg-boss'
 
 import type { SimPolicy } from '../config'
+import { ROUTE_RUNS_AT_ONCE } from '../connection'
 import type { PaymentProviders } from '../connectors'
 import type { Logger } from '../logger'
 import { EmailSendError, type EmailSender, RECEIPT_CALL_TIMEOUT_MS } from '../receipts/email-sender'
 import { assertSimAllowed, serviceConnectorFor, serviceContext } from '../service-connectors'
 import type { Limiter } from '../sync/limiter'
 import { type Bounded, bounded } from './connection'
-import { ROUTE_RUNS_AT_ONCE } from '../connection'
 import { connectionPaused, type InstanceBudgets, PosTurn, SHARED_BUDGETS } from './floor'
 import { toOrderLine } from './order-send'
 import { type PaymentBreakers, SHARED_PAYMENT_BREAKERS, watchedProvider } from './payment-breaker'
@@ -184,12 +187,7 @@ export function paymentStepMs(timings: ServiceTimings = SERVICE_TIMINGS): number
   const read = BUDGET_WAIT_MS + timings.readTimeoutMs
   const write = BUDGET_WAIT_MS + timings.writeTimeoutMs
   return (
-    BUDGET_WAIT_MS +
-    3 * read +
-    PROVIDER_CALL_MS +
-    PAYMENT_WRITE_PAUSE_MS +
-    write +
-    RECEIPT_SEND_MS
+    BUDGET_WAIT_MS + 3 * read + PROVIDER_CALL_MS + PAYMENT_WRITE_PAUSE_MS + write + RECEIPT_SEND_MS
   )
 }
 
@@ -350,6 +348,25 @@ async function latestStep(
       .limit(1),
   )
   return row ?? null
+}
+
+/** True once the last check could not read this payment's hold (`payment.hold_unread`). */
+async function holdWentUnread(env: PaymentEnvironment, target: PaymentJob): Promise<boolean> {
+  const [row] = await withTenant(env.pool, target.tenantId, (tx) =>
+    tx
+      .select({ seq: logEntries.seq })
+      .from(logEntries)
+      .where(
+        and(
+          eq(logEntries.venueId, target.venueId),
+          eq(logEntries.paymentId, target.paymentId),
+          eq(logEntries.kind, 'payment.state'),
+          eq(logEntries.reason, HOLD_UNREAD_REASON),
+        ),
+      )
+      .limit(1),
+  )
+  return row !== undefined
 }
 
 /**
@@ -627,6 +644,16 @@ async function cancel(
   // A release the provider refused is never sent again (#112, R3): the hold is read back until the
   // provider drops it (it runs out at its capture deadline at the latest), which settles the
   // payment `released`, reason `expired`.
+  // A hold the last check could not read is read before any release: never released on a guess.
+  // Unread, it stays as it is, and the recovery reads it again every 10 minutes (D125, RR-18).
+  if (await holdWentUnread(env, target)) {
+    const read = await provider.readPayment(accountRef, providerRef(paymentRef))
+    if (!read.complete) throw new PaymentStepRetry('the unread hold could not be read back')
+    if (isOver(read.value)) {
+      await expire(env, target, read.value.status)
+      return
+    }
+  }
   const lastRelease = await latestStep(env, target, 'release')
   if (lastRelease?.outcome === 'refused' && lastRelease.answer !== 'not_found') {
     const read = await provider.readPayment(accountRef, providerRef(paymentRef))
@@ -1459,21 +1486,30 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
   // The hold, read again right before the close: one cancelled or run out at the provider stops
   // the payment here, before a receipt is printed for a card that can't be charged.
   const account = await accountOf(env, target)
-  if (account === null || account.accountRef === null || payment.providerPaymentRef === null) {
-    throw new PaymentStepRetry("the payment's hold can't be read")
+  const hold =
+    account === null || account.accountRef === null || payment.providerPaymentRef === null
+      ? null
+      : await provider.readPayment(
+          providerRef(account.accountRef),
+          providerRef(payment.providerPaymentRef),
+        )
+  // A read that says nothing is tried again, a bounded number of times; then the check goes on with
+  // no hold, and fails. It never reads as a hold gone or one still there (D125, D127 3.10).
+  let heldMinor: number | null = null
+  if (hold?.complete === true) {
+    heldMinor = hold.value.status === 'held' ? hold.value.heldMinor : 0
+  } else {
+    const { details } = await route(env, target, { type: 'payment.hold_unread' })
+    if (typeof details.tries !== 'number' || details.tries < HOLD_READ_TRIES) {
+      throw new PaymentStepRetry('the hold could not be read')
+    }
   }
-  const hold = await provider.readPayment(
-    providerRef(account.accountRef),
-    providerRef(payment.providerPaymentRef),
-  )
-  if (!hold.complete) throw new PaymentStepRetry('the hold could not be read')
   const reading =
     isolated === null
       ? null
       : {
           bills: onTable.bills.length,
-          totalMinor:
-            bill?.totalMinor ?? sumSignedMinor(onTable.bills.map((b) => b.totalMinor)),
+          totalMinor: bill?.totalMinor ?? sumSignedMinor(onTable.bills.map((b) => b.totalMinor)),
           paidMinor:
             bill?.paidMinor ?? onTable.bills.reduce((sum, b) => addMinor(sum, b.paidMinor), 0),
           lines: lines.map((line) => ({
@@ -1488,7 +1524,6 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
       ? null
       : ((await enterLinesOf(env, target, payment, pos))?.items ?? null)
   const partialCapture = provider.capabilities.partialCapture
-  const heldMinor = hold.value.status === 'held' ? hold.value.heldMinor : 0
   const checked = onBill
     ? await route(env, target, {
         type: 'payment.checked',
@@ -2278,7 +2313,11 @@ export function createPaymentJobs(deps: PaymentJobDeps): JobDefinition[] {
       policy: 'stately',
       // Never failed (and run again beside itself) while a run is still going.
       queue: { ...queue, expireInSeconds: PAYMENT_PREPARE_EXPIRE_SECONDS },
-      work: { pollingIntervalSeconds: 1, localConcurrency: ROUTE_RUNS_AT_ONCE, groupConcurrency: 1 },
+      work: {
+        pollingIntervalSeconds: 1,
+        localConcurrency: ROUTE_RUNS_AT_ONCE,
+        groupConcurrency: 1,
+      },
     },
     handler: run(JOB_NAMES.paymentPrepare, preparePayment),
   })
@@ -2287,7 +2326,11 @@ export function createPaymentJobs(deps: PaymentJobDeps): JobDefinition[] {
     options: {
       policy: 'stately',
       queue,
-      work: { pollingIntervalSeconds: 1, localConcurrency: ROUTE_RUNS_AT_ONCE, groupConcurrency: 1 },
+      work: {
+        pollingIntervalSeconds: 1,
+        localConcurrency: ROUTE_RUNS_AT_ONCE,
+        groupConcurrency: 1,
+      },
     },
     handler: run(JOB_NAMES.paymentCheck, checkPayment),
   })
