@@ -1,6 +1,6 @@
 // This browser's side of Web Push (RR-86, D120): what it can do, its subscription and the keys the
-// server needs. The only file that registers the service worker; only Tonight's control uses it,
-// so a guest page never does. The scope is the staff pages alone.
+// server needs. The only file that registers the service worker; only Tonight's control and the staff
+// sign-out use it, so a guest page never does. The scope is the staff pages alone.
 
 const WORKER_URL = '/sw.js'
 const WORKER_SCOPE = '/venues/'
@@ -83,4 +83,25 @@ export function deviceOf(subscription: PushSubscription) {
   const { p256dh, auth } = keys ?? {}
   if (endpoint === undefined || p256dh === undefined || auth === undefined) return null
   return { endpoint, p256dh, auth }
+}
+
+/** How long a sign-out waits for the browser: one that hangs must not hold the person there. */
+const STOP_WAIT_MS = 2_000
+
+/**
+ * Ends this browser's subscription as a person signs out, so the phone stops buzzing. Never throws
+ * and never blocks: no push API, a browser that throws and one that hangs all let the sign-out go on.
+ * The server's row ends by itself: the push service answers 404 or 410 to the next send, and the
+ * worker's `push.expire` ends it.
+ */
+export async function stopPushOnThisBrowser(): Promise<void> {
+  const stop = async () => {
+    const registration = await navigator.serviceWorker.getRegistration(WORKER_SCOPE)
+    const held = await registration?.pushManager.getSubscription()
+    await held?.unsubscribe()
+  }
+  await Promise.race([
+    stop().catch(() => undefined),
+    new Promise((resolve) => setTimeout(resolve, STOP_WAIT_MS)),
+  ])
 }

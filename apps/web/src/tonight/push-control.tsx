@@ -40,6 +40,8 @@ export function PushControl({
   const [state, setState] = useState<PushState>('loading')
   /** The endpoint the server last heard from this page, so a re-read doesn't say it again. */
   const told = useRef<string | null>(null)
+  /** An endpoint the server refused here: this page says off, whatever the browser still holds. */
+  const refused = useRef<string | null>(null)
 
   const read = useCallback(async () => {
     const availability = pushAvailability()
@@ -52,15 +54,17 @@ export function PushControl({
       return setState('off')
     }
     if (subscription === null) return setState('off')
-    setState('on')
     const device = deviceOf(subscription)
+    if (device !== null && refused.current === device.endpoint) return setState('off')
+    setState('on')
     if (device === null || told.current === device.endpoint) return
     told.current = device.endpoint
     try {
       const said = await subscribePushAction({ venueId, ...device })
-      // Refused, not merely unreached: this device can't ring, so it doesn't say it can.
+      // Refused, not merely unreached: this screen doesn't say it rings. The browser keeps its
+      // subscription: the row is per account, and another venue's alerts still come through it.
       if (!said.ok && said.error !== 'failed') {
-        await subscription.unsubscribe()
+        refused.current = device.endpoint
         setState('off')
       }
     } catch {
@@ -96,10 +100,13 @@ export function PushControl({
     if (device === null) return { ok: false, error: 'push_no_service' }
     const said = await subscribePushAction({ venueId, ...device })
     if (!said.ok) {
-      await subscription.unsubscribe().catch(() => false)
+      // As in `read`: the browser keeps its subscription.
+      if (said.error !== 'failed') refused.current = device.endpoint
       setState('off')
-      return said
+      // An endpoint Restro doesn't take is the browser's service failing, for the person tapping.
+      return said.error === 'invalid' ? { ok: false, error: 'push_no_service' } : said
     }
+    refused.current = null
     told.current = device.endpoint
     setState('on')
     return said

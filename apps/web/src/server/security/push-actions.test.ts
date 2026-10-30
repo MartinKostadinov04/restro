@@ -21,7 +21,7 @@ vi.mock('@/server/log', async () => (await import('./attack-session')).logModule
 
 /** What a browser's `subscription.toJSON()` holds, flattened as the screen sends it. */
 const device = (name: string) => ({
-  endpoint: `https://push.invalid/send/${name}-${'x'.repeat(30)}`,
+  endpoint: `https://fcm.googleapis.com/fcm/send/${name}-${'x'.repeat(30)}`,
   p256dh: `B${'p'.repeat(86)}`,
   auth: 'a'.repeat(22),
 })
@@ -113,7 +113,9 @@ describe.skipIf(!hasDatabase)('a staff device for push (RR-86)', () => {
     const venueId = org.venues[0].id
     const phone = device('bad')
     for (const input of [
-      { venueId, ...phone, endpoint: 'http://push.invalid/plain' },
+      { venueId, ...phone, endpoint: 'http://fcm.googleapis.com/fcm/send/plain' },
+      { venueId, ...phone, endpoint: 'https://169.254.169.254/latest/meta-data' },
+      { venueId, ...phone, endpoint: 'https://evilpush.apple.com.example.org/send' },
       { venueId, ...phone, auth: 'short' },
       { venueId, ...phone, userId: other.ownerId },
       { venueId, endpoint: phone.endpoint },

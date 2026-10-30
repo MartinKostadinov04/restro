@@ -62,13 +62,15 @@ describe('the staff worker and manifest stay off guest pages', () => {
     expect(importing).toEqual([])
   })
 
-  it('only the control uses the device code, and only Tonight draws the control', () => {
+  it('only the control and the staff sign-out use the device code, and only Tonight draws the control', () => {
     const users = (word: RegExp) =>
       sourceFiles(join(WEB, 'src'))
         .concat(sourceFiles(join(WEB, 'app')))
         .filter((file) => word.test(readFileSync(file, 'utf8')))
         .map(webFile)
     expect(users(/from '\.\/push-device'|tonight\/push-device/)).toEqual([
+      'src/components/admin/user-menu.tsx',
+      'src/components/auth/sign-out-button.tsx',
       'src/tonight/push-control.tsx',
     ])
     expect(users(/from '\.\/push-control'|tonight\/push-control/)).toEqual([

@@ -320,7 +320,7 @@ export async function seedOrg(
     asset,
     tenantId,
   ])
-  const pushEndpoint = `https://push.invalid/send/${tenantId}-${'x'.repeat(30)}`
+  const pushEndpoint = `https://fcm.googleapis.com/fcm/send/${tenantId}-${'x'.repeat(30)}`
   await owner.query(
     `insert into restro.push_subscriptions
        (tenant_id, user_id, endpoint_hash, endpoint, p256dh, auth, source, actor, job_id)

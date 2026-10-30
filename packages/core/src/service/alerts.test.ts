@@ -10,8 +10,64 @@ import { hasDatabase, testSlug } from '../apply/test-database'
 import { newId } from '../ids'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import { readDelivery } from './alert-delivery'
-import { endpointHashOf } from './alerts'
+import { endpointHashOf, PushSubscribeSchema } from './alerts'
 import { applyService, type ServiceContext } from './index'
+
+describe('the push services a device may name (RR-86)', () => {
+  const BACKSLASH = String.fromCharCode(92)
+  const accepted = (endpoint: string) =>
+    PushSubscribeSchema.safeParse({
+      type: 'push.subscribe',
+      endpoint,
+      p256dh: 'B'.repeat(87),
+      auth: 'a'.repeat(22),
+    }).success
+
+  it.each([
+    'https://fcm.googleapis.com/fcm/send/abc',
+    'https://updates.push.services.mozilla.com/wpush/v2/abc',
+    'https://web.push.apple.com/abc',
+    'https://wns2-par02p.notify.windows.com/w/?token=abc',
+  ])('accepts %s', (endpoint) => {
+    expect(accepted(endpoint)).toBe(true)
+  })
+
+  it.each([
+    // Lookalikes.
+    'https://evilpush.apple.com.example.org/abc',
+    'https://web.push.apple.com.example.org/abc',
+    'https://xnotify.windows.com/abc',
+    'https://evilfcm.googleapis.com/abc',
+    'https://sub.fcm.googleapis.com/abc',
+    'https://fcm.googleapis.com.example.org/abc',
+    'https://push.apple.com/abc',
+    // Not https.
+    'http://fcm.googleapis.com/fcm/send/abc',
+    // A port, even the default one.
+    'https://fcm.googleapis.com:8443/fcm/send/abc',
+    'https://fcm.googleapis.com:443/fcm/send/abc',
+    // A user or password in the address.
+    'https://user@fcm.googleapis.com/fcm/send/abc',
+    'https://user:secret@fcm.googleapis.com/fcm/send/abc',
+    'https://fcm.googleapis.com@example.org/abc',
+    // Internal addresses.
+    'https://localhost/abc',
+    'https://127.0.0.1/abc',
+    'https://10.0.0.5/abc',
+    'https://169.254.169.254/latest/meta-data',
+    'https://[::1]/abc',
+    // What parsers read differently.
+    `https://fcm.googleapis.com${BACKSLASH}@example.org/abc`,
+    'https://FCM.GOOGLEAPIS.COM/fcm/send/abc',
+    'https://fcm.googleapis.com./fcm/send/abc',
+    // Not an address.
+    'https://fcm.googleapis.com',
+    'not an address',
+    '',
+  ])('refuses %s', (endpoint) => {
+    expect(accepted(endpoint)).toBe(false)
+  })
+})
 
 describe.skipIf(!hasDatabase)('alerts (as the restro_app role)', () => {
   let world: ServiceWorld
@@ -310,7 +366,7 @@ describe.skipIf(!hasDatabase)('alerts (as the restro_app role)', () => {
 
   describe('devices for Web Push', () => {
     const subscription = (n: number) => ({
-      endpoint: `https://push.example.test/send/${n}-${'x'.repeat(30)}`,
+      endpoint: `https://fcm.googleapis.com/fcm/send/${n}-${'x'.repeat(30)}`,
       p256dh: 'B'.repeat(87),
       auth: 'a'.repeat(22),
     })

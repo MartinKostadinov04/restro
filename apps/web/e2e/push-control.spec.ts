@@ -142,7 +142,7 @@ const control = (page: Page) => page.getByTestId('push-control')
 const inState = (page: Page, state: string) =>
   expect(control(page)).toHaveAttribute('data-state', state)
 const endpointFor = (name: string) =>
-  `https://push.invalid/send/${name}-${Date.now()}-${'x'.repeat(30)}`
+  `https://fcm.googleapis.com/fcm/send/${name}-${Date.now()}-${'x'.repeat(30)}`
 
 async function isTappable(page: Page, name: string) {
   const box = await page.getByRole('button', { name }).boundingBox()

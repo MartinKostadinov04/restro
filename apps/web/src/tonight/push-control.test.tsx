@@ -15,10 +15,12 @@ const subscribePushAction = vi.hoisted(() => vi.fn())
 const revokePushAction = vi.hoisted(() => vi.fn())
 vi.mock('@/server/tonight/actions', () => ({ subscribePushAction, revokePushAction }))
 vi.mock('./pin-sheet', () => ({ PinSheet: () => null }))
+const toast = vi.hoisted(() => Object.assign(vi.fn(), { error: vi.fn(), dismiss: vi.fn() }))
+vi.mock('sonner', () => ({ toast }))
 
 const VENUE = 'vn_0123456789ABCDEFGHIJKL'
 const KEY = `B${'p'.repeat(86)}`
-const ENDPOINT = 'https://push.invalid/send/abc'
+const ENDPOINT = 'https://fcm.googleapis.com/fcm/send/abc'
 const DEVICE = { endpoint: ENDPOINT, p256dh: `B${'q'.repeat(86)}`, auth: 'a'.repeat(22) }
 const ACCEPTED = { ok: true, details: {} }
 
@@ -108,6 +110,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   subscribePushAction.mockReset()
+  toast.error.mockReset()
   revokePushAction.mockReset()
   Reflect.deleteProperty(navigator, 'serviceWorker')
   Reflect.deleteProperty(navigator, 'maxTouchPoints')
@@ -144,14 +147,50 @@ describe('on a person’s own device', () => {
     expect(fake.unsubscribe).not.toHaveBeenCalled()
   })
 
-  it('takes the subscription back if the server refuses it', async () => {
+  it('shows off when Turn on is refused, and leaves the browser its subscription', async () => {
     const fake = fakeBrowser()
     subscribePushAction.mockResolvedValue({ ok: false, error: 'permission_denied' })
     draw()
     await inState('off')
     await userEvent.click(screen.getByRole('button', { name: 'Turn on' }))
-    await waitFor(() => expect(fake.unsubscribe).toHaveBeenCalledOnce())
-    expect(control().getAttribute('data-state')).toBe('off')
+    await waitFor(() => expect(subscribePushAction).toHaveBeenCalledOnce())
+    await inState('off')
+    expect(fake.unsubscribe).not.toHaveBeenCalled()
+  })
+
+  it('a refused re-send at another venue shows off, and leaves the first venue’s alerts alone', async () => {
+    const fake = fakeBrowser({ held: true, permission: 'granted' })
+    subscribePushAction.mockResolvedValue({ ok: false, error: 'permission_denied' })
+    draw()
+    await waitFor(() => expect(subscribePushAction).toHaveBeenCalledOnce())
+    await inState('off')
+    expect(fake.unsubscribe).not.toHaveBeenCalled()
+    // Coming back to the page doesn't claim on again, or ask again.
+    document.dispatchEvent(new Event('visibilitychange'))
+    await inState('off')
+    expect(subscribePushAction).toHaveBeenCalledOnce()
+    expect(fake.unsubscribe).not.toHaveBeenCalled()
+  })
+
+  it('stays on for a re-send that never got an answer: no connection is not a refusal', async () => {
+    const fake = fakeBrowser({ held: true, permission: 'granted' })
+    subscribePushAction.mockRejectedValue(new Error('offline'))
+    draw()
+    await waitFor(() => expect(subscribePushAction).toHaveBeenCalled())
+    await inState('on')
+    expect(fake.unsubscribe).not.toHaveBeenCalled()
+  })
+
+  it('an endpoint Restro doesn’t take reads as the service failing, not a crash', async () => {
+    fakeBrowser()
+    subscribePushAction.mockResolvedValue({ ok: false, error: 'invalid' })
+    draw()
+    await inState('off')
+    await userEvent.click(screen.getByRole('button', { name: 'Turn on' }))
+    await waitFor(() =>
+      expect(toast.error.mock.calls[0]?.[0]).toBe(messages.tonight.errors.push_no_service),
+    )
+    await inState('off')
   })
 
   it('says a held subscription again when Tonight opens, so a rotated endpoint carries on', async () => {
