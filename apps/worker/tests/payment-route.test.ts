@@ -1468,12 +1468,91 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         }) as ServiceConnector
       }
 
+    // RR-11: a bill the guest confirmed with its discount line pays through at its signed total.
+    // The simulator has no discounts, so the connector adds the line to what it reads, keeps it out
+    // of the move, and closes for what the simulator's own rows come to.
+    it('a bill with a discount pays through to capture at its signed total', async () => {
+      const line = {
+        ref: { pos: 'discount-1' },
+        item: null,
+        name: 'Discount',
+        quantity: '1',
+        amountMinor: -100,
+        enteredBy: 'staff',
+        enteredAt: null,
+        restroRef: null,
+      }
+      let moved = false
+      const withDiscount = <T extends { totalMinor: number; lines: unknown[] }>(bill: T): T => ({
+        ...bill,
+        totalMinor: bill.totalMinor - 100,
+        lines: [...bill.lines, line],
+      })
+      const discounted: typeof connectorFor = (integration, simPolicy) => {
+        const real = connectorFor(integration, simPolicy)
+        return {
+          ...real,
+          readTable: async (context, table) => {
+            const answer = await real.readTable(context, table)
+            const here = table.pos === POS_TABLE ? !moved : moved
+            const [bill, ...others] = answer.complete ? answer.value.bills : []
+            if (!answer.complete || bill === undefined || !here) return answer
+            return { ...answer, value: { ...answer.value, bills: [withDiscount(bill), ...others] } }
+          },
+          readIsolated: async (context, handle) => {
+            const answer = await real.readIsolated(context, handle)
+            if (!answer.complete || answer.value.bill === null || !moved) return answer
+            return {
+              ...answer,
+              value: { ...answer.value, bill: withDiscount(answer.value.bill) },
+            }
+          },
+          isolateLines: async (context, request) => {
+            const answer = await real.isolateLines(context, {
+              ...request,
+              picks: request.picks.filter((pick) => pick.line.pos !== line.ref.pos),
+            })
+            moved = true
+            return answer
+          },
+          payAndClose: (context, request) =>
+            real.payAndClose(context, { ...request, amountMinor: request.amountMinor + 100 }),
+        }
+      }
+      simClock.advance(1100)
+      clock = new Date(clock.getTime() + TABLE_READ_MIN_GAP_MS + 1)
+      await readTableOf(
+        { pool, log, now: () => clock },
+        { tenantId, venueId: demo.venueId, tableId },
+        {
+          sim: policy,
+          billIdKey: KEY,
+          budgets: new InstanceBudgets(),
+          readingBudgets: new ReadingBudgets(),
+          connectorFor: discounted,
+        },
+      )
+      const shown = await lines()
+      expect(shown.map((shownLine) => shownLine.amountMinor)).toContain(-100)
+      const total = shown.reduce((sum, shownLine) => sum + shownLine.amountMinor, 0)
+      const id = await tryHeld('all', null, { connectorFor: discounted })
+      if (id === null) throw new Error('the Pay was refused')
+      const { row } = await drive(id, 40, { connectorFor: discounted })
+      expect(row).toMatchObject({
+        settled: true,
+        state: 'captured',
+        amount_minor: String(total),
+        captured_minor: String(total),
+        payment_table_id: null,
+      })
+      expect(await alertsOf(id)).toEqual([])
+    })
+
     // RR-11: a discount line (negative, as `BillLineSchema` allows) on the isolated bill: a
     // waiter's discount given on the payment table before the last check. The guest did not
     // confirm it, so the check fails, the lines go back and the card is released; the route must
     // never throw on the signed amount and leave the card held with the payment `isolated`.
-    // RR-11: red until its fix; the fix removes .fails.
-    it.fails('a discount line on the isolated bill fails the check and releases the card', async () => {
+    it('a discount line on the isolated bill fails the check and releases the card', async () => {
       const id = await held(1)
       const discounted = editingIsolated((bill) => ({
         ...bill,

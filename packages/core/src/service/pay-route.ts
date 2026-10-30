@@ -48,7 +48,7 @@ import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema, newId } from '../ids'
-import { addMinor } from '../money'
+import { addMinor, sumSignedMinor } from '../money'
 import { DecimalQuantitySchema } from '../quantity'
 import { SERVICE_TIMINGS, type ServiceTimings } from '../timings'
 import {
@@ -672,13 +672,11 @@ export function lastCheck(input: {
   for (const line of bill.lines) wanted.set(lineKey(line), (wanted.get(lineKey(line)) ?? 0) + 1)
   const missing: (typeof input.confirmed)[number][] = []
   const found: number[] = []
-  let foundMinor = 0
   for (const [index, line] of input.confirmed.entries()) {
     const key = lineKey(line)
     const left = wanted.get(key) ?? 0
     if (left > 0) {
       wanted.set(key, left - 1)
-      foundMinor = addMinor(foundMinor, line.amountMinor)
       found.push(index)
     } else {
       missing.push(line)
@@ -686,6 +684,12 @@ export function lastCheck(input: {
   }
   // A line on the isolated bill that the guest didn't confirm (a round slipped in, a change).
   if ([...wanted.values()].some((left) => left > 0)) return { ok: false, why: 'extra_line' }
+  // Signed, as at `pay.start`: a discount line is negative (rule 8).
+  const foundMinor = sumSignedMinor(
+    found.map((index) => input.confirmed[index]?.amountMinor ?? 0),
+  )
+  // Nothing to capture: all that is left is a discount.
+  if (foundMinor <= 0) return { ok: false, why: 'no_lines' }
   if (missing.length === 0) return { ok: true, foundMinor, voided: 0, found }
   const realRefs = new Set(input.real.map((line) => line.pos))
   const realKeys = new Set(input.real.map(lineKey))
@@ -694,7 +698,6 @@ export function lastCheck(input: {
   )
   if (!voided) return { ok: false, why: 'line_missing' }
   if (!input.partialCapture) return { ok: false, why: 'partial_not_supported' }
-  if (foundMinor <= 0) return { ok: false, why: 'no_lines' }
   return { ok: true, foundMinor, voided: missing.length, found }
 }
 

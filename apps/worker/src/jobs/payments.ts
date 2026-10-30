@@ -57,6 +57,7 @@
 
 import {
   addMinor,
+  sumSignedMinor,
   CURRENCIES,
   type Currency,
   IsolatedBillSchema,
@@ -1443,7 +1444,7 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
   // line have been voided, which lowers the amount on a fresh read that shows it gone. A bill not
   // short that misses a line has another in its place, and fails the check without it. (Every
   // read counts towards the POS's calls per second.)
-  const found = lines.reduce((sum, line) => addMinor(sum, line.amountMinor), payment.tipMinor)
+  const found = sumSignedMinor([payment.tipMinor, ...lines.map((line) => line.amountMinor)])
   const short = payment.amountMinor === null || found < payment.amountMinor
   // A pay-first round was never on the real table: only the payment table's bill is checked.
   const onBill = payment.kind === 'on_bill'
@@ -1466,7 +1467,7 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
       : {
           bills: onTable.bills.length,
           totalMinor:
-            bill?.totalMinor ?? onTable.bills.reduce((sum, b) => addMinor(sum, b.totalMinor), 0),
+            bill?.totalMinor ?? sumSignedMinor(onTable.bills.map((b) => b.totalMinor)),
           paidMinor:
             bill?.paidMinor ?? onTable.bills.reduce((sum, b) => addMinor(sum, b.paidMinor), 0),
           lines: lines.map((line) => ({
