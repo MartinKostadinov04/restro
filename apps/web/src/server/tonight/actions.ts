@@ -19,7 +19,7 @@ import { z } from 'zod'
 import { getPool } from '../db'
 import { queuePaymentStep } from '../guest-api'
 import { enqueueJob } from '../jobs'
-import { logError } from '../log'
+import { logError, logWarn } from '../log'
 import { requireTenant } from '../session'
 import { identifyAtSharedDevice, ownActor } from '../staff/service'
 import { getVenue } from '../venues'
@@ -468,13 +468,26 @@ export async function answerPaymentAction(input: unknown): Promise<TonightResult
 }
 
 /**
+ * A browser's real push service missing from core's list would otherwise refuse phones with no trace.
+ * The host alone: the endpoint's path is the device's secret.
+ */
+function logRefusedPushHost(input: unknown): void {
+  const endpoint = (input as { endpoint?: unknown } | null)?.endpoint
+  if (typeof endpoint !== 'string' || !URL.canParse(endpoint)) return
+  logWarn('push_endpoint_refused', { host: new URL(endpoint).hostname.slice(0, 253) })
+}
+
+/**
  * Registers this browser for the signed-in account's alerts (RR-86, D120), or says it again so a
  * rotated endpoint doesn't silently stop. On a shared device that is the device's own account, with
  * no PIN, at the device's own venue: core refuses any other.
  */
 export async function subscribePushAction(input: unknown): Promise<TonightResult> {
   const parsed = PushDevice.safeParse(input)
-  if (!parsed.success) return INVALID
+  if (!parsed.success) {
+    logRefusedPushHost(input)
+    return INVALID
+  }
   const { endpoint, p256dh, auth } = parsed.data
   return perform(parsed.data, (scope) =>
     command(scope, { type: 'push.subscribe', endpoint, p256dh, auth }),

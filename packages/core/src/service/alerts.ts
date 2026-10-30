@@ -34,6 +34,10 @@ const PUSH_SERVICE_HOSTS: readonly string[] = [
   // Chrome, and the browsers built on it that use Google's service (Samsung Internet, Opera).
   'fcm.googleapis.com',
 ]
+// Chromium builds outside branded stable Chrome, and some Chrome versions: Google's push service on
+// numbered hosts (seen as jmt17.google.com, not documented by Google). Exact shape only: a wider
+// `.google.com` would let an account aim the worker at any Google host.
+const GOOGLE_NUMBERED_HOST = /^jmt[0-9]{1,3}[.]google[.]com$/
 const PUSH_SERVICE_SUFFIXES = [
   // Firefox.
   '.push.services.mozilla.com',
@@ -58,6 +62,7 @@ function isPushServiceEndpoint(endpoint: string): boolean {
   return (
     endpoint.startsWith(`https://${host}/`) &&
     (PUSH_SERVICE_HOSTS.includes(host) ||
+      GOOGLE_NUMBERED_HOST.test(host) ||
       PUSH_SERVICE_SUFFIXES.some((suffix) => host.endsWith(suffix)))
   )
 }

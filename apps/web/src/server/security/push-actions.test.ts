@@ -108,6 +108,17 @@ describe.skipIf(!hasDatabase)('a staff device for push (RR-86)', () => {
     expect(await stored(phone.endpoint)).toEqual([])
   })
 
+  it('names only the host of a push service it refuses, so a real one missing is found', async () => {
+    as(org, org.ownerId)
+    const refused = await subscribePushAction({
+      venueId: org.venues[0].id,
+      ...device('x'),
+      endpoint: 'https://push.example.org/send/the-device-secret',
+    })
+    expect(refused).toEqual({ ok: false, error: 'invalid' })
+    expect(seen.warnings).toEqual([{ event: 'push_endpoint_refused', host: 'push.example.org' }])
+  })
+
   it('refuses what a browser never sends', async () => {
     as(org, org.ownerId)
     const venueId = org.venues[0].id

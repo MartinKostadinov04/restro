@@ -25,6 +25,7 @@ describe('the push services a device may name (RR-86)', () => {
 
   it.each([
     'https://fcm.googleapis.com/fcm/send/abc',
+    'https://jmt17.google.com/fcm/send/abc',
     'https://updates.push.services.mozilla.com/wpush/v2/abc',
     'https://web.push.apple.com/abc',
     'https://wns2-par02p.notify.windows.com/w/?token=abc',
@@ -38,6 +39,12 @@ describe('the push services a device may name (RR-86)', () => {
     'https://web.push.apple.com.example.org/abc',
     'https://xnotify.windows.com/abc',
     'https://evilfcm.googleapis.com/abc',
+    'https://google.com/abc',
+    'https://mail.google.com/abc',
+    'https://evil.jmt17.google.com/abc',
+    'https://notjmt17.google.com/abc',
+    'https://jmt1700.google.com/abc',
+    'https://jmt17.google.com.example.org/abc',
     'https://sub.fcm.googleapis.com/abc',
     'https://fcm.googleapis.com.example.org/abc',
     'https://push.apple.com/abc',
