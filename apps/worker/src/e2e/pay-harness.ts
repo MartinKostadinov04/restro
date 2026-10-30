@@ -14,8 +14,9 @@
 //      (`pay_harness_bills`). Closing stdin stops everything.
 //
 // With `PAY_HARNESS_PAGE=1` (apps/web/e2e/guest-pay-card.spec.ts, #114) the run also publishes a
-// qr-phone menu and prints the guest page's path with the ready line (`path`), so a browser can be
-// the guest. With `PAY_HARNESS_PROVIDER=stripe` the venue is connected to the Stripe sandbox account
+// menu, in the design the spec names (`PAY_HARNESS_DESIGN`, a design record as JSON: this process
+// has no Styles of its own), and prints the guest page's path with the ready line (`path`), so a
+// browser can be the guest. With `PAY_HARNESS_PROVIDER=stripe` the venue is connected to the Stripe sandbox account
 // named by `STRIPE_E2E_ACCOUNT` and the worker pays through the real provider (`STRIPE_SECRET_KEY`,
 // `PAYMENTS_ENV=test`): nothing on the card side is played by this process then, the page's own card
 // form is the guest. Sandbox keys only; the provider refuses a live key outside production.
@@ -31,13 +32,8 @@ import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
 
 import {
-  createPublishStore,
-  publishPutOptions,
-  publishStoreConfig,
-  snapshotPath,
-} from '@restro/assets'
-import {
   DEFAULT_ORDERING_SETTINGS,
+  DesignContentSchema,
   hashTableCode,
   type IntegrationId,
   menuPath,
@@ -84,10 +80,11 @@ const SCENARIO = PAY_FIRST ? 'pay-first' : 'demo-bar'
 const PAY_FIRST_ARTICLE = { id: '2002', name: 'Aperol Spritz', priceMinor: 1_100 }
 /** The run that publishes a menu and prints the guest page's path (#114). */
 const PAGE = process.env.PAY_HARNESS_PAGE === '1'
-/** The template that run draws: the reference template unless the spec names another (#239). */
-const PAGE_FACE = /^[a-z][a-z0-9-]{0,31}$/.test(process.env.PAY_HARNESS_FACE ?? '')
-  ? (process.env.PAY_HARNESS_FACE as string)
-  : 'qr-phone'
+/** The design that run draws; with none, the venue draws the default one. */
+const PAGE_DESIGN =
+  PAGE && process.env.PAY_HARNESS_DESIGN
+    ? DesignContentSchema.parse(JSON.parse(process.env.PAY_HARNESS_DESIGN))
+    : null
 /** The run through the real provider's sandbox (#114): its connected account comes from the env. */
 const STRIPE = process.env.PAY_HARNESS_PROVIDER === 'stripe'
 /** This run's key for the bill's line ids (the e2e worker reads no bill). */
@@ -397,6 +394,19 @@ async function publishPayFirstMenu(
       throw new Error(`the pay-first menu was refused: ${JSON.stringify(applied.rejected)}`)
     }
   }
+  if (PAGE_DESIGN !== null) {
+    // The harness made this venue a moment ago, so it has no design record yet: revision 0.
+    const applied = await apply(
+      pool,
+      tenantId,
+      changeSet('manual', 'system', [
+        { op: 'setDesign', venueId, expectedRevision: 0, design: PAGE_DESIGN },
+      ]),
+    )
+    if (applied.rejected.length > 0) {
+      throw new Error(`the design was refused: ${JSON.stringify(applied.rejected)}`)
+    }
+  }
   await setGuestFeatures(pool, tenantId, {
     venueId,
     features: {
@@ -414,22 +424,6 @@ async function publishPayFirstMenu(
     actor: 'system',
   })
   if (published.status === 'held') throw new Error('the pay-first menu was held, not published')
-  if (PAGE) {
-    // The page's run draws the reference template: new snapshots name no template (D129), so the
-    // published file says so. The file writer leaves a snapshot file that exists alone.
-    const store = await createPublishStore(publishStoreConfig(process.env))
-    const file = snapshotPath(published.snapshot.id)
-    await store.put(
-      file,
-      new TextEncoder().encode(
-        JSON.stringify({
-          ...published.snapshot.body,
-          presentation: { face: PAGE_FACE, options: {} },
-        }),
-      ),
-      publishPutOptions(file),
-    )
-  }
   return item
 }
 

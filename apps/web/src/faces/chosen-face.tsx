@@ -1,16 +1,15 @@
 'use client'
 
-// Draws the template a venue chose, loading it on first use. The guest page and the previews both
-// render through this: they pick an entry from the registry (`faceEntry`), build the view model
-// with that entry's manifest, and hand the entry and the host props here. The face's code is a
-// separate chunk (the registry's `load` is a dynamic import), so a guest downloads one template.
+// Draws the renderer, loading it on first use. The guest page and the previews both render through
+// this: they take the entry from the registry (`faceEntry`), build the view model with that entry's
+// manifest, and hand the entry and the host props here. The face's code is a separate chunk (the
+// registry's `load` is a dynamic import), so the first paint does not wait for it.
 //
 // While the chunk is on its way the host's loading skeleton shows. If it cannot be fetched (the
 // phone lost its connection) or the face fails while drawing, a short notice offers another try
 // instead of an error page; the next try loads the chunk again.
 
 import { localeToBcp47 } from '@restro/core'
-import { QrPhoneNotice, QrPhoneSkeleton } from '@restro/qr-phone/notices'
 import type { FaceHostProps } from '@restro/shell'
 import {
   Component,
@@ -22,6 +21,7 @@ import {
   useState,
 } from 'react'
 
+import { MenuNotice, MenuSkeleton } from './notices'
 import type { FaceEntry } from './registry'
 
 /** The words the loading and failure states need, from the shell's guest strings. */
@@ -82,7 +82,7 @@ export function ChosenFace({
     <LoadBoundary
       key={`${entry.id}:${attempt}`}
       failed={
-        <QrPhoneNotice
+        <MenuNotice
           title={strings.loadFailedTitle}
           text={strings.loadFailedText}
           lang={lang}
@@ -94,7 +94,7 @@ export function ChosenFace({
         />
       }
     >
-      <Suspense fallback={<QrPhoneSkeleton label={strings.loading} lang={lang} />}>
+      <Suspense fallback={<MenuSkeleton label={strings.loading} lang={lang} />}>
         <Face {...host} />
       </Suspense>
     </LoadBoundary>

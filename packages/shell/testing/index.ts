@@ -3,6 +3,7 @@
 // `faceContractSuite`, which every face's test calls, and `stubServices`, the empty services
 // binding a face is rendered with.
 
+export { BASIC_DESIGN_VALUES } from '@restro/core'
 export {
   ADD_SLOT,
   assertFaceContract,
@@ -21,6 +22,27 @@ export {
   STATE_ATTRIBUTE,
 } from './contract'
 export { assertFaceScopedCss, assertThemeOnlyCss, NAMED_COLOURS } from './css'
+export { type CssRule, cssRules, fontSizePx, resolvedCss, withCalc, withTokens } from './css-rules'
+export {
+  assertTextFloors,
+  type DesignCase,
+  type DesignContractOptions,
+  type DesignFailure,
+  type DesignReport,
+  type DrawnOptions,
+  designCases,
+  designView,
+  fingerprint,
+  firstRootAttributes,
+  INPUT_FLOOR_PX,
+  neverListFixtures,
+  PART_ATTRIBUTE,
+  runDesignContract,
+  storedRendering,
+  styleCases,
+  TEXT_FLOOR_PX,
+  withDesign,
+} from './design-contract'
 export {
   CUSTOM_ROLES,
   type Fixture,

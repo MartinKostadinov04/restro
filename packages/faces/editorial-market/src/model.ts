@@ -3,6 +3,7 @@
 // as CSS variables. No React and nothing from outside @restro/shell.
 
 import type {
+  DesignValues,
   Locale,
   ViewBadge,
   ViewImage,
@@ -216,4 +217,19 @@ export function themeVariables(
     '--rm-radius': `${theme.radius}px`,
     '--rm-shadow': String(shadow),
   }
+}
+
+/**
+ * The General page as data attributes on the face's root (D130): `corners` to `data-corners`,
+ * `heading_font` to `data-heading-font`. Every General option comes through this one loop, so an
+ * option added to the contract is on the root the day it exists. `style` names the premade the
+ * venue started from and `colours` is the colour page's: neither is a look of its own.
+ */
+export function generalAttributes(design: DesignValues): Readonly<Record<string, string>> {
+  const attributes: Record<string, string> = {}
+  for (const [option, value] of Object.entries(design.general ?? {})) {
+    if (option === 'style' || option === 'colours') continue
+    attributes[`data-${option.replace(/_/g, '-')}`] = value
+  }
+  return attributes
 }

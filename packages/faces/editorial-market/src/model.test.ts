@@ -83,10 +83,9 @@ describe('the filters', () => {
       'Olives',
       'Halloumi',
       'Burger',
-      'Steak',
     ])
     const one = { dietary: new Set<string>(), tags: new Set([SPICY_TAG]) }
-    expect(names(all.filter((item) => matchesFilters(item, one)))).toEqual(['Olives', 'Steak'])
+    expect(names(all.filter((item) => matchesFilters(item, one)))).toEqual(['Olives'])
   })
 
   it('lets everything through when nothing is switched on', () => {

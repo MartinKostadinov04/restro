@@ -7,8 +7,7 @@
 // composer from S3-06 on and the tag filter needs some. The demo venue's code is random and made
 // by the database seed; the specs read it from the database (e2e/menu-path.ts), and this script
 // prints the addresses when it is done. A third menu (`LOOK_PUBLIC_ID`, `/m/look-fixture-<code>`) is the
-// same fixture with a venue that chose the reference template, a forced dark scheme and another font
-// (SH-04).
+// same fixture with a forced dark scheme and another font (SH-04).
 //
 // The publish goes the real way: `publishMenu` (core/apply), then the worker's own
 // `writePublishFiles` (snapshot, pointer, venue index) and `runAssetVariants` (webp photo variants
@@ -282,7 +281,6 @@ async function main(): Promise<void> {
     },
     menu: { ...tagged.menu, id: lookIds.menu },
     theme: { ...tagged.theme, font: 'Playfair Display', scheme: 'dark' as const },
-    presentation: { face: 'qr-phone', options: {} },
   }
   const lookMenu = lookIds.menu as NodeId
   const lookVenue = lookIds.venue as VenueId

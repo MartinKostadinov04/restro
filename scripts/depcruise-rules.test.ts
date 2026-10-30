@@ -65,7 +65,7 @@ const base: Files = {
   'packages/barsy/src/index.ts': 'export const barsy = 1',
   'packages/core/src/index.ts': 'export const core = 1',
   'packages/shell/src/index.ts': 'export const shell = 1',
-  'packages/faces/qr-phone/src/index.ts': 'export const face = 1',
+  'packages/faces/some-face/src/index.ts': 'export const face = 1',
   'apps/web/app/page.ts': 'export const page = 1',
   'apps/worker/src/index.ts': 'export const worker = 1',
 }
@@ -81,7 +81,7 @@ describe('allowed layout', () => {
       'packages/core/src/read.ts': "import { db } from '../../db/src/index'\nexport const c = db",
       'packages/shell/src/view.ts':
         "import { core } from '../../core/src/index'\nexport const d = core",
-      'packages/faces/qr-phone/src/view.ts':
+      'packages/faces/some-face/src/view.ts':
         "import type { shell } from '../../../shell/src/index'\nexport type E = typeof shell",
       'packages/barsy/src/client.ts': "import { barsy } from './index'\nexport const f = barsy",
       'apps/web/app/layout.ts':
@@ -127,9 +127,9 @@ describe('rule 1: shell and faces stay pure', () => {
     const lines = await expectRules(
       {
         ...base,
-        'packages/faces/qr-phone/src/a.ts': "import '@restro/db'",
-        'packages/faces/qr-phone/src/b.ts': "import '@restro/barsy'",
-        'packages/faces/qr-phone/src/c.ts': "import '../../../../apps/web/app/page'",
+        'packages/faces/some-face/src/a.ts': "import '@restro/db'",
+        'packages/faces/some-face/src/b.ts': "import '@restro/barsy'",
+        'packages/faces/some-face/src/c.ts': "import '../../../../apps/web/app/page'",
       },
       [
         'faces-only-react-and-shell',
@@ -155,7 +155,7 @@ describe('rule 1: shell and faces stay pure', () => {
       {
         ...base,
         'packages/shell/src/io.ts': `import '${builtin}'`,
-        'packages/faces/qr-phone/src/io.ts': `import '${builtin}'`,
+        'packages/faces/some-face/src/io.ts': `import '${builtin}'`,
       },
       ['faces-only-react-and-shell', 'pure-layers-no-io-builtins'],
     )
@@ -212,7 +212,7 @@ describe('the service write path is called from server code only (D122 §9)', ()
       {
         ...service,
         'packages/shell/src/a.ts': "import '@restro/core/service'",
-        'packages/faces/qr-phone/src/b.ts': "import '@restro/core/service'",
+        'packages/faces/some-face/src/b.ts': "import '@restro/core/service'",
         'apps/web/app/m/page.ts': "import '@restro/core/service'",
         'apps/web/src/guest/view.ts': "import '../../../../packages/core/src/service/index'",
         'packages/core/src/apply/apply.ts': "import '../service/index'",
@@ -547,7 +547,7 @@ describe('rule 6: no circular dependencies', () => {
 describe("a face's preview adapter and the shell's money arithmetic", () => {
   const faceFiles: Files = {
     ...base,
-    'packages/faces/qr-phone/src/preview/index.ts': 'export const demo = 1',
+    'packages/faces/some-face/src/preview/index.ts': 'export const demo = 1',
     'packages/shell/src/money-math.ts': 'export const addMinor = 1',
   }
 
@@ -555,12 +555,12 @@ describe("a face's preview adapter and the shell's money arithmetic", () => {
     const lines = await expectRules(
       {
         ...faceFiles,
-        'apps/web/src/guest/menu.ts': "import '@restro/qr-phone/preview'",
+        'apps/web/src/guest/menu.ts': "import '@restro/some-face/preview'",
         'apps/web/src/guest/relative.ts':
-          "import '../../../../packages/faces/qr-phone/src/preview/index'",
+          "import '../../../../packages/faces/some-face/src/preview/index'",
         'apps/web/app/m/[venue]/page.ts': "import '@restro/editorial-market/preview'",
         'apps/web/app/m/[venue]/relative.ts':
-          "import '../../../../../packages/faces/qr-phone/src/preview/index'",
+          "import '../../../../../packages/faces/some-face/src/preview/index'",
       },
       ['guest-never-imports-face-preview'],
     )
@@ -571,11 +571,11 @@ describe("a face's preview adapter and the shell's money arithmetic", () => {
     await expectRules(
       {
         ...faceFiles,
-        'apps/web/src/guest/menu.ts': "import '@restro/qr-phone'",
-        'apps/web/src/design/panel.ts': "import '@restro/qr-phone/preview'",
+        'apps/web/src/guest/menu.ts': "import '@restro/some-face'",
+        'apps/web/src/design/panel.ts': "import '@restro/some-face/preview'",
         'apps/web/src/design/relative.ts':
-          "import '../../../../packages/faces/qr-phone/src/preview/index'",
-        'packages/faces/qr-phone/src/face.ts': "import './preview/index'",
+          "import '../../../../packages/faces/some-face/src/preview/index'",
+        'packages/faces/some-face/src/face.ts': "import './preview/index'",
       },
       [],
     )
@@ -585,9 +585,9 @@ describe("a face's preview adapter and the shell's money arithmetic", () => {
     const lines = await expectRules(
       {
         ...faceFiles,
-        'packages/faces/qr-phone/src/bag.ts': "import '@restro/shell/money'",
-        'packages/faces/qr-phone/src/relative.ts': "import '../../../shell/src/money-math'",
-        'packages/faces/qr-phone/src/services/sum.test.ts': "import '@restro/shell/money'",
+        'packages/faces/some-face/src/bag.ts': "import '@restro/shell/money'",
+        'packages/faces/some-face/src/relative.ts': "import '../../../shell/src/money-math'",
+        'packages/faces/some-face/src/services/sum.test.ts': "import '@restro/shell/money'",
       },
       ['faces-money-math-only-in-preview'],
     )
@@ -598,8 +598,8 @@ describe("a face's preview adapter and the shell's money arithmetic", () => {
     await expectRules(
       {
         ...faceFiles,
-        'packages/faces/qr-phone/src/preview/demo.ts': "import '@restro/shell/money'",
-        'packages/faces/qr-phone/src/preview/relative.ts':
+        'packages/faces/some-face/src/preview/demo.ts': "import '@restro/shell/money'",
+        'packages/faces/some-face/src/preview/relative.ts':
           "import '../../../../shell/src/money-math'",
         'packages/shell/src/bag.ts': "import './money-math'",
         'apps/web/src/design/sum.ts': "import '@restro/shell/money'",
@@ -658,7 +658,7 @@ describe('the guest page reads published files only (rule 4)', () => {
       {
         ...guestBase,
         'apps/web/src/guest/menu.ts':
-          "import '@restro/shell'\nimport '@restro/qr-phone'\nimport '@restro/core'",
+          "import '@restro/shell'\nimport '@restro/some-face'\nimport '@restro/core'",
         'apps/web/src/server/token.ts': "import '@restro/assets'",
       },
       [],
@@ -670,10 +670,10 @@ describe('a face imports only react and the shell (SH-04)', () => {
   const faces: Files = {
     ...base,
     'packages/shell/testing/index.ts': 'export const testing = 1',
-    'packages/faces/qr-phone/src/model.ts': 'export const model = 1',
+    'packages/faces/some-face/src/model.ts': 'export const model = 1',
     'packages/faces/editorial-market/src/index.ts': 'export const other = 1',
   }
-  const FACE = 'packages/faces/qr-phone/src'
+  const FACE = 'packages/faces/some-face/src'
 
   it('rejects core, an icon library, another face and a Node built-in (as written and by path)', async () => {
     const lines = await expectRules(
@@ -687,7 +687,7 @@ describe('a face imports only react and the shell (SH-04)', () => {
         [`${FACE}/crypto.ts`]: "import 'node:crypto'",
         [`${FACE}/type-only.ts`]:
           "import type { Locale } from '@restro/core'\nexport type L = Locale",
-        'packages/faces/editorial-market/src/deep.ts': "import '../../qr-phone/src/model'",
+        'packages/faces/editorial-market/src/deep.ts': "import '../../some-face/src/model'",
       },
       ['faces-only-react-and-shell'],
     )

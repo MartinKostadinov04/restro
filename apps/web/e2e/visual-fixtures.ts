@@ -1,12 +1,13 @@
 // What the accessibility and visual audit of the Editorial Market (brief SH-07) shares between its
-// fixtures (scripts/seed-visual-e2e.ts) and its specs (faces-a11y.spec.ts, faces-visual.spec.ts):
-// five published menus, one per theme, with the same content, so every theme meets the same hard
-// cases (long names, sold-out and scheduled items, photos in every layout, every allergen).
+// fixtures (scripts/seed-visual-e2e.ts) and its specs (faces-a11y.spec.ts, faces-visual.spec.ts,
+// faces-design.spec.ts): five published menus in Editorial, one per theme, and one more for each
+// Style and each value of the General options, all with the same content, so every one meets the
+// same hard cases (long names, a scheduled item, photos in every layout, every allergen).
 //
 // Like the look fixture of the guest page (e2e/support.ts) these menus have no venue row: they are
 // snapshot files in the e2e publish folder, found by a fixed public code.
 
-import { fixtureId } from '@restro/shell/testing'
+import { designCases, fixtureId } from '@restro/shell/testing'
 
 /** The five themes of the audit: the designer's four presets and one made from three colours. */
 export const VISUAL_THEMES = [
@@ -25,14 +26,36 @@ export type VisualThemeId = VisualTheme['id']
 /** The custom theme's three colours (primary, secondary, tertiary), as the brief names them. */
 export const CUSTOM_COLOURS = { primary: '#f6f1e9', secondary: '#e9dccb', tertiary: '#7a2e8c' }
 
-/** A template id as the registry spells it (`editorial-market`, `qr-phone`): lower case and hyphens. */
+/** A template id as the registry spells it (`editorial-market`): lower case and hyphens. */
 export const isFaceId = (id: string): boolean => /^[a-z][a-z0-9-]*$/.test(id)
 
 /** The slug in front of a fixture menu's public code. */
 export const VISUAL_SLUG = 'visual-fixture'
 
 /** The address of a fixture menu: `/m/visual-fixture-<code>`. */
-export const visualPath = (theme: VisualTheme): string => `/m/${VISUAL_SLUG}-${theme.publicId}`
+export const visualPath = (theme: { readonly publicId: string }): string =>
+  `/m/${VISUAL_SLUG}-${theme.publicId}`
+
+/**
+ * One menu per design the renderer's audit runs on: each Style, and each value of each General
+ * option over Basic (D130). The same list as the never-list harness sweeps in the renderer's tests.
+ */
+export const DESIGN_VARIANTS = designCases({
+  general: [
+    'screen',
+    'body_font',
+    'heading_font',
+    'heading_weight',
+    'corners',
+    'depth',
+    'density',
+    'text_size',
+    'buttons',
+  ],
+}).map((one, index) => ({ ...one, publicId: `visualdes${String(index + 1).padStart(3, '0')}` }))
+
+/** One design of the audit. */
+export type DesignVariant = (typeof DESIGN_VARIANTS)[number]
 
 /** The label of the table every fixture menu's table code opens. */
 export const VISUAL_TABLE_LABEL = '12'
@@ -61,8 +84,6 @@ export const LOGO_MARKS = {
 export const VISUAL_ITEMS = {
   /** A photo card in the photo strip, with a "new" badge and many labels. */
   negroni: 'Негрони',
-  /** A photo card that is sold out. */
-  soldOut: 'Пшенична бира',
   /** A photo card whose hours have not come. */
   scheduled: 'Нощен шот',
   /** A photo card with all fourteen allergens and two groups of choices. */

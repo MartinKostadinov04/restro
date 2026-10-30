@@ -30,7 +30,9 @@ import { CUSTOM_COLOURS, isFaceId, type VisualTheme } from './visual-fixtures'
 /** The template this run draws: `FACES_VISUAL_FACE`, or Editorial Market. */
 export const FACE_ID = process.env.FACES_VISUAL_FACE || 'editorial-market'
 if (!isFaceId(FACE_ID)) {
-  throw new Error(`FACES_VISUAL_FACE must be a template id such as "qr-phone", not "${FACE_ID}"`)
+  throw new Error(
+    `FACES_VISUAL_FACE must be a template id such as "editorial-market", not "${FACE_ID}"`,
+  )
 }
 
 /** The template's root inside the preview's phone frame. */

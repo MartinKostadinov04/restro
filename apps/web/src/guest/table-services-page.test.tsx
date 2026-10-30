@@ -260,7 +260,6 @@ describe('what the page tells the shell is supported (buildContext)', () => {
     tableToken: 'tb_guestTestTable0000001',
   }
   const editorial = faceEntry('editorial-market').manifest
-  const reference = faceEntry('qr-phone').manifest
 
   it('turns ordering and every table service off for a template that is not bound', () => {
     expect(buildContext({ ...input, manifest: editorial }).capabilities).toEqual({
@@ -276,13 +275,9 @@ describe('what the page tells the shell is supported (buildContext)', () => {
     const on = buildContext({ ...input, manifest: editorial, sharedOrder: true })
     expect(on.orderingEnabled).toBe(true)
     expect(on.capabilities).toEqual({ ordering: true, callWaiter: true, bill: true, pay: true })
-    // The reference template declares only ordering, so it is offered nothing more than before.
-    expect(buildContext({ ...input, manifest: reference, sharedOrder: true }).capabilities).toEqual(
-      { ordering: true, callWaiter: false, bill: false, pay: false },
-    )
   })
 
-  it('binds the table’s services for Editorial Market and the reference template, no other', () => {
-    expect([...SHARED_ORDER_FACES].sort()).toEqual(['editorial-market', 'qr-phone'])
+  it('binds the table’s services for the renderer, no other', () => {
+    expect([...SHARED_ORDER_FACES]).toEqual(['editorial-market'])
   })
 })

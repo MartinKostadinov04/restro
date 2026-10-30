@@ -87,6 +87,7 @@ export function LocationSheet() {
           <button
             type="button"
             className="ro-primary is-wide"
+            data-design-part="button"
             onClick={() => void controls.allow()}
           >
             <span>{words.locationAllow}</span>
@@ -108,6 +109,7 @@ export function LocationSheet() {
               <button
                 type="button"
                 className="ro-primary"
+                data-design-part="button"
                 onClick={() => {
                   void o.run({
                     kind: 'service.request',

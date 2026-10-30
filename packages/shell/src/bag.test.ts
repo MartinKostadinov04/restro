@@ -481,7 +481,9 @@ describe('a line that can no longer be ordered', () => {
     // The fixture numbers its ids in order, so the same specs give the same ids and the bag still points at them.
     const resolved = resolveBag(soldOut, bag)
     const flagged = resolved.lines.filter((line) => !line.available)
-    expect(flagged.map((line) => line.item?.name.text)).toEqual(['Steak'])
+    expect(flagged.map((line) => line.item)).toEqual([null])
+    // The menu no longer draws it (D131); the order still names it.
+    expect(flagged.map((line) => line.hidden?.name.text)).toEqual(['Steak'])
     expect(flagged[0]?.unit).toBeNull()
     expect(flagged[0]?.total).toBeNull()
     expect(resolved.canSend).toBe(false)

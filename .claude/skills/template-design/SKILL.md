@@ -27,7 +27,7 @@ Material is Martin's to bring. When the brief has none, stop and ask the lead fo
 4. `references/frontend-design/SKILL.md`, the visual direction.
 5. The motion standards the reviewer holds your CSS to: `../template-review/references/review-animations.restro-overrides.md` first, then `../template-review/references/review-animations/STANDARDS.md`; the overrides win.
 6. `references/interaction-polish.md`: the tokens and recipes you write motion and touch with.
-7. The two reference faces, `packages/faces/editorial-market` and `packages/faces/qr-phone`, as patterns for wiring the contract (override row 13). Your template looks different from both.
+7. The reference face, `packages/faces/editorial-market`, as the pattern for wiring the contract (override row 13). Your template looks different from it.
 
 ## 3. Design plan, before any code
 

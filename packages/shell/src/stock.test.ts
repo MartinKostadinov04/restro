@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 
 import type { SentOrderView } from './services'
 import { isOutOfStock, refusedOutOfStock } from './stock'
-import type { ViewItem } from './view-model'
 
 const MOJITO = `nd_${'0'.repeat(21)}1` as const
 const NEGRONI = `nd_${'0'.repeat(21)}2` as const
@@ -35,11 +34,12 @@ describe('out of stock (#80)', () => {
   })
 
   it('is out when refused or sold out on the menu', () => {
-    const soldOut = { state: { code: 'sold_out' } } as unknown as ViewItem
-    const onSale = { state: { code: 'available' } } as unknown as ViewItem
-    expect(isOutOfStock(MOJITO, onSale, new Set([MOJITO]))).toBe(true)
-    expect(isOutOfStock(NEGRONI, soldOut, new Set())).toBe(true)
-    expect(isOutOfStock(NEGRONI, onSale, new Set([MOJITO]))).toBe(false)
-    expect(isOutOfStock(NEGRONI, undefined, new Set())).toBe(false)
+    const name = { text: 'Negroni', lang: 'en_US' } as const
+    const hidden = { [NEGRONI]: { name, code: 'sold_out' } } as const
+    const stopped = { [NEGRONI]: { name, code: 'unavailable' } } as const
+    expect(isOutOfStock(MOJITO, {}, new Set([MOJITO]))).toBe(true)
+    expect(isOutOfStock(NEGRONI, hidden, new Set())).toBe(true)
+    expect(isOutOfStock(NEGRONI, stopped, new Set())).toBe(false)
+    expect(isOutOfStock(NEGRONI, {}, new Set([MOJITO]))).toBe(false)
   })
 })

@@ -18,7 +18,6 @@
     "@restro/core": "workspace:*",
     "@restro/db": "workspace:*",
     "@restro/editorial-market": "workspace:*",
-    "@restro/qr-phone": "workspace:*",
     "@restro/shell": "workspace:*",
     "@stripe/stripe-js": "10.2.0",
     "better-auth": "1.7.7",

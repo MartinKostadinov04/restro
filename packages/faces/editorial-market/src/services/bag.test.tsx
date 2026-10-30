@@ -44,7 +44,6 @@ const view = orderingView()
 const hummus = itemNamed(view, 'Hummus')
 const mojito = itemNamed(view, 'Mojito')
 const bowl = itemNamed(view, 'Bowl')
-const steak = itemNamed(view, 'Steak')
 
 const quickAdd = (name: string) => screen.getByRole('button', { name: `Add ${name}` })
 const bagButton = () => screen.queryByRole('button', { name: /View bag/ })
@@ -59,22 +58,29 @@ const sendButton = (sheet: HTMLElement) =>
 const maybeSendButton = (sheet: HTMLElement) =>
   within(sheet).queryByRole('button', { name: /^Send (\d+ items?|the other \d+)$/ })
 
-/** The view with one dish no longer orderable (sold out): the same ids, so the order still points at it. */
+/** The view with one dish that lost its ordering controls: still on the menu, the same ids. */
 function withoutControls(source: ViewModel, name: string): ViewModel {
   return {
     ...source,
     sections: source.sections.map((section) => ({
       ...section,
       items: section.items.map((item) =>
-        item.name.text === name
-          ? {
-              ...item,
-              order: { controls: false, askWaiter: null },
-              state: { ...item.state, code: 'sold_out' as const },
-            }
-          : item,
+        item.name.text === name ? { ...item, order: { controls: false, askWaiter: null } } : item,
       ),
     })),
+  }
+}
+
+/** The view with one dish sold out: off the menu (D131), its name kept for what is already ordered. */
+function withSoldOut(source: ViewModel, name: string): ViewModel {
+  const item = itemNamed(source, name)
+  return {
+    ...source,
+    sections: source.sections.map((section) => ({
+      ...section,
+      items: section.items.filter((entry) => entry.id !== item.id),
+    })),
+    hiddenItems: { ...source.hiddenItems, [item.id]: { name: item.name, code: 'sold_out' } },
   }
 }
 
@@ -134,9 +140,7 @@ describe('what is drawn, and what is not (test 1)', () => {
     drawFace(orderHost())
     expect(quickAdd('Hummus')).toBeTruthy()
     expect(quickAdd('Mojito')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Add Steak' })).toBeNull() // sold out
     expect(screen.queryByRole('button', { name: 'Add Vodka' })).toBeNull() // ask the waiter
-    expect(itemNamed(view, 'Steak').order.controls).toBe(false)
     expect(itemNamed(view, 'Vodka').order.controls).toBe(false)
   })
 
@@ -148,8 +152,8 @@ describe('what is drawn, and what is not (test 1)', () => {
 
   it('draws the controls of the dish page only for a dish that can be ordered', () => {
     drawFace(orderHost())
-    fireEvent.click(screen.getByRole('button', { name: /^Steak/ }))
-    const page = screen.getByRole('dialog', { name: 'Steak' })
+    fireEvent.click(screen.getByRole('button', { name: /^Vodka/ }))
+    const page = screen.getByRole('dialog', { name: 'Vodka' })
     expect(within(page).queryByRole('button', { name: /Add to bag/ })).toBeNull()
     fireEvent.keyDown(window, { key: 'Escape' })
     fireEvent.click(screen.getByRole('button', { name: /^Hummus/ }))
@@ -421,13 +425,14 @@ describe('the order sheet: the lines the host has', () => {
     expect(sendButton(sheet).textContent).toBe(W.sendItems(1))
   })
 
-  it('greys a sold-out line, keeps it on the order and says "Send the other N"', async () => {
+  it('greys a sold-out line, keeps it on the order with its name and says "Send the other N"', async () => {
     const host = orderHost({ order: orderOf([orderLine(hummus), orderLine(mojito, 2)]) })
-    drawFace(host, withoutControls(view, 'Hummus'))
+    drawFace(host, withSoldOut(view, 'Hummus'))
     const sheet = openBag()
     const line = sheet.querySelector(`[data-item-id="${hummus.id}"]`) as HTMLElement
     expect(line.getAttribute('data-sold-out')).toBe('')
     expect(line.textContent).toContain(W.lineSoldOut)
+    expect(line.textContent).toContain('Hummus')
     expect(sendButton(sheet).textContent).toBe(W.sendOthers(2))
     fireEvent.click(sendButton(sheet))
     await waitFor(() => expect(host.of('order.send')).toHaveLength(1))

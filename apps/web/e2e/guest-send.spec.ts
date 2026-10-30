@@ -7,7 +7,7 @@
 //   - the same, while a waiter puts the very same round on: reading back cannot tell the two
 //     apart, so the Send ends Unconfirmed and the phone says to show its reference to a waiter.
 //
-// Both run on each template that draws the shared order (guest-faces.ts, #239).
+// Both run on the renderer in both Styles (guest-faces.ts).
 //
 // Table 1 is open with a waiter's Mojito in both (on the pilot's profile only a waiter opens a POS
 // bill). The fixture is scripts/seed-send-e2e.ts (run here before each test: a new code, a fresh
@@ -16,7 +16,7 @@
 import { devices, expect, type Page, test } from '@playwright/test'
 
 import { runScript } from './global-setup'
-import { faceRoot, ORDER_FACES, type OrderFace, showOrder } from './guest-faces'
+import { faceRoot, ORDER_STYLES, type OrderStyle, showOrder } from './guest-faces'
 
 test.use({ ...devices['Pixel 7'] })
 
@@ -49,8 +49,8 @@ async function articlesOnTable(): Promise<string[]> {
   return (table?.bills ?? []).flatMap((bill) => bill.rows.map((row) => row.article))
 }
 
-function seed(face: OrderFace): { path: string; code: string } {
-  const output = runScript('./scripts/seed-send-e2e.ts', 'seed', SIM, face)
+function seed(style: OrderStyle): { path: string; code: string } {
+  const output = runScript('./scripts/seed-send-e2e.ts', 'seed', SIM, style)
   const line = output
     .split('\n')
     .reverse()
@@ -67,16 +67,15 @@ const TURNSTILE_STUB = `window.turnstile = {
 }`
 
 /** A phone on table 1 with a Negroni in the table's order, ready to Send. */
-async function phoneWithANegroni(page: Page, face: OrderFace): Promise<void> {
+async function phoneWithANegroni(page: Page, style: OrderStyle): Promise<void> {
   await page.route('https://challenges.cloudflare.com/turnstile/**', (route) =>
     route.fulfill({ contentType: 'text/javascript', body: TURNSTILE_STUB }),
   )
-  const { path, code } = seed(face)
+  const { path, code } = seed(style)
   await page.goto(`${path}?lang=en#t=${code}`)
-  await expect(faceRoot(page, face)).toBeVisible()
+  await expect(faceRoot(page)).toBeVisible()
   await page.locator('[data-slot="item.add"]').first().click()
-  // The order is on screen: inline on the reference template, in the bag sheet on Editorial Market.
-  await showOrder(page, face)
+  await showOrder(page)
   const line = page.locator('[data-order-line]')
   await expect(line).toHaveCount(1, { timeout: 20_000 })
   await expect(line.first()).not.toHaveAttribute('data-pending', '', { timeout: 20_000 })
@@ -84,14 +83,14 @@ async function phoneWithANegroni(page: Page, face: OrderFace): Promise<void> {
 
 const sentOrder = (page: Page) => page.locator('[data-sent-order]')
 
-for (const face of ORDER_FACES) {
-  test.describe(`on ${face}`, () => {
+for (const style of ORDER_STYLES) {
+  test.describe(`in ${style}`, () => {
     test('a round that lands but whose answer never comes is found on the bill: Added', async ({
       page,
     }) => {
       test.setTimeout(120_000)
       await loadScenario('send-lands-then-hangs')
-      await phoneWithANegroni(page, face)
+      await phoneWithANegroni(page, style)
 
       await page.locator('[data-send]').click()
       await expect(sentOrder(page)).toHaveCount(1)
@@ -108,7 +107,7 @@ for (const face of ORDER_FACES) {
     }) => {
       test.setTimeout(120_000)
       await loadScenario('send-unconfirmed')
-      await phoneWithANegroni(page, face)
+      await phoneWithANegroni(page, style)
 
       await page.locator('[data-send]').click()
       await expect(sentOrder(page)).toHaveAttribute('data-sent-state', 'unconfirmed', SETTLED)

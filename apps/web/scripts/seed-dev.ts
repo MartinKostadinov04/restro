@@ -112,8 +112,7 @@ async function main(): Promise<void> {
   const demoBar = seedsDemoBar(process.env) ? await seedDemoBar(pool, organizationId) : null
 
   // 7. Demo Bar's guest services on, for the ordering and paying walks from a phone. The change
-  // reaches guests with the next publish. Its page draws the default template, which shows them
-  // once #239 lands.
+  // reaches guests with the next publish. Its page draws Basic, the default design.
   if (demoBar !== null) {
     const demoBarId = demoBar.venueId as VenueId
     await setGuestFeatures(pool, organizationId, {

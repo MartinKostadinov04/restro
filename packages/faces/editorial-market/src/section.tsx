@@ -40,6 +40,7 @@ export function SectionBlock({
       id={sectionDomId(section.id)}
       className={feature ? 'rm-section is-feature' : 'rm-section'}
       data-section-layout={section.hints.layout}
+      data-design-part="section"
       hidden={isFiltering(filters) && !hasVisibleItems(section, filters)}
     >
       <div className="rm-section-head">
@@ -51,13 +52,13 @@ export function SectionBlock({
             sizes="(min-width: 821px) 752px, (min-width: 641px) calc(100vw - 68px), calc(100vw - 40px)"
           />
         ) : null}
-        <Text as={Title} value={section.title} page={locale} />
+        <Text as={Title} value={section.title} page={locale} part="section.title" />
         {section.description !== null ? (
           <Text as="p" value={section.description} page={locale} />
         ) : null}
         {tools}
       </div>
-      <div className="rm-items">
+      <div className="rm-items" data-design-part={feature ? 'strip' : undefined}>
         {section.items.map((item, index) => (
           <Item
             key={item.id}

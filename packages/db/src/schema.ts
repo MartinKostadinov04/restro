@@ -678,15 +678,6 @@ export const menus = restro.table(
     /** Order among the venue's menus (Settings › Menus): a fractional key compared by byte order. */
     sortKey: byteOrderText('sort_key').notNull().default('a0'),
     /**
-     * Menu settings that are not columns of their own. Nothing reads or writes it since D129: the
-     * layout and the guest switch moved to the venue's design record (migration 0044 copied the
-     * live menu's), and what older rows hold stays as it was.
-     */
-    settings: jsonb('settings')
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    /**
      * When the owner moved the menu to the venue's bin (D91); null = in use. A binned menu is
      * never the live one, is left out of every list and is purged after 30 days (D83).
      */
@@ -718,7 +709,6 @@ export const menus = restro.table(
       sql`${t.name} is null or (char_length(${t.name}) between 1 and 120 and ${t.name} = btrim(${t.name}))`,
     ),
     check('menus_sort_key_format', sql`${t.sortKey} ~ '^[A-Za-z][0-9A-Za-z]*$'`),
-    check('menus_settings_object', sql`jsonb_typeof(${t.settings}) = 'object'`),
   ],
 )
 

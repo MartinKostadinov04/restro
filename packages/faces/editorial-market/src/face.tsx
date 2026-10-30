@@ -30,6 +30,7 @@ import {
   bcp47,
   countVisible,
   type Filters,
+  generalAttributes,
   hasVisibleItems,
   isFiltering,
   isStrip,
@@ -187,6 +188,7 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
       data-layout={layout}
       data-scheme={scheme}
       data-services={serviceBarShown(view, services) ? 'bar' : undefined}
+      {...generalAttributes(view.design)}
       lang={bcp47(locale)}
       style={themeVariables(view.theme, fontStacks) as CSSProperties}
     >
@@ -241,7 +243,7 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
           ) : null}
         </main>
         {view.allergenLegend.length > 0 ? (
-          <footer className="rm-footer">
+          <footer className="rm-footer" data-design-part="footer">
             <h2>{strings.footerTitle}</h2>
             <p>{strings.footerText}</p>
             <div className="rm-legend" data-slot="menu.allergen_legend">

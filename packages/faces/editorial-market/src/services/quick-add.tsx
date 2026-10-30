@@ -49,6 +49,7 @@ export function QuickAdd({ item }: { readonly item: ViewItem }) {
       <button
         type="button"
         className="ro-plus"
+        data-design-part="item.add"
         data-slot="item.add"
         aria-label={words.addNamed(item.name.text)}
         onClick={(event) => {

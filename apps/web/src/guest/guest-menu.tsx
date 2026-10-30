@@ -1,7 +1,7 @@
 'use client'
 
 // The guest phone page: loads the published files (never the database, rule 4), builds the shell's
-// view model for the guest's language and draws it with the QR phone face. It keeps itself fresh
+// view model for the guest's language and draws it with the renderer (D128). It keeps itself fresh
 // while visible: the pointer every 30 seconds (a new publish swaps the snapshot) and the sold-out
 // overlay every 15 seconds. An overlay made for another snapshot version still applies (marks belong
 // to the service day) and is fetched again at once with a cache-busting query. States: a loading
@@ -24,11 +24,11 @@ import {
   menuPath,
   parseMenuParam,
 } from '@restro/core'
-import { QrPhoneNotice, QrPhoneSkeleton } from '@restro/qr-phone/notices'
 import { buildViewModel, stringsFor } from '@restro/shell'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ChosenFace, preloadFace } from '@/faces/chosen-face'
+import { MenuNotice, MenuSkeleton } from '@/faces/notices'
 import { faceEntry } from '@/faces/registry'
 import { FONT_STACKS } from '@/fonts'
 import { cleanAddressBar } from '../connectors/card-forms'
@@ -110,6 +110,9 @@ function useVisibleInterval(callback: () => void, ms: number, enabled: boolean):
  */
 export type GuestMenuProps = { readonly address: GuestAddress } | { readonly venue: string }
 
+/** The one face (D128): a venue's look is the snapshot's design block, not another face. */
+const RENDERER = faceEntry(null)
+
 export function GuestMenu(props: GuestMenuProps) {
   const address = 'address' in props ? props.address : null
   // The code of the address of before; null for one that names no venue.
@@ -140,9 +143,8 @@ export function GuestMenu(props: GuestMenuProps) {
     setSearch(window.location.search)
     setFragment(window.location.hash)
     setBrowser(navigator.languages?.length > 0 ? navigator.languages : [navigator.language])
-    // Nearly every venue uses the default template: fetch its code now, while the menu's files are
-    // still on their way. (A venue that chose another one fetches that when its snapshot arrives.)
-    preloadFace(faceEntry(null))
+    // Fetch the renderer's code now, while the menu's files are still on their way.
+    preloadFace(RENDERER)
   }, [])
 
   // --- loading ----------------------------------------------------------------------------
@@ -297,16 +299,14 @@ export function GuestMenu(props: GuestMenuProps) {
     available: snapshot?.locales.available ?? [],
     menuDefault: snapshot?.locales.default ?? null,
   })
-  // The template the venue chose (the registry's default when it chose none); its manifest decides
-  // which photo sizes the shell asks for.
-  const faceId = snapshot?.presentation?.face
-  const entry = useMemo(() => faceEntry(faceId), [faceId])
-  // The table's shared order (#75), where the template draws it and the page has a table: the
-  // guest API's client, and ordering on in the shell's context (the venue's own switch for
+  // The table's shared order (#75), where the page has a table: the guest API's client, and
+  // ordering on in the shell's context (the venue's own switch for
   // ordering, in the snapshot's features, still decides).
   // A venue with every table service off is a menu only: its page never asks the guest API.
   const sharedOrder =
-    tableToken !== null && SHARED_ORDER_FACES.has(entry.id) && hasTableService(snapshot?.features)
+    tableToken !== null &&
+    SHARED_ORDER_FACES.has(RENDERER.id) &&
+    hasTableService(snapshot?.features)
   const services = useTableServices(sharedOrder ? tableToken : null)
   const view = useMemo(
     () =>
@@ -315,9 +315,9 @@ export function GuestMenu(props: GuestMenuProps) {
         : buildViewModel(
             snapshot,
             live,
-            buildContext({ locale, now, tableToken, manifest: entry.manifest, sharedOrder }),
+            buildContext({ locale, now, tableToken, manifest: RENDERER.manifest, sharedOrder }),
           ),
-    [snapshot, live, locale, now, tableToken, entry, sharedOrder],
+    [snapshot, live, locale, now, tableToken, sharedOrder],
   )
 
   const switchLanguage = useCallback((next: Locale) => {
@@ -361,7 +361,7 @@ export function GuestMenu(props: GuestMenuProps) {
             ? { title: strings.notPublishedTitle, text: strings.notPublishedText }
             : { title: strings.loadFailedTitle, text: strings.loadFailedText }
       return (
-        <QrPhoneNotice
+        <MenuNotice
           {...text}
           lang={localeToBcp47(shownLocale)}
           {...(phase.reason === 'unknown_venue'
@@ -370,12 +370,12 @@ export function GuestMenu(props: GuestMenuProps) {
         />
       )
     }
-    return <QrPhoneSkeleton label={strings.loading} lang={localeToBcp47(shownLocale)} />
+    return <MenuSkeleton label={strings.loading} lang={localeToBcp47(shownLocale)} />
   }
 
   return (
     <ChosenFace
-      entry={entry}
+      entry={RENDERER}
       strings={strings}
       view={view}
       assetBase={CDN_BASE}
@@ -384,7 +384,6 @@ export function GuestMenu(props: GuestMenuProps) {
       tableLabel={tableLabel}
       fontStacks={FONT_STACKS}
       scheme={view.theme.scheme}
-      options={snapshot.presentation?.options}
       {...(services === undefined ? {} : { services })}
     />
   )

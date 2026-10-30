@@ -1,0 +1,111 @@
+<div class="rm" data-face="editorial-market" data-layout="two" data-scheme="auto" data-heading-weight="heavy" data-density="spacious" data-buttons="ink" lang="en-US" style="--rm-l-background:#f6f1e7;--rm-l-surface:#ffffff;--rm-l-accent:#1f6f5c;--rm-l-onAccent:#ffffff;--rm-l-text:#1d2a26;--rm-l-muted:#566660;--rm-l-accentText:#1b5e4e;--rm-l-border:#d9d2c3;--rm-d-background:#101a17;--rm-d-surface:#18251f;--rm-d-accent:#3fb59a;--rm-d-onAccent:#06201a;--rm-d-text:#eef3f0;--rm-d-muted:#a8b8b1;--rm-d-accentText:#6fd3bb;--rm-d-border:#2a3b34;--rm-font:&quot;Inter&quot;, system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, sans-serif;--rm-radius:8px;--rm-shadow:1">
+<header class="rm-header" data-design-part="header">
+<div class="rm-brandline">
+<div class="rm-headtools">
+</div>
+</div>
+<div class="rm-titleblock" data-design-part="header.title">
+<h1 lang="bg-BG">Menu</h1>
+</div>
+</header>
+<nav class="rm-sections" aria-label="Menu sections" data-design-part="nav">
+<a href="#rm-nd_0000000000000000000001" aria-current="true">Wine</a>
+<a href="#rm-nd_0000000000000000000004">Soft drinks</a>
+</nav>
+<main>
+<section id="rm-nd_0000000000000000000001" class="rm-section" data-section-layout="vertical" data-design-part="section">
+<div class="rm-section-head">
+<h2 data-design-part="section.title">Wine</h2>
+<div class="rm-layout" role="radiogroup" aria-label="Menu layout" data-slot="menu.layout_switch" data-design-part="layout.switch">
+<button type="button" role="radio" aria-checked="false" aria-label="List" title="List" tabindex="-1">
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+<path d="M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13">
+</path>
+</svg>
+</button>
+<button type="button" role="radio" aria-checked="false" aria-label="1 column" title="1 column" tabindex="-1">
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+<rect width="18" height="18" x="3" y="3" rx="2">
+</rect>
+</svg>
+</button>
+<button type="button" role="radio" aria-checked="true" aria-label="2 columns" title="2 columns" tabindex="0">
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+<rect width="7" height="7" x="3" y="3" rx="1">
+</rect>
+<rect width="7" height="7" x="14" y="3" rx="1">
+</rect>
+<rect width="7" height="7" x="14" y="14" rx="1">
+</rect>
+<rect width="7" height="7" x="3" y="14" rx="1">
+</rect>
+</svg>
+</button>
+</div>
+</div>
+<div class="rm-items">
+<article data-item="nd_0000000000000000000002" data-state="available" data-design-part="item" class="rm-item is-priority is-text">
+<div class="rm-item-copy">
+<div data-slot="item.name" data-design-part="item.name">
+<h3>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Red wine</button>
+</h3>
+</div>
+<div data-slot="item.price" data-design-part="item.price" class="rm-price">€8.00</div>
+<div data-slot="item.state" data-state="available" class="rm-state">
+</div>
+<div data-slot="item.allergens" data-design-part="item.allergens" class="rm-allergens">
+<button type="button" aria-label="Allergens: Sulphites">
+<b data-allergen="sulphites">12</b>
+</button>
+</div>
+</div>
+</article>
+<article data-item="nd_0000000000000000000003" data-state="available" data-design-part="item" class="rm-item is-priority is-text">
+<div class="rm-item-copy">
+<div data-slot="item.name" data-design-part="item.name">
+<h3>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">White wine</button>
+</h3>
+</div>
+<div data-slot="item.price" data-design-part="item.price" class="rm-price">€7.50</div>
+<div data-slot="item.state" data-state="available" class="rm-state">
+</div>
+<div data-slot="item.allergens" data-design-part="item.allergens" class="rm-allergens">
+<button type="button" aria-label="Allergens: Sulphites">
+<b data-allergen="sulphites">12</b>
+</button>
+</div>
+</div>
+</article>
+</div>
+</section>
+<section id="rm-nd_0000000000000000000004" class="rm-section" data-section-layout="vertical" data-design-part="section">
+<div class="rm-section-head">
+<h2 data-design-part="section.title">Soft drinks</h2>
+</div>
+<div class="rm-items">
+<article data-item="nd_0000000000000000000005" data-state="available" data-design-part="item" class="rm-item is-text">
+<div class="rm-item-copy">
+<div data-slot="item.name" data-design-part="item.name">
+<h3>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Lemonade</button>
+</h3>
+</div>
+<div data-slot="item.price" data-design-part="item.price" class="rm-price">€4.50</div>
+<div data-slot="item.state" data-state="available" class="rm-state">
+</div>
+</div>
+</article>
+</div>
+</section>
+</main>
+<footer class="rm-footer" data-design-part="footer">
+<h2>Allergen information</h2>
+<p>The codes on each item stand for the allergens it contains. Ask the staff if you have an allergy or any doubt.</p>
+<div class="rm-legend" data-slot="menu.allergen_legend">
+<span>
+<b>12</b>Sulphites</span>
+</div>
+</footer>
+</div>

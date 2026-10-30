@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
-// The guest page's consent and connection behaviour on Editorial Market (RR-48 to RR-52, D118 to
-// D122), the same as `qr-phone` has it: a location sheet (consent with the Privacy link, checking,
-// the failed check) for the host's `location.prompt`, the Stop location check control, a lost Send's
-// line (D120), Send and Pay greyed while offline (D121), and the screen the face has open.
+// The guest page's consent and connection behaviour on the renderer (RR-48 to RR-52, D118 to D122):
+// a location sheet (consent with the Privacy link, checking, the failed check) for the host's
+// `location.prompt`, the Stop location check control, a lost Send's line (D120), Send and Pay
+// greyed while offline (D121), and the screen the face has open.
 
 import { LOST_SEND_HOLD_MS, type ServiceState, stringsFor } from '@restro/shell'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'

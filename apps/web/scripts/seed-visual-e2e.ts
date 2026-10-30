@@ -1,15 +1,13 @@
-// Fixtures for the accessibility and visual audit of the Editorial Market (brief SH-07). Five
-// menus, one per theme (the designer's four presets and one made from three colours), with the
-// same content: photo cards in the strip and in every layout, a sold-out and a scheduled item, a
-// 60-character Cyrillic name with a photo and one without, a dish with all fourteen allergens and
-// two groups of choices, a sub-section, tags and dietary labels for the filter sheet, and a table
-// code. They are written straight into the e2e publish folder (`LOCAL_PUBLISH_DIR`) as the files
-// the guest page reads, like the look fixture of seed-guest-e2e.ts: no venue row, a fixed public
-// code each (e2e/visual-fixtures.ts), and the photos are drawn here and saved as webp variants.
-//
-// Takes the template to draw as an argument (`seed-visual-e2e.ts qr-phone`, T89): the snapshots then
-// carry `presentation.face`. Without one they carry none, and the guest page draws the default
-// template (Editorial Market).
+// Fixtures for the accessibility and visual audit of the renderer (brief SH-07, #171). Five menus in
+// Editorial, one per theme (the designer's four presets and one made from three colours), and one
+// for each Style and each value of the General options (`DESIGN_VARIANTS`), all with the same
+// content: photo cards in the strip and in every layout, a scheduled item, two sold-out ones that
+// the page leaves out (D131), a 60-character Cyrillic name with a photo and one without, a dish with
+// all fourteen allergens and two groups of choices, a sub-section, tags and dietary labels for the
+// filter sheet, and a table code. They are written straight into the e2e publish folder
+// (`LOCAL_PUBLISH_DIR`) as the files the guest page reads, like the look fixture of
+// seed-guest-e2e.ts: no venue row, a fixed public code each (e2e/visual-fixtures.ts), and the photos
+// are drawn here and saved as webp variants.
 //
 // Idempotent; touches no database. Like the other seeds it refuses to run unless NODE_ENV is
 // development and DATABASE_URL points at this machine.
@@ -40,11 +38,12 @@ import {
   THEME_PRESETS,
   type VenueId,
 } from '@restro/core'
-import { fixtureId, snapshotFromSpec } from '@restro/shell/testing'
+import { fixtureId, snapshotFromSpec, styleCases, withDesign } from '@restro/shell/testing'
 
 import {
   CUSTOM_COLOURS,
-  isFaceId,
+  DESIGN_VARIANTS,
+  type DesignVariant,
   LOGO_MARKS,
   LONG_NAME_BG,
   LONG_NAME_EN,
@@ -217,7 +216,7 @@ function menuSpec(): Parameters<typeof snapshotFromSpec>[0] {
             price: 480,
           },
           {
-            name: bgen(VISUAL_ITEMS.soldOut, 'Wheat beer'),
+            name: bgen('Пшенична бира', 'Wheat beer'),
             image: photo(4),
             soldOut: true,
             allergens: ['gluten'],
@@ -322,8 +321,15 @@ function menuSpec(): Parameters<typeof snapshotFromSpec>[0] {
   }
 }
 
-/** The base snapshot with its "Предястия" section moved under "Храна", ids and look of one theme. */
-function snapshotOf(theme: VisualTheme, index: number, face: string | null): MenuSnapshot {
+/** The look the theme menus are audited in. */
+const EDITORIAL = styleCases().find((one) => one.id === 'style:editorial')?.values
+if (EDITORIAL === undefined) throw new Error('the contract has no Editorial')
+
+/**
+ * The base snapshot with its "Предястия" section moved under "Храна", ids and look of one theme: in
+ * Editorial, keeping the spec's layout and its switch, or in the design of one variant.
+ */
+function snapshotOf(theme: VisualTheme, index: number, variant?: DesignVariant): MenuSnapshot {
   const base = snapshotFromSpec(menuSpec())
   const sectionIds = Object.keys(base.sections)
   const food = sectionIds[2]
@@ -341,11 +347,11 @@ function snapshotOf(theme: VisualTheme, index: number, face: string | null): Men
   const roles = preset !== undefined ? preset.overrides : deriveRoles(CUSTOM_COLOURS)
   const tertiary = preset !== undefined ? preset.colours.tertiary : CUSTOM_COLOURS.tertiary
   const ids = {
-    snapshot: `sn_${`E2eVisual${theme.id}`.padEnd(22, '0')}`,
+    snapshot: `sn_${`E2eVisual${variant?.publicId ?? theme.id}`.padEnd(22, '0')}`,
     menu: `nd_${`E2eVisualMenu${index}`.padEnd(22, '0')}`,
     venue: `vn_${`E2eVisualVenue${index}`.padEnd(22, '0')}`,
   }
-  const content: Omit<MenuSnapshot, 'snapshot'> = {
+  const themed = {
     ...base,
     sections,
     menu: {
@@ -365,10 +371,16 @@ function snapshotOf(theme: VisualTheme, index: number, face: string | null): Men
       radius: preset?.radius ?? 12,
       shadow: 1,
       roles: { light: roles.light, dark: roles.dark },
-      scheme: 'auto',
+      scheme: 'auto' as const,
     },
-    ...(face === null ? {} : { presentation: { face, options: {} } }),
   }
+  const content =
+    variant === undefined
+      ? { ...themed, design: EDITORIAL }
+      : withDesign(
+          { snapshot: themed } as unknown as Parameters<typeof withDesign>[0],
+          variant.values,
+        ).snapshot
   return {
     ...content,
     snapshot: {
@@ -383,10 +395,6 @@ function snapshotOf(theme: VisualTheme, index: number, face: string | null): Men
 
 async function main(): Promise<void> {
   assertDevEnvironment(process.env)
-  const [face = null] = process.argv.slice(2)
-  if (face !== null && !isFaceId(face)) {
-    throw new Error(`the template must be an id such as "qr-phone", not "${face}"`)
-  }
   for (const text of [LONG_NAME_BG, LONG_NAME_EN, LONG_TEXT_NAME_BG, LONG_TEXT_NAME_EN]) {
     if ([...text].length !== 60)
       throw new Error(`a long fixture name is not 60 characters: ${text}`)
@@ -416,8 +424,20 @@ async function main(): Promise<void> {
     }
   }
 
-  for (const [index, theme] of VISUAL_THEMES.entries()) {
-    const snapshot = snapshotOf(theme, index + 1, face)
+  const [first] = VISUAL_THEMES
+  const menus = [
+    ...VISUAL_THEMES.map((theme, index) => ({
+      publicId: theme.publicId as string,
+      table: theme.table as string,
+      snapshot: snapshotOf(theme, index + 1),
+    })),
+    ...DESIGN_VARIANTS.map((variant, index) => ({
+      publicId: variant.publicId,
+      table: `tb_e2eVisualDesign${String(index + 1).padStart(3, '0')}`,
+      snapshot: snapshotOf(first, VISUAL_THEMES.length + index + 1, variant),
+    })),
+  ]
+  for (const { publicId, table, snapshot } of menus) {
     const menuId = snapshot.snapshot.menu_id as NodeId
     const venueId = snapshot.snapshot.venue_id as VenueId
     await put(snapshotPath(snapshot.snapshot.id as SnapshotId), snapshot)
@@ -428,19 +448,17 @@ async function main(): Promise<void> {
     })
     await put(livePath(menuId, venueId), { version: snapshot.snapshot.version, items: {} })
     await store.put(
-      venueIndexPath(theme.publicId),
+      venueIndexPath(publicId),
       venueIndexBytes({ venue_id: venueId, menu_id: menuId, slug: VISUAL_SLUG }),
-      publishPutOptions(venueIndexPath(theme.publicId)),
+      publishPutOptions(venueIndexPath(publicId)),
     )
-    await writeTableTokenFile(store, await hashTableCode(theme.table), {
-      venue_public_id: theme.publicId,
+    await writeTableTokenFile(store, await hashTableCode(table), {
+      venue_public_id: publicId,
       venue_slug: VISUAL_SLUG,
       table_label: VISUAL_TABLE_LABEL,
     })
   }
-  console.log(
-    JSON.stringify({ level: 'info', event: 'seed_visual_e2e_done', themes: VISUAL_THEMES.length }),
-  )
+  console.log(JSON.stringify({ level: 'info', event: 'seed_visual_e2e_done', menus: menus.length }))
 }
 
 main()
