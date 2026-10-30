@@ -1298,6 +1298,52 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       },
     )
 
+    // Hot spot 5 (B14c): the hardest kill, the POS closed the bill and the worker died before any
+    // answer was written, so only `attempting` is on record. The close is never sent again, a
+    // manager is asked only after the read-back window, nothing is released meanwhile, and
+    // "Receipt printed" captures what the close took.
+    it('after the close landed, with only attempting recorded: asked, never closed twice', async () => {
+      const id = await held(1)
+      let call: { readonly context: unknown; readonly isolated: unknown } | null = null
+      beforeCall = (method, args) => {
+        if (method === 'readIsolated') call = { context: args[0], isolated: args[1] }
+      }
+      await killAfter(id, 'payAndClose', 'attempting')
+      beforeCall = () => {}
+      if (call === null) throw new Error('the isolated bill was never read')
+      const { context, isolated } = call as { context: never; isolated: never }
+      // What the dead worker's call did: the POS closed the bill with its card payment.
+      const integrations = await query<{ kind: string; host: string; config: unknown }>(
+        'select kind, host, config from restro.integrations where id = $1',
+        [demo.integrationId],
+      )
+      const connector = connectorFor(integrations[0] as never, policy)
+      simClock.advance(1_100)
+      const landed = await connector.payAndClose(context, {
+        isolated,
+        amountMinor: 2_200,
+        tipMinor: 0,
+        paymentType: null,
+        ref: `${id}-close`,
+      })
+      expect(landed.kind).toBe('done')
+      expect(calls('closeBill')).toBe(1)
+
+      await recoverAfterDowntime(id)
+      const { row } = await drive(id)
+      expect(row).toMatchObject({ state: 'unconfirmed', reason: 'close_unknown' })
+      expect(calls('closeBill')).toBe(1)
+      expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+        expect.objectContaining({ status: 'held' }),
+      ])
+      expect(await alertsOf(id)).toEqual(['payment_unconfirmed:money.follow_up'])
+
+      expect((await answer(id, 'receipt_printed')).status).toBe('accepted')
+      const after = await drive(id)
+      expect(after.row).toMatchObject({ state: 'captured', captured_minor: '2200' })
+      expect(calls('closeBill')).toBe(1)
+    })
+
     /** A close answer recorded without its state (F4): the run died between them. */
     const recordClose = (id: string, outcome: 'done' | 'refused', answer: string) =>
       withOwnerClient(db.ownerUrl, async (client) => {
