@@ -69,8 +69,7 @@ const isTest = (path: string) =>
 const writesIn = (text: string) =>
   WRITES.filter((pattern) => pattern.test(text)).map((pattern) => String(pattern))
 
-const retiredIn = (text: string) =>
-  RETIRED.filter((name) => new RegExp(`\\b${name}\\b`).test(text))
+const retiredIn = (text: string) => RETIRED.filter((name) => new RegExp(`\\b${name}\\b`).test(text))
 
 describe('the design record’s one writer', () => {
   const files = ['apps', 'packages'].flatMap((top) =>

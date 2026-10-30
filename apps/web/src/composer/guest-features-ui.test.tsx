@@ -57,7 +57,6 @@ describe('the guest features panel', () => {
   it('shows the saved menu switches, and the allergen line without a switch', () => {
     setup({ features: { ...FEATURES, filters: false } })
     expect(switchNamed('Filters (diet and tags)').getAttribute('aria-checked')).toBe('false')
-    expect(switchNamed('Guests can change the layout').getAttribute('aria-checked')).toBe('true')
 
     const allergens = screen.getByTestId('allergens-always')
     expect(allergens.textContent).toBe('Allergen information is always shown')
@@ -151,7 +150,6 @@ describe('the guest features panel', () => {
     expect(screen.getByText('Only owners and admins can change these.')).toBeTruthy()
     const names = [
       'Filters (diet and tags)',
-      'Guests can change the layout',
       'Call a waiter',
       "Show the table's bill",
       'Order from the phone',

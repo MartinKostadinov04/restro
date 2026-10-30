@@ -10,6 +10,7 @@
 // options are left out.
 
 import { ALLERGENS, DIETARY_LABELS } from '../allergens'
+import type { DesignValues } from '../design/contract'
 import type { FieldDefinition } from '../field-definition'
 import {
   FIELD_VALUE_SCHEMAS,
@@ -17,7 +18,6 @@ import {
   type FieldValue,
   type FieldValueOf,
 } from '../field-types/catalog'
-import type { DesignValues } from '../design/contract'
 import { canonicalJson, sha256Hex } from '../hash'
 import type { AssetId, NodeId, SnapshotId, TagId, VenueId } from '../ids'
 import type { Locale, LocalizedText } from '../locales'
@@ -39,7 +39,11 @@ import {
   type SectionLayout,
 } from '../templates/venue-menu'
 import { DEFAULT_PALETTE, PALETTE_STEPS, paletteRoles } from '../theme/derive'
-import { canonicalFeatures, DEFAULT_GUEST_FEATURES, type GuestFeatures } from '../theme/presentation'
+import {
+  canonicalFeatures,
+  DEFAULT_GUEST_FEATURES,
+  type GuestFeatures,
+} from '../theme/presentation'
 import { parseSnapshot } from './errors'
 import {
   type MenuSnapshot,

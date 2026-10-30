@@ -23,8 +23,8 @@ import {
   designThemeOf,
 } from '../design/record'
 import { newId } from '../ids'
-import { type VenueTheme, VenueThemeSchema } from '../theme/settings'
 import { themePaletteOf, themeRolesOf } from '../theme'
+import { type VenueTheme, VenueThemeSchema } from '../theme/settings'
 import { hasDatabase } from './test-database'
 
 const MIGRATIONS = fileURLToPath(new URL('../../../db/migrations', import.meta.url))
@@ -85,7 +85,9 @@ const VENUES: Record<string, { settings: unknown; menu?: unknown }> = {
       theme: { logo_asset_id: null, font: 'inter', radius: 8, shadow: 1, scheme: 'auto' },
     },
   },
-  bothColourings: { settings: { theme: { brand: '#2563eb', colors: COLOURS, logo_asset_id: null } } },
+  bothColourings: {
+    settings: { theme: { brand: '#2563eb', colors: COLOURS, logo_asset_id: null } },
+  },
 }
 const RADII = Array.from({ length: 33 }, (_, radius) => radius)
 const SHADOWS = [0, 1, 2, 3, 4, 5]
@@ -275,7 +277,9 @@ describe.skipIf(!hasDatabase)('the design record migration (D129, D130)', () => 
   it('draws a venue as before: the same palette, roles, font, corners, depth and screen', async () => {
     for (const name of ['defaults', 'nothing', 'brand', 'hiddenTemplate']) {
       const old = VenueThemeSchema.parse(
-        (VENUES[name]?.settings as { theme?: unknown }).theme ?? { logo_asset_id: null },
+        (VENUES[name]?.settings as { theme?: unknown } | undefined)?.theme ?? {
+          logo_asset_id: null,
+        },
       ) as VenueTheme
       const theme = designThemeOf(await recordOf(name))
       expect(themePaletteOf(theme), name).toEqual(themePaletteOf(old))
@@ -287,7 +291,9 @@ describe.skipIf(!hasDatabase)('the design record migration (D129, D130)', () => 
       expect(theme.scheme, name).toBe(old.scheme ?? 'auto')
     }
     // Colours and roles carried whole draw the same even where corners moved to a word.
-    const whole = VenueThemeSchema.parse((VENUES.whole?.settings as { theme: unknown }).theme)
+    const whole = VenueThemeSchema.parse(
+      (VENUES.whole?.settings as { theme?: unknown } | undefined)?.theme,
+    )
     const theme = designThemeOf(await recordOf('whole'))
     expect(themeRolesOf(theme)).toEqual(themeRolesOf(whole))
     expect(themePaletteOf(theme)).toEqual(themePaletteOf(whole))
@@ -350,11 +356,7 @@ describe.skipIf(!hasDatabase)('the design record migration (D129, D130)', () => 
     })
 
     it('holds a design save only with the venue’s scope, the design key and the manual layer', async () => {
-      for (const fields of [
-        { scope: 'master' },
-        { fieldKey: 'price' },
-        { layer: 'integration' },
-      ]) {
+      for (const fields of [{ scope: 'master' }, { fieldKey: 'price' }, { layer: 'integration' }]) {
         await expect(
           insertEvent({ op: 'setDesign', nodeId: null, ...fields }),
           JSON.stringify(fields),

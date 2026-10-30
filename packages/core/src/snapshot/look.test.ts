@@ -216,6 +216,7 @@ describe('diffSnapshots: the look and the menu areas', () => {
   it('counts dropping a published template as the look', () => {
     const before = live() as Poke
     before.presentation = structuredClone(PRESENTATION)
+    before.snapshot.hash = '0'.repeat(64)
     expect(diffSnapshots(before as never, live()).areas).toEqual(['look'])
   })
 
@@ -247,20 +248,20 @@ describe('the leak guard and the new words', () => {
   })
 
   it('still refuses an internal note that is not a public word', () => {
-    const doc = bar(['zebra']).build()
+    const doc = bar(['wombat']).build()
     const forbidden = collectForbiddenValues({
       template: VENUE_MENU_TEMPLATE,
       doc,
       externalIds: [],
       publicStrings: lookPublicStrings(DEFAULT_THEME),
     })
-    expect(forbidden.get('zebra')).toBe('internal_value')
+    expect(forbidden.get('wombat')).toBe('internal_value')
     const snapshot = snapshotOf(context({ design: DESIGN }), bar()) as Poke
-    snapshot.sections[BAR].title = { bg_BG: 'zebra' }
+    snapshot.sections[BAR].title = { bg_BG: 'wombat' }
     expect(() => assertSnapshotSafe(snapshot, forbidden)).toThrow(SnapshotError)
   })
 
-  it('no longer takes the retired presentation\'s words for vocabulary', () => {
+  it("no longer takes the retired presentation's words for vocabulary", () => {
     const doc = bar(['face', 'presentation']).build()
     const forbidden = collectForbiddenValues({
       template: VENUE_MENU_TEMPLATE,
@@ -305,7 +306,7 @@ describe('the leak guard and the new words', () => {
     ]
     const doc = new DocBuilder().section(BAR, ROOT, 'active', 'a0').tillItem(WATER, 300)
     // A word that is no part of the snapshot's structure stays forbidden (the control).
-    doc.set(WATER, 'internal_note', 'manual', 'zebra')
+    doc.set(WATER, 'internal_note', 'manual', 'wombat')
     for (const [index, word] of words.entries()) {
       const item = nd(`note${index}`)
       doc.item(item).place(item, BAR, `a${index}`)
@@ -317,7 +318,7 @@ describe('the leak guard and the new words', () => {
       externalIds: [],
     })
     for (const word of words) expect(forbidden.has(word), word).toBe(false)
-    expect(forbidden.get('zebra')).toBe('internal_value')
+    expect(forbidden.get('wombat')).toBe('internal_value')
   })
 
   it('lists the look strings: font, palette and role colours', () => {

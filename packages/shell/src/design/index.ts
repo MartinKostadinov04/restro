@@ -17,10 +17,10 @@ export {
   type DesignStyleOption,
   type DesignValue,
   type DesignValues,
-  type PremadeStyleId,
-  type StyleValues,
   DesignValuesSchema,
+  type PremadeStyleId,
   PremadeStyleIdSchema,
+  type StyleValues,
   StyleValuesSchema,
 } from '@restro/core'
 export { type StyleFile, StyleFileSchema } from './style'

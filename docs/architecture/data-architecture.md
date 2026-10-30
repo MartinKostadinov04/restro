@@ -697,10 +697,10 @@ Normalised by id, with ordering carried by the id arrays:
   },
   "modifier_groups": { "nd_g1": { "name": { "en_US": "Gin" }, "min": 0, "max": 1, "options": ["nd_o1"] } },
   "options": { "nd_o1": { "name": { "en_US": "Premium gin" }, "price_delta": { "amount_minor": 300, "currency": "EUR" } } },
-  "presentation": { "face": "editorial-market", "options": {} },
+  "design": { "general": { "corners": "soft", "...": "..." }, "items": { "layout": "list", "guest_switch": "on", "...": "..." }, "...": {} },
   "features": { "filters": true, "call_waiter": { "enabled": false, "kinds": [] },
                 "bill": false, "ordering": false, "pay": false },
-  "layout": { "default": "two", "guest_switch": true }
+  "layout": { "default": "list", "guest_switch": true }
 }
 ```
 
@@ -708,15 +708,16 @@ Each item also carries `order_mode` (`orderable` or `ask_waiter`); `hidden` item
 
 #### The look, the template, the layout and the guest services (D69–D71, D92, D93)
 
-Six fields were added to `menu-snapshot/1` after it first shipped. All are optional. The look, the template and the guest services come from venue settings; the layout comes from the menu's own settings and from a field of each section (D92). The schema stays `menu-snapshot/1`; the additions are additive.
+Six fields were added to `menu-snapshot/1` after it first shipped. All are optional. The look and the guest services come from venue settings; the layout comes from the venue's design record (D129) and from a field of each section (D92). The schema stays `menu-snapshot/1`; the additions are additive.
 
 | Field | Holds |
 | --- | --- |
 | `theme.roles` | The eight colour roles (`background`, `surface`, `accent`, `on_accent`, `text`, `muted`, `accent_text`, `border`), each a lower-case `#rrggbb`, for a `light` and a `dark` screen, and, when the roles are derived from the venue's three colours, the ten roles of D93 (see The theme, R13), each optional. The publisher always writes it |
 | `theme.scheme` | The venue's light/dark policy: `auto` (follow the guest's phone), `light` or `dark`. Always written |
-| `presentation` | `{face, options}`: the template the venue chose and its options (short lower-case tokens or switches, never id-shaped). Written only when the venue chose a template; without it the default template applies. The Editorial Market declares no options since D92 |
+| `design` | Every option of the venue's design record (D129, D130), page by page: short lower-case tokens the contract schema checks, and the leak guard allows only the contract's words. Written whenever the publisher publishes; a snapshot without it (one published before it) reads as before |
+| `presentation` | `{face, options}`: the template the venue chose. **New snapshots no longer write it (D129)**: the schema keeps it optional so a snapshot published before still parses and draws its template |
 | `features` | The guest services the venue switched on: `filters`, `call_waiter` (`enabled` and the request `kinds`), `bill`, `ordering`, `pay`. Always written; a venue that has set nothing gets filters on and every service off |
-| `layout` | `{default, guest_switch}`: how the menu starts (`list`, `one` column or `two` columns) and whether guests may switch it. From the menu's `settings` (`layout`: `list`, `one_column` or `two_columns`; `layout_switch`). The publisher always writes it; a menu that set neither publishes `two` with the switch on, as before D92. Replaces the face options `layout` and `layoutSwitch` |
+| `layout` | `{default, guest_switch}`: how the menu starts (`list`, `one` column or `two` columns) and whether guests may switch it. From the design record's Layout and Guest switch (D129; before it, the menu's `settings`). The publisher always writes it; a venue with no record publishes Basic's `list` with the switch on. Replaces the face options `layout` and `layoutSwitch` |
 | `sections.<id>.hints.layout` | `vertical` or `horizontal` (drawn as a row, the face's photo strip). Set per section in the composer; the publisher always writes it, and a snapshot without it reads as `vertical`. Replaces the face option `featureFirstSection` |
 
 The menu's header name (`menus.name`, D92) is not in the snapshot yet; `menu.title` still comes from the menu node (a T79 follow-up).
@@ -797,7 +798,7 @@ Text pairs read at 4.5:1 and controls at 3:1 (WCAG 1.4.11); a scheme is checked 
 
 ### The design record (D128–D130)
 
-From 10-27 the venue's look is one **design record** per venue (D129): a value for every option of D130's list, a revision number, and the name of the Style it came from. It replaces `venues.settings.theme` and `presentation` (the template choice and per-face options) and absorbs the menu's `layout` and `layout_switch`; the three colours, the Advanced roles and the logo stay as this section describes, and the Styles (D128: Basic, Editorial, Soft, Classic, Club, plus an organisation's saved Styles) are presets of the same record. Writes go through `core.apply` with provenance (rule 1); a stale revision is refused. The snapshot publishes the record's values as the `design` block beside `theme`, every value a short lower-case token checked by the contract schema; the renderer draws from it, and the leak guard allows only the contract's words. Nothing in the record can hide an item, a price, allergens or a part of an item's row (D130's never-list; D131 hides sold-out items in the shell, not in the design). The option list itself lives in D130 and in the contract file the spec issue names; the two are kept equal by a test.
+From 10-27 the venue's look is one **design record** per venue (D129): a value for every option of D130's list, a revision number, and the name of the Style it came from. It replaces `venues.settings.theme` and `presentation` (the template choice and per-face options) and absorbs the menu's `layout` and `layout_switch`; the three colours, the Advanced roles and the logo stay as this section describes, and the Styles (D128: Basic, Editorial, Soft, Classic, Club, plus an organisation's saved Styles) are presets of the same record. It is stored at `venues.settings.design` (migration 0043 gave every venue a Basic record with what it had set: colours, roles, logo, screen and font as they were; radius and shadow as the nearest Corners and Depth word, at square 0, soft 8, round 16, extra 24 px and none 0, low 1; the live menu's layout and switch). A venue without a record reads as Basic at revision 0. Writes go through `core.apply`'s one op `setDesign` with provenance and one event (rule 1), the only writer, held by `scripts/design-writers.test.ts`; a stale revision is refused and answers with the stored record. The snapshot publishes the record's values as the `design` block beside `theme`, every value a short lower-case token checked by the contract schema; the renderer draws from it, and the leak guard allows only the contract's words. Nothing in the record can hide an item, a price, allergens or a part of an item's row (D130's never-list; D131 hides sold-out items in the shell, not in the design). The option list itself lives in D130 and in the contract file the spec issue names; the two are kept equal by a test.
 
 ### The face contract
 
@@ -847,7 +848,7 @@ Each face ships a manifest. Installing a face validates the manifest against R6,
 
 ### The template registry (D69)
 
-A venue's template is the `presentation.face` of its snapshot. Templates are code packages (`packages/faces/*`), listed in the web app in two files:
+A venue's template is the `presentation.face` of its snapshot; a snapshot published since D129 names none and draws the default. Templates are code packages (`packages/faces/*`), listed in the web app in two files:
 
 - `faces/manifests.ts` holds what is known without loading a template: its manifest, its names in Bulgarian and English, its picture and whether it is hidden. Server code reads this one (the Design tab's actions check that a template is real and visible, and what its options are).
 - `faces/registry.ts` is built from it and adds `load()`, a lazy import of the template's components. Only client code imports it: a server module that imports the registry makes the build follow `load()` into the components and fail.

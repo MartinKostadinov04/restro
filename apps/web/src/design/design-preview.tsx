@@ -98,7 +98,8 @@ export function DraftMessage({
  */
 export function usePreviewLook(draft: Draft, theme: VenueTheme | null): MenuSnapshot | null {
   return useMemo(
-    () => (draft.state === 'ready' && theme !== null ? previewSnapshot(draft.snapshot, theme) : null),
+    () =>
+      draft.state === 'ready' && theme !== null ? previewSnapshot(draft.snapshot, theme) : null,
     [draft, theme],
   )
 }

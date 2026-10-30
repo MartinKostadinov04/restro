@@ -678,8 +678,9 @@ export const menus = restro.table(
     /** Order among the venue's menus (Settings › Menus): a fractional key compared by byte order. */
     sortKey: byteOrderText('sort_key').notNull().default('a0'),
     /**
-     * Menu settings that are not columns of their own (D92): the layout default (`layout`) and
-     * whether guests may switch it (`layout_switch`). core/apply validates and writes it.
+     * Menu settings that are not columns of their own. Nothing reads or writes it since D129: the
+     * layout and the guest switch moved to the venue's design record (migration 0043 copied the
+     * live menu's), and what older rows hold stays as it was.
      */
     settings: jsonb('settings')
       .$type<Record<string, unknown>>()

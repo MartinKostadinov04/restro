@@ -891,9 +891,9 @@ describe('saving the look', () => {
     )
     expect(toast.success).not.toHaveBeenCalled()
     // The form holds the stored look, nothing to save, and the next save names its revision.
-    expect(field('Your brand colour').value).toBe('#e0a43a')
+    await waitFor(() => expect(field('Your brand colour').value).toBe('#e0a43a'))
     expect(field('Page').value).toBe('#f5f1ea')
-    expect(save().disabled).toBe(true)
+    await waitFor(() => expect(save().disabled).toBe(true))
     actions.saveLookAction.mockResolvedValue({ ok: true, revision: 6 })
     await userEvent.click(screen.getByRole('button', { name: 'Always light' }))
     await userEvent.click(save())

@@ -66,7 +66,9 @@ export type DesignContent = z.output<typeof DesignContentSchema>
 export const DesignProvenanceSchema = z.strictObject({
   layer: z.literal('manual'),
   source: z.literal('manual'),
-  actor: z.string().regex(/^(?:system|user:[A-Za-z0-9][A-Za-z0-9_.:-]{0,127})$/, 'expected an actor'),
+  actor: z
+    .string()
+    .regex(/^(?:system|user:[A-Za-z0-9][A-Za-z0-9_.:-]{0,127})$/, 'expected an actor'),
   job_id: z.string().min(1).max(128),
   /** The change set that saved it; null for the record migration 0043 wrote. */
   change_set_id: idSchema('cs').nullable(),

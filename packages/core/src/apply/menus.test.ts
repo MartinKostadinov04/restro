@@ -72,7 +72,6 @@ describe.skipIf(!hasDatabase)('menus of a venue (as the restro_app role)', () =>
       venueId: handA,
       name: null,
       sortKey: 'a0',
-      settings: {},
       deletedAt: null,
       live: true,
     })

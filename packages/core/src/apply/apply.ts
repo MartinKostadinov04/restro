@@ -84,8 +84,8 @@ import {
   designThemeOf,
   readDesign,
   readDesignRecord,
-  sameDesign,
   type StoredDesign,
+  sameDesign,
 } from '../design/record'
 import { FIELD_TYPES, type FieldTypeSpec } from '../field-types/specs'
 import { canonicalJson, sha256Hex } from '../hash'

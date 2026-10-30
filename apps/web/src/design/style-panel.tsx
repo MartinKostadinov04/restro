@@ -9,12 +9,7 @@
 //     the shadow is the menu column's shadow on larger screens, not an elevation scale.
 //   - Screen: follow the guest's phone (default), always light or always dark. The policy only
 //     chooses between the two role sets; it never generates one.
-import {
-  THEME_FONTS,
-  THEME_SCHEMES,
-  type ThemeFontId,
-  type ThemeScheme,
-} from '@restro/core'
+import { THEME_FONTS, THEME_SCHEMES, type ThemeFontId, type ThemeScheme } from '@restro/core'
 import { useTranslations } from 'next-intl'
 import { useId } from 'react'
 

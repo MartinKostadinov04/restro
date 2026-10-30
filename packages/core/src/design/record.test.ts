@@ -207,9 +207,7 @@ describe('the change set that saves a design', () => {
     jobId: newId('jb'),
     actor: 'user:us_test',
     observedAt: '2026-10-30T10:00:00Z',
-    ops: [
-      { op: 'setDesign', venueId: newId('vn'), expectedRevision: 0, design: DEFAULT_DESIGN },
-    ],
+    ops: [{ op: 'setDesign', venueId: newId('vn'), expectedRevision: 0, design: DEFAULT_DESIGN }],
     ...fields,
   })
 

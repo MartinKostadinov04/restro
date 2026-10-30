@@ -58,9 +58,7 @@ const anyDesign = (logos: readonly (string | null)[]): fc.Arbitrary<DesignConten
   const colouring = fc.oneof(
     fc.constant({}),
     hex.map((brand) => ({ brand })),
-    fc
-      .record({ primary: hex, secondary: hex, tertiary: hex })
-      .map((colors) => ({ colors })),
+    fc.record({ primary: hex, secondary: hex, tertiary: hex }).map((colors) => ({ colors })),
   )
   return fc
     .record({
@@ -162,8 +160,9 @@ describe.skipIf(!hasDatabase)('the design record (as the restro_app role)', () =
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
     venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: testSlug('main') }))
       .id as `vn_${string}`
-    otherVenueId = (await provisionVenue(app, otherTenant, { name: 'Else', slug: testSlug('else') }))
-      .id as `vn_${string}`
+    otherVenueId = (
+      await provisionVenue(app, otherTenant, { name: 'Else', slug: testSlug('else') })
+    ).id as `vn_${string}`
     archivedVenueId = (await provisionVenue(app, tenant, { name: 'Gone', slug: testSlug('gone') }))
       .id as `vn_${string}`
     await archiveVenue(app, tenant, archivedVenueId)
