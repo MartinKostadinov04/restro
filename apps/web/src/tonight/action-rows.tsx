@@ -16,6 +16,7 @@ import {
   ShieldAlertIcon,
   TriangleAlertIcon,
 } from 'lucide-react'
+import { unstable_rethrow } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { type ReactNode, useState } from 'react'
 
@@ -313,7 +314,10 @@ export function ActionRowItem({
                   venueId: view.venueId,
                   paymentId: dispute.paymentId,
                   pin,
-                }).catch((): TonightResult => ({ ok: false, error: 'failed' }))
+                }).catch((error: unknown): TonightResult => {
+                  unstable_rethrow(error)
+                  return { ok: false, error: 'failed' }
+                })
                 if (!read.ok) return read
                 setAskingPin(false)
                 if ('detail' in read) {

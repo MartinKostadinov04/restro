@@ -15,7 +15,10 @@ const toast = vi.hoisted(() => Object.assign(vi.fn(), { error: vi.fn() }))
 const liftRestroPauseAction = vi.hoisted(() => vi.fn())
 const liftOrderingAction = vi.hoisted(() => vi.fn())
 vi.mock('sonner', () => ({ toast }))
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+  unstable_rethrow: vi.fn(),
+}))
 vi.mock('@/server/tonight/actions', () => ({
   liftOrderingAction,
   liftRestroPauseAction,

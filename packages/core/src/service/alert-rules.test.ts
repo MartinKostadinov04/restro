@@ -10,8 +10,8 @@ import {
   PAUSED_KIND,
   PAYMENT_ALERT_KINDS,
   ruleOf,
-  TEAM_ALERT_KINDS,
   serviceHoursWindow,
+  TEAM_ALERT_KINDS,
 } from './alert-rules'
 import { ORDER_RATE_ALERT } from './order-rate'
 import { CONNECTION_UNSTABLE_ALERT } from './pauses'

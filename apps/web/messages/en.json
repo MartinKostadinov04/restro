@@ -2621,7 +2621,6 @@
     "pf_i_toast": "Payment mode: {mode}",
     "pf_sel": "Payment mode…",
     "pf_sel_toast": "{count, plural, one {# item} other {# items}}: {mode}",
-    "st_open_only": "Only at tables a waiter has opened",
     "st_cap": "Largest order on the bill without paying first",
     "st_cap_off": "No limit",
     "st_cap_edit": "Change the largest order",

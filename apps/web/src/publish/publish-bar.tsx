@@ -35,6 +35,9 @@ interface Row {
 /** The change count a row shows: what differs, or everything for a first publish. */
 const countOf = (menu: PublishBarMenu): number => menu.changes ?? 0
 
+/** A button's words wrap when large text would run them off a phone (RR-79). */
+const WRAPS = 'h-auto min-h-9 max-w-full whitespace-normal'
+
 export function PublishBar({ view }: { view: PublishBarView }) {
   const t = useTranslations('publish.bar')
   const reasonOf = useBlockReason()
@@ -100,15 +103,16 @@ export function PublishBar({ view }: { view: PublishBarView }) {
 
   return (
     <div
-      className="grid justify-items-start gap-1.5 sm:justify-items-end"
+      className="grid max-w-full grid-cols-[minmax(0,1fr)] justify-items-start gap-1.5 sm:justify-items-end"
       data-testid="publish-bar"
     >
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex max-w-full flex-wrap items-center gap-2">
         {guestOff ? (
           <Button
             type="button"
             variant="outline"
             disabled
+            className={WRAPS}
             aria-describedby={guestHint === null ? undefined : `${reasonId}-guest`}
             data-testid="guest-link"
           >
@@ -116,7 +120,7 @@ export function PublishBar({ view }: { view: PublishBarView }) {
             {t('openGuest')}
           </Button>
         ) : (
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" className={WRAPS}>
             <a
               href={view.guestPath ?? undefined}
               target="_blank"
@@ -131,7 +135,12 @@ export function PublishBar({ view }: { view: PublishBarView }) {
         {several ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild disabled={block !== null}>
-              <Button type="button" aria-describedby={reasonId} data-testid="publish-button">
+              <Button
+                type="button"
+                className={WRAPS}
+                aria-describedby={reasonId}
+                data-testid="publish-button"
+              >
                 {icon}
                 {label}
                 {count}
@@ -182,6 +191,7 @@ export function PublishBar({ view }: { view: PublishBarView }) {
             type="button"
             disabled={block !== null || single === undefined}
             onClick={() => (single === undefined ? null : setAsking(single.menu))}
+            className={WRAPS}
             aria-describedby={reasonId}
             data-testid="publish-button"
           >

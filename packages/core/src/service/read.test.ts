@@ -217,7 +217,13 @@ describe.skipIf(!hasDatabase)('the service read side (as the restro_app role)', 
        values ($1, $2, $3, $4, 'venue', $3, 'staff', false, 'staff', $5, 'test-seed')`
     const byOwner = newId('pa')
     const byDevice = newId('pa')
-    await world.owner.query(insert, [byOwner, world.tenantId, world.venueId, day, `user:${ownerId}`])
+    await world.owner.query(insert, [
+      byOwner,
+      world.tenantId,
+      world.venueId,
+      day,
+      `user:${ownerId}`,
+    ])
     const tonight = await tonightOf(user(ownerId))
     expect(tonight.pauses.find((pause) => pause.id === byOwner)?.startedBy).toBe('Test person')
     await world.owner.query('delete from restro.pauses where id = $1', [byOwner])

@@ -90,7 +90,6 @@ describe.skipIf(!hasDatabase)('the owner settings commands (as the restro_app ro
     expect(result).toMatchObject({ status: 'accepted', details: { changed: true } })
     expect(await settings()).toMatchObject({
       capMinor: 20_000,
-      onlyOpenTables: true,
       serviceHours: { thu: THURSDAY },
     })
     const entries = await logOf('ordering')

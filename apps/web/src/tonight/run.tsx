@@ -6,6 +6,7 @@
 // write's token back, and core refuses it after 30 seconds or when the thing changed (#219). A write
 // that fails is the error toast that stays, with a close button, and the row stays where it was. A
 // write that never reached the server (no connection, RR-78) is such a failure too.
+import { unstable_rethrow } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -30,9 +31,15 @@ export function undoTokenOf(done: Accepted): UndoToken | undefined {
 /** `undoWhen` for a write that offers Undo only when it wrote something (it has a token). */
 export const wroteSomething = (done: Accepted) => undoTokenOf(done) !== undefined
 
-/** A write's answer, or `failed` when it never came: the action's promise rejected (RR-78). */
+/**
+ * A write's answer, or `failed` when it never came: the action's promise rejected (RR-78). A redirect
+ * (the sign-in ran out) is the router's, not a failed write.
+ */
 const attempt = (write: () => Promise<TonightResult>): Promise<TonightResult> =>
-  write().catch((): TonightResult => ({ ok: false, error: 'failed' }))
+  write().catch((error: unknown): TonightResult => {
+    unstable_rethrow(error)
+    return { ok: false, error: 'failed' }
+  })
 
 /** One write. */
 export interface RunSpec {

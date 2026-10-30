@@ -21,7 +21,10 @@ const refundFailedUnseenAction = vi.hoisted(() => vi.fn())
 const paymentDetailAction = vi.hoisted(() => vi.fn())
 const paymentEvidenceAction = vi.hoisted(() => vi.fn())
 vi.mock('sonner', () => ({ toast }))
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+  unstable_rethrow: vi.fn(),
+}))
 vi.mock('@/server/tonight/actions', () => ({
   handleWaiterCallAction: vi.fn(),
   undoWaiterCallAction: vi.fn(),

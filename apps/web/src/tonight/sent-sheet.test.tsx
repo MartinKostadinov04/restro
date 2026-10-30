@@ -12,7 +12,10 @@ import { SentOrderSheet } from './sent-sheet'
 
 const sentOrderDetailAction = vi.hoisted(() => vi.fn())
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { error: vi.fn() }) }))
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+  unstable_rethrow: vi.fn(),
+}))
 vi.mock('@/server/tonight/night-actions', () => ({ sentOrderDetailAction }))
 vi.mock('@/server/tonight/actions', () => ({}))
 

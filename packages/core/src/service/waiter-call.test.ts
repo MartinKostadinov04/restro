@@ -417,7 +417,10 @@ describe.skipIf(!hasDatabase)('Call a waiter (as the restro_app role)', () => {
       const token = await handled(call.id)
       expect(token.entry).toBeGreaterThan(0)
       const result = await run(undone(call.id, token), staff(ownerId))
-      expect(result).toMatchObject({ status: 'accepted', details: { state: 'open', changed: true } })
+      expect(result).toMatchObject({
+        status: 'accepted',
+        details: { state: 'open', changed: true },
+      })
       expect((await stateOf(2)).waiterCall).toMatchObject({ id: call.id, state: 'open' })
       const { rows } = await world.owner.query<{ done_at: Date | null; done_by: string | null }>(
         'select done_at, done_by from restro.waiter_calls where id = $1',

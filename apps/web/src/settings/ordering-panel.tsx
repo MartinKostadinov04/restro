@@ -9,7 +9,7 @@ import { decimalToMinor, MoneyError, minorToDecimal } from '@restro/core'
 import { ChevronDownIcon, PencilIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useFormatter, useTranslations } from 'next-intl'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -49,6 +49,8 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
   const settings = view.settings
   const can = view.canChange
   const [editingCap, setEditingCap] = useState(false)
+  // Enter or Escape has answered: the blur of the field going away is no second answer.
+  const capAnswered = useRef(false)
   const [capText, setCapText] = useState('')
   const [capProblem, setCapProblem] = useState(false)
   const [reading, setReading] = useState(false)
@@ -64,7 +66,21 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
   function startCap() {
     setCapText(minorToDecimal(settings.capMinor ?? DEFAULT_CAP_MINOR))
     setCapProblem(false)
+    capAnswered.current = false
     setEditingCap(true)
+  }
+
+  /**
+   * Leaving the field keeps what was typed (RR-58): a change saves as Enter does, and one that is no
+   * amount stays there with its problem shown. Only Escape discards it.
+   */
+  function leaveCap() {
+    if (capAnswered.current) return
+    if (capText.trim() === minorToDecimal(settings.capMinor ?? DEFAULT_CAP_MINOR)) {
+      setEditingCap(false)
+      return
+    }
+    saveCap()
   }
 
   function saveCap() {
@@ -80,6 +96,7 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
       setCapProblem(true)
       return
     }
+    capAnswered.current = true
     setEditingCap(false)
     if (minor !== settings.capMinor) save({ capMinor: minor }, { capMinor: settings.capMinor })
   }
@@ -119,21 +136,6 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
       {can ? null : <ReadOnlyLine />}
 
       <div className="grid divide-y rounded-lg border bg-card">
-        <Row label={t('st_open_only')} htmlFor="ord-open-only">
-          {can ? (
-            <Switch
-              id="ord-open-only"
-              checked={settings.onlyOpenTables}
-              disabled={pending}
-              onCheckedChange={(on) =>
-                save({ onlyOpenTables: on }, { onlyOpenTables: settings.onlyOpenTables })
-              }
-            />
-          ) : (
-            <Value>{settings.onlyOpenTables ? t('st_open') : t('st_off')}</Value>
-          )}
-        </Row>
-
         <Row label={t('st_cap')} htmlFor="ord-cap">
           {editingCap ? (
             <div className="grid gap-1">
@@ -151,9 +153,12 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
                 }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') saveCap()
-                  if (event.key === 'Escape') setEditingCap(false)
+                  if (event.key === 'Escape') {
+                    capAnswered.current = true
+                    setEditingCap(false)
+                  }
                 }}
-                onBlur={() => setEditingCap(false)}
+                onBlur={leaveCap}
               />
               {capProblem ? (
                 <p id="ord-cap-problem" className="text-sm text-destructive" role="alert">

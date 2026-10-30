@@ -448,14 +448,18 @@ describe.skipIf(!hasDatabase)('the Undo window of Tonight (as the restro_app rol
       await liftAll()
       const as = async (actor: ServiceActor, command: unknown) =>
         (
-          await applyService(world.app, command as ServiceCommand, {
-            tenantId: world.tenantId,
-            venueId: world.venueId,
-            origin: 'staff',
-            actor,
-            jobId: `req-${randomUUID()}`,
-            via: 'tonight',
-          } as ServiceContext)
+          await applyService(
+            world.app,
+            command as ServiceCommand,
+            {
+              tenantId: world.tenantId,
+              venueId: world.venueId,
+              origin: 'staff',
+              actor,
+              jobId: `req-${randomUUID()}`,
+              via: 'tonight',
+            } as ServiceContext,
+          )
         ).result
       const details = (result: Awaited<ReturnType<typeof as>>) => {
         if (result.status !== 'accepted') throw new Error(`refused: ${JSON.stringify(result)}`)
