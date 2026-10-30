@@ -37,7 +37,6 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile'
 import {
   handleWaiterCallAction,
-  undoWaiterCallAction,
   receiptBroughtAction,
   receiptUnbroughtAction,
   refundFailedSeenAction,
@@ -45,7 +44,11 @@ import {
   resumeTableAction,
   stornoDoneAction,
   stornoUndoAction,
+  undoWaiterCallAction,
 } from '@/server/tonight/actions'
+import { paymentEvidenceAction } from '@/server/tonight/payment-actions'
+import type { PaymentDetailView } from '@/server/tonight/payment-view'
+import type { TonightResult } from '@/server/tonight/tables'
 import type { ActionRow, RowKind } from '@/server/tonight/view'
 
 import { callKindsText } from './call-kinds'
@@ -53,6 +56,7 @@ import { useDateText } from './day-picker'
 import { useMoney } from './money'
 import { MONEY_ICONS, type MoneyFrame, useMoneyRowParts } from './money-rows'
 import { PaymentSheet } from './payment-sheet'
+import { PinSheet } from './pin-sheet'
 import { useTonightRun, wroteSomething } from './run'
 import { SentOrderAnswers } from './sent-order-answers'
 import { useTableName } from './table-name'
@@ -105,6 +109,8 @@ export function ActionRowItem({
   const { run, busy } = useTonightRun()
   const tableName = useTableName()
   const [evidence, setEvidence] = useState(false)
+  const [askingPin, setAskingPin] = useState(false)
+  const [loadedEvidence, setLoadedEvidence] = useState<PaymentDetailView | null>(null)
   const name = tableName(row.table, row.numbered)
   const provider = view.provider ?? t('pb_provider_none')
   const Icon = ICONS[row.kind]
@@ -278,18 +284,47 @@ export function ActionRowItem({
         )}
       </div>
     )
-    // The evidence is on the payment's page, for managers and owners (the tablet's own account
-    // holds no such right). The row leaves by itself when the provider says won or lost.
-    if (view.can.followUp) {
+    // The evidence is on the payment's page, for managers and owners: on the shared tablet, whose
+    // own account holds no such right, a manager's PIN opens it (RR-58). The row leaves by itself
+    // when the provider says won or lost.
+    if (view.can.followUp || view.device) {
       answer = (
-        <Button
-          type="button"
-          variant={variant}
-          className={button}
-          onClick={() => setEvidence(true)}
-        >
-          {t('d_ok')}
-        </Button>
+        <>
+          <Button
+            type="button"
+            variant={variant}
+            className={button}
+            onClick={() => (view.can.followUp ? setEvidence(true) : setAskingPin(true))}
+          >
+            {t('d_ok')}
+          </Button>
+          {askingPin ? (
+            <PinSheet
+              title={t('d_ok')}
+              body={t('d_d', {
+                amt: money(dispute.amountMinor ?? 0, view.currency),
+                table: name,
+                date: dateText(dispute.serviceDate),
+              })}
+              level="manager"
+              onLeave={() => setAskingPin(false)}
+              onSubmit={async (pin) => {
+                const read = await paymentEvidenceAction({
+                  venueId: view.venueId,
+                  paymentId: dispute.paymentId,
+                  pin,
+                }).catch((): TonightResult => ({ ok: false, error: 'failed' }))
+                if (!read.ok) return read
+                setAskingPin(false)
+                if ('detail' in read) {
+                  setLoadedEvidence(read.detail)
+                  setEvidence(true)
+                }
+                return { ok: true, details: {} }
+              }}
+            />
+          ) : null}
+        </>
       )
     }
   } else if (row.kind === 'refund_failed' && row.refundFailed !== undefined) {
@@ -443,7 +478,11 @@ export function ActionRowItem({
         <PaymentSheet
           frame={view}
           paymentId={row.dispute.paymentId}
-          onClose={() => setEvidence(false)}
+          {...(loadedEvidence === null ? {} : { loaded: loadedEvidence })}
+          onClose={() => {
+            setEvidence(false)
+            setLoadedEvidence(null)
+          }}
         />
       ) : null}
     </li>

@@ -15,7 +15,7 @@ import { queuePaymentStep } from '../guest-api'
 import { enqueueJob } from '../jobs'
 import { logError } from '../log'
 import { requireTenant } from '../session'
-import { identifyAtSharedDevice } from '../staff/service'
+import { identifyAtSharedDevice, ownActor } from '../staff/service'
 import { getVenue } from '../venues'
 import { loadTableBill, type TableSheetBill } from './load'
 import {
@@ -53,13 +53,14 @@ const NOT_FOUND: TonightResult = { ok: false, error: 'venue_missing' }
 async function perform(
   input: { readonly venueId: string; readonly pin?: string | undefined },
   act: (scope: TonightScope) => Promise<TonightResult>,
+  options: { readonly asOperator?: boolean } = {},
 ): Promise<TonightResult> {
   try {
     const { organization, user, sessionId, signedInAt } = await requireTenant()
     // Another tenant's venue and a made-up id both come back as null (row-level security).
     const venue = await getVenue(organization.id, input.venueId)
     if (!venue) return NOT_FOUND
-    let actor: ServiceActor = { kind: 'user', userId: user.id, sessionId }
+    let actor: ServiceActor = await ownActor(user, sessionId, options)
     let named: string | null = null
     if (input.pin !== undefined) {
       const identity = await identifyAtSharedDevice({
@@ -248,6 +249,21 @@ export async function liftOrderingAction(input: unknown): Promise<TonightResult>
   if (!parsed.success) return INVALID
   const { pauseId } = parsed.data
   return perform(parsed.data, (scope) => command(scope, { type: 'ordering.lift', pauseId }))
+}
+
+const RestroPause = z.strictObject({ venueId, pauseId: idSchema('pa') })
+
+/**
+ * Lifts a pause Restro started: Restro's admin team only (D120, D122 §6). Anyone else stays the
+ * account they are, and core refuses them `restro_pause`.
+ */
+export async function liftRestroPauseAction(input: unknown): Promise<TonightResult> {
+  const parsed = RestroPause.safeParse(input)
+  if (!parsed.success) return INVALID
+  const { pauseId } = parsed.data
+  return perform(parsed.data, (scope) => command(scope, { type: 'ordering.lift', pauseId }), {
+    asOperator: true,
+  })
 }
 
 const UndoPause = z.strictObject({ venueId, pauseId: idSchema('pa'), undo: undo.unwrap() })

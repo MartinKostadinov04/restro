@@ -19,10 +19,12 @@ const stornoUndoAction = vi.hoisted(() => vi.fn())
 const refundFailedSeenAction = vi.hoisted(() => vi.fn())
 const refundFailedUnseenAction = vi.hoisted(() => vi.fn())
 const paymentDetailAction = vi.hoisted(() => vi.fn())
+const paymentEvidenceAction = vi.hoisted(() => vi.fn())
 vi.mock('sonner', () => ({ toast }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 vi.mock('@/server/tonight/actions', () => ({
   handleWaiterCallAction: vi.fn(),
+  undoWaiterCallAction: vi.fn(),
   receiptBroughtAction: vi.fn(),
   receiptUnbroughtAction: vi.fn(),
   resumeTableAction: vi.fn(),
@@ -33,7 +35,7 @@ vi.mock('@/server/tonight/actions', () => ({
   answerPaymentAction: vi.fn(),
   doneAlertAction: vi.fn(),
 }))
-vi.mock('@/server/tonight/payment-actions', () => ({ paymentDetailAction }))
+vi.mock('@/server/tonight/payment-actions', () => ({ paymentDetailAction, paymentEvidenceAction }))
 
 const base = (over: Partial<ActionRowView>): ActionRowView => ({
   venueId: 'vn_0123456789ABCDEFGHIJKL',
@@ -231,7 +233,7 @@ describe('the dispute row', () => {
     expect(screen.queryByText(/Answer in/)).toBeNull()
   })
 
-  it('opens the evidence on the payment’s sheet for a manager, and has no button for the tablet', async () => {
+  it('opens the evidence on the payment’s sheet for a manager', async () => {
     paymentDetailAction.mockResolvedValue({ ok: false })
     draw(dispute, manager)
     await userEvent.click(screen.getByRole('button', { name: 'See the evidence' }))
@@ -243,8 +245,60 @@ describe('the dispute row', () => {
     )
   })
 
-  it('has no button for the tablet or a waiter', () => {
+  it('asks the tablet for a manager’s PIN, and a refused PIN opens nothing (RR-58)', async () => {
+    paymentEvidenceAction.mockResolvedValue({ ok: false, error: 'permission_denied' })
     draw(dispute, tablet)
+    await userEvent.click(screen.getByRole('button', { name: 'See the evidence' }))
+    await screen.findByRole('dialog')
+    await userEvent.keyboard('1234')
+    await waitFor(() =>
+      expect(paymentEvidenceAction).toHaveBeenCalledWith({
+        venueId: tablet.venueId,
+        paymentId: 'py_9',
+        pin: '1234',
+      }),
+    )
+    expect(paymentDetailAction).not.toHaveBeenCalled()
+  })
+
+  it('opens the evidence the manager’s PIN read, without reading it again', async () => {
+    paymentDetailAction.mockReset()
+    paymentEvidenceAction.mockResolvedValue({
+      ok: true,
+      detail: {
+        row: {
+          id: 'py_9',
+          table: '3',
+          numbered: true,
+          bar: null,
+          payTable: null,
+          state: 'captured',
+          reason: null,
+          amountMinor: 4600,
+          tipMinor: 0,
+          receiptNumber: null,
+          currency: 'EUR',
+          time: '22:50',
+        },
+        number: 'KQ7MD',
+        lines: [],
+        steps: [],
+        provider: 'Stripe',
+        refunds: [],
+        dispute: null,
+        evidence: { en: 'Evidence', bg: 'Доказателства' },
+      },
+    })
+    draw(dispute, tablet)
+    await userEvent.click(screen.getByRole('button', { name: 'See the evidence' }))
+    await screen.findByRole('dialog')
+    await userEvent.keyboard('1234')
+    await screen.findByText('KQ7MD', { exact: false })
+    expect(paymentDetailAction).not.toHaveBeenCalled()
+  })
+
+  it('has no button for a waiter on their own phone', () => {
+    draw(dispute, waiter)
     expect(screen.queryByRole('button')).toBeNull()
   })
 })

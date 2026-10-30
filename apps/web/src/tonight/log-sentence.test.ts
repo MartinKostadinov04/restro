@@ -164,6 +164,9 @@ describe("the Log's sentences", () => {
     expect(logSentence(line('waiter_call.done', asked), en)).toBe(
       'Call at Table 7 handled (Ice, Water)',
     )
+    expect(logSentence(line('waiter_call.done', { ...asked, callUndone: true }), en)).toBe(
+      'Maria undid "handled" · Table 7',
+    )
     expect(logSentence(line('waiter_call.lapsed', asked), en)).toBe(
       'Call at Table 7 ran out (Ice, Water)',
     )

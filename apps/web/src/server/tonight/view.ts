@@ -197,6 +197,8 @@ export interface TonightView {
   /** The payment provider's name for `{provider}`, or null when it is not known. */
   readonly provider: string | null
   readonly device: boolean
+  /** Restro's admin team, on their own session: a Restro pause has their button (D120). */
+  readonly operator: boolean
   readonly can: Can
   readonly banners: readonly PauseBanner[]
   /**
@@ -332,6 +334,7 @@ export function buildTonightView(input: {
   readonly source: string
   readonly currency: string
   readonly provider?: string | null
+  readonly operator?: boolean
   readonly now: Date
 }): TonightView {
   const { tonight, timezone } = input
@@ -617,6 +620,7 @@ export function buildTonightView(input: {
     currency: input.currency,
     provider: input.provider ?? null,
     device: tonight.device,
+    operator: input.operator === true && !tonight.device,
     can,
     banners,
     paying:

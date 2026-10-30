@@ -1,11 +1,17 @@
 // Reads Tonight for the signed-in actor and shapes it for the screen (#85). Reads only: the
 // service read side filters by what the actor holds and calls no POS (rule 3 and 4 of the plan).
-import { readTableState, readTonight, type TonightRefusal } from '@restro/core/service'
+import {
+  readTableState,
+  readTonight,
+  type ServiceActor,
+  type TonightRefusal,
+} from '@restro/core/service'
 import type { Venue } from '@restro/db'
 
 import { providerDisplayName } from '@/connectors/notices'
 
 import { getPool } from '../db'
+import { isOperator } from '../staff/service'
 import { tillLabelOfVenue } from '../tables/service'
 import { buildTonightView, type TonightView } from './view'
 
@@ -21,15 +27,18 @@ export async function loadTonightView(input: {
   | { readonly ok: false; readonly code: TonightRefusal }
 > {
   const now = input.now ?? new Date()
-  const [read, source] = await Promise.all([
-    readTonight(getPool(), {
-      tenantId: input.tenantId,
-      venueId: input.venue.id,
-      actor: { kind: 'user', userId: input.userId, sessionId: input.sessionId },
-      now,
-    }),
+  const readAs = (actor: ServiceActor) =>
+    readTonight(getPool(), { tenantId: input.tenantId, venueId: input.venue.id, actor, now })
+  const [own, source, operator] = await Promise.all([
+    readAs({ kind: 'user', userId: input.userId, sessionId: input.sessionId }),
     tillLabelOfVenue(getPool(), input.tenantId, input.venue.id),
+    isOperator(input.userId),
   ])
+  // Restro's admin team, with no role here, still reads Tonight to lift a Restro pause (D120).
+  const read =
+    !own.ok && own.code === 'permission_denied' && operator
+      ? await readAs({ kind: 'operator', userId: input.userId })
+      : own
   if (!read.ok) return read
   return {
     ok: true,
@@ -40,6 +49,7 @@ export async function loadTonightView(input: {
       source: source ?? '',
       currency: input.venue.currency,
       provider: providerDisplayName(read.tonight.payingProvider),
+      operator,
       now,
     }),
   }

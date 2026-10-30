@@ -181,24 +181,29 @@ function Body({ detail, frame }: { detail: PaymentDetailView; frame: SheetFrame 
 export function PaymentSheet({
   frame,
   paymentId,
+  loaded,
   onClose,
 }: {
   frame: SheetFrame
   paymentId: string
+  /** The payment as already read, with a manager's PIN on a shared device (RR-58). */
+  loaded?: PaymentDetailView
   onClose: () => void
 }) {
   const t = useTranslations('tonight')
   const isMobile = useIsMobile()
   const tableName = useTableName()
   // undefined while loading; null when the payment is not this venue's.
-  const [detail, setDetail] = useState<PaymentDetailView | null | undefined>(undefined)
+  const [detail, setDetail] = useState<PaymentDetailView | null | undefined>(loaded)
 
   const load = useCallback(() => {
     void paymentDetailAction({ venueId: frame.venueId, paymentId }).then((result) =>
       setDetail(result.ok ? result.detail : null),
     )
   }, [frame.venueId, paymentId])
-  useEffect(() => load(), [load])
+  useEffect(() => {
+    if (loaded === undefined) load()
+  }, [load, loaded])
 
   const title = detail
     ? t('py_title', { table: tableName(detail.row.table, detail.row.numbered) })

@@ -58,12 +58,12 @@ import {
 } from './owner-settings'
 import {
   liftOrdering,
-  undoPause,
   pauseConnection,
   pauseOrdering,
   resumeTable,
   sweepPauses,
   transitionPause,
+  undoPause,
 } from './pauses'
 import {
   payCancel,
