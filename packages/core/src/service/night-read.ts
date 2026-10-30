@@ -597,7 +597,7 @@ const detailText = (details: Record<string, unknown>, key: string): string | nul
 
 /**
  * The Log of one service day, newest first, for `log.view`. The kinds the venue never sees
- * (`lease.taken_over`) are left out. Search and the kind filter cover the whole day.
+ * (`lease.taken_over`, `payment.hold_unread`) are left out. Search and the kind filter cover the whole day.
  */
 export async function readLog(
   pool: DbPool,

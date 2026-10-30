@@ -25,6 +25,7 @@ const row = (partial: Partial<RecoveryRow>): RecoveryRow => ({
   changedMs: 0,
   captureDue: false,
   releaseRefused: false,
+  holdUnread: false,
   ...partial,
 })
 
@@ -42,19 +43,27 @@ describe('one pass of the payment recovery', () => {
 
   it("tells Restro's team about one still in the worker's own states 10 minutes after its last change", () => {
     const stale = { idleMs: PAYMENT_STALE_MS }
-    for (const state of ['requested', 'priced', 'cancelling']) {
-      expect(recoveryActions(row({ state, ...stale, changedMs: PAYMENT_STUCK_MS - 1 }))).toEqual([
-        'prepare',
-      ])
-      expect(recoveryActions(row({ state, ...stale, changedMs: PAYMENT_STUCK_MS }))).toEqual([
-        'prepare',
-        'stuck',
-      ])
+    for (const state of [
+      'requested',
+      'priced',
+      'cancelling',
+      'isolated',
+      'checked',
+      'closed',
+      'entered',
+    ]) {
+      const paymentTableId = 'tb_payment'
+      expect(
+        recoveryActions(row({ state, paymentTableId, ...stale, changedMs: PAYMENT_STUCK_MS - 1 })),
+      ).toEqual(['prepare'])
+      expect(
+        recoveryActions(row({ state, paymentTableId, ...stale, changedMs: PAYMENT_STUCK_MS })),
+      ).toEqual(['prepare', 'stuck'])
     }
-    // Moving on through the route is not stuck, however long it takes.
-    expect(recoveryActions(row({ state: 'isolated', ...stale, changedMs: 3_600_000 }))).toEqual([
-      'prepare',
-    ])
+    // Waiting for a free payment table is not stuck, however long it takes.
+    for (const state of ['held', 'queued']) {
+      expect(recoveryActions(row({ state, ...stale, changedMs: 3_600_000 }))).toEqual(['prepare'])
+    }
   })
 
   it('checks a payment at the card form after a minute nobody looked at it', () => {
@@ -102,6 +111,17 @@ describe('one pass of the payment recovery', () => {
     expect(
       recoveryActions(row({ state: 'cancelling', releaseRefused: true, changedMs: 3_600_000 })),
     ).toEqual(['read_back_later'])
+  })
+
+  it('reads a hold the last check could not read back later, the team told past the bound', () => {
+    const unread = { state: 'cancelling', holdUnread: true }
+    expect(recoveryActions(row({ ...unread, changedMs: PAYMENT_STUCK_MS - 1 }))).toEqual([
+      'read_back_later',
+    ])
+    expect(recoveryActions(row({ ...unread, changedMs: PAYMENT_STUCK_MS }))).toEqual([
+      'read_back_later',
+      'stuck',
+    ])
   })
 
   it('reads the payment table of a final payment later, never on every pass (#166)', () => {

@@ -42,8 +42,15 @@ export interface JobQueue {
   send(
     name: string,
     data: object,
-    /** `startAfter`: seconds to wait before the job may start. */
-    options?: { singletonKey?: string; startAfter?: number | undefined },
+    /**
+     * `startAfter`: seconds to wait before the job may start. `group`: the route queues' one run
+     * at a time per key (`ONE_RUN_PER_GROUP_JOBS`).
+     */
+    options?: {
+      singletonKey?: string
+      startAfter?: number | undefined
+      group?: { readonly id: string } | undefined
+    },
   ): Promise<string | null>
 }
 

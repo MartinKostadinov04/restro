@@ -105,7 +105,9 @@ describe.skipIf(!hasDatabase)('the payment and Send queues on real pg-boss', () 
     await db?.drop()
   })
 
-  const send = (name: string, key: string) => worker.boss.send(name, { key }, { singletonKey: key })
+  // As `prepareJob` sends them: each key in its own group.
+  const send = (name: string, key: string) =>
+    worker.boss.send(name, { key }, { singletonKey: key, group: { id: key } })
 
   it('a send while a run of the same payment goes waits behind it: never dropped, never beside it', async () => {
     const key = 'pay-while-running'
@@ -152,8 +154,8 @@ describe.skipIf(!hasDatabase)('the payment and Send queues on real pg-boss', () 
     expect(beside).toBe(0)
   }, 30_000)
 
-  // RR-61: red until its fix; the fix removes .fails.
-  it.fails.each([
+  // RR-61: one hung run must not hold the others.
+  it.each([
     ['a payment', JOB_NAMES.paymentPrepare],
     ['a table', JOB_NAMES.orderSend],
   ])(
@@ -180,5 +182,57 @@ describe.skipIf(!hasDatabase)('the payment and Send queues on real pg-boss', () 
       }
     },
     30_000,
+  )
+
+  // RR-61, the case the options alone do not cover: a hung run with a second job of its own key
+  // waiting. pg-boss's fetch takes the oldest job first, and claiming it breaks the unique index
+  // of `stately`, which a fetch reads as "nothing to do": that job must not block the queue.
+  it.each([
+    ['a payment', JOB_NAMES.paymentPrepare],
+    ['a table', JOB_NAMES.orderSend],
+  ])(
+    "%s's hung run with its next job waiting does not hold up another's",
+    async (_what, name) => {
+      const hung = `${name}-hung`
+      const other = `${name}-free`
+      const release = gate()
+      const started = gate()
+      // The workers poll in step after a start, which can hide the conflict: a fetch that locks
+      // the waiting job makes another skip it. Jobs of different lengths put them out of step.
+      const finished: string[] = []
+      for (const [index, ms] of [130, 370, 610, 850].entries()) {
+        const key = `${name}-apart-${index}`
+        scripts.set(key, [
+          async () => {
+            await new Promise((resolve) => setTimeout(resolve, ms))
+            finished.push(key)
+          },
+        ])
+        await send(name, key)
+      }
+      await waitFor('the jobs that put the workers apart', () => finished.length === 4)
+      scripts.set(hung, [
+        async () => {
+          started.open()
+          await release.opened
+        },
+      ])
+      await send(name, hung)
+      await started.opened
+      // The waiting job of the hung key is older than the other key's.
+      expect(await send(name, hung)).not.toBeNull()
+      await send(name, other)
+      try {
+        await waitFor(`the other ${name} job`, () => runs.get(other) === 1)
+        // One key never runs two, while the other key runs.
+        expect(runs.get(hung)).toBe(1)
+        expect(beside).toBe(0)
+      } finally {
+        release.open()
+      }
+      await waitFor('the waiting job of the hung key', () => runs.get(hung) === 2, 150_000)
+      expect(beside).toBe(0)
+    },
+    180_000,
   )
 })
