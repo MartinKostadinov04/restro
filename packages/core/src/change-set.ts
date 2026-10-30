@@ -510,6 +510,9 @@ export const ChangeSetSchema = z
       if (op.op === 'setDesign' && set.source !== 'manual') {
         issue(`a ${set.source} change set cannot save a design`)
       }
+      if (op.op === 'setDesign' && set.actor.startsWith('integration:')) {
+        issue('an integration cannot save a design: a member or the system does')
+      }
       if (op.op === 'createNode') {
         if (created.has(op.id)) issue(`node ${op.id} is created twice`)
         created.add(op.id)

@@ -1,16 +1,18 @@
 // The layout fields of `menu-snapshot/1` (D92; brief S6): a section's `hints.layout` (vertical, or
 // horizontal: the face's feature strip) and the menu's `layout` (the layout guests start in and
-// whether they may switch it). Both are optional in the schema, so a snapshot published before
-// them still validates; the builder always writes them.
+// whether they may switch it), filled from the design (D129). Both are optional in the schema, so
+// a snapshot published before them still validates; the builder always writes them.
 import { describe, expect, it } from 'vitest'
 
+import type { DesignValues } from '../design/contract'
+import { BASIC_DESIGN_VALUES } from '../design/record'
 import { resolve } from '../resolve'
 import { CONTEXT, DocBuilder, eur, nd, ROOT, testId, VENUE_ID } from '../resolve/fixtures'
 import { DEFAULT_SECTION_LAYOUT, VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
 import {
   buildSnapshot,
   DEFAULT_MENU_LAYOUT,
-  menuLayoutOf,
+  designLayoutOf,
   type SnapshotContext,
   snapshotContentHash,
 } from './build'
@@ -55,6 +57,15 @@ function menu(): DocBuilder {
   return builder
 }
 
+/** A design with these Items words. */
+const designWith = (
+  layout: DesignValues['items']['layout'],
+  guest_switch: DesignValues['items']['guest_switch'],
+): DesignValues => ({
+  ...BASIC_DESIGN_VALUES,
+  items: { ...BASIC_DESIGN_VALUES.items, layout, guest_switch },
+})
+
 const snapshotOf = (builder: DocBuilder, ctx = context()) =>
   buildSnapshot(resolve(VENUE_MENU_TEMPLATE, builder.build(), CONTEXT), ctx)
 
@@ -93,39 +104,29 @@ describe('section layout (hints.layout)', () => {
 })
 
 describe('menu layout (layout)', () => {
-  it('a menu that set nothing looks as before D92: two columns, and guests may switch', () => {
+  it('without a design: two columns, and guests may switch (only a builder test meets this)', () => {
     expect(DEFAULT_MENU_LAYOUT).toEqual({ default: 'two', guest_switch: true })
     expect(snapshotOf(menu()).layout).toEqual({ default: 'two', guest_switch: true })
-    expect(snapshotOf(menu(), context({ layout: null })).layout).toEqual(DEFAULT_MENU_LAYOUT)
+    expect(snapshotOf(menu(), context({ design: null })).layout).toEqual(DEFAULT_MENU_LAYOUT)
   })
 
-  it('carries the menu’s layout and guest switch', () => {
-    const snapshot = snapshotOf(
-      menu(),
-      context({ layout: { default: 'one', guest_switch: false } }),
-    )
+  it('carries the design’s layout and guest switch', () => {
+    const snapshot = snapshotOf(menu(), context({ design: designWith('one', 'off') }))
     expect(snapshot.layout).toEqual({ default: 'one', guest_switch: false })
   })
 
-  it('menuLayoutOf names the stored layouts the snapshot’s way, with defaults for unset keys', () => {
-    expect(menuLayoutOf(undefined)).toEqual({ default: 'two', guest_switch: true })
-    expect(menuLayoutOf({})).toEqual({ default: 'two', guest_switch: true })
-    expect(menuLayoutOf({ layout: 'list' })).toEqual({ default: 'list', guest_switch: true })
-    expect(menuLayoutOf({ layout: 'one_column', layout_switch: false })).toEqual({
-      default: 'one',
+  it('designLayoutOf reads the Items page, the switch as a boolean', () => {
+    expect(designLayoutOf(BASIC_DESIGN_VALUES)).toEqual({ default: 'list', guest_switch: true })
+    expect(designLayoutOf(designWith('two', 'off'))).toEqual({
+      default: 'two',
       guest_switch: false,
     })
-    expect(menuLayoutOf({ layout: 'two_columns', layout_switch: true })).toEqual({
-      default: 'two',
-      guest_switch: true,
-    })
-    expect(menuLayoutOf({ layout_switch: false })).toEqual({ default: 'two', guest_switch: false })
   })
 
   it('changes the content hash, so a new layout is a new snapshot', () => {
-    const unset = snapshotOf(menu())
-    const list = snapshotOf(menu(), context({ layout: { default: 'list', guest_switch: true } }))
-    expect(list.snapshot.hash).not.toBe(unset.snapshot.hash)
+    const one = snapshotOf(menu(), context({ design: designWith('one', 'on') }))
+    const list = snapshotOf(menu(), context({ design: designWith('list', 'on') }))
+    expect(list.snapshot.hash).not.toBe(one.snapshot.hash)
   })
 })
 
@@ -167,7 +168,7 @@ describe('the leak guard', () => {
     const doc = builder.build()
     const snapshot = buildSnapshot(
       resolve(VENUE_MENU_TEMPLATE, doc, CONTEXT),
-      context({ layout: { default: 'two', guest_switch: true } }),
+      context({ design: designWith('two', 'on') }),
     )
     const forbidden = collectForbiddenValues({
       template: VENUE_MENU_TEMPLATE,

@@ -15,7 +15,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { newId } from '../ids'
 import { qrAddress, readVenueQr } from '../qr'
+import { DEFAULT_GUEST_FEATURES } from '../theme'
 import { mapBarsyVenue, type PlaceInput, upsertBarsyVenues, upsertPlaces } from './barsy-venues'
+import { setGuestFeatures } from './guest-features'
 import { provisionTenant, provisionVenue } from './provision'
 import { createIntegration } from './sources'
 import {
@@ -39,7 +41,6 @@ import {
   setVenueQrSettings,
 } from './tables'
 import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
-import { setVenueTheme } from './venue-theme'
 
 const DAY = 24 * 60 * 60 * 1000
 const TOKEN = /^[0-9A-Za-z]{22}$/
@@ -644,11 +645,11 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
     it('saves "our link" with a base address, then the venue’s own pattern, keeping both and the other settings', async () => {
       const { venue } = await freshVenue([])
       // Another setting must survive.
-      const colour = await setVenueTheme(app, tenant, {
+      const services = await setGuestFeatures(app, tenant, {
         venueId: venue as never,
-        theme: { brand: '#2563eb', logo_asset_id: null },
+        features: DEFAULT_GUEST_FEATURES,
       })
-      expect(colour?.brand).toBe('#2563eb')
+      expect(services).toEqual(DEFAULT_GUEST_FEATURES)
 
       const ours = await setVenueQrSettings(app, tenant, {
         venueId: venue as never,
@@ -673,7 +674,7 @@ describe.skipIf(!hasDatabase)('areas, tables and QR codes (as the restro_app rol
         tx.select().from(venues).where(eq(venues.id, venue)),
       )
       expect(row?.settings).toMatchObject({
-        theme: { brand: '#2563eb' },
+        guest_features: DEFAULT_GUEST_FEATURES,
         qr: {
           mode: 'own',
           base_url: 'http://192.168.1.20:3000',

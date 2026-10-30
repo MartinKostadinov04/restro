@@ -1,11 +1,13 @@
 // The snapshot's look and services (brief SH-01 §10–11): `theme.roles` / `theme.scheme`,
-// `presentation` and `features` in `menu-snapshot/1`. The builder writes them, the schema keeps
+// `features` and `design` (D129) in `menu-snapshot/1`. The builder writes them, the schema keeps
 // them optional (a snapshot published before them still parses), the diff counts them, and the
-// leak guard never mistakes their fixed words or the venue's option values for leaks.
+// leak guard never mistakes their fixed words for leaks. `presentation` is no longer written; it
+// stays in the schema so that a snapshot published with it still parses.
 import { readFileSync } from 'node:fs'
 
 import { describe, expect, it } from 'vitest'
 
+import { BASIC_DESIGN_VALUES } from '../design/record'
 import { resolve } from '../resolve'
 import { CONTEXT, DocBuilder, nd, ROOT, testId, VENUE_ID } from '../resolve/fixtures'
 import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
@@ -60,6 +62,7 @@ const snapshotOf = (ctx = context(), builder = bar()) =>
   buildSnapshot(resolve(VENUE_MENU_TEMPLATE, builder.build(), CONTEXT), ctx)
 
 const PRESENTATION = { face: 'editorial-market', options: { layout: 'two', compact: true } }
+const DESIGN = BASIC_DESIGN_VALUES
 const FEATURES: GuestFeatures = {
   filters: false,
   call_waiter: { enabled: true, kinds: ['terminal', 'bill', 'waiter'] },
@@ -88,17 +91,18 @@ describe('the default theme', () => {
 })
 
 describe('buildSnapshot: look and services', () => {
-  it('always writes the features (the defaults when unset) and no presentation unless set', () => {
+  it('always writes the features (the defaults when unset), never a presentation', () => {
     const snapshot = snapshotOf()
     expect(snapshot.features).toEqual(DEFAULT_GUEST_FEATURES)
     expect(snapshot).not.toHaveProperty('presentation')
     expect(snapshot.theme).toEqual(DEFAULT_THEME)
-    expect(snapshotOf(context({ presentation: null, features: null }))).toEqual(snapshot)
+    expect(snapshotOf(context({ design: null, features: null }))).toEqual(snapshot)
+    expect(snapshotOf(context({ design: DESIGN }))).not.toHaveProperty('presentation')
   })
 
-  it('writes the template and the services the venue chose, request kinds in vocabulary order', () => {
-    const snapshot = snapshotOf(context({ presentation: PRESENTATION, features: FEATURES }))
-    expect(snapshot.presentation).toEqual(PRESENTATION)
+  it('writes the design and the services the venue chose, request kinds in vocabulary order', () => {
+    const snapshot = snapshotOf(context({ design: DESIGN, features: FEATURES }))
+    expect(snapshot.design).toEqual(DESIGN)
     expect(snapshot.features).toEqual({
       ...FEATURES,
       call_waiter: { enabled: true, kinds: ['waiter', 'bill', 'terminal'] },
@@ -106,7 +110,7 @@ describe('buildSnapshot: look and services', () => {
     // The same choices in another order are the same snapshot.
     const reordered = snapshotOf(
       context({
-        presentation: { face: 'editorial-market', options: { compact: true, layout: 'two' } },
+        design: DESIGN,
         features: {
           ...FEATURES,
           call_waiter: { enabled: true, kinds: ['bill', 'waiter', 'terminal'] },
@@ -129,7 +133,7 @@ describe('buildSnapshot: look and services', () => {
 
   it('changes the hash when the look or the services change', () => {
     const plain = snapshotOf().snapshot.hash
-    expect(snapshotOf(context({ presentation: PRESENTATION })).snapshot.hash).not.toBe(plain)
+    expect(snapshotOf(context({ design: DESIGN })).snapshot.hash).not.toBe(plain)
     expect(snapshotOf(context({ features: FEATURES })).snapshot.hash).not.toBe(plain)
     expect(
       snapshotOf(context({ theme: { ...DEFAULT_THEME, scheme: 'light' } })).snapshot.hash,
@@ -151,9 +155,8 @@ describe('menu-snapshot/1 stays readable (parser first)', () => {
 
   it('stays strict: an unknown key, an upper-case role or an unknown scheme fails', () => {
     const fails = (change: (snapshot: Poke) => void) => {
-      const snapshot = snapshotOf(
-        context({ presentation: PRESENTATION, features: FEATURES }),
-      ) as Poke
+      const snapshot = snapshotOf(context({ design: DESIGN, features: FEATURES })) as Poke
+      snapshot.presentation = structuredClone(PRESENTATION)
       change(snapshot)
       expect(MenuSnapshotSchema.safeParse(snapshot).success).toBe(false)
     }
@@ -166,14 +169,25 @@ describe('menu-snapshot/1 stays readable (parser first)', () => {
     fails((s) => Object.assign(s.presentation.options, { snake_key: true }))
     fails((s) => Object.assign(s.features, { tips: true }))
     fails((s) => Object.assign(s.features.call_waiter, { kinds: ['taxi'] }))
+    fails((s) => Object.assign(s.design.items, { layout: 'grid' }))
+    fails((s) => Object.assign(s.design.items, { sparkle: 'on' }))
+    fails((s) => Object.assign(s.design, { footer: {} }))
+    fails((s) => delete s.design.items.layout)
+  })
+
+  it('still parses a snapshot published with a presentation (the field stays, optional)', () => {
+    const snapshot = snapshotOf() as Poke
+    snapshot.presentation = structuredClone(PRESENTATION)
+    expect(MenuSnapshotSchema.safeParse(snapshot).success).toBe(true)
   })
 
   it('exports the new fields in the JSON Schema for faces', () => {
     const schema = menuSnapshotJsonSchema() as Poke
     expect(Object.keys(schema.properties)).toEqual(
-      expect.arrayContaining(['presentation', 'features']),
+      expect.arrayContaining(['presentation', 'features', 'design']),
     )
     expect(schema.required).not.toContain('presentation')
+    expect(schema.required).not.toContain('design')
     expect(schema.required).not.toContain('features')
     expect(Object.keys(schema.properties.theme.properties)).toEqual(
       expect.arrayContaining(['roles', 'scheme']),
@@ -182,12 +196,12 @@ describe('menu-snapshot/1 stays readable (parser first)', () => {
 })
 
 describe('diffSnapshots: the look and the menu areas', () => {
-  const live = () => snapshotOf(context({ presentation: PRESENTATION, features: FEATURES }))
+  const live = () => snapshotOf(context({ design: DESIGN, features: FEATURES }))
 
-  it('counts a template or option change as the look', () => {
+  it('counts a change of the design as the look, and the layout with it', () => {
     const next = snapshotOf(
       context({
-        presentation: { face: 'editorial-market', options: { layout: 'one' } },
+        design: { ...DESIGN, items: { ...DESIGN.items, layout: 'one' } },
         features: FEATURES,
       }),
     )
@@ -195,10 +209,14 @@ describe('diffSnapshots: the look and the menu areas', () => {
   })
 
   it('counts a guest service change as the menu', () => {
-    const next = snapshotOf(
-      context({ presentation: PRESENTATION, features: { ...FEATURES, pay: true } }),
-    )
+    const next = snapshotOf(context({ design: DESIGN, features: { ...FEATURES, pay: true } }))
     expect(diffSnapshots(live(), next).areas).toEqual(['menu'])
+  })
+
+  it('counts dropping a published template as the look', () => {
+    const before = live() as Poke
+    before.presentation = structuredClone(PRESENTATION)
+    expect(diffSnapshots(before as never, live()).areas).toEqual(['look'])
   })
 
   it('finds both against a snapshot published before them', () => {
@@ -218,38 +236,46 @@ describe('the leak guard and the new words', () => {
       template: VENUE_MENU_TEMPLATE,
       doc,
       externalIds: [],
-      publicStrings: lookPublicStrings(DEFAULT_THEME, PRESENTATION),
+      publicStrings: lookPublicStrings(DEFAULT_THEME),
     })
     expect(forbidden.has('bill')).toBe(false)
     expect(forbidden.has('two')).toBe(false)
     const snapshot = buildSnapshot(resolve(VENUE_MENU_TEMPLATE, doc, CONTEXT), {
-      ...context({ presentation: PRESENTATION, features: FEATURES }),
+      ...context({ design: DESIGN, features: FEATURES }),
     })
     expect(() => assertSnapshotSafe(snapshot, forbidden)).not.toThrow()
   })
 
   it('still refuses an internal note that is not a public word', () => {
-    // "two" became a word of the snapshot itself (the menu layout, D92); an option key is not.
-    const doc = bar(['compact']).build()
-    // Without the presentation's strings, "compact" is an internal value like any other.
+    const doc = bar(['zebra']).build()
     const forbidden = collectForbiddenValues({
       template: VENUE_MENU_TEMPLATE,
       doc,
       externalIds: [],
-      publicStrings: lookPublicStrings(DEFAULT_THEME, null),
+      publicStrings: lookPublicStrings(DEFAULT_THEME),
     })
-    expect(forbidden.get('compact')).toBe('internal_value')
-    const snapshot = buildSnapshot(resolve(VENUE_MENU_TEMPLATE, doc, CONTEXT), {
-      ...context({ presentation: PRESENTATION }),
-    })
+    expect(forbidden.get('zebra')).toBe('internal_value')
+    const snapshot = snapshotOf(context({ design: DESIGN }), bar()) as Poke
+    snapshot.sections[BAR].title = { bg_BG: 'zebra' }
     expect(() => assertSnapshotSafe(snapshot, forbidden)).toThrow(SnapshotError)
+  })
+
+  it('no longer takes the retired presentation\'s words for vocabulary', () => {
+    const doc = bar(['face', 'presentation']).build()
+    const forbidden = collectForbiddenValues({
+      template: VENUE_MENU_TEMPLATE,
+      doc,
+      externalIds: [],
+    })
+    expect(forbidden.get('face')).toBe('internal_value')
+    expect(forbidden.get('presentation')).toBe('internal_value')
   })
 
   it('treats every fixed word of the new fields as vocabulary, keys included', () => {
     const words = [
       'roles',
       'scheme',
-      'presentation',
+      'design',
       'features',
       'light',
       'dark',
@@ -262,8 +288,6 @@ describe('the leak guard and the new words', () => {
       'muted',
       'accent_text',
       'border',
-      'face',
-      'options',
       'filters',
       'call_waiter',
       'enabled',
@@ -296,21 +320,16 @@ describe('the leak guard and the new words', () => {
     expect(forbidden.get('zebra')).toBe('internal_value')
   })
 
-  it('lists the look strings: font, palette, role colours, face, option keys and values', () => {
+  it('lists the look strings: font, palette and role colours', () => {
     const roles = deriveRoles({ primary: '#ffffff', secondary: '#eeeeee', tertiary: '#123456' })
-    const strings = lookPublicStrings({ ...DEFAULT_THEME, roles }, PRESENTATION)
+    const strings = lookPublicStrings({ ...DEFAULT_THEME, roles })
     expect(strings).toEqual(
       expect.arrayContaining([
         'Inter',
         ...DEFAULT_THEME.palette,
         ...Object.values(roles.light),
         ...Object.values(roles.dark),
-        'editorial-market',
-        'layout',
-        'two',
-        'compact',
       ]),
     )
-    expect(strings).not.toContain(true)
   })
 })
