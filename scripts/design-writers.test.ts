@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest'
 //      the record replaced (`theme`, `presentation`), by SQL or by laying it into `settings`.
 //   3. a file not on the list of settings writers below starts setting a venue's `settings`: each
 //      of those patches its own key, and a new one is a review of whether it can reach the record.
-// Migration files are not source here: 0044 wrote the first records. Only tightens (D67): a pattern
+// Migration files are not source here: 0045 wrote the first records. Only tightens (D67): a pattern
 // is never removed and an allowed file never added to let code through.
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))

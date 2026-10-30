@@ -460,6 +460,7 @@ export function sentOrderOf(
     ref: 'K7Q',
     lines: items.map(({ item, qty }) => ({ itemId: item.id, optionIds: [], qty })),
     sentAt: Date.now() - minutesAgo * 60_000,
+    sentClock: '19:42',
     mine: false,
     ...rest,
   }

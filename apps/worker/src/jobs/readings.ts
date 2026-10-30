@@ -10,11 +10,13 @@
 // - One reading is shared by every phone at the table (D111: eight phones each asking the POS
 //   would be about 50 calls a minute). The queue holds one read per table (`exclusive`, keyed by
 //   the table); a table is read at most once every `TABLE_READ_MIN_GAP_MS`, so "a few times a
-//   minute at most"; and each POS instance has a reading budget (`ReadingBudgets`), on top of
-//   the one call chain at a time it shares with the floor reading (`InstanceBudgets`). A read
-//   the budget can't take now is skipped: the next tick or the next guest reads it.
+//   minute at most"; and a read starts only while the login's per-second budget has room for it
+//   beside a round or a payment (`InstanceBudgets`, the one budget every POS call goes through). A
+//   read the budget can't take now is skipped: the next tick or the next guest reads it.
 // - A reading that is not complete, or a read that throws, is recorded as not complete: it
-//   concludes nothing (rule 6), and the phones are told the bill shown is the last good one.
+//   concludes nothing (rule 6), and the phones are told the bill shown is the last good one. A
+//   definite busy is not that: it is the same as a read the budget skipped, so nothing is recorded,
+//   nothing pauses the table and the connection's breaker hears nothing.
 // - Only a table with an open sitting is read: the bill is the sitting's.
 // - A `sim` instance is refused in production before its host is asked. The web app never calls
 //   a POS; this job is the only reader of a table's bills.
@@ -70,47 +72,21 @@ export const TABLE_READ_INTERVAL_MS = 60_000
 export const TABLE_READ_MIN_GAP_MS = 15_000
 
 /**
- * The reading budget of one POS instance: a bucket of `burst` reads that refills at `perSecond`.
- * A simulated POS allows five calls a second per login and a table read is one call plus one per
- * open bill, so one table a second, five at once, stays well inside it; a connector with a stated
- * rate limit gets its own figure with its own ticket.
- */
-export const INSTANCE_READ_BUDGET = { burst: 5, perSecond: 1 } as const
-
-/**
- * The reading budgets of this process: per instance, a bucket of reads; per table, the time of
- * the last read. In memory: a restart starts with full buckets, which the instance's call chain
- * and the POS's own limits still bound.
+ * The time of each table's last read, in this process. The instance's limit is the login's
+ * per-second budget (`InstanceBudgets`), asked through `hasRoom`.
  */
 export class ReadingBudgets {
-  readonly #buckets = new Map<string, { tokens: number; at: number }>()
   readonly #lastRead = new Map<string, number>()
-  readonly #budget: { readonly burst: number; readonly perSecond: number }
-
-  constructor(
-    budget: { readonly burst: number; readonly perSecond: number } = INSTANCE_READ_BUDGET,
-  ) {
-    this.#budget = budget
-  }
 
   /**
-   * Takes one read of `tableId` on `integrationId` at `now`, or says why not: the table was read
-   * within the gap, or the instance's bucket is empty.
+   * Takes one read of `tableId` at `now`, or says why not: the table was read within the gap, or
+   * the login's budget has no room for a read just now.
    */
-  take(integrationId: string, tableId: string, now: Date): 'ok' | 'too_soon' | 'over_budget' {
+  take(tableId: string, now: Date, hasRoom: () => boolean): 'ok' | 'too_soon' | 'over_budget' {
     const at = now.getTime()
     const last = this.#lastRead.get(tableId)
     if (last !== undefined && at - last < TABLE_READ_MIN_GAP_MS) return 'too_soon'
-    const bucket = this.#buckets.get(integrationId) ?? { tokens: this.#budget.burst, at }
-    const refilled = Math.min(
-      this.#budget.burst,
-      bucket.tokens + (Math.max(0, at - bucket.at) / 1000) * this.#budget.perSecond,
-    )
-    if (refilled < 1) {
-      this.#buckets.set(integrationId, { tokens: refilled, at })
-      return 'over_budget'
-    }
-    this.#buckets.set(integrationId, { tokens: refilled - 1, at })
+    if (!hasRoom()) return 'over_budget'
     this.#lastRead.set(tableId, at)
     return 'ok'
   }
@@ -203,18 +179,25 @@ export async function readTableOf(
   if (await connectionPaused(pool, tenantId, integrationId)) {
     return { kind: 'skipped', reason: 'the connection is paused' }
   }
-  const taken = (deps.readingBudgets ?? SHARED_READING_BUDGETS).take(integrationId, tableId, now())
+  const budgets = deps.budgets ?? SHARED_BUDGETS
+  const taken = (deps.readingBudgets ?? SHARED_READING_BUDGETS).take(tableId, now(), () =>
+    budgets.hasRoomForRead(integrationId, connector),
+  )
   if (taken === 'too_soon') return { kind: 'skipped', reason: 'the table was read moments ago' }
   if (taken === 'over_budget') {
     return { kind: 'skipped', reason: "the instance's reading budget is spent" }
   }
 
-  const budget = (deps.budgets ?? SHARED_BUDGETS).forInstance(integrationId)
+  const budget = budgets.forInstance(integrationId)
+  const context = serviceContext(now, budgets.paceOf(integrationId, connector))
   const table = posRef(found.place.placeId)
   let reading: TableReading
   try {
-    const answer = await budget.run(() => connector.readTable(serviceContext(now), table))
+    const answer = await budget.run(() => connector.readTable(context, table))
     const parsed = readingSchema(TableBillsSchema).safeParse(answer)
+    if (parsed.success && !parsed.data.complete && parsed.data.busy === true) {
+      return { kind: 'skipped', reason: 'the POS was busy' }
+    }
     reading = parsed.success
       ? toTableReading(parsed.data)
       : { complete: false, reason: 'the reading did not have the expected shape' }

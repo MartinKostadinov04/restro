@@ -1,9 +1,11 @@
-// What a provider's notice tells about a payment, recorded (#108; D127 4.4, D125 3.5): the amount
-// the venue refunded in its own dashboard and where a dispute stands. Restro never refunds; the
+// What a provider's notice tells about a payment, recorded (#108, #261; D127 4.4, D125 3.5): the
+// refunds the venue made in its own dashboard and where a dispute stands. Restro never refunds; the
 // worker reads the payment back from the provider after a notice and passes the reading here.
 //
-// The values are absolute, as read back, never added up from notices: a notice that comes twice,
-// late or out of order reads the payment as it stands now, so recording it again changes nothing.
+// The values are as read back, never added up from notices: a notice that comes twice, late or out
+// of order reads the payment as it stands now, so recording it again changes nothing. The refund
+// total is the sum of the refunds that did not fail, so it follows the list. A reading with no list
+// (`refunds: null`, a dispute's notice) leaves the refunds as they are.
 // The payment must be the one the provider names, captured on Restro's side for the amount the
 // provider says; anything else is refused and changes nothing.
 
@@ -19,7 +21,9 @@ import {
   closeAlertRows,
   FOLLOW_UP_ALERT_PERMISSION,
   openAlertsOf,
+  REFUND_LIST_CAP,
   reconcileRefunds,
+  refundTotalMinor,
 } from './payment-refunds'
 import { accepted, refused } from './results'
 
@@ -48,7 +52,18 @@ export function paymentObserve() {
       /** *Backend*: the provider's id of the payment, as read back. */
       providerPaymentRef: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,254}$/),
       capturedMinor: MinorSchema,
-      refundedMinor: MinorSchema,
+      /** Every refund of the payment as the provider lists it, oldest first; null: not read. */
+      refunds: z
+        .array(
+          z.strictObject({
+            /** *Backend*: the provider's id of the refund. */
+            ref: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,254}$/),
+            amountMinor: z.int().positive(),
+            failed: z.boolean(),
+          }),
+        )
+        .max(REFUND_LIST_CAP)
+        .nullable(),
       dispute: z.enum(PAYMENT_DISPUTE_STATES).nullable(),
       /** The provider's answer-by date of the dispute (ISO), where it gives one. */
       disputeDueAt: z.iso.datetime().nullable().default(null),
@@ -69,9 +84,11 @@ export function paymentObserve() {
         return refused(null, 'payment_mismatch', { reason: 'another_provider_payment' })
       }
       if (payment.capturedMinor === null) return refused(null, 'payment_not_captured')
+      const refundedMinor =
+        command.refunds === null ? payment.refundedMinor : refundTotalMinor(command.refunds)
       if (
         payment.capturedMinor !== command.capturedMinor ||
-        command.refundedMinor > payment.capturedMinor
+        refundedMinor > payment.capturedMinor
       ) {
         return refused(null, 'payment_mismatch', { reason: 'captured_amount' })
       }
@@ -79,24 +96,33 @@ export function paymentObserve() {
       const sameDue =
         (payment.disputeDueAt?.getTime() ?? null) === (dueAt?.getTime() ?? null) ||
         command.dispute === null
+      // Always by id, never only when the total moved: a failed refund and a new one of the same
+      // amount leave the total as it was.
+      const refunds =
+        command.refunds === null
+          ? { added: 0, failed: 0, named: 0, unmatched: 0 }
+          : await reconcileRefunds(stx, locked, command.refunds, refundedMinor)
       if (
-        payment.refundedMinor === command.refundedMinor &&
+        payment.refundedMinor === refundedMinor &&
         payment.dispute === command.dispute &&
-        sameDue
+        sameDue &&
+        refunds.added + refunds.failed + refunds.named === 0
       ) {
-        return accepted(null, { details: { changed: false } })
+        return accepted(null, {
+          details: {
+            changed: false,
+            refundsUnmatched: refunds.unmatched,
+            storedMinor: payment.refundedMinor,
+          },
+        })
       }
 
-      const refunds =
-        payment.refundedMinor === command.refundedMinor
-          ? { added: 0, failed: 0, unmatched: 0 }
-          : await reconcileRefunds(stx, locked, command.refundedMinor)
       const dispute = await observeDispute(stx, locked, command.dispute, dueAt)
 
       await stx.tx
         .update(payments)
         .set({
-          refundedMinor: command.refundedMinor,
+          refundedMinor,
           dispute: command.dispute,
           ...dispute,
           ...stx.provenance,
@@ -106,7 +132,7 @@ export function paymentObserve() {
       return accepted(null, {
         details: {
           changed: true,
-          refundedMinor: command.refundedMinor,
+          refundedMinor,
           dispute: command.dispute,
           refundsAdded: refunds.added,
           refundsFailed: refunds.failed,

@@ -137,7 +137,7 @@ const WORKER: readonly [string, (row: Row) => Record<string, unknown>][] = [
       providerKind: 'sim',
       providerPaymentRef: 'pi_attack',
       capturedMinor: 1,
-      refundedMinor: 0,
+      refunds: [],
       dispute: null,
     }),
   ],

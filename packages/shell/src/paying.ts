@@ -413,6 +413,17 @@ export function refusalText(
 }
 
 /**
+ * What a face says while the table's ordering is `closed`: the table isn't taking orders, or its
+ * code is no longer in use (D121), which no wait will end.
+ */
+export function orderingClosedText(
+  ordering: { readonly retired?: true } | null | undefined,
+  words: ServiceStrings,
+): string {
+  return ordering?.retired === true ? words.refusals.code_retired : words.orderingClosed
+}
+
+/**
  * The words of a payment that ended with nothing charged. `below_minimum` carries the venue's own
  * smallest card payment (`minCard`, the amount as text); without it the general line shows.
  */

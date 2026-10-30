@@ -689,6 +689,35 @@ describe('Send: no local success (test 3)', () => {
     }
   })
 
+  it('says a table code is no longer in use, not that the table is closed (RR-58, D121)', () => {
+    drawFace(
+      orderHost({
+        order: orderOf([orderLine(hummus)]),
+        ordering: { state: 'closed', retired: true, notesAndOptions: true },
+      }),
+    )
+    const sheet = openBag()
+    expect(sheet.textContent).toContain(W.refusals.code_retired)
+    expect(sheet.textContent).not.toContain(W.orderingClosed)
+  })
+
+  it('shows a waiter the venue’s clock, not what the phone makes of sentAt (RR-58)', () => {
+    drawFace(
+      orderHost({
+        sentOrders: [
+          sentOrderOf('so_1', 'unconfirmed', [{ item: hummus, qty: 1 }], {
+            // 12:00 UTC: no time zone on earth makes 19:42 of this.
+            sentAt: Date.UTC(2026, 9, 30, 12, 0),
+            sentClock: '19:42',
+          }),
+        ],
+      }),
+    )
+    const sheet = openBag()
+    fireEvent.click(within(sheet).getByRole('button', { name: W.showWaiter }))
+    expect(sheet.querySelector('[data-show-waiter]')?.textContent).toContain('19:42')
+  })
+
   it('says "Last orders at" and still sends; says the night is closed or opens later, with no Send', () => {
     const cases = [
       [{ state: 'last_orders' as const, at: '04:30' }, W.lastOrdersAt('04:30'), true],

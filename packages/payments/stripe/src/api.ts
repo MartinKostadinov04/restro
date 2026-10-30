@@ -68,7 +68,11 @@ export const RefundSchema = z.looseObject({
   id: StripeIdSchema,
   object: z.literal('refund'),
   payment_intent: z.string().nullish(),
+  amount: z.int(),
+  /** "`pending`, `requires_action`, `succeeded`, `failed`, or `canceled`"; nullable. */
+  status: z.string().nullish(),
 })
+export type StripeRefund = z.output<typeof RefundSchema>
 
 export function listSchema<T extends z.ZodType>(item: T) {
   return z.looseObject({ data: z.array(item), has_more: z.boolean() })

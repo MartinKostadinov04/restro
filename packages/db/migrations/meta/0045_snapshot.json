@@ -1,6 +1,6 @@
 {
-  "id": "7d440f3a-f993-4f4d-81fb-6bd0ebb8d768",
-  "prevId": "ea0f0cba-6df2-44e8-acbe-954d4f53e43d",
+  "id": "ea0f0cba-6df2-44e8-acbe-954d4f53e43d",
+  "prevId": "d15d90cd-0122-4278-9bac-ad3754d95701",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2984,6 +2984,13 @@
           "notNull": true,
           "default": "'a0'"
         },
+        "settings": {
+          "name": "settings",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
         "deleted_at": {
           "name": "deleted_at",
           "type": "timestamp with time zone",
@@ -3090,6 +3097,10 @@
         "menus_sort_key_format": {
           "name": "menus_sort_key_format",
           "value": "\"restro\".\"menus\".\"sort_key\" ~ '^[A-Za-z][0-9A-Za-z]*$'"
+        },
+        "menus_settings_object": {
+          "name": "menus_settings_object",
+          "value": "jsonb_typeof(\"restro\".\"menus\".\"settings\") = 'object'"
         }
       },
       "isRLSEnabled": false
@@ -4083,6 +4094,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "provider_refund_ref": {
+          "name": "provider_refund_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "amount_minor": {
           "name": "amount_minor",
           "type": "bigint",
@@ -4171,6 +4188,28 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "payment_refunds_provider_ref_unique": {
+          "name": "payment_refunds_provider_ref_unique",
+          "columns": [
+            {
+              "expression": "payment_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "provider_refund_ref",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"restro\".\"payment_refunds\".\"provider_refund_ref\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -4268,6 +4307,10 @@
         "payment_refunds_amount": {
           "name": "payment_refunds_amount",
           "value": "\"restro\".\"payment_refunds\".\"amount_minor\" > 0"
+        },
+        "payment_refunds_provider_ref": {
+          "name": "payment_refunds_provider_ref",
+          "value": "\"restro\".\"payment_refunds\".\"provider_refund_ref\" is null or \"restro\".\"payment_refunds\".\"provider_refund_ref\" ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,254}$'"
         },
         "payment_refunds_storno": {
           "name": "payment_refunds_storno",

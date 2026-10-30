@@ -6,10 +6,38 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 
 import { serviceDate } from '../service-day'
-import { monthsBefore, serviceRetentionCutoffs } from './log'
+import {
+  monthsBefore,
+  NIGHT_RETENTION_DAYS,
+  RECORD_RETENTION_MONTHS,
+  recordRetainUntil,
+  serviceRetentionCutoffs,
+} from './log'
+import { DISPUTE_RETENTION_MONTHS } from './payment-observe'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const SOFIA = 'Europe/Sofia'
+
+describe('the retention figures themselves (RR-41)', () => {
+  // Written as numbers, not imported back: a wrong constant must fail here.
+  it('are 31 days for a night row (D120, D122 §8) and 18 months for a record (D122 §8, D111)', () => {
+    expect(NIGHT_RETENTION_DAYS).toBe(31)
+    expect(RECORD_RETENTION_MONTHS).toBe(18)
+  })
+
+  it('are 6 months after a dispute closes (D122 §8)', () => {
+    expect(DISPUTE_RETENTION_MONTHS).toBe(6)
+  })
+
+  it('make a record row, and a payment, due 18 calendar months after it was made', () => {
+    expect(recordRetainUntil(new Date('2026-03-15T10:00:00.000Z')).toISOString()).toBe(
+      '2027-09-15T10:00:00.000Z',
+    )
+    expect(recordRetainUntil(new Date('2026-10-26T12:30:00.000Z')).toISOString()).toBe(
+      '2028-04-26T12:30:00.000Z',
+    )
+  })
+})
 
 describe('the service retention cutoffs', () => {
   it('lets a night row go only once its service day ended 31 days ago', () => {

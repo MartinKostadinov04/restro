@@ -181,6 +181,7 @@ export {
   NO_TIP,
   offersPay,
   offersReceiptEmail,
+  orderingClosedText,
   PAY_ENDS,
   type PayBlock,
   type PayEnd,
@@ -262,7 +263,6 @@ export {
   DUPLICATE_ASK_SECONDS,
   itemsById,
   minutesSinceSent,
-  sentClock,
   sentWords,
 } from './table-order'
 export { fallbackChain, pickText } from './text'

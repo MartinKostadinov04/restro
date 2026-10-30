@@ -16,6 +16,7 @@ const sent = (state: SentOrderView['state'], reason: string | null): SentOrderVi
     { itemId: MOJITO, optionIds: [], qty: 1, outOfStock: true },
   ],
   sentAt: 0,
+  sentClock: '19:42',
   mine: true,
 })
 

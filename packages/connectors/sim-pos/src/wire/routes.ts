@@ -6,7 +6,8 @@
 //   GET  /api/ping                                   ping
 //   GET  /api/tables?page=n                          listTables
 //   GET  /api/bars?page=n                            listBars
-//   GET  /api/tables/{table}/bills?state=open&page=n listBills
+//   GET  /api/tables/{table}/bills?state=open&page=n listBills (`state=closed`: Q24, with the
+//                                                    receipt number where the POS gives one)
 //   GET  /api/bills?state=open&page=n                listOpenBills
 //   GET  /api/bills/{bill}/rows?page=n               listRows
 //   POST /api/tables/{table}/rows                    addRows

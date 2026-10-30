@@ -14,7 +14,12 @@
 // scenarios share Demo Bar's switches; a server running different ones makes the connector throw
 // loudly on a behaviour the simulator does not define, never guess.
 
-import { SERVICE_TIMINGS, type ServiceConnector, type ServiceTimings } from '@restro/core'
+import {
+  SERVICE_TIMINGS,
+  type ServiceConnector,
+  type ServiceContext,
+  type ServiceTimings,
+} from '@restro/core'
 import type { Integration } from '@restro/db'
 import {
   createSimPosConnector,
@@ -96,10 +101,15 @@ export function serviceConnectorFor(
   })
 }
 
-/** The seam's context for one call: the platform's clock and timings. */
+/**
+ * The seam's context for one call: the platform's clock and timings, and the login's per-second
+ * budget (`InstanceBudgets.paceOf`). The budget is not optional here, so no POS call of the worker
+ * can leave without it.
+ */
 export function serviceContext(
   now: () => Date,
+  pace: NonNullable<ServiceContext['pace']>,
   timings: ServiceTimings = SERVICE_TIMINGS,
-): { now(): Date; readonly timings: ServiceTimings } {
-  return { now, timings }
+): ServiceContext {
+  return { now, timings, pace }
 }

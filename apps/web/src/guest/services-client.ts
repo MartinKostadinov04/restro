@@ -28,8 +28,9 @@
 //   a phone without a pass `location_needed`. The first time in a service day the client asks the
 //   face for the consent screen and keeps the edit; "Allow" locates the phone (its position goes
 //   only into that one request) and sends the edit again with it. Once allowed, later checks run
-//   without asking. "Not now" is remembered for the day; the guest's own "Allow location" tap
-//   asks again. The pass the server hands back is kept in the tab's session storage and sent in
+//   without asking. "Not now", or a browser that blocks location, is remembered for the day, in the
+//   durable memory (once per phone, D119); the guest's own "Allow location" tap asks again. The
+//   pass the server hands back is kept in the tab's session storage and sent in
 //   `X-Restro-Pass`; every command carries `X-Restro-Phone`, the value made at load. A Send asks
 //   the page for Turnstile's token first.
 // - Paying (#110, #114, D127): the payment handle comes in the answer to the phone's `pay.start` and
@@ -48,6 +49,7 @@
 import {
   applyOrderEdit,
   type GuestPosition,
+  LOCATE_TIMEOUT_MS,
   LOCATION_CONSENT_VERSION,
   type OrderEdit,
   orderLineIdFor,
@@ -127,7 +129,7 @@ export interface TableServicesDeps {
    */
   readonly durable?: SessionMemory
   /** The phone's position, or null when the guest refused it or it took too long. */
-  readonly locate?: () => Promise<GuestPosition | null>
+  readonly locate?: () => Promise<GuestPosition | typeof LOCATION_BLOCKED | null>
   /** Turnstile's token for a Send, or null when the widget gave none. */
   readonly humanToken?: (action: string) => Promise<string | null>
 }
@@ -175,8 +177,44 @@ export const payEmailKey = (code: string): string => `${PAY_EMAIL_KEY}.${code}`
 /** When a day has no end the server named, a handle is kept this long (hours). */
 const DEFAULT_KEEP_HOURS = 6
 
-/** The session storage key of the guest's consent answer, kept until the service day ends. */
+/**
+ * The durable memory's key of the guest's consent answer, one per venue (the consent is to the venue
+ * it names, D119), kept until the service day ends. It outlives the tab: "once per phone per
+ * service day".
+ */
 export const CONSENT_KEY = 'restro.locationConsent'
+
+/** The answer to a request for the phone's position that the browser refused or can't give. */
+export const LOCATION_BLOCKED = 'blocked'
+
+/** What the browser's location API needs to be here (`navigator.geolocation`). */
+type PositionSource = Pick<Geolocation, 'getCurrentPosition'>
+
+/**
+ * The phone's position, precise, within about 10 s. `blocked` when the browser refuses it or has no
+ * location at all, which counts as a refusal (D119); null when this try just got no answer (no fix,
+ * too slow), which says nothing of what the guest wants.
+ */
+export function locateWith(
+  source: PositionSource | undefined,
+): Promise<GuestPosition | typeof LOCATION_BLOCKED | null> {
+  return new Promise((resolve) => {
+    if (source === undefined) {
+      resolve(LOCATION_BLOCKED)
+      return
+    }
+    source.getCurrentPosition(
+      (position) =>
+        resolve({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracyM: position.coords.accuracy,
+        }),
+      (error) => resolve(error.code === error.PERMISSION_DENIED ? LOCATION_BLOCKED : null),
+      { enableHighAccuracy: true, timeout: LOCATE_TIMEOUT_MS, maximumAge: 0 },
+    )
+  })
+}
 
 /** A fresh phone value from 16 random bytes: base64url, 22 characters. */
 export function newPhoneValue(bytes: Uint8Array): string {
@@ -470,16 +508,27 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
 
   /** The guest's answer this service day (kept with its end and the consent text's version). */
   function consent(): Consent {
-    const kept = deps.memory?.get(CONSENT_KEY)
-    if (kept == null) return 'unknown'
+    const key = consentKey()
+    const kept = key === null ? null : durable?.get(key)
+    if (key === null || kept == null) return 'unknown'
     const [answer, version, until] = kept.split(':')
-    if (version !== LOCATION_CONSENT_VERSION || !(Number(until) > deps.now())) return 'unknown'
+    if (version !== LOCATION_CONSENT_VERSION || !(Number(until) > deps.now())) {
+      durable?.remove(key)
+      return 'unknown'
+    }
     return answer === 'allowed' || answer === 'declined' ? answer : 'unknown'
   }
 
+  /** The answer's key at this venue; none before the server has named the venue. */
+  function consentKey(): string | null {
+    return server === null ? null : `${CONSENT_KEY}:${server.location.venueName}`
+  }
+
   function remember(answer: 'allowed' | 'declined'): void {
+    const key = consentKey()
+    if (key === null) return
     const dayEnds = deps.now() + (server?.location.dayEndsInSeconds ?? 0) * 1000
-    deps.memory?.set(CONSENT_KEY, `${answer}:${LOCATION_CONSENT_VERSION}:${dayEnds}`)
+    durable?.set(key, `${answer}:${LOCATION_CONSENT_VERSION}:${dayEnds}`)
   }
 
   function keepPass(next: string | null): void {
@@ -676,7 +725,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       order: server?.order == null ? null : orderView(server.order, pending, now),
       requests: server?.waiterCall == null ? [] : requestsOf(server.waiterCall),
       ordering: retired
-        ? { state: 'closed' }
+        ? { state: 'closed', retired: true }
         : server === null
           ? null
           : {
@@ -696,6 +745,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
           ref: sent.ref,
           lines: sent.lines,
           sentAt: now - sent.sentAgoSeconds * 1000,
+          sentClock: sent.sentClock,
           mine: mine.has(sent.id),
           ...(sent.unpaid === true ? { unpaid: true as const } : {}),
         }),
@@ -944,7 +994,10 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     prompt = 'checking'
     recompute()
     const position = await (deps.locate?.() ?? Promise.resolve(null)).catch(() => null)
-    if (position === null) {
+    if (position === null || position === LOCATION_BLOCKED) {
+      // A browser that blocks location counts as a refusal: not asked again today (D119). The
+      // guest's own "Allow location" tap still asks.
+      if (position === LOCATION_BLOCKED) remember('declined')
       prompt = 'failed'
       recompute()
       return {

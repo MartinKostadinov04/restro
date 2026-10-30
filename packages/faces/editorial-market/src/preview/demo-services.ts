@@ -413,6 +413,7 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
                   qty: line.qty,
                 })),
                 sentAt: Date.now(),
+                sentClock: '19:42',
                 mine: true,
               },
               ...current.sent,

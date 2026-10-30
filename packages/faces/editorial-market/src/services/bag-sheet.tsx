@@ -17,7 +17,7 @@
 // may already be in the POS, so there is no "Try again" and no re-send for a few minutes. While the
 // phone is offline Send is greyed with the weak-connection line (D121).
 
-import { sentClock, sentWords } from '@restro/shell'
+import { orderingClosedText, sentWords } from '@restro/shell'
 import { useState } from 'react'
 
 import { Text } from '../parts'
@@ -51,7 +51,7 @@ function OrderingNotes({ o }: { readonly o: Services }) {
       ) : null}
       {ordering === 'closed' ? (
         <p className="ro-notice" data-slot="ordering.closed">
-          {words.orderingClosed}
+          {orderingClosedText(state.ordering, words)}
         </p>
       ) : null}
       {night?.state === 'last_orders' && night.at !== null ? (
@@ -116,7 +116,7 @@ function SentOrders({ o }: { readonly o: Services }) {
         data-show-waiter=""
       >
         <p className="ro-waiter-ref">{open.ref}</p>
-        <p>{sentClock(open.sentAt)}</p>
+        <p>{open.sentClock}</p>
         <ul>
           {open.lines.map((line, index) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: a sent order's lines never change or reorder
