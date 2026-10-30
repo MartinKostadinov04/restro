@@ -15,7 +15,16 @@ import { newId } from '../ids'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import type { ServiceActor, ServiceContext } from './context'
 import { applyService, readLog, readPaymentDetail, readTonight, type ServiceCommand } from './index'
+import { disputeRetainUntil } from './payment-observe'
 import { DEFAULT_ROLE_PERMISSIONS } from './permissions'
+
+describe('how long a closed dispute keeps its payment', () => {
+  it('is six months, to the day (D122 §8)', () => {
+    expect(disputeRetainUntil(new Date('2026-03-15T10:00:00.000Z')).toISOString()).toBe(
+      '2026-09-15T10:00:00.000Z',
+    )
+  })
+})
 
 describe.skipIf(!hasDatabase)('refunds and disputes (as the restro_app role)', () => {
   let world: ServiceWorld

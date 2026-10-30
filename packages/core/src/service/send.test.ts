@@ -276,14 +276,15 @@ describe.skipIf(!hasDatabase)('Send and the sent order (as the restro_app role)'
           ? [answer.result.details.sentOrderId as string]
           : [],
       )
-      require('node:fs').appendFileSync('C:/Users/Martin/AppData/Local/Temp/claude/E--Restro/431635f7-7037-4fc0-a8b3-62042a7942bc/scratchpad/dbg.txt', JSON.stringify(answers.map((a) => a?.result ?? null)) + '\n')
       // A friend's add can make every Send's lines out of date: then all are refused, and the
       // bag is untouched. Without the add, exactly one Send gets through.
       if (night % 2 === 1) expect(new Set(accepted).size).toBe(1)
-      const { rows } = await world.owner.query<{ id: string; lines: { itemId: string; qty: number }[] }>(
-        `select id, lines from restro.sent_orders where sitting_id = $1 order by created_at`,
-        [sittingId],
-      )
+      const { rows } = await world.owner.query<{
+        id: string
+        lines: { itemId: string; qty: number }[]
+      }>(`select id, lines from restro.sent_orders where sitting_id = $1 order by created_at`, [
+        sittingId,
+      ])
       const sentNow = rows.slice(Number(before.rows[0]?.n ?? 0))
       expect(sentNow.map((row) => row.id).sort()).toEqual([...new Set(accepted)].sort())
       const quantity = (itemId: string, lines: readonly { itemId: string; qty: number }[]) =>
@@ -294,7 +295,10 @@ describe.skipIf(!hasDatabase)('Send and the sent order (as the restro_app role)'
       expect(quantity(gin, sentLines) + quantity(gin, left)).toBe(night % 2 === 0 ? 1 : 0)
       // Clear what is left for the next night.
       for (const row of sentNow) {
-        await world.owner.query(`update restro.sent_orders set state = 'added', settled_at = now() where id = $1`, [row.id])
+        await world.owner.query(
+          `update restro.sent_orders set state = 'added', settled_at = now() where id = $1`,
+          [row.id],
+        )
       }
       await world.owner.query(
         `update restro.table_orders set lines = '[]'::jsonb where table_id = $1 and sitting_id = $2`,

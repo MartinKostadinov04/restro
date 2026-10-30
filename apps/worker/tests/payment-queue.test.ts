@@ -105,8 +105,7 @@ describe.skipIf(!hasDatabase)('the payment and Send queues on real pg-boss', () 
     await db?.drop()
   })
 
-  const send = (name: string, key: string) =>
-    worker.boss.send(name, { key }, { singletonKey: key })
+  const send = (name: string, key: string) => worker.boss.send(name, { key }, { singletonKey: key })
 
   it('a send while a run of the same payment goes waits behind it: never dropped, never beside it', async () => {
     const key = 'pay-while-running'
@@ -156,25 +155,29 @@ describe.skipIf(!hasDatabase)('the payment and Send queues on real pg-boss', () 
   it.each([
     ['a payment', JOB_NAMES.paymentPrepare],
     ['a table', JOB_NAMES.orderSend],
-  ])("%s's long run does not hold up another's", async (_what, name) => {
-    const slow = `${name}-slow`
-    const other = `${name}-other`
-    const release = gate()
-    const started = gate()
-    scripts.set(slow, [
-      async () => {
-        started.open()
-        await release.opened
-      },
-    ])
-    await send(name, slow)
-    await started.opened
-    await send(name, other)
-    try {
-      // The real runs last up to 2 minutes (PAYMENT_RUN_MS) or a minute of read-back.
-      await waitFor(`the other ${name} job`, () => runs.get(other) === 1)
-    } finally {
-      release.open()
-    }
-  }, 30_000)
+  ])(
+    "%s's long run does not hold up another's",
+    async (_what, name) => {
+      const slow = `${name}-slow`
+      const other = `${name}-other`
+      const release = gate()
+      const started = gate()
+      scripts.set(slow, [
+        async () => {
+          started.open()
+          await release.opened
+        },
+      ])
+      await send(name, slow)
+      await started.opened
+      await send(name, other)
+      try {
+        // The real runs last up to 2 minutes (PAYMENT_RUN_MS) or a minute of read-back.
+        await waitFor(`the other ${name} job`, () => runs.get(other) === 1)
+      } finally {
+        release.open()
+      }
+    },
+    30_000,
+  )
 })

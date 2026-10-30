@@ -130,11 +130,15 @@ describe('serviceNightAt', () => {
       sat: { opens: '22:00', lastOrders: '03:30', closes: '03:45' },
     }
     const night = serviceNightAt(at('2026-03-28T21:00:00Z'), config(jump))
-    expect(night.lastOrdersAt!.getTime()).toBeGreaterThanOrEqual(
+    expect((night.lastOrdersAt as Date).getTime()).toBeGreaterThanOrEqual(
       at('2026-03-29T01:00:00Z').getTime(),
     )
-    expect(night.lastOrdersAt!.getTime()).toBeLessThanOrEqual(at('2026-03-29T01:30:00Z').getTime())
-    expect(night.closesAt!.getTime()).toBeGreaterThan(night.lastOrdersAt!.getTime())
+    expect((night.lastOrdersAt as Date).getTime()).toBeLessThanOrEqual(
+      at('2026-03-29T01:30:00Z').getTime(),
+    )
+    expect((night.closesAt as Date).getTime()).toBeGreaterThan(
+      (night.lastOrdersAt as Date).getTime(),
+    )
   })
 
   it('names the next change', () => {

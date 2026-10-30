@@ -318,6 +318,12 @@ describe.skipIf(!hasDatabase)("Send's guards (as the restro_app role)", () => {
     expect((await send()).status).toBe('accepted')
   })
 
+  it('lets a round exactly at the cap through', async () => {
+    await settings({ capMinor: 1350 })
+    await add(beer, 3)
+    expect((await send()).status).toBe('accepted')
+  })
+
   it('refuses a round over the cap, pausing the table for "ask your waiter" with one Log entry', async () => {
     await settings({ capMinor: 1000 })
     await add(beer, 3)
@@ -434,9 +440,9 @@ describe.skipIf(!hasDatabase)("Send's guards (as the restro_app role)", () => {
     it('a failed reading pauses the table until its next good reading', async () => {
       await add(beer, 1)
       expect(await record(withBill)).toMatchObject({ status: 'accepted' })
-      expect(await record({ complete: false, reason: 'the table could not be read' })).toMatchObject(
-        { status: 'accepted', details: { complete: false } },
-      )
+      expect(
+        await record({ complete: false, reason: 'the table could not be read' }),
+      ).toMatchObject({ status: 'accepted', details: { complete: false } })
       expect(await send()).toMatchObject({ status: 'refused', code: 'ordering_paused' })
       expect(await record(withBill)).toMatchObject({ status: 'accepted' })
       expect((await send()).status).toBe('accepted')
@@ -448,18 +454,14 @@ describe.skipIf(!hasDatabase)("Send's guards (as the restro_app role)", () => {
     it('new guests on a table whose bill stays open are not asked for a first item', async () => {
       expect(await record(withBill)).toMatchObject({ status: 'accepted' })
       const managerId = await world.addUser('owner')
-      const { result } = await applyService(
-        world.app,
-        { type: 'table.new_guests', tableId },
-        {
-          tenantId: world.tenantId,
-          venueId: world.venueId,
-          origin: 'staff',
-          actor: { kind: 'user', userId: managerId, sessionId: `se-${randomUUID()}` },
-          jobId: `jb-${randomUUID()}`,
-          signedInAt: new Date(),
-        } as never,
-      )
+      const { result } = await applyService(world.app, { type: 'table.new_guests', tableId }, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        origin: 'staff',
+        actor: { kind: 'user', userId: managerId, sessionId: `se-${randomUUID()}` },
+        jobId: `jb-${randomUUID()}`,
+        signedInAt: new Date(),
+      } as never)
       expect(result).toMatchObject({ status: 'accepted' })
       const { rows } = await world.owner.query<{ id: string }>(
         'select id from restro.sittings where table_id = $1 and ended_at is null',

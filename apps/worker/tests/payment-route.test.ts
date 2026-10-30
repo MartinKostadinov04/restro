@@ -79,8 +79,8 @@ import {
   fetchTransport,
   loadScenarioFile,
   PosRefusal,
-  ManualClock as SimPosClock,
   readingLogin,
+  ManualClock as SimPosClock,
   type SimServer,
   SimSetupError,
   UndefinedBehaviour,
@@ -1656,7 +1656,10 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       get(target, name) {
         const value = Reflect.get(target, name, target)
         if (name === 'readPayment') {
-          return async () => ({ complete: false as const, reason: 'access to the account was lost' })
+          return async () => ({
+            complete: false as const,
+            reason: 'access to the account was lost',
+          })
         }
         return typeof value === 'function' ? value.bind(target) : value
       },

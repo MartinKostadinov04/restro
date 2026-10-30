@@ -70,6 +70,26 @@ describe('the last check', () => {
     expect(check({})).toEqual({ ok: true, foundMinor: 1_450, voided: 0, found: [0, 1] })
   })
 
+  it('closes nothing when only a free line is left after a void', () => {
+    const lines = [
+      { pos: 'L1', quantity: '2', amountMinor: 1_000 },
+      { pos: 'L2', quantity: '1', amountMinor: 0 },
+    ]
+    expect(
+      check({ confirmed: lines, isolated: bill([{ quantity: '1', amountMinor: 0 }]) }),
+    ).toEqual({ ok: false, why: 'no_lines' })
+  })
+
+  it('never calls a confirmed line with no POS reference voided', () => {
+    const lines = [
+      { pos: null, quantity: '1', amountMinor: 450 },
+      { pos: 'L1', quantity: '2', amountMinor: 1_000 },
+    ]
+    expect(
+      check({ confirmed: lines, isolated: bill([{ quantity: '2', amountMinor: 1_000 }]) }),
+    ).toEqual({ ok: false, why: 'line_missing' })
+  })
+
   it('fails a closed bill, a part-paid one, a total off its lines, and a line slipped in', () => {
     expect(check({ isolated: null })).toEqual({ ok: false, why: 'no_bill' })
     expect(check({ isolated: { ...bill(), bills: 2 } })).toEqual({

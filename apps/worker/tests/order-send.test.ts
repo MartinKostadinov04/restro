@@ -577,9 +577,10 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
     class Killed extends Error {}
 
     const expireAndSweep = async () => {
-      await query(`update restro.locks set deadline = now() - interval '1 second' where scope = 'order_slot' and key = $1`, [
-        tableId,
-      ])
+      await query(
+        `update restro.locks set deadline = now() - interval '1 second' where scope = 'order_slot' and key = $1`,
+        [tableId],
+      )
       const { expired } = await slotTargets(pool)
       expect(expired.map((target) => target.tableId)).toContain(tableId)
       const { result } = await applyService(
@@ -603,7 +604,11 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
         1,
         () => ({
           breakers: Object.assign(new ConnectionBreakers(() => 0.5), {
-            record: async (_env: unknown, _connection: unknown, event: { kind: string; elapsedMs?: number }) => {
+            record: async (
+              _env: unknown,
+              _connection: unknown,
+              event: { kind: string; elapsedMs?: number },
+            ) => {
               // The read before carries its time; the record right after the add does not.
               if (event.kind === 'call' && event.elapsedMs === undefined) throw new Killed()
             },
@@ -636,34 +641,46 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
           }
         },
       ],
-    ] as const)('%s: settled by the sweep, never sent again', async (_name, leftIn, landed, kill) => {
-      sim.host.engine.faults.clear()
-      firstItem()
-      const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
-      const before = addCalls()
-      await expect(
-        sendTableOrders(env(), { tenantId, venueId: demo.venueId, tableId }, { ...deps(), ...kill() }),
-      ).rejects.toBeInstanceOf(Killed)
-      sim.host.engine.faults.clear()
-      expect((await sentOrder(id))?.state).toBe(leftIn)
+    ] as const)(
+      '%s: settled by the sweep, never sent again',
+      async (_name, leftIn, landed, kill) => {
+        sim.host.engine.faults.clear()
+        firstItem()
+        const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+        const before = addCalls()
+        await expect(
+          sendTableOrders(
+            env(),
+            { tenantId, venueId: demo.venueId, tableId },
+            { ...deps(), ...kill() },
+          ),
+        ).rejects.toBeInstanceOf(Killed)
+        sim.host.engine.faults.clear()
+        expect((await sentOrder(id))?.state).toBe(leftIn)
 
-      // The next job finds the slot held and sends nothing.
-      simClock.advance(1_100)
-      expect(await run()).toEqual([])
-      expect(addCalls() - before).toBeLessThanOrEqual(1)
+        // The next job finds the slot held and sends nothing.
+        simClock.advance(1_100)
+        expect(await run()).toEqual([])
+        expect(addCalls() - before).toBeLessThanOrEqual(1)
 
-      // The sweep settles it, and the job after that still sends nothing.
-      expect(await expireAndSweep()).toMatchObject({ details: { expired: true, sentOrderId: id } })
-      expect(await sentOrder(id)).toMatchObject({ state: 'unconfirmed', reason: 'check_timed_out' })
-      const calls = addCalls()
-      simClock.advance(1_100)
-      await run()
-      expect(addCalls()).toBe(calls)
-      const rows = onBill().filter(([article]) => article === ARTICLE_A)
-      expect(rows).toHaveLength(landed)
-      // Its lines stay out of the bag: Try again is offered only after a definite no (D116).
-      expect((await orderLines()).filter((line) => line.itemId === itemA)).toEqual([])
-    })
+        // The sweep settles it, and the job after that still sends nothing.
+        expect(await expireAndSweep()).toMatchObject({
+          details: { expired: true, sentOrderId: id },
+        })
+        expect(await sentOrder(id)).toMatchObject({
+          state: 'unconfirmed',
+          reason: 'check_timed_out',
+        })
+        const calls = addCalls()
+        simClock.advance(1_100)
+        await run()
+        expect(addCalls()).toBe(calls)
+        const rows = onBill().filter(([article]) => article === ARTICLE_A)
+        expect(rows).toHaveLength(landed)
+        // Its lines stay out of the bag: Try again is offered only after a definite no (D116).
+        expect((await orderLines()).filter((line) => line.itemId === itemA)).toEqual([])
+      },
+    )
   })
 
   // Repair-review, RR-24 (D116: Not sent = "it never went out"): the connector's own read before
