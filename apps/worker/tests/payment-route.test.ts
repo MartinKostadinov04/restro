@@ -1643,6 +1643,34 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     })
   })
 
+  // Repair-review, hot spot 4 (RR-12): only the payment's own bill is ever moved back. The move's
+  // answer is lost and it never landed; a waiter parks a bill of their own on the payment table.
+  // That bill is not the payment's: it is not read as the move landing, and never lands on the
+  // guest's table.
+  it('a move that never landed, a waiter’s bill on the payment table: never moved to the guest', async () => {
+    const id = await held(1)
+    fault({ on: 'moveRows', fault: { kind: 'hang' } })
+    try {
+      await preparePayment(env(), target(id), deps())
+    } catch (error) {
+      if (!(error instanceof PaymentStepRetry)) throw error
+    }
+    expect(await steps(id)).toContain('isolateLines:attempting')
+    expect(rowsOn(POS_TABLE)).toEqual(['2001', '2002'])
+    for (const table of PAYMENT_TABLES) {
+      sim.host.engine.waiter.addRound(table, [{ article: '2003' }])
+    }
+    const { row } = await drive(id)
+    // The waiter's round stays where the waiter put it; the guest's table has only its own lines.
+    expect(rowsOn(POS_TABLE).filter((article) => article === '2003')).toEqual([])
+    expect(PAYMENT_TABLES.flatMap((table) => rowsOn(table))).toEqual(['2003', '2003'])
+    expect(calls('closeBill')).toBe(0)
+    expect(row?.state).toBe('released')
+    expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+      expect.objectContaining({ status: 'released' }),
+    ])
+  })
+
   describe('the model', () => {
     /** A timeout, an error or a refusal at each POS write; `from: 2` is the move back. */
     const POS_FAULTS: FaultRule[] = [
