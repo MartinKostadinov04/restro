@@ -2011,4 +2011,30 @@ export const EDITORIAL_CSS = `
 .rm[data-sheets-sheets="page"] .rm-detail-bar {
   border-top: 1px solid var(--rm-border);
 }
+/* On the page's or the panel's colour the quiet text is the venue's own muted colour, the one the
+   theme promises to read on both at 4.5:1. The dark band's softer ink would not hold there (a 70 %
+   mix is about 4.3:1), and an edge of a choice takes the same colour to show at 3:1. */
+.rm[data-header-band="page"] .rm-titleblock > p,
+.rm[data-header-band="panel"] .rm-titleblock > p,
+.rm[data-header-band="page"] .rm-language button:not([aria-pressed="true"]),
+.rm[data-header-band="panel"] .rm-language button:not([aria-pressed="true"]),
+.rm[data-sheets-sheets="panel"] .rm-footer > p,
+.rm[data-sheets-sheets="page"] .rm-footer > p,
+.rm[data-sheets-sheets="panel"] .rm-overlay-intro,
+.rm[data-sheets-sheets="page"] .rm-overlay-intro {
+  color: var(--rm-muted);
+}
+.rm[data-sheets-sheets="panel"] .rm-allergen-sheet li:not(.is-present),
+.rm[data-sheets-sheets="page"] .rm-allergen-sheet li:not(.is-present) {
+  opacity: 1;
+  color: var(--rm-muted);
+}
+.rm[data-sheets-sheets="panel"]:not([data-labels-labels="text"])
+  .rm-filter-group
+  button:not([aria-pressed="true"]),
+.rm[data-sheets-sheets="page"]:not([data-labels-labels="text"])
+  .rm-filter-group
+  button:not([aria-pressed="true"]) {
+  border-color: var(--rm-muted);
+}
 `

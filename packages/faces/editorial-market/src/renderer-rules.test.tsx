@@ -286,6 +286,43 @@ describe('a section image (D130)', () => {
   })
 })
 
+describe('quiet text on the page’s and the panel’s colour (D130)', () => {
+  const declarations = (values: readonly string[], attribute: string, selector: string) =>
+    values.map((value) =>
+      cssRules(CSS)
+        .filter((rule) => rule.media === null)
+        .filter((rule) => rule.selector.includes(`[${attribute}="${value}"]`))
+        .filter((rule) => rule.selector.includes(selector))
+        .flatMap((rule) => rule.declarations),
+    )
+
+  it('is the venue’s own muted colour, the pair the theme promises, never a mix of the ink', () => {
+    for (const found of [
+      ...declarations(['page', 'panel'], 'data-header-band', '.rm-titleblock > p'),
+      ...declarations(['page', 'panel'], 'data-header-band', '.rm-language button'),
+      ...declarations(['page', 'panel'], 'data-sheets-sheets', '.rm-footer > p'),
+      ...declarations(['page', 'panel'], 'data-sheets-sheets', '.rm-overlay-intro'),
+      ...declarations(['page', 'panel'], 'data-sheets-sheets', '.rm-allergen-sheet li'),
+    ]) {
+      expect(found).toContainEqual(['color', 'var(--rm-muted)'])
+    }
+    for (const found of declarations(['page', 'panel'], 'data-sheets-sheets', '.rm-filter-group')) {
+      expect(found).toContainEqual(['border-color', 'var(--rm-muted)'])
+    }
+  })
+
+  it('leaves the pressed language and the pressed filter in their own colours', () => {
+    const selectors = cssRules(CSS)
+      .flatMap((rule) => rule.selector.split(','))
+      .filter((selector) => /\.rm-language button|\.rm-filter-group/.test(selector))
+      .filter((selector) => /data-(header-band|sheets-sheets)="(page|panel)"/.test(selector))
+    expect(selectors.length).toBeGreaterThan(0)
+    for (const selector of selectors) {
+      expect(selector).toContain(':not([aria-pressed="true"])')
+    }
+  })
+})
+
 describe('the photos’ backdrop (D130)', () => {
   const box = (change: Change) => {
     const page = drawn(change)

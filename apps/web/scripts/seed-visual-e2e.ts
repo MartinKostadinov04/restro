@@ -348,8 +348,9 @@ function snapshotOf(theme: VisualTheme, index: number, variant?: DesignVariant):
   const tertiary = preset !== undefined ? preset.colours.tertiary : CUSTOM_COLOURS.tertiary
   const ids = {
     snapshot: `sn_${`E2eVisual${variant?.publicId ?? theme.id}`.padEnd(22, '0')}`,
-    menu: `nd_${`E2eVisualMenu${index}`.padEnd(22, '0')}`,
-    venue: `vn_${`E2eVisualVenue${index}`.padEnd(22, '0')}`,
+    // The number in front of the padding: menu 1 and menu 10 must not come out as one id.
+    menu: `nd_${`E2eVisualMenu${String(index).padStart(3, '0')}`.padEnd(22, '0')}`,
+    venue: `vn_${`E2eVisualVenue${String(index).padStart(3, '0')}`.padEnd(22, '0')}`,
   }
   const themed = {
     ...base,

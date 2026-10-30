@@ -749,6 +749,9 @@
 .rm[data-photos-frame="bleed"] .rm-detail-copy:first-child { padding-top: 72px }
 .rm[data-sheets-sheets="panel"] .rm-overlay-panel:not(.is-detail), .rm[data-sheets-sheets="panel"] .rm-footer, .rm[data-sheets-sheets="panel"] .rm-detail-bar { --rm-bg: var(--rm-text) }
 .rm[data-sheets-sheets="panel"] .rm-overlay-panel:not(.is-detail), .rm[data-sheets-sheets="panel"] .rm-footer, .rm[data-sheets-sheets="panel"] .rm-detail-bar { --rm-text: var(--rm-surface) }
+.rm[data-header-band="page"] .rm-titleblock > p, .rm[data-header-band="page"] .rm-language button:not([aria-pressed="true"]), .rm[data-sheets-sheets="panel"] .rm-footer > p, .rm[data-sheets-sheets="panel"] .rm-overlay-intro { color: var(--rm-muted) }
+.rm[data-sheets-sheets="panel"] .rm-allergen-sheet li:not(.is-present) { opacity: 1 }
+.rm[data-sheets-sheets="panel"] .rm-allergen-sheet li:not(.is-present) { color: var(--rm-muted) }
 .rm { --ro-btn: clamp(32px, 8.6vw, 38px) }
 .rm { --ro-bar: clamp(46px, 12.4vw, 52px) }
 .rm { --ro-icon: clamp(16px, 4.4vw, 18px) }
