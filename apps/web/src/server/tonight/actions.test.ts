@@ -30,9 +30,11 @@ vi.mock('./tables', () => ({ runTableCommand, markPaymentTable: vi.fn() }))
 
 import {
   answerPaymentAction,
+  closeAllTablesAction,
   closeTableAction,
   doneAlertAction,
   liftOrderingAction,
+  openAllTablesAction,
   openTableAction,
   pauseOrderingAction,
   receiptBroughtAction,
@@ -316,4 +318,41 @@ describe('"Storno done" (#222)', () => {
     }
     expect(runTableCommand).not.toHaveBeenCalled()
   })
+})
+
+describe('a venue the organisation cannot see (the `venue_missing` guard, RR-42)', () => {
+  // Another organisation's venue and a made-up id both come back from `getVenue` as null (row-level
+  // security). Every action goes through the same guard: none reaches the service path.
+  const TABLE = 'tb_0123456789ABCDEFGHIJKL'
+  const BAR = 'br_0123456789ABCDEFGHIJKL'
+  const actions: [string, () => Promise<unknown>][] = [
+    ['open a table', () => openTableAction({ venueId: VENUE, tableId: TABLE })],
+    ['close a table', () => closeTableAction({ venueId: VENUE, tableId: TABLE })],
+    ['open all tables', () => openAllTablesAction({ venueId: VENUE })],
+    ['close all tables', () => closeAllTablesAction({ venueId: VENUE })],
+    ['pause ordering', () => pauseOrderingAction({ venueId: VENUE, barId: BAR })],
+    [
+      'answer a payment question',
+      () =>
+        answerPaymentAction({
+          venueId: VENUE,
+          paymentId: PAYMENT,
+          answering: 'close',
+          answer: 'receipt_printed',
+        }),
+    ],
+    ['mark a receipt Brought', () => receiptBroughtAction({ venueId: VENUE, paymentId: PAYMENT })],
+  ]
+
+  it.each(actions)(
+    'refuses to %s, asking for the venue in the signed-in organisation',
+    async (_, run) => {
+      getVenue.mockClear()
+      getVenue.mockResolvedValueOnce(null)
+      expect(await run()).toEqual({ ok: false, error: 'venue_missing' })
+      expect(getVenue).toHaveBeenCalledWith('tn_0123456789ABCDEFGHIJKL', VENUE)
+      expect(runTableCommand).not.toHaveBeenCalled()
+      expect(queuePaymentStep).not.toHaveBeenCalled()
+    },
+  )
 })
