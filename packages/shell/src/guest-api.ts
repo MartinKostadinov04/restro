@@ -203,6 +203,8 @@ export const GuestTableStateSchema = z.strictObject({
           )
           .max(SERVICE_LIMITS.lines),
         sentAgoSeconds: seconds,
+        /** When it was sent on the venue's clock ("19:42"), never the phone's. */
+        sentClock: z.string().regex(/^\d{2}:\d{2}$/),
         /** A pay-first round on the POS whose card was not charged ("No receipt", #114). */
         unpaid: z.literal(true).optional(),
       }),

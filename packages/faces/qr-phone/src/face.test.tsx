@@ -617,6 +617,7 @@ describe('out of stock at Send (#80)', () => {
             { itemId: mojito.id, optionIds: [], qty: 1, outOfStock: true as const },
           ],
           sentAt: 1_700_000_000_000,
+          sentClock: '19:42',
           mine: true,
         },
       ],

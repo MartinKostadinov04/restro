@@ -21,6 +21,7 @@ import {
   type GuestCommand,
   isOutOfStock,
   LOST_SEND_HOLD_MS,
+  orderingClosedText,
   refusalText,
   refusedOutOfStock,
   type SentOrderView,
@@ -159,12 +160,6 @@ export function sentWords(sent: SentOrderView, strings: ServiceStrings): string 
   }
 }
 
-/** The time a sent order went, as the phone's clock shows it ("19:42"). */
-function clockOf(at: number): string {
-  const date = new Date(at)
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-}
-
 /**
  * The table's sent orders, each with its state, and the "Show this to your waiter" panel: the
  * reference in large type, the time and the items, black on white (D120).
@@ -207,7 +202,7 @@ export function SentOrders({
           data-show-waiter=""
         >
           <p className="rq-waiter-ref">{open.ref}</p>
-          <p>{clockOf(open.sentAt)}</p>
+          <p>{open.sentClock}</p>
           <ul>
             {open.lines.map((line, index) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: a sent order's lines never change or reorder
@@ -360,7 +355,9 @@ export function OrderPanel({
         callWaiter={view.features.callWaiter !== null}
       />
       {ordering === 'paused' ? <p className="rq-note">{strings.orderingPaused}</p> : null}
-      {ordering === 'closed' ? <p className="rq-note">{strings.orderingClosed}</p> : null}
+      {ordering === 'closed' ? (
+        <p className="rq-note">{orderingClosedText(services?.state.ordering, strings)}</p>
+      ) : null}
       {night?.state === 'last_orders' && night.at !== null ? (
         <p className="rq-note" data-last-orders="">
           {strings.lastOrdersAt(night.at)}
