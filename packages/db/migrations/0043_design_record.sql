@@ -49,7 +49,7 @@ mapped AS (
       ELSE 'inter'
     END AS body_font,
     CASE
-      WHEN jsonb_typeof(theme -> 'radius') <> 'number' THEN 'soft'
+      WHEN jsonb_typeof(theme -> 'radius') IS DISTINCT FROM 'number' THEN 'soft'
       WHEN (theme ->> 'radius')::numeric < 4 THEN 'square'
       WHEN (theme ->> 'radius')::numeric < 12 THEN 'soft'
       WHEN (theme ->> 'radius')::numeric < 20 THEN 'round'

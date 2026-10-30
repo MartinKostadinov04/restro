@@ -163,7 +163,10 @@ export function DesignPanel({
         toast.success(t('saved'))
       } else {
         // Someone saved in between: the form takes the stored design, and says so.
-        if (result.error === 'stale') reload(result.view)
+        if (result.error === 'stale') {
+          reload(result.view)
+          refresh()
+        }
         setLookError(result)
       }
     })
