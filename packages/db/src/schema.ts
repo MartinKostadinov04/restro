@@ -2933,7 +2933,7 @@ export const paymentLines = restro.table(
     /**
      * True while its payment claims it; the database clears it when the payment ends (`captured`,
      * `released`, `stranded` or `capture_failed`). An `unconfirmed` payment is settled but has not
-     * ended: a manager's answer can still capture its card, so its lines stay claimed (0044). A POS
+     * ended: a manager's answer can still capture its card, so its lines stay claimed (0043). A POS
      * line is in one open payment at a time (D127 5.2): the unique index below refuses a second.
      */
     open: boolean('open').notNull().default(true),

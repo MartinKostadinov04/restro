@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { hasDatabase, ownerDatabaseUrl } from './database'
 
 const MIGRATIONS = fileURLToPath(new URL('../migrations', import.meta.url))
-const TAG = '0044_unconfirmed_lines_stay_claimed'
+const TAG = '0043_unconfirmed_lines_stay_claimed'
 const ENDS = ['captured', 'released', 'stranded', 'capture_failed']
 
 interface Journal {
@@ -139,7 +139,7 @@ describe.skipIf(!hasDatabase)('the unconfirmed lines migration (#244)', () => {
     for (const id of ['py_UNCONF1', 'py_CANCELLING1', 'py_NOREF1', 'py_OLDER1']) {
       expect(await lineOf(id), id).toEqual({
         open: true,
-        job_id: 'migration:0044_unconfirmed_lines_stay_claimed',
+        job_id: 'migration:0043_unconfirmed_lines_stay_claimed',
       })
     }
   })

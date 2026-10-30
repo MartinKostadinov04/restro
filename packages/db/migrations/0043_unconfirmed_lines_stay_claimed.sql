@@ -44,7 +44,7 @@ UPDATE "restro"."payment_lines" AS "line"
    SET "open" = true,
        "source" = 'restro',
        "actor" = 'system',
-       "job_id" = 'migration:0044_unconfirmed_lines_stay_claimed'
+       "job_id" = 'migration:0043_unconfirmed_lines_stay_claimed'
   FROM "reclaimed"
  WHERE "line"."tenant_id" = "reclaimed"."tenant_id"
    AND "line"."payment_id" = "reclaimed"."payment_id"

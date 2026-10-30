@@ -432,7 +432,7 @@ export async function readTableState(
       .from(payments)
       .where(and(eq(payments.tableId, table.id), isNull(payments.settledAt)))
     // The lines a payment still claims read `beingPaid`, an `unconfirmed` one's too, wherever they
-    // read back (migration 0044): the same check as `pay.start`'s, so the grey and the refusal agree.
+    // read back (migration 0043): the same check as `pay.start`'s, so the grey and the refusal agree.
     const greyed = await tx
       .select({ ref: paymentLines.posLineRef })
       .from(paymentLines)

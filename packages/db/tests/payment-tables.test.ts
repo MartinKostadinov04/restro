@@ -611,7 +611,7 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
     await withTenantWrite(app, a.tenantId, (tx) => tx.insert(paymentLines).values(line(second.id)))
   })
 
-  it('keeps an unconfirmed payment’s lines claimed, and frees them only at its end (migration 0044)', async () => {
+  it('keeps an unconfirmed payment’s lines claimed, and frees them only at its end (migration 0043)', async () => {
     const settled = { settledAt: sql`now()`, retainUntil: sql`now() + interval '18 months'` }
     const unsettled = { settledAt: null, retainUntil: null }
     const open = async (id: string) =>
