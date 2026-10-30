@@ -400,7 +400,7 @@ export async function transitionSentOrder(
   const [found] = await stx.tx
     .select({ tableId: sentOrders.tableId })
     .from(sentOrders)
-    .where(eq(sentOrders.id, command.sentOrderId))
+    .where(and(eq(sentOrders.id, command.sentOrderId), eq(sentOrders.venueId, stx.venueId)))
   if (found === undefined) return refused(null, 'sent_order_missing')
   const { sent: locked, waiting } = await lockAround(
     stx,

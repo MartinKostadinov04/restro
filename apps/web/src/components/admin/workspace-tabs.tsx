@@ -18,8 +18,10 @@ import {
   SETTINGS_SECTION_DEFS,
   type SettingsRights,
   type SettingsSectionValue,
+  SHARED_DEVICE_TAB_DEFS,
   settingsSectionOf,
   settingsSectionsOf,
+  sharedDeviceTabOf,
   WORKSPACE_TAB_DEFS,
   type WorkspaceTabDef,
   type WorkspaceTabValue,
@@ -116,6 +118,8 @@ export function UrlTabs<V extends string>({
 interface WorkspaceTabsProps {
   /** The content of every tab, keyed by tab value (a missing tab is a type error). */
   contents: Record<WorkspaceTabValue, ReactNode>
+  /** A shared device: no composer tab (RR-83). */
+  sharedDevice?: boolean
 }
 
 const isWorkspaceTabValue = (value: string): value is WorkspaceTabValue =>
@@ -128,12 +132,16 @@ const isWorkspaceTabValue = (value: string): value is WorkspaceTabValue =>
  * select below it), and the current tab is *derived* from the URL instead of being set while
  * rendering.
  */
-export function WorkspaceTabs({ contents }: WorkspaceTabsProps) {
+export function WorkspaceTabs({ contents, sharedDevice = false }: WorkspaceTabsProps) {
   const t = useTranslations('workspace')
-  const [current, select] = useUrlTab<WorkspaceTabValue>('tab', workspaceTabOf, isWorkspaceTabValue)
+  const [current, select] = useUrlTab<WorkspaceTabValue>(
+    'tab',
+    sharedDevice ? sharedDeviceTabOf : workspaceTabOf,
+    isWorkspaceTabValue,
+  )
   return (
     <UrlTabs
-      defs={WORKSPACE_TAB_DEFS}
+      defs={sharedDevice ? SHARED_DEVICE_TAB_DEFS : WORKSPACE_TAB_DEFS}
       current={current}
       select={select}
       contents={contents}

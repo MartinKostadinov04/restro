@@ -24,6 +24,7 @@ import { z } from 'zod'
 import { getPool } from '@/server/db'
 import { logError } from '@/server/log'
 import { requireTenant } from '@/server/session'
+import { onSharedDevice } from '@/server/staff/shared-device'
 import { getVenue } from '@/server/venues'
 
 import type { ActionResult } from './action-result'
@@ -73,7 +74,10 @@ async function perform(
   run: (context: { tenantId: string; userId: string; venueId: string }) => Promise<ActionResult>,
 ): Promise<ActionResult> {
   try {
-    const { organization, user } = await requireTenant()
+    const { organization, user, sessionId } = await requireTenant()
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'not_allowed' }
+    }
     const found = await getVenue(organization.id, venue)
     if (!found) return NOT_FOUND
     const result = await run({ tenantId: organization.id, userId: user.id, venueId: found.id })

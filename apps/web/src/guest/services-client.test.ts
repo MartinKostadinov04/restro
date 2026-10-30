@@ -698,6 +698,44 @@ describe('the services client and the location check', () => {
 })
 
 describe('paying (#110, #114, D127)', () => {
+  it('RR-2: a poll with a higher version moves the phone to the paused state and the new details', async () => {
+    const legal = {
+      name: 'Nova Club EOOD',
+      eik: '123456789',
+      address: 'Sofia, 1 Vitosha Blvd',
+      privacyUrl: 'https://club.example/privacy',
+    }
+    const before = tableState(5)
+    before.ordering = {
+      ...before.ordering,
+      paying: 'on',
+      payingProvider: 'stripe',
+      payingLegal: legal,
+    } as never
+    const after = tableState(6)
+    after.ordering = {
+      ...after.ordering,
+      paying: 'paused',
+      payingProvider: 'stripe',
+      payingLegal: { ...legal, name: 'Nova Club 2 EOOD' },
+    } as never
+    let answer: unknown = before
+    const h = harness(() => json(200, answer))
+    h.client.start()
+    await h.tick()
+    expect(h.client.getState().paying?.state).toBe('on')
+
+    answer = after
+    await h.tick()
+    expect(h.client.getState().paying?.state).toBe('paused')
+    expect(h.client.getState().paying?.legal?.name).toBe('Nova Club 2 EOOD')
+
+    // An "unchanged" for that version leaves what the phone has.
+    answer = { unchanged: true, version: 6, next: 10_000 }
+    await h.tick()
+    expect(h.client.getState().paying?.state).toBe('paused')
+  })
+
   const BN = `bn_${'0'.repeat(21)}1` as const
   const PY = newId('py')
   const HANDLE = 'AbCdEfGhIjKlMnOpQrStUv'

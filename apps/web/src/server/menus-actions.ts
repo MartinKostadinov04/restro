@@ -32,6 +32,7 @@ import { logError } from './log'
 import { publishNow } from './publish/service'
 import { canManageIntegration, canPublishMenu } from './roles'
 import { requireTenant } from './session'
+import { onSharedDevice } from './staff/shared-device'
 import { listVenues, venueHasTill } from './venues'
 
 /** What every menu action answers. */
@@ -63,8 +64,11 @@ async function run<T extends { readonly ok: true }>(
   ) => Promise<T | { readonly ok: false; readonly error: MenuWriteError }>,
 ): Promise<T | Failure> {
   try {
-    const { organization, user } = await requireTenant()
+    const { organization, user, sessionId } = await requireTenant()
     if (!canManageIntegration(organization.role)) return { ok: false, error: 'not_allowed' }
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'not_allowed' }
+    }
     const result = await write(organization.id, `user:${user.id}`, organization.role)
     if (!result.ok) return { ok: false, error: result.error }
     revalidatePath(`/venues/${revalidate}`)
@@ -255,8 +259,11 @@ export async function listImportSourcesAction(toVenueId: unknown): Promise<Impor
     return { ok: false, error: 'invalid' }
   }
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
     if (!canManageIntegration(organization.role)) return { ok: false, error: 'not_allowed' }
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'not_allowed' }
+    }
     const pool = getPool()
     const sources: ImportSource[] = []
     for (const venue of await listVenues(organization.id)) {

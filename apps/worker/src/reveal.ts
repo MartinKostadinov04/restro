@@ -9,7 +9,7 @@
 //   - it carries the service token from REVEAL_SERVICE_TOKEN as a bearer, compared in constant
 //     time; without the setting the endpoint does not exist (404);
 //   - the web app names the signed-in account and its session (or a member of Restro's admin
-//     team); `applyService` checks that it holds `settings.codes` (codes) or `settings.roles`
+//     team), and the session must exist and be that account's (RR-10); `applyService` checks that it holds `settings.codes` (codes) or `settings.roles`
 //     (PINs, with a sign-in of the last 15 minutes) at the venue and writes one `record` Log entry
 //     per reveal, and only then are the sealed copies opened.
 // Nothing here stores or logs a code or a PIN; the answer is `no-store`.
@@ -26,6 +26,8 @@ import {
 import { type DbPool, staffMembers, venueTables, withTenant } from '@restro/db'
 import { and, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
+
+import { sessionIsLive } from './session-check'
 
 /** Where the endpoint listens. */
 export const REVEAL_PATH = '/internal/reveal'
@@ -110,6 +112,8 @@ export function hasServiceToken(authorization: string | undefined, token: string
   return timingSafeEqual(digest(given), digest(token)) && given !== ''
 }
 
+const NO_SESSION: RevealAnswer = { status: 'refused', code: 'session_unknown' }
+
 /** The service context of a reveal: the account asking, as a staff write. */
 function revealContext(request: RevealRequest): ServiceContext {
   return {
@@ -132,6 +136,7 @@ export async function revealTableCodes(
   deps: RevealDeps,
   request: TableRevealRequest,
 ): Promise<RevealAnswer> {
+  if (!(await sessionIsLive(deps.pool, request.actor))) return NO_SESSION
   const { result } = await applyService(
     deps.pool,
     { type: 'table_code.reveal', tableIds: request.tableIds },
@@ -165,6 +170,7 @@ export async function revealStaffPins(
   deps: RevealDeps,
   request: PinRevealRequest,
 ): Promise<RevealAnswer> {
+  if (!(await sessionIsLive(deps.pool, request.actor))) return NO_SESSION
   const { result } = await applyService(
     deps.pool,
     { type: 'pin.reveal', staffMemberIds: request.staffMemberIds },

@@ -148,5 +148,8 @@ export function clientNetwork(headers: Headers): string {
   return address === '' ? 'unknown' : networkOf(address)
 }
 
-/** The limiter of this process. */
+/** The limiter of this process, for `/t/<code>`. */
 export const badCodes = new BadCodeLimiter()
+
+/** The guest API's count (RR-74), kept apart: see `wrongCode` in `guest-api.ts`. */
+export const guestApiBadCodes = new BadCodeLimiter()

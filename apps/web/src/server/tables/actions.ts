@@ -19,6 +19,7 @@ import { logError } from '../log'
 import { revealConfig, revealFor } from '../reveal'
 import { canManageIntegration } from '../roles'
 import { requireTenant } from '../session'
+import { onSharedDevice } from '../staff/shared-device'
 import { getVenue } from '../venues'
 import {
   addArea,
@@ -82,6 +83,7 @@ const MenuRoute = z.strictObject({
 
 const INVALID: TablesActionResult = { ok: false, error: 'invalid' }
 const NOT_FOUND: TablesActionResult = { ok: false, error: 'not_found' }
+const FORBIDDEN: TablesActionResult = { ok: false, error: 'forbidden' }
 
 // Read when an action runs (the settings are read lazily, so `next build` needs none of them).
 const services = (): TablesServices => ({
@@ -99,6 +101,8 @@ async function perform(
 ): Promise<TablesActionResult> {
   try {
     const { organization, user, sessionId } = await requireTenant()
+    // A shared tablet works Tonight; tables and codes need the person's own sign-in (RR-84).
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) return FORBIDDEN
     const venueOfAction =
       'venue' in target
         ? target.venue
@@ -137,6 +141,9 @@ export async function revealCodesAction(input: unknown): Promise<RevealCodesResu
   if (!parsed.success) return { ok: false, error: 'invalid' }
   try {
     const { organization, user, sessionId } = await requireTenant()
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'forbidden' }
+    }
     // Another tenant's venue and a made-up id both come back as null (row-level security).
     const found = await getVenue(organization.id, parsed.data.venueId)
     if (!found) return { ok: false, error: 'not_found' }

@@ -55,10 +55,13 @@ export interface TableSheetBill {
 /** The open sitting's bill of a table, or null when it is closed or not read yet. */
 export async function loadTableBill(input: {
   readonly tenantId: string
+  readonly venueId: string
   readonly tableId: string
 }): Promise<TableSheetBill | null> {
   const state = await readTableState(getPool(), input)
   if (state === null || state.unchanged || state.bill === null) return null
+  // The tenant's rows are all the database hides: a table of another venue has no bill here (RR-71).
+  if (state.table.venueId !== input.venueId) return null
   return {
     totalMinor: state.bill.totalMinor,
     currency: state.bill.currency ?? 'EUR',

@@ -122,3 +122,47 @@ export async function loadUnplacedItems(
   if (!row?.menu) throw new ApplyError('menu_not_found', `this tenant has no menu ${menuId}`)
   return { itemIds: row.itemIds as NodeId[], ...documentPartsFromRows(row) }
 }
+
+/**
+ * Which of these items are the venue's (RR-72): items belong to the organisation, so the tenant's
+ * rows are all row-level security hides. An item is the venue's when it is placed in a section of
+ * one of its menus, or when `loadUnplacedItems` would list it there: the till read it for this
+ * venue, or it is hand-made and placed nowhere yet. So everything the composer shows passes.
+ */
+export async function itemsOfVenue(
+  pool: DbPool,
+  tenantId: string,
+  venueId: string,
+  itemIds: readonly string[],
+): Promise<ReadonlySet<string>> {
+  if (itemIds.length === 0) return new Set()
+  const result = await withTenant(pool, tenantId, (tx) =>
+    tx.execute<{ id: string }>(sql`
+      with recursive sections (id) as (
+        select n.id from restro.nodes n
+        join restro.menus m on n.parent_id = m.root_node_id
+        where m.venue_id = ${venueId} and n.node_type = 'section'
+        union
+        select n.id from restro.nodes n join sections s on n.parent_id = s.id
+        where n.node_type = 'section'
+      )
+      select n.id from restro.nodes n
+      where n.node_type = 'item'
+        and n.id in (${sql.join(
+          itemIds.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+        and (
+          exists (
+            select 1 from restro.placements p
+            where p.item_id = n.id and p.section_id in (select id from sections))
+          or exists (
+            select 1 from restro.field_values v
+            where v.node_id = n.id and v.scope = 'venue:' || ${venueId})
+          or (
+            not exists (select 1 from restro.source_links l where l.node_id = n.id)
+            and not exists (select 1 from restro.placements p where p.item_id = n.id))
+        )`),
+  )
+  return new Set(result.rows.map((row) => row.id))
+}
