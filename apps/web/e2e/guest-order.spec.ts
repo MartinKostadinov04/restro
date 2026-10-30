@@ -16,7 +16,7 @@
 // an address.
 import { type Browser, devices, expect, type Page, type Request, test } from '@playwright/test'
 import { runScript } from './global-setup'
-import { faceRoot, hideOrder, ORDER_STYLES, type OrderStyle, showOrder } from './guest-faces'
+import { faceRoot, hideOrder, ORDER_STYLES, showOrder } from './guest-faces'
 import { ORDER_SPOT } from './support'
 
 test.use({ ...devices['Pixel 7'] })
