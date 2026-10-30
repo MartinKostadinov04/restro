@@ -63,6 +63,7 @@ import {
 } from '@restro/shell'
 
 import { serverEnv } from './env'
+import { type BadCodeLimiter, clientNetwork, guestApiBadCodes } from './guard/bad-codes'
 import { enqueueJob } from './jobs'
 import { logError, logInfo, logWarn } from './log'
 import { turnstileCheck } from './turnstile'
@@ -70,6 +71,8 @@ import { turnstileCheck } from './turnstile'
 /** What the handlers need from the app. */
 export interface GuestApiDeps {
   readonly pool: DbPool
+  /** The count of wrong codes per network; tests pass their own. */
+  readonly badCodes?: BadCodeLimiter
   /** Queues a fresh reading of a table's bill; tests pass their own. */
   readonly queueReading: (target: {
     readonly tenantId: string
@@ -183,21 +186,42 @@ function pass(request: Request): { readonly pass?: string } {
   return found === undefined ? {} : { pass: found }
 }
 
-/** A request core answered without a state: a retired code, or a limit's trip. */
+/**
+ * A code that is no table's: counted against its network (D122 §9), and a 429 once that network is
+ * blocked. Only ever after the code was looked up, so a right code is never answered by its
+ * network's count (a club's guests share one address); `/t/<code>` can block first, it has no
+ * phone to strand. The count is the API's own, so a venue reissuing its codes, whose open phones
+ * each get one 401, can't stop the next guests' QR scans on the same network. Never the network
+ * or the code in a log. Turnstile has no place in this answer: 20 wrong codes are only logged, as
+ * at `/t/<code>`.
+ */
+function wrongCode(request: Request, deps: GuestApiDeps): Response {
+  const limiter = deps.badCodes ?? guestApiBadCodes
+  const { verdict, turnstileNow, blockedNow } = limiter.recordWrong(clientNetwork(request.headers))
+  if (turnstileNow) logWarn('guest_bad_code_turnstile_required')
+  if (blockedNow) logWarn('guest_bad_code_block')
+  return verdict.kind === 'blocked'
+    ? refuse('rate_limited', 429, { 'Retry-After': String(verdict.retryAfterSeconds) })
+    : refuse('code_retired', 401)
+}
+
+/** A request core answered without a state: a code that is no table's, or a limit's trip. */
 function stateless(
   answer:
     | { readonly code: 'code_retired' }
     | { readonly code: 'rate_limited'; readonly retryAfter: number },
+  request: Request,
+  deps: GuestApiDeps,
 ): Response {
   return answer.code === 'rate_limited'
     ? refuse('rate_limited', 429, { 'Retry-After': String(answer.retryAfter) })
-    : refuse('code_retired', 401)
+    : wrongCode(request, deps)
 }
 
 /** `GET /api/guest/state`. */
 export async function handleGuestState(request: Request, deps: GuestApiDeps): Promise<Response> {
   const code = tableCodeOf(request)
-  if (code === null) return refuse('code_retired', 401)
+  if (code === null) return wrongCode(request, deps)
   const query = GuestStateQuerySchema.safeParse(
     Object.fromEntries(new URL(request.url).searchParams),
   )
@@ -216,7 +240,7 @@ export async function handleGuestState(request: Request, deps: GuestApiDeps): Pr
         )
       },
     })
-    if (!read.ok) return stateless(read)
+    if (!read.ok) return stateless(read, request, deps)
     return json(GuestStateAnswerSchema.parse(read.answer))
   } catch (error) {
     return failed('guest_state_failed', error)
@@ -226,7 +250,7 @@ export async function handleGuestState(request: Request, deps: GuestApiDeps): Pr
 /** `POST /api/guest/actions`. */
 export async function handleGuestAction(request: Request, deps: GuestApiDeps): Promise<Response> {
   const code = tableCodeOf(request)
-  if (code === null) return refuse('code_retired', 401)
+  if (code === null) return wrongCode(request, deps)
   const phone = request.headers.get(GUEST_PHONE_HEADER)
   if (phone === null || !GUEST_PHONE_PATTERN.test(phone)) return refuse('invalid_request', 400)
   const body = await readCapped(request)
@@ -268,7 +292,7 @@ export async function handleGuestAction(request: Request, deps: GuestApiDeps): P
       ...paymentQueue(deps),
       onGuard: logGuard,
     })
-    if (!acted.ok) return stateless(acted)
+    if (!acted.ok) return stateless(acted, request, deps)
     if (acted.retryAfter !== null) {
       return refuse('rate_limited', 429, { 'Retry-After': String(acted.retryAfter) })
     }
@@ -288,13 +312,15 @@ export async function handleGuestAction(request: Request, deps: GuestApiDeps): P
 /** `GET /api/guest/payment`: the paying phone's own payment, by the handle it holds (#110). */
 export async function handleGuestPayment(request: Request, deps: GuestApiDeps): Promise<Response> {
   const code = tableCodeOf(request)
-  if (code === null) return refuse('code_retired', 401)
+  if (code === null) return wrongCode(request, deps)
   const handle = paymentHandleOf(request)
   if (handle === undefined) return refuse('unknown_payment', 404)
   try {
     const read = await guestPayment(deps.pool, { code, handle, ...paymentQueue(deps) })
     if (!read.ok) {
-      return read.code === 'unknown_payment' ? refuse('unknown_payment', 404) : stateless(read)
+      return read.code === 'unknown_payment'
+        ? refuse('unknown_payment', 404)
+        : stateless(read, request, deps)
     }
     return json(GuestPaymentAnswerSchema.parse(read.answer))
   } catch (error) {
