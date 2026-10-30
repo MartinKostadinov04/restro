@@ -41,12 +41,6 @@ export function sentWords(sent: SentOrderView, strings: ServiceStrings): string 
   }
 }
 
-/** The time a sent order went, as the phone's clock shows it ("19:42"). */
-export function sentClock(at: number): string {
-  const date = new Date(at)
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-}
-
 /** Whole minutes since the table sent `sentOrderId`, or null when this phone doesn't see it. */
 export function minutesSinceSent(
   sentOrders: readonly SentOrderView[],

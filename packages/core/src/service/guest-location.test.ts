@@ -437,14 +437,12 @@ describe.skipIf(!hasDatabase)('the location check and the guest limits (as restr
       expect(checks).toEqual([])
     })
 
-    it('takes one Send per 15 s from a phone', async () => {
+    it('spends no Send on a refused one (RR-26; the 429 is in guest-send-limits.test.ts)', async () => {
       limiter = limits({ sendGap: GUEST_LIMITS.sendGap, sends: GUEST_LIMITS.sends })
       const { pass } = await locatedAdd()
       const token = { check: { humanToken: 'token' }, humanCheck: verdictOf('passed') }
       expect((await act(send, { pass, ...token })).result.code).toBe('menu_unavailable')
-      await expect(act(send, { pass, ...token })).rejects.toThrow(/rate_limited/)
-      const friend = await act(send, { pass, ...token, phone: 'phone-two-bbbbbbbbbbbbb' })
-      expect(friend.result.code).toBe('menu_unavailable')
+      expect((await act(send, { pass, ...token })).result.code).toBe('menu_unavailable')
     })
   })
 })

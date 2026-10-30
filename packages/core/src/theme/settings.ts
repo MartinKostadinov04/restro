@@ -2,7 +2,7 @@
 // the snapshot's palette and its eight colour roles per scheme.
 //
 // It was stored as `venues.settings.theme` until the design record (D129, ../design/record.ts)
-// replaced it (migration 0044): the record keeps the colours, the overrides and the logo, and
+// replaced it (migration 0045): the record keeps the colours, the overrides and the logo, and
 // `designThemeOf` gives this shape for the publisher and the admin's preview. Nothing is ever
 // derived into storage: palette and roles are worked out at publish time, so a better derivation
 // reaches every venue with its next publish.

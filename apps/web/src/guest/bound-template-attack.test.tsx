@@ -197,6 +197,7 @@ function hostileState(payload: string, view: ReturnType<typeof hostileView>): Se
         ref: payload,
         lines: [{ itemId: item.id, optionIds: [], qty: 1 }],
         sentAt: Date.now(),
+        sentClock: payload,
         mine: false,
       },
     ],

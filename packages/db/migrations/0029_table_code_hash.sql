@@ -11,7 +11,12 @@
 ALTER TABLE "restro"."tables" DROP CONSTRAINT "tables_payment_table_no_code";--> statement-breakpoint
 ALTER TABLE "restro"."tables" ADD COLUMN "qr_code_hash" text;--> statement-breakpoint
 ALTER TABLE "restro"."tables" ADD COLUMN "qr_code_sealed" text;--> statement-breakpoint
+-- The backfill runs with forced row-level security off for the owner (as 0019 and 0040 do; same transaction):
+-- the owner of a hosted database has no BYPASSRLS, so under forced row-level security it would see and
+-- change no row, and the `tables_qr_code_complete` check below would fail on any coded table.
+ALTER TABLE "restro"."tables" NO FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 UPDATE "restro"."tables" SET "qr_code_hash" = encode(sha256(convert_to("qr_token", 'UTF8')), 'hex') WHERE "qr_token" IS NOT NULL;--> statement-breakpoint
+ALTER TABLE "restro"."tables" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "restro"."tables" ADD CONSTRAINT "tables_qr_code_hash_unique" UNIQUE("qr_code_hash");--> statement-breakpoint
 ALTER TABLE "restro"."tables" ADD CONSTRAINT "tables_qr_code_hash_format" CHECK ("restro"."tables"."qr_code_hash" is null or "restro"."tables"."qr_code_hash" ~ '^[0-9a-f]{64}$');--> statement-breakpoint
 ALTER TABLE "restro"."tables" ADD CONSTRAINT "tables_qr_code_sealed_format" CHECK ("restro"."tables"."qr_code_sealed" is null or ("restro"."tables"."qr_code_sealed" ~ '^rs1\.' and length("restro"."tables"."qr_code_sealed") <= 1024));--> statement-breakpoint

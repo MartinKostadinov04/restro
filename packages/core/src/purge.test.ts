@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CHANGE_LOG_DAYS,
   cutoff,
+  INSTANCE_BIN_DAYS,
   isDue,
   MENU_BIN_DAYS,
   TABLE_BIN_DAYS,
@@ -39,6 +40,12 @@ describe('how long the bin keeps things (D83)', () => {
     expect(isDue(daysAgo(29), NOW, MENU_BIN_DAYS)).toBe(false)
     expect(isDue(daysAgo(29), NOW, TABLE_BIN_DAYS)).toBe(false)
     expect(isDue(daysAgo(59), NOW, CHANGE_LOG_DAYS)).toBe(false)
+  })
+
+  it('is 30 days for a removed POS instance (D91) and for a version that is not live (D96), and 2 are kept (D96)', () => {
+    expect(INSTANCE_BIN_DAYS).toBe(30)
+    expect(VERSION_PURGE_DAYS).toBe(30)
+    expect(VERSIONS_KEPT).toBe(2)
   })
 })
 

@@ -64,6 +64,7 @@ import {
 } from '../location-check'
 import { type OrderingSettings, readOrderingSettings } from '../ordering-settings'
 import { hashTableCode } from '../qr'
+import { wallClock } from '../service-day'
 import { type GuestNight, guestNight } from '../service-hours'
 import { orderFromRow, UNDO_WINDOW_MS } from '../table-order'
 import type { CallWaiterKind } from '../theme'
@@ -214,8 +215,10 @@ export interface GuestTableState {
       /** The POS said this item ran out, so the order ended Not sent (#80). */
       readonly outOfStock?: true
     }[]
-    /** Seconds since it was sent, for the time "Show this to your waiter" gives. */
+    /** Seconds since it was sent. */
     readonly sentAgoSeconds: number
+    /** When it was sent on the venue's clock ("19:42"), for "Show this to your waiter". */
+    readonly sentClock: string
     /** A pay-first round that is on the POS but whose card was not charged ("No receipt", #114). */
     readonly unpaid?: true
   }[]
@@ -457,6 +460,12 @@ function cadence(view: GuestView, inFlight: boolean): number {
   return view === 'menu' && !inFlight ? GUEST_POLL_MS.menu : GUEST_POLL_MS.fast
 }
 
+/** An instant on the venue's clock, "19:42". */
+function clockIn(at: Date, timeZone: string): string {
+  const { hour, minute } = wallClock(at, timeZone)
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
 /** The location part when the caller gives none (a venue that doesn't check). */
 const NIGHT_OPEN: GuestNight = { state: 'open', at: null }
 
@@ -483,6 +492,7 @@ export function projectGuestState(
   view: GuestView,
   location: GuestLocation = LOCATION_OFF,
   night: GuestNight = NIGHT_OPEN,
+  timeZone = 'UTC',
 ): GuestTableState {
   const now = read.now.getTime()
   const sees = location.state !== 'needed'
@@ -509,6 +519,7 @@ export function projectGuestState(
             ref: sent.reference,
             lines: sent.lines,
             sentAgoSeconds: seconds(now - sent.createdAt.getTime()),
+            sentClock: clockIn(sent.createdAt, timeZone),
             ...(sent.unpaid ? { unpaid: true as const } : {}),
           },
         ]
@@ -747,7 +758,10 @@ export async function guestState(
   }
   return {
     ok: true,
-    answer: walked(projectGuestState(state, input.view, location, nightOf(guard, now)), state),
+    answer: walked(
+      projectGuestState(state, input.view, location, nightOf(guard, now), guard.timezone),
+      state,
+    ),
   }
 }
 
@@ -975,6 +989,33 @@ function phoneLimits(command: GuestActInput['command'], withPosition: boolean): 
   return names
 }
 
+/** The limits a Send spends only when it goes out (RR-26): the others count every try. */
+const SEND_SPENDS: ReadonlySet<GuestLimitName> = new Set(['sendGap', 'sends', 'payGap', 'pays'])
+
+/**
+ * Lets go of the phone's last Send when it came back Not sent (the POS said an item ran out, or
+ * ordering paused): nothing of it reached the bill, so "Send the other 4" goes at once. Read only
+ * when a limit is full. A pay-first part keeps its Pay: its payment did start.
+ */
+async function freeCameBackSend(
+  pool: DbPool,
+  target: CodeTarget,
+  limits: GuestLimiter,
+  subject: string,
+): Promise<void> {
+  const last = limits.lastSend(subject)
+  if (last === null) return
+  const [sent] = await withTenant(pool, target.tenantId, (tx) =>
+    tx
+      .select({ state: sentOrders.state })
+      .from(sentOrders)
+      .where(eq(sentOrders.id, last.sentOrderId)),
+  )
+  if (sent?.state !== 'not_sent') return
+  limits.giveBack(subject, ['sendGap', 'sends'], last.at)
+  limits.forgetLastSend(subject)
+}
+
 /** True when a Send with this action id already made a sent order (its first answer wins). */
 async function sentOrderMade(pool: DbPool, target: CodeTarget, actionId: string): Promise<boolean> {
   return withTenant(pool, target.tenantId, async (tx) => {
@@ -1025,20 +1066,62 @@ export async function guestAct(
     ((await sentOrderMade(pool, target, actionId)) ||
       (payFirst !== null && (await paymentByAction(pool, target, actionId)) !== null))
 
-  const position = input.check?.location
-  if (!repeatSend) {
-    const phoneLimit = (input.limiter ?? limiter).take(
-      `${target.hash}:${input.phone}`,
-      phoneLimits(input.command, position !== undefined),
-      Date.now(),
-    )
-    if (!phoneLimit.ok) {
-      count('phone_limited')
-      return limited(phoneLimit)
-    }
-  }
   const limits = input.limiter ?? limiter
   const subject = `${target.hash}:${input.phone}`
+  const guarded = (): Promise<GuestActed | GuestStateless> =>
+    guardedAct(pool, input, { target, type, reject, count, limits, subject, payFirst, repeatSend })
+  if (repeatSend) return guarded()
+
+  // A Send's limits are taken here, before anything waits, so two Sends at once can't both pass;
+  // they stay spent only if the Send goes out (RR-26, D122 §4). A request that throws keeps them:
+  // whether it went out is unknown.
+  const names = phoneLimits(input.command, input.check?.location !== undefined)
+  let takenAt = Date.now()
+  let phoneLimit = limits.take(subject, names, takenAt)
+  if (!phoneLimit.ok && type === 'order.send') {
+    await freeCameBackSend(pool, target, limits, subject)
+    takenAt = Date.now()
+    phoneLimit = limits.take(subject, names, takenAt)
+  }
+  if (!phoneLimit.ok) {
+    count('phone_limited')
+    return limited(phoneLimit)
+  }
+  const answer = await guarded()
+  if (type !== 'order.send') return answer
+  if (answer.ok && answer.result.status === 'accepted') {
+    const sentOrderId = answer.result.subjectId
+    if (sentOrderId !== null) limits.setLastSend(subject, { sentOrderId, at: takenAt })
+  } else {
+    limits.giveBack(
+      subject,
+      names.filter((name) => SEND_SPENDS.has(name)),
+      takenAt,
+    )
+  }
+  return answer
+}
+
+/** What `guardedAct` needs from `guestAct`, which has taken the phone's limits. */
+interface GuardedCommand {
+  readonly target: CodeTarget
+  readonly type: string
+  readonly reject: (code: string) => GuestActed
+  readonly count: (kind: GuardEvent['kind']) => void
+  readonly limits: GuestLimiter
+  readonly subject: string
+  readonly payFirst: ReturnType<typeof payFirstOf>
+  readonly repeatSend: boolean
+}
+
+/** A command past the phone's limits: its guards, the engine, and what follows. */
+async function guardedAct(
+  pool: DbPool,
+  input: GuestActInput,
+  { target, type, reject, count, limits, subject, payFirst, repeatSend }: GuardedCommand,
+): Promise<GuestActed | GuestStateless> {
+  const { actionId } = input.command
+  const position = input.check?.location
   if (payFirst !== null && !repeatSend) {
     // One open payment per phone, as at Pay (D127 §Limits).
     const open = limits.openPayment(subject)
@@ -1086,7 +1169,14 @@ export async function guestAct(
   }
 
   if (type === 'order.send' && !repeatSend) {
-    // Turnstile at every Send (D119, D121), one token for both of its parts (#113).
+    // Turnstile at every Send (D119, D121), one token for both of its parts (#113). A failed check
+    // reaches nothing past here, and its own limit is taken first: the phone that keeps failing
+    // stops costing a siteverify (RR-26).
+    const humanFail = limits.take(subject, ['humanFails'], now)
+    if (!humanFail.ok) {
+      count('phone_limited')
+      return limited(humanFail)
+    }
     const token = input.check?.humanToken
     const verdict =
       token === undefined || input.humanCheck === undefined
@@ -1096,6 +1186,7 @@ export async function guestAct(
       count('human_check_failed')
       return { ...reject('human_check'), pass }
     }
+    limits.giveBack(subject, ['humanFails'], now)
     if (verdict === 'unavailable') count('human_check_open')
   }
 
@@ -1131,6 +1222,7 @@ export async function guestAct(
               input.view,
               locationOf(guard, holds ? claims : null, now),
               nightOf(guard, now),
+              guard.timezone,
             ),
             state,
           ),
@@ -1221,6 +1313,7 @@ export async function guestAct(
             input.view,
             locationOf(guard, holds ? claims : null, now),
             nightOf(guard, now),
+            guard.timezone,
           ),
           state,
         )
@@ -1398,6 +1491,7 @@ async function payAct(
             input.view,
             locationOf(guard, holds ? claims : null, now),
             nightOf(guard, now),
+            guard.timezone,
           ),
           state,
         )

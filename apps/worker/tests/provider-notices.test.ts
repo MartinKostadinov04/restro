@@ -12,6 +12,7 @@ import {
   type PaymentProvider,
   type ProviderNotice,
   type ProviderPayment,
+  type ProviderRefund,
   providerRef,
 } from '@restro/core'
 import { createArea, createTable, provisionTenant, provisionVenue } from '@restro/core/apply'
@@ -55,14 +56,29 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
   /** What the provider reads back, by object ref; `incomplete` for a failed read. */
   const readings = new Map<string, ProviderPayment | null | 'incomplete'>()
   const asked: { account: string; notice: ProviderNotice }[] = []
-  const provider: Pick<PaymentProvider, 'readNoticeSubject'> = {
+  /** What the provider lists of a payment's refunds, by its ref; none when not set. */
+  const refundLists = new Map<string, readonly ProviderRefund[] | 'incomplete' | 'throws'>()
+  const listReads: string[] = []
+  const provider: Pick<PaymentProvider, 'readNoticeSubject' | 'readRefunds'> = {
     async readNoticeSubject(accountRef, notice) {
       asked.push({ account: accountRef.provider, notice })
       const value = notice.objectRef === null ? null : readings.get(notice.objectRef.provider)
       if (value === 'incomplete') return { complete: false, reason: 'the provider timed out' }
       return { complete: true, value: value ?? null }
     },
+    async readRefunds(_accountRef, paymentRef) {
+      listReads.push(paymentRef.provider)
+      const value = refundLists.get(paymentRef.provider) ?? []
+      if (value === 'incomplete') return { complete: false, reason: 'the provider timed out' }
+      if (value === 'throws') throw new Error('the provider broke')
+      return { complete: true, value }
+    },
   }
+  const refund = (ref: string, amountMinor: number, failed = false): ProviderRefund => ({
+    ref: providerRef(ref),
+    amountMinor,
+    failed,
+  })
   const providers: NoticeProviders = new Map([[KIND, provider]])
 
   const query = <Row extends object = Record<string, unknown>>(
@@ -213,6 +229,7 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
   it('records a refund as the reading says, and a duplicate or an older notice changes nothing', async () => {
     const target = await payment()
     readings.set('re_1', reading(target, 500))
+    refundLists.set(target.ref, [refund('re_1', 500)])
     const first = await notice('refund', 're_1')
     expect(await run()).toMatchObject({ recorded: 1, waiting: 0 })
     expect(await handled(first)).toBe(true)
@@ -223,9 +240,10 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
     })
     expect(asked.at(-1)?.account).toBe(ACCOUNT)
 
-    // A second refund: both notices read the payment as it stands, the total.
+    // A second refund: both notices read the payment as it stands, every refund.
     readings.set('re_1', reading(target, 1_200))
     readings.set('re_2', reading(target, 1_200))
+    refundLists.set(target.ref, [refund('re_1', 500), refund('re_2', 700)])
     const second = await notice('refund', 're_2')
     const late = await notice('refund', 're_1')
     expect(await run()).toMatchObject({ recorded: 1, unchanged: 1 })
@@ -235,7 +253,7 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
     expect(await run()).toMatchObject({ recorded: 0, unchanged: 0 })
   })
 
-  it('marks the refund whose amount the total fell by, and warns, marking none, when no row has it (#222)', async () => {
+  it("marks the refund the provider's list says failed, by its id, and warns when a row isn't on it (#222, #261)", async () => {
     const target = await payment()
     const rows = () =>
       query<{ amount_minor: string; failed: boolean }>(
@@ -244,26 +262,61 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
         [target.id],
       )
     readings.set('rf_a', reading(target, 500))
+    refundLists.set(target.ref, [refund('rf_a', 500)])
     await notice('refund', 'rf_a')
     await run()
     readings.set('rf_b', reading(target, 800))
+    refundLists.set(target.ref, [refund('rf_a', 500), refund('rf_b', 300)])
     await notice('refund', 'rf_b')
     await run()
-    // The first refund fails: the total falls by its 500, and only that row is marked.
-    readings.set('rf_c', reading(target, 300))
-    await notice('refund', 'rf_c')
+    // The first refund fails: only its row is marked.
+    readings.set('rf_a', reading(target, 300))
+    refundLists.set(target.ref, [refund('rf_a', 500, true), refund('rf_b', 300)])
+    await notice('refund', 'rf_a')
     expect(await run()).toMatchObject({ recorded: 1 })
     expect(await rows()).toEqual([
       { amount_minor: '500', failed: true },
       { amount_minor: '300', failed: false },
     ])
-    // A fall by an amount no row has marks nothing and makes no row; the worker warns.
+    expect(await stored(target.id)).toMatchObject({ refunded_minor: '300' })
+    // A failed refund and a new one of its amount, read at once: the total doesn't move.
+    readings.set('rf_c', reading(target, 300))
+    refundLists.set(target.ref, [
+      refund('rf_a', 500, true),
+      refund('rf_b', 300, true),
+      refund('rf_c', 300),
+    ])
+    await notice('refund', 'rf_c')
+    expect(await run()).toMatchObject({ recorded: 1 })
+    expect(await rows()).toEqual([
+      { amount_minor: '500', failed: true },
+      { amount_minor: '300', failed: true },
+      { amount_minor: '300', failed: false },
+    ])
+    expect(await stored(target.id)).toMatchObject({ refunded_minor: '300' })
+    // A row that isn't on the list marks nothing and makes no row; the worker warns.
     logLines.length = 0
-    readings.set('rf_d', reading(target, 100))
+    readings.set('rf_d', reading(target, 0))
+    refundLists.set(target.ref, [refund('rf_a', 500, true), refund('rf_b', 300, true)])
     await notice('refund', 'rf_d')
     expect(await run()).toMatchObject({ recorded: 1 })
-    expect((await rows()).map((row) => row.failed)).toEqual([true, false])
-    expect(logLines.join('')).toContain('no refund row matches')
+    expect((await rows()).map((row) => row.failed)).toEqual([true, true, false])
+    expect(logLines.join('')).toContain("doesn't match the provider's list")
+  })
+
+  it("leaves a refund notice waiting when the payment's refunds can't be read to their end", async () => {
+    const target = await payment()
+    readings.set('re_60', reading(target, 500))
+    const waiting = await notice('refund', 're_60')
+    for (const failure of ['incomplete', 'throws'] as const) {
+      refundLists.set(target.ref, failure)
+      expect(await run()).toMatchObject({ recorded: 0, waiting: 1 })
+      expect(await handled(waiting)).toBe(false)
+      expect(await stored(target.id)).toMatchObject({ refunded_minor: '0' })
+    }
+    refundLists.set(target.ref, [refund('re_60', 500)])
+    expect(await run()).toMatchObject({ recorded: 1, waiting: 0 })
+    expect(await stored(target.id)).toMatchObject({ refunded_minor: '500' })
   })
 
   it("queues a guest payment's check for a payment notice, and leaves it waiting without a queue", async () => {
@@ -309,9 +362,12 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
   it('records a dispute opened and then lost', async () => {
     const target = await payment()
     readings.set('dp_1', reading(target, 0, 'open'))
+    const listedBefore = listReads.length
     await notice('dispute', 'dp_1')
     await run()
     expect(await stored(target.id)).toMatchObject({ dispute: 'open' })
+    // A dispute's notice doesn't depend on the refunds read (RR-20's key may not do it).
+    expect(listReads).toHaveLength(listedBefore)
     // The provider's answer-by date and the opening time are kept (#222).
     const [times] = await query<{ opened: Date | null; due: Date | null; closed: Date | null }>(
       `select dispute_opened_at as opened, dispute_due_at as due, dispute_closed_at as closed
@@ -356,6 +412,7 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
     // notice is handled.
     clock = new Date(Date.now() + 25 * 60 * 60 * 1000)
     readings.set('re_20', reading(target, 300))
+    refundLists.set(target.ref, [refund('re_20', 300)])
     const lateLines = () =>
       logLines.filter((line) => line.includes('still not handled after a day'))
     expect(await run(state)).toMatchObject({ recorded: 1, waiting: 1, late: 1 })
@@ -387,7 +444,8 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
   it('refuses a reading that shows more refunded than was captured (RR-40)', async () => {
     const target = await payment()
     const captured = reading(target, 0).capturedMinor ?? 0
-    readings.set('re_31', { ...reading(target, 0), refundedMinor: captured + 500 })
+    readings.set('re_31', reading(target, 0))
+    refundLists.set(target.ref, [refund('re_31', captured + 500)])
     const mismatch = await notice('refund', 're_31')
     expect(await run()).toMatchObject({ refused: 1 })
     expect(await handled(mismatch)).toBe(true)
@@ -418,6 +476,7 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
     const waiting = await waitingNotices(120)
     const target = await payment()
     readings.set('re_40', reading(target, 700))
+    refundLists.set(target.ref, [refund('re_40', 700)])
     const newer = await notice('refund', 're_40')
     expect(await run()).toMatchObject({ recorded: 1, waiting: 120 })
     expect(await handled(newer)).toBe(true)
@@ -431,6 +490,7 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
     const waiting = await waitingNotices(5)
     const target = await payment()
     readings.set('re_50', reading(target, 900))
+    refundLists.set(target.ref, [refund('re_50', 900)])
     const newer = await notice('refund', 're_50')
     // Run 1 looks at three that wait; run 2 the other two and the newer one.
     expect(await run(state, limits)).toMatchObject({ waiting: 3, recorded: 0 })

@@ -407,6 +407,7 @@ describe('the table’s order on the first render (D117, #239)', () => {
       ref: 'K7Q',
       lines: [{ itemId: (first?.id ?? '') as OrderLineView['itemId'], optionIds: [], qty: 1 }],
       sentAt: 0,
+      sentClock: '19:42',
       mine: false,
     }
     expect(withAttribute(drawn({ sentOrders: [sent] }), 'class', 'ro-bagbtn')).toHaveLength(1)

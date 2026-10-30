@@ -23,7 +23,6 @@ import {
   createFloorJobs,
   FLOOR_READ_INTERVAL_MS,
   floorTargets,
-  InstanceBudgets,
   readFloorOf,
 } from '../src/jobs/floor'
 import type { WorkerContext } from '../src/jobs/types'
@@ -36,6 +35,7 @@ import {
   testSlug,
   withOwnerClient,
 } from './database'
+import { simBudgets } from './sim-pace'
 
 allowSlowSetup()
 
@@ -160,7 +160,7 @@ describe.skipIf(!hasDatabase)('the floor reading job', () => {
       { tenantId, integrationId: v.integrationId, venueId: v.venueId },
       {
         sim: policy,
-        budgets: new InstanceBudgets(),
+        budgets: simBudgets(simClock),
         ...deps,
       },
     )
@@ -317,7 +317,7 @@ describe.skipIf(!hasDatabase)('the floor reading job', () => {
     })
     // Both at once, on one budget: the simulator allows one call at a time per login, so a
     // second read that did not wait for the first would meet `busy`.
-    const budgets = new InstanceBudgets()
+    const budgets = simBudgets(simClock)
     const [a, b] = await Promise.all([read(club, { budgets }), read(restaurant, { budgets })])
     expect(a).toMatchObject({ kind: 'read', counters: { tables_listed: 8 } })
     expect(b).toMatchObject({ kind: 'read', counters: { tables_listed: 8 } })
@@ -332,7 +332,7 @@ describe.skipIf(!hasDatabase)('the floor reading job', () => {
   })
 
   it('gives each instance one budget, shared by every job of the process', () => {
-    const budgets = new InstanceBudgets()
+    const budgets = simBudgets(simClock)
     expect(budgets.forInstance('in_a')).toBe(budgets.forInstance('in_a'))
     expect(budgets.forInstance('in_a')).not.toBe(budgets.forInstance('in_b'))
   })
@@ -381,7 +381,7 @@ describe.skipIf(!hasDatabase)('the floor reading job', () => {
       const outcome = await readFloorOf(
         env(),
         { tenantId, integrationId: demo.integrationId, venueId: demo.venueId },
-        { sim: { env: 'production', allowHosts: [] }, budgets: new InstanceBudgets() },
+        { sim: { env: 'production', allowHosts: [] }, budgets: simBudgets(simClock) },
       )
       expect(outcome).toMatchObject({ kind: 'refused', code: 'sim_in_production' })
       expect(asked).not.toHaveBeenCalled()
