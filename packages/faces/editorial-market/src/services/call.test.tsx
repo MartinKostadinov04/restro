@@ -8,7 +8,17 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SERVICE_TIMEOUT_MS } from './command'
-import { drawFace, fakeHost, orderingView, request, resetPage, text } from './test-kit'
+import {
+  drawFace,
+  fakeHost,
+  itemNamed,
+  orderingView,
+  orderLine,
+  orderOf,
+  request,
+  resetPage,
+  text,
+} from './test-kit'
 
 vi.setConfig({ testTimeout: 15_000 })
 
@@ -47,10 +57,10 @@ describe('the waiter button', () => {
   })
 
   it('shrinks to a round bell, with the word kept for a screen reader, once the bag has something in it', () => {
-    drawFace(fakeHost())
+    const page = drawFace(fakeHost())
     const bar = document.querySelector('.ro-bagbar')
     expect(bar?.getAttribute('data-bag')).toBe('false')
-    fireEvent.click(screen.getByRole('button', { name: 'Add Hummus' }))
+    page.update({ order: orderOf([orderLine(itemNamed(view, 'Hummus'))]) })
     expect(bar?.getAttribute('data-bag')).toBe('true')
     expect(screen.getByRole('button', { name: 'Call a server' })).toBeTruthy()
   })

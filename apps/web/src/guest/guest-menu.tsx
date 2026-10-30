@@ -37,6 +37,7 @@ import {
   buildContext,
   chooseLocale,
   confirmedTable,
+  hasTableService,
   langParam,
   readTableToken,
   rememberedTable,
@@ -303,7 +304,9 @@ export function GuestMenu(props: GuestMenuProps) {
   // The table's shared order (#75), where the template draws it and the page has a table: the
   // guest API's client, and ordering on in the shell's context (the venue's own switch for
   // ordering, in the snapshot's features, still decides).
-  const sharedOrder = tableToken !== null && SHARED_ORDER_FACES.has(entry.id)
+  // A venue with every table service off is a menu only: its page never asks the guest API.
+  const sharedOrder =
+    tableToken !== null && SHARED_ORDER_FACES.has(entry.id) && hasTableService(snapshot?.features)
   const services = useTableServices(sharedOrder ? tableToken : null)
   const view = useMemo(
     () =>

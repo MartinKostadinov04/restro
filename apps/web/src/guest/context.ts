@@ -6,7 +6,12 @@
 // carries a time zone. Ordering is off in Stage 3.
 
 import { type Locale, TABLE_TOKEN_PATTERN } from '@restro/core'
-import { type FaceManifest, imageSlotsFor, type ShellContextInput } from '@restro/shell'
+import {
+  type FaceManifest,
+  type FeatureName,
+  imageSlotsFor,
+  type ShellContextInput,
+} from '@restro/shell'
 
 /** The language of the page before the menu says otherwise: the pilot venues are Bulgarian. */
 export const FALLBACK_LOCALE: Locale = 'bg_BG'
@@ -74,6 +79,32 @@ export function readTableToken(search: string, fragment = ''): string | null {
     if (token !== null) return TABLE_TOKEN_PATTERN.test(token) ? token : null
   }
   return null
+}
+
+/**
+ * Whether the venue switched at least one table service on (ordering, the bill, paying or calling
+ * a waiter). A page asks the guest API for the table's state only then: a venue with every service
+ * off is a menu and nothing else, so it is never polled. A snapshot without `features` (published
+ * before D71) or one that has not loaded yet counts as off, as the venue's default does.
+ */
+export function hasTableService(
+  features:
+    | {
+        readonly ordering?: boolean
+        readonly bill?: boolean
+        readonly pay?: boolean
+        readonly call_waiter?: { readonly enabled?: boolean }
+      }
+    | null
+    | undefined,
+): boolean {
+  if (features === null || features === undefined) return false
+  return (
+    features.ordering === true ||
+    features.bill === true ||
+    features.pay === true ||
+    features.call_waiter?.enabled === true
+  )
 }
 
 /** The address with a table code in its query moved into the fragment, or null when it has none. */
@@ -167,13 +198,24 @@ export function buildContext(input: {
   readonly sharedOrder?: boolean
 }): ShellContextInput {
   const sharedOrder = input.sharedOrder === true
+  // What the platform supports for this page is what the page binds (the table's services client)
+  // and the template draws: a template that is not bound gets no service, and a bound one gets the
+  // services it declares controls for (`manifest.features`, R15). The reference template declares
+  // only ordering, so it is offered no bill, pay or waiter control; the venue's own switches, in
+  // the snapshot, still decide for the rest.
+  const draws = (feature: FeatureName) => sharedOrder && input.manifest.features.includes(feature)
   return {
     locale: input.locale,
     now: input.now.toISOString(),
     channel: 'qr',
     tableToken: input.tableToken,
     orderingEnabled: sharedOrder,
-    capabilities: { ordering: sharedOrder },
+    capabilities: {
+      ordering: sharedOrder,
+      callWaiter: draws('call_waiter'),
+      bill: draws('bill'),
+      pay: draws('pay'),
+    },
     // One device pixel per CSS pixel: the face lets the browser choose among the photo files (srcset).
     images: imageSlotsFor(input.manifest, 1),
   }

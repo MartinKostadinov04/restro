@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 
-// The bag and what sending it shows (D72, brief SH-06 tests 1 to 3): a draft the guest keeps until
-// the host says yes. No local success: pending, then accepted or rejected from the host.
+// The table's shared order and what sending it shows (D72, D117, D121; brief SH-06 tests 1 to 3):
+// every phone at the table edits one order that lives with the host, so the face draws
+// `state.order` and sends `order.add`, `order.change`, `order.remove`, `order.undo`,
+// `order.restore` and `order.send`. No local success: nothing is drawn that the host's state does
+// not hold, and a Send is pending, then whatever the host says.
 
-import type { ViewModel } from '@restro/shell'
+import { stringsFor, type ViewModel } from '@restro/shell'
 import { fixture } from '@restro/shell/testing'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -12,20 +15,22 @@ import { EditorialMarketFace } from '../face'
 import { itemsOf, viewOf } from '../test-views'
 import { SERVICE_TIMEOUT_MS } from './command'
 import {
-  billLine,
-  billOf,
-  billRound,
   drawFace,
   fakeHost,
   itemNamed,
+  orderHost,
   orderingView,
+  orderLine,
+  orderOf,
   resetPage,
+  sentOrderOf,
   text,
 } from './test-kit'
 
 vi.setConfig({ testTimeout: 15_000 })
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+const W = stringsFor('en_US').services
 
 beforeEach(resetPage)
 afterEach(() => {
@@ -38,6 +43,8 @@ afterEach(() => {
 const view = orderingView()
 const hummus = itemNamed(view, 'Hummus')
 const mojito = itemNamed(view, 'Mojito')
+const bowl = itemNamed(view, 'Bowl')
+const steak = itemNamed(view, 'Steak')
 
 const quickAdd = (name: string) => screen.getByRole('button', { name: `Add ${name}` })
 const bagButton = () => screen.queryByRole('button', { name: /View bag/ })
@@ -48,9 +55,11 @@ const openBag = () => {
   return screen.getByRole('dialog', { name: 'Your bag' })
 }
 const sendButton = (sheet: HTMLElement) =>
-  within(sheet).getByRole('button', { name: /Send to kitchen/ })
+  within(sheet).getByRole('button', { name: /^Send (\d+ items?|the other \d+)$/ })
+const maybeSendButton = (sheet: HTMLElement) =>
+  within(sheet).queryByRole('button', { name: /^Send (\d+ items?|the other \d+)$/ })
 
-/** The view with one dish no longer orderable (sold out): the same ids, so the bag still points at it. */
+/** The view with one dish no longer orderable (sold out): the same ids, so the order still points at it. */
 function withoutControls(source: ViewModel, name: string): ViewModel {
   return {
     ...source,
@@ -122,7 +131,7 @@ describe('what is drawn, and what is not (test 1)', () => {
   })
 
   it('draws no quick add on an item without ordering controls, even with ordering on (test 2)', () => {
-    drawFace(fakeHost())
+    drawFace(orderHost())
     expect(quickAdd('Hummus')).toBeTruthy()
     expect(quickAdd('Mojito')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Add Steak' })).toBeNull() // sold out
@@ -132,13 +141,13 @@ describe('what is drawn, and what is not (test 1)', () => {
   })
 
   it("draws no quick add when the feature is on but the item lost its controls (R11 is the item's own word)", () => {
-    drawFace(fakeHost(), withoutControls(view, 'Hummus'))
+    drawFace(orderHost(), withoutControls(view, 'Hummus'))
     expect(screen.queryByRole('button', { name: 'Add Hummus' })).toBeNull()
     expect(quickAdd('Mojito')).toBeTruthy()
   })
 
   it('draws the controls of the dish page only for a dish that can be ordered', () => {
-    drawFace(fakeHost())
+    drawFace(orderHost())
     fireEvent.click(screen.getByRole('button', { name: /^Steak/ }))
     const page = screen.getByRole('dialog', { name: 'Steak' })
     expect(within(page).queryByRole('button', { name: /Add to bag/ })).toBeNull()
@@ -152,47 +161,66 @@ describe('what is drawn, and what is not (test 1)', () => {
   })
 })
 
-describe('the bag before it is sent', () => {
-  it('shows a bag bar with the count and an estimate labelled "approx." once something is added', () => {
-    drawFace(fakeHost())
-    const slot = document.querySelector('[data-slot="menu.bag"]')
-    expect(slot).not.toBeNull()
-    expect(bagButton()).toBeNull()
+describe('putting a dish on the table’s order', () => {
+  it('sends order.add with our ids and a uuid, no price, and draws nothing the host has not said', async () => {
+    const host = orderHost()
+    const page = drawFace(host)
     fireEvent.click(quickAdd('Hummus'))
-    fireEvent.click(quickAdd('Mojito'))
-    const bar = bagButton()
-    expect(bar?.closest('[data-slot="menu.bag"]')).toBe(slot)
-    expect(bar?.textContent).toContain('2')
-    expect(bar?.textContent).toContain('approx.')
-    expect(bar?.textContent).toContain('€17.00')
+    await waitFor(() => expect(host.of('order.add')).toHaveLength(1))
+    const call = host.of('order.add')[0]
+    expect(call?.command).toMatchObject({ itemId: hummus.id, optionIds: [], qty: 1, note: '' })
+    expect(call?.command.actionId).toMatch(UUID)
+    expect(JSON.stringify(call?.command)).not.toMatch(/price|minor|700|€/)
+    // No local line: the "+" stays, and there is no bag button until the host's order has the line.
+    await act(async () => call?.answer())
+    expect(bagButton()).toBeNull()
+    expect(quickAdd('Hummus')).toBeTruthy()
+
+    page.update({ order: orderOf([orderLine(hummus)]) })
+    expect(bagButton()?.textContent).toContain('1')
+    expect(bagButton()?.textContent).toContain('approx.')
+    expect(bagButton()?.textContent).toContain('€7.00')
   })
 
-  it('turns the "+" into a counter, counts the same dish once, and drops it at zero', () => {
-    drawFace(fakeHost())
-    fireEvent.click(quickAdd('Hummus'))
+  it('shows a bag bar with the count and an estimate of the host’s order, whoever added the lines', () => {
+    const host = orderHost({ order: orderOf([orderLine(hummus), orderLine(mojito, 2)]) })
+    drawFace(host)
+    const slot = document.querySelector('[data-slot="menu.bag"]')
+    const bar = bagButton()
+    expect(bar?.closest('[data-slot="menu.bag"]')).toBe(slot)
+    expect(bar?.textContent).toContain('3')
+    expect(bar?.textContent).toContain('approx.')
+    expect(bar?.textContent).toContain('€27.00') // 7,00 + 2 × 10,00
+  })
+
+  it('turns the "+" into a counter of the host’s line, and the counter sends order.change', async () => {
+    const host = orderHost({ order: orderOf([orderLine(hummus)]) })
+    drawFace(host)
     expect(screen.queryByRole('button', { name: 'Add Hummus' })).toBeNull()
     expect(document.querySelector(`[data-item="${hummus.id}"] .ro-quick output`)?.textContent).toBe(
       '1',
     )
     fireEvent.click(screen.getByRole('button', { name: 'One more: Hummus' }))
-    expect(bagButton()?.textContent).toContain('€14.00')
+    await waitFor(() => expect(host.of('order.change')).toHaveLength(1))
+    const [line] = host.state().order?.lines ?? []
+    expect(host.of('order.change')[0]?.command).toMatchObject({ lineId: line?.id, delta: 1 })
     fireEvent.click(screen.getByRole('button', { name: 'One less: Hummus' }))
-    fireEvent.click(screen.getByRole('button', { name: 'One less: Hummus' }))
-    expect(bagButton()).toBeNull()
-    expect(quickAdd('Hummus')).toBeTruthy()
+    await waitFor(() => expect(host.of('order.change')).toHaveLength(2))
+    expect(host.of('order.change')[1]?.command).toMatchObject({ lineId: line?.id, delta: -1 })
   })
 
   it('opens the dish page instead of adding a dish that needs a choice, and adds it from there', async () => {
-    drawFace(fakeHost())
+    const host = orderHost()
+    drawFace(host)
     fireEvent.click(quickAdd('Bowl'))
-    expect(bagButton()).toBeNull()
+    expect(host.of('order.add')).toHaveLength(0)
     const page = screen.getByRole('dialog', { name: 'Bowl' })
     const add = within(page).getByRole('button', { name: /Add to bag/ })
     expect(add.getAttribute('aria-disabled')).toBe('true')
     fireEvent.click(add) // the Size is required: the page stays and says so
     expect(screen.getByRole('dialog', { name: 'Bowl' })).toBeTruthy()
     expect(page.querySelector('.ro-group.is-invalid')).not.toBeNull()
-    expect(bagButton()).toBeNull()
+    expect(host.of('order.add')).toHaveLength(0)
 
     fireEvent.click(within(page).getByRole('radio', { name: /Large/ }))
     fireEvent.click(within(page).getByRole('button', { name: /Avocado/ }))
@@ -203,80 +231,263 @@ describe('the bag before it is sent', () => {
     ).toBe('true')
     // The price moves with the choices: 10,00 + 2,50 + 1,80.
     expect(add.textContent).toContain('€14.30')
-    fireEvent.change(within(page).getByRole('textbox'), { target: { value: '  extra hot  ' } })
+    fireEvent.change(within(page).getByRole('textbox'), { target: { value: 'extra hot' } })
     fireEvent.click(add)
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    expect(bagButton()?.textContent).toContain('€14.30')
+    await waitFor(() => expect(host.of('order.add')).toHaveLength(1))
+    const sizes = bowl.modifierGroups[0]?.options ?? []
+    const extras = bowl.modifierGroups[1]?.options ?? []
+    expect(host.of('order.add')[0]?.command).toMatchObject({
+      itemId: bowl.id,
+      optionIds: [sizes[1]?.id, extras[0]?.id],
+      qty: 1,
+      note: 'extra hot',
+    })
   })
 
-  it('edits a line from the bag: the dish page opens with its choices, and the line is replaced', async () => {
-    drawFace(fakeHost())
-    fireEvent.click(quickAdd('Bowl'))
-    let page = screen.getByRole('dialog', { name: 'Bowl' })
-    fireEvent.click(within(page).getByRole('radio', { name: /Large/ }))
-    fireEvent.click(within(page).getByRole('button', { name: /Add to bag/ }))
-
-    let sheet = openBag()
-    expect(within(sheet).getByText('Bowl')).toBeTruthy()
-    expect(within(sheet).getByText('Large')).toBeTruthy()
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Edit: Bowl' }))
-
-    page = screen.getByRole('dialog', { name: 'Bowl' })
-    expect(within(page).getByRole('radio', { name: /Large/ }).getAttribute('aria-checked')).toBe(
-      'true',
-    )
-    fireEvent.click(within(page).getByRole('button', { name: 'One more: Bowl' }))
-    fireEvent.click(within(page).getByRole('button', { name: /Avocado/ }))
-    fireEvent.click(within(page).getByRole('button', { name: /Add to bag/ }))
-
-    // Back on the bag (the address goes back to #bag): one line, two of it, with the avocado.
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Bowl' })).toBeNull())
-    sheet = await screen.findByRole('dialog', { name: 'Your bag' })
-    expect(within(sheet).getAllByRole('listitem')).toHaveLength(1)
-    expect(within(sheet).getByText('Avocado')).toBeTruthy()
-    expect(sheet.querySelector('.ro-line-side output')?.textContent).toBe('2')
-    expect(within(sheet).getAllByText('€28.60').length).toBeGreaterThan(0) // (10,00 + 2,50 + 1,80) × 2
-  })
-
-  it('does not keep an abandoned edit for the next time the dish page opens', async () => {
-    drawFace(fakeHost())
-    fireEvent.click(quickAdd('Bowl'))
-    fireEvent.click(
-      within(screen.getByRole('dialog', { name: 'Bowl' })).getByRole('radio', { name: /Large/ }),
-    )
-    fireEvent.click(
-      within(screen.getByRole('dialog', { name: 'Bowl' })).getByRole('button', {
-        name: /Add to bag/,
-      }),
-    )
-    fireEvent.click(within(openBag()).getByRole('button', { name: 'Edit: Bowl' }))
-    // The guest backs out of the edit without adding.
-    fireEvent.keyDown(window, { key: 'Escape' })
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Bowl' })).toBeNull())
-    fireEvent.click(quickAdd('Bowl'))
+  it('says "Order this from your waiter" in place of a dish that needs a choice where the POS takes none (#78)', () => {
+    drawFace(fakeHost({ order: orderOf(), ordering: { state: 'on' } }))
+    expect(screen.queryByRole('button', { name: 'Add Bowl' })).toBeNull()
     expect(
-      within(screen.getByRole('dialog', { name: 'Bowl' }))
-        .getByRole('radio', { name: /Large/ })
-        .getAttribute('aria-checked'),
-    ).toBe('false')
+      document.querySelector(`[data-item="${bowl.id}"] [data-slot="item.order_from_waiter"]`)
+        ?.textContent,
+    ).toBe(W.orderFromWaiter)
+    expect(quickAdd('Hummus')).toBeTruthy()
+    // The dish page draws no choices and no note field, and says the staff are told.
+    fireEvent.click(screen.getByRole('button', { name: /^Bowl/ }))
+    const page = screen.getByRole('dialog', { name: 'Bowl' })
+    expect(page.querySelector('[data-slot="item.order_from_waiter"]')).not.toBeNull()
+    expect(within(page).queryByRole('textbox')).toBeNull()
+    expect(within(page).queryByRole('button', { name: /Add to bag/ })).toBeNull()
   })
 
-  it('lets the guest remove a line, and says the bag is empty when the last one goes', () => {
-    drawFace(fakeHost())
-    fireEvent.click(quickAdd('Hummus'))
-    const sheet = openBag()
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Remove: Hummus' }))
-    expect(within(sheet).getByText('Your bag is empty. Add something from the menu.')).toBeTruthy()
+  it('draws no note field and adds with no choices where the POS takes none, and says the staff are told', async () => {
+    const host = fakeHost({ order: orderOf(), ordering: { state: 'on' } })
+    drawFace(host)
+    fireEvent.click(screen.getByRole('button', { name: /^Hummus/ }))
+    const page = screen.getByRole('dialog', { name: 'Hummus' })
+    expect(within(page).queryByRole('textbox')).toBeNull()
+    expect(page.querySelector('[data-notes-at-staff]')?.textContent).toBe(W.notesAtStaff)
+    fireEvent.click(within(page).getByRole('button', { name: /Add to bag/ }))
+    await waitFor(() => expect(host.of('order.add')).toHaveLength(1))
+    expect(host.of('order.add')[0]?.command).toMatchObject({
+      itemId: hummus.id,
+      optionIds: [],
+      note: '',
+    })
+  })
+
+  it('keeps the refusal’s words over the bar when the host refuses an add, until the guest taps them away', async () => {
+    const host = orderHost()
+    drawFace(host)
+    fireEvent.click(quickAdd('Mojito'))
+    await waitFor(() => expect(host.of('order.add')).toHaveLength(1))
+    await act(async () =>
+      host.of('order.add')[0]?.answer({ status: 'rejected', code: 'ordering_paused' }),
+    )
+    const note = await screen.findByRole('alert')
+    expect(note.textContent).toBe(W.refusals.ordering_paused)
+    fireEvent.click(within(note).getByRole('button'))
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('leaves the location codes to the location sheet: no refusal is worded for them', async () => {
+    const host = orderHost()
+    drawFace(host)
+    fireEvent.click(quickAdd('Mojito'))
+    await waitFor(() => expect(host.of('order.add')).toHaveLength(1))
+    await act(async () =>
+      host.of('order.add')[0]?.answer({ status: 'rejected', code: 'location_needed' }),
+    )
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })
 
-describe('sending the bag: no local success (test 3)', () => {
-  async function bagWithTwo(host = fakeHost()) {
-    const page = drawFace(host)
-    fireEvent.click(quickAdd('Hummus'))
-    fireEvent.click(quickAdd('Mojito'))
+describe('the order sheet: the lines the host has', () => {
+  it('draws the host’s lines with the choices, a note and the estimate, and marks no line as mine', () => {
+    const sizes = bowl.modifierGroups[0]?.options ?? []
+    const host = orderHost({
+      order: orderOf([
+        orderLine(hummus, 2),
+        orderLine(bowl, 1, { optionIds: [sizes[1]?.id as never], note: 'no onion' }),
+      ]),
+    })
+    drawFace(host)
     const sheet = openBag()
-    return { host, page, sheet }
+    const lines = sheet.querySelectorAll('[data-order-line]')
+    expect(lines).toHaveLength(2)
+    expect(within(sheet).getByText('Hummus')).toBeTruthy()
+    expect(within(sheet).getByText('Large')).toBeTruthy()
+    expect(within(sheet).getByText('“no onion”')).toBeTruthy()
+    expect(lines[0]?.getAttribute('data-qty')).toBe('2')
+    expect(sheet.querySelector('.ro-sum')?.textContent).toContain('€26.50') // 14,00 + 10,00 + 2,50
+    expect(sheet.textContent).not.toMatch(/\bmine\b|yours/i)
+    // The sheet is the order screen the host polls fast (RR-52).
+    expect(host.screens.at(-1)).toBe('bag')
+  })
+
+  it('says the order is empty when the host has one with no lines', () => {
+    const host = orderHost({
+      order: orderOf([], {
+        removed: [
+          {
+            ...orderLine(hummus),
+            undoSeconds: 8,
+          },
+        ],
+      }),
+    })
+    drawFace(host)
+    const sheet = openBag()
+    expect(within(sheet).getByText(W.emptyOrder)).toBeTruthy()
+    expect(sheet.querySelector('[data-order-line]')).toBeNull()
+  })
+
+  it('sends order.change for the steppers and order.remove for Remove', async () => {
+    const line = orderLine(hummus, 2)
+    const host = orderHost({ order: orderOf([line]) })
+    drawFace(host)
+    const sheet = openBag()
+    fireEvent.click(within(sheet).getByRole('button', { name: 'One more: Hummus' }))
+    await waitFor(() => expect(host.of('order.change')).toHaveLength(1))
+    expect(host.of('order.change')[0]?.command).toMatchObject({ lineId: line.id, delta: 1 })
+    fireEvent.click(within(sheet).getByRole('button', { name: 'One less: Hummus' }))
+    await waitFor(() => expect(host.of('order.change')).toHaveLength(2))
+    expect(host.of('order.change')[1]?.command).toMatchObject({ lineId: line.id, delta: -1 })
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Remove: Hummus' }))
+    await waitFor(() => expect(host.of('order.remove')).toHaveLength(1))
+    expect(host.of('order.remove')[0]?.command).toMatchObject({ lineId: line.id })
+  })
+
+  it('shows a removed line with its Undo, and Undo sends order.undo', async () => {
+    const gone = { ...orderLine(mojito, 1), undoSeconds: 9 }
+    const host = orderHost({ order: orderOf([orderLine(hummus)], { removed: [gone] }) })
+    drawFace(host)
+    const sheet = openBag()
+    const removed = sheet.querySelector(`[data-removed-line="${gone.id}"]`)
+    expect(removed?.textContent).toContain(W.removedNamed('Mojito'))
+    fireEvent.click(within(removed as HTMLElement).getByRole('button', { name: W.undo }))
+    await waitFor(() => expect(host.of('order.undo')).toHaveLength(1))
+    expect(host.of('order.undo')[0]?.command).toMatchObject({ lineId: gone.id })
+  })
+
+  it('shows the earlier order with Restore, and Restore sends order.restore for that order', async () => {
+    const host = orderHost({
+      order: orderOf([], {
+        earlier: { setAsideAt: 1_760_000_000_000, lines: [orderLine(mojito, 2)] },
+      }),
+    })
+    drawFace(host)
+    const sheet = openBag()
+    const earlier = sheet.querySelector('[data-earlier-order]') as HTMLElement
+    expect(earlier.textContent).toContain(W.earlierOrder)
+    expect(earlier.textContent).toContain('Mojito × 2')
+    fireEvent.click(within(earlier).getByRole('button', { name: W.restore }))
+    await waitFor(() => expect(host.of('order.restore')).toHaveLength(1))
+    expect(host.of('order.restore')[0]?.command).toMatchObject({ setAsideAt: 1_760_000_000_000 })
+  })
+
+  it('says "Saving…" for a line the host has not answered yet, and keeps it out of the Send', () => {
+    const host = orderHost({
+      order: orderOf([orderLine(hummus, 1, { pending: true }), orderLine(mojito)]),
+    })
+    drawFace(host)
+    const sheet = openBag()
+    expect(within(sheet).getByText(W.saving)).toBeTruthy()
+    expect(sheet.querySelector('[data-pending]')?.getAttribute('data-order-line')).toMatch(/^ol_/)
+    expect(sendButton(sheet).textContent).toBe(W.sendItems(1))
+  })
+
+  it('gives a line a payment holds no controls and says so, and leaves it out of the Send', () => {
+    const host = orderHost({
+      order: orderOf([orderLine(hummus, 1, { held: true }), orderLine(mojito)]),
+    })
+    drawFace(host)
+    const sheet = openBag()
+    const held = sheet.querySelector(`[data-item-id="${hummus.id}"]`) as HTMLElement
+    expect(held.textContent).toContain(W.heldLine)
+    expect(within(held).queryByRole('button')).toBeNull()
+    expect(sendButton(sheet).textContent).toBe(W.sendItems(1))
+  })
+
+  it('says "Order this from your waiter" on a pay-first line, and never sends it', () => {
+    const host = orderHost({
+      order: orderOf([orderLine(hummus, 1, { mode: 'pay_first' }), orderLine(mojito)]),
+    })
+    drawFace(host)
+    const sheet = openBag()
+    const line = sheet.querySelector(`[data-item-id="${hummus.id}"]`) as HTMLElement
+    expect(line.textContent).toContain(W.orderFromWaiter)
+    expect(sendButton(sheet).textContent).toBe(W.sendItems(1))
+  })
+
+  it('greys a sold-out line, keeps it on the order and says "Send the other N"', async () => {
+    const host = orderHost({ order: orderOf([orderLine(hummus), orderLine(mojito, 2)]) })
+    drawFace(host, withoutControls(view, 'Hummus'))
+    const sheet = openBag()
+    const line = sheet.querySelector(`[data-item-id="${hummus.id}"]`) as HTMLElement
+    expect(line.getAttribute('data-sold-out')).toBe('')
+    expect(line.textContent).toContain(W.lineSoldOut)
+    expect(sendButton(sheet).textContent).toBe(W.sendOthers(2))
+    fireEvent.click(sendButton(sheet))
+    await waitFor(() => expect(host.of('order.send')).toHaveLength(1))
+    expect(host.of('order.send')[0]?.command.lines.map((l) => l.itemId)).toEqual([mojito.id])
+  })
+
+  it('says "Send the other N" with the count, and greys a line the POS named as run out', () => {
+    const sold = sentOrderOf('so_1', 'not_sent', [{ item: mojito, qty: 1 }], {
+      reason: 'item_unavailable',
+      lines: [{ itemId: mojito.id, optionIds: [], qty: 1, outOfStock: true }],
+    })
+    const host = orderHost({
+      order: orderOf([orderLine(hummus), orderLine(mojito)]),
+      sentOrders: [sold],
+    })
+    drawFace(host)
+    const sheet = openBag()
+    expect(sendButton(sheet).textContent).toBe(W.sendOthers(1))
+    const line = sheet.querySelector(`[data-item-id="${mojito.id}"]`) as HTMLElement
+    expect(line.getAttribute('data-sold-out')).toBe('')
+    expect(sheet.textContent).toContain(W.sentNotSentOutOfStock)
+  })
+
+  it('flags a line whose dish left the menu with its name unknown, and keeps it out of the Send', () => {
+    const gone: ViewModel = {
+      ...view,
+      sections: view.sections.map((section) => ({
+        ...section,
+        items: section.items.filter((item) => item.name.text !== 'Hummus'),
+      })),
+    }
+    const host = orderHost({ order: orderOf([orderLine(hummus), orderLine(mojito)]) })
+    drawFace(host, gone)
+    const sheet = openBag()
+    expect(within(sheet).getByText(W.otherItem)).toBeTruthy()
+    expect(within(sheet).getByText(W.unavailableLine)).toBeTruthy()
+    expect(sendButton(sheet).textContent).toBe(W.sendOthers(1))
+    expect(itemsOf(gone).some((item) => item.id === hummus.id)).toBe(false)
+  })
+
+  it('has no note field in the order, and tells the guest the staff are told, where the POS takes no notes', () => {
+    const host = fakeHost({
+      order: orderOf([orderLine(hummus)]),
+      ordering: { state: 'on' },
+    })
+    drawFace(host)
+    const sheet = openBag()
+    expect(sheet.querySelector('[data-notes-at-staff]')?.textContent).toBe(W.notesAtStaff)
+    expect(within(sheet).queryByRole('textbox')).toBeNull()
+  })
+})
+
+describe('Send: no local success (test 3)', () => {
+  function twoLines(extra: Partial<Parameters<typeof orderHost>[0]> = {}) {
+    const host = orderHost({
+      order: orderOf([orderLine(hummus), orderLine(mojito)]),
+      ...extra,
+    })
+    const page = drawFace(host)
+    return { host, page, sheet: openBag() }
   }
   const send = async (host: ReturnType<typeof fakeHost>, sheet: HTMLElement, count: number) => {
     fireEvent.click(sendButton(sheet))
@@ -284,66 +495,81 @@ describe('sending the bag: no local success (test 3)', () => {
     return host.of('order.send')[count - 1]
   }
 
-  it('sends our ids, the quantities and the notes, with a uuid, and no price', async () => {
-    const { host, sheet } = await bagWithTwo()
+  it('says how many items go, and sends our ids, the quantities and the notes, with a uuid, and no price', async () => {
+    const { host, sheet } = twoLines()
+    expect(sendButton(sheet).textContent).toBe(W.sendItems(2))
     const call = await send(host, sheet, 1)
     expect(call?.command.actionId).toMatch(UUID)
     expect(call?.command.lines).toEqual([
       { itemId: hummus.id, optionIds: [], qty: 1, note: '' },
       { itemId: mojito.id, optionIds: [], qty: 1, note: '' },
     ])
+    expect(call?.command.confirmDuplicateOf).toBeUndefined()
     expect(JSON.stringify(call?.command)).not.toMatch(/price|minor|1700|€/)
   })
 
-  it('shows pending until the host answers, then clears the bag and opens the bill', async () => {
-    const { host, sheet } = await bagWithTwo()
+  it('shows pending until the host answers, and then changes nothing itself: the order is the host’s', async () => {
+    const { host, page, sheet } = twoLines()
     const call = await send(host, sheet, 1)
-    // Pending: nothing has succeeded. The bag is still there, the button says so, the bill is not open.
-    const busy = within(sheet).getByRole('button', { name: 'Sending your order' })
+    const busy = within(sheet).getByRole('button', { name: W.sendingNow })
     expect(busy.hasAttribute('disabled')).toBe(true)
     expect(sheet.querySelector('[aria-busy="true"]')).not.toBeNull()
     expect(within(sheet).getByText('Hummus')).toBeTruthy()
-    expect(screen.queryByRole('dialog', { name: 'Table order' })).toBeNull()
 
     await act(async () => call?.answer({ ref: 'K-12' }))
-    const bill = await screen.findByRole('dialog', { name: 'Table order' })
-    expect(screen.queryByRole('dialog', { name: 'Your bag' })).toBeNull()
-    // The face drew no round of its own: the host's state is still empty, so is the bill.
-    expect(within(bill).getByText('Nothing has been ordered yet.')).toBeTruthy()
-    expect(bill.querySelector('.ro-round')).toBeNull()
-    fireEvent.click(within(bill).getByRole('button', { name: 'Close' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    expect(bagButton()).toBeNull() // the bag was spent
-    expect(quickAdd('Hummus')).toBeTruthy()
+    // The face spent nothing and opened nothing: the lines stay until the host's order moves them
+    // into a sent order.
+    expect(within(sheet).getByText('Hummus')).toBeTruthy()
+    expect(screen.queryByRole('dialog', { name: 'Table order' })).toBeNull()
+    page.update({
+      order: orderOf([]),
+      sentOrders: [
+        sentOrderOf(
+          'so_1',
+          'sending',
+          [
+            { item: hummus, qty: 1 },
+            { item: mojito, qty: 1 },
+          ],
+          { mine: true },
+        ),
+      ],
+    })
+    expect(within(sheet).queryByText('Hummus', { selector: 'strong' })).toBeNull()
+    expect(sheet.querySelector('[data-sent-order="so_1"]')?.textContent).toContain(W.sendingNow)
   })
 
-  it("keeps the bag and shows the host's message when the host rejects the order", async () => {
-    const { host, sheet } = await bagWithTwo()
+  it('keeps the order and shows the refusal’s words when the host says no', async () => {
+    const { host, sheet } = twoLines()
     const call = await send(host, sheet, 1)
     await act(async () =>
-      call?.answer({ status: 'rejected', message: text('The kitchen is closed.'), ref: 'K-9' }),
+      call?.answer({ status: 'rejected', code: 'ordering_paused', message: text('Closed.') }),
     )
-    const alert = within(sheet).getByRole('alert')
-    expect(alert.textContent).toContain('The kitchen could not take your order')
-    expect(alert.textContent).toContain('The kitchen is closed.')
-    expect(alert.textContent).toContain('Reference K-9')
+    expect(within(sheet).getByRole('alert').textContent).toBe(W.refusals.ordering_paused)
     expect(within(sheet).getByText('Hummus')).toBeTruthy()
-    expect(within(sheet).getByText('Mojito')).toBeTruthy()
-    expect(screen.queryByRole('dialog', { name: 'Table order' })).toBeNull()
     // And the guest can send again; a definite no was an end, so it is a new action.
     const again = await send(host, sheet, 2)
     expect(again?.command.actionId).not.toBe(call?.command.actionId)
   })
 
-  it('says "ask your waiter" when the host rejects without a reason', async () => {
-    const { host, sheet } = await bagWithTwo()
+  it('names the dish that ran out when the refusal names it (item_unavailable)', async () => {
+    const { host, sheet } = twoLines()
     const call = await send(host, sheet, 1)
-    await act(async () => call?.answer({ status: 'rejected' }))
-    expect(within(sheet).getByRole('alert').textContent).toContain('Ask your waiter.')
+    await act(async () =>
+      call?.answer({ status: 'rejected', code: 'item_unavailable', subjectId: mojito.id }),
+    )
+    expect(within(sheet).getByRole('alert').textContent).toBe(W.itemUnavailableNamed('Mojito'))
   })
 
-  it('keeps the bag after a thrown error, says D120’s line and offers no re-send (RR-50)', async () => {
-    const { host, sheet } = await bagWithTwo()
+  it('says the general line when the host rejects without a code', async () => {
+    const { host, sheet } = twoLines()
+    const call = await send(host, sheet, 1)
+    await act(async () => call?.answer({ status: 'rejected' }))
+    expect(within(sheet).getByRole('alert').textContent).toBe(W.refusedOther)
+  })
+
+  it('keeps the order after a thrown error, says D120’s line and offers no re-send (RR-50)', async () => {
+    const { host, sheet } = twoLines()
     const first = await send(host, sheet, 1)
     await act(async () => first?.fail())
     const alert = within(sheet).getByRole('alert')
@@ -351,15 +577,13 @@ describe('sending the bag: no local success (test 3)', () => {
     expect(alert.textContent).toContain('We can’t reach Restro right now')
     expect(sheet.textContent).not.toContain('Try again')
     expect(within(sheet).getByText('Hummus')).toBeTruthy()
-    expect(screen.queryByRole('dialog', { name: 'Table order' })).toBeNull()
-    expect(sendButton(sheet).hasAttribute('disabled')).toBe(true)
-    fireEvent.click(sendButton(sheet))
+    expect(maybeSendButton(sheet)).toBeNull()
     await act(async () => {})
     expect(host.of('order.send')).toHaveLength(1)
   })
 
-  it('treats a host that does not answer in time as a lost answer, keeps the bag and offers no re-send', async () => {
-    const { host, sheet } = await bagWithTwo()
+  it('treats a host that does not answer in time as a lost answer, keeps the order and offers no re-send', async () => {
+    const { host, sheet } = twoLines()
     vi.useFakeTimers()
     fireEvent.click(sendButton(sheet))
     await act(async () => {
@@ -367,7 +591,7 @@ describe('sending the bag: no local success (test 3)', () => {
     })
     const first = host.of('order.send')[0]
     expect(first).toBeDefined()
-    expect(within(sheet).getByRole('button', { name: 'Sending your order' })).toBeTruthy()
+    expect(within(sheet).getByRole('button', { name: W.sendingNow })).toBeTruthy()
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(SERVICE_TIMEOUT_MS + 10)
@@ -379,29 +603,39 @@ describe('sending the bag: no local success (test 3)', () => {
 
     // The host answers late: that answer is ignored (it is the answer to a send the face gave up on).
     await act(async () => first?.answer())
-    expect(screen.queryByRole('dialog', { name: 'Table order' })).toBeNull()
-    expect(within(sheet).getByText('Hummus')).toBeTruthy()
+    expect(maybeSendButton(sheet)).toBeNull()
+    expect(host.of('order.send')).toHaveLength(1)
+  })
 
-    // No re-send: the button is greyed, and nothing more goes out.
+  it('says D120’s line for the client’s own lost answer (pending, answer_lost), with no re-send', async () => {
+    const { host, sheet } = twoLines()
+    const call = await send(host, sheet, 1)
+    await act(async () => call?.answer({ status: 'pending', code: 'answer_lost' }))
+    expect(within(sheet).getByRole('alert').textContent).toContain(
+      'We can’t reach Restro right now',
+    )
+    expect(maybeSendButton(sheet)).toBeNull()
+  })
+
+  it('offers Send again after the hold, when the host never said anything more', async () => {
+    const { host, sheet } = twoLines()
+    vi.useFakeTimers()
     fireEvent.click(sendButton(sheet))
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
-    expect(host.of('order.send')).toHaveLength(1)
-  })
-
-  it('uses a new actionId when the bag changed after a failure', async () => {
-    const { host, sheet } = await bagWithTwo()
-    const first = await send(host, sheet, 1)
-    await act(async () => first?.fail())
-    fireEvent.click(within(sheet).getByRole('button', { name: 'One more: Hummus' }))
-    const second = await send(host, sheet, 2)
-    expect(second?.command.actionId).not.toBe(first?.command.actionId)
-    expect(second?.command.lines[0]?.qty).toBe(2)
+    await act(async () =>
+      host.of('order.send')[0]?.answer({ status: 'pending', code: 'answer_lost' }),
+    )
+    expect(maybeSendButton(sheet)).toBeNull()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(180_000 + 10)
+    })
+    expect(maybeSendButton(sheet)).not.toBeNull()
   })
 
   it('sends once for two quick taps', async () => {
-    const { host, sheet } = await bagWithTwo()
+    const { host, sheet } = twoLines()
     const button = sendButton(sheet)
     fireEvent.click(button)
     fireEvent.click(button)
@@ -410,180 +644,232 @@ describe('sending the bag: no local success (test 3)', () => {
     expect(host.of('order.send')).toHaveLength(1)
   })
 
-  it("waits on an order the host has but has not decided, and takes the bill's round for the answer", async () => {
-    const { host, page, sheet } = await bagWithTwo()
-    const call = await send(host, sheet, 1)
-    await act(async () => call?.answer({ status: 'pending' }))
-    expect(within(sheet).getByText(/Your order is received/)).toBeTruthy()
-    expect(
-      within(sheet).getByRole('button', { name: 'Sending your order' }).hasAttribute('disabled'),
-    ).toBe(true)
-    expect(screen.queryByRole('dialog', { name: 'Table order' })).toBeNull()
-
-    // The host's own bill now holds a guest round for this action: that is the acceptance.
-    page.update({
-      bill: billOf(
-        [
-          billRound(
-            'r1',
-            'guest',
-            [billLine('l1', 'Hummus', 1, 700), billLine('l2', 'Mojito', 1, 1000)],
-            call?.command.actionId,
-          ),
-        ],
-        1700,
-      ),
-    })
-    const bill = await screen.findByRole('dialog', { name: 'Table order' })
-    expect(within(bill).getAllByText('Hummus')).toHaveLength(1)
-    fireEvent.click(within(bill).getByRole('button', { name: 'Close' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    expect(bagButton()).toBeNull()
-  })
-
-  it('says D120’s line, not "Try again", when the host stays undecided', async () => {
-    const { host, sheet } = await bagWithTwo()
-    const call = await send(host, sheet, 1)
-    vi.useFakeTimers()
-    await act(async () => call?.answer({ status: 'pending' }))
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(SERVICE_TIMEOUT_MS + 10)
-    })
-    expect(within(sheet).getByRole('alert').textContent).toContain(
-      'We can’t reach Restro right now',
-    )
-    expect(sheet.textContent).not.toContain('Try again')
+  it('sends nothing while the phone is offline, greys Send and keeps the order editable (D121)', async () => {
+    const { host, sheet } = twoLines({ offline: true })
+    expect(sheet.querySelector('[data-slot="send.offline"]')?.textContent).toBe(W.offline)
     expect(sendButton(sheet).hasAttribute('disabled')).toBe(true)
-    expect(host.of('order.send')).toHaveLength(1)
-  })
-
-  it("takes the bill's round for the answer of a send whose answer never came", async () => {
-    const { host, page, sheet } = await bagWithTwo()
-    const call = await send(host, sheet, 1)
-    await act(async () => call?.fail())
-    expect(within(sheet).getByRole('alert')).toBeTruthy()
-    page.update({
-      bill: billOf(
-        [billRound('r1', 'guest', [billLine('l1', 'Hummus', 1, 700)], call?.command.actionId)],
-        700,
-      ),
-    })
-    await screen.findByRole('dialog', { name: 'Table order' })
-  })
-
-  it('locks the quantities while the bag is with the host', async () => {
-    const { host, sheet } = await bagWithTwo()
-    await send(host, sheet, 1)
-    for (const name of ['One more: Hummus', 'One less: Mojito']) {
-      expect(within(sheet).getByRole('button', { name }).hasAttribute('disabled')).toBe(true)
-    }
+    fireEvent.click(sendButton(sheet))
+    await act(async () => {})
+    expect(host.of('order.send')).toHaveLength(0)
     expect(
-      within(sheet).getByRole('button', { name: 'Remove: Hummus' }).hasAttribute('disabled'),
-    ).toBe(true)
+      within(sheet).getByRole('button', { name: 'One more: Hummus' }).hasAttribute('disabled'),
+    ).toBe(false)
   })
 
-  it('spends only the lines the host accepted: what the guest added while it waited stays in the bag', async () => {
-    const { host, sheet } = await bagWithTwo()
-    const call = await send(host, sheet, 1)
-    fireEvent.keyDown(window, { key: 'Escape' }) // the guest goes back to the menu while the order is with the host
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    fireEvent.click(screen.getByRole('button', { name: 'One more: Mojito' }))
-    await act(async () => call?.answer())
-    // One Hummus and one Mojito were sent; the second Mojito was added meanwhile and is still in the bag.
-    expect(screen.queryByRole('button', { name: /One more: Hummus/ })).toBeNull()
-    expect(screen.getByRole('button', { name: /View bag/ }).textContent).toContain('€10.00')
-    const again = openBag()
-    expect(within(again).getAllByRole('listitem')).toHaveLength(1)
-    expect(within(again).getByText('Mojito')).toBeTruthy()
-    expect(screen.queryByRole('dialog', { name: 'Table order' })).toBeNull()
+  it('draws the host’s lost-Send line in place of the weak-signal one, with the reference, and no Send', () => {
+    const { sheet } = twoLines({ offline: true, sendLost: { ref: 'K7Q' } })
+    expect(sheet.querySelector('[data-send-lost]')?.textContent).toContain(W.sendLost)
+    expect(sheet.querySelector('[data-send-lost]')?.textContent).toContain(W.reference('K7Q'))
+    expect(sheet.textContent).not.toContain(W.offline)
+    expect(maybeSendButton(sheet)).toBeNull()
   })
 
-  it('only clears the bag, without opening the bill over the menu, if the guest has left the bag', async () => {
-    const { host, page, sheet } = await bagWithTwo()
-    const call = await send(host, sheet, 1)
-    fireEvent.keyDown(window, { key: 'Escape' }) // the guest closes the bag while it is pending
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    await act(async () => call?.answer())
-    expect(screen.queryByRole('dialog')).toBeNull()
-    expect(bagButton()).toBeNull()
-    page.update({
-      bill: billOf(
-        [billRound('r1', 'guest', [billLine('l1', 'Hummus', 1, 700)], call?.command.actionId)],
-        700,
-      ),
-    })
-    expect(screen.getByRole('button', { name: 'Table order' }).textContent).toContain('€7.00')
+  it('offers no Send while the host says ordering is paused or closed, and keeps the lines', () => {
+    for (const [state, words] of [
+      ['paused', W.orderingPaused],
+      ['closed', W.orderingClosed],
+    ] as const) {
+      const host = orderHost({
+        order: orderOf([orderLine(hummus)]),
+        ordering: { state, notesAndOptions: true },
+      })
+      const { unmount } = drawFace(host)
+      const sheet = openBag()
+      expect(sheet.textContent, state).toContain(words)
+      expect(maybeSendButton(sheet), state).toBeNull()
+      expect(within(sheet).getByText('Hummus'), state).toBeTruthy()
+      unmount()
+      cleanup()
+      window.history.replaceState(null, '', '/')
+    }
   })
 
-  it('tells the guest it was sent, when the venue shows no bill to open', async () => {
-    const noBill: ViewModel = { ...view, features: { ...view.features, bill: false } }
-    const host = fakeHost()
-    drawFace(host, noBill)
-    fireEvent.click(quickAdd('Hummus'))
-    const sheet = openBag()
-    const call = await send(host, sheet, 1)
-    await act(async () => call?.answer({ ref: 'K-1' }))
-    expect(await within(sheet).findByText('Sent to the kitchen')).toBeTruthy()
-    expect(sheet.textContent).toContain('Reference K-1')
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Back to menu' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    expect(bagButton()).toBeNull()
-    fireEvent.click(quickAdd('Hummus'))
-    fireEvent.click(bagButton() as HTMLElement)
-    expect(screen.queryByText('Sent to the kitchen')).toBeNull()
-  })
-
-  it('answers to the actionId of the command only: an answer to another command is no answer', async () => {
-    const { host, sheet } = await bagWithTwo()
-    const call = await send(host, sheet, 1)
-    await act(async () => call?.answer({ actionId: '00000000-0000-4000-8000-000000000000' }))
-    expect(within(sheet).getByRole('alert').textContent).toContain(
-      'We can’t reach Restro right now',
-    )
-    expect(screen.queryByRole('dialog', { name: 'Table order' })).toBeNull()
+  it('says "Last orders at" and still sends; says the night is closed or opens later, with no Send', () => {
+    const cases = [
+      [{ state: 'last_orders' as const, at: '04:30' }, W.lastOrdersAt('04:30'), true],
+      [{ state: 'closed' as const, at: null }, W.orderingClosedTonight, false],
+      [{ state: 'opens_later' as const, at: '22:00' }, W.orderingOpensAt('22:00'), false],
+    ] as const
+    for (const [night, words, sends] of cases) {
+      const host = orderHost({
+        order: orderOf([orderLine(hummus)]),
+        ordering: { state: 'on', notesAndOptions: true, night },
+      })
+      const { unmount } = drawFace(host)
+      const sheet = openBag()
+      expect(sheet.textContent, night.state).toContain(words)
+      expect(maybeSendButton(sheet) !== null, night.state).toBe(sends)
+      unmount()
+      cleanup()
+      window.history.replaceState(null, '', '/')
+    }
   })
 })
 
-describe('a line that can no longer be ordered', () => {
-  it('is flagged, blocks sending until it is removed, and is not counted in the estimate', async () => {
-    const host = fakeHost()
-    const page = drawFace(host)
-    fireEvent.click(quickAdd('Hummus'))
-    fireEvent.click(quickAdd('Mojito'))
+describe('the duplicate check (D117)', () => {
+  it('asks "Same as N minutes ago. Send another?" and Send another is a new Send naming that sent order', async () => {
+    const host = orderHost({
+      order: orderOf([orderLine(hummus)]),
+      sentOrders: [sentOrderOf('so_1', 'added', [{ item: hummus, qty: 1 }], { minutesAgo: 4 })],
+    })
+    drawFace(host)
     const sheet = openBag()
-    expect(sendButton(sheet).hasAttribute('disabled')).toBe(false)
-
-    page.update({}, withoutControls(view, 'Hummus')) // sold out meanwhile
-    expect(within(sheet).getByText('No longer available')).toBeTruthy()
-    expect(within(sheet).getByRole('alert').textContent).toContain(
-      'Remove the items that are no longer available',
-    )
-    expect(sendButton(sheet).hasAttribute('disabled')).toBe(true)
-    expect(within(sheet).queryByRole('button', { name: 'Edit: Hummus' })).toBeNull()
-    expect(sheet.textContent).toContain('€10.00') // only the Mojito
-
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Remove: Hummus' }))
-    expect(sendButton(sheet).hasAttribute('disabled')).toBe(false)
     fireEvent.click(sendButton(sheet))
     await waitFor(() => expect(host.of('order.send')).toHaveLength(1))
-    expect(host.of('order.send')[0]?.command.lines.map((line) => line.itemId)).toEqual([mojito.id])
+    const first = host.of('order.send')[0]
+    await act(async () =>
+      first?.answer({ status: 'rejected', code: 'duplicate_order', subjectId: 'so_1' }),
+    )
+    const ask = sheet.querySelector('[data-duplicate-check]') as HTMLElement
+    expect(ask.textContent).toContain(W.duplicateAsk(4))
+    // The question is no refusal notice, and Send is not offered beside it.
+    expect(within(sheet).queryByRole('alert')).toBeNull()
+    expect(maybeSendButton(sheet)).toBeNull()
+
+    fireEvent.click(within(ask).getByRole('button', { name: W.sendAnother }))
+    await waitFor(() => expect(host.of('order.send')).toHaveLength(2))
+    const second = host.of('order.send')[1]
+    expect(second?.command.confirmDuplicateOf).toBe('so_1')
+    expect(second?.command.actionId).not.toBe(first?.command.actionId)
+    expect(second?.command.lines).toEqual(first?.command.lines)
   })
 
-  it('is flagged by name for a dish that left the menu, with only "remove" left to do', () => {
-    const page = drawFace(fakeHost())
-    fireEvent.click(quickAdd('Hummus'))
+  it('closes with Cancel, and closes itself after 60 seconds', async () => {
+    const host = orderHost({
+      order: orderOf([orderLine(hummus)]),
+      sentOrders: [sentOrderOf('so_1', 'added', [{ item: hummus, qty: 1 }], { minutesAgo: 2 })],
+    })
+    drawFace(host)
     const sheet = openBag()
-    const gone: ViewModel = {
-      ...view,
-      sections: view.sections.map((section) => ({
-        ...section,
-        items: section.items.filter((item) => item.name.text !== 'Hummus'),
-      })),
+    const ask = async (index: number) => {
+      fireEvent.click(sendButton(sheet))
+      await waitFor(() => expect(host.of('order.send')).toHaveLength(index))
+      await act(async () =>
+        host
+          .of('order.send')
+          [index - 1]?.answer({ status: 'rejected', code: 'duplicate_order', subjectId: 'so_1' }),
+      )
     }
-    page.update({}, gone)
-    expect(within(sheet).getAllByText('No longer available').length).toBeGreaterThan(0)
-    expect(within(sheet).queryByRole('button', { name: /^Edit/ })).toBeNull()
-    expect(sendButton(sheet).hasAttribute('disabled')).toBe(true)
-    expect(itemsOf(gone).some((item) => item.id === hummus.id)).toBe(false)
+    await ask(1)
+    fireEvent.click(within(sheet).getByRole('button', { name: W.duplicateCancel }))
+    expect(sheet.querySelector('[data-duplicate-check]')).toBeNull()
+    expect(maybeSendButton(sheet)).not.toBeNull()
+
+    vi.useFakeTimers()
+    fireEvent.click(sendButton(sheet))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    await act(async () =>
+      host
+        .of('order.send')[1]
+        ?.answer({ status: 'rejected', code: 'duplicate_order', subjectId: 'so_1' }),
+    )
+    expect(sheet.querySelector('[data-duplicate-check]')).not.toBeNull()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000 + 10)
+    })
+    expect(sheet.querySelector('[data-duplicate-check]')).toBeNull()
+  })
+
+  it('asks without the minutes when the sent order is not one this phone sees', async () => {
+    const host = orderHost({ order: orderOf([orderLine(hummus)]) })
+    drawFace(host)
+    const sheet = openBag()
+    fireEvent.click(sendButton(sheet))
+    await waitFor(() => expect(host.of('order.send')).toHaveLength(1))
+    await act(async () =>
+      host
+        .of('order.send')[0]
+        ?.answer({ status: 'rejected', code: 'duplicate_order', subjectId: 'so_9' }),
+    )
+    expect(sheet.querySelector('[data-duplicate-check]')?.textContent).toContain(
+      W.refusals.duplicate_order,
+    )
+  })
+})
+
+describe('the table’s sent orders', () => {
+  const sent = [
+    sentOrderOf('so_1', 'sending', [{ item: hummus, qty: 2 }], { mine: true }),
+    sentOrderOf('so_2', 'sending', [{ item: mojito, qty: 1 }], { mine: false }),
+    sentOrderOf('so_3', 'added', [{ item: mojito, qty: 1 }]),
+    sentOrderOf('so_4', 'added', [{ item: mojito, qty: 1 }], { unpaid: true }),
+    sentOrderOf('so_5', 'awaiting_approval', [{ item: hummus, qty: 1 }]),
+    sentOrderOf('so_6', 'not_sent', [{ item: hummus, qty: 1 }], { reason: 'ordering_paused' }),
+    sentOrderOf('so_7', 'not_sent', [{ item: hummus, qty: 1 }], { reason: 'needs_first_item' }),
+    sentOrderOf('so_8', 'not_sent', [{ item: hummus, qty: 1 }]),
+    sentOrderOf('so_9', 'unconfirmed', [{ item: hummus, qty: 1 }], { ref: 'K7Q' }),
+  ]
+
+  it('shows every state with its words, "Sending…" only on the phone that sent', () => {
+    drawFace(orderHost({ sentOrders: sent }))
+    const sheet = openBag()
+    const wordsOf = (id: string) => sheet.querySelector(`[data-sent-order="${id}"]`)?.textContent
+    expect(wordsOf('so_1')).toContain('2 × Hummus')
+    expect(wordsOf('so_1')).toContain(W.sendingNow)
+    expect(wordsOf('so_2')).toContain(W.beingSent)
+    expect(wordsOf('so_3')).toContain(W.sentAdded)
+    expect(wordsOf('so_4')).toContain(W.sentUnpaid)
+    expect(wordsOf('so_5')).toContain(W.sentAwaitingApproval)
+    expect(wordsOf('so_6')).toContain(W.sentNotSentPaused)
+    expect(wordsOf('so_7')).toContain(W.sentNotSentFirstItem)
+    expect(wordsOf('so_8')).toContain(W.sentNotSent)
+    expect(wordsOf('so_9')).toContain(W.sentUnconfirmed('K7Q'))
+  })
+
+  it('opens "Show this to your waiter" for a sent order: the reference, the time and the items', () => {
+    drawFace(orderHost({ sentOrders: [sent[0] as never, sent[8] as never] }))
+    const sheet = openBag()
+    const row = sheet.querySelector('[data-sent-order="so_9"]') as HTMLElement
+    fireEvent.click(within(row).getByRole('button', { name: W.showWaiter }))
+    const card = within(sheet).getByRole('dialog', { name: W.showWaiter })
+    expect(card.querySelector('.ro-waiter-ref')?.textContent).toBe('K7Q')
+    expect(card.textContent).toMatch(/\d\d:\d\d/)
+    expect(card.textContent).toContain('1 × Hummus')
+    fireEvent.click(within(card).getByRole('button', { name: W.showWaiterClose }))
+    expect(within(sheet).queryByRole('dialog', { name: W.showWaiter })).toBeNull()
+  })
+
+  it('gives the bag button to a table with a sent order and an empty order, so the guest can find it', () => {
+    drawFace(orderHost({ sentOrders: [sent[2] as never] }))
+    expect(bagButton()).not.toBeNull()
+    const sheet = openBag()
+    expect(sheet.querySelector('[data-sent-order="so_3"]')).not.toBeNull()
+  })
+})
+
+describe('where the phone has no location pass', () => {
+  it('says why the order is hidden and gives the guest’s own "Allow location" in the bag', () => {
+    const host = orderHost({
+      order: null,
+      location: {
+        state: 'needed',
+        prompt: 'none',
+        consent: 'declined',
+        venueName: 'Club X',
+        privacyUrl: null,
+      },
+    })
+    drawFace(host)
+    const sheet = openBag()
+    expect(sheet.querySelector('[data-location-prompt="none"]')?.textContent).toContain(
+      W.locationNeeded,
+    )
+    fireEvent.click(within(sheet).getByRole('button', { name: W.locationAllowAgain }))
+    expect(host.located).toEqual(['reopen'])
+    // The host has no order: nothing is said about an empty one.
+    expect(within(sheet).queryByText(W.emptyOrder)).toBeNull()
+  })
+
+  it('puts the stop control in the bag when the phone holds a pass and no bill is drawn', () => {
+    const host = orderHost({
+      order: orderOf([orderLine(hummus)]),
+      location: { state: 'held', prompt: 'none', consent: 'allowed', venueName: 'Club X' },
+    })
+    drawFace(host)
+    const sheet = openBag()
+    fireEvent.click(within(sheet).getByRole('button', { name: W.locationStop }))
+    expect(host.located).toEqual(['stop'])
   })
 })

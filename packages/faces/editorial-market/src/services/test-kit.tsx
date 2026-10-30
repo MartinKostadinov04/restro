@@ -11,15 +11,18 @@ import {
   EMPTY_SERVICE_STATE,
   type GuestCommand,
   type GuestScreen,
+  type OrderLineView,
   type PayFormSlot,
   type PayingView,
   type PaymentView,
   type RequestView,
   SERVICE_KINDS,
+  type SentOrderView,
   type ServiceBinding,
   type ServiceState,
   type TableBillLineView,
   type TableBillView,
+  type TableOrderView,
   type ViewItem,
   type ViewModel,
   type ViewMoney,
@@ -406,4 +409,67 @@ export function drawFace(
       act(() => result.rerender(element(nextView)))
     },
   }
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * The table's shared order, built by hand
+ * ------------------------------------------------------------------------------------------- */
+
+let lineCounter = 0
+
+/** One line of the table's order for an item (its id, a quantity), free and on the bill unless told otherwise. */
+export function orderLine(
+  item: ViewItem,
+  qty = 1,
+  changes: Partial<OrderLineView> = {},
+): OrderLineView {
+  lineCounter += 1
+  return {
+    id: `ol_${String(lineCounter).padStart(22, '0')}`,
+    itemId: item.id,
+    optionIds: [],
+    qty,
+    note: '',
+    mode: 'on_bill',
+    held: false,
+    pending: false,
+    ...changes,
+  }
+}
+
+/** The table's order as the host has it. */
+export function orderOf(
+  lines: readonly OrderLineView[] = [],
+  changes: Partial<TableOrderView> = {},
+): TableOrderView {
+  return { lines, removed: [], earlier: null, ...changes }
+}
+
+/** A sent order of the table, `minutesAgo` minutes ago by the phone's clock. */
+export function sentOrderOf(
+  id: string,
+  state: SentOrderView['state'],
+  items: readonly { readonly item: ViewItem; readonly qty: number }[],
+  changes: Partial<SentOrderView> & { readonly minutesAgo?: number } = {},
+): SentOrderView {
+  const { minutesAgo = 0, ...rest } = changes
+  return {
+    id,
+    state,
+    reason: null,
+    ref: 'K7Q',
+    lines: items.map(({ item, qty }) => ({ itemId: item.id, optionIds: [], qty })),
+    sentAt: Date.now() - minutesAgo * 60_000,
+    mine: false,
+    ...rest,
+  }
+}
+
+/** A host with a table's order (empty unless told otherwise) on a POS ticket that takes choices and notes. */
+export function orderHost(initial: Partial<ServiceState> = {}): FakeHost {
+  return fakeHost({
+    order: orderOf(),
+    ordering: { state: 'on', notesAndOptions: true },
+    ...initial,
+  })
 }

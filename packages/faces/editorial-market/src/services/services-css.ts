@@ -672,6 +672,67 @@ export const SERVICES_CSS = `
   width: auto;
   margin: 4px 0 0;
 }
+.rm .ro-notice ul {
+  margin: 0;
+  padding-left: 18px;
+}
+/* The last refusal of an order command, over the bar when no sheet is open; a tap dismisses it. */
+.rm .ro-barnote {
+  position: fixed;
+  z-index: 41;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: calc(max(44px, var(--ro-bar)) + 28px + env(safe-area-inset-bottom));
+  left: max(14px, env(safe-area-inset-left));
+  box-sizing: border-box;
+  max-width: 560px;
+  min-height: 44px;
+  margin-inline: auto;
+  padding: 10px 14px;
+  border: 1px solid currentColor;
+  border-radius: var(--rm-radius);
+  background: var(--rm-bg);
+  color: var(--rm-text);
+  font-size: 14px;
+  text-align: left;
+  touch-action: manipulation;
+}
+/* "Order this from your waiter" on a card, where the POS's ticket takes no choices (#78). */
+.rm .ro-quick-note {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: var(--rm-radius);
+  background: var(--rm-bg);
+  color: var(--rm-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+/* "Show this to your waiter" (D120): the reference in large type, dark on light whatever the theme. */
+.rm .ro-waiter-card {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 18px;
+  border-radius: var(--rm-radius);
+  color-scheme: light;
+  background: Canvas;
+  color: CanvasText;
+}
+.rm .ro-waiter-card p {
+  margin: 0;
+}
+.rm .ro-waiter-card ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.rm .ro-waiter-ref {
+  font-size: 48px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+}
+.rm .ro-sent {
+  margin-top: 8px;
+}
 .rm .ro-round {
   margin-top: 22px;
   padding: 16px;

@@ -20,8 +20,12 @@ import {
 } from './services-client'
 import { turnstileTokens } from './turnstile'
 
-/** The templates that draw the table's shared order (#75); the others keep their own bag. */
-export const SHARED_ORDER_FACES: ReadonlySet<string> = new Set(['qr-phone'])
+/**
+ * The templates that draw the table's shared order (#75) and the table services around it (the
+ * bill, paying, the waiter): the page binds the services client for these. A template outside the
+ * list gets no table and the menu only. `qr-phone` stays until it retires (#171).
+ */
+export const SHARED_ORDER_FACES: ReadonlySet<string> = new Set(['editorial-market', 'qr-phone'])
 
 const NO_STATE = () => null
 

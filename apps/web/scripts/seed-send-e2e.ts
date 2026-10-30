@@ -95,7 +95,7 @@ async function ensureDemoBar(
   return { venueId: found.id as VenueId, integrationId: instance.id as IntegrationId }
 }
 
-async function seed(simHost: string): Promise<void> {
+async function seed(simHost: string, face: string): Promise<void> {
   assertDevEnvironment(process.env)
   const ownerUrl = process.env.DATABASE_URL_OWNER
   if (!ownerUrl) throw new Error('seed-send-e2e needs DATABASE_URL_OWNER (see .env.example).')
@@ -215,7 +215,7 @@ async function seed(simHost: string): Promise<void> {
       new TextEncoder().encode(
         JSON.stringify({
           ...published.snapshot.body,
-          presentation: { face: 'qr-phone', options: {} },
+          presentation: { face, options: {} },
         }),
       ),
       publishPutOptions(snapshotFile),
@@ -245,12 +245,12 @@ async function seed(simHost: string): Promise<void> {
   }
 }
 
-const [step, simHost] = process.argv.slice(2)
-if (step !== 'seed' || simHost === undefined) {
-  console.error(`seed-send-e2e: unknown step "${step}" (seed <sim host>)`)
+const [step, simHost, face = 'qr-phone'] = process.argv.slice(2)
+if (step !== 'seed' || simHost === undefined || !/^[a-z][a-z0-9-]{0,31}$/.test(face)) {
+  console.error(`seed-send-e2e: unknown step "${step}" (seed <sim host> [template id])`)
   process.exit(1)
 }
-seed(simHost)
+seed(simHost, face)
   .then(async () => {
     await getPool().end()
     process.exit(0)

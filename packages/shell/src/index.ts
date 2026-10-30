@@ -258,6 +258,13 @@ export {
   type Strings,
   stringsFor,
 } from './strings'
+export {
+  DUPLICATE_ASK_SECONDS,
+  itemsById,
+  minutesSinceSent,
+  sentClock,
+  sentWords,
+} from './table-order'
 export { fallbackChain, pickText } from './text'
 export {
   ITEM_STATES,

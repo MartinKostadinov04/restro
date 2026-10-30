@@ -59,20 +59,51 @@ describe('the demo host', () => {
     expect(sheet.querySelector('.ro-preview')?.textContent).toBe('Преглед')
   })
 
-  it('accepts an order after about 800 ms and adds it as one guest round, which moves from received to served', async () => {
+  it('edits the order like a host: raises a line, removes it with an Undo that lasts ten seconds', async () => {
     render(<Demo />)
     click('Add Hummus')
-    click('Add Mojito')
+    await later(0)
+    click('One more: Hummus')
+    await later(0)
     click(/View bag/)
-    click(/Send to kitchen/)
+    const bag = dialog('Your bag')
+    expect(bag.querySelector('[data-order-line]')?.getAttribute('data-qty')).toBe('2')
+    fireEvent.click(within(bag).getByRole('button', { name: 'Remove: Hummus' }))
+    await later(0)
+    expect(bag.querySelector('[data-order-line]')).toBeNull()
+    fireEvent.click(within(bag).getByRole('button', { name: 'Undo' }))
+    await later(0)
+    expect(bag.querySelector('[data-order-line]')?.getAttribute('data-qty')).toBe('2')
+    fireEvent.click(within(bag).getByRole('button', { name: 'Remove: Hummus' }))
+    await later(0)
+    expect(bag.querySelector('[data-removed-line]')).not.toBeNull()
+    await later(10_000 + 50)
+    expect(bag.querySelector('[data-removed-line]')).toBeNull()
+  })
+
+  it('keeps the table’s order, accepts a Send after about 800 ms and adds it as one guest round, which moves from received to served', async () => {
+    render(<Demo />)
+    click('Add Hummus')
+    await later(0)
+    click('Add Mojito')
+    await later(0)
+    click(/View bag/)
+    const bag = dialog('Your bag')
+    expect(bag.querySelectorAll('[data-order-line]')).toHaveLength(2)
+    click(/^Send 2 items$/)
     await later(0)
     // Pending: the host has not answered.
-    expect(
-      within(dialog('Your bag')).getByRole('button', { name: 'Sending your order' }),
-    ).toBeTruthy()
-    await later(DEMO_DELAYS.order - 100)
-    expect(screen.queryByRole('dialog', { name: 'Table order' })).toBeNull()
-    await later(150)
+    expect(within(bag).getByRole('button', { name: 'Sending…' })).toBeTruthy()
+    await later(DEMO_DELAYS.order + 50)
+    // The order moved into a sent order of the table.
+    expect(bag.querySelectorAll('[data-order-line]')).toHaveLength(0)
+    expect(bag.querySelector('[data-sent-order]')?.getAttribute('data-sent-state')).toBe('sending')
+    await later(DEMO_DELAYS.pay + 50)
+    expect(bag.querySelector('[data-sent-order]')?.getAttribute('data-sent-state')).toBe('added')
+    fireEvent.click(within(bag).getByRole('button', { name: 'Close' }))
+    // Closing goes back in the history, which takes a moment: open the bill after it.
+    await later(100)
+    click('Table order')
 
     const bill = dialog('Table order')
     const rounds = [...bill.querySelectorAll('.ro-round')]
@@ -86,7 +117,6 @@ describe('the demo host', () => {
     expect(within(rounds[1] as HTMLElement).getAllByText('Preparing')).toHaveLength(2)
     await later(DEMO_DELAYS.served - DEMO_DELAYS.preparing)
     expect(within(rounds[1] as HTMLElement).getAllByText('Served')).toHaveLength(2)
-    expect(screen.queryByRole('button', { name: /View bag/ })).toBeNull() // the bag was spent
   })
 
   it('rejects an order with something that is no longer for sale', async () => {
