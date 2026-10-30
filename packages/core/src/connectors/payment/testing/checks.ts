@@ -17,6 +17,7 @@ import {
   type ProviderNotice,
   type ProviderPayment,
   type ProviderPaymentStatus,
+  type ProviderRefund,
 } from '../schemas'
 import { providerOperationProblems } from './guard'
 import type { FaultStep, GuestPayment, PaymentHarness } from './harness'
@@ -183,6 +184,14 @@ class Run {
     account = this.account,
   ): Promise<Reading<ProviderPayment | null>> {
     return this.parse('readNoticeSubject', await this.h.provider.readNoticeSubject(account, notice))
+  }
+
+  /** A payment's refunds, listed on `account` (this run's own by default). */
+  async refundList(
+    paymentRef: ProviderRef,
+    account = this.account,
+  ): Promise<Reading<readonly ProviderRefund[]>> {
+    return this.parse('readRefunds', await this.h.provider.readRefunds(account, paymentRef))
   }
 
   /** A new hold the guest has not paid yet. */
@@ -760,6 +769,47 @@ export const refundReadBackCheck = check(async (run) => {
     failReads()
     const failed = await run.subject(first)
     run.expect(!failed.complete, 'a failed read of a notice answered as complete')
+  }
+})
+
+/**
+ * A payment's refunds list one by one, oldest first, each with its own id, even of one amount
+ * (#261). Reading moves no money and a repeat reads the same; a failed read is incomplete, and
+ * another account's read concludes nothing.
+ */
+export const refundListCheck = check(async (run) => {
+  const refunds = fault(run, run.h.outside?.refundsInDashboard, 'refund in the venue dashboard')
+  const { ref } = await run.captured()
+  const none = run.complete('a payment with no refund', await run.refundList(ref))
+  run.expect(none.length === 0, `a payment with no refund lists ${none.length}`)
+  for (const minor of [300, 200, 200]) await refunds(run.account, ref, minor)
+  const before = await run.moved()
+  const listed = run.complete('the refunds', await run.refundList(ref))
+  await run.expectMoved('listing the refunds', before)
+  const amounts = listed.map((refund) => refund.amountMinor).join()
+  run.expect(amounts === '300,200,200', `the refunds list as ${amounts}, not 300,200,200 in order`)
+  run.expect(
+    new Set(listed.map((refund) => refund.ref.provider)).size === 3,
+    'two refunds of one amount share an id',
+  )
+  run.expect(
+    listed.every((refund) => !refund.failed),
+    'a refund just made reads failed',
+  )
+  const again = run.complete('the refunds, read again', await run.refundList(ref))
+  run.expect(
+    JSON.stringify(again) === JSON.stringify(listed),
+    'the refunds read differently a second time',
+  )
+  if (run.h.otherAccount !== undefined) {
+    const elsewhere = await run.refundList(ref, run.h.otherAccount)
+    run.expect(!elsewhere.complete, "another account read this account's refunds")
+  }
+  const failReads = run.h.faults.failReads
+  if (failReads !== undefined) {
+    failReads()
+    const failed = await run.refundList(ref)
+    run.expect(!failed.complete, 'a failed read of the refunds answered as complete')
   }
 })
 

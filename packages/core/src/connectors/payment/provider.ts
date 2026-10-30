@@ -7,7 +7,8 @@
 // Every provider id crosses inside a `ProviderRef` (rule 3); money is whole minor units (rule 8);
 // a timeout is `unknown` and is read back by our payment id (D125 3.9); a partial reading
 // concludes nothing. Only `capture` moves money. There is no refund (D125 3.5, D127 4.4): a
-// refund or a dispute is only read back, after a notice (`readNoticeSubject`, #108).
+// refund or a dispute is only read back, after a notice (`readNoticeSubject`, #108; `readRefunds`,
+// #261).
 
 import type { PaymentId } from '../../ids'
 import type { EmptyResult, Reading, WriteOutcome } from '../service/schemas'
@@ -22,6 +23,7 @@ import type {
   PrepareDomainRequest,
   ProviderNotice,
   ProviderPayment,
+  ProviderRefund,
   ReleaseRequest,
   StartConnectionRequest,
   StartConnectionResult,
@@ -39,6 +41,7 @@ export const PAYMENT_PROVIDER_STEPS = [
   'findByPaymentId',
   'readPayment',
   'readNoticeSubject',
+  'readRefunds',
   'capture',
   'release',
 ] as const
@@ -89,6 +92,15 @@ export interface PaymentProvider {
     notice: ProviderNotice,
   ): Promise<Reading<ProviderPayment | null>>
   /** Capture once, at most the hold, idempotent by key: the only step that moves money. */
+  /**
+   * Every refund of a payment as the provider lists it now, oldest first, by the provider's own id
+   * (#261). A read only: Restro never makes a refund. A list that could not be read to its end, or
+   * a payment the account does not have, is incomplete and concludes nothing.
+   */
+  readRefunds(
+    accountRef: ProviderRef,
+    paymentRef: ProviderRef,
+  ): Promise<Reading<readonly ProviderRefund[]>>
   capture(request: CaptureRequest): Promise<PaymentWriteOutcome<ProviderPayment>>
   /** Release a payment that is not captured, idempotent by key; nothing moves. */
   release(request: ReleaseRequest): Promise<PaymentWriteOutcome<ProviderPayment>>

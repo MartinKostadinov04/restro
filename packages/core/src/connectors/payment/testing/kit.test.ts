@@ -19,6 +19,7 @@ import {
   otherAccountCheck,
   type PaymentCheck,
   partialCaptureCheck,
+  refundListCheck,
   refundReadBackCheck,
   releaseCheck,
 } from './checks'
@@ -33,6 +34,7 @@ type Bug =
   | 'timeoutAsRefusal'
   | 'partialReadComplete'
   | 'refundAsDelta'
+  | 'refundsNewestFirst'
   | 'readsOtherAccount'
 
 function toyHarness(bug?: Bug): PaymentHarness {
@@ -138,6 +140,18 @@ function toyHarness(bug?: Bug): PaymentHarness {
         bug === 'refundAsDelta' ? { ...payment, refundedMinor: refund.amountMinor } : payment
       return { complete: true, value }
     },
+    readRefunds: async (accountRef, paymentRef) => {
+      if (failReads && bug !== 'partialReadComplete') return { complete: false, reason: 'failed' }
+      if (accountRef.provider !== account.provider) return { complete: false, reason: 'no payment' }
+      const listed = [...refunds.entries()]
+        .filter(([, refund]) => refund.paymentRef === paymentRef.provider)
+        .map(([ref, refund]) => ({
+          ref: providerRef(ref),
+          amountMinor: refund.amountMinor,
+          failed: false,
+        }))
+      return { complete: true, value: bug === 'refundsNewestFirst' ? listed.reverse() : listed }
+    },
     capture: async (request) =>
       once(`capture:${request.idempotencyKey}`, () => {
         const payment = payments.get(request.paymentRef.provider) as ProviderPayment
@@ -229,6 +243,7 @@ const CASES: readonly [Bug | undefined, PaymentCheck][] = [
   [undefined, lostTimeoutCheck('capture')],
   [undefined, failedReadsCheck],
   [undefined, refundReadBackCheck],
+  [undefined, refundListCheck],
   [undefined, otherAccountCheck],
   ['refundMethod', operationsCheck],
   ['doubleCapture', oneCaptureCheck],
@@ -238,6 +253,7 @@ const CASES: readonly [Bug | undefined, PaymentCheck][] = [
   ['timeoutAsRefusal', lostTimeoutCheck('capture')],
   ['partialReadComplete', failedReadsCheck],
   ['refundAsDelta', refundReadBackCheck],
+  ['refundsNewestFirst', refundListCheck],
   ['readsOtherAccount', otherAccountCheck],
 ]
 

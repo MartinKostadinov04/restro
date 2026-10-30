@@ -56,6 +56,8 @@ export function createSimPayProvider(options: SimPayProviderOptions): PaymentPro
         ProviderRefSchema.parse(accountRef),
         ProviderNoticeSchema.parse(notice),
       ),
+    readRefunds: async (accountRef, paymentRef) =>
+      engine.readRefunds(ProviderRefSchema.parse(accountRef), ProviderRefSchema.parse(paymentRef)),
     capture: async (request) => engine.capture(CaptureRequestSchema.parse(request)),
     release: async (request) => engine.release(ReleaseRequestSchema.parse(request)),
   }
