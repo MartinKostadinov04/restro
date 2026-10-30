@@ -1,8 +1,8 @@
-// RED by design (the repair-review's A7, RR-2). `readTableState` answers `unchanged` when the phone's
-// version equals the table's, and that version is table_orders.version alone: a change to the
-// venue's paying state or legal details leaves it as it was, so an open phone keeps what it showed.
-// The control: the engine refuses a Pay on a lost account whatever the phone shows, so no money moves
-// under a lost account; what a stale phone gets wrong is what it shows, and whose name it pays under.
+// RR-2: `readTableState` answers `unchanged` while the phone's version equals the table's, so a change
+// to the venue's paying state or legal details raises the version of its open tables
+// (`paying-phones.ts`), and only when what a phone is told really moved. The control: the engine
+// refuses a Pay on a lost account whatever the phone shows, so no money moves under a lost account;
+// what a stale phone gets wrong is what it shows, and whose name it pays under.
 import { randomUUID } from 'node:crypto'
 
 import { withTenantWrite } from '@restro/db/write'
@@ -240,6 +240,81 @@ describe.skipIf(!hasDatabase)('an open phone and a change of paying state (RR-2)
     expect((await full()).ordering.payingLegal?.name).toBe('Another Company OOD')
     const poll = await read(version)
     expect(poll.unchanged, 'the phone keeps the old legal name').toBe(false)
+  }, 30_000)
+
+  it('after telling it once, the next poll is unchanged again', async () => {
+    const { version } = await full()
+    await setLegal()
+    const told = await read(version)
+    if (told.unchanged) throw new Error('unchanged')
+    expect(told.version).toBeGreaterThan(version)
+    expect(told.ordering.payingLegal?.name).toBe('Another Company OOD')
+    expect((await read(told.version)).unchanged).toBe(true)
+  }, 30_000)
+
+  it('a change a phone is not told about leaves every phone unchanged', async () => {
+    const { version } = await full()
+    const worker = () => ({
+      tenantId: world.tenantId,
+      venueId: world.venueId,
+      origin: 'worker' as const,
+      actor: { kind: 'system' as const },
+      jobId: `breaker-${randomUUID()}`,
+    })
+    const { result } = await applyService(
+      world.app,
+      { type: 'paying.breaker', action: 'progress', breaker: { good: 1 } } as never,
+      worker(),
+    )
+    expect(result.status, JSON.stringify(result)).toBe('accepted')
+    // The same legal details again: a save that moves nothing.
+    await setLegal()
+    const { version: afterSave } = await full()
+    await setLegal()
+    expect((await full()).version).toBe(afterSave)
+    expect(afterSave).toBe(version + 1)
+  }, 30_000)
+
+  it("the breaker's pause and its lift both reach the phone", async () => {
+    const { version } = await full()
+    const breaker = async (action: 'pause' | 'lift') => {
+      const { result } = await applyService(
+        world.app,
+        { type: 'paying.breaker', action, breaker: {} } as never,
+        {
+          tenantId: world.tenantId,
+          venueId: world.venueId,
+          origin: 'worker',
+          actor: { kind: 'system' },
+          jobId: `breaker-${randomUUID()}`,
+        },
+      )
+      expect(result.status, JSON.stringify(result)).toBe('accepted')
+    }
+    await breaker('pause')
+    const paused = await read(version)
+    if (paused.unchanged) throw new Error('unchanged')
+    expect(paused.ordering.paying).toBe('paused')
+    await breaker('lift')
+    const lifted = await read(paused.version)
+    if (lifted.unchanged) throw new Error('unchanged')
+    expect(lifted.ordering.paying).toBe('on')
+  }, 30_000)
+
+  it("a table with no open sitting: the guest's first item brings the new details", async () => {
+    await world.owner.query(
+      'update restro.sittings set ended_at = now(), end_reason = $2 where table_id = $1 and ended_at is null',
+      [tableId, 'staff_closed'],
+    )
+    const { version } = await full()
+    await setLegal()
+    // Nothing to raise: no bill and nothing to pay on this table until a sitting opens.
+    expect((await read(version)).unchanged).toBe(true)
+    await world.openSitting(tableId)
+    await record()
+    const opened = await read(version)
+    if (opened.unchanged) throw new Error('unchanged')
+    expect(opened.ordering.payingLegal?.name).toBe('Another Company OOD')
   }, 30_000)
 
   it('control: the engine refuses a Pay on a lost account, whatever the phone shows', async () => {

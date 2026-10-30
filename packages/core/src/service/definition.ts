@@ -118,6 +118,12 @@ export interface CommandDefinition<S extends z.ZodType = z.ZodType> {
    * out: the device asks for a person's PIN (`pin_required`).
    */
   readonly quickOnSharedDevice?: boolean
+  /**
+   * The command may change what phones are told about paying (the account's state, the breaker's
+   * pause, the legal details): the engine raises the version of the venue's open tables when that
+   * moved (`paying-phones.ts`, RR-2). A function for a command only some of whose calls can.
+   */
+  readonly payingState?: true | ((command: z.infer<S>) => boolean)
   readonly idempotency: Idempotency
   /**
    * A staff write whose Undo Tonight offers (#219): when it came via Tonight and logged an entry

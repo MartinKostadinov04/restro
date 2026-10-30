@@ -536,6 +536,7 @@ export const SERVICE_COMMANDS = {
   // the last 15 minutes. The return reads the account back, which needs the right but no new
   // sign-in (the provider's hosted form can take longer than 15 minutes).
   'payment_account.connect': defineCommand({
+    payingState: true,
     schema: ConnectSchema,
     origins: ['staff'],
     permission: CONNECT_PERMISSION,
@@ -544,6 +545,7 @@ export const SERVICE_COMMANDS = {
     handle: connectAccount,
   }),
   'payment_account.return': defineCommand({
+    payingState: true,
     schema: ReturnSchema,
     origins: ['staff'],
     permission: CONNECT_PERMISSION,
@@ -551,6 +553,7 @@ export const SERVICE_COMMANDS = {
     handle: returnFromProvider,
   }),
   'payment_account.disconnect': defineCommand({
+    payingState: true,
     schema: DisconnectSchema,
     origins: ['staff'],
     permission: CONNECT_PERMISSION,
@@ -560,6 +563,7 @@ export const SERVICE_COMMANDS = {
   }),
   // #116: the smallest card payment and the venue's legal details (#198), by the same right.
   'settings.paying_set': defineCommand({
+    payingState: true,
     schema: SetPayingSchema,
     origins: ['staff'],
     permission: CONNECT_PERMISSION,
@@ -585,6 +589,7 @@ export const SERVICE_COMMANDS = {
     handle: setPayFirst,
   }),
   'payment_account.tick': defineCommand({
+    payingState: true,
     schema: TickCheckSchema,
     origins: ['staff'],
     permission: CONNECT_PERMISSION,
@@ -700,6 +705,7 @@ export const SERVICE_COMMANDS = {
   // #109: what the provider answered about a venue's account: its account, a reading, the access
   // lost, the guest domain registered. A provider notice only nudges the worker to read.
   'payment_account.started': defineCommand({
+    payingState: true,
     schema: StartedSchema,
     origins: ['worker'],
     permission: null,
@@ -707,6 +713,7 @@ export const SERVICE_COMMANDS = {
     handle: accountStarted,
   }),
   'payment_account.observed': defineCommand({
+    payingState: true,
     schema: ObservedSchema,
     origins: ['worker'],
     permission: null,
@@ -714,6 +721,7 @@ export const SERVICE_COMMANDS = {
     handle: accountObserved,
   }),
   'payment_account.lost': defineCommand({
+    payingState: true,
     schema: LostSchema,
     origins: ['worker'],
     permission: null,
@@ -721,6 +729,7 @@ export const SERVICE_COMMANDS = {
     handle: accountLost,
   }),
   'payment_account.domain': defineCommand({
+    payingState: true,
     schema: DomainSchema,
     origins: ['worker'],
     permission: null,
