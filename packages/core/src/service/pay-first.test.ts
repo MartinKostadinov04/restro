@@ -142,6 +142,7 @@ describe('the pay-first check before the close (#113)', () => {
     expect(why({ ...base, bill: bill(asEntered, { paidMinor: 200 }) })).toBe('part_paid')
     expect(why({ ...base, bill: bill(asEntered, { totalMinor: 1_100 }) })).toBe('total_changed')
     expect(why({ ...base, heldMinor: 1_299, bill: bill(asEntered) })).toBe('hold_lost')
+    expect(why({ ...base, heldMinor: null, bill: bill(asEntered) })).toBe('hold_unreadable')
   })
 })
 
