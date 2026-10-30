@@ -654,13 +654,20 @@ test.describe('what the page asks for (rule 4)', () => {
       }
     })
     await open(page, `${GUEST_PATH}#t=${GUEST_TABLE_TOKEN}`)
-    await page.waitForLoadState('networkidle')
+    // The menu's files are fixed; the table's services client (D121, #239: the default template
+    // is bound to it) keeps polling the guest API, so the network is never idle: wait for the
+    // table's file and the client's first read instead.
+    await expect.poll(() => urls.some((pathname) => pathname.startsWith('/cdn/t/'))).toBe(true)
+    await expect.poll(() => urls.includes('/api/guest/state')).toBe(true)
 
+    // The menu is read from published files only (rule 4); the one other thing the page asks for
+    // is the table's own state from the guest API, never a venue's database or a POS.
     const allowed = (pathname: string) =>
       pathname.startsWith('/cdn/') ||
       pathname.startsWith('/_next/') ||
       pathname === GUEST.path ||
       pathname === GUEST_PATH ||
+      pathname === '/api/guest/state' ||
       pathname === '/favicon.ico'
     expect(urls.filter((pathname) => !allowed(pathname))).toEqual([])
     // Nothing from another host: not the files, not the fonts, not the template's code.
@@ -672,7 +679,9 @@ test.describe('what the page asks for (rule 4)', () => {
         part,
       ).toBe(true)
     }
-    expect(urls.some((pathname) => pathname.startsWith('/api/'))).toBe(false)
+    expect(
+      urls.filter((pathname) => pathname.startsWith('/api/') && pathname !== '/api/guest/state'),
+    ).toEqual([])
     // The table's file is named after the code's hash: the code itself is in no request (#70).
     expect(urls.filter((pathname) => pathname.includes(GUEST_TABLE_TOKEN))).toEqual([])
 
