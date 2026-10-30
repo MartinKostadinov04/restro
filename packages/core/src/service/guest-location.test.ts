@@ -138,6 +138,44 @@ describe.skipIf(!hasDatabase)('the location check and the guest limits (as restr
     code = await reissue()
   })
 
+  it('gives the consent screen the venue’s privacy link where the venue checks, whatever paying is (RR-48)', async () => {
+    const DETAILS = {
+      name: 'Nova Club EOOD',
+      eik: '123456789',
+      address: 'Sofia, 1 Vitosha Blvd',
+      privacyUrl: 'https://club.example/privacy',
+    }
+    const setDetails = (details: unknown) =>
+      world.owner.query(
+        `update restro.venues set settings = jsonb_set(settings - 'legalDetails', '{legalDetails}', $2::jsonb) where id = $1`,
+        [world.venueId, JSON.stringify(details)],
+      )
+    try {
+      await setDetails(DETAILS)
+      // Paying is off here (no connected account), so no legal details travel with it...
+      const read = await state()
+      expect(read.ordering.paying).toBe('off')
+      expect(read.ordering.payingLegal).toBeNull()
+      // ...yet the location part names the privacy notice.
+      expect(read.location).toMatchObject({
+        state: 'needed',
+        privacyUrl: 'https://club.example/privacy',
+      })
+      // Not a link without all four details being filled in: none, and the venue still checks.
+      await setDetails({ ...DETAILS, privacyUrl: 'http://not-https.example' })
+      expect((await state()).location).toMatchObject({ state: 'needed', privacyUrl: null })
+      // A venue that does not check gives no link: there is no consent screen to put it on.
+      await setDetails(DETAILS)
+      await setOrdering({ locationCheck: false })
+      expect((await state()).location).toMatchObject({ state: 'off', privacyUrl: null })
+    } finally {
+      await world.owner.query(
+        `update restro.venues set settings = settings - 'legalDetails' where id = $1`,
+        [world.venueId],
+      )
+    }
+  })
+
   it('shows a phone without a pass the table but not its order, sent orders or bill', async () => {
     const read = await state()
     expect(read.location).toMatchObject({ state: 'needed', passSeconds: null, venueName: 'Club' })

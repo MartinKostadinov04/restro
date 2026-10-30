@@ -182,6 +182,16 @@ export interface ServiceStrings {
   readonly locationNeeded: string
   /** The guest's own tap that reopens the consent screen after "Not now". */
   readonly locationAllowAgain: string
+  /**
+   * "Stop location check" (D119): drawn on the bill and in the failed check where the host gives
+   * `location.stop`. After it the phone is as after "Not now".
+   */
+  readonly locationStop: string
+  /**
+   * After a Send whose answer was lost (D120): the order may already be in the POS, so it says to
+   * call a waiter, with the reference when the host has one (`reference`), and never "Try again".
+   */
+  readonly sendLost: string
   // Send and its states (#77, D116, D122 §5).
   /** The Send button: "Send 3 items". */
   readonly sendItems: (count: number) => string
@@ -525,6 +535,9 @@ const EN: Strings = {
     locationCancel: 'Cancel',
     locationNeeded: 'Allow location to see and add to your table’s order and bill.',
     locationAllowAgain: 'Allow location',
+    locationStop: 'Stop location check',
+    sendLost:
+      'We can’t reach Restro right now. If your order isn’t on your bill in a few minutes, please call a waiter.',
     sendItems: (count) => (count === 1 ? 'Send 1 item' : `Send ${count} items`),
     sendingNow: 'Sending…',
     beingSent: 'Being sent',
@@ -866,6 +879,9 @@ const BG: Strings = {
     locationNeeded:
       'Разрешете местоположението, за да виждате и добавяте към поръчката и сметката на масата.',
     locationAllowAgain: 'Разреши местоположението',
+    locationStop: 'Спри проверката на местоположението',
+    sendLost:
+      'В момента не можем да се свържем с Restro. Ако поръчката ви не се появи в сметката след няколко минути, моля, повикайте сервитьор.',
     sendItems: (count) => (count === 1 ? 'Изпрати 1 артикул' : `Изпрати ${count} артикула`),
     sendingNow: 'Изпраща се…',
     beingSent: 'Изпраща се',

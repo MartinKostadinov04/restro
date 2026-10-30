@@ -154,6 +154,8 @@ export const GuestTableStateSchema = z.strictObject({
     dayEndsInSeconds: seconds,
     /** The venue's name, which the consent text names. */
     venueName: z.string().max(200),
+    /** The venue's privacy notice (the consent text ends with the link); null without one. */
+    privacyUrl: z.string().max(500).startsWith('https://').nullable(),
   }),
   /** The table's order; null while the location check is `needed`. */
   order: z

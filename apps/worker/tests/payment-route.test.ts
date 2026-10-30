@@ -60,6 +60,7 @@ import {
   GuestLimiter,
   type GuestLimitName,
   guestAct,
+  guestPayment,
   guestState,
   HOLD_READ_TRIES,
   LEASE_MARGIN_MS,
@@ -412,15 +413,11 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     return id
   }
 
-  /** The same, or null when the Pay is refused (another phone is paying for its lines). */
-  async function tryHeld(
-    index: number | 'all',
-    tipMinor: number | null = null,
-    overrides: Partial<PaymentJobDeps> = {},
-  ): Promise<string | null> {
+  /** A guest's Pay of the line at `index` (or every line), as the phone sends it. */
+  async function payStart(index: number | 'all', tipMinor: number | null = null) {
     const shown = await lines()
     const picked = index === 'all' ? shown : [shown[index] as (typeof shown)[number]]
-    const answer = await guestAct(pool, {
+    return guestAct(pool, {
       code,
       command: {
         type: 'pay.start',
@@ -441,8 +438,21 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       check: { humanToken: 'XXXX.DUMMY.TOKEN.XXXX' },
       humanCheck: async () => 'passed',
     })
+  }
+
+  /** The handle of each paying phone, by its payment. */
+  const handles = new Map<string, string>()
+
+  /** The same, or null when the Pay is refused (another phone is paying for its lines). */
+  async function tryHeld(
+    index: number | 'all',
+    tipMinor: number | null = null,
+    overrides: Partial<PaymentJobDeps> = {},
+  ): Promise<string | null> {
+    const answer = await payStart(index, tipMinor)
     if (!answer.ok || answer.result.status !== 'accepted') return null
     const id = answer.result.subjectId as string
+    if (answer.handle !== null) handles.set(id, answer.handle)
     expect(await preparePayment(env(), target(id), deps(overrides))).toEqual({
       kind: 'at',
       state: 'awaiting_guest',
@@ -1697,8 +1707,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       return id
     }
 
-    // RR-14: red until its fix; the fix removes .fails.
-    it.fails('stay greyed while a manager is asked: a second Pay on them is refused', async () => {
+    it('stay greyed while a manager is asked: a second Pay on them is refused', async () => {
       const first = await unconfirmedWithLinesBack()
       expect(await stored(first)).toMatchObject({ state: 'unconfirmed' })
       const shown = await lines()
@@ -1708,8 +1717,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
       expect(await tryHeld(index)).toBeNull()
     })
 
-    // RR-14: red until its fix; the fix removes .fails.
-    it.fails('never leads to two cards captured for one line', async () => {
+    it('never leads to two cards captured for one line', async () => {
       const first = await unconfirmedWithLinesBack()
       const shown = await lines()
       const second = await tryHeld(shown.findIndex((line) => line.amountMinor === 2_200))
@@ -1723,6 +1731,149 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
         )
       ).map((row) => row.id)
       expect(captured.length).toBeLessThanOrEqual(1)
+    })
+
+    /** Whether each of the payment's lines is still claimed (`payment_lines.open`). */
+    const claims = async (id: string) =>
+      (
+        await query<{ open: boolean }>(
+          'select open from restro.payment_lines where payment_id = $1 order by position',
+          [id],
+        )
+      ).map((row) => row.open)
+    /** A payment whose close the POS never answered, a manager still asked; its lines claimed. */
+    async function asked(): Promise<string> {
+      const id = await held(1)
+      fault({ on: 'closeBill', fault: { kind: 'hang' } })
+      expect((await drive(id)).row).toMatchObject({
+        state: 'unconfirmed',
+        reason: 'close_unknown',
+        settled: true,
+      })
+      expect(await claims(id)).toEqual([true])
+      return id
+    }
+
+    // The one fact the fix stands on: the claim is on the POS's reference, so it holds only because
+    // a line keeps that reference when it moves. Here: to the payment table and back, by a waiter.
+    it('a line keeps its POS reference through both moves, so the claim follows the drink', async () => {
+      const first = await unconfirmedWithLinesBack()
+      const claimed = await query<{ ref: string }>(
+        'select pos_line_ref as ref from restro.payment_lines where payment_id = $1',
+        [first],
+      )
+      const onTable = sim.host.engine.state.bills
+        .filter((bill) => bill.table === POS_TABLE && bill.state === 'open')
+        .flatMap((bill) => bill.rows.map((row) => row.id))
+      expect(claimed).toHaveLength(1)
+      expect(onTable).toContain(claimed[0]?.ref)
+    })
+
+    it('the whole honest path: the second Pay is refused and only one card is captured', async () => {
+      const first = await unconfirmedWithLinesBack()
+      const shown = await lines()
+      const second = await payStart(shown.findIndex((line) => line.amountMinor === 2_200))
+      expect(second).toMatchObject({ ok: true, result: { code: 'being_paid' } })
+      // The first guest's screen and the manager's question are as they were.
+      expect(await alertsOf(first)).toEqual(['payment_unconfirmed:money.follow_up'])
+      // The manager checks the till and answers "Receipt printed": the first card, and only it.
+      expect(await answer(first, 'receipt_printed')).toMatchObject({ status: 'accepted' })
+      expect((await drive(first)).row).toMatchObject({ state: 'captured', captured_minor: '2200' })
+      // No other payment was made after it: the refused Pay held no card.
+      expect(
+        await query(
+          `select id from restro.payments
+            where created_at > (select created_at from restro.payments where id = $1)`,
+          [first],
+        ),
+      ).toEqual([])
+      expect(engine.paymentsOf(providerRef(accountRef), first as never)).toEqual([
+        expect.objectContaining({ status: 'captured', capturedMinor: 2_200 }),
+      ])
+    })
+
+    it('a manager’s "Receipt printed" ends it captured: only then the lines are free', async () => {
+      const id = await asked()
+      await answer(id, 'receipt_printed')
+      expect(await claims(id)).toEqual([true])
+      expect((await drive(id)).row).toMatchObject({ state: 'captured' })
+      expect(await claims(id)).toEqual([false])
+    })
+
+    it('a manager’s "No receipt" ends it released: the lines are free and can be paid again', async () => {
+      const id = await asked()
+      await answer(id, 'no_receipt')
+      expect(await claims(id)).toEqual([true])
+      expect((await drive(id)).row).toMatchObject({ state: 'released', reason: 'no_receipt' })
+      expect(await claims(id)).toEqual([false])
+      await read()
+      const shown = await lines()
+      const index = shown.findIndex((line) => line.amountMinor === 2_200)
+      expect(shown[index]?.beingPaid).toBe(false)
+      const again = await tryHeld(index)
+      if (again === null) throw new Error('the Pay after the release was refused')
+      expect((await drive(again)).row).toMatchObject({ state: 'captured', captured_minor: '2200' })
+      expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+        expect.objectContaining({ status: 'released' }),
+      ])
+    })
+
+    it('a manager’s "No receipt" with the items missing ends it stranded: the lines are free', async () => {
+      const id = await held(1)
+      fault(
+        { on: 'closeBill', fault: { kind: 'hang' } },
+        { on: 'moveRows', from: 2, times: 100, fault: { kind: 'refuse', code: 'bill_locked' } },
+      )
+      await drive(id)
+      await answer(id, 'no_receipt')
+      expect((await drive(id)).row).toMatchObject({ reason: 'lines_not_back' })
+      expect(await claims(id)).toEqual([true])
+      await answer(id, 'no_receipt', 'lines_not_back')
+      expect((await drive(id)).row).toMatchObject({ state: 'stranded' })
+      expect(await claims(id)).toEqual([false])
+    })
+
+    it('a "Receipt printed" whose capture the provider refuses ends it capture_failed: the lines are free', async () => {
+      const id = await asked()
+      engine.fault('capture', { kind: 'refuse', code: 'capture_refused' })
+      await answer(id, 'receipt_printed')
+      expect((await drive(id)).row).toMatchObject({ state: 'capture_failed' })
+      expect(await claims(id)).toEqual([false])
+    })
+
+    it('a hold that runs out unanswered ends it released: the lines are free', async () => {
+      const id = await asked()
+      payClock.advance(engine.switches.holdDays * 24 * 60 * 60 * 1000)
+      expect(await checkPayment(env(), target(id), deps())).toEqual({
+        kind: 'at',
+        state: 'released',
+      })
+      expect(await claims(id)).toEqual([false])
+    })
+
+    // Rule 3: its lines read as being paid, and that is all a phone learns of it.
+    it('carries no provider value of the payment in any guest answer', async () => {
+      const first = await unconfirmedWithLinesBack()
+      const [row] = await query<Record<string, string | null>>(
+        `select provider_payment_ref, authorisation_code, three_ds_result, form_values::text as form
+           from restro.payments where id = $1`,
+        [first],
+      )
+      const values = Object.values(row ?? {}).flatMap((value) => (value === null ? [] : [value]))
+      expect(row?.provider_payment_ref).toEqual(expect.any(String))
+      expect(row?.form).toBeNull()
+      const handle = handles.get(first)
+      if (handle === undefined) throw new Error('no handle')
+      const answers = [
+        await guestState(pool, { code, view: 'bill', limiter: LOOSE }),
+        await guestState(pool, { code, view: 'menu', limiter: LOOSE }),
+        await guestPayment(pool, { code, handle, limiter: LOOSE }),
+      ]
+      for (const reply of answers) {
+        expect(reply.ok).toBe(true)
+        const text = JSON.stringify(reply)
+        for (const value of values) expect(text).not.toContain(value)
+      }
     })
   })
 

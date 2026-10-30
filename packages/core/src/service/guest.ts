@@ -53,7 +53,7 @@ import {
 import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 
 import { TABLE_TOKEN_PATTERN } from '../guest-files'
-import type { LegalDetails } from '../legal-details'
+import { type LegalDetails, readLegalDetails } from '../legal-details'
 import type { LocalizedText } from '../locales'
 import {
   type GuestPosition,
@@ -127,6 +127,13 @@ export interface GuestLocation {
   readonly dayEndsInSeconds: number
   /** The venue's name, which the consent text names ("[Venue] and Restro check…"). */
   readonly venueName: string
+  /**
+   * The venue's privacy notice, a full `https://` link, where the venue checks location: the
+   * consent text ends with it (D119, D121), whatever paying is (`payingLegal` is another thing:
+   * it travels only while paying is offered). Null without one (the venue has not filled in its
+   * legal details) or where the venue does not check.
+   */
+  readonly privacyUrl: string | null
 }
 
 /** What a phone may see of its table (design §3, with D122's words). */
@@ -342,6 +349,8 @@ async function targetOf(pool: DbPool, code: string): Promise<CodeTarget | null> 
 /** What the guards need to know of the venue and the table, read once per request. */
 interface GuardRead {
   readonly venueName: string
+  /** The venue's privacy notice from its legal details, or null until they are filled in. */
+  readonly privacyUrl: string | null
   readonly settings: OrderingSettings
   readonly timezone: string
   readonly dayEndsAt: string
@@ -367,6 +376,7 @@ async function readGuard(pool: DbPool, target: CodeTarget): Promise<GuardRead | 
       .where(and(eq(sittings.tableId, target.tableId), isNull(sittings.endedAt)))
     return {
       venueName: venue.name,
+      privacyUrl: readLegalDetails(venue.settings)?.privacyUrl ?? null,
       settings: readOrderingSettings(venue.settings),
       timezone: venue.timezone,
       dayEndsAt: venue.dayEndsAt,
@@ -405,13 +415,20 @@ function locationOf(
   const dayEnds = locationPassExpiry(new Date(now), 24 * 60, guard.timezone, guard.dayEndsAt)
   const dayEndsInSeconds = seconds(dayEnds.getTime() - now)
   if (!guard.settings.locationCheck) {
-    return { state: 'off', passSeconds: null, dayEndsInSeconds, venueName: guard.venueName }
+    return {
+      state: 'off',
+      passSeconds: null,
+      dayEndsInSeconds,
+      venueName: guard.venueName,
+      privacyUrl: null,
+    }
   }
   return {
     state: claims === null ? 'needed' : 'held',
     passSeconds: claims === null ? null : seconds(claims.expiresAt - now),
     dayEndsInSeconds,
     venueName: guard.venueName,
+    privacyUrl: guard.privacyUrl,
   }
 }
 
@@ -449,6 +466,7 @@ const LOCATION_OFF: GuestLocation = {
   passSeconds: null,
   dayEndsInSeconds: 0,
   venueName: '',
+  privacyUrl: null,
 }
 
 /**

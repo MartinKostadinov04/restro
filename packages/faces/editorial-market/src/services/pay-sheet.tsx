@@ -352,21 +352,31 @@ export function PaySheet() {
   if (bill === null || paying === null) return <p className="ro-empty">{words.nothingToPay}</p>
 
   const totals = choosePay(picks, tip, tipsOffered)
-  const block = payBlock(paying, bill, picks, tip, tipsOffered, receiptEmail)
+  const block = payBlock(
+    paying,
+    bill,
+    picks,
+    tip,
+    tipsOffered,
+    receiptEmail,
+    state.offline === true,
+  )
   const blockWords =
-    block === 'cards_paused'
-      ? w.cardsPaused
-      : block === 'not_up_to_date'
-        ? w.notUpToDate
-        : block === 'nothing_picked'
-          ? w.nothingPicked
-          : block === 'below_minimum'
-            ? w.belowMinimum(money(paying.minCardMinor))
-            : block === 'tip_too_big'
-              ? w.tipTooBig
-              : block === 'bad_email'
-                ? w.emailInvalid
-                : null
+    block === 'offline'
+      ? words.offline
+      : block === 'cards_paused'
+        ? w.cardsPaused
+        : block === 'not_up_to_date'
+          ? w.notUpToDate
+          : block === 'nothing_picked'
+            ? w.nothingPicked
+            : block === 'below_minimum'
+              ? w.belowMinimum(money(paying.minCardMinor))
+              : block === 'tip_too_big'
+                ? w.tipTooBig
+                : block === 'bad_email'
+                  ? w.emailInvalid
+                  : null
   const free = freeLines(bill)
   // Everything is paid: nothing is free to pay and the sitting has paid lines, so the choosing, the
   // totals and Pay go, and the bill shows what was paid (D127 1.2).
