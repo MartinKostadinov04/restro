@@ -129,7 +129,7 @@ test('a shared tablet has no composer or Tables & QR: an old link lands on Tonig
   await expect(page).toHaveURL(new RegExp(`${venue}\\?tab=tonight`))
   // A PIN unlocks Tonight only (D122 §9, RR-85), so there is no tab to choose.
   await page.goto(`${venue}?tab=settings`)
-  await expect(page).toHaveURL(new RegExp(`${venue}\?tab=tonight`))
+  await expect(page).toHaveURL(new RegExp(`${venue}\\?tab=tonight`))
   await expect(page.getByRole('tablist', { name: 'Switch tab' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Publish' })).toHaveCount(0)
 })
