@@ -118,6 +118,57 @@ describe.skipIf(!hasDatabase)('the closing hour (as the restro_app role)', () =>
     })
   })
 
+  // Repair-review, hot spot 7 (D122: "the closing time closes every table for phones"; a table with
+  // a payment waits only for its close and capture): a hold that meets the closing hour.
+  describe('a payment still going at the closing hour', () => {
+    const paying = async (tableId: string, sittingId: string) => {
+      const id = `py_${randomUUID().replaceAll('-', '')}`
+      await world.owner.query(
+        `insert into restro.payments
+           (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
+            action_id, amount_minor, tip_minor, currency, provider_kind, source, actor, job_id)
+         values ($1, $2, $3, $4, $5, '2026-10-23', 'on_bill', 'unconfirmed', $6, $7, 1200, 0, 'EUR',
+                 'sim', 'guest', 'guest', 'test-seed')`,
+        [
+          id,
+          world.tenantId,
+          world.venueId,
+          tableId,
+          sittingId,
+          createHash('sha256').update(randomUUID()).digest('hex'),
+          randomUUID(),
+        ],
+      )
+      return id
+    }
+    const settle = (id: string) =>
+      world.owner.query(
+        `update restro.payments set state = 'captured', captured_minor = 1200, settled_at = now()
+          where id = $1`,
+        [id],
+      )
+
+    it('keeps the table, then closes it on the next tick of the same night', async () => {
+      const [sitting] = await openTables(1)
+      const id = await paying(world.tables[0] as string, sitting as string)
+      expect(await closeTables('2026-10-24T02:31:00Z')).toMatchObject({ details: { closed: 0 } })
+      expect((await sittingState(sitting as string))?.ended_at).toBeNull()
+      await settle(id)
+      expect(await closeTables('2026-10-24T02:40:00Z')).toMatchObject({ details: { closed: 1 } })
+      expect(await sittingState(sitting as string)).toMatchObject({ end_reason: 'closing_hour' })
+    })
+
+    it('still closes it when the payment only ends after 07:00', async () => {
+      const [sitting] = await openTables(1)
+      const id = await paying(world.tables[0] as string, sitting as string)
+      expect(await closeTables('2026-10-24T02:31:00Z')).toMatchObject({ details: { closed: 0 } })
+      // A manager answers the morning after; the worker's tick goes on, past 07:00 (04:00Z).
+      await settle(id)
+      expect(await closeTables('2026-10-24T04:01:00Z')).toMatchObject({ details: { closed: 1 } })
+      expect(await sittingState(sitting as string)).toMatchObject({ end_reason: 'closing_hour' })
+    })
+  })
+
   it('leaves a closed weekday alone: no night, no closing hour', async () => {
     const sittings = await openTables(1)
     // Thursday evening, and Sunday noon after Saturday's service day ended: no hours then.
