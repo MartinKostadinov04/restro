@@ -113,7 +113,7 @@ describe.skipIf(!hasDatabase)('an open phone and a change of paying state (RR-2)
     await world.owner.query('update restro.tables set is_payment_table = true where id = $1', [
       world.tables[3],
     ])
-    await world.declareCapabilities({ recordTipOnClose: true })
+    await world.declareCapabilities({ recordTipOnClose: true, firstItemsOpenBill: true })
   }, 120_000)
 
   afterAll(async () => {
@@ -250,6 +250,49 @@ describe.skipIf(!hasDatabase)('an open phone and a change of paying state (RR-2)
     expect(told.version).toBeGreaterThan(version)
     expect(told.ordering.payingLegal?.name).toBe('Another Company OOD')
     expect((await read(told.version)).unchanged).toBe(true)
+  }, 30_000)
+
+  const setPayFirst = async (change: Record<string, unknown>) => {
+    const { result } = await applyService(
+      world.app,
+      { type: 'pay_first.set', change } as never,
+      {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        origin: 'staff',
+        actor: { kind: 'user', userId: owner, sessionId: `s-${owner}` },
+        jobId: `pay-first-${randomUUID()}`,
+        signedInAt: new Date(),
+      } as never,
+    )
+    expect(result.status, JSON.stringify(result)).toBe('accepted')
+  }
+
+  it('after pay first is turned on, a poll must tell the open phone', async () => {
+    await setPayFirst({ applies: false })
+    const { version, ordering } = await full()
+    expect(ordering.payFirst).toBe('off')
+    await setPayFirst({ applies: true })
+    expect((await full()).ordering.payFirst).toBe('on')
+    const poll = await read(version)
+    expect(poll.unchanged, 'the phone keeps the old pay-first answer').toBe(false)
+    await setPayFirst({ applies: false })
+  }, 30_000)
+
+  it("after a table's own pay-first choice, a poll must tell the open phone", async () => {
+    await setPayFirst({ applies: false })
+    const { version } = await full()
+    await setPayFirst({ table: tableId, value: true })
+    expect((await full()).ordering.payFirst).toBe('on')
+    expect((await read(version)).unchanged, 'the phone keeps the old answer').toBe(false)
+    await setPayFirst({ table: tableId, value: null })
+  }, 30_000)
+
+  it('saving the pay-first choice it already has leaves every phone unchanged', async () => {
+    await setPayFirst({ applies: false })
+    const { version } = await full()
+    await setPayFirst({ applies: false })
+    expect((await read(version)).unchanged).toBe(true)
   }, 30_000)
 
   it('a change a phone is not told about leaves every phone unchanged', async () => {

@@ -67,10 +67,10 @@ export default async function VenueWorkspacePage({
     params.set('sub', 'design')
     redirect(`/venues/${venue.id}?${params.toString()}`)
   }
-  // A shared device works Tonight: no composer and no Publish bar, which need the person's own
-  // sign-in (D122 §7, RR-83). An old link to the composer lands on Tonight.
+  // A shared device works Tonight: no composer, no Tables & QR and no Publish bar, which need the
+  // person's own sign-in (D122 §7, RR-83, RR-84). An old link to either lands on Tonight.
   const sharedDevice = await sessionIsSharedDevice({ tenantId: organization.id, sessionId })
-  if (sharedDevice && workspaceTabOf(query.tab) === 'composer') {
+  if (sharedDevice && sharedDeviceTabOf(query.tab) !== workspaceTabOf(query.tab)) {
     redirect(`/venues/${venue.id}?tab=tonight`)
   }
   const openTab = sharedDevice ? sharedDeviceTabOf(query.tab) : workspaceTabOf(query.tab)

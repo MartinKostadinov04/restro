@@ -577,6 +577,7 @@ export const SERVICE_COMMANDS = {
   // table's (Tables & QR) the right to mark payment tables. A settings change, serialised on the
   // venue's row: two saves of different tables both stay.
   'pay_first.set': defineCommand({
+    payingState: true,
     schema: SetPayFirstSchema,
     origins: ['staff'],
     permission: CONNECT_PERMISSION,

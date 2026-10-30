@@ -3,8 +3,9 @@
 // Adding a venue to the organisation (CF-01, D64; two steps since D85): the first production path
 // that creates one. A server action in the shape of the composer's (../composer/actions.ts): Zod
 // first, then `requireTenant()` (the tenant is the person's organisation, never the request's),
-// then the role (owners and admins), then core's writers (rule 1: no SQL here). The source is
-// fixed here for good (D87): a connected POS instance and one of its venues, or by hand.
+// then the role (owners and admins), then whether this sign-in is a shared tablet, which never
+// runs these (RR-84), then core's writers (rule 1: no SQL here). The source is fixed here for good
+// (D87): a connected POS instance and one of its venues, or by hand.
 //   - From a POS nothing is typed: the name is the POS venue's, the address is made from it
 //     (`addVenueFromTillVenue` makes the venue, its menu and the link in one transaction), the
 //     main language is the instance's. The languages then follow the next reads (D77).
@@ -45,6 +46,7 @@ import { logError } from './log'
 import { menuOfVenue } from './publish/load'
 import { canDeleteVenue, canManageIntegration } from './roles'
 import { requireTenant } from './session'
+import { onSharedDevice } from './staff/shared-device'
 import { getVenueInAnyState, listNewVenueSources, loadTillVenueToAdd } from './venues'
 import {
   type CreateVenueResult,
@@ -175,8 +177,11 @@ export async function createVenueAction(input: unknown): Promise<CreateVenueResu
   const parsed = CreateVenueInput.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'invalid' }
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
     if (!canManageIntegration(organization.role)) return { ok: false, error: 'not_allowed' }
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'not_allowed' }
+    }
     const { source } = parsed.data
     const created =
       source.kind === 'instance'
@@ -203,8 +208,11 @@ export async function createVenueAction(input: unknown): Promise<CreateVenueResu
  */
 export async function loadNewVenueSourcesAction(): Promise<NewVenueSourcesResult> {
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
     if (!canManageIntegration(organization.role)) return { ok: false, error: 'not_allowed' }
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'not_allowed' }
+    }
     return { ok: true, sources: await listNewVenueSources(getPool(), organization.id) }
   } catch (error) {
     // redirect() and notFound() are control flow, not failures.
@@ -233,8 +241,11 @@ export async function renameVenueSlugAction(input: unknown): Promise<RenameVenue
   if (!parsed.success) return { ok: false, error: 'invalid' }
   const { venueId, slug } = parsed.data
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
     if (!canManageIntegration(organization.role)) return { ok: false, error: 'not_allowed' }
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'not_allowed' }
+    }
     const pool = getPool()
     const renamed = await renameVenueSlug(pool, organization.id, venueId, slug)
 
@@ -299,8 +310,11 @@ export async function renameVenueAction(input: unknown): Promise<RenameVenueResu
   if (!parsed.success) return { ok: false, error: 'invalid' }
   const { venueId, name } = parsed.data
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
     if (!canManageIntegration(organization.role)) return { ok: false, error: 'not_allowed' }
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'not_allowed' }
+    }
     const renamed = await renameVenue(getPool(), organization.id, venueId, name)
     revalidatePath('/', 'layout')
     return { ok: true, name: renamed.name, changed: renamed.changed }
@@ -338,8 +352,11 @@ export async function deleteVenueAction(input: unknown): Promise<DeleteVenueResu
   if (!parsed.success) return { ok: false, error: 'invalid' }
   const { venueId, confirmName } = parsed.data
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
     if (!canDeleteVenue(organization.role)) return { ok: false, error: 'not_allowed' }
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'not_allowed' }
+    }
     const pool = getPool()
     const venue = await getVenueInAnyState(organization.id, venueId)
     if (venue === null) return { ok: false, error: 'invalid' }
@@ -398,8 +415,11 @@ export async function restoreVenueAction(input: unknown): Promise<RestoreVenueRe
   if (!parsed.success) return { ok: false, error: 'invalid' }
   const { venueId } = parsed.data
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
     if (!canDeleteVenue(organization.role)) return { ok: false, error: 'not_allowed' }
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'not_allowed' }
+    }
     const venue = await getVenueInAnyState(organization.id, venueId)
     if (venue === null) return { ok: false, error: 'invalid' }
     const restored = await restoreVenue(getPool(), organization.id, venueId)
@@ -434,8 +454,11 @@ export async function unpublishVenueAction(input: unknown): Promise<UnpublishVen
   if (!parsed.success) return { ok: false, error: 'invalid' }
   const { venueId } = parsed.data
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
     if (!canManageIntegration(organization.role)) return { ok: false, error: 'not_allowed' }
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'not_allowed' }
+    }
     const pool = getPool()
     const venue = await getVenueInAnyState(organization.id, venueId)
     if (venue === null) return { ok: false, error: 'invalid' }
@@ -493,8 +516,11 @@ export async function purgeVenueAction(input: unknown): Promise<PurgeVenueResult
   if (!parsed.success) return { ok: false, error: 'invalid' }
   const { venueId, confirmName } = parsed.data
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
     if (!canDeleteVenue(organization.role)) return { ok: false, error: 'not_allowed' }
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'not_allowed' }
+    }
     const venue = await getVenueInAnyState(organization.id, venueId)
     if (venue === null) return { ok: false, error: 'invalid' }
     if (venue.archivedAt === null) return { ok: false, error: 'not_deleted' }

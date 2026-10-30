@@ -11,6 +11,7 @@
 import { venues, venueTables } from '@restro/db'
 import { eq } from 'drizzle-orm'
 
+import { readPayFirstSettings } from '../pay-first-settings'
 import { CARD_FLOOR_MINOR, readPayingSettings, smallestCardMinor } from '../paying-settings'
 import type { ServiceTx } from './definition'
 import { payingOffer } from './pay-first'
@@ -22,11 +23,12 @@ async function payingFingerprint(stx: ServiceTx): Promise<string> {
     .select({ settings: venues.settings })
     .from(venues)
     .where(eq(venues.id, stx.venueId))
-  const minCardMinor = smallestCardMinor(
-    readPayingSettings(venue?.settings ?? {}),
-    CARD_FLOOR_MINOR,
-  )
-  return JSON.stringify([offer.state, offer.provider, offer.legal, minCardMinor])
+  const settings = venue?.settings ?? {}
+  const minCardMinor = smallestCardMinor(readPayingSettings(settings), CARD_FLOOR_MINOR)
+  // Pay first too: a phone is told per table and per item, from the venue's choices. One table's
+  // choice re-reads every table's phones, which show what they showed.
+  const payFirst = readPayFirstSettings(settings)
+  return JSON.stringify([offer.state, offer.provider, offer.legal, minCardMinor, payFirst])
 }
 
 /**

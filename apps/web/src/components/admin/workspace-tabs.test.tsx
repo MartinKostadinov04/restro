@@ -120,6 +120,14 @@ describe('WorkspaceTabs: tabs and the URL', () => {
     expect(screen.queryByText('content of composer')).toBeNull()
   })
 
+  it('a shared device has no Tables & QR tab, and an old link to it opens Tonight (RR-84)', () => {
+    navigation.search = 'tab=tables'
+    renderWithIntl(<WorkspaceTabs contents={contents} sharedDevice />)
+    expect(screen.queryByRole('tab', { name: 'Tables & QR' })).toBeNull()
+    expect(screen.getByRole('tab', { name: 'Tonight' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.queryByText('content of tables')).toBeNull()
+  })
+
   it('does not touch the URL when the current tab is clicked again', async () => {
     navigation.search = 'tab=settings'
     renderTabs()

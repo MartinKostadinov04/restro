@@ -34,6 +34,7 @@ const queue = vi.hoisted(() => ({
 
 vi.mock('@/server/session', () => ({
   requireTenant: async () => ({
+    sessionId: 'session-personal',
     user: { id: 'us_cf01tester', name: 'Tester', email: 'tester@example.test' },
     organizations: [],
     organization: { id: asked.tenantId, name: 'CF-01 club', slug: 'cf01-club', role: asked.role },
