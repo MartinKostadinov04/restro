@@ -248,16 +248,16 @@ describe('the leak guard and the new words', () => {
   })
 
   it('still refuses an internal note that is not a public word', () => {
-    const doc = bar(['wombat']).build()
+    const doc = bar(['zebra']).build()
     const forbidden = collectForbiddenValues({
       template: VENUE_MENU_TEMPLATE,
       doc,
       externalIds: [],
       publicStrings: lookPublicStrings(DEFAULT_THEME),
     })
-    expect(forbidden.get('wombat')).toBe('internal_value')
+    expect(forbidden.get('zebra')).toBe('internal_value')
     const snapshot = snapshotOf(context({ design: DESIGN }), bar()) as Poke
-    snapshot.sections[BAR].title = { bg_BG: 'wombat' }
+    snapshot.sections[BAR].title = { bg_BG: 'zebra' }
     expect(() => assertSnapshotSafe(snapshot, forbidden)).toThrow(SnapshotError)
   })
 
@@ -270,6 +270,44 @@ describe('the leak guard and the new words', () => {
     })
     expect(forbidden.get('face')).toBe('internal_value')
     expect(forbidden.get('presentation')).toBe('internal_value')
+  })
+
+  it('leaves the design block to its schema: a till id reading like a word of it still publishes', () => {
+    const design = {
+      ...DESIGN,
+      items: { ...DESIGN.items, description_lines: '2' },
+      bill: { ...DESIGN.bill, rows: 'zebra' },
+    } as typeof DESIGN
+    const forbidden = collectForbiddenValues({
+      template: VENUE_MENU_TEMPLATE,
+      doc: bar(['all']).build(),
+      externalIds: ['2', 'zebra'],
+      publicStrings: lookPublicStrings(DEFAULT_THEME),
+    })
+    const snapshot = snapshotOf(context({ design })) as Poke
+    expect(() => assertSnapshotSafe(snapshot, forbidden)).not.toThrow()
+    expect(snapshot.design.items.description_lines).toBe('2')
+  })
+
+  it('refuses a design block off the contract, whatever the forbidden values', () => {
+    const snapshot = snapshotOf(context({ design: DESIGN })) as Poke
+    snapshot.design.items.layout = 'secret'
+    expect(() => assertSnapshotSafe(snapshot, new Map())).toThrow(SnapshotError)
+  })
+
+  it('does not let the contract’s words through anywhere else', () => {
+    for (const word of ['2', 'all', 'name', 'zebra']) {
+      const forbidden = collectForbiddenValues({
+        template: VENUE_MENU_TEMPLATE,
+        doc: bar([word]).build(),
+        externalIds: [],
+        publicStrings: lookPublicStrings(DEFAULT_THEME),
+      })
+      expect(forbidden.get(word), word).toBe('internal_value')
+      const snapshot = snapshotOf(context({ design: DESIGN }), bar()) as Poke
+      snapshot.sections[BAR].title = { bg_BG: word }
+      expect(() => assertSnapshotSafe(snapshot, forbidden), word).toThrow(SnapshotError)
+    }
   })
 
   it('treats every fixed word of the new fields as vocabulary, keys included', () => {
@@ -306,7 +344,7 @@ describe('the leak guard and the new words', () => {
     ]
     const doc = new DocBuilder().section(BAR, ROOT, 'active', 'a0').tillItem(WATER, 300)
     // A word that is no part of the snapshot's structure stays forbidden (the control).
-    doc.set(WATER, 'internal_note', 'manual', 'wombat')
+    doc.set(WATER, 'internal_note', 'manual', 'zebra')
     for (const [index, word] of words.entries()) {
       const item = nd(`note${index}`)
       doc.item(item).place(item, BAR, `a${index}`)
@@ -318,7 +356,7 @@ describe('the leak guard and the new words', () => {
       externalIds: [],
     })
     for (const word of words) expect(forbidden.has(word), word).toBe(false)
-    expect(forbidden.get('wombat')).toBe('internal_value')
+    expect(forbidden.get('zebra')).toBe('internal_value')
   })
 
   it('lists the look strings: font, palette and role colours', () => {

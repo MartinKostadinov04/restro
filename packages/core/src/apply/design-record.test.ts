@@ -305,6 +305,17 @@ describe.skipIf(!hasDatabase)('the design record (as the restro_app role)', () =
       expect(await eventsOf(venueId)).toHaveLength(1)
     })
 
+    it('of two saves at once lets one through, the other told it is stale', async () => {
+      const first = { ...DEFAULT_DESIGN, colors: COLOURS }
+      const second = { ...DEFAULT_DESIGN, colors: { ...COLOURS, tertiary: '#123456' } }
+      const results = await Promise.all([save(venueId, 0, first), save(venueId, 0, second)])
+      expect(results.map(({ result }) => result.applied).sort()).toEqual([0, 1])
+      const refused = results.find(({ result }) => result.applied === 0)?.result.rejected[0]
+      expect(refused?.code).toBe('stale_revision')
+      expect(readDesign(await storedSettings(venueId)).revision).toBe(1)
+      expect(await eventsOf(venueId)).toHaveLength(1)
+    })
+
     it('of a design whose colours do not read writes nothing', async () => {
       const unreadable = {
         ...DEFAULT_DESIGN,

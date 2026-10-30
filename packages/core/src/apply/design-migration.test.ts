@@ -80,6 +80,11 @@ const VENUES: Record<string, { settings: unknown; menu?: unknown }> = {
   nothing: { settings: {} },
   noSettingsOnMenu: { settings: {}, menu: {} },
   hiddenTemplate: { settings: { presentation: { face: 'qr-phone', options: {} } } },
+  severalMenus: { settings: {}, menu: { layout: 'one_column', layout_switch: false } },
+  archived: {
+    settings: { theme: { logo_asset_id: null, font: 'lora' } },
+    menu: { layout: 'list' },
+  },
   defaults: {
     settings: {
       theme: { logo_asset_id: null, font: 'inter', radius: 8, shadow: 1, scheme: 'auto' },
@@ -160,6 +165,15 @@ describe.skipIf(!hasDatabase)('the design record migration (D129, D130)', () => 
     for (const [name, venue] of Object.entries(VENUES)) {
       await insertVenue(name, venue.settings, venue.menu)
     }
+    // The menu that is not live comes first and says otherwise: only the live one's settings count.
+    await client.query(
+      `insert into restro.menus (id, tenant_id, venue_id, template_key, template_version, root_node_id, sort_key, settings)
+       values ($1, $2, $3, 'venue-menu', 1, $1, 'Zz', '{"layout": "list", "layout_switch": true}'::jsonb)`,
+      [newId('nd'), TENANT, idOf('severalMenus')],
+    )
+    await client.query(`update restro.venues set archived_at = now() where id = $1`, [
+      idOf('archived'),
+    ])
     for (const radius of RADII) {
       await insertVenue(`radius${radius}`, { theme: { logo_asset_id: null, radius } }, undefined)
     }
@@ -234,6 +248,18 @@ describe.skipIf(!hasDatabase)('the design record migration (D129, D130)', () => 
       layout: 'one',
       guest_switch: 'off',
     })
+  })
+
+  it('takes the layout from the venue’s live menu, of several', async () => {
+    const { items } = (await recordOf('severalMenus')).values
+    expect(items.layout).toBe('one')
+    expect(items.guest_switch).toBe('off')
+  })
+
+  it('gives an archived venue its record too, in case it comes back', async () => {
+    const record = await recordOf('archived')
+    expect(record.values.general.body_font).toBe('lora')
+    expect(record.values.items.layout).toBe('list')
   })
 
   it('leaves the venue’s other settings as they were', async () => {

@@ -10,6 +10,8 @@ import { describe, expect, it } from 'vitest'
 //   1. source under `apps/` or `packages/` names a writer the record retired;
 //   2. a file other than core's apply writes the `design` key of a venue's settings, or the keys
 //      the record replaced (`theme`, `presentation`), by SQL or by laying it into `settings`.
+//   3. a file not on the list of settings writers below starts setting a venue's `settings`: each
+//      of those patches its own key, and a new one is a review of whether it can reach the record.
 // Migration files are not source here: 0043 wrote the first records. Only tightens (D67): a pattern
 // is never removed and an allowed file never added to let code through.
 
@@ -53,6 +55,42 @@ const WRITES: readonly RegExp[] = [
   /\[\s*DESIGN_SETTINGS_KEY\s*\][ \t]*:/,
 ]
 
+/** The files that set `venues.settings` today, each for a key of its own (none of `KEYS`). */
+const SETTINGS_WRITERS: readonly string[] = [
+  'packages/core/src/apply/floor.ts',
+  'packages/core/src/apply/guest-features.ts',
+  'packages/core/src/apply/languages.ts',
+  'packages/core/src/apply/ordering-settings.ts',
+  'packages/core/src/apply/pay-first-settings.ts',
+  'packages/core/src/apply/paying-settings.ts',
+  'packages/core/src/apply/tables.ts',
+  'packages/core/src/apply/venue-lifecycle.ts',
+  'packages/core/src/apply/venue-publish-rules.ts',
+]
+
+/** The text of the `.update(venues).set(…)` calls of a source file, laid out over any lines. */
+function venueSetCalls(text: string): string[] {
+  return [...text.matchAll(/\.update\(venues\)\s*\.set\(/g)].map((match) => {
+    const start = match.index + match[0].length
+    let depth = 1
+    let end = start
+    while (end < text.length && depth > 0) {
+      if (text[end] === '(') depth += 1
+      if (text[end] === ')') depth -= 1
+      end += 1
+    }
+    return text.slice(start, end)
+  })
+}
+
+/** A key of the record, as `design: …`, a shorthand `design,` or `design }`. */
+const KEY_WRITTEN = new RegExp(`\\b(?:${KEYS})\\b[ \\t]*(?::|,|\\s*\\})`)
+
+/** A settings object rebuilt with a key of the record, over any lines: `{ ...x.settings, design }`. */
+const SPREAD_WITH_KEY = new RegExp(
+  `\\.\\.\\.[^,\\n]*\\bsettings\\b[^,\\n]*,\\s*(?:[\\w$]+(?:[ \\t]*:[^,\\n]+)?,\\s*)*(?:${KEYS})\\b[ \\t]*(?::|,|\\s*\\})`,
+)
+
 function sourceFiles(dir: string): string[] {
   if (!existsSync(dir)) return []
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -66,8 +104,11 @@ const isTest = (path: string) =>
   /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path) || path.includes('/e2e/')
 
 /** The patterns a text breaks. */
-const writesIn = (text: string) =>
-  WRITES.filter((pattern) => pattern.test(text)).map((pattern) => String(pattern))
+const writesIn = (text: string) => [
+  ...WRITES.filter((pattern) => pattern.test(text)).map((pattern) => String(pattern)),
+  ...(SPREAD_WITH_KEY.test(text) ? [String(SPREAD_WITH_KEY)] : []),
+  ...(venueSetCalls(text).some((call) => KEY_WRITTEN.test(call)) ? ['.update(venues).set'] : []),
+]
 
 const retiredIn = (text: string) => RETIRED.filter((name) => new RegExp(`\\b${name}\\b`).test(text))
 
@@ -100,6 +141,14 @@ describe('the design record’s one writer', () => {
     expect(found).toEqual([])
   })
 
+  it('no new file sets a venue’s settings', () => {
+    const found = files
+      .filter((file) => !isTest(file.name) && file.name !== THE_WRITER)
+      .filter((file) => venueSetCalls(file.text).some((call) => /\bsettings\b/.test(call)))
+      .map((file) => file.name)
+    expect(found.sort()).toEqual([...SETTINGS_WRITERS].sort())
+  })
+
   it('core’s apply writes it in one place, the `{design}` key alone', () => {
     const writer = files.find((file) => file.name === THE_WRITER)
     const writes = writer?.text.match(/jsonb_set\s*\([^)]*'\{[^}]*\}'/g) ?? []
@@ -122,6 +171,10 @@ describe('the design record’s one writer', () => {
       'tx.update(venues).set({ settings: { ...venue.settings, design: record } })',
       'const next = { settings: { design: record } }',
       'settings[DESIGN_SETTINGS_KEY] = x; const y = { [DESIGN_SETTINGS_KEY]: record }',
+      'tx\n  .update(venues)\n  .set({\n    settings: {\n      ...venue.settings,\n      design: record,\n    },\n  })',
+      'tx.update(venues).set({ settings: { ...venue.settings, design } })',
+      'const next = {\n  ...venue.settings,\n  other: 1,\n  design: record,\n}',
+      'const next = { ...locked.venue.settings, theme }',
     ]) {
       expect(writesIn(planted), planted).not.toEqual([])
     }
@@ -130,6 +183,9 @@ describe('the design record’s one writer', () => {
       `sql\`select settings -> 'design' from restro.venues\``,
       'const settings = readDesignRecord(row.settings)',
       "// settings.design is the record; the 'design' key is written by setDesign",
+      'tx.update(venues).set({ settings: { ...venue.settings, ordering: after } })',
+      'tx\n  .update(venues)\n  .set({ settings })\n  .where(eq(venues.design, 1))',
+      'const next = { ...venue.settings, floor_source: next }\nconst design = 1',
     ]) {
       expect(writesIn(reading), reading).toEqual([])
     }

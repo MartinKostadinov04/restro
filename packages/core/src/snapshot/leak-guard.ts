@@ -12,7 +12,6 @@
 // anything private.
 
 import { ALLERGENS, DIETARY_LABELS } from '../allergens'
-import { DESIGN_PAGES } from '../design/contract'
 import type { MenuDocument } from '../document/types'
 import type { FieldDefinition } from '../field-definition'
 import { FIELD_TYPE_NAMES, MEASUREMENT_UNITS } from '../field-types/catalog'
@@ -42,16 +41,12 @@ export type ForbiddenKind = 'external_id' | 'internal_value' | 'override_basis' 
 export type ForbiddenValues = ReadonlyMap<string, ForbiddenKind>
 
 /**
- * The words of the design contract (D130): its page ids, option ids and every choice option's
- * values. The snapshot's `design` block holds only these (its schema refuses anything else), so
- * they are the only words the guard allows for it.
+ * The paths the walk does not enter: the `design` block (D129). `parseSnapshot` has just held it to
+ * the contract's words (D130, a strict schema), so it can say nothing private, and a till's id that
+ * reads `2` must not refuse Basic's two description lines. Its words stay out of the vocabulary:
+ * `2`, `name` or `all` in an internal note is still refused everywhere else in the snapshot.
  */
-const DESIGN_WORDS: readonly string[] = DESIGN_PAGES.flatMap((page) => [
-  page.id,
-  ...page.options.flatMap((option) =>
-    option.kind === 'choice' ? [option.id, ...option.values.map((value) => value.id)] : [],
-  ),
-])
+const HELD_BY_THE_SCHEMA: readonly (readonly PropertyKey[])[] = [['design']]
 
 /** Every string a snapshot's own structure can hold whatever the document says. */
 const SNAPSHOT_VOCABULARY: readonly string[] = [
@@ -84,16 +79,15 @@ const SNAPSHOT_VOCABULARY: readonly string[] = [
   ...Object.keys(SnapshotLayoutSchema.shape),
   ...SNAPSHOT_MENU_LAYOUTS,
   ...SECTION_LAYOUTS,
-  // D129: the venue's design, its key and the contract's words, and nothing else.
+  // D129: the venue's design, its key alone (see `HELD_BY_THE_SCHEMA` for its words).
   'design',
-  ...DESIGN_WORDS,
 ]
 
 /**
  * The strings of a venue's look that are public by design (SH-01): the font family, the palette
  * and every role colour. The publisher passes them as `publicStrings`, so an internal note that
- * happens to read like a colour never blocks the theme. The design block's words are in the
- * vocabulary already.
+ * happens to read like a colour never blocks the theme. The design block needs none: the walk
+ * leaves it to its schema.
  */
 export function lookPublicStrings(theme: SnapshotTheme): string[] {
   const strings = [theme.font, ...theme.palette]
@@ -199,7 +193,7 @@ export function assertSnapshotSafe(
 ): MenuSnapshot {
   const parsed = parseSnapshot(snapshot, forbidden)
   const problems: SnapshotProblem[] = []
-  const exempt = options.exempt ?? []
+  const exempt = [...HELD_BY_THE_SCHEMA, ...(options.exempt ?? [])]
   const isExempt = (path: PropertyKey[]) =>
     exempt.some((e) => e.length === path.length && e.every((k, i) => String(k) === String(path[i])))
   const walk = (value: unknown, path: PropertyKey[]) => {
