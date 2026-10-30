@@ -590,8 +590,10 @@ export interface SentOrderView {
      */
     readonly outOfStock?: true
   }[]
-  /** When it was sent, in milliseconds since the epoch by the phone's clock. */
+  /** When it was sent, in milliseconds since the epoch by the phone's clock: for counting only. */
   readonly sentAt: number
+  /** When it was sent on the venue's clock ("19:42"): the time a guest shows a waiter. */
+  readonly sentClock: string
   /** Sent from this phone: only this phone shows "Sending…" (D122 §5). */
   readonly mine: boolean
   /**
@@ -683,6 +685,11 @@ export interface ServiceState {
    */
   readonly ordering?: {
     readonly state: 'on' | 'paused' | 'closed'
+    /**
+     * The table's code is no longer in use (D121): `closed` for good, until the guest scans the
+     * code on the table. The face's words for `closed` come from `orderingClosedText`.
+     */
+    readonly retired?: true
     readonly notesAndOptions?: boolean
     /**
      * Pay-first at this table (#113): `on`, a pay-first line goes with the Send and is paid there;

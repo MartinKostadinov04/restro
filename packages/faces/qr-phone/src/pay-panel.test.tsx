@@ -464,6 +464,7 @@ describe('the review of #195 (D127)', () => {
       ref: 'K7Q',
       lines: [],
       sentAt: 0,
+      sentClock: '19:42',
       mine: false,
     }
     expect(sentWords(sent, words)).toBe('Added to your bill')

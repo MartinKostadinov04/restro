@@ -317,3 +317,50 @@ describe('the screen the face has open (RR-52, D121)', () => {
     expect(calls.screens.at(-1)).toBe('bill')
   })
 })
+
+describe('the waiter panel’s time (RR-58: the venue’s clock)', () => {
+  it('shows the time the host names, not the one the phone’s clock makes of sentAt', async () => {
+    const page = await draw(
+      base({
+        sentOrders: [
+          {
+            id: `so_${'0'.repeat(22)}` as never,
+            state: 'unconfirmed',
+            reason: null,
+            ref: 'K7Q',
+            lines: [],
+            // 12:00 UTC: no time zone on earth makes 19:42 of this.
+            sentAt: Date.UTC(2026, 9, 30, 12, 0),
+            sentClock: '19:42',
+            mine: true,
+          },
+        ],
+      }),
+    )
+    const show = [...page.querySelectorAll('button')].find(
+      (button) => button.textContent === en.showWaiter,
+    )
+    await act(async () => show?.click())
+    expect(page.textContent).toContain('19:42')
+  })
+})
+
+describe('a table code no longer in use (RR-58, D121)', () => {
+  it('says so, not that the table is closed, in both languages', async () => {
+    const retired = { state: 'closed', retired: true } as const
+    const page = await draw(base({ order: ORDER, ordering: retired }))
+    expect(page.textContent).toContain(en.refusals.code_retired)
+    expect(page.textContent).not.toContain(en.orderingClosed)
+    act(() => root?.unmount())
+    host?.remove()
+    const shown = viewOf('features-on', 'bg_BG')
+    const inBg = await draw(base({ order: ORDER, ordering: retired }), { shown })
+    expect(inBg.textContent).toContain(bg.refusals.code_retired)
+  })
+
+  it('still says the table is closed when it only is', async () => {
+    const page = await draw(base({ order: ORDER, ordering: { state: 'closed' } }))
+    expect(page.textContent).toContain(en.orderingClosed)
+    expect(page.textContent).not.toContain(en.refusals.code_retired)
+  })
+})

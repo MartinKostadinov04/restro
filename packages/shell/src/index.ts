@@ -155,6 +155,7 @@ export {
   NO_TIP,
   offersPay,
   offersReceiptEmail,
+  orderingClosedText,
   PAY_ENDS,
   type PayBlock,
   type PayEnd,

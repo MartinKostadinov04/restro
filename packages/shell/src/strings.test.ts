@@ -1,6 +1,29 @@
 import { describe, expect, it } from 'vitest'
 
+import { orderingClosedText } from './paying'
 import { stringsFor } from './strings'
+
+describe('the words D121 quotes (RR-58)', () => {
+  it('says "Slow down a moment" and "no longer in use", in both languages', () => {
+    expect(stringsFor('en_US').services.refusals).toMatchObject({
+      rate_limited: 'Slow down a moment.',
+      code_retired: 'This table code is no longer in use. Scan the code on your table again.',
+    })
+    expect(stringsFor('bg_BG').services.refusals).toMatchObject({
+      rate_limited: 'Малко по-бавно, моля.',
+      code_retired: 'Този код на маса вече не се използва. Сканирайте отново кода на масата.',
+    })
+  })
+
+  it('tells a retired code from a closed table, in both languages', () => {
+    for (const locale of ['en_US', 'bg_BG'] as const) {
+      const words = stringsFor(locale).services
+      expect(orderingClosedText({ retired: true }, words)).toBe(words.refusals.code_retired)
+      expect(orderingClosedText({}, words)).toBe(words.orderingClosed)
+      expect(orderingClosedText(null, words)).toBe(words.orderingClosed)
+    }
+  })
+})
 
 describe('the guest strings', () => {
   it('has the same keys in Bulgarian and English, none of them empty', () => {
