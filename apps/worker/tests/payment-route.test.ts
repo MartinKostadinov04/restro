@@ -1650,6 +1650,30 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
                 lag: 0,
               },
             ],
+            // The hold runs out at the provider right before the close, and the capture gets a
+            // server error: the payment must still settle, captured or failed with the owners told,
+            // never stay `closed` (CI seed -950485348, replayed by the repair-review, RR-4).
+            [
+              {
+                picks: [0, null],
+                pos: [],
+                provider: ['capture', { kind: 'server_error' }],
+                slip: false,
+                order: [0],
+                happenings: [
+                  {
+                    kind: 'provider',
+                    at: { before: 'payAndClose', nth: 1 },
+                    payment: 0,
+                    event: 'expired',
+                    notice: 'now',
+                  },
+                ],
+                tapsAgain: false,
+                lateLanding: 20_000,
+                lag: 0,
+              },
+            ],
           ],
         },
       )
