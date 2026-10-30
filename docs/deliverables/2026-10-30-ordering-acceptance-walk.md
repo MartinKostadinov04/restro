@@ -4,7 +4,7 @@
 
 Everything in spec #64 is built on the branch `or/foundation`. This page says how to set up the local demo and what to look at, screen by screen. Each check is one thing to see; if it is not as written, note it and go on. Paying (part 2) has its own guide, [2026-10-30-paying-acceptance-walk](2026-10-30-paying-acceptance-walk.md): do this one first, since paying starts from a table with an order on its bill.
 
-**The guest page here is the plain test template.** The real guest template is designed last (D122) and comes with the menu designer (#168). Until then the only template that orders is the hidden test one, and the demo seed puts Demo Bar on it. Judge what the guest can do and the words, not the look.
+**The guest page here is the plain test template.** The real guest template is designed last (D122) and comes with the menu designer (#168). Until then the only template that orders is the hidden test one, and the demo seed puts Demo Bar on it. Judge what the guest can do and the words, not the look. **A real venue can't order yet:** the templates venues get don't draw the shared order until the menu designer's renderer (#239, #171). Accepting this guide accepts how ordering behaves, not the screens real guests will see; you check it again on the renderer, on Basic and Editorial, before any pilot.
 
 ## Before you start (once)
 

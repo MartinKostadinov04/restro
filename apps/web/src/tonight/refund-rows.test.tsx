@@ -16,6 +16,8 @@ import { RunProvider } from './run'
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { error: vi.fn() }))
 const stornoDoneAction = vi.hoisted(() => vi.fn())
 const stornoUndoAction = vi.hoisted(() => vi.fn())
+const refundFailedSeenAction = vi.hoisted(() => vi.fn())
+const refundFailedUnseenAction = vi.hoisted(() => vi.fn())
 const paymentDetailAction = vi.hoisted(() => vi.fn())
 vi.mock('sonner', () => ({ toast }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
@@ -26,6 +28,8 @@ vi.mock('@/server/tonight/actions', () => ({
   resumeTableAction: vi.fn(),
   stornoDoneAction,
   stornoUndoAction,
+  refundFailedSeenAction,
+  refundFailedUnseenAction,
   answerPaymentAction: vi.fn(),
   doneAlertAction: vi.fn(),
 }))
@@ -115,6 +119,8 @@ beforeEach(() => {
   toast.error.mockClear()
   stornoDoneAction.mockReset()
   stornoUndoAction.mockReset()
+  refundFailedSeenAction.mockReset()
+  refundFailedUnseenAction.mockReset()
   paymentDetailAction.mockReset()
 })
 
@@ -244,13 +250,77 @@ describe('the dispute row', () => {
 })
 
 describe('the refund that did not go through', () => {
-  it('asks the manager to check with the accountant, with nothing to press', () => {
+  it('asks the manager to check with the accountant, with "Got it" as an outline answer', () => {
     draw(failed, manager)
     expect(
       screen.getByText(
         /A refund of .*7\.00.* didn't go through at Stripe\. The storno was already made: check with your accountant\./,
       ),
     ).toBeTruthy()
+    const button = screen.getByRole('button', { name: 'Got it' })
+    // Outline, never the filled answer, even on the top row (#234).
+    expect(button.getAttribute('data-variant')).toBe('outline')
+  })
+
+  it('draws no button for a staff member’s own phone', () => {
+    draw(failed, waiter)
     expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('saves at once for a manager, and the toast says Noted with an Undo that sends the token back', async () => {
+    refundFailedSeenAction.mockResolvedValue({
+      ok: true,
+      details: { changed: true, undoEntry: 77, undoAt: '2026-10-29T21:26:00.000Z' },
+    })
+    refundFailedUnseenAction.mockResolvedValue({ ok: true, details: { changed: true } })
+    draw(failed, manager)
+    await userEvent.click(screen.getByRole('button', { name: 'Got it' }))
+    await waitFor(() => expect(toast).toHaveBeenCalledTimes(1))
+    expect(refundFailedSeenAction).toHaveBeenCalledWith({
+      venueId: manager.venueId,
+      refundId: 'rf_2',
+      pin: undefined,
+    })
+    const [text, options] = toast.mock.calls[0] as [
+      string,
+      { action: { label: string; onClick: () => void } },
+    ]
+    expect(text).toBe('Noted')
+    expect(options.action.label).toBe('Undo')
+    options.action.onClick()
+    expect(refundFailedUnseenAction).toHaveBeenCalledWith({
+      venueId: manager.venueId,
+      refundId: 'rf_2',
+      undo: { entry: 77 },
+      pin: undefined,
+    })
+  })
+
+  it('asks a manager’s PIN on the tablet and sends it on with the Undo', async () => {
+    refundFailedSeenAction.mockResolvedValue({
+      ok: true,
+      details: { changed: true, undoEntry: 78, undoAt: '2026-10-29T21:26:00.000Z' },
+    })
+    refundFailedUnseenAction.mockResolvedValue({ ok: true, details: { changed: true } })
+    draw(failed, tablet)
+    await userEvent.click(screen.getByRole('button', { name: 'Got it' }))
+    expect(screen.getByText("Enter a manager's PIN")).toBeTruthy()
+    await userEvent.keyboard('4321')
+    await waitFor(() => expect(refundFailedSeenAction).toHaveBeenCalled())
+    expect(refundFailedSeenAction.mock.calls[0]?.[0]).toMatchObject({ pin: '4321' })
+    await waitFor(() => expect(toast).toHaveBeenCalledTimes(1))
+    const options = toast.mock.calls[0]?.[1] as { action: { onClick: () => void } }
+    options.action.onClick()
+    expect(refundFailedUnseenAction).toHaveBeenCalledWith(
+      expect.objectContaining({ undo: { entry: 78 }, pin: '4321' }),
+    )
+  })
+
+  it('offers no Undo when a second "Got it" changed nothing', async () => {
+    refundFailedSeenAction.mockResolvedValue({ ok: true, details: { changed: false } })
+    draw(failed, manager)
+    await userEvent.click(screen.getByRole('button', { name: 'Got it' }))
+    await waitFor(() => expect(toast).toHaveBeenCalledTimes(1))
+    expect(toast.mock.calls[0]?.[1]).not.toHaveProperty('action')
   })
 })

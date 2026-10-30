@@ -39,6 +39,8 @@ import {
   handleWaiterCallAction,
   receiptBroughtAction,
   receiptUnbroughtAction,
+  refundFailedSeenAction,
+  refundFailedUnseenAction,
   resumeTableAction,
   stornoDoneAction,
   stornoUndoAction,
@@ -283,11 +285,50 @@ export function ActionRowItem({
       )
     }
   } else if (row.kind === 'refund_failed' && row.refundFailed !== undefined) {
-    // The storno was made, then the refund did not go through: nothing to press, ask the accountant.
+    // The storno was made, then the refund did not go through: ask the accountant. "Got it" clears
+    // the row early (#234; it leaves by itself after three days): a manager's PIN on the shared
+    // tablet, one tap on a manager's own session; the Undo gets the same PIN.
+    const { refundFailed } = row
     title = t('rf_fail_t', {
-      amt: money(row.refundFailed.amountMinor, view.currency),
+      amt: money(refundFailed.amountMinor, view.currency),
       provider,
     })
+    if (view.can.followUp || view.device) {
+      answer = (
+        <Button
+          type="button"
+          variant="outline"
+          className={button}
+          disabled={busy}
+          onClick={() =>
+            run({
+              id: `refund_failed:${refundFailed.refundId}`,
+              ...(view.device
+                ? { pin: { level: 'manager' as const, title: t('rf_ok'), body: title } }
+                : {}),
+              act: (pin) =>
+                refundFailedSeenAction({
+                  venueId: view.venueId,
+                  refundId: refundFailed.refundId,
+                  pin,
+                }),
+              done: t('rf_toast'),
+              undo: (_, undo, pin) =>
+                refundFailedUnseenAction({
+                  venueId: view.venueId,
+                  refundId: refundFailed.refundId,
+                  undo,
+                  pin,
+                }),
+              // Only a write that logged an entry has a token to undo with.
+              undoWhen: wroteSomething,
+            })
+          }
+        >
+          {t('rf_ok')}
+        </Button>
+      )
+    }
   } else if (row.kind === 'paused') {
     title = t('g_t', { table: name })
     body = <p className="text-sm text-muted-foreground">{t('g_d')}</p>

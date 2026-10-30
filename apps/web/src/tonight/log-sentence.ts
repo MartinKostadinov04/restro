@@ -145,6 +145,9 @@ export const SENTENCES = {
       ? c.say('py_refund_failed', { provider })
       : c.say('lg_pay_refund', { amt: c.money(l.amountMinor ?? 0), provider })
   },
+  // "Got it" on a refund that did not go through, and its Undo (#234; the Undo's words: Martin 10-30).
+  'payment.refund_failed_seen': (l, c) =>
+    c.say(l.refundSeenUndone ? 'lg_pay_refund_seen_undone' : 'lg_pay_refund_seen'),
   'payment.storno': (l, c) => c.say(l.stornoUndone ? 'lg_pay_storno_undone' : 'lg_pay_storno'),
   'payment.dispute': (l, c) =>
     c.say('lg_pay_dispute', {

@@ -364,6 +364,8 @@ export interface LogLineView {
   readonly refundFailed: boolean
   /** A storno line taken back by Undo (#222). */
   readonly stornoUndone: boolean
+  /** A "Got it" line taken back by Undo (#234). */
+  readonly refundSeenUndone: boolean
   readonly sentOrdersOfDay: number | null
   /** A waiter call entry's kinds (#180): the one asked for, or all of a call that ended. */
   readonly callKinds: readonly string[]
@@ -438,6 +440,7 @@ export function logLineView(
         : null,
     refundFailed: line.kind === 'payment.refund_seen' && line.toState === 'failed',
     stornoUndone: line.kind === 'payment.storno' && line.toState === 'open',
+    refundSeenUndone: line.kind === 'payment.refund_failed_seen' && line.toState === 'open',
     sentOrdersOfDay: line.sentOrdersOfDay,
     callKinds: line.callKinds,
     ...(line.kind === 'receipt.brought'

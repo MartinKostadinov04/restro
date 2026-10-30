@@ -193,6 +193,8 @@ export interface NightRefund {
   readonly failed: boolean
   /** Who said the storno was made, and when; null while it waits. */
   readonly storno: { readonly who: Who; readonly via: string | null; readonly at: Date } | null
+  /** Who saw a refund that did not go through ("Got it", #234), and when; null while unseen. */
+  readonly seen: { readonly who: Who; readonly via: string | null; readonly at: Date } | null
 }
 
 /** One dispute of section 6. */
@@ -737,10 +739,36 @@ async function moneySections(
     )
     .orderBy(asc(paymentRefunds.serviceDate), asc(paymentRefunds.seenAt), asc(paymentRefunds.id))
     .limit(PAYMENTS_MAX_ROWS)
-  const stornoNames = await whoOf(
-    tx,
-    refundRows.flatMap((row) => (row.stornoBy === null ? [] : [row.stornoBy])),
-  )
+  // Who saw a refund that did not go through: its newest "Got it" entry, if it says `seen` (#234).
+  const failedIds = refundRows.flatMap((row) => (row.failedAt === null ? [] : [row.refundId]))
+  const seenEntries =
+    failedIds.length === 0
+      ? []
+      : await tx
+          .select({
+            details: logEntries.details,
+            toState: logEntries.toState,
+            actor: logEntries.actor,
+            via: logEntries.via,
+            at: logEntries.at,
+          })
+          .from(logEntries)
+          .where(
+            and(
+              eq(logEntries.venueId, venue.id),
+              eq(logEntries.kind, 'payment.refund_failed_seen'),
+              inArray(sql<string>`${logEntries.details} ->> 'refundId'`, failedIds),
+            ),
+          )
+          .orderBy(asc(logEntries.seq))
+  const seenOf = (refundId: string) => {
+    const latest = seenEntries.filter((entry) => entry.details.refundId === refundId).at(-1)
+    return latest?.toState === 'seen' ? latest : undefined
+  }
+  const stornoNames = await whoOf(tx, [
+    ...refundRows.flatMap((row) => (row.stornoBy === null ? [] : [row.stornoBy])),
+    ...failedIds.flatMap((id) => seenOf(id)?.actor ?? []),
+  ])
   // Section 6: the disputes opened on the day (a dispute read before its times were kept belongs
   // to its payment's day), and how many are open now.
   const nearDay = new Date(`${day}T12:00:00Z`).getTime()
@@ -783,6 +811,12 @@ async function moneySections(
                 via: row.stornoVia,
                 at: row.stornoAt,
               },
+        seen: ((entry) =>
+          entry === undefined
+            ? null
+            : { who: stornoNames.get(entry.actor) ?? RESTRO, via: entry.via, at: entry.at })(
+          seenOf(row.refundId),
+        ),
       }),
     ),
     disputes: {
