@@ -10,9 +10,10 @@
 //   account of ours is marked handled, and logged. An `account` or `access_lost` notice may come
 //   before its account is recorded as the venue's, so one about an unknown account waits
 //   `ACCOUNT_NOTICE_GRACE_MS` first;
-// - the payment is read back from the provider (`readNoticeSubject`), which gives the refund
-//   total and the dispute as they stand now, so a notice that comes twice, late or out of order
-//   records the same values; an incomplete reading concludes nothing and the notice waits;
+// - the payment is read back from the provider (`readNoticeSubject`), which gives the dispute as it
+//   stands now, and a refund's notice also reads the payment's refunds one by one (`readRefunds`,
+//   #261), so a notice that comes twice, late or out of order records the same values; an
+//   incomplete reading concludes nothing and the notice waits;
 // - what the reading says is recorded through core/service (`payment.observe`), as the worker;
 //   a `payment` notice (the guest at the card form, #110) queues the payment's check instead,
 //   which reads the provider again and moves the payment on;
@@ -35,6 +36,7 @@ import {
   JOB_NAMES,
   type PaymentProvider,
   type ProviderNotice,
+  type ProviderRefund,
   prepareJob,
   providerRef,
 } from '@restro/core'
@@ -77,7 +79,7 @@ const TRANSIENT_REFUSALS: readonly string[] = ['busy', 'payment_not_captured']
 /** The providers this worker reads notices back from, by kind (#107 adds the first real one). */
 export type NoticeProviders = ReadonlyMap<
   string,
-  Pick<PaymentProvider, 'readNoticeSubject'> & Partial<ConnectionProvider>
+  Pick<PaymentProvider, 'readNoticeSubject' | 'readRefunds'> & Partial<ConnectionProvider>
 >
 
 /** The providers that can also be asked about a venue's account (an account notice needs one). */
@@ -264,6 +266,21 @@ export async function handleProviderNotice(
     }
     return handled('queued')
   }
+  // A dispute's notice doesn't read the refunds: it records the dispute and leaves them as they are.
+  let refunds: readonly ProviderRefund[] | null = null
+  if (stored.kind === 'refund') {
+    try {
+      const listed = await provider.readRefunds(providerRef(stored.accountRef), payment.ref)
+      if (!listed.complete) {
+        log.warn({ ...about, reason: listed.reason }, "a payment's refunds could not be read")
+        return 'waiting'
+      }
+      refunds = listed.value
+    } catch (error) {
+      log.warn({ ...about, err: error }, "a payment's refunds could not be read")
+      return 'waiting'
+    }
+  }
   let result: Awaited<ReturnType<typeof applyService>>['result']
   try {
     ;({ result } = await applyService(
@@ -274,7 +291,14 @@ export async function handleProviderNotice(
         providerKind: stored.providerKind,
         providerPaymentRef: payment.ref.provider,
         capturedMinor: payment.capturedMinor,
-        refundedMinor: payment.refundedMinor,
+        refunds:
+          refunds === null
+            ? null
+            : refunds.map((refund) => ({
+                ref: refund.ref.provider,
+                amountMinor: refund.amountMinor,
+                failed: refund.failed,
+              })),
         dispute: payment.dispute,
         disputeDueAt: payment.disputeDueAt,
       },
@@ -296,17 +320,16 @@ export async function handleProviderNotice(
       typeof result.details.refundsUnmatched === 'number' &&
       result.details.refundsUnmatched > 0
     ) {
-      // The provider's refund total fell by an amount no refund row has: nothing was marked and
-      // no row was made. Amounts are minor units in fields, never in the message.
+      // A refund row the provider's list contradicts: it was left as it is. Amounts are minor units
+      // in fields, never in the message.
       log.warn(
         {
           ...about,
           paymentId: payment.paymentId,
           storedMinor: result.details.storedMinor ?? null,
-          refundedMinor: payment.refundedMinor,
           capturedMinor: payment.capturedMinor,
         },
-        'a refund total fell by an amount no refund row matches; no refund was marked',
+        "a refund row doesn't match the provider's list; it was left as it is",
       )
     }
     return handled(result.details.changed === true ? 'recorded' : 'unchanged')

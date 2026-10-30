@@ -154,6 +154,41 @@ describe('reading a notice back', () => {
     expect(await provider.readNoticeSubject(account, none)).toEqual({ complete: true, value: null })
   })
 
+  it("lists a payment's refunds by their own ids, oldest first, and marks the one that failed", async () => {
+    const { engine, provider, account, ref } = await capturedPayment()
+    expect(await provider.readRefunds(account, ref)).toEqual({ complete: true, value: [] })
+    const first = simPayNotice(engine.venue.refundsInDashboard(account, ref, 500))
+    const second = simPayNotice(engine.venue.refundsInDashboard(account, ref, 500))
+    const third = simPayNotice(engine.venue.refundsInDashboard(account, ref, 300))
+    const failed = simPayNotice(engine.venue.refundFails(account, ref, 500))
+    // The newest of that amount fails, and the provider's notice is about that refund.
+    expect(failed.objectRef).toEqual(second.objectRef)
+    const reading = await provider.readRefunds(account, ref)
+    expect(reading).toEqual({
+      complete: true,
+      value: [
+        { ref: first.objectRef, amountMinor: 500, failed: false },
+        { ref: second.objectRef, amountMinor: 500, failed: true },
+        { ref: third.objectRef, amountMinor: 300, failed: false },
+      ],
+    })
+    expect(await provider.readNoticeSubject(account, failed)).toMatchObject({
+      value: { refundedMinor: 800 },
+    })
+    // Failing once more than was made is the test's mistake.
+    expect(() => engine.venue.refundFails(account, ref, 300)).not.toThrow()
+    expect(() => engine.venue.refundFails(account, ref, 300)).toThrow(/none of it/)
+  })
+
+  it("concludes nothing about refunds on a failed read, another account or a payment it doesn't have", async () => {
+    const { engine, provider, account, ref } = await capturedPayment()
+    engine.venue.refundsInDashboard(account, ref, 500)
+    expect((await provider.readRefunds(engine.addAccount(), ref)).complete).toBe(false)
+    expect((await provider.readRefunds(account, providerRef('simpay_999'))).complete).toBe(false)
+    engine.failReads()
+    expect((await provider.readRefunds(account, ref)).complete).toBe(false)
+  })
+
   it('refuses a refund above what is left, and a dispute on a payment not captured', async () => {
     const { engine, account, ref } = await capturedPayment()
     engine.venue.refundsInDashboard(account, ref, 1_500)
