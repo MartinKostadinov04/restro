@@ -253,8 +253,15 @@ describe.skipIf(!hasDatabase)('payment.claim_table itself, at once (restro_app r
     const second = await held(61_000)
     await claim(first, tables)
     await claim(second, tables)
-    expect((await stored(first))?.payment_table_id).toBe(tables[0])
-    expect((await stored(second))?.payment_table_id).toBe(tables[1])
+    // The order the database itself sorts ids in: its collation is not JavaScript's `sort`.
+    const inOrder = (
+      await world.owner.query<{ id: string }>(
+        'select id from restro.tables where id = any($1::text[]) order by id',
+        [tables],
+      )
+    ).rows.map((row) => row.id)
+    expect((await stored(first))?.payment_table_id).toBe(inOrder[0])
+    expect((await stored(second))?.payment_table_id).toBe(inOrder[1])
   })
 
   it('gives N payments at once the M tables first come, first served, one holder each', async () => {
