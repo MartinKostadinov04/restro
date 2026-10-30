@@ -73,11 +73,14 @@ import {
 } from '@restro/sim-pay'
 import {
   buildEngine,
+  createSimPosConnector,
   createSimServer,
   type FaultRule,
+  fetchTransport,
   loadScenarioFile,
   PosRefusal,
   ManualClock as SimPosClock,
+  readingLogin,
   type SimServer,
   SimSetupError,
   UndefinedBehaviour,
@@ -409,7 +412,11 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
   }
 
   /** The same, or null when the Pay is refused (another phone is paying for its lines). */
-  async function tryHeld(index: number | 'all'): Promise<string | null> {
+  async function tryHeld(
+    index: number | 'all',
+    tipMinor: number | null = null,
+    overrides: Partial<PaymentJobDeps> = {},
+  ): Promise<string | null> {
     const shown = await lines()
     const picked = index === 'all' ? shown : [shown[index] as (typeof shown)[number]]
     const answer = await guestAct(pool, {
@@ -423,7 +430,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
           quantity: l.quantity,
           amountMinor: l.amountMinor,
         })),
-        tipMinor: null,
+        tipMinor,
         tipPercent: null,
       },
       ageMs: 10,
@@ -435,12 +442,15 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     })
     if (!answer.ok || answer.result.status !== 'accepted') return null
     const id = answer.result.subjectId as string
-    expect(await preparePayment(env(), target(id), deps())).toEqual({
+    expect(await preparePayment(env(), target(id), deps(overrides))).toEqual({
       kind: 'at',
       state: 'awaiting_guest',
     })
     engine.guest.pay(providerRef((await stored(id))?.provider_payment_ref ?? ''))
-    expect(await checkPayment(env(), target(id), deps())).toEqual({ kind: 'at', state: 'held' })
+    expect(await checkPayment(env(), target(id), deps(overrides))).toEqual({
+      kind: 'at',
+      state: 'held',
+    })
     return id
   }
 
@@ -1389,6 +1399,151 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     const { row } = await drive(id)
     expect(row).toMatchObject({ state: 'released', reason: 'busy' })
     expect(rowsOn(POS_TABLE)).toEqual(['2001', '2002'])
+  })
+
+  // Repair-review loops (A5). A hold is never left without a release or capture path, and the
+  // money taken is the lines plus the tip in minor units (rule 8).
+  describe('signed POS amounts and tips through the close and the capture', () => {
+    /** The route's connector with each `readIsolated` answer's bill passed through `edit`. */
+    const editingIsolated =
+      (edit: (bill: { totalMinor: number; lines: unknown[] }) => object): typeof connectorFor =>
+      (integration, simPolicy) => {
+        const connector = connectorFor(integration, simPolicy)
+        return new Proxy(connector, {
+          get(target, name, receiver) {
+            const value = Reflect.get(target, name, receiver)
+            if (name !== 'readIsolated' || typeof value !== 'function') return value
+            return async (...callArgs: unknown[]) => {
+              const answer = await value.apply(target, callArgs)
+              if (!answer.complete || answer.value.bill === null) return answer
+              return { ...answer, value: { ...answer.value, bill: edit(answer.value.bill) } }
+            }
+          },
+        }) as ServiceConnector
+      }
+
+    // RR-11: a discount line (negative, as `BillLineSchema` allows) on the isolated bill: a
+    // waiter's discount given on the payment table before the last check. The guest did not
+    // confirm it, so the check fails, the lines go back and the card is released; the route must
+    // never throw on the signed amount and leave the card held with the payment `isolated`.
+    it('a discount line on the isolated bill fails the check and releases the card', async () => {
+      const id = await held(1)
+      const discounted = editingIsolated((bill) => ({
+        ...bill,
+        totalMinor: bill.totalMinor - 100,
+        lines: [
+          ...bill.lines,
+          {
+            ref: { pos: 'discount-1' },
+            item: null,
+            name: 'Discount',
+            quantity: '1',
+            amountMinor: -100,
+            enteredBy: 'staff',
+            enteredAt: null,
+            restroRef: null,
+          },
+        ],
+      }))
+      let thrown: unknown = null
+      try {
+        await drive(id, 40, { connectorFor: discounted })
+      } catch (error) {
+        thrown = error
+      }
+      const row = await stored(id)
+      expect({ thrown: thrown === null ? null : String(thrown), state: row?.state }).toEqual({
+        thrown: null,
+        state: 'released',
+      })
+      expect(row).toMatchObject({ reason: 'check_failed', payment_table_id: null })
+      expect(await alertsOf(id)).toEqual(['payment_check_failed:alerts.answer'])
+      expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+        expect.objectContaining({ status: 'released' }),
+      ])
+    })
+
+    // RR-37 / M5: a guest's tip goes to the POS with the close and into the capture: the card
+    // pays lines + tip, the till's card payment is that, and the tip is a row on the closed bill.
+    describe('a tip above 0', () => {
+      const TIP_ITEM = '2999'
+      const tips = (on: boolean) =>
+        query(
+          `update restro.integrations
+              set config = jsonb_set(config, '{service_capabilities,record_tip_on_close}', $2::jsonb)
+            where id = $1`,
+          [demo.integrationId, JSON.stringify(on)],
+        )
+      /** The sim connector of a POS that records a tip as a row of its tip article (Q41). */
+      const tipping: typeof connectorFor = (integration, simPolicy) => {
+        const scenario = loadScenarioFile('demo-bar')
+        const connector = createSimPosConnector({
+          transport: fetchTransport(`http://${integration.host}`, {
+            env: simPolicy.env,
+            allowHosts: simPolicy.allowHosts,
+          }),
+          login: readingLogin(scenario),
+          switches: { ...scenario.switches, tipAsLine: true },
+          tipItem: TIP_ITEM,
+        })
+        return new Proxy(connector, {
+          get(target, name, receiver) {
+            const value = Reflect.get(target, name, receiver)
+            if (typeof value !== 'function') return value
+            return (...args: unknown[]) => {
+              simClock.advance(CALL_MS)
+              return value.apply(target, args)
+            }
+          },
+        }) as ServiceConnector
+      }
+
+      it.each([1, 50, 333])(
+        'a line of 22.00 with a tip of %i: captured lines + tip, the till shows the same',
+        async (tipMinor) => {
+          const scenario = loadScenarioFile('demo-bar')
+          sim.host.engine = buildEngine(
+            {
+              ...scenario,
+              switches: { ...scenario.switches, tipAsLine: true, lateLandingMs: LATE_LANDING_MS },
+            },
+            { clock: simClock },
+          )
+          sim.host.engine.waiter.addRound(POS_TABLE, [
+            { article: '2001' },
+            { article: '2002', quantity: '2' },
+          ])
+          await read()
+          await tips(true)
+          let id: string | null
+          try {
+            id = await tryHeld(1, tipMinor, { connectorFor: tipping })
+          } finally {
+            await tips(false)
+          }
+          if (id === null) throw new Error('the tipped Pay was refused')
+          const { row } = await drive(id, 40, { connectorFor: tipping })
+          const total = 2_200 + tipMinor
+          expect(row).toMatchObject({
+            state: 'captured',
+            amount_minor: String(total),
+            captured_minor: String(total),
+          })
+          expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+            expect.objectContaining({ status: 'captured', capturedMinor: total }),
+          ])
+          const closed = sim.host.engine.state.bills.filter(
+            (bill) => bill.state !== 'open' && bill.payments.length > 0,
+          )
+          expect(closed).toHaveLength(1)
+          const [bill] = closed
+          expect(bill?.payments.map((payment) => payment.amountMinor)).toEqual([total])
+          expect(
+            bill?.rows.filter((r) => r.article === TIP_ITEM).map((r) => r.amountMinor),
+          ).toEqual([tipMinor])
+        },
+      )
+    })
   })
 
   describe('the model', () => {

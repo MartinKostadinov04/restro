@@ -295,6 +295,54 @@ describe('the last check', () => {
   })
 })
 
+// Repair-review hot spot 8 (RR-11): the POS's own amounts are signed (a discount line is
+// negative, `BillLineSchema`), and `pay.start` takes a pick whose lines sum above zero, discount
+// lines among them. The last check must then answer, pass or fail, and never throw: a throw
+// leaves the payment `isolated` with the card held and nothing to release it.
+describe('the last check on a bill with a discount line (signed POS amounts)', () => {
+  const positive = fc.record({
+    quantity: fc.constantFrom('1', '2'),
+    amountMinor: fc.integer({ min: 1, max: 3_000 }),
+  })
+  const discount = fc.record({
+    quantity: fc.constant('1'),
+    amountMinor: fc.integer({ min: -3_000, max: -1 }),
+  })
+
+  it('passes the confirmed lines, a discount among them, for their signed sum', () => {
+    fc.assert(
+      fc.property(
+        fc.array(positive, { minLength: 1, maxLength: 4 }),
+        fc.array(discount, { minLength: 1, maxLength: 2 }),
+        (lines, discounts) => {
+          const all = [...lines, ...discounts]
+          const signed = all.reduce((sum, line) => sum + line.amountMinor, 0)
+          fc.pre(signed > 0)
+          const confirmed = all.map((line, index) => ({ pos: `L${index}`, ...line }))
+          let result: ReturnType<typeof lastCheck> | Error
+          try {
+            result = lastCheck({
+              confirmed,
+              isolated: { bills: 1, totalMinor: signed, paidMinor: 0, lines: all },
+              real: [],
+              partialCapture: true,
+            })
+          } catch (error) {
+            result = error as Error
+          }
+          expect(result).toEqual({
+            ok: true,
+            foundMinor: signed,
+            voided: 0,
+            found: all.map((_, index) => index),
+          })
+        },
+      ),
+      { numRuns: 200 },
+    )
+  })
+})
+
 describe.skipIf(!hasDatabase)('answering an unconfirmed close (as the restro_app role)', () => {
   let world: ServiceWorld
   let ownerId: string
