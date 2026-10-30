@@ -600,7 +600,9 @@ export function paymentIsolated() {
     permission: null,
     idempotency: 'by_state',
     async handle(stx, command) {
-      const locked = await lockRoute(stx, command.paymentId)
+      const locked = await lockRoute(stx, command.paymentId, {
+        alertKinds: [PAYMENT_CHECK_FAILED_KIND],
+      })
       if (refusedLock(locked)) return locked
       const { payment } = locked
       if (payment.state !== 'queued' || payment.paymentTableId === null) {
@@ -611,6 +613,10 @@ export function paymentIsolated() {
         return at(payment, 'isolated', true)
       }
       await move(stx, locked, 'cancelling', { reason: isolateRefusalReason(command.code) })
+      // A waiter's bill took the payment table under a move: a manager is told what stopped.
+      if (command.code === 'payment_table_busy') {
+        await raise(stx, locked, PAYMENT_CHECK_FAILED_KIND, 'alerts.answer')
+      }
       return at(payment, 'cancelling', true)
     },
   })

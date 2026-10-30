@@ -1069,12 +1069,18 @@ async function isolate(
   // is unknown may land late: inside the read-back window it is read back, never sent again
   // (D127 3.4, design §5.3). Past it, it is sent again only from a real table that still has the
   // lines and an empty payment table. (A first move is not read for: the connector reads the
-  // payment table itself, and every read counts towards the POS's calls per second.)
+  // payment table itself, and every read counts towards the POS's calls per second.) Only a bill of
+  // the payment's own lines is that move (as `enter`'s `landed`): a waiter's bill there is not.
   const earlier = await callsOf(env, target, 'isolateLines')
-  const landed = async () => (await readPos(pos, paymentTable)).bills.length > 0
+  const own = await ownLines(env, target)
+  const landedOn = (table: TableBills) => table.bills.some((bill) => wholeOwnBill(bill, own))
+  const landed = async () => landedOn(await readPos(pos, paymentTable))
   if (earlier !== null) {
-    if (await landed()) return MOVED
+    const onPaymentTable = await readPos(pos, paymentTable)
+    if (landedOn(onPaymentTable)) return MOVED
     if (mayStillLand(earlier, pos.timings)) return 'later'
+    // A waiter's bill on the payment table: nothing is sent, the hold is released, a manager told.
+    if (onPaymentTable.bills.length > 0) return { outcome: 'refused', code: 'payment_table_busy' }
   }
   const real = await readPos(pos, pos.table)
   const lines = await withTenant(env.pool, target.tenantId, (tx) =>
@@ -1795,9 +1801,14 @@ async function undo(
 ): Promise<'returned' | 'stranded' | 'not_back' | 'later'> {
   const onTable = await readPos(pos, paymentTable)
   const earlier = await callsOf(env, target, 'undoIsolate')
+  const own = await ownLines(env, target)
+  // Only the payment's own bill goes back; a waiter's bill on the payment table stays there.
+  const mine = billsToMoveBack(onTable, own)
+  // Two bills that may each be the payment's: which one it moved can't be told. Staff move it.
+  if (mine === null) return 'stranded'
   // A move back whose outcome is unknown may land late: inside the read-back window it is read
   // back, never sent again (D127 3.4, design §5.3).
-  if (onTable.bills.length > 0 && earlier !== null && mayStillLand(earlier, pos.timings)) {
+  if (mine.length > 0 && earlier !== null && mayStillLand(earlier, pos.timings)) {
     return 'later'
   }
   // After "No receipt" a close was attempted, and it may land after the read-back window (C52):
@@ -1809,12 +1820,9 @@ async function undo(
   const proving = payment.reason === 'no_receipt'
   const recorded = proving ? await recordedLines(env, target) : []
   if (recorded === null) return 'not_back'
-  const moved = [...recorded, ...linesOf(onTable)]
+  const moved = [...recorded, ...linesOf({ ...onTable, bills: mine })]
   if (proving && moved.length === 0) return 'not_back'
-  const own = proving ? await ownLines(env, target) : []
-  // The POS refs of someone else's bills closed on the payment table: not the payment's to prove.
-  const others = new Set<string>()
-  for (const [index, bill] of onTable.bills.entries()) {
+  for (const [index, bill] of mine.entries()) {
     const ref = `${payment.id}-undo${index === 0 ? '' : `-${index}`}`
     const isolated: IsolatedHandle = { ref: bill.ref, table: paymentTable }
     const lines = PaymentStepLinesSchema.safeParse(linesOf({ ...onTable, bills: [bill] }))
@@ -1829,10 +1837,8 @@ async function undo(
     )
     if (outcome.kind === 'refused') {
       if (outcome.refusal.code === 'bill_closed') {
-        // Only the payment's own bill closed is no proof (#155, finding 5); a bill that is not its
-        // own closed by someone else leaves the payment's lines to prove.
-        if (proving && ownBill(bill, own)) return 'not_back'
-        for (const line of bill.lines) others.add(line.ref.pos)
+        // The payment's own bill closed is no proof (#155, finding 5).
+        if (proving) return 'not_back'
         continue
       }
       // A waiter holding the bill, or the POS busy, passes: tried again for the read-back window
@@ -1847,12 +1853,7 @@ async function undo(
     }
   }
   if (!proving) return 'returned'
-  return (await backOnTable(
-    pos,
-    moved.filter((line) => !others.has(line.pos)),
-  ))
-    ? 'returned'
-    : 'not_back'
+  return (await backOnTable(pos, moved)) ? 'returned' : 'not_back'
 }
 
 /** The payment's own lines, as `ownBill` compares them. */
@@ -1893,6 +1894,47 @@ function ownBill(
           mine.amountMinor === line.amountMinor),
     ),
   )
+}
+
+/** True when each line of a bill, and at least one, is one of the payment's own lines. */
+function wholeOwnBill(
+  bill: TableBills['bills'][number],
+  own: readonly {
+    readonly pos: string | null
+    readonly quantity: string
+    readonly amountMinor: number
+  }[],
+): boolean {
+  const left = [...own]
+  for (const line of bill.lines) {
+    const mine = left.findIndex(
+      (candidate) =>
+        candidate.pos === line.ref.pos ||
+        (quantityKey(candidate.quantity) === quantityKey(line.quantity) &&
+          candidate.amountMinor === line.amountMinor),
+    )
+    if (mine < 0) return false
+    left.splice(mine, 1)
+  }
+  return bill.lines.length > 0
+}
+
+/**
+ * The bills on the payment table a move back takes: those that may be the payment's own. Of several,
+ * the one that holds the payment's lines and nothing else; null where that names no single bill.
+ */
+function billsToMoveBack(
+  table: TableBills,
+  own: readonly {
+    readonly pos: string | null
+    readonly quantity: string
+    readonly amountMinor: number
+  }[],
+): TableBills['bills'] | null {
+  const mine = table.bills.filter((bill) => ownBill(bill, own))
+  if (mine.length <= 1) return mine
+  const whole = mine.filter((bill) => wholeOwnBill(bill, own))
+  return whole.length === 1 ? whole : null
 }
 
 /**

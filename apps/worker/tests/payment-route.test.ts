@@ -1765,7 +1765,7 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
   })
 
   // RR-12: red until its fix; the fix removes .fails.
-  it.fails('a move that never landed, a waiter’s bill on the payment table: never moved to the guest', async () => {
+  it('a move that never landed, a waiter’s bill on the payment table: never moved to the guest', async () => {
     const id = await held(1)
     fault({ on: 'moveRows', fault: { kind: 'hang' } })
     try {
@@ -1784,6 +1784,57 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
     expect(PAYMENT_TABLES.flatMap((table) => rowsOn(table))).toEqual(['2003', '2003'])
     expect(calls('closeBill')).toBe(0)
     expect(row?.state).toBe('released')
+    expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+      expect.objectContaining({ status: 'released' }),
+    ])
+    expect(await alertsOf(id)).toEqual(['payment_check_failed:alerts.answer'])
+  })
+
+  /** Once the move landed, a waiter's bill of its own beside it (a POS with several per table). */
+  function waitersBillBeside(amountMinor: number | null) {
+    let done = false
+    beforeCall = (method, args) => {
+      if (method !== 'readTable' || done) return
+      const table = args[1] as { pos: string }
+      if (!PAYMENT_TABLES.includes(table.pos) || rowsOn(table.pos).length === 0) return
+      done = true
+      const bill = sim.host.engine.state.bills.find(
+        (candidate) => candidate.table === table.pos && candidate.state === 'open',
+      )
+      if (bill === undefined) return
+      sim.host.engine.state.bills.push({
+        ...bill,
+        id: 'waiters-bill',
+        rows: bill.rows.map((row) => ({
+          ...row,
+          id: 'waiters-row',
+          article: '2003',
+          amountMinor: amountMinor ?? row.amountMinor,
+        })),
+      })
+    }
+  }
+
+  // The check fails on the two bills. Only the payment's own goes back.
+  it('a failed check with a waiter’s bill on the payment table: only the payment’s bill goes back', async () => {
+    const id = await held(1)
+    waitersBillBeside(777)
+    const { row } = await drive(id)
+    expect(row).toMatchObject({ state: 'released', reason: 'check_failed' })
+    expect(rowsOn(POS_TABLE)).toEqual(['2001', '2002'])
+    expect(PAYMENT_TABLES.flatMap((table) => rowsOn(table))).toEqual(['2003'])
+    expect(await alertsOf(id)).toEqual(['payment_check_failed:alerts.answer'])
+  })
+
+  // Two bills the same to the line: which one the payment moved can't be told, so neither moves.
+  it('a waiter’s bill the same as the payment’s: neither moves, staff are told', async () => {
+    const id = await held(1)
+    waitersBillBeside(null)
+    const { row } = await drive(id)
+    expect(row).toMatchObject({ state: 'stranded' })
+    expect(PAYMENT_TABLES.flatMap((table) => rowsOn(table))).toHaveLength(2)
+    expect(calls('closeBill')).toBe(0)
+    expect((await alertsOf(id)).length).toBeGreaterThan(0)
     expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
       expect.objectContaining({ status: 'released' }),
     ])
