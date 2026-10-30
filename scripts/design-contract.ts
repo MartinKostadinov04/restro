@@ -2,7 +2,7 @@ import {
   DESIGN_MARKER,
   DESIGN_TOKEN,
   DESIGN_TOKEN_MAX,
-} from '../packages/shell/src/design/contract'
+} from '../packages/core/src/design/contract'
 
 // The checks behind scripts/design-contract.test.ts (D128, D130, D67). Each takes plain data and
 // returns the problems it finds, so the test can plant a difference and see the check fail.

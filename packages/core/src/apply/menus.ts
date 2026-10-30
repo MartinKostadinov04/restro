@@ -1,15 +1,15 @@
 // A venue's menus (D88, D90, D91, D92; adjustments M1): the writers behind Settings › Menus and
 // the composer's menu list, and the readers those screens share.
 //
-// The `menus` rows are a side table like the tags: which menus a venue has, their names, order,
-// settings and bin. Nothing of the menu document is here, so these writers do not go through
+// The `menus` rows are a side table like the tags: which menus a venue has, their names, order
+// and bin (their layout moved to the venue's design record, D129). Nothing of the menu document is here, so these writers do not go through
 // apply() (only this folder may import the write side of the database). What goes through apply()
 // is `importMenu`: the one-time copy of a hand-made menu into another hand-made venue is one
 // atomic change set of createNode, setField and setPlacement ops.
 //
 // Rules the writers keep:
 // - a venue fed by a till gets its menus from the till (D88): `createMenu`, `deleteMenu`,
-//   `restoreMenu` and `importMenu` refuse it (`till_venue`); naming, ordering, settings and the
+//   `restoreMenu` and `importMenu` refuse it (`till_venue`); naming, ordering and the
 //   choice of the live menu are every venue's;
 // - exactly one live menu (`venues.live_menu_id`): the live one is never binned (`menu_live`),
 //   a binned one is never set live (`menu_deleted`); a venue's first menu is live by default;
@@ -32,7 +32,7 @@ import {
 } from '../change-set'
 import { tillVenueLinks } from '../connectors/till-venues'
 import { idSchema, type NodeId, newId, type VenueId } from '../ids'
-import { checkMenuName, type MenuSettings, MenuSettingsSchema, menuSettingsOf } from '../menus'
+import { checkMenuName } from '../menus'
 import { sortKeyBetween } from '../sort-keys'
 import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
 import { type ApplyResult, applyInTransaction } from './apply'
@@ -66,7 +66,6 @@ export interface MenuSummary {
   /** The header name guests see; null = the venue's name (D92). */
   readonly name: string | null
   readonly sortKey: string
-  readonly settings: MenuSettings
   /** When it went to the bin (ISO 8601); null = in use. */
   readonly deletedAt: string | null
   /** True for the venue's live menu (`venues.live_menu_id`). */
@@ -99,7 +98,6 @@ function toSummary(row: Menu, liveMenuId: string | null): MenuSummary {
     venueId: row.venueId as VenueId,
     name: row.name,
     sortKey: row.sortKey,
-    settings: menuSettingsOf(row.settings),
     deletedAt: row.deletedAt === null ? null : row.deletedAt.toISOString(),
     live: row.id === liveMenuId,
     createdAt: row.createdAt.toISOString(),
@@ -355,37 +353,6 @@ export async function moveMenu(
     const [updated] = await tx
       .update(menus)
       .set({ sortKey })
-      .where(eq(menus.id, input.menuId))
-      .returning()
-    return updated
-      ? { ok: true, menu: toSummary(updated, venue.liveMenuId) }
-      : unknownMenu(input.menuId)
-  })
-}
-
-/** Replaces a menu's settings (the layout default and the guest switch, D92). */
-export async function setMenuSettings(
-  pool: DbPool,
-  tenantId: string,
-  input: { readonly venueId: string; readonly menuId: string; readonly settings: unknown },
-): Promise<MenuWriteResult> {
-  const settings = MenuSettingsSchema.safeParse(input.settings)
-  if (!idSchema('nd').safeParse(input.menuId).success) {
-    return failure('invalid_input', 'menuId must be an nd_ id')
-  }
-  if (!settings.success) {
-    return failure(
-      'invalid_input',
-      `the menu settings are not valid: ${settings.error.issues[0]?.message ?? 'unknown problem'}`,
-    )
-  }
-  return inVenue(pool, tenantId, input.venueId, async (tx, venue) => {
-    const row = await menuOf(tx, input.venueId, input.menuId)
-    if (row === undefined) return unknownMenu(input.menuId)
-    if (row.deletedAt !== null) return failure('menu_deleted', 'the menu is in the bin')
-    const [updated] = await tx
-      .update(menus)
-      .set({ settings: settings.data })
       .where(eq(menus.id, input.menuId))
       .returning()
     return updated

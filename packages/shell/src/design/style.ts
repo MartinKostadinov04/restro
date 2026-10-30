@@ -1,7 +1,11 @@
 import { z } from 'zod'
 
-import type { PremadeStyleId, StyleValues } from './contract'
-import { PremadeStyleIdSchema, StyleValuesSchema } from './schema'
+import {
+  type PremadeStyleId,
+  PremadeStyleIdSchema,
+  type StyleValues,
+  StyleValuesSchema,
+} from '@restro/core'
 
 // The Style file (D128): how one of Restro's premade Styles is written. One file per Style in
 // ./styles/, named for its id, holding one value for every option that a Style sets: no colours, no

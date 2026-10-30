@@ -1,11 +1,11 @@
-// The venue theme setting (`venues.settings.theme`, briefs S3-03 and SH-01 §8) and what the
-// publisher makes of it: the snapshot's palette and its eight colour roles per scheme.
+// The venue's look in theme terms (briefs S3-03 and SH-01 §8) and what the publisher makes of it:
+// the snapshot's palette and its eight colour roles per scheme.
 //
-// v1 (S3-03) stored `{brand, logo_asset_id}`. v2 adds, all optional and snake_case: the preset it
-// started from, the venue's three colours (D70), role overrides per scheme, a font from the short
-// list, corner radius, shadow and the light/dark policy. A v1 row is a valid v2 row and publishes
-// exactly as before. Nothing is ever derived into storage: palette and roles are worked out at
-// publish time, so a better derivation reaches every venue with its next publish.
+// It was stored as `venues.settings.theme` until the design record (D129, ../design/record.ts)
+// replaced it (migration 0043): the record keeps the colours, the overrides and the logo, and
+// `designThemeOf` gives this shape for the publisher and the admin's preview. Nothing is ever
+// derived into storage: palette and roles are worked out at publish time, so a better derivation
+// reaches every venue with its next publish.
 
 import { z } from 'zod'
 
@@ -19,12 +19,12 @@ import {
   paletteRoles,
   withOverrides,
 } from './derive'
-import { THEME_FONT_IDS } from './fonts'
+import { THEME_FONTS, type ThemeFontId } from './fonts'
 import { THEME_PRESET_IDS } from './presets'
 import { THEME_SCHEMES, type ThemeRoleSet } from './roles'
 
 /** `#rrggbb` in either case, stored in lower case. */
-const HexInputSchema = z
+export const HexInputSchema = z
   .string()
   .regex(/^#[0-9a-fA-F]{6}$/, 'expected #rrggbb')
   .transform((value) => value.toLowerCase())
@@ -60,7 +60,7 @@ export const THEME_RADIUS = { min: 0, max: 32 } as const
 export const THEME_SHADOW = { min: 0, max: 5 } as const
 
 /**
- * `venues.settings.theme`. v1 fields: the brand colour (`#rrggbb`, lower-cased; optional since v2)
+ * A venue's look in theme terms (formerly `venues.settings.theme`). v1 fields: the brand colour (`#rrggbb`, lower-cased; optional since v2)
  * and the logo (an asset id, or null for none: the key is required, as in v1). v2 fields, each
  * optional: `preset` (the starting point it came from, or null for custom), `colors` (the three
  * venue colours), `overrides` (roles set by hand, per scheme), `font` (an id of `THEME_FONTS`),
@@ -72,7 +72,7 @@ export const VenueThemeSchema = z.strictObject({
   preset: z.enum(THEME_PRESET_IDS).nullable().optional(),
   colors: ThemeColoursSchema.optional(),
   overrides: RoleOverridesSchema.optional(),
-  font: z.enum(THEME_FONT_IDS).optional(),
+  font: z.enum(THEME_FONTS.map((font) => font.id) as [ThemeFontId, ...ThemeFontId[]]).optional(),
   radius: z.int().min(THEME_RADIUS.min).max(THEME_RADIUS.max).optional(),
   shadow: z.int().min(THEME_SHADOW.min).max(THEME_SHADOW.max).optional(),
   scheme: z.enum(THEME_SCHEMES).optional(),
@@ -80,16 +80,6 @@ export const VenueThemeSchema = z.strictObject({
 
 /** The venue's theme setting. */
 export type VenueTheme = z.output<typeof VenueThemeSchema>
-
-/**
- * The theme a venue has set, or null when it has none (or the stored value is not valid, which
- * only a hand-edited row could cause: the venue then gets the default theme rather than an error).
- */
-export function readVenueTheme(settings: unknown): VenueTheme | null {
-  if (typeof settings !== 'object' || settings === null || !('theme' in settings)) return null
-  const parsed = VenueThemeSchema.safeParse((settings as { theme: unknown }).theme)
-  return parsed.success ? parsed.data : null
-}
 
 /** A palette as the list a snapshot carries, light to dark. */
 export function paletteList(palette: Palette): string[] {

@@ -80,9 +80,10 @@ export const venues = restro.table(
     defaultLocale: text('default_locale').notNull().default('bg_BG'),
     enabledLocales: text('enabled_locales').array().notNull().default(sql`'{bg_BG,en_US}'::text[]`),
     /**
-     * Venue settings that are not columns of their own (S3-03). `theme` is the look of the guest
-     * menu: `{brand: '#rrggbb', logo_asset_id: 'as_…' | null}`. core/apply validates and writes
-     * it (`setVenueTheme`); the publisher turns it into the snapshot's theme.
+     * Venue settings that are not columns of their own (S3-03). `design` is the venue's design
+     * record (D129, core's `DesignRecordSchema`): the look of the guest menu, written only by
+     * core's `apply()` (`setDesign`); the publisher turns it into the snapshot's theme and
+     * `design` block. It replaced `theme` and `presentation` (migration 0043).
      */
     settings: jsonb('settings')
       .$type<Record<string, unknown>>()
@@ -928,6 +929,7 @@ export const EVENT_OPS = [
   'linkSource',
   'unlinkSource',
   'setLinkState',
+  'setDesign',
 ] as const
 
 /**
@@ -946,6 +948,11 @@ export const EVENT_OPS = [
  * `{source, external_type}` for a link, `{source, external_type, state}` for a link-state
  * change (`source` is `till:<integration>`), the status text for a status change. `node_id` is
  * the node that changed (the item, for a placement).
+ *
+ * `setDesign` (D129, migration 0043) is about a venue, not a node: `node_id` is null (and only
+ * there, `events_node_only_for_document_ops`), `field_key` is `design`, the layer `manual`, the
+ * scope the venue's (`venue:<vn_ id>`, which is how the purge finds it), and the old and new
+ * values are the design record before (null for the first) and after.
  */
 export const events = restro.table(
   'events',
@@ -954,7 +961,8 @@ export const events = restro.table(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'restrict' }),
-    nodeId: text('node_id').notNull(),
+    /** The node that changed; null for a `setDesign` row (a venue's design). */
+    nodeId: text('node_id'),
     /** What kind of change this row records; rows from before the column count as `setField`. */
     op: text('op').notNull().default('setField'),
     fieldKey: text('field_key').notNull(),
@@ -977,7 +985,15 @@ export const events = restro.table(
     index('events_node_id_seq_idx').on(t.nodeId, t.seq),
     check(
       'events_op',
-      sql`${t.op} in ('setField', 'clearField', 'createNode', 'setPlacement', 'removePlacement', 'moveNode', 'setNodeStatus', 'linkSource', 'unlinkSource', 'setLinkState')`,
+      sql`${t.op} in ('setField', 'clearField', 'createNode', 'setPlacement', 'removePlacement', 'moveNode', 'setNodeStatus', 'linkSource', 'unlinkSource', 'setLinkState', 'setDesign')`,
+    ),
+    check(
+      'events_node_only_for_document_ops',
+      sql`(${t.op} = 'setDesign') = (${t.nodeId} is null)`,
+    ),
+    check(
+      'events_design_scope',
+      sql`${t.op} <> 'setDesign' or (${t.scope} ~ ${VENUE_SCOPE_PATTERN} and ${t.fieldKey} = 'design' and ${t.layer} = 'manual')`,
     ),
     check('events_field_key', sql`${t.fieldKey} ~ '^[a-z][a-z0-9_]{0,63}$'`),
     check(
