@@ -127,7 +127,7 @@ describe.skipIf(!hasDatabase)('the closing hour (as the restro_app role)', () =>
         `insert into restro.payments
            (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
             action_id, amount_minor, tip_minor, currency, provider_kind, source, actor, job_id)
-         values ($1, $2, $3, $4, $5, '2026-10-23', 'on_bill', 'unconfirmed', $6, $7, 1200, 0, 'EUR',
+         values ($1, $2, $3, $4, $5, '2026-10-23', 'on_bill', 'held', $6, $7, 1200, 0, 'EUR',
                  'sim', 'guest', 'guest', 'test-seed')`,
         [
           id,
