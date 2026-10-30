@@ -8,6 +8,10 @@
 // checks the POS for it. Both commands are `money.follow_up`: a manager's PIN on the shared tablet,
 // one tap on a manager's own session.
 //
+// A refund that did not go through after its storno stays on Tonight for three days. "Got it"
+// (`payment.refund_failed_seen`, same right) clears it earlier: the Log entry is the whole record,
+// the reads leave out a refund whose newest such entry says `seen`, and the Undo writes `open`.
+//
 // Locks: the payment's route locks (`lockRoute`: the table's order, the refund alert, the payment),
 // then the refund rows of the payment.
 
@@ -282,6 +286,110 @@ export function paymentStornoUndo() {
         return refused(null, 'invalid_command')
       }
       return markStorno(stx, command, false)
+    },
+  })
+}
+
+const FailedSeenSchema = (type: 'payment.refund_failed_seen' | 'payment.refund_failed_seen_undo') =>
+  z.strictObject({ type: z.literal(type), refundId })
+
+/** Records or takes back that a refund that did not go through was seen. */
+async function markFailedSeen(
+  stx: ServiceTx,
+  command: { readonly refundId: string },
+  seen: boolean,
+): Promise<ServiceResult> {
+  const [found] = await stx.tx
+    .select({ paymentId: paymentRefunds.paymentId })
+    .from(paymentRefunds)
+    .where(and(eq(paymentRefunds.id, command.refundId), eq(paymentRefunds.venueId, stx.venueId)))
+  if (found === undefined) return refused(null, 'refund_missing')
+  const locked = await lockRoute(stx, found.paymentId)
+  if (refusedLock(locked)) return locked
+  const [refund] = await stx.tx
+    .select()
+    .from(paymentRefunds)
+    .where(eq(paymentRefunds.id, command.refundId))
+    .for('update')
+  if (refund === undefined) return refused(null, 'refund_missing')
+  // Only a refund that did not go through can be seen as such.
+  if (refund.failedAt === null) return refused(null, 'refund_not_failed')
+  // Tonight lists only a refund that failed after its storno was made (`refundsFailedAfterStorno`).
+  if (refund.stornoAt === null) return refused(null, 'invalid_command')
+  const [latest] = await stx.tx
+    .select({ toState: logEntries.toState })
+    .from(logEntries)
+    .where(
+      and(
+        eq(logEntries.venueId, stx.venueId),
+        eq(logEntries.kind, 'payment.refund_failed_seen'),
+        sql`${logEntries.details} ->> 'refundId' = ${refund.id}`,
+      ),
+    )
+    .orderBy(desc(logEntries.seq))
+    .limit(1)
+  // A second answer changes nothing: the first person's is kept, and no Undo is offered for it.
+  if ((latest?.toState === 'seen') === seen) {
+    return accepted(null, { details: { refundId: refund.id, seen, changed: false } })
+  }
+  const { payment } = locked
+  await stx.log({
+    kind: 'payment.refund_failed_seen',
+    paymentId: payment.id,
+    tableId: payment.tableId,
+    sittingId: payment.sittingId,
+    toState: seen ? 'seen' : 'open',
+    details: { refundId: refund.id },
+  })
+  return accepted(null, { details: { refundId: refund.id, seen, changed: true } })
+}
+
+/**
+ * `payment.refund_failed_seen` ("Got it"): a manager or owner says they saw a refund that did not
+ * go through. Tonight stops showing it; the Log keeps who and when. It saves at once, with an Undo
+ * for 8 seconds. A second answer changes nothing; the three-day fallback still ends the row.
+ */
+export function paymentRefundFailedSeen() {
+  return defineCommand({
+    schema: FailedSeenSchema('payment.refund_failed_seen'),
+    origins: ['staff'],
+    permission: 'money.follow_up',
+    idempotency: 'by_nature',
+    undoable: { kinds: ['payment.refund_failed_seen'] },
+    handle: (stx, command) => markFailedSeen(stx, command, true),
+  })
+}
+
+/**
+ * `payment.refund_failed_seen_undo`: brings the row back. It needs the `undo` token "Got it"
+ * answered with: refused `undo_expired` after 30 seconds and `undo_stale` when the refund was
+ * answered or taken back again since (#219).
+ */
+export function paymentRefundFailedSeenUndo() {
+  return defineCommand({
+    schema: FailedSeenSchema('payment.refund_failed_seen_undo').extend({ undo: UndoTokenSchema }),
+    origins: ['staff'],
+    permission: 'money.follow_up',
+    idempotency: 'by_nature',
+    undoStale: (stx, command, entry) =>
+      changedSince(
+        stx,
+        entry,
+        sql`${logEntries.kind} = 'payment.refund_failed_seen'
+          and ${logEntries.details} ->> 'refundId' = ${command.refundId}`,
+      ),
+    async handle(stx, command) {
+      // The token must be the Log entry "Got it" wrote for this very refund.
+      const given = await tokenEntry(stx, command.undo)
+      if (
+        given === null ||
+        given.kind !== 'payment.refund_failed_seen' ||
+        given.toState !== 'seen' ||
+        given.details.refundId !== command.refundId
+      ) {
+        return refused(null, 'invalid_command')
+      }
+      return markFailedSeen(stx, command, false)
     },
   })
 }

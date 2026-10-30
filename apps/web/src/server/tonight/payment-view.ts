@@ -107,6 +107,8 @@ export interface RefundRowView {
   readonly earlier: boolean
   readonly failed: boolean
   readonly storno: { readonly by: WhoView; readonly time: string } | null
+  /** Who saw a refund that did not go through ("Got it", #234), and when. */
+  readonly seen: { readonly by: WhoView; readonly time: string } | null
 }
 
 /** The payments of one night as the page draws them. */
@@ -266,6 +268,13 @@ export function paymentsView(read: NightPayments, timezone: string): PaymentsVie
                     : {
                         by: whoView(refund.storno.who, refund.storno.via),
                         time: clock(refund.storno.at) ?? '',
+                      },
+                seen:
+                  refund.seen === null
+                    ? null
+                    : {
+                        by: whoView(refund.seen.who, refund.seen.via),
+                        time: clock(refund.seen.at) ?? '',
                       },
               }),
             ),

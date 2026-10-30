@@ -91,7 +91,9 @@ export function moneyCsvRows(
       reference: refund.paymentId,
       what: 'refund',
       state: refund.failed
-        ? say('py_refund_failed', { provider })
+        ? refund.seen === null
+          ? say('py_refund_failed', { provider })
+          : `${say('py_refund_failed', { provider })} · ${say('lg_pay_refund_seen')} · ${whoText(say, refund.seen.by)}, ${refund.seen.time}`
         : refund.storno === null
           ? say('nt_fix_storno')
           : say('st_ok'),

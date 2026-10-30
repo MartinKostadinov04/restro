@@ -329,6 +329,28 @@ export async function stornoUndoAction(input: unknown): Promise<TonightResult> {
   )
 }
 
+/**
+ * "Got it" on a refund that did not go through (#234): a manager or owner says they saw it, and
+ * Tonight stops showing it. A manager's PIN on a shared device; the Log names who.
+ */
+export async function refundFailedSeenAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnRefund.safeParse(input)
+  if (!parsed.success) return INVALID
+  return perform(parsed.data, (scope) =>
+    command(scope, { type: 'payment.refund_failed_seen', refundId: parsed.data.refundId }),
+  )
+}
+
+/** Undo of "Got it": the refund shows again. It needs the token the answer was given with. */
+export async function refundFailedUnseenAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnRefundUndo.safeParse(input)
+  if (!parsed.success) return INVALID
+  const { refundId, undo: token } = parsed.data
+  return perform(parsed.data, (scope) =>
+    command(scope, { type: 'payment.refund_failed_seen_undo', refundId, undo: token }),
+  )
+}
+
 const OnAlert = z.strictObject({ venueId, alertId: idSchema('al'), pin })
 const OnPayment = z.strictObject({
   venueId,
