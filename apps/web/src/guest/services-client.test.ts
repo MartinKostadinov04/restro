@@ -54,6 +54,7 @@ function tableState(version: number, lines: Lines = [], location: LocationState 
       passSeconds: location === 'held' ? 7_000 : null,
       dayEndsInSeconds: 3_600,
       venueName: 'Club',
+      privacyUrl: 'https://club.example/privacy',
     },
     order: location === 'needed' ? null : { lines, removed: [], earlier: null },
     sentOrders: [],
@@ -87,7 +88,8 @@ function harness(
   more: Partial<TableServicesDeps> = {},
 ) {
   let clock = 1_000_000
-  const timers: { run: () => void; ms: number; cancelled: boolean }[] = []
+  const timers: { run: () => void; ms: number; cancelled: boolean; guard: boolean; at: number }[] =
+    []
   const calls: { url: string; init: RequestInit }[] = []
   const client = createTableServices({
     code: 'table-code-123',
@@ -98,8 +100,8 @@ function harness(
       calls.push({ url, init })
       return answer(url, init)
     },
-    setTimer(run, ms) {
-      const timer = { run, ms, cancelled: false }
+    setTimer(run, ms, kind) {
+      const timer = { run, ms, cancelled: false, guard: kind === 'guard', at: clock + ms }
       timers.push(timer)
       return () => {
         timer.cancelled = true
@@ -113,11 +115,26 @@ function harness(
     advance(ms: number) {
       clock += ms
     },
-    /** The wait of the timer due next. */
-    nextWait: () => timers.filter((timer) => !timer.cancelled).at(-1)?.ms,
+    /** The wait of the poll timer due next (the guards, a request's timeout and the offline watch, are no polls). */
+    nextWait: () => timers.filter((timer) => !timer.cancelled && !timer.guard).at(-1)?.ms,
+    /** Lets `ms` pass and runs the guard timers that come due, in order. */
+    async elapse(ms: number) {
+      const until = clock + ms
+      for (;;) {
+        const due = timers
+          .filter((t) => !t.cancelled && t.guard && t.at <= until)
+          .sort((a, b) => a.at - b.at)[0]
+        if (due === undefined) break
+        clock = Math.max(clock, due.at)
+        due.cancelled = true
+        due.run()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
+      clock = until
+    },
     /** Runs the live timer and lets its fetch settle. */
     async tick() {
-      const timer = timers.filter((t) => !t.cancelled).at(-1)
+      const timer = timers.filter((t) => !t.cancelled && !t.guard).at(-1)
       if (timer === undefined) throw new Error('no timer')
       timer.cancelled = true
       timer.run()
@@ -516,6 +533,7 @@ describe('the services client and the location check', () => {
       prompt: 'none',
       consent: 'unknown',
       venueName: 'Club',
+      privacyUrl: 'https://club.example/privacy',
     })
     const command = add()
     expect(await h.client.dispatch(command)).toMatchObject({ code: 'location_needed' })
@@ -1119,5 +1137,341 @@ describe('paying (#110, #114, D127)', () => {
     expect(session.store.has(PAY_RETURNED_KEY)).toBe(false)
     expect(mem.store.has(PAY_RETURNED_KEY)).toBe(false)
     expect(mem.store.has(PAY_RECENT_KEY)).toBe(false)
+  })
+})
+
+describe('a stalled connection (RR-51, D121)', () => {
+  const never = () => new Promise<Response>(() => {})
+  const send = (actionId = crypto.randomUUID()): GuestCommand => ({
+    kind: 'order.send',
+    actionId,
+    lines: [{ itemId: ITEM, optionIds: [], qty: 1, note: '' }],
+  })
+  const pay = (): GuestCommand => ({
+    kind: 'pay.start',
+    actionId: crypto.randomUUID(),
+    pick: { kind: 'whole' },
+    seen: [{ lineId: `bn_${'0'.repeat(21)}1`, quantity: '1', amountMinor: 100 }],
+    tipMinor: null,
+    tipPercent: null,
+  })
+
+  it('aborts a request that never settles at about 10 s and says offline at once', async () => {
+    const signals: (AbortSignal | null | undefined)[] = []
+    const h = harness((_url, init) => {
+      signals.push(init.signal)
+      return never()
+    })
+    h.client.start()
+    await h.tick()
+    expect(h.client.getState().offline).not.toBe(true)
+    await h.elapse(OFFLINE_AFTER_MS + 1)
+    expect(h.client.getState().offline).toBe(true)
+    expect(signals[0]?.aborted).toBe(true)
+    // It keeps trying, quietly: the next poll waits the back-off and goes out.
+    expect(h.nextWait()).toBe(POLL_BACKOFF_MS[0])
+    await h.tick()
+    expect(h.calls).toHaveLength(2)
+  })
+
+  it('says offline when nothing settles and no request ends (the watch, not a request, turns it on)', async () => {
+    // A server that answered once, then every later request stalls and ignores the abort.
+    let answered = false
+    const h = harness(() => {
+      if (answered) return never()
+      answered = true
+      return json(200, tableState(1))
+    })
+    h.client.start()
+    await h.tick()
+    expect(h.client.getState().offline).toBe(false)
+    // The next poll goes out at the server's cadence and then stalls.
+    await h.elapse(10_000)
+    expect(h.client.getState().offline).toBe(false)
+    await h.tick()
+    await h.elapse(OFFLINE_AFTER_MS - 1)
+    expect(h.client.getState().offline).toBe(false)
+    await h.elapse(2)
+    expect(h.client.getState().offline).toBe(true)
+  })
+
+  it('never says offline to a healthy phone on the 10 s cadence, however its requests wait', async () => {
+    const waiting: ((response: Response) => void)[] = []
+    const h = harness(
+      () =>
+        new Promise<Response>((resolve) => {
+          waiting.push(resolve)
+        }),
+    )
+    h.client.start()
+    await h.tick()
+    waiting.shift()?.(json(200, tableState(1)))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(h.nextWait()).toBe(10_000)
+    for (let n = 0; n < 4; n += 1) {
+      // The idle gap before the next poll is no silence: nothing is outstanding.
+      await h.elapse(10_000)
+      expect(h.client.getState().offline).toBe(false)
+      await h.tick()
+      // The request is out for a moment, across the old 10 001 ms mark.
+      await h.elapse(1)
+      expect(h.client.getState().offline).toBe(false)
+      await h.elapse(300)
+      expect(h.client.getState().offline).toBe(false)
+      waiting.shift()?.(json(200, tableState(2 + n)))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(h.client.getState().offline).toBe(false)
+    }
+    // And a request that stalls from here on does turn it on.
+    await h.elapse(10_000)
+    await h.tick()
+    await h.elapse(OFFLINE_AFTER_MS + 1)
+    expect(h.client.getState().offline).toBe(true)
+  })
+
+  it('refuses Send and Pay while offline and queues nothing, and clears when a request answers', async () => {
+    let up = false
+    const h = harness(() => (up ? json(200, tableState(1)) : never()))
+    h.client.start()
+    await h.tick()
+    await h.elapse(OFFLINE_AFTER_MS + 1)
+    expect(h.client.getState().offline).toBe(true)
+    const before = h.calls.length
+    expect(await h.client.dispatch(send())).toMatchObject({ status: 'rejected', code: 'offline' })
+    expect(await h.client.dispatch(pay())).toMatchObject({ status: 'rejected', code: 'offline' })
+    expect(h.calls).toHaveLength(before)
+    // The bag stays editable: an edit still goes out.
+    void h.client.dispatch(add())
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/actions')
+    // A later request answers: the state clears, and a Send is let through again.
+    up = true
+    await h.elapse(OFFLINE_AFTER_MS + 1)
+    await h.tick()
+    expect(h.client.getState().offline).toBe(false)
+    const calls = h.calls.length
+    void h.client.dispatch(send())
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(h.calls).toHaveLength(calls + 1)
+  })
+
+  it('aborts a stalled action at about 10 s and takes the edit back', async () => {
+    const h = harness((url) => (url.endsWith('/actions') ? never() : json(200, tableState(1))))
+    h.client.start()
+    await h.tick()
+    const edit = h.client.dispatch(add())
+    expect(h.client.getState().order?.lines).toHaveLength(1)
+    await h.elapse(OFFLINE_AFTER_MS)
+    expect(await edit).toMatchObject({ status: 'pending' })
+    expect(h.client.getState().order?.lines).toEqual([])
+  })
+})
+
+describe('a Send whose answer was lost (RR-50, D120)', () => {
+  const sendCommand = (): GuestCommand => ({
+    kind: 'order.send',
+    actionId: crypto.randomUUID(),
+    lines: [{ itemId: ITEM, optionIds: [], qty: 1, note: '' }],
+  })
+  const sentOrder = (id: string) => ({
+    id,
+    state: 'sending' as const,
+    reason: null,
+    ref: 'K7Q',
+    lines: [{ itemId: ITEM, optionIds: [], qty: 1 }],
+    sentAgoSeconds: 1,
+  })
+
+  it('answers a Send that threw as lost, and the state says so, with no reference to show', async () => {
+    const h = harness((url) => {
+      if (url.endsWith('/actions')) throw new TypeError('network')
+      return json(200, tableState(1))
+    })
+    h.client.start()
+    await h.tick()
+    expect(h.client.getState().sendLost).toBeNull()
+    const result = await h.client.dispatch(sendCommand())
+    expect(result).toMatchObject({ status: 'pending', code: 'answer_lost', ref: null })
+    expect(h.client.getState().sendLost).toEqual({ ref: null })
+  })
+
+  it('treats a 5xx and an unreadable answer to a Send as lost too', async () => {
+    for (const reply of [() => json(502, {}), () => json(200, { nonsense: true })]) {
+      const h = harness((url) => (url.endsWith('/actions') ? reply() : json(200, tableState(1))))
+      h.client.start()
+      await h.tick()
+      expect(await h.client.dispatch(sendCommand())).toMatchObject({ code: 'answer_lost' })
+      expect(h.client.getState().sendLost).toEqual({ ref: null })
+    }
+  })
+
+  it('does not call an edit’s lost answer a lost Send', async () => {
+    const h = harness((url) => {
+      if (url.endsWith('/actions')) throw new TypeError('network')
+      return json(200, tableState(1))
+    })
+    h.client.start()
+    await h.tick()
+    await h.client.dispatch(add())
+    expect(h.client.getState().sendLost).toBeNull()
+  })
+
+  it('offers no immediate re-send, and another phone’s order does not let go of it', async () => {
+    let other = false
+    let version = 1
+    const h = harness((url) => {
+      if (url.endsWith('/actions')) throw new TypeError('network')
+      version += 1
+      return json(200, {
+        ...tableState(version),
+        sentOrders: other ? [sentOrder(newId('so'))] : [],
+      })
+    })
+    h.client.start()
+    await h.tick()
+    await h.client.dispatch(sendCommand())
+    const calls = h.calls.length
+    // A second Send is not made: the answer is the same lost line, and nothing goes out.
+    expect(await h.client.dispatch(sendCommand())).toMatchObject({ code: 'answer_lost' })
+    expect(h.calls).toHaveLength(calls)
+    // A poll that finds nothing new does not let go yet.
+    await h.tick()
+    expect(h.client.getState().sendLost).toEqual({ ref: null })
+    // Someone else's order at the table (sent orders carry no action id, so this phone's cannot be
+    // told apart): the hold is the time limit alone, and the line stays.
+    other = true
+    await h.tick()
+    expect(h.client.getState().sendLost).toEqual({ ref: null })
+    await h.tick()
+    expect(h.client.getState().sendLost).toEqual({ ref: null })
+  })
+
+  it('a whole state after the phone had no pass (nothing listed at the loss) does not let go either', async () => {
+    let version = 1
+    let theirs = false
+    const h = harness((url) => {
+      if (url.endsWith('/actions')) throw new TypeError('network')
+      version += 1
+      return json(200, {
+        ...tableState(version),
+        sentOrders: theirs ? [sentOrder(newId('so'))] : [],
+      })
+    })
+    h.client.start()
+    await h.tick()
+    await h.client.dispatch(sendCommand())
+    h.client.location.stop?.()
+    theirs = true
+    await h.tick()
+    expect(h.client.getState().sendLost).toEqual({ ref: null })
+  })
+
+  it('lets go after a few minutes of polls that answered and found nothing', async () => {
+    const h = harness((url) => {
+      if (url.endsWith('/actions')) throw new TypeError('network')
+      return json(200, tableState(1))
+    })
+    h.client.start()
+    await h.tick()
+    await h.client.dispatch(sendCommand())
+    h.advance(60_000)
+    await h.tick()
+    expect(h.client.getState().sendLost).toEqual({ ref: null })
+    h.advance(3 * 60_000)
+    await h.tick()
+    expect(h.client.getState().sendLost).toBeNull()
+  })
+})
+
+describe('Stop location check (RR-49, D119)', () => {
+  it('drops the pass, remembers the choice, takes an on-the-bill edit down the refused path, and the guest’s own tap brings consent back', async () => {
+    const server = checkingServer()
+    const kept = memory()
+    const h = harness(server.answer, { memory: kept, locate: async () => AT_THE_BAR })
+    h.client.start()
+    await h.tick()
+    await h.client.dispatch(add())
+    await h.client.location.allow()
+    expect(kept.kept.get(PASS_KEY)).toBe('pass-1')
+    await h.tick()
+    expect(h.client.getState().location).toMatchObject({ state: 'held', consent: 'allowed' })
+
+    h.client.location.stop?.()
+    expect(kept.kept.has(PASS_KEY)).toBe(false)
+    expect(h.client.getState().location).toMatchObject({
+      state: 'needed',
+      prompt: 'none',
+      consent: 'declined',
+    })
+    expect(h.client.getState().order).toBeNull()
+    // The next poll goes without the pass, at once, for the whole state.
+    expect(h.nextWait()).toBe(0)
+    await h.tick()
+    expect(h.client.getState().location?.state).toBe('needed')
+
+    // The refused path: no consent screen, no position asked for, the refusal comes back.
+    const located = server.bodies.filter((body) => body.check?.location !== undefined).length
+    expect(await h.client.dispatch(add())).toMatchObject({ code: 'location_needed' })
+    expect(h.client.getState().location?.prompt).toBe('none')
+    expect(server.bodies.filter((body) => body.check?.location !== undefined)).toHaveLength(located)
+
+    h.client.location.reopen()
+    expect(h.client.getState().location?.prompt).toBe('consent')
+  })
+})
+
+describe('Stop location check with a poll in flight (RR-49)', () => {
+  it('discards the answer of a poll that went out before the stop', async () => {
+    const row = line(orderLineIdFor(crypto.randomUUID()), 1)
+    let release: (response: Response) => void = () => {}
+    let hold = false
+    const h = harness(() => {
+      if (!hold) return json(200, tableState(1, [row], 'held'))
+      return new Promise<Response>((resolve) => {
+        release = resolve
+      })
+    })
+    h.client.start()
+    await h.tick()
+    expect(h.client.getState().order?.lines).toHaveLength(1)
+    hold = true
+    await h.tick()
+    h.client.location.stop?.()
+    expect(h.client.getState().order).toBeNull()
+    release(json(200, tableState(2, [row], 'held')))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(h.client.getState().order).toBeNull()
+    expect(h.client.getState().location?.state).toBe('needed')
+  })
+})
+
+describe('the screen the face has open (RR-52, D121)', () => {
+  it('asks for the bill’s state when the face says the bill is open, at once, and the bag’s on the bag', async () => {
+    const h = harness(() => json(200, tableState(1)))
+    h.client.start()
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=menu')
+    h.client.setScreen('bill')
+    expect(h.nextWait()).toBe(0)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill&since=1')
+    h.client.setScreen('bag')
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=order&since=1')
+    h.client.setScreen('menu')
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=menu&since=1')
+  })
+
+  it('sends the open screen with an action too, and an empty bag on the bill is the bill', async () => {
+    const h = harness((url) =>
+      url.endsWith('/actions') ? json(500, {}) : json(200, tableState(1)),
+    )
+    h.client.start()
+    await h.tick()
+    h.client.setScreen('bill')
+    await h.client.dispatch(add())
+    const body = JSON.parse(String(h.calls.at(-1)?.init.body))
+    expect(body.view).toBe('bill')
   })
 })
