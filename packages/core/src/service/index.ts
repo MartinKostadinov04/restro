@@ -403,6 +403,7 @@ export {
   type SendMenuItem,
 } from './send-menu'
 export {
+  ADD_TRIES,
   AVAILABILITY_READS,
   BEFORE_READ_PAUSE_MS,
   BEFORE_READ_TRIES,

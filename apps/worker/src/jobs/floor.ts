@@ -20,6 +20,7 @@
 // - The web app never calls a POS; this job is the only reader.
 
 import {
+  CAUTIOUS_CALLS_PER_SECOND,
   JOB_NAMES,
   prepareJob,
   type ServiceReader,
@@ -53,6 +54,7 @@ import {
 } from '../service-connectors'
 import { createLimiter, type Limiter } from '../sync/limiter'
 import { type ConnectionBreakers, SHARED_BREAKERS } from './breaker'
+import { CallPacer, type PacerClock } from './call-pacer'
 import { defineJob, type JobDefinition, type WorkerContext } from './types'
 
 const MINUTE = 60_000
@@ -68,12 +70,44 @@ const FLOOR_KINDS = ['sim'] as const
 
 /**
  * One budget per POS instance, shared by every job of this process (verification, round-2 row 11):
- * two venues of one installation never read it at the same time. One call chain at a time is the
- * starting value; a connector with a stated rate limit gets its own figure with its own ticket.
+ * two venues of one installation never read it at the same time. An instance is one login (rule 9),
+ * so its budgets are the login's: one call chain at a time, one call at a time, and a number of
+ * calls a second (`paceOf`), the connector's figure or the cautious default.
  */
 export class InstanceBudgets {
   readonly #limiters = new Map<string, Limiter>()
   readonly #chains = new Map<string, Limiter>()
+  readonly #pacers = new Map<string, CallPacer>()
+  readonly #clock: PacerClock | undefined
+
+  /** `clock`: what the per-second budget runs on; tests pass the simulated POS's. */
+  constructor(options: { readonly clock?: PacerClock } = {}) {
+    this.#clock = options.clock
+  }
+
+  #pacer(integrationId: string, perSecond: number): CallPacer {
+    let pacer = this.#pacers.get(integrationId)
+    if (pacer === undefined || pacer.perSecond !== perSecond) {
+      pacer = new CallPacer(perSecond, this.#clock)
+      this.#pacers.set(integrationId, pacer)
+    }
+    return pacer
+  }
+
+  /** The login's per-second budget, for the seam's context: every call on the wire takes a place. */
+  paceOf(
+    integrationId: string,
+    connector: Pick<ServiceReader, 'callsPerSecond'>,
+  ): (signal: AbortSignal) => Promise<boolean> {
+    const perSecond = connector.callsPerSecond ?? CAUTIOUS_CALLS_PER_SECOND
+    return (signal) => this.#pacer(integrationId, perSecond).take(signal)
+  }
+
+  /** True while a read may start: it never takes the room a round or a payment needs. */
+  hasRoomForRead(integrationId: string, connector: Pick<ServiceReader, 'callsPerSecond'>): boolean {
+    const perSecond = connector.callsPerSecond ?? CAUTIOUS_CALLS_PER_SECOND
+    return this.#pacer(integrationId, perSecond).hasRoomForRead()
+  }
 
   forInstance(integrationId: string): Limiter {
     let limiter = this.#limiters.get(integrationId)
@@ -269,7 +303,9 @@ export async function readFloorOf(
     ])
   }
 
-  const budget = (deps.budgets ?? SHARED_BUDGETS).forInstance(integrationId)
+  const budgets = deps.budgets ?? SHARED_BUDGETS
+  const budget = budgets.forInstance(integrationId)
+  const posContext = serviceContext(now, budgets.paceOf(integrationId, connector))
   const call = (ok: boolean) =>
     (deps.breakers ?? SHARED_BREAKERS).record(
       env,
@@ -278,14 +314,15 @@ export async function readFloorOf(
     )
   let reading: Awaited<ReturnType<ServiceReader['readFloor']>>
   try {
-    reading = await budget.run(() => connector.readFloor(serviceContext(now)))
+    reading = await budget.run(() => connector.readFloor(posContext))
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'the floor could not be read'
     log.warn({ integrationId, venueId, err: error }, 'the floor could not be read')
     await call(false)
     return finish('failed', { kind: 'failed', reason }, {}, [`failed: ${reason}`])
   }
-  await call(reading.complete)
+  // A definite busy says nothing of the connection: no failed call.
+  if (reading.complete || reading.busy !== true) await call(reading.complete)
   if (!reading.complete) {
     // Rule 6: nothing is concluded. `applyFloor` would refuse it too; the run says why.
     return finish('failed', { kind: 'incomplete', reason: reading.reason }, {}, [

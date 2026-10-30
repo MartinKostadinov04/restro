@@ -55,7 +55,7 @@ import {
 } from '@restro/sim-pos'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
+import { readFloorOf } from '../src/jobs/floor'
 import {
   checkPayment,
   type PaymentJobDeps,
@@ -74,6 +74,7 @@ import {
   testSlug,
   withOwnerClient,
 } from './database'
+import { simBudgets } from './sim-pace'
 
 allowSlowSetup()
 
@@ -142,7 +143,7 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
   const deps = (): PaymentJobDeps => ({
     sim: policy,
     providers: new Map([[SIM_PAY_KIND, provider]]),
-    budgets: new InstanceBudgets(),
+    budgets: simBudgets(simClock),
     connectorFor,
     timings: TIMINGS,
     sleep: async (ms) => {
@@ -166,7 +167,7 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
     const floor = await readFloorOf(
       { pool, log, now: () => new Date() },
       { tenantId, ...demo },
-      { sim: policy, budgets: new InstanceBudgets() },
+      { sim: policy, budgets: simBudgets(simClock) },
     )
     expect(floor.kind).toBe('read')
   }

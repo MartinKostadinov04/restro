@@ -5,8 +5,10 @@
 // constant of this package; barsy's own client timeout stays as the outer bound.
 
 import {
+  type ClosedBill,
   type Floor,
   type FloorTable,
+  type IsolatedHandle,
   type PosRef,
   type ProbeResult,
   posRef,
@@ -121,6 +123,14 @@ export function createBarsyServiceReader(options: BarsyServiceReaderOptions): Se
     // a recording of it from the test installation (#47). Until then nothing is concluded.
     async readTable(_ctx: ServiceContext, _table: PosRef): Promise<Reading<TableBills>> {
       return { complete: false, reason: 'reading a table is not wired for barsy yet' }
+    },
+
+    // Not wired, as `readTable`: the capability says what barsy allows (`./capabilities.ts`).
+    async readClosedBill(
+      _ctx: ServiceContext,
+      _bill: IsolatedHandle,
+    ): Promise<Reading<ClosedBill | null>> {
+      return { complete: false, reason: 'reading a closed bill is not wired for barsy yet' }
     },
   }
 }
