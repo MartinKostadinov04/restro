@@ -30,7 +30,7 @@ let GUEST: VenueAddress
 const GUEST_PATH = `/m/demo-club/${GUEST_SLUG}`
 /** The tagged fixture menu has no venue row: its code is a fixed one. */
 const TAG_PATH = `/m/${TAG_SLUG}-${TAG_PUBLIC_ID}`
-/** The look fixture (SH-04): the reference template, the dark scheme forced, Playfair Display. */
+/** The look fixture (SH-04): the dark scheme forced, Playfair Display. */
 const LOOK_PATH = `/m/${LOOK_SLUG}-${LOOK_PUBLIC_ID}`
 
 test.beforeAll(async () => {

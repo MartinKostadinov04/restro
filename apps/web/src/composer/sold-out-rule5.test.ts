@@ -256,9 +256,10 @@ describe('rule 5 for sold out tonight', () => {
               )
               // The overlay lists exactly what is off sale for any reason tonight.
               expect(Object.hasOwn(overlay.items, id), `overlay ${i}`).toBe(!available)
-              // Guests: available only if barsy has it on sale and no mark of tonight is on it.
-              expect(view?.state.code, `guest view ${i}`).toBe(available ? 'available' : 'sold_out')
-              if (barsyOff) expect(view?.state.code).not.toBe('available')
+              // Guests: on the menu, available, only if barsy has it on sale and no mark of tonight
+              // is on it; otherwise it has left the menu (D131).
+              expect(view?.state.code, `guest view ${i}`).toBe(available ? 'available' : undefined)
+              if (barsyOff) expect(view, `guest view ${i}`).toBeUndefined()
               // The composer: barsy's flag is barsy's, a mark is ours, and they never get mixed up.
               const shown = composer.items[id]
               expect(shown?.offSale, `composer ${i}`).toBe(barsyOff ? 'till' : null)
