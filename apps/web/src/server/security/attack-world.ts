@@ -416,3 +416,28 @@ export async function removeOrgs(owner: pg.Pool, orgs: readonly SeededOrg[]): Pr
     client.release()
   }
 }
+
+/** Every id a venue holds. */
+export function idsOfVenue(venue: SeededVenue): string[] {
+  return Object.values(venue).filter((value) => /^[a-z]{2}_/.test(value))
+}
+
+/** Per table, a hash of the organisation's rows that mention one of `ids`. */
+export async function fingerprintMentioning(
+  owner: pg.Pool,
+  tenantId: string,
+  ids: readonly string[],
+): Promise<Map<string, string>> {
+  const pattern = ids.join('|')
+  const { rows } = await owner.query<{ table_name: string; hash: string }>(
+    (await tenantTables(owner))
+      .map(
+        (table) =>
+          `select '${table}' as table_name, md5(coalesce(string_agg(t::text, '|' order by t::text), '')) as hash
+             from restro."${table}" t where tenant_id = $1 and t::text ~ $2`,
+      )
+      .join(' union all '),
+    [tenantId, pattern],
+  )
+  return new Map(rows.map((row) => [row.table_name, row.hash]))
+}
