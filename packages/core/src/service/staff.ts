@@ -23,13 +23,14 @@
 
 import {
   authMember,
+  logEntries,
   sharedDevices,
   staffAssignments,
   staffMembers,
   venueRoles,
   venues,
 } from '@restro/db'
-import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema, newId } from '../ids'
@@ -840,13 +841,52 @@ export async function linkStaffTelegram(
  */
 export async function telegramLinkPerson(
   stx: ServiceTx,
-  command: { readonly staffMemberId: string; readonly telegramUserId: string },
+  command: {
+    readonly staffMemberId: string
+    readonly telegramUserId: string
+    /** When the link was made: a link older than the person's current link is spent (RR-9). */
+    readonly linkIssuedAt?: Date
+  },
 ): Promise<ServiceResult> {
   const { members } = await lockStaffRows(stx, [command.staffMemberId])
   const member = members.get(command.staffMemberId)
   if (member === undefined || member.archivedAt !== null) return refused(null, 'staff_missing')
-  if (!(await assignmentsOf(stx, member.id)).has(stx.venueId)) {
+  const assignments = await assignmentsOf(stx, member.id)
+  if (!assignments.has(stx.venueId)) {
     return refused(null, 'staff_missing')
   }
+  if (
+    command.linkIssuedAt !== undefined &&
+    member.telegramUserId !== command.telegramUserId &&
+    (await personLinkSpent(stx, member.id, [...assignments.keys()], command.linkIssuedAt))
+  ) {
+    return refused(null, 'link_spent')
+  }
   return writeTelegramId(stx, member, command.telegramUserId)
+}
+
+/**
+ * True when this person's Telegram was linked or unlinked since the link was made, at any of their
+ * venues (RR-9). The Log is what outlives a worker's restart, so no new column is needed.
+ */
+async function personLinkSpent(
+  stx: ServiceTx,
+  staffMemberId: string,
+  venueIds: readonly string[],
+  issuedAt: Date,
+): Promise<boolean> {
+  const rows = await stx.tx
+    .select({ seq: logEntries.seq })
+    .from(logEntries)
+    .where(
+      and(
+        inArray(logEntries.venueId, [...venueIds]),
+        gte(logEntries.at, issuedAt),
+        eq(logEntries.kind, 'staff.changed'),
+        inArray(logEntries.toState, ['telegram_linked', 'telegram_unlinked']),
+        sql`${logEntries.details}->>'staffMemberId' = ${staffMemberId}`,
+      ),
+    )
+    .limit(1)
+  return rows.length > 0
 }

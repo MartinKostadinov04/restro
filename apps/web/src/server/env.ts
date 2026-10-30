@@ -104,6 +104,24 @@ export type ServerEnv = z.output<typeof ServerEnvSchema>
 
 let cached: ServerEnv | undefined
 
+/** Cloudflare's published test secrets (`1x…AA` passes, `2x…AA` fails, `3x…AA` is spent). */
+export function isTurnstileTestSecret(secret: string): boolean {
+  return /^[123]x0{31}AA$/.test(secret)
+}
+
+/**
+ * The settings that may never reach the environment meaning real money: under a test secret
+ * every Send and Pay passes the human check with any token. `PAYMENTS_ENV` is what says so, as for
+ * the payment provider's key (`checkStripeKey`): `next start` alone means nothing, since local e2e
+ * and CI run it with a test secret and `PAYMENTS_ENV=test`.
+ */
+function refusedForEnvironment(env: ServerEnv, source: NodeJS.ProcessEnv): readonly string[] {
+  const environment = (source.PAYMENTS_ENV ?? '').trim().toLowerCase()
+  if (environment !== 'production') return []
+  const secret = env.TURNSTILE_SECRET_KEY
+  return secret !== undefined && isTurnstileTestSecret(secret) ? ['TURNSTILE_SECRET_KEY'] : []
+}
+
 export function serverEnv(): ServerEnv {
   if (cached) return cached
   const parsed = ServerEnvSchema.safeParse(process.env)
@@ -113,6 +131,10 @@ export function serverEnv(): ServerEnv {
       `Missing or invalid setting(s): ${names.join(', ')}. Copy .env.example to .env.local and ` +
         'fill them in (BETTER_AUTH_SECRET needs 32 or more characters).',
     )
+  }
+  const refused = refusedForEnvironment(parsed.data, process.env)
+  if (refused.length > 0) {
+    throw new Error(`A test value in production for setting(s): ${refused.join(', ')}.`)
   }
   cached = parsed.data
   return cached

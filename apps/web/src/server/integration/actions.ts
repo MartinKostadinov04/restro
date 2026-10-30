@@ -21,6 +21,7 @@ import { enqueueJob } from '../jobs'
 import { logError } from '../log'
 import { canManageIntegration } from '../roles'
 import { requireTenant } from '../session'
+import { onSharedDevice } from '../staff/shared-device'
 import { getVenue } from '../venues'
 import {
   addInstance,
@@ -65,6 +66,7 @@ const VenueSource = z.strictObject({ venueId, settings: Settings })
 
 const INVALID: IntegrationActionResult = { ok: false, error: 'invalid' }
 const NOT_FOUND: IntegrationActionResult = { ok: false, error: 'not_found' }
+const NOT_ALLOWED: IntegrationActionResult = { ok: false, error: 'not_allowed' }
 
 const services = (): IntegrationServices => ({
   sealPublicKey: serverEnv().SEAL_PUBLIC_KEY,
@@ -83,7 +85,9 @@ async function performOrganisation(
   run: (scope: IntegrationScope, services: IntegrationServices) => Promise<IntegrationActionResult>,
 ): Promise<IntegrationActionResult> {
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
+    // A shared tablet works Tonight; a POS needs the person's own sign-in (RR-84).
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) return NOT_ALLOWED
     const scope: IntegrationScope = {
       pool: getPool(),
       tenantId: organization.id,
@@ -106,7 +110,8 @@ async function performVenue(
   run: (scope: VenueScope, services: IntegrationServices) => Promise<IntegrationActionResult>,
 ): Promise<IntegrationActionResult> {
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) return NOT_ALLOWED
     const found = await getVenue(organization.id, venue)
     if (!found) return NOT_FOUND
     const scope: VenueScope = {
