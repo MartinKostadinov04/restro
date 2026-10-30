@@ -9,17 +9,13 @@ import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  saveFeatureOptionsAction,
-  saveGuestFeaturesAction,
-} from '@/server/composer/guest-features-actions'
+import { saveGuestFeaturesAction } from '@/server/composer/guest-features-actions'
 import { renderWithIntl } from '@/test-utils'
 
-import { GuestFeaturesCard, type TemplateFeatureOptions } from './guest-features-panel'
+import { GuestFeaturesCard } from './guest-features-panel'
 
 vi.mock('@/server/composer/guest-features-actions', () => ({
   saveGuestFeaturesAction: vi.fn(),
-  saveFeatureOptionsAction: vi.fn(),
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
@@ -34,35 +30,16 @@ const FEATURES: GuestFeatures = {
   pay: false,
 }
 
-/**
- * A template's own feature switch, as a template may declare one (Editorial Market's layout switch
- * was one until D92 made it a menu setting).
- */
-const OPTIONS: TemplateFeatureOptions = {
-  declared: [
-    {
-      key: 'layoutSwitch',
-      type: 'boolean',
-      default: true,
-      label: { bg: 'Гостите могат да сменят подредбата', en: 'Guests can change the layout' },
-    },
-  ],
-  values: { layoutSwitch: true },
-}
-
 function setup({
   features = FEATURES,
-  options = OPTIONS,
   canEdit = true,
 }: {
   features?: GuestFeatures
-  options?: TemplateFeatureOptions
   canEdit?: boolean
 } = {}) {
-  renderWithIntl(
-    <GuestFeaturesCard venueId={VENUE} features={features} options={options} canEdit={canEdit} />,
-    { locale: 'en' },
-  )
+  renderWithIntl(<GuestFeaturesCard venueId={VENUE} features={features} canEdit={canEdit} />, {
+    locale: 'en',
+  })
 }
 
 const save = () => screen.getByRole('button', { name: 'Save' })
@@ -72,8 +49,6 @@ const checkboxNamed = (name: string) => screen.getByRole('checkbox', { name })
 beforeEach(() => {
   vi.mocked(saveGuestFeaturesAction).mockReset()
   vi.mocked(saveGuestFeaturesAction).mockResolvedValue({ ok: true })
-  vi.mocked(saveFeatureOptionsAction).mockReset()
-  vi.mocked(saveFeatureOptionsAction).mockResolvedValue({ ok: true })
   vi.mocked(toast.success).mockReset()
   vi.mocked(toast.error).mockReset()
 })
@@ -82,7 +57,6 @@ describe('the guest features panel', () => {
   it('shows the saved menu switches, and the allergen line without a switch', () => {
     setup({ features: { ...FEATURES, filters: false } })
     expect(switchNamed('Filters (diet and tags)').getAttribute('aria-checked')).toBe('false')
-    expect(switchNamed('Guests can change the layout').getAttribute('aria-checked')).toBe('true')
 
     const allergens = screen.getByTestId('allergens-always')
     expect(allergens.textContent).toBe('Allergen information is always shown')
@@ -127,7 +101,6 @@ describe('the guest features panel', () => {
         pay: false,
       },
     })
-    expect(saveFeatureOptionsAction).not.toHaveBeenCalled()
     expect(toast.success).toHaveBeenCalledWith('Saved. Guests see it after the next publish')
   })
 
@@ -158,18 +131,6 @@ describe('the guest features panel', () => {
     expect(screen.getByText('Guests see this once payment is connected (Stage 5)')).toBeTruthy()
   })
 
-  it('saves a template feature switch through its own action, not the guest features one', async () => {
-    setup()
-    await userEvent.click(switchNamed('Guests can change the layout'))
-    await userEvent.click(save())
-    await waitFor(() => expect(saveFeatureOptionsAction).toHaveBeenCalledTimes(1))
-    expect(saveFeatureOptionsAction).toHaveBeenCalledWith({
-      venueId: VENUE,
-      options: { layoutSwitch: false },
-    })
-    expect(saveGuestFeaturesAction).not.toHaveBeenCalled()
-  })
-
   it('says why a save was refused and keeps the change to try again', async () => {
     vi.mocked(saveGuestFeaturesAction).mockResolvedValue({ ok: false, error: 'forbidden' } as const)
     setup()
@@ -189,7 +150,6 @@ describe('the guest features panel', () => {
     expect(screen.getByText('Only owners and admins can change these.')).toBeTruthy()
     const names = [
       'Filters (diet and tags)',
-      'Guests can change the layout',
       'Call a waiter',
       "Show the table's bill",
       'Order from the phone',

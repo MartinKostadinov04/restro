@@ -184,12 +184,7 @@ async function seed(): Promise<void> {
   // cannot delete the publish tables.
   const owner = new pg.Pool({ connectionString: ownerUrl, max: 1 })
   try {
-    await owner.query(
-      `update restro.venues set settings = settings - 'theme' - 'presentation' where id = $1`,
-      [venue.id],
-    )
-    // The menu's layout is the composer's (D92, brief S6): none set (two columns, with the switch).
-    await owner.query(`update restro.menus set settings = '{}'::jsonb where venue_id = $1`, [
+    await owner.query(`update restro.venues set settings = settings - 'design' where id = $1`, [
       venue.id,
     ])
     for (const table of ['job_runs', 'item_first_published', 'publish_pointers', 'snapshots']) {

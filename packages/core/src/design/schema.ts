@@ -9,8 +9,8 @@ import {
 } from './contract'
 
 // The Zod schemas of a design's values and of a Style's, built from the contract so that the record
-// (ticket 2), the snapshot's `design` block and the renderer (ticket 3) import one thing. Strict:
-// an unknown page or option, a missing one or a value outside its list is refused.
+// (./record.ts), the snapshot's `design` block and the renderer import one thing. Strict: an unknown
+// page or option, a missing one or a value outside its list is refused.
 
 type ZodShape = Record<string, z.ZodType>
 

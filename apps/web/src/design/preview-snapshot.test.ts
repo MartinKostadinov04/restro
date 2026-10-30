@@ -1,5 +1,5 @@
 // The draft with the unsaved look laid over it (brief SH-05a): the same colours, font, corners,
-// shadow, policy and template the publisher would write, and nothing else changed.
+// shadow and policy the publisher would write, and nothing else changed.
 import { paletteList, themePaletteOf, themeRolesOf, VenueThemeSchema } from '@restro/core'
 import { fixture } from '@restro/shell/testing'
 import { describe, expect, it } from 'vitest'
@@ -19,11 +19,7 @@ const theme = VenueThemeSchema.parse({
 })
 
 describe('the preview snapshot', () => {
-  const made = previewSnapshot(draft, {
-    theme,
-    face: 'editorial-market',
-    options: { layout: 'one' },
-  })
+  const made = previewSnapshot(draft, theme)
 
   it('carries the roles of both screens, the font family, corners, shadow and policy', () => {
     expect(made.theme.roles).toEqual(themeRolesOf(theme))
@@ -34,8 +30,8 @@ describe('the preview snapshot', () => {
     expect(made.theme.scheme).toBe('dark')
   })
 
-  it('names the template and its options', () => {
-    expect(made.presentation).toEqual({ face: 'editorial-market', options: { layout: 'one' } })
+  it('leaves the draft’s template alone: it names none of its own (D129)', () => {
+    expect(made.presentation).toEqual(draft.presentation)
   })
 
   it('leaves the logo and the menu as the draft has them, and the draft itself unchanged', () => {

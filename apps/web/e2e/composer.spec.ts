@@ -382,7 +382,7 @@ test('sets the menu layout and whether guests may switch it (D92); it survives a
   )
   await expect(guestSwitch()).toHaveAttribute('aria-checked', 'false')
 
-  // Back to two columns with the switch: the look of a menu that set none.
+  // Two columns with the switch.
   await layout().getByRole('button', { name: 'Две колони' }).click()
   await expect(layout().getByRole('button', { name: 'Две колони' })).toHaveAttribute(
     'aria-pressed',

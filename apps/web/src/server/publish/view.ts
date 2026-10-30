@@ -201,6 +201,7 @@ export interface HistoryPage {
 export type RefusalCode =
   | 'no_visible_items'
   | 'menu_blocked'
+  | 'invalid_design'
   | 'held_outdated'
   | 'held_not_found'
   | 'unsafe_snapshot'
@@ -376,6 +377,7 @@ export function targetOf(
 const REFUSALS: readonly RefusalCode[] = [
   'no_visible_items',
   'menu_blocked',
+  'invalid_design',
   'held_outdated',
   'held_not_found',
   'unsafe_snapshot',

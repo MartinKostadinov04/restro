@@ -1,4 +1,4 @@
-import type { PremadeStyleId } from '../contract'
+import type { PremadeStyleId } from '@restro/core'
 import type { StyleFile } from '../style'
 import { basicStyle } from './basic'
 import { editorialStyle } from './editorial'

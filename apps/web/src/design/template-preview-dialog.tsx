@@ -2,19 +2,15 @@
 
 // "Preview" on a template of the chooser (D92, brief S7): a phone pop-up with the venue's general
 // menu drawn in that template, no table. It is the same draft as the live preview (`previewSnapshot`
-// with the form's unsaved look laid over it), drawn by the template named here instead of the
-// chosen one, with that template's own look options. Nothing is saved by looking; "Use this
-// template" in the pop-up chooses it, as the chooser's button does.
+// with the form's unsaved look laid over it). Nothing is saved by looking.
 import type { VenueTheme } from '@restro/core'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 
-import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -24,7 +20,6 @@ import { PhoneFrame } from '@/publish/phone-frame'
 
 import { DraftMessage, SchemeSwitch, usePreviewLook } from './design-preview'
 import type { Draft } from './preview-draft'
-import type { OptionValues } from './template-options'
 
 export function TemplatePreviewDialog({
   entry,
@@ -32,11 +27,7 @@ export function TemplatePreviewDialog({
   draft,
   onRetry,
   theme,
-  options,
   scheme,
-  inUse,
-  canChoose,
-  onChoose,
   onClose,
 }: {
   /** The template to preview; null = the pop-up is closed. */
@@ -47,21 +38,15 @@ export function TemplatePreviewDialog({
   onRetry: () => void
   /** The form's look, whole. */
   theme: VenueTheme
-  /** The options this template would be drawn with. */
-  options: OptionValues
   /** The screen the live preview shows: where this pop-up starts. */
   scheme: PreviewScheme
-  /** The venue has this template already. */
-  inUse: boolean
-  canChoose: boolean
-  onChoose: (entry: FaceEntry) => void
   onClose: () => void
 }) {
   const t = useTranslations('design.templates')
   const tPublish = useTranslations('publish.previewDialog')
   const [chosenScheme, setScheme] = useState<PreviewScheme | null>(null)
   const shown = chosenScheme ?? scheme
-  const snapshot = usePreviewLook(draft, entry === null ? null : { theme, face: entry.id, options })
+  const snapshot = usePreviewLook(draft, entry === null ? null : theme)
 
   return (
     <Dialog
@@ -92,19 +77,6 @@ export function TemplatePreviewDialog({
           </>
         ) : draft.state !== 'ready' ? (
           <DraftMessage draft={draft} onRetry={onRetry} />
-        ) : null}
-        {entry !== null && canChoose && !inUse ? (
-          <DialogFooter>
-            <Button
-              type="button"
-              onClick={() => {
-                onChoose(entry)
-                onClose()
-              }}
-            >
-              {t('useNamed', { name })}
-            </Button>
-          </DialogFooter>
         ) : null}
       </DialogContent>
     </Dialog>

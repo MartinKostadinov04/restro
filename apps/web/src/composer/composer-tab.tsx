@@ -13,11 +13,12 @@
 // tab's own.
 import {
   CurrencySchema,
+  designLayoutOf,
   type Locale,
   liveEditions,
-  menuSettingsOf,
   mergeDocumentParts,
   type NodeId,
+  readDesign,
   resolve,
   serviceDate,
   VENUE_MENU_TEMPLATE,
@@ -160,13 +161,12 @@ async function StructureSubtab({
   return (
     <div className="grid gap-4">
       <MenuBar
-        // A new menu starts from its own saved settings.
         key={`bar:${menuId}`}
         venueId={venue.id}
         venueName={venue.name}
         menus={menus.map(menuChoice)}
         currentId={menuId}
-        settings={menuSettingsOf(current.settings)}
+        layout={designLayoutOf(readDesign(venue.settings).design.values)}
         canEdit={manager}
       />
       <Composer

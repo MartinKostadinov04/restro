@@ -12,6 +12,7 @@ import { z } from 'zod'
 
 import { ALLERGENS, DIETARY_LABELS } from '../allergens'
 import { MAX_IMAGE_SIDE } from '../assets'
+import { DesignValuesSchema } from '../design/schema'
 import { FIELD_TYPE_NAMES, FIELD_VALUE_SCHEMAS, type FieldType } from '../field-types/catalog'
 import { LocaleSchema, LocalizedTextSchema } from '../locales'
 import { CurrencySchema, MoneySchema } from '../money'
@@ -252,12 +253,24 @@ const SnapshotShape = z.strictObject({
   tags: z.record(TagIdSchema, TagSchema),
   // New fields inside `menu-snapshot/1` stay optional forever: a snapshot published before them
   // still parses. After the first deploy, the readers change first (CF-12's parser-first rule).
-  /** The venue's template and its options (D69); written only when the venue chose one. */
+  /**
+   * The venue's template and its options (D69). No longer written since the design record
+   * (D129): snapshots published before it still carry it.
+   */
   presentation: PresentationSchema.optional(),
   /** The guest services the venue switched on (D71); the publisher always writes it. */
   features: GuestFeaturesSchema.optional(),
-  /** The menu's layout and whether guests may switch it (D92); the publisher always writes it. */
+  /**
+   * The menu's layout and whether guests may switch it (D92); the publisher always writes it,
+   * from the design's Layout and Guest switch (D129).
+   */
   layout: SnapshotLayoutSchema.optional(),
+  /**
+   * The venue's design (D129, D130): every choice option's value, as the contract lists them
+   * (strict: an unknown page or option, a missing one or a value off the list is refused). The
+   * publisher always writes it.
+   */
+  design: DesignValuesSchema.optional(),
 })
 
 type Shape = z.output<typeof SnapshotShape>
@@ -434,8 +447,8 @@ export type SnapshotItem = MenuSnapshot['items'][string]
  *
  * The snapshot (`MenuSnapshotSchema`) works differently. It stays strict for unknown keys, and it
  * gains known, optional fields in place (`theme.roles`, `theme.scheme`, `presentation`,
- * `features`: D69–D71; `layout` and the sections' `hints.layout`: D92). After the first deploy,
- * a new field ships in the reader one deploy before the producer writes it. A phone still running an older reader keeps its current menu on screen
+ * `features`: D69–D71; `layout` and the sections' `hints.layout`: D92; `design`: D129). After
+ * the first deploy, a new field ships in the reader one deploy before the producer writes it. A phone still running an older reader keeps its current menu on screen
  * until it reloads, because the pointer poll ignores a snapshot it cannot parse.
  */
 export const LiveOverlaySchema = z.looseObject({

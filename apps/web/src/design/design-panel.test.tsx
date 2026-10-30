@@ -5,7 +5,13 @@
 // and the panels, a warning for a strongly saturated page, Advanced with the computed colours and
 // a pair that does not read), the sticky live preview of the open menu, saving a WHOLE look, and
 // the read-only view. The server actions, the toast and the upload are the only fakes.
-import { DEFAULT_GUEST_FEATURES, suggestHarmony, THEME_PRESETS } from '@restro/core'
+import {
+  DEFAULT_DESIGN,
+  DEFAULT_GUEST_FEATURES,
+  designThemeOf,
+  suggestHarmony,
+  THEME_PRESETS,
+} from '@restro/core'
 import { fixture } from '@restro/shell/testing'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -21,19 +27,16 @@ import { tintsOf } from './look-state'
 
 const actions = vi.hoisted(() => ({
   saveLookAction: vi.fn(),
-  chooseTemplateAction: vi.fn(),
   previewDraftAction: vi.fn(),
   renameMenuAction: vi.fn(),
 }))
 vi.mock('@/server/design/actions', () => ({
   saveLookAction: actions.saveLookAction,
-  chooseTemplateAction: actions.chooseTemplateAction,
 }))
 vi.mock('@/server/publish/actions', () => ({ previewDraftAction: actions.previewDraftAction }))
 vi.mock('@/server/menus-actions', () => ({ renameMenuAction: actions.renameMenuAction }))
 vi.mock('@/server/composer/guest-features-actions', () => ({
   saveGuestFeaturesAction: vi.fn(),
-  saveFeatureOptionsAction: vi.fn(),
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 vi.mock('@/composer/item-sheet-upload', async (importOriginal) => ({
@@ -47,8 +50,8 @@ const VENUE_NAME = 'Demo Club'
 const OVERLAY = { version: 1, items: {} }
 
 const NONE: DesignView = {
-  theme: null,
-  presentation: { face: 'editorial-market', options: {} },
+  revision: 0,
+  theme: designThemeOf(DEFAULT_DESIGN),
   logo: null,
   canEdit: true,
 }
@@ -87,11 +90,7 @@ const previewRoot = () =>
   })
 
 beforeEach(() => {
-  actions.saveLookAction.mockReset().mockResolvedValue({ ok: true })
-  actions.chooseTemplateAction.mockReset().mockImplementation(async (input) => ({
-    ok: true,
-    presentation: { face: input.face, options: input.lookOptions },
-  }))
+  actions.saveLookAction.mockReset().mockResolvedValue({ ok: true, revision: 1 })
   actions.previewDraftAction.mockReset().mockResolvedValue({
     ok: true,
     snapshot: fixture('with-images').snapshot,
@@ -124,9 +123,6 @@ describe('the template chooser', () => {
     expect(within(card).getByText(/photo-led, editorial menu/)).toBeTruthy()
     expect(within(card).getByTestId('template-in-use')).toBeTruthy()
     expect(within(card).getByRole('img').getAttribute('src')).toBe('/faces/editorial-market.png')
-    expect(
-      (within(card).getByRole('button', { name: 'In use' }) as HTMLButtonElement).disabled,
-    ).toBe(true)
     // The hidden reference template is never offered.
     expect(screen.queryByTestId('template-qr-phone')).toBeNull()
     expect(screen.getByRole('button', { name: 'Close' }).getAttribute('aria-expanded')).toBe('true')
@@ -156,30 +152,10 @@ describe('the template chooser', () => {
     ).toBeTruthy()
   })
 
-  it('says so when the venue still uses the hidden reference template, and a click switches', async () => {
-    setup({ presentation: { face: 'qr-phone', options: {} } })
-    expect(screen.getByTestId('design-hidden-template')).toBeTruthy()
-    await openChooser()
-    // Its card is not "in use", and the visible template can be chosen to switch.
-    expect(screen.queryByTestId('template-in-use')).toBeNull()
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Use this template: Editorial Market' }),
-    )
-    await waitFor(() => expect(actions.chooseTemplateAction).toHaveBeenCalledTimes(1))
-    expect(actions.chooseTemplateAction).toHaveBeenCalledWith({
-      venueId: VENUE,
-      face: 'editorial-market',
-      lookOptions: {},
-    })
-    // Choosing closes the chooser and says it was saved.
-    expect(screen.queryByTestId('template-editorial-market')).toBeNull()
-    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
-  })
-
   it('draws no look options for the Editorial Market: its layout is the menu’s setting (D92)', () => {
     setup()
     expect(screen.queryByTestId('design-look-options')).toBeNull()
-    expect(screen.queryByRole('group', { name: 'Menu layout' })).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Layout for all menus' })).toBeNull()
   })
 
   it('"Preview" opens a phone pop-up with the venue’s menu in that template, and saves nothing', async () => {
@@ -199,9 +175,8 @@ describe('the template chooser', () => {
       ).toBeTruthy(),
     )
     expect(actions.previewDraftAction).toHaveBeenCalledTimes(1)
-    // It is the template in use already: no "Use" button in the pop-up.
+    // There is nothing to choose yet (Styles come with the Studio): no "Use" button in the pop-up.
     expect(within(dialog).queryByRole('button', { name: /^Use this template/ })).toBeNull()
-    expect(actions.chooseTemplateAction).not.toHaveBeenCalled()
 
     await userEvent.keyboard('{Escape}')
     await waitFor(() => expect(screen.queryByTestId('template-preview-dialog')).toBeNull())
@@ -229,9 +204,9 @@ describe('the template chooser', () => {
     )
   })
 
-  it('offers "Use this template" in the pop-up of another template and says why when there is no draft', async () => {
+  it('says why in the pop-up when there is no draft', async () => {
     actions.previewDraftAction.mockResolvedValue({ ok: false, error: 'nothing_visible' })
-    setup({ presentation: { face: 'qr-phone', options: {} } })
+    setup()
     await openChooser()
     await userEvent.click(
       screen.getByRole('button', { name: 'Preview the template Editorial Market' }),
@@ -240,11 +215,6 @@ describe('the template chooser', () => {
     expect((await within(dialog).findByRole('alert')).textContent).toBe(
       'Nothing visible to publish, so there is nothing to preview.',
     )
-    await userEvent.click(
-      within(dialog).getByRole('button', { name: 'Use this template: Editorial Market' }),
-    )
-    await waitFor(() => expect(actions.chooseTemplateAction).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(screen.queryByTestId('template-preview-dialog')).toBeNull())
   })
 })
 
@@ -403,14 +373,14 @@ describe('font, corners, shadow and screen', () => {
   it('applies the corners and the shadow the form holds', async () => {
     setup()
     await previewRoot()
-    fireEvent.change(screen.getByLabelText('Corners'), { target: { value: '20' } })
-    expect(screen.getByTestId('design-radius-value').textContent).toBe('20 px')
+    fireEvent.change(screen.getByLabelText('Corners'), { target: { value: '16' } })
+    expect(screen.getByTestId('design-radius-value').textContent).toBe('16 px')
     await waitFor(async () =>
-      expect((await previewRoot()).style.getPropertyValue('--rm-radius')).toBe('20px'),
+      expect((await previewRoot()).style.getPropertyValue('--rm-radius')).toBe('16px'),
     )
-    fireEvent.change(screen.getByLabelText('Shadow'), { target: { value: '4' } })
+    fireEvent.change(screen.getByLabelText('Shadow'), { target: { value: '0' } })
     await waitFor(async () =>
-      expect((await previewRoot()).style.getPropertyValue('--rm-shadow')).toBe('4'),
+      expect((await previewRoot()).style.getPropertyValue('--rm-shadow')).toBe('0'),
     )
   })
 
@@ -740,20 +710,21 @@ describe('saving the look', () => {
     type('Your brand colour', '#2563eb')
     await userEvent.click(screen.getByRole('combobox', { name: 'Font' }))
     await userEvent.click(await screen.findByRole('option', { name: 'Manrope' }))
-    fireEvent.change(screen.getByLabelText('Shadow'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText('Shadow'), { target: { value: '0' } })
     await userEvent.click(screen.getByRole('button', { name: 'Always dark' }))
     await userEvent.click(save())
     await waitFor(() => expect(actions.saveLookAction).toHaveBeenCalledTimes(1))
     const tints = tintsOf('#2563eb')
     expect(actions.saveLookAction.mock.calls[0]?.[0]).toEqual({
       venueId: VENUE,
+      expectedRevision: 0,
       theme: {
         logo_asset_id: null,
         preset: null,
         colors: { primary: tints.page, secondary: tints.panels, tertiary: '#2563eb' },
         font: 'manrope',
         radius: 8,
-        shadow: 3,
+        shadow: 0,
         scheme: 'dark',
       },
     })
@@ -797,6 +768,7 @@ describe('saving the look', () => {
     await waitFor(() => expect(actions.saveLookAction).toHaveBeenCalledTimes(1))
     expect(actions.saveLookAction.mock.calls[0]?.[0]).toEqual({
       venueId: VENUE,
+      expectedRevision: 0,
       theme: { logo_asset_id: null, font: 'inter', radius: 8, shadow: 1, scheme: 'light' },
     })
   })
@@ -869,18 +841,64 @@ describe('saving the look', () => {
       colors: { primary: '#f4efe6', secondary: '#e8dfcf', tertiary: '#d9f26b' },
       overrides: { dark: { border: '#334455' } },
       font: 'lora' as const,
-      radius: 12,
-      shadow: 2,
+      radius: 16,
+      shadow: 1,
       scheme: 'light' as const,
     }
-    setup({ theme })
+    setup({ revision: 7, theme })
     await userEvent.click(screen.getByRole('button', { name: 'Always dark' }))
     await userEvent.click(save())
     await waitFor(() => expect(actions.saveLookAction).toHaveBeenCalledTimes(1))
     expect(actions.saveLookAction.mock.calls[0]?.[0]).toEqual({
       venueId: VENUE,
+      expectedRevision: 7,
       theme: { ...theme, scheme: 'dark' },
     })
+  })
+
+  it('names the revision the save answered with on the next save', async () => {
+    actions.saveLookAction.mockResolvedValue({ ok: true, revision: 4 })
+    setup({ revision: 3 })
+    await userEvent.click(screen.getByRole('button', { name: 'Always dark' }))
+    await userEvent.click(save())
+    await waitFor(() => expect(save().disabled).toBe(true))
+    await userEvent.click(screen.getByRole('button', { name: 'Always light' }))
+    await userEvent.click(save())
+    await waitFor(() => expect(actions.saveLookAction).toHaveBeenCalledTimes(2))
+    expect(actions.saveLookAction.mock.calls[0]?.[0].expectedRevision).toBe(3)
+    expect(actions.saveLookAction.mock.calls[1]?.[0].expectedRevision).toBe(4)
+  })
+
+  it('takes the stored design and says so when someone else saved in between', async () => {
+    const stored = {
+      logo_asset_id: null,
+      colors: { primary: '#f5f1ea', secondary: '#e7e0d4', tertiary: '#e0a43a' },
+      font: 'lora' as const,
+      radius: 16,
+      shadow: 0,
+      scheme: 'dark' as const,
+    }
+    actions.saveLookAction.mockResolvedValue({
+      ok: false,
+      error: 'stale',
+      view: { ...NONE, revision: 5, theme: stored },
+    })
+    setup({ revision: 4 })
+    type('Your brand colour', '#2563eb')
+    await userEvent.click(save())
+    expect((await screen.findByTestId('design-error')).textContent).toContain(
+      'Someone else saved the design in the meantime.',
+    )
+    expect(toast.success).not.toHaveBeenCalled()
+    // The form holds the stored look, nothing to save, and the next save names its revision.
+    await waitFor(() => expect(field('Your brand colour').value).toBe('#e0a43a'))
+    expect(field('Page').value).toBe('#f5f1ea')
+    await waitFor(() => expect(save().disabled).toBe(true))
+    actions.saveLookAction.mockResolvedValue({ ok: true, revision: 6 })
+    await userEvent.click(screen.getByRole('button', { name: 'Always light' }))
+    await userEvent.click(save())
+    await waitFor(() => expect(actions.saveLookAction).toHaveBeenCalledTimes(2))
+    expect(actions.saveLookAction.mock.calls[1]?.[0].expectedRevision).toBe(5)
   })
 
   it('shows what the server refused, naming the pairs that do not read', async () => {
@@ -990,9 +1008,8 @@ describe('someone who may not change the design', () => {
     expect((screen.getByRole('combobox', { name: 'Font' }) as HTMLButtonElement).disabled).toBe(
       true,
     )
-    // They can look at the templates, but not choose one.
+    // They can look at the templates.
     await userEvent.click(screen.getByRole('button', { name: 'See templates' }))
-    expect(screen.queryByRole('button', { name: /^Use this template/ })).toBeNull()
     expect(
       screen.getByRole('button', { name: 'Preview the template Editorial Market' }),
     ).toBeTruthy()

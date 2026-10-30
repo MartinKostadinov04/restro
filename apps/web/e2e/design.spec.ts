@@ -22,8 +22,9 @@ import { ADMIN_PASSWORD } from './support'
 //   the font is a dropdown, each name in its own font
 //   an Advanced override that does not read turns Save off and names the pair (screenshot)
 //   the header name saves apart from Save look
-//   the menu layout is chosen in Structure (another page) -> it saves by itself
 //   Save look -> reload -> the look is still the brand colour
+//   the menu layout is chosen in Structure (another page) -> it saves by itself, and a look saved
+//     from the page that loaded before it is refused and takes the stored design (D129)
 //   Publish -> the guest page carries the page colour, the font and the chosen layout
 //   the same tab at phone width (screenshot), and in Bulgarian
 //
@@ -322,8 +323,22 @@ test('the header name saves apart from Save look', async () => {
   }
 })
 
+test('Save look keeps the whole look: it is still the brand colour after a reload', async () => {
+  await save().click()
+  await expect(toast().first()).toContainText('Saved. Guests see it after the next publish.')
+  await expect(page.getByTestId('design-status')).toContainText('Saved.')
+  await expect(save()).toBeDisabled()
+  await page.reload()
+  await expect(previewRoot()).toBeVisible()
+  await expect(brandBox()).toHaveValue(BRAND)
+  await expect(pageBox()).toHaveValue(BRAND_PAGE)
+  await expect(panelsBox()).toHaveValue(BRAND_PANELS)
+  await expect(page.getByTestId('design-font-select')).toHaveText('Lora')
+  await expect(save()).toBeDisabled()
+})
+
 test('the menu layout is chosen in the composer’s Structure, and saves by itself (D92)', async () => {
-  // Another page of the same person: this one keeps the unsaved look of the steps above.
+  // Another page of the same person: this one stays on the revision it loaded.
   const structure = await owner.newPage()
   try {
     await structure.goto(`/venues/${venueId}?tab=composer&sub=structure`)
@@ -343,20 +358,22 @@ test('the menu layout is chosen in the composer’s Structure, and saves by itse
   }
 })
 
-test('Save look keeps the whole look: it is still the brand colour after a reload', async () => {
+test('a look saved from a page that loaded before another save is refused, and takes the stored design (D129)', async () => {
+  await page.getByRole('button', { name: 'Always dark' }).click()
   await save().click()
-  await expect(toast().first()).toContainText('Saved. Guests see it after the next publish.')
-  await expect(page.getByTestId('design-status')).toContainText('Saved.')
-  await expect(save()).toBeDisabled()
-  await page.reload()
-  await expect(previewRoot()).toBeVisible()
+  await expect(page.getByTestId('design-error')).toContainText(
+    'Someone else saved the design in the meantime.',
+  )
+  // The form holds the stored design, with nothing to save, and the draft the layout just chosen.
   await expect(brandBox()).toHaveValue(BRAND)
-  await expect(pageBox()).toHaveValue(BRAND_PAGE)
-  await expect(panelsBox()).toHaveValue(BRAND_PANELS)
-  await expect(page.getByTestId('design-font-select')).toHaveText('Lora')
-  // The draft carries the menu layout chosen in Structure (D92).
-  await expect(previewRoot()).toHaveAttribute('data-layout', 'one')
   await expect(save()).toBeDisabled()
+  await expect(previewRoot()).toHaveAttribute('data-layout', 'one')
+  await page.reload()
+  await expect(previewRoot()).toHaveAttribute('data-layout', 'one')
+  await expect(page.getByRole('button', { name: 'Always dark' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  )
 })
 
 test('after Publish the guest page carries the page colour, the font and the chosen layout', async ({

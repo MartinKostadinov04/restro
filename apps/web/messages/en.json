@@ -836,11 +836,11 @@
       "menu": "Menu",
       "live": "Live",
       "manage": "Manage menus",
-      "layout": "Menu layout",
+      "layout": "Layout for all menus",
       "layouts": {
         "list": "List",
-        "one_column": "One column",
-        "two_columns": "Two columns"
+        "one": "One column",
+        "two": "Two columns"
       },
       "guestSwitch": "Guests may switch the layout",
       "saved": "Saved. Guests see it after the next publish"
@@ -989,6 +989,7 @@
         "noMenu": "This venue has no menu yet.",
         "no_visible_items": "Nothing visible to publish: show at least one item in the composer.",
         "menu_blocked": "The menu cannot be published yet. Check the composer.",
+        "invalid_design": "The saved design can no longer be read, so nothing was published. Save the design again in the Design tab, then publish.",
         "held_outdated": "The menu has changed since the publish was held.",
         "held_not_found": "The held publish was already decided.",
         "unsafe_snapshot": "The draft was refused by the safety check.",
@@ -1054,6 +1055,7 @@
       "unchanged": "Nothing new to publish: the menu is already version {version}.",
       "no_visible_items": "Nothing visible to publish",
       "menu_blocked": "The menu cannot be published yet. Check the composer.",
+      "invalid_design": "The saved design can no longer be read, so nothing was published. Save the design again in the Design tab, then publish.",
       "held_outdated": "The menu has changed since this publish was held, so it cannot be approved any more. Publish the menu as it is now instead.",
       "held_not_found": "This held publish was already decided.",
       "unsafe_snapshot": "The draft was refused by the safety check. Nothing was published.",
@@ -1222,6 +1224,7 @@
       "restore": "Restore"
     },
     "errors": {
+      "stale": "Someone else saved the design just now. Try again.",
       "invalid_input": "That name or choice cannot be used. Check it and try again.",
       "unknown_venue": "This venue was not found.",
       "venue_archived": "This venue was deleted.",
@@ -1714,7 +1717,7 @@
       "invalid": "Check the look and try again.",
       "forbidden": "Only owners and admins can change the design.",
       "not_found": "This venue could not be found.",
-      "unknown_face": "That template is not available.",
+      "stale": "Someone else saved the design in the meantime. Their version is now loaded: make your change again.",
       "logo_not_usable": "That logo could not be used. Upload it again.",
       "unreadable": "The look was not saved: some text would be hard to read.",
       "failed": "Something went wrong. Try again."
@@ -1723,10 +1726,7 @@
       "title": "Template",
       "description": "The layout guests see when they scan a QR code. You can change it at any time; the menu itself stays the same.",
       "inUse": "In use",
-      "use": "Use this template",
-      "useNamed": "Use this template: {name}",
       "thumbnailAlt": "Picture of the {name} template",
-      "hiddenInUse": "This venue uses a technical test template that is not offered to venues. Choose a template below to switch.",
       "current": "Template: {name}",
       "change": "Change",
       "browse": "See templates",

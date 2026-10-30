@@ -1,8 +1,9 @@
-// Two venue settings the snapshot publishes beside the theme (brief SH-01 §8):
-// - `presentation` (D69): which template (face) the venue chose and the face's options;
-// - `guest_features` (D71): which guest services the venue switched on.
-// Both live in `venues.settings` (snake_case keys, no migration) and are published as the
-// snapshot's `presentation` and `features`.
+// Two shapes the snapshot carries beside the theme (brief SH-01 §8):
+// - `presentation` (D69): which template (face) the venue chose and the face's options. Retired
+//   by the design record (D129, migration 0043): no longer stored or published, kept so that a
+//   snapshot published before it still parses;
+// - `guest_features` (D71): which guest services the venue switched on, in `venues.settings`,
+//   published as the snapshot's `features`.
 //
 // Core does not know which faces exist or which options each declares: the admin checks the face
 // and its options against the template registry before it saves (SH-05a/b). Core only fixes the
@@ -132,16 +133,6 @@ export const DEFAULT_GUEST_FEATURES: GuestFeatures = Object.freeze({
 function settingOf(settings: unknown, key: string): unknown {
   if (typeof settings !== 'object' || settings === null || Array.isArray(settings)) return undefined
   return Object.hasOwn(settings, key) ? (settings as Record<string, unknown>)[key] : undefined
-}
-
-/**
- * The template a venue chose (`venues.settings.presentation`), or null when it has none or the
- * stored value is not valid (only a hand-edited row could cause that): the face's registry default
- * applies then.
- */
-export function readPresentation(settings: unknown): Presentation | null {
-  const parsed = PresentationSchema.safeParse(settingOf(settings, 'presentation'))
-  return parsed.success ? parsed.data : null
 }
 
 /**

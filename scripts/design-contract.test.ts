@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { DESIGN_OPTIONS, DESIGN_PAGES } from '../packages/shell/src/design/contract'
+import { DESIGN_OPTIONS, DESIGN_PAGES } from '../packages/core/src/design/contract'
 import { PREMADE_STYLES } from '../packages/shell/src/design/styles/index'
 import {
   checkAgainstD130,
@@ -15,7 +15,7 @@ import {
   readD130Table,
 } from './design-contract'
 
-// The design contract guard (D128, D130, D67). packages/shell/src/design/contract.ts is the binding
+// The design contract guard (D128, D130, D67). packages/core/src/design/contract.ts is the binding
 // list of the menu designer's pages, options and values; docs/decisions/D130.md is the same table
 // in words. This test fails when
 //   1. a page, an option, a value or their order differs between D130's table and the contract

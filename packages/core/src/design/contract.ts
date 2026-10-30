@@ -5,10 +5,12 @@
 //
 // Everything that needs the list reads it from here: the design record and its snapshot block, the
 // renderer, the Studio's pages and tiles, the leak guard's allowed words and every Style file.
-// Nothing else in the repo lists an option's values, except the theme's font list in core, which
-// packages/shell/src/design/design.test.ts holds equal until the theme record retires.
-// docs/decisions/D130.md is the same table in words; scripts/design-contract.test.ts fails when
-// either changes alone.
+// Nothing else in the repo lists an option's values: the theme's font list takes its ids from the
+// Body font row. docs/decisions/D130.md is the same table in words; scripts/design-contract.test.ts
+// fails when either changes alone.
+//
+// It lives in core, not in the shell that re-exports it, because core's design record, snapshot
+// schema and leak guard check against it and core sits below the shell (the shell imports core).
 //
 // Mirrors the Platform's passport-design-contract.json, without the passport's `show` parts
 // (content is content, D129) and without a mode gate (Simple hides pages, it never ignores a

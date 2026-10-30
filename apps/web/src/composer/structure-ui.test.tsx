@@ -9,7 +9,7 @@ import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { setMenuSettingsAction } from '@/server/menus-actions'
+import { saveLayoutAction } from '@/server/design/actions'
 import { renderWithIntl } from '@/test-utils'
 
 import type { ComposerState } from './composer-context'
@@ -30,7 +30,7 @@ vi.mock('next/navigation', () => ({
   usePathname: () => navigation.pathname,
   useSearchParams: () => new URLSearchParams(navigation.search),
 }))
-vi.mock('@/server/menus-actions', () => ({ setMenuSettingsAction: vi.fn() }))
+vi.mock('@/server/design/actions', () => ({ saveLayoutAction: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const VENUE = 'vn_0123456789ABCDEFGHIJKL'
@@ -40,7 +40,7 @@ const BRUNCH = 'nd_0000000000000000000002'
 beforeEach(() => {
   navigation.replace.mockReset()
   navigation.search = ''
-  vi.mocked(setMenuSettingsAction).mockReset()
+  vi.mocked(saveLayoutAction).mockReset()
   vi.mocked(toast.success).mockReset()
   vi.mocked(toast.error).mockReset()
 })
@@ -117,7 +117,7 @@ describe('the menu switcher and the menu layout', () => {
         venueName="Club"
         menus={MENUS}
         currentId={LIVE}
-        settings={{}}
+        layout={{ default: 'two', guest_switch: true }}
         canEdit
         {...overrides}
       />,
@@ -146,8 +146,8 @@ describe('the menu switcher and the menu layout', () => {
     expect(url.searchParams.has('item')).toBe(false)
   })
 
-  it('shows two columns with the switch for a menu that set none (the look before D92), and saves a change at once', async () => {
-    vi.mocked(setMenuSettingsAction).mockResolvedValue({ ok: true } as never)
+  it('shows the venue’s layout and switch, and saves a change at once', async () => {
+    vi.mocked(saveLayoutAction).mockResolvedValue({ ok: true })
     bar()
     const layout = screen.getByTestId('menu-layout')
     expect(
@@ -156,26 +156,26 @@ describe('the menu switcher and the menu layout', () => {
     expect(screen.getByTestId('menu-layout-switch').getAttribute('aria-checked')).toBe('true')
     await userEvent.click(within(layout).getByRole('button', { name: 'List' }))
     await waitFor(() =>
-      expect(setMenuSettingsAction).toHaveBeenCalledWith({
+      expect(saveLayoutAction).toHaveBeenCalledWith({
         venueId: VENUE,
-        menuId: LIVE,
-        settings: { layout: 'list', layout_switch: true },
+        layout: 'list',
+        guestSwitch: true,
       }),
     )
     await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
     await userEvent.click(screen.getByTestId('menu-layout-switch'))
     await waitFor(() =>
-      expect(setMenuSettingsAction).toHaveBeenLastCalledWith({
+      expect(saveLayoutAction).toHaveBeenLastCalledWith({
         venueId: VENUE,
-        menuId: LIVE,
-        settings: { layout: 'list', layout_switch: false },
+        layout: 'list',
+        guestSwitch: false,
       }),
     )
   })
 
   it('goes back to what was saved, and says why, when the server refuses', async () => {
-    vi.mocked(setMenuSettingsAction).mockResolvedValue({ ok: false, error: 'not_allowed' })
-    bar({ settings: { layout: 'one_column', layout_switch: true } })
+    vi.mocked(saveLayoutAction).mockResolvedValue({ ok: false, error: 'not_allowed' })
+    bar({ layout: { default: 'one', guest_switch: true } })
     const layout = screen.getByTestId('menu-layout')
     await userEvent.click(within(layout).getByRole('button', { name: 'List' }))
     await waitFor(() =>
@@ -187,7 +187,7 @@ describe('the menu switcher and the menu layout', () => {
   })
 
   it('is read-only for someone who may not change it', () => {
-    bar({ canEdit: false, settings: { layout: 'two_columns', layout_switch: true } })
+    bar({ canEdit: false, layout: { default: 'two', guest_switch: true } })
     const layout = screen.getByTestId('menu-layout')
     // The segmented control is a disabled fieldset: its buttons are disabled through it.
     expect(within(layout).getByRole('button', { name: 'List' }).matches(':disabled')).toBe(true)

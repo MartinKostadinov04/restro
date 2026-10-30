@@ -28,8 +28,14 @@
 // The changelog (`events`) records every applied change, not only field values: a new node, a
 // status change, a placement, a removal, a move and a link each append one row whose `op` says
 // what kind of change it is (see the `events` table in @restro/db).
+//
+// One op is about a venue rather than the document: `setDesign` saves the venue's design record
+// (D129, `venues.settings.design`) over the revision the editor started from. Its event has no
+// node, the field key `design`, the manual layer and the venue's scope; the record carries the
+// same provenance. It is the record's only writer (scripts/design-writers.test.ts).
 
 import {
+  assets,
   type DbPool,
   events,
   fieldValues,
@@ -59,6 +65,7 @@ import {
   nodeRefsOf,
   parseChangeSet,
   type Scope,
+  type SetDesign,
   type SetLinkState,
   type SourceLink,
   tillIntegrationOf,
@@ -70,6 +77,16 @@ import {
   type TillLinkTypes,
   tillLinkTypeProblem,
 } from '../connectors'
+import {
+  type DesignContent,
+  type DesignRecord,
+  designContentOf,
+  designThemeOf,
+  readDesign,
+  readDesignRecord,
+  type StoredDesign,
+  sameDesign,
+} from '../design/record'
 import { FIELD_TYPES, type FieldTypeSpec } from '../field-types/specs'
 import { canonicalJson, sha256Hex } from '../hash'
 import type { NodeId } from '../ids'
@@ -78,6 +95,8 @@ import type { RejectionCode } from '../result'
 import { sortKeyBetween } from '../sort-keys'
 import { findField, type Template } from '../template'
 import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
+import { type PairIssue, validateRoles } from '../theme/roles'
+import { themeRolesOf } from '../theme/settings'
 import { validateWrite } from '../validate-write'
 import { lockTenantDocument } from './lock'
 import { unlinkCopy } from './unlink'
@@ -133,6 +152,18 @@ export type ApplyRejectionCode =
    * its assignments back); only an id the write adds is checked.
    */
   | 'unknown_tag'
+  /**
+   * setDesign: the revision the editor started from is not the stored one (someone saved in
+   * between). The rejection carries the stored design (`storedDesign`) for the editor to reload.
+   */
+  | 'stale_revision'
+  /**
+   * setDesign: a text-on-colour pair of the design would not read (an Advanced override). The
+   * rejection carries the pairs (`issues`) for the editor to show.
+   */
+  | 'unreadable'
+  /** setDesign: a new logo that is not a stored image of this tenant. */
+  | 'logo_not_usable'
 
 /** One refused op: its index in `changeSet.ops`, a code and a reason for people. */
 export interface ApplyRejection {
@@ -146,6 +177,10 @@ export interface ApplyRejection {
   readonly nodeRef?: string
   /** The field the op was about (`setField`, `clearField`). */
   readonly fieldKey?: string
+  /** `stale_revision` only: the design as stored, with its revision, for the editor to reload. */
+  readonly storedDesign?: StoredDesign
+  /** `unreadable` only: the text-on-colour pairs that do not read. */
+  readonly issues?: readonly PairIssue[]
 }
 
 /**
@@ -266,7 +301,8 @@ interface ValueRow {
 
 interface EventRow {
   readonly op: ChangeSetOpName
-  readonly nodeId: NodeId
+  /** Null only for `setDesign`, which is about a venue (its scope), not a node. */
+  readonly nodeId: NodeId | null
   readonly fieldKey: string
   readonly layer: Layer
   readonly scope: Scope
@@ -276,7 +312,13 @@ interface EventRow {
 
 type Outcome =
   | { readonly kind: 'applied' | 'unchanged' | 'skipped' }
-  | { readonly kind: 'rejected'; readonly code: ApplyRejectionCode; readonly reason: string }
+  | {
+      readonly kind: 'rejected'
+      readonly code: ApplyRejectionCode
+      readonly reason: string
+      readonly storedDesign?: StoredDesign
+      readonly issues?: readonly PairIssue[]
+    }
 
 const APPLIED: Outcome = { kind: 'applied' }
 const UNCHANGED: Outcome = { kind: 'unchanged' }
@@ -340,6 +382,15 @@ class DocumentState {
   readonly tagRows = new Map<string, { venueId: string; archived: boolean }>()
   /** For each item such a write targets: the venues of the menus it is placed in (maybe none). */
   readonly itemVenues = new Map<NodeId, Set<string>>()
+  /**
+   * The design of each venue a setDesign names, read under a row lock, then as this change set
+   * leaves it: the record (null while the venue has none) and the design it reads as.
+   */
+  readonly designs = new Map<string, { record: DesignRecord | null; stored: StoredDesign }>()
+  /** Whether each logo a setDesign names is a stored image of this tenant. */
+  readonly usableLogos = new Map<string, boolean>()
+  /** The venues whose design record this change set rewrites, with the record to write. */
+  readonly dirtyDesigns = new Map<string, DesignRecord>()
 
   readonly createdNodes: NodeState[] = []
   /** Where each moved node stood before this change set (the first move records it). */
@@ -473,6 +524,42 @@ async function loadState(tx: WriteTx, set: ChangeSet, template: Template): Promi
     .for('share')) {
     state.venues.add(row.id)
     if (row.archivedAt !== null) state.archivedVenues.add(row.id)
+  }
+  // The design records a setDesign names, locked in id order (after the share locks above, which
+  // this transaction already holds): a concurrent save waits, then sees this revision.
+  const designVenues = [
+    ...new Set(set.ops.flatMap((op) => (op.op === 'setDesign' ? [op.venueId] : []))),
+  ].sort()
+  if (designVenues.length > 0) {
+    for (const row of await tx
+      .select({ id: venues.id, settings: venues.settings })
+      .from(venues)
+      .where(anyOf(venues.id, designVenues))
+      .orderBy(asc(venues.id))
+      .for('no key update')) {
+      state.designs.set(row.id, {
+        record: readDesignRecord(row.settings),
+        stored: readDesign(row.settings),
+      })
+    }
+    const logos = [
+      ...new Set(
+        set.ops.flatMap((op) =>
+          op.op === 'setDesign' && op.design.logo_asset_id !== null
+            ? [op.design.logo_asset_id]
+            : [],
+        ),
+      ),
+    ]
+    if (logos.length > 0) {
+      // Row-level security hides other tenants' assets: a foreign id reads as not usable.
+      for (const row of await tx
+        .select({ id: assets.id, status: assets.status, width: assets.width })
+        .from(assets)
+        .where(anyOf(assets.id, logos))) {
+        state.usableLogos.set(row.id, row.status === 'stored' && row.width !== null)
+      }
+    }
   }
   if (state.archivedVenues.size > 0) {
     const archivedMenus = await tx
@@ -842,6 +929,9 @@ class Run {
         case 'setLinkState':
           outcome = this.setLinkState(op)
           break
+        case 'setDesign':
+          outcome = this.setDesign(op)
+          break
       }
       if (outcome.kind === 'rejected') {
         this.rejected.push({
@@ -849,6 +939,8 @@ class Run {
           code: outcome.code,
           reason: outcome.reason,
           ...this.rejectionTarget(op),
+          ...(outcome.storedDesign === undefined ? {} : { storedDesign: outcome.storedDesign }),
+          ...(outcome.issues === undefined ? {} : { issues: outcome.issues }),
         })
       } else if (outcome.kind === 'applied') {
         this.applied += 1
@@ -1464,6 +1556,87 @@ class Run {
   }
 
   /**
+   * Saves a venue's whole design record (D129). Refused for a till source, an unknown or deleted
+   * venue, a stale revision (with the stored design), colours that do not read and a new logo
+   * that is not a stored image; unchanged when the design equals the stored one. Otherwise the
+   * record is written with the next revision and the change set's provenance, and one event (no
+   * node, the venue's scope) holds the record before and after.
+   */
+  private setDesign(op: SetDesign): Outcome {
+    if (this.set.source !== 'manual') {
+      return refused('source_not_allowed', `a ${this.set.source} change set cannot save a design`)
+    }
+    const current = this.state.designs.get(op.venueId)
+    if (current === undefined || !this.state.venues.has(op.venueId)) {
+      return refused('unknown_venue', `this tenant has no venue ${op.venueId}`)
+    }
+    if (this.state.archivedVenues.has(op.venueId)) {
+      return refused('venue_archived', `${op.venueId} is a deleted venue`)
+    }
+    if (op.expectedRevision !== current.stored.revision) {
+      return {
+        kind: 'rejected',
+        code: 'stale_revision',
+        reason: `the design was saved in between: revision ${current.stored.revision}, not ${op.expectedRevision}`,
+        storedDesign: current.stored,
+      }
+    }
+    const design: DesignContent = designContentOf(op.design)
+    const issues = validateRoles(themeRolesOf(designThemeOf(design)))
+    if (issues.length > 0) {
+      const pairs = issues.map(
+        (issue) =>
+          `${issue.mode} ${issue.fg} on ${issue.bg} ${issue.ratio}:1 (needs ${issue.min}:1)`,
+      )
+      return {
+        kind: 'rejected',
+        code: 'unreadable',
+        reason: `these colours do not read: ${pairs.join('; ')}`,
+        issues,
+      }
+    }
+    // A logo already stored is kept even if its file has gone since; only a new one is checked.
+    const logo = design.logo_asset_id
+    if (
+      logo !== null &&
+      logo !== current.stored.design.logo_asset_id &&
+      this.state.usableLogos.get(logo) !== true
+    ) {
+      return refused('logo_not_usable', `${logo} is not a stored image of this tenant`)
+    }
+    if (sameDesign(design, current.stored.design)) return UNCHANGED
+
+    const record: DesignRecord = {
+      ...design,
+      revision: current.stored.revision + 1,
+      provenance: {
+        layer: 'manual',
+        source: 'manual',
+        actor: this.set.actor,
+        job_id: this.set.jobId,
+        change_set_id: this.set.id,
+      },
+    }
+    this.event(
+      {
+        op: 'setDesign',
+        nodeId: null,
+        fieldKey: 'design',
+        layer: 'manual',
+        scope: `venue:${op.venueId}`,
+      },
+      current.record,
+      record,
+    )
+    this.state.designs.set(op.venueId, {
+      record,
+      stored: { revision: record.revision, design },
+    })
+    this.state.dirtyDesigns.set(op.venueId, record)
+    return APPLIED
+  }
+
+  /**
    * Moves a link through the Link lifecycle, and records when its source last saw the object.
    * Only the link's own source may do this. The state follows `LINK_TRANSITIONS`; the same state
    * again is a no-op without an event; every move writes one structural event and stamps
@@ -1788,6 +1961,13 @@ async function flush(
           rejectReason: sql`excluded.reject_reason`,
         },
       })
+  }
+
+  // Design records (setDesign): that key alone, so the venue's other settings stay as they are.
+  for (const [venueId, record] of state.dirtyDesigns) {
+    await tx.execute(
+      sql`update restro.venues set settings = jsonb_set(settings, '{design}', ${JSON.stringify(record)}::jsonb) where id = ${venueId}`,
+    )
   }
 
   // The changelog, in op order, then one revision step per touched node that existed before.

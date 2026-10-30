@@ -1,8 +1,9 @@
 // The short font list (brief SH-01 §7, D70): six families with Cyrillic letters.
 import { describe, expect, it } from 'vitest'
 
+import { DESIGN_PAGES } from '../design/contract'
 import { SnapshotThemeSchema } from '../snapshot/schema'
-import { DEFAULT_FONT_ID, fontFamilyOf, THEME_FONT_IDS, THEME_FONTS } from './fonts'
+import { DEFAULT_FONT_ID, fontFamilyOf, THEME_FONTS } from './fonts'
 
 describe('THEME_FONTS', () => {
   it('is the six families of D70, the default first', () => {
@@ -15,11 +16,17 @@ describe('THEME_FONTS', () => {
       'unbounded/Unbounded/display',
     ])
     expect(DEFAULT_FONT_ID).toBe('inter')
-    expect(THEME_FONT_IDS).toEqual(THEME_FONTS.map((font) => font.id))
+  })
+
+  it('takes its ids, in order, from the design contract’s Body font values', () => {
+    const body = DESIGN_PAGES[0].options.find((option) => option.id === 'body_font')
+    const ids = body?.kind === 'choice' ? body.values.map((value) => value.id) : []
+    expect(THEME_FONTS.map((font) => font.id)).toEqual(ids)
+    expect(ids[0]).toBe(DEFAULT_FONT_ID)
   })
 
   it('has unique kebab-case ids and families the snapshot accepts', () => {
-    expect(new Set(THEME_FONT_IDS).size).toBe(THEME_FONTS.length)
+    expect(new Set(THEME_FONTS.map((font) => font.id)).size).toBe(THEME_FONTS.length)
     const theme = { palette: ['#ffffff'], radius: 8, shadow: 1, logo: null }
     for (const font of THEME_FONTS) {
       expect(font.id).toMatch(/^[a-z]+(?:-[a-z]+)*$/)

@@ -1,6 +1,6 @@
-// The venue's template and guest services (brief SH-01 §9–11): the writers `setVenuePresentation`
-// and `setGuestFeatures`, and the publisher writing `presentation` and `features` into the
-// snapshot. Postgres as restro_app.
+// The venue's guest services (brief SH-01 §9–11): the writer `setGuestFeatures`, and the publisher
+// writing `features` into the snapshot. Postgres as restro_app. (The template choice that lived
+// here retired with the design record, D129: the snapshot no longer carries `presentation`.)
 import { createPool, type DbPool, venues, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
 import type pg from 'pg'
@@ -12,12 +12,10 @@ import { DEFAULT_GUEST_FEATURES, type GuestFeatures } from '../theme'
 import { apply } from './apply'
 import { GuestFeaturesError, setGuestFeatures } from './guest-features'
 import * as applyEntry from './index'
-import { setVenuePresentation, VenuePresentationError } from './presentation'
 import { type ProvisionedMenu, provisionMenu, provisionTenant, provisionVenue } from './provision'
 import { publishMenu } from './publish'
 import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
 
-const PRESENTATION = { face: 'editorial-market', options: { layout: 'two', compact: true } }
 const FEATURES: GuestFeatures = {
   filters: true,
   call_waiter: { enabled: true, kinds: ['terminal', 'bill', 'waiter'] },
@@ -31,31 +29,16 @@ const CANONICAL: GuestFeatures = {
 }
 
 describe('module boundary', () => {
-  it('exports the writers from @restro/core/apply', () => {
-    expect(Object.keys(applyEntry)).toEqual(
-      expect.arrayContaining(['setVenuePresentation', 'setGuestFeatures', 'setVenueTheme']),
-    )
+  it('exports the guest services writer, and none of the retired look writers', () => {
+    const exported = Object.keys(applyEntry)
+    expect(exported).toContain('setGuestFeatures')
+    for (const retired of ['setVenuePresentation', 'setVenueTheme', 'setMenuSettings']) {
+      expect(exported).not.toContain(retired)
+    }
   })
 })
 
 describe('input checks (no database needed)', () => {
-  it.each([
-    ['a malformed venue id', { venueId: 'vn_nope', presentation: null }],
-    [
-      'an upper-case face',
-      { venueId: newId('vn'), presentation: { face: 'Editorial', options: {} } },
-    ],
-    [
-      'an option value with a space',
-      { venueId: newId('vn'), presentation: { face: 'f', options: { layout: 'two up' } } },
-    ],
-    ['an unknown field', { venueId: newId('vn'), presentation: null, features: null }],
-  ])('setVenuePresentation refuses %s', async (_label, input) => {
-    await expect(
-      setVenuePresentation({} as DbPool, newId('tn'), input as never),
-    ).rejects.toMatchObject({ name: 'VenuePresentationError', code: 'invalid_input' })
-  })
-
   it.each([
     ['a malformed venue id', { venueId: 'vn_nope', features: null }],
     ['a missing switch', { venueId: newId('vn'), features: { filters: true } }],
@@ -76,6 +59,7 @@ describe('input checks (no database needed)', () => {
         },
       },
     ],
+    ['an unknown field', { venueId: newId('vn'), features: null, presentation: null }],
   ])('setGuestFeatures refuses %s', async (_label, input) => {
     await expect(setGuestFeatures({} as DbPool, newId('tn'), input as never)).rejects.toMatchObject(
       {
@@ -86,7 +70,7 @@ describe('input checks (no database needed)', () => {
   })
 })
 
-describe.skipIf(!hasDatabase)('presentation and guest features against Postgres', () => {
+describe.skipIf(!hasDatabase)('guest features against Postgres', () => {
   const tenant = newId('tn')
   const otherTenant = newId('tn')
   let app: DbPool
@@ -111,8 +95,8 @@ describe.skipIf(!hasDatabase)('presentation and guest features against Postgres'
 
   beforeAll(async () => {
     owner = openOwnerPool()
-    app = createPool(appDatabaseUrl(), { applicationName: 'restro-core-presentation-tests' })
-    await provisionTenant(app, { tenantId: tenant, name: 'Template test club' })
+    app = createPool(appDatabaseUrl(), { applicationName: 'restro-core-guest-features-tests' })
+    await provisionTenant(app, { tenantId: tenant, name: 'Services test club' })
     await provisionTenant(app, { tenantId: otherTenant, name: 'Another club' })
     venueId = (await provisionVenue(app, tenant, { name: 'Main', slug: testSlug('main') }))
       .id as `vn_${string}`
@@ -151,7 +135,7 @@ describe.skipIf(!hasDatabase)('presentation and guest features against Postgres'
           ),
           manual(item, 'price', { amount_minor: 300 + index * 100, currency: 'EUR' }),
           manual(item, 'allergens', []),
-          // Rule 3's leak guard: internal notes that read exactly like an option value and a
+          // Rule 3's leak guard: internal notes that read exactly like a design value and a
           // request kind the venue publishes. They must not block the publish.
           manual(item, 'internal_note', index === 0 ? 'two' : 'bill'),
           { op: 'setPlacement', item: { id: item }, section: { id: section }, sortKey: 'end' },
@@ -173,34 +157,13 @@ describe.skipIf(!hasDatabase)('presentation and guest features against Postgres'
     expect(first.snapshot.body).not.toHaveProperty('presentation')
   })
 
-  it('saves the template, keeps other settings, is idempotent, and publishes it', async () => {
+  it('saves the services in vocabulary order, keeps other settings, is idempotent, and publishes them', async () => {
     await owner.query(
       `update restro.venues set settings = settings || '{"other": 1}'::jsonb where id = $1`,
       [venueId],
     )
-    expect(
-      await setVenuePresentation(app, tenant, { venueId, presentation: PRESENTATION }),
-    ).toEqual(PRESENTATION)
-    expect(await settingsOf()).toEqual({ other: 1, presentation: PRESENTATION })
-    expect(
-      await setVenuePresentation(app, tenant, { venueId, presentation: PRESENTATION }),
-    ).toEqual(PRESENTATION)
-    expect(await settingsOf()).toEqual({ other: 1, presentation: PRESENTATION })
-
-    const published = await publish(10)
-    expect(published.status).toBe('published')
-    // The internal note "two" is no leak: "two" is the venue's own option value.
-    expect(published.snapshot.body?.presentation).toEqual(PRESENTATION)
-    expect((await publish(11)).status).toBe('unchanged')
-  })
-
-  it('saves the services in vocabulary order, keeps other settings, is idempotent, and publishes them', async () => {
     expect(await setGuestFeatures(app, tenant, { venueId, features: FEATURES })).toEqual(CANONICAL)
-    expect(await settingsOf()).toEqual({
-      other: 1,
-      presentation: PRESENTATION,
-      guest_features: CANONICAL,
-    })
+    expect(await settingsOf()).toEqual({ other: 1, guest_features: CANONICAL })
     expect(await setGuestFeatures(app, tenant, { venueId, features: CANONICAL })).toEqual(CANONICAL)
     expect(await settingsOf()).toMatchObject({ guest_features: CANONICAL })
 
@@ -208,7 +171,7 @@ describe.skipIf(!hasDatabase)('presentation and guest features against Postgres'
     expect(published.status).toBe('published')
     // The internal note "bill" is no leak: "bill" is a request kind and a service.
     expect(published.snapshot.body?.features).toEqual(CANONICAL)
-    expect(published.snapshot.body?.presentation).toEqual(PRESENTATION)
+    expect(published.snapshot.body).not.toHaveProperty('presentation')
   })
 
   it("refuses an unknown venue and never writes another tenant's venue", async () => {
@@ -217,32 +180,21 @@ describe.skipIf(!hasDatabase)('presentation and guest features against Postgres'
       [otherTenant, venueId],
     ] as const) {
       await expect(
-        setVenuePresentation(app, forTenant, { venueId: id, presentation: PRESENTATION }),
-      ).rejects.toMatchObject({ name: 'VenuePresentationError', code: 'venue_not_found' })
-      await expect(
         setGuestFeatures(app, forTenant, { venueId: id, features: DEFAULT_GUEST_FEATURES }),
       ).rejects.toMatchObject({ name: 'GuestFeaturesError', code: 'venue_not_found' })
     }
     await expect(
-      setVenuePresentation(app, otherTenant, { venueId, presentation: null }),
-    ).rejects.toBeInstanceOf(VenuePresentationError)
-    await expect(
       setGuestFeatures(app, otherTenant, { venueId, features: null }),
     ).rejects.toBeInstanceOf(GuestFeaturesError)
-    expect(await settingsOf()).toMatchObject({
-      presentation: PRESENTATION,
-      guest_features: CANONICAL,
-    })
+    expect(await settingsOf()).toMatchObject({ guest_features: CANONICAL })
   })
 
   it('goes back to the defaults with null, leaving other settings alone', async () => {
     expect(await setGuestFeatures(app, tenant, { venueId, features: null })).toEqual(
       DEFAULT_GUEST_FEATURES,
     )
-    expect(await setVenuePresentation(app, tenant, { venueId, presentation: null })).toBeNull()
     expect(await settingsOf()).toEqual({ other: 1 })
     const reset = await publish(40)
     expect(reset.snapshot.body?.features).toEqual(DEFAULT_GUEST_FEATURES)
-    expect(reset.snapshot.body).not.toHaveProperty('presentation')
   })
 })

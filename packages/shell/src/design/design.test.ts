@@ -1,10 +1,15 @@
-import { THEME_FONT_IDS } from '@restro/core'
 import { describe, expect, it } from 'vitest'
 
-import { DESIGN_MARKER_PAGES, DESIGN_OPTIONS, DESIGN_PAGES, type DesignValues } from './contract'
-import { DesignValuesSchema, StyleValuesSchema } from './schema'
-import { StyleFileSchema } from './style'
-import { PREMADE_STYLES } from './styles'
+import {
+  DESIGN_MARKER_PAGES,
+  DESIGN_OPTIONS,
+  DESIGN_PAGES,
+  type DesignValues,
+  DesignValuesSchema,
+  PREMADE_STYLES,
+  StyleFileSchema,
+  StyleValuesSchema,
+} from '.'
 
 // The contract's equality with D130 is scripts/design-contract.test.ts's job; this file checks what
 // the shell exports from it: the schemas, the Style format, the marker lookup.
@@ -88,12 +93,6 @@ describe('the premade Styles', () => {
 })
 
 describe('the contract’s own lists', () => {
-  it('has the six fonts of the theme, in the same order', () => {
-    const body = DESIGN_OPTIONS.find((entry) => entry.option.id === 'body_font')?.option
-    const ids = body?.kind === 'choice' ? body.values.map((value) => value.id) : []
-    expect(ids).toEqual([...THEME_FONT_IDS])
-  })
-
   it('finds the page that owns a marker', () => {
     expect(DESIGN_MARKER_PAGES.get('item.price')).toBe('items')
     expect(DESIGN_MARKER_PAGES.get('item.photo')).toBe('photos')

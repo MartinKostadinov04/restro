@@ -8,6 +8,7 @@
 
 import { z } from 'zod'
 
+import { DesignContentSchema } from './design/record'
 import { FIELD_KEY_PATTERN } from './field-definition'
 import { idSchema, isId } from './ids'
 import { NodeStatusSchema, type NodeType, NodeTypeSchema } from './node-types'
@@ -358,6 +359,24 @@ export const ClearFieldSchema = z
 /** A field clear. */
 export type ClearField = z.output<typeof ClearFieldSchema>
 
+/**
+ * Saves a venue's whole design record (D129) over the revision the editor started from. Manual
+ * only: a design is the venue's own, never a till's. `apply()` refuses a stale revision with the
+ * stored record (`stale_revision`), a design whose colours do not read (`unreadable`) and a logo
+ * that is not a stored image (`logo_not_usable`); a save that changes nothing is `unchanged`. It
+ * names a venue, not a node: its event has no node and the venue's scope.
+ */
+export const SetDesignSchema = z.strictObject({
+  op: z.literal('setDesign'),
+  venueId: idSchema('vn'),
+  /** The revision the editor loaded: 0 for a venue with no record yet. */
+  expectedRevision: z.int().min(0),
+  design: DesignContentSchema,
+})
+
+/** A design save. */
+export type SetDesign = z.output<typeof SetDesignSchema>
+
 /** Any structural op: node creation, placements, status, source links and their state. */
 export const StructuralOpSchema = z.discriminatedUnion('op', [
   CreateNodeSchema,
@@ -385,6 +404,7 @@ export const ChangeSetOpSchema = z.discriminatedUnion('op', [
   LinkSourceSchema,
   UnlinkSourceSchema,
   SetLinkStateSchema,
+  SetDesignSchema,
 ])
 
 /** One op of a change set. */
@@ -405,6 +425,7 @@ export const CHANGE_SET_OP_NAMES = [
   'linkSource',
   'unlinkSource',
   'setLinkState',
+  'setDesign',
 ] as const satisfies readonly ChangeSetOpName[]
 
 /** The layers each kind of source may write: a till → `till`, manual → the rest. */
@@ -432,13 +453,16 @@ export function nodeRefsOf(op: ChangeSetOp): NodeRef[] {
     case 'setLinkState':
       // Names a link, not a node: apply() finds the node through the link.
       return []
+    case 'setDesign':
+      // Names a venue, not a node.
+      return []
   }
 }
 
 /**
  * The change set: id, source, job, actor, when the source observed the data, and its ops, applied
  * atomically. Cross-checks: each write's and clear's layer matches the source; manual sets name
- * nodes by id; a till set only touches links of its own integration; adapters place items only
+ * nodes by id; only a manual set saves a design; a till set only touches links of its own integration; adapters place items only
  * with `'end'`; created ids are unique.
  */
 export const ChangeSetSchema = z
@@ -482,6 +506,12 @@ export const ChangeSetSchema = z
         op.link.integration !== tillIntegration
       ) {
         issue(`a ${set.source} change set cannot link another integration`)
+      }
+      if (op.op === 'setDesign' && set.source !== 'manual') {
+        issue(`a ${set.source} change set cannot save a design`)
+      }
+      if (op.op === 'setDesign' && set.actor.startsWith('integration:')) {
+        issue('an integration cannot save a design: a member or the system does')
       }
       if (op.op === 'createNode') {
         if (created.has(op.id)) issue(`node ${op.id} is created twice`)

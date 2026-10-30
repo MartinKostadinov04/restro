@@ -29,7 +29,6 @@ import { PhoneFrame } from '@/publish/phone-frame'
 
 import type { Draft } from './preview-draft'
 import { previewSnapshot } from './preview-snapshot'
-import type { OptionValues } from './template-options'
 
 /** The two buttons that light or darken the phone in the preview. */
 export function SchemeSwitch({
@@ -94,26 +93,14 @@ export function DraftMessage({
 }
 
 /**
- * The draft with the form's unsaved look laid over it, for the template `look.face`; null while
- * the draft is not ready, or when there is no look to draw (a closed pop-up).
+ * The draft with the form's unsaved look laid over it; null while the draft is not ready, or when
+ * there is no look to draw (a closed pop-up).
  */
-export function usePreviewLook(
-  draft: Draft,
-  look: {
-    readonly theme: VenueTheme
-    readonly face: string
-    readonly options: OptionValues
-  } | null,
-): MenuSnapshot | null {
-  const theme = look?.theme
-  const face = look?.face
-  const options = look?.options
+export function usePreviewLook(draft: Draft, theme: VenueTheme | null): MenuSnapshot | null {
   return useMemo(
     () =>
-      draft.state === 'ready' && theme !== undefined && face !== undefined && options !== undefined
-        ? previewSnapshot(draft.snapshot, { theme, face, options })
-        : null,
-    [draft, theme, face, options],
+      draft.state === 'ready' && theme !== null ? previewSnapshot(draft.snapshot, theme) : null,
+    [draft, theme],
   )
 }
 
@@ -123,8 +110,6 @@ export function DesignPreview({
   onRefresh,
   menuName,
   theme,
-  face,
-  options,
   scheme,
   onScheme,
 }: {
@@ -135,9 +120,6 @@ export function DesignPreview({
   menuName: string | null
   /** The form's look, whole. */
   theme: VenueTheme
-  /** The chosen template, and its options as the preview should draw them. */
-  face: string
-  options: OptionValues
   scheme: PreviewScheme
   onScheme: (scheme: PreviewScheme) => void
 }) {
@@ -147,7 +129,7 @@ export function DesignPreview({
   const servicesId = useId()
 
   // Dragging a slider or typing a colour must stay smooth: the face is redrawn a moment later.
-  const lookNow = useDeferredValue({ theme, face, options })
+  const lookNow = useDeferredValue(theme)
   const snapshot = usePreviewLook(draft, lookNow)
 
   return (
@@ -192,7 +174,6 @@ export function DesignPreview({
               snapshot={snapshot}
               overlay={draft.overlay}
               scheme={scheme}
-              faceId={lookNow.face}
               servicesPreview={services}
             />
           </PhoneFrame>

@@ -10,6 +10,7 @@
 // options are left out.
 
 import { ALLERGENS, DIETARY_LABELS } from '../allergens'
+import type { DesignValues } from '../design/contract'
 import type { FieldDefinition } from '../field-definition'
 import {
   FIELD_VALUE_SCHEMAS,
@@ -20,7 +21,6 @@ import {
 import { canonicalJson, sha256Hex } from '../hash'
 import type { AssetId, NodeId, SnapshotId, TagId, VenueId } from '../ids'
 import type { Locale, LocalizedText } from '../locales'
-import type { MenuLayout, MenuSettings } from '../menus'
 import { type Currency, type Money, MoneySchema } from '../money'
 import type { NodeType } from '../node-types'
 import type {
@@ -43,7 +43,6 @@ import {
   canonicalFeatures,
   DEFAULT_GUEST_FEATURES,
   type GuestFeatures,
-  type Presentation,
 } from '../theme/presentation'
 import { parseSnapshot } from './errors'
 import {
@@ -53,7 +52,6 @@ import {
   SNAPSHOT_SCHEMA,
   type SnapshotItem,
   type SnapshotLayout,
-  type SnapshotMenuLayout,
   type SnapshotTheme,
 } from './schema'
 
@@ -100,12 +98,14 @@ export interface SnapshotContext {
   /** Images whose variant files exist; an image not listed here counts as no image. */
   readonly assets: Readonly<Record<AssetId, SnapshotAssetInput>>
   readonly tagVocabulary: Readonly<Record<TagId, TagVocabularyEntry>>
-  /** The venue's template and its options (D69); null or absent = not written. */
-  readonly presentation?: Presentation | null
   /** The venue's guest services (D71); null or absent = `DEFAULT_GUEST_FEATURES`. */
   readonly features?: GuestFeatures | null
-  /** The menu's layout (D92, from `menuLayoutOf`); null or absent = `DEFAULT_MENU_LAYOUT`. */
-  readonly layout?: SnapshotLayout | null
+  /**
+   * The venue's design values (D129): written as the snapshot's `design` block, and its Layout and
+   * Guest switch as the `layout` (`designLayoutOf`). Null or absent: no `design` block and
+   * `DEFAULT_MENU_LAYOUT` (the publisher always passes one).
+   */
+  readonly design?: DesignValues | null
   /** The menu's header name (D92, `menus.name`); null, absent or blank = none set. */
   readonly menuName?: string | null
   /** The venue's display name (`venues.name`): the heading of a menu with no name and no title. */
@@ -113,33 +113,26 @@ export interface SnapshotContext {
 }
 
 /**
- * The layout of a menu that set none (D92): the look it had before the layout became a menu
- * setting (the Editorial Market's old option defaults), two columns, and guests may switch it.
+ * The layout of a snapshot built without a design (D92): the look menus had before the layout
+ * became a setting (the Editorial Market's old option defaults), two columns, and guests may
+ * switch it. The publisher always has a design, so only a builder test meets it: a new venue
+ * starts on Basic's list.
  */
 export const DEFAULT_MENU_LAYOUT: SnapshotLayout = Object.freeze({
   default: 'two',
   guest_switch: true,
 })
 
-/** A menu's stored layout (`menus.settings.layout`) as the snapshot names it. */
-const SNAPSHOT_LAYOUT_OF: Readonly<Record<MenuLayout, SnapshotMenuLayout>> = {
-  list: 'list',
-  one_column: 'one',
-  two_columns: 'two',
+/** The snapshot's `layout` of a design (D129): the Items page's Layout and Guest switch. */
+export function designLayoutOf(design: DesignValues): SnapshotLayout {
+  return { default: design.items.layout, guest_switch: design.items.guest_switch === 'on' }
 }
 
-/**
- * The snapshot's `layout` of a menu's settings (D92): the stored layout in the snapshot's words,
- * and the guest switch; a key the menu never set takes `DEFAULT_MENU_LAYOUT`'s value.
- */
-export function menuLayoutOf(settings: MenuSettings | null | undefined): SnapshotLayout {
-  return {
-    default:
-      settings?.layout === undefined
-        ? DEFAULT_MENU_LAYOUT.default
-        : SNAPSHOT_LAYOUT_OF[settings.layout],
-    guest_switch: settings?.layout_switch ?? DEFAULT_MENU_LAYOUT.guest_switch,
-  }
+/** A fresh copy of a design's values, page by page (the snapshot never shares the caller's objects). */
+function designBlock(design: DesignValues): DesignValues {
+  return Object.fromEntries(
+    Object.entries(design).map(([page, values]) => [page, { ...values }]),
+  ) as DesignValues
 }
 
 /** A stored section layout, or the default when the value is not one. */
@@ -438,19 +431,12 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
     }
   }
 
-  // Presentation only when the venue chose a template; features always (the defaults: filters on,
-  // every service off), with the request kinds in vocabulary order.
-  const presentation =
-    ctx.presentation === undefined || ctx.presentation === null
-      ? {}
-      : {
-          presentation: {
-            face: ctx.presentation.face,
-            options: { ...ctx.presentation.options },
-          },
-        }
+  // Features always (the defaults: filters on, every service off), with the request kinds in
+  // vocabulary order. The design and the layout from it whenever the publisher passes one; no
+  // `presentation` any more (D129: the design record replaced it).
   const features = canonicalFeatures(ctx.features ?? DEFAULT_GUEST_FEATURES)
-  const layout = ctx.layout ?? DEFAULT_MENU_LAYOUT
+  const design = ctx.design ?? null
+  const layout = design === null ? DEFAULT_MENU_LAYOUT : designLayoutOf(design)
 
   // The guest heading (D92): the menu's header name, else the document's title, else the venue's
   // display name. A plain name is one text, put in the main language; the shell falls back to it.
@@ -494,7 +480,6 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
     modifier_groups: groups,
     options,
     tags,
-    ...presentation,
     features: {
       filters: features.filters,
       call_waiter: {
@@ -506,6 +491,7 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
       pay: features.pay,
     },
     layout: { default: layout.default, guest_switch: layout.guest_switch },
+    ...(design === null ? {} : { design: designBlock(design) }),
   }
 
   const { schema, ...rest } = content
