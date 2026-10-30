@@ -3,12 +3,11 @@
 import type { DbPool } from '@restro/db'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-
+import { GET as assetFile } from '../../../app/api/assets/file/[...key]/route'
+import { POST as upload } from '../../../app/api/assets/route'
+import { GET as qrFile } from '../../../app/api/tables/[tableId]/qr/route'
 import { GET as exportFile } from '../../../app/api/venues/[venueId]/export/route'
 import { GET as nightFile } from '../../../app/api/venues/[venueId]/night/route'
-import { GET as qrFile } from '../../../app/api/tables/[tableId]/qr/route'
-import { POST as upload } from '../../../app/api/assets/route'
-import { GET as assetFile } from '../../../app/api/assets/file/[...key]/route'
 import { GET as cdnFile } from '../../../app/cdn/[...path]/route'
 import { getPool } from '../db'
 import { hasDatabase, openOwnerPool, useTestServerEnvironment } from '../test-database'
@@ -67,8 +66,7 @@ describe.skipIf(!hasDatabase)('the route handlers, attacked (as restro_app)', ()
 
   const exportUrl = (id: string, kind: string) =>
     new Request(`http://localhost/api/venues/${id}/export?kind=${kind}&from=${DAY}&to=${DAY}`)
-  const nightUrl = (id: string) =>
-    new Request(`http://localhost/api/venues/${id}/night?day=${DAY}`)
+  const nightUrl = (id: string) => new Request(`http://localhost/api/venues/${id}/night?day=${DAY}`)
   const qrUrl = (id: string) => new Request(`http://localhost/api/tables/${id}/qr?format=svg`)
 
   describe('another organisation', () => {
@@ -155,7 +153,10 @@ describe.skipIf(!hasDatabase)('the route handlers, attacked (as restro_app)', ()
     }, 30_000)
 
     for (const [name, text] of [
-      ['an SVG with a script', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'],
+      [
+        'an SVG with a script',
+        '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+      ],
       ['HTML named as an image', '<!doctype html><script>alert(1)</script>'],
     ] as const) {
       it(`refuses ${name}, whatever the type it claims`, async () => {

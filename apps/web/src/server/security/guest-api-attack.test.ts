@@ -231,7 +231,7 @@ describe.skipIf(!hasDatabase)('the guest API, attacked (as restro_app)', () => {
       expect(before.rows).toBeDefined()
     }, 30_000)
 
-    it("a payment handle of another table answers nothing", async () => {
+    it('a payment handle of another table answers nothing', async () => {
       const answer = await handleGuestPayment(
         new Request('http://localhost/api/guest/payment', {
           headers: {
@@ -305,7 +305,7 @@ describe.skipIf(!hasDatabase)('the guest API, attacked (as restro_app)', () => {
       }, 30_000)
     }
 
-    it("an answer to an action holds none either", async () => {
+    it('an answer to an action holds none either', async () => {
       const answer = await act(`Table ${venue.tableCode}`, orderAdd(venue.item))
       const text = await answer.text()
       for (const value of [POS_BILL, POS_LINE, POS_ITEM, victim.integration, victim.tenantId]) {
