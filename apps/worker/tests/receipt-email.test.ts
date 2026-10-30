@@ -51,7 +51,7 @@ import {
 } from '@restro/sim-pos'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
+import { readFloorOf } from '../src/jobs/floor'
 import { recoverPayments } from '../src/jobs/payment-recovery'
 import {
   checkPayment,
@@ -72,6 +72,7 @@ import {
   withOwnerClient,
 } from './database'
 import { createFakeEmailSender } from './fake-email-sender'
+import { simBudgets } from './sim-pace'
 
 allowSlowSetup()
 
@@ -129,7 +130,7 @@ describe.skipIf(!hasDatabase).each([
   const deps = (overrides: Partial<PaymentJobDeps> = {}): PaymentJobDeps => ({
     sim: policy,
     providers: new Map([[SIM_PAY_KIND, provider]]),
-    budgets: new InstanceBudgets(),
+    budgets: simBudgets(simClock),
     timings: TIMINGS,
     sleep: async (ms) => {
       simClock.advance(ms)
@@ -149,7 +150,7 @@ describe.skipIf(!hasDatabase).each([
     return readFloorOf(
       { pool, log, now: () => clock },
       { tenantId, ...demo },
-      { sim: policy, budgets: new InstanceBudgets(), receiptSender },
+      { sim: policy, budgets: simBudgets(simClock), receiptSender },
     )
   }
 
@@ -275,7 +276,7 @@ describe.skipIf(!hasDatabase).each([
         {
           sim: policy,
           billIdKey: KEY,
-          budgets: new InstanceBudgets(),
+          budgets: simBudgets(simClock),
           readingBudgets: new ReadingBudgets(),
         },
       ),

@@ -1,7 +1,8 @@
 // The connector's side of the wire: a transport (HTTP through `fetch`, or in process), and a
 // client that adds the login and parses answers losslessly. A call that times out or fails on
 // the network is `lost`, never an answer: the connector turns it into `unknown` or an incomplete
-// reading. Only the write module (`./write`) sends writes.
+// reading. A call the budget had no room for is `not_left`: it was never sent. Only the write
+// module (`./write`) sends writes.
 
 import { checkSimHost, type SimHostOptions } from './hosts'
 import { parseWireJson } from './wire/json'
@@ -43,6 +44,7 @@ export function fetchTransport(baseUrl: string, hosts: SimHostOptions): SimTrans
 export type Sent =
   | { readonly kind: 'answer'; readonly status: number; readonly body: unknown }
   | { readonly kind: 'lost'; readonly reason: string }
+  | { readonly kind: 'not_left' }
 
 export interface SimClient {
   get(path: string, signal: AbortSignal): Promise<Sent>
@@ -52,6 +54,8 @@ export interface SimClient {
 export function simClient(
   transport: SimTransport,
   login: { readonly user: string; readonly password: string },
+  /** Waits for the call's place in the login's budget; false: it never leaves. */
+  pace?: (signal: AbortSignal) => Promise<boolean>,
 ): SimClient {
   const headers = { authorization: basicAuthHeader(login.user, login.password) }
   const send = async (
@@ -60,6 +64,7 @@ export function simClient(
     body: string | null,
     signal: AbortSignal,
   ): Promise<Sent> => {
+    if (pace !== undefined && !(await pace(signal))) return { kind: 'not_left' }
     let response: TransportResponse
     try {
       response = await transport({ method, path, headers, body, signal })

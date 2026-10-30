@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { LandingBasisSchema, matchLanded } from '../../landing-match'
-import { checkLanded, landingBasisOf, type SentLineShape } from './landed'
+import { checkLanded, closeProof, landingBasisOf, type SentLineShape } from './landed'
 import { posRef } from './pos-ref'
 import type { BillLine, PosBill, TableBills } from './schemas'
 
@@ -233,5 +233,37 @@ describe('the reading kept for a late landing (#135)', () => {
     const basis = landingBasisOf({ before: rich, sent, capabilities: NONE })
     expect(basis.before).toEqual([{ bill: 'b1', line: 'l1', quantity: '1', amountMinor: 500 }])
     expect(JSON.stringify(basis)).not.toMatch(/Бира|2026|"x"/)
+  })
+})
+
+describe("a close's third proof (D127)", () => {
+  const close = { refs: new Set(['so_round', 'py_1-close']), amountMinor: 2200 }
+  const closed = (extra: {
+    receiptNumber?: string
+    restroRefs?: string[]
+    totalMinor?: number
+  }) => ({
+    ref: posRef('b1'),
+    totalMinor: extra.totalMinor ?? 2200,
+    receiptNumber: extra.receiptNumber ?? null,
+    restroRefs: extra.restroRefs ?? [],
+  })
+
+  it("takes a receipt number or one of Restro's references", () => {
+    expect(closeProof(closed({ receiptNumber: 'R-1' }), close)).toEqual({ receiptNumber: 'R-1' })
+    expect(closeProof(closed({ restroRefs: ['py_1-close'] }), close)).toEqual({
+      receiptNumber: null,
+    })
+    expect(closeProof(closed({ restroRefs: ['other', 'so_round'] }), close)).toEqual({
+      receiptNumber: null,
+    })
+  })
+
+  it('takes nothing else: no closed bill, neither mark, another total, a reference not ours', () => {
+    expect(closeProof(null, close)).toBeNull()
+    expect(closeProof(closed({}), close)).toBeNull()
+    expect(closeProof(closed({ receiptNumber: 'R-1', totalMinor: 2100 }), close)).toBeNull()
+    expect(closeProof(closed({ restroRefs: ['py_1-close'], totalMinor: 2100 }), close)).toBeNull()
+    expect(closeProof(closed({ restroRefs: ['another-app'] }), close)).toBeNull()
   })
 })

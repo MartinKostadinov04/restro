@@ -20,7 +20,7 @@ import { createSimServer, ManualClock, type SimServer } from '@restro/sim-pos'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { ConnectionBreakers } from '../src/jobs/breaker'
-import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
+import { readFloorOf } from '../src/jobs/floor'
 import { sendTableOrders } from '../src/jobs/order-send'
 import { ReadingBudgets, readTableOf, TABLE_READ_MIN_GAP_MS } from '../src/jobs/readings'
 import { createLogger } from '../src/logger'
@@ -32,6 +32,7 @@ import {
   testSlug,
   withOwnerClient,
 } from './database'
+import { simBudgets } from './sim-pace'
 
 allowSlowSetup()
 
@@ -71,7 +72,7 @@ describe.skipIf(!hasDatabase)('the late landing of an Unconfirmed sent order', (
   let elapsed = 0
   const deps = () => ({
     sim: policy,
-    budgets: new InstanceBudgets(),
+    budgets: simBudgets(simClock),
     breakers: new ConnectionBreakers(() => 0.5),
     timings: {
       probeBudgetMs: 3_000,
@@ -112,7 +113,7 @@ describe.skipIf(!hasDatabase)('the late landing of an Unconfirmed sent order', (
     const floor = await readFloorOf(
       env(),
       { tenantId, ...demo },
-      { sim: policy, budgets: new InstanceBudgets() },
+      { sim: policy, budgets: simBudgets(simClock) },
     )
     expect(floor.kind).toBe('read')
     const [table] = await query<{ id: `tb_${string}` }>(
@@ -226,7 +227,7 @@ describe.skipIf(!hasDatabase)('the late landing of an Unconfirmed sent order', (
       {
         sim: policy,
         billIdKey: KEY,
-        budgets: new InstanceBudgets(),
+        budgets: simBudgets(simClock),
         readingBudgets: new ReadingBudgets(),
       },
     )

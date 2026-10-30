@@ -424,15 +424,24 @@ export class SimEngine {
         if (call.state === 'closed' && !this.switches.readClosedBills) {
           throw new UndefinedBehaviour("reading a table's closed bills", 'Q24')
         }
-        const bills =
-          call.state === 'open'
-            ? this.#openBills(table.id)
-            : this.state.bills.filter(
-                (bill) =>
-                  bill.table === table.id && bill.state === 'closed' && bill.day === this.state.day,
-              )
+        if (call.state === 'closed') {
+          const closed = this.state.bills.filter(
+            (bill) =>
+              bill.table === table.id && bill.state === 'closed' && bill.day === this.state.day,
+          )
+          return this.#page(
+            closed.map((bill) => ({
+              ...this.#billHead(bill),
+              ...(this.switches.receiptNumberOnClose && bill.receipt !== null
+                ? { receipt: bill.receipt.number }
+                : {}),
+            })),
+            call.page,
+            mods,
+          )
+        }
         return this.#page(
-          bills.map((bill) => this.#billHead(bill)),
+          this.#openBills(table.id).map((bill) => this.#billHead(bill)),
           call.page,
           mods,
         )

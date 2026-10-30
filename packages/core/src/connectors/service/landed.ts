@@ -21,7 +21,7 @@ import {
 } from '../../landing-match'
 import type { ServiceCapabilities } from './capabilities'
 import { type PosRef, posRef } from './pos-ref'
-import type { TableBills } from './schemas'
+import type { ClosedBill, TableBills } from './schemas'
 
 export type { LandingBasis } from '../../landing-match'
 
@@ -118,4 +118,20 @@ export function landingBasisOf(input: {
     sent: sentLines(input.sent),
     before: linesBefore(input.before),
   }
+}
+
+/**
+ * D127's third proof of a close: the bill the close was sent for, now closed, for the amount, and
+ * carrying a receipt number or one of Restro's references (`refs`: what Restro put on this table's
+ * rounds and this payment's lines; a line may carry another outside app's). Anything else proves
+ * nothing: no closed bill (an empty payment table may be a waiter's move), another total, or a
+ * closed bill with neither mark. Answers the receipt number to keep, if any.
+ */
+export function closeProof(
+  bill: ClosedBill | null,
+  close: { readonly refs: ReadonlySet<string>; readonly amountMinor: number },
+): { readonly receiptNumber: string | null } | null {
+  if (bill === null || bill.totalMinor !== close.amountMinor) return null
+  if (bill.receiptNumber !== null) return { receiptNumber: bill.receiptNumber }
+  return bill.restroRefs.some((ref) => close.refs.has(ref)) ? { receiptNumber: null } : null
 }

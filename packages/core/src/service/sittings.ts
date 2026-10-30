@@ -487,7 +487,11 @@ export async function closeAllTables(stx: ServiceTx): Promise<ServiceResult> {
 export async function closeOpenTables(
   stx: ServiceTx,
   reason: SittingEndReason,
-  options: { readonly keepPaying?: boolean } = {},
+  options: {
+    readonly keepPaying?: boolean
+    /** Only these sittings; left out, every open one. */
+    readonly only?: ReadonlySet<string>
+  } = {},
 ): Promise<ServiceResult> {
   const seen = await stx.tx
     .select({ tableId: sittings.tableId })
@@ -497,7 +501,8 @@ export async function closeOpenTables(
   const open = await stx.rows.openSittings(tableIds, 'update')
   const locked = tableIds.flatMap((tableId) => {
     const sitting = open.get(tableId)
-    return sitting === null || sitting === undefined ? [] : [sitting]
+    if (sitting === null || sitting === undefined) return []
+    return options.only === undefined || options.only.has(sitting.id) ? [sitting] : []
   })
   const paying =
     options.keepPaying === true

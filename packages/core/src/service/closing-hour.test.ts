@@ -158,15 +158,30 @@ describe.skipIf(!hasDatabase)('the closing hour (as the restro_app role)', () =>
       expect(await sittingState(sitting as string)).toMatchObject({ end_reason: 'closing_hour' })
     })
 
-    // RR-64: red until its fix; the fix removes .fails.
-    it.fails('still closes it when the payment only ends after 07:00', async () => {
+    it('still closes it when the payment only ends after 07:00', async () => {
       const [sitting] = await openTables(1)
       const id = await paying(world.tables[0] as string, sitting as string)
       expect(await closeTables('2026-10-24T02:31:00Z')).toMatchObject({ details: { closed: 0 } })
+      // Past 07:00 with the payment still going, the table stays.
+      expect(await closeTables('2026-10-24T04:01:00Z')).toMatchObject({ details: { closed: 0 } })
       // A manager answers the morning after; the worker's tick goes on, past 07:00 (04:00Z).
       await settle(id)
       expect(await closeTables('2026-10-24T04:01:00Z')).toMatchObject({ details: { closed: 1 } })
       expect(await sittingState(sitting as string)).toMatchObject({ end_reason: 'closing_hour' })
+    })
+
+    it('by day it closes only the table kept for a payment, no other', async () => {
+      const [kept, other] = await openTables(2)
+      const id = await paying(world.tables[0] as string, kept as string)
+      expect(await closeTables('2026-10-24T02:31:00Z')).toMatchObject({ details: { closed: 1 } })
+      expect((await sittingState(kept as string))?.ended_at).toBeNull()
+      expect(await sittingState(other as string)).toMatchObject({ end_reason: 'closing_hour' })
+      // A table opened the next morning has nothing to do with it.
+      const morning = await world.openSitting(world.tables[1] as string)
+      await settle(id)
+      expect(await closeTables('2026-10-24T08:00:00Z')).toMatchObject({ details: { closed: 1 } })
+      expect(await sittingState(kept as string)).toMatchObject({ end_reason: 'closing_hour' })
+      expect((await sittingState(morning))?.ended_at).toBeNull()
     })
   })
 

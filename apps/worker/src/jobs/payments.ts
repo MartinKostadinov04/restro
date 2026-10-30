@@ -28,9 +28,11 @@
 // - The route (#111): every POS write is a `payment.step` too, recorded inside the instance's
 //   budget right before the call, so a write that never left is never counted as attempted. An
 //   unknown move or undo is read back from the payment table for the read-back window and never
-//   sent again inside it (D127 3.4); an unknown close is never read back as a close (an empty
-//   payment table is no proof): it is `unconfirmed` for a manager or owner after D115's read-back
-//   window (a later landing is not ruled out, C52). A close is sent once. After a manager's "No
+//   sent again inside it (D127 3.4); an unknown close is `unconfirmed` for a manager or owner after
+//   D115's read-back window (a later landing is not ruled out, C52), unless, where the connector
+//   declares `readClosedBills`, the bill it was sent for reads closed carrying Restro's reference
+//   or a receipt number (D127's third proof; an empty payment table is no proof). A close is sent
+//   once. After a manager's "No
 //   receipt" the hold is released only once a fresh read shows the lines back on the real table;
 //   otherwise a manager is asked again (#153).
 //   An unknown capture is read back from the provider: captured is done; still held is tried
@@ -57,8 +59,10 @@
 
 import {
   addMinor,
+  ClosedBillSchema,
   CURRENCIES,
   type Currency,
+  closeProof,
   IsolatedBillSchema,
   type IsolatedHandle,
   JOB_NAMES,
@@ -800,13 +804,15 @@ async function posOf(
     throw new PaymentStepRetry('the POS gave the step no turn')
   }
   const timings = deps.timings ?? SERVICE_TIMINGS
+  const budgets = deps.budgets ?? SHARED_BUDGETS
+  const connector = (deps.connectorFor ?? serviceConnectorFor)(integration, deps.sim)
   return {
-    connector: (deps.connectorFor ?? serviceConnectorFor)(integration, deps.sim),
-    budget: (deps.budgets ?? SHARED_BUDGETS).forInstance(integration.id),
+    connector,
+    budget: budgets.forInstance(integration.id),
     table: posRef(place.placeId),
     paused: await connectionPaused(env.pool, target.tenantId, integration.id),
     timings,
-    context: serviceContext(env.now, timings),
+    context: serviceContext(env.now, budgets.paceOf(integration.id, connector), timings),
     pause: () => (deps.sleep ?? sleepFor)(PAYMENT_WRITE_PAUSE_MS),
   }
 }
@@ -860,6 +866,8 @@ async function writePos<R>(
   lines: PaymentStepLines | null = null,
   /** False for the close: its answer is recorded with its state (`payment.closed`, #112). */
   recordAnswer = true,
+  /** On the close's `attempting` row: the POS bill it closes (`closeProofOf`). */
+  attemptAnswer: string | null = null,
 ): Promise<WriteOutcome<R>> {
   await pos.pause()
   const record = recordStep(env, target, step, ref, lines)
@@ -875,7 +883,7 @@ async function writePos<R>(
           throw new PaymentStepRetry(`the ${step} was attempted already`)
         }
       }
-      await record('attempting')
+      await record('attempting', attemptAnswer)
       attempted = true
       return call()
     })
@@ -1398,11 +1406,81 @@ async function enteredBill(
 }
 
 /**
+ * D127's third proof of an unknown close, where the connector declares `readClosedBills`: the bill
+ * the close was sent for, closed, for the amount, carrying the close's reference or a receipt
+ * number (`closeProof`). The table's other closed bills are earlier payments': they prove nothing.
+ * Null for everything else, a read that failed too: the close stays unknown. Never throws, so a
+ * POS that can't be read never holds back asking a manager.
+ */
+async function closeProofOf(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  deps: PaymentJobDeps,
+): Promise<{ readonly receiptNumber: string | null } | null> {
+  if (payment.amountMinor === null) return null
+  const { amountMinor } = payment
+  try {
+    const found = await placeOf(env, target, payment.tableId)
+    if (found === null) return null
+    if (found.integration.kind === 'sim') assertSimAllowed(deps.sim)
+    const offered = (deps.connectorFor ?? serviceConnectorFor)(found.integration, deps.sim)
+    if (!offered.capabilities.readClosedBills) return null
+    const { attempt, rounds } = await withTenant(env.pool, target.tenantId, async (tx) => ({
+      attempt: (
+        await tx
+          .select({ answer: paymentSteps.answer })
+          .from(paymentSteps)
+          .where(
+            and(
+              eq(paymentSteps.paymentId, target.paymentId),
+              eq(paymentSteps.step, 'payAndClose'),
+              eq(paymentSteps.outcome, 'attempting'),
+            ),
+          )
+          .orderBy(desc(paymentSteps.seq))
+          .limit(1)
+      )[0],
+      rounds: await tx
+        .select({ id: sentOrders.id })
+        .from(sentOrders)
+        .where(eq(sentOrders.sittingId, payment.sittingId)),
+    }))
+    if (attempt?.answer === null || attempt?.answer === undefined) return null
+    const pos = await posOf(env, target, payment, deps)
+    const read = pos?.connector.readClosedBill
+    if (pos === null || pos.paused || read === undefined) return null
+    const handle = {
+      ref: posRef(attempt.answer),
+      table: await paymentTableOf(env, target, payment),
+    }
+    const answer = await bounded(pos.budget, pos.timings.readTimeoutMs, () =>
+      read.call(pos.connector, pos.context, handle),
+    )
+    if (answer.kind !== 'answered') return null
+    const parsed = readingSchema(ClosedBillSchema.nullable()).safeParse(answer.value)
+    if (!parsed.success || !parsed.data.complete) return null
+    return closeProof(parsed.data.value, {
+      // What Restro puts on a POS line: a round's id, a pay-first round's or a tip's reference.
+      refs: new Set([
+        ...rounds.map((round) => round.id),
+        `${payment.id}-enter`,
+        `${payment.id}-close`,
+      ]),
+      amountMinor,
+    })
+  } catch (error) {
+    env.log.warn({ paymentId: payment.id, err: error }, 'the closed bills could not be read')
+    return null
+  }
+}
+
+/**
  * `isolated` (or `checked` with no close attempted): the last check on a reading of the isolated
  * bill and a fresh one of the real table (`payment.checked`), then the close (`payAndClose`) with
  * the amount, the tip and the card payment type, then `payment.closed`. Once a close was
  * attempted, nothing but its proof closes it: an unknown is `unconfirmed` after D115's read-back
- * window (a later landing is not ruled out, C52).
+ * window (a later landing is not ruled out, C52) unless a closed bill proves it (`closeProofOf`).
  */
 const checkAndClose: RouteStep = async (env, target, payment, deps) => {
   const close = payment.state === 'checked' ? await callsOf(env, target, 'payAndClose') : null
@@ -1436,6 +1514,20 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
     if (close.outcome === 'attempting' && close.lastAgeMs < inFlight) {
       await queuePrepare(env, target, WAIT_SECONDS)
       return 'wait'
+    }
+    const proof = await closeProofOf(env, target, payment, deps)
+    if (proof !== null) {
+      const { receiptNumber } = proof
+      await route(env, target, {
+        type: 'payment.closed',
+        outcome: 'done',
+        code: null,
+        // A receipt number longer than Restro keeps is left out rather than cut.
+        receiptNumber: receiptNumber !== null && receiptNumber.length <= 64 ? receiptNumber : null,
+        fiscalMemoryNumber: null,
+        step: { outcome: 'done', answer: null, idempotencyKey: `${payment.id}-close` },
+      })
+      return 'next'
     }
     const window = Math.max(inFlight, timings.readBackWindowMs)
     if (close.lastAgeMs < window) {
@@ -1583,6 +1675,7 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
       }),
     null,
     false,
+    isolated.ref.pos,
   )
   // What follows is the database and the receipt's email: the POS's other tables go on.
   deps.posTurn?.release()
