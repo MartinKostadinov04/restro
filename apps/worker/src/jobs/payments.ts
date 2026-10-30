@@ -130,7 +130,8 @@ import { EmailSendError, type EmailSender, RECEIPT_CALL_TIMEOUT_MS } from '../re
 import { assertSimAllowed, serviceConnectorFor, serviceContext } from '../service-connectors'
 import type { Limiter } from '../sync/limiter'
 import { type Bounded, bounded } from './connection'
-import { connectionPaused, type InstanceBudgets, SHARED_BUDGETS } from './floor'
+import { ROUTE_RUNS_AT_ONCE } from '../connection'
+import { connectionPaused, type InstanceBudgets, PosTurn, SHARED_BUDGETS } from './floor'
 import { toOrderLine } from './order-send'
 import { type PaymentBreakers, SHARED_PAYMENT_BREAKERS, watchedProvider } from './payment-breaker'
 import { defineJob, type JobDefinition, type JobQueue, type WorkerContext } from './types'
@@ -174,13 +175,21 @@ export const RECEIPT_SEND_MS =
   RECEIPT_RETRY_DELAYS_MS.reduce((sum, wait) => sum + wait, 0)
 
 /**
- * The longest one route step takes for these timings: the last check's three POS reads and the
- * hold's read at the provider, the pause and the close, each POS call with its turn at the budget.
+ * The longest one route step takes for these timings: its turn on the POS, the last check's three
+ * POS reads and the hold's read at the provider, the pause and the close, each POS call with its
+ * turn at the budget.
  */
 export function paymentStepMs(timings: ServiceTimings = SERVICE_TIMINGS): number {
   const read = BUDGET_WAIT_MS + timings.readTimeoutMs
   const write = BUDGET_WAIT_MS + timings.writeTimeoutMs
-  return 3 * read + PROVIDER_CALL_MS + PAYMENT_WRITE_PAUSE_MS + write + RECEIPT_SEND_MS
+  return (
+    BUDGET_WAIT_MS +
+    3 * read +
+    PROVIDER_CALL_MS +
+    PAYMENT_WRITE_PAUSE_MS +
+    write +
+    RECEIPT_SEND_MS
+  )
 }
 
 /**
@@ -201,6 +210,8 @@ export interface PaymentJobDeps {
   readonly sleep?: (ms: number) => Promise<void>
   /** The provider breakers (`SHARED_PAYMENT_BREAKERS`); tests pass their own. */
   readonly breakers?: PaymentBreakers
+  /** The step's turn on the POS, among the instance's other chains of calls; set by the run. */
+  readonly posTurn?: PosTurn
   /**
    * Sends the POS's own receipt file to the guest, from the venue's name (#186); null or absent
    * where RECEIPT_FROM_ADDRESS is unset: a connector that returns the file is then never given
@@ -759,6 +770,9 @@ async function posOf(
   if (found === null) return null
   const { integration, place } = found
   if (integration.kind === 'sim') assertSimAllowed(deps.sim)
+  if (deps.posTurn !== undefined && !(await deps.posTurn.take(integration.id))) {
+    throw new PaymentStepRetry('the POS gave the step no turn')
+  }
   const timings = deps.timings ?? SERVICE_TIMINGS
   return {
     connector: (deps.connectorFor ?? serviceConnectorFor)(integration, deps.sim),
@@ -1530,6 +1544,8 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
     null,
     false,
   )
+  // What follows is the database and the receipt's email: the POS's other tables go on.
+  deps.posTurn?.release()
   const proof =
     outcome.kind === 'done' ||
     (outcome.kind === 'refused' && outcome.refusal.code === 'already_done')
@@ -2030,6 +2046,8 @@ async function queueDeadlineCheck(env: PaymentEnvironment, target: PaymentJob, a
   const job = prepareJob(JOB_NAMES.paymentCheck, target)
   await env.queue.send(JOB_NAMES.paymentCheck, job.data, {
     singletonKey: `${job.singletonKey}:deadline`,
+    // In the payment's own group: a deadline never runs beside another check of the payment.
+    ...(job.group === undefined ? {} : { group: job.group }),
     startAfter: Math.max(1, Math.ceil(afterMs / 1000)),
   })
 }
@@ -2039,6 +2057,7 @@ export async function queuePrepare(env: PaymentEnvironment, target: PaymentJob, 
   const job = prepareJob(JOB_NAMES.paymentPrepare, target)
   await env.queue.send(JOB_NAMES.paymentPrepare, job.data, {
     singletonKey: job.singletonKey,
+    ...(job.group === undefined ? {} : { group: job.group }),
     ...(afterSeconds > 0 ? { startAfter: afterSeconds } : {}),
   })
 }
@@ -2068,7 +2087,14 @@ export async function preparePayment(
     last = where
     const step = routeStep(payment)
     if (step === null) return { kind: 'at', state: payment.state }
-    if ((await step(env, target, payment, deps)) === 'wait') {
+    const posTurn = new PosTurn(deps.budgets ?? SHARED_BUDGETS)
+    let done: StepDone
+    try {
+      done = await step(env, target, payment, { ...deps, posTurn })
+    } finally {
+      posTurn.release()
+    }
+    if (done === 'wait') {
       // Where the step left it (a held payment that waits is queued now).
       const after = await paymentOf(env, target)
       return after === null ? { kind: 'missing' } : { kind: 'at', state: after.state }
@@ -2209,13 +2235,17 @@ export function createPaymentJobs(deps: PaymentJobDeps): JobDefinition[] {
       policy: 'stately',
       // Never failed (and run again beside itself) while a run is still going.
       queue: { ...queue, expireInSeconds: PAYMENT_PREPARE_EXPIRE_SECONDS },
-      work: { pollingIntervalSeconds: 1 },
+      work: { pollingIntervalSeconds: 1, localConcurrency: ROUTE_RUNS_AT_ONCE, groupConcurrency: 1 },
     },
     handler: run(JOB_NAMES.paymentPrepare, preparePayment),
   })
   const check = defineJob<PaymentJob>({
     name: JOB_NAMES.paymentCheck,
-    options: { policy: 'stately', queue, work: { pollingIntervalSeconds: 1 } },
+    options: {
+      policy: 'stately',
+      queue,
+      work: { pollingIntervalSeconds: 1, localConcurrency: ROUTE_RUNS_AT_ONCE, groupConcurrency: 1 },
+    },
     handler: run(JOB_NAMES.paymentCheck, checkPayment),
   })
   return [prepare, check] as JobDefinition[]

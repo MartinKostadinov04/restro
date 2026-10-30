@@ -103,7 +103,10 @@ export const PAYMENT_WRITE_PAUSE_MS = 1_000
 export function paymentTurnSeconds(timings: ServiceTimings = SERVICE_TIMINGS): number {
   const read = BUDGET_WAIT_MS + timings.readTimeoutMs
   const write = BUDGET_WAIT_MS + timings.writeTimeoutMs
-  return Math.ceil((3 * read + PAYMENT_WRITE_PAUSE_MS + write + LEASE_MARGIN_MS) / 1_000)
+  // The step's own turn on the POS first (one chain of calls at a time per POS instance).
+  return Math.ceil(
+    (BUDGET_WAIT_MS + 3 * read + PAYMENT_WRITE_PAUSE_MS + write + LEASE_MARGIN_MS) / 1_000,
+  )
 }
 
 /** The real table's write turn for the default timings. */

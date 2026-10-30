@@ -95,7 +95,8 @@ import {
 } from '../service-connectors'
 import { type ConnectionBreakers, SHARED_BREAKERS } from './breaker'
 import { bounded, probeConnection } from './connection'
-import { connectionPaused, type InstanceBudgets, SHARED_BUDGETS } from './floor'
+import { ROUTE_RUNS_AT_ONCE } from '../connection'
+import { connectionPaused, type InstanceBudgets, PosTurn, SHARED_BUDGETS } from './floor'
 import { noteStock, readAvailability } from './stock'
 import { defineJob, type JobDefinition, type JobQueue, type WorkerContext } from './types'
 
@@ -169,7 +170,12 @@ export async function sendTableOrders(
     if (state !== 'taken') break
     const sentOrderId = String(started.sentOrderId)
     const fence = Number(started.fence)
-    outcomes.push(await sendOne(env, payload, { sentOrderId, fence }, deps))
+    const turn = new PosTurn(deps.budgets ?? SHARED_BUDGETS)
+    try {
+      outcomes.push(await sendOne(env, payload, { sentOrderId, fence }, deps, turn))
+    } finally {
+      turn.release()
+    }
   }
   return outcomes
 }
@@ -201,6 +207,7 @@ async function sendOne(
   payload: OrderSendJob,
   claim: { readonly sentOrderId: string; readonly fence: number },
   deps: SendJobDeps,
+  turn: PosTurn,
 ): Promise<SendOutcome> {
   const { sentOrderId, fence } = claim
   let integrationId: string | null = null
@@ -231,6 +238,8 @@ async function sendOne(
   integrationId = prepared.integrationId
   const paused = () => connectionPaused(env.pool, payload.tenantId, prepared.integrationId)
   if (await paused()) return settle('not_sent', 'ordering_paused')
+  // From the first read to the round's answer, one table at a time on this POS; nothing left yet.
+  if (!(await turn.take(prepared.integrationId))) return settle('not_sent', 'pos_unreachable')
 
   const timings = deps.timings ?? SERVICE_TIMINGS
   const sleep = deps.sleep ?? sleepFor
@@ -368,6 +377,8 @@ async function sendOne(
     // The bill closed between the read and the add; nothing was written, so one more try.
     outcome = await add()
   }
+  // A read-back holds no other table up.
+  turn.release()
   if (outcome.kind === 'no_turn') return settle('not_sent', 'pos_unreachable')
   if (outcome.kind === 'refused' && LOGIN_SCOPES.has(outcome.refusal.scope)) {
     // The login or the venue was refused: the connection pauses at once.
@@ -604,7 +615,7 @@ export function createSendJobs(deps: SendJobDeps): JobDefinition[] {
         retentionSeconds: 10 * 60,
         deleteAfterSeconds: 60 * 60,
       },
-      work: { pollingIntervalSeconds: 1 },
+      work: { pollingIntervalSeconds: 1, localConcurrency: ROUTE_RUNS_AT_ONCE, groupConcurrency: 1 },
     },
     async handler(jobs: Job<OrderSendJob>[], context: WorkerContext) {
       for (const job of jobs) {
@@ -656,6 +667,7 @@ export function createSendJobs(deps: SendJobDeps): JobDefinition[] {
           const job = prepareJob(JOB_NAMES.orderSend, OrderSendJobSchema.parse(target))
           const id = await context.queue.send(JOB_NAMES.orderSend, job.data, {
             singletonKey: job.singletonKey,
+            ...(job.group === undefined ? {} : { group: job.group }),
           })
           if (id !== null) queued += 1
         } catch (error) {

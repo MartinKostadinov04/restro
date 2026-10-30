@@ -477,6 +477,20 @@ export function jobStartAfter<N extends ProducedJobName>(
     : undefined
 }
 
+/**
+ * The queues the route runs several runs of at once (`work.localConcurrency`). A run of one key
+ * must not hold up another key's, so each of their jobs is sent in a group of its key and the
+ * worker fetches with `groupConcurrency: 1`: pg-boss then skips a job whose group has a run going,
+ * live, in the fetch itself. Without the group, a job waiting behind a hung run of its key is
+ * the oldest in the queue: every fetch picks it, loses on the stately unique index, and comes back
+ * empty until the queue's cached singleton list is refreshed, up to two minutes later.
+ */
+export const ONE_RUN_PER_GROUP_JOBS: ReadonlySet<ProducedJobName> = new Set<ProducedJobName>([
+  JOB_NAMES.orderSend,
+  JOB_NAMES.paymentPrepare,
+  JOB_NAMES.paymentCheck,
+])
+
 /** Validates a payload for `name` and returns it with the options `send` needs. */
 export function prepareJob<N extends ProducedJobName>(
   name: N,
@@ -486,6 +500,8 @@ export function prepareJob<N extends ProducedJobName>(
   readonly singletonKey: string
   /** Seconds before the job may start; absent for a job that starts at once. */
   readonly startAfter?: number
+  /** The group a route job runs in: one run at a time per group (`ONE_RUN_PER_GROUP_JOBS`). */
+  readonly group?: { readonly id: string }
 } {
   const parsed = JOB_PAYLOADS[name].safeParse(data)
   if (!parsed.success) {
@@ -497,5 +513,6 @@ export function prepareJob<N extends ProducedJobName>(
     data: payload,
     singletonKey: jobSingletonKey(name, payload),
     ...(startAfter === undefined ? {} : { startAfter }),
+    ...(ONE_RUN_PER_GROUP_JOBS.has(name) ? { group: { id: jobSingletonKey(name, payload) } } : {}),
   }
 }

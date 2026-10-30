@@ -17,3 +17,12 @@ export const QUEUE_POOL_MAX = 3
 
 /** The Postgres schema pg-boss keeps its tables in. The migration owner creates it. */
 export const QUEUE_SCHEMA = 'pgboss'
+
+/**
+ * Runs at once per queue of the route (Sends, payment prepares, payment checks). The runs wait on
+ * the POS and the provider and hold a database connection only for short transactions, never
+ * across a call, so twice the pool is fine; four leaves three going with one hung. It does not
+ * raise the load on a POS login: its calls go one at a time whatever this number is
+ * (`InstanceBudgets`). The queues' `groupConcurrency: 1` keeps one key to one run.
+ */
+export const ROUTE_RUNS_AT_ONCE = 4

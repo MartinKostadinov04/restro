@@ -329,6 +329,7 @@ async function send(
   const job = prepareJob(name, target)
   const id = await env.queue.send(name, job.data, {
     singletonKey: job.singletonKey,
+    ...(job.group === undefined ? {} : { group: job.group }),
     ...(afterSeconds > 0 ? { startAfter: afterSeconds } : {}),
   })
   return id !== null

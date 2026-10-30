@@ -27,7 +27,7 @@ import {
   VenueSyncJobSchema,
 } from '@restro/core'
 import { applyFloor, finishJobRun, startJobRun } from '@restro/core/apply'
-import { applyService } from '@restro/core/service'
+import { applyService, BUDGET_WAIT_MS } from '@restro/core/service'
 import {
   authOrganization,
   type DbPool,
@@ -73,6 +73,7 @@ const FLOOR_KINDS = ['sim'] as const
  */
 export class InstanceBudgets {
   readonly #limiters = new Map<string, Limiter>()
+  readonly #chains = new Map<string, Limiter>()
 
   forInstance(integrationId: string): Limiter {
     let limiter = this.#limiters.get(integrationId)
@@ -81,6 +82,63 @@ export class InstanceBudgets {
       this.#limiters.set(integrationId, limiter)
     }
     return limiter
+  }
+
+  /** One chain of POS calls at a time on an instance (`PosTurn`). */
+  chainOf(integrationId: string): Limiter {
+    let limiter = this.#chains.get(integrationId)
+    if (limiter === undefined) {
+      limiter = createLimiter(1)
+      this.#chains.set(integrationId, limiter)
+    }
+    return limiter
+  }
+}
+
+/**
+ * A run's turn for a chain of POS calls that belong together (the reads before a round and the
+ * round; a route step's reads and its write). The worker runs several tables at once, and each
+ * call of `forInstance` is one at a time but counts several calls on the POS's side (a table read
+ * is two, a round three). Chains of two tables that took turns call by call use up a POS's limit
+ * per second where one table's chain does not: the round's own read is then answered "busy", the
+ * round's outcome is unknown, and the table pauses. So one instance runs one chain at a time, as
+ * it did with one run per queue, while a run that only waits (a read-back window) holds nothing.
+ */
+export class PosTurn {
+  readonly #budgets: InstanceBudgets
+  #release: (() => void) | null = null
+
+  constructor(budgets: InstanceBudgets) {
+    this.#budgets = budgets
+  }
+
+  /** True once this run holds the instance's turn; false when none came within the wait. */
+  async take(integrationId: string, waitMs: number = BUDGET_WAIT_MS): Promise<boolean> {
+    if (this.#release !== null) return true
+    return new Promise<boolean>((resolve, reject) => {
+      let gaveUp = false
+      const timer = setTimeout(() => {
+        gaveUp = true
+        resolve(false)
+      }, waitMs)
+      this.#budgets
+        .chainOf(integrationId)
+        .run(async () => {
+          if (gaveUp) return
+          clearTimeout(timer)
+          await new Promise<void>((released) => {
+            this.#release = released
+            resolve(true)
+          })
+        })
+        .catch(reject)
+    })
+  }
+
+  /** Gives the turn up; nothing when this run holds none. */
+  release(): void {
+    this.#release?.()
+    this.#release = null
   }
 }
 
