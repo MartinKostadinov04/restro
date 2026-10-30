@@ -3,4 +3,9 @@
 -- drizzle-kit, then this comment and the backfill added by hand: every day closed before this
 -- change carries its close time, so no old night is sent again.
 ALTER TABLE "restro"."service_days" ADD COLUMN "report_sent_at" timestamp with time zone;--> statement-breakpoint
-UPDATE "restro"."service_days" SET "report_sent_at" = "closed_at";
+-- The backfill runs with forced row-level security off for the owner (as 0019 and 0040 do; same transaction):
+-- the owner of a hosted database has no BYPASSRLS, so under forced row-level security it would change no
+-- row, and the nights closed before this change would be reported again.
+ALTER TABLE "restro"."service_days" NO FORCE ROW LEVEL SECURITY;--> statement-breakpoint
+UPDATE "restro"."service_days" SET "report_sent_at" = "closed_at";--> statement-breakpoint
+ALTER TABLE "restro"."service_days" FORCE ROW LEVEL SECURITY;
