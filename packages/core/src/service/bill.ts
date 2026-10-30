@@ -256,7 +256,7 @@ export function billView(input: {
   readonly readAt: Date
   readonly complete: boolean
   readonly bills: readonly StoredBill[]
-  /** *Backend*: the POS lines in a payment that isn't final (`payment_lines.open`). */
+  /** *Backend*: the POS lines a payment still claims (`payment_lines.open`). */
   readonly beingPaid?: ReadonlySet<string>
   /** The lines of the sitting's captured payments (`payment_lines`; never a payer). */
   readonly paidLines?: readonly PaidLineView[]

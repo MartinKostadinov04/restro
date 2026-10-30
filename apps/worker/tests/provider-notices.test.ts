@@ -384,6 +384,26 @@ describe.skipIf(!hasDatabase)('the provider notices job', () => {
     expect(line).not.toContain(target.ref)
   })
 
+  it('refuses a reading that shows more refunded than was captured (RR-40)', async () => {
+    const target = await payment()
+    const captured = reading(target, 0).capturedMinor ?? 0
+    readings.set('re_31', { ...reading(target, 0), refundedMinor: captured + 500 })
+    const mismatch = await notice('refund', 're_31')
+    expect(await run()).toMatchObject({ refused: 1 })
+    expect(await handled(mismatch)).toBe(true)
+    expect(await stored(target.id)).toMatchObject({ refunded_minor: '0' })
+  })
+
+  it('refuses a reading of another provider payment under our payment’s id (RR-40)', async () => {
+    const target = await payment()
+    readings.set('re_32', { ...reading(target, 500), ref: providerRef('pi_another') })
+    const mismatch = await notice('refund', 're_32')
+    expect(await run()).toMatchObject({ refused: 1 })
+    expect(await handled(mismatch)).toBe(true)
+    expect(await stored(target.id)).toMatchObject({ refunded_minor: '0' })
+    expect(logLines.some((entry) => entry.includes('another_provider_payment'))).toBe(true)
+  })
+
   /** Stores `count` refund notices whose reading stays incomplete; returns their event ids. */
   async function waitingNotices(count: number): Promise<string[]> {
     readings.set('re_wait', 'incomplete')

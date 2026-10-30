@@ -1,4 +1,4 @@
-// Migration 0043 (the design record, D129, D130), on a scratch database of its own: migrated to the
+// Migration 0044 (the design record, D129, D130), on a scratch database of its own: migrated to the
 // one before, seeded with venues as they stood, then migrated through it. Every venue must get a
 // Basic record that core's schema reads, with what it set before carried over and drawn as before.
 // It lives in core so the record is checked against the contract the app reads it with: the
@@ -28,7 +28,7 @@ import { type VenueTheme, VenueThemeSchema } from '../theme/settings'
 import { hasDatabase } from './test-database'
 
 const MIGRATIONS = fileURLToPath(new URL('../../../db/migrations', import.meta.url))
-const TAG = '0043_design_record'
+const TAG = '0044_design_record'
 
 interface Journal {
   entries: { idx: number; tag: string; when: number }[]
@@ -213,7 +213,7 @@ describe.skipIf(!hasDatabase)('the design record migration (D129, D130)', () => 
           layer: 'manual',
           source: 'manual',
           actor: 'system',
-          job_id: 'migration:0043_design_record',
+          job_id: 'migration:0044_design_record',
           change_set_id: null,
         },
       })

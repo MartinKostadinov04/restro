@@ -32,6 +32,7 @@ describe("the Log screen's kinds", () => {
       'payment.answered',
       'payment.refund_seen',
       'payment.storno',
+      'payment.refund_failed_seen',
       'payment.dispute',
     ])
   })

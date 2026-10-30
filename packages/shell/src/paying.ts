@@ -23,6 +23,7 @@ import {
 
 import { viewMinor } from './money'
 import { PAY_ENDS, type PayEnd } from './service-vocabulary'
+import { ANSWER_LOST_CODE, OFFLINE_CODE } from './services'
 import type { PayingStrings, ServiceStrings } from './strings'
 import { fallbackChain, pickText } from './text'
 
@@ -173,6 +174,8 @@ export function offersReceiptEmail(paying: PayingView | null | undefined): boole
 
 /** Why Pay is greyed; the guest's words are in `strings.pay`. */
 export type PayBlock =
+  /** The phone has not reached Restro for about 10 s (D121): Pay is blocked, never queued. */
+  | 'offline'
   | 'cards_paused'
   | 'not_up_to_date'
   | 'nothing_picked'
@@ -192,7 +195,10 @@ export function payBlock(
   tip: TipChoice,
   tipsOffered: boolean,
   receiptEmail = '',
+  /** `state.offline`: the phone is offline, so Pay is greyed whatever else holds (D121). */
+  offline = false,
 ): PayBlock | null {
+  if (offline) return 'offline'
   if (paying.state === 'paused') return 'cards_paused'
   if (!bill.complete) return 'not_up_to_date'
   if (picks.size === 0) return 'nothing_picked'
@@ -394,6 +400,10 @@ export function refusalText(
   if (code === 'below_minimum') {
     return context.minCard == null ? words.refusedOther : words.paying.belowMinimum(context.minCard)
   }
+  // The client's own answers (no server code): a Send or Pay it did not make while offline, and a
+  // Send whose answer was lost (D120, D121).
+  if (code === OFFLINE_CODE) return words.offline
+  if (code === ANSWER_LOST_CODE) return words.sendLost
   if (code === 'rate_limited' && context.command?.startsWith('pay.'))
     return words.paying.rateLimited
   return Object.hasOwn(words.refusals, code)

@@ -9,7 +9,7 @@
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
     "test:e2e": "next build && playwright test",
-    "db:seed:dev": "node --disable-warning=ExperimentalWarning --env-file-if-exists=../../.env.local --env-file=./scripts/dev.env --import ./scripts/register-ts.mjs ./scripts/seed-dev.ts"
+    "db:seed:dev": "node --disable-warning=ExperimentalWarning --experimental-transform-types --env-file-if-exists=../../.env.local --env-file=./scripts/dev.env --import ./scripts/register-ts.mjs ./scripts/seed-dev.ts"
   },
   "dependencies": {
     "@hello-pangea/dnd": "18.0.1",

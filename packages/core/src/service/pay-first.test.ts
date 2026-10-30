@@ -72,6 +72,13 @@ describe('the pay-first check before the close (#113)', () => {
     return check.ok ? 'ok' : check.why
   }
 
+  it('closes no round the POS prices at nothing, whatever is held', () => {
+    const free = [{ item: '2002', quantity: '1', amountMinor: 0 }]
+    expect(why({ ...base, round: free, bill: bill([{ item: '2002', amountMinor: 0 }]) })).toBe(
+      'no_lines',
+    )
+  })
+
   it("closes for the hold when the bill is the round's lines at their prices", () => {
     expect(payFirstCheck({ ...base, bill: bill(asEntered) })).toEqual({
       ok: true,

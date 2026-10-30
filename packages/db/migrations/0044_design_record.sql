@@ -4,7 +4,7 @@
 --      none) and always the venue's scope, the key `design` and the manual layer. The purge finds
 --      those rows by their scope, as it finds every venue-scoped row;
 --   2. every venue gets its design record at `settings.design` (core's `DesignRecordSchema`), on
---      Basic, revision 1, written by `system` under the job `migration:0043_design_record`, with
+--      Basic, revision 1, written by `system` under the job `migration:0044_design_record`, with
 --      what it set before carried over:
 --        - its three colours (or the one brand colour of a venue that never set three), its
 --          Advanced role overrides and its logo, as they were;
@@ -99,7 +99,7 @@ records AS (
         'layer', 'manual',
         'source', 'manual',
         'actor', 'system',
-        'job_id', 'migration:0043_design_record',
+        'job_id', 'migration:0044_design_record',
         'change_set_id', NULL))
     -- The three colours win over a brand colour, as they did at publish (`themePaletteOf`).
     || CASE WHEN colors IS NOT NULL THEN jsonb_build_object('colors', colors)

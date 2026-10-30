@@ -11,6 +11,8 @@
 //   the lines read `beingPaid` on every phone. The database keeps a POS line in one open payment
 //   (`payment_lines_open_line_unique`, migration 0032), so two friends picking the same line can't
 //   both win, whatever the timing; the table's order row lock makes the loser a clean refusal.
+//   `unconfirmed` is final for the run, not for its lines: they stay claimed until the manager's
+//   answer ends it (D127 3.1, migration 0043).
 // - The worker reads the table fresh and prices it (`payment.price`): the POS's own line amounts
 //   plus the tip, never price × quantity (rule 8). A picked line that changed or went is
 //   `bill_changed`; the provider's minimum is `below_minimum`.
@@ -467,7 +469,7 @@ export function payStart() {
         }
       }
 
-      // The grey: a line in a payment that isn't final.
+      // The grey: a line a payment still claims, an `unconfirmed` one's too (migration 0043).
       const refs = lines.map(({ line }) => line.pos)
       const greyed = await stx.tx
         .select({ ref: paymentLines.posLineRef })

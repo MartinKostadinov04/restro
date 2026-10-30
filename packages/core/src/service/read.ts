@@ -425,27 +425,24 @@ export async function readTableState(
       .where(eq(billReadings.tableId, table.id))
 
     const stored = reading === undefined ? [] : parseStoredBills(reading.bills)
-    // The table's payments that aren't final (#110): their lines read `beingPaid`, and their
-    // provider values join the walk, so no other answer can carry them (rule 3).
+    // The table's payments that aren't final (#110): their provider values join the walk, so no
+    // other answer can carry them (rule 3). A settled payment's stay out of it.
     const open = await tx
       .select({ id: payments.id, ref: payments.providerPaymentRef, form: payments.formValues })
       .from(payments)
       .where(and(eq(payments.tableId, table.id), isNull(payments.settledAt)))
-    const greyed =
-      open.length === 0
-        ? []
-        : await tx
-            .select({ ref: paymentLines.posLineRef })
-            .from(paymentLines)
-            .where(
-              and(
-                inArray(
-                  paymentLines.paymentId,
-                  open.map((payment) => payment.id),
-                ),
-                eq(paymentLines.open, true),
-              ),
-            )
+    // The lines a payment still claims read `beingPaid`, an `unconfirmed` one's too, wherever they
+    // read back (migration 0043): the same check as `pay.start`'s, so the grey and the refusal agree.
+    const greyed = await tx
+      .select({ ref: paymentLines.posLineRef })
+      .from(paymentLines)
+      .where(
+        and(
+          eq(paymentLines.venueId, table.venueId),
+          eq(paymentLines.open, true),
+          isNotNull(paymentLines.posLineRef),
+        ),
+      )
     const beingPaid = new Set(greyed.flatMap((line) => (line.ref === null ? [] : [line.ref])))
     // The lines paid in the app in this sitting (D127 1.2): the lines the POS closed on the
     // captured payments, at what it closed them for (#197), oldest payment first. They name no

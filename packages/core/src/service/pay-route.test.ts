@@ -70,6 +70,26 @@ describe('the last check', () => {
     expect(check({})).toEqual({ ok: true, foundMinor: 1_450, voided: 0, found: [0, 1] })
   })
 
+  it('closes nothing when only a free line is left after a void', () => {
+    const lines = [
+      { pos: 'L1', quantity: '2', amountMinor: 1_000 },
+      { pos: 'L2', quantity: '1', amountMinor: 0 },
+    ]
+    expect(
+      check({ confirmed: lines, isolated: bill([{ quantity: '1', amountMinor: 0 }]) }),
+    ).toEqual({ ok: false, why: 'no_lines' })
+  })
+
+  it('never calls a confirmed line with no POS reference voided', () => {
+    const lines = [
+      { pos: null, quantity: '1', amountMinor: 450 },
+      { pos: 'L1', quantity: '2', amountMinor: 1_000 },
+    ]
+    expect(
+      check({ confirmed: lines, isolated: bill([{ quantity: '2', amountMinor: 1_000 }]) }),
+    ).toEqual({ ok: false, why: 'line_missing' })
+  })
+
   it('fails a closed bill, a part-paid one, a total off its lines, and a line slipped in', () => {
     expect(check({ isolated: null })).toEqual({ ok: false, why: 'no_bill' })
     expect(check({ isolated: { ...bill(), bills: 2 } })).toEqual({
@@ -291,6 +311,55 @@ describe('the last check', () => {
         },
       ),
       { numRuns: 500 },
+    )
+  })
+})
+
+// Repair-review hot spot 8 (RR-11): the POS's own amounts are signed (a discount line is
+// negative, `BillLineSchema`), and `pay.start` takes a pick whose lines sum above zero, discount
+// lines among them. The last check must then answer, pass or fail, and never throw: a throw
+// leaves the payment `isolated` with the card held and nothing to release it.
+describe('the last check on a bill with a discount line (signed POS amounts)', () => {
+  const positive = fc.record({
+    quantity: fc.constantFrom('1', '2'),
+    amountMinor: fc.integer({ min: 1, max: 3_000 }),
+  })
+  const discount = fc.record({
+    quantity: fc.constant('1'),
+    amountMinor: fc.integer({ min: -3_000, max: -1 }),
+  })
+
+  // RR-11: red until its fix; the fix removes .fails.
+  it.fails('passes the confirmed lines, a discount among them, for their signed sum', () => {
+    fc.assert(
+      fc.property(
+        fc.array(positive, { minLength: 1, maxLength: 4 }),
+        fc.array(discount, { minLength: 1, maxLength: 2 }),
+        (lines, discounts) => {
+          const all = [...lines, ...discounts]
+          const signed = all.reduce((sum, line) => sum + line.amountMinor, 0)
+          fc.pre(signed > 0)
+          const confirmed = all.map((line, index) => ({ pos: `L${index}`, ...line }))
+          let result: ReturnType<typeof lastCheck> | Error
+          try {
+            result = lastCheck({
+              confirmed,
+              isolated: { bills: 1, totalMinor: signed, paidMinor: 0, lines: all },
+              real: [],
+              partialCapture: true,
+            })
+          } catch (error) {
+            result = error as Error
+          }
+          expect(result).toEqual({
+            ok: true,
+            foundMinor: signed,
+            voided: 0,
+            found: all.map((_, index) => index),
+          })
+        },
+      ),
+      { numRuns: 200 },
     )
   })
 })

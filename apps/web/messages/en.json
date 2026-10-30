@@ -2329,6 +2329,8 @@
     "py_storno": "Storno done · {who}, {time}",
     "py_refund_failed": "The refund didn't go through at {provider}",
     "rf_fail_t": "A refund of {amt} didn't go through at {provider}. The storno was already made: check with your accountant.",
+    "rf_ok": "Got it",
+    "rf_toast": "Noted",
     "d_due": "Answer in {provider} by {date}",
     "d_ok": "See the evidence",
     "py_disputed": "Disputed",
@@ -2347,6 +2349,8 @@
     "lg_pay_refund": "Refund of {amt} made in {provider}",
     "lg_pay_storno": "Storno done",
     "lg_pay_storno_undone": "Storno taken back",
+    "lg_pay_refund_seen": "Seen: refund that didn't go through",
+    "lg_pay_refund_seen_undone": "Seen taken back: refund that didn't go through",
     "lg_pay_dispute": "Card dispute: {state}"
   },
   "ownerSettings": {

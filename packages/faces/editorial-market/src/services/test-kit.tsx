@@ -10,6 +10,7 @@ import {
   type CommandResult,
   EMPTY_SERVICE_STATE,
   type GuestCommand,
+  type GuestScreen,
   type PayFormSlot,
   type PayingView,
   type PaymentView,
@@ -291,6 +292,10 @@ export interface FakeHost {
   }[]
   /** How many times the payment's screen was dismissed ("Back to the bill"). */
   readonly dismissed: () => number
+  /** The location controls the guest used, by name, in order ("allow", "decline", "stop"…). */
+  readonly located: string[]
+  /** The screens the face told the host it had open, in order (RR-52). */
+  readonly screens: GuestScreen[]
   readonly state: () => ServiceState
   readonly set: (patch: Partial<ServiceState>) => void
   /** The calls of one kind. */
@@ -305,6 +310,8 @@ export function fakeHost(initial: Partial<ServiceState> = {}): FakeHost {
   const calls: Call[] = []
   const forms: FakeHost['forms'] = []
   let dismissed = 0
+  const located: string[] = []
+  const screens: GuestScreen[] = []
   const payForm: PayFormSlot = {
     mount(target, props) {
       const form = {
@@ -352,7 +359,20 @@ export function fakeHost(initial: Partial<ServiceState> = {}): FakeHost {
           dismissed += 1
         },
       },
+      location: {
+        allow: async () => {
+          located.push('allow')
+          return null
+        },
+        decline: () => void located.push('decline'),
+        reopen: () => void located.push('reopen'),
+        dismiss: () => void located.push('dismiss'),
+        stop: () => void located.push('stop'),
+      },
+      setScreen: (screen) => void screens.push(screen),
     }),
+    located,
+    screens,
     forms,
     dismissed: () => dismissed,
     state: () => state,

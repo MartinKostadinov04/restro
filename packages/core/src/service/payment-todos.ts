@@ -6,7 +6,7 @@
 // and public fields only (rule 3).
 
 import { logEntries, paymentRefunds, payments, type ReadTx, venueTables } from '@restro/db'
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 
 import { paymentNumberOf } from './payment-number'
 import { withoutTipMinor } from './staff-amount'
@@ -159,8 +159,18 @@ export async function refundsToDo(tx: ReadTx, venueId: string): Promise<readonly
 }
 
 /**
+ * Whether a refund that did not go through was seen ("Got it", #234): its newest such Log entry
+ * says `seen` (an Undo writes `open`). The Log entry is the whole record.
+ */
+export const failedRefundSeen = sql`coalesce((select l.to_state from ${logEntries} l
+  where l.venue_id = ${paymentRefunds.venueId} and l.kind = 'payment.refund_failed_seen'
+    and l.details ->> 'refundId' = ${paymentRefunds.id}
+  order by l.seq desc limit 1), '') = 'seen'`
+
+/**
  * The refunds that did not go through after their storno was made, failed after `failedFrom`: the
  * venue checks with its accountant (decision log 5.7). The caller keeps those of its service day.
+ * One a manager has seen ("Got it") is left out; the one that was not leaves after `failedFrom`.
  */
 export async function refundsFailedAfterStorno(
   tx: ReadTx,
@@ -189,6 +199,7 @@ export async function refundsFailedAfterStorno(
         eq(paymentRefunds.venueId, venueId),
         isNotNull(paymentRefunds.stornoAt),
         gt(paymentRefunds.failedAt, failedFrom),
+        sql`not (${failedRefundSeen})`,
       ),
     )
     .orderBy(asc(paymentRefunds.failedAt), asc(paymentRefunds.id))

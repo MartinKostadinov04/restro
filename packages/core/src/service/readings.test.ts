@@ -311,6 +311,30 @@ describe.skipIf(!hasDatabase)('readings of the table bill (as the restro_app rol
     expect((await state(tableId)).bill).toBeNull()
   })
 
+  it('ends the sitting once a payment of it is over and its payment table is free', async () => {
+    const tableId = table(0)
+    const sittingId = (await state(tableId)).sitting?.id ?? (await world.openSitting(tableId))
+    await record(tableId, complete(round))
+    await world.owner.query(
+      `insert into restro.payments
+         (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
+          amount_minor, captured_minor, currency, provider_kind, settled_at, source, actor, job_id)
+       select $1, $2, $3, $4, $5, service_date, 'on_bill', 'captured', $6, 1000, 1000, 'EUR', 'sim',
+              now(), $7, $8, $9
+       from restro.sittings where id = $5`,
+      [
+        newId('py'),
+        world.tenantId,
+        world.venueId,
+        tableId,
+        sittingId,
+        createHash('sha256').update(randomUUID()).digest('hex'),
+        ...SEED,
+      ],
+    )
+    expect(await record(tableId, complete())).toMatchObject({ ended: true })
+  })
+
   it('does not end while the table lines sit on a payment table (part 2)', async () => {
     const tableId = table(2)
     const sittingId = (await state(tableId)).sitting?.id ?? null

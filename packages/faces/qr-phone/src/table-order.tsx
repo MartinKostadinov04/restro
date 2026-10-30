@@ -16,18 +16,21 @@
 // action naming that sent order.
 
 import {
+  ANSWER_LOST_CODE,
   type CommandResult,
   type GuestCommand,
   isOutOfStock,
+  LOST_SEND_HOLD_MS,
   refusalText,
   refusedOutOfStock,
   type SentOrderView,
   type ServiceBinding,
+  type ServiceState,
   type ServiceStrings,
   type ViewItem,
   type ViewModel,
 } from '@restro/shell'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 /** A command before its action id is made (one per kind, as the union says). */
 export type CommandDraft = GuestCommand extends infer C
@@ -67,17 +70,46 @@ export function useOrderCommands(
   view?: ViewModel,
 ) {
   const [notice, setNotice] = useState<string | null>(null)
+  // The last Send's answer was lost, before the host's state says so (it draws the line from then).
+  // It is no notice: the line is `state.sendLost`'s, and this only bridges the moment before it.
+  const [answerLost, setAnswerLost] = useState(false)
+  const hostLost = services?.state.sendLost != null
+  const hostSaid = useRef(false)
+  useEffect(() => {
+    if (hostLost) hostSaid.current = true
+    else if (hostSaid.current) {
+      hostSaid.current = false
+      setAnswerLost(false)
+    }
+  }, [hostLost])
+  // A host that never says it still lets the guest send again after the hold (D120).
+  useEffect(() => {
+    if (!answerLost) return
+    const timer = setTimeout(() => setAnswerLost(false), LOST_SEND_HOLD_MS)
+    return () => clearTimeout(timer)
+  }, [answerLost])
   const items = useMemo(() => (view === undefined ? null : itemsById(view)), [view])
   const send = useCallback(
     async (command: CommandDraft): Promise<CommandResult | null> => {
       if (services === undefined) return null
       setNotice(null)
+      setAnswerLost(false)
       let result: CommandResult
       try {
         result = await services.dispatch({ ...command, actionId: newActionId() } as GuestCommand)
       } catch {
         setNotice(strings.refusedOther)
         return null
+      }
+      // A Send whose answer was lost (D120): the order may already be in the POS, so the guest is
+      // told to call a waiter, never "Try again".
+      if (
+        result.status === 'pending' &&
+        result.code === ANSWER_LOST_CODE &&
+        command.kind === 'order.send'
+      ) {
+        setAnswerLost(true)
+        return result
       }
       // A pay command's refusal is worded where the guest paid (the bill panel), not as the
       // order's notice.
@@ -106,7 +138,7 @@ export function useOrderCommands(
     },
     [services, strings, items],
   )
-  return { send, notice }
+  return { send, notice, answerLost }
 }
 
 /** What a sent order says on this phone (D116, D122 §5). */
@@ -238,12 +270,15 @@ export function OrderPanel({
   strings,
   send,
   notice,
+  answerLost,
 }: {
   readonly view: ViewModel
   readonly services: ServiceBinding | undefined
   readonly strings: ServiceStrings
   readonly send: (command: CommandDraft) => Promise<CommandResult | null>
   readonly notice: string | null
+  /** The last Send's answer was lost and the host's state does not say so yet. */
+  readonly answerLost: boolean
 }) {
   const items = useMemo(() => itemsById(view), [view])
   const [sending, setSending] = useState(false)
@@ -257,6 +292,11 @@ export function OrderPanel({
     return () => clearTimeout(timer)
   }, [asked])
   const order = services?.state.order ?? null
+  const offline = services?.state.offline === true
+  // A Send whose answer was lost (D120) says its own line in place of the general weak-signal one
+  // (D122: "Nothing new was sent yet" would be false), and the bag is not offered for a re-send.
+  const hostSendLost = services?.state.sendLost ?? null
+  const sendLost = hostSendLost ?? (answerLost ? { ref: null } : null)
   const ordering = services?.state.ordering?.state ?? 'on'
   const night = services?.state.ordering?.night
   const phonesMayOrder =
@@ -303,7 +343,12 @@ export function OrderPanel({
   return (
     <section className="rq-order" data-slot="menu.bag" aria-label={strings.tableOrder}>
       <h2>{strings.tableOrder}</h2>
-      {services?.state.offline === true ? (
+      {sendLost !== null ? (
+        <p className="rq-note" role="alert" data-send-lost="">
+          {strings.sendLost}
+          {sendLost.ref === null ? null : ` ${strings.reference(sendLost.ref)}`}
+        </p>
+      ) : offline ? (
         <p className="rq-note" role="status">
           {strings.offline}
         </p>
@@ -426,12 +471,12 @@ export function OrderPanel({
           onSend={() => void sendOrder(asked.of)}
           onCancel={() => setAsked(null)}
         />
-      ) : count > 0 && ordering === 'on' && phonesMayOrder ? (
+      ) : count > 0 && ordering === 'on' && phonesMayOrder && sendLost === null ? (
         <button
           type="button"
           className="rq-send"
           data-send=""
-          disabled={sending}
+          disabled={sending || offline}
           onClick={() => void sendOrder()}
         >
           {sending
@@ -443,6 +488,36 @@ export function OrderPanel({
       ) : null}
       <SentOrders services={services} strings={strings} nameOf={nameOf} />
     </section>
+  )
+}
+
+/** Whether the bill panel is drawn: the host has the table's bill or this phone's payment. */
+export function billShown(state: ServiceState | undefined): boolean {
+  return state?.tableBill != null || state?.payment != null
+}
+
+/**
+ * "Stop location check" (D119): one small control that drops the phone's pass and ends the check
+ * for the service day. Only where the host can stop it (`location.stop`).
+ */
+export function StopLocationCheck({
+  services,
+  strings,
+}: {
+  readonly services: ServiceBinding | undefined
+  readonly strings: ServiceStrings
+}) {
+  const stop = services?.location?.stop
+  if (stop === undefined) return null
+  return (
+    <button
+      type="button"
+      className="rq-order-hint"
+      data-slot="location.stop"
+      onClick={() => stop()}
+    >
+      {strings.locationStop}
+    </button>
   )
 }
 
@@ -467,6 +542,9 @@ export function LocationPanel({
   const location = services?.state.location ?? null
   const controls = services?.location
   if (location === null || controls === undefined) return null
+  // The notice D119 says the details sit behind (the location's own field: it is there whatever
+  // paying is).
+  const privacyUrl = location.privacyUrl ?? null
   switch (location.prompt) {
     case 'consent':
       return (
@@ -476,7 +554,17 @@ export function LocationPanel({
           aria-modal="false"
           data-location-prompt="consent"
         >
-          <p>{strings.locationConsent(location.venueName)}</p>
+          <p>
+            {strings.locationConsent(location.venueName)}
+            {privacyUrl === null ? null : (
+              <>
+                {' '}
+                <a href={privacyUrl} target="_blank" rel="noopener noreferrer">
+                  {strings.paying.legalPrivacyLink}
+                </a>
+              </>
+            )}
+          </p>
           <button type="button" onClick={() => void controls.allow()}>
             {strings.locationAllow}
           </button>{' '}
@@ -515,10 +603,19 @@ export function LocationPanel({
           )}
           <button type="button" onClick={() => controls.dismiss()}>
             {strings.locationCancel}
-          </button>
+          </button>{' '}
+          <StopLocationCheck services={services} strings={strings} />
         </div>
       )
     case 'none':
+      if (location.state === 'held') {
+        // The stop is on the bill where one is drawn; without a bill it sits here.
+        return billShown(services?.state) ? null : (
+          <div className="rq-location" data-location-prompt="none">
+            <StopLocationCheck services={services} strings={strings} />
+          </div>
+        )
+      }
       return location.state === 'needed' ? (
         <div className="rq-location" data-location-prompt="none">
           <p className="rq-order-hint">{strings.locationNeeded}</p>

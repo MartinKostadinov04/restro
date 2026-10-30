@@ -20,7 +20,7 @@ import {
   setFloorSource,
   upsertBarsyVenues,
 } from '@restro/core/apply'
-import { BUDGET_WAIT_MS, SLOT_CHECKING_SECONDS } from '@restro/core/service'
+import { applyService, BUDGET_WAIT_MS, SLOT_CHECKING_SECONDS } from '@restro/core/service'
 import { createPool, type DbPool } from '@restro/db'
 import { createSimServer, ManualClock, type SimFault, type SimServer } from '@restro/sim-pos'
 import fc from 'fast-check'
@@ -569,6 +569,183 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
     expect(took).toBeGreaterThanOrEqual(SERVICE_TIMINGS.readBackWindowMs)
     expect(took).toBeLessThan(SLOT_CHECKING_SECONDS * 1_000)
     expect(addCalls()).toBe(0)
+  })
+
+  // Repair-review, hot spot 2: the job is never retried (retryLimit 0) and a sent order that may
+  // have reached the POS is the sweep's to settle as Unconfirmed, never sent again (D115, D116).
+  describe('a worker killed around the add', () => {
+    class Killed extends Error {}
+
+    const expireAndSweep = async () => {
+      await query(
+        `update restro.locks set deadline = now() - interval '1 second' where scope = 'order_slot' and key = $1`,
+        [tableId],
+      )
+      const { expired } = await slotTargets(pool)
+      expect(expired.map((target) => target.tableId)).toContain(tableId)
+      const { result } = await applyService(
+        pool,
+        { type: 'sent_order.expire', tableId },
+        {
+          tenantId,
+          venueId: demo.venueId,
+          origin: 'worker',
+          actor: { kind: 'system' },
+          jobId: `sweep-${newId('jb')}`,
+        },
+      )
+      return result
+    }
+
+    it.each([
+      [
+        'after the round landed, before its answer was written',
+        'sending',
+        1,
+        () => ({
+          breakers: Object.assign(new ConnectionBreakers(() => 0.5), {
+            record: async (
+              _env: unknown,
+              _connection: unknown,
+              event: { kind: string; elapsedMs?: number },
+            ) => {
+              // The read before carries its time; the record right after the add does not.
+              if (event.kind === 'call' && event.elapsedMs === undefined) throw new Killed()
+            },
+          }),
+        }),
+      ],
+      [
+        'in the read-back of a round that landed and hung',
+        'checking',
+        1,
+        () => {
+          sim.host.engine.faults.add({ on: 'addRows', fault: { kind: 'landsThenHangs' } })
+          return {
+            sleep: async () => {
+              throw new Killed()
+            },
+          }
+        },
+      ],
+      [
+        'in the read-back of a round that never landed',
+        'checking',
+        0,
+        () => {
+          sim.host.engine.faults.add({ on: 'addRows', fault: { kind: 'hang' } })
+          return {
+            sleep: async () => {
+              throw new Killed()
+            },
+          }
+        },
+      ],
+    ] as const)(
+      '%s: settled by the sweep, never sent again',
+      async (_name, leftIn, landed, kill) => {
+        sim.host.engine.faults.clear()
+        firstItem()
+        const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+        const before = addCalls()
+        await expect(
+          sendTableOrders(
+            env(),
+            { tenantId, venueId: demo.venueId, tableId },
+            { ...deps(), ...kill() },
+          ),
+        ).rejects.toBeInstanceOf(Killed)
+        sim.host.engine.faults.clear()
+        expect((await sentOrder(id))?.state).toBe(leftIn)
+
+        // The next job finds the slot held and sends nothing.
+        simClock.advance(1_100)
+        expect(await run()).toEqual([])
+        expect(addCalls() - before).toBeLessThanOrEqual(1)
+
+        // The sweep settles it, and the job after that still sends nothing.
+        expect(await expireAndSweep()).toMatchObject({
+          details: { expired: true, sentOrderId: id },
+        })
+        expect(await sentOrder(id)).toMatchObject({
+          state: 'unconfirmed',
+          reason: 'check_timed_out',
+        })
+        const calls = addCalls()
+        simClock.advance(1_100)
+        await run()
+        expect(addCalls()).toBe(calls)
+        const rows = onBill().filter(([article]) => article === ARTICLE_A)
+        expect(rows).toHaveLength(landed)
+        // Its lines stay out of the bag: Try again is offered only after a definite no (D116).
+        expect((await orderLines()).filter((line) => line.itemId === itemA)).toEqual([])
+      },
+    )
+  })
+
+  // Repair-review, RR-24 (D116: Not sent = "it never went out"): the connector's own read before
+  // the round fails, so nothing was written and the connector says so in its reason.
+  // RR-24: red until its fix; the fix removes .fails.
+  it.fails('a read inside the add that fails before anything is written: Not sent, the lines back', async () => {
+    sim.host.engine.faults.clear()
+    firstItem()
+    const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+    const before = addCalls()
+    const outcomes = await sendTableOrders(
+      env(),
+      { tenantId, venueId: demo.venueId, tableId },
+      {
+        ...deps(),
+        connectorFor: (integration, policy) => {
+          const real = serviceConnectorFor(integration, policy)
+          return {
+            ...real,
+            addLines: async (context, request) => {
+              // The read inside the add fails, and only that one.
+              sim.host.engine.faults.add({ on: 'read', times: 1, fault: { kind: 'fail' } })
+              return real.addLines(context, request)
+            },
+          }
+        },
+      },
+    )
+    sim.host.engine.faults.clear()
+    expect(addCalls()).toBe(before)
+    expect(outcomes).toEqual([
+      { kind: 'settled', sentOrderId: id, state: 'not_sent', reason: 'pos_unreachable' },
+    ])
+    expect((await orderLines()).map((line) => [line.itemId, line.qty])).toContainEqual([itemA, 1])
+  })
+
+  // RR-33, the lead's ruling 10-30: indistinguishable on this profile, Added is accepted; spec #64 line 164 is read with line 165's match.
+  // The round never lands; a waiter enters the same round during the read-back.
+  it("a waiter's identical round alone in the read-back window is Added", async () => {
+    sim.host.engine.faults.clear()
+    firstItem()
+    const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+    sim.host.engine.faults.add({ on: 'addRows', fault: { kind: 'hang' } })
+    let waiter = false
+    const outcomes = await sendTableOrders(
+      env(),
+      { tenantId, venueId: demo.venueId, tableId },
+      {
+        ...deps(),
+        sleep: async (ms: number) => {
+          await deps().sleep(ms)
+          if (!waiter) {
+            waiter = true
+            sim.host.engine.waiter.addRound(POS_TABLE, [{ article: ARTICLE_A }])
+          }
+        },
+      },
+    )
+    sim.host.engine.faults.clear()
+    expect(onBill()).toEqual([
+      [FIRST, 1000],
+      [ARTICLE_A, 1000],
+    ])
+    // Nothing tells this round from Restro's on this profile: it is matched as Restro's.
+    expect(outcomes).toEqual([{ kind: 'settled', sentOrderId: id, state: 'added', reason: null }])
   })
 
   it('never sends an item the POS has no link for', async () => {

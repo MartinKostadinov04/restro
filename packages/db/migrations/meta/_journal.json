@@ -306,8 +306,15 @@
     {
       "idx": 43,
       "version": "7",
-      "when": 1793318652882,
-      "tag": "0043_design_record",
+      "when": 1793354665000,
+      "tag": "0043_unconfirmed_lines_stay_claimed",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1793354725000,
+      "tag": "0044_design_record",
       "breakpoints": true
     }
   ]
