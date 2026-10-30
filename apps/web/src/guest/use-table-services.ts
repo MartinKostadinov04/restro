@@ -23,9 +23,9 @@ import { turnstileTokens } from './turnstile'
 /**
  * The templates that draw the table's shared order (#75) and the table services around it (the
  * bill, paying, the waiter): the page binds the services client for these. A template outside the
- * list gets no table and the menu only. `qr-phone` stays until it retires (#171).
+ * list gets no table and the menu only.
  */
-export const SHARED_ORDER_FACES: ReadonlySet<string> = new Set(['editorial-market', 'qr-phone'])
+export const SHARED_ORDER_FACES: ReadonlySet<string> = new Set(['editorial-market'])
 
 const NO_STATE = () => null
 

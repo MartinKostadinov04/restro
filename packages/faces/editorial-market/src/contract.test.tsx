@@ -90,7 +90,7 @@ describe('the face contract (brief S3-02 harness, every fixture)', () => {
       fixtures: [richFixture('en_US'), richFixture('bg_BG')],
     })
     expect(report.failures).toEqual([])
-    expect(report.items).toBe(14)
+    expect(report.items).toBe(12)
   })
 })
 

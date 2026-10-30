@@ -35,7 +35,7 @@ export function Header({
   const { logo } = view.theme
   const { title, intro, schedule } = view.menu
   return (
-    <header className="rm-header">
+    <header className="rm-header" data-design-part="header">
       <div className="rm-brandline">
         {logo !== null ? (
           <Photo
@@ -45,6 +45,7 @@ export function Header({
             sizes="80px"
             className="rm-logo"
             loading="eager"
+            part="header.logo"
           />
         ) : null}
         <div className="rm-headtools">
@@ -84,7 +85,7 @@ export function Header({
           ) : null}
         </div>
       </div>
-      <div className="rm-titleblock">
+      <div className="rm-titleblock" data-design-part="header.title">
         {title !== null ? (
           <Text as="h1" value={title} page={locale} />
         ) : (

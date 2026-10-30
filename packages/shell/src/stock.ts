@@ -1,13 +1,13 @@
 // Which lines of the table's order are out of stock (#80, D122 §4 Stock): what every face greys
 // and leaves out of the next Send. Pure.
 //
-// An item is out of stock when the view says it is sold out (the live overlay, every phone at its
-// next poll), or when the table's newest sent order ended Not sent because the POS said that item
+// An item is out of stock when the view lists it as sold out (the live overlay, every phone at its
+// next poll: the menu no longer draws it, D131), or when the table's newest sent order ended Not sent because the POS said that item
 // ran out (`item_unavailable`, its lines flagged). The second holds the moment the sent order
 // settles, before the overlay catches up; the next Send, of the rest, ends it.
 
 import type { SentOrderView } from './services'
-import type { ViewItem } from './view-model'
+import type { HiddenItem } from './view-model'
 
 /** The items of the newest sent order that the POS said ran out; empty when it said nothing. */
 export function refusedOutOfStock(sentOrders: readonly SentOrderView[] = []): ReadonlySet<string> {
@@ -21,8 +21,8 @@ export function refusedOutOfStock(sentOrders: readonly SentOrderView[] = []): Re
 /** Whether an order line's item is out of stock now. */
 export function isOutOfStock(
   itemId: string,
-  item: ViewItem | undefined,
+  hiddenItems: Readonly<Record<string, HiddenItem>>,
   refused: ReadonlySet<string>,
 ): boolean {
-  return refused.has(itemId) || item?.state.code === 'sold_out'
+  return refused.has(itemId) || hiddenItems[itemId]?.code === 'sold_out'
 }

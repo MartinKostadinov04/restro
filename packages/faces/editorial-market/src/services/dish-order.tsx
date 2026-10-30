@@ -141,7 +141,13 @@ export function DishOrder({
       )}
       <div className="ro-dish-bar">
         <Stepper value={qty} min={1} onChange={setQty} label={item.name.text} words={words} />
-        <button type="button" className="ro-primary" onClick={add} aria-disabled={!valid}>
+        <button
+          type="button"
+          className="ro-primary"
+          data-design-part="button"
+          onClick={add}
+          aria-disabled={!valid}
+        >
           <span>{words.addToBag}</span>
           {price === null ? null : <b key={price.minor}>{price.text}</b>}
         </button>

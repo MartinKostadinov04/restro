@@ -29,9 +29,9 @@ function DishBody({
   const services = useServices()
   const ordering = services?.canOrder(item) === true
   return (
-    <div className="rm-detail">
+    <div className="rm-detail" data-design-part="dish">
       {item.image !== null ? (
-        <div className="rm-detail-photo">
+        <div className="rm-detail-photo" data-design-part="dish.photo">
           <Photo
             image={item.image}
             assetBase={assetBase}

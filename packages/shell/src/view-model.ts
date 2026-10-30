@@ -9,6 +9,7 @@ import type {
   Allergen,
   AssetId,
   Currency,
+  DesignValues,
   DietaryLabel,
   Locale,
   MeasurementUnit,
@@ -183,6 +184,12 @@ export interface ViewTheme {
   readonly logo: ViewImage | null
 }
 
+/** What an order line still needs of an item the menu no longer draws (D131). */
+export interface HiddenItem {
+  readonly name: ViewText
+  readonly code: 'sold_out' | 'unavailable'
+}
+
 /** The menu's layout (D92): the one the page starts in, and whether the guest may switch it. */
 export interface ViewLayout {
   readonly default: SnapshotMenuLayout
@@ -207,6 +214,11 @@ export interface ViewModel {
     readonly schedule: ViewSchedule | null
   }
   readonly sections: readonly ViewSection[]
+  /**
+   * R5 (D131): the items the menu does not draw because they cannot be had, by id. They are on no
+   * section; only an order line that already holds one looks here, for its name and its mark.
+   */
+  readonly hiddenItems: Readonly<Record<string, HiddenItem>>
   /** R6: the allergens on this menu, numbered, in legend order. */
   readonly allergenLegend: readonly ViewAllergen[]
   /** For the guest filter chips: what is on the menu, in reading order. */
@@ -221,6 +233,8 @@ export interface ViewModel {
   /** D92: the menu's layout, a setting of the menu in the composer (no longer a face option). */
   readonly layout: ViewLayout
   readonly theme: ViewTheme
+  /** The venue's design (D129, D130): a value for every option; Basic's for an older snapshot. */
+  readonly design: DesignValues
 }
 
 /** Ids a view model may hold, by kind. Used by the contract tests. */

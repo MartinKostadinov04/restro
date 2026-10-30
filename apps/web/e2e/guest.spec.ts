@@ -30,7 +30,7 @@ let GUEST: VenueAddress
 const GUEST_PATH = `/m/demo-club/${GUEST_SLUG}`
 /** The tagged fixture menu has no venue row: its code is a fixed one. */
 const TAG_PATH = `/m/${TAG_SLUG}-${TAG_PUBLIC_ID}`
-/** The look fixture (SH-04): the reference template, the dark scheme forced, Playfair Display. */
+/** The look fixture (SH-04): the dark scheme forced, Playfair Display. */
 const LOOK_PATH = `/m/${LOOK_SLUG}-${LOOK_PUBLIC_ID}`
 
 test.beforeAll(async () => {
@@ -100,20 +100,13 @@ test.describe('the menu of /m/demo-club-<code>', () => {
     await expect.poll(() => sectionTitles(page).then((titles) => titles[0])).toBe('Коктейли')
   })
 
-  test('is the Editorial Market, the registry’s default, as the venue chose no template (SH-04)', async ({
-    page,
-  }) => {
+  test('is the renderer, the one face (D128)', async ({ page }) => {
     await open(page, `${GUEST.path}?lang=bg`)
     const face = page.locator('[data-face]:not([data-testid])')
     await expect(face).toHaveAttribute('data-face', 'editorial-market')
     // Its layout (one of three) and the colour scheme it follows are on its root.
     await expect(face).toHaveAttribute('data-layout', /^(list|one|two)$/)
     await expect(face).toHaveAttribute('data-scheme', 'auto')
-    // One template only: the other face's code and styles never reach the page.
-    await expect(page.locator('[data-face="qr-phone"]')).toHaveCount(0)
-    expect(await page.evaluate(() => document.documentElement.outerHTML.includes('rq-root'))).toBe(
-      false,
-    )
   })
 
   test('opens the allergen legend from a code, with the full names', async ({ page }) => {
@@ -201,9 +194,8 @@ test.describe('the menu of /m/demo-club-<code>', () => {
     expect(photos.find((photo) => photo.item === 'Негрони')?.loading).toBe('eager')
     expect(photos.find((photo) => photo.item === 'Загорка 500 мл')?.loading).toBe('lazy')
 
-    // Controls and tap size: every button and link of the Editorial Market is 44 x 44 px (SH-07; it
-    // was recorded here as an annotation, SH-04, while the template was delivered with smaller
-    // ones). The reference template (qr-phone) is held to the same by its test below.
+    // Controls and tap size: every button and link of the renderer is 44 x 44 px (SH-07; it was
+    // recorded here as an annotation, SH-04, while the template was delivered with smaller ones).
     const small = await page.locator('button, a[href], [role="radio"]').evaluateAll((elements) =>
       elements
         .map((element) => {
@@ -385,18 +377,15 @@ test.describe('the dish page in the address bar', () => {
   })
 })
 
-// The look fixture: a venue that chose the reference template (qr-phone) and forces the dark scheme
-// with Playfair Display. It proves the registry on a production build: the template named in the
-// snapshot is the one drawn, its own code loads and the other's does not, the forced scheme wins over
-// the guest's screen, and the font comes from this app.
-test.describe('the template and the look the snapshot names (SH-04)', () => {
-  test('draws the reference template, forced dark on a light screen, and not the Editorial Market', async ({
-    page,
-  }) => {
+// The look fixture: a menu that forces the dark scheme with Playfair Display. It proves on a
+// production build that the snapshot's look is the one drawn: the forced scheme wins over the guest's
+// screen, and the font comes from this app.
+test.describe('the look the snapshot names (SH-04)', () => {
+  test('draws the renderer, forced dark on a light screen', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' })
     await open(page, `${LOOK_PATH}?lang=en`)
     const face = page.locator('[data-face]:not([data-testid])')
-    await expect(face).toHaveAttribute('data-face', 'qr-phone')
+    await expect(face).toHaveAttribute('data-face', 'editorial-market')
     await expect(face).toHaveAttribute('data-scheme', 'dark')
     // Forced: dark although the guest's screen is light.
     const luminance = await face.evaluate((root) => {
@@ -406,13 +395,9 @@ test.describe('the template and the look the snapshot names (SH-04)', () => {
       return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
     })
     expect(luminance).toBeLessThan(0.15)
-    await expect(page.locator('[data-face="editorial-market"]')).toHaveCount(0)
-    expect(await page.evaluate(() => document.documentElement.outerHTML.includes('rm-item'))).toBe(
-      false,
-    )
   })
 
-  test('holds every control of the reference template to 44 px', async ({ page }) => {
+  test('holds every control to 44 px', async ({ page }) => {
     await open(page, `${LOOK_PATH}?lang=bg`)
     const small = await page.locator('button, nav a').evaluateAll((elements) =>
       elements

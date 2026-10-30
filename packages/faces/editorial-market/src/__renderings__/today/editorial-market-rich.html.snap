@@ -1,0 +1,247 @@
+<link rel="preload" as="image" imageSrcSet="/cdn/a/as_0000000000000000000001/w320.webp 320w, /cdn/a/as_0000000000000000000001/w640.webp 640w, /cdn/a/as_0000000000000000000001/w1280.webp 1280w" imageSizes="(min-width: 821px) 350px, (min-width: 641px) calc(46vw - 59px), calc(min(84vw, 390px) - 28px)"/>
+<div class="rm" data-face="editorial-market" data-layout="two" data-scheme="auto" lang="en-US" style="--rm-l-background:#fdf4f3;--rm-l-surface:#ffffff;--rm-l-accent:#d65b51;--rm-l-onAccent:#000000;--rm-l-text:#391411;--rm-l-muted:#98372f;--rm-l-accentText:#b9443a;--rm-l-border:#f6d0cc;--rm-d-background:#391411;--rm-d-surface:#6a2e29;--rm-d-accent:#d65b51;--rm-d-onAccent:#000000;--rm-d-text:#fdf4f3;--rm-d-muted:#efaea7;--rm-d-accentText:#efaea7;--rm-d-border:#7e312b;--rm-font:&quot;Inter&quot;, system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, sans-serif;--rm-radius:8px;--rm-shadow:1">
+<header class="rm-header">
+<div class="rm-brandline">
+<div class="rm-headtools">
+<button type="button" class="rm-icon" data-slot="menu.filters" aria-label="Filter the menu">
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor">
+<path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M7 14v6">
+</path>
+</svg>
+</button>
+</div>
+</div>
+<div class="rm-titleblock">
+<h1>Late Menu</h1>
+</div>
+</header>
+<nav class="rm-sections" aria-label="Menu sections">
+<a href="#rm-nd_0000000000000000000001" aria-current="true">Starters</a>
+<a href="#rm-nd_0000000000000000000005">Mains</a>
+<a href="#rm-nd_0000000000000000000009">Desserts</a>
+</nav>
+<main>
+<section id="rm-nd_0000000000000000000001" class="rm-section is-feature" data-section-layout="horizontal">
+<div class="rm-section-head">
+<h2>Starters</h2>
+</div>
+<div class="rm-items">
+<article data-item="nd_0000000000000000000002" data-state="available" class="rm-item is-priority has-photo">
+<div data-slot="item.image" class="rm-photo">
+<img src="/cdn/a/as_0000000000000000000001/w640.webp" srcSet="/cdn/a/as_0000000000000000000001/w320.webp 320w, /cdn/a/as_0000000000000000000001/w640.webp 640w, /cdn/a/as_0000000000000000000001/w1280.webp 1280w" sizes="(min-width: 821px) 350px, (min-width: 641px) calc(46vw - 59px), calc(min(84vw, 390px) - 28px)" width="1600" height="1200" alt="A plate of food" style="object-position:50% 50%" loading="eager"/>
+<div data-slot="item.badges" class="rm-badges">
+<span class="rm-badge">New</span>
+</div>
+</div>
+<div class="rm-item-copy">
+<div data-slot="item.name">
+<h3>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Hummus</button>
+</h3>
+</div>
+<div data-slot="item.price" class="rm-price">€7.00</div>
+<div data-slot="item.state" data-state="available" class="rm-state">
+</div>
+<div data-slot="item.description" class="rm-description">
+<p data-clamped="true">Chickpeas, tahini and lemon.</p>
+</div>
+<div data-slot="item.dietary" class="rm-labels">
+<span>Vegan</span>
+<span>Gluten-free</span>
+</div>
+<div data-slot="item.tags" class="rm-labels">
+<span>Signature</span>
+</div>
+<div data-slot="item.allergens" class="rm-allergens">
+<button type="button" aria-label="Allergens: Sesame">
+<b data-allergen="sesame">11</b>
+</button>
+</div>
+</div>
+</article>
+<article data-item="nd_0000000000000000000003" data-state="available" class="rm-item is-priority is-text">
+<div class="rm-item-copy">
+<div data-slot="item.name">
+<h3>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Olives</button>
+</h3>
+</div>
+<div data-slot="item.price" class="rm-price">€4.00</div>
+<div data-slot="item.state" data-state="available" class="rm-state">
+</div>
+<div data-slot="item.dietary" class="rm-labels">
+<span>Vegan</span>
+<span>Gluten-free</span>
+</div>
+<div data-slot="item.tags" class="rm-labels">
+<span>Spicy</span>
+</div>
+</div>
+</article>
+<article data-item="nd_0000000000000000000004" data-state="available" class="rm-item is-priority has-photo">
+<div data-slot="item.image" class="rm-photo">
+<img src="/cdn/a/as_0000000000000000000001/w640.webp" srcSet="/cdn/a/as_0000000000000000000001/w320.webp 320w, /cdn/a/as_0000000000000000000001/w640.webp 640w, /cdn/a/as_0000000000000000000001/w1280.webp 1280w" sizes="(min-width: 821px) 350px, (min-width: 641px) calc(46vw - 59px), calc(min(84vw, 390px) - 28px)" width="1600" height="1200" alt="A plate of food" style="object-position:50% 50%" loading="eager"/>
+</div>
+<div class="rm-item-copy">
+<div data-slot="item.name">
+<h3>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Halloumi</button>
+</h3>
+</div>
+<div data-slot="item.price" class="rm-price">€8.00</div>
+<div data-slot="item.state" data-state="available" class="rm-state">
+</div>
+<div data-slot="item.dietary" class="rm-labels">
+<span>Vegetarian</span>
+</div>
+<div data-slot="item.tags" class="rm-labels">
+<span>Signature</span>
+</div>
+<div data-slot="item.allergens" class="rm-allergens">
+<button type="button" aria-label="Allergens: Milk">
+<b data-allergen="milk">7</b>
+</button>
+</div>
+</div>
+</article>
+</div>
+</section>
+<section id="rm-nd_0000000000000000000005" class="rm-section" data-section-layout="vertical">
+<div class="rm-section-head">
+<h2>Mains</h2>
+<div class="rm-layout" role="radiogroup" aria-label="Menu layout" data-slot="menu.layout_switch">
+<button type="button" role="radio" aria-checked="false" aria-label="List" title="List" tabindex="-1">
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+<path d="M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13">
+</path>
+</svg>
+</button>
+<button type="button" role="radio" aria-checked="false" aria-label="1 column" title="1 column" tabindex="-1">
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+<rect width="18" height="18" x="3" y="3" rx="2">
+</rect>
+</svg>
+</button>
+<button type="button" role="radio" aria-checked="true" aria-label="2 columns" title="2 columns" tabindex="0">
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+<rect width="7" height="7" x="3" y="3" rx="1">
+</rect>
+<rect width="7" height="7" x="14" y="3" rx="1">
+</rect>
+<rect width="7" height="7" x="14" y="14" rx="1">
+</rect>
+<rect width="7" height="7" x="3" y="14" rx="1">
+</rect>
+</svg>
+</button>
+</div>
+</div>
+<div class="rm-items">
+<article data-item="nd_0000000000000000000006" data-state="available" class="rm-item has-photo">
+<div data-slot="item.image" class="rm-photo">
+<img src="/cdn/a/as_0000000000000000000001/w640.webp" srcSet="/cdn/a/as_0000000000000000000001/w320.webp 320w, /cdn/a/as_0000000000000000000001/w640.webp 640w, /cdn/a/as_0000000000000000000001/w1280.webp 1280w" sizes="(min-width: 821px) 354px, (min-width: 641px) calc(50vw - 56px), calc(50vw - 42px)" width="1600" height="1200" alt="A plate of food" style="object-position:50% 50%" loading="lazy"/>
+</div>
+<div class="rm-item-copy">
+<div data-slot="item.name">
+<h3>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Burger</button>
+</h3>
+</div>
+<div data-slot="item.price" class="rm-price">€14.00</div>
+<div data-slot="item.state" data-state="available" class="rm-state">
+</div>
+<div data-slot="item.description" class="rm-description">
+<p data-clamped="true">A beef patty, cheddar, pickles and house sauce in a toasted brioche bun.</p>
+</div>
+<div data-slot="item.tags" class="rm-labels">
+<span>Signature</span>
+</div>
+<div data-slot="item.allergens" class="rm-allergens">
+<button type="button" aria-label="Allergens: Gluten, Milk, Eggs">
+<b data-allergen="gluten">1</b>
+<b data-allergen="milk">7</b>
+<b data-allergen="eggs">3</b>
+</button>
+</div>
+</div>
+</article>
+<article data-item="nd_0000000000000000000007" data-state="available" class="rm-item is-text">
+<div class="rm-item-copy">
+<div data-slot="item.badges" class="rm-badges">
+<span class="rm-badge">New</span>
+</div>
+<div data-slot="item.name">
+<h3>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Tofu bowl</button>
+</h3>
+</div>
+<div data-slot="item.price" class="rm-price">€12.00</div>
+<div data-slot="item.state" data-state="available" class="rm-state">
+</div>
+<div data-slot="item.dietary" class="rm-labels">
+<span>Vegan</span>
+</div>
+</div>
+</article>
+<article data-item="nd_0000000000000000000008" data-state="available" class="rm-item is-text">
+<div class="rm-item-copy">
+<div data-slot="item.name">
+<h3>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Steak</button>
+</h3>
+</div>
+<div data-slot="item.price" class="rm-price">€24.00</div>
+<div data-slot="item.state" data-state="available" class="rm-state">
+</div>
+<div data-slot="item.tags" class="rm-labels">
+<span>Spicy</span>
+</div>
+</div>
+</article>
+</div>
+</section>
+<section id="rm-nd_0000000000000000000009" class="rm-section" data-section-layout="vertical">
+<div class="rm-section-head">
+<h2>Desserts</h2>
+</div>
+<div class="rm-items">
+<article data-item="nd_0000000000000000000010" data-state="available" class="rm-item is-text">
+<div class="rm-item-copy">
+<div data-slot="item.name">
+<h3>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Cheesecake</button>
+</h3>
+</div>
+<div data-slot="item.price" class="rm-price">€7.00</div>
+<div data-slot="item.state" data-state="available" class="rm-state">
+</div>
+<div data-slot="item.dietary" class="rm-labels">
+<span>Vegetarian</span>
+</div>
+<div data-slot="item.allergens" class="rm-allergens">
+<button type="button" aria-label="Allergens: Milk, Eggs, Gluten">
+<b data-allergen="milk">7</b>
+<b data-allergen="eggs">3</b>
+<b data-allergen="gluten">1</b>
+</button>
+</div>
+</div>
+</article>
+</div>
+</section>
+</main>
+<footer class="rm-footer">
+<h2>Allergen information</h2>
+<p>The codes on each item stand for the allergens it contains. Ask the staff if you have an allergy or any doubt.</p>
+<div class="rm-legend" data-slot="menu.allergen_legend">
+<span>
+<b>1</b>Gluten</span>
+<span>
+<b>3</b>Eggs</span>
+<span>
+<b>7</b>Milk</span>
+<span>
+<b>11</b>Sesame</span>
+</div>
+</footer>
+</div>

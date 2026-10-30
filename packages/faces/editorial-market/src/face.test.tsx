@@ -417,9 +417,9 @@ describe('the filters', () => {
     const { container } = draw()
     const sheet = openFilterSheet()
     fireEvent.click(within(sheet).getByRole('button', { name: 'Spicy' }))
-    expect(visibleNames(container)).toEqual(['Olives', 'Steak'])
+    expect(visibleNames(container)).toEqual(['Olives'])
     fireEvent.click(within(sheet).getByRole('button', { name: 'Signature' }))
-    expect(visibleNames(container)).toEqual(['Hummus', 'Olives', 'Halloumi', 'Burger', 'Steak'])
+    expect(visibleNames(container)).toEqual(['Hummus', 'Olives', 'Halloumi', 'Burger'])
     // Dietary labels and tags together: tags are alternatives within, labels are required.
     fireEvent.click(within(sheet).getByRole('button', { name: 'Vegan' }))
     expect(visibleNames(container)).toEqual(['Hummus', 'Olives'])
@@ -464,7 +464,7 @@ describe('the filters', () => {
     // And the sheet's own "Clear filters".
     const again = openFilterSheet()
     fireEvent.click(within(again).getByRole('button', { name: 'Spicy' }))
-    expect(visibleNames(container)).toEqual(['Olives', 'Steak'])
+    expect(visibleNames(container)).toEqual(['Olives'])
     fireEvent.click(within(again).getByRole('button', { name: 'Clear filters' }))
     expect(visibleNames(container)).toHaveLength(itemsOf(view).length)
     expect(within(again).getByRole('button', { name: 'Spicy' }).getAttribute('aria-pressed')).toBe(
@@ -707,11 +707,10 @@ describe('the sections and items', () => {
     expect(window.location.hash).toBe('')
   })
 
-  it('marks a sold-out dish with its state and keeps it in the markup', () => {
+  it('leaves a sold-out dish off the menu (D131)', () => {
     const { container } = draw()
-    const steak = container.querySelector('[data-item][data-state="sold_out"]')
-    expect(steak?.querySelector('[data-slot="item.state"]')?.textContent).toBe('Sold out')
-    expect(steak?.querySelector('[data-slot="item.name"]')?.textContent).toBe('Steak')
+    expect(container.querySelector('[data-item][data-state="sold_out"]')).toBeNull()
+    expect(container.textContent).not.toContain('Steak')
   })
 
   it('draws the footer with the legend, and not without allergens', () => {

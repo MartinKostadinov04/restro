@@ -1,0 +1,131 @@
+<div class="rm" data-face="editorial-market" data-layout="two" data-scheme="auto" data-heading-weight="heavy" data-density="spacious" data-buttons="ink" lang="bg-BG" style="--rm-l-background:#fdf4f3;--rm-l-surface:#ffffff;--rm-l-accent:#d65b51;--rm-l-onAccent:#000000;--rm-l-text:#391411;--rm-l-muted:#98372f;--rm-l-accentText:#b9443a;--rm-l-border:#f6d0cc;--rm-d-background:#391411;--rm-d-surface:#6a2e29;--rm-d-accent:#d65b51;--rm-d-onAccent:#000000;--rm-d-text:#fdf4f3;--rm-d-muted:#efaea7;--rm-d-accentText:#efaea7;--rm-d-border:#7e312b;--rm-font:&quot;Inter&quot;, system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, sans-serif;--rm-radius:8px;--rm-shadow:1">
+<header class="rm-header" data-design-part="header">
+<div class="rm-brandline">
+<div class="rm-headtools">
+<button type="button" class="rm-icon" data-slot="menu.filters" aria-label="Филтриране на менюто">
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor">
+<path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M7 14v6">
+</path>
+</svg>
+</button>
+</div>
+</div>
+<div class="rm-titleblock" data-design-part="header.title">
+<h1>Menu</h1>
+</div>
+</header>
+<main>
+<section id="rm-nd_0000000000000000000001" class="rm-section" data-section-layout="vertical" data-design-part="section">
+<div class="rm-section-head">
+<h2 data-design-part="section.title">Коктейли</h2>
+<div class="rm-layout" role="radiogroup" aria-label="Изглед на менюто" data-slot="menu.layout_switch" data-design-part="layout.switch">
+<button type="button" role="radio" aria-checked="false" aria-label="Списък" title="Списък" tabindex="-1">
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+<path d="M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13">
+</path>
+</svg>
+</button>
+<button type="button" role="radio" aria-checked="false" aria-label="1 колона" title="1 колона" tabindex="-1">
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+<rect width="18" height="18" x="3" y="3" rx="2">
+</rect>
+</svg>
+</button>
+<button type="button" role="radio" aria-checked="true" aria-label="2 колони" title="2 колони" tabindex="0">
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+<rect width="7" height="7" x="3" y="3" rx="1">
+</rect>
+<rect width="7" height="7" x="14" y="3" rx="1">
+</rect>
+<rect width="7" height="7" x="14" y="14" rx="1">
+</rect>
+<rect width="7" height="7" x="3" y="14" rx="1">
+</rect>
+</svg>
+</button>
+</div>
+</div>
+<div class="rm-items">
+<article data-item="nd_0000000000000000000002" data-state="available" data-design-part="item" class="rm-item is-priority is-text">
+<div class="rm-item-copy">
+<div data-slot="item.badges" data-design-part="item.marks" class="rm-badges">
+<span class="rm-badge">Ново</span>
+</div>
+<div data-slot="item.name" data-design-part="item.name">
+<h3>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Негрони</button>
+</h3>
+</div>
+<div data-slot="item.price" data-design-part="item.price" class="rm-price">5,00 €</div>
+<div data-slot="item.state" data-state="available" class="rm-state">
+</div>
+<div data-slot="item.description" data-design-part="item.description" class="rm-description">
+<p data-clamped="true">Джин, Кампари, вермут</p>
+</div>
+<div data-slot="item.portion" class="rm-portion">90 мл</div>
+<div data-slot="item.dietary" data-design-part="item.labels" class="rm-labels">
+<span>Веган</span>
+<span>Без глутен</span>
+</div>
+<div data-slot="item.tags" data-design-part="item.labels" class="rm-labels">
+<span>Фирмено</span>
+<span lang="en-US">Spicy</span>
+</div>
+<div data-slot="item.allergens" data-design-part="item.allergens" class="rm-allergens">
+<button type="button" aria-label="Алергени: Сулфити">
+<b data-allergen="sulphites">12</b>
+</button>
+</div>
+<div data-slot="item.extra_fields" class="rm-extra">
+<span>
+<span>Алкохол</span> <b>24 %</b>
+</span>
+<span>
+<span>Произход</span> <b>Italy</b>
+</span>
+<span>
+<span>Подходящо</span> <b>Да</b>
+</span>
+</div>
+</div>
+</article>
+<article data-item="nd_0000000000000000000003" data-state="available" data-design-part="item" class="rm-item is-priority is-text">
+<div class="rm-item-copy">
+<div data-slot="item.name" data-design-part="item.name">
+<h3>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Хумус</button>
+</h3>
+</div>
+<div data-slot="item.price" data-design-part="item.price" class="rm-price">5,00 €</div>
+<div data-slot="item.state" data-state="available" class="rm-state">
+</div>
+<div data-slot="item.dietary" data-design-part="item.labels" class="rm-labels">
+<span>Веган</span>
+<span>Вегетарианско</span>
+</div>
+<div data-slot="item.allergens" data-design-part="item.allergens" class="rm-allergens">
+<button type="button" aria-label="Алергени: Сусам">
+<b data-allergen="sesame">11</b>
+</button>
+</div>
+<div data-slot="item.extra_fields" class="rm-extra">
+<span>
+<span>Произход</span> <b>Lebanon</b>
+</span>
+</div>
+</div>
+</article>
+</div>
+</section>
+</main>
+<footer class="rm-footer" data-design-part="footer">
+<h2>Информация за алергените</h2>
+<p>Кодовете при всяка позиция обозначават алергените в нея. Попитайте персонала, ако имате алергия или съмнение.</p>
+<div class="rm-legend" data-slot="menu.allergen_legend">
+<span>
+<b>11</b>Сусам</span>
+<span>
+<b>12</b>Сулфити</span>
+</div>
+</footer>
+</div>

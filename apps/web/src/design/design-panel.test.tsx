@@ -123,8 +123,6 @@ describe('the template chooser', () => {
     expect(within(card).getByText(/photo-led, editorial menu/)).toBeTruthy()
     expect(within(card).getByTestId('template-in-use')).toBeTruthy()
     expect(within(card).getByRole('img').getAttribute('src')).toBe('/faces/editorial-market.png')
-    // The hidden reference template is never offered.
-    expect(screen.queryByTestId('template-qr-phone')).toBeNull()
     expect(screen.getByRole('button', { name: 'Close' }).getAttribute('aria-expanded')).toBe('true')
     await userEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(screen.queryByTestId('template-editorial-market')).toBeNull()

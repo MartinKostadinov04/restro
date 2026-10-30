@@ -30,6 +30,13 @@ function billShown(o: Services): boolean {
   return o.state.tableBill != null || o.state.payment != null
 }
 
+/** A line's name when only its item id is at hand: the menu's, or the hidden item's (D131). */
+function lineName(o: Services, itemId: string): string {
+  return (
+    o.items.get(itemId)?.name.text ?? o.view.hiddenItems[itemId]?.name.text ?? o.words.otherItem
+  )
+}
+
 /** The notices of the host about ordering itself: paused, closed, and the venue's night (#79, #82). */
 function OrderingNotes({ o }: { readonly o: Services }) {
   const { words, state } = o
@@ -160,7 +167,12 @@ export function BagSheet() {
   const hasLines = order.lines.length > 0
 
   return (
-    <div className="ro-sheet" aria-busy={o.sending} data-slot="order.sheet">
+    <div
+      className="ro-sheet"
+      aria-busy={o.sending}
+      data-slot="order.sheet"
+      data-design-part="order"
+    >
       {sendLost !== null ? (
         <div className="ro-notice is-bad" role="alert" data-slot="send.lost" data-send-lost="">
           <span>{words.sendLost}</span>
@@ -186,7 +198,7 @@ export function BagSheet() {
             const line = order.lines.find((candidate) => candidate.id === entry.line.key)
             if (line === undefined) return null
             const soldOut = order.soldOut(line.itemId)
-            const name = entry.item === null ? words.otherItem : entry.item.name.text
+            const name = entry.item?.name.text ?? entry.hidden?.name.text ?? words.otherItem
             return (
               <li
                 key={line.id}
@@ -252,7 +264,7 @@ export function BagSheet() {
 
       {order.removed.map((line) => (
         <p key={line.id} className="ro-notice" data-removed-line={line.id}>
-          <span>{words.removedNamed(o.items.get(line.itemId)?.name.text ?? words.otherItem)}</span>
+          <span>{words.removedNamed(lineName(o, line.itemId))}</span>
           <button type="button" className="ro-ghost" onClick={() => void o.undo(line.id)}>
             {words.undo}
           </button>
@@ -264,7 +276,7 @@ export function BagSheet() {
           <ul>
             {order.earlier.lines.map((line) => (
               <li key={line.id}>
-                {o.items.get(line.itemId)?.name.text ?? words.otherItem} × {line.qty}
+                {lineName(o, line.itemId)} × {line.qty}
               </li>
             ))}
           </ul>
@@ -297,7 +309,12 @@ export function BagSheet() {
               ? words.refusals.duplicate_order
               : words.duplicateAsk(asked.minutes)}
           </span>
-          <button type="button" className="ro-primary" onClick={() => void o.sendOrder(asked.of)}>
+          <button
+            type="button"
+            className="ro-primary"
+            data-design-part="button"
+            onClick={() => void o.sendOrder(asked.of)}
+          >
             {words.sendAnother}
           </button>
           <button type="button" className="ro-ghost" onClick={o.cancelAsk}>
@@ -308,6 +325,7 @@ export function BagSheet() {
         <button
           type="button"
           className="ro-primary is-wide"
+          data-design-part="button"
           data-send=""
           disabled={o.sending || offline}
           onClick={() => void o.sendOrder()}

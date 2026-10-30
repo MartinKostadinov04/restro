@@ -31,7 +31,7 @@ export function richFixture(locale: Locale = 'en_US'): Fixture {
   const photo = fixtureId('as', 1)
   return {
     name: 'editorial-market-rich',
-    note: 'Photo cards and text rows, badges, dietary labels, tags, allergens, a sold-out dish.',
+    note: 'Photo cards and text rows, badges, dietary labels, tags, allergens, a sold-out dish (off the menu, D131).',
     snapshot: snapshotFromSpec({
       // French is a language of the menu but none of these texts is translated into it: a guest
       // who asks for French reads every text in English, marked as such.

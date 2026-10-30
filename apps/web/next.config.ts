@@ -33,7 +33,6 @@ const nextConfig: NextConfig = {
     '@restro/db',
     '@restro/editorial-market',
     '@restro/shell',
-    '@restro/qr-phone',
   ],
   turbopack: {
     resolveAlias: { 'next-intl/config': requestConfig },

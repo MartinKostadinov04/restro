@@ -78,7 +78,11 @@ export function Overlay({
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <div ref={panel} className={detail ? 'rm-overlay-panel is-detail' : 'rm-overlay-panel'}>
+      <div
+        ref={panel}
+        className={detail ? 'rm-overlay-panel is-detail' : 'rm-overlay-panel'}
+        data-design-part={detail ? undefined : 'sheet'}
+      >
         <div className="rm-overlay-head">
           <span id={titleId} lang={titleLang}>
             {title}

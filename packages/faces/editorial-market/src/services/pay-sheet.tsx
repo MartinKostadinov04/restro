@@ -89,7 +89,7 @@ function FormSlot({
   useEffect(() => {
     handle.current?.update(latest.current)
   }, [label, failedText])
-  return <div data-slot="pay.form" ref={holder} />
+  return <div data-slot="pay.form" data-design-part="pay.methods" ref={holder} />
 }
 
 /** The Payment confirmation's id: the button that opens it names it in `aria-controls`. */
@@ -201,7 +201,7 @@ function Confirmation({
     if (alive.current) setSaving(false)
   }
   return (
-    <article className="ro-confirm" id={id} data-slot="pay.confirmation">
+    <article className="ro-confirm" id={id} data-slot="pay.confirmation" data-design-part="receipt">
       <button
         type="button"
         className="ro-ghost"
@@ -213,7 +213,11 @@ function Confirmation({
       <h3 className="ro-h" tabIndex={-1} ref={heading}>
         {view.title}
       </h3>
-      {view.venue === null ? null : <p data-slot="pay.confirmation.venue">{view.venue}</p>}
+      {view.venue === null ? null : (
+        <p data-slot="pay.confirmation.venue" data-design-part="receipt.venue">
+          {view.venue}
+        </p>
+      )}
       {view.when === null ? null : <p data-slot="pay.confirmation.when">{view.when}</p>}
       <ul className="ro-lines">
         {view.lines.map((line, index) => (
@@ -243,6 +247,7 @@ function Confirmation({
       <button
         type="button"
         className="ro-primary is-wide"
+        data-design-part="button"
         data-slot="pay.confirmation.save"
         disabled={saving}
         onClick={() => void save()}
@@ -340,6 +345,7 @@ export function PaySheet() {
           <button
             type="button"
             className="ro-primary is-wide"
+            data-design-part="button"
             onClick={() => binding.location?.reopen()}
           >
             <span>{w.allowLocation}</span>
@@ -392,7 +398,7 @@ export function PaySheet() {
     )
 
   return (
-    <div className="ro-sheet" data-slot="pay.choose">
+    <div className="ro-sheet" data-slot="pay.choose" data-design-part="pay">
       {settled ? null : <h3 className="ro-h">{w.pickTitle}</h3>}
       {paying.state === 'off' && !settled ? <p className="ro-notice">{w.askWaiterToPay}</p> : null}
       {offersPay(state) && !settled ? (
@@ -400,6 +406,7 @@ export function PaySheet() {
           type="button"
           className="ro-ghost"
           data-slot="pay.whole"
+          data-design-part="pay.scope"
           aria-pressed={everything}
           onClick={() => setPicks(pickWhole(picks, bill))}
         >
@@ -445,7 +452,7 @@ export function PaySheet() {
       {paying.state === 'off' || settled ? null : (
         <>
           {tipsOffered ? (
-            <fieldset className="ro-tips" data-slot="pay.tip.row">
+            <fieldset className="ro-tips" data-slot="pay.tip.row" data-design-part="pay.tip">
               <legend>{w.tipLabel}</legend>
               {TIP_PERCENTS.map((percent) => (
                 <button
@@ -511,6 +518,7 @@ export function PaySheet() {
             <button
               type="button"
               className="ro-primary is-wide"
+              data-design-part="button"
               data-slot="pay.start"
               disabled={block !== null || busy}
               onClick={() => {
@@ -524,7 +532,12 @@ export function PaySheet() {
           ) : (
             <div className="ro-notice" role="alertdialog" data-slot="pay.same">
               <span>{w.sameQuestion(asking)}</span>
-              <button type="button" className="ro-primary" onClick={() => void start()}>
+              <button
+                type="button"
+                className="ro-primary"
+                data-design-part="button"
+                onClick={() => void start()}
+              >
                 {w.sameYes}
               </button>
               <button type="button" className="ro-ghost" onClick={() => setAsking(null)}>
@@ -786,6 +799,7 @@ function PaymentScreen({
               <button
                 type="button"
                 className="ro-primary is-wide"
+                data-design-part="button"
                 data-slot="pay.again"
                 onClick={dismiss}
               >

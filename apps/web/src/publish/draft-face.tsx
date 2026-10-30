@@ -5,8 +5,8 @@
 // guest page uses (`/m/<venue>`), so what the preview shows is what the publish would put live; the
 // only differences are the source of the snapshot and the frame around it. No table, no ordering.
 //
-// The template is the one the draft's `presentation` names (the registry's default when it names
-// none). `faceId` overrides it, for a preview of a template the venue has not saved yet.
+// The face is the renderer (D128); the draft's design block is what it draws. `faceId` asks for a
+// card of the gallery by its name.
 //
 // `servicesPreview` (the Design tab's "Preview guest services", D71) draws the service screens the
 // venue switched on as if the platform supported them, at a demo table, with the demo host of
@@ -42,7 +42,7 @@ export function DraftFace({
   snapshot: MenuSnapshot
   overlay: LiveOverlay
   scheme: PreviewScheme
-  /** Draw this template instead of the one the snapshot names. */
+  /** The template a card of the gallery names; anything else draws the renderer. */
   faceId?: string
   /** Show the service screens the venue switched on, with demo data. */
   servicesPreview?: boolean
@@ -60,8 +60,7 @@ export function DraftFace({
     })
   // The clock is fixed when the preview opens, so the picture does not shift while it is looked at.
   const [now] = useState(() => new Date())
-  const savedFace = snapshot.presentation?.face
-  const entry = useMemo(() => faceEntry(faceId ?? savedFace), [faceId, savedFace])
+  const entry = useMemo(() => faceEntry(faceId), [faceId])
   const view = useMemo(() => {
     const context = buildContext({ locale, now, tableToken: null, manifest: entry.manifest })
     return buildViewModel(
@@ -77,8 +76,6 @@ export function DraftFace({
         : context,
     )
   }, [snapshot, overlay, locale, now, entry, servicesPreview])
-  // The snapshot's options belong to the template it names; another template starts from its own.
-  const options = entry.id === faceEntry(savedFace).id ? snapshot.presentation?.options : undefined
   const host: DrawProps = {
     entry,
     strings: stringsFor(view.locale).guest,
@@ -88,7 +85,6 @@ export function DraftFace({
     onLanguageChange: setChoice,
     fontStacks: FONT_STACKS,
     scheme,
-    options,
   }
   return servicesPreview ? <WithDemoServices {...host} /> : <ChosenFace {...host} />
 }

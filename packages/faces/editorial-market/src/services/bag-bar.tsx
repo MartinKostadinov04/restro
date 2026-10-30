@@ -41,7 +41,7 @@ export function ServiceBar() {
           </button>
         )}
         {features.ordering ? (
-          <div className="ro-bagslot" data-slot="menu.bag">
+          <div className="ro-bagslot" data-slot="menu.bag" data-design-part="order.bar">
             {filled ? (
               <button
                 type="button"

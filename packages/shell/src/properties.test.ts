@@ -84,7 +84,6 @@ const context: fc.Arbitrary<ShellContextInput> = fc.record({
   locale,
   now,
   channel: fc.constantFrom(...CHANNELS),
-  soldOutDisplay: fc.constantFrom('show' as const, 'hide' as const),
   orderingEnabled: fc.boolean(),
   tableToken: fc.constantFrom(null, 'table-token'),
 })
@@ -168,13 +167,18 @@ describe('properties of buildViewModel', () => {
     )
   })
 
-  it('shows everything, in exactly the snapshot order, when nothing is hidden (R2)', () => {
+  it('shows everything that can be had, in exactly the snapshot order (R2, D131)', () => {
     fc.assert(
       fc.property(snapshot, context, (snap, ctx) => {
-        const view = buildViewModel(snap, null, { ...ctx, channel: 'qr', soldOutDisplay: 'show' })
-        expect(view.sections.map((entry) => entry.id)).toEqual(snap.menu.sections)
+        const view = buildViewModel(snap, null, { ...ctx, channel: 'qr' })
+        const expected = (sectionId: string) =>
+          (snap.sections[sectionId]?.items ?? []).filter(
+            (id) => snap.items[id]?.availability.state === 'available',
+          )
+        const drawn = snap.menu.sections.filter((id) => expected(id).length > 0)
+        expect(view.sections.map((entry) => entry.id)).toEqual(drawn)
         for (const entry of view.sections) {
-          expect(entry.items.map((i) => i.id)).toEqual(snap.sections[entry.id]?.items)
+          expect(entry.items.map((i) => i.id)).toEqual(expected(entry.id))
         }
       }),
       { numRuns: 100 },
@@ -198,27 +202,29 @@ describe('properties of buildViewModel', () => {
           version: Math.max(1, snap.snapshot.version + skew),
           items: Object.fromEntries(marked.map((id) => [id, { sold_out: true as const }])),
         }
-        // Everything stays on the menu so the two views can be compared item by item.
         const open = {
           ...ctx,
           channel: 'qr' as const,
-          soldOutDisplay: 'show' as const,
           orderingEnabled: true,
           tableToken: 'table-token',
         }
         const without = items(buildViewModel(snap, null, open))
-        const withOverlay = items(buildViewModel(snap, overlay, open))
-        expect(withOverlay.map((i) => i.id)).toEqual(without.map((i) => i.id))
-        withOverlay.forEach((after, index) => {
-          const before = without[index] as ViewItem
+        const view = buildViewModel(snap, overlay, open)
+        const withOverlay = items(view)
+        // A marked item leaves the menu (D131); everything else is exactly as it was.
+        expect(withOverlay.map((i) => i.id)).toEqual(
+          without.map((i) => i.id).filter((id) => !marked.includes(id)),
+        )
+        for (const after of withOverlay) {
+          const before = without.find((i) => i.id === after.id) as ViewItem
           expect(RANK[after.state.code]).toBeGreaterThanOrEqual(RANK[before.state.code])
+          expect(after.state.code).toBe(before.state.code)
           if (after.order.controls) expect(before.order.controls).toBe(true)
-          if (!marked.includes(after.id)) expect(after.state.code).toBe(before.state.code)
-          if (marked.includes(after.id)) {
-            expect(['sold_out', 'unavailable']).toContain(after.state.code)
-            expect(after.order.controls).toBe(false)
-          }
-        })
+        }
+        // An order still knows what a marked item was called (D116).
+        for (const id of marked) {
+          expect(view.hiddenItems[id]?.code ?? 'unnamed').not.toBe('available')
+        }
 
         // With any setting and channel, the overlay never adds an item to the menu.
         const base = new Set(items(buildViewModel(snap, null, ctx)).map((i) => i.id))

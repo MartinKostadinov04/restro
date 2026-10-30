@@ -12,10 +12,11 @@ import {
   visualPath,
 } from './visual-fixtures'
 
-// The accessibility audit of the Editorial Market's guest page (brief SH-07, T74), on a production
-// build. The menus are the five themes of scripts/seed-visual-e2e.ts (the designer's four presets
-// and one made from three colours), all with the same content: photo cards in the strip and in
-// every layout, a sold-out and a scheduled item, 60-character Cyrillic names, a dish with all
+// The accessibility audit of the renderer's guest page in Editorial (brief SH-07, T74), on a
+// production build; faces-design.spec.ts holds Basic and every General value to the same floors. The
+// menus are the five themes of scripts/seed-visual-e2e.ts (the designer's four presets and one made
+// from three colours), all with the same content: photo cards in the strip and in every layout, a
+// scheduled item, 60-character Cyrillic names, a dish with all
 // fourteen allergens, a sub-section, filters. The service screens (the bag, the bill, the waiter,
 // paying, the receipt) are audited in faces-a11y-services.spec.ts, in the Design preview.
 //

@@ -54,6 +54,7 @@ export function LayoutSwitch({
       aria-label={strings.layout}
       onKeyDown={move}
       data-slot="menu.layout_switch"
+      data-design-part="layout.switch"
     >
       {LAYOUTS.map((key, index) => (
         // biome-ignore lint/a11y/useSemanticElements: icon-only buttons styled as a segmented control; the group follows the ARIA radio pattern, arrow keys included

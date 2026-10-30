@@ -853,7 +853,7 @@ A venue's template is the `presentation.face` of its snapshot; a snapshot publis
 - `faces/manifests.ts` holds what is known without loading a template: its manifest, its names in Bulgarian and English, its picture and whether it is hidden. Server code reads this one (the Design tab's actions check that a template is real and visible, and what its options are).
 - `faces/registry.ts` is built from it and adds `load()`, a lazy import of the template's components. Only client code imports it: a server module that imports the registry makes the build follow `load()` into the components and fail.
 
-The default is `editorial-market`. A hidden template (`qr-phone`, kept for tests) is never offered, but a venue that already uses it keeps its menu; a name the registry does not know falls back to the default and is logged once. A guest downloads only the template its venue chose, as a separate chunk. A template can be listed only if it passes the face contract on every fixture: the registry test runs the shell's `faceContractSuite` for every entry. The venue picks its template in the composer's Design subtab (D92), which previews the unsaved look on a phone frame; the guest functions (the service switches) are their own card there. A template's own options, if it declares any, are `look` or `feature` options as above; the layout is not one of them.
+The registry holds one face, `editorial-market`, the renderer (D128); the guest page no longer reads a face from the snapshot, so an old snapshot's `presentation` draws the renderer too. A template can be listed only if it passes the face contract on every fixture: the registry test runs the shell's `faceContractSuite` for every entry. The venue picks its template in the composer's Design subtab (D92), which previews the unsaved look on a phone frame; the guest functions (the service switches) are their own card there. A template's own options, if it declares any, are `look` or `feature` options as above; the layout is not one of them.
 
 ### Guest services: the face side of Stage 4 (D71, D72)
 
@@ -871,7 +871,7 @@ The faces draw the bag, the table bill, call a waiter, pay and the receipt befor
 
 | Face | Channel | Paging | Ordering | Allergen mode |
 | --- | --- | --- | --- | --- |
-| QR phone: Editorial Market (built, the default template) and `qr-phone` (built, hidden, the test reference) | `qr` | Scroll | Yes | Inline codes |
+| QR phone: the renderer (`editorial-market`, built, D128) | `qr` | Scroll | Yes | Inline codes |
 
 Decided 2026-10-08 (D38): QR → phone is the only channel. Kiosk, A4 print, TV board and delivery-feed faces are dropped from scope; further faces are alternative phone designs that pass the same contract.
 
@@ -995,7 +995,7 @@ Two endpoints on the web app, `GET /api/guest/state` and `POST /api/guest/action
 - **Commands** change the order, Send it, or call a waiter. Every command carries an action id, so a repeat is a no-op, and its age, so a stale one is refused. Part 2 adds `pay.start`, `pay.returned` and `pay.cancel`, and a Send with pay-first lines carries its tip (D127).
 - **Polling, not push:** the order and bill every few seconds, the menu less often, none while the page is hidden, the server's `next` hint wins. Order edits are optimistic and rolled back on refusal; Send never is. One version per table is bumped by every writer that changes the state.
 - **The location pass** is a signed note over the venue, the code's generation, the sitting and an expiry; Restro keeps no copy and never stores a position (D118, D119, D121).
-- **The shell's services contract** (`@restro/shell`) carries every new shape and refusal code, and faces word the codes through shell strings (D72). The guest template is designed last, by its own agent (D122), so build tickets drive end-to-end tests through the hidden `qr-phone` test face.
+- **The shell's services contract** (`@restro/shell`) carries every new shape and refusal code, and faces word the codes through shell strings (D72). The guest template is designed last, by its own agent (D122), so build tickets drive end-to-end tests through the renderer, on Basic and Editorial.
 
 ### The simulated POS: `sim-pos` (D122, spec #64 §2)
 

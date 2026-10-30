@@ -62,7 +62,7 @@ const both = (en: string, bg: string) => ({ en_US: en, bg_BG: bg })
 export function orderingFixture(): Fixture {
   return {
     name: 'ordering',
-    note: 'Every service on; a plain dish, a dish with a required and an optional group, a sold-out dish, an ask-the-waiter dish.',
+    note: 'Every service on; a plain dish, a dish with a required and an optional group, a sold-out dish (off the menu, D131), an ask-the-waiter dish.',
     snapshot: snapshotFromSpec({
       locales: { default: 'en_US', available: ['en_US', 'bg_BG'] },
       menuTitle: both('Late Menu', 'Късно меню'),

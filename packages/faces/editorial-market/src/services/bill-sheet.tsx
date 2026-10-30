@@ -50,6 +50,7 @@ export function BillSheet() {
           <button
             type="button"
             className="ro-primary is-wide"
+            data-design-part="button"
             onClick={() => o.binding.location?.reopen()}
           >
             <span>{w.allowLocation}</span>
@@ -61,7 +62,7 @@ export function BillSheet() {
   }
   const empty = tableLines.length === 0 && rounds.length === 0 && paidLines.length === 0
   return (
-    <div className="ro-sheet">
+    <div className="ro-sheet" data-design-part="bill">
       <p className="rm-overlay-intro">{words.tabIntro}</p>
       {table === null || rounds.length > 0 ? null : (
         <p className="ro-allergy" data-slot="bill.updated">
@@ -71,7 +72,7 @@ export function BillSheet() {
       {empty ? <p className="ro-empty">{table === null ? words.emptyTab : w.emptyBill}</p> : null}
       {tableLines.length === 0 ? null : (
         <>
-          <ul className="ro-lines" data-slot="bill.lines">
+          <ul className="ro-lines" data-slot="bill.lines" data-design-part="bill.lines">
             {tableLines.map(({ part, line }) => {
               const greyed = part.beingPaid || line.beingPaid
               return (
@@ -101,7 +102,7 @@ export function BillSheet() {
                 </span>
                 <em>{round.origin === 'guest' ? words.fromApp : words.fromWaiter}</em>
               </header>
-              <ul>
+              <ul data-design-part="bill.lines">
                 {round.lines.map((line) => (
                   <li key={line.id} data-status={line.status}>
                     <span className="ro-qty">{line.qty}×</span>
@@ -127,7 +128,7 @@ export function BillSheet() {
               </ul>
             </section>
           ))}
-          <div className="ro-sum is-big">
+          <div className="ro-sum is-big" data-design-part="bill.total">
             <span>{words.tableTotal}</span>
             <b>{bill.total.text}</b>
           </div>
@@ -143,6 +144,7 @@ export function BillSheet() {
         <button
           type="button"
           className="ro-primary is-wide"
+          data-design-part="button"
           onClick={(event) => o.openSheet('pay', event.currentTarget)}
         >
           <span>{words.pay}</span>

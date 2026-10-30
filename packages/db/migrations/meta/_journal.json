@@ -316,6 +316,13 @@
       "when": 1793354725000,
       "tag": "0044_design_record",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1793388616345,
+      "tag": "0045_drop_menu_settings",
+      "breakpoints": true
     }
   ]
 }

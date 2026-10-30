@@ -316,7 +316,7 @@ function ActiveServices({
       note: line.note,
     }))
     const resolved = resolveBag(view, bag)
-    const soldOut = (itemId: string) => isOutOfStock(itemId, items.get(itemId), refused)
+    const soldOut = (itemId: string) => isOutOfStock(itemId, view.hiddenItems, refused)
     const sendable = (entry: ResolvedBag['lines'][number]) => {
       const line = lines.find((candidate) => candidate.id === entry.line.key)
       return (
@@ -347,7 +347,7 @@ function ActiveServices({
       keptBack: live.length > taking.length,
       count: resolved.count,
     }
-  }, [state.order, view, items, refused])
+  }, [state.order, view, refused])
 
   /* --- commands on the order ------------------------------------------------------------ */
   const [notice, setNotice] = useState<string | null>(null)

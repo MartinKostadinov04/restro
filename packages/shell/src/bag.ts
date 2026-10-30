@@ -21,6 +21,7 @@ import { addMinor, MoneyError, multiplyMinor, type NodeId, subtractMinor } from 
 import { viewMinor } from './money'
 import { type OrderLine, SERVICE_LIMITS } from './services'
 import type {
+  HiddenItem,
   ViewItem,
   ViewModel,
   ViewModifierGroup,
@@ -197,6 +198,8 @@ export interface ResolvedBagLine {
   readonly line: BagLine
   /** The item as the view has it now, or null when it left the view. */
   readonly item: ViewItem | null
+  /** What the view still says of an item the menu no longer draws (D131); null otherwise. */
+  readonly hidden: HiddenItem | null
   /** The chosen options as the view has them now, in the order of the item's groups. */
   readonly options: readonly ViewOption[]
   /** The price of one: the item's price plus the options' deltas; null when unavailable. */
@@ -298,13 +301,14 @@ function resolveLine(
   const gone: ResolvedBagLine = {
     line,
     item: null,
+    hidden: null,
     options: [],
     unit: null,
     total: null,
     available: false,
   }
   const item = items.get(line.itemId)
-  if (item === undefined) return gone
+  if (item === undefined) return { ...gone, hidden: view.hiddenItems[line.itemId] ?? null }
   const options = offeredOptions(item, line.optionIds)
   const flagged: ResolvedBagLine = { ...gone, item, options }
   if (!item.order.controls || options.length !== line.optionIds.length) return flagged
@@ -317,6 +321,7 @@ function resolveLine(
     return {
       line,
       item,
+      hidden: null,
       options,
       unit: viewMinor(unit, view.currency, view.locale),
       total: viewMinor(multiplyMinor(unit, line.qty), view.currency, view.locale),

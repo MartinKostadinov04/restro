@@ -8,8 +8,7 @@
 //   - a declined card (4000 0000 0000 0002) shows Stripe's own text in the form and the page does not
 //     say "Paid".
 //
-// It runs on each template that draws the table's services (guest-faces.ts, #239): the reference
-// template with the bill inline, and Editorial Market from its Pay entry in the header.
+// It runs on the renderer in both Styles (guest-faces.ts), from the Pay entry in the header.
 //
 // It runs only where the sandbox is set up, and is skipped everywhere else (CI included), because it
 // needs Martin's keys and a connected sandbox account (D125: a test account, never a live one):
@@ -21,7 +20,7 @@
 //   PAYMENTS_ENV=test
 //
 // The other half is the pay harness in its Stripe mode (apps/worker/src/e2e/pay-harness.ts,
-// PAY_HARNESS_PROVIDER=stripe, PAY_HARNESS_PAGE=1, PAY_HARNESS_FACE=<template>): a venue on the
+// PAY_HARNESS_PROVIDER=stripe, PAY_HARNESS_PAGE=1, PAY_HARNESS_DESIGN=<a Style's record>): a venue on the
 // simulated POS with a waiter's round on table 1 and a menu drawn by that template, connected to
 // that account. Cloudflare's Turnstile script is stubbed in the page, as in the Send specs. No key
 // is read or printed here: the spec only passes the environment on.
@@ -30,7 +29,7 @@ import { fileURLToPath } from 'node:url'
 
 import { devices, expect, type Page, test } from '@playwright/test'
 
-import { faceRoot, ORDER_FACES, type OrderFace, showPaying } from './guest-faces'
+import { faceRoot, ORDER_STYLES, showPaying, styleDesign } from './guest-faces'
 
 test.use({ ...devices['Pixel 7'] })
 
@@ -59,8 +58,8 @@ async function typeCard(page: Page, number: string): Promise<void> {
   if (await postal.count()) await postal.first().fill('12345')
 }
 
-for (const face of ORDER_FACES) {
-  test.describe(`on ${face}`, () => {
+for (const style of ORDER_STYLES) {
+  test.describe(`in ${style}`, () => {
     let harness: ChildProcessWithoutNullStreams
     let path = ''
     let code = ''
@@ -76,7 +75,7 @@ for (const face of ORDER_FACES) {
           LOG_LEVEL: 'warn',
           PAY_HARNESS_PROVIDER: 'stripe',
           PAY_HARNESS_PAGE: '1',
-          PAY_HARNESS_FACE: face,
+          PAY_HARNESS_DESIGN: JSON.stringify(styleDesign(style)),
           PAYMENTS_ENV: 'test',
         },
       })
@@ -116,13 +115,13 @@ for (const face of ORDER_FACES) {
     })
 
     /** Opens the page on table 1 and starts paying for the whole bill. */
-    async function startPaying(page: Page, template: OrderFace): Promise<void> {
+    async function startPaying(page: Page): Promise<void> {
       await page.route('https://challenges.cloudflare.com/turnstile/**', (route) =>
         route.fulfill({ contentType: 'text/javascript', body: TURNSTILE_STUB }),
       )
       await page.goto(`${path}?lang=en#t=${code}`)
-      await expect(faceRoot(page, template)).toBeVisible()
-      await showPaying(page, template)
+      await expect(faceRoot(page)).toBeVisible()
+      await showPaying(page)
       await page.locator('[data-slot="pay.whole"]').click()
       await page.locator('[data-slot="pay.start"]').click()
       // The card form is Stripe's, in the slot the face placed.
@@ -139,7 +138,7 @@ for (const face of ORDER_FACES) {
       page.on('framenavigated', (frame) => {
         if (frame === page.mainFrame()) navigations.push(frame.url())
       })
-      await startPaying(page, face)
+      await startPaying(page)
       const addressBefore = page.url()
       await typeCard(page, '4000 0027 6000 3184')
       await page.locator('[data-slot="pay.form.submit"]').click()
@@ -161,7 +160,7 @@ for (const face of ORDER_FACES) {
       page,
     }) => {
       test.setTimeout(180_000)
-      await startPaying(page, face)
+      await startPaying(page)
       await typeCard(page, '4000 0000 0000 0002')
       await page.locator('[data-slot="pay.form.submit"]').click()
       await expect(page.locator('[data-slot="pay.form"] [role="alert"]')).toContainText(

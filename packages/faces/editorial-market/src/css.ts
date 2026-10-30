@@ -27,13 +27,61 @@ export const EDITORIAL_CSS = `
   --rm-muted: var(--rm-l-muted);
   --rm-accent-text: var(--rm-l-accentText);
   --rm-border: var(--rm-l-border);
+  /* General (D130): a first value is the base here, every other value a rule below. */
+  --rm-font-heading: var(--rm-font);
+  --rm-heading-weight: 700;
+  --rm-subheading-weight: 700;
+  --rm-full: 999px;
+  --rm-depth: 0 4px 12px color-mix(in srgb, var(--rm-text) 20%, transparent);
+  --rm-depth-up: 0 -4px 12px color-mix(in srgb, var(--rm-text) 20%, transparent);
+  --rm-space: 0.67;
+  --rm-type: 1;
+  --rm-button: var(--rm-accent);
+  --rm-on-button: var(--rm-on-accent);
+  --rm-button-mark: var(--rm-on-accent);
+  --rm-on-button-mark: var(--rm-accent);
   min-height: 100vh;
   background: var(--rm-bg);
   color: var(--rm-text);
   font-family: var(--rm-font);
-  font-size: 16px;
+  font-size: calc(16px * var(--rm-type));
   line-height: 1.45;
   letter-spacing: 0;
+}
+.rm[data-heading-weight="regular"] {
+  --rm-heading-weight: 400;
+  --rm-subheading-weight: 400;
+}
+.rm[data-heading-weight="heavy"] {
+  --rm-heading-weight: 880;
+  --rm-subheading-weight: 850;
+}
+.rm[data-corners="square"] {
+  --rm-full: 0px;
+}
+.rm[data-depth="none"] {
+  --rm-depth: none;
+  --rm-depth-up: none;
+}
+.rm[data-density="compact"] {
+  --rm-space: 0.5;
+}
+.rm[data-density="spacious"] {
+  --rm-space: 1;
+}
+.rm[data-text-size="large"] {
+  --rm-type: 1.125;
+}
+.rm[data-buttons="ink"] {
+  --rm-button: var(--rm-text);
+  --rm-on-button: var(--rm-bg);
+  --rm-button-mark: var(--rm-accent);
+  --rm-on-button-mark: var(--rm-on-accent);
+}
+/* An ink button on an ink sheet inverts (D130): page fill, ink writing. */
+.rm[data-buttons="ink"] .rm-overlay-panel:not(.is-detail) {
+  --rm-button: var(--rm-bg);
+  --rm-on-button: var(--rm-text);
 }
 .rm * {
   box-sizing: border-box;
@@ -71,7 +119,7 @@ export const EDITORIAL_CSS = `
 }
 /* The venue bar and the title block. */
 .rm-header {
-  padding: 18px 20px 24px;
+  padding: calc(18px * var(--rm-space)) 20px calc(24px * var(--rm-space));
   background: var(--rm-text);
   color: var(--rm-bg);
 }
@@ -98,9 +146,9 @@ export const EDITORIAL_CSS = `
 }
 .rm-table {
   border: 1px solid color-mix(in srgb, var(--rm-bg) 24%, transparent);
-  border-radius: 999px;
+  border-radius: var(--rm-full);
   padding: 7px 10px;
-  font-size: 11px;
+  font-size: calc(12px * var(--rm-type));
 }
 .rm-icon,
 .rm-overlay-head button {
@@ -113,14 +161,15 @@ export const EDITORIAL_CSS = `
   color: inherit;
 }
 .rm-titleblock {
-  padding-top: 26px;
+  padding-top: calc(26px * var(--rm-space));
   max-width: 560px;
 }
 .rm-titleblock h1 {
   margin: 0;
-  font-size: clamp(38px, 11vw, 60px);
+  font-size: clamp(calc(38px * var(--rm-type)), 11vw, calc(60px * var(--rm-type)));
   line-height: 0.95;
-  font-weight: 880;
+  font-family: var(--rm-font-heading);
+  font-weight: var(--rm-heading-weight);
   overflow-wrap: anywhere;
 }
 .rm-titleblock > p {
@@ -160,7 +209,7 @@ export const EDITORIAL_CSS = `
   align-items: center;
   justify-content: center;
   color: var(--rm-muted);
-  font-size: 13px;
+  font-size: calc(13px * var(--rm-type));
   font-weight: 800;
   text-decoration: none;
   white-space: nowrap;
@@ -185,11 +234,11 @@ export const EDITORIAL_CSS = `
 }
 /* Sections and their items. */
 .rm-section {
-  padding: 58px 20px 0;
+  padding: calc(58px * var(--rm-space)) 20px 0;
   scroll-margin-top: 56px;
 }
 .rm-section-head {
-  margin-bottom: 22px;
+  margin-bottom: calc(22px * var(--rm-space));
 }
 .rm-section-head > img {
   width: 100%;
@@ -202,9 +251,10 @@ export const EDITORIAL_CSS = `
 .rm-section h3,
 .rm-section h4 {
   margin: 0;
-  font-size: 31px;
+  font-size: calc(31px * var(--rm-type));
   line-height: 1.02;
-  font-weight: 880;
+  font-family: var(--rm-font-heading);
+  font-weight: var(--rm-heading-weight);
   overflow-wrap: anywhere;
 }
 .rm-section-head p {
@@ -219,24 +269,11 @@ export const EDITORIAL_CSS = `
 .rm-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 116px;
-  gap: 18px;
-  padding: 25px 0;
+  gap: calc(18px * var(--rm-space));
+  padding: calc(25px * var(--rm-space)) 0;
   border-top: 1px solid var(--rm-border);
   content-visibility: auto;
   contain-intrinsic-size: 210px;
-}
-/* A sold-out or unavailable item is greyed: its photo fades, and its name and price take the muted
-   colour. The state label, the allergens and the labels stay at full strength: they say why and
-   what is in it, and a text faded to half would not read (the whole card used to fade to 52 %). */
-.rm-item[data-state="sold_out"] .rm-photo,
-.rm-item[data-state="unavailable"] .rm-photo {
-  opacity: 0.52;
-}
-.rm-item[data-state="sold_out"] .rm-item-open,
-.rm-item[data-state="sold_out"] .rm-price,
-.rm-item[data-state="unavailable"] .rm-item-open,
-.rm-item[data-state="unavailable"] .rm-price {
-  color: var(--rm-muted);
 }
 .rm-photo {
   grid-column: 2;
@@ -266,12 +303,12 @@ export const EDITORIAL_CSS = `
 }
 .rm-badge {
   padding: 5px 8px;
-  border-radius: 999px;
+  border-radius: var(--rm-full);
   background: var(--rm-accent);
   color: var(--rm-on-accent);
-  font-size: 10px;
+  font-size: calc(12px * var(--rm-type));
   font-weight: 850;
-  box-shadow: 0 3px 10px color-mix(in srgb, var(--rm-text) 14%, transparent);
+  box-shadow: var(--rm-depth);
 }
 .rm-item-copy {
   grid-column: 1;
@@ -288,20 +325,20 @@ export const EDITORIAL_CSS = `
   text-align: left;
 }
 .rm-item :is(h3, h4) {
-  font-size: 19px;
+  font-size: calc(19px * var(--rm-type));
   line-height: 1.12;
   font-weight: 850;
 }
 .rm-price {
   margin-top: 7px;
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
   font-weight: 850;
 }
 .rm-state {
   min-height: 0;
   margin-top: 7px;
   color: var(--rm-accent-text);
-  font-size: 13px;
+  font-size: calc(13px * var(--rm-type));
   font-weight: 800;
 }
 .rm-state:empty {
@@ -310,7 +347,7 @@ export const EDITORIAL_CSS = `
 .rm-description {
   margin-top: 9px;
   color: var(--rm-muted);
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
 }
 .rm-description p {
   margin: 0;
@@ -324,7 +361,7 @@ export const EDITORIAL_CSS = `
 .rm-portion {
   margin-top: 7px;
   color: var(--rm-muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--rm-type));
 }
 .rm-labels {
   display: flex;
@@ -335,8 +372,8 @@ export const EDITORIAL_CSS = `
 .rm-labels span {
   padding: 5px 9px;
   border: 1px solid var(--rm-border);
-  border-radius: 999px;
-  font-size: 10px;
+  border-radius: var(--rm-full);
+  font-size: calc(12px * var(--rm-type));
   font-weight: 800;
 }
 .rm-allergens {
@@ -361,14 +398,14 @@ export const EDITORIAL_CSS = `
   height: 30px;
   padding: 0 4px;
   border: 1px solid var(--rm-border);
-  border-radius: 7px;
-  font-size: 11px;
+  border-radius: calc(var(--rm-radius) * 0.875);
+  font-size: calc(12px * var(--rm-type));
 }
 .rm-extra,
 .rm-modifiers {
   margin-top: 10px;
   color: var(--rm-muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--rm-type));
 }
 .rm-extra {
   display: flex;
@@ -411,17 +448,17 @@ export const EDITORIAL_CSS = `
 .rm-section.is-feature .rm-photo img {
   width: 100%;
   height: auto;
-  aspect-ratio: 1.22 / 1;
+  aspect-ratio: 4 / 3;
   border-radius: calc(var(--rm-radius) * 1.15);
 }
 .rm-section.is-feature .rm-item-copy {
   padding-top: 17px;
 }
 .rm-section.is-feature .rm-item :is(h3, h4) {
-  font-size: 22px;
+  font-size: calc(22px * var(--rm-type));
 }
 .rm-section.is-feature .rm-price {
-  font-size: 15px;
+  font-size: calc(15px * var(--rm-type));
 }
 /* The allergen information footer. */
 .rm-footer {
@@ -432,7 +469,7 @@ export const EDITORIAL_CSS = `
 }
 .rm-footer h2 {
   margin: 0;
-  font-size: 25px;
+  font-size: calc(25px * var(--rm-type));
 }
 .rm-footer > p {
   max-width: 46ch;
@@ -449,7 +486,7 @@ export const EDITORIAL_CSS = `
   display: flex;
   align-items: center;
   gap: 9px;
-  font-size: 13px;
+  font-size: calc(13px * var(--rm-type));
 }
 .rm-legend b,
 .rm-allergen-sheet b {
@@ -458,7 +495,7 @@ export const EDITORIAL_CSS = `
   width: 30px;
   height: 30px;
   border: 1px solid currentColor;
-  border-radius: 7px;
+  border-radius: calc(var(--rm-radius) * 0.875);
 }
 /* Sheets (filters, allergens) and the dish page: one dialog, two looks. */
 .rm-overlay {
@@ -480,7 +517,7 @@ export const EDITORIAL_CSS = `
   color: var(--rm-bg);
   padding: 0 20px 38px;
   border-radius: calc(var(--rm-radius) * 1.4) calc(var(--rm-radius) * 1.4) 0 0;
-  box-shadow: 0 -18px 48px color-mix(in srgb, var(--rm-text) 25%, transparent);
+  box-shadow: var(--rm-depth-up);
 }
 .rm-overlay-panel.is-detail {
   position: relative;
@@ -498,8 +535,9 @@ export const EDITORIAL_CSS = `
   min-height: 64px;
   background: inherit;
   border-bottom: 1px solid color-mix(in srgb, currentColor 16%, transparent);
-  font-size: 12px;
-  font-weight: 850;
+  font-size: calc(12px * var(--rm-type));
+  font-family: var(--rm-font-heading);
+  font-weight: var(--rm-subheading-weight);
   text-transform: uppercase;
 }
 .rm-overlay-panel.is-detail > .rm-overlay-head {
@@ -519,10 +557,10 @@ export const EDITORIAL_CSS = `
 }
 .rm-overlay-panel.is-detail > .rm-overlay-head button {
   margin-left: auto;
-  border-radius: 999px;
+  border-radius: var(--rm-full);
   background: var(--rm-bg);
   color: var(--rm-text);
-  box-shadow: 0 4px 18px color-mix(in srgb, var(--rm-text) 22%, transparent);
+  box-shadow: var(--rm-depth);
   pointer-events: auto;
 }
 .rm-overlay-head > span {
@@ -545,7 +583,7 @@ export const EDITORIAL_CSS = `
 .rm-filter-group legend {
   width: 100%;
   margin-bottom: 8px;
-  font-size: 20px;
+  font-size: calc(20px * var(--rm-type));
   font-weight: 850;
 }
 .rm-filter-group button {
@@ -612,13 +650,14 @@ export const EDITORIAL_CSS = `
 }
 .rm-detail-title h2 {
   margin: 0;
-  font-size: 30px;
+  font-size: calc(30px * var(--rm-type));
   line-height: 1.03;
-  font-weight: 880;
+  font-family: var(--rm-font-heading);
+  font-weight: var(--rm-heading-weight);
   overflow-wrap: anywhere;
 }
 .rm-detail-title strong {
-  font-size: 16px;
+  font-size: calc(16px * var(--rm-type));
 }
 .rm-detail-copy > p {
   color: var(--rm-muted);
@@ -642,7 +681,7 @@ export const EDITORIAL_CSS = `
 }
 .rm-detail-group h3 {
   margin: 0 0 14px;
-  font-size: 20px;
+  font-size: calc(20px * var(--rm-type));
 }
 .rm-detail-options {
   display: grid;
@@ -658,7 +697,7 @@ export const EDITORIAL_CSS = `
   padding: 10px 13px;
   border: 1px solid var(--rm-border);
   border-radius: var(--rm-radius);
-  font-size: 13px;
+  font-size: calc(13px * var(--rm-type));
 }
 .rm-detail-option b:empty {
   display: none;
@@ -748,10 +787,10 @@ export const EDITORIAL_CSS = `
     height: 92px;
   }
   .rm-titleblock h1 {
-    font-size: 39px;
+    font-size: calc(39px * var(--rm-type));
   }
   .rm-section h2 {
-    font-size: 28px;
+    font-size: calc(28px * var(--rm-type));
   }
   .rm-legend,
   .rm-allergen-sheet {
@@ -834,14 +873,11 @@ export const EDITORIAL_CSS = `
   padding-top: 18px;
 }
 .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) {
-  font-size: 24px;
+  font-size: calc(24px * var(--rm-type));
   line-height: 1.1;
 }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-price {
-  font-size: 16px;
-}
-.rm-section:not(.is-feature) .rm-item.has-photo .rm-description p {
-  -webkit-line-clamp: 2;
+  font-size: calc(16px * var(--rm-type));
 }
 .rm-item.is-text {
   display: block;
@@ -880,13 +916,13 @@ export const EDITORIAL_CSS = `
 }
 .rm-overlay-panel.is-detail .rm-detail-photo img {
   max-height: 62dvh;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 4 / 3;
 }
 .rm-detail-title h2 {
-  font-size: 34px;
+  font-size: calc(34px * var(--rm-type));
 }
 .rm-detail-copy > p {
-  font-size: 16px;
+  font-size: calc(16px * var(--rm-type));
   line-height: 1.6;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1020,10 +1056,10 @@ export const EDITORIAL_CSS = `
 .rm-detail-title strong {
   display: block;
   margin-top: 10px;
-  font-size: 20px;
+  font-size: calc(20px * var(--rm-type));
 }
 .rm-detail-allergens {
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
   color: var(--rm-muted);
 }
 .rm-detail-copy {
@@ -1040,7 +1076,7 @@ export const EDITORIAL_CSS = `
   padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
   background: var(--rm-text);
   color: var(--rm-bg);
-  font-size: 13px;
+  font-size: calc(13px * var(--rm-type));
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1050,7 +1086,7 @@ export const EDITORIAL_CSS = `
   overflow-wrap: anywhere;
 }
 .rm-detail-bar strong {
-  font-size: 17px;
+  font-size: calc(17px * var(--rm-type));
   white-space: nowrap;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1158,7 +1194,7 @@ export const EDITORIAL_CSS = `
   border: 0;
   background: transparent;
   color: color-mix(in srgb, var(--rm-bg) 70%, transparent);
-  font-size: 11.5px;
+  font-size: calc(12px * var(--rm-type));
   font-weight: 850;
   letter-spacing: 0.06em;
 }
@@ -1200,7 +1236,7 @@ export const EDITORIAL_CSS = `
   aspect-ratio: 4 / 3;
 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) {
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
   line-height: 1.15;
   overflow-wrap: anywhere;
   hyphens: auto;
@@ -1221,13 +1257,9 @@ export const EDITORIAL_CSS = `
   margin: 0;
 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-description {
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--rm-type));
 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-open::after {
-  display: none;
-}
-.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-modifiers,
-.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-extra {
   display: none;
 }
 @media (max-width: 359px) {
@@ -1235,7 +1267,7 @@ export const EDITORIAL_CSS = `
     column-gap: 10px;
   }
   .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) {
-    font-size: 12.5px;
+    font-size: calc(12.5px * var(--rm-type));
   }
   .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo {
     padding: 5px;
@@ -1271,7 +1303,7 @@ export const EDITORIAL_CSS = `
   max-width: 90px;
 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-badge {
-  font-size: 9px;
+  font-size: calc(12px * var(--rm-type));
   padding: 3px 6px;
   max-width: 90px;
   white-space: nowrap;
@@ -1285,7 +1317,7 @@ export const EDITORIAL_CSS = `
   padding-top: 0;
 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) {
-  font-size: 17px;
+  font-size: calc(17px * var(--rm-type));
 }
 /* The narrowest phones. The page around the face (no sideways scroll, no scrollbar) is the guest
    page's, not the face's: apps/web styles html[data-guest-page]. */

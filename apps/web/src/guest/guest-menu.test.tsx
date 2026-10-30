@@ -305,15 +305,14 @@ describe('the guest menu page', () => {
     it('applies the mismatched overlay at once, then asks again with ?v= and shows the matching one', async () => {
       const bodies = published()
       bodies.set(plain, { version: version + 1, items: marks(hummus) })
-      bodies.set(bust(1), { version, items: marks(negroni, hummus) })
+      bodies.set(bust(1), { version, items: marks(negroni) })
       serve(bodies)
       visit('', ['en-GB'])
       render(<GuestMenu venue={PARAM} />)
 
+      // The overlay fetched again with ?v= wins: Negroni leaves the menu (D131), Hummus is back.
+      await waitFor(() => expect(screen.queryByText('Negroni')).toBeNull())
       expect(await screen.findByText('Hummus')).toBeTruthy()
-      // The overlay of the other version marks Hummus: it applies, it is not ignored.
-      // The overlay fetched again with ?v= adds Negroni.
-      await waitFor(() => expect(screen.getAllByText('Sold out')).toHaveLength(2))
       expect(bustedRequests()).toEqual([bust(1)])
     })
 
@@ -324,10 +323,11 @@ describe('the guest menu page', () => {
       visit('', ['en-GB'])
       render(<GuestMenu venue={PARAM} />)
 
-      expect(await screen.findByText('Hummus')).toBeTruthy()
+      // The overlay of the other version takes Hummus off the menu: it applies, it is not ignored.
+      expect(await screen.findByText('Negroni')).toBeTruthy()
       await waitFor(() => expect(bustedRequests()).toEqual([bust(1)]))
       // Nothing matching arrived: what was on the screen stays.
-      expect(screen.getAllByText('Sold out')).toHaveLength(1)
+      expect(screen.queryByText('Hummus')).toBeNull()
       expect(bustedRequests().length).toBeLessThanOrEqual(3)
     })
 
@@ -362,9 +362,9 @@ describe('the guest menu page', () => {
     visit('', ['en-GB'])
     render(<GuestMenu venue={PARAM} />)
 
-    expect(await screen.findByText('Hummus')).toBeTruthy()
-    // The file is not taken for "no overlay": the mark shows.
-    await waitFor(() => expect(screen.getAllByText('Sold out')).toHaveLength(1))
+    expect(await screen.findByText('Negroni')).toBeTruthy()
+    // The file is not taken for "no overlay": the sold-out dish leaves the menu (D131).
+    await waitFor(() => expect(screen.queryByText('Hummus')).toBeNull())
   })
 
   describe('the address in the browser (D68)', () => {
@@ -460,13 +460,8 @@ describe('the template the venue chose (SH-04)', () => {
     expect(screen.queryByTestId('menu-skeleton')).toBeNull()
   })
 
-  it('draws the template the snapshot names, in the menu layout it carries (D92)', async () => {
-    serve(
-      published({
-        presentation: { face: 'editorial-market', options: {} },
-        layout: { default: 'one', guest_switch: false },
-      }),
-    )
+  it('draws the menu layout the snapshot carries (D92)', async () => {
+    serve(published({ layout: { default: 'one', guest_switch: false } }))
     visit('', ['en-GB'])
     render(<GuestMenu venue={PARAM} />)
     const root = await faceRoot('editorial-market')
@@ -475,24 +470,17 @@ describe('the template the venue chose (SH-04)', () => {
     expect(root.querySelector('[data-slot="menu.layout_switch"]')).toBeNull()
   })
 
-  it('draws another template when the snapshot names it', async () => {
-    serve(published({ presentation: { face: 'qr-phone', options: {} } }))
-    visit('', ['en-GB'])
-    render(<GuestMenu venue={PARAM} />)
-    await faceRoot('qr-phone')
-    expect(document.querySelector('[data-face="editorial-market"]')).toBeNull()
-    expect(await screen.findByText('Negroni')).toBeTruthy()
-  })
-
-  it('draws the Editorial Market for a template it does not know, and says so once', async () => {
+  it('draws the renderer whatever an old snapshot’s presentation names, without a word (D128)', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    serve(published({ presentation: { face: 'a-template-from-the-future', options: {} } }))
-    visit('', ['en-GB'])
-    render(<GuestMenu venue={PARAM} />)
-    await faceRoot('editorial-market')
-    expect(warn.mock.calls.filter(([line]) => String(line).includes('unknown_face'))).toHaveLength(
-      1,
-    )
+    for (const face of ['qr-phone', 'a-template-from-the-future']) {
+      serve(published({ presentation: { face, options: {} } }))
+      visit('', ['en-GB'])
+      const { unmount } = render(<GuestMenu venue={PARAM} />)
+      await faceRoot('editorial-market')
+      expect(await screen.findByText('Negroni')).toBeTruthy()
+      unmount()
+    }
+    expect(warn.mock.calls.filter(([line]) => String(line).includes('unknown_face'))).toEqual([])
   })
 
   it('forces the scheme the snapshot carries onto the template', async () => {

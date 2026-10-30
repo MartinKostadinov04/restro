@@ -267,6 +267,7 @@ export {
 } from './table-order'
 export { fallbackChain, pickText } from './text'
 export {
+  type HiddenItem,
   ITEM_STATES,
   type ItemState,
   type ViewAllergen,

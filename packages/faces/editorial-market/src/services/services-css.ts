@@ -53,7 +53,7 @@ export const SERVICES_CSS = `
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--rm-bg);
+  color: var(--rm-on-button);
   line-height: 1;
   touch-action: manipulation;
   transition:
@@ -66,7 +66,7 @@ export const SERVICES_CSS = `
   inset: calc((44px - var(--ro-circle)) / 2);
   z-index: -1;
   border-radius: var(--rm-pill);
-  background: var(--rm-text);
+  background: var(--rm-button);
   transition:
     background 0.18s ease,
     box-shadow 0.18s ease;
@@ -85,10 +85,10 @@ export const SERVICES_CSS = `
   right: calc((44px - var(--ro-circle)) / 2 - 4px);
   min-width: 18px;
   height: 18px;
-  border-radius: 999px;
-  background: var(--rm-accent);
-  color: var(--rm-on-accent);
-  font-size: 10px;
+  border-radius: var(--rm-full);
+  background: var(--rm-button-mark);
+  color: var(--rm-on-button-mark);
+  font-size: calc(12px * var(--rm-type));
   font-weight: 850;
   line-height: 18px;
   text-align: center;
@@ -100,7 +100,7 @@ export const SERVICES_CSS = `
   }
   .rm .ro-plus:hover::before {
     background: var(--rm-accent);
-    box-shadow: 0 6px 16px color-mix(in srgb, var(--rm-text) 22%, transparent);
+    box-shadow: var(--rm-depth);
   }
   .rm .ro-stepper button:hover {
     background: var(--rm-accent);
@@ -128,7 +128,7 @@ export const SERVICES_CSS = `
   --ro-circle: 36px;
 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .ro-quick .ro-plus::before {
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--rm-text) 20%, transparent);
+  box-shadow: var(--rm-depth);
 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.is-text .ro-quick {
   margin-top: -40px;
@@ -153,7 +153,7 @@ export const SERVICES_CSS = `
   border: 0;
   border-radius: 0;
   background: transparent;
-  font-size: 20px;
+  font-size: calc(20px * var(--rm-type));
   touch-action: manipulation;
 }
 .rm .ro-stepper button:disabled {
@@ -163,7 +163,7 @@ export const SERVICES_CSS = `
 .rm .ro-stepper output {
   min-width: 22px;
   text-align: center;
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
   font-weight: 850;
   animation: ro-pop 0.2s ease;
 }
@@ -181,7 +181,7 @@ export const SERVICES_CSS = `
   min-width: 44px;
   min-height: 44px;
   margin: calc((var(--ro-btn) - 44px) / 2);
-  font-size: 16px;
+  font-size: calc(16px * var(--rm-type));
 }
 .rm .ro-quick .ro-stepper button::before {
   content: "";
@@ -208,7 +208,7 @@ export const SERVICES_CSS = `
   border-radius: var(--rm-pill);
   background: transparent;
   color: var(--rm-bg);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--rm-type));
   font-weight: 800;
   white-space: nowrap;
   transition:
@@ -242,7 +242,7 @@ export const SERVICES_CSS = `
   .rm .ro-pill {
     gap: 4px;
     padding: 0 9px;
-    font-size: 11px;
+    font-size: calc(12px * var(--rm-type));
   }
   .rm-headtools {
     gap: 4px;
@@ -275,11 +275,11 @@ export const SERVICES_CSS = `
   padding: 0 16px 0 6px;
   border: 0;
   border-radius: var(--rm-pill);
-  background: var(--rm-text);
-  color: var(--rm-bg);
-  font-size: 14px;
+  background: var(--rm-button);
+  color: var(--rm-on-button);
+  font-size: calc(14px * var(--rm-type));
   font-weight: 850;
-  box-shadow: 0 14px 34px color-mix(in srgb, var(--rm-text) 30%, transparent);
+  box-shadow: var(--rm-depth);
   touch-action: manipulation;
   transition: transform 0.12s;
   animation: ro-up 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -335,10 +335,10 @@ export const SERVICES_CSS = `
   place-items: center;
   width: calc(var(--ro-bar) - 14px);
   height: calc(var(--ro-bar) - 14px);
-  border-radius: 999px;
-  background: var(--rm-accent);
-  color: var(--rm-on-accent);
-  font-size: 13px;
+  border-radius: var(--rm-full);
+  background: var(--rm-button-mark);
+  color: var(--rm-on-button-mark);
+  font-size: calc(13px * var(--rm-type));
   animation: ro-pop 0.22s ease;
 }
 
@@ -361,12 +361,12 @@ export const SERVICES_CSS = `
   margin-bottom: 14px;
 }
 .rm .ro-group legend > span {
-  font-size: 19px;
+  font-size: calc(19px * var(--rm-type));
   font-weight: 850;
 }
 .rm .ro-group legend small {
   color: var(--rm-muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--rm-type));
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -396,7 +396,7 @@ export const SERVICES_CSS = `
   border-radius: var(--rm-radius);
   background: transparent;
   text-align: left;
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
   font-weight: 700;
   touch-action: manipulation;
   transition:
@@ -412,13 +412,13 @@ export const SERVICES_CSS = `
 }
 .rm .ro-options b {
   color: var(--rm-muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--rm-type));
 }
 .rm .ro-note {
   display: grid;
   gap: 8px;
   margin-top: 26px;
-  font-size: 13px;
+  font-size: calc(13px * var(--rm-type));
   font-weight: 800;
 }
 .rm .ro-note textarea,
@@ -432,7 +432,7 @@ export const SERVICES_CSS = `
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 15px;
+  font-size: calc(16px * var(--rm-type));
   resize: vertical;
 }
 .rm .ro-sheet .ro-note textarea,
@@ -456,7 +456,7 @@ export const SERVICES_CSS = `
 }
 .rm .ro-dish-bar .ro-primary {
   padding: 0 16px;
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
 }
 
 /* Buttons. */
@@ -470,9 +470,9 @@ export const SERVICES_CSS = `
   padding: 0 20px;
   border: 0;
   border-radius: var(--rm-pill);
-  background: var(--rm-accent);
-  color: var(--rm-on-accent);
-  font-size: 15px;
+  background: var(--rm-button);
+  color: var(--rm-on-button);
+  font-size: calc(15px * var(--rm-type));
   font-weight: 850;
   touch-action: manipulation;
   transition:
@@ -503,7 +503,7 @@ export const SERVICES_CSS = `
   margin-top: 10px;
   padding: 0 18px;
   border: 1px solid color-mix(in srgb, currentColor 26%, transparent);
-  border-radius: 999px;
+  border-radius: var(--rm-full);
   background: transparent;
   font-weight: 800;
   touch-action: manipulation;
@@ -518,8 +518,8 @@ export const SERVICES_CSS = `
   margin: 14px 0 0;
   padding: 3px 10px;
   border: 1px dashed currentColor;
-  border-radius: 999px;
-  font-size: 11px;
+  border-radius: var(--rm-full);
+  font-size: calc(12px * var(--rm-type));
   font-weight: 850;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -554,7 +554,7 @@ export const SERVICES_CSS = `
 }
 .rm .ro-confirm-note {
   color: var(--rm-muted);
-  font-size: 0.9em;
+  font-size: calc(14.4px * var(--rm-type));
 }
 .rm .ro-confirm {
   /* The Payment confirmation (D127 1.4): a plain card, nothing of a receipt's look. */
@@ -562,7 +562,7 @@ export const SERVICES_CSS = `
   gap: 10px;
   padding: 18px;
   border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-  border-radius: 12px;
+  border-radius: calc(var(--rm-radius) * 1.5);
   text-align: left;
 }
 .rm .ro-confirm p {
@@ -582,7 +582,7 @@ export const SERVICES_CSS = `
   height: 24px;
   margin: 0;
   border: 2px solid color-mix(in srgb, currentColor 54%, transparent);
-  border-radius: 6px;
+  border-radius: calc(var(--rm-radius) * 0.75);
   background: transparent;
 }
 .rm .ro-lines input[type="checkbox"]:checked {
@@ -596,7 +596,7 @@ export const SERVICES_CSS = `
   min-width: 0;
 }
 .rm .ro-line-main strong {
-  font-size: 16px;
+  font-size: calc(16px * var(--rm-type));
   overflow-wrap: anywhere;
 }
 .rm .ro-line-main small {
@@ -605,10 +605,10 @@ export const SERVICES_CSS = `
 .rm .ro-line-main .ro-flag {
   justify-self: start;
   padding: 3px 9px;
-  border-radius: 999px;
+  border-radius: var(--rm-full);
   background: var(--rm-accent);
   color: var(--rm-on-accent);
-  font-size: 11px;
+  font-size: calc(12px * var(--rm-type));
   font-weight: 850;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -623,7 +623,7 @@ export const SERVICES_CSS = `
   padding: 0;
   border: 0;
   background: transparent;
-  font-size: 13px;
+  font-size: calc(13px * var(--rm-type));
   font-weight: 800;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -646,14 +646,14 @@ export const SERVICES_CSS = `
 }
 .rm .ro-sum.is-small {
   padding-top: 8px;
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
   font-weight: 600;
   opacity: 0.8;
 }
 .rm .ro-sum.is-big {
   margin-top: 18px;
   border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-  font-size: 20px;
+  font-size: calc(20px * var(--rm-type));
 }
 .rm .ro-notice {
   display: grid;
@@ -662,7 +662,7 @@ export const SERVICES_CSS = `
   padding: 12px 14px;
   border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
   border-radius: var(--rm-radius);
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
 }
 .rm .ro-notice.is-bad {
   border-color: currentColor;
@@ -692,7 +692,7 @@ export const SERVICES_CSS = `
   border-radius: var(--rm-radius);
   background: var(--rm-bg);
   color: var(--rm-text);
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
   text-align: left;
   touch-action: manipulation;
 }
@@ -703,7 +703,7 @@ export const SERVICES_CSS = `
   border-radius: var(--rm-radius);
   background: var(--rm-bg);
   color: var(--rm-text);
-  font-size: 12px;
+  font-size: calc(12px * var(--rm-type));
   font-weight: 700;
 }
 /* "Show this to your waiter" (D120): the reference in large type, dark on light whatever the theme. */
@@ -725,7 +725,7 @@ export const SERVICES_CSS = `
   padding-left: 18px;
 }
 .rm .ro-waiter-ref {
-  font-size: 48px;
+  font-size: calc(48px * var(--rm-type));
   font-weight: 800;
   letter-spacing: 0.08em;
   line-height: 1.1;
@@ -743,7 +743,7 @@ export const SERVICES_CSS = `
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  font-size: 12px;
+  font-size: calc(12px * var(--rm-type));
   font-weight: 850;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -751,7 +751,7 @@ export const SERVICES_CSS = `
 .rm .ro-round em {
   padding: 3px 9px;
   border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-  border-radius: 999px;
+  border-radius: var(--rm-full);
   font-style: normal;
 }
 .rm .ro-round[data-source="guest"] em {
@@ -770,7 +770,7 @@ export const SERVICES_CSS = `
   gap: 10px;
   align-items: center;
   padding: 10px 0;
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
 }
 .rm .ro-round li[data-status="cancelled"] .ro-tabname {
   text-decoration: line-through;
@@ -787,9 +787,9 @@ export const SERVICES_CSS = `
 }
 .rm .ro-status {
   padding: 4px 8px;
-  border-radius: 999px;
+  border-radius: var(--rm-full);
   background: color-mix(in srgb, currentColor 12%, transparent);
-  font-size: 11px;
+  font-size: calc(12px * var(--rm-type));
   font-weight: 850;
 }
 .rm .ro-status[data-status="preparing"] {
@@ -850,7 +850,7 @@ export const SERVICES_CSS = `
 }
 .rm .ro-state h3 {
   margin: 12px 0 0;
-  font-size: 22px;
+  font-size: calc(22px * var(--rm-type));
 }
 .rm .ro-state p {
   max-width: 32ch;
@@ -870,7 +870,7 @@ export const SERVICES_CSS = `
   height: 54px;
   border: 3px solid color-mix(in srgb, currentColor 18%, transparent);
   border-top-color: var(--rm-accent);
-  border-radius: 999px;
+  border-radius: var(--rm-full);
   animation: ro-spin 0.8s linear infinite;
 }
 .rm .ro-check {
@@ -878,10 +878,10 @@ export const SERVICES_CSS = `
   place-items: center;
   width: 64px;
   height: 64px;
-  border-radius: 999px;
+  border-radius: var(--rm-full);
   background: var(--rm-accent);
   color: var(--rm-on-accent);
-  font-size: 30px;
+  font-size: calc(30px * var(--rm-type));
   font-weight: 900;
   animation: ro-pop 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -893,7 +893,7 @@ export const SERVICES_CSS = `
 .rm .ro-pulse {
   width: 20px;
   height: 20px;
-  border-radius: 999px;
+  border-radius: var(--rm-full);
   background: var(--rm-accent);
   animation: ro-pulse 1.4s ease-out infinite;
 }
@@ -912,12 +912,13 @@ export const SERVICES_CSS = `
   min-height: 48px;
   padding: 0 4px;
   text-align: center;
-  font-size: 13px;
+  font-size: calc(13px * var(--rm-type));
 }
 .rm .ro-h {
   margin: 26px 0 10px;
-  font-size: 15px;
-  font-weight: 850;
+  font-size: calc(15px * var(--rm-type));
+  font-family: var(--rm-font-heading);
+  font-weight: var(--rm-subheading-weight);
 }
 .rm .ro-row {
   display: flex;
@@ -957,7 +958,7 @@ export const SERVICES_CSS = `
   margin: 0;
 }
 .rm .ro-allergy {
-  font-size: 13px;
+  font-size: calc(13px * var(--rm-type));
   opacity: 0.75;
 }
 /* The legal block's two controls (ticket 198): the Privacy link and the "About the venue" disclosure keep
@@ -1002,8 +1003,9 @@ export const SERVICES_CSS = `
 }
 .rm .ro-page > h2 {
   margin: 0 0 6px;
-  font-size: 30px;
-  font-weight: 880;
+  font-size: calc(30px * var(--rm-type));
+  font-family: var(--rm-font-heading);
+  font-weight: var(--rm-heading-weight);
   letter-spacing: -0.01em;
   text-transform: uppercase;
 }
@@ -1016,7 +1018,7 @@ export const SERVICES_CSS = `
   border-radius: var(--rm-radius);
   background: var(--rm-bg);
   color: var(--rm-text);
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
 }
 .rm .ro-page .ro-receipt {
   background: var(--rm-surface);
@@ -1027,22 +1029,22 @@ export const SERVICES_CSS = `
   gap: 3px;
   justify-items: center;
   padding-bottom: 16px;
-  border-bottom: 1px dashed var(--rm-border);
+  border-bottom: 1px solid var(--rm-border);
   text-align: center;
 }
 .rm .ro-receipt header strong {
-  font-size: 18px;
+  font-size: calc(18px * var(--rm-type));
   letter-spacing: 0.12em;
   overflow-wrap: anywhere;
 }
 .rm .ro-receipt header span {
   color: var(--rm-muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--rm-type));
 }
 .rm .ro-receipt ul {
   margin: 0;
   padding: 12px 0;
-  border-bottom: 1px dashed var(--rm-border);
+  border-bottom: 1px solid var(--rm-border);
   list-style: none;
 }
 .rm .ro-receipt li,
@@ -1064,13 +1066,13 @@ export const SERVICES_CSS = `
   padding: 10px 0;
   border-top: 1px solid var(--rm-border);
   border-bottom: 1px solid var(--rm-border);
-  font-size: 18px;
+  font-size: calc(18px * var(--rm-type));
   font-weight: 900;
 }
 .rm .ro-ref {
   margin: 12px 0 0;
   color: var(--rm-muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--rm-type));
   text-align: center;
 }
 .rm .ro-toast {

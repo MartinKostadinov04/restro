@@ -135,7 +135,7 @@ describe('the real workspace', () => {
       'packages/core',
       'packages/db',
       'packages/barsy',
-      'packages/faces/qr-phone',
+      'packages/faces/editorial-market',
       'packages/connectors/sim-pos',
     ]) {
       expect(dirs).toContain(expected)

@@ -1,27 +1,33 @@
-// What the guest ordering and paying specs share when they run on more than one template (#239).
-// `qr-phone` (the hidden reference) draws the table's order and bill inline on the page; Editorial
-// Market keeps them in sheets the guest opens from the bar and the header. Both carry the same
-// markers for what the specs look at (`data-order-line`, `data-location-prompt`, `data-send`,
-// `data-sent-order`, `data-slot="pay.*"`), so a spec asks the helpers below to bring the screen up
-// and then reads the same selectors on either template.
+// What the guest ordering and paying specs share: they run on the renderer in both premade Styles
+// (D128), Basic and Editorial. The renderer keeps the table's order and paying in sheets the guest
+// opens from the bar and the header; the helpers below bring a screen up, and the spec reads the
+// same markers on either Style (`data-order-line`, `data-location-prompt`, `data-send`,
+// `data-sent-order`, `data-slot="pay.*"`).
 import { expect, type Page } from '@playwright/test'
+import { styleCases } from '@restro/shell/testing'
 
-/** The templates the specs run on. `qr-phone` keeps its runs until it retires (#171). */
-export const ORDER_FACES = ['qr-phone', 'editorial-market'] as const
+/** The Styles the specs run on. */
+export const ORDER_STYLES = ['basic', 'editorial'] as const
 
-/** One of the templates above. */
-export type OrderFace = (typeof ORDER_FACES)[number]
+/** One of the Styles above. */
+export type OrderStyle = (typeof ORDER_STYLES)[number]
 
-/** The template's root element on the page. */
-export function faceRoot(page: Page, face: OrderFace) {
-  return page.locator(`[data-face="${face}"]`).first()
+/** A Style as a design record: what a harness outside the web app saves through `setDesign`. */
+export function styleDesign(style: OrderStyle) {
+  const values = styleCases().find((one) => one.id === `style:${style}`)?.values
+  if (values === undefined) throw new Error(`the contract has no Style "${style}"`)
+  return { style, values, logo_asset_id: null }
+}
+
+/** The renderer's root element on the page. */
+export function faceRoot(page: Page) {
+  return page.locator('[data-face="editorial-market"]').first()
 }
 
 const ORDER_SHEET = '[data-slot="order.sheet"]'
 
-/** Brings the table's order on screen: inline on `qr-phone`, the bag sheet on Editorial Market. */
-export async function showOrder(page: Page, face: OrderFace): Promise<void> {
-  if (face === 'qr-phone') return
+/** Brings the table's order on screen: the bag sheet. */
+export async function showOrder(page: Page): Promise<void> {
   const sheet = page.locator(ORDER_SHEET)
   if ((await sheet.count()) === 0) {
     await page.locator('[data-slot="menu.bag"] button').click()
@@ -29,23 +35,15 @@ export async function showOrder(page: Page, face: OrderFace): Promise<void> {
   await expect(sheet).toBeVisible()
 }
 
-/** Puts the menu back in reach: closes the bag sheet where the template has one. */
-export async function hideOrder(page: Page, face: OrderFace): Promise<void> {
-  if (face === 'qr-phone') return
+/** Puts the menu back in reach: closes the bag sheet. */
+export async function hideOrder(page: Page): Promise<void> {
   if ((await page.locator(ORDER_SHEET).count()) === 0) return
   await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
   await expect(page.locator(ORDER_SHEET)).toHaveCount(0)
 }
 
-/**
- * Brings the table's bill and paying on screen: the bill panel inline on `qr-phone`; on Editorial
- * Market the pay sheet from the header (the choice of lines, the tip and the card form sit there).
- */
-export async function showPaying(page: Page, face: OrderFace): Promise<void> {
-  if (face === 'qr-phone') {
-    await expect(page.locator('[data-slot="menu.bill"]')).toBeVisible({ timeout: 30_000 })
-    return
-  }
+/** Brings the table's bill and paying on screen: the pay sheet from the header. */
+export async function showPaying(page: Page): Promise<void> {
   const entry = page.locator('button[data-slot="menu.pay"]')
   await expect(entry).toBeVisible({ timeout: 30_000 })
   await entry.click()

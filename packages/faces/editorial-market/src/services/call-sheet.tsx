@@ -164,7 +164,12 @@ export function CallSheet() {
             {words.cancelRequest}
           </button>
         ) : (
-          <button type="button" className="ro-primary is-wide" onClick={() => another(current)}>
+          <button
+            type="button"
+            className="ro-primary is-wide"
+            data-design-part="button"
+            onClick={() => another(current)}
+          >
             <span>{words.newRequest}</span>
           </button>
         )}
@@ -190,7 +195,12 @@ export function CallSheet() {
             asked.message === null ? rejected.hint : <Text value={asked.message} page={locale} />
           }
         >
-          <button type="button" className="ro-primary is-wide" onClick={() => another(null)}>
+          <button
+            type="button"
+            className="ro-primary is-wide"
+            data-design-part="button"
+            onClick={() => another(null)}
+          >
             <span>{words.newRequest}</span>
           </button>
         </StatePanel>
@@ -198,7 +208,12 @@ export function CallSheet() {
     }
     return (
       <StatePanel tone="bad" title={words.requestFailed}>
-        <button type="button" className="ro-primary is-wide" onClick={send}>
+        <button
+          type="button"
+          className="ro-primary is-wide"
+          data-design-part="button"
+          onClick={send}
+        >
           <span>{words.retry}</span>
         </button>
         <button type="button" className="ro-ghost" onClick={() => another(null)}>
@@ -209,10 +224,11 @@ export function CallSheet() {
   }
 
   return (
-    <div className="ro-sheet">
+    <div className="ro-sheet" data-design-part="call">
       <ChoiceGroup
         label={words.callServer}
         className="ro-choicegrid"
+        part="call.kinds"
         value={chosen}
         onChoose={setKind}
         choices={kinds.map((option) => ({
@@ -225,7 +241,13 @@ export function CallSheet() {
           ),
         }))}
       />
-      <button type="button" className="ro-primary is-wide" disabled={!ready} onClick={send}>
+      <button
+        type="button"
+        className="ro-primary is-wide"
+        data-design-part="button"
+        disabled={!ready}
+        onClick={send}
+      >
         <span>{words.send}</span>
       </button>
     </div>

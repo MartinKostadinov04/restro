@@ -21,10 +21,13 @@ export function ChoiceGroup<T extends string>({
   choices,
   value,
   onChoose,
+  part,
 }: {
   /** The name of the group. */
   readonly label: string
   readonly className: string
+  /** The design part this group is, when it is one (D128). */
+  readonly part?: string
   readonly choices: readonly Choice<T>[]
   /** The key that is on, or null. */
   readonly value: T | null
@@ -51,7 +54,13 @@ export function ChoiceGroup<T extends string>({
   }
 
   return (
-    <div className={className} role="radiogroup" aria-label={label} onKeyDown={move}>
+    <div
+      className={className}
+      role="radiogroup"
+      aria-label={label}
+      data-design-part={part}
+      onKeyDown={move}
+    >
       {choices.map((choice, index) => (
         // biome-ignore lint/a11y/useSemanticElements: buttons styled as a segmented control; the group follows the ARIA radio pattern, arrow keys included
         <button

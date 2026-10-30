@@ -6,20 +6,17 @@
 // address the API is called on. The fixture is scripts/seed-order-e2e.ts (run here: it gives the
 // table a new code each time).
 //
-// It runs on each template that draws the shared order (guest-faces.ts, #239): the hidden
-// reference template, which draws the order inline, and Editorial Market, which keeps it in the
-// bag sheet and the location questions in a sheet of their own. The checks are the same.
+// It runs on the renderer in both Styles (guest-faces.ts): the order lives in the bag sheet and the
+// location questions in a sheet of their own.
 //
 // The venue checks location (#76): a phone sees the order only once it holds a pass. The first
 // phone gets one by adding (the consent screen, Allow, and the add goes through), the second by its
-// own "Allow location"; a phone across town is told the check failed. On the reference template the
-// page takes no waiter calls (it declares no such control), so it shows the still card "Please
-// order from your waiter" and "Cancel"; Editorial Market declares the control and the venue has the
-// service on, so it offers "Call a waiter" and "Cancel". The position goes only in a command's
-// body, never in an address.
+// own "Allow location"; a phone across town is told the check failed, and offered "Call a waiter"
+// (the venue has the service on) and "Cancel". The position goes only in a command's body, never in
+// an address.
 import { type Browser, devices, expect, type Page, type Request, test } from '@playwright/test'
 import { runScript } from './global-setup'
-import { faceRoot, hideOrder, ORDER_FACES, type OrderFace, showOrder } from './guest-faces'
+import { faceRoot, hideOrder, ORDER_STYLES, showOrder } from './guest-faces'
 import { ORDER_SPOT } from './support'
 
 test.use({ ...devices['Pixel 7'] })
@@ -39,12 +36,12 @@ const prompt = (page: Page, which: string) => page.locator(`[data-location-promp
 // A phone on the menu polls every 10 s, one on the order every 2 s: wait past one menu poll.
 const SEEN = { timeout: 20_000 }
 
-for (const face of ORDER_FACES) {
-  test.describe(`on ${face}`, () => {
+for (const style of ORDER_STYLES) {
+  test.describe(`in ${style}`, () => {
     let seed: Seed
 
     test.beforeAll(() => {
-      const output = runScript('./scripts/seed-order-e2e.ts', 'seed', face)
+      const output = runScript('./scripts/seed-order-e2e.ts', 'seed', style)
       const line = output
         .split('\n')
         .reverse()
@@ -66,7 +63,7 @@ for (const face of ORDER_FACES) {
         if (request.url().includes('/api/guest/')) calls.push(request)
       })
       await page.goto(`${seed.path}?lang=en#t=${seed.code}`)
-      await expect(faceRoot(page, face)).toBeVisible()
+      await expect(faceRoot(page)).toBeVisible()
       await expect(page.locator('[data-slot="menu.bag"]')).toBeAttached()
       return { context, page, calls }
     }
@@ -76,10 +73,10 @@ for (const face of ORDER_FACES) {
       const second = await phone(browser)
       try {
         // No pass yet: the order is hidden, with the guest's own "Allow location".
-        await showOrder(first.page, face)
+        await showOrder(first.page)
         await expect(prompt(first.page, 'none')).toBeVisible(SEEN)
         await expect(lines(first.page)).toHaveCount(0)
-        await hideOrder(first.page, face)
+        await hideOrder(first.page)
 
         // The first phone adds an item: the consent screen first, then the add goes through.
         const add = first.page.locator('[data-slot="item.add"]').first()
@@ -88,7 +85,7 @@ for (const face of ORDER_FACES) {
         await prompt(first.page, 'consent')
           .getByRole('button', { name: 'Allow', exact: true })
           .click()
-        await showOrder(first.page, face)
+        await showOrder(first.page)
         await expect(lines(first.page)).toHaveCount(1, SEEN)
         await expect(lines(first.page).first()).toHaveAttribute('data-qty', '1')
         await expect(lines(first.page).first()).not.toHaveAttribute('data-pending', '', SEEN)
@@ -96,12 +93,12 @@ for (const face of ORDER_FACES) {
         expect(lineId).toMatch(/^ol_/)
 
         // The second phone allows location itself, then sees the same line and raises it.
-        await showOrder(second.page, face)
+        await showOrder(second.page)
         await second.page.getByRole('button', { name: 'Allow location' }).click()
         await prompt(second.page, 'consent')
           .getByRole('button', { name: 'Allow', exact: true })
           .click()
-        await showOrder(second.page, face)
+        await showOrder(second.page)
         const shared = second.page.locator(`[data-order-line="${lineId}"]`)
         await expect(shared).toHaveAttribute('data-qty', '1', SEEN)
         await shared.getByRole('button', { name: 'One more' }).click()
@@ -138,7 +135,7 @@ for (const face of ORDER_FACES) {
       }
     })
 
-    test('a phone across town is told the check failed, and offered a waiter call or the still card, and Cancel', async ({
+    test('a phone across town is told the check failed, and offered a waiter call and Cancel', async ({
       browser,
     }) => {
       const far = await phone(browser, ACROSS_TOWN)
@@ -149,18 +146,12 @@ for (const face of ORDER_FACES) {
           .click()
         const failed = prompt(far.page, 'failed')
         await expect(failed).toBeVisible(SEEN)
-        if (face === 'qr-phone') {
-          // No dead button: this template declares no waiter call, so the still card stands in its place.
-          await expect(failed.getByText('Please order from your waiter')).toBeVisible()
-          await expect(failed.getByRole('button', { name: 'Call a waiter' })).toHaveCount(0)
-        } else {
-          // The venue takes waiter calls and the template draws them: a button, never the still card.
-          await expect(failed.getByRole('button', { name: 'Call a waiter' })).toBeVisible()
-          await expect(failed.getByText('Please order from your waiter')).toHaveCount(0)
-        }
+        // The venue takes waiter calls and the renderer draws them: a button, never the still card.
+        await expect(failed.getByRole('button', { name: 'Call a waiter' })).toBeVisible()
+        await expect(failed.getByText('Please order from your waiter')).toHaveCount(0)
         await failed.getByRole('button', { name: 'Cancel' }).click()
         await expect(failed).toHaveCount(0)
-        await showOrder(far.page, face)
+        await showOrder(far.page)
         await expect(lines(far.page)).toHaveCount(0)
         await expect(prompt(far.page, 'none')).toBeVisible()
       } finally {
