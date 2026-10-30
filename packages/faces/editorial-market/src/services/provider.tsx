@@ -9,12 +9,14 @@
 // Without `services`, or for a service the view model has switched off (R15), nothing here draws.
 
 import {
+  ANSWER_LOST_CODE,
   type BagAction,
   type BagLine,
   bagReducer,
   type GuestCommand,
   type GuestStrings,
   type Locale,
+  OFFLINE_CODE,
   orderLines,
   type ResolvedBag,
   resolveBag,
@@ -40,7 +42,13 @@ import {
 } from 'react'
 
 import { type HashRoute, useHashRoute } from '../use-dish-route'
-import { newActionId, type Outcome, runCommand, SERVICE_TIMEOUT_MS } from './command'
+import {
+  LOST_SEND_HOLD_MS,
+  newActionId,
+  type Outcome,
+  runCommand,
+  SERVICE_TIMEOUT_MS,
+} from './command'
 
 /* ---------------------------------------------------------------------------------------------
  * Sheets
@@ -99,7 +107,11 @@ export type SendState =
   | { readonly status: 'idle' }
   /** Waiting for the host. `received`: the host has the order and has not said yes or no. */
   | { readonly status: 'pending'; readonly received: boolean }
-  /** No usable answer (an error, a timeout): the order may or may not have gone. Try again with the same `actionId`. */
+  /**
+   * No usable answer (an error, a timeout, a lost answer): the order may already be in the POS, so
+   * the sheet says D120's line (call a waiter) and offers no re-send until the hold is over, the
+   * bag changes or the host's bill shows the order. Never "Try again".
+   */
   | { readonly status: 'failed' }
   /** The host said no. The bag is kept. */
   | { readonly status: 'rejected'; readonly message: ViewText | null; readonly ref: string | null }
@@ -238,6 +250,12 @@ function ActiveServices({
   const sheet = shown !== null && sheetAllowed(features, shown) ? shown : null
   latest.current = { services, view, bag, features, sheet }
 
+  // The screen the face has open, for the host's polls (RR-52, D121): the bag asks every 2 seconds,
+  // the bill (and paying from it) reads the bill fresh, anything else is the menu.
+  const setScreen = services.setScreen
+  const screen = sheet === 'bag' ? 'bag' : sheet === 'tab' || sheet === 'pay' ? 'bill' : 'menu'
+  useEffect(() => setScreen?.(screen), [setScreen, screen])
+
   const run = useCallback(
     (command: GuestCommand) => runCommand((c) => latest.current.services.dispatch(c), command),
     [],
@@ -279,6 +297,8 @@ function ActiveServices({
     const actionId =
       attempt.current?.fingerprint === fingerprint ? attempt.current.actionId : newActionId()
     attempt.current = { fingerprint, actionId, sent: nowBag }
+    // Send is blocked while the phone is offline, never queued (D121); the sheet greys the button.
+    if (latest.current.services.state.offline === true) return
     sending.current = true
     setSend({ status: 'pending', received: false })
     let outcome: Outcome
@@ -294,6 +314,17 @@ function ActiveServices({
       return
     }
     const { result } = outcome
+    if (result.status === 'pending' && result.code === ANSWER_LOST_CODE) {
+      // The host's own client says the answer was lost (or the Send was not made: see its state).
+      setSend({ status: 'failed' })
+      return
+    }
+    if (result.status === 'rejected' && result.code === OFFLINE_CODE) {
+      // The host did not make the Send (offline): nothing was sent, the weak-connection line speaks.
+      attempt.current = null
+      setSend(IDLE)
+      return
+    }
     if (result.status === 'accepted') {
       accepted(nowBag, result.ref)
     } else if (result.status === 'rejected') {
@@ -311,6 +342,16 @@ function ActiveServices({
       () =>
         setSend((now) => (now.status === 'pending' && now.received ? { status: 'failed' } : now)),
       SERVICE_TIMEOUT_MS,
+    )
+    return () => window.clearTimeout(timer)
+  }, [send])
+
+  // A lost Send holds the bag for a few minutes (D120), then the guest may send again.
+  useEffect(() => {
+    if (send.status !== 'failed') return
+    const timer = window.setTimeout(
+      () => setSend((now) => (now.status === 'failed' ? IDLE : now)),
+      LOST_SEND_HOLD_MS,
     )
     return () => window.clearTimeout(timer)
   }, [send])
