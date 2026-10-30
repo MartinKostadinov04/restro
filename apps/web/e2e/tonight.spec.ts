@@ -118,6 +118,18 @@ test('a staff-only sign-in lands on Tonight, whose tab sits after Tables & QR', 
   await expect(page.getByRole('tab', { name: 'Tonight' })).toHaveAttribute('aria-selected', 'true')
 })
 
+test('a shared tablet has no composer: an old link to it lands on Tonight (RR-83)', async () => {
+  const { page } = tablet
+  await page.goto('/venues')
+  await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=tonight/)
+  const venue = new URL(page.url()).pathname
+  await page.goto(`${venue}?tab=composer`)
+  await expect(page).toHaveURL(new RegExp(`${venue}\\?tab=tonight`))
+  const tabs = page.getByRole('tablist', { name: 'Switch tab' }).getByRole('tab')
+  await expect(tabs).toHaveText(['Tables & QR', 'Tonight', 'Settings'])
+  await expect(page.getByRole('button', { name: 'Publish' })).toHaveCount(0)
+})
+
 test('Needs you is ordered by what costs most to leave, with the notice apart', async () => {
   const { page } = waiter
   await openTonight(page, 'busy')

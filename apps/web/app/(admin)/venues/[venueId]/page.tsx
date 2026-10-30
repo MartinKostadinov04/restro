@@ -7,6 +7,7 @@ import {
   NO_SETTINGS_RIGHTS,
   type SettingsRights,
   settingsSectionOf,
+  sharedDeviceTabOf,
   workspaceTabOf,
 } from '@/components/admin/workspace-tab-defs'
 import { SettingsSections, WorkspaceTabs } from '@/components/admin/workspace-tabs'
@@ -24,6 +25,7 @@ import { canPublishMenu } from '@/server/roles'
 import { requireTenant } from '@/server/session'
 import { loadSettingsAccess } from '@/server/settings/access'
 import { payingOffered } from '@/server/settings/paying-offer'
+import { onSharedDevice as sessionIsSharedDevice } from '@/server/staff/shared-device'
 import { getVenue, venueHasTill } from '@/server/venues'
 import { AlertsSection } from '@/settings/alerts-section'
 import { OrderingSection } from '@/settings/ordering-section'
@@ -65,7 +67,13 @@ export default async function VenueWorkspacePage({
     params.set('sub', 'design')
     redirect(`/venues/${venue.id}?${params.toString()}`)
   }
-  const openTab = workspaceTabOf(query.tab)
+  // A shared device works Tonight: no composer and no Publish bar, which need the person's own
+  // sign-in (D122 §7, RR-83). An old link to the composer lands on Tonight.
+  const sharedDevice = await sessionIsSharedDevice({ tenantId: organization.id, sessionId })
+  if (sharedDevice && workspaceTabOf(query.tab) === 'composer') {
+    redirect(`/venues/${venue.id}?tab=tonight`)
+  }
+  const openTab = sharedDevice ? sharedDeviceTabOf(query.tab) : workspaceTabOf(query.tab)
   const composerOpen = openTab === 'composer'
   const settingsOpen = openTab === 'settings'
   const tablesOpen = openTab === 'tables'
@@ -90,7 +98,7 @@ export default async function VenueWorkspacePage({
     settingsOpen && access !== null && !access.sharedDevice
       ? await payingOffered(organization.id, venue.id)
       : false
-  const onSharedDevice = access?.sharedDevice === true
+  const onSharedDevice = access?.sharedDevice === true || sharedDevice
   const rights: SettingsRights =
     access === null
       ? NO_SETTINGS_RIGHTS
@@ -125,9 +133,11 @@ export default async function VenueWorkspacePage({
           venueId={venue.id}
           guestPath={guestPath}
           canPublish={canPublishMenu(organization.role)}
+          offerPublish={!sharedDevice}
           title={title}
         />
         <WorkspaceTabs
+          sharedDevice={sharedDevice}
           contents={{
             composer: composerOpen ? (
               <Suspense fallback={<ComposerSkeleton />}>

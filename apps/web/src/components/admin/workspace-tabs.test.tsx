@@ -112,6 +112,14 @@ describe('WorkspaceTabs: tabs and the URL', () => {
     })
   })
 
+  it('a shared device has no composer tab, and an old link to it opens Tonight (RR-83)', () => {
+    navigation.search = 'tab=composer'
+    renderWithIntl(<WorkspaceTabs contents={contents} sharedDevice />)
+    expect(screen.queryByRole('tab', { name: 'Composer' })).toBeNull()
+    expect(screen.getByRole('tab', { name: 'Tonight' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.queryByText('content of composer')).toBeNull()
+  })
+
   it('does not touch the URL when the current tab is clicked again', async () => {
     navigation.search = 'tab=settings'
     renderTabs()

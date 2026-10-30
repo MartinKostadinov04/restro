@@ -20,6 +20,7 @@ import { getPool } from '@/server/db'
 import { logError } from '@/server/log'
 import { canManageIntegration } from '@/server/roles'
 import { requireTenant } from '@/server/session'
+import { onSharedDevice } from '@/server/staff/shared-device'
 import { getVenue } from '@/server/venues'
 
 const venueId = idSchema('vn')
@@ -46,8 +47,9 @@ export async function saveGuestFeaturesAction(input: unknown) {
   const parsed = SaveFeaturesInput.safeParse(input)
   if (!parsed.success) return INVALID
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
     if (!canManageIntegration(organization.role)) return FORBIDDEN
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) return FORBIDDEN
     await setGuestFeatures(getPool(), organization.id, {
       venueId: parsed.data.venueId,
       features: parsed.data.features,
@@ -72,8 +74,9 @@ export async function saveFeatureOptionsAction(input: unknown) {
   const parsed = SaveOptionsInput.safeParse(input)
   if (!parsed.success) return INVALID
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
     if (!canManageIntegration(organization.role)) return FORBIDDEN
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) return FORBIDDEN
     const venue = await getVenue(organization.id, parsed.data.venueId)
     if (!venue) return INVALID
     const stored = readPresentation(venue.settings)

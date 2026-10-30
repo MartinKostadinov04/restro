@@ -26,7 +26,13 @@ import {
   SECTION_LAYOUTS,
   SortKeySchema,
 } from '@restro/core'
-import { ApplyError, apply, loadMenuDocument, loadUnplacedItems } from '@restro/core/apply'
+import {
+  ApplyError,
+  apply,
+  itemsOfVenue,
+  loadMenuDocument,
+  loadUnplacedItems,
+} from '@restro/core/apply'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -38,6 +44,7 @@ import { logError } from '@/server/log'
 import { getNodeBasics, isNodeInMenu } from '@/server/menus'
 import { canManageIntegration } from '@/server/roles'
 import { requireTenant } from '@/server/session'
+import { onSharedDevice } from '@/server/staff/shared-device'
 import { getVenue, venueHasTill } from '@/server/venues'
 
 import type { ActionResult } from './action-result'
@@ -135,8 +142,10 @@ async function perform(
   options: { readonly ownersOnly?: boolean } = {},
 ): Promise<ActionResult> {
   try {
-    const { organization, user } = await requireTenant()
+    const { organization, user, sessionId } = await requireTenant()
     if (options.ownersOnly && !canManageIntegration(organization.role)) return NOT_ALLOWED
+    // A shared tablet never edits the menu (D122 §7, RR-83): the person's own sign-in does.
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) return NOT_ALLOWED
     const venue = await getVenue(organization.id, scope.venueId)
     if (!venue) return NOT_FOUND
     // The menu the composer shows: one of this venue's menus in use (never a binned one, another
@@ -196,6 +205,12 @@ async function inMenu(context: Context, ...ids: readonly (NodeId | null)[]): Pro
   return true
 }
 
+/** True when the item is one of this venue's: the tenant's rows are all the database hides (RR-72). */
+async function ofVenue(context: Context, itemId: NodeId): Promise<boolean> {
+  const ours = await itemsOfVenue(getPool(), context.tenantId, context.venueId, [itemId])
+  return ours.has(itemId)
+}
+
 /** A live (not deleted) section of this menu, or false. */
 async function liveSection(context: Context, sectionId: NodeId): Promise<boolean> {
   const node = await getNodeBasics(context.tenantId, sectionId)
@@ -220,6 +235,7 @@ export async function placeItemAction(input: unknown): Promise<ActionResult> {
   const { venueId, menuId, ...move } = parsed.data
   return perform({ venueId, menuId }, async (context) => {
     if (!(await inMenu(context, move.fromSectionId, move.toSectionId))) return null
+    if (!(await ofVenue(context, move.itemId))) return NOT_FOUND
     return placeItemOps(move)
   })
 }
@@ -306,9 +322,10 @@ export async function setItemHiddenAction(input: unknown): Promise<ActionResult>
   const parsed = SetItemHiddenInput.safeParse(input)
   if (!parsed.success) return INVALID
   const { venueId, menuId, itemId, hidden } = parsed.data
-  return perform({ venueId, menuId }, async ({ tenantId }) => {
-    const node = await getNodeBasics(tenantId, itemId)
+  return perform({ venueId, menuId }, async (context) => {
+    const node = await getNodeBasics(context.tenantId, itemId)
     if (node?.type !== 'item' || node.status === 'archived') return null
+    if (!(await ofVenue(context, itemId))) return NOT_FOUND
     return setItemHiddenOps({ itemId, hidden, status: node.status })
   })
 }

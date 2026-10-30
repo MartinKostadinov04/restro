@@ -63,6 +63,7 @@ export function VenueHeader({
   venueId,
   guestPath,
   canPublish,
+  offerPublish = true,
   title,
 }: {
   tenantId: string
@@ -71,6 +72,8 @@ export function VenueHeader({
   guestPath: string | null
   /** Owner or admin. */
   canPublish: boolean
+  /** False on a shared device (RR-83): no bar and no publish warnings, only the name and address. */
+  offerPublish?: boolean
   /** The venue's name and address, drawn by the page. */
   title: ReactNode
 }) {
@@ -79,19 +82,23 @@ export function VenueHeader({
       <div className="grid gap-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">{title}</div>
-          <Suspense fallback={<BarSkeleton />}>
-            <HeaderBar
-              tenantId={tenantId}
-              venueId={venueId}
-              guestPath={guestPath}
-              canPublish={canPublish}
-            />
-          </Suspense>
+          {offerPublish ? (
+            <Suspense fallback={<BarSkeleton />}>
+              <HeaderBar
+                tenantId={tenantId}
+                venueId={venueId}
+                guestPath={guestPath}
+                canPublish={canPublish}
+              />
+            </Suspense>
+          ) : null}
         </div>
         <PublishOutcome />
-        <Suspense fallback={null}>
-          <VenueWarnings tenantId={tenantId} venueId={venueId} canPublish={canPublish} />
-        </Suspense>
+        {offerPublish ? (
+          <Suspense fallback={null}>
+            <VenueWarnings tenantId={tenantId} venueId={venueId} canPublish={canPublish} />
+          </Suspense>
+        ) : null}
       </div>
     </PublisherProvider>
   )

@@ -291,7 +291,11 @@ export async function tableBillAction(
     if (!venue) return { ok: false }
     return {
       ok: true,
-      bill: await loadTableBill({ tenantId: organization.id, tableId: parsed.data.tableId }),
+      bill: await loadTableBill({
+        tenantId: organization.id,
+        venueId: venue.id,
+        tableId: parsed.data.tableId,
+      }),
     }
   } catch (error) {
     if (error instanceof Error && 'digest' in error) throw error
