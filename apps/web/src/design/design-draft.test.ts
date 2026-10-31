@@ -1,6 +1,12 @@
 // The rules of the Design page's draft (D129): what picking a Style fills and keeps, Undo's steps, and
 // what counts as changed.
-import { BASIC_DESIGN_VALUES, DEFAULT_DESIGN, designThemeOf, type VenueTheme } from '@restro/core'
+import {
+  BASIC_DESIGN_VALUES,
+  DEFAULT_DESIGN,
+  designThemeOf,
+  type PremadeStyleId,
+  type VenueTheme,
+} from '@restro/core'
 import { PREMADE_STYLES } from '@restro/shell'
 import { describe, expect, it } from 'vitest'
 
@@ -82,9 +88,18 @@ describe('picking a Style', () => {
     )
   })
 
-  it('leaves the draft as it is for a Style with no file yet', () => {
-    expect(valuesOfStyle('club', opened.values)).toBeNull()
-    expect(withStyle(opened, 'club')).toBe(opened)
+  it('fills every option from Club too, the last premade Style to get a file (#178)', () => {
+    const club = PREMADE_STYLES.club
+    if (club === undefined) throw new Error('the Club Style has a file')
+    expect(withStyle(opened, 'club').values.general.screen).toBe(club.values.general.screen)
+  })
+
+  it('leaves the draft as it is for a Style with no file', () => {
+    // Every Style the contract lists has a file since #178; an organisation's own Style is a record,
+    // and a Style id from nowhere (an older stored design, a hand-edited record) still changes nothing.
+    const unknown = 'neon' as PremadeStyleId
+    expect(valuesOfStyle(unknown, opened.values)).toBeNull()
+    expect(withStyle(opened, unknown)).toBe(opened)
   })
 })
 

@@ -1,76 +1,139 @@
 ---
 name: template-design
-description: Design a Restro guest menu template (a face under packages/faces) from a brief, inside the repo, with an independent review. For guest menu templates only (D105); the owner's admin screens (D107) use shadcn, never this skill.
+description: Make one of Restro's premade Styles for the guest menu (a file of values over the design contract, in packages/shell/src/design/styles), from a brief, with an independent review. Use for a new Style, or a change to a Style's values. For the guest menu only (D128); the owner's admin screens (D107) use shadcn, never this skill.
 ---
 
-# Template design
+# Style design
 
-An agent session designs one guest menu template (D69, D105) and hands it to an independent reviewer. The lead's `template.md` flow starts this skill with the brief. Facts about the contract live in the designer guide, `docs/guides/shell-handoff/visualization-shell.md` (the guide below); this file holds only the order of work.
+A Style is a preset of the design contract: one file with one value for every option, which the one
+renderer draws (D128). You pick the values, write the file, and hand it to an independent reviewer;
+Martin accepts the Style himself on a local preview before it is offered. The lead's `template.md`
+flow starts this skill with the brief.
+
+A Style is values only. It never carries CSS, a component, a renderer branch keyed on its id, or an
+option of its own.
 
 ## 1. Inputs
 
-Done when you hold all five, from the brief or from the lead:
+Done when you hold all four, from the brief or from the lead:
 
-- the template id (kebab-case; it never changes), and its name and one-line description in Bulgarian and English;
-- a three-line intent;
-- two or three visual references;
-- the stage branch to cut from, and the date: the design folder is `docs/design/faces/<id>/<date>/`;
-- any exempted entries of the functionality file, named explicitly.
+- the Style's **id** (a value of the contract's Style option; it never changes) and the name Martin
+  says it by;
+- its **temper** in two or three lines: what a venue picks it for;
+- its **starting values**, usually a column of the options spec's §4 table, or "Basic's" for a Style
+  that starts from the base;
+- the stage branch to cut from.
 
-Material is Martin's to bring. When the brief has none, stop and ask the lead for three one-screen directions from `prototype`, picked by Martin (D105).
+Material is Martin's to bring. When the brief has none, stop and ask the lead for three one-screen
+directions from `prototype`, picked by Martin (D105).
 
 ## 2. Read, in this order
 
-1. `docs/guides/menu-template-functionality.md`: what a guest must be able to do. Every entry with status `supported` or `drawn, platform parked` is required; the brief's exemptions are the only exceptions, and an unclear case is a question to the lead.
-2. The guide: §5.5, §7, §9, §10 and §12. §7.5 is the quality floor.
-3. `references/restro-overrides.md`. It and §7.5 win over the vendored skill on every conflict.
-4. `references/frontend-design/SKILL.md`, the visual direction.
-5. The motion standards the reviewer holds your CSS to: `../template-review/references/review-animations.restro-overrides.md` first, then `../template-review/references/review-animations/STANDARDS.md`; the overrides win.
-6. `references/interaction-polish.md`: the tokens and recipes you write motion and touch with.
-7. The reference face, `packages/faces/editorial-market`, as the pattern for wiring the contract (override row 13). Your template looks different from it.
+1. `docs/decisions/D128.md` and `D130.md`: what a Style is, and the option list in words with the
+   never-list it is tested against.
+2. `packages/core/src/design/contract.ts`: the binding list. Every page, option, allowed value and
+   each one's English and Bulgarian label.
+3. `docs/guides/shell-handoff/visualization-shell.md` §7.5 (the floors) and §5.4 (the colour pairs a
+   band and a sheet may use). §7.5 is the quality floor and wins on every conflict.
+4. `references/restro-overrides.md`, then `references/frontend-design/SKILL.md`: the visual
+   direction (D106). The overrides and §7.5 win over the vendored skill.
+5. `packages/shell/src/design/styles/`: `basic.ts` is the base every Style sits over; the others show
+   the file's shape and what a `departures` line reads like.
+6. **The renderer's stylesheet**, `packages/faces/editorial-market/src/css.ts` and
+   `services/services-css.ts`: the rule keyed on each `data-<page>-<option>="<value>"` is what that
+   value draws. This is how you see a value without a preview, and the only way to catch a
+   combination that fights itself.
 
-## 3. Design plan, before any code
+## 3. Pick the values
 
-Write it into `design-intent.md` in the design folder as you go. Done when each part is written and the check below passes:
+Write the temper in one paragraph first, in plain words Martin can say back. Everything below serves
+it.
 
-- **Type roles.** Sizes, weights, case and spacing for name, price, description, section heading, chips and sheets, all from the `font` token.
-- **Colour roles.** The eight roles, light and dark, and which surface and text use which. Name roles only; the plan holds for any three venue colours.
-- **Layout concept.** The page top to bottom, the item anatomy, how the horizontal sections and the layout switch look.
-- **The one bold move.** One place, named. Everything around it stays quiet.
-- **Motion roles.** A table, one row per selector that gets a `transition` or `animation`: the tap that starts it, its purpose (feedback, where it came from, the host's answer), its curve token and its duration token from `interaction-polish.md`. "No motion" is a valid table. The reviewer diffs the CSS against it both ways, so every animated selector has its row and every row its selector.
-- **Coverage check.** Walk the functionality file entry by entry and write where each one lives. Done when no required entry lacks a place.
+Then walk the contract page by page. For each option, read the renderer's rule for each allowed
+value, and take the value that serves the temper. Done when every option of the contract has a value
+and a reason, and no two values fight:
 
-Then apply the vendored skill's question to the plan: would any similar brief produce this? Revise the parts that say yes, and note what changed.
+- **Judge the combination, not the value.** The sweeps prove each value alone over Basic; a Style is
+  forty-five at once. The pairs that bite: a name size against the layout (in two columns the price
+  keeps its size while the name drops a step, so a large name can read smaller than its price); a
+  band against the screen (on a dark screen the ink band is the light one); a display font against
+  capitals at a large size on a 320 px phone; a tight density against a compact bill line and the
+  12 px floor.
+- **One bold move.** Name the one place the Style is loud. Everything around it stays quiet.
+- **Where the brief's value draws worse than another**, take the better one and write a `departures`
+  line: what the brief asked, what you took, and the rule or the floor that decided it.
+- **Where the look you want is not a value**, stop and ask the lead, in your report: the drawing, and
+  the option you would add for every Style. D130's list is closed without Martin, and a new option
+  comes with its own ticket and its own test that no existing venue's menu changes. A Style-only
+  branch is never the answer.
 
-## 4. Write the package
+## 4. Write the file
 
-Create `packages/faces/<id>` directly: guide §12.1 steps 4 and 5, following the patterns of the reference faces. Then wire it so the preview and the matrix can show it: §12.1 step 6, with `hidden: true` in `MANIFESTS` so no venue is offered it yet. Steps 7 to 9 and listing it belong to the reviewer. Contract changes (a new slot, token, feature, string or command) are a question to the lead, never an edit to the shell or core.
+`packages/shell/src/design/styles/<id>.ts`, named for the id, exporting one Style: the `id`, the
+`departures` list, and `values` with every option of every page. A header comment carries the temper,
+the brief it came from, and any renderer rule a reader of the values would trip over. Add it to
+`PREMADE_STYLES` in `styles/index.ts`.
 
-## 5. Run the face's tests
+That is the whole wiring. The Design page's tiles, the never-list sweep, the stored renderings and
+the Playwright design sweeps all read `PREMADE_STYLES`, so the Style joins them with no other edit.
 
-`pnpm vitest run --project packages/faces/<id> --reporter=dot`, then CLAUDE.md's done-gate (`pnpm lint && pnpm typecheck && pnpm deps:check`). Tests run within `docs/agents/lead.md`'s limits. Done when all are green.
+## 5. Run what you changed
 
-## 6. Record the design
+In this order, and done when all are green:
 
-Under `docs/design/faces/<id>/<date>/`, write `design-intent.md` (the step 3 plan as built, plus every new interface string with its Bulgarian and English text) and the screenshot matrix from `FACES_VISUAL=1 pnpm --filter @restro/web run test:e2e e2e/faces-visual.spec.ts --reporter=line` (the guide's §9.3 sets and §7.7). That spec's selectors target Editorial Market (`PREVIEW_FACE` in `apps/web/e2e/faces-preview.ts`); when it cannot show your template, stop and report to the lead that the spec needs a ticket. Done when the note and the screenshots are committed.
+1. `pnpm vitest run --project scripts scripts/design-contract.test.ts --reporter=dot`: the file
+   against the contract.
+2. `pnpm vitest run --project packages/shell --reporter=dot`.
+3. `pnpm vitest run --project packages/faces/editorial-market --reporter=dot`: the never-list on every
+   fixture at every Style, and the stored renderings. The new Style's renderings are written on the
+   first run; read them, then commit them. A run that reports an existing row moved means the Style
+   changed a look that was already there: `-u` only once you can say in one line which row moved and
+   why, and put that line in the report.
+4. `pnpm lint && pnpm typecheck && pnpm deps:check`.
+
+Every other package's tests and the Playwright sweeps run in GitHub's CI on the pull request
+(CLAUDE.md, Testing, Martin 10-28): the design sweeps measure the Style's targets, contrast, text
+sizes and sideways scroll at 320, 390, 820 and 1280 px, light and dark. A red check there is yours to
+fix on the branch.
+
+## 6. Record the Style
+
+Done when all three are written:
+
+- **The brief**, in `docs/deliverables/<date>-<slug>.md` (D114): the temper paragraph, the value of
+  every option with its reason, and every departure. A row in `docs/deliverables.md`.
+- **Martin's checks**, in the stage's acceptance guide under `docs/deliverables/`: the Style's name,
+  its temper in one paragraph, and what to look at on it, each check one thing to see.
+- **`GLOSSARY.md`**, when the Style's name is new to it.
 
 ## 7. Review
 
-Spawn the `template-review` subagent with the Agent tool: `subagent_type: general-purpose`, a `model` different from your own (`sonnet` when you run Opus, `opus` when you run Sonnet). Its prompt starts "Invoke the `template-review` skill and follow it", followed by the handoff packet:
+Spawn the `template-review` subagent with the Agent tool: `subagent_type: general-purpose`, a `model`
+different from your own (`sonnet` when you run Opus, `opus` when you run Sonnet). Its prompt starts
+"Invoke the `template-review` skill and follow it", then the handoff packet:
 
-- the brief (the lead's text, verbatim);
-- the path of `docs/guides/menu-template-functionality.md` and the exemptions;
-- the package path `packages/faces/<id>`;
-- the path of the design-intent note (it holds the Motion roles table) and the screenshot folder.
+- the brief (the lead's text, verbatim) and the path of the brief deliverable;
+- the path of the Style file, and the branch;
+- what you ran in step 5 and what it said;
+- every stored-rendering row that moved, with its one line.
 
 ## 8. Fix, then review again
 
-The reviewer returns one list, each item tagged `missing`, `inconsistent`, `wrong` or `extra` and marked `code` or `device`, and a verdict. Fix every `code` item in the template and keep the `device` lines for step 9, then spawn the reviewer again with the items that remain. After two rounds without a clean verdict, stop: the brief was wrong. Report the list to the lead.
+The reviewer returns one list, each item tagged `missing`, `inconsistent`, `wrong` or `extra` and
+marked `code` or `device`, and a verdict. Fix every `code` item in the Style file and keep the
+`device` lines for step 9, then spawn the reviewer again with what remains. After two rounds without
+a clean verdict, stop: the brief was wrong. Report the list to the lead.
 
 ## 9. Ship
 
-On a clean verdict the reviewer has wired the template and run the gate. Run `ship.md` of the `restro-flow` skill: a pull request into the stage branch, with Martin's acceptance on a local preview before the lead merges (the lead's `template.md` flow). The pull request lists the reviewer's `device` lines under "For Martin's phone": his acceptance settles them.
+Run `ship.md` of the `restro-flow` skill: a pull request into the stage branch, with Martin's
+acceptance on a local preview of the Design page before the lead merges (the lead's `template.md`
+flow). The pull request lists the reviewer's `device` lines under "For Martin's phone"; his
+acceptance settles them.
 
 ## 10. Report
 
-CLAUDE.md's report format, ending with the section **Lessons for the skills**: the review findings that point at `template-design`, `template-review`, the functionality file or the flow rather than at the template, each with a proposed change. Write "none" when there are none.
+CLAUDE.md's report format. Name the Style with its one-paragraph temper, so the lead can take it to
+Martin without opening the file, and say what each Style costs CI. End with the section **Lessons for
+the skills**: the review findings that point at `template-design`, `template-review`, the contract or
+the flow rather than at the Style, each with a proposed change. Write "none" when there are none.
