@@ -1026,6 +1026,8 @@
 .rm .ro-confirm { border-radius: calc(var(--rm-radius) * 1.5) }
 .rm .ro-confirm { text-align: left }
 .rm .ro-confirm p { margin: 0 }
+.rm .ro-confirm .ro-confirm-note { opacity: 1 }
+.rm .ro-confirm .ro-confirm-note { color: color-mix(in srgb, currentColor 82%, transparent) }
 .rm .ro-lines label { display: flex }
 .rm .ro-lines label { gap: 12px }
 .rm .ro-lines label { align-items: center }
@@ -1167,6 +1169,7 @@
 .rm .ro-round li[data-status="cancelled"] .ro-tabname { text-decoration: line-through }
 .rm .ro-tabname { display: grid }
 .rm .ro-tabname { overflow-wrap: anywhere }
+.rm .ro-tabname small { font-size: 12px }
 .rm .ro-tabname small { opacity: 0.65 }
 .rm .ro-qty { font-weight: 850 }
 .rm .ro-status { padding: 4px 8px }
@@ -1271,6 +1274,14 @@
 .rm .ro-allergy a { display: inline-flex }
 .rm .ro-allergy a { align-items: center }
 .rm .ro-allergy a { min-height: 44px }
+.rm [data-slot="location.consent"] a { display: inline-flex }
+.rm [data-slot="location.consent"] a { align-items: center }
+.rm [data-slot="location.consent"] a { min-height: 44px }
+.rm [data-slot="location.consent"] a { color: inherit }
+.rm [data-slot="location.consent"] a { font-weight: 700 }
+.rm [data-slot="location.consent"] a { text-decoration: underline }
+.rm [data-slot="location.consent"] a { text-decoration-thickness: 2px }
+.rm [data-slot="location.consent"] a { text-underline-offset: 3px }
 .rm .ro-allergy summary { box-sizing: border-box }
 .rm .ro-allergy summary { min-height: 44px }
 .rm .ro-allergy summary { padding-block: 12px }

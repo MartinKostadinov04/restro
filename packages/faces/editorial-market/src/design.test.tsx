@@ -36,7 +36,7 @@ import { EDITORIAL_MARKET_MANIFEST } from './manifest'
 import { SERVICES_CSS } from './services/services-css'
 import { richFixture } from './test-views'
 
-/** What the renderer draws so far (tickets 3 and 4): General and the browsing pages. */
+/** What the renderer draws (tickets 3 to 5): General, the browsing pages and the five screens. */
 const DRAWN = {
   general: [
     'screen',
@@ -67,6 +67,11 @@ const DRAWN = {
   labels: ['labels'],
   dish: ['photo'],
   sheets: ['sheets'],
+  call: ['kinds'],
+  bill: ['rows', 'lines'],
+  order: ['add_control', 'order_bar', 'line_photos'],
+  pay: ['tip'],
+  receipt: ['venue_block'],
 } as const
 
 /** The tokens the options' values set on the root. */
@@ -356,6 +361,14 @@ const property = (line: string) => /\{ ([\w-]+):/.exec(line)?.[1] ?? ''
 const DEPARTURES: readonly ((line: string, added: boolean) => boolean)[] = [
   // The confirmation's note states its size in pixels: 0.9 of the page's 16 px (no departure in look).
   (line) => /\.ro-confirm-note/.test(line) && property(line) === 'font-size',
+  // The Privacy link of the location consent is drawn as a link in the sheet's writing (#173, D121).
+  (line, added) => added && line.startsWith('.rm [data-slot="location.consent"] a {'),
+  // The confirmation's note reads at 4.5:1 on any sheet: its own rule adds an opacity and a colour,
+  // and nothing of the earlier rules goes (#173).
+  (line, added) =>
+    added &&
+    line.startsWith('.rm .ro-confirm .ro-confirm-note {') &&
+    /^(?:opacity|color)$/.test(property(line)),
   // The headings state the font they used to inherit: `same` draws the same (no departure in look).
   (line, added) => added && line.endsWith('{ font-family: var(--rm-font) }'),
   // The 9–11 px marks, chips, allergen numbers and table label rise to the 12 px floor.

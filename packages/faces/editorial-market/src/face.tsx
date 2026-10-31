@@ -203,6 +203,7 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
       <style dangerouslySetInnerHTML={{ __html: css }} />
       <ServicesProvider
         view={view}
+        assetBase={assetBase}
         services={services}
         tableLabel={tableLabel}
         openDish={dish.open}

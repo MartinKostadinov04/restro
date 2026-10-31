@@ -141,6 +141,8 @@ export interface OrderDraw {
 /** What the screens get from the provider. */
 export interface Services {
   readonly view: ViewModel
+  /** Where the published files live, for the few pictures a sheet draws (a line's photo, the logo). */
+  readonly assetBase: string
   readonly state: ServiceState
   /** The confirmed table's label ("12"), or null. */
   readonly tableLabel: string | null
@@ -184,6 +186,11 @@ export interface Services {
   readonly sendOrder: (confirmDuplicateOf?: string) => Promise<void>
   /** The last Send's answer was lost: the host's word, or this face's until the host's state says it (D120). */
   readonly sendLost: { readonly ref: string | null } | null
+  /**
+   * The lost Send has landed: the host lists a new order as Added with the lines this phone sent, so
+   * the lost-Send line is no longer true and goes (RR-O43). The hold on a second Send runs on.
+   */
+  readonly sendLanded: boolean
   readonly sentOrders: readonly SentOrderView[]
   /** The sheet that is drawn (it stays drawn while it slides out), or null. */
   readonly sheet: Sheet | null
@@ -206,6 +213,20 @@ export function useServicesRequired(): Services {
   return services
 }
 
+/** The lines of an order as one string, the same for the same items, choices and quantities in any order. */
+function linesSignature(
+  lines: readonly {
+    readonly itemId: string
+    readonly optionIds: readonly string[]
+    readonly qty: number
+  }[],
+): string {
+  return lines
+    .map((line) => `${line.itemId}|${[...line.optionIds].sort().join(',')}|${line.qty}`)
+    .sort()
+    .join(';')
+}
+
 /** Whether the bag's place in the bar has something to open: the order, a sent order, or why it is hidden. */
 export function orderBusy(
   o: Pick<Services, 'order' | 'sentOrders' | 'state' | 'sendLost'>,
@@ -226,12 +247,14 @@ export function orderBusy(
 
 export function ServicesProvider({
   view,
+  assetBase,
   services,
   tableLabel,
   openDish,
   children,
 }: {
   readonly view: ViewModel
+  readonly assetBase: string
   /** The confirmed table's label, or null. */
   readonly tableLabel: string | null
   /** The host's binding, or undefined: the face then draws no service at all. */
@@ -242,7 +265,13 @@ export function ServicesProvider({
 }) {
   if (!servicesShown(view, services) || services === undefined) return <>{children}</>
   return (
-    <ActiveServices view={view} services={services} tableLabel={tableLabel} openDish={openDish}>
+    <ActiveServices
+      view={view}
+      assetBase={assetBase}
+      services={services}
+      tableLabel={tableLabel}
+      openDish={openDish}
+    >
       {children}
     </ActiveServices>
   )
@@ -255,12 +284,14 @@ const NO_REMOVED: NonNullable<TableOrderView['removed']> = []
 
 function ActiveServices({
   view,
+  assetBase,
   services,
   tableLabel,
   openDish,
   children,
 }: {
   readonly view: ViewModel
+  readonly assetBase: string
   readonly tableLabel: string | null
   readonly services: ServiceBinding
   readonly openDish: (itemId: string, opener: HTMLElement) => void
@@ -371,6 +402,22 @@ function ActiveServices({
     return () => clearTimeout(timer)
   }, [answerLost])
   const sendLost = state.sendLost ?? (answerLost ? LOST_WITHOUT_REF : null)
+  // What this phone's last Send carried and which sent orders were listed when it went. A new order
+  // that the host lists as Added with the same lines is that Send landing; one that was already
+  // listed, one of other lines or one still sending is not (sent orders carry no action id).
+  const [lastSend, setLastSend] = useState<{
+    readonly before: ReadonlySet<string>
+    readonly signature: string
+  } | null>(null)
+  const sendLanded =
+    sendLost !== null &&
+    lastSend !== null &&
+    (state.sentOrders ?? NO_SENT).some(
+      (sent) =>
+        sent.state === 'added' &&
+        !lastSend.before.has(sent.id) &&
+        linesSignature(sent.lines) === lastSend.signature,
+    )
 
   const [sending, setSending] = useState(false)
   const sendingNow = useRef(false)
@@ -459,9 +506,23 @@ function ActiveServices({
       if (taking.length === 0) return
       // Send is blocked while the phone is offline, never queued (D121); the sheet greys the button.
       if (latest.current.services.state.offline === true) return
+      // Nor while ordering is paused (D120): the sheet greys Send, and the bag stays as it is.
+      if (latest.current.services.state.ordering?.state === 'paused') return
       sendingNow.current = true
       setAsked(null)
       setSending(true)
+      setLastSend({
+        before: new Set(
+          (latest.current.services.state.sentOrders ?? NO_SENT).map((sent) => sent.id),
+        ),
+        signature: linesSignature(
+          taking.map((entry) => ({
+            itemId: entry.line.itemId,
+            optionIds: entry.line.optionIds,
+            qty: entry.line.qty,
+          })),
+        ),
+      })
       try {
         const result = await act({
           kind: 'order.send',
@@ -511,6 +572,7 @@ function ActiveServices({
   const value = useMemo<Services>(
     () => ({
       view,
+      assetBase,
       state,
       tableLabel,
       binding: services,
@@ -536,6 +598,7 @@ function ActiveServices({
       cancelAsk,
       sendOrder,
       sendLost,
+      sendLanded,
       sentOrders: state.sentOrders ?? NO_SENT,
       sheet,
       leaving: route.leaving,
@@ -544,6 +607,7 @@ function ActiveServices({
     }),
     [
       view,
+      assetBase,
       state,
       tableLabel,
       services,
@@ -567,6 +631,7 @@ function ActiveServices({
       cancelAsk,
       sendOrder,
       sendLost,
+      sendLanded,
       sheet,
       route.leaving,
       openSheet,

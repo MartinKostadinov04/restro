@@ -21,7 +21,7 @@ import {
   useState,
 } from 'react'
 
-import { MenuNotice, MenuSkeleton } from './notices'
+import { MenuNotice, MenuSkeleton, noticeLook } from './notices'
 import type { FaceEntry } from './registry'
 
 /** The words the loading and failure states need, from the shell's guest strings. */
@@ -78,6 +78,8 @@ export function ChosenFace({
   const [attempt, setAttempt] = useState(0)
   const Face = lazyFace(entry)
   const lang = localeToBcp47(host.view.locale)
+  // The menu is known, so the skeleton and the notice are drawn in the venue's General look (D130).
+  const look = noticeLook(host.view.theme, host.view.design, host.fontStacks)
   return (
     <LoadBoundary
       key={`${entry.id}:${attempt}`}
@@ -86,6 +88,7 @@ export function ChosenFace({
           title={strings.loadFailedTitle}
           text={strings.loadFailedText}
           lang={lang}
+          look={look}
           actionLabel={strings.retry}
           onAction={() => {
             lazyFaces.delete(entry.id)
@@ -94,7 +97,7 @@ export function ChosenFace({
         />
       }
     >
-      <Suspense fallback={<MenuSkeleton label={strings.loading} lang={lang} />}>
+      <Suspense fallback={<MenuSkeleton label={strings.loading} lang={lang} look={look} />}>
         <Face {...host} />
       </Suspense>
     </LoadBoundary>

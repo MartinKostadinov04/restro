@@ -15,12 +15,13 @@
 // the other N". There is no cancel after Send (D116). An error, a timeout or a lost answer keeps
 // the order and says D120's line (call a waiter, with the reference where there is one): the order
 // may already be in the POS, so there is no "Try again" and no re-send for a few minutes. While the
-// phone is offline Send is greyed with the weak-connection line (D121).
+// phone is offline Send is greyed with the weak-connection line (D121). While ordering is paused
+// (D120) Send is drawn and greyed under the pause's own line; the lines stay editable.
 
 import { orderingClosedText, sentWords } from '@restro/shell'
 import { useState } from 'react'
 
-import { Text } from '../parts'
+import { Photo, Text } from '../parts'
 import { StopLocationCheck } from './location-sheet'
 import { Stepper } from './parts'
 import { type Services, useServicesRequired } from './provider'
@@ -165,6 +166,9 @@ export function BagSheet() {
   const phonesMayOrder =
     night === undefined || night.state === 'open' || night.state === 'last_orders'
   const hasLines = order.lines.length > 0
+  // D120: while ordering is paused Send is greyed, not taken away, and the bag stays editable.
+  const paused = ordering === 'paused'
+  const linePhotos = o.view.design.order?.line_photos === 'shown'
 
   return (
     <div
@@ -173,7 +177,7 @@ export function BagSheet() {
       data-slot="order.sheet"
       data-design-part="order"
     >
-      {sendLost !== null ? (
+      {sendLost !== null && !o.sendLanded ? (
         <div className="ro-notice is-bad" role="alert" data-slot="send.lost" data-send-lost="">
           <span>{words.sendLost}</span>
           {sendLost.ref === null ? null : <small>{words.reference(sendLost.ref)}</small>}
@@ -202,6 +206,7 @@ export function BagSheet() {
             return (
               <li
                 key={line.id}
+                className={linePhotos && entry.item?.image != null ? 'has-line-photo' : undefined}
                 data-order-line={line.id}
                 data-item-id={line.itemId}
                 data-qty={line.qty}
@@ -209,6 +214,15 @@ export function BagSheet() {
                 data-sold-out={soldOut ? '' : undefined}
                 data-available={entry.available && !soldOut ? 'true' : 'false'}
               >
+                {linePhotos && entry.item?.image != null ? (
+                  <Photo
+                    image={entry.item.image}
+                    assetBase={o.assetBase}
+                    page={locale}
+                    sizes="56px"
+                    className="ro-line-photo"
+                  />
+                ) : null}
                 <div className="ro-line-main">
                   <strong>
                     {entry.item === null ? name : <Text value={entry.item.name} page={locale} />}
@@ -321,13 +335,16 @@ export function BagSheet() {
             {words.duplicateCancel}
           </button>
         </div>
-      ) : order.sendCount > 0 && ordering === 'on' && phonesMayOrder && sendLost === null ? (
+      ) : order.sendCount > 0 &&
+        (ordering === 'on' || paused) &&
+        phonesMayOrder &&
+        sendLost === null ? (
         <button
           type="button"
           className="ro-primary is-wide"
           data-design-part="button"
           data-send=""
-          disabled={o.sending || offline}
+          disabled={o.sending || offline || paused}
           onClick={() => void o.sendOrder()}
         >
           {o.sending ? (

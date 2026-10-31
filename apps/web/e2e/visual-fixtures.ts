@@ -75,6 +75,20 @@ export const DESIGN_VARIANTS = designCases({
 /** One design of the audit. */
 export type DesignVariant = (typeof DESIGN_VARIANTS)[number]
 
+/**
+ * The designs of the five guest-feature screens' audit (#173, D130): each Style and each value of
+ * each option of Call a waiter, Bill, Order, Pay and Receipt over Basic. Those screens need services,
+ * so they are not published menus: faces-design-screens.spec.ts draws each in the Design tab's
+ * preview of the demo venue, with demo data. The same list as the renderer's sweep of the sheets.
+ */
+export const SCREEN_VARIANTS = designCases({
+  call: ['kinds'],
+  bill: ['rows', 'lines'],
+  order: ['add_control', 'order_bar', 'line_photos'],
+  pay: ['tip'],
+  receipt: ['venue_block'],
+})
+
 /** The label of the table every fixture menu's table code opens. */
 export const VISUAL_TABLE_LABEL = '12'
 

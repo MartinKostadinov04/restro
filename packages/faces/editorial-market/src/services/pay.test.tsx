@@ -128,6 +128,34 @@ describe('choosing', () => {
     expect(payButton(paused.sheet, /^Pay /).hasAttribute('disabled')).toBe(true)
   })
 
+  it('greys Pay while ordering is paused, whatever paying says, with the pause’s own line (D120)', async () => {
+    // The server pauses paying with ordering (a venue or table pause) but the face does not lean
+    // on it: `ordering.state` alone greys Pay, so a host that says only that is held to it too.
+    const host = fakeHost({
+      ...base(),
+      ordering: { state: 'paused', tips: true },
+    })
+    const { sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'The whole bill' }))
+    expect(payButton(sheet, /^Pay /).hasAttribute('disabled')).toBe(true)
+    expect(within(sheet).getByText(stringsFor('en_US').services.orderingPaused)).toBeTruthy()
+    fireEvent.click(payButton(sheet, /^Pay /))
+    await act(async () => {})
+    expect(host.of('pay.start')).toHaveLength(0)
+    // The bill and the choices stay: the table can pay once ordering is back.
+    expect(within(sheet).getAllByRole('checkbox').length).toBeGreaterThan(0)
+  })
+
+  it('lets Pay go again when ordering is back (D120)', () => {
+    const host = fakeHost({ ...base(), ordering: { state: 'paused', tips: true } })
+    const { page, sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'The whole bill' }))
+    expect(payButton(sheet, /^Pay /).hasAttribute('disabled')).toBe(true)
+    page.update({ ordering: { state: 'on', tips: true } })
+    expect(payButton(sheet, /^Pay /).hasAttribute('disabled')).toBe(false)
+    expect(sheet.querySelector('[data-slot="pay.blocked"]')).toBeNull()
+  })
+
   it('names who processes the payment, and the law lines', () => {
     const { sheet } = openPay(
       fakeHost({

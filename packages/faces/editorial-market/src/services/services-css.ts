@@ -604,6 +604,13 @@ export const SERVICES_CSS = `
 .rm .ro-confirm p {
   margin: 0;
 }
+/* The note under the confirmation reads on any sheet: the sheet's own writing, a little quieter. The
+   muted colour is the page's and the panel's pair, and on top of the status panel's 75 % it came to
+   about 2.9:1 (measured in the design specs of #173). */
+.rm .ro-confirm .ro-confirm-note {
+  opacity: 1;
+  color: color-mix(in srgb, currentColor 82%, transparent);
+}
 .rm .ro-lines label {
   display: flex;
   gap: 12px;
@@ -816,6 +823,8 @@ export const SERVICES_CSS = `
   overflow-wrap: anywhere;
 }
 .rm .ro-tabname small {
+  /* The options of a line stay at the 12 px floor: the browser's "smaller" would be 11.7 px here. */
+  font-size: calc(12px * var(--rm-type));
   opacity: 0.65;
 }
 .rm .ro-qty {
@@ -1004,6 +1013,19 @@ export const SERVICES_CSS = `
   align-items: center;
   min-height: 44px;
 }
+/* The Privacy link at the end of the location consent (D121) is a link to look at: the sheet's own
+   writing, underlined, and 44 px to tap. Left to the browser it was a blue that does not read on an
+   ink sheet. */
+.rm [data-slot="location.consent"] a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
 .rm .ro-allergy summary {
   box-sizing: border-box;
   min-height: 44px;
@@ -1116,6 +1138,197 @@ export const SERVICES_CSS = `
   text-align: center;
   font-weight: 800;
   animation: ro-fade 0.2s;
+}
+
+/* The five guest-feature screens' options (D130). The first value of each is what the sheets above
+   draw (Editorial's own values are those, Basic's differ only where its first value is a new look),
+   so every rule here is keyed on a value that draws something else. What D72 and D122 fix (the
+   words, the states, the amounts, the lines, the waiter reference, the consent text) is in none of
+   them. The five inherit General (colours, fonts, corners, depth, buttons, text size) from the
+   variables above, the sheet colour from css.ts, and the labels look for their chips and inputs. */
+
+/* Call a waiter, Kinds: tiles. The kinds as a grid of icon-over-word tiles; the list is the rule
+   above (the icon beside the word, two to a row). */
+.rm[data-call-kinds="tiles"] .ro-choicegrid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 96px), 1fr));
+}
+.rm[data-call-kinds="tiles"] .ro-choicegrid button {
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  min-height: 84px;
+  padding: 10px 6px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* Bill, Rows: zebra. The Order's lines, the pay summary, the sent orders and the confirmation
+   follow, for they are the same lines. */
+.rm[data-bill-rows="zebra"] .ro-lines li {
+  padding-inline: 12px;
+  border-bottom: 0;
+  border-radius: calc(var(--rm-radius) * 0.5);
+}
+.rm[data-bill-rows="zebra"] .ro-lines li:nth-child(odd) {
+  background: color-mix(in srgb, currentColor 5%, transparent);
+}
+.rm[data-bill-rows="zebra"] .ro-round li {
+  padding-inline: 8px;
+  border-radius: calc(var(--rm-radius) * 0.5);
+}
+.rm[data-bill-rows="zebra"] .ro-round li:nth-child(even) {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+/* Bill, Lines: compact. One row to a line: the options and the note run on after the name in
+   smaller type (never under 12 px), and the status word and the amount keep their places. */
+.rm[data-bill-lines="compact"] .ro-lines li {
+  padding-block: 10px;
+}
+.rm[data-bill-lines="compact"] .ro-line-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+}
+.rm[data-bill-lines="compact"] .ro-line-main small,
+.rm[data-bill-lines="compact"] .ro-tabname small {
+  font-size: calc(12px * var(--rm-type));
+}
+.rm[data-bill-lines="compact"] .ro-line-main .ro-flag {
+  font-size: calc(12px * var(--rm-type));
+}
+.rm[data-bill-lines="compact"] .ro-tabname {
+  display: block;
+}
+.rm[data-bill-lines="compact"] .ro-tabname small {
+  display: inline;
+  margin-left: 6px;
+}
+.rm[data-bill-lines="compact"] .ro-round li {
+  padding-block: 6px;
+}
+
+/* Order, Add control: add. The same 44 px button, drawn as a pill with the shell's word. The fill is
+   the button's own (the "+" draws its round fill on a ::before, which a reader of the page's colours
+   cannot see behind a word). */
+.rm[data-order-add-control="add"] .ro-plus.is-word {
+  width: auto;
+  min-width: 44px;
+  margin-inline: 0;
+  padding: 0 14px;
+  border-radius: var(--rm-pill);
+  background: var(--rm-button);
+  box-shadow: var(--rm-depth);
+  font-size: calc(13px * var(--rm-type));
+  font-weight: 800;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+}
+.rm[data-order-add-control="add"] .ro-plus.is-word::before {
+  display: none;
+}
+.rm[data-order-add-control="add"] .ro-plus.is-word .ro-plus-count {
+  top: -4px;
+  right: -4px;
+}
+@media (hover: hover) {
+  .rm[data-order-add-control="add"] .ro-plus.is-word:hover {
+    background: var(--rm-accent);
+  }
+}
+
+/* Order, Order bar: docked. The bar runs the width of the screen and sits on its bottom edge (the
+   safe area inside it); the waiter and the bag share it, the waiter first. */
+.rm[data-order-order-bar="docked"] .ro-bagbar {
+  gap: 0;
+  padding: 0;
+  justify-content: stretch;
+}
+.rm[data-order-order-bar="docked"] .ro-bagbar button {
+  width: 100%;
+  min-height: calc(max(44px, var(--ro-bar)) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  border-radius: 0;
+  box-shadow: var(--rm-depth-up);
+}
+.rm[data-order-order-bar="docked"] .ro-bagbar .ro-bagbtn {
+  padding-left: max(6px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+.rm[data-order-order-bar="docked"] .ro-bagslot {
+  max-width: none;
+}
+.rm[data-order-order-bar="docked"] .ro-bagbar[data-bag="false"] .ro-waiter {
+  flex: 1 1 auto;
+  width: 100%;
+}
+.rm[data-order-order-bar="docked"] .ro-bagbar[data-bag="true"] .ro-waiter {
+  border-right: 1px solid color-mix(in srgb, var(--rm-on-button) 30%, transparent);
+}
+
+/* Order, Line photos: shown. A small photo ahead of each line of the Order. */
+.rm[data-order-line-photos="shown"] .ro-lines li.has-line-photo {
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: start;
+}
+.rm[data-order-line-photos="shown"] .ro-line-photo {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: calc(var(--rm-radius) * 0.6);
+}
+
+/* Pay, Tip: rows. Each percent on a row of its own with what it comes to. */
+.rm[data-pay-tip="rows"] .ro-tips {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.rm[data-pay-tip="rows"] .ro-tips button {
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 52px;
+  margin-top: 0;
+  padding: 0 14px;
+  text-align: left;
+}
+.rm[data-pay-tip="rows"] .ro-tip-amount {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Receipt, Venue block: logo. The venue's logo, with the name small under it. */
+.rm[data-receipt-venue-block="logo"] .ro-confirm-logo {
+  justify-self: start;
+  width: auto;
+  max-width: 144px;
+  max-height: 64px;
+  object-fit: contain;
+}
+.rm[data-receipt-venue-block="logo"] .ro-confirm p.is-under-logo {
+  margin-top: -6px;
+  font-size: calc(12px * var(--rm-type));
+  letter-spacing: 0.04em;
+}
+
+/* The labels look for the chips and the inputs of the five (the options spec: outline is the boxed
+   look above, soft fills, text underlines). The edge of a control keeps its 3:1 in all three. */
+.rm[data-labels-labels="soft"] .ro-choicegrid button:not([aria-checked="true"]),
+.rm[data-labels-labels="soft"] .ro-tips button:not([aria-pressed="true"]),
+.rm[data-labels-labels="soft"] .ro-scope button:not([aria-checked="true"]),
+.rm[data-labels-labels="soft"] .ro-note textarea,
+.rm[data-labels-labels="soft"] .ro-input input,
+.rm[data-labels-labels="soft"] .ro-promo input {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.rm[data-labels-labels="text"] .ro-choicegrid button:not([aria-checked="true"]),
+.rm[data-labels-labels="text"] .ro-tips button:not([aria-pressed="true"]),
+.rm[data-labels-labels="text"] .ro-scope button:not([aria-checked="true"]),
+.rm[data-labels-labels="text"] .ro-note textarea,
+.rm[data-labels-labels="text"] .ro-input input,
+.rm[data-labels-labels="text"] .ro-promo input {
+  border-width: 0 0 2px;
+  border-radius: 0;
 }
 
 /* Wider screens match the dish page's wider padding. */
