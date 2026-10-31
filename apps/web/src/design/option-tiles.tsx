@@ -17,7 +17,7 @@ import type {
   VenueTheme,
 } from '@restro/core'
 import { useTranslations } from 'next-intl'
-import { useDeferredValue, useId, useMemo } from 'react'
+import { useDeferredValue, useEffect, useId, useMemo, useState } from 'react'
 
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -34,6 +34,33 @@ const TILE_WIDTH = 320
 
 /** The stages whose screens are the guest-feature ones: their tiles run the services preview. */
 const SERVICE_STAGES = new Set(['order', 'bag', 'bill', 'call', 'pay', 'receipt'])
+
+/** How far from the screen a tile's picture starts to load: a page has dozens, and each is a whole renderer. */
+const NEAR_MARGIN = '240px'
+
+/**
+ * Whether a tile is on the screen or close to it; once it has been, it stays so (its picture is kept,
+ * not drawn again). Every tile counts as near where the browser cannot tell.
+ */
+function useNear(): [(element: HTMLDivElement | null) => void, boolean] {
+  const [element, box] = useState<HTMLDivElement | null>(null)
+  const [near, setNear] = useState(typeof IntersectionObserver === 'undefined')
+  useEffect(() => {
+    if (near || element === null) return undefined
+    const watcher = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setNear(true)
+          watcher.disconnect()
+        }
+      },
+      { rootMargin: NEAR_MARGIN },
+    )
+    watcher.observe(element)
+    return () => watcher.disconnect()
+  }, [element, near])
+  return [box, near]
+}
 
 function Tile({
   venueId,
@@ -60,6 +87,7 @@ function Tile({
   onPick: () => void
 }) {
   const drawn = !disabled && (content !== null || loading)
+  const [box, near] = useNear()
   return (
     <label
       data-testid="design-tile"
@@ -67,8 +95,8 @@ function Tile({
       className="grid min-w-0 cursor-pointer content-start gap-2 rounded-md border p-2 has-checked:border-primary has-checked:bg-accent/40 has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50 has-disabled:cursor-not-allowed has-disabled:opacity-70 phone:min-h-11"
     >
       {drawn ? (
-        <div className="h-28 overflow-hidden rounded-sm bg-muted/40">
-          {content === null ? (
+        <div ref={box} className="h-28 overflow-hidden rounded-sm bg-muted/40">
+          {content === null || !near ? (
             <Skeleton className="size-full rounded-none" />
           ) : (
             <ScaledFrame

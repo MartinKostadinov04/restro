@@ -639,8 +639,6 @@ test('at phone width the preview sits under the panel, scrolls inside, and Done 
 })
 
 test('in Bulgarian, the long names fit a tile at 390 px', async ({ browser }) => {
-  // The Advanced page below draws a tile row of frames; a busy CI machine needs the room.
-  test.setTimeout(240_000)
   const bulgarian = await browser.newContext({
     storageState: ownerState,
     viewport: { width: 390, height: 844 },
@@ -670,8 +668,27 @@ test('in Bulgarian, the long names fit a tile at 390 px', async ({ browser }) =>
       expect(overflow).toBe(false)
     }
     await target.screenshot({ path: shotPath('phone-bulgarian') })
+  } finally {
+    await bulgarian.close()
+  }
+})
 
-    // Advanced in Bulgarian: the page list scrolls sideways, the longest labels stay inside their tile.
+test('Advanced at 390 px in Bulgarian: the longest labels fit their tile, targets are 44 px', async ({
+  browser,
+}) => {
+  test.setTimeout(90_000)
+  const bulgarian = await browser.newContext({
+    storageState: ownerState,
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  })
+  try {
+    await bulgarian.addCookies([
+      { name: 'NEXT_LOCALE', value: 'bg', url: new URL(page.url()).origin },
+    ])
+    const target = await bulgarian.newPage()
+    await openDesign(target)
     await target
       .getByRole('group', { name: 'Ниво на детайлност' })
       .getByRole('button', { name: 'Разширено' })
@@ -680,12 +697,15 @@ test('in Bulgarian, the long names fit a tile at 390 px', async ({ browser }) =>
     const portion = target.locator(
       '[data-testid="design-option"][data-page="items"][data-option="portion_place"]',
     )
+    await portion.scrollIntoViewIfNeeded()
     await expect(portion.getByText('Място на порцията')).toBeVisible()
     for (const item of await portion.getByTestId('design-tile').all()) {
-      const overflow = await item.evaluate((element) => element.scrollWidth > element.clientWidth)
-      expect(overflow).toBe(false)
-      const box = await item.boundingBox()
-      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44)
+      const sizes = await item.evaluate((element) => ({
+        wide: element.scrollWidth > element.clientWidth,
+        height: element.getBoundingClientRect().height,
+      }))
+      expect(sizes.wide).toBe(false)
+      expect(sizes.height).toBeGreaterThanOrEqual(44)
     }
     const sideways = await target.evaluate(
       () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
