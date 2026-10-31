@@ -14,9 +14,9 @@ You edit nothing in the Style file: findings go back to the designer. Every find
 checked in the file, the contract or the renderer's stylesheet, with its file and line, or a check
 only a phone can settle, marked `device` (step 6).
 
-The binding list is `packages/core/src/design/contract.ts`, the floors are §7.5 of
-`docs/guides/shell-handoff/visualization-shell.md` (the guide below), and what no value may ever do is
-D130's never-list.
+The binding list is `packages/core/src/design/contract.ts`, the floors are §7.5 of the designer guide
+(`docs/guides/shell-handoff/visualization-shell.md`), and what no value may ever do is D130's
+never-list.
 
 ## 1. The file against the contract
 
@@ -83,8 +83,10 @@ a never-list breach the Style exposed (a fix that tightens, and welcome) or scop
 have (a finding). For the first, read the pinned audit, `references/web-interface-guidelines.pinned.md`
 with `references/web-interface-guidelines.restro-overrides.md` (the overrides win) and
 `references/copy-rules.md`; for a change to motion CSS, `references/review-animations.restro-overrides.md`
-then `references/review-animations/STANDARDS.md`. Done when every changed line outside the Style file
-has a verdict.
+then `references/review-animations/STANDARDS.md`. Then invoke `mattpocock-skills:code-review`
+(Standards and Spec) on the changes since the merge-base with the stage branch, with the ticket as the
+spec; run both axes inline when the Agent tool is not available to you. Done when every changed line
+outside the Style file has a verdict.
 
 ## 6. The output
 
