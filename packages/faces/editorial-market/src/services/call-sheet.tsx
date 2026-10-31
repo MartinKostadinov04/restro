@@ -4,7 +4,13 @@
 // "on the way" only when a request of the host's says `on_the_way`; until the host's state has the
 // request, the sheet says it was sent and is waiting. Cancelling sends `service.cancel`.
 
-import type { RequestStatus, RequestView, ServiceKind, ViewText } from '@restro/shell'
+import {
+  callIsSingleStep,
+  type RequestStatus,
+  type RequestView,
+  type ServiceKind,
+  type ViewText,
+} from '@restro/shell'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { BellIcon, CardIcon, DropletsIcon, HandIcon, ReceiptIcon, UtensilsIcon } from '../icons'
@@ -77,7 +83,11 @@ export function CallSheet() {
     .find((request) => OPEN.includes(request.status) && !movedOn.has(request.id))
   const current = sent !== undefined && !movedOn.has(sent.id) ? sent : open
 
-  const chosen = kind !== null && kinds.includes(kind) ? kind : null
+  // With only `waiter` ticked there is nothing to choose (D127): the kinds are read as they stand,
+  // and the tap on the waiter button that opened the sheet has already called.
+  const single = callIsSingleStep(o.features.callWaiter)
+  const picked: ServiceKind | null = kind !== null && kinds.includes(kind) ? kind : null
+  const chosen: ServiceKind | null = single ? 'waiter' : picked
   const ready = chosen !== null
 
   async function send() {
@@ -106,6 +116,13 @@ export function CallSheet() {
       settle('sent', null)
     }
   }
+
+  // The single step calls once, as the sheet opens from the tap that armed it. A sheet that opens
+  // from an address (a reload) or with a call already open sends nothing.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, as the sheet opens
+  useEffect(() => {
+    if (single && o.takeCall() && current === undefined && asked === null) void send()
+  }, [])
 
   async function cancel(request: RequestView) {
     if (cancelling) return
@@ -220,6 +237,21 @@ export function CallSheet() {
           {words.newRequest}
         </button>
       </StatePanel>
+    )
+  }
+
+  if (single) {
+    return (
+      <div className="ro-sheet" data-design-part="call" data-call-single="">
+        <button
+          type="button"
+          className="ro-primary is-wide"
+          data-design-part="button"
+          onClick={send}
+        >
+          <span>{words.callServer}</span>
+        </button>
+      </div>
     )
   }
 

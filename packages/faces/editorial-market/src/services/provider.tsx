@@ -23,7 +23,14 @@ import {
   LOST_SEND_HOLD_MS,
   type Locale,
   minutesSinceSent,
+  NO_TIP,
   type OrderLineView,
+  type PayFirstLine,
+  type PayFirstPlan,
+  type PayFirstState,
+  payFirstStateOf,
+  payMoney,
+  planPayFirst,
   type ResolvedBag,
   refusalText,
   refusedOutOfStock,
@@ -34,6 +41,7 @@ import {
   type ServiceStrings,
   stringsFor,
   type TableOrderView,
+  type TipChoice,
   type ViewFeatures,
   type ViewItem,
   type ViewModel,
@@ -130,6 +138,11 @@ export interface OrderDraw {
   readonly soldOut: (itemId: string) => boolean
   /** A line a Send leaves out: held, still saving, pay-first, sold out or gone from the view. */
   readonly sendable: (entry: ResolvedBag['lines'][number]) => boolean
+  /**
+   * The pay-first lines no payment holds that can still be ordered (#258, D113), with the view's
+   * estimate of each. A Send pays for them only where pay-first is `on` (`Services.payFirst`).
+   */
+  readonly payFirstLines: readonly PayFirstLine[]
   /** How many things the next Send carries (the quantities of the sendable lines). */
   readonly sendCount: number
   /** Some on-the-bill line stays back (sold out), so the button says "Send the other N". */
@@ -177,6 +190,17 @@ export interface Services {
   /** Ordering controls for this item: the service is on (R15) and the item has controls (R11). */
   readonly canOrder: (item: ViewItem) => boolean
   readonly openDish: (itemId: string, opener: HTMLElement) => void
+  /** Pay-first at this table (`ordering.payFirst`; absent is off): says what a pay-first line carries. */
+  readonly payFirstState: PayFirstState
+  /**
+   * The pay-first part of the next Send (#258): set only where pay-first is `on` and the order has
+   * free pay-first lines. It makes the Send "Send and pay" (or "Pay" when nothing else goes).
+   */
+  readonly payFirst: PayFirstPlan | null
+  /** The tip chosen for the pay-first part, and the text typed in "Other amount" (none to start). */
+  readonly tip: { readonly choice: TipChoice; readonly other: string }
+  readonly setTip: (choice: TipChoice) => void
+  readonly setTipOther: (text: string) => void
   /** A Send is with the host. */
   readonly sending: boolean
   /** The duplicate check, while it is open. */
@@ -197,6 +221,14 @@ export interface Services {
   readonly leaving: boolean
   readonly openSheet: (sheet: Sheet, opener?: HTMLElement | null) => void
   readonly closeSheet: () => void
+  /**
+   * The single-step Call a waiter (D127: only `waiter` ticked): the guest's tap on the waiter button
+   * arms the call and opens the sheet, which sends it once when it opens. Armed by a tap alone, so
+   * a reloaded `#call` address never calls.
+   */
+  readonly armCall: () => void
+  /** Takes the armed call (true once), as the sheet opens. */
+  readonly takeCall: () => boolean
 }
 
 const ServicesContext = createContext<Services | null>(null)
@@ -366,6 +398,31 @@ function ActiveServices({
       return line !== undefined && line.mode === 'on_bill' && !line.held && !line.pending
     })
     const taking = live.filter(sendable)
+    // The pay-first lines a "Send and pay" names (#258, D113): free, and still orderable. A sold-out
+    // one stays on the order, marked, and is not named (the host counts only the orderable ones).
+    const payFirstLines = resolved.lines.flatMap((entry): PayFirstLine[] => {
+      const line = lines.find((candidate) => candidate.id === entry.line.key)
+      if (
+        line === undefined ||
+        line.mode !== 'pay_first' ||
+        line.held ||
+        line.pending ||
+        !entry.available ||
+        entry.total === null ||
+        soldOut(line.itemId)
+      ) {
+        return []
+      }
+      return [
+        {
+          itemId: line.itemId,
+          optionIds: line.optionIds,
+          qty: line.qty,
+          note: line.note,
+          amountMinor: entry.total.minor,
+        },
+      ]
+    })
     return {
       lines,
       removed: state.order?.removed ?? NO_REMOVED,
@@ -374,11 +431,26 @@ function ActiveServices({
       resolved,
       soldOut,
       sendable,
+      payFirstLines,
       sendCount: taking.reduce((sum, entry) => sum + entry.line.qty, 0),
       keptBack: live.length > taking.length,
       count: resolved.count,
     }
   }, [state.order, view, refused])
+
+  /* --- pay first at Send (#258) ----------------------------------------------------------- */
+  const payFirstState = payFirstStateOf(state.ordering)
+  const tipsOffered = state.ordering?.tips === true
+  const [tipChoice, setTipChoice] = useState<TipChoice>(NO_TIP)
+  const [tipOther, setTipOther] = useState('')
+  const payFirst = useMemo(
+    () =>
+      payFirstState === 'on' ? planPayFirst(order.payFirstLines, tipChoice, tipsOffered) : null,
+    [payFirstState, order.payFirstLines, tipChoice, tipsOffered],
+  )
+  const tip = useMemo(() => ({ choice: tipChoice, other: tipOther }), [tipChoice, tipOther])
+  // The smallest card payment, for the words of a refusal that names it (`below_minimum`).
+  const minCardMinor = state.paying?.minCardMinor ?? null
 
   /* --- commands on the order ------------------------------------------------------------ */
   const [notice, setNotice] = useState<string | null>(null)
@@ -469,12 +541,16 @@ function ActiveServices({
         setNotice(
           named !== undefined
             ? words.itemUnavailableNamed(named)
-            : refusalText(words, code, { command: command.kind }),
+            : refusalText(words, code, {
+                command: command.kind,
+                minCard:
+                  minCardMinor === null ? null : payMoney(minCardMinor, view.currency, view.locale),
+              }),
         )
       }
       return result
     },
-    [run, words, items],
+    [run, words, items, minCardMinor, view.currency, view.locale],
   )
 
   const add = useCallback<Services['add']>(
@@ -503,7 +579,10 @@ function ActiveServices({
     async (confirmDuplicateOf?: string) => {
       if (sendingNow.current) return // two quick taps are one send
       const taking = order.resolved.lines.filter(order.sendable)
-      if (taking.length === 0) return
+      // The Send may be pay-first lines alone (#258): "Pay", which is such a Send with no bill lines.
+      if (taking.length === 0 && payFirst === null) return
+      // A tip over the lines is refused by the host: the sheet greys the button, and so is this.
+      if (payFirst !== null && !payFirst.totals.tipValid) return
       // Send is blocked while the phone is offline, never queued (D121); the sheet greys the button.
       if (latest.current.services.state.offline === true) return
       // Nor while ordering is paused (D120): the sheet greys Send, and the bag stays as it is.
@@ -533,6 +612,8 @@ function ActiveServices({
             note: entry.line.note,
           })),
           ...(confirmDuplicateOf === undefined ? {} : { confirmDuplicateOf }),
+          // One tap, one Send: the pay-first lines go with it and open their payment (D113).
+          ...(payFirst === null ? {} : { payFirst: payFirst.part }),
         })
         if (result?.code === 'duplicate_order' && result.subjectId != null && alive.current) {
           setAsked({
@@ -549,7 +630,7 @@ function ActiveServices({
         if (alive.current) setSending(false)
       }
     },
-    [act, order],
+    [act, order, payFirst],
   )
 
   // Escape closes the sheet, unless the location sheet is over it: that one is the top and takes the key.
@@ -563,6 +644,18 @@ function ActiveServices({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [sheet, closeSheet, locationUp])
+
+  // The single-step Call a waiter (D127): the waiter button arms one call and opens the sheet.
+  const armed = useRef(false)
+  const armCall = useCallback(() => {
+    armed.current = true
+  }, [])
+  const takeCall = useCallback(() => {
+    const was = armed.current
+    armed.current = false
+    return was
+  }, [])
+  const setTip = useCallback((choice: TipChoice) => setTipChoice(choice), [])
 
   const canOrder = useCallback(
     (item: ViewItem) => features.ordering && item.order.controls,
@@ -593,6 +686,11 @@ function ActiveServices({
       restore,
       canOrder,
       openDish,
+      payFirstState,
+      payFirst,
+      tip,
+      setTip,
+      setTipOther,
       sending,
       asked,
       cancelAsk,
@@ -604,6 +702,8 @@ function ActiveServices({
       leaving: route.leaving,
       openSheet,
       closeSheet,
+      armCall,
+      takeCall,
     }),
     [
       view,
@@ -626,6 +726,10 @@ function ActiveServices({
       restore,
       canOrder,
       openDish,
+      payFirstState,
+      payFirst,
+      tip,
+      setTip,
       sending,
       asked,
       cancelAsk,
@@ -636,6 +740,8 @@ function ActiveServices({
       route.leaving,
       openSheet,
       closeSheet,
+      armCall,
+      takeCall,
     ],
   )
 

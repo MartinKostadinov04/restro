@@ -1,8 +1,9 @@
 // How the venue's General look reaches Stripe's Payment Element (D130, "Stripe's Payment Element";
 // D125). A pure function from the colours and roles of both screens, the body font, the corners, the
 // density and the text size to the Appearance API's options. Nothing here loads Stripe or draws
-// anything: the card form (card-form.ts) hands the result to `stripe.elements` and `elements.create`
-// when #102's work lands, and until then the Pay page's demo form draws as today.
+// anything: the card form (card-form.ts) hands `appearance` and `fonts` of the result to
+// `stripe.elements` (#258). The Express Checkout options are for an Express Checkout Element, which
+// the form does not create: Apple Pay and Google Pay show inside the Payment Element.
 //   https://docs.stripe.com/elements/appearance-api.md
 //
 // What goes through, and what does not:

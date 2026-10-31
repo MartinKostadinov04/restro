@@ -176,6 +176,16 @@ export {
   semanticColoursDark,
 } from './palette'
 export {
+  callIsSingleStep,
+  type PayFirstLine,
+  type PayFirstPart,
+  type PayFirstPlan,
+  type PayFirstState,
+  payFirstStateOf,
+  payFirstWords,
+  planPayFirst,
+} from './pay-first'
+export {
   choosePay,
   endText,
   freeLines,
@@ -197,6 +207,7 @@ export {
   paymentIsFinal,
   payScreen,
   payStartCommand,
+  payTotalsOf,
   pickWhole,
   receiptEmailOf,
   reconcilePicks,

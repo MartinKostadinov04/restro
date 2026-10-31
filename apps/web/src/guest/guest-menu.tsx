@@ -30,8 +30,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChosenFace, preloadFace } from '@/faces/chosen-face'
 import { MenuNotice, MenuSkeleton } from '@/faces/notices'
 import { faceEntry } from '@/faces/registry'
-import { FONT_STACKS } from '@/fonts'
+import { FONT_STACKS, plainFontStack } from '@/fonts'
 import { cleanAddressBar } from '../connectors/card-forms'
+import { cardFormLookOf } from './card-form-look'
 import { CDN_BASE } from './cdn'
 import {
   buildContext,
@@ -307,7 +308,6 @@ export function GuestMenu(props: GuestMenuProps) {
     tableToken !== null &&
     SHARED_ORDER_FACES.has(RENDERER.id) &&
     hasTableService(snapshot?.features)
-  const services = useTableServices(sharedOrder ? tableToken : null)
   const view = useMemo(
     () =>
       snapshot === null
@@ -319,6 +319,13 @@ export function GuestMenu(props: GuestMenuProps) {
           ),
     [snapshot, live, locale, now, tableToken, sharedOrder],
   )
+  // The card form looks as the venue's General does (#258, D130): from the snapshot's view, so the
+  // page reads no database (rule 4).
+  const cardLook = useMemo(
+    () => (view === null ? null : cardFormLookOf(view, plainFontStack)),
+    [view],
+  )
+  const services = useTableServices(sharedOrder ? tableToken : null, cardLook)
 
   const switchLanguage = useCallback((next: Locale) => {
     const url = new URL(window.location.href)
