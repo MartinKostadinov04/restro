@@ -154,6 +154,7 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
     return () => window.removeEventListener('keydown', onKey)
   }, [allergens, dish.isOpen, dish.close, filtersOpen, closeAllergens, closeFilters])
 
+  const allergenNames = view.design.labels?.allergens === 'names'
   const ctx = useMemo<PageContext>(
     () => ({
       locale,
@@ -161,11 +162,22 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
       assetBase,
       layout,
       bleedPhotos: view.design.photos?.frame !== 'inset',
+      allergenNames,
       isVisible: (item: ViewItem) => matchesFilters(item, filters),
       openDish: dish.open,
       openAllergens,
     }),
-    [locale, strings, assetBase, layout, view.design, filters, dish.open, openAllergens],
+    [
+      locale,
+      strings,
+      assetBase,
+      layout,
+      view.design,
+      allergenNames,
+      filters,
+      dish.open,
+      openAllergens,
+    ],
   )
 
   // A section the composer marks horizontal is a photo-led strip (D92). The layout switch, when
@@ -195,7 +207,7 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
       style={
         {
           ...themeVariables(view.theme, fontStacks),
-          ...designVariables(view.design),
+          ...designVariables(view.design, fontStacks),
         } as CSSProperties
       }
     >
@@ -253,11 +265,11 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
         {view.allergenLegend.length > 0 ? (
           <footer className="rm-footer" data-design-part="footer">
             <h2>{strings.footerTitle}</h2>
-            <p>{strings.footerText}</p>
+            <p>{allergenNames ? strings.footerTextNames : strings.footerText}</p>
             <div className="rm-legend" data-slot="menu.allergen_legend">
               {view.allergenLegend.map((allergen) => (
                 <span key={allergen.code} lang={langOf(allergen.label, locale)}>
-                  <b>{allergen.number}</b>
+                  {allergenNames ? null : <b>{allergen.number}</b>}
                   {allergen.label.text}
                 </span>
               ))}
@@ -277,12 +289,19 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
           />
         ) : null}
         {dishItem !== undefined ? (
-          <DishPage item={dishItem} ctx={ctx} leaving={dish.leaving} onClose={dish.close} />
+          <DishPage
+            item={dishItem}
+            ctx={ctx}
+            kind={view.design.dish?.kind === 'page' ? 'page' : 'sheet'}
+            leaving={dish.leaving}
+            onClose={dish.close}
+          />
         ) : null}
         {allergenItem !== undefined ? (
           <AllergenSheet
             item={allergenItem}
             legend={view.allergenLegend}
+            names={allergenNames}
             strings={strings}
             page={locale}
             onClose={closeAllergens}

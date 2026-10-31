@@ -108,11 +108,14 @@ function DishBody({
 export function DishPage({
   item,
   ctx,
+  kind,
   leaving,
   onClose,
 }: {
   readonly item: ViewItem
   readonly ctx: PageContext
+  /** The Dish page's kind (D130): a tall sheet over the menu, or a full page with Back. */
+  readonly kind: 'sheet' | 'page'
   /** The page is on its way out (the exit animation is playing). */
   readonly leaving: boolean
   readonly onClose: () => void
@@ -124,7 +127,8 @@ export function DishPage({
       titleLang={langOf(item.name, ctx.locale)}
       closeLabel={strings.back}
       onClose={onClose}
-      detail
+      detail={kind === 'page'}
+      dish={kind === 'sheet'}
       leaving={leaving}
       extra={
         item.allergens.length > 0 ? (

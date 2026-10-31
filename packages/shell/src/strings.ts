@@ -34,6 +34,9 @@ export interface GuestStrings {
   readonly allergensHint: string
   readonly footerTitle: string
   readonly footerText: string
+  /** The two lines above for a design that shows allergens by name (the Labels page), not by number. */
+  readonly allergensHintNames: string
+  readonly footerTextNames: string
   readonly close: string
   /** The close control of a dish page: it goes back to the menu. */
   readonly back: string
@@ -409,6 +412,9 @@ const EN: Strings = {
     footerTitle: 'Allergen information',
     footerText:
       'The codes on each item stand for the allergens it contains. Ask the staff if you have an allergy or any doubt.',
+    allergensHintNames: 'A filled dot marks what this item contains.',
+    footerTextNames:
+      'The names on each item are the allergens it contains. Ask the staff if you have an allergy or any doubt.',
     close: 'Close',
     back: 'Back to menu',
     layout: 'Menu layout',
@@ -752,6 +758,9 @@ const BG: Strings = {
     footerTitle: 'Информация за алергените',
     footerText:
       'Кодовете при всяка позиция обозначават алергените в нея. Попитайте персонала, ако имате алергия или съмнение.',
+    allergensHintNames: 'Запълнената точка отбелязва какво съдържа позицията.',
+    footerTextNames:
+      'Имената при всяка позиция са алергените в нея. Попитайте персонала, ако имате алергия или съмнение.',
     close: 'Затвори',
     back: 'Обратно към менюто',
     layout: 'Изглед на менюто',

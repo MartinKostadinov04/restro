@@ -31,8 +31,8 @@ What a guest can do in a menu. The `template-design` skill reads this file first
 ### Find allergens
 - **Shell key:** none; has no switch of any kind
 - **Status:** supported
-- **Drawn means:** every item that lists allergens shows them, or a visible control that opens them, in the mode the manifest declares, with the codes explained, in every layout and on every screen size, and never dependent on hover or on a feature.
-- **Where:** §5.2 R6, §7.5, App. A; D71
+- **Drawn means:** every item that lists allergens shows them, or a visible control that opens them, in the mode the manifest declares, with the codes explained, in every layout and on every screen size, and never dependent on hover or on a feature. The design sets how (Labels and allergens, D130): numbers (boxed codes, explained in the footer and the sheet) or names (the names in words, "Gluten · Milk", with the sheet behind them, and the footer listing the names without numbers). The manifest's mode stays the codes' either way; both values meet R6 by the row and the sheet.
+- **Where:** §5.2 R6, §7.5, App. A; D71, D130
 
 ### Browse a horizontal section
 - **Shell key:** none (`hints.layout` of a section)

@@ -67,8 +67,8 @@ export const DESIGN_VARIANTS = designCases({
     'guest_switch',
   ],
   photos: ['shape', 'fit', 'backdrop', 'frame', 'corners'],
-  labels: ['labels'],
-  dish: ['photo'],
+  labels: ['labels', 'allergens'],
+  dish: ['kind', 'photo'],
   sheets: ['sheets'],
 }).map((one, index) => ({ ...one, publicId: `visualdes${String(index + 1).padStart(3, '0')}` }))
 

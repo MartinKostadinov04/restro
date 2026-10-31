@@ -36,7 +36,7 @@ import { EDITORIAL_MARKET_MANIFEST } from './manifest'
 import { SERVICES_CSS } from './services/services-css'
 import { richFixture } from './test-views'
 
-/** What the renderer draws (tickets 3 to 5): General, the browsing pages and the five screens. */
+/** What the renderer draws (tickets 3 to 6): General, the browsing pages, the five screens and the staged options. */
 const DRAWN = {
   general: [
     'screen',
@@ -64,8 +64,8 @@ const DRAWN = {
     'guest_switch',
   ],
   photos: ['shape', 'fit', 'backdrop', 'frame', 'corners'],
-  labels: ['labels'],
-  dish: ['photo'],
+  labels: ['labels', 'allergens'],
+  dish: ['kind', 'photo'],
   sheets: ['sheets'],
   call: ['kinds'],
   bill: ['rows', 'lines'],
@@ -401,6 +401,13 @@ const DEPARTURES: readonly ((line: string, added: boolean) => boolean)[] = [
   // Two-column cards draw the choices summary and the extra fields.
   (line, added) =>
     !added && /\.rm-modifiers|\.rm-extra/.test(line) && line.endsWith('{ display: none }'),
+  // A dish with no photo starts under the Back button (#174).
+  (line, added) => added && line === '.rm-detail-copy:first-child { padding-top: 72px }',
+  // A label, a badge and a filter chip with no spaces wrap inside their box (#174).
+  (line, added) =>
+    added &&
+    line.startsWith('.rm-labels span, .rm-badge, .rm-filter-group button {') &&
+    /^(?:max-width|overflow-wrap)$/.test(property(line)),
   // A sold-out item is not drawn (D131): the greyed card's rules are gone.
   (line, added) => !added && /data-state="(?:sold_out|unavailable)"/.test(line),
 ]
