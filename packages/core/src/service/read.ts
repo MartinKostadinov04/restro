@@ -11,6 +11,8 @@
 import {
   alerts,
   areas,
+  authSession,
+  authUser,
   bars,
   billReadings,
   type DbPool,
@@ -21,6 +23,7 @@ import {
   payments,
   type ReadTx,
   sentOrders,
+  sharedDevices,
   sittings,
   staffMembers,
   tableOrders,
@@ -954,8 +957,9 @@ export async function readTonight(
       .where(and(eq(bars.venueId, venue.id), isNull(bars.archivedAt)))
       .orderBy(bars.name, bars.id)
 
-    // A staff pause names the person who started it: a PIN's staff member, or the staff member
-    // the signed-in account is linked to. Anyone else (a shared device's account) is not named.
+    // A staff pause names the person who started it: a PIN's staff member, the staff member the
+    // signed-in account is linked to, or the account itself (an owner on their own phone, RR-77).
+    // A shared device's account is not named: the tablet is no person.
     const starters = [...new Set(active.filter((p) => !p.restroStarted).map((p) => p.actor))]
     const memberIds = starters.flatMap((a) => (a.startsWith('staff:') ? [a.slice(6)] : []))
     const accountIds = starters.flatMap((a) => (a.startsWith('user:') ? [a.slice(5)] : []))
@@ -977,6 +981,26 @@ export async function readTonight(
       for (const person of people) {
         named.set(`staff:${person.id}`, person.name)
         if (person.userId !== null) named.set(`user:${person.userId}`, person.name)
+      }
+      const bare = accountIds.filter((id) => !named.has(`user:${id}`))
+      if (bare.length > 0) {
+        const accounts = await tx
+          .select({ id: authUser.id, name: authUser.name, device: sharedDevices.id })
+          .from(authUser)
+          .leftJoin(authSession, eq(authSession.userId, authUser.id))
+          .leftJoin(
+            sharedDevices,
+            and(
+              eq(sharedDevices.sessionId, authSession.id),
+              eq(sharedDevices.venueId, venue.id),
+              isNull(sharedDevices.revokedAt),
+            ),
+          )
+          .where(inArray(authUser.id, bare))
+        const devices = new Set(accounts.flatMap((a) => (a.device === null ? [] : [a.id])))
+        for (const account of accounts) {
+          if (!devices.has(account.id)) named.set(`user:${account.id}`, account.name)
+        }
       }
     }
 

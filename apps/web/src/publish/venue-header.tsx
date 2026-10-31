@@ -19,11 +19,13 @@ async function HeaderBar({
   venueId,
   guestPath,
   canPublish,
+  onlyWhatWorks = false,
 }: {
   tenantId: string
   venueId: string
   guestPath: string | null
   canPublish: boolean
+  onlyWhatWorks?: boolean
 }) {
   const state = await venuePublishState(tenantId, venueId)
   const view: PublishBarView = {
@@ -43,7 +45,7 @@ async function HeaderBar({
   return (
     <>
       <PublisherStateSync state={{ lastRun: state.lastRun, busy }} />
-      <PublishBar view={view} />
+      <PublishBar view={view} onlyWhatWorks={onlyWhatWorks} />
     </>
   )
 }
@@ -55,6 +57,41 @@ function BarSkeleton() {
       <Skeleton className="h-9 w-40" />
       <Skeleton className="h-9 w-28" />
     </div>
+  )
+}
+
+/**
+ * Publish on Tonight (RR-80): the night's work comes first, so for someone who may publish the bar
+ * and its warnings come after it, with only what can be pressed now, and for anyone else not at all.
+ * With nothing to show the section isn't there.
+ */
+export function TonightPublish({
+  tenantId,
+  venueId,
+  guestPath,
+}: {
+  tenantId: string
+  venueId: string
+  guestPath: string | null
+}) {
+  return (
+    <PublisherProvider venueId={venueId}>
+      <section className="grid gap-4 border-t pt-6 empty:hidden" data-testid="tonight-publish">
+        <Suspense fallback={null}>
+          <HeaderBar
+            tenantId={tenantId}
+            venueId={venueId}
+            guestPath={guestPath}
+            canPublish
+            onlyWhatWorks
+          />
+        </Suspense>
+        <PublishOutcome />
+        <Suspense fallback={null}>
+          <VenueWarnings tenantId={tenantId} venueId={venueId} canPublish />
+        </Suspense>
+      </section>
+    </PublisherProvider>
   )
 }
 
@@ -72,7 +109,10 @@ export function VenueHeader({
   guestPath: string | null
   /** Owner or admin. */
   canPublish: boolean
-  /** False on a shared device (RR-83): no bar and no publish warnings, only the name and address. */
+  /**
+   * False on a shared device (RR-83) and on Tonight (RR-80): no bar and no publish warnings, only
+   * the name and address.
+   */
   offerPublish?: boolean
   /** The venue's name and address, drawn by the page. */
   title: ReactNode

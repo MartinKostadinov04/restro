@@ -35,7 +35,20 @@ interface Row {
 /** The change count a row shows: what differs, or everything for a first publish. */
 const countOf = (menu: PublishBarMenu): number => menu.changes ?? 0
 
-export function PublishBar({ view }: { view: PublishBarView }) {
+/** A button's words wrap when large text would run them off a phone (RR-79). */
+const WRAPS = 'h-auto min-h-9 max-w-full whitespace-normal'
+
+export function PublishBar({
+  view,
+  onlyWhatWorks = false,
+}: {
+  view: PublishBarView
+  /**
+   * Tonight's way (RR-80, operational-screens.md): never a disabled control, so what can't be
+   * pressed now isn't drawn, nor the words on why. With nothing to press the bar is not there.
+   */
+  onlyWhatWorks?: boolean
+}) {
   const t = useTranslations('publish.bar')
   const reasonOf = useBlockReason()
   const publisher = usePublisherContext()
@@ -89,6 +102,10 @@ export function PublishBar({ view }: { view: PublishBarView }) {
 
   const liveMenu = rows.find((row) => row.menu.live)?.menu
   const guestOff = view.guestPath === null || !view.addressServed || liveMenu?.published !== true
+  const offerGuest = !onlyWhatWorks || !guestOff
+  const offerPublish = !onlyWhatWorks || block === null
+  const offerReason = offerPublish || block === 'busy'
+  if (!offerGuest && !offerReason) return null
   const guestHint =
     view.guestPath === null
       ? null
@@ -100,15 +117,16 @@ export function PublishBar({ view }: { view: PublishBarView }) {
 
   return (
     <div
-      className="grid justify-items-start gap-1.5 sm:justify-items-end"
+      className="grid max-w-full grid-cols-[minmax(0,1fr)] justify-items-start gap-1.5 sm:justify-items-end"
       data-testid="publish-bar"
     >
-      <div className="flex flex-wrap items-center gap-2">
-        {guestOff ? (
+      <div className="flex max-w-full flex-wrap items-center gap-2">
+        {!offerGuest ? null : guestOff ? (
           <Button
             type="button"
             variant="outline"
             disabled
+            className={WRAPS}
             aria-describedby={guestHint === null ? undefined : `${reasonId}-guest`}
             data-testid="guest-link"
           >
@@ -116,7 +134,7 @@ export function PublishBar({ view }: { view: PublishBarView }) {
             {t('openGuest')}
           </Button>
         ) : (
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" className={WRAPS}>
             <a
               href={view.guestPath ?? undefined}
               target="_blank"
@@ -128,10 +146,15 @@ export function PublishBar({ view }: { view: PublishBarView }) {
             </a>
           </Button>
         )}
-        {several ? (
+        {!offerPublish ? null : several ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild disabled={block !== null}>
-              <Button type="button" aria-describedby={reasonId} data-testid="publish-button">
+              <Button
+                type="button"
+                className={WRAPS}
+                aria-describedby={reasonId}
+                data-testid="publish-button"
+              >
                 {icon}
                 {label}
                 {count}
@@ -140,7 +163,7 @@ export function PublishBar({ view }: { view: PublishBarView }) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-72">
               <DropdownMenuLabel>{t('choose')}</DropdownMenuLabel>
-              {rows.map(({ menu, block: rowBlock }) => {
+              {(onlyWhatWorks ? open : rows).map(({ menu, block: rowBlock }) => {
                 const where = [...(menu.live ? [t('venueAddress')] : []), ...menu.areas]
                 return (
                   <DropdownMenuItem
@@ -182,6 +205,7 @@ export function PublishBar({ view }: { view: PublishBarView }) {
             type="button"
             disabled={block !== null || single === undefined}
             onClick={() => (single === undefined ? null : setAsking(single.menu))}
+            className={WRAPS}
             aria-describedby={reasonId}
             data-testid="publish-button"
           >
@@ -191,15 +215,17 @@ export function PublishBar({ view }: { view: PublishBarView }) {
           </Button>
         )}
       </div>
-      <p
-        id={reasonId}
-        className="text-xs text-muted-foreground"
-        data-testid="publish-block-reason"
-        data-block={block ?? 'none'}
-      >
-        {reason}
-      </p>
-      {guestHint !== null ? (
+      {offerReason ? (
+        <p
+          id={reasonId}
+          className="text-xs text-muted-foreground"
+          data-testid="publish-block-reason"
+          data-block={block ?? 'none'}
+        >
+          {reason}
+        </p>
+      ) : null}
+      {guestHint !== null && !onlyWhatWorks ? (
         <p
           id={`${reasonId}-guest`}
           className="text-xs text-muted-foreground"

@@ -85,27 +85,32 @@ export function UrlTabs<V extends string>({
   const t = useTranslations()
   return (
     <Tabs value={current} onValueChange={select}>
-      <TabsList className={listClassName ?? 'hidden lg:inline-flex'} aria-label={label}>
-        {defs.map(({ value, labelKey, icon: Icon }) => (
-          <TabsTrigger key={value} value={value}>
-            <Icon aria-hidden />
-            {t(labelKey)}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-      <Select value={current} onValueChange={select}>
-        <SelectTrigger className="w-full lg:hidden" aria-label={label}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {defs.map(({ value, labelKey, icon: Icon }) => (
-            <SelectItem key={value} value={value}>
-              <Icon aria-hidden />
-              {t(labelKey)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {/* One tab is no choice: a shared device has Tonight alone. */}
+      {defs.length > 1 ? (
+        <>
+          <TabsList className={listClassName ?? 'hidden lg:inline-flex'} aria-label={label}>
+            {defs.map(({ value, labelKey, icon: Icon }) => (
+              <TabsTrigger key={value} value={value}>
+                <Icon aria-hidden />
+                {t(labelKey)}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <Select value={current} onValueChange={select}>
+            <SelectTrigger className="w-full lg:hidden" aria-label={label}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {defs.map(({ value, labelKey, icon: Icon }) => (
+                <SelectItem key={value} value={value}>
+                  <Icon aria-hidden />
+                  {t(labelKey)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </>
+      ) : null}
       {defs.map(({ value }) => (
         <TabsContent key={value} value={value} className="pt-2">
           {contents[value]}

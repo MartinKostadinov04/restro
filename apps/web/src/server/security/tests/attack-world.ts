@@ -14,6 +14,7 @@ import {
   provisionTenant,
   provisionVenue,
 } from '@restro/core/apply'
+import { endpointHashOf } from '@restro/core/service'
 import type pg from 'pg'
 
 import { createItemAction, createSectionAction } from '@/composer/actions'
@@ -58,6 +59,8 @@ export interface SeededOrg {
   readonly memberId: string
   readonly integration: string
   readonly asset: string
+  /** A device of the owner's for Web Push, which an attack may name but never end. */
+  readonly pushEndpoint: string
   readonly venues: readonly [SeededVenue, SeededVenue]
 }
 
@@ -317,6 +320,21 @@ export async function seedOrg(
     asset,
     tenantId,
   ])
+  const pushEndpoint = `https://fcm.googleapis.com/fcm/send/${tenantId}-${'x'.repeat(30)}`
+  await owner.query(
+    `insert into restro.push_subscriptions
+       (tenant_id, user_id, endpoint_hash, endpoint, p256dh, auth, source, actor, job_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [
+      tenantId,
+      ownerId,
+      endpointHashOf(pushEndpoint),
+      pushEndpoint,
+      `B${'p'.repeat(86)}`,
+      'a'.repeat(22),
+      ...SEED,
+    ],
+  )
   return {
     tenantId,
     marker,
@@ -325,6 +343,7 @@ export async function seedOrg(
     memberId,
     integration: integration.id,
     asset,
+    pushEndpoint,
     venues: [one, two],
   }
 }

@@ -5,6 +5,7 @@
 // sentence with Undo where the change can be put back (plans: "single reversible writes"), and a
 // settings change older than 15 minutes since the password asks for it again (D122 §7) and then
 // does the change: the existing sign-in (Better Auth's `signIn.email`), not a new form.
+import { unstable_rethrow } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { type ReactNode, useCallback, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -21,6 +22,9 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { authClient } from '@/lib/auth-client'
+
+/** An error toast stays until it is closed. */
+const STAYS = { duration: Number.POSITIVE_INFINITY, closeButton: true }
 
 /** What every action answers, as far as the runner reads it. */
 export interface Answer {
@@ -94,7 +98,17 @@ export function useSettingsRun(email: string) {
   const run = useCallback(
     <R extends Answer>(action: () => Promise<R>, options: RunOptions<R> = {}) => {
       startTransition(async () => {
-        const answer = await action()
+        let answer: R
+        try {
+          answer = await action()
+        } catch (error) {
+          // A redirect or a not-found is the router's. Anything else (the connection is down, the
+          // server failed) is a failed save: the screen and what was typed stay (RR-76).
+          unstable_rethrow(error)
+          toast.error(sentence('failed', options.words), STAYS)
+          options.onFail?.('failed')
+          return
+        }
         if (!answer.ok) {
           const error = answer.error ?? 'failed'
           if (error === 'sign_in_again') {
@@ -103,7 +117,7 @@ export function useSettingsRun(email: string) {
             options.onFail?.(error)
             return
           }
-          toast.error(sentence(error, options.words), { duration: Number.POSITIVE_INFINITY })
+          toast.error(sentence(error, options.words), STAYS)
           options.onFail?.(error)
           return
         }

@@ -50,6 +50,15 @@ export type Grants =
 
 const NONE: Grants = { ok: true, permissions: new Set() }
 
+/** True while the person is on Restro's admin team. */
+export async function holdsOperatorGrant(tx: ReadOnly, userId: string): Promise<boolean> {
+  const [grant] = await tx
+    .select({ userId: operators.userId })
+    .from(operators)
+    .where(and(eq(operators.userId, userId), isNull(operators.revokedAt)))
+  return grant !== undefined
+}
+
 /** The organisation roles that hold every venue permission. */
 const ALL_PERMISSION_ROLES: ReadonlySet<string> = new Set(['owner', 'admin'])
 
@@ -127,11 +136,7 @@ export async function resolveGrants(
     case 'integration':
       return NONE
     case 'operator': {
-      const [grant] = await tx
-        .select({ userId: operators.userId })
-        .from(operators)
-        .where(and(eq(operators.userId, actor.userId), isNull(operators.revokedAt)))
-      if (grant === undefined) return { ok: false, code: 'actor_unknown' }
+      if (!(await holdsOperatorGrant(tx, actor.userId))) return { ok: false, code: 'actor_unknown' }
       return { ok: true, permissions: new Set(OPERATOR_PERMISSIONS) }
     }
     case 'staff': {

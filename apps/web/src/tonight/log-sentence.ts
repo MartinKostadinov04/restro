@@ -102,7 +102,9 @@ export const SENTENCES = {
   'waiter_call.called': (l, c) =>
     c.say('lg_call', { table: c.table(l), kinds: callKindsText(c.say, l.callKinds) }),
   'waiter_call.done': (l, c) =>
-    c.say('lg_call_done', { table: c.table(l), kinds: callKindsText(c.say, l.callKinds) }),
+    l.callUndone
+      ? c.say('lg_call_undone', { who: c.who(l.by), table: c.table(l) })
+      : c.say('lg_call_done', { table: c.table(l), kinds: callKindsText(c.say, l.callKinds) }),
   'waiter_call.lapsed': (l, c) =>
     c.say('lg_call_lapsed', { table: c.table(l), kinds: callKindsText(c.say, l.callKinds) }),
   // Screen 1's `r_toast` for the mark, as Martin confirmed for the Log (#200); its Undo has its

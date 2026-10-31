@@ -20,11 +20,13 @@ export const seen = {
   jobs: [] as { name: string; data: unknown }[],
   fetches: [] as string[],
   errors: [] as string[],
+  warnings: [] as Record<string, string | number>[],
   revalidated: [] as string[],
   reset(): void {
     seen.jobs.length = 0
     seen.fetches.length = 0
     seen.errors.length = 0
+    seen.warnings.length = 0
     seen.revalidated.length = 0
   },
 }
@@ -85,7 +87,9 @@ export const logModule = {
       parts.map((part) => (part instanceof Error ? part.message : String(part))).join(' '),
     )
   },
-  logWarn: () => undefined,
+  logWarn: (event: string, fields: Record<string, string | number> = {}) => {
+    seen.warnings.push({ event, ...fields })
+  },
   logInfo: () => undefined,
 }
 

@@ -23,6 +23,7 @@ import {
 } from '../theme'
 import type { ServiceTx } from './definition'
 import { accepted, refused, type ServiceResult } from './results'
+import { tokenEntry, type UndoToken } from './undo'
 
 /** A waiter call row. */
 export type WaiterCall = typeof waiterCalls.$inferSelect
@@ -229,6 +230,59 @@ export async function waiterCallDone(
   })
   touchTable(stx, call.tableId)
   return accepted(null, { details: { state: 'done', changed: true } })
+}
+
+/**
+ * The Undo of "Handled" (RR-58): the call is open again, with what it held and its own clock.
+ * Only with the token of that very answer, written by the same actor. Refused `undo_stale` when the
+ * call's sitting ended or the table has called again meanwhile (one call is open per table).
+ */
+export async function waiterCallUndone(
+  stx: ServiceTx,
+  command: { readonly waiterCallId: string; readonly undo: UndoToken },
+): Promise<ServiceResult> {
+  const held = await lockCall(stx, command.waiterCallId)
+  if (held === null) return refused(null, 'call_missing')
+  const { call, openSittingId } = held
+  const entry = await tokenEntry(stx, command.undo)
+  if (
+    entry?.kind !== 'waiter_call.done' ||
+    entry.toState !== 'done' ||
+    entry.details.waiterCallId !== call.id ||
+    entry.actor !== stx.provenance.actor
+  ) {
+    return refused(null, 'undo_stale')
+  }
+  if (call.state === 'open') return accepted(null, { details: { state: 'open', changed: false } })
+  if (call.state === 'lapsed') return refused(null, 'call_lapsed')
+  if (openSittingId !== call.sittingId) return refused(null, 'undo_stale')
+  // The table's rows are held (`lockCall`), so no new call can open before this one does.
+  const [newer] = await stx.tx
+    .select({ id: waiterCalls.id })
+    .from(waiterCalls)
+    .where(and(eq(waiterCalls.tableId, call.tableId), eq(waiterCalls.state, 'open')))
+  if (newer !== undefined) return refused(null, 'undo_stale')
+  await stx.tx
+    .update(waiterCalls)
+    .set({
+      state: 'open',
+      doneAt: null,
+      doneBy: null,
+      via: stx.via,
+      ...stx.provenance,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(waiterCalls.id, call.id))
+  await stx.log({
+    kind: 'waiter_call.done',
+    tableId: call.tableId,
+    sittingId: call.sittingId,
+    fromState: 'done',
+    toState: 'open',
+    details: { waiterCallId: call.id, kinds: call.kinds.join(',') },
+  })
+  touchTable(stx, call.tableId)
+  return accepted(null, { details: { state: 'open', changed: true } })
 }
 
 /**

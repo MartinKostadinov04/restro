@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 import { REFUSAL_CODES } from '@restro/core'
 import {
+  ALERT_RULES,
   type LogLine,
   type NightRead,
   paymentNumberOf,
@@ -204,7 +205,36 @@ const line = (fields: Partial<LogLine> = {}): LogLine => ({
 })
 
 describe('a Log line', () => {
-  const input = { clock: clockIn('Europe/Sofia'), locale: 'en' as const, source: 'Mistral' }
+  const input = {
+    clock: clockIn('Europe/Sofia'),
+    locale: 'en' as const,
+    source: 'Mistral',
+    venueName: 'Club Nova',
+  }
+
+  it('names the venue in an alert line, so no title stops short (RR-57)', () => {
+    for (const locale of ['en', 'bg'] as const) {
+      for (const reason of Object.keys(ALERT_RULES)) {
+        const title = logLineView(line({ kind: 'alert.raised', reason }), {
+          ...input,
+          locale,
+        }).alertTitle
+        expect(title, `${locale} ${reason}`).toBeTruthy()
+        expect(title, `${locale} ${reason}`).not.toMatch(/(^[:,\s])|[\s,:]$|\s\s/)
+      }
+    }
+    expect(
+      logLineView(line({ kind: 'alert.raised', reason: 'ordering_paused' }), input).alertTitle,
+    ).toBe('Ordering is paused at Club Nova')
+  })
+
+  it('names the alert’s table when it has one', () => {
+    const view = logLineView(
+      line({ kind: 'alert.raised', reason: 'payment_stranded', table: '7', numbered: true }),
+      input,
+    )
+    expect(view.alertTitle).toContain('Table 7')
+  })
 
   it('keeps the answer apart from an ordinary move', () => {
     const answer = logLineView(line({ reason: 'staff_found' }), input)

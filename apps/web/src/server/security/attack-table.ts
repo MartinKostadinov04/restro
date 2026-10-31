@@ -60,6 +60,21 @@ const KEYS = (id: string) => [{ id, key: 'a1' }]
 
 /** All the victim's ids. */
 export const ATTACKS: readonly Attack[] = [
+  // A staff device for Web Push (RR-86).
+  {
+    action: 'subscribePushAction',
+    call: (v) =>
+      tonight.subscribePushAction({
+        venueId: v.venues[0].id,
+        endpoint: v.pushEndpoint,
+        p256dh: `B${'p'.repeat(86)}`,
+        auth: 'a'.repeat(22),
+      }),
+  },
+  {
+    action: 'revokePushAction',
+    call: (v) => tonight.revokePushAction({ venueId: v.venues[0].id, endpoint: v.pushEndpoint }),
+  },
   // The composer.
   {
     action: 'placeItemAction',
@@ -834,6 +849,17 @@ export const ATTACKS: readonly Attack[] = [
     },
   },
   {
+    action: 'undoWaiterCallAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return tonight.undoWaiterCallAction({
+        venueId: x.id,
+        waiterCallId: x.waiterCall,
+        undo: { entry: 1 },
+      })
+    },
+  },
+  {
     action: 'receiptBroughtAction',
     call: (v) => {
       const x = v.venues[0]
@@ -859,6 +885,20 @@ export const ATTACKS: readonly Attack[] = [
     call: (v) => {
       const x = v.venues[0]
       return tonight.liftOrderingAction({ venueId: x.id, pauseId: x.pause })
+    },
+  },
+  {
+    action: 'liftRestroPauseAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return tonight.liftRestroPauseAction({ venueId: x.id, pauseId: x.pause })
+    },
+  },
+  {
+    action: 'undoPauseAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return tonight.undoPauseAction({ venueId: x.id, pauseId: x.pause, undo: { entry: 1 } })
     },
   },
   {
@@ -963,6 +1003,17 @@ export const ATTACKS: readonly Attack[] = [
       return paymentsRead.paymentDetailAction({ venueId: x.id, paymentId: x.payment })
     },
   },
+  {
+    action: 'paymentEvidenceAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return paymentsRead.paymentEvidenceAction({
+        venueId: x.id,
+        paymentId: x.payment,
+        pin: '1234',
+      })
+    },
+  },
 
   // Venues.
   {
@@ -1017,6 +1068,11 @@ export const ATTACKS: readonly Attack[] = [
 
 /** The attacker's own venue and menu, the victim's child ids. */
 export const MIXED: readonly Attack[] = [
+  {
+    action: 'revokePushAction',
+    how: "the victim's device from my venue",
+    call: (v, a) => tonight.revokePushAction({ venueId: a.venues[0].id, endpoint: v.pushEndpoint }),
+  },
   {
     action: 'placeItemAction',
     how: "victim's item into my section",
@@ -1726,6 +1782,15 @@ export const MIXED: readonly Attack[] = [
       }),
   },
   {
+    action: 'undoWaiterCallAction',
+    call: (v, a) =>
+      tonight.undoWaiterCallAction({
+        venueId: a.venues[0].id,
+        waiterCallId: v.venues[0].waiterCall,
+        undo: { entry: 1 },
+      }),
+  },
+  {
     action: 'receiptBroughtAction',
     call: (v, a) =>
       tonight.receiptBroughtAction({ venueId: a.venues[0].id, paymentId: v.venues[0].payment }),
@@ -1740,6 +1805,20 @@ export const MIXED: readonly Attack[] = [
     action: 'liftOrderingAction',
     call: (v, a) =>
       tonight.liftOrderingAction({ venueId: a.venues[0].id, pauseId: v.venues[0].pause }),
+  },
+  {
+    action: 'liftRestroPauseAction',
+    call: (v, a) =>
+      tonight.liftRestroPauseAction({ venueId: a.venues[0].id, pauseId: v.venues[0].pause }),
+  },
+  {
+    action: 'undoPauseAction',
+    call: (v, a) =>
+      tonight.undoPauseAction({
+        venueId: a.venues[0].id,
+        pauseId: v.venues[0].pause,
+        undo: { entry: 1 },
+      }),
   },
   {
     action: 'resumeTableAction',

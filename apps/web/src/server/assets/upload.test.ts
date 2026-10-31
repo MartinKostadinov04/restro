@@ -90,6 +90,7 @@ describe.skipIf(!hasDatabase)('uploading an image (as the restro_app role)', () 
   const rowsOf = (tenantId: string, assetId: string) =>
     withTenant(app, tenantId, (tx) => tx.select().from(assets).where(eq(assets.id, assetId)))
   const deps = (tenantId: string | null) => ({
+    sharedDevice: async () => false,
     tenantId: async () => tenantId,
     pool: app,
     store: async () => store as AssetStore,

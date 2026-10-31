@@ -18,7 +18,7 @@ import {
   SettingsSectionSkeleton,
   VersioningSection,
 } from '@/publish/settings-sections'
-import { VenueHeader } from '@/publish/venue-header'
+import { TonightPublish, VenueHeader } from '@/publish/venue-header'
 import { getPool } from '@/server/db'
 import { guestPathOf } from '@/server/publish/summary'
 import { canPublishMenu } from '@/server/roles'
@@ -30,7 +30,6 @@ import { getVenue, venueHasTill } from '@/server/venues'
 import { AlertsSection } from '@/settings/alerts-section'
 import { OrderingSection } from '@/settings/ordering-section'
 import { PayingSection } from '@/settings/paying-section'
-import { OwnSignInNotice } from '@/settings/section-notices'
 import { StaffSection } from '@/settings/staff-section'
 import { TablesSkeleton } from '@/tables/tables-skeleton'
 import { TablesTab } from '@/tables/tables-tab'
@@ -67,8 +66,8 @@ export default async function VenueWorkspacePage({
     params.set('sub', 'design')
     redirect(`/venues/${venue.id}?${params.toString()}`)
   }
-  // A shared device works Tonight: no composer, no Tables & QR and no Publish bar, which need the
-  // person's own sign-in (D122 §7, RR-83, RR-84). An old link to either lands on Tonight.
+  // A shared device works Tonight: no composer, no Tables & QR, no Settings and no Publish bar,
+  // which need the person's own sign-in (D122 §7, RR-83, RR-84, RR-85). An old link lands on Tonight.
   const sharedDevice = await sessionIsSharedDevice({ tenantId: organization.id, sessionId })
   if (sharedDevice && sharedDeviceTabOf(query.tab) !== workspaceTabOf(query.tab)) {
     redirect(`/venues/${venue.id}?tab=tonight`)
@@ -83,7 +82,7 @@ export default async function VenueWorkspacePage({
     guestPathOf(getPool(), organization.id, venue.slug),
   ])
   // What the person holds here decides which Settings sections they see (#87); every command
-  // checks it again. Read only while Settings is open. A shared device never opens settings.
+  // checks it again. Read only while Settings is open, which a shared device never does.
   const access = settingsOpen
     ? await loadSettingsAccess({
         tenantId: organization.id,
@@ -98,7 +97,6 @@ export default async function VenueWorkspacePage({
     settingsOpen && access !== null && !access.sharedDevice
       ? await payingOffered(organization.id, venue.id)
       : false
-  const onSharedDevice = access?.sharedDevice === true || sharedDevice
   const rights: SettingsRights =
     access === null
       ? NO_SETTINGS_RIGHTS
@@ -111,7 +109,9 @@ export default async function VenueWorkspacePage({
   // The name and the guest address `/m/<organisation>/<venue>` (D84) head every tab.
   const title = (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight">{venue.name}</h1>
+      <h1 className="text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]">
+        {venue.name}
+      </h1>
       {guestPath === null ? null : (
         <code
           className="mt-2 inline-block max-w-full break-all rounded-md bg-muted px-2 py-1 font-mono text-xs text-muted-foreground ring-1 ring-border"
@@ -127,13 +127,14 @@ export default async function VenueWorkspacePage({
     <>
       <AdminHeader trail={[{ label: tNav('venues'), href: '/venues' }]} current={venue.name} />
       <div className="mx-auto w-full max-w-7xl flex-1 space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-        {/* The Publish bar top right and the warnings under the header, on every tab (D96, D97). */}
+        {/* The Publish bar top right and the warnings under the header (D96, D97), but on Tonight,
+            where the night's work comes first and they follow it, for who may publish (RR-80). */}
         <VenueHeader
           tenantId={organization.id}
           venueId={venue.id}
           guestPath={guestPath}
           canPublish={canPublishMenu(organization.role)}
-          offerPublish={!sharedDevice}
+          offerPublish={!sharedDevice && !tonightOpen}
           title={title}
         />
         <WorkspaceTabs
@@ -180,9 +181,7 @@ export default async function VenueWorkspacePage({
             ) : (
               <TonightSkeleton />
             ),
-            settings: onSharedDevice ? (
-              <OwnSignInNotice />
-            ) : (
+            settings: (
               <SettingsSections
                 hasTill={hasTill}
                 rights={rights}
@@ -313,6 +312,9 @@ export default async function VenueWorkspacePage({
             ),
           }}
         />
+        {tonightOpen && !sharedDevice && canPublishMenu(organization.role) ? (
+          <TonightPublish tenantId={organization.id} venueId={venue.id} guestPath={guestPath} />
+        ) : null}
       </div>
     </>
   )

@@ -241,7 +241,7 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
         pool,
         {
           type: 'push.subscribe',
-          endpoint: `https://push.example.test/device/${n}-${'x'.repeat(30)}`,
+          endpoint: `https://fcm.googleapis.com/fcm/send/${n}-${'x'.repeat(30)}`,
           p256dh: 'B'.repeat(87),
           auth: 'a'.repeat(22),
         },
@@ -421,7 +421,7 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
     })
 
     it('ends a device the push service no longer knows', async () => {
-      outcomes.set(`https://push.example.test/device/2-${'x'.repeat(30)}`, 'gone')
+      outcomes.set(`https://fcm.googleapis.com/fcm/send/2-${'x'.repeat(30)}`, 'gone')
       await seedAlert('order_unconfirmed')
       await pass()
       const live = (await query(
@@ -432,8 +432,8 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
     })
 
     it('tries again later when every send failed, and does not record it', async () => {
-      outcomes.set(`https://push.example.test/device/1-${'x'.repeat(30)}`, 'failed')
-      outcomes.set(`https://push.example.test/device/2-${'x'.repeat(30)}`, 'failed')
+      outcomes.set(`https://fcm.googleapis.com/fcm/send/1-${'x'.repeat(30)}`, 'failed')
+      outcomes.set(`https://fcm.googleapis.com/fcm/send/2-${'x'.repeat(30)}`, 'failed')
       const id = await seedAlert('order_unconfirmed')
       await pass()
       expect((await rowOf(id))?.details.delivery).not.toHaveProperty('push')
@@ -457,7 +457,7 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
         pool,
         {
           type: 'push.subscribe',
-          endpoint: `https://push.example.test/device/3-${'x'.repeat(30)}`,
+          endpoint: `https://fcm.googleapis.com/fcm/send/3-${'x'.repeat(30)}`,
           p256dh: 'B'.repeat(87),
           auth: 'a'.repeat(22),
         },
@@ -502,6 +502,66 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
       await seedAlert('order_unconfirmed')
       await pass()
       expect(endpointsPushed()).toEqual(['1', '2'])
+    })
+  })
+
+  describe('a money alert (D122 §7)', () => {
+    const markDone = async (id: string) => {
+      const { result } = await applyService(
+        pool,
+        { type: 'alert.done', alertId: id },
+        user(ownerId),
+      )
+      if (result.status !== 'accepted') throw new Error(`done refused: ${result.code}`)
+    }
+
+    afterAll(() => setOrdering({}))
+
+    it('is told after closing and repeats at 5 minutes, with Done, until Done', async () => {
+      await setOrdering({ serviceHours: CLOSED_ALL_WEEK })
+      const id = await seedAlert('payment_stranded', { permission: 'money.follow_up' })
+      await pass()
+      const toGroup = () => sent.filter((m) => m.chatId === VENUE_CHAT)
+      expect(toGroup()).toHaveLength(1)
+      expect(pushed.length).toBeGreaterThan(0)
+      expect((await rowOf(id))?.details.delivery).not.toHaveProperty('suppressed')
+
+      offsetMs = 4 * 60_000
+      await pass()
+      expect(toGroup()).toHaveLength(1)
+
+      offsetMs = 5 * 60_000 + 1_000
+      const pushesBefore = pushed.length
+      await pass()
+      expect(toGroup()).toHaveLength(2)
+      expect(toGroup()[1]).toMatchObject({ doneFor: id })
+      expect(pushed.length).toBeGreaterThan(pushesBefore)
+
+      offsetMs = 10 * 60_000 + 2_000
+      await pass()
+      expect(toGroup()).toHaveLength(3)
+
+      await markDone(id)
+      offsetMs = 20 * 60_000
+      const pushesAtDone = pushed.length
+      await pass()
+      expect(toGroup()).toHaveLength(3)
+      expect(pushed.length).toBe(pushesAtDone)
+    })
+
+    it('a non-money alert after closing is still not delivered', async () => {
+      await setOrdering({ serviceHours: CLOSED_ALL_WEEK })
+      const id = await seedAlert('payment_refunded')
+      expect(await pass()).toBe(0)
+      expect((await rowOf(id))?.details.delivery).toEqual({ suppressed: true })
+    })
+  })
+
+  describe('a tap on a push', () => {
+    it('opens the venue’s Log (D120)', async () => {
+      await seedAlert('order_unconfirmed')
+      await pass()
+      expect(pushed[0]?.payload.url).toBe(`/venues/${venueId}?tab=tonight&view=log`)
     })
   })
 

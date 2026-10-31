@@ -340,6 +340,36 @@ describe.skipIf(!hasDatabase)('a command naming another venue of the organisatio
         })
       }, 30_000)
     }
+
+    it("an Undo with a live token of venue 1, naming venue 2's row: venue 2 did not move", async () => {
+      const { result: paused } = await applyService(
+        world.app,
+        { type: 'ordering.pause', barId: null } as never,
+        staffContext(),
+      )
+      if (paused.status !== 'accepted') throw new Error('the pause at venue 1 was refused')
+      const undo = { entry: Number(paused.details?.undoEntry) }
+      const before = await picture(v2.venue)
+      const call = await applyService(
+        world.app,
+        { type: 'waiter_call.undone', waiterCallId: v2.waiterCall, undo } as never,
+        staffContext(),
+      )
+      const pause = await applyService(
+        world.app,
+        { type: 'ordering.undo_pause', pauseId: v2.pause, undo } as never,
+        staffContext(),
+      )
+      expect(await picture(v2.venue)).toEqual(before)
+      expect(call.result).toMatchObject({ status: 'refused', code: 'call_missing' })
+      // The token is of another pause, so it stops before the venue check.
+      expect(pause.result).toMatchObject({ status: 'refused', code: 'undo_stale' })
+      await applyService(
+        world.app,
+        { type: 'ordering.undo_pause', pauseId: String(paused.details?.pauseId), undo } as never,
+        staffContext(),
+      )
+    }, 30_000)
   })
 
   describe('a worker job of venue 1', () => {

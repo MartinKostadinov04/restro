@@ -1,5 +1,6 @@
 // Tenancy and roles on the route handlers that aren't server actions (the repair-review's A7), on a
 // real Postgres as restro_app: the CSV downloads, the QR file, the upload, the two file routes.
+import { newId } from '@restro/core'
 import type { DbPool } from '@restro/db'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -144,6 +145,29 @@ describe.skipIf(!hasDatabase)('the route handlers, attacked (as restro_app)', ()
       if (origin !== null) headers.origin = origin
       return new Request('http://localhost/api/assets', { method: 'POST', headers, body })
     }
+
+    it('refuses a shared device, whatever the account behind it may do (RR-85)', async () => {
+      asOwnerOf(attacker)
+      const device = newId('dv')
+      await owner.query(
+        `insert into restro.shared_devices
+           (id, tenant_id, venue_id, name, session_id, source, actor, job_id)
+         values ($1, $2, $3, 'RR-85 tablet', $4, 'restro', 'system', 'attack-seed')`,
+        [device, attacker.tenantId, attacker.venues[0].id, `s-${attacker.ownerId}`],
+      )
+      const png = new Blob([new Uint8Array(10)], { type: 'image/png' })
+      try {
+        const answer = await upload(post(png, 'http://localhost'))
+        expect(answer.status).toBe(403)
+        expect(await answer.json()).toEqual({ error: 'own_sign_in' })
+      } finally {
+        await owner.query('update restro.shared_devices set revoked_at = now() where id = $1', [
+          device,
+        ])
+      }
+      // The same person on their own sign-in gets past that door (the file itself is refused).
+      expect((await upload(post(png, 'http://localhost'))).status).toBe(415)
+    }, 30_000)
 
     it('refuses another origin and no origin', async () => {
       asOwnerOf(attacker)

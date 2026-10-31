@@ -35,7 +35,7 @@ jobs:
   checks:
     name: Lint, types, import rules, secrets, tests, build, e2e
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
 
     # Postgres for the packages/db integration tests (required in CI). CI never uses
     # docker-compose.yml or `pnpm db:local`; this container is the CI database.

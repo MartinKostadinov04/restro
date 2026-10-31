@@ -11,7 +11,11 @@ import { and, eq, gte, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { OrderingSettingsError, patchOrderingSettingsIn } from '../apply/ordering-settings'
-import { OrderingSettingsSchema, PreOpeningRuleSchema } from '../ordering-settings'
+import {
+  ClosedDayHoursSchema,
+  OrderingSettingsSchema,
+  PreOpeningRuleSchema,
+} from '../ordering-settings'
 import type { ServiceTx } from './definition'
 import { accepted, refused, type ServiceResult } from './results'
 import { telegramLinkPerson } from './staff'
@@ -23,6 +27,7 @@ const {
   alertRecipientUserIds,
   telegramChatId,
   preOpeningCheck: _preOpeningCheck,
+  closedDayHours: _closedDayHours,
   ...guardKeys
 } = OrderingSettingsSchema.shape
 
@@ -30,7 +35,11 @@ const {
 export const OrderingChangesSchema = z
   .strictObject(guardKeys)
   .partial()
-  .extend({ preOpeningCheck: PreOpeningRuleSchema.optional() })
+  // Without their defaults: a key left out stays.
+  .extend({
+    preOpeningCheck: PreOpeningRuleSchema.optional(),
+    closedDayHours: ClosedDayHoursSchema.optional(),
+  })
 
 /** The keys `settings.alerts_set` may change. */
 export const AlertChangesSchema = z

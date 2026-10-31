@@ -73,10 +73,15 @@ export const ORDERING_CAP_MAX_MINOR = 1_000_000
 /** A Telegram chat id: digits, negative for a group. */
 const TELEGRAM_CHAT_ID = /^-?[0-9]{1,20}$/
 
+/**
+ * The times a closed day had when it was switched off, so switching it on brings them back (plan
+ * `2026-10-27-settings-hours-ordering-plan.md`). Only Settings reads them: a closed day stays closed
+ * by `serviceHours`.
+ */
+export const ClosedDayHoursSchema = ServiceHoursSchema.partial()
+
 /** `venues.settings.ordering` as stored. Every key is present after a save. */
 export const OrderingSettingsSchema = z.strictObject({
-  /** "Only at tables a waiter has opened" (D118, D122 §4). */
-  onlyOpenTables: z.boolean(),
   /** The cap per on-the-bill sent order in minor units, or null for off (D118: €150). */
   capMinor: z.number().int().positive().max(ORDERING_CAP_MAX_MINOR).nullable(),
   /** Most on-the-bill sent orders per table in 15 minutes, or null for off (D118: 6, 3–20). */
@@ -91,6 +96,8 @@ export const OrderingSettingsSchema = z.strictObject({
   passMinutes: z.number().int().min(30).max(360),
   /** When ordering from phones runs, per weekday. */
   serviceHours: ServiceHoursSchema,
+  /** A closed day's last times; settings saved before it existed keep none. */
+  closedDayHours: ClosedDayHoursSchema.default({}),
   /** The check before opening; settings saved before it existed take the defaults. */
   preOpeningCheck: PreOpeningRuleSchema.default(DEFAULT_PRE_OPENING_RULE),
   /**
@@ -109,7 +116,6 @@ export type OrderingSettings = z.infer<typeof OrderingSettingsSchema>
 
 /** What applies until a venue saves its own (D118's defaults; closed every day). */
 export const DEFAULT_ORDERING_SETTINGS: OrderingSettings = {
-  onlyOpenTables: true,
   capMinor: 15_000,
   pacePer15Minutes: 6,
   locationCheck: true,
@@ -117,6 +123,7 @@ export const DEFAULT_ORDERING_SETTINGS: OrderingSettings = {
   radiusMetres: 150,
   passMinutes: 120,
   serviceHours: { mon: null, tue: null, wed: null, thu: null, fri: null, sat: null, sun: null },
+  closedDayHours: {},
   preOpeningCheck: DEFAULT_PRE_OPENING_RULE,
   callLapseMinutes: 15,
   alertRecipientUserIds: [],
@@ -161,6 +168,17 @@ export function serviceHoursProblem(hours: ServiceHoursOfDay, dayEndsAt: string)
 export function readOrderingSettings(
   settings: Readonly<Record<string, unknown>>,
 ): OrderingSettings {
-  const parsed = OrderingSettingsSchema.safeParse(settings.ordering)
+  const parsed = OrderingSettingsSchema.safeParse(withoutRetiredKeys(settings.ordering))
   return parsed.success ? parsed.data : DEFAULT_ORDERING_SETTINGS
+}
+
+/**
+ * `onlyOpenTables` is gone (RR-35: nothing read it), but venues saved it. The schema is strict and a
+ * stored value it refuses reads as the defaults, closed every day, so it is dropped first; the next
+ * save leaves it out.
+ */
+function withoutRetiredKeys(stored: unknown): unknown {
+  if (typeof stored !== 'object' || stored === null) return stored
+  const { onlyOpenTables: _retired, ...kept } = stored as Record<string, unknown>
+  return kept
 }

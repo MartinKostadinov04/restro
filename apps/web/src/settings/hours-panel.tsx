@@ -1,11 +1,12 @@
 'use client'
 
 // Settings › Hours (#87, plan `2026-10-27-settings-hours-ordering-plan.md` §3): seven rows Monday
-// first, each with a switch and "23:00 – 05:00 · last orders 04:30"; switching a closed day on
-// opens its dialog, tapping an open row opens it too; switching a day off saves at once with Undo.
+// first, each with a switch and "23:00 – 05:00 · last orders 04:30"; switching a day off saves at
+// once with Undo and keeps its times, switching it on brings them back the same way; a day with no
+// times to bring back opens its dialog, and tapping an open row opens it too.
 // Before opening: the pre-opening check's timing, only for a venue with a POS. Writes go through
 // `settings.ordering_set`, which checks `settings.guards` and the sign-in again.
-import type { ServiceHours, ServiceHoursOfDay } from '@restro/core'
+import type { OrderingSettings, ServiceHours, ServiceHoursOfDay } from '@restro/core'
 import { PencilIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
@@ -53,12 +54,20 @@ export function HoursPanel({ view }: { view: OrderingView }) {
   const runner = useSettingsRun(view.email)
   const { pending, run } = runner
   const hours = view.settings.serviceHours
+  const kept = view.settings.closedDayHours
   const dayEnd = dayEndText(view.dayEndsAt)
   const [editing, setEditing] = useState<Weekday | null>(null)
 
-  function saveHours(next: ServiceHours, options: { onOk?: () => void } = {}) {
+  function saveHours(
+    next: ServiceHours,
+    options: { onOk?: () => void; keep?: OrderingSettings['closedDayHours'] } = {},
+  ) {
     const previous = hours
-    run(() => saveOrderingAction({ venueId: view.venueId, changes: { serviceHours: next } }), {
+    const changes = {
+      serviceHours: next,
+      ...(options.keep === undefined ? {} : { closedDayHours: options.keep }),
+    }
+    run(() => saveOrderingAction({ venueId: view.venueId, changes }), {
       done: view.openNow ? `${t('st_saved')} ${t('st_now')}` : t('st_saved'),
       undo: () =>
         saveOrderingAction({ venueId: view.venueId, changes: { serviceHours: previous } }),
@@ -68,10 +77,16 @@ export function HoursPanel({ view }: { view: OrderingView }) {
 
   function switchDay(day: Weekday, on: boolean) {
     if (on) {
-      setEditing(day)
+      const times = kept[day]
+      // Times the service day has since moved past go to the dialog, where the problem is shown.
+      if (times === undefined || times === null || hoursProblemOf(times, view.dayEndsAt) !== null) {
+        setEditing(day)
+        return
+      }
+      saveHours({ ...hours, [day]: times })
       return
     }
-    saveHours({ ...hours, [day]: null })
+    saveHours({ ...hours, [day]: null }, { keep: { ...kept, [day]: hours[day] } })
   }
 
   return (
@@ -166,6 +181,7 @@ function DayDialog({
 }) {
   const t = useTranslations('ownerSettings')
   const hours = view.settings.serviceHours
+  const kept = view.settings.closedDayHours
   const dayEnd = dayEndText(view.dayEndsAt)
   const [opens, setOpens] = useState('')
   const [lastOrders, setLastOrders] = useState('')
@@ -175,13 +191,13 @@ function DayDialog({
 
   useEffect(() => {
     if (day === null) return
-    const start = hours[day] ?? nearestOpenDay(hours, day)
+    const start = hours[day] ?? kept[day] ?? nearestOpenDay(hours, day)
     setOpens(start?.opens ?? '')
     setLastOrders(start?.lastOrders ?? '')
     setCloses(start?.closes ?? '')
     setSame(new Set())
     setTried(false)
-  }, [day, hours])
+  }, [day, hours, kept])
 
   const complete = opens !== '' && lastOrders !== '' && closes !== ''
   const problem = complete ? hoursProblemOf({ opens, lastOrders, closes }, view.dayEndsAt) : null
