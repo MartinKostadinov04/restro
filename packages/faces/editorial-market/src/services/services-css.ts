@@ -604,6 +604,13 @@ export const SERVICES_CSS = `
 .rm .ro-confirm p {
   margin: 0;
 }
+/* The note under the confirmation reads on any sheet: the sheet's own writing, a little quieter. The
+   muted colour is the page's and the panel's pair, and on top of the status panel's 75 % it came to
+   about 2.9:1 (measured in the design specs of #173). */
+.rm .ro-confirm .ro-confirm-note {
+  opacity: 1;
+  color: color-mix(in srgb, currentColor 82%, transparent);
+}
 .rm .ro-lines label {
   display: flex;
   gap: 12px;

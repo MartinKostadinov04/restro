@@ -39,11 +39,14 @@ test.skip(
   FACE_ID !== 'editorial-market',
   'these checks read the service sheets of Editorial Market',
 )
-test.describe.configure({ mode: 'serial' })
+// Not serial: a design that breaks a floor fails its own test and the others still run, so one run
+// names every breach (the venue's design is written by each test, and put back by afterAll).
 test.setTimeout(240_000)
 
 const WIDTHS = [320, 390] as const
 const FRAME = '[data-testid="phone-screen"]'
+/** The job id of the designs this file writes, so a leftover of a failed run is known for what it is. */
+const MARK = 'e2e-design-screens'
 
 let owner: Owner
 let page: Page
@@ -69,7 +72,10 @@ async function storedDesign(): Promise<Record<string, unknown> | null> {
     )
     found = (rows[0]?.design as Record<string, unknown> | null | undefined) ?? null
   })
-  return found
+  // A run that failed and was started again meets the design the failed one wrote: that is not the
+  // venue's own (its afterAll puts the venue's back, but a worker that died may not have got there).
+  const provenance = (found as { provenance?: { job_id?: string } } | null)?.provenance
+  return provenance?.job_id === MARK ? null : found
 }
 
 /** Writes a design record into the demo venue: the stored one with these values (and Style) in it. */
@@ -85,7 +91,7 @@ async function writeDesign(style: string, values: unknown): Promise<void> {
       layer: 'manual',
       source: 'manual',
       actor: 'system',
-      job_id: 'e2e-design-screens',
+      job_id: MARK,
       change_set_id: null,
     },
   }

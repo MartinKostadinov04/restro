@@ -361,6 +361,12 @@ const property = (line: string) => /\{ ([\w-]+):/.exec(line)?.[1] ?? ''
 const DEPARTURES: readonly ((line: string, added: boolean) => boolean)[] = [
   // The confirmation's note states its size in pixels: 0.9 of the page's 16 px (no departure in look).
   (line) => /\.ro-confirm-note/.test(line) && property(line) === 'font-size',
+  // The confirmation's note reads at 4.5:1 on any sheet: its own rule adds an opacity and a colour,
+  // and nothing of the earlier rules goes (#173).
+  (line, added) =>
+    added &&
+    line.startsWith('.rm .ro-confirm .ro-confirm-note {') &&
+    /^(?:opacity|color)$/.test(property(line)),
   // The headings state the font they used to inherit: `same` draws the same (no departure in look).
   (line, added) => added && line.endsWith('{ font-family: var(--rm-font) }'),
   // The 9–11 px marks, chips, allergen numbers and table label rise to the 12 px floor.

@@ -1083,6 +1083,8 @@
 .rm .ro-confirm { border-radius: calc(var(--rm-radius) * 1.5) }
 .rm .ro-confirm { text-align: left }
 .rm .ro-confirm p { margin: 0 }
+.rm .ro-confirm .ro-confirm-note { opacity: 1 }
+.rm .ro-confirm .ro-confirm-note { color: color-mix(in srgb, currentColor 82%, transparent) }
 .rm .ro-lines label { display: flex }
 .rm .ro-lines label { gap: 12px }
 .rm .ro-lines label { align-items: center }
