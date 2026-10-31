@@ -15,6 +15,38 @@
 // layouts, the layout and language switches and the page rules. Comments inside the string mark
 // where each part starts.
 
+import { THEME_FONTS } from '@restro/shell'
+
+/** The weights the Heavy steps ask for: the heading (880), the sub-heading (850) and the item name (850). */
+const HEAVY = { heading: 880, subheading: 850, name: 850 } as const
+
+/**
+ * Heavy falls back where a font stops short of it (D130, Heading weight and Name weight): a font that
+ * serves nothing above 700 (Lora) or 800 (Manrope) draws Heavy at its own heaviest weight, bold for
+ * Lora, instead of leaving it to the browser. The heading font is the one drawing, so a rule per font
+ * names it twice: chosen, and `same` with that font as the body. The list follows `THEME_FONTS`, so a
+ * font added with a lower top weight gets its fallback with no edit here.
+ */
+export const HEAVY_FALLBACKS: readonly { readonly font: string; readonly heaviest: number }[] =
+  THEME_FONTS.filter((font) => font.heaviest < HEAVY.heading).map((font) => ({
+    font: font.id,
+    heaviest: font.heaviest,
+  }))
+
+const HEAVY_FALLBACK_CSS = HEAVY_FALLBACKS.flatMap(({ font, heaviest }) =>
+  [`[data-heading-font="${font}"]`, `[data-heading-font="same"][data-body-font="${font}"]`].flatMap(
+    (drawn) => [
+      `.rm[data-heading-weight="heavy"]${drawn} {
+  --rm-heading-weight: ${Math.min(HEAVY.heading, heaviest)};
+  --rm-subheading-weight: ${Math.min(HEAVY.subheading, heaviest)};
+}`,
+      `.rm[data-items-name-weight="heavy"]${drawn} {
+  --rm-name-weight: ${Math.min(HEAVY.name, heaviest)};
+}`,
+    ],
+  ),
+).join('\n')
+
 export const EDITORIAL_CSS = `
 /* The page: the venue's variables, the light set by default. */
 .rm {
@@ -196,6 +228,7 @@ export const EDITORIAL_CSS = `
 .rm[data-items-name-weight="heavy"] {
   --rm-name-weight: 850;
 }
+${HEAVY_FALLBACK_CSS}
 .rm[data-items-name-case="capitals"] {
   --rm-name-case: uppercase;
   --rm-name-tracking: 0.005em;
@@ -1468,9 +1501,6 @@ export const EDITORIAL_CSS = `
   font-size: calc(12px * var(--rm-type));
   padding: 3px 6px;
   max-width: 90px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy {
   grid-column: 1;
@@ -2036,5 +2066,148 @@ export const EDITORIAL_CSS = `
   .rm-filter-group
   button:not([aria-pressed="true"]) {
   border-color: var(--rm-muted);
+}
+/* A dish with no photo starts under the Back button, whatever the design says. */
+.rm-detail-copy:first-child {
+  padding-top: 72px;
+}
+/* A label with no spaces wraps inside its box rather than clip or widen it. */
+.rm-labels span,
+.rm-badge,
+.rm-filter-group button {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+/* Allergens by name (D130): "Gluten · Milk" on the row, the names alone in the footer and the sheet.
+   The row's words are the sheet's button, underlined so they read as one; a long list wraps. */
+.rm[data-labels-allergens="names"] .rm-allergens button {
+  display: block;
+  padding: 11px 0;
+  text-align: left;
+  font-size: calc(13px * var(--rm-type));
+  font-weight: 700;
+  line-height: 1.4;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.rm[data-labels-allergens="names"] .rm-allergen-sheet li {
+  align-items: baseline;
+}
+.rm[data-labels-allergens="names"] .rm-allergen-sheet li::before {
+  content: "";
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+.rm[data-labels-allergens="names"] .rm-allergen-sheet li.is-present::before {
+  background: currentColor;
+}
+/* The dish page as a sheet (D130, Dish page: Kind): the dish in the sheets' own panel, tall, over
+   the menu with the veil showing above it. The sheets' colour (the Sheets page) is its fill, so
+   inside it the page's tokens are the sheet's own pair, as on the full page; the full page's
+   rules are keyed on .is-detail and stay as they are. */
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish {
+  --rm-bg: var(--rm-panel);
+  --rm-text: var(--rm-ink);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: min(100%, 78dvh);
+  padding: 0;
+  background: var(--rm-bg);
+  color: var(--rm-text);
+}
+.rm[data-dish-kind="sheet"][data-sheets-sheets="page"] .rm-overlay-panel.is-dish {
+  --rm-bg: var(--rm-page);
+}
+.rm[data-dish-kind="sheet"][data-sheets-sheets="ink"] .rm-overlay-panel.is-dish {
+  --rm-bg: var(--rm-ink);
+  --rm-text: var(--rm-page);
+  --rm-muted: color-mix(in srgb, var(--rm-page) 78%, transparent);
+  --rm-border: color-mix(in srgb, var(--rm-page) 24%, transparent);
+  --rm-accent-text: var(--rm-page);
+}
+/* An ink button reads on the sheet: ink on a panel or a page sheet, inverted on an ink one. */
+.rm[data-dish-kind="sheet"][data-buttons="ink"] .rm-overlay-panel.is-dish {
+  --rm-button: var(--rm-ink);
+  --rm-on-button: var(--rm-page);
+}
+.rm[data-dish-kind="sheet"][data-buttons="ink"][data-sheets-sheets="ink"] .rm-overlay-panel.is-dish {
+  --rm-button: var(--rm-page);
+  --rm-on-button: var(--rm-ink);
+}
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 100%;
+  height: 0;
+  min-height: 0;
+  padding: 14px 14px 0;
+  background: transparent;
+  border: 0;
+  pointer-events: none;
+}
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head button {
+  border-radius: var(--rm-full);
+  background: var(--rm-bg);
+  color: var(--rm-text);
+  box-shadow: var(--rm-depth);
+  pointer-events: auto;
+}
+.rm[data-dish-kind="sheet"][data-photos-frame="bleed"]
+  .rm-overlay-panel.is-dish:has(.rm-detail-photo)
+  > .rm-overlay-head,
+.rm[data-dish-kind="sheet"][data-dish-photo="small"]
+  .rm-overlay-panel.is-dish:has(.rm-detail-photo)
+  > .rm-overlay-head {
+  margin-bottom: -14px;
+}
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish .rm-detail {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+}
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish .rm-detail-copy {
+  flex: 1 0 auto;
+}
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish .rm-detail-photo img {
+  max-height: 40dvh;
+  border-radius: var(--rm-photo-corners);
+}
+.rm[data-dish-kind="sheet"] .rm-detail-bar {
+  border-top: 1px solid var(--rm-border);
+}
+.rm[data-dish-kind="sheet"][data-dish-photo="small"] .rm-detail {
+  position: relative;
+}
+.rm[data-dish-kind="sheet"][data-dish-photo="small"] .rm-overlay-panel.is-dish .rm-detail-photo {
+  position: absolute;
+  top: 72px;
+  right: 20px;
+  width: 96px;
+  height: 96px;
+  padding: 0;
+  border-radius: var(--rm-photo-corners);
+}
+.rm[data-dish-kind="sheet"][data-dish-photo="small"] .rm-overlay-panel.is-dish .rm-detail-photo img {
+  width: 96px;
+  height: 96px;
+  max-height: none;
+  aspect-ratio: 1 / 1;
 }
 `

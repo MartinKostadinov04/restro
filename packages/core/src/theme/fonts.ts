@@ -23,16 +23,24 @@ export type FontKind = (typeof FONT_KINDS)[number]
 /** One font id: a value of the contract's Body font option. */
 export type ThemeFontId = DesignValues['general']['body_font']
 
-/** The family and kind of each font id. */
+/**
+ * The family, kind and heaviest weight of each font id. The heaviest weight is the top of the
+ * variable font's range in Next's Google font data (Lora stops at 700, Manrope at 800, the other
+ * four reach 900); apps/web's `fonts.test.ts` holds this column equal to that data.
+ */
 const FONT_FACES = {
-  inter: { family: 'Inter', kind: 'sans' },
-  manrope: { family: 'Manrope', kind: 'sans' },
-  montserrat: { family: 'Montserrat', kind: 'sans' },
-  'playfair-display': { family: 'Playfair Display', kind: 'serif' },
-  lora: { family: 'Lora', kind: 'serif' },
-  unbounded: { family: 'Unbounded', kind: 'display' },
+  inter: { family: 'Inter', kind: 'sans', heaviest: 900 },
+  manrope: { family: 'Manrope', kind: 'sans', heaviest: 800 },
+  montserrat: { family: 'Montserrat', kind: 'sans', heaviest: 900 },
+  'playfair-display': { family: 'Playfair Display', kind: 'serif', heaviest: 900 },
+  lora: { family: 'Lora', kind: 'serif', heaviest: 700 },
+  unbounded: { family: 'Unbounded', kind: 'display', heaviest: 900 },
 } as const satisfies {
-  readonly [Id in ThemeFontId]: { readonly family: string; readonly kind: FontKind }
+  readonly [Id in ThemeFontId]: {
+    readonly family: string
+    readonly kind: FontKind
+    readonly heaviest: number
+  }
 }
 
 /** One font family, as the snapshot carries it. */
@@ -45,6 +53,8 @@ export interface ThemeFont {
   /** The family name, as the snapshot carries it. */
   readonly family: ThemeFontFamily
   readonly kind: FontKind
+  /** The heaviest weight the font serves: a heavier one asked for is drawn at this one. */
+  readonly heaviest: number
 }
 
 /** The contract's Body font values, in its order (Basic's, the default, first). */

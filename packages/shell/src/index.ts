@@ -3,7 +3,9 @@
 // React, no database, no clock. Faces (packages/faces/*) draw the view model and nothing else.
 // The contract-test harness is in `@restro/shell/testing`.
 
-export type { Locale } from '@restro/core'
+export type { Locale, ThemeFont } from '@restro/core'
+// The six fonts and their families, so a face can draw the heading font beside the body font (D130).
+export { fontFamilyOf, THEME_FONTS } from '@restro/core'
 export {
   type BagAction,
   type BagDraft,

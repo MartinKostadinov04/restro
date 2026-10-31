@@ -16,6 +16,8 @@ export interface PageContext {
   readonly layout: Layout
   /** Whether a photo fills its box (the Photos page's frame), which widens it by its margin. */
   readonly bleedPhotos: boolean
+  /** Allergens by name on the row, the footer and the sheet (the Labels page), not by number. */
+  readonly allergenNames: boolean
   /** Whether an item passes the guest's filters; one that does not stays in the markup, hidden. */
   readonly isVisible: (item: ViewItem) => boolean
   /** Opens the dish page for an item (the element that asked gets the focus back). */
