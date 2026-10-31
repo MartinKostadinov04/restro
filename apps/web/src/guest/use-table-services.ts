@@ -7,8 +7,9 @@
 // load, the tab's session storage, the phone's position and Turnstile's token.
 
 import type { PayFormSlot, ServiceBinding } from '@restro/shell'
-import { useEffect, useMemo, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 
+import type { CardFormLook } from '../connectors/card-form-types'
 import { cardFormFor, cardReturnUrl } from '../connectors/card-forms'
 import {
   createTableServices,
@@ -97,13 +98,18 @@ const localMemory: SessionMemory = {
  * provider, from the values the client holds. A payment of a provider the page has no form for gets
  * none, and the face draws the paying screen without it.
  */
-function payFormSlot(services: TableServices): PayFormSlot {
+function payFormSlot(
+  services: TableServices,
+  /** The venue's look as it stands when the form opens (from the snapshot's view). */
+  lookNow: () => CardFormLook | null,
+): PayFormSlot {
   return {
     mount(target, props) {
       const values = services.formValues()
       const form = values === null ? null : cardFormFor(values.provider)
       if (values === null || form === null) return { update: () => {}, unmount: () => {} }
       return form.mount(target as HTMLElement, props, {
+        look: lookNow(),
         values: values.values,
         returnUrl: cardReturnUrl(window.location.href),
         onReturned: () => {
@@ -118,7 +124,14 @@ function payFormSlot(services: TableServices): PayFormSlot {
   }
 }
 
-export function useTableServices(code: string | null): ServiceBinding | undefined {
+export function useTableServices(
+  code: string | null,
+  /** The venue's General look for the card form (#258), from the snapshot's view; null for none. */
+  look: CardFormLook | null = null,
+): ServiceBinding | undefined {
+  // The form reads the look when it opens, so a look that changes later never remounts a form.
+  const lookRef = useRef(look)
+  lookRef.current = look
   const services = useMemo<TableServices | null>(() => {
     if (code === null) return null
     const humanToken = turnstileTokens(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY)
@@ -158,7 +171,10 @@ export function useTableServices(code: string | null): ServiceBinding | undefine
     NO_STATE,
   )
   // One slot per client: a face mounts the form once and keeps it across the polls' new states.
-  const payForm = useMemo(() => (services === null ? null : payFormSlot(services)), [services])
+  const payForm = useMemo(
+    () => (services === null ? null : payFormSlot(services, () => lookRef.current)),
+    [services],
+  )
   return useMemo(
     () =>
       services === null || state === null || payForm === null

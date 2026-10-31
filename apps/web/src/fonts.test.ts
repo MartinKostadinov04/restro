@@ -8,7 +8,7 @@ import { THEME_FONTS } from '@restro/core'
 import * as google from 'next/font/google'
 import { describe, expect, it, vi } from 'vitest'
 
-import { FONT_STACKS, FONT_VARIABLES } from './fonts'
+import { FONT_STACKS, FONT_VARIABLES, plainFontStack } from './fonts'
 
 /** The loader of each family, by the name next/font gives it (spaces become underscores). */
 const LOADERS = {
@@ -116,4 +116,18 @@ describe('FONT_STACKS', () => {
       expect(stack).not.toMatch(/https?:|\/\/|url\(/i)
     },
   )
+})
+
+describe('plainFontStack (a provider’s frame cannot read the page’s variables)', () => {
+  it.each(THEME_FONTS)('is the name and a system font of the same kind for $family', (font) => {
+    const stack = plainFontStack(font.family)
+    expect(stack.startsWith(`"${font.family}", `)).toBe(true)
+    expect(stack).not.toContain('var(')
+    // The same fallback as the page's own stack.
+    expect(FONT_STACKS[font.family]?.endsWith(stack.slice(`"${font.family}", `.length))).toBe(true)
+  })
+
+  it('falls back to a sans stack for a family it does not know', () => {
+    expect(plainFontStack('Nope')).toBe('"Nope", system-ui, sans-serif')
+  })
 })

@@ -6,7 +6,8 @@
 //   payment is a direct charge on the venue's own Stripe account.
 //   https://docs.stripe.com/connect/direct-charges.md?platform=web&ui=elements
 // - It mounts the Payment Element from the form values the server gave (the intent's client secret
-//   and the account id) and confirms with `confirmPayment({ redirect: 'if_required' })`. With cards
+//   and the account id), looking as the venue's General does (`appearance.ts`, handed to
+//   `stripe.elements` as `appearance` and `fonts`; D130), and confirms with `confirmPayment({ redirect: 'if_required' })`. With cards
 //   only, the bank's check opens inside the page and nothing redirects; the `return_url` covers a
 //   redirect if one ever happens (return-address.ts).
 //   https://docs.stripe.com/payments/payment-element.md
@@ -18,7 +19,8 @@ import type { PayFormHandle, PayFormProps } from '@restro/shell'
 import { loadStripe } from '@stripe/stripe-js/pure'
 import { z } from 'zod'
 
-import type { CardFormConnector, CardFormContext } from '../card-form-types'
+import type { CardFormConnector, CardFormContext, CardFormLook } from '../card-form-types'
+import { type Screen, type StripeOptions, stripeOptions } from './appearance'
 
 /** The values the server gives for this provider's form: the client secret and the account. */
 const FormValuesSchema = z.object({
@@ -37,7 +39,14 @@ export type StripeLoader = (
   publishableKey: string,
   options: { stripeAccount: string },
 ) => Promise<{
-  elements: (options: { clientSecret: string; locale: string }) => ElementsLike
+  elements: (options: {
+    clientSecret: string
+    locale: string
+    /** The venue's look (`appearance.ts`); absent when the page has none. */
+    appearance?: StripeOptions['appearance']
+    /** The body font's file, when the page serves one Stripe can fetch. */
+    fonts?: StripeOptions['fonts']
+  }) => ElementsLike
   confirmPayment: (options: {
     elements: ElementsLike
     confirmParams: { return_url: string }
@@ -61,6 +70,32 @@ export interface PaymentElementLike {
 }
 
 const defaultLoader = loadStripe as unknown as StripeLoader
+
+/** Whether the phone is on a dark screen now (the venue's `auto` follows it). */
+function phoneIsDark(document: Document): boolean {
+  const window = document.defaultView
+  return typeof window?.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: dark)').matches
+    : false
+}
+
+/**
+ * What the venue's General look adds to `stripe.elements` (D130): the Appearance API's variables
+ * and the body font's file, from `appearance.ts`. No look, no addition: Stripe's own default draws.
+ */
+function lookOptions(
+  look: CardFormLook | null | undefined,
+  document: Document,
+): { appearance?: StripeOptions['appearance']; fonts?: StripeOptions['fonts'] } {
+  if (look == null) return {}
+  const screen: Screen =
+    look.scheme === 'dark' || (look.scheme === 'auto' && phoneIsDark(document)) ? 'dark' : 'light'
+  const options = stripeOptions(look, screen)
+  return {
+    appearance: options.appearance,
+    ...(options.fonts.length === 0 ? {} : { fonts: options.fonts }),
+  }
+}
 
 /** Mounts Stripe's card form into `target`. A value Stripe's library refuses shows nothing. */
 export function mountStripeCardForm(
@@ -117,7 +152,11 @@ export function mountStripeCardForm(
       return
     }
     // The guest's language for the form's own text; a card error stays in the provider's text.
-    elements = stripe.elements({ clientSecret, locale: props.locale })
+    elements = stripe.elements({
+      clientSecret,
+      locale: props.locale,
+      ...lookOptions(context.look, document),
+    })
     element = elements.create('payment', { layout: 'tabs' })
     // The button works once the form is drawn (`ready`), not once it is mounted.
     element.on('ready', () => {

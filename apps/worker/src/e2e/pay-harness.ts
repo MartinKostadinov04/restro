@@ -31,6 +31,7 @@
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
 
+import { createPublishStore, publishStoreConfig, writeTableTokenFile } from '@restro/assets'
 import {
   DEFAULT_ORDERING_SETTINGS,
   DesignContentSchema,
@@ -68,6 +69,8 @@ import { InstanceBudgets, readFloorOf } from '../jobs/floor'
 import { createPaymentJobs } from '../jobs/payments'
 import { createReadingJobs, ReadingBudgets, readTableOf } from '../jobs/readings'
 import { createLogger } from '../logger'
+import { writeLiveOverlay, writePublishFiles } from '../publish/files'
+import { writeOrganizationIndex } from '../publish/organization-index'
 import { startWorker } from '../worker'
 
 /** Demo Bar's table 1 on the simulator. */
@@ -142,10 +145,11 @@ async function main(): Promise<void> {
   // 1. The organisation, its venue on the POS, the floor, table 1 and the account.
   const tenantId = newId('tn')
   await provisionTenant(pool, { tenantId, name: 'Pay Club' })
+  const organizationSlug = `pay-club-${tenantId.slice(3, 13).toLowerCase()}`
   await query('insert into restro.auth_organization (id, name, slug) values ($1, $2, $3)', [
     tenantId,
     'Pay Club',
-    `pay-club-${tenantId.slice(3, 13).toLowerCase()}`,
+    organizationSlug,
   ])
   const integrationId = (await createIntegration(pool, tenantId, { kind: 'sim', host }))
     .id as IntegrationId
@@ -269,6 +273,16 @@ async function main(): Promise<void> {
     await pool.end().catch(() => undefined)
     await owner.end().catch(() => undefined)
     process.exit(exitCode)
+  }
+
+  // A page resolves the table's code through the file the table's QR makes (#258).
+  if (PAGE) {
+    await writeTableTokenFile(await publishStoreOfRun(), await hashTableCode(code), {
+      venue_public_id: venue.publicId,
+      venue_slug: venue.slug,
+      organization_slug: organizationSlug,
+      table_label: '1',
+    })
   }
 
   // 4. Ready, then the test's commands.
@@ -424,7 +438,21 @@ async function publishPayFirstMenu(
     actor: 'system',
   })
   if (published.status === 'held') throw new Error('the pay-first menu was held, not published')
+  // A page needs the files the publish job writes from the pointer (no job runs here): the
+  // snapshot and its pointer, the live overlay and the organisation's index (#258).
+  if (PAGE) {
+    const deps = { pool, store: await publishStoreOfRun(), now: () => new Date() }
+    const scope = { tenantId, menuId: menu.id, venueId }
+    await writePublishFiles(deps, scope)
+    await writeLiveOverlay(deps, scope)
+    await writeOrganizationIndex(deps, tenantId)
+  }
   return item
+}
+
+/** The publish store the e2e servers read (`PUBLISH_STORE=local`, set by the e2e run's config). */
+function publishStoreOfRun() {
+  return createPublishStore(publishStoreConfig(process.env))
 }
 
 main().catch((error: unknown) => {

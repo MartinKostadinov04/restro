@@ -148,8 +148,12 @@ export interface ServiceStrings {
   /** The order set aside when nobody touched it for a while. */
   readonly earlierOrder: string
   readonly restore: string
-  /** A pay-first item: it is not ordered from the phone. */
+  /** A pay-first item where the phone can't pay for it (`ordering.payFirst` not `on`): ordered from the waiter. */
   readonly orderFromWaiter: string
+  /** A pay-first line the phone pays for at Send (#258, D113): "Not ordered until paid". */
+  readonly notUntilPaid: string
+  /** The Send with pay-first lines (#258): "Send and pay 24 EUR", the amount as text. */
+  readonly sendAndPay: (amount: string) => string
   /** A bill line with no item of ours. */
   readonly otherItem: string
   /** A line held by a payment. */
@@ -523,6 +527,8 @@ const EN: Strings = {
     earlierOrder: 'Earlier order',
     restore: 'Restore',
     orderFromWaiter: 'Order this from your waiter',
+    notUntilPaid: 'Not ordered until paid',
+    sendAndPay: (amount) => `Send and pay ${amount}`,
     otherItem: 'Other item',
     heldLine: 'Being paid',
     orderingPaused: 'Ordering is paused right now, please order from a waiter.',
@@ -870,6 +876,8 @@ const BG: Strings = {
     earlierOrder: 'Предишна поръчка',
     restore: 'Върни',
     orderFromWaiter: 'Поръчайте това от сервитьора',
+    notUntilPaid: 'Не е поръчано, докато не се плати',
+    sendAndPay: (amount) => `Изпрати и плати ${amount}`,
     otherItem: 'Друг артикул',
     heldLine: 'Плаща се',
     orderingPaused: 'Поръчките са спрени в момента, моля, поръчайте от сервитьор.',

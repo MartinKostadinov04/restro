@@ -7,6 +7,8 @@
 // is hidden while a sheet is open. The last refusal of an order command shows over the bar when no
 // sheet is open (inside the bag sheet it shows there).
 
+import { callIsSingleStep } from '@restro/shell'
+
 import { HandIcon } from '../icons'
 import { orderBusy, useServices } from './provider'
 
@@ -34,7 +36,11 @@ export function ServiceBar() {
             className="ro-waiter"
             data-slot="menu.call_waiter"
             aria-label={words.callServer}
-            onClick={(event) => o.openSheet('call', event.currentTarget)}
+            onClick={(event) => {
+              // With only `waiter` ticked the tap calls at once (D127): the sheet sends it as it opens.
+              if (callIsSingleStep(features.callWaiter)) o.armCall()
+              o.openSheet('call', event.currentTarget)
+            }}
           >
             <HandIcon />
             <span>{words.bell}</span>

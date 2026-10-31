@@ -126,8 +126,20 @@ export interface PayTotals {
  * before the flag changed.
  */
 export function choosePay(picks: Picks, chosen: TipChoice, tipsOffered: boolean): PayTotals {
-  const tip = tipsOffered ? chosen : NO_TIP
   const itemsMinor = sumSignedMinor([...picks.values()].map((line) => line.amountMinor))
+  return payTotalsOf(itemsMinor, chosen, tipsOffered)
+}
+
+/**
+ * The same sum for lines already added up (`itemsMinor`): the tip presets of those lines and the
+ * total. `choosePay` and the pay-first Send (#258) share it, so a tip is worked out in one place.
+ */
+export function payTotalsOf(
+  itemsMinor: number,
+  chosen: TipChoice,
+  tipsOffered: boolean,
+): PayTotals {
+  const tip = tipsOffered ? chosen : NO_TIP
   const base = Math.max(itemsMinor, 0)
   const presets = TIP_PERCENTS.map((percent) => ({
     percent,
