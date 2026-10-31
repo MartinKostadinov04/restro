@@ -219,7 +219,12 @@ test('a colour shows in the preview at once, and Undo takes the last step back',
 })
 
 test('a Style tile draws the menu; picking it fills every option and keeps the colours and body font', async () => {
-  await expect(page.getByTestId('design-style-tile')).toHaveCount(2)
+  // A tile per Style with a file: all five of the contract's since #178, in the contract's order.
+  const tiles = page.getByTestId('design-style-tile')
+  await expect(tiles).toHaveCount(5)
+  expect(
+    await tiles.evaluateAll((found) => found.map((one) => one.getAttribute('data-style'))),
+  ).toEqual(['basic', 'editorial', 'soft', 'classic', 'club'])
   await expect(tile('basic').getByRole('radio')).toBeChecked()
   // The renderer itself, drawing the top of this menu in the draft's colours.
   const specimen = page.frameLocator(

@@ -1,5 +1,8 @@
 style:basic 8edd52d6ff3dfa50 7e59249658cad560
 style:editorial fa6f0fd9e70f3843 dbb000d0581729c4
+style:soft 51fde01d86f045f1 23da9f451f527f77
+style:classic 180604db8f1a789 5ac5ec56e98a571
+style:club b55ecbea35df7e54 e9a2d393b35cec3d
 general.screen=light dd7b53241db9bef8 7e59249658cad560
 general.screen=dark 108c945645785222 7e59249658cad560
 general.body_font=manrope fdf78b38356eb9fc 7e59249658cad560
@@ -15,7 +18,7 @@ general.heading_font=lora 5dbe9397c09c805f 7e59249658cad560
 general.heading_font=unbounded 51f27fa1ca1223a5 7e59249658cad560
 general.heading_weight=regular a4bdd227ceb6685d 756d985735a51289
 general.heading_weight=heavy 64b81f7ca4889b16 c2f8fca34323a66f
-general.corners=square 86eaf4b7127e7d5d 911db0eb7e7baa1b
+general.corners=square 86eaf4b7127e7d5d 35079a6c6e726d8
 general.corners=round 9f6672d95b4cda41 7e59249658cad560
 general.corners=extra 230d4e407a9ada98 7e59249658cad560
 general.depth=none cc7bb9342393d374 26b0f7c73e67cbe
