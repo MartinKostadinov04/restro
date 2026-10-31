@@ -266,8 +266,21 @@ for (const style of ORDER_STYLES) {
       await page.route('https://challenges.cloudflare.com/turnstile/**', (route) =>
         route.fulfill({ contentType: 'text/javascript', body: TURNSTILE_STUB }),
       )
+      const seen: string[] = []
+      page.on('console', (message) => seen.push(`console ${message.type()}: ${message.text()}`))
+      page.on('pageerror', (error) => seen.push(`page error: ${error.message}`))
+      page.on('response', (response) => {
+        if (response.status() >= 400) seen.push(`${response.status()} ${response.url()}`)
+      })
       await page.goto(`${path}?lang=en#t=${code}`)
-      await expect(faceRoot(page)).toBeVisible()
+      try {
+        await expect(faceRoot(page)).toBeVisible({ timeout: 20_000 })
+      } catch (error) {
+        // CI keeps no trace of a failed page: say what the guest saw.
+        console.log(`the page did not draw (${path}):\n${seen.join('\n')}`)
+        console.log((await page.locator('body').innerText()).slice(0, 600))
+        throw error
+      }
 
       // The guest puts the one pay-first item on the order: the line says it is not ordered yet.
       await page.locator('[data-slot="item.add"]').first().click()
