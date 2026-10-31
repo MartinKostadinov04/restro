@@ -71,6 +71,13 @@ export type TableCommand =
   | { readonly type: 'ordering.pause'; readonly barId: string | null; readonly undo?: UndoToken }
   | { readonly type: 'ordering.lift'; readonly pauseId: string }
   | { readonly type: 'ordering.undo_pause'; readonly pauseId: string; readonly undo: UndoToken }
+  | {
+      readonly type: 'push.subscribe'
+      readonly endpoint: string
+      readonly p256dh: string
+      readonly auth: string
+    }
+  | { readonly type: 'push.revoke'; readonly endpointHash: string }
 
 /** Who acts at which venue. The tenant is the person's organisation, never the request's. */
 export interface TonightScope {

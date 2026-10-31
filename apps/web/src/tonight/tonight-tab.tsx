@@ -10,6 +10,7 @@ import type { Venue } from '@restro/db'
 import { getLocale, getTranslations } from 'next-intl/server'
 
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
+import { webPushPublicKey } from '@/server/env'
 import { loadTonightView } from '@/server/tonight/load'
 import {
   loadLog,
@@ -78,7 +79,10 @@ export async function TonightTab({
   if (open === 'actions') {
     const result = await loadTonightView({ tenantId, venue, userId, sessionId })
     content = result.ok ? (
-      <TonightPanel view={result.view} />
+      <TonightPanel
+        view={result.view}
+        pushKey={result.view.can.answer ? webPushPublicKey() : undefined}
+      />
     ) : (
       <Empty>
         <EmptyHeader>

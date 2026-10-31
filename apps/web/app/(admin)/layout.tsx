@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import type { ReactNode } from 'react'
 
@@ -7,6 +8,13 @@ import { canManageIntegration } from '@/server/roles'
 import { requireTenant } from '@/server/session'
 import { onSharedDevice } from '@/server/staff/shared-device'
 import { listVenues } from '@/server/venues'
+
+// Staff install the panel like an app from here (D120, RR-86). Set on this layout, never on the
+// root's or through `app/manifest.ts`, which would link it from the guest's pages too.
+export const metadata: Metadata = {
+  manifest: '/manifest.webmanifest',
+  icons: { apple: '/icons/icon-180.png' },
+}
 
 // The frame of every signed-in admin page. Pages still check the session themselves: a layout
 // does not re-render when the person moves between its pages, so this is not the guard.

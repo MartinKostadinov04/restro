@@ -1,5 +1,10 @@
+import { createECDH, randomBytes } from 'node:crypto'
+import { PushSubscribeSchema } from '@restro/core/service'
+import type { DbPool } from '@restro/db'
 import { describe, expect, it } from 'vitest'
+import webpush from 'web-push'
 
+import { deliverAlerts } from './deliver'
 import { createPushSender, type WebPushModule } from './push'
 
 const VAPID = {
@@ -71,5 +76,96 @@ describe('the Web Push sender', () => {
     })
     const sender = createPushSender({ vapid: VAPID, module })
     expect(await sender.send(SUBSCRIPTION, PAYLOAD)).toBe('failed')
+  })
+})
+
+describe('a real browser subscription (RR-86)', () => {
+  // What `web-push` builds before it sends: it encrypts and signs, with no network. Not in the
+  // worker's own typing, which names only what the worker calls.
+  const real = webpush as unknown as {
+    generateVAPIDKeys(): { publicKey: string; privateKey: string }
+    generateRequestDetails(
+      subscription: unknown,
+      payload: string,
+      options: Record<string, unknown>,
+    ): { method: string; headers: Record<string, unknown>; endpoint: string; body: Buffer }
+  }
+
+  /** The shape of `subscription.toJSON()`, with real keys: a P-256 point and 16 random bytes. */
+  function browserSubscription() {
+    const ecdh = createECDH('prime256v1')
+    return {
+      endpoint: 'https://fcm.googleapis.com/fcm/send/dGVzdC1lbmRwb2ludA:APA91bH-test',
+      expirationTime: null,
+      keys: {
+        p256dh: ecdh.generateKeys().toString('base64url'),
+        auth: randomBytes(16).toString('base64url'),
+      },
+    }
+  }
+
+  it('passes the server action’s schema and the worker’s real `web-push` call', async () => {
+    const json = browserSubscription()
+    const stored = PushSubscribeSchema.parse({
+      type: 'push.subscribe',
+      endpoint: json.endpoint,
+      p256dh: json.keys.p256dh,
+      auth: json.keys.auth,
+    })
+    const vapid = { ...real.generateVAPIDKeys(), subject: 'mailto:ops@restro.example' }
+    const built: { endpoint: string; headers: Record<string, unknown>; body: Buffer }[] = []
+    const sender = createPushSender({
+      vapid,
+      module: {
+        async sendNotification(subscription, payload, options) {
+          built.push(real.generateRequestDetails(subscription, payload, options))
+          return { statusCode: 201 }
+        },
+      },
+    })
+    expect(await sender.send(stored, PAYLOAD)).toBe('sent')
+    expect(built[0]?.endpoint).toBe(json.endpoint)
+    expect(built[0]?.headers).toMatchObject({ 'Content-Encoding': 'aes128gcm', Urgency: 'high' })
+    expect(String(built[0]?.headers.Authorization)).toContain(`k=${vapid.publicKey}`)
+    expect(built[0]?.body.length).toBeGreaterThan(JSON.stringify(PAYLOAD).length)
+  })
+
+  it('a key that is not a real point never reaches the push service: the send says failed', async () => {
+    const sender = createPushSender({ vapid: realVapid(), module: builtOnly() })
+    expect(await sender.send(SUBSCRIPTION, PAYLOAD)).toBe('failed')
+  })
+
+  function realVapid() {
+    return { ...real.generateVAPIDKeys(), subject: 'mailto:ops@restro.example' }
+  }
+  function builtOnly(): WebPushModule {
+    return {
+      async sendNotification(subscription, payload, options) {
+        real.generateRequestDetails(subscription, payload, options)
+        return { statusCode: 201 }
+      },
+    }
+  }
+})
+
+describe('the delivery with no VAPID keys and no bot token', () => {
+  it('sends nothing and throws nothing, without even reading the database', async () => {
+    const untouched = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error('the pool was read')
+        },
+      },
+    ) as DbPool
+    const sent = await deliverAlerts({
+      pool: untouched,
+      log: { warn: () => undefined, error: () => undefined },
+      now: () => new Date(),
+      push: null,
+      telegram: null,
+      teamChatId: null,
+    })
+    expect(sent).toBe(0)
   })
 })

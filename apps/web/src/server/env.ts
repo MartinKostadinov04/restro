@@ -89,6 +89,19 @@ export const ServerEnvSchema = z.object({
       const trimmed = value?.trim()
       return trimmed === undefined || trimmed === '' ? undefined : trimmed
     }),
+  /**
+   * The public half of the worker's Web Push key pair (#83, RR-86): Tonight subscribes a staff device
+   * with it. Without it the control doesn't show. The web app never declares the private half. Whether
+   * it is a valid key is read by `webPushPublicKey`, so a bad value never takes the whole app down.
+   * Empty counts as missing.
+   */
+  VAPID_PUBLIC_KEY: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
   /** The bearer token the reveal endpoint expects (the worker's REVEAL_SERVICE_TOKEN). */
   REVEAL_SERVICE_TOKEN: z
     .string()
@@ -138,6 +151,14 @@ export function serverEnv(): ServerEnv {
   }
   cached = parsed.data
   return cached
+}
+
+/** The key Tonight subscribes a staff device with, or undefined: unset, or not in a key's shape. */
+export function webPushPublicKey(
+  env: Pick<ServerEnv, 'VAPID_PUBLIC_KEY'> = serverEnv(),
+): string | undefined {
+  const key = env.VAPID_PUBLIC_KEY
+  return key !== undefined && /^[A-Za-z0-9_-]{60,120}$/.test(key) ? key : undefined
 }
 
 /**

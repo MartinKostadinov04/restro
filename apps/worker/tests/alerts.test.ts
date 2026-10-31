@@ -241,7 +241,7 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
         pool,
         {
           type: 'push.subscribe',
-          endpoint: `https://push.example.test/device/${n}-${'x'.repeat(30)}`,
+          endpoint: `https://fcm.googleapis.com/fcm/send/${n}-${'x'.repeat(30)}`,
           p256dh: 'B'.repeat(87),
           auth: 'a'.repeat(22),
         },
@@ -421,7 +421,7 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
     })
 
     it('ends a device the push service no longer knows', async () => {
-      outcomes.set(`https://push.example.test/device/2-${'x'.repeat(30)}`, 'gone')
+      outcomes.set(`https://fcm.googleapis.com/fcm/send/2-${'x'.repeat(30)}`, 'gone')
       await seedAlert('order_unconfirmed')
       await pass()
       const live = (await query(
@@ -432,8 +432,8 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
     })
 
     it('tries again later when every send failed, and does not record it', async () => {
-      outcomes.set(`https://push.example.test/device/1-${'x'.repeat(30)}`, 'failed')
-      outcomes.set(`https://push.example.test/device/2-${'x'.repeat(30)}`, 'failed')
+      outcomes.set(`https://fcm.googleapis.com/fcm/send/1-${'x'.repeat(30)}`, 'failed')
+      outcomes.set(`https://fcm.googleapis.com/fcm/send/2-${'x'.repeat(30)}`, 'failed')
       const id = await seedAlert('order_unconfirmed')
       await pass()
       expect((await rowOf(id))?.details.delivery).not.toHaveProperty('push')
@@ -457,7 +457,7 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
         pool,
         {
           type: 'push.subscribe',
-          endpoint: `https://push.example.test/device/3-${'x'.repeat(30)}`,
+          endpoint: `https://fcm.googleapis.com/fcm/send/3-${'x'.repeat(30)}`,
           p256dh: 'B'.repeat(87),
           auth: 'a'.repeat(22),
         },
