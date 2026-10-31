@@ -176,6 +176,11 @@ export function offersReceiptEmail(paying: PayingView | null | undefined): boole
 export type PayBlock =
   /** The phone has not reached Restro for about 10 s (D121): Pay is blocked, never queued. */
   | 'offline'
+  /**
+   * Ordering is paused (D120: a venue pause or a table pause): Pay is greyed whatever else holds, and
+   * the guest reads the pause's own line, "Ordering is paused right now, please order from a waiter".
+   */
+  | 'ordering_paused'
   | 'cards_paused'
   | 'not_up_to_date'
   | 'nothing_picked'
@@ -197,8 +202,11 @@ export function payBlock(
   receiptEmail = '',
   /** `state.offline`: the phone is offline, so Pay is greyed whatever else holds (D121). */
   offline = false,
+  /** `state.ordering.state` is `paused` (D120): Pay is greyed with the pause, never queued. */
+  orderingPaused = false,
 ): PayBlock | null {
   if (offline) return 'offline'
+  if (orderingPaused) return 'ordering_paused'
   if (paying.state === 'paused') return 'cards_paused'
   if (!bill.complete) return 'not_up_to_date'
   if (picks.size === 0) return 'nothing_picked'

@@ -669,24 +669,70 @@ describe('Send: no local success (test 3)', () => {
     expect(maybeSendButton(sheet)).toBeNull()
   })
 
-  it('offers no Send while the host says ordering is paused or closed, and keeps the lines', () => {
-    for (const [state, words] of [
-      ['paused', W.orderingPaused],
-      ['closed', W.orderingClosed],
-    ] as const) {
-      const host = orderHost({
-        order: orderOf([orderLine(hummus)]),
-        ordering: { state, notesAndOptions: true },
-      })
-      const { unmount } = drawFace(host)
-      const sheet = openBag()
-      expect(sheet.textContent, state).toContain(words)
-      expect(maybeSendButton(sheet), state).toBeNull()
-      expect(within(sheet).getByText('Hummus'), state).toBeTruthy()
-      unmount()
-      cleanup()
-      window.history.replaceState(null, '', '/')
-    }
+  it('offers no Send while the host says the table is closed, and keeps the lines', () => {
+    const host = orderHost({
+      order: orderOf([orderLine(hummus)]),
+      ordering: { state: 'closed', notesAndOptions: true },
+    })
+    drawFace(host)
+    const sheet = openBag()
+    expect(sheet.textContent).toContain(W.orderingClosed)
+    expect(maybeSendButton(sheet)).toBeNull()
+    expect(within(sheet).getByText('Hummus')).toBeTruthy()
+  })
+
+  it('draws Send greyed, not taken away, while ordering is paused, and the bag stays editable (D120)', async () => {
+    const host = orderHost({
+      order: orderOf([orderLine(hummus)]),
+      ordering: { state: 'paused', notesAndOptions: true },
+    })
+    drawFace(host)
+    const sheet = openBag()
+    // The pause's own line, and Send drawn with its words but greyed.
+    expect(sheet.textContent).toContain(W.orderingPaused)
+    const send = sendButton(sheet)
+    expect(send.hasAttribute('disabled')).toBe(true)
+    expect(send.textContent).toContain(W.sendItems(1))
+    fireEvent.click(send)
+    await act(async () => {})
+    expect(host.of('order.send')).toHaveLength(0)
+    // The lines can still be changed and removed, so the table can send once ordering is back.
+    const more = within(sheet).getByRole('button', { name: 'One more: Hummus' })
+    expect(more.hasAttribute('disabled')).toBe(false)
+    fireEvent.click(more)
+    await act(async () => {})
+    expect(host.of('order.change')).toHaveLength(1)
+    expect(
+      within(sheet)
+        .getByRole('button', { name: /Remove: Hummus/ })
+        .hasAttribute('disabled'),
+    ).toBe(false)
+  })
+
+  it('greys Send again, and sends nothing, once ordering is back (D120)', async () => {
+    const host = orderHost({
+      order: orderOf([orderLine(hummus)]),
+      ordering: { state: 'paused', notesAndOptions: true },
+    })
+    const page = drawFace(host)
+    const sheet = openBag()
+    expect(sendButton(sheet).hasAttribute('disabled')).toBe(true)
+    page.update({ ordering: { state: 'on', notesAndOptions: true } })
+    expect(sendButton(sheet).hasAttribute('disabled')).toBe(false)
+    expect(sheet.textContent).not.toContain(W.orderingPaused)
+  })
+
+  it('keeps Send away on a closed night while ordering is paused (D120 covers only the pause)', () => {
+    const host = orderHost({
+      order: orderOf([orderLine(hummus)]),
+      ordering: {
+        state: 'paused',
+        notesAndOptions: true,
+        night: { state: 'closed', at: null },
+      },
+    })
+    drawFace(host)
+    expect(maybeSendButton(openBag())).toBeNull()
   })
 
   it('says a table code is no longer in use, not that the table is closed (RR-58, D121)', () => {

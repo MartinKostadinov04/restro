@@ -22,6 +22,7 @@ export const editorialStyle = {
   id: 'editorial',
   departures: [
     'The 9–11 px marks, chips, allergen numbers and table label rise to the 12 px floor.',
+    'The options under a line of the bill’s rounds (11.7 px) rise to the 12 px floor.',
     'The note, email and promo inputs rise from 15 px to the 16 px floor.',
     'Strip crops and the dish photo are 4:3 (today the strip is 1.22:1).',
     'A card shows three description lines beside a photo too (today two).',

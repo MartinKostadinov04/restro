@@ -141,6 +141,8 @@ export interface OrderDraw {
 /** What the screens get from the provider. */
 export interface Services {
   readonly view: ViewModel
+  /** Where the published files live, for the few pictures a sheet draws (a line's photo, the logo). */
+  readonly assetBase: string
   readonly state: ServiceState
   /** The confirmed table's label ("12"), or null. */
   readonly tableLabel: string | null
@@ -226,12 +228,14 @@ export function orderBusy(
 
 export function ServicesProvider({
   view,
+  assetBase,
   services,
   tableLabel,
   openDish,
   children,
 }: {
   readonly view: ViewModel
+  readonly assetBase: string
   /** The confirmed table's label, or null. */
   readonly tableLabel: string | null
   /** The host's binding, or undefined: the face then draws no service at all. */
@@ -242,7 +246,13 @@ export function ServicesProvider({
 }) {
   if (!servicesShown(view, services) || services === undefined) return <>{children}</>
   return (
-    <ActiveServices view={view} services={services} tableLabel={tableLabel} openDish={openDish}>
+    <ActiveServices
+      view={view}
+      assetBase={assetBase}
+      services={services}
+      tableLabel={tableLabel}
+      openDish={openDish}
+    >
       {children}
     </ActiveServices>
   )
@@ -255,12 +265,14 @@ const NO_REMOVED: NonNullable<TableOrderView['removed']> = []
 
 function ActiveServices({
   view,
+  assetBase,
   services,
   tableLabel,
   openDish,
   children,
 }: {
   readonly view: ViewModel
+  readonly assetBase: string
   readonly tableLabel: string | null
   readonly services: ServiceBinding
   readonly openDish: (itemId: string, opener: HTMLElement) => void
@@ -459,6 +471,8 @@ function ActiveServices({
       if (taking.length === 0) return
       // Send is blocked while the phone is offline, never queued (D121); the sheet greys the button.
       if (latest.current.services.state.offline === true) return
+      // Nor while ordering is paused (D120): the sheet greys Send, and the bag stays as it is.
+      if (latest.current.services.state.ordering?.state === 'paused') return
       sendingNow.current = true
       setAsked(null)
       setSending(true)
@@ -511,6 +525,7 @@ function ActiveServices({
   const value = useMemo<Services>(
     () => ({
       view,
+      assetBase,
       state,
       tableLabel,
       binding: services,
@@ -544,6 +559,7 @@ function ActiveServices({
     }),
     [
       view,
+      assetBase,
       state,
       tableLabel,
       services,

@@ -63,6 +63,8 @@ export interface ServiceStrings {
   readonly preview: string
   /** "approx.": a total the face added up itself, until the host's quote exists. */
   readonly approx: string
+  /** The word on an item's Add control (the Order page's Add control, D130). */
+  readonly add: string
   readonly addNamed: (name: string) => string
   readonly increase: string
   readonly decrease: string
@@ -426,6 +428,7 @@ const EN: Strings = {
   services: {
     preview: 'Preview',
     approx: 'approx.',
+    add: 'Add',
     addNamed: (name) => `Add ${name}`,
     increase: 'One more',
     decrease: 'One less',
@@ -768,6 +771,7 @@ const BG: Strings = {
   services: {
     preview: 'Преглед',
     approx: 'прибл.',
+    add: 'Добави',
     addNamed: (name) => `Добави ${name}`,
     increase: 'Още едно',
     decrease: 'Едно по-малко',

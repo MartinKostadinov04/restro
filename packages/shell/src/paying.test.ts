@@ -189,6 +189,19 @@ describe('choosing what to pay (#45, D127)', () => {
     expect(payBlock(PAYING, b, picks, NO_TIP, true, '', false)).toBe(null)
   })
 
+  it('greys Pay while ordering is paused (D120), after offline and before every other reason', () => {
+    const picks = pickWhole(new Map(), b)
+    expect(payBlock(PAYING, b, picks, NO_TIP, true, '', false, true)).toBe('ordering_paused')
+    // Whatever else holds: paying paused too, a bill not up to date, nothing ticked.
+    expect(payBlock({ ...PAYING, state: 'paused' }, b, picks, NO_TIP, true, '', false, true)).toBe(
+      'ordering_paused',
+    )
+    expect(payBlock(PAYING, b, new Map(), NO_TIP, true, '', false, true)).toBe('ordering_paused')
+    expect(payBlock(PAYING, b, picks, NO_TIP, true, '', true, true)).toBe('offline')
+    // Not paused, nothing changes.
+    expect(payBlock(PAYING, b, picks, NO_TIP, true, '', false, false)).toBe(null)
+  })
+
   it('words the client’s own refusals: offline is the weak-connection line, a lost answer is D120’s', () => {
     for (const lang of ['en_US', 'bg_BG'] as const) {
       const words = stringsFor(lang).services

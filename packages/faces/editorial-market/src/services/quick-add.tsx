@@ -2,7 +2,8 @@
 // bound its services, and this item has ordering controls (R11). A dish with a required choice
 // opens its page instead of adding, where the POS's ticket takes choices (#78); where it does not,
 // the card says "Order this from your waiter" in its place. A plain dish goes onto the table's
-// order, and the button then turns into a counter that edits that line.
+// order, and the button then turns into a counter that edits that line. The Order page's Add
+// control (D130) is a round "+" or a small pill with the word "Add"; both are the same button.
 
 import { needsChoices, type ViewItem } from '@restro/shell'
 
@@ -26,6 +27,7 @@ export function QuickAdd({ item }: { readonly item: ViewItem }) {
     )
   }
 
+  const word = o.view.design.order?.add_control === 'add'
   const mine = order.lines.filter((line) => line.itemId === item.id)
   const total = mine.reduce((sum, line) => sum + line.qty, 0)
   const plain = mine.find(
@@ -48,7 +50,7 @@ export function QuickAdd({ item }: { readonly item: ViewItem }) {
     <div className="ro-quick">
       <button
         type="button"
-        className="ro-plus"
+        className={word ? 'ro-plus is-word' : 'ro-plus'}
         data-design-part="item.add"
         data-slot="item.add"
         aria-label={words.addNamed(item.name.text)}
@@ -57,7 +59,7 @@ export function QuickAdd({ item }: { readonly item: ViewItem }) {
           else void o.add(item)
         }}
       >
-        <PlusIcon />
+        {word ? <span className="ro-add-word">{words.add}</span> : <PlusIcon />}
         {total > 0 ? <span className="ro-plus-count">{total}</span> : null}
       </button>
     </div>

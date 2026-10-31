@@ -49,7 +49,7 @@ import {
   togglePick,
 } from '@restro/shell'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
-
+import { Photo } from '../parts'
 import { newActionId } from './command'
 import { StatePanel } from './parts'
 import { useServicesRequired } from './provider'
@@ -176,6 +176,10 @@ function Confirmation({
   readonly failedText: string
   readonly onClose: () => void
 }) {
+  const { assetBase, locale, view: menu } = useServicesRequired()
+  // The Receipt page's Venue block (D130): the venue's logo with the name small under it. A venue
+  // without a logo keeps the name.
+  const logo = menu.design.receipt?.venue_block === 'logo' ? menu.theme.logo : null
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
   // The image is drawn as the page opens, so the Save tap has it ready (a share sheet needs the tap).
@@ -214,9 +218,25 @@ function Confirmation({
         {view.title}
       </h3>
       {view.venue === null ? null : (
-        <p data-slot="pay.confirmation.venue" data-design-part="receipt.venue">
-          {view.venue}
-        </p>
+        <>
+          {logo === null ? null : (
+            <Photo
+              image={logo}
+              assetBase={assetBase}
+              page={locale}
+              sizes="144px"
+              className="ro-confirm-logo"
+              loading="eager"
+            />
+          )}
+          <p
+            data-slot="pay.confirmation.venue"
+            data-design-part="receipt.venue"
+            className={logo === null ? undefined : 'is-under-logo'}
+          >
+            {view.venue}
+          </p>
+        </>
       )}
       {view.when === null ? null : <p data-slot="pay.confirmation.when">{view.when}</p>}
       <ul className="ro-lines">
@@ -366,23 +386,35 @@ export function PaySheet() {
     tipsOffered,
     receiptEmail,
     state.offline === true,
+    // D120: while ordering is paused Pay is greyed, with the pause's own line.
+    state.ordering?.state === 'paused',
   )
   const blockWords =
     block === 'offline'
       ? words.offline
-      : block === 'cards_paused'
-        ? w.cardsPaused
-        : block === 'not_up_to_date'
-          ? w.notUpToDate
-          : block === 'nothing_picked'
-            ? w.nothingPicked
-            : block === 'below_minimum'
-              ? w.belowMinimum(money(paying.minCardMinor))
-              : block === 'tip_too_big'
-                ? w.tipTooBig
-                : block === 'bad_email'
-                  ? w.emailInvalid
-                  : null
+      : block === 'ordering_paused'
+        ? words.orderingPaused
+        : block === 'cards_paused'
+          ? w.cardsPaused
+          : block === 'not_up_to_date'
+            ? w.notUpToDate
+            : block === 'nothing_picked'
+              ? w.nothingPicked
+              : block === 'below_minimum'
+                ? w.belowMinimum(money(paying.minCardMinor))
+                : block === 'tip_too_big'
+                  ? w.tipTooBig
+                  : block === 'bad_email'
+                    ? w.emailInvalid
+                    : null
+  // The Pay page's Tip (D130): chips, or rows that also show what each percent comes to. The amounts
+  // are the shell's preview of the ticked lines (the server prices the hold), and none shows before a
+  // line is ticked.
+  const tipRows = o.view.design.pay?.tip === 'rows'
+  const tipAmount = (percent: number): string | null => {
+    const preset = totals.presets.find((candidate) => candidate.percent === percent)
+    return preset === undefined || totals.itemsMinor <= 0 ? null : money(preset.tipMinor)
+  }
   const free = freeLines(bill)
   // Everything is paid: nothing is free to pay and the sitting has paid lines, so the choosing, the
   // totals and Pay go, and the bill shows what was paid (D127 1.2).
@@ -463,7 +495,14 @@ export function PaySheet() {
                   aria-pressed={tip.kind === 'percent' && tip.percent === percent}
                   onClick={() => pickTip({ kind: 'percent', percent })}
                 >
-                  {percent} %
+                  {tipRows && tipAmount(percent) !== null ? (
+                    <>
+                      <span>{`${percent} %`}</span>
+                      <span className="ro-tip-amount">{tipAmount(percent)}</span>
+                    </>
+                  ) : (
+                    `${percent} %`
+                  )}
                 </button>
               ))}
               <label className="ro-input">

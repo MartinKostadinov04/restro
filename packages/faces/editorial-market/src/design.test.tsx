@@ -36,7 +36,7 @@ import { EDITORIAL_MARKET_MANIFEST } from './manifest'
 import { SERVICES_CSS } from './services/services-css'
 import { richFixture } from './test-views'
 
-/** What the renderer draws so far (tickets 3 and 4): General and the browsing pages. */
+/** What the renderer draws (tickets 3 to 5): General, the browsing pages and the five screens. */
 const DRAWN = {
   general: [
     'screen',
@@ -67,6 +67,11 @@ const DRAWN = {
   labels: ['labels'],
   dish: ['photo'],
   sheets: ['sheets'],
+  call: ['kinds'],
+  bill: ['rows', 'lines'],
+  order: ['add_control', 'order_bar', 'line_photos'],
+  pay: ['tip'],
+  receipt: ['venue_block'],
 } as const
 
 /** The tokens the options' values set on the root. */
