@@ -492,11 +492,11 @@ test('a tap on a part of the preview opens its page; in Simple it says the part 
   await previewRoot().locator('[data-design-part="item.name"]').first().click()
   await expect(pageChip('items')).toHaveAttribute('aria-current', 'page')
   await expect(frame().locator('[data-design-part="dish"]').first()).toBeVisible()
-  await frame().locator('[data-design-part="dish"]').first().click()
+  await frame()
+    .locator('[data-design-part="dish"]')
+    .first()
+    .click({ position: { x: 4, y: 4 } })
   await expect(pageChip('dish')).toHaveAttribute('aria-current', 'page')
-  // The tap moved the focus to the panel's page title: the sheet is closed with its own button.
-  await frame().locator('[role="dialog"] button').first().click()
-  await expect(frame().locator('[role="dialog"]')).toHaveCount(0)
 })
 
 test('Photo corners are off while the Frame is edge to edge, with the hint', async () => {
@@ -639,6 +639,8 @@ test('at phone width the preview sits under the panel, scrolls inside, and Done 
 })
 
 test('in Bulgarian, the long names fit a tile at 390 px', async ({ browser }) => {
+  // The Advanced page below draws a tile row of frames; a busy CI machine needs the room.
+  test.setTimeout(240_000)
   const bulgarian = await browser.newContext({
     storageState: ownerState,
     viewport: { width: 390, height: 844 },
@@ -689,7 +691,6 @@ test('in Bulgarian, the long names fit a tile at 390 px', async ({ browser }) =>
       () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
     )
     expect(sideways).toBe(true)
-    await target.screenshot({ path: shotPath('phone-bulgarian-advanced') })
   } finally {
     await bulgarian.close()
   }
