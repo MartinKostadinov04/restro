@@ -94,6 +94,14 @@ async function floorMisses(
         // `instant`: the page may set smooth scrolling, and the probe needs the final position.
         el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' })
         let rect = el.getBoundingClientRect()
+        // A sideways strip of the guest template snaps each card to its start, so `nearest` can come
+        // to rest with the control past the edge, where no guest ever taps it. It is measured where
+        // the guest swipes it to. A control that runs off a page with nothing to scroll stays cut,
+        // and still fails below.
+        if (rect.left < 0 || rect.right > document.documentElement.clientWidth) {
+          el.scrollIntoView({ block: 'center', inline: 'start', behavior: 'instant' })
+          rect = el.getBoundingClientRect()
+        }
         if (rect.width === 0 || rect.height === 0) continue
         // A visually hidden twin (a file input behind its button) takes no taps.
         if (rect.width <= 1 && rect.height <= 1) continue

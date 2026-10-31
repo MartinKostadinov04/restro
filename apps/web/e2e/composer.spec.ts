@@ -170,7 +170,9 @@ test('the Studio holds Structure and the guest features; Design is a page of its
     'Тази вечер',
     'Настройки',
   ])
-  await page.goto(`${venuePath()}?tab=studio`)
+  // The venue's address, kept: the Design page's own address is longer.
+  const venue = venuePath()
+  await page.goto(`${venue}?tab=studio`)
   await expect(page.getByRole('tab', { name: 'Структура' })).toHaveAttribute(
     'aria-selected',
     'true',
@@ -178,7 +180,7 @@ test('the Studio holds Structure and the guest features; Design is a page of its
   await expect(page.getByTestId('composer')).toBeVisible()
   await expect(page.getByTestId('guest-features-panel')).toBeVisible()
   await page.getByRole('tab', { name: 'Дизайн' }).click()
-  await expect(page).toHaveURL(new RegExp(`${venuePath()}/design`))
+  await expect(page).toHaveURL(new RegExp(`${venue}/design`))
   await expect(page.getByTestId('design-panel')).toBeVisible()
   await page.getByTestId('design-back').click()
   await expect(page).toHaveURL(/[?&]tab=studio/)
@@ -186,14 +188,14 @@ test('the Studio holds Structure and the guest features; Design is a page of its
 
   // Old links.
   for (const old of ['?tab=design', '?tab=composer&sub=design', '?tab=studio&sub=design']) {
-    await page.goto(`${venuePath()}${old}`)
-    await expect(page, old).toHaveURL(new RegExp(`${venuePath()}/design`))
+    await page.goto(`${venue}${old}`)
+    await expect(page, old).toHaveURL(new RegExp(`${venue}/design`))
   }
-  await page.goto(`${venuePath()}?tab=composer&sub=structure`)
+  await page.goto(`${venue}?tab=composer&sub=structure`)
   await expect(page).toHaveURL(/[?&]tab=studio/)
   await expect(page).not.toHaveURL(/sub=/)
   await expect(page.getByTestId('composer')).toBeVisible()
-  await page.goto(`${venuePath()}?tab=composer`)
+  await page.goto(`${venue}?tab=composer`)
   await expect(page).toHaveURL(/[?&]tab=studio/)
   await expect(page.getByTestId('composer')).toBeVisible()
 })
