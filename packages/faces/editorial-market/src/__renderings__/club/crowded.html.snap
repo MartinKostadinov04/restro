@@ -1,0 +1,126 @@
+<div class="rm" data-face="editorial-market" data-layout="list" data-scheme="auto" data-screen="dark" data-heading-font="unbounded" data-heading-weight="heavy" data-density="compact" data-header-band="panel" data-header-arrangement="compact" data-header-logo-size="l" data-navigation-marker="pills" data-navigation-band="header" data-sections-header="band" data-sections-title-size="l" data-sections-title-case="capitals" data-sections-strip-card-size="l" data-items-name-size="l" data-items-name-weight="heavy" data-items-name-case="capitals" data-items-description-lines="1" data-photos-shape="square" data-labels-labels="soft" data-bill-rows="zebra" data-bill-lines="compact" data-order-order-bar="docked" data-receipt-venue-block="logo" lang="bg-BG" style="--rm-l-background:#fdf4f3;--rm-l-surface:#ffffff;--rm-l-accent:#d65b51;--rm-l-onAccent:#000000;--rm-l-text:#391411;--rm-l-muted:#98372f;--rm-l-accentText:#b9443a;--rm-l-border:#f6d0cc;--rm-d-background:#391411;--rm-d-surface:#6a2e29;--rm-d-accent:#d65b51;--rm-d-onAccent:#000000;--rm-d-text:#fdf4f3;--rm-d-muted:#efaea7;--rm-d-accentText:#efaea7;--rm-d-border:#7e312b;--rm-font:&quot;Inter&quot;, system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, sans-serif;--rm-radius:8px;--rm-shadow:1;--rm-font-heading:&quot;Unbounded&quot;, system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, &quot;Helvetica Neue&quot;, sans-serif">
+<header class="rm-header" data-design-part="header">
+<div class="rm-brandline">
+<div class="rm-headtools">
+<button type="button" class="rm-icon" data-slot="menu.filters" aria-label="Филтриране на менюто">
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor">
+<path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M7 14v6">
+</path>
+</svg>
+</button>
+</div>
+</div>
+<div class="rm-titleblock" data-design-part="header.title">
+<h1>Menu</h1>
+</div>
+</header>
+<nav class="rm-sections" aria-label="Раздели на менюто" data-design-part="nav">
+<a href="#rm-nd_0000000000000000000001" aria-current="true">Препълнено</a>
+<a href="#rm-nd_0000000000000000000004">Само едно</a>
+</nav>
+<main>
+<section id="rm-nd_0000000000000000000001" class="rm-section" data-section-layout="vertical" data-design-part="section">
+<div class="rm-section-head">
+<h2 data-design-part="section.title">Препълнено</h2>
+<div class="rm-layout" role="radiogroup" aria-label="Изглед на менюто" data-slot="menu.layout_switch" data-design-part="layout.switch">
+<button type="button" role="radio" aria-checked="true" aria-label="Списък" title="Списък" tabindex="0">
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+<path d="M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13">
+</path>
+</svg>
+</button>
+<button type="button" role="radio" aria-checked="false" aria-label="1 колона" title="1 колона" tabindex="-1">
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+<rect width="18" height="18" x="3" y="3" rx="2">
+</rect>
+</svg>
+</button>
+<button type="button" role="radio" aria-checked="false" aria-label="2 колони" title="2 колони" tabindex="-1">
+<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+<rect width="7" height="7" x="3" y="3" rx="1">
+</rect>
+<rect width="7" height="7" x="14" y="3" rx="1">
+</rect>
+<rect width="7" height="7" x="14" y="14" rx="1">
+</rect>
+<rect width="7" height="7" x="3" y="14" rx="1">
+</rect>
+</svg>
+</button>
+</div>
+</div>
+<div class="rm-items">
+<article data-item="nd_0000000000000000000002" data-state="available" data-design-part="item" class="rm-item is-priority is-text">
+<div class="rm-item-copy">
+<div data-slot="item.name" data-design-part="item.name">
+<h3>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Плато с етикети</button>
+</h3>
+</div>
+<div data-slot="item.price" data-design-part="item.price" class="rm-price">28,00 €</div>
+<div data-slot="item.state" data-state="available" class="rm-state">
+</div>
+<div data-slot="item.tags" data-design-part="item.labels" class="rm-labels">
+<span>Етикет 1</span>
+<span>Етикет 2</span>
+<span>Етикет 3</span>
+<span>Етикет 4</span>
+<span>Етикет 5</span>
+<span>Етикет 6</span>
+<span>Етикет 7</span>
+<span>Етикет 8</span>
+<span>Етикет 9</span>
+<span>Етикет 10</span>
+<span>Етикет 11</span>
+<span>НеразделимОченДългоЕтикетБезИнтервалиХХХ</span>
+</div>
+<div data-slot="item.allergens" data-design-part="item.allergens" class="rm-allergens">
+<button type="button" aria-label="Алергени: Ядки">
+<b data-allergen="nuts">8</b>
+</button>
+</div>
+</div>
+</article>
+<article data-item="nd_0000000000000000000003" data-state="available" data-design-part="item" class="rm-item is-priority is-text">
+<div class="rm-item-copy">
+<div data-slot="item.name" data-design-part="item.name">
+<h3>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Бутилка за олигарси</button>
+</h3>
+</div>
+<div data-slot="item.price" data-design-part="item.price" class="rm-price">123 456 789,00 €</div>
+<div data-slot="item.state" data-state="available" class="rm-state">
+</div>
+</div>
+</article>
+</div>
+</section>
+<section id="rm-nd_0000000000000000000004" class="rm-section" data-section-layout="vertical" data-design-part="section">
+<div class="rm-section-head">
+<h2 data-design-part="section.title">Само едно</h2>
+</div>
+<div class="rm-items">
+<article data-item="nd_0000000000000000000005" data-state="available" data-design-part="item" class="rm-item is-text">
+<div class="rm-item-copy">
+<div data-slot="item.name" data-design-part="item.name">
+<h3>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Единствената</button>
+</h3>
+</div>
+<div data-slot="item.price" data-design-part="item.price" class="rm-price">7,00 €</div>
+<div data-slot="item.state" data-state="available" class="rm-state">
+</div>
+</div>
+</article>
+</div>
+</section>
+</main>
+<footer class="rm-footer" data-design-part="footer">
+<h2>Информация за алергените</h2>
+<p>Кодовете при всяка позиция обозначават алергените в нея. Попитайте персонала, ако имате алергия или съмнение.</p>
+<div class="rm-legend" data-slot="menu.allergen_legend">
+<span>
+<b>8</b>Ядки</span>
+</div>
+</footer>
+</div>

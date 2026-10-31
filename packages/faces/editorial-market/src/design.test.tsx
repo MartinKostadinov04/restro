@@ -1,5 +1,7 @@
 // The renderer against the design contract (D128, D130):
-//   - the never-list on every fixture at every value of every option it draws and at every Style;
+//   - the never-list on every fixture at every value of every option it draws and at every Style
+//     (Basic, Editorial, Soft, Classic and Club: a Style added to `PREMADE_STYLES` joins the sweep
+//     and the stored renderings here with no edit to this file);
 //   - every Style on every fixture against its stored rendering (`__renderings__/<style>/`), so a
 //     new option can never change an existing look;
 //   - Editorial against today's look (`__renderings__/today/`, written from the face as it stood
@@ -186,9 +188,10 @@ describe('the never-list (D130)', () => {
       fixtures,
     })
     expect(report.failures).toEqual([])
-    // Guards against a sweep that checks nothing: two Styles and every value off Basic's.
+    // Guards against a sweep that checks nothing: the five Styles and every value off Basic's.
     expect(report.cases).toBe(designCases(DRAWN).length)
-    expect(report.cases).toBeGreaterThanOrEqual(68)
+    expect(report.cases).toBeGreaterThanOrEqual(71)
+    expect(styleCases()).toHaveLength(5)
     expect(report.renders).toBe(report.cases * fixtures.length)
   }, 900_000)
 

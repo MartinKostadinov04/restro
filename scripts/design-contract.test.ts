@@ -24,7 +24,8 @@ import {
 //   3. a page, an option or a value lacks its English or its Bulgarian label;
 //   4. a Style file (packages/shell/src/design/styles/<id>.ts) names an option the contract lacks,
 //      holds a value outside the option's list, sets the venue's brand, or is not a short
-//      lower-case token; Basic is not the first value of every row; Editorial lists no departures.
+//      lower-case token; Basic is not the first value of every row; a Style the contract lists has
+//      no file, or a Style made from a brief lists no departures.
 // When the file and D130 disagree, one of them changed alone: change the other in the same commit.
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))
@@ -209,14 +210,21 @@ describe('the Style files', () => {
     pageOf(style, page)[option] = value
   }
 
-  it('has Basic and Editorial, each in a file named for it and listed in the index', async () => {
-    expect(files.sort()).toEqual(['basic.ts', 'editorial.ts'])
+  it('has all five premade Styles, each in a file named for it and listed in the index', async () => {
+    expect(files.sort()).toEqual(['basic.ts', 'classic.ts', 'club.ts', 'editorial.ts', 'soft.ts'])
     for (const file of files) {
       const style = await load(file)
       expect(`${style.id}.ts`).toBe(file)
       expect(Object.keys(PREMADE_STYLES)).toContain(style.id)
     }
-    expect(Object.keys(PREMADE_STYLES).sort()).toEqual(['basic', 'editorial'])
+    // Every Style the contract lists has a file now: the Style option's values are the whole index.
+    const listed = DESIGN_PAGES[0].options.find((entry) => entry.id === 'style')
+    if (listed === undefined || listed.kind !== 'style') {
+      throw new Error('the design contract has no Style option')
+    }
+    expect(Object.keys(PREMADE_STYLES).sort()).toEqual(
+      listed.values.map((value) => value.id).sort(),
+    )
   })
 
   it('validates every Style file against the contract', async () => {
@@ -225,9 +233,16 @@ describe('the Style files', () => {
     }
   })
 
-  it('lists Editorial’s departures and none for Basic', async () => {
+  it('lists the departures of every Style made from a brief, and none for Basic', async () => {
     expect((await load('basic.ts')).departures).toEqual([])
     expect((await load('editorial.ts')).departures.length).toBeGreaterThanOrEqual(7)
+    // Soft, Classic and Club depart from the brief they were made from (D128): where a value stands
+    // off the options spec's section 4 column, the file says so in one line.
+    for (const file of ['soft.ts', 'classic.ts', 'club.ts']) {
+      const style = await load(file)
+      expect(style.departures.length, file).toBeGreaterThanOrEqual(1)
+      for (const departure of style.departures) expect(departure.length, file).toBeGreaterThan(20)
+    }
   })
 
   it('fails on a value outside the option’s list', async () => {

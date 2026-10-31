@@ -209,6 +209,9 @@ describe('designCases', () => {
     expect(ids).toEqual([
       'style:basic',
       'style:editorial',
+      'style:soft',
+      'style:classic',
+      'style:club',
       'general.corners=square',
       'general.corners=round',
       'general.corners=extra',

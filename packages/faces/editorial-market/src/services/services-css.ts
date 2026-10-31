@@ -548,13 +548,16 @@ export const SERVICES_CSS = `
   opacity: 0.45;
 }
 
-/* Sheets: the bag, the bill. */
+/* Sheets: the bag, the bill. The "Preview" marker's own look is fixed (D130's never-list, D105 §10.4):
+   it is the admin's furniture, not the venue's, so its dashed pill keeps one shape at every Corners
+   value. It read 999px at every Corners value but Square, where it went square with the rest of the
+   page (found by the Classic Style, #178); the radius is written out so no design reshapes it. */
 .rm .ro-preview {
   display: inline-block;
   margin: 14px 0 0;
   padding: 3px 10px;
   border: 1px dashed currentColor;
-  border-radius: var(--rm-full);
+  border-radius: 999px;
   font-size: calc(12px * var(--rm-type));
   font-weight: 850;
   letter-spacing: 0.08em;

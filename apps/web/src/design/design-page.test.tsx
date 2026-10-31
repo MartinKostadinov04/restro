@@ -92,10 +92,10 @@ describe('the Design page', () => {
     expect(undo().disabled).toBe(true)
     expect(screen.queryByTestId('design-unsaved')).toBeNull()
     expect(radio('basic').checked).toBe(true)
-    // Only the Styles with a file are offered.
+    // Only the Styles with a file are offered; all five have one since #178.
     expect(
       screen.getAllByTestId('design-style-tile').map((tile) => tile.getAttribute('data-style')),
-    ).toEqual(['basic', 'editorial'])
+    ).toEqual(['basic', 'editorial', 'soft', 'classic', 'club'])
     const preview = within(screen.getByTestId('design-preview'))
     expect(preview.getByRole('button', { name: 'Phone' }).getAttribute('aria-pressed')).toBe('true')
     expect(preview.getByRole('button', { name: 'Tablet' })).toBeTruthy()
