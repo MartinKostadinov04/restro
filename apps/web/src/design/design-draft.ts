@@ -24,13 +24,7 @@ import {
 import { PREMADE_STYLES } from '@restro/shell'
 
 import type { LogoState } from './logo-field'
-import {
-  isBrandOnlyLook,
-  type LookState,
-  type LookView,
-  lookStateOf,
-  lookViewOf,
-} from './look-state'
+import { type LookState, type LookView, lookStateOf, lookViewOf } from './look-state'
 
 export interface DesignDraft {
   readonly style: PremadeStyleId
@@ -104,13 +98,11 @@ export function designOf(
 export const keyOfDesign = (design: DesignContent): string => JSON.stringify(design)
 
 /**
- * The key of a saved design as the page will save it. A look saved the old way (one brand colour) is
- * shown as its three colours, which guests do not have yet: null, so it counts as unsaved until it is
- * saved from here.
+ * The key of a draft as the page would save it, or null while a box holds half a colour. Something is
+ * unsaved when the draft's key differs from the key of the draft the page opened or last saved: a look
+ * saved the old way (one brand colour) opens as its three colours and counts as nothing changed.
  */
-export function savedKeyOf(saved: SavedDesign): string | null {
-  if (isBrandOnlyLook(saved.theme)) return null
-  const draft = draftOf(saved)
+export function keyOfDraft(draft: DesignDraft): string | null {
   const { theme } = lookViewOfDraft(draft)
   return theme === null ? null : keyOfDesign(designOf(draft, theme))
 }

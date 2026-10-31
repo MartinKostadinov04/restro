@@ -110,6 +110,16 @@ describe('the Design page', () => {
     )
   })
 
+  it('a look saved with one brand colour opens with nothing to save, and leaving asks nothing', () => {
+    const old = { ...DEFAULT_DESIGN, brand: BRAND } as DesignView['design']
+    setup({ design: old, theme: designThemeOf(old) })
+    expect(done().disabled).toBe(true)
+    expect(cancel().disabled).toBe(true)
+    expect(screen.queryByTestId('design-unsaved')).toBeNull()
+    fireEvent.click(screen.getByTestId('design-back'))
+    expect(screen.queryByTestId('design-leave')).toBeNull()
+  })
+
   it('a Style fills the draft and keeps the colours; Done saves the whole design from the loaded revision', async () => {
     setup()
     await userEvent.click(radio('editorial'))

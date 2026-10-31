@@ -51,9 +51,8 @@ import {
   designOf,
   draftOf,
   historyOf,
-  keyOfDesign,
+  keyOfDraft,
   lookViewOfDraft,
-  savedKeyOf,
   themeWithValues,
   undone,
   withBodyFont,
@@ -208,7 +207,6 @@ export function DesignPage({
   const { draft } = history
   // What Cancel goes back to: the design as last saved.
   const [baseline, setBaseline] = useState<DesignDraft>(draft)
-  const [savedKey, setSavedKey] = useState<string | null>(() => savedKeyOf(initial))
   // The revision this page started from; a save names it (D129).
   const [revision, setRevision] = useState(initial.revision)
   const [uploading, setUploading] = useState(false)
@@ -231,7 +229,7 @@ export function DesignPage({
   )
 
   const design = view.theme === null ? null : designOf(draft, view.theme)
-  const dirty = design === null || keyOfDesign(design) !== savedKey
+  const dirty = useMemo(() => keyOfDraft(draft) !== keyOfDraft(baseline), [draft, baseline])
   const readable = view.issues.length === 0
   const canSave = canEdit && dirty && design !== null && readable && !uploading && !saving
 
@@ -263,7 +261,6 @@ export function DesignPage({
     const next = draftOf(stored)
     setHistory(historyOf(next))
     setBaseline(next)
-    setSavedKey(savedKeyOf(stored))
     setRevision(stored.revision)
     followScreen(next.values)
   }
@@ -276,7 +273,6 @@ export function DesignPage({
       )
       if (result.ok) {
         setRevision(result.revision)
-        setSavedKey(keyOfDesign(design))
         setBaseline(draft)
         setHistory(historyOf(draft))
         toast.success(t('saved'))

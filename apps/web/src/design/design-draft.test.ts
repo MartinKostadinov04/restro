@@ -11,11 +11,10 @@ import {
   designOf,
   draftOf,
   historyOf,
-  keyOfDesign,
+  keyOfDraft,
   lookOf,
   lookViewOfDraft,
   type SavedDesign,
-  savedKeyOf,
   undone,
   valuesOfStyle,
   withBodyFont,
@@ -117,27 +116,28 @@ describe('the design Done saves', () => {
 
 describe('what counts as changed', () => {
   it('nothing, on the page as it opened', () => {
-    expect(keyOfDesign(designOf(opened, wholeTheme(opened)))).toBe(savedKeyOf(saved))
+    expect(keyOfDraft(draftOf(saved))).toBe(keyOfDraft(opened))
   })
 
   it('anything the person changed', () => {
-    const next = withBodyFont(opened, 'manrope')
-    expect(keyOfDesign(designOf(next, wholeTheme(next)))).not.toBe(savedKeyOf(saved))
+    expect(keyOfDraft(withBodyFont(opened, 'manrope'))).not.toBe(keyOfDraft(opened))
   })
 
-  it('nothing, on a venue that never saved a design', () => {
-    const first: SavedDesign = {
-      design: DEFAULT_DESIGN,
-      theme: designThemeOf(DEFAULT_DESIGN),
-      logo: null,
-    }
-    const draft = draftOf(first)
-    expect(keyOfDesign(designOf(draft, wholeTheme(draft)))).toBe(savedKeyOf(first))
+  it('nothing, once a change is taken back', () => {
+    const history = changed(historyOf(opened), withBodyFont(opened, 'manrope'), { now: 0 })
+    expect(keyOfDraft(undone(history).draft)).toBe(keyOfDraft(opened))
   })
 
-  it('always, on a look saved with one brand colour: guests do not have its three colours yet', () => {
+  it('has no key while a box holds half a colour', () => {
+    const half = { ...opened, look: { ...opened.look, colours: { ...COLOURS, tertiary: '#25' } } }
+    expect(keyOfDraft(half as DesignDraft)).toBeNull()
+  })
+
+  it('nothing, on a look saved with one brand colour: it opens as its three colours', () => {
     const brand = { ...DEFAULT_DESIGN, brand: '#e11d48' } as SavedDesign['design']
-    expect(savedKeyOf({ design: brand, theme: designThemeOf(brand), logo: null })).toBeNull()
+    const first = draftOf({ design: brand, theme: designThemeOf(brand), logo: null })
+    expect(keyOfDraft(first)).not.toBeNull()
+    expect(keyOfDraft(first)).toBe(keyOfDraft({ ...first }))
   })
 })
 
