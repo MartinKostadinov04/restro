@@ -23,8 +23,17 @@ import { MESSAGES, renderWithIntl } from '@/test-utils'
 import { AdvancedPanel } from './advanced-panel'
 import { DesignPage as Page } from './design-page'
 
-const actions = vi.hoisted(() => ({ saveDesignAction: vi.fn(), previewDraftAction: vi.fn() }))
-vi.mock('@/server/design/actions', () => ({ saveDesignAction: actions.saveDesignAction }))
+const actions = vi.hoisted(() => ({
+  saveDesignAction: vi.fn(),
+  previewDraftAction: vi.fn(),
+  saveStyleAction: vi.fn(),
+  setStyleStatusAction: vi.fn(),
+}))
+vi.mock('@/server/design/actions', () => ({
+  saveDesignAction: actions.saveDesignAction,
+  saveStyleAction: actions.saveStyleAction,
+  setStyleStatusAction: actions.setStyleStatusAction,
+}))
 vi.mock('@/server/publish/actions', () => ({ previewDraftAction: actions.previewDraftAction }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
@@ -50,7 +59,13 @@ beforeEach(() => {
 
 function setup(initial: Partial<DesignView> = {}, locale: 'en' | 'bg' = 'en') {
   return renderWithIntl(
-    <Page venueId={VENUE} venueName="Demo Club" initial={{ ...SAVED, ...initial }} menuId={MENU} />,
+    <Page
+      venueId={VENUE}
+      venueName="Demo Club"
+      initial={{ ...SAVED, ...initial }}
+      myStyles={{ saved: [], venues: [] }}
+      menuId={MENU}
+    />,
     { locale },
   )
 }

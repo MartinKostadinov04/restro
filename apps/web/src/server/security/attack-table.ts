@@ -5,7 +5,7 @@
 // - `MIXED`: the attacker's own venue with the victim's child ids (the way past a venue check).
 //
 // `pin` is left out: the caller is a signed-in person on their own phone.
-import { DEFAULT_DESIGN, newId } from '@restro/core'
+import { DEFAULT_DESIGN, newId, styleValuesOf } from '@restro/core'
 
 import * as composer from '@/composer/actions'
 import * as paymentMode from '@/composer/payment-mode-actions'
@@ -278,6 +278,24 @@ export const ATTACKS: readonly Attack[] = [
         expectedRevision: 0,
         design: DEFAULT_DESIGN,
       }),
+  },
+  // My styles (D129): a Style is the organisation's, so there is no venue to aim at. The attack
+  // writes into its own organisation (which must stay allowed) and, with an id, at the victim's
+  // Style, which it must not be able to name.
+  {
+    action: 'saveStyleAction',
+    ownOrganisation: true,
+    call: () =>
+      design.saveStyleAction({
+        styleId: null,
+        name: 'Attack',
+        style: 'basic',
+        values: styleValuesOf(DEFAULT_DESIGN.values),
+      }),
+  },
+  {
+    action: 'setStyleStatusAction',
+    call: (v) => design.setStyleStatusAction({ styleId: v.styleId, status: 'removed' }),
   },
 
   // Integrations.

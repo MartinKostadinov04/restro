@@ -15,9 +15,18 @@ import { renderWithIntl } from '@/test-utils'
 
 import { DesignPage } from './design-page'
 
-const actions = vi.hoisted(() => ({ saveDesignAction: vi.fn(), previewDraftAction: vi.fn() }))
+const actions = vi.hoisted(() => ({
+  saveDesignAction: vi.fn(),
+  previewDraftAction: vi.fn(),
+  saveStyleAction: vi.fn(),
+  setStyleStatusAction: vi.fn(),
+}))
 const push = vi.hoisted(() => vi.fn())
-vi.mock('@/server/design/actions', () => ({ saveDesignAction: actions.saveDesignAction }))
+vi.mock('@/server/design/actions', () => ({
+  saveDesignAction: actions.saveDesignAction,
+  saveStyleAction: actions.saveStyleAction,
+  setStyleStatusAction: actions.setStyleStatusAction,
+}))
 vi.mock('@/server/publish/actions', () => ({ previewDraftAction: actions.previewDraftAction }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }))
@@ -46,6 +55,7 @@ function setup(initial: Partial<DesignView> = {}) {
       venueId={VENUE}
       venueName="Demo Club"
       initial={{ ...SAVED, ...initial }}
+      myStyles={{ saved: [], venues: [] }}
       menuId={MENU}
     />,
     { locale: 'en' },

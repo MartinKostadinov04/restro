@@ -1814,7 +1814,7 @@
       "derivedWas": "Derived colour: {colour}",
       "unreadableTitle": "These colours are hard to read",
       "unreadableItem": "{screen}: {fg} on {bg} reads at {ratio}:1, needs {min}:1.",
-      "advanced": "Advanced",
+      "colourRoles": "Colour roles",
       "resetAll": "Reset all adjusted colours",
       "lightFromPickers": "The light screen's one is set above.",
       "more": {
@@ -1899,7 +1899,8 @@
       "keep": "Keep editing"
     },
     "styles": {
-      "title": "Style"
+      "title": "Style",
+      "restro": "Restro styles"
     },
     "fonts": {
       "title": "Fonts"
@@ -1924,6 +1925,29 @@
       "notes": {
         "bleed": "Edge-to-edge photos have no corners of their own",
         "heavy": "{font} has no weight heavier than {weight}, so Heavy is drawn at its heaviest."
+      }
+    },
+    "myStyles": {
+      "title": "My styles",
+      "inUse": "In use at {venue}",
+      "save": "Save as a style…",
+      "saveButton": "Save",
+      "cancel": "Cancel",
+      "name": "Name",
+      "more": "More for {name}",
+      "update": "Update with this design",
+      "delete": "Delete style",
+      "saved": "Style saved",
+      "updated": "{name} now holds this design",
+      "deleted": "Style deleted",
+      "restored": "{name} is back",
+      "undo": "Undo",
+      "errors": {
+        "invalid": "Check the name and try again.",
+        "forbidden": "Only owners and admins can change the styles.",
+        "not_found": "This style could not be found.",
+        "name_taken": "A style with this name exists. Choose another name.",
+        "failed": "Something went wrong. Try again."
       }
     }
   },

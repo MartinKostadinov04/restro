@@ -26,6 +26,8 @@ import { ADMIN_PASSWORD } from './support'
 //   Publish -> the guest page carries the design
 //   a member sees it read-only, with no Done and no Cancel
 //   at phone width the preview sits under the panel, Done and Cancel in reach (screenshot)
+//   My styles (#177): the draft saved under a name, the name twice, Update, Delete with Undo
+//   My styles at the organisation's other venue: its Styles, and this venue's design as a tile
 //   in Bulgarian
 //
 // The screenshots go to `E2E_SHOTS_DIR`, else to `.local/screenshots/sh/`.
@@ -84,6 +86,12 @@ const pageBox = (target: Page = page) => target.getByLabel('Page', { exact: true
 const panelsBox = (target: Page = page) => target.getByLabel('Panels', { exact: true })
 const tile = (id: string, target: Page = page) =>
   target.locator(`[data-testid="design-style-tile"][data-style="${id}"]`)
+/** A tile of My styles (D129): one of the organisation's saved Styles, or another venue's design. */
+const myTile = (label: string, target: Page = page) =>
+  target.getByTestId('design-my-style-tile').filter({ hasText: label })
+/** The "…" menu of a saved Style's tile, which sits beside the tile, not inside its label. */
+const myMenu = (label: string, target: Page = page) =>
+  myTile(label, target).locator('..').getByTestId('design-my-style-menu')
 const frame = (target: Page = page) => target.frameLocator('[data-testid="design-preview-frame"]')
 /** The template's root inside the live preview's frame. */
 const previewRoot = (target: Page = page) =>
@@ -645,6 +653,83 @@ test('at phone width the preview sits under the panel, scrolls inside, and Done 
   } finally {
     await phone.close()
   }
+})
+
+test('My styles: the draft saved under a name, the name twice, Update, Delete with Undo', async () => {
+  await openDesign()
+  await expect(page.getByRole('heading', { name: 'Restro styles' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'My styles' })).toBeVisible()
+  // A venue's own design is not a tile of its own page; the organisation's other venue's is.
+  await expect(myTile('In use at Design Club Varna')).toHaveCount(1)
+  await expect(myTile('In use at Design Club Sofia')).toHaveCount(0)
+  const brand = await brandBox().inputValue()
+
+  // Three taps and the name: Design is open, "Save as a style…", the name, Save.
+  await tile('classic').getByRole('radio').click()
+  await page.getByTestId('design-save-style').click()
+  await page.getByTestId('design-save-style-name').fill('Our classic')
+  await page.getByTestId('design-save-style-confirm').click()
+  await expect(toast()).toContainText('Style saved')
+  await expect(myTile('Our classic')).toHaveCount(1)
+
+  // The same name again, in any case, is refused in words that say what to do.
+  const dialog = page.getByTestId('design-save-style-dialog')
+  await page.getByTestId('design-save-style').click()
+  await page.getByTestId('design-save-style-name').fill('our CLASSIC')
+  await page.getByTestId('design-save-style-confirm').click()
+  await expect(toast()).toContainText('A style with this name exists')
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+
+  // Two taps to update it with the design the panel holds now.
+  await tile('soft').getByRole('radio').click()
+  await myMenu('Our classic').click()
+  await page.getByTestId('design-my-style-update').click()
+  await expect(toast()).toContainText('Our classic now holds this design')
+
+  // Picking it fills the options in, ticks it instead of the Restro tile, and keeps the colours.
+  await page.reload()
+  await expect(page.getByTestId('design-panel')).toBeVisible()
+  await myTile('Our classic').getByRole('radio').click()
+  await expect(unsaved()).toBeVisible()
+  await expect(myTile('Our classic').getByRole('radio')).toBeChecked()
+  await expect(tile('basic').getByRole('radio')).not.toBeChecked()
+  await expect(brandBox()).toHaveValue(brand)
+  await done().click()
+  await expect(toast()).toContainText('Design saved')
+
+  // Two taps to delete it, and Undo in the toast brings it back.
+  await myMenu('Our classic').click()
+  await page.getByTestId('design-my-style-delete').click()
+  await expect(toast()).toContainText('Style deleted')
+  await expect(myTile('Our classic')).toHaveCount(0)
+  await toast().getByRole('button', { name: 'Undo' }).click()
+  await expect(myTile('Our classic')).toHaveCount(1)
+})
+
+test('My styles at the organisation’s other venue: its Styles, and this venue’s design', async () => {
+  await page.goto('/venues')
+  await page
+    .getByTestId('venue-card')
+    .filter({ hasText: 'Design Club Varna' })
+    .getByRole('link')
+    .first()
+    .click()
+  await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}/)
+  const otherVenueId = /\/venues\/(vn_[0-9A-Za-z]+)/.exec(page.url())?.[1] ?? ''
+  expect(otherVenueId).not.toBe(venueId)
+  await page.goto(`/venues/${otherVenueId}/design`)
+  await expect(page.getByTestId('design-panel')).toBeVisible()
+  // The organisation's saved Style is here too, and so is the first venue's design.
+  await expect(myTile('Our classic')).toHaveCount(1)
+  await expect(myTile('In use at Design Club Sofia')).toHaveCount(1)
+  await expect(myTile('In use at Design Club Varna')).toHaveCount(0)
+  // Copying the other venue's design: one tap, then Done. This venue's own brand is untouched.
+  const brand = await brandBox().inputValue()
+  await myTile('In use at Design Club Sofia').getByRole('radio').click()
+  await expect(unsaved()).toBeVisible()
+  await expect(brandBox()).toHaveValue(brand)
+  await done().click()
+  await expect(toast()).toContainText('Design saved')
 })
 
 test('in Bulgarian, the long names fit a tile at 390 px', async ({ browser }) => {

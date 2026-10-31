@@ -12,7 +12,14 @@
 // reaches guests on the next publish; nothing here writes a published file.
 //
 // A POS venue and a hand-made venue both get this page: the design is Restro's own.
-import type { DesignOption, DesignPageId, DesignValues, SnapshotLayout } from '@restro/core'
+import type {
+  DesignOption,
+  DesignPageId,
+  DesignValues,
+  PremadeStyleId,
+  SnapshotLayout,
+  StyleValues,
+} from '@restro/core'
 import { DESIGN_PAGES, designLayoutOf, SNAPSHOT_MENU_LAYOUTS, THEME_FONTS } from '@restro/core'
 import { ArrowLeftIcon, Undo2Icon, XIcon } from 'lucide-react'
 import Link from 'next/link'
@@ -46,6 +53,7 @@ import { WRAPS } from '@/lib/wrapping'
 import type { PreviewScheme } from '@/publish/draft-face'
 import { saveDesignAction } from '@/server/design/actions'
 import type { DesignView } from '@/server/design/service'
+import type { MyStyles as MyStylesData } from '@/server/design/styles'
 
 import { FIRST_PAGE, type PanelMode, pageOfMarker, withOption } from './advanced-model'
 import { AdvancedPanel } from './advanced-panel'
@@ -59,6 +67,7 @@ import {
   historyOf,
   keyOfDraft,
   lookViewOfDraft,
+  type PickedStyle,
   themeWithValues,
   undone,
   withBodyFont,
@@ -66,10 +75,12 @@ import {
   withLayout,
   withLogo,
   withStyle,
+  withStyleValues,
 } from './design-draft'
 import { DesignPreview } from './design-preview'
 import { LogoField } from './logo-field'
 import { isValidLook, type ValidLook } from './look-state'
+import { MyStyles } from './my-styles'
 import { usePreviewDraft } from './preview-draft'
 import { Segmented } from './segmented'
 import { StyleTiles } from './style-tiles'
@@ -196,16 +207,21 @@ export function DesignPage({
   venueId,
   venueName,
   initial,
+  myStyles,
   menuId,
 }: {
   venueId: string
   venueName: string
   initial: DesignView
+  /** The organisation's saved Styles and the design in use at its other venues (D129). */
+  myStyles: MyStylesData
   /** The menu the preview draws: the one the Studio had open, else the live one. */
   menuId: string | null
 }) {
   const t = useTranslations('design')
   const router = useRouter()
+  // One radio group for Restro's tiles and My styles', so exactly one tile is ever ticked.
+  const styleGroup = useId()
   const locale = resolveAdminLocale(useLocale())
   const { canEdit } = initial
 
@@ -342,22 +358,54 @@ export function DesignPage({
     if (page === 'general' && option === 'screen') followScreen(next.values)
   }
 
+  function pickStyleValues(
+    from: { style: PremadeStyleId; values: StyleValues },
+    picked: PickedStyle,
+  ) {
+    const next = withStyleValues(draft, from, picked)
+    change(next)
+    followScreen(next.values)
+  }
+
   // Simple's controls, one of each: Simple lists them, Advanced's General hands them to its rows.
+  // The Style control is two groups (D129): Restro's premade Styles, then the organisation's own.
   const styleControl = (
-    <StyleTiles
-      venueId={venueId}
-      locale={locale}
-      current={draft.style}
-      draft={previewDraft}
-      theme={shown.theme}
-      values={draft.values}
-      canEdit={canEdit}
-      onPick={(styleId) => {
-        const next = withStyle(draft, styleId)
-        change(next)
-        followScreen(next.values)
-      }}
-    />
+    <div className="grid gap-5">
+      <div className="grid gap-3">
+        <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          {t('styles.restro')}
+        </h3>
+        <StyleTiles
+          venueId={venueId}
+          locale={locale}
+          current={draft.style}
+          chosen={draft.picked.kind === 'premade'}
+          groupName={styleGroup}
+          draft={previewDraft}
+          theme={shown.theme}
+          values={draft.values}
+          canEdit={canEdit}
+          onPick={(styleId) => {
+            const next = withStyle(draft, styleId)
+            change(next)
+            followScreen(next.values)
+          }}
+        />
+      </div>
+      <MyStyles
+        venueId={venueId}
+        data={myStyles}
+        groupName={styleGroup}
+        picked={draft.picked}
+        draft={previewDraft}
+        theme={shown.theme}
+        values={draft.values}
+        style={draft.style}
+        canEdit={canEdit}
+        onPick={pickStyleValues}
+        onChanged={() => router.refresh()}
+      />
+    </div>
   )
   const coloursControl = (
     <ColourPanel
