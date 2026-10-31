@@ -7,7 +7,6 @@
 // closing is two taps (plan §10 Q5).
 import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
-
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -34,6 +33,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { WRAPS } from '@/lib/wrapping'
 import {
   closeTableAction,
   newGuestsAction,
@@ -98,7 +98,7 @@ export function TableSheet({
       <Button
         type="button"
         variant="outline"
-        className="h-12 whitespace-normal"
+        className={WRAPS}
         disabled={busy}
         onClick={() => {
           onClose()
@@ -116,7 +116,7 @@ export function TableSheet({
       <Button
         type="button"
         variant="outline"
-        className="h-12 whitespace-normal"
+        className={WRAPS}
         disabled={busy}
         onClick={() => setNewGuests(true)}
       >

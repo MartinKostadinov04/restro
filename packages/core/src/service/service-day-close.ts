@@ -32,7 +32,7 @@ import { and, eq, inArray, isNotNull, isNull, notInArray, sql } from 'drizzle-or
 
 import { ruleOf } from './alert-rules'
 import type { ServiceTx } from './definition'
-import { appendLogEntry, recordRetainUntil } from './log'
+import { appendLogEntry, recordRetainUntil, tableOfAlert } from './log'
 import { PAYMENT_UNCONFIRMED_REASONS } from './pay-route'
 import { accepted, refused, type ServiceResult } from './results'
 import { SETTLED_STATES } from './sent-order'
@@ -271,6 +271,7 @@ export async function closeServiceDay(
       },
       {
         kind: 'alert.cleared',
+        ...tableOfAlert(alert.details),
         reason: alert.kind,
         details: { alertId: alert.id, at: CLEARED_AT_DAY_CLOSE },
       },
