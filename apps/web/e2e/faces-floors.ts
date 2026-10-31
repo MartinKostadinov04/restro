@@ -62,8 +62,11 @@ export function floorsOf({ root }: { root: string }): string[] {
 
 /** Everything measured at the screen's present width, each problem named with `state`. */
 export async function measure(page: Surface, state: string, root: string): Promise<string[]> {
-  await settled(page)
   const within = page as Frame
+  // What is measured has to be drawn before it is: a sheet reaches the page an effect after the tap
+  // that opened it, and a root that is not there yet measures nothing at all, silently.
+  await within.locator(root).first().waitFor({ state: 'visible' })
+  await settled(page)
   const targets = await within.evaluate((root) => window.__rmAudit.targets(root), root)
   const contrast = await within.evaluate((root) => window.__rmAudit.textContrast(root), root)
   return [

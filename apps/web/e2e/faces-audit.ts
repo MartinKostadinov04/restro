@@ -278,23 +278,44 @@ export function installAudit(): void {
 /**
  * Waits until every animation that ends has ended (a sheet fades and slides in), so a measurement
  * sees the colours the guest ends up with. Endless ones (a spinner) are left running.
+ *
+ * The animations are looked for again after every frame, until a frame goes by with none left to
+ * end: a sheet is put in the page by an effect, after the tap that opened it has been handled, and
+ * its fade only starts on the frame after that. Looking once, the way this did, a tap away from a
+ * sheet that is on its way in finds nothing of it and lets a measurement read the colours it is
+ * fading from.
  */
 export async function settled(page: Surface): Promise<void> {
-  await scope(page).evaluate(() =>
-    Promise.race([
-      Promise.all(
-        document
-          .getAnimations()
-          .filter(
-            (animation) =>
-              animation.effect?.getComputedTiming().iterations !== Number.POSITIVE_INFINITY,
-          )
-          .map((animation) => animation.finished.catch(() => undefined)),
-      ),
-      // Never wait for ever on one that does not end.
-      new Promise((resolve) => setTimeout(resolve, 3000)),
-    ]),
-  )
+  await scope(page).evaluate(async () => {
+    const deadline = performance.now() + 3000
+    // A frame, and never a wait for ever if frames stop coming (a page the browser throttles).
+    const frame = () =>
+      new Promise((resolve) => {
+        requestAnimationFrame(() => resolve(undefined))
+        setTimeout(resolve, 100)
+      })
+    // The ones still to end: a finished animation stays listed while it fills, a paused one never ends.
+    const running = () =>
+      document
+        .getAnimations()
+        .filter(
+          (animation) =>
+            animation.playState === 'running' &&
+            animation.effect?.getComputedTiming().iterations !== Number.POSITIVE_INFINITY,
+        )
+    while (performance.now() < deadline) {
+      // An animation a render has just put in the page starts on the next frame: look after it.
+      await frame()
+      await frame()
+      const now = running()
+      if (now.length === 0) return
+      await Promise.race([
+        Promise.all(now.map((animation) => animation.finished.catch(() => undefined))),
+        // Never wait for ever on one that does not end.
+        new Promise((resolve) => setTimeout(resolve, Math.max(0, deadline - performance.now()))),
+      ])
+    }
+  })
 }
 
 /**
