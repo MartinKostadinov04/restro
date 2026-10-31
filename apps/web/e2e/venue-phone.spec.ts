@@ -78,7 +78,7 @@ test.afterAll(async () => {
 })
 
 test('the header at 200% text stays inside a 390 px phone (RR-79)', async () => {
-  await owner.goto(`${venuePath}?tab=composer`)
+  await owner.goto(`${venuePath}?tab=studio`)
   await expect(onScreen(owner, 'guest-link')).toBeVisible({ timeout: 30_000 })
   await owner.evaluate(() => {
     document.documentElement.style.fontSize = '200%'

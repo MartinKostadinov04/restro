@@ -1,15 +1,14 @@
 // @vitest-environment jsdom
-// The composer's Structure on a screen (brief S6; D88, D89, D90, D92): the subtabs and the URL,
-// the menu switcher, the menu layout control, a section's layout toggle, which structure actions
+// The Studio's Structure on a screen (brief S6; D88, D89, D90, D92, D129): the subtabs, the menu
+// switcher, a section's layout toggle, which structure actions
 // a venue made by hand and a venue with a till offer, the "Overrides to review" badge, renaming in
 // place and the "Delete?" dialog. The server actions and the navigation are the only fakes.
 import { DragDropContext } from '@hello-pangea/dnd'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { saveLayoutAction } from '@/server/design/actions'
 import { renderWithIntl } from '@/test-utils'
 
 import type { ComposerState } from './composer-context'
@@ -30,7 +29,6 @@ vi.mock('next/navigation', () => ({
   usePathname: () => navigation.pathname,
   useSearchParams: () => new URLSearchParams(navigation.search),
 }))
-vi.mock('@/server/design/actions', () => ({ saveLayoutAction: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const VENUE = 'vn_0123456789ABCDEFGHIJKL'
@@ -40,7 +38,6 @@ const BRUNCH = 'nd_0000000000000000000002'
 beforeEach(() => {
   navigation.replace.mockReset()
   navigation.search = ''
-  vi.mocked(saveLayoutAction).mockReset()
   vi.mocked(toast.success).mockReset()
   vi.mocked(toast.error).mockReset()
 })
@@ -76,51 +73,42 @@ function venue(kind: 'hand' | 'till', overrides: Partial<ComposerState> = {}): T
   return state
 }
 
-describe('the subtabs, Structure and Design (D92)', () => {
-  const contents = { structure: <p>the structure</p>, design: <p>the design</p> }
+describe('the subtabs, Structure and Design (D129)', () => {
+  const structure = <p>the structure</p>
+  const assign = vi.fn()
 
-  it('opens Structure without ?sub=, and Design with ?sub=design', () => {
-    const { unmount } = renderWithIntl(<ComposerSubtabs contents={contents} />, { locale: 'en' })
+  beforeEach(() => {
+    assign.mockReset()
+    vi.stubGlobal('location', { ...window.location, assign })
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('shows Structure', () => {
+    renderWithIntl(<ComposerSubtabs venueId={VENUE} structure={structure} />, { locale: 'en' })
     expect(screen.getByRole('tab', { name: 'Structure' }).getAttribute('aria-selected')).toBe(
       'true',
     )
     expect(screen.getByText('the structure')).toBeTruthy()
-    expect(screen.queryByText('the design')).toBeNull()
-    unmount()
-    navigation.search = 'tab=composer&sub=design'
-    renderWithIntl(<ComposerSubtabs contents={contents} />, { locale: 'en' })
-    expect(screen.getByRole('tab', { name: 'Design' }).getAttribute('aria-selected')).toBe('true')
-    expect(screen.getByText('the design')).toBeTruthy()
   })
 
-  it('writes the subtab into the URL and keeps the other parameters', async () => {
-    navigation.search = 'tab=composer&menu=nd_x'
-    renderWithIntl(<ComposerSubtabs contents={contents} />, { locale: 'en' })
+  it('opens the Design page from the Design subtab, with the open menu', async () => {
+    navigation.search = 'tab=studio&menu=nd_x'
+    renderWithIntl(<ComposerSubtabs venueId={VENUE} structure={structure} />, { locale: 'en' })
     await userEvent.click(screen.getByRole('tab', { name: 'Design' }))
-    expect(navigation.replace).toHaveBeenCalledTimes(1)
-    const url = new URL(navigation.replace.mock.calls[0]?.[0] as string, 'http://x')
-    expect(url.searchParams.get('sub')).toBe('design')
-    expect(url.searchParams.get('menu')).toBe('nd_x')
-    expect(url.searchParams.get('tab')).toBe('composer')
+    expect(assign).toHaveBeenCalledWith(`/venues/${VENUE}/design?menu=nd_x`)
   })
 })
 
-describe('the menu switcher and the menu layout', () => {
+describe('the menu switcher', () => {
   const MENUS = [
     { id: LIVE, name: null, live: true },
     { id: BRUNCH, name: 'Brunch', live: false },
   ]
   function bar(overrides: Partial<Parameters<typeof MenuBar>[0]> = {}) {
     return renderWithIntl(
-      <MenuBar
-        venueId={VENUE}
-        venueName="Club"
-        menus={MENUS}
-        currentId={LIVE}
-        layout={{ default: 'two', guest_switch: true }}
-        canEdit
-        {...overrides}
-      />,
+      <MenuBar venueId={VENUE} venueName="Club" menus={MENUS} currentId={LIVE} {...overrides} />,
       { locale: 'en' },
     )
   }
@@ -134,65 +122,16 @@ describe('the menu switcher and the menu layout', () => {
   })
 
   it('opens another menu in the URL, leaving the old menu’s section and item behind', async () => {
-    navigation.search = 'tab=composer&section=nd_s&item=nd_i'
+    navigation.search = 'tab=studio&section=nd_s&item=nd_i'
     bar()
     await userEvent.click(screen.getByTestId('menu-switcher'))
     await userEvent.click(screen.getByRole('option', { name: 'Brunch' }))
     await waitFor(() => expect(navigation.replace).toHaveBeenCalledTimes(1))
     const url = new URL(navigation.replace.mock.calls[0]?.[0] as string, 'http://x')
     expect(url.searchParams.get('menu')).toBe(BRUNCH)
-    expect(url.searchParams.get('tab')).toBe('composer')
+    expect(url.searchParams.get('tab')).toBe('studio')
     expect(url.searchParams.has('section')).toBe(false)
     expect(url.searchParams.has('item')).toBe(false)
-  })
-
-  it('shows the venue’s layout and switch, and saves a change at once', async () => {
-    vi.mocked(saveLayoutAction).mockResolvedValue({ ok: true })
-    bar()
-    const layout = screen.getByTestId('menu-layout')
-    expect(
-      within(layout).getByRole('button', { name: 'Two columns' }).getAttribute('aria-pressed'),
-    ).toBe('true')
-    expect(screen.getByTestId('menu-layout-switch').getAttribute('aria-checked')).toBe('true')
-    await userEvent.click(within(layout).getByRole('button', { name: 'List' }))
-    await waitFor(() =>
-      expect(saveLayoutAction).toHaveBeenCalledWith({
-        venueId: VENUE,
-        layout: 'list',
-        guestSwitch: true,
-      }),
-    )
-    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
-    await userEvent.click(screen.getByTestId('menu-layout-switch'))
-    await waitFor(() =>
-      expect(saveLayoutAction).toHaveBeenLastCalledWith({
-        venueId: VENUE,
-        layout: 'list',
-        guestSwitch: false,
-      }),
-    )
-  })
-
-  it('goes back to what was saved, and says why, when the server refuses', async () => {
-    vi.mocked(saveLayoutAction).mockResolvedValue({ ok: false, error: 'not_allowed' })
-    bar({ layout: { default: 'one', guest_switch: true } })
-    const layout = screen.getByTestId('menu-layout')
-    await userEvent.click(within(layout).getByRole('button', { name: 'List' }))
-    await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith('Only an owner or admin can change the menus.'),
-    )
-    expect(
-      within(layout).getByRole('button', { name: 'One column' }).getAttribute('aria-pressed'),
-    ).toBe('true')
-  })
-
-  it('is read-only for someone who may not change it', () => {
-    bar({ canEdit: false, layout: { default: 'two', guest_switch: true } })
-    const layout = screen.getByTestId('menu-layout')
-    // The segmented control is a disabled fieldset: its buttons are disabled through it.
-    expect(within(layout).getByRole('button', { name: 'List' }).matches(':disabled')).toBe(true)
-    expect((screen.getByTestId('menu-layout-switch') as HTMLButtonElement).disabled).toBe(true)
-    expect(screen.getByTestId('menu-layout-switch').getAttribute('aria-checked')).toBe('true')
   })
 })
 

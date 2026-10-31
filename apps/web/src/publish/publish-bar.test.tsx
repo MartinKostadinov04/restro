@@ -121,7 +121,7 @@ describe('the Publish bar with one menu', () => {
       barView({ menus: [barMenu({ changes: null, list: null, blocked: 'no_visible_items' })] }),
     )
     expect(button().disabled).toBe(true)
-    expect(reason()).toBe('Nothing visible to publish: show at least one item in the composer.')
+    expect(reason()).toBe('Nothing visible to publish: show at least one item in Structure.')
   })
 
   it('says who may publish', () => {
@@ -211,7 +211,7 @@ describe('the Publish bar with several menus', () => {
     expect(rows.map((row) => row.textContent)).toEqual([
       'Main (venue address, Terrace)1 change',
       'Brunch (Garden, Bar)Not published yet: guests see nothing until you publish.2 changes',
-      'Late nightThe menu cannot be published yet. Check the composer.',
+      'Late nightThe menu cannot be published yet. Check Structure in the Studio.',
     ])
     expect(rows[2]?.getAttribute('data-disabled')).not.toBeNull()
     expect(rows[0]?.getAttribute('data-disabled')).toBeNull()

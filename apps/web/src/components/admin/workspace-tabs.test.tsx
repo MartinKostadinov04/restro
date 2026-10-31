@@ -43,10 +43,10 @@ describe('WorkspaceTabs: tabs and the URL', () => {
   it('draws the tab bar and the small-screen select from the one declared list', () => {
     renderTabs()
     const tabs = screen.getAllByRole('tab')
-    // D97: no Publishing tab (the Publish button is in the header on every tab). D92: Design is
-    // the composer's subtab, not a tab of its own. #85: Tonight sits after Tables & QR.
+    // D97: no Publishing tab (the Publish button is in the header on every tab). D129: Design is
+    // the Studio's subtab, not a tab of its own. #85: Tonight sits after Tables & QR.
     expect(tabs.map((tab) => tab.textContent)).toEqual([
-      'Composer',
+      'Studio',
       'Tables & QR',
       'Tonight',
       'Settings',
@@ -58,8 +58,8 @@ describe('WorkspaceTabs: tabs and the URL', () => {
 
   it('opens the first tab when the URL has no ?tab=', () => {
     renderTabs()
-    expect(screen.getByRole('tab', { name: 'Composer' }).getAttribute('aria-selected')).toBe('true')
-    expect(screen.getByText('content of composer')).toBeTruthy()
+    expect(screen.getByRole('tab', { name: 'Studio' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByText('content of studio')).toBeTruthy()
     expect(screen.queryByText('content of settings')).toBeNull()
   })
 
@@ -80,11 +80,12 @@ describe('WorkspaceTabs: tabs and the URL', () => {
     expect(workspaceTabOf('publishing')).toBe('settings')
   })
 
-  it('opens the composer for an old ?tab=design link: Design is its subtab now (D92)', () => {
-    expect(workspaceTabOf('design')).toBe('composer')
+  it('opens the Studio for an old ?tab=composer or ?tab=design link (D129)', () => {
+    expect(workspaceTabOf('composer')).toBe('studio')
+    expect(workspaceTabOf('design')).toBe('studio')
     navigation.search = 'tab=design'
     renderTabs()
-    expect(screen.getByRole('tab', { name: 'Composer' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('tab', { name: 'Studio' }).getAttribute('aria-selected')).toBe('true')
     expect(screen.queryByRole('tab', { name: 'Design' })).toBeNull()
   })
 
@@ -99,11 +100,11 @@ describe('WorkspaceTabs: tabs and the URL', () => {
   it('falls back to the first tab for an unknown ?tab=', () => {
     navigation.search = 'tab=nonsense'
     renderTabs()
-    expect(screen.getByRole('tab', { name: 'Composer' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('tab', { name: 'Studio' }).getAttribute('aria-selected')).toBe('true')
   })
 
   it('writes the chosen tab to the URL with router.replace, keeping the other parameters', async () => {
-    navigation.search = 'tab=composer&foo=bar'
+    navigation.search = 'tab=studio&foo=bar'
     renderTabs()
     await userEvent.click(screen.getByRole('tab', { name: 'Settings' }))
     await waitFor(() => expect(navigation.replace).toHaveBeenCalledTimes(1))
@@ -113,6 +114,7 @@ describe('WorkspaceTabs: tabs and the URL', () => {
   })
 
   it.each([
+    ['studio', 'RR-83'],
     ['composer', 'RR-83'],
     ['tables', 'RR-84'],
     ['settings', 'RR-85'],

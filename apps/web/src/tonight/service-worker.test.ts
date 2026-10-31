@@ -150,7 +150,7 @@ describe('the service worker', () => {
     it('moves another staff window to the path, or opens one if it cannot move', async () => {
       const navigate = vi.fn(async () => ({}))
       const client = {
-        url: `${ORIGIN}/venues/vn_1?tab=composer`,
+        url: `${ORIGIN}/venues/vn_1?tab=studio`,
         navigate,
         focus: async () => client,
       }

@@ -114,16 +114,16 @@ test('a staff-only sign-in lands on Tonight, whose tab sits after Tables & QR', 
   await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=tonight/)
   // The venue's own tabs; Tonight has tabs of its own below them (#86).
   const tabs = page.getByRole('tablist', { name: 'Switch tab' }).getByRole('tab')
-  await expect(tabs).toHaveText(['Composer', 'Tables & QR', 'Tonight', 'Settings'])
+  await expect(tabs).toHaveText(['Studio', 'Tables & QR', 'Tonight', 'Settings'])
   await expect(page.getByRole('tab', { name: 'Tonight' })).toHaveAttribute('aria-selected', 'true')
 })
 
-test('a shared tablet has no composer or Tables & QR: an old link lands on Tonight (RR-83, RR-84)', async () => {
+test('a shared tablet has no Studio or Tables & QR: an old link lands on Tonight (RR-83, RR-84)', async () => {
   const { page } = tablet
   await page.goto('/venues')
   await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=tonight/)
   const venue = new URL(page.url()).pathname
-  await page.goto(`${venue}?tab=composer`)
+  await page.goto(`${venue}?tab=studio`)
   await expect(page).toHaveURL(new RegExp(`${venue}\\?tab=tonight`))
   await page.goto(`${venue}?tab=tables`)
   await expect(page).toHaveURL(new RegExp(`${venue}\\?tab=tonight`))

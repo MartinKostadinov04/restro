@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test'
+import { expect, type Frame, type Page, test } from '@playwright/test'
 
 import { dialogs, exerciseDialog, overlapsInHeader, settled } from './faces-audit'
 import {
@@ -20,9 +20,10 @@ import { VISUAL_THEMES } from './visual-fixtures'
 
 // The accessibility audit of the Editorial Market's service screens (brief SH-07, T74): the bag, the
 // table bill, calling a waiter, and paying. A guest sees them only once the platform
-// supports them (D71), so they are drawn where the owner previews them: the Design tab's phone, with
+// supports them (D71), so they are drawn where the owner previews them: the Design page's frame, with
 // "Preview guest services" on and demo data behind them (e2e/faces-preview.ts). The venue is the demo
-// venue, with every service switched on in its settings for the length of this file.
+// venue, with every service switched on in its settings for the length of this file. What is measured
+// is the frame's document; the Light and Dark buttons and the colours are on the page around it.
 //
 // The same checks as the menu's (faces-a11y.spec.ts): touch targets, dialogs, sideways overflow,
 // reduced motion, and the contrast of what is drawn for every theme in the light and the dark scheme,
@@ -43,6 +44,8 @@ test.setTimeout(120_000)
 
 let owner: Owner
 let page: Page
+/** The frame the renderer is drawn in, on the preview opened last. */
+let view: Frame
 const here = () => ({ page, venueId: owner.venueId })
 
 test.beforeAll(async ({ browser }) => {
@@ -56,13 +59,13 @@ test.afterAll(async () => {
   await servicesBack()
 })
 
-const smallTargets = (root: string) => page.evaluate((root) => window.__rmAudit.targets(root), root)
+const smallTargets = (root: string) => view.evaluate((root) => window.__rmAudit.targets(root), root)
 
 test.describe('the touch targets', () => {
   for (const width of [390, 320]) {
     test(`every button and radio of the header, the bar and each screen is 44 x 44 px at ${width} px`, async () => {
-      await openPreview(here(), width)
-      await fillBag(page)
+      view = await openPreview(here(), width)
+      await fillBag(view)
       const found: Record<string, string[]> = {}
       const note = (state: string, list: { label: string; width: number; height: number }[]) => {
         if (list.length > 0) found[state] = list.map((t) => `${t.label}: ${t.width}x${t.height}`)
@@ -70,7 +73,7 @@ test.describe('the touch targets', () => {
       // The page itself, with the bar and the quick-add buttons on the dish cards.
       note('the page', await smallTargets(PREVIEW_FACE))
       for (const screen of SCREENS) {
-        await onScreen(page, screen, async () => note(screen, await smallTargets('.rm-overlay')))
+        await onScreen(view, screen, async () => note(screen, await smallTargets('.rm-overlay')))
       }
       expect(found).toEqual({})
     })
@@ -79,29 +82,27 @@ test.describe('the touch targets', () => {
 
 test.describe('the dialogs', () => {
   test('each screen keeps the focus, gives it back, and closes on Escape', async () => {
-    await openPreview(here(), 390)
-    await fillBag(page)
-    await exerciseDialog(page, opener(page, 'bag'), 'Your bag')
-    await exerciseDialog(page, opener(page, 'bill'), 'Table order')
-    await exerciseDialog(page, opener(page, 'call'), 'Call a server')
-    await exerciseDialog(page, opener(page, 'pay'), 'Pay')
+    view = await openPreview(here(), 390)
+    await fillBag(view)
+    await exerciseDialog(view, opener(view, 'bag'), 'Your bag')
+    await exerciseDialog(view, opener(view, 'bill'), 'Table order')
+    await exerciseDialog(view, opener(view, 'call'), 'Call a server')
+    await exerciseDialog(view, opener(view, 'pay'), 'Pay')
     // The paid screen, reached from the pay sheet: the focus goes back to where the guest began.
-    await exerciseDialog(page, opener(page, 'pay'), 'Pay', () => payTheBill(page))
+    await exerciseDialog(view, opener(view, 'pay'), 'Pay', () => payTheBill(view))
   })
 })
 
 test.describe('the screen width', () => {
   test('nothing sticks out of a 320 px screen', async () => {
-    await openPreview(here(), 320)
-    await fillBag(page)
+    view = await openPreview(here(), 320)
+    await fillBag(view)
     const problems: string[] = []
     const outside = (root: string, state: string) =>
-      page.evaluate(
+      view.evaluate(
         ({ root, state }) => {
-          const frame = document.querySelector('[data-testid="phone-screen"]')
           const found: string[] = []
-          if (frame === null) return [`${state}: no phone screen`]
-          const edge = frame.getBoundingClientRect()
+          const edge = { left: 0, right: document.documentElement.clientWidth }
           for (const element of document.querySelectorAll(`${root} *`)) {
             if (element.closest('.rm-sections, .rm-section.is-feature .rm-items') !== null) continue
             if (element.closest('[hidden]') !== null) continue
@@ -109,7 +110,7 @@ test.describe('the screen width', () => {
             if (box.width === 0 || getComputedStyle(element).visibility !== 'visible') continue
             if (box.right > edge.right + 0.5 || box.left < edge.left - 0.5) {
               found.push(
-                `${state}: ${element.tagName.toLowerCase()}.${[...element.classList].join('.')} ${Math.round(box.left - edge.left)}..${Math.round(box.right - edge.left)} of ${Math.round(edge.width)}`,
+                `${state}: ${element.tagName.toLowerCase()}.${[...element.classList].join('.')} ${Math.round(box.left - edge.left)}..${Math.round(box.right - edge.left)} of ${edge.right}`,
               )
             }
           }
@@ -119,9 +120,9 @@ test.describe('the screen width', () => {
       )
     problems.push(...(await outside(PREVIEW_FACE, 'the page')))
     // The venue bar, with the bill and pay entries beside the logo and the language switch.
-    problems.push(...(await overlapsInHeader(page, PREVIEW_FACE)))
+    problems.push(...(await overlapsInHeader(view, PREVIEW_FACE)))
     for (const screen of SCREENS) {
-      await onScreen(page, screen, async () => {
+      await onScreen(view, screen, async () => {
         problems.push(...(await outside('.rm-overlay', screen)))
       })
     }
@@ -133,14 +134,12 @@ test.describe('reduced motion', () => {
   test('a guest who asks for less gets no animation on the bar and the screens', async () => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     try {
-      await openPreview(here(), 390)
-      await fillBag(page)
+      view = await openPreview(here(), 390)
+      await fillBag(view)
       const moving = (state: string) =>
-        page.evaluate((state) => {
+        view.evaluate((state) => {
           const found: string[] = []
-          for (const element of document.querySelectorAll(
-            '[data-testid="phone-frame"] [data-face] *',
-          )) {
+          for (const element of document.querySelectorAll('[data-face] *')) {
             const style = getComputedStyle(element)
             const names = style.animationName.split(',').map((part) => part.trim())
             const times = style.animationDuration.split(',').map((part) => Number.parseFloat(part))
@@ -152,7 +151,7 @@ test.describe('reduced motion', () => {
         }, state)
       const problems: string[] = [...(await moving('the page'))]
       for (const screen of SCREENS) {
-        await onScreen(page, screen, async () => {
+        await onScreen(view, screen, async () => {
           problems.push(...(await moving(screen)))
         })
       }
@@ -172,17 +171,17 @@ test.describe('the contrast of what is drawn', () => {
   for (const theme of VISUAL_THEMES) {
     for (const scheme of ['light', 'dark'] as const) {
       test(`${theme.id}, ${scheme}: every text reads, and the edge of every input and choice shows at 3:1`, async () => {
-        await openPreview(here(), 390, scheme)
+        view = await openPreview(here(), 390, scheme)
         await chooseTheme(page, theme)
-        await fillBag(page)
+        await fillBag(view)
         const low: Record<string, unknown> = {}
         const edges: Record<string, unknown> = {}
         const scan = async (state: string, root: string) => {
-          await settled(page)
-          const found = await page.evaluate((root) => window.__rmAudit.textContrast(root), root)
+          await settled(view)
+          const found = await view.evaluate((root) => window.__rmAudit.textContrast(root), root)
           expect(found.checked, `${state} has text to measure`).toBeGreaterThan(3)
           if (found.low.length > 0) low[state] = once(found.low)
-          const borders = await page.evaluate(() =>
+          const borders = await view.evaluate(() =>
             window.__rmAudit.borderContrast(
               [
                 '.rm-overlay .ro-options button',
@@ -199,7 +198,7 @@ test.describe('the contrast of what is drawn', () => {
         }
         await scan('the page', PREVIEW_FACE)
         for (const screen of SCREENS) {
-          await onScreen(page, screen, async (sheet) => {
+          await onScreen(view, screen, async (sheet) => {
             // The pay sheet's ticks and tip box, and the dish page's note, are inputs too.
             if (screen === 'pay') {
               await sheet.locator('[data-slot="pay.whole"]').click()
@@ -208,8 +207,8 @@ test.describe('the contrast of what is drawn', () => {
           })
         }
         // A dish's page, where the choices and the note are.
-        await page.locator(`${PREVIEW_FACE} [data-slot="item.open"]`).first().click()
-        await expect(dialogs(page)).toHaveCount(1)
+        await view.locator(`${PREVIEW_FACE} [data-slot="item.open"]`).first().click()
+        await expect(dialogs(view)).toHaveCount(1)
         await scan('the dish page', '.rm-overlay')
         await page.keyboard.press('Escape')
         expect({ low, edges }).toEqual({ low: {}, edges: {} })

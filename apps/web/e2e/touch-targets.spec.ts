@@ -1,10 +1,11 @@
-import { expect, type Page, test } from '@playwright/test'
+import { expect, type Frame, type Page, test } from '@playwright/test'
 
 import { ADMIN_EMAIL, ADMIN_PASSWORD, INTEGRATION_OWNER_EMAIL } from './support'
 
 // D123: the manager's phone is a supported admin device, and a tappable control has a hit area of
 // at least 44 x 44 px (Restro's own floor, docs/guides/operational-screens.md, Accessibility). This
-// walks the composer's Structure screen and Settings -> Integrations on a 390 px phone and checks
+// walks the Studio's Structure screen, the Design page with the guest template in its preview, and
+// Settings -> Integrations on a 390 px phone and checks
 // every control on them, so the floor cannot slip back unseen. A control may look smaller than 44 px
 // if its hit area is extended around it (the `tap-area` utility in globals.css), so the check is
 // not on the element's box: it asks the browser what is under the pointer at the edges of a
@@ -30,10 +31,10 @@ interface Miss {
  * inside a sentence is skipped too (WCAG 2.5.8 exempts inline links).
  */
 async function floorMisses(
-  page: Page,
+  page: Page | Frame,
   scope?: string,
 ): Promise<{ checked: number; misses: Miss[] }> {
-  return page.evaluate(
+  return (page as Frame).evaluate(
     ({ floor, inset, scopeSelector }) => {
       const root: ParentNode = scopeSelector
         ? (document.querySelector(scopeSelector) ?? document)
@@ -147,9 +148,9 @@ async function floorMisses(
 }
 
 /** `atLeast`: how many controls the screen has, so a page that failed to draw cannot pass. */
-async function expectFloor(page: Page, where: string, atLeast: number, scope?: string) {
+async function expectFloor(page: Page | Frame, where: string, atLeast: number, scope?: string) {
   // A menu opens with a zoom, and a box measured half-way is smaller than it will be.
-  await page.evaluate(() =>
+  await (page as Frame).evaluate(() =>
     Promise.all(
       document
         .getAnimations()
@@ -196,8 +197,10 @@ async function openComposer(page: Page) {
   await expect(page.getByTestId('section-picker')).toContainText('Коктейли')
 }
 
-/** The composer's two subtabs and what opens over them, measured on the screen's own controls. */
+/** The Studio's Structure, what opens over it, and the Design page, on the screen's own controls. */
 async function walkComposer(page: Page) {
+  // Guest features is on Structure, under the menu (stacked switches and checkboxes).
+  await expect(page.getByTestId('guest-features-panel')).toBeVisible()
   await expectFloor(page, 'Structure, top to bottom', 20)
   // The pickers and menus that open over the screen.
   await page.getByTestId('section-picker').click()
@@ -212,16 +215,20 @@ async function walkComposer(page: Page) {
   // are measured here; the rows were measured above.
   await expectFloor(page, 'one item selected', 2, '[data-testid="selection-bar"]')
   await page.getByTestId('clear-selection').click()
-  // The Design subtab, with the Guest features panel (stacked switches and checkboxes).
-  const design = new URL(page.url())
-  design.searchParams.set('tab', 'composer')
-  design.searchParams.set('sub', 'design')
-  await page.goto(design.pathname + design.search)
-  await expect(page.getByTestId('guest-features-panel')).toBeVisible()
-  await expectFloor(page, 'Design subtab', 10)
+  // The Design page, and the guest template in its preview. The template is measured once it is
+  // mounted, in its own document at the frame's width (RR-87): the real screen, not the moment before.
+  const venueId = /\/venues\/(vn_[0-9A-Za-z]+)/.exec(page.url())?.[1]
+  await page.goto(`/venues/${venueId}/design`)
+  await expect(page.getByTestId('design-panel')).toBeVisible()
+  const element = page.getByTestId('design-preview-frame')
+  const frame = await (await element.elementHandle())?.contentFrame()
+  if (!frame) throw new Error('the preview has no frame')
+  await expect(frame.locator('[data-face]').first()).toBeVisible()
+  await expectFloor(page, 'the Design page', 10)
+  await expectFloor(frame, 'the template in the preview', 3)
 }
 
-test('the composer Structure and Design screens: every control has a 44 px hit area on a phone', async ({
+test('the Studio’s Structure and Design screens: every control has a 44 px hit area on a phone', async ({
   browser,
 }) => {
   const context = await browser.newContext(phone)

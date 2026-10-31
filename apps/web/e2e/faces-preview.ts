@@ -1,5 +1,7 @@
-// How the audit of a template's service screens (brief SH-07, T89) reaches them: the Design tab's
-// phone preview of the demo venue, with "Preview guest services" on and demo data behind them.
+// How the audit of a template's service screens (brief SH-07, T89) reaches them: the Design page's
+// preview of the demo venue (D129), with "Preview guest services" on and demo data behind them. The
+// preview is a frame with a document of its own (RR-87), so the audit measures inside that frame at
+// the frame's width, on a window wide enough to draw it unscaled.
 // A guest sees the bag, the table bill, the waiter and paying only once the platform
 // supports them (D71), so this is the one place they are drawn. Shared by
 // faces-a11y-services.spec.ts and faces-visual.spec.ts.
@@ -16,13 +18,14 @@ import {
   type Browser,
   type BrowserContext,
   expect,
+  type Frame,
   type Locator,
   type Page,
 } from '@playwright/test'
 import { THEME_PRESETS } from '@restro/core'
 import pg from 'pg'
 
-import { dialogs, settled, withAudit } from './faces-audit'
+import { dialogs, keyboardOf, type Surface, settled, withAudit } from './faces-audit'
 import { addressOfVenue } from './menu-path'
 import { ADMIN_EMAIL, ADMIN_PASSWORD, GUEST_SLUG, VENUE_NAME } from './support'
 import { CUSTOM_COLOURS, isFaceId, type VisualTheme } from './visual-fixtures'
@@ -35,8 +38,11 @@ if (!isFaceId(FACE_ID)) {
   )
 }
 
-/** The template's root inside the preview's phone frame. */
-export const PREVIEW_FACE = `[data-testid="phone-frame"] [data-face="${FACE_ID}"]:not([data-testid])`
+/** The template's root inside the preview's frame. */
+export const PREVIEW_FACE = `[data-face="${FACE_ID}"]:not([data-testid])`
+
+/** The window the Design page is opened in: the frame draws unscaled at every width measured here. */
+const WINDOW = { width: 1280, height: 1000 }
 
 /** The four service screens, in the order a guest meets them. */
 export const SCREENS = ['bag', 'bill', 'call', 'pay'] as const
@@ -128,36 +134,46 @@ export async function signInAsOwner(browser: Browser): Promise<Owner> {
 }
 
 /**
- * Opens the Design tab at a width, with the services preview on, in a colour scheme. Unless
- * `servicesOptional`, the template must draw the waiter button and the pay entry (a template that
- * lists no services draws neither: the visual spec passes the option and skips what is missing).
+ * Opens the Design page with its preview at a width, with the services preview on, in a colour
+ * scheme, and gives back the preview's frame. Unless `servicesOptional`, the template must draw the
+ * waiter button and the pay entry (a template that lists no services draws neither: the visual spec
+ * passes the option and skips what is missing).
  */
 export async function openPreview(
   { page, venueId }: Pick<Owner, 'page' | 'venueId'>,
   width: number,
   scheme: 'light' | 'dark' = 'light',
   { servicesOptional = false }: { servicesOptional?: boolean } = {},
-): Promise<void> {
+): Promise<Frame> {
   await withAudit(page)
-  await page.setViewportSize({ width, height: 1000 })
-  await page.goto(`/venues/${venueId}?tab=design`)
-  await expect(page.locator(PREVIEW_FACE)).toBeVisible()
+  await page.setViewportSize(WINDOW)
+  await page.goto(`/venues/${venueId}/design`)
+  const element = page.getByTestId('design-preview-frame')
+  const frame = await (await element.elementHandle())?.contentFrame()
+  if (!frame) throw new Error('the preview has no frame')
+  await expect(frame.locator(PREVIEW_FACE)).toBeVisible()
+  // The switcher's phone is 390 px; 320 px, the narrowest phone the floors hold for, is set by hand.
+  await element.evaluate((box, width) => {
+    ;(box as HTMLElement).style.width = `${width}px`
+  }, width)
+  await expect.poll(() => frame.evaluate(() => document.documentElement.clientWidth)).toBe(width)
   const preview = page.getByTestId('design-preview')
   await preview.getByRole('button', { name: scheme === 'light' ? 'Light' : 'Dark' }).click()
   const services = page.getByTestId('design-preview-services')
   if ((await services.getAttribute('aria-checked')) !== 'true') await services.click()
   await expect(services).toHaveAttribute('aria-checked', 'true')
   if (servicesOptional) {
-    await settled(page)
-    return
+    await settled(frame)
+    return frame
   }
   // The bar with the waiter button, and the bill and pay entries in the header.
-  await expect(opener(page, 'call')).toBeVisible()
-  await expect(opener(page, 'pay')).toBeVisible()
+  await expect(opener(frame, 'call')).toBeVisible()
+  await expect(opener(frame, 'pay')).toBeVisible()
+  return frame
 }
 
 /**
- * Sets the look of the preview through the three colour boxes (the Design subtab is brand-first
+ * Sets the look of the preview through the three colour boxes of the Design page's panel (brand-first
  * since S7, D93: no preset buttons): a designer preset's three colours from core, or the custom
  * theme's. The brand colour goes first, since it pre-fills the page and the panels.
  */
@@ -191,8 +207,8 @@ const slot = (name: string): string => `${PREVIEW_FACE} [data-slot="${name}"]`
  * The control that opens a screen: the slot the contract names for its feature. `menu.bag` is the
  * bag's place: the button is the slot itself or inside it, and only while the bag has a dish.
  */
-export const opener = (page: Page, screen: Screen): Locator =>
-  page.locator(
+export const opener = (page: Surface, screen: Screen): Locator =>
+  (page as Frame).locator(
     screen === 'bag'
       ? `${slot('menu.bag')}:is(button), ${slot('menu.bag')} button`
       : slot(SLOT_OF[screen]),
@@ -202,9 +218,9 @@ export const opener = (page: Page, screen: Screen): Locator =>
 const ADD_TO_BAG = `${PREVIEW_FACE} [data-slot="item.add"]`
 
 /** Puts a dish in the bag when the template has a way to, so the bag has its button. */
-export async function tryFillBag(page: Page): Promise<boolean> {
+export async function tryFillBag(page: Surface): Promise<boolean> {
   if ((await opener(page, 'bag').count()) > 0) return true
-  const add = page.locator(ADD_TO_BAG).first()
+  const add = (page as Frame).locator(ADD_TO_BAG).first()
   if ((await add.count()) === 0) return false
   await add.click()
   await expect(opener(page, 'bag')).toBeVisible()
@@ -212,7 +228,7 @@ export async function tryFillBag(page: Page): Promise<boolean> {
 }
 
 /** The same, and it fails when the template cannot fill the bag. */
-export async function fillBag(page: Page): Promise<void> {
+export async function fillBag(page: Surface): Promise<void> {
   expect(await tryFillBag(page), 'a dish can be put in the bag').toBe(true)
 }
 
@@ -221,9 +237,9 @@ export async function fillBag(page: Page): Promise<void> {
  * template draws a service control only when it lists the feature (guide §5.5), so a missing slot
  * is a template that has no such service, not a failure.
  */
-export async function whyNoScreen(page: Page, screen: Screen): Promise<string | null> {
+export async function whyNoScreen(page: Surface, screen: Screen): Promise<string | null> {
   const feature = SLOT_OF[screen]
-  if ((await page.locator(slot(feature)).count()) === 0) {
+  if ((await (page as Frame).locator(slot(feature)).count()) === 0) {
     return `${FACE_ID} draws no ${feature} (its manifest lists no such feature), so there is no ${screen} screen`
   }
   // Only the bag's button waits for a dish; the other controls are the slots themselves.
@@ -237,8 +253,8 @@ export async function whyNoScreen(page: Page, screen: Screen): Promise<string | 
  * Switches the template's language switch (`menu.language`, guide §7.3) to `lang`: the button or
  * radio inside it that carries that `lang`. False when the template draws no switch in the preview.
  */
-export async function chooseLanguage(page: Page, lang: string): Promise<boolean> {
-  const control = page
+export async function chooseLanguage(page: Surface, lang: string): Promise<boolean> {
+  const control = (page as Frame)
     .locator(slot('menu.language'))
     .locator(`:is(button, [role="radio"])[lang|="${lang}"]`)
     .first()
@@ -254,7 +270,7 @@ export async function chooseLanguage(page: Page, lang: string): Promise<boolean>
  * (`pay.number`) that only a captured payment shows.  The receipt screen of before is gone (D127 1.4);
  * the payment confirmation page is a later piece.
  */
-export async function payTheBill(page: Page): Promise<void> {
+export async function payTheBill(page: Surface): Promise<void> {
   const sheet = dialogs(page).last()
   await sheet.locator('[data-slot="pay.whole"]').click()
   await sheet.locator('[data-slot="pay.start"]').click()
@@ -268,7 +284,7 @@ export async function payTheBill(page: Page): Promise<void> {
 
 /** Opens a screen and runs `check` on it; the screen is closed again afterwards. */
 export async function onScreen(
-  page: Page,
+  page: Surface,
   screen: Screen,
   check: (sheet: Locator) => Promise<void>,
 ): Promise<void> {
@@ -278,6 +294,6 @@ export async function onScreen(
   await expect(sheet).toBeVisible()
   await settled(page)
   await check(sheet)
-  await page.keyboard.press('Escape')
+  await keyboardOf(page).press('Escape')
   await expect(dialogs(page)).toHaveCount(0)
 }

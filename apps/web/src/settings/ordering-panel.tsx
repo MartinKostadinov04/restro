@@ -310,7 +310,7 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
           </Row>
           <p className="p-3 text-sm text-muted-foreground">
             <Link
-              href={`/venues/${view.venueId}?tab=composer`}
+              href={`/venues/${view.venueId}?tab=studio`}
               className="underline underline-offset-2"
             >
               {t('st_call_where')}

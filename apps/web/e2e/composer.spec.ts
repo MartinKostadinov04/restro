@@ -141,12 +141,9 @@ async function snapshot(fileName: string, target: Page = page) {
 /** The path of the venue's page (the demo venue). */
 const venuePath = () => new URL(page.url()).pathname
 
-/** A toast of the composer. */
-const toast = () => page.locator('[data-sonner-toast]')
-
 // --- tests -----------------------------------------------------------------------------------
-test('opens on the Composer tab with the demo menu: sections, items, badges', async () => {
-  // D92: the composer opens on its Structure subtab, on the venue's live menu.
+test('opens on the Studio tab with the demo menu: sections, items, badges', async () => {
+  // D92: the Studio opens on its Structure subtab, on the venue's live menu.
   await expect(page.getByRole('tab', { name: 'Структура' })).toHaveAttribute(
     'aria-selected',
     'true',
@@ -165,31 +162,45 @@ test('opens on the Composer tab with the demo menu: sections, items, badges', as
   await snapshot('composer-bg-light-desktop.png')
 })
 
-test('the Design subtab holds the Design tab and the guest features; an old Design link lands there', async () => {
-  // The tab bar has no Design tab any more (D92): Design is the composer's second subtab.
+test('the Studio holds Structure and the guest features; Design is a page of its own; old links land there', async () => {
+  // The tab bar has no Design tab (D92, D129): Design is the Studio's second subtab.
   await expect(page.getByRole('tablist').first().getByRole('tab')).toHaveText([
-    'Композитор',
+    'Студио',
     'Маси и QR',
     'Тази вечер',
     'Настройки',
   ])
-  await page.getByRole('tab', { name: 'Дизайн' }).click()
-  await expect(page).toHaveURL(/[?&]sub=design/)
-  await expect(page.getByTestId('design-panel')).toBeVisible()
-  await expect(page.getByTestId('guest-features-panel')).toBeVisible()
-  // Structure no longer opens the Guest features panel.
-  await page.goto(`${venuePath()}?tab=design`)
-  await expect(page).toHaveURL(/[?&]tab=composer&sub=design/)
-  await expect(page.getByTestId('design-panel')).toBeVisible()
-  await page.getByRole('tab', { name: 'Структура' }).click()
-  await expect(page).toHaveURL(/[?&]sub=structure/)
+  await page.goto(`${venuePath()}?tab=studio`)
+  await expect(page.getByRole('tab', { name: 'Структура' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
   await expect(page.getByTestId('composer')).toBeVisible()
-  await expect(page.getByTestId('open-guest-features')).toHaveCount(0)
+  await expect(page.getByTestId('guest-features-panel')).toBeVisible()
+  await page.getByRole('tab', { name: 'Дизайн' }).click()
+  await expect(page).toHaveURL(new RegExp(`${venuePath()}/design`))
+  await expect(page.getByTestId('design-panel')).toBeVisible()
+  await page.getByTestId('design-back').click()
+  await expect(page).toHaveURL(/[?&]tab=studio/)
+  await expect(page.getByTestId('composer')).toBeVisible()
+
+  // Old links.
+  for (const old of ['?tab=design', '?tab=composer&sub=design', '?tab=studio&sub=design']) {
+    await page.goto(`${venuePath()}${old}`)
+    await expect(page, old).toHaveURL(new RegExp(`${venuePath()}/design`))
+  }
+  await page.goto(`${venuePath()}?tab=composer&sub=structure`)
+  await expect(page).toHaveURL(/[?&]tab=studio/)
+  await expect(page).not.toHaveURL(/sub=/)
+  await expect(page.getByTestId('composer')).toBeVisible()
+  await page.goto(`${venuePath()}?tab=composer`)
+  await expect(page).toHaveURL(/[?&]tab=studio/)
+  await expect(page.getByTestId('composer')).toBeVisible()
 })
 
-test('a menu’s ">" in Settings opens it in the composer, named in the URL', async () => {
+test('a menu’s ">" in Settings opens it in the Studio, named in the URL', async () => {
   await page.goto(`${venuePath()}?tab=settings&section=general`)
-  const open = page.locator('a[href*="tab=composer&menu=nd_"]').first()
+  const open = page.locator('a[href*="tab=studio&menu=nd_"]').first()
   const href = (await open.getAttribute('href')) ?? ''
   const menuId = /menu=(nd_[0-9A-Za-z]{22})/.exec(href)?.[1]
   expect(menuId).toBeTruthy()
@@ -360,44 +371,6 @@ test('lays a section out as a horizontal row (D92); the choice survives a reload
   await page.reload()
   await openSection('Безалкохолни')
   await expect(page.getByTestId('section-layout')).toHaveAttribute('aria-checked', 'false')
-})
-
-test('sets the menu layout and whether guests may switch it (D92); it survives a reload', async () => {
-  const layout = () => page.getByTestId('menu-layout')
-  const guestSwitch = () => page.getByTestId('menu-layout-switch')
-  await layout().getByRole('button', { name: 'Една колона' }).click()
-  await expect(toast().first()).toContainText('Запазено')
-  await expect(layout().getByRole('button', { name: 'Една колона' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  )
-  await expect(guestSwitch()).toBeEnabled()
-  if ((await guestSwitch().getAttribute('aria-checked')) !== 'false') await guestSwitch().click()
-  await expect(guestSwitch()).toHaveAttribute('aria-checked', 'false')
-  await settle()
-  await page.reload()
-  await expect(layout().getByRole('button', { name: 'Една колона' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  )
-  await expect(guestSwitch()).toHaveAttribute('aria-checked', 'false')
-
-  // Two columns with the switch.
-  await layout().getByRole('button', { name: 'Две колони' }).click()
-  await expect(layout().getByRole('button', { name: 'Две колони' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  )
-  await expect(guestSwitch()).toBeEnabled()
-  await guestSwitch().click()
-  await expect(guestSwitch()).toHaveAttribute('aria-checked', 'true')
-  await settle()
-  await page.reload()
-  await expect(layout().getByRole('button', { name: 'Две колони' })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  )
-  await expect(guestSwitch()).toHaveAttribute('aria-checked', 'true')
 })
 
 test('a section or item of the till is never deleted here; an item made here can be', async () => {

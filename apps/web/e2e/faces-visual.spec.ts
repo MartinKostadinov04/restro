@@ -478,25 +478,25 @@ test.describe('the service screens, in the Design preview', () => {
         for (const scheme of SCHEMES) {
           for (const lang of LANGS) {
             // A fresh preview each time: the demo table starts again (a paid bill would change them all).
-            await openPreview(owner, width, scheme, { servicesOptional: true })
+            const view = await openPreview(owner, width, scheme, { servicesOptional: true })
             await chooseTheme(page, theme)
-            if (!(await chooseLanguage(page, lang))) {
+            if (!(await chooseLanguage(view, lang))) {
               skip(
                 `services: the preview of ${FACE_ID} draws no menu.language; the pictures keep the menu's default language`,
               )
             }
-            await tryFillBag(page)
+            await tryFillBag(view)
             for (const screen of SCREENS) {
-              const why = await whyNoScreen(page, screen)
+              const why = await whyNoScreen(view, screen)
               if (why !== null) {
                 skip(`services/${screen}: ${why}`)
                 continue
               }
-              await onScreen(page, screen, async () => {
+              await onScreen(view, screen, async () => {
                 await shoot(
                   page,
                   file(theme, scheme, lang, width, screen),
-                  page.getByTestId('phone-frame'),
+                  page.getByTestId('design-preview-frame'),
                 )
               })
             }

@@ -1,6 +1,7 @@
 // Fixtures for the Design tab's end-to-end test (brief SH-05a). Run by the test itself:
 //
-//   seed   an organisation "Design Club" with its venue (slug `design-club`), an owner, and a small
+//   seed   an organisation "Design Club" with its venue (slug `design-club`), an owner, a plain
+//          member (who may look at the Design page, not change it), and a small
 //          hand-made menu (three drinks in one section, Bulgarian and English names), and a clean
 //          slate: no look, no template, nothing published, no held publish, no runs, no waiting
 //          jobs, no published files. Idempotent.
@@ -27,6 +28,7 @@ import { assertDevEnvironment, readAdminCredentials } from './lib/guard'
 const ORGANIZATION = { name: 'Design Club', slug: 'design-club' }
 const VENUE = { name: 'Design Club Sofia', slug: 'design-club' }
 const OWNER_EMAIL = 'design-owner@demo-club.test'
+const MEMBER_EMAIL = 'design-member@demo-club.test'
 
 /** Fixed node ids, so running the seed again finds the same document. */
 const nodeId = (name: string) => `nd_${name.padEnd(22, '0')}` as NodeId
@@ -115,6 +117,17 @@ async function seed(): Promise<void> {
       .values({ id: authModelId('member'), organizationId, userId: ownerId, role: 'owner' })
   } else if (membership.role !== 'owner') {
     await db.update(authMember).set({ role: 'owner' }).where(eq(authMember.id, membership.id))
+  }
+  const memberId = await ensureUser(auth, MEMBER_EMAIL, 'Design Member', password)
+  const [plainMember] = await db
+    .select({ id: authMember.id })
+    .from(authMember)
+    .where(and(eq(authMember.organizationId, organizationId), eq(authMember.userId, memberId)))
+    .limit(1)
+  if (!plainMember) {
+    await db
+      .insert(authMember)
+      .values({ id: authModelId('member'), organizationId, userId: memberId, role: 'member' })
   }
 
   const pool = getPool()

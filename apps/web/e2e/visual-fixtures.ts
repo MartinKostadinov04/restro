@@ -78,7 +78,7 @@ export type DesignVariant = (typeof DESIGN_VARIANTS)[number]
 /**
  * The designs of the five guest-feature screens' audit (#173, D130): each Style and each value of
  * each option of Call a waiter, Bill, Order, Pay and Receipt over Basic. Those screens need services,
- * so they are not published menus: faces-design-screens.spec.ts draws each in the Design tab's
+ * so they are not published menus: faces-design-screens.spec.ts draws each in the Design page's
  * preview of the demo venue, with demo data. The same list as the renderer's sweep of the sheets.
  */
 export const SCREEN_VARIANTS = designCases({

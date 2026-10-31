@@ -2,22 +2,19 @@
 // faces-design.spec.ts (the browsing page, the dish page, the allergen sheet) and
 // faces-design-screens.spec.ts (the five guest-feature screens): touch targets, contrast, sideways
 // overflow, names that are cut and text under its floor (D130, the designer guide's §7.5).
-import type { Page } from '@playwright/test'
+import type { Frame } from '@playwright/test'
 
-import { settled } from './faces-audit'
+import { type Surface, settled } from './faces-audit'
 
 /**
  * Runs in the page: what sticks out, what is cut and what is too small. Sends its source, no closure.
- * `frame` is the box the page is drawn in when it is not the browser's window (the Design tab's phone
- * screen): what sticks out is measured against it, and the window's own scroll is not the page's.
+ * The page is a document of its own, the guest's page or the frame of the Design page's preview: what
+ * sticks out is measured against its window.
  */
-export function floorsOf({ root, frame }: { root: string; frame: string | null }): string[] {
+export function floorsOf({ root }: { root: string }): string[] {
   const found: string[] = []
-  const edge =
-    frame === null
-      ? { left: 0, right: document.documentElement.clientWidth }
-      : (document.querySelector(frame)?.getBoundingClientRect() ?? { left: 0, right: 0 })
-  if (frame === null && document.documentElement.scrollWidth > edge.right) {
+  const edge = { left: 0, right: document.documentElement.clientWidth }
+  if (document.documentElement.scrollWidth > edge.right) {
     found.push(`the page scrolls (${document.documentElement.scrollWidth})`)
   }
   for (const element of document.querySelectorAll(`${root} *`)) {
@@ -63,22 +60,15 @@ export function floorsOf({ root, frame }: { root: string; frame: string | null }
   return found.slice(0, 12)
 }
 
-/**
- * Everything measured at the screen's present width, each problem named with `state`. `frame` is the
- * box the page is drawn in, when it is not the browser's window.
- */
-export async function measure(
-  page: Page,
-  state: string,
-  root: string,
-  frame: string | null = null,
-): Promise<string[]> {
+/** Everything measured at the screen's present width, each problem named with `state`. */
+export async function measure(page: Surface, state: string, root: string): Promise<string[]> {
   await settled(page)
-  const targets = await page.evaluate((root) => window.__rmAudit.targets(root), root)
-  const contrast = await page.evaluate((root) => window.__rmAudit.textContrast(root), root)
+  const within = page as Frame
+  const targets = await within.evaluate((root) => window.__rmAudit.targets(root), root)
+  const contrast = await within.evaluate((root) => window.__rmAudit.textContrast(root), root)
   return [
     ...targets.map((target) => `${target.label}: ${target.width}x${target.height}`),
     ...contrast.low.map((low) => `"${low.text}" at ${low.ratio}:1, needs ${low.needs}:1`),
-    ...(await page.evaluate(floorsOf, { root, frame })),
+    ...(await within.evaluate(floorsOf, { root })),
   ].map((problem) => `${state}: ${problem}`)
 }
