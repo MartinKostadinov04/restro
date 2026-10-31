@@ -24,6 +24,8 @@
 //   second-menu-remove  takes that menu and everything it made away again, so that the other
 //                       specs see the demo venue with its one menu. Both are idempotent, and `seed`
 //                       does the removal too and clears the venue's menu routes.
+//   areas-restore       puts the areas back under the till's names and shows them (what `seed` does
+//                       for them, alone), for the test's `afterAll`.
 //
 // Like the other seeds it refuses to run unless NODE_ENV is development and the database is on
 // this machine.
@@ -109,6 +111,36 @@ async function ensureQueue(): Promise<void> {
   }
 }
 
+/**
+ * The areas under the names the till gave them (the source key is `name:<hall>`, or `none` for the
+ * tables in no hall, which the tab calls "Tables"): a test that renamed or hid one and did not get to
+ * put it back (a timeout) would otherwise leave it for the next attempt and for the other specs.
+ */
+async function restoreAreas(owner: pg.Pool, venueId: string): Promise<void> {
+  await owner.query(
+    `update restro.areas
+        set name = case when source_key = 'none' then 'Tables' else substr(source_key, 6) end,
+            hidden = false
+      where venue_id = $1 and archived_at is null
+        and (source_key = 'none' or source_key like 'name:%')`,
+    [venueId],
+  )
+}
+
+/** `areas-restore`: only that, for the test's `afterAll` (the test's own page may be gone by then). */
+async function areasRestore(): Promise<void> {
+  assertDevEnvironment(process.env)
+  const ownerUrl = process.env.DATABASE_URL_OWNER
+  if (!ownerUrl) throw new Error('seed-tables-e2e needs DATABASE_URL_OWNER (see .env.example).')
+  const { venueId } = await demo()
+  const owner = new pg.Pool({ connectionString: ownerUrl, max: 1 })
+  try {
+    await restoreAreas(owner, venueId)
+  } finally {
+    await owner.end()
+  }
+}
+
 async function seed(): Promise<void> {
   assertDevEnvironment(process.env)
   writeFileSync(MARK_FILE, new Date().toISOString())
@@ -160,17 +192,7 @@ async function seed(): Promise<void> {
     await owner.query(`update restro.venues set settings = settings - 'qr' where id = $1`, [
       venueId,
     ])
-    // The areas under the names the till gave them (the source key is `name:<hall>`, or `none` for
-    // the tables in no hall, which the tab calls "Tables"): a test that renamed or hid one and did
-    // not get to put it back (a timeout) would otherwise leave it for the next attempt.
-    await owner.query(
-      `update restro.areas
-          set name = case when source_key = 'none' then 'Tables' else substr(source_key, 6) end,
-              hidden = false
-        where venue_id = $1 and archived_at is null
-          and (source_key = 'none' or source_key like 'name:%')`,
-      [venueId],
-    )
+    await restoreAreas(owner, venueId)
     // Hidden follows the till (`is_public`): the manager's hidden flag outlives a sync, so a test
     // that hid a table and then failed would leave it hidden for the next attempt.
     await owner.query(
@@ -459,11 +481,14 @@ const commands = {
   serve,
   'second-menu': secondMenu,
   'second-menu-remove': secondMenuRemove,
+  'areas-restore': areasRestore,
 } as const
 const command = process.argv[2] as keyof typeof commands | undefined
 
 if (command === undefined || !(command in commands)) {
-  console.error('usage: seed-tables-e2e.ts seed|worker|serve|second-menu|second-menu-remove')
+  console.error(
+    'usage: seed-tables-e2e.ts seed|worker|serve|second-menu|second-menu-remove|areas-restore',
+  )
   process.exit(2)
 }
 

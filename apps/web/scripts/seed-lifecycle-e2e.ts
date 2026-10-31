@@ -248,9 +248,13 @@ async function seed(): Promise<void> {
   await writeLiveOverlay(deps, scope)
   // The organisation's index (D84), as the publish job writes it after the files.
   await writeOrganizationIndex(deps, organizationId)
+  // In the form the worker writes since D84 (it names the organisation). The real worker runs beside
+  // the tests and rewrites this file in that form whenever one of its jobs touches the venue, so a
+  // file in the form of before would answer the old address or the new one, by the worker's timing.
   await writeTableTokenFile(publishStore, await hashTableCode(token), {
     venue_public_id: bar.publicId,
     venue_slug: bar.slug,
+    organization_slug: ORGANIZATION.slug,
     table_label: TABLE_LABEL,
   })
 
