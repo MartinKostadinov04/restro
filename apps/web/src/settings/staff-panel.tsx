@@ -15,7 +15,7 @@ export function StaffPanel({ view }: { view: StaffView }) {
   const t = useTranslations('ownerSettings')
   const runner = useSettingsRun(view.email)
   return (
-    <div className="grid gap-8" data-testid="staff-panel" aria-busy={runner.pending}>
+    <div className="grid grid-cols-1 gap-8" data-testid="staff-panel" aria-busy={runner.pending}>
       <h2 className="text-xl font-semibold tracking-tight">{t('sf_title')}</h2>
       <StaffPeople view={view} runner={runner} />
       <StaffRoles view={view} runner={runner} />

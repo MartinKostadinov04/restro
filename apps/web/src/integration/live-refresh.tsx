@@ -1,7 +1,6 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useTransition } from 'react'
+import { useTimedRefresh } from '@/hooks/use-timed-refresh'
 
 /** How often the tab asks the server for fresh data while a job is queued or running. */
 export const REFRESH_INTERVAL_MS = 3000
@@ -12,19 +11,7 @@ export const REFRESH_INTERVAL_MS = 3000
  * the page re-renders with `active` false, which clears the timer. Draws nothing.
  */
 export function LiveRefresh({ active }: { active: boolean }) {
-  const router = useRouter()
-  const [, startTransition] = useTransition()
-  // The router object is not guaranteed to keep its identity; the timer must not restart on it.
-  const refresh = useRef(router.refresh)
-  refresh.current = router.refresh
-
-  useEffect(() => {
-    if (!active) return
-    const timer = setInterval(() => {
-      startTransition(() => refresh.current())
-    }, REFRESH_INTERVAL_MS)
-    return () => clearInterval(timer)
-  }, [active])
-
+  // Offline it does not refresh (RR-88): the page would be replaced by the browser's own.
+  useTimedRefresh({ every: REFRESH_INTERVAL_MS, enabled: active })
   return null
 }

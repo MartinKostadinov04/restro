@@ -74,7 +74,7 @@ import {
   testSlug,
   withOwnerClient,
 } from './database'
-import { simBudgets } from './sim-pace'
+import { simBudgets, TEST_WRITE_TIMEOUT_MS } from './sim-pace'
 
 allowSlowSetup()
 
@@ -86,7 +86,7 @@ const POS_PRICE = 1_100
 /** How long one connector call takes on the simulator's clock: a read is two calls, the limit 5 a second. */
 const CALL_MS = 500
 /** Short write and read timeouts, so a hanging call is `unknown` quickly. */
-const TIMINGS = { ...SERVICE_TIMINGS, readTimeoutMs: 2_000, writeTimeoutMs: 300 }
+const TIMINGS = { ...SERVICE_TIMINGS, readTimeoutMs: 2_000, writeTimeoutMs: TEST_WRITE_TIMEOUT_MS }
 /** How much time passes between two runs of a job: its read-back, on both clocks. */
 const BETWEEN_RUNS_MS = 5_000
 /** The states a run ends in when nobody needs to act. */

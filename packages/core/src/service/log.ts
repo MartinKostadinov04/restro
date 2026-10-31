@@ -107,6 +107,12 @@ export const LogEntryInputSchema = z.strictObject({
   details: LogDetailsSchema.optional(),
 })
 
+/** The table an alert's details name (our `tb_` id), as a Log entry's `tableId`; nothing if none. */
+export function tableOfAlert(details: Record<string, unknown>): { tableId?: string } {
+  const table = details.tableId
+  return typeof table === 'string' && /^tb_[0-9A-Za-z]+$/.test(table) ? { tableId: table } : {}
+}
+
 /** What a writer logs. */
 export type LogEntryInput = z.input<typeof LogEntryInputSchema>
 

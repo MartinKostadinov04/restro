@@ -6,8 +6,8 @@
 // is a default (screen 1 §4, Q9). A shared device asks the person's own PIN, which is also the
 // confirmation of what it will record; a role that may not answer sees no button at all.
 import { useTranslations } from 'next-intl'
-
 import { Button } from '@/components/ui/button'
+import { WRAPS_WIDE } from '@/lib/wrapping'
 import { answerSentOrderAction } from '@/server/tonight/actions'
 import type { TonightView } from '@/server/tonight/view'
 
@@ -60,7 +60,7 @@ export function SentOrderAnswers({
       done: t(value === 'found' ? 's_ok_toast' : 's_no_toast'),
     })
 
-  const button = 'h-12 min-w-32 whitespace-normal'
+  const button = WRAPS_WIDE
   return (
     <>
       <Button

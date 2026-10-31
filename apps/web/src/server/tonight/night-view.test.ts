@@ -236,6 +236,16 @@ describe('a Log line', () => {
     expect(view.alertTitle).toContain('Table 7')
   })
 
+  it('names the table on the done line as on the raised one (RR-91)', () => {
+    for (const kind of ['alert.raised', 'alert.done'] as const) {
+      const view = logLineView(
+        line({ kind, reason: 'order_unconfirmed', table: '1', numbered: true }),
+        input,
+      )
+      expect(view.alertTitle, kind).toBe('Table 1: an order couldn’t be confirmed')
+    }
+  })
+
   it('keeps the answer apart from an ordinary move', () => {
     const answer = logLineView(line({ reason: 'staff_found' }), input)
     expect(answer.answer).toBe('found')

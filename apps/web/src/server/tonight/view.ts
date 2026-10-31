@@ -222,6 +222,8 @@ export interface TonightView {
   readonly canPauseAll: boolean
   /** The server's clock when this was made (ISO). */
   readonly now: string
+  /** The venue's time zone, for the times the screen words itself (the offline line). */
+  readonly timezone: string
 }
 
 const ORDER_UNCONFIRMED = 'order_unconfirmed'
@@ -637,5 +639,6 @@ export function buildTonightView(input: {
       allBars || restro.length > 0 ? [] : tonight.bars.filter((bar) => !pausedBars.has(bar.id)),
     canPauseAll: !allBars && restro.length === 0,
     now: input.now.toISOString(),
+    timezone,
   }
 }

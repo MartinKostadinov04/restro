@@ -3,12 +3,11 @@
 // The lines every owner-settings section shares (#87, plans' States tables): the section could not
 // be read (it asks again by itself), a role that may read but not change, and a shared device,
 // where settings never open with a PIN (D122 §7).
-import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { useEffect } from 'react'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Empty, EmptyDescription, EmptyHeader } from '@/components/ui/empty'
+import { useTimedRefresh } from '@/hooks/use-timed-refresh'
 
 /** How long a section that failed to load waits before it asks again. */
 const RETRY_MS = 10_000
@@ -16,11 +15,9 @@ const RETRY_MS = 10_000
 /** "Couldn't load the …. Check the connection; it tries again by itself." */
 export function SectionFailed({ what }: { what: 'settings' | 'staff' | 'alerts' }) {
   const t = useTranslations('ownerSettings')
-  const router = useRouter()
-  useEffect(() => {
-    const timer = setInterval(() => router.refresh(), RETRY_MS)
-    return () => clearInterval(timer)
-  }, [router])
+  // Offline it does not ask (the page would be replaced by the browser's own); the line already says
+  // to check the connection.
+  useTimedRefresh({ every: RETRY_MS })
   return (
     <Alert variant="destructive" role="alert" data-testid={`settings-failed-${what}`}>
       <AlertDescription>

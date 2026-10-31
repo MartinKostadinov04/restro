@@ -72,7 +72,7 @@ import {
   withOwnerClient,
 } from './database'
 import { createFakeEmailSender } from './fake-email-sender'
-import { simBudgets } from './sim-pace'
+import { simBudgets, TEST_WRITE_TIMEOUT_MS } from './sim-pace'
 
 allowSlowSetup()
 
@@ -80,7 +80,7 @@ const KEY = 'receipt-email-test-key-'.padEnd(48, 'x')
 const POS_TABLE = '30001'
 /** An address no other text in the database or in a log can hold by chance. */
 const EMAIL = 'receipt-guest-7f3a91@example.test'
-const TIMINGS = { ...SERVICE_TIMINGS, readTimeoutMs: 2_000, writeTimeoutMs: 300 }
+const TIMINGS = { ...SERVICE_TIMINGS, readTimeoutMs: 2_000, writeTimeoutMs: TEST_WRITE_TIMEOUT_MS }
 const CALL_MS = 500
 const BETWEEN_RUNS_MS = 5_000
 const SETTLED = ['captured', 'released', 'stranded', 'capture_failed']

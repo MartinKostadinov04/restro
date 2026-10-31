@@ -24,7 +24,6 @@ import {
 import Link from 'next/link'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type FormEvent, useEffect, useId, useState, useTransition } from 'react'
-
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -46,6 +45,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { WRAPS_FORM } from '@/lib/wrapping'
 import {
   createMenuAction,
   deleteMenuAction,
@@ -190,7 +190,7 @@ function ImportDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-testid="menu-import-dialog">
-        <form onSubmit={submit} className="grid gap-4">
+        <form onSubmit={submit} className="grid grid-cols-1 gap-4">
           <DialogHeader>
             <DialogTitle>{t('title')}</DialogTitle>
             <DialogDescription>{t('description')}</DialogDescription>
@@ -209,7 +209,7 @@ function ImportDialog({
             </p>
           ) : (
             <>
-              <div className="grid gap-1.5">
+              <div className="grid grid-cols-1 gap-1.5">
                 <Label htmlFor={`${id}-venue`}>{t('venue')}</Label>
                 <Select
                   value={fromVenue}
@@ -230,7 +230,7 @@ function ImportDialog({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid gap-1.5">
+              <div className="grid grid-cols-1 gap-1.5">
                 <Label htmlFor={`${id}-menu`}>{t('menu')}</Label>
                 <Select value={fromMenu} onValueChange={setFromMenu} disabled={venue === undefined}>
                   <SelectTrigger id={`${id}-menu`} data-testid="menu-import-menu">
@@ -245,7 +245,7 @@ function ImportDialog({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid gap-1.5">
+              <div className="grid grid-cols-1 gap-1.5">
                 <Label htmlFor={`${id}-name`}>{t('name')}</Label>
                 <Input
                   id={`${id}-name`}
@@ -520,6 +520,7 @@ export function MenusCard({
             type="button"
             variant="outline"
             size="sm"
+            className={WRAPS_FORM}
             disabled={pending}
             onClick={() => setImporting(true)}
             data-testid="menu-import"
@@ -542,7 +543,7 @@ export function MenusCard({
       ) : null}
 
       {handMade && deleted.length > 0 ? (
-        <Collapsible open={binOpen} onOpenChange={setBinOpen} className="grid gap-2">
+        <Collapsible open={binOpen} onOpenChange={setBinOpen} className="grid grid-cols-1 gap-2">
           <CollapsibleTrigger asChild>
             <Button
               type="button"
@@ -567,7 +568,7 @@ export function MenusCard({
                   data-testid="menu-binned"
                   data-menu={menu.id}
                 >
-                  <span className="grid min-w-0 flex-1 gap-0.5">
+                  <span className="grid grid-cols-1 min-w-0 flex-1 gap-0.5">
                     <MenuName name={menu.name} venueName={venueName} />
                     {menu.deletedAt !== null ? (
                       <span className="text-xs text-muted-foreground">

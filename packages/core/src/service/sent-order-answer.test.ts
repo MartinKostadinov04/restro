@@ -188,6 +188,13 @@ describe.skipIf(!hasDatabase)("Staff's answer to an Unconfirmed sent order (as r
       expect.objectContaining({ kind: 'sent_order.state', reason: 'staff_found', via: 'tonight' }),
     )
     expect(log.find((entry) => entry.kind === 'sent_order.state')?.actor).toBe(`user:${waiterUser}`)
+    // The Alert done line names the same table as the raised one (RR-91).
+    const done = await world.owner.query<{ table_id: string | null; sent_order_id: string | null }>(
+      `select table_id, sent_order_id from restro.log_entries
+        where tenant_id = $1 and kind = 'alert.done' and details ->> 'alertId' = $2`,
+      [world.tenantId, one.alertId],
+    )
+    expect(done.rows).toEqual([{ table_id: one.tableId, sent_order_id: one.sentOrderId }])
   })
 
   it('"Not on the bill" settles it Not sent with its lines back on the table’s order', async () => {

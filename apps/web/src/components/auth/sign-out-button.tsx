@@ -3,10 +3,12 @@
 import { LogOutIcon } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { authClient } from '@/lib/auth-client'
 import { stopPushOnThisBrowser } from '@/tonight/push-device'
+
+import { endSession } from './sign-out'
 
 /** A plain sign-out button for pages outside the admin frame. */
 export function SignOutButton() {
@@ -14,8 +16,12 @@ export function SignOutButton() {
   const router = useRouter()
 
   async function signOut() {
+    // The session first: a sign-out that fails keeps this phone's alerts on (RR-88).
+    if (!(await endSession())) {
+      toast.error(t('signOutFailed'))
+      return
+    }
     await stopPushOnThisBrowser()
-    await authClient.signOut()
     router.replace('/login')
     router.refresh()
   }
