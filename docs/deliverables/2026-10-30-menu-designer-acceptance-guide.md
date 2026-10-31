@@ -79,7 +79,7 @@ Open Demo Bar in the admin, on a computer first, in English and then in Bulgaria
 - **The tabs:** the first tab reads **Studio**. Inside it are **Structure** and **Design**. Structure is the screen you know, with the Guest functions card under it, and no "Layout" in its menu bar.
 - **The page:** Design opens a full page: the editing panel on the left, the preview on the right, on a phone's width. "Back to the Studio" is at the top.
 - **The widths:** tap Phone, Tablet, PC. The menu lays itself out as it would on that device, shrunk to fit. Open a dish: its sheet stays inside the preview.
-- **A Style:** there are two tiles, Basic and Editorial, each a little picture of your menu in your colours. Tap Editorial: the preview changes at once, and your colours, logo and body font stay.
+- **A Style:** there is a tile per Style, each a little picture of your menu in your colours (two until #178, five after it). Tap Editorial: the preview changes at once, and your colours, logo and body font stay.
 - **Colours and fonts:** change the brand colour, then the body and heading fonts. The preview follows each change at once, and "Unsaved" shows beside the buttons.
 - **Undo:** tap Undo. The last change goes back; tap it until it greys out, and you are where you started.
 - **Cancel:** change a few things and tap Cancel. Everything since the last save is gone, without asking.
@@ -89,6 +89,75 @@ Open Demo Bar in the admin, on a computer first, in English and then in Bulgaria
 - **A plain member:** sign in as someone who is a member and not an owner or admin. The page opens, says only owners and admins can change the design, every control is greyed out, and there is no Done or Cancel.
 - **On a phone:** open it at phone width. The preview is under the panel and scrolls inside itself. Done and Cancel stay at the bottom of the screen wherever you scroll. Nothing runs off sideways, including the long Bulgarian words.
 - **A venue from the till and a venue made by hand:** both get the same page.
+
+## F. The three new Styles (#178): Soft, Classic and Club
+
+Five tiles now stand on the Design page: **Basic**, **Editorial**, **Soft**, **Classic** and **Club**.
+Each is a complete set of design choices; none of them touches your colours, your logo or your body
+font, so every Style draws in your own brand. You accept each one here.
+
+**How to look at a Style.** Open Demo Bar › Studio › Design. Tap the Style's tile: the preview changes
+at once. Walk it on Phone, then Tablet, then PC; open a dish; open the allergen sheet; switch the
+language to English and back. Then tap Done and publish, and open the guest page on your own phone, in
+daylight for Soft and Classic, and with the lights down for Club. Tap Cancel instead of Done if you
+would rather not keep it.
+
+**Soft — the app look.** Everything on the page is a rounded card with a soft shadow under it, each
+menu line a row with a square thumbnail at its end, the header on a band of the panel colour, the
+section marks filled pills, the labels soft fills instead of outlined boxes, and the order lines carry
+the dish's photo. The Style for a venue whose guests already order food on their phone every week.
+
+- Every menu line is a card with rounded corners and a thin shadow, and the price sits at the end of
+  the dish's name, never under it.
+- The section marks over the menu are filled pills, and the filled one is the section you are in.
+- A dish's photo is square, and it fills the card's width with no frame around it.
+- The labels (vegan, spicy) are soft filled words, not boxes with an outline.
+- Open the bag: each line has the dish's little photo in front of it. The bar with the total floats
+  over the menu rather than sitting on the screen's edge.
+- The receipt after paying carries your logo, not your name in writing.
+
+**Classic — a printed menu.** No frames, no shadows, square corners, a centred serif title, section
+names centred in capitals with a rule either side, the whole description on every line, labels as
+plain words, and the allergens written out by name instead of numbered.
+
+- Nothing on the page has a rounded corner or a shadow.
+- The venue name is a large serif, centred; so are the section names, in capitals with a line either
+  side of them.
+- Every description is shown whole: no "more" to tap, however long it is.
+- The allergens read as names ("gluten", "milk"), not numbers, on the dish and in the footer.
+- The three layout icons are gone from the sections: on Classic the guest keeps the layout you set.
+- Open the bag: the add control reads "Add" rather than "+", the bar sits on the screen's bottom edge,
+  and the tip choices are rows with the amount each one comes to.
+
+**Club — the dark club night.** The screen is dark whatever your phone is set to, the venue name and
+every section and dish name are set in Unbounded at its heaviest in capitals, the spacing is tight and
+each line shows one line of description. Section names run as full-width bands. This is T87's club
+look, and the one made for the pilot's room.
+
+- Set your phone to the light screen and open the menu: it is still dark. The top band is the panel
+  colour, never a white bar.
+- Dish names are large, heavy capitals, and a description is one line with "more" to tap.
+- Section names run across the whole screen on a band of their own.
+- The section marks are pills on the top band, drawn in the band's own two colours, not the accent.
+- Open the bill: the rows alternate between two shades and each line is tight. The bar with the total
+  is docked on the screen's bottom edge.
+- The receipt carries your logo.
+
+**On every one of the three, look at:** the dish names and prices read at a glance, nothing is cut
+off, no sideways scrolling at any width, every button is easy to tap, and the allergens are always
+there to read. Note anything that works on one Style and not another: that is a renderer bug, not a
+Style's choice.
+
+**The four things only your phone can settle** (the automatic tests cannot):
+
+- **Club in the dark:** the tight spacing and the one description line, read standing up at arm's
+  length with the room lights down. Too tight, or right?
+- **Classic on a long menu:** every description shown whole makes for a long page. Does it read as a
+  menu card, or just as a lot of scrolling?
+- **Soft's pills:** the section pills over the menu — are they easy to hit with a thumb, without
+  catching the one beside them?
+- **Club's docked bar:** the bar with the total sits on the screen's bottom edge. Does your browser's
+  own bar cover it?
 
 ## What to report
 

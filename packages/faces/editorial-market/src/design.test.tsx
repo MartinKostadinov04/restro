@@ -190,7 +190,7 @@ describe('the never-list (D130)', () => {
     expect(report.failures).toEqual([])
     // Guards against a sweep that checks nothing: the five Styles and every value off Basic's.
     expect(report.cases).toBe(designCases(DRAWN).length)
-    expect(report.cases).toBeGreaterThanOrEqual(71)
+    expect(report.cases).toBeGreaterThanOrEqual(84)
     expect(styleCases()).toHaveLength(5)
     expect(report.renders).toBe(report.cases * fixtures.length)
   }, 900_000)
