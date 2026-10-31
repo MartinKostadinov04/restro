@@ -7,7 +7,6 @@
 import { EllipsisIcon, EyeIcon, EyeOffIcon, PlusIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useCallback, useEffect, useRef, useState } from 'react'
-
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -34,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { WRAPS_FORM } from '@/lib/wrapping'
 import {
   addPersonAction,
   assignRoleAction,
@@ -152,13 +152,18 @@ export function StaffPeople({ view, runner }: { view: StaffView; runner: Runner 
   }
 
   return (
-    <section className="grid gap-3" aria-labelledby="staff-people">
-      <div className="flex items-center justify-between gap-3">
+    <section className="grid grid-cols-1 gap-3" aria-labelledby="staff-people">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 id="staff-people" className="text-lg font-medium">
           {t('sf_people')}
         </h3>
         {view.people.length > 0 ? (
-          <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+          <Button
+            variant="outline"
+            size="sm"
+            className={WRAPS_FORM}
+            onClick={() => setAdding(true)}
+          >
             <PlusIcon aria-hidden />
             {t('sf_add')}
           </Button>
@@ -389,7 +394,7 @@ function AddPersonDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <form
-          className="grid gap-4"
+          className="grid grid-cols-1 gap-4"
           onSubmit={(event) => {
             event.preventDefault()
             const displayName = name.trim()
@@ -405,7 +410,7 @@ function AddPersonDialog({
           <DialogHeader>
             <DialogTitle>{t('sf_add')}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-2">
+          <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="staff-name">{t('sf_name')}</Label>
             <Input
               id="staff-name"
@@ -416,7 +421,7 @@ function AddPersonDialog({
               onChange={(event) => setName(event.target.value)}
             />
           </div>
-          <div className="grid gap-2">
+          <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="staff-role">{t('sf_role')}</Label>
             <Select value={role} onValueChange={setRole}>
               <SelectTrigger id="staff-role" className="w-full">
@@ -496,7 +501,7 @@ function RenameDialog({
     <Dialog open={person !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <form
-          className="grid gap-4"
+          className="grid grid-cols-1 gap-4"
           onSubmit={(event) => {
             event.preventDefault()
             if (person === null || name.trim() === '') return
@@ -515,7 +520,7 @@ function RenameDialog({
           <DialogHeader>
             <DialogTitle>{t('sf_rename')}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-2">
+          <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="staff-rename">{t('sf_name')}</Label>
             <Input
               id="staff-rename"
@@ -562,7 +567,7 @@ function LinkDialog({
     <Dialog open={person !== null} onOpenChange={(open) => !open && close()}>
       <DialogContent>
         <form
-          className="grid gap-4"
+          className="grid grid-cols-1 gap-4"
           onSubmit={(event) => {
             event.preventDefault()
             if (person === null || userId === '') return

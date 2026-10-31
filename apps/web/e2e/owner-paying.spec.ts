@@ -48,7 +48,8 @@ async function signIn(page: Page, email: string, password = ADMIN_PASSWORD) {
     await page.getByLabel('Парола').fill(password)
     await page.getByRole('button', { name: 'Вход' }).click()
     try {
-      await expect(page).toHaveURL(/\/venues$/, { timeout: 8_000 })
+      // A staff-only account (the viewer) lands on its venue's Tonight page, not on the list.
+      await expect(page).toHaveURL(/\/venues(\/vn_[^/?]+)?(\?.*)?$/, { timeout: 8_000 })
       return
     } catch {
       await page.waitForTimeout(10_000)
@@ -323,4 +324,31 @@ test('a POS venue whose POS can’t take payments has no Paying section', async 
   await expect(page.getByRole('tab', { name: 'Плащане' })).toHaveCount(0)
   await expect(page.getByTestId('paying-panel')).toHaveCount(0)
   await context.close()
+})
+
+test('Paying at 200% text wraps inside a 390 px phone and a 320 px one, in every state (RR-79)', async ({
+  browser,
+}) => {
+  for (const width of [390, 320]) {
+    const { context, page } = await open(browser, OWNER, width, 844)
+    for (const state of ['none', 'connected', 'on']) {
+      runScript('./e2e/paying-account.ts', state)
+      await page.goto(paying())
+      await expect(page.getByTestId('paying-panel')).toBeVisible()
+      await page.evaluate(() => {
+        document.documentElement.style.fontSize = '200%'
+      })
+      // Once the page has settled at the new size there is no sideways scroll.
+      await expect
+        .poll(
+          () =>
+            page.evaluate(
+              () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            ),
+          { message: `Paying (${state}) at ${width} px` },
+        )
+        .toBeLessThanOrEqual(0)
+    }
+    await context.close()
+  }
 })

@@ -16,6 +16,7 @@ import { newId } from '../ids'
 import { RECEIVERS, readDelivery, recordStep, STEPS, withDelivery } from './alert-delivery'
 import { PAUSED_KIND, ruleOf } from './alert-rules'
 import type { ServiceTx } from './definition'
+import { tableOfAlert } from './log'
 import { pausesOfVenue } from './pause-scope'
 import type { Permission } from './permissions'
 import { accepted, refused, type ServiceResult } from './results'
@@ -142,6 +143,8 @@ export async function alertDone(
     .where(eq(alerts.id, alert.id))
   await stx.log({
     kind: 'alert.done',
+    // A table's alert names its table on the done line as on the raised one (RR-91).
+    ...tableOfAlert(alert.details),
     reason: alert.kind,
     details: { alertId: alert.id },
   })

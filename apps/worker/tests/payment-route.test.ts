@@ -116,7 +116,7 @@ import {
   testSlug,
   withOwnerClient,
 } from './database'
-import { simBudgets } from './sim-pace'
+import { simBudgets, TEST_WRITE_TIMEOUT_MS } from './sim-pace'
 
 allowSlowSetup()
 
@@ -126,8 +126,8 @@ const POS_TABLE = '30001'
 const PAYMENT_TABLES = ['39001', 'pay main 2']
 /** How long one connector call takes on the simulator's clock: a read is two calls, the limit 5 a second. */
 const CALL_MS = 500
-/** Short write and read timeouts, so a hanging call is `unknown` quickly. */
-const TIMINGS = { ...SERVICE_TIMINGS, readTimeoutMs: 2_000, writeTimeoutMs: 300 }
+/** A short read timeout, and the tests' write timeout (sim-pace.ts): a hanging call is `unknown` after it. */
+const TIMINGS = { ...SERVICE_TIMINGS, readTimeoutMs: 2_000, writeTimeoutMs: TEST_WRITE_TIMEOUT_MS }
 /** A late write lands this long after its call: inside the read-back window (D115's minute). */
 const LATE_LANDING_MS = 20_000
 /** A late write that lands after the read-back window, which barsy's docs don't rule out (C52). */

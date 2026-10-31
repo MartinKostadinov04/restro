@@ -25,7 +25,7 @@ export function VenueDangerZone({ venueId, venueName }: VenueDangerZoneProps) {
       className="flex flex-col gap-4 rounded-lg border border-destructive/40 p-4 sm:flex-row sm:items-center sm:justify-between"
       data-testid="venue-danger-zone"
     >
-      <div className="grid gap-1">
+      <div className="grid grid-cols-1 gap-1">
         <h3
           id="venue-danger-heading"
           className="flex items-center gap-2 text-lg font-medium text-destructive"

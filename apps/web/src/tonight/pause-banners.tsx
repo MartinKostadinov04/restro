@@ -8,8 +8,8 @@
 import { CirclePauseIcon, CreditCardIcon, OctagonAlertIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
-
 import { Button } from '@/components/ui/button'
+import { WRAPS } from '@/lib/wrapping'
 import {
   liftOrderingAction,
   liftRestroPauseAction,
@@ -40,7 +40,7 @@ function StaffBanner({ banner, view }: { banner: PauseBanner; view: TonightView 
         <Button
           type="button"
           variant="outline"
-          className="h-12 whitespace-normal"
+          className={WRAPS}
           disabled={busy}
           onClick={() =>
             run({
@@ -86,7 +86,7 @@ function RestroBanner({ banner, view }: { banner: PauseBanner; view: TonightView
         <Button
           type="button"
           variant="outline"
-          className="h-12 whitespace-normal"
+          className={WRAPS}
           disabled={busy}
           onClick={() =>
             run({
@@ -136,7 +136,7 @@ function PayingBanner({ view }: { view: TonightView }) {
         ) : null}
       </div>
       {paying.state !== 'paused' && paying.canReconnect ? (
-        <Button asChild variant="outline" className="h-12 whitespace-normal">
+        <Button asChild variant="outline" className={WRAPS}>
           <Link href={`/venues/${view.venueId}?tab=settings&section=paying`}>
             {t('pb_reconnect')}
           </Link>

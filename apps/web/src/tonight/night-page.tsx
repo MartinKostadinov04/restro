@@ -13,6 +13,7 @@ import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { useTimedRefresh } from '@/hooks/use-timed-refresh'
 import { sentOrdersAction } from '@/server/tonight/night-actions'
 import type { Frame, NightView, SentListView } from '@/server/tonight/night-view'
 
@@ -20,6 +21,7 @@ import { ActionRowItem } from './action-rows'
 import { DayPicker, useDateText } from './day-picker'
 import { useMoney } from './money'
 import { type NightSlots, visibleSections } from './night-slots'
+import { clockAt, OfflineLine } from './offline-line'
 import { PAGE } from './pages'
 import { RunProvider } from './run'
 import { SentRow } from './sent-row'
@@ -30,15 +32,6 @@ import { useWho } from './who'
 
 /** How often a live night asks the server again. */
 const REFRESH_MS = 5000
-
-function clockAt(iso: string, timezone: string): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-    timeZone: timezone,
-  }).format(new Date(iso))
-}
 
 export function Section({
   id,
@@ -81,13 +74,7 @@ function Content({ view, frame, slots }: { view: NightView; frame: Frame; slots:
     failed: boolean
   } | null>(null)
 
-  useEffect(() => {
-    if (!view.today) return
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') router.refresh()
-    }, REFRESH_MS)
-    return () => window.clearInterval(timer)
-  }, [view.today, router])
+  const { offline } = useTimedRefresh({ every: REFRESH_MS, enabled: view.today, visibleOnly: true })
 
   const day = view.day
   const limit = all?.limit
@@ -137,6 +124,7 @@ function Content({ view, frame, slots }: { view: NightView; frame: Frame; slots:
   return (
     <div className="mx-auto w-full max-w-[840px] space-y-6" data-testid="tonight-night">
       <TabHeading name={t('tab_night')} />
+      <OfflineLine offline={offline} stoodAt={frame.now} timezone={frame.timezone} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-lg font-semibold" data-testid="night-day">
@@ -313,10 +301,6 @@ export function NightPage(props: { view: NightView; frame: Frame; slots: NightSl
 /** The page when it could not be read: the failure block; it asks again by itself. */
 export function NightFailed() {
   const t = useTranslations('tonight')
-  const router = useRouter()
-  useEffect(() => {
-    const timer = window.setInterval(() => router.refresh(), REFRESH_MS)
-    return () => window.clearInterval(timer)
-  }, [router])
+  useTimedRefresh({ every: REFRESH_MS })
   return <FailedBlock text={t('nt_fail')} />
 }

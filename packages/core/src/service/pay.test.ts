@@ -31,7 +31,9 @@ import {
 import { GUEST_LIMITS, type GuestLimit, GuestLimiter, type GuestLimitName } from './guest-limits'
 
 const KEY = 'pay-test-key-'.padEnd(48, 'x')
-const ACCOUNT = 'acct_paytest1'
+// The payment account's reference is unique per provider across the whole database
+// (payment_accounts_account_unique), and test files run side by side: each run makes its own.
+const ACCOUNT = `acct_${randomUUID().replaceAll('-', '')}`
 /** The provider's id of a payment's hold: one per payment. */
 const holdRef = (paymentId: string) => `simpay_${paymentId}`
 /** A value the card form needs and nothing else may show (Stripe's is a client secret). */

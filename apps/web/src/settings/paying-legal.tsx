@@ -16,11 +16,11 @@ import {
 } from '@restro/core'
 import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
-
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { WRAPS_FORM } from '@/lib/wrapping'
 import { savePayingAction } from '@/server/settings/paying-actions'
 import type { PayingView } from '@/server/settings/paying-view'
 
@@ -111,11 +111,14 @@ export function PayingLegalCard({
   if (!can) {
     if (view.legal === null) return null
     return (
-      <section className="grid gap-3 rounded-lg border bg-card p-3" data-testid="paying-legal">
+      <section
+        className="grid grid-cols-1 gap-3 rounded-lg border bg-card p-3"
+        data-testid="paying-legal"
+      >
         <h3 className="font-medium">{t('pa_legal_t')}</h3>
-        <dl className="grid gap-2 text-sm">
+        <dl className="grid grid-cols-1 gap-2 text-sm">
           {fields.map(({ field, label }) => (
-            <div key={field} className="grid gap-0.5">
+            <div key={field} className="grid grid-cols-1 gap-0.5">
               <dt className="text-muted-foreground">{label}</dt>
               <dd className="break-words">{view.legal?.[field]}</dd>
             </div>
@@ -127,7 +130,7 @@ export function PayingLegalCard({
 
   return (
     <form
-      className="grid gap-4 rounded-lg border bg-card p-3"
+      className="grid grid-cols-1 gap-4 rounded-lg border bg-card p-3"
       data-testid="paying-legal"
       noValidate
       onSubmit={(event) => {
@@ -135,14 +138,14 @@ export function PayingLegalCard({
         save()
       }}
     >
-      <div className="grid gap-1">
+      <div className="grid grid-cols-1 gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-medium">{t('pa_legal_t')}</h3>
           {dirty ? <Badge variant="secondary">{t('pa_unsaved')}</Badge> : null}
         </div>
         <p className="text-sm text-muted-foreground">{t('pa_legal_d')}</p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {fields.map(({ field, label, max, inputMode }) => {
           const key = problemKey(field, problems[field])
           const id = `pay-legal-${field}`
@@ -178,6 +181,7 @@ export function PayingLegalCard({
       </div>
       <div>
         <Button
+          className={WRAPS_FORM}
           type="submit"
           variant={dirty ? 'default' : 'outline'}
           disabled={pending || !dirty}

@@ -20,6 +20,9 @@ import { forgetGuestCodes, type GuestTableState, guestAct, guestState } from './
 import { GuestLimiter } from './guest-limits'
 
 const KEY = 'pay-test-key-'.padEnd(48, 'x')
+// The payment account's reference is unique per provider across the whole database
+// (payment_accounts_account_unique), and test files run side by side: each run makes its own.
+const ACCOUNT = `acct_${randomUUID().replaceAll('-', '')}`
 
 const LINES = [
   { pos: 'L1', quantity: '1', amountMinor: 1_000 },
@@ -140,8 +143,8 @@ describe.skipIf(!hasDatabase)('rotating the phone value at Pay (RR-8, real limit
     await world.owner.query(
       `insert into restro.payment_accounts
          (tenant_id, venue_id, provider_kind, account_ref, state, checks, connected_at, source, actor, job_id)
-       values ($1, $2, 'sim-pay', 'acct_paytest1', 'connected', '{"cardPayments":true,"ticks":{"cardTypeInTill":{"at":"2026-10-27T00:00:00Z","by":"system"},"receiptEmailsOff":{"at":"2026-10-27T00:00:00Z","by":"system"}}}'::jsonb, now(), 'restro', 'system', 'test-seed')`,
-      [world.tenantId, world.venueId],
+       values ($1, $2, 'sim-pay', $3, 'connected', '{"cardPayments":true,"ticks":{"cardTypeInTill":{"at":"2026-10-27T00:00:00Z","by":"system"},"receiptEmailsOff":{"at":"2026-10-27T00:00:00Z","by":"system"}}}'::jsonb, now(), 'restro', 'system', 'test-seed')`,
+      [world.tenantId, world.venueId, ACCOUNT],
     )
     await world.owner.query('update restro.tables set is_payment_table = true where id = $1', [
       world.tables[3],

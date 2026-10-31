@@ -590,10 +590,9 @@ test('a plain member sees the page and can change nothing', async ({ browser }) 
   await context.addCookies([{ name: 'NEXT_LOCALE', value: 'en', url: new URL(page.url()).origin }])
   const member = await context.newPage()
   await open(member)
-  await expect(member.getByTestId('publish-button')).toBeDisabled()
-  await expect(member.getByTestId('publish-block-reason')).toHaveText(
-    'Only an owner or admin can publish.',
-  )
+  // Never a greyed Publish for a role that may not publish (RR-90): it is not drawn, nor a sentence.
+  await expect(member.getByTestId('publish-button')).toHaveCount(0)
+  await expect(member.getByTestId('publish-block-reason')).toHaveCount(0)
   // The guest page is anyone's to open.
   await expect(member.getByTestId('guest-link')).toHaveAttribute('href', GUEST_ADDRESS)
   await open(member, VERSIONING)

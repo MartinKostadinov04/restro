@@ -61,7 +61,7 @@ import {
   testSlug,
   withOwnerClient,
 } from './database'
-import { simBudgets } from './sim-pace'
+import { simBudgets, TEST_WRITE_TIMEOUT_MS } from './sim-pace'
 
 allowSlowSetup()
 
@@ -116,7 +116,7 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
     timings: {
       probeBudgetMs: 3_000,
       readTimeoutMs: 5_000,
-      writeTimeoutMs: 300,
+      writeTimeoutMs: TEST_WRITE_TIMEOUT_MS,
       readBackWindowMs: 3_000,
     },
     readBackEveryMs: 1_000,

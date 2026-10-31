@@ -105,8 +105,12 @@ async function answer(
         updatedAt: sql`now()`,
       })
       .where(eq(alerts.id, alert.id))
+    // The same table and sent order as the raised line, so the Log names the table of both (RR-91).
     await stx.log({
       kind: 'alert.done',
+      tableId: sent.tableId,
+      sittingId: sent.sittingId,
+      sentOrderId: sent.id,
       reason: ORDER_UNCONFIRMED_ALERT,
       details: { alertId: alert.id },
     })
