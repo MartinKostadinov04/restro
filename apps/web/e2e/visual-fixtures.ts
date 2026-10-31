@@ -37,8 +37,10 @@ export const visualPath = (theme: { readonly publicId: string }): string =>
   `/m/${VISUAL_SLUG}-${theme.publicId}`
 
 /**
- * One menu per design the renderer's audit runs on: each Style, and each value of each option it
- * draws over Basic (D130). The same list as the never-list harness sweeps in the renderer's tests.
+ * One menu per design the renderer's audit runs on: each Style (Basic, Editorial, Soft, Classic and
+ * Club), and each value of each option it draws over Basic (D130). The same list as the never-list
+ * harness sweeps in the renderer's tests, and it comes from `PREMADE_STYLES` through `designCases`,
+ * so a new Style file joins this sweep, the screens' sweep below and the seed with no edit here.
  */
 export const DESIGN_VARIANTS = designCases({
   general: [
