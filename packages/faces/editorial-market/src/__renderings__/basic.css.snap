@@ -1331,6 +1331,14 @@
 .rm .ro-allergy a { display: inline-flex }
 .rm .ro-allergy a { align-items: center }
 .rm .ro-allergy a { min-height: 44px }
+.rm [data-slot="location.consent"] a { display: inline-flex }
+.rm [data-slot="location.consent"] a { align-items: center }
+.rm [data-slot="location.consent"] a { min-height: 44px }
+.rm [data-slot="location.consent"] a { color: inherit }
+.rm [data-slot="location.consent"] a { font-weight: 700 }
+.rm [data-slot="location.consent"] a { text-decoration: underline }
+.rm [data-slot="location.consent"] a { text-decoration-thickness: 2px }
+.rm [data-slot="location.consent"] a { text-underline-offset: 3px }
 .rm .ro-allergy summary { box-sizing: border-box }
 .rm .ro-allergy summary { min-height: 44px }
 .rm .ro-allergy summary { padding-block: 12px }

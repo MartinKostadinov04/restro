@@ -23,6 +23,7 @@ export const editorialStyle = {
   departures: [
     'The 9–11 px marks, chips, allergen numbers and table label rise to the 12 px floor.',
     'The options under a line of the bill’s rounds (11.7 px) rise to the 12 px floor.',
+    'The Privacy link in the location consent is drawn as a link in the sheet’s writing (underlined, 44 px) instead of the browser’s blue.',
     'The note under the Payment confirmation reads at 4.5:1 on any sheet (it was 2.9:1: the muted colour under the status panel’s 75 %).',
     'The note, email and promo inputs rise from 15 px to the 16 px floor.',
     'Strip crops and the dish photo are 4:3 (today the strip is 1.22:1).',

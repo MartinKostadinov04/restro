@@ -186,6 +186,11 @@ export interface Services {
   readonly sendOrder: (confirmDuplicateOf?: string) => Promise<void>
   /** The last Send's answer was lost: the host's word, or this face's until the host's state says it (D120). */
   readonly sendLost: { readonly ref: string | null } | null
+  /**
+   * The lost Send has landed: the host lists a new order as Added with the lines this phone sent, so
+   * the lost-Send line is no longer true and goes (RR-O43). The hold on a second Send runs on.
+   */
+  readonly sendLanded: boolean
   readonly sentOrders: readonly SentOrderView[]
   /** The sheet that is drawn (it stays drawn while it slides out), or null. */
   readonly sheet: Sheet | null
@@ -206,6 +211,20 @@ export function useServicesRequired(): Services {
   const services = useContext(ServicesContext)
   if (services === null) throw new Error('a service screen was drawn without services')
   return services
+}
+
+/** The lines of an order as one string, the same for the same items, choices and quantities in any order. */
+function linesSignature(
+  lines: readonly {
+    readonly itemId: string
+    readonly optionIds: readonly string[]
+    readonly qty: number
+  }[],
+): string {
+  return lines
+    .map((line) => `${line.itemId}|${[...line.optionIds].sort().join(',')}|${line.qty}`)
+    .sort()
+    .join(';')
 }
 
 /** Whether the bag's place in the bar has something to open: the order, a sent order, or why it is hidden. */
@@ -383,6 +402,22 @@ function ActiveServices({
     return () => clearTimeout(timer)
   }, [answerLost])
   const sendLost = state.sendLost ?? (answerLost ? LOST_WITHOUT_REF : null)
+  // What this phone's last Send carried and which sent orders were listed when it went. A new order
+  // that the host lists as Added with the same lines is that Send landing; one that was already
+  // listed, one of other lines or one still sending is not (sent orders carry no action id).
+  const [lastSend, setLastSend] = useState<{
+    readonly before: ReadonlySet<string>
+    readonly signature: string
+  } | null>(null)
+  const sendLanded =
+    sendLost !== null &&
+    lastSend !== null &&
+    (state.sentOrders ?? NO_SENT).some(
+      (sent) =>
+        sent.state === 'added' &&
+        !lastSend.before.has(sent.id) &&
+        linesSignature(sent.lines) === lastSend.signature,
+    )
 
   const [sending, setSending] = useState(false)
   const sendingNow = useRef(false)
@@ -476,6 +511,18 @@ function ActiveServices({
       sendingNow.current = true
       setAsked(null)
       setSending(true)
+      setLastSend({
+        before: new Set(
+          (latest.current.services.state.sentOrders ?? NO_SENT).map((sent) => sent.id),
+        ),
+        signature: linesSignature(
+          taking.map((entry) => ({
+            itemId: entry.line.itemId,
+            optionIds: entry.line.optionIds,
+            qty: entry.line.qty,
+          })),
+        ),
+      })
       try {
         const result = await act({
           kind: 'order.send',
@@ -551,6 +598,7 @@ function ActiveServices({
       cancelAsk,
       sendOrder,
       sendLost,
+      sendLanded,
       sentOrders: state.sentOrders ?? NO_SENT,
       sheet,
       leaving: route.leaving,
@@ -583,6 +631,7 @@ function ActiveServices({
       cancelAsk,
       sendOrder,
       sendLost,
+      sendLanded,
       sheet,
       route.leaving,
       openSheet,

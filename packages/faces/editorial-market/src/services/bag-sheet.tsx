@@ -177,7 +177,7 @@ export function BagSheet() {
       data-slot="order.sheet"
       data-design-part="order"
     >
-      {sendLost !== null ? (
+      {sendLost !== null && !o.sendLanded ? (
         <div className="ro-notice is-bad" role="alert" data-slot="send.lost" data-send-lost="">
           <span>{words.sendLost}</span>
           {sendLost.ref === null ? null : <small>{words.reference(sendLost.ref)}</small>}

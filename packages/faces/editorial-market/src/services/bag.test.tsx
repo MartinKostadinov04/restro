@@ -622,6 +622,60 @@ describe('Send: no local success (test 3)', () => {
     expect(maybeSendButton(sheet)).toBeNull()
   })
 
+  it('drops the lost-Send line once the card says "Added to your bill", with no reload (RR-O43)', async () => {
+    const { host, page, sheet } = twoLines()
+    const call = await send(host, sheet, 1)
+    await act(async () => call?.answer({ status: 'pending', code: 'answer_lost' }))
+    expect(sheet.querySelector('[data-send-lost]')).not.toBeNull()
+    // The order lands: the host lists it as Added (its lines are the ones this phone sent), and its
+    // own hold on the lost Send runs on (the client lets go by the clock alone).
+    page.update({
+      sendLost: { ref: null },
+      sentOrders: [
+        sentOrderOf('so_1', 'added', [
+          { item: hummus, qty: 1 },
+          { item: mojito, qty: 1 },
+        ]),
+      ],
+    })
+    expect(sheet.textContent).toContain(W.sentAdded)
+    expect(sheet.querySelector('[data-send-lost]')).toBeNull()
+    expect(sheet.textContent).not.toContain(W.sendLost)
+    expect(within(sheet).queryByRole('alert')).toBeNull()
+    // The hold itself stays: the lines are on the order still and no second Send goes out.
+    expect(maybeSendButton(sheet)).toBeNull()
+  })
+
+  it('keeps the lost-Send line for an order that is not the one sent (another phone’s, or still sending)', async () => {
+    const { host, page, sheet } = twoLines()
+    const call = await send(host, sheet, 1)
+    await act(async () => call?.answer({ status: 'pending', code: 'answer_lost' }))
+    page.update({
+      sentOrders: [
+        // Added, but not what this phone sent.
+        sentOrderOf('so_1', 'added', [{ item: mojito, qty: 2 }]),
+        // What this phone sent, but not on the bill yet.
+        sentOrderOf('so_2', 'sending', [
+          { item: hummus, qty: 1 },
+          { item: mojito, qty: 1 },
+        ]),
+      ],
+    })
+    expect(sheet.querySelector('[data-send-lost]')).not.toBeNull()
+  })
+
+  it('does not let an order that was already Added before the Send clear the line', async () => {
+    const before = sentOrderOf('so_0', 'added', [
+      { item: hummus, qty: 1 },
+      { item: mojito, qty: 1 },
+    ])
+    const { host, page, sheet } = twoLines({ sentOrders: [before] })
+    const call = await send(host, sheet, 1)
+    await act(async () => call?.answer({ status: 'pending', code: 'answer_lost' }))
+    page.update({ sentOrders: [before] })
+    expect(sheet.querySelector('[data-send-lost]')).not.toBeNull()
+  })
+
   it('offers Send again after the hold, when the host never said anything more', async () => {
     const { host, sheet } = twoLines()
     vi.useFakeTimers()

@@ -1013,6 +1013,19 @@ export const SERVICES_CSS = `
   align-items: center;
   min-height: 44px;
 }
+/* The Privacy link at the end of the location consent (D121) is a link to look at: the sheet's own
+   writing, underlined, and 44 px to tap. Left to the browser it was a blue that does not read on an
+   ink sheet. */
+.rm [data-slot="location.consent"] a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
 .rm .ro-allergy summary {
   box-sizing: border-box;
   min-height: 44px;

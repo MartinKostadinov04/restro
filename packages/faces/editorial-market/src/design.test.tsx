@@ -361,6 +361,8 @@ const property = (line: string) => /\{ ([\w-]+):/.exec(line)?.[1] ?? ''
 const DEPARTURES: readonly ((line: string, added: boolean) => boolean)[] = [
   // The confirmation's note states its size in pixels: 0.9 of the page's 16 px (no departure in look).
   (line) => /\.ro-confirm-note/.test(line) && property(line) === 'font-size',
+  // The Privacy link of the location consent is drawn as a link in the sheet's writing (#173, D121).
+  (line, added) => added && line.startsWith('.rm [data-slot="location.consent"] a {'),
   // The confirmation's note reads at 4.5:1 on any sheet: its own rule adds an opacity and a colour,
   // and nothing of the earlier rules goes (#173).
   (line, added) =>

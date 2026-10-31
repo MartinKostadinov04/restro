@@ -540,6 +540,54 @@ describe('the chips and the inputs follow the labels look (D130)', () => {
   })
 })
 
+describe('the consent text ends with a link you can see (D121, RR-O44)', () => {
+  const PRIVACY = 'https://club-x.example/privacy'
+
+  it('draws the Privacy link last in the text, underlined, in the sheet’s writing and 44 px to tap, in every Style', () => {
+    for (const style of CASES.filter((one) => one.id.startsWith('style:'))) {
+      cleanup()
+      window.history.replaceState(null, '', '/')
+      const host = fakeHost({
+        location: {
+          state: 'needed',
+          prompt: 'consent',
+          consent: 'unknown',
+          venueName: 'Club X',
+          privacyUrl: PRIVACY,
+        },
+        paying: null,
+      })
+      const { container } = drawFace(host, menu(style.values))
+      const dom = parseHtml(container.innerHTML)
+      const attrs = withAttribute(dom, 'data-face')[0]?.attrs ?? {}
+      const rules = cssRules(
+        resolvedCss(CSS, '.rm', attrs, [])
+          .split('\n')
+          .filter((line) => !line.startsWith('@'))
+          .join('\n'),
+      )
+      const paragraph = container.querySelector('[data-slot="location.consent"] p')
+      expect(paragraph?.textContent?.endsWith(WORDS.paying.legalPrivacyLink), style.id).toBe(true)
+      const link = withAttribute(dom, 'href').find((one) => one.attrs.href === PRIVACY)
+      expect(link, style.id).toBeDefined()
+      const value = (property: string) => valuesOf(link as HtmlElement, property, rules, false)[0]
+      expect(value('text-decoration'), style.id).toBe('underline')
+      // `inherit` is the sheet's own writing (valuesOf reads it as "not set here"): the rule says so
+      // and no other rule gives the link a colour of its own.
+      expect(
+        rules.some(
+          (rule) =>
+            rule.selector.includes('location.consent') &&
+            rule.declarations.some(([name, text]) => name === 'color' && text === 'inherit'),
+        ),
+        style.id,
+      ).toBe(true)
+      expect(value('color'), style.id).toBeUndefined()
+      expect(value('min-height'), style.id).toBe('44px')
+    }
+  })
+})
+
 describe('an ink button on an ink sheet inverts (D130)', () => {
   /** What a property comes to on an element, followed down its `var()`s to the root's token it ends in. */
   function computed(
