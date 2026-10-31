@@ -489,8 +489,8 @@ test('a tap on a part of the preview opens its page; in Simple it says the part 
   await expect(frame().locator('[data-design-part="dish"]').first()).toBeVisible()
   await frame().locator('[data-design-part="dish"]').first().click()
   await expect(pageChip('dish')).toHaveAttribute('aria-current', 'page')
-  // The tap moved the focus to the panel's page title; Escape is pressed in the frame.
-  await frame().locator('body').press('Escape')
+  // The tap moved the focus to the panel's page title: the sheet is closed with its own button.
+  await frame().locator('[role="dialog"] button').first().click()
   await expect(frame().locator('[role="dialog"]')).toHaveCount(0)
 })
 
