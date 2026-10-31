@@ -7,7 +7,9 @@ import { ChevronsUpDownIcon, LanguagesIcon, LogOutIcon, SunMoonIcon } from 'luci
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
 import { useSyncExternalStore, useTransition } from 'react'
+import { toast } from 'sonner'
 
+import { endSession } from '@/components/auth/sign-out'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   DropdownMenu,
@@ -28,7 +30,6 @@ import {
 } from '@/components/ui/sidebar'
 import { setAdminLocale } from '@/i18n/actions'
 import { ADMIN_LOCALES } from '@/i18n/locales'
-import { authClient } from '@/lib/auth-client'
 import {
   isThemeChoice,
   readThemeChoice,
@@ -58,7 +59,10 @@ export function UserMenu({ name, email }: UserMenuProps) {
 
   async function signOut() {
     await stopPushOnThisBrowser()
-    await authClient.signOut()
+    if (!(await endSession())) {
+      toast.error(t('signOutFailed'))
+      return
+    }
     router.replace('/login')
     router.refresh()
   }

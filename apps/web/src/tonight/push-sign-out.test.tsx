@@ -16,6 +16,8 @@ import { stopPushOnThisBrowser } from './push-device'
 
 const signOut = vi.hoisted(() => vi.fn(async () => undefined))
 const replace = vi.hoisted(() => vi.fn())
+const toastError = vi.hoisted(() => vi.fn())
+vi.mock('sonner', () => ({ toast: { error: toastError } }))
 vi.mock('@/lib/auth-client', () => ({ authClient: { signOut } }))
 vi.mock('@/i18n/actions', () => ({ setAdminLocale: vi.fn() }))
 vi.mock('next/navigation', () => ({
@@ -65,6 +67,16 @@ describe('the sign-out button', () => {
     expect(getRegistration).toHaveBeenCalledWith('/venues/')
     expect(unsubscribe).toHaveBeenCalledOnce()
     expect(signOut).toHaveBeenCalledOnce()
+  })
+
+  it('stays where it is and says so when the sign-out cannot reach the server (RR-88)', async () => {
+    toastError.mockClear()
+    replace.mockClear()
+    signOut.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    drawButton()
+    await tapSignOut()
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(messages.user.signOutFailed))
+    expect(replace).not.toHaveBeenCalled()
   })
 
   it('still signs out when the browser throws', async () => {
