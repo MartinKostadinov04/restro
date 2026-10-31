@@ -1063,6 +1063,14 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       recompute()
     },
     reopen() {
+      // The answer is kept for the phone and the service day, but the pass is the tab's own (RR-89):
+      // a new tab of a phone that already allowed has no pass, and its tap on "Allow location" only
+      // finds the position again, with no second consent screen. After "Not now" or "Stop location
+      // check" the screen comes back, as D122 says.
+      if (consent() === 'allowed') {
+        void location.allow()
+        return
+      }
       prompt = 'consent'
       recompute()
     },

@@ -653,6 +653,31 @@ describe('the services client and the location check', () => {
       expect(tab.client.getState().location?.prompt).toBe('none')
     })
 
+    it('locates at once on the guest’s tap in a new tab, with no second consent screen (RR-89)', async () => {
+      const durable = memory({ [`${CONSENT_KEY}:Club`]: allowedToday })
+      const server = checkingServer()
+      const tab = harness(server.answer, {
+        memory: memory(),
+        durable,
+        locate: async () => AT_THE_BAR,
+      })
+      tab.client.start()
+      await tab.tick()
+      // The page of a phone that allowed in another tab: no pass here, the answer kept.
+      expect(tab.client.getState().location).toMatchObject({
+        state: 'needed',
+        prompt: 'none',
+        consent: 'allowed',
+      })
+      tab.client.location.reopen()
+      expect(tab.client.getState().location?.prompt).not.toBe('consent')
+      await tab.tick()
+      expect(server.bodies.some((body) => body.check?.location !== undefined)).toBe(true)
+      expect(tab.client.getState().location).toMatchObject({ state: 'held', prompt: 'none' })
+      // The answer is the same one, not a second proof: nothing but its own key was written.
+      expect(durable.kept.get(`${CONSENT_KEY}:Club`)).toMatch(/^allowed:/)
+    })
+
     it('keeps "Not now" for the new tab too', async () => {
       const durable = memory()
       const first = harness(checkingServer().answer, { memory: memory(), durable })
