@@ -111,24 +111,34 @@ async function keyboardDrag(handleName: string, key: 'ArrowUp' | 'ArrowDown', ti
 
 /** Drags an item by its handle with the mouse onto the row of a section in the tree. */
 async function mouseDragItemToSection(itemName: string, sectionName: string) {
-  const handle = page.getByRole('button', { name: `Плъзни ${itemName}`, exact: true })
-  await handle.scrollIntoViewIfNeeded()
-  const from = await handle.boundingBox()
-  const to = await treeRow(sectionName).boundingBox()
-  if (!from || !to) throw new Error('nothing to drag')
-  const startX = from.x + from.width / 2
-  const startY = from.y + from.height / 2
-  await page.mouse.move(startX, startY)
-  await page.mouse.down()
-  await page.mouse.move(startX + 12, startY + 12, { steps: 4 })
-  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 30 })
-  await page.waitForTimeout(400)
-  // The drop animation runs before the save starts, so network-idle alone can come too early:
-  // wait for the server action's own answer before anyone reloads.
-  const saved = page.waitForResponse(isServerAction)
-  await page.mouse.up()
-  await saved
-  await settle()
+  // The mouse only acts on what is on screen, so both ends of the drag must be in view at once. The
+  // Guest functions card makes the page long enough that scrolling to a low row can take the tree off
+  // the top, so the window is as tall as the page for the drag.
+  const size = page.viewportSize()
+  if (!size) throw new Error('no viewport')
+  const height = await page.evaluate(() => document.documentElement.scrollHeight)
+  await page.setViewportSize({ width: size.width, height })
+  try {
+    const handle = page.getByRole('button', { name: `Плъзни ${itemName}`, exact: true })
+    const from = await handle.boundingBox()
+    const to = await treeRow(sectionName).boundingBox()
+    if (!from || !to) throw new Error('nothing to drag')
+    const startX = from.x + from.width / 2
+    const startY = from.y + from.height / 2
+    await page.mouse.move(startX, startY)
+    await page.mouse.down()
+    await page.mouse.move(startX + 12, startY + 12, { steps: 4 })
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 30 })
+    await page.waitForTimeout(400)
+    // The drop animation runs before the save starts, so network-idle alone can come too early:
+    // wait for the server action's own answer before anyone reloads.
+    const saved = page.waitForResponse(isServerAction)
+    await page.mouse.up()
+    await saved
+    await settle()
+  } finally {
+    await page.setViewportSize(size)
+  }
 }
 
 async function snapshot(fileName: string, target: Page = page) {
