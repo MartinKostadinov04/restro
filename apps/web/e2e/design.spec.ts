@@ -421,6 +421,112 @@ test('the layout for all menus is part of the draft, and the guest switch with i
   await expect(previewRoot()).toHaveAttribute('data-layout', 'one')
 })
 
+const levelSwitch = (target: Page = page) => target.getByRole('group', { name: 'Level of detail' })
+const pageChip = (id: string, target: Page = page) => target.getByTestId(`design-page-${id}`)
+/** The tile of one value of one option on one page of Advanced. */
+const optionTile = (pageId: string, option: string, value: string, target: Page = page) =>
+  target.locator(
+    `[data-testid="design-option"][data-page="${pageId}"][data-option="${option}"] [data-testid="design-tile"][data-value="${value}"]`,
+  )
+
+test('Advanced lists General and the thirteen pages; a tile draws the part with its value and one tap picks it', async () => {
+  await openDesign()
+  await levelSwitch().getByRole('button', { name: 'Advanced' }).click()
+  await expect(page.getByTestId('design-pages').getByRole('button')).toHaveCount(14)
+  await expect(pageChip('general')).toHaveAttribute('aria-current', 'page')
+
+  await pageChip('items').click()
+  await expect(page.getByTestId('design-advanced-title')).toHaveText('Items')
+  const cards = optionTile('items', 'frame', 'cards')
+  // The tile's picture is the renderer, drawing the part with that value in the draft's colours.
+  const picture = cards
+    .frameLocator('[data-testid="design-tile-specimen"]')
+    .locator('[data-face="editorial-market"]:not([data-testid])')
+  await expect(picture).toHaveAttribute('data-items-frame', 'cards', WORKER_WAIT)
+  await expect(picture.locator('[data-design-part="item"]').first()).toBeVisible()
+  // The frame is scrolled to the part the option styles, not left at the top of the menu.
+  await expect
+    .poll(() =>
+      cards
+        .frameLocator('[data-testid="design-tile-specimen"]')
+        .locator('html')
+        .evaluate(() => window.scrollY),
+    )
+    .toBeGreaterThan(0)
+  await page.screenshot({ path: shotPath('advanced-items') })
+
+  // One tap: the preview follows at once, and it is one Undo step.
+  await cards.getByRole('radio').click()
+  await expect(previewRoot()).toHaveAttribute('data-items-frame', 'cards')
+  await expect(unsaved()).toBeVisible()
+  await undo().click()
+  await expect(previewRoot()).not.toHaveAttribute('data-items-frame', 'cards')
+  await expect(undo()).toBeDisabled()
+
+  // A pick survives the switch to Simple and back.
+  await cards.getByRole('radio').click()
+  await levelSwitch().getByRole('button', { name: 'Simple' }).click()
+  await expect(page.getByTestId('design-style-section')).toBeVisible()
+  await expect(previewRoot()).toHaveAttribute('data-items-frame', 'cards')
+  await levelSwitch().getByRole('button', { name: 'Advanced' }).click()
+  await expect(optionTile('items', 'frame', 'cards').getByRole('radio')).toBeChecked()
+  await cancel().click()
+  await expect(previewRoot()).not.toHaveAttribute('data-items-frame', 'cards')
+})
+
+test('a tap on a part of the preview opens its page; in Simple it says the part is styled in Advanced', async () => {
+  await openDesign()
+  // Simple: the note and the switch, nothing else moves.
+  await previewRoot().locator('[data-design-part="section.title"]').first().click()
+  const note = page.getByTestId('design-styled-in-advanced')
+  await expect(note).toContainText('Styled in Advanced')
+  await expect(page.getByTestId('design-style-section')).toBeVisible()
+  await note.getByRole('button', { name: 'Show Advanced' }).click()
+  await expect(pageChip('sections')).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByTestId('design-advanced-title')).toBeFocused()
+
+  // Advanced: a tap on a part opens the page that owns it, whatever page was open.
+  for (const [part, pageId, title] of [
+    ['header.title', 'header', 'Header'],
+    ['section.title', 'sections', 'Sections'],
+  ] as const) {
+    await pageChip('general').click()
+    await previewRoot().locator(`[data-design-part="${part}"]`).first().click()
+    await expect(pageChip(pageId)).toHaveAttribute('aria-current', 'page')
+    await expect(page.getByTestId('design-advanced-title')).toHaveText(title)
+  }
+  // A dish's name opens the dish as it does for a guest, and its page; a tap in the open dish opens
+  // the Dish page.
+  await pageChip('general').click()
+  await previewRoot().locator('[data-design-part="item.name"]').first().click()
+  await expect(pageChip('items')).toHaveAttribute('aria-current', 'page')
+  await expect(frame().locator('[data-design-part="dish"]').first()).toBeVisible()
+  await frame()
+    .locator('[data-design-part="dish"]')
+    .first()
+    .click({ position: { x: 4, y: 4 } })
+  await expect(pageChip('dish')).toHaveAttribute('aria-current', 'page')
+})
+
+test('Photo corners are off while the Frame is edge to edge, with the hint', async () => {
+  await openDesign()
+  await levelSwitch().getByRole('button', { name: 'Advanced' }).click()
+  await pageChip('photos').click()
+  await optionTile('photos', 'frame', 'bleed').getByRole('radio').click()
+  const corners = page.locator(
+    '[data-testid="design-option"][data-page="photos"][data-option="corners"]',
+  )
+  await expect(corners.getByTestId('design-option-note')).toHaveText(
+    'Edge-to-edge photos have no corners of their own',
+  )
+  await expect(corners).toHaveAttribute('disabled', '')
+  await expect(corners.getByRole('radio').first()).toBeDisabled()
+  await optionTile('photos', 'frame', 'inset').getByRole('radio').click()
+  await expect(corners).not.toHaveAttribute('disabled', '')
+  await expect(corners.getByRole('radio').first()).toBeEnabled()
+  if (await cancel().isEnabled()) await cancel().click()
+})
+
 test('after Publish the guest page carries the design', async ({ browser }) => {
   // The Publish button heads every tab (D96); it asks first.
   await page.goto(`/venues/${venueId}?tab=studio`)
@@ -571,6 +677,49 @@ test('in Bulgarian, the long names fit a tile at 390 px', async ({ browser }) =>
       expect(overflow).toBe(false)
     }
     await target.screenshot({ path: shotPath('phone-bulgarian') })
+  } finally {
+    await bulgarian.close()
+  }
+})
+
+test('Advanced at 390 px in Bulgarian: the longest labels fit their tile, targets are 44 px', async ({
+  browser,
+}) => {
+  test.setTimeout(90_000)
+  const bulgarian = await browser.newContext({
+    storageState: ownerState,
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  })
+  try {
+    await bulgarian.addCookies([
+      { name: 'NEXT_LOCALE', value: 'bg', url: new URL(page.url()).origin },
+    ])
+    const target = await bulgarian.newPage()
+    await openDesign(target)
+    await target
+      .getByRole('group', { name: 'Ниво на детайлност' })
+      .getByRole('button', { name: 'Разширено' })
+      .click()
+    await target.getByTestId('design-page-items').click()
+    const portion = target.locator(
+      '[data-testid="design-option"][data-page="items"][data-option="portion_place"]',
+    )
+    await portion.scrollIntoViewIfNeeded()
+    await expect(portion.getByText('Място на порцията')).toBeVisible()
+    for (const item of await portion.getByTestId('design-tile').all()) {
+      const sizes = await item.evaluate((element) => ({
+        wide: element.scrollWidth > element.clientWidth,
+        height: element.getBoundingClientRect().height,
+      }))
+      expect(sizes.wide).toBe(false)
+      expect(sizes.height).toBeGreaterThanOrEqual(44)
+    }
+    const sideways = await target.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    )
+    expect(sideways).toBe(true)
   } finally {
     await bulgarian.close()
   }

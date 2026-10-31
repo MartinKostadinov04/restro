@@ -108,10 +108,13 @@ export function DesignPreview({
   values,
   scheme,
   onScheme,
+  onPart,
 }: {
   venueId: string
   draft: Draft
   onRetry: () => void
+  /** A tap on a marked part of the page (`data-design-part`): click to edit (D129). */
+  onPart?: (marker: string) => void
   /** The draft's look, whole. */
   theme: VenueTheme
   values: DesignValues
@@ -172,6 +175,7 @@ export function DesignPreview({
             width={DEVICE_WIDTHS[device]}
             title={t('title')}
             content={content}
+            onPart={onPart}
             testId="design-preview-frame"
           />
         )}

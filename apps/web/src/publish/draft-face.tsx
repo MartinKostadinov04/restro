@@ -38,6 +38,7 @@ export function DraftFace({
   scheme,
   faceId,
   servicesPreview = false,
+  assetBase = CDN_BASE,
 }: {
   snapshot: MenuSnapshot
   overlay: LiveOverlay
@@ -46,6 +47,8 @@ export function DraftFace({
   faceId?: string
   /** Show the service screens the venue switched on, with demo data. */
   servicesPreview?: boolean
+  /** Where photos are read from; the Design page's tiles read their demo photo from the app. */
+  assetBase?: string
 }) {
   const adminLocale = useAdminLocale()
   // Starts in the admin's own language when the menu has it, as a guest's browser would.
@@ -80,7 +83,7 @@ export function DraftFace({
     entry,
     strings: stringsFor(view.locale).guest,
     view,
-    assetBase: CDN_BASE,
+    assetBase,
     languages: snapshot.locales.available,
     onLanguageChange: setChoice,
     fontStacks: FONT_STACKS,
