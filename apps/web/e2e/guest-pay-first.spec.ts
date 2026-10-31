@@ -26,6 +26,8 @@ import { devices, expect, test } from '@playwright/test'
 
 import { faceRoot, ORDER_STYLES, showOrder, styleDesign } from './guest-faces'
 
+test.use({ ...devices['Pixel 7'] })
+
 /** Cloudflare's dummy token, which its test secret passes (playwright.config.ts). */
 const HUMAN_TOKEN = 'XXXX.DUMMY.TOKEN.XXXX'
 const SETTLED = { timeout: 60_000, intervals: [500, 1_000] }
@@ -237,8 +239,6 @@ test.describe('the guest API', () => {
 
 for (const style of ORDER_STYLES) {
   test.describe(`the screen, in ${style}`, () => {
-    test.use({ ...devices['Pixel 7'] })
-
     let harness: Harness
     let path: string
     let code: string
