@@ -133,20 +133,19 @@ describe.skipIf(!hasDatabase)('the Design page’s action (as the restro_app rol
     })
 
     it('appends one event with the person and the job for every save', async () => {
+      const eventsOfVenue = () =>
+        owner.query<{ source: string; actor: string; job_id: string; field_key: string }>(
+          `select source, actor, job_id, field_key from restro.events
+           where tenant_id = $1 and scope = $2 order by seq`,
+          [tenant, `venue:${venueId}`],
+        )
+      // Events are append-only: those of the earlier tests stay.
+      const before = (await eventsOfVenue()).rows.length
       await saveNow()
       await saveNow(wholeDesign('manrope'))
-      const events = await owner.query<{
-        source: string
-        actor: string
-        job_id: string
-        field_key: string
-      }>(
-        `select source, actor, job_id, field_key from restro.events
-         where tenant_id = $1 and scope = $2 order by seq`,
-        [tenant, `venue:${venueId}`],
-      )
-      expect(events.rows.filter((row) => row.field_key === 'design')).toHaveLength(2)
-      for (const row of events.rows) {
+      const added = (await eventsOfVenue()).rows.slice(before)
+      expect(added.map((row) => row.field_key)).toEqual(['design', 'design'])
+      for (const row of added) {
         expect(row).toMatchObject({ source: 'manual', actor: 'user:us_sh05atester' })
         expect(row.job_id).toMatch(/^jb_/)
       }
