@@ -1196,20 +1196,34 @@ export const SERVICES_CSS = `
   padding-block: 6px;
 }
 
-/* Order, Add control: add. The same 44 px button, drawn as a small pill with the shell's word. */
+/* Order, Add control: add. The same 44 px button, drawn as a pill with the shell's word. The fill is
+   the button's own (the "+" draws its round fill on a ::before, which a reader of the page's colours
+   cannot see behind a word). */
 .rm[data-order-add-control="add"] .ro-plus.is-word {
   width: auto;
   min-width: 44px;
   margin-inline: 0;
   padding: 0 14px;
+  border-radius: var(--rm-pill);
+  background: var(--rm-button);
+  box-shadow: var(--rm-depth);
   font-size: calc(13px * var(--rm-type));
   font-weight: 800;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
 }
 .rm[data-order-add-control="add"] .ro-plus.is-word::before {
-  inset: calc((44px - var(--ro-circle)) / 2) 0;
+  display: none;
 }
 .rm[data-order-add-control="add"] .ro-plus.is-word .ro-plus-count {
+  top: -4px;
   right: -4px;
+}
+@media (hover: hover) {
+  .rm[data-order-add-control="add"] .ro-plus.is-word:hover {
+    background: var(--rm-accent);
+  }
 }
 
 /* Order, Order bar: docked. The bar runs the width of the screen and sits on its bottom edge (the
