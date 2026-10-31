@@ -259,3 +259,67 @@ describe('after sending: only what the host says', () => {
     expect(sheet.textContent).toContain('Сервитьор идва')
   })
 })
+
+describe('only `waiter` ticked: the single step (D127)', () => {
+  const single = withKinds(['waiter'])
+
+  it('calls at once on the tap: no picker, no Send to find, one request', async () => {
+    const host = fakeHost()
+    drawFace(host, single)
+    const sheet = openCall()
+    expect(within(sheet).queryByRole('radio')).toBeNull()
+    expect(within(sheet).queryByRole('button', { name: 'Send' })).toBeNull()
+    await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
+    expect(host.of('service.request')[0]?.command).toMatchObject({
+      kind: 'service.request',
+      request: 'waiter',
+      note: '',
+    })
+    expect(within(sheet).getByText('Sending your request')).toBeTruthy()
+    await act(async () => host.of('service.request')[0]?.answer())
+    expect(within(sheet).getByText('Request sent')).toBeTruthy()
+    expect(host.of('service.request')).toHaveLength(1)
+  })
+
+  it('reads the venue’s kinds as they stand: the waiter and one more is the picker again', () => {
+    const host = fakeHost()
+    drawFace(host, withKinds(['waiter', 'ice']))
+    const sheet = openCall()
+    expect(within(sheet).getAllByRole('radio')).toHaveLength(2)
+    expect(host.of('service.request')).toHaveLength(0)
+  })
+
+  it('sends nothing when the sheet opens from the address (a reload), and calls on its one button', async () => {
+    window.history.replaceState(null, '', '/#call')
+    const host = fakeHost()
+    drawFace(host, single)
+    const sheet = screen.getByRole('dialog', { name: 'Call a server' })
+    expect(host.of('service.request')).toHaveLength(0)
+    expect(within(sheet).queryByRole('radio')).toBeNull()
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Call a server' }))
+    await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
+  })
+
+  it('shows the open call and sends no second one', () => {
+    const host = fakeHost({
+      requests: [request('rq-3', '22222222-2222-4222-8222-222222222222', 'waiter', 'on_the_way')],
+    })
+    drawFace(host, single)
+    const sheet = openCall()
+    expect(within(sheet).getByText('A waiter is on the way')).toBeTruthy()
+    expect(host.of('service.request')).toHaveLength(0)
+  })
+
+  it('retries a failed call with the same actionId', async () => {
+    const host = fakeHost()
+    drawFace(host, single)
+    const sheet = openCall()
+    await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
+    const first = host.of('service.request')[0]
+    await act(async () => first?.fail())
+    expect(within(sheet).getByRole('alert').textContent).toContain('did not go through')
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(host.of('service.request')).toHaveLength(2))
+    expect(host.of('service.request')[1]?.command).toEqual(first?.command)
+  })
+})

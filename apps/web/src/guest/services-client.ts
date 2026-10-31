@@ -33,9 +33,9 @@
 //   pass the server hands back is kept in the tab's session storage and sent in
 //   `X-Restro-Pass`; every command carries `X-Restro-Phone`, the value made at load. A Send asks
 //   the page for Turnstile's token first.
-// - Paying (#110, #114, D127): the payment handle comes in the answer to the phone's `pay.start` and
-//   is kept in the tab's session storage (never in an address), so a closed or reloaded page comes
-//   back to where the payment stands. While it is not final the client polls `GET
+// - Paying (#110, #114, D127): the payment handle comes in the answer to the phone's `pay.start` (or
+//   to its `order.send` with pay-first lines, #258) and is kept in the tab's session storage (never
+//   in an address), so a closed or reloaded page comes back to where the payment stands. While it is not final the client polls `GET
 //   /api/guest/payment` with it and the face sees the payment as `state.payment`; the provider's
 //   form values stay here (`formValues`) for the page to fill the form slot. `pay.returned` and
 //   `pay.cancel` carry the handle in `X-Restro-Payment`. After a redirect back from the card form
@@ -968,11 +968,17 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       mine.add(body.result.subjectId)
     }
     if (body.state !== null) accept(body.state)
-    // The payment this phone started: its handle is kept, and its payment is read until it is final.
-    if (command.kind === 'pay.start' && body.handle !== null) {
+    // The payment this phone started, by a Pay or by a Send with pay-first lines (#258, D113): its
+    // handle is kept, and its payment is read until it is final.
+    if (
+      (command.kind === 'pay.start' ||
+        (command.kind === 'order.send' && command.payFirst !== undefined)) &&
+      body.handle !== null
+    ) {
       keepHandle(body.handle)
-      // The address the guest gave, kept as long as the handle (the line after Paid names it).
-      receiptEmail = command.receiptEmail ?? null
+      // The address the guest gave, kept as long as the handle (the line after Paid names it). A
+      // Send takes none: the pay-first payment has no receipt field.
+      receiptEmail = command.kind === 'pay.start' ? (command.receiptEmail ?? null) : null
       if (receiptEmail === null) durable?.remove(payEmailKey(deps.code))
       else durable?.set(payEmailKey(deps.code), receiptEmail)
       payment = null

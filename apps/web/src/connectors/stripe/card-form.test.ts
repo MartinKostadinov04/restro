@@ -7,6 +7,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type { CardFormLook } from '../card-form-types'
 import { type ElementsLike, mountStripeCardForm, type StripeLoader } from './card-form'
 
 const VALUES = { clientSecret: 'secret-placeholder', account: 'acct_1A2b3C' }
@@ -31,7 +32,7 @@ function fakeStripe(confirm: () => Promise<{ error?: { message?: string } }>) {
   const confirmations: Parameters<
     NonNullable<Awaited<ReturnType<StripeLoader>>>['confirmPayment']
   >[0][] = []
-  const options: { clientSecret: string; locale: string }[] = []
+  const options: Parameters<NonNullable<Awaited<ReturnType<StripeLoader>>>['elements']>[0][] = []
   const updates: { locale: string }[] = []
   const elements: ElementsLike = {
     update: (given) => {
@@ -188,6 +189,131 @@ async function readyForm(
   stripe.created[0]?.on.ready?.()
   return { stripe, target, ctx }
 }
+
+describe("the venue's look reaches stripe.elements (#258, D130)", () => {
+  const LIGHT = {
+    background: '#f6f1e9',
+    surface: '#e9dccb',
+    accent: '#7a2e8c',
+    onAccent: '#ffffff',
+    text: '#1d1a17',
+    muted: '#5c544c',
+    accentText: '#6a2679',
+    border: '#d4c7b4',
+  }
+  const DARK = {
+    background: '#14110f',
+    surface: '#26211d',
+    accent: '#c68ad6',
+    onAccent: '#14110f',
+    text: '#f3ece3',
+    muted: '#b9afa3',
+    accentText: '#d9a8e6',
+    border: '#3a332d',
+  }
+  const LOOK: CardFormLook = {
+    colors: LIGHT,
+    colorsDark: DARK,
+    scheme: 'light',
+    fontFamily: '"Inter", system-ui, sans-serif',
+    radius: 12,
+    density: 'compact',
+    textSize: 'large',
+    sheet: 'panel',
+  }
+
+  /** Mounts with `look` and returns the one options object Stripe's `elements` was given. */
+  async function optionsFor(look: CardFormLook | null | undefined) {
+    const stripe = fakeStripe(async () => ({}))
+    const target = document.createElement('div')
+    mountStripeCardForm(target, PROPS, { ...context(), look }, stripe.load)
+    await flush()
+    expect(stripe.options).toHaveLength(1)
+    return stripe.options[0]
+  }
+
+  afterEach(() => {
+    // biome-ignore lint/performance/noDelete: jsdom has no matchMedia of its own
+    delete (window as { matchMedia?: unknown }).matchMedia
+  })
+
+  it('hands the Appearance API the venue’s General: colours, font, corners, density, text size', async () => {
+    const given = await optionsFor(LOOK)
+    expect(given).toEqual({
+      clientSecret: 'secret-placeholder',
+      locale: 'bg',
+      appearance: {
+        theme: 'flat',
+        variables: expect.objectContaining({
+          colorPrimary: LIGHT.accentText,
+          colorBackground: LIGHT.surface,
+          colorText: LIGHT.text,
+          fontFamily: '"Inter", system-ui, sans-serif',
+          fontSizeBase: '18px',
+          spacingUnit: '3px',
+          borderRadius: '12px',
+        }),
+      },
+    })
+    // No file for the font is served: the option is left out, not sent empty.
+    expect(given).not.toHaveProperty('fonts')
+  })
+
+  it('passes nothing of the look when the page has none: Stripe’s own default draws', async () => {
+    for (const look of [null, undefined]) {
+      expect(await optionsFor(look)).toEqual({ clientSecret: 'secret-placeholder', locale: 'bg' })
+    }
+  })
+
+  it('takes the dark colours for a venue that is always dark', async () => {
+    const given = await optionsFor({ ...LOOK, scheme: 'dark' })
+    expect(given?.appearance?.variables).toMatchObject({
+      colorBackground: DARK.surface,
+      colorText: DARK.text,
+      colorPrimary: DARK.accentText,
+    })
+  })
+
+  it('follows the phone for a venue that follows it', async () => {
+    const phone = (dark: boolean) => {
+      window.matchMedia = ((query: string) => ({
+        matches: dark && query.includes('prefers-color-scheme: dark'),
+      })) as unknown as typeof window.matchMedia
+    }
+    phone(true)
+    expect((await optionsFor({ ...LOOK, scheme: 'auto' }))?.appearance?.variables).toMatchObject({
+      colorBackground: DARK.surface,
+    })
+    phone(false)
+    expect((await optionsFor({ ...LOOK, scheme: 'auto' }))?.appearance?.variables).toMatchObject({
+      colorBackground: LIGHT.surface,
+    })
+  })
+
+  it('writes the sheet’s own pair so ink on ink does not vanish', async () => {
+    const given = await optionsFor({ ...LOOK, sheet: 'ink' })
+    expect(given?.appearance?.variables).toMatchObject({
+      colorBackground: LIGHT.text,
+      colorText: LIGHT.background,
+    })
+  })
+
+  it('draws no rules, no colour Stripe keeps for itself, and only hex colours', async () => {
+    const given = await optionsFor(LOOK)
+    const variables = given?.appearance?.variables ?? {}
+    expect(given?.appearance).not.toHaveProperty('rules')
+    expect(Object.keys(variables)).not.toContain('colorDanger')
+    for (const name of ['colorPrimary', 'colorBackground', 'colorText']) {
+      expect(variables[name], name).toMatch(/^#[0-9a-f]{6}$/i)
+    }
+  })
+
+  it('leaves the secret and the account out of the look: they are no styling', async () => {
+    const given = await optionsFor(LOOK)
+    expect(JSON.stringify(given?.appearance)).not.toContain('secret-placeholder')
+    expect(JSON.stringify(given?.appearance)).not.toContain('acct_')
+  })
+})
 
 describe('confirming', () => {
   it('confirms with no redirect unless Stripe needs one, then only reports that the guest returned', async () => {

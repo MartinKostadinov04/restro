@@ -30,7 +30,6 @@ import {
   type Picks,
   type PreparedConfirmation,
   paidReceiptText,
-  parseMinor,
   payBlock,
   payFormLocale,
   payMoney,
@@ -44,7 +43,6 @@ import {
   saveConfirmation,
   type TableBillLineView,
   type TableBillView,
-  TIP_PERCENTS,
   type TipChoice,
   togglePick,
 } from '@restro/shell'
@@ -53,6 +51,7 @@ import { Photo } from '../parts'
 import { newActionId } from './command'
 import { StatePanel } from './parts'
 import { useServicesRequired } from './provider'
+import { TipRow } from './tip-row'
 
 /** Puts the page's card form into the slot; the face loads no provider library. */
 function FormSlot({
@@ -407,27 +406,12 @@ export function PaySheet() {
                   : block === 'bad_email'
                     ? w.emailInvalid
                     : null
-  // The Pay page's Tip (D130): chips, or rows that also show what each percent comes to. The amounts
-  // are the shell's preview of the ticked lines (the server prices the hold), and none shows before a
-  // line is ticked.
-  const tipRows = o.view.design.pay?.tip === 'rows'
-  const tipAmount = (percent: number): string | null => {
-    const preset = totals.presets.find((candidate) => candidate.percent === percent)
-    return preset === undefined || totals.itemsMinor <= 0 ? null : money(preset.tipMinor)
-  }
   const free = freeLines(bill)
   // Everything is paid: nothing is free to pay and the sitting has paid lines, so the choosing, the
   // totals and Pay go, and the bill shows what was paid (D127 1.2).
   const settled = free.length === 0 && bill.paidLines.length > 0
   const hasLines = bill.parts.some((part) => part.lines.length > 0)
   const everything = free.length > 0 && free.every((line) => picks.has(line.id))
-  const pickTip = (next: TipChoice) =>
-    setTip((current) =>
-      current.kind === next.kind &&
-      (next.kind !== 'percent' || (current.kind === 'percent' && current.percent === next.percent))
-        ? NO_TIP
-        : next,
-    )
 
   return (
     <div className="ro-sheet" data-slot="pay.choose" data-design-part="pay">
@@ -484,42 +468,14 @@ export function PaySheet() {
       {paying.state === 'off' || settled ? null : (
         <>
           {tipsOffered ? (
-            <fieldset className="ro-tips" data-slot="pay.tip.row" data-design-part="pay.tip">
-              <legend>{w.tipLabel}</legend>
-              {TIP_PERCENTS.map((percent) => (
-                <button
-                  key={percent}
-                  type="button"
-                  className="ro-ghost"
-                  data-slot="pay.tip.preset"
-                  aria-pressed={tip.kind === 'percent' && tip.percent === percent}
-                  onClick={() => pickTip({ kind: 'percent', percent })}
-                >
-                  {tipRows && tipAmount(percent) !== null ? (
-                    <>
-                      <span>{`${percent} %`}</span>
-                      <span className="ro-tip-amount">{tipAmount(percent)}</span>
-                    </>
-                  ) : (
-                    `${percent} %`
-                  )}
-                </button>
-              ))}
-              <label className="ro-input">
-                <span>{w.tipOther}</span>
-                <input
-                  inputMode="decimal"
-                  value={other}
-                  data-slot="pay.tip.other"
-                  aria-invalid={other.trim() !== '' && parseMinor(other) === null}
-                  onChange={(event) => {
-                    setOther(event.target.value)
-                    const minor = parseMinor(event.target.value)
-                    setTip(minor === null ? NO_TIP : { kind: 'other', minor })
-                  }}
-                />
-              </label>
-            </fieldset>
+            <TipRow
+              tip={tip}
+              other={other}
+              totals={totals}
+              money={money}
+              onTip={setTip}
+              onOther={setOther}
+            />
           ) : null}
           {receiptEmailOffered ? (
             <label className="ro-input">
@@ -662,7 +618,7 @@ export function CallWaiter() {
 }
 
 /** This phone's payment, from "Preparing your bill…" to its end. */
-function PaymentScreen({
+export function PaymentScreen({
   payment,
   money,
 }: {

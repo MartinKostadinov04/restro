@@ -999,7 +999,12 @@ describe('paying (#110, #114, D127)', () => {
           },
           state: payingTable(2),
           pass: null,
-          handle: command.kind === 'pay.start' ? HANDLE : null,
+          // The server gives a handle to a Pay and to a Send with pay-first lines (#113).
+          handle:
+            command.kind === 'pay.start' ||
+            (command.kind === 'order.send' && command.payFirst !== undefined)
+              ? HANDLE
+              : null,
         })
       }
       if (url.endsWith('/payment')) return over.payment?.() ?? json(200, payment())
@@ -1076,6 +1081,59 @@ describe('paying (#110, #114, D127)', () => {
     expect(h.client.formValues()).toEqual({
       provider: 'stripe',
       values: { clientSecret: 'pi_x_secret_y', account: 'acct_1A' },
+    })
+  })
+
+  describe('a Send with pay-first lines (#258, D113)', () => {
+    const line = { itemId: newId('nd'), optionIds: [], qty: 1, note: '' }
+    const send = (payFirst?: {
+      tipMinor: number | null
+      tipPercent: number | null
+    }): GuestCommand => ({
+      kind: 'order.send',
+      actionId: crypto.randomUUID(),
+      lines: payFirst === undefined ? [line] : [],
+      ...(payFirst === undefined ? {} : { payFirst: { lines: [line], ...payFirst } }),
+    })
+
+    it('keeps the payment handle the Send’s answer gives and reads the payment with it, under the Send’s Turnstile token', async () => {
+      const actions: string[] = []
+      const mem = memory()
+      const h = harness(server(), {
+        durable: mem,
+        humanToken: async (action) => {
+          actions.push(action)
+          return 'token'
+        },
+      })
+      h.client.start()
+      await h.tick()
+      const result = await h.client.dispatch(send({ tipMinor: null, tipPercent: 10 }))
+      expect(result).toMatchObject({ status: 'accepted' })
+      // One token for the one request: the Send's own action, the host checks it as a Send.
+      expect(actions).toEqual(['order_send'])
+      expect(mem.store.get(payHandleKey(CODE))?.startsWith(`${HANDLE}|`)).toBe(true)
+      const post = h.calls.find((call) => call.url.endsWith('/actions'))
+      expect(JSON.parse(String(post?.init.body)).command.payFirst).toMatchObject({ tipPercent: 10 })
+      expect(String(post?.init.body)).not.toContain(HANDLE)
+      expect(h.calls.every((call) => !call.url.includes(HANDLE))).toBe(true)
+      await h.tick()
+      const read = h.calls.findLast((call) => call.url.endsWith('/payment'))
+      expect(headerOf(read?.init, 'X-Restro-Payment')).toBe(HANDLE)
+      expect(h.client.getState().payment).toMatchObject({ state: 'awaiting_guest' })
+      expect(h.client.formValues()).toMatchObject({ provider: 'stripe' })
+    })
+
+    it('keeps no handle for a Send of bill lines alone, and no receipt address for a pay-first one', async () => {
+      const mem = memory()
+      const h = harness(server(), { durable: mem })
+      h.client.start()
+      await h.tick()
+      await h.client.dispatch(send())
+      expect(mem.store.has(payHandleKey(CODE))).toBe(false)
+      await h.client.dispatch(send({ tipMinor: 250, tipPercent: null }))
+      expect(mem.store.get(payHandleKey(CODE))?.startsWith(`${HANDLE}|`)).toBe(true)
+      expect(mem.store.has(payEmailKey(CODE))).toBe(false)
     })
   })
 

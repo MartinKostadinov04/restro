@@ -18,13 +18,15 @@
 // phone is offline Send is greyed with the weak-connection line (D121). While ordering is paused
 // (D120) Send is drawn and greyed under the pause's own line; the lines stay editable.
 
-import { orderingClosedText, sentWords } from '@restro/shell'
+import { orderingClosedText, payFirstWords, payMoney, sentWords } from '@restro/shell'
 import { useState } from 'react'
 
 import { Photo, Text } from '../parts'
 import { StopLocationCheck } from './location-sheet'
 import { Stepper } from './parts'
+import { PaymentScreen } from './pay-sheet'
 import { type Services, useServicesRequired } from './provider'
+import { TipRow } from './tip-row'
 
 /** Whether the bill is drawn: the host has the table's bill or this phone's payment. */
 function billShown(o: Services): boolean {
@@ -169,6 +171,19 @@ export function BagSheet() {
   // D120: while ordering is paused Send is greyed, not taken away, and the bag stays editable.
   const paused = ordering === 'paused'
   const linePhotos = o.view.design.order?.line_photos === 'shown'
+  const plan = o.payFirst
+  const money = (minor: number) => payMoney(minor, o.view.currency, locale)
+
+  // A Send with pay-first lines opens their payment at once (#258, D113): its screens are Pay's, in
+  // the sheet the guest is in. The guest leaves them with "Back to the bill" (the order shows again).
+  if (state.payment != null && state.payment.mode === 'pay_first') {
+    return (
+      <PaymentScreen
+        payment={state.payment}
+        money={(minor) => payMoney(minor, state.payment?.currency ?? o.view.currency, locale)}
+      />
+    )
+  }
 
   return (
     <div
@@ -244,7 +259,9 @@ export function BagSheet() {
                     <small className="ro-flag">{words.unavailableLine}</small>
                   ) : null}
                   {line.pending ? <small>{words.saving}</small> : null}
-                  {line.mode === 'pay_first' ? <small>{words.orderFromWaiter}</small> : null}
+                  {line.mode === 'pay_first' && !line.held ? (
+                    <small data-pay-first-line="">{payFirstWords(o.payFirstState, words)}</small>
+                  ) : null}
                   {line.held ? <small>{words.heldLine}</small> : null}
                   {line.held ? null : (
                     <div className="ro-line-actions">
@@ -335,28 +352,53 @@ export function BagSheet() {
             {words.duplicateCancel}
           </button>
         </div>
-      ) : order.sendCount > 0 &&
+      ) : (order.sendCount > 0 || plan !== null) &&
         (ordering === 'on' || paused) &&
         phonesMayOrder &&
         sendLost === null ? (
-        <button
-          type="button"
-          className="ro-primary is-wide"
-          data-design-part="button"
-          data-send=""
-          disabled={o.sending || offline || paused}
-          onClick={() => void o.sendOrder()}
-        >
-          {o.sending ? (
-            <span>{words.sendingNow}</span>
-          ) : (
-            <span>
-              {order.keptBack
-                ? words.sendOthers(order.sendCount)
-                : words.sendItems(order.sendCount)}
-            </span>
-          )}
-        </button>
+        <>
+          {plan !== null && o.state.ordering?.tips === true ? (
+            <TipRow
+              tip={o.tip.choice}
+              other={o.tip.other}
+              totals={plan.totals}
+              money={money}
+              onTip={o.setTip}
+              onOther={o.setTipOther}
+            />
+          ) : null}
+          <button
+            type="button"
+            className="ro-primary is-wide"
+            data-design-part="button"
+            data-send=""
+            data-pay-first={plan === null ? undefined : ''}
+            disabled={o.sending || offline || paused || (plan !== null && !plan.totals.tipValid)}
+            onClick={() => void o.sendOrder()}
+          >
+            {o.sending ? (
+              <span>{words.sendingNow}</span>
+            ) : plan !== null ? (
+              // The bill lines go with it ("Send and pay"); with none, it is paying alone ("Pay").
+              <span>
+                {order.sendCount > 0
+                  ? words.sendAndPay(money(plan.totals.totalMinor))
+                  : words.paying.payX(money(plan.totals.totalMinor))}
+              </span>
+            ) : (
+              <span>
+                {order.keptBack
+                  ? words.sendOthers(order.sendCount)
+                  : words.sendItems(order.sendCount)}
+              </span>
+            )}
+          </button>
+          {plan !== null && !plan.totals.tipValid ? (
+            <p className="ro-notice" role="status" data-slot="pay.blocked">
+              {words.paying.tipTooBig}
+            </p>
+          ) : null}
+        </>
       ) : null}
 
       <SentOrders o={o} />
