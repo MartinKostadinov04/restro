@@ -40,6 +40,46 @@ export const EDITORIAL_CSS = `
   --rm-on-button: var(--rm-on-accent);
   --rm-button-mark: var(--rm-on-accent);
   --rm-on-button-mark: var(--rm-accent);
+  /* The browsing pages (D130), the same way. The aliases keep the page's three colours within reach
+     inside a band or a sheet, where --rm-text and --rm-bg hold that band's pair. */
+  --rm-ink: var(--rm-text);
+  --rm-page: var(--rm-bg);
+  --rm-panel: var(--rm-surface);
+  --rm-title-size: clamp(calc(28px * var(--rm-type)), 7.5vw, calc(36px * var(--rm-type)));
+  --rm-title-narrow: calc(26px * var(--rm-type));
+  --rm-title-leading: 1.05;
+  --rm-logo-width: 96px;
+  --rm-logo-height: 44px;
+  --rm-nav-weight: 700;
+  --rm-section-title: calc(26px * var(--rm-type));
+  --rm-section-title-narrow: calc(24px * var(--rm-type));
+  --rm-strip-card: 68vw;
+  --rm-strip-card-max: 300px;
+  --rm-strip-card-wide: 36%;
+  --rm-strip-card-narrow: 70vw;
+  --rm-item-rule: 1px solid var(--rm-border);
+  --rm-name-text: calc(17px * var(--rm-type));
+  --rm-name-list: calc(16px * var(--rm-type));
+  --rm-name-one: calc(21px * var(--rm-type));
+  --rm-name-two: calc(13.5px * var(--rm-type));
+  --rm-name-two-narrow: calc(13px * var(--rm-type));
+  --rm-name-strip: calc(20px * var(--rm-type));
+  --rm-name-weight: 700;
+  --rm-name-case: none;
+  --rm-name-tracking: normal;
+  --rm-price-photo: calc(15px * var(--rm-type));
+  --rm-price-strip: calc(14.5px * var(--rm-type));
+  --rm-photo-shape: 4 / 3;
+  --rm-photo-fit: cover;
+  --rm-photo-backdrop: var(--rm-surface);
+  --rm-photo-pad: 0px;
+  --rm-photo-pad-two: 0px;
+  --rm-photo-pad-two-narrow: 0px;
+  --rm-dish-photo-pad: 0px;
+  --rm-photo-box-corners: 0px;
+  --rm-photo-corners: 0px;
+  --rm-mark-offset: 8px;
+  --rm-mark-room: 16px;
   min-height: 100vh;
   background: var(--rm-bg);
   color: var(--rm-text);
@@ -51,10 +91,12 @@ export const EDITORIAL_CSS = `
 .rm[data-heading-weight="regular"] {
   --rm-heading-weight: 400;
   --rm-subheading-weight: 400;
+  --rm-nav-weight: 400;
 }
 .rm[data-heading-weight="heavy"] {
   --rm-heading-weight: 880;
   --rm-subheading-weight: 850;
+  --rm-nav-weight: 800;
 }
 .rm[data-corners="square"] {
   --rm-full: 0px;
@@ -77,6 +119,126 @@ export const EDITORIAL_CSS = `
   --rm-on-button: var(--rm-bg);
   --rm-button-mark: var(--rm-accent);
   --rm-on-button-mark: var(--rm-on-accent);
+}
+.rm[data-header-title-size="s"] {
+  --rm-title-size: clamp(calc(24px * var(--rm-type)), 6.2vw, calc(28px * var(--rm-type)));
+  --rm-title-narrow: calc(22px * var(--rm-type));
+}
+.rm[data-header-title-size="l"] {
+  --rm-title-size: clamp(calc(32px * var(--rm-type)), 9vw, calc(46px * var(--rm-type)));
+  --rm-title-narrow: calc(31px * var(--rm-type));
+  --rm-title-leading: 1;
+}
+.rm[data-header-title-size="xl"] {
+  --rm-title-size: clamp(calc(38px * var(--rm-type)), 11vw, calc(60px * var(--rm-type)));
+  --rm-title-narrow: calc(39px * var(--rm-type));
+  --rm-title-leading: 0.95;
+}
+.rm[data-header-logo-size="s"] {
+  --rm-logo-width: 64px;
+  --rm-logo-height: 32px;
+}
+.rm[data-header-logo-size="l"] {
+  --rm-logo-width: 144px;
+  --rm-logo-height: 64px;
+}
+.rm[data-sections-title-size="s"] {
+  --rm-section-title: calc(22px * var(--rm-type));
+  --rm-section-title-narrow: calc(21px * var(--rm-type));
+}
+.rm[data-sections-title-size="l"] {
+  --rm-section-title: calc(31px * var(--rm-type));
+  --rm-section-title-narrow: calc(28px * var(--rm-type));
+}
+.rm[data-sections-strip-card-size="s"] {
+  --rm-strip-card: 52vw;
+  --rm-strip-card-max: 220px;
+  --rm-strip-card-wide: 28%;
+  --rm-strip-card-narrow: 56vw;
+}
+.rm[data-sections-strip-card-size="l"] {
+  --rm-strip-card: 84vw;
+  --rm-strip-card-max: 390px;
+  --rm-strip-card-wide: 46%;
+  --rm-strip-card-narrow: 82vw;
+}
+.rm[data-items-frame="cards"] {
+  --rm-item-rule: 0;
+}
+.rm[data-items-frame="open"] {
+  --rm-item-rule: 0;
+}
+/* A name's size is one option and five places. The price stays a step under it and never under the
+   description (14 px, and 12.5 px in two columns), which is why it hardly moves. */
+.rm[data-items-name-size="s"] {
+  --rm-name-text: calc(16px * var(--rm-type));
+  --rm-name-list: calc(15px * var(--rm-type));
+  --rm-name-one: calc(19px * var(--rm-type));
+  --rm-name-two: calc(13px * var(--rm-type));
+  --rm-name-two-narrow: calc(12.5px * var(--rm-type));
+  --rm-name-strip: calc(18px * var(--rm-type));
+  --rm-price-photo: calc(14px * var(--rm-type));
+  --rm-price-strip: calc(14px * var(--rm-type));
+}
+.rm[data-items-name-size="l"] {
+  --rm-name-text: calc(19px * var(--rm-type));
+  --rm-name-list: calc(17px * var(--rm-type));
+  --rm-name-one: calc(24px * var(--rm-type));
+  --rm-name-two: calc(14px * var(--rm-type));
+  --rm-name-two-narrow: calc(12.5px * var(--rm-type));
+  --rm-name-strip: calc(22px * var(--rm-type));
+  --rm-price-photo: calc(16px * var(--rm-type));
+  --rm-price-strip: calc(15px * var(--rm-type));
+}
+.rm[data-items-name-weight="regular"] {
+  --rm-name-weight: 400;
+}
+.rm[data-items-name-weight="heavy"] {
+  --rm-name-weight: 850;
+}
+.rm[data-items-name-case="capitals"] {
+  --rm-name-case: uppercase;
+  --rm-name-tracking: 0.005em;
+}
+.rm[data-photos-shape="square"] {
+  --rm-photo-shape: 1 / 1;
+}
+.rm[data-photos-shape="wide"] {
+  --rm-photo-shape: 16 / 9;
+}
+.rm[data-photos-shape="portrait"] {
+  --rm-photo-shape: 4 / 5;
+}
+.rm[data-photos-fit="contain"] {
+  --rm-photo-fit: contain;
+}
+/* The backdrop sits on the photo's box: around a contained photo, behind a transparent one. The one
+   value no venue colour can give, the face writes on the root itself (R13 keeps it out of here). */
+.rm[data-photos-backdrop="tint"] {
+  --rm-photo-backdrop: color-mix(in srgb, var(--rm-accent) 10%, var(--rm-bg));
+}
+.rm[data-photos-backdrop="none"] {
+  --rm-photo-backdrop: transparent;
+}
+/* The frame. A bleed photo fills its box and draws no corners of its own, whatever Corners says: only
+   an inset photo has corners to draw (the base holds bleed's zeros). */
+.rm[data-photos-frame="inset"] {
+  --rm-photo-pad: 14px;
+  --rm-photo-pad-two: 8px;
+  --rm-photo-pad-two-narrow: 5px;
+  --rm-dish-photo-pad: 72px 28px 28px;
+  --rm-photo-box-corners: calc(var(--rm-radius) * 1.3);
+  --rm-photo-corners: var(--rm-radius);
+  --rm-mark-offset: 22px;
+  --rm-mark-room: 44px;
+}
+.rm[data-photos-frame="inset"][data-photos-corners="square"] {
+  --rm-photo-box-corners: 0px;
+  --rm-photo-corners: 0px;
+}
+.rm[data-photos-frame="inset"][data-photos-corners="round"] {
+  --rm-photo-box-corners: max(calc(var(--rm-radius) * 1.3), 26px);
+  --rm-photo-corners: max(var(--rm-radius), 20px);
 }
 /* An ink button on an ink sheet inverts (D130): page fill, ink writing. */
 .rm[data-buttons="ink"] .rm-overlay-panel:not(.is-detail) {
@@ -131,8 +293,8 @@ export const EDITORIAL_CSS = `
 }
 .rm-logo {
   display: block;
-  max-width: 96px;
-  max-height: 44px;
+  max-width: var(--rm-logo-width);
+  max-height: var(--rm-logo-height);
   object-fit: contain;
 }
 .rm-headtools {
@@ -166,8 +328,8 @@ export const EDITORIAL_CSS = `
 }
 .rm-titleblock h1 {
   margin: 0;
-  font-size: clamp(calc(38px * var(--rm-type)), 11vw, calc(60px * var(--rm-type)));
-  line-height: 0.95;
+  font-size: var(--rm-title-size);
+  line-height: var(--rm-title-leading);
   font-family: var(--rm-font-heading);
   font-weight: var(--rm-heading-weight);
   overflow-wrap: anywhere;
@@ -210,7 +372,7 @@ export const EDITORIAL_CSS = `
   justify-content: center;
   color: var(--rm-muted);
   font-size: calc(13px * var(--rm-type));
-  font-weight: 800;
+  font-weight: var(--rm-nav-weight);
   text-decoration: none;
   white-space: nowrap;
 }
@@ -251,7 +413,7 @@ export const EDITORIAL_CSS = `
 .rm-section h3,
 .rm-section h4 {
   margin: 0;
-  font-size: calc(31px * var(--rm-type));
+  font-size: var(--rm-section-title);
   line-height: 1.02;
   font-family: var(--rm-font-heading);
   font-weight: var(--rm-heading-weight);
@@ -271,7 +433,7 @@ export const EDITORIAL_CSS = `
   grid-template-columns: minmax(0, 1fr) 116px;
   gap: calc(18px * var(--rm-space));
   padding: calc(25px * var(--rm-space)) 0;
-  border-top: 1px solid var(--rm-border);
+  border-top: var(--rm-item-rule);
   content-visibility: auto;
   contain-intrinsic-size: 210px;
 }
@@ -284,7 +446,7 @@ export const EDITORIAL_CSS = `
   display: block;
   width: 116px;
   height: 116px;
-  object-fit: cover;
+  object-fit: var(--rm-photo-fit);
   border-radius: calc(var(--rm-radius) * 0.8);
   background: var(--rm-surface);
 }
@@ -325,9 +487,9 @@ export const EDITORIAL_CSS = `
   text-align: left;
 }
 .rm-item :is(h3, h4) {
-  font-size: calc(19px * var(--rm-type));
+  font-size: var(--rm-name-text);
   line-height: 1.12;
-  font-weight: 850;
+  font-weight: var(--rm-name-weight);
 }
 .rm-price {
   margin-top: 7px;
@@ -434,9 +596,9 @@ export const EDITORIAL_CSS = `
 }
 .rm-section.is-feature .rm-item {
   display: block;
-  flex: 0 0 84vw;
-  width: 84vw;
-  max-width: 390px;
+  flex: 0 0 var(--rm-strip-card);
+  width: var(--rm-strip-card);
+  max-width: var(--rm-strip-card-max);
   padding: 0 0 24px;
   border: 0;
   scroll-snap-align: start;
@@ -448,17 +610,17 @@ export const EDITORIAL_CSS = `
 .rm-section.is-feature .rm-photo img {
   width: 100%;
   height: auto;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: var(--rm-photo-shape);
   border-radius: calc(var(--rm-radius) * 1.15);
 }
 .rm-section.is-feature .rm-item-copy {
   padding-top: 17px;
 }
 .rm-section.is-feature .rm-item :is(h3, h4) {
-  font-size: calc(22px * var(--rm-type));
+  font-size: var(--rm-name-strip);
 }
 .rm-section.is-feature .rm-price {
-  font-size: calc(15px * var(--rm-type));
+  font-size: var(--rm-price-strip);
 }
 /* The allergen information footer. */
 .rm-footer {
@@ -630,14 +792,14 @@ export const EDITORIAL_CSS = `
 }
 .rm-detail-photo {
   overflow: hidden;
-  background: var(--rm-surface);
+  background: var(--rm-photo-backdrop);
 }
 .rm-detail-photo img {
   display: block;
   width: 100%;
   max-height: 52dvh;
-  aspect-ratio: 4 / 3;
-  object-fit: cover;
+  aspect-ratio: var(--rm-photo-shape);
+  object-fit: var(--rm-photo-fit);
 }
 .rm-detail-copy {
   padding: 30px 20px 52px;
@@ -787,10 +949,10 @@ export const EDITORIAL_CSS = `
     height: 92px;
   }
   .rm-titleblock h1 {
-    font-size: calc(39px * var(--rm-type));
+    font-size: var(--rm-title-narrow);
   }
   .rm-section h2 {
-    font-size: calc(28px * var(--rm-type));
+    font-size: var(--rm-section-title-narrow);
   }
   .rm-legend,
   .rm-allergen-sheet {
@@ -866,18 +1028,18 @@ export const EDITORIAL_CSS = `
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo img {
   width: 100%;
   height: auto;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: var(--rm-photo-shape);
   border-radius: calc(var(--rm-radius) * 1.2);
 }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy {
   padding-top: 18px;
 }
 .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) {
-  font-size: calc(24px * var(--rm-type));
+  font-size: var(--rm-name-one);
   line-height: 1.1;
 }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-price {
-  font-size: calc(16px * var(--rm-type));
+  font-size: var(--rm-price-photo);
 }
 .rm-item.is-text {
   display: block;
@@ -916,7 +1078,7 @@ export const EDITORIAL_CSS = `
 }
 .rm-overlay-panel.is-detail .rm-detail-photo img {
   max-height: 62dvh;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: var(--rm-photo-shape);
 }
 .rm-detail-title h2 {
   font-size: calc(34px * var(--rm-type));
@@ -934,19 +1096,19 @@ export const EDITORIAL_CSS = `
 }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo,
 .rm-section.is-feature .rm-photo {
-  background: var(--rm-surface);
-  padding: 14px;
-  border-radius: calc(var(--rm-radius) * 1.3);
+  background: var(--rm-photo-backdrop);
+  padding: var(--rm-photo-pad);
+  border-radius: var(--rm-photo-box-corners);
 }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo img,
 .rm-section.is-feature .rm-photo img {
-  border-radius: var(--rm-radius);
+  border-radius: var(--rm-photo-corners);
   background: transparent;
 }
 .rm-photo .rm-badges {
-  top: 22px;
-  left: 22px;
-  max-width: calc(100% - 44px);
+  top: var(--rm-mark-offset);
+  left: var(--rm-mark-offset);
+  max-width: calc(100% - var(--rm-mark-room));
 }
 .rm-item-copy > .rm-badges {
   flex-direction: row;
@@ -959,8 +1121,8 @@ export const EDITORIAL_CSS = `
 }
 .rm-item :is(h3, h4),
 .rm-detail-title h2 {
-  text-transform: uppercase;
-  letter-spacing: 0.005em;
+  text-transform: var(--rm-name-case);
+  letter-spacing: var(--rm-name-tracking);
 }
 .rm-labels span {
   border-color: var(--rm-text);
@@ -1043,12 +1205,12 @@ export const EDITORIAL_CSS = `
   pointer-events: auto;
 }
 .rm-detail-photo {
-  background: var(--rm-surface);
-  padding: 72px 28px 28px;
+  background: var(--rm-photo-backdrop);
+  padding: var(--rm-dish-photo-pad);
 }
 .rm-overlay-panel.is-detail .rm-detail-photo img {
   max-height: 56dvh;
-  border-radius: var(--rm-radius);
+  border-radius: var(--rm-photo-corners);
 }
 .rm-detail-title {
   display: block;
@@ -1230,13 +1392,13 @@ export const EDITORIAL_CSS = `
   padding: 14px 0 28px;
 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo {
-  padding: 8px;
+  padding: var(--rm-photo-pad-two);
 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo img {
-  aspect-ratio: 4 / 3;
+  aspect-ratio: var(--rm-photo-shape);
 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) {
-  font-size: calc(14px * var(--rm-type));
+  font-size: var(--rm-name-two);
   line-height: 1.15;
   overflow-wrap: anywhere;
   hyphens: auto;
@@ -1267,10 +1429,10 @@ export const EDITORIAL_CSS = `
     column-gap: 10px;
   }
   .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) {
-    font-size: calc(12.5px * var(--rm-type));
+    font-size: var(--rm-name-two-narrow);
   }
   .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo {
-    padding: 5px;
+    padding: var(--rm-photo-pad-two-narrow);
   }
 }
 /* Layout: list (one column of one-line rows with a small photo). One column is the base look. */
@@ -1281,7 +1443,7 @@ export const EDITORIAL_CSS = `
   align-items: start;
   position: relative;
   padding: 18px 0;
-  border-top: 1px solid var(--rm-border);
+  border-top: var(--rm-item-rule);
 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo {
   grid-column: 2;
@@ -1295,7 +1457,7 @@ export const EDITORIAL_CSS = `
   width: 96px;
   height: 96px;
   aspect-ratio: 1 / 1;
-  object-fit: cover;
+  object-fit: var(--rm-photo-fit);
 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo .rm-badges {
   top: 5px;
@@ -1317,7 +1479,7 @@ export const EDITORIAL_CSS = `
   padding-top: 0;
 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) {
-  font-size: calc(17px * var(--rm-type));
+  font-size: var(--rm-name-list);
 }
 /* The narrowest phones. The page around the face (no sideways scroll, no scrollbar) is the guest
    page's, not the face's: apps/web styles html[data-guest-page]. */
@@ -1335,8 +1497,8 @@ export const EDITORIAL_CSS = `
     scroll-padding-inline: 14px;
   }
   .rm .rm-section.is-feature .rm-item {
-    flex-basis: 82vw;
-    width: 82vw;
+    flex-basis: var(--rm-strip-card-narrow);
+    width: var(--rm-strip-card-narrow);
   }
 }
 @media (min-width: 641px) {
@@ -1344,8 +1506,8 @@ export const EDITORIAL_CSS = `
     width: min(100%, 820px);
   }
   .rm-section.is-feature .rm-item {
-    flex-basis: 46%;
-    width: 46%;
+    flex-basis: var(--rm-strip-card-wide);
+    width: var(--rm-strip-card-wide);
   }
 }
 /* New in the port: what the page says when the filters leave nothing. */
@@ -1365,5 +1527,514 @@ export const EDITORIAL_CSS = `
     padding-left: 34px;
     padding-right: 34px;
   }
+}
+/*
+ * The browsing pages' options (D130). Everything above is the look at the values Editorial draws,
+ * with the tokens at the root; each rule here is keyed on a value Editorial does not use, so it adds
+ * nothing to Editorial's look. They come last: a rule here beats an equal one above.
+ */
+/* Header: the band. Inside a band --rm-text is the fill and --rm-bg the writing, as in every rule
+   above; another band only changes what those two hold (the §5.4 pairs, never muted on a band). */
+.rm[data-header-band="page"] .rm-header {
+  --rm-bg: var(--rm-ink);
+  --rm-text: var(--rm-page);
+}
+.rm[data-header-band="panel"] .rm-header {
+  --rm-bg: var(--rm-ink);
+  --rm-text: var(--rm-panel);
+}
+/* Header: centred. The bar's tools keep their corner and the logo stands over the title. */
+.rm[data-header-arrangement="centred"] .rm-brandline {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+}
+.rm[data-header-arrangement="centred"] .rm-headtools {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: stretch;
+}
+.rm[data-header-arrangement="centred"] .rm-logo {
+  grid-row: 2;
+}
+.rm[data-header-arrangement="centred"] .rm-titleblock {
+  margin-inline: auto;
+  text-align: center;
+}
+.rm[data-header-arrangement="centred"] .rm-titleblock > p {
+  margin-inline: auto;
+}
+/* The rail follows a centred header while the names fit; once they do not it scrolls from its start. */
+.rm[data-header-arrangement="centred"] .rm-sections a:first-child {
+  margin-inline-start: auto;
+}
+.rm[data-header-arrangement="centred"] .rm-sections a:last-child {
+  margin-inline-end: auto;
+}
+/* Header: the logo's other sizes draw at their own width, so a square logo keeps to the margin. */
+.rm[data-header-logo-size="s"] .rm-logo,
+.rm[data-header-logo-size="l"] .rm-logo {
+  width: auto;
+  height: auto;
+}
+/* A large logo beside the tools would stack them three rows high: on a phone it stands under them. */
+@media (max-width: 640px) {
+  .rm[data-header-arrangement="stacked"][data-header-logo-size="l"] .rm-brandline {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rm[data-header-arrangement="stacked"][data-header-logo-size="l"] .rm-headtools {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .rm[data-header-arrangement="stacked"][data-header-logo-size="l"] .rm-logo {
+    grid-row: 2;
+  }
+}
+/* Header: one line. The logo and the title share a row and the intro folds under the title; on a
+   phone the tools take the row above, as they would squeeze the title to nothing beside it. */
+.rm[data-header-arrangement="compact"] .rm-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+.rm[data-header-arrangement="compact"] .rm-brandline {
+  display: contents;
+}
+.rm[data-header-arrangement="compact"] .rm-headtools {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+.rm[data-header-arrangement="compact"] .rm-logo {
+  grid-column: 1;
+  grid-row: 2;
+  width: auto;
+  height: auto;
+  margin-inline-end: 12px;
+}
+.rm[data-header-arrangement="compact"] .rm-titleblock {
+  grid-column: 2;
+  grid-row: 2;
+  padding-top: calc(12px * var(--rm-space));
+}
+@media (min-width: 641px) {
+  .rm[data-header-arrangement="compact"] .rm-header {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .rm[data-header-arrangement="compact"] .rm-headtools {
+    grid-column: 3;
+  }
+  .rm[data-header-arrangement="compact"] .rm-logo {
+    grid-row: 1;
+  }
+  .rm[data-header-arrangement="compact"] .rm-titleblock {
+    grid-row: 1;
+    padding-top: 0;
+  }
+}
+/* Navigation: the rail on the header's band, in the band's pair. On a page-coloured header it stays. */
+.rm[data-navigation-band="header"][data-header-band="ink"] .rm-sections {
+  --rm-bg: var(--rm-ink);
+  --rm-text: var(--rm-page);
+  --rm-muted: var(--rm-page);
+  --rm-accent-text: var(--rm-page);
+  --rm-border: transparent;
+}
+.rm[data-navigation-band="header"][data-header-band="panel"] .rm-sections {
+  --rm-bg: var(--rm-panel);
+  --rm-text: var(--rm-ink);
+  --rm-muted: var(--rm-ink);
+  --rm-accent-text: var(--rm-ink);
+  --rm-border: transparent;
+}
+/* Navigation: pills. The current one is a filled pill, shown by shape and not by colour alone. A
+   pill's edge stands on the page's margin, as the title's first letter does. */
+.rm[data-navigation-marker="pills"] .rm-sections {
+  gap: 2px;
+  padding-inline: 20px;
+}
+@media (max-width: 380px) {
+  .rm[data-navigation-marker="pills"] .rm-sections {
+    padding-inline: 14px;
+  }
+}
+@media (min-width: 641px) {
+  .rm[data-navigation-marker="pills"] .rm-sections {
+    padding-inline: 34px;
+  }
+}
+.rm[data-navigation-marker="pills"] .rm-sections a {
+  min-height: 44px;
+  margin-block: 6px;
+  padding: 0 14px;
+  border-radius: var(--rm-full);
+}
+.rm[data-navigation-marker="pills"] .rm-sections a:after {
+  content: none;
+}
+.rm[data-navigation-marker="pills"] .rm-sections a[aria-current="true"] {
+  background: var(--rm-accent);
+  color: var(--rm-on-accent);
+}
+/* A pill on a band uses the band's pair: the accent may sit badly on it. */
+.rm[data-navigation-marker="pills"][data-navigation-band="header"][data-header-band="ink"]
+  .rm-sections
+  a[aria-current="true"],
+.rm[data-navigation-marker="pills"][data-navigation-band="header"][data-header-band="panel"]
+  .rm-sections
+  a[aria-current="true"] {
+  background: var(--rm-text);
+  color: var(--rm-bg);
+}
+/* The rail's case follows the section titles. */
+.rm[data-sections-title-case="capitals"] .rm-sections a,
+.rm[data-sections-title-case="capitals"] .rm-section-head > :is(h2, h3) {
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+/* Sections: a sub-section's title is one step smaller. */
+.rm[data-sections-title-size="m"] .rm-section-head > h3 {
+  font-size: calc(22px * var(--rm-type));
+}
+.rm[data-sections-title-size="s"] .rm-section-head > h3 {
+  font-size: calc(19px * var(--rm-type));
+}
+/* Sections: ruled, centred, on a band. */
+.rm[data-sections-header="ruled"] .rm-section-head {
+  padding-top: 16px;
+  border-top: 1px solid var(--rm-border);
+}
+.rm[data-sections-header="centred"] .rm-section-head {
+  text-align: center;
+}
+.rm[data-sections-header="centred"] .rm-section-head > p {
+  margin-inline: auto;
+}
+.rm[data-sections-header="centred"] .rm-section-head > :is(h2, h3) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.rm[data-sections-header="centred"] .rm-section-head > :is(h2, h3)::before,
+.rm[data-sections-header="centred"] .rm-section-head > :is(h2, h3)::after {
+  content: "";
+  flex: 0 0 24px;
+  height: 1px;
+  background: var(--rm-border);
+}
+.rm[data-sections-header="centred"] .rm-layout,
+.rm[data-sections-header="band"] .rm-layout {
+  margin-inline: 0;
+}
+/* The band runs to the screen's edges, whatever the section's margin. */
+.rm[data-sections-header="band"] .rm-section-head {
+  padding-block: 14px;
+  background: var(--rm-surface);
+  box-shadow: 0 0 0 100vmax var(--rm-surface);
+  clip-path: inset(0 -100vmax);
+}
+/* A small strip card keeps a name and a price that fit it. */
+.rm[data-sections-strip-card-size="s"] .rm-section.is-feature .rm-item :is(h3, h4) {
+  font-size: calc(15px * var(--rm-type));
+}
+.rm[data-sections-strip-card-size="s"] .rm-section.is-feature .rm-price {
+  font-size: calc(14px * var(--rm-type));
+}
+/* Items: a price at the end of the name's line, a portion beside the price. The copy turns into a
+   wrapping row whose parts keep their order, each on its own line unless told otherwise. A row's
+   end has to be on the screen, so nothing in it (a label with no spaces) may widen the column. */
+.rm[data-items-price-place="end"] .rm-items,
+.rm[data-items-portion-place="beside"] .rm-items {
+  grid-template-columns: minmax(0, 1fr);
+}
+.rm[data-items-price-place="end"] .rm-labels span,
+.rm[data-items-portion-place="beside"] .rm-labels span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.rm[data-items-price-place="end"] .rm-item-copy,
+.rm[data-items-portion-place="beside"] .rm-item-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 8px;
+}
+.rm[data-items-price-place="end"] .rm-item-copy > *,
+.rm[data-items-portion-place="beside"] .rm-item-copy > * {
+  flex: 1 1 100%;
+  min-width: 0;
+  order: 5;
+}
+.rm[data-items-price-place="end"] .rm-item-copy > .rm-badges,
+.rm[data-items-portion-place="beside"] .rm-item-copy > .rm-badges {
+  order: 0;
+}
+.rm[data-items-price-place="end"] .rm-item-copy > [data-slot="item.name"],
+.rm[data-items-portion-place="beside"] .rm-item-copy > [data-slot="item.name"] {
+  order: 1;
+}
+.rm[data-items-price-place="end"] .rm-item-copy > .rm-price,
+.rm[data-items-portion-place="beside"] .rm-item-copy > .rm-price {
+  flex: 0 0 auto;
+  order: 2;
+}
+.rm[data-items-price-place="end"] .rm-item-copy > [data-slot="item.name"] {
+  flex: 1 1 7em;
+}
+.rm[data-items-price-place="end"] .rm-item-copy > .rm-price {
+  margin-top: 0;
+}
+.rm[data-items-portion-place="beside"] .rm-item-copy > .rm-portion {
+  flex: 0 1 auto;
+  order: 3;
+}
+.rm[data-items-portion-place="beside"] .rm-item-copy > .rm-portion::before {
+  content: "· ";
+  content: "· " / "";
+}
+.rm[data-items-price-place="end"][data-items-portion-place="beside"] .rm-item-copy > .rm-portion {
+  margin-top: 0;
+}
+/* A two-column card is too narrow for a name and a price on one line: its price stays under the name. */
+.rm[data-items-portion-place="beside"][data-layout="two"]
+  .rm-section:not(.is-feature)
+  .rm-item.has-photo
+  .rm-item-copy
+  > .rm-price {
+  flex: 0 1 auto;
+}
+.rm[data-items-portion-place="beside"][data-layout="two"]
+  .rm-section:not(.is-feature)
+  .rm-item.has-photo
+  .rm-item-copy
+  > .rm-portion {
+  flex: 0 1 auto;
+  margin-top: 0;
+}
+/* In two columns the price follows the smaller names, down to the description's own size. */
+.rm[data-items-name-size="m"][data-layout="two"]
+  .rm-section:not(.is-feature)
+  .rm-item.has-photo
+  .rm-price {
+  font-size: calc(13px * var(--rm-type));
+}
+.rm[data-items-name-size="s"][data-layout="two"]
+  .rm-section:not(.is-feature)
+  .rm-item.has-photo
+  .rm-price {
+  font-size: calc(12.5px * var(--rm-type));
+}
+/* Items: how much of a description shows. Three lines is the base; the dish page has the rest. */
+.rm[data-items-description-lines="1"] .rm-description p[data-clamped="true"] {
+  -webkit-line-clamp: 1;
+}
+.rm[data-items-description-lines="2"] .rm-description p[data-clamped="true"] {
+  -webkit-line-clamp: 2;
+}
+.rm[data-items-description-lines="all"] .rm-description p[data-clamped="true"] {
+  display: block;
+  -webkit-line-clamp: none;
+  overflow: visible;
+}
+/* Items: cards. Each item is a panel with General's corners and depth; a photo runs to the card's
+   top and sides when it is bleed, and the copy gets the margin the card took away. */
+.rm[data-items-frame="cards"] .rm-section:not(.is-feature) > .rm-items {
+  row-gap: 12px;
+}
+.rm[data-items-frame="cards"] .rm-item {
+  overflow: clip;
+  background: var(--rm-surface);
+  border-radius: var(--rm-radius);
+  box-shadow: var(--rm-depth);
+}
+.rm[data-items-frame="cards"] .rm-item.is-text {
+  padding: 14px 16px;
+}
+.rm[data-items-frame="cards"][data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo {
+  padding: 14px;
+}
+.rm[data-items-frame="cards"][data-layout="one"] .rm-section:not(.is-feature) .rm-item.has-photo {
+  padding: 0 0 16px;
+}
+.rm[data-items-frame="cards"][data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo {
+  padding: 0 0 12px;
+}
+.rm[data-items-frame="cards"][data-layout="one"]
+  .rm-section:not(.is-feature)
+  .rm-item.has-photo
+  .rm-item-copy {
+  padding: 16px 16px 0;
+}
+.rm[data-items-frame="cards"][data-layout="two"]
+  .rm-section:not(.is-feature)
+  .rm-item.has-photo
+  .rm-item-copy {
+  padding: 10px 10px 0;
+}
+.rm[data-items-frame="cards"] .rm-section.is-feature .rm-items {
+  padding-top: 8px;
+}
+.rm[data-items-frame="cards"] .rm-section.is-feature .rm-item {
+  padding: 0 0 16px;
+}
+.rm[data-items-frame="cards"] .rm-section.is-feature .rm-item-copy {
+  padding: 16px 16px 0;
+}
+/* Photos: the focal point only means something when the photo is cropped. */
+.rm[data-photos-fit="contain"] :is(.rm-photo, .rm-detail-photo) img {
+  object-position: center !important;
+}
+/* Labels: soft and plain words, and the marks and the filter chips that follow them. */
+.rm[data-labels-labels="soft"] .rm-labels span {
+  border-color: transparent;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.rm[data-labels-labels="soft"] .rm-filter-group button:not([aria-pressed="true"]) {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.rm[data-labels-labels="text"] .rm-labels {
+  gap: 4px 12px;
+}
+.rm[data-labels-labels="text"] .rm-labels span {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  font-weight: 700;
+}
+.rm[data-labels-labels="text"] .rm-filter-group {
+  column-gap: 20px;
+}
+.rm[data-labels-labels="text"] .rm-filter-group button {
+  padding-inline: 0;
+  border-color: transparent;
+  background: transparent;
+  color: inherit;
+  text-decoration: underline;
+}
+.rm[data-labels-labels="text"] .rm-filter-group button[aria-pressed="true"] {
+  font-weight: 700;
+  text-decoration-color: var(--rm-accent);
+  text-decoration-thickness: 3px;
+}
+/* A badge in words is an accent word; on a photo no word reads, so it keeps a page-coloured tab. */
+.rm[data-labels-labels="text"] .rm-badge {
+  padding: 0;
+  background: transparent;
+  color: var(--rm-accent-text);
+  box-shadow: none;
+}
+.rm[data-labels-labels="text"] .rm-photo .rm-badge {
+  padding: 3px 8px;
+  background: var(--rm-bg);
+}
+/* Dish page: a bleed photo runs to the top of the screen under the two buttons, and its box takes
+   the Photos page's shape. Inset at the first shape is Editorial's own tall stage, which stays. */
+.rm[data-photos-frame="bleed"] .rm-overlay-panel.is-detail:has(.rm-detail-photo) > .rm-overlay-head,
+.rm[data-dish-photo="small"] .rm-overlay-panel.is-detail:has(.rm-detail-photo) > .rm-overlay-head {
+  margin-bottom: -14px;
+}
+.rm[data-photos-frame="bleed"] .rm-detail-photo img,
+.rm[data-photos-shape="square"] .rm-detail-photo img,
+.rm[data-photos-shape="wide"] .rm-detail-photo img,
+.rm[data-photos-shape="portrait"] .rm-detail-photo img {
+  height: auto;
+}
+/* A page with little on it keeps the name and price bar at the bottom of the screen. */
+.rm[data-photos-frame="bleed"] .rm-overlay-panel.is-detail,
+.rm[data-dish-photo="small"] .rm-overlay-panel.is-detail {
+  display: flex;
+  flex-direction: column;
+}
+.rm[data-photos-frame="bleed"] .rm-overlay-panel.is-detail > .rm-overlay-head,
+.rm[data-dish-photo="small"] .rm-overlay-panel.is-detail > .rm-overlay-head {
+  flex: none;
+}
+.rm[data-photos-frame="bleed"] .rm-detail,
+.rm[data-dish-photo="small"] .rm-detail {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+}
+.rm[data-photos-frame="bleed"] .rm-detail-copy,
+.rm[data-dish-photo="small"] .rm-detail-copy {
+  flex: 1 0 auto;
+}
+/* A dish with no photo starts under the two buttons. */
+.rm[data-photos-frame="bleed"] .rm-detail-copy:first-child,
+.rm[data-dish-photo="small"] .rm-detail-copy:first-child {
+  padding-top: 72px;
+}
+/* Dish page: a small square photo at the name's end, in place of the hero. */
+.rm[data-dish-photo="small"] .rm-detail {
+  position: relative;
+}
+.rm[data-dish-photo="small"] .rm-overlay-panel.is-detail .rm-detail-photo {
+  position: absolute;
+  top: 72px;
+  right: 20px;
+  width: 96px;
+  height: 96px;
+  padding: 0;
+  border-radius: var(--rm-photo-corners);
+}
+.rm[data-dish-photo="small"] .rm-overlay-panel.is-detail .rm-detail-photo img {
+  width: 96px;
+  height: 96px;
+  max-height: none;
+  aspect-ratio: 1 / 1;
+}
+.rm[data-dish-photo="small"] .rm-detail-copy {
+  padding-top: 72px;
+}
+.rm[data-dish-photo="small"] .rm-detail-photo + .rm-detail-copy .rm-detail-title {
+  min-height: 96px;
+  padding-right: 112px;
+}
+.rm[data-dish-photo="small"] .rm-detail-title h2 {
+  font-size: calc(26px * var(--rm-type));
+  line-height: 1.1;
+}
+/* Sheets and the footer. As with the header's band: the same rules, another pair in the two tokens. */
+.rm[data-sheets-sheets="panel"] .rm-overlay-panel:not(.is-detail),
+.rm[data-sheets-sheets="panel"] .rm-footer,
+.rm[data-sheets-sheets="panel"] .rm-detail-bar {
+  --rm-bg: var(--rm-ink);
+  --rm-text: var(--rm-panel);
+}
+.rm[data-sheets-sheets="page"] .rm-overlay-panel:not(.is-detail),
+.rm[data-sheets-sheets="page"] .rm-footer,
+.rm[data-sheets-sheets="page"] .rm-detail-bar {
+  --rm-bg: var(--rm-ink);
+  --rm-text: var(--rm-page);
+}
+/* A band in the page's own colour needs an edge to read as one. */
+.rm[data-sheets-sheets="page"] .rm-footer,
+.rm[data-sheets-sheets="page"] .rm-detail-bar {
+  border-top: 1px solid var(--rm-border);
+}
+/* On the page's or the panel's colour the quiet text is the venue's own muted colour, the one the
+   theme promises to read on both at 4.5:1. The dark band's softer ink would not hold there (a 70 %
+   mix is about 4.3:1), and an edge of a choice takes the same colour to show at 3:1. */
+.rm[data-header-band="page"] .rm-titleblock > p,
+.rm[data-header-band="panel"] .rm-titleblock > p,
+.rm[data-header-band="page"] .rm-language button:not([aria-pressed="true"]),
+.rm[data-header-band="panel"] .rm-language button:not([aria-pressed="true"]),
+.rm[data-sheets-sheets="panel"] .rm-footer > p,
+.rm[data-sheets-sheets="page"] .rm-footer > p,
+.rm[data-sheets-sheets="panel"] .rm-overlay-intro,
+.rm[data-sheets-sheets="page"] .rm-overlay-intro {
+  color: var(--rm-muted);
+}
+.rm[data-sheets-sheets="panel"] .rm-allergen-sheet li:not(.is-present),
+.rm[data-sheets-sheets="page"] .rm-allergen-sheet li:not(.is-present) {
+  opacity: 1;
+  color: var(--rm-muted);
+}
+.rm[data-sheets-sheets="panel"]:not([data-labels-labels="text"])
+  .rm-filter-group
+  button:not([aria-pressed="true"]),
+.rm[data-sheets-sheets="page"]:not([data-labels-labels="text"])
+  .rm-filter-group
+  button:not([aria-pressed="true"]) {
+  border-color: var(--rm-muted);
 }
 `

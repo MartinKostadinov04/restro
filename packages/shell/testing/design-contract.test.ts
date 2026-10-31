@@ -8,6 +8,7 @@ import {
   assertTextFloors,
   type DesignFailure,
   designCases,
+  firstDesignAttributes,
   firstRootAttributes,
   neverListFixtures,
   runDesignContract,
@@ -234,6 +235,16 @@ describe('storedRendering', () => {
   it('names one attribute per General option, and none for the Style or the colours', () => {
     const first = firstRootAttributes({ style: 'basic', colours: 'x', heading_font: 'same' })
     expect(first).toEqual({ 'data-heading-font': 'same' })
+  })
+
+  it('names the other pages with the page in front, at Basic’s values', () => {
+    const first = firstDesignAttributes()
+    expect(first['data-corners']).toBe('soft')
+    expect(first['data-items-name-size']).toBe('m')
+    expect(first['data-header-band']).toBe('page')
+    expect(first['data-sheets-sheets']).toBe('panel')
+    expect(first['data-style']).toBeUndefined()
+    expect(first['data-general-corners']).toBeUndefined()
   })
 })
 

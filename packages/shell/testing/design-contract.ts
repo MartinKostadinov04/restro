@@ -509,6 +509,24 @@ export function firstRootAttributes(
   )
 }
 
+/**
+ * The root attribute of every option of the design at its first value, as `storedRendering` wants
+ * them: General's by `firstRootAttributes`, every other page's with the page in front
+ * (`items.name_size` to `data-items-name-size`). So a Basic rendering stores none of them.
+ */
+export function firstDesignAttributes(
+  general?: Readonly<Record<string, string>>,
+): Readonly<Record<string, string>> {
+  const attributes: Record<string, string> = { ...firstRootAttributes(general) }
+  for (const [page, options] of Object.entries(BASIC_DESIGN_VALUES)) {
+    if (page === 'general') continue
+    for (const [option, value] of Object.entries(options as Readonly<Record<string, string>>)) {
+      attributes[`data-${page}-${option}`.replace(/_/g, '-')] = value
+    }
+  }
+  return attributes
+}
+
 /** A short fingerprint of a long rendering (the 300-item menu is stored as this, not whole). */
 export function fingerprint(text: string): string {
   let a = 0x811c9dc5

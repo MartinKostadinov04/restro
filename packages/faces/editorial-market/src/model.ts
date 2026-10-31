@@ -105,22 +105,29 @@ export function isLayout(value: unknown): value is Layout {
 
 /**
  * The `sizes` of an item photo: how wide the picture is drawn, so a phone takes the smallest file
- * that is sharp enough (the photo sits on a stage panel, so it is narrower than its card). A
- * photo of the strip is a card of 84 % of the screen (at most 390 px); in the sections it is the
- * column (one), half of it (two) or a 96 px square (list). The column is 820 px at most, with
- * margins of 20 px (34 px from 641 px up). The figures run a little over, never under.
+ * that is sharp enough (an inset photo sits on a stage panel, so it is narrower than its card; a
+ * bleed one is the card's whole width). A photo of the strip is a card of at most 84 % of the screen
+ * (at most 390 px); in the sections it is the column (one), half of it (two) or a 96 px square
+ * (list). The column is 820 px at most, with margins of 20 px (34 px from 641 px up). The figures
+ * run a little over, never under.
  */
-export function photoSizes(layout: Layout, strip: boolean): string {
+export function photoSizes(layout: Layout, strip: boolean, bleed = false): string {
   if (strip) {
-    return '(min-width: 821px) 350px, (min-width: 641px) calc(46vw - 59px), calc(min(84vw, 390px) - 28px)'
+    return bleed
+      ? '(min-width: 821px) 378px, (min-width: 641px) calc(46vw - 31px), min(84vw, 390px)'
+      : '(min-width: 821px) 350px, (min-width: 641px) calc(46vw - 59px), calc(min(84vw, 390px) - 28px)'
   }
   switch (layout) {
     case 'list':
       return '96px'
     case 'one':
-      return '(min-width: 821px) 684px, calc(100vw - 68px)'
+      return bleed
+        ? '(min-width: 821px) 752px, (min-width: 641px) calc(100vw - 68px), calc(100vw - 40px)'
+        : '(min-width: 821px) 684px, calc(100vw - 68px)'
     case 'two':
-      return '(min-width: 821px) 354px, (min-width: 641px) calc(50vw - 56px), calc(50vw - 42px)'
+      return bleed
+        ? '(min-width: 821px) 370px, (min-width: 641px) calc(50vw - 40px), calc(50vw - 26px)'
+        : '(min-width: 821px) 354px, (min-width: 641px) calc(50vw - 56px), calc(50vw - 42px)'
   }
 }
 
@@ -220,16 +227,29 @@ export function themeVariables(
 }
 
 /**
- * The General page as data attributes on the face's root (D130): `corners` to `data-corners`,
- * `heading_font` to `data-heading-font`. Every General option comes through this one loop, so an
- * option added to the contract is on the root the day it exists. `style` names the premade the
- * venue started from and `colours` is the colour page's: neither is a look of its own.
+ * The design as data attributes on the face's root (D130). General's options go by their own name
+ * (`corners` to `data-corners`), every other page's with the page in front (`items.name_size` to
+ * `data-items-name-size`). Every option comes through this one loop, so an option added to the
+ * contract is on the root the day it exists. `style` names the premade the venue started from and
+ * `colours` is the colour page's: neither is a look of its own.
  */
-export function generalAttributes(design: DesignValues): Readonly<Record<string, string>> {
+export function designAttributes(design: DesignValues): Readonly<Record<string, string>> {
   const attributes: Record<string, string> = {}
-  for (const [option, value] of Object.entries(design.general ?? {})) {
-    if (option === 'style' || option === 'colours') continue
-    attributes[`data-${option.replace(/_/g, '-')}`] = value
+  for (const [page, options] of Object.entries(design)) {
+    const prefix = page === 'general' ? '' : `${page}-`
+    for (const [option, value] of Object.entries(options as Readonly<Record<string, string>>)) {
+      if (option === 'style' || option === 'colours') continue
+      attributes[`data-${prefix}${option}`.replace(/_/g, '-')] = value
+    }
   }
   return attributes
+}
+
+/**
+ * What a design adds to the root's variables. The photos' `white` backdrop is the one colour the
+ * venue does not choose (D130: white on both screens), and the stylesheet holds no colour of its
+ * own (R13), so it comes in here, and only for the design that asks for it.
+ */
+export function designVariables(design: DesignValues): Readonly<Record<string, string>> {
+  return design.photos?.backdrop === 'white' ? { '--rm-photo-backdrop': '#ffffff' } : {}
 }

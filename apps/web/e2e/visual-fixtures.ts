@@ -37,8 +37,8 @@ export const visualPath = (theme: { readonly publicId: string }): string =>
   `/m/${VISUAL_SLUG}-${theme.publicId}`
 
 /**
- * One menu per design the renderer's audit runs on: each Style, and each value of each General
- * option over Basic (D130). The same list as the never-list harness sweeps in the renderer's tests.
+ * One menu per design the renderer's audit runs on: each Style, and each value of each option it
+ * draws over Basic (D130). The same list as the never-list harness sweeps in the renderer's tests.
  */
 export const DESIGN_VARIANTS = designCases({
   general: [
@@ -52,6 +52,24 @@ export const DESIGN_VARIANTS = designCases({
     'text_size',
     'buttons',
   ],
+  header: ['band', 'arrangement', 'title_size', 'logo_size'],
+  navigation: ['marker', 'band'],
+  sections: ['header', 'title_size', 'title_case', 'strip_card_size'],
+  items: [
+    'frame',
+    'name_size',
+    'name_weight',
+    'name_case',
+    'price_place',
+    'portion_place',
+    'description_lines',
+    'layout',
+    'guest_switch',
+  ],
+  photos: ['shape', 'fit', 'backdrop', 'frame', 'corners'],
+  labels: ['labels'],
+  dish: ['photo'],
+  sheets: ['sheets'],
 }).map((one, index) => ({ ...one, publicId: `visualdes${String(index + 1).padStart(3, '0')}` }))
 
 /** One design of the audit. */

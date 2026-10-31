@@ -43,8 +43,8 @@ What a guest can do in a menu. The `template-design` skill reads this file first
 ### Change the menu layout
 - **Shell key:** none (`view.layout` of the menu)
 - **Status:** supported
-- **Drawn means:** the page starts in the layout the composer set (list, one column or two columns); when `guestSwitch` is true the guest can switch layout, and the choice is kept for the visit.
-- **Where:** §8.1, App. C 19; D92
+- **Drawn means:** the page starts in the layout the design sets (list, one column or two columns; Studio's Items page, D129); when the design's guest switch is on the guest can switch layout, the choice is kept for the visit and applies to every vertical section. A horizontal section stays a strip: a section's own layout from Structure wins, and a strip never switches.
+- **Where:** §8.1, App. C 19; D92, D129, D130
 
 ### Filter the menu
 - **Shell key:** `filters` (manifest `filters`, slot `menu.filters`)

@@ -1,7 +1,7 @@
 // Fixtures for the accessibility and visual audit of the renderer (brief SH-07, #171). Five menus in
 // Editorial, one per theme (the designer's four presets and one made from three colours), and one
-// for each Style and each value of the General options (`DESIGN_VARIANTS`), all with the same
-// content: photo cards in the strip and in every layout, a scheduled item, two sold-out ones that
+// for each Style and each value of the options the renderer draws (`DESIGN_VARIANTS`), all with the
+// same content: photo cards in the strip and in every layout, a scheduled item, two sold-out ones that
 // the page leaves out (D131), a 60-character Cyrillic name with a photo and one without, a dish with
 // all fourteen allergens and two groups of choices, a sub-section, tags and dietary labels for the
 // filter sheet, and a table code. They are written straight into the e2e publish folder
@@ -348,8 +348,9 @@ function snapshotOf(theme: VisualTheme, index: number, variant?: DesignVariant):
   const tertiary = preset !== undefined ? preset.colours.tertiary : CUSTOM_COLOURS.tertiary
   const ids = {
     snapshot: `sn_${`E2eVisual${variant?.publicId ?? theme.id}`.padEnd(22, '0')}`,
-    menu: `nd_${`E2eVisualMenu${index}`.padEnd(22, '0')}`,
-    venue: `vn_${`E2eVisualVenue${index}`.padEnd(22, '0')}`,
+    // The number in front of the padding: menu 1 and menu 10 must not come out as one id.
+    menu: `nd_${`E2eVisualMenu${String(index).padStart(3, '0')}`.padEnd(22, '0')}`,
+    venue: `vn_${`E2eVisualVenue${String(index).padStart(3, '0')}`.padEnd(22, '0')}`,
   }
   const themed = {
     ...base,

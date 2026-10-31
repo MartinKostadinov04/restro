@@ -22,7 +22,16 @@ export {
   STATE_ATTRIBUTE,
 } from './contract'
 export { assertFaceScopedCss, assertThemeOnlyCss, NAMED_COLOURS } from './css'
-export { type CssRule, cssRules, fontSizePx, resolvedCss, withCalc, withTokens } from './css-rules'
+export {
+  type CssRule,
+  cssRules,
+  fontSizePx,
+  resolvedCss,
+  rulesFor,
+  valuesOf,
+  withCalc,
+  withTokens,
+} from './css-rules'
 export {
   assertTextFloors,
   type DesignCase,
@@ -33,6 +42,7 @@ export {
   designCases,
   designView,
   fingerprint,
+  firstDesignAttributes,
   firstRootAttributes,
   INPUT_FLOOR_PX,
   neverListFixtures,

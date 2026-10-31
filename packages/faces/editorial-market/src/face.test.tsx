@@ -109,7 +109,7 @@ describe('the layout', () => {
     expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('two')
   })
 
-  it('starts in the layout of the menu (view.layout, a composer setting)', () => {
+  it('starts in the layout of the menu (view.layout, from the design)', () => {
     for (const layout of ['list', 'one', 'two'] as const) {
       const { container, unmount } = draw({
         view: { ...view, layout: { default: layout, guestSwitch: true } },
@@ -798,11 +798,12 @@ describe('the audit of the markup (SH-07)', () => {
         ),
       ].map((image) => image.getAttribute('sizes'))
     const strip = container.querySelector('.rm-section.is-feature .rm-photo img')
-    expect(strip?.getAttribute('sizes')).toBe(photoSizes('two', true))
+    // Basic's photos fill their box (the Photos page's bleed).
+    expect(strip?.getAttribute('sizes')).toBe(photoSizes('two', true, true))
     const names = { two: '2 columns', one: '1 column', list: 'List' } as const
     for (const layout of ['two', 'one', 'list'] as const) {
       fireEvent.click(screen.getByRole('radio', { name: names[layout] }))
-      for (const sizes of sizesOf()) expect(sizes).toBe(photoSizes(layout, false))
+      for (const sizes of sizesOf()) expect(sizes).toBe(photoSizes(layout, false, true))
     }
   })
 })

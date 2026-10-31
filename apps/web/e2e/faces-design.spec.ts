@@ -4,12 +4,13 @@ import { settled, withAudit } from './faces-audit'
 import { runScript } from './global-setup'
 import { DESIGN_VARIANTS, visualPath } from './visual-fixtures'
 
-// The renderer in every design (#171, D130), on a production build: each Style, and each value of
-// each General option over Basic, on the hard menu of scripts/seed-visual-e2e.ts. What the never-list
+// The renderer in every design (#171, #172, D130), on a production build: each Style, and each value
+// of each option it draws over Basic, on the hard menu of scripts/seed-visual-e2e.ts. What the never-list
 // harness (`runDesignContract`) cannot see without a browser is measured here, at phone, tablet and
 // PC widths:
 //
-//   touch targets   every button, link and radio is at least 44 x 44 px, on the page and the dish page
+//   touch targets   every button, link and radio is at least 44 x 44 px, on the page, the dish page
+//                   and (for the Styles, the labels and the sheets) the allergen sheet
 //   overflow        no sideways scroll, nothing sticks out of the screen
 //   names           never cut: no ellipsis, no line clamp, nothing clipped
 //   text            12 px at the least, 16 px in an input
@@ -108,6 +109,12 @@ for (const variant of DESIGN_VARIANTS) {
       await page.setViewportSize({ width: WIDTHS[0], height: 800 })
       await page.locator('[data-slot="item.open"]').first().click()
       problems.push(...(await measure(page, 'the dish page', '.rm-overlay')))
+      if (/^(style|labels|sheets)[:.]/.test(variant.id)) {
+        await page.keyboard.press('Escape')
+        await expect(page.locator('.rm-overlay')).toHaveCount(0)
+        await page.locator('.rm-allergens button').first().click()
+        problems.push(...(await measure(page, 'the allergen sheet', '.rm-overlay')))
+      }
       expect(problems).toEqual([])
     })
   }

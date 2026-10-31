@@ -99,7 +99,34 @@ interface Compound {
   readonly combinator: ' ' | '>' | '+' | '~' | null
 }
 
-function compoundsOf(selector: string): Compound[] {
+// The harness asks the same questions of a stylesheet thousands of times per design (every part of
+// every item against every rule), and a stylesheet and a parsed page never change: what a selector
+// reads as and what a compound says of an element are worked out once. Nothing here changes an answer.
+const COMPOUNDS = new Map<string, readonly Compound[]>()
+const SELECTORS = new Map<string, readonly string[]>()
+const COMPOUND_ANSWERS = new WeakMap<HtmlElement, Map<string, boolean>>()
+const REACHING = new WeakMap<HtmlElement, WeakMap<readonly CssRule[], readonly CssRule[]>>()
+
+/** The selectors of a selector list, trimmed. */
+function selectorsOf(list: string): readonly string[] {
+  let parts = SELECTORS.get(list)
+  if (parts === undefined) {
+    parts = splitTop(list, ',').map((part) => part.trim())
+    SELECTORS.set(list, parts)
+  }
+  return parts
+}
+
+function compoundsOf(selector: string): readonly Compound[] {
+  let compounds = COMPOUNDS.get(selector)
+  if (compounds === undefined) {
+    compounds = readCompounds(selector)
+    COMPOUNDS.set(selector, compounds)
+  }
+  return compounds
+}
+
+function readCompounds(selector: string): Compound[] {
   const compounds: Compound[] = []
   let depth = 0
   let current = ''
@@ -125,6 +152,20 @@ function compoundsOf(selector: string): Compound[] {
 
 /** Whether one compound (`.a.b[c="d"]:not(.e)`) holds for an element. */
 function compoundMatches(element: HtmlElement, compound: string): boolean {
+  let answers = COMPOUND_ANSWERS.get(element)
+  if (answers === undefined) {
+    answers = new Map()
+    COMPOUND_ANSWERS.set(element, answers)
+  }
+  let answer = answers.get(compound)
+  if (answer === undefined) {
+    answer = readCompoundMatch(element, compound)
+    answers.set(compound, answer)
+  }
+  return answer
+}
+
+function readCompoundMatch(element: HtmlElement, compound: string): boolean {
   let rest = compound
   const tag = /^[a-zA-Z][\w-]*/.exec(rest)
   if (tag !== null) {
@@ -207,15 +248,25 @@ function specificity(selector: string): number {
 
 /** The rules that reach an element. Rules on a pseudo-element draw another box and are not its own. */
 export function rulesFor(element: HtmlElement, rules: readonly CssRule[]): readonly CssRule[] {
-  return rules.filter((rule) =>
-    splitTop(rule.selector, ',').some((part) => selectorMatches(element, part.trim())),
-  )
+  let byRules = REACHING.get(element)
+  if (byRules === undefined) {
+    byRules = new WeakMap()
+    REACHING.set(element, byRules)
+  }
+  let reaching = byRules.get(rules)
+  if (reaching === undefined) {
+    reaching = rules.filter((rule) =>
+      selectorsOf(rule.selector).some((part) => selectorMatches(element, part)),
+    )
+    byRules.set(rules, reaching)
+  }
+  return reaching
 }
 
 function bestSpecificity(element: HtmlElement, rule: CssRule): number {
   return Math.max(
-    ...splitTop(rule.selector, ',').map((part) =>
-      selectorMatches(element, part.trim()) ? specificity(part) : -1,
+    ...selectorsOf(rule.selector).map((part) =>
+      selectorMatches(element, part) ? specificity(part) : -1,
     ),
   )
 }

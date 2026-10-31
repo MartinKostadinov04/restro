@@ -153,10 +153,21 @@ describe('the size of an item photo (SH-07)', () => {
     expect(photoSizes('one', true)).toBe(photoSizes('two', true))
   })
 
+  it('widens by the margin of the stage when the photo fills its box', () => {
+    expect(photoSizes('list', false, true)).toBe('96px')
+    expect(photoSizes('one', false, true)).toContain('calc(100vw - 40px)')
+    expect(photoSizes('two', false, true)).toContain('calc(50vw - 26px)')
+    expect(photoSizes('two', true, true)).toContain('min(84vw, 390px)')
+    expect(photoSizes('list', true, true)).toBe(photoSizes('two', true, true))
+  })
+
   it('never claims a photo is the whole screen wide, so a phone is not sent the biggest file', () => {
     for (const layout of ['list', 'one', 'two'] as const) {
-      for (const strip of [false, true])
-        expect(photoSizes(layout, strip)).not.toMatch(/(^|[ (,])100vw(?!\s*-)/)
+      for (const strip of [false, true]) {
+        for (const bleed of [false, true]) {
+          expect(photoSizes(layout, strip, bleed)).not.toMatch(/(^|[ (,])100vw(?!\s*-)/)
+        }
+      }
     }
   })
 })

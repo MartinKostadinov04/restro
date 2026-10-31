@@ -42,6 +42,36 @@ Run it **twice, once with Demo Bar on Basic and once on Editorial** (pick the St
 
 **On both Styles, look at:** every sheet (the bag, the bill, Pay, Call a waiter, the Payment confirmation) reads well on the phone and every button is easy to tap. Note anything that works on one Style and not the other: that is a bug in the renderer, not a Style's choice.
 
+## C. The browsing pages' options (#172): what you can see today
+
+The renderer now draws the options of the browsing pages. Choosing them comes with the Studio's pages in a later ticket (#175), so until then you see them in two places: **Basic** on Demo Bar, which changed once with this ticket (see the first check), and the look of **Editorial**, which did not change at all. To see any other value now, ask the lead for a preview of it.
+
+**What changed on Basic, once, for good:**
+
+- Bars and sheets are lighter: the header and the rail sit on the page colour, the sheets on the panel colour.
+- A photo fills its box with no frame around it, and a dish name and its price stand on one line.
+- Section titles have a thin line above them.
+- A dish page opens with the photo right at the top of the screen, in its own 4:3 shape, and the name and price bar stays at the bottom of the screen.
+
+**What the options do, with a value you can look for:**
+
+- **Header:** on a band of the panel or dark colour; title centred or on one line with the logo; title and logo in four and three sizes.
+- **Navigation:** the current section underlined or a filled pill; the rail on the header's band. A pill on a band always reads in the band's two colours, never the accent.
+- **Sections:** the title ruled, plain, centred or on a band that runs to the screen's edges; three sizes; capitals. Strip cards in three sizes.
+- **Items:** rows, cards or open; name in three sizes and weights, in capitals; the price at the end of the line or under the name; a portion beside the price or on its own line; one, two, three or all description lines; the layout and the guest switch.
+- **Photos:** four shapes; cover or contain; four backdrops; bleed or inset; corners. A section's image stays 16:7 with the design's corners whatever these say, and a list's small photo stays square at the end of the row.
+- **Labels:** outlined, soft or plain words, on the dish and in the filter sheet.
+- **Dish page:** a large photo, or a small square one at the name's end.
+- **Sheets and footer:** panel, page or dark colour.
+
+**Checks you can do today:**
+
+- **Basic on a phone:** open Demo Bar's guest page at phone width. The names and prices read at a glance, each price on its name's line, nothing cut off, no sideways scrolling. Open a dish: the photo reaches the top of the screen, and the bar with the name and price sits at the bottom.
+- **A long label:** nothing on a Basic row runs off the screen, and a price at the end of a row is always there to read.
+- **The layout switch:** tap the three layout icons on a section. Every vertical section changes; a strip that scrolls sideways does not.
+- **Editorial is the same as before:** a venue on Editorial looks exactly as it did before this ticket.
+- **In the composer:** "Layout" in the menu bar now changes the design, and the guest page follows after you publish.
+
 ## What to report
 
 For each check: as written, or what you saw instead, and on which Style.
