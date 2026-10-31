@@ -414,7 +414,7 @@ test('Return to version 1 in Settings › Versioning: the pause warning, the old
   expect(await pauseFlag()).toBe(true)
 
   // The warning heads every tab.
-  await open(page, '?tab=composer')
+  await open(page, '?tab=studio')
   await expect(page.getByTestId('paused-banner')).toBeVisible()
   await page.screenshot({ path: shotPath('en-light-desktop-paused'), fullPage: true })
   await shoot(browser, 'bg-light-desktop-paused', { locale: 'bg', scheme: 'light' })

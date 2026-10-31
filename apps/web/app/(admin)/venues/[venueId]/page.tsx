@@ -13,6 +13,7 @@ import {
 import { SettingsSections, WorkspaceTabs } from '@/components/admin/workspace-tabs'
 import { ComposerSkeleton } from '@/composer/composer-skeleton'
 import { ComposerTab } from '@/composer/composer-tab'
+import { designPagePath } from '@/composer/design-path'
 import {
   PublishSettingsSection,
   SettingsSectionSkeleton,
@@ -52,28 +53,32 @@ export default async function VenueWorkspacePage({
   const venue = await getVenue(organization.id, (await params).venueId)
   if (!venue) notFound()
 
-  // The composer reads the whole menu: only read it while its tab is the open one (the tab bar
+  // The Studio reads the whole menu: only read it while its tab is the open one (the tab bar
   // shows the skeleton at once when someone switches to it, and the page streams the rest in).
   // The same holds for the Settings sections (`?section=`, D97).
   const query = await searchParams
-  // The Design tab is the composer's Design subtab now (D92): an old link lands there.
-  if (query.tab === 'design') {
+  // Old links: the Design tab and subtab are the Design page now, and the composer is the Studio (D129).
+  const menu = typeof query.menu === 'string' ? query.menu : null
+  if (query.tab === 'design' || (query.tab === 'composer' && query.sub === 'design')) {
+    redirect(designPagePath(venue.id, menu))
+  }
+  if (query.tab === 'composer') {
     const params = new URLSearchParams()
     for (const [key, value] of Object.entries(query)) {
       if (typeof value === 'string' && key !== 'tab' && key !== 'sub') params.set(key, value)
     }
-    params.set('tab', 'composer')
-    params.set('sub', 'design')
+    params.set('tab', 'studio')
     redirect(`/venues/${venue.id}?${params.toString()}`)
   }
-  // A shared device works Tonight: no composer, no Tables & QR, no Settings and no Publish bar,
+  if (query.tab === 'studio' && query.sub === 'design') redirect(designPagePath(venue.id, menu))
+  // A shared device works Tonight: no Studio, no Tables & QR, no Settings and no Publish bar,
   // which need the person's own sign-in (D122 §7, RR-83, RR-84, RR-85). An old link lands on Tonight.
   const sharedDevice = await sessionIsSharedDevice({ tenantId: organization.id, sessionId })
   if (sharedDevice && sharedDeviceTabOf(query.tab) !== workspaceTabOf(query.tab)) {
     redirect(`/venues/${venue.id}?tab=tonight`)
   }
   const openTab = sharedDevice ? sharedDeviceTabOf(query.tab) : workspaceTabOf(query.tab)
-  const composerOpen = openTab === 'composer'
+  const studioOpen = openTab === 'studio'
   const settingsOpen = openTab === 'settings'
   const tablesOpen = openTab === 'tables'
   const tonightOpen = openTab === 'tonight'
@@ -140,14 +145,13 @@ export default async function VenueWorkspacePage({
         <WorkspaceTabs
           sharedDevice={sharedDevice}
           contents={{
-            composer: composerOpen ? (
+            studio: studioOpen ? (
               <Suspense fallback={<ComposerSkeleton />}>
                 <ComposerTab
                   tenantId={organization.id}
                   role={organization.role}
                   venue={venue}
                   menu={query.menu}
-                  sub={query.sub}
                 />
               </Suspense>
             ) : (

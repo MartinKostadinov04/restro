@@ -1,24 +1,21 @@
-// The Composer tab, a server component (U4), with its two subtabs (D92, brief S6):
+// The Studio tab, a server component (U4), with its two subtabs (D92, D129):
 //
 // - Structure: the menu the URL names (`?menu=`, else the live one; one of the venue's several,
-//   D88), with the menu switcher and its layout on top. It reads the menu document and the items
-//   that sit in no section (core/apply, read side), resolves it for this venue and hands the client
-//   component a plain view.
-// - Design: the venue's Design tab (D92, brief S7): the template chooser, then the cards (logo and
-//   header name, guest features, font and screen, colours) beside a sticky phone preview of the
-//   open menu. It reads its own data.
+//   D88), with the menu switcher on top and the Guest functions card under the menu. It reads the
+//   menu document and the items that sit in no section (core/apply, read side), resolves it for this
+//   venue and hands the client component a plain view.
+// - Design: a page of its own (`/venues/<id>/design`), which reads its own data; the subtab only
+//   leads there.
 //
-// Only the open subtab reads its data; the other shows its skeleton until it is chosen. Nothing here
-// writes: the writes are the server actions in ./actions.ts, `@/server/menus-actions` and the Design
-// tab's own.
+// Nothing here writes: the writes are the server actions in ./actions.ts, `@/server/menus-actions`
+// and the guest functions' own.
 import {
   CurrencySchema,
-  designLayoutOf,
   type Locale,
   liveEditions,
   mergeDocumentParts,
   type NodeId,
-  readDesign,
+  readGuestFeatures,
   resolve,
   serviceDate,
   VENUE_MENU_TEMPLATE,
@@ -34,8 +31,6 @@ import { type Venue, withTenant } from '@restro/db'
 import { getLocale } from 'next-intl/server'
 import { Suspense } from 'react'
 import { readNameFallbackNodeIds } from '@/connectors/sync-reads'
-import { DesignSkeleton } from '@/design/design-skeleton'
-import { DesignTab } from '@/design/design-tab'
 import { isAdminLocale, toDataLocale } from '@/i18n/locales'
 import { composerMenusOf } from '@/server/composer/menu'
 import { readItemPayFirstDefault } from '@/server/composer/pay-first'
@@ -47,9 +42,9 @@ import { venueHasTill } from '@/server/venues'
 import { Composer } from './composer'
 import { ComposerSkeleton } from './composer-skeleton'
 import { ComposerSubtabs } from './composer-subtabs'
+import { GuestFeaturesCard } from './guest-features-panel'
 import { MenuBar } from './menu-bar'
 import { NoMenu } from './no-menu'
-import { type ComposerSubtab, composerSubtabOf } from './subtabs'
 import { buildComposerView } from './view-model'
 
 interface ComposerTabProps {
@@ -59,46 +54,39 @@ interface ComposerTabProps {
   readonly venue: Venue
   /** `?menu=`: the menu to open (else the live one). */
   readonly menu?: unknown
-  /** `?sub=`: the subtab to open (else Structure). */
-  readonly sub?: unknown
 }
 
-export function ComposerTab({ tenantId, role, venue, menu, sub }: ComposerTabProps) {
-  const open: ComposerSubtab = composerSubtabOf(sub)
+export function ComposerTab({ tenantId, role, venue, menu }: ComposerTabProps) {
   return (
     <ComposerSubtabs
-      contents={{
-        structure:
-          open === 'structure' ? (
-            <Suspense fallback={<ComposerSkeleton />}>
-              <StructureSubtab tenantId={tenantId} role={role} venue={venue} menu={menu} />
-            </Suspense>
-          ) : (
-            <ComposerSkeleton />
-          ),
-        design:
-          open === 'design' ? (
-            <Suspense fallback={<DesignSkeleton />}>
-              <DesignTab tenantId={tenantId} role={role} venue={venue} menu={menu} />
-            </Suspense>
-          ) : (
-            <DesignSkeleton />
-          ),
-      }}
+      venueId={venue.id}
+      structure={
+        <Suspense fallback={<ComposerSkeleton />}>
+          <StructureSubtab tenantId={tenantId} role={role} venue={venue} menu={menu} />
+        </Suspense>
+      }
     />
   )
 }
 
-/** Structure: the menu switcher and layout, then the section tree and the items. */
-async function StructureSubtab({
-  tenantId,
-  role,
-  venue,
-  menu: requested,
-}: Omit<ComposerTabProps, 'sub'>) {
+/** Structure: the menu switcher, then the section tree and the items, then the Guest functions. */
+async function StructureSubtab({ tenantId, role, venue, menu: requested }: ComposerTabProps) {
   const { menus, current } = await composerMenusOf(tenantId, venue.id, requested)
+  const manager = canManageIntegration(role)
+  const guestFeatures = (
+    <GuestFeaturesCard
+      venueId={venue.id}
+      features={readGuestFeatures(venue.settings)}
+      canEdit={manager}
+    />
+  )
   if (current === null) {
-    return <NoMenu venueId={venue.id} canCreate={canManageIntegration(role)} />
+    return (
+      <div className="grid gap-4">
+        <NoMenu venueId={venue.id} canCreate={manager} />
+        {guestFeatures}
+      </div>
+    )
   }
   const menuId = current.id as NodeId
 
@@ -156,7 +144,6 @@ async function StructureSubtab({
     tillLabel: tillLabelOf(merged.links, tillLabels),
     nameFallbackIds,
   })
-  const manager = canManageIntegration(role)
 
   return (
     <div className="grid gap-4">
@@ -166,8 +153,6 @@ async function StructureSubtab({
         venueName={venue.name}
         menus={menus.map(menuChoice)}
         currentId={menuId}
-        layout={designLayoutOf(readDesign(venue.settings).design.values)}
-        canEdit={manager}
       />
       <Composer
         // Another menu is another document: nothing of the last one's screen state carries over.
@@ -185,6 +170,7 @@ async function StructureSubtab({
         canDelete={manager}
         payFirstDefault={payFirstDefault}
       />
+      {guestFeatures}
     </div>
   )
 }

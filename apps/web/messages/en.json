@@ -150,7 +150,7 @@
     "description": "Every field of an item in the default template, with a sample value. Press a pencil to open its editor; what you save stays on this page only.",
     "item": {
       "title": "Item: Negroni",
-      "description": "The fields of an item in “Venue menu”, laid out like the composer's item sheet."
+      "description": "The fields of an item in “Venue menu”, laid out like the item sheet in Structure."
     },
     "extra": {
       "title": "The other field types",
@@ -236,7 +236,7 @@
       "readOnly": {
         "locked_to_till": "Change this in {source}.",
         "till_decides": "{source} has hidden this or taken it off sale. Change it in {source}.",
-        "composer_toggle": "Show or hide the item from the list in the composer.",
+        "composer_toggle": "Show or hide the item from the list in Structure.",
         "sold_out_control": "Mark an item sold out tonight with the control at the top of this tab."
       },
       "sale": {
@@ -338,7 +338,7 @@
   },
   "devItemSheet": {
     "title": "Item sheet (development only)",
-    "description": "Open the item sheet for an item of the first venue, without the composer. Saves here are real: they go through apply().",
+    "description": "Open the item sheet for an item of the first venue, without Structure. Saves here are real: they go through apply().",
     "noMenu": "This tenant has no venue with a menu yet. Run the seed.",
     "noItems": "The menu has no items yet.",
     "open": "Open {name}",
@@ -828,23 +828,15 @@
       "moreDietary": "More dietary labels: {names}"
     },
     "subtabs": {
-      "label": "Composer view",
+      "label": "Studio view",
       "structure": "Structure",
       "design": "Design"
     },
     "menuBar": {
-      "label": "Menu and its layout",
+      "label": "Menu",
       "menu": "Menu",
       "live": "Live",
-      "manage": "Manage menus",
-      "layout": "Layout for all menus",
-      "layouts": {
-        "list": "List",
-        "one": "One column",
-        "two": "Two columns"
-      },
-      "guestSwitch": "Guests may switch the layout",
-      "saved": "Saved. Guests see it after the next publish"
+      "manage": "Manage menus"
     },
     "layout": {
       "horizontal": "Horizontal row"
@@ -866,7 +858,7 @@
       },
       "item": {
         "title": "Delete {name}?",
-        "description": "The item leaves every menu of the venue and the composer. The history keeps a record.",
+        "description": "The item leaves every menu of the venue and Structure. The history keeps a record.",
         "confirm": "Delete item"
       }
     }
@@ -876,10 +868,9 @@
     "switchSection": "Switch section",
     "comingInStage": "Coming in Stage {stage}",
     "tabs": {
-      "composer": "Composer",
+      "studio": "Studio",
       "tables": "Tables & QR",
       "tonight": "Tonight",
-      "design": "Design",
       "settings": "Settings"
     },
     "settingsSections": {
@@ -897,7 +888,7 @@
       "languages": "Languages",
       "defaultLanguage": "default",
       "currency": "Currency",
-      "readOnly": "The other settings are read-only for now. Editing them arrives with the composer.",
+      "readOnly": "The other settings are read-only for now. Editing them arrives with the Studio.",
       "rename": {
         "label": "Venue name",
         "help": "Shown in the admin and on the guest menu. Guests see a new name after the next publish.",
@@ -988,9 +979,9 @@
         "up_to_date": "Up to date: guests see the latest version.",
         "allUpToDate": "Up to date: every menu is published as it is.",
         "noMenu": "This venue has no menu yet.",
-        "no_visible_items": "Nothing visible to publish: show at least one item in the composer.",
-        "menu_blocked": "The menu cannot be published yet. Check the composer.",
-        "invalid_design": "The saved design can no longer be read, so nothing was published. Save the design again in the Design tab, then publish.",
+        "no_visible_items": "Nothing visible to publish: show at least one item in Structure.",
+        "menu_blocked": "The menu cannot be published yet. Check Structure in the Studio.",
+        "invalid_design": "The saved design can no longer be read, so nothing was published. Save the design again on the Design page, then publish.",
         "held_outdated": "The menu has changed since the publish was held.",
         "held_not_found": "The held publish was already decided.",
         "unsafe_snapshot": "The draft was refused by the safety check.",
@@ -1055,8 +1046,8 @@
       "publishedText": "Guests see it now.",
       "unchanged": "Nothing new to publish: the menu is already version {version}.",
       "no_visible_items": "Nothing visible to publish",
-      "menu_blocked": "The menu cannot be published yet. Check the composer.",
-      "invalid_design": "The saved design can no longer be read, so nothing was published. Save the design again in the Design tab, then publish.",
+      "menu_blocked": "The menu cannot be published yet. Check Structure in the Studio.",
+      "invalid_design": "The saved design can no longer be read, so nothing was published. Save the design again on the Design page, then publish.",
       "held_outdated": "The menu has changed since this publish was held, so it cannot be approved any more. Publish the menu as it is now instead.",
       "held_not_found": "This held publish was already decided.",
       "unsafe_snapshot": "The draft was refused by the safety check. Nothing was published.",
@@ -1116,7 +1107,7 @@
     },
     "confirm": {
       "title": "Return to version {version}?",
-      "description": "Guests will see version {version} again. Changes made since then stay in the composer but are not published. Automatic publishing is paused until you publish.",
+      "description": "Guests will see version {version} again. Changes made since then stay in the Studio but are not published. Automatic publishing is paused until you publish.",
       "cancel": "Cancel",
       "confirm": "Return to version {version}",
       "working": "Returning…"
@@ -1169,7 +1160,7 @@
     "descriptionTill": "The menus come from the till: you can rename them, change their order and choose the live one.",
     "live": "Live",
     "venueNameNote": "(the venue’s name)",
-    "open": "Open {name} in the composer",
+    "open": "Open {name} in the Studio",
     "up": "Move up",
     "down": "Move down",
     "rename": {
@@ -1705,12 +1696,9 @@
   },
   "design": {
     "readOnly": "Only owners and admins can change the design. You can see how it looks.",
-    "save": "Save look",
     "saving": "Saving…",
-    "saved": "Saved. Guests see it after the next publish.",
+    "saved": "Design saved. Guests see it on the next publish.",
     "status": {
-      "clean": "Nothing to save.",
-      "unsaved": "Unsaved changes. The preview already shows them.",
       "invalid": "A colour is not complete yet. Enter it like #3366cc.",
       "unreadable": "Some text would be hard to read. Fix the colours marked in red to save."
     },
@@ -1718,45 +1706,10 @@
       "invalid": "Check the look and try again.",
       "forbidden": "Only owners and admins can change the design.",
       "not_found": "This venue could not be found.",
-      "stale": "Someone else saved the design in the meantime. Their version is now loaded: make your change again.",
+      "stale": "Someone else saved this design. Showing their version.",
       "logo_not_usable": "That logo could not be used. Upload it again.",
       "unreadable": "The look was not saved: some text would be hard to read.",
       "failed": "Something went wrong. Try again."
-    },
-    "templates": {
-      "title": "Template",
-      "description": "The layout guests see when they scan a QR code. You can change it at any time; the menu itself stays the same.",
-      "inUse": "In use",
-      "thumbnailAlt": "Picture of the {name} template",
-      "current": "Template: {name}",
-      "change": "Change",
-      "browse": "See templates",
-      "close": "Close",
-      "preview": "Preview",
-      "previewNamed": "Preview the template {name}",
-      "previewTitle": "Preview: {name}",
-      "previewDescription": "Your menu in this template, with the look you are editing, saved or not. No table is chosen, so only the menu shows."
-    },
-    "lookOptions": {
-      "title": "How this template looks",
-      "help": "Options of the chosen template. They are saved as soon as you change them.",
-      "values": {
-        "list": "List",
-        "one": "One column",
-        "two": "Two columns"
-      }
-    },
-    "logoName": {
-      "title": "Logo and name",
-      "description": "The logo and the name guests see at the top of this menu."
-    },
-    "headerName": {
-      "label": "Name at the top of the menu",
-      "help": "Guests see it as the title of this menu. Leave it empty to use the venue's name ({venue}).",
-      "save": "Save name",
-      "saving": "Saving…",
-      "saved": "Name saved. Guests see it after the next publish.",
-      "noMenu": "This venue has no menu yet. Add one in Structure to give it a name."
     },
     "colours": {
       "title": "Colours",
@@ -1910,30 +1863,6 @@
         "help": "Outlines of buttons and fields, clear against the page and the panels."
       }
     },
-    "style": {
-      "title": "Font, corners, shadow and screen",
-      "description": "How the menu is lettered and shaped, and when it is light or dark.",
-      "font": "Font",
-      "fontHelp": "Six fonts with Bulgarian letters. One font is used for the whole menu.",
-      "sample": "Меню · Menu 12,50 €",
-      "kinds": {
-        "sans": "Sans-serif",
-        "serif": "Serif",
-        "display": "Display"
-      },
-      "radius": "Corners",
-      "radiusValue": "{value} px",
-      "radiusHelp": "How round photos, buttons and sheets are.",
-      "shadow": "Shadow",
-      "shadowHelp": "The shadow around the menu on wider screens. 0 is none.",
-      "scheme": "Light or dark",
-      "schemes": {
-        "auto": "Follow the guest's phone",
-        "light": "Always light",
-        "dark": "Always dark"
-      },
-      "schemeHelp": "Both versions are always prepared; this only decides which one guests get."
-    },
     "logo": {
       "title": "Logo",
       "help": "JPEG, PNG or WebP, up to 10 MB. A wide logo on a transparent background works best.",
@@ -1946,12 +1875,43 @@
     },
     "preview": {
       "title": "Live preview",
-      "hint": "The menu on a guest's phone with the changes you have not saved yet.",
-      "refresh": "Refresh",
       "services": "Preview guest services",
-      "servicesHint": "Shows the bag, the bill, calling a waiter and paying with made-up data, the way guests will see them once they are connected. Nothing is sent.",
-      "servicesNoneOn": "No service is switched on. Switch them on in Guest features above, then press Refresh.",
-      "menu": "Menu: {name}"
+      "servicesNoneOn": "No service is switched on. Switch them on under Guest functions in the Studio.",
+      "failed": "The preview couldn't load. Try again.",
+      "device": "Preview width",
+      "devices": {
+        "phone": "Phone",
+        "tablet": "Tablet",
+        "pc": "PC"
+      },
+      "loading": "The preview is loading"
+    },
+    "title": "Design",
+    "back": "Back to the Studio",
+    "undo": "Undo",
+    "done": "Done",
+    "cancel": "Cancel",
+    "unsaved": "Unsaved",
+    "leave": {
+      "title": "Leave without saving?",
+      "description": "The changes you made here since the last save will be lost.",
+      "leave": "Leave",
+      "keep": "Keep editing"
+    },
+    "styles": {
+      "title": "Style"
+    },
+    "fonts": {
+      "title": "Fonts"
+    },
+    "layout": {
+      "title": "Layout for all menus",
+      "layouts": {
+        "list": "List",
+        "one": "One column",
+        "two": "Two columns"
+      },
+      "guestSwitch": "Guests may switch the layout"
     }
   },
   "tonight": {
@@ -2653,7 +2613,7 @@
     "st_pace": "Most orders per table in 15 minutes",
     "st_off": "Off",
     "st_call": "A waiter call waits",
-    "st_call_where": "Call a waiter is switched on in the Composer, under Guest features.",
+    "st_call_where": "Call a waiter is switched on in the Studio, under Guest features.",
     "st_now": "Applies from now.",
     "st_loc_denied": "Your browser didn't share the location. Allow it for this site, or set the spot on a phone at the venue.",
     "st_loc_rough": "The reading is too rough ({n} m). Step away from walls or turn Wi-Fi on, and try again.",

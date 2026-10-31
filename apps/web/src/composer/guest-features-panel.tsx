@@ -1,8 +1,7 @@
 'use client'
 
 // The "Guest features" card (brief SH-05b, D71): the guest services the venue switches on and off.
-// It is card 2 of the Design subtab (D92; brief S7 restyled it to sit with the other cards, with
-// its own Save: it saves apart from "Save look"). Menu: the filters and the allergen line, which is
+// It is its own card in the Studio, under Structure (D129), with its own Save. Menu: the filters and the allergen line, which is
 // never a switch (R6). Service at the table: calling a
 // waiter with its request kinds, the bill, ordering and paying from the phone. A switch says what
 // the venue wants; a guest sees a service only when the platform supports it, the channel is
@@ -40,7 +39,7 @@ export interface GuestFeaturesCardProps {
   readonly canEdit: boolean
 }
 
-/** The guest features as a card of their own on the Design subtab (D92). */
+/** The guest functions as a card of their own in the Studio, under Structure (D129). */
 export function GuestFeaturesCard(props: GuestFeaturesCardProps) {
   const t = useTranslations('composer.guestFeatures')
   return (

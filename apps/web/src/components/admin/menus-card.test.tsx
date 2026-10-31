@@ -89,9 +89,7 @@ describe('the Menus card', () => {
     expect(within(row(1)).getByTestId('menu-open').getAttribute('href')).toBe(
       composerMenuHref(VENUE, 'nd_brunch'),
     )
-    expect(composerMenuHref(VENUE, 'nd_brunch')).toBe(
-      `/venues/${VENUE}?tab=composer&menu=nd_brunch`,
-    )
+    expect(composerMenuHref(VENUE, 'nd_brunch')).toBe(`/venues/${VENUE}?tab=studio&menu=nd_brunch`)
   })
 
   it('renames a menu in place', async () => {

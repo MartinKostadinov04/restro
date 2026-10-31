@@ -18,7 +18,7 @@ Every venue's menu is now drawn by one renderer, in a Style. Basic is a plain, r
 - **A POS item off sale:** an item the POS has off sale is not on the guest page either.
 - **Old menus:** a menu published before this change still opens, and is drawn by the renderer.
 
-You can't switch Demo Bar to Editorial from the Design tab yet: the Style tiles come with the Studio (#175). The automatic tests check Editorial against today's look; its only differences are the ones written in its Style file, and the note, email and promo boxes growing from 15 to 16 px so a phone doesn't zoom in on them.
+To switch Demo Bar to Editorial, pick its tile on the Design page in the Studio (section D), press Done, then publish. The automatic tests check Editorial against today's look; its only differences are the ones written in its Style file, and the note, email and promo boxes growing from 15 to 16 px so a phone doesn't zoom in on them.
 
 ## B. Before any pilot: ordering and paying on the renderer (Martin 10-30)
 
@@ -44,7 +44,7 @@ Run it **twice, once with Demo Bar on Basic and once on Editorial** (pick the St
 
 ## C. The browsing pages' options (#172): what you can see today
 
-The renderer now draws the options of the browsing pages. Choosing them comes with the Studio's pages in a later ticket (#175), so until then you see them in two places: **Basic** on Demo Bar, which changed once with this ticket (see the first check), and the look of **Editorial**, which did not change at all. To see any other value now, ask the lead for a preview of it.
+The renderer now draws the options of the browsing pages. Choosing them comes with the Advanced pages of the Studio in a later ticket (#176), so until then you see them in two places: **Basic** on Demo Bar, which changed once with this ticket (see the first check), and the look of **Editorial**, which did not change at all. To see any other value now, ask the lead for a preview of it.
 
 **What changed on Basic, once, for good:**
 
@@ -70,7 +70,25 @@ The renderer now draws the options of the browsing pages. Choosing them comes wi
 - **A long label:** nothing on a Basic row runs off the screen, and a price at the end of a row is always there to read.
 - **The layout switch:** tap the three layout icons on a section. Every vertical section changes; a strip that scrolls sideways does not.
 - **Editorial is the same as before:** a venue on Editorial looks exactly as it did before this ticket.
-- **In the composer:** "Layout" in the menu bar now changes the design, and the guest page follows after you publish.
+- **The layout for all menus:** it is on the Design page now (section D), and the guest page follows after you publish.
+
+## D. The Studio and the Design page in Simple (#175)
+
+Open Demo Bar in the admin, on a computer first, in English and then in Bulgarian.
+
+- **The tabs:** the first tab reads **Studio**. Inside it are **Structure** and **Design**. Structure is the screen you know, with the Guest functions card under it, and no "Layout" in its menu bar.
+- **The page:** Design opens a full page: the editing panel on the left, the preview on the right, on a phone's width. "Back to the Studio" is at the top.
+- **The widths:** tap Phone, Tablet, PC. The menu lays itself out as it would on that device, shrunk to fit. Open a dish: its sheet stays inside the preview.
+- **A Style:** there are two tiles, Basic and Editorial, each a little picture of your menu in your colours. Tap Editorial: the preview changes at once, and your colours, logo and body font stay.
+- **Colours and fonts:** change the brand colour, then the body and heading fonts. The preview follows each change at once, and "Unsaved" shows beside the buttons.
+- **Undo:** tap Undo. The last change goes back; tap it until it greys out, and you are where you started.
+- **Cancel:** change a few things and tap Cancel. Everything since the last save is gone, without asking.
+- **Leaving:** change something and tap "Back to the Studio": it asks first, and "Keep editing" keeps your changes. Closing the browser tab warns too.
+- **Done:** change the Style and tap Done. A message says guests see it on the next publish. Open the guest page: **still the old look**. Publish: now it has the new one.
+- **Two people at once:** open the Design page in two browser windows. Change something in each. Tap Done in the first, then in the second. The second says someone else saved, stays on the screen until you close it, and shows the first one's design.
+- **A plain member:** sign in as someone who is a member and not an owner or admin. The page opens, says only owners and admins can change the design, every control is greyed out, and there is no Done or Cancel.
+- **On a phone:** open it at phone width. The preview is under the panel and scrolls inside itself. Done and Cancel stay at the bottom of the screen wherever you scroll. Nothing runs off sideways, including the long Bulgarian words.
+- **A venue from the till and a venue made by hand:** both get the same page.
 
 ## What to report
 

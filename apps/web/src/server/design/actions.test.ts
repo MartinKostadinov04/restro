@@ -1,9 +1,11 @@
-// The Design tab's server actions against a real Postgres, as the restro_app role (brief SH-05a,
-// D129): what saveLookAction and saveLayoutAction write through `setDesign`, who may call them, and
-// every refusal. The session is the only fake: it says which organisation and role is asking.
+// The Design page's server action against a real Postgres, as the restro_app role (D129): what
+// saveDesignAction writes through `setDesign`, who may call it, and every refusal. The session is the
+// only fake: it says which organisation and role is asking.
 import {
   BASIC_DESIGN_VALUES,
   DEFAULT_DESIGN,
+  type DesignContent,
+  designContentOf,
   designThemeOf,
   newId,
   readDesign,
@@ -16,7 +18,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 import { getPool } from '../db'
 import { hasDatabase, openOwnerPool, testSlug, useTestServerEnvironment } from '../test-database'
-import { saveLayoutAction, saveLookAction } from './actions'
+import { saveDesignAction } from './actions'
 import { loadDesign } from './service'
 
 const asked = vi.hoisted(() => ({ tenantId: '', role: 'owner' }))
@@ -26,7 +28,12 @@ vi.mock('@/server/session', () => ({
   requireTenant: async () => ({
     user: { id: 'us_sh05atester', name: 'Tester', email: 'tester@example.test' },
     organizations: [],
-    organization: { id: asked.tenantId, name: 'SH-05a club', slug: 'sh05a-club', role: asked.role },
+    organization: {
+      id: asked.tenantId,
+      name: 'Design club',
+      slug: 'design-club',
+      role: asked.role,
+    },
   }),
 }))
 vi.mock('next/cache', () => ({ revalidatePath: (path: string) => revalidated.push(path) }))
@@ -34,21 +41,22 @@ vi.mock('next/cache', () => ({ revalidatePath: (path: string) => revalidated.pus
 const midnight = THEME_PRESETS.find((preset) => preset.id === 'midnight')
 if (midnight === undefined) throw new Error('the Midnight preset is missing')
 
-/** A whole look, built from the Midnight colours. */
-const wholeTheme = (fields: Record<string, unknown> = {}) => ({
-  logo_asset_id: null,
+/** A whole design: Basic with the Midnight colours, and the body font asked for. */
+const wholeDesign = (font = 'lora', fields: Record<string, unknown> = {}) => ({
+  style: 'basic',
+  values: {
+    ...BASIC_DESIGN_VALUES,
+    general: { ...BASIC_DESIGN_VALUES.general, body_font: font, screen: 'dark' },
+  },
   colors: midnight.colours,
   overrides: midnight.overrides,
-  font: 'lora',
-  radius: midnight.radius,
-  shadow: 1,
-  scheme: 'dark',
+  logo_asset_id: null,
   ...fields,
 })
 
 const NO_ASSET = 'as_0123456789ABCDEFGHIJKL'
 
-describe.skipIf(!hasDatabase)('the Design tab’s actions (as the restro_app role)', () => {
+describe.skipIf(!hasDatabase)('the Design page’s action (as the restro_app role)', () => {
   const tenant = newId('tn')
   const otherTenant = newId('tn')
   let owner: pg.Pool
@@ -68,18 +76,18 @@ describe.skipIf(!hasDatabase)('the Design tab’s actions (as the restro_app rol
       JSON.stringify(settings),
     ])
   const recordOf = async (id: string) => readDesignRecord(await settingsOf(id))
-  /** Saves a look from the revision stored now. */
-  const saveNow = async (fields: Record<string, unknown> = {}) =>
-    saveLookAction({
+  /** Saves a design from the revision stored now. */
+  const saveNow = async (design: unknown = wholeDesign()) =>
+    saveDesignAction({
       venueId,
       expectedRevision: readDesign(await settingsOf(venueId)).revision,
-      theme: wholeTheme(fields),
+      design,
     })
 
   beforeAll(async () => {
     useTestServerEnvironment()
     owner = openOwnerPool()
-    await provisionTenant(getPool(), { tenantId: tenant, name: 'SH-05a club' })
+    await provisionTenant(getPool(), { tenantId: tenant, name: 'Design club' })
     await provisionTenant(getPool(), { tenantId: otherTenant, name: 'Another club' })
     venueId = (
       await provisionVenue(getPool(), tenant, { name: 'Look Club', slug: testSlug('look') })
@@ -108,8 +116,8 @@ describe.skipIf(!hasDatabase)('the Design tab’s actions (as the restro_app rol
     }
   })
 
-  describe('saveLookAction', () => {
-    it('saves a whole look into the record, and refreshes the venue page', async () => {
+  describe('saveDesignAction', () => {
+    it('saves the whole design into the record, and refreshes the venue and Design pages', async () => {
       expect(await saveNow()).toEqual({ ok: true, revision: 1 })
       const stored = await recordOf(venueId)
       expect(stored).toMatchObject({
@@ -119,89 +127,68 @@ describe.skipIf(!hasDatabase)('the Design tab’s actions (as the restro_app rol
         colors: midnight.colours,
         provenance: { layer: 'manual', source: 'manual', actor: 'user:us_sh05atester' },
       })
-      expect(stored?.values.general).toMatchObject({
-        body_font: 'lora',
-        corners: 'soft',
-        depth: 'low',
-        screen: 'dark',
-      })
+      expect(stored?.values.general).toMatchObject({ body_font: 'lora', screen: 'dark' })
       expect(stored?.overrides?.dark?.background).toBe('#0e0d0c')
-      expect(revalidated).toEqual([`/venues/${venueId}`])
+      expect(revalidated).toEqual([`/venues/${venueId}`, `/venues/${venueId}/design`])
     })
 
     it('appends one event with the person and the job for every save', async () => {
+      const eventsOfVenue = () =>
+        owner.query<{ source: string; actor: string; job_id: string; field_key: string }>(
+          `select source, actor, job_id, field_key from restro.events
+           where tenant_id = $1 and scope = $2 order by seq`,
+          [tenant, `venue:${venueId}`],
+        )
+      // Events are append-only: those of the earlier tests stay.
+      const before = (await eventsOfVenue()).rows.length
       await saveNow()
-      await saveNow({ font: 'manrope' })
-      const events = await owner.query<{
-        source: string
-        actor: string
-        job_id: string
-        field_key: string
-      }>(
-        `select source, actor, job_id, field_key from restro.events
-         where tenant_id = $1 and scope = $2 order by seq`,
-        [tenant, `venue:${venueId}`],
-      )
-      expect(events.rows.filter((row) => row.field_key === 'design').length).toBeGreaterThanOrEqual(
-        2,
-      )
-      for (const row of events.rows) {
+      await saveNow(wholeDesign('manrope'))
+      const added = (await eventsOfVenue()).rows.slice(before)
+      expect(added.map((row) => row.field_key)).toEqual(['design', 'design'])
+      for (const row of added) {
         expect(row).toMatchObject({ source: 'manual', actor: 'user:us_sh05atester' })
         expect(row.job_id).toMatch(/^jb_/)
       }
     })
 
-    it('saves a look built from one brand colour', async () => {
-      const theme = {
-        logo_asset_id: null,
-        brand: '#E11D48',
-        font: 'inter',
-        radius: 8,
-        shadow: 1,
-        scheme: 'auto',
+    it('keeps every option’s value as the page sent it, the layout among them', async () => {
+      const values = {
+        ...BASIC_DESIGN_VALUES,
+        items: { ...BASIC_DESIGN_VALUES.items, layout: 'one', guest_switch: 'off' },
       }
-      expect(await saveLookAction({ venueId, expectedRevision: 0, theme })).toEqual({
-        ok: true,
-        revision: 1,
-      })
-      expect(readDesign(await settingsOf(venueId)).design).toEqual({
-        ...DEFAULT_DESIGN,
-        brand: '#e11d48',
-      })
+      await saveNow(wholeDesign('lora', { values }))
+      expect((await recordOf(venueId))?.values).toEqual(values)
     })
 
-    it('leaves the other settings of the venue and the record’s other pages alone', async () => {
+    it('leaves the other settings of the venue alone', async () => {
       await setSettings(venueId, { other: 1 })
-      await saveLayoutAction({ venueId, layout: 'one', guestSwitch: false })
       await saveNow()
-      const settings = await settingsOf(venueId)
-      expect(settings?.other).toBe(1)
-      expect(readDesign(settings).design.values.items).toMatchObject({
-        layout: 'one',
-        guest_switch: 'off',
-      })
+      expect((await settingsOf(venueId))?.other).toBe(1)
     })
 
-    it('of two looks saved at once keeps one, and tells the other what is stored', async () => {
+    it('of two designs saved at once keeps one, and tells the other what is stored', async () => {
       const results = await Promise.all([
-        saveLookAction({ venueId, expectedRevision: 0, theme: wholeTheme({ font: 'manrope' }) }),
-        saveLookAction({ venueId, expectedRevision: 0, theme: wholeTheme({ font: 'lora' }) }),
+        saveDesignAction({ venueId, expectedRevision: 0, design: wholeDesign('manrope') }),
+        saveDesignAction({ venueId, expectedRevision: 0, design: wholeDesign('lora') }),
       ])
       const kept = results.findIndex((result) => result.ok)
       expect(kept).not.toBe(-1)
       expect(results[1 - kept]).toMatchObject({
         ok: false,
         error: 'stale',
-        view: { revision: 1, theme: { font: kept === 0 ? 'manrope' : 'lora' } },
+        view: {
+          revision: 1,
+          design: { values: { general: { body_font: kept === 0 ? 'manrope' : 'lora' } } },
+        },
       })
     })
 
     it('refuses a stale revision with the stored design and writes nothing', async () => {
-      await saveNow({ font: 'manrope' })
-      const result = await saveLookAction({
+      await saveNow(wholeDesign('manrope'))
+      const result = await saveDesignAction({
         venueId,
         expectedRevision: 0,
-        theme: wholeTheme({ font: 'lora' }),
+        design: wholeDesign('lora'),
       })
       expect(result).toMatchObject({
         ok: false,
@@ -211,16 +198,16 @@ describe.skipIf(!hasDatabase)('the Design tab’s actions (as the restro_app rol
       expect((await recordOf(venueId))?.values.general.body_font).toBe('manrope')
     })
 
-    it('refuses a look whose colours do not read, naming every failing pair, and writes nothing', async () => {
-      expect(await saveNow({ font: 'manrope' })).toEqual({ ok: true, revision: 1 })
-      const unreadable = wholeTheme({
+    it('refuses a design whose colours do not read, naming every failing pair, and writes nothing', async () => {
+      expect(await saveNow(wholeDesign('manrope'))).toEqual({ ok: true, revision: 1 })
+      const unreadable = wholeDesign('lora', {
         overrides: {
           ...midnight.overrides,
           // Text the colour of the page, in the light set.
           light: { ...midnight.overrides.light, text: midnight.overrides.light.background },
         },
       })
-      const result = await saveLookAction({ venueId, expectedRevision: 1, theme: unreadable })
+      const result = await saveDesignAction({ venueId, expectedRevision: 1, design: unreadable })
       expect(result).toMatchObject({ ok: false, error: 'unreadable' })
       if (result.ok || result.error !== 'unreadable') return
       expect(result.issues.map((issue) => `${issue.mode}:${issue.fg}-on-${issue.bg}`)).toEqual([
@@ -229,23 +216,43 @@ describe.skipIf(!hasDatabase)('the Design tab’s actions (as the restro_app rol
       ])
       expect(result.issues[0]).toMatchObject({ min: 4.5 })
       expect(result.issues[0]?.ratio).toBeLessThan(4.5)
-      // The earlier look is still the stored one.
+      // The earlier design is still the stored one.
       expect((await recordOf(venueId))?.values.general.body_font).toBe('manrope')
     })
 
-    it('refuses a partial look (the old card’s shape, or a v2 field missing) and writes nothing', async () => {
-      const complete = wholeTheme()
-      const partial: [string, unknown][] = [
-        ['the first version’s brand and logo only', { logo_asset_id: null, brand: '#2563eb' }],
-        ['no font', { ...complete, font: undefined }],
-        ['no corners', { ...complete, radius: undefined }],
-        ['no shadow', { ...complete, shadow: undefined }],
-        ['no light/dark policy', { ...complete, scheme: undefined }],
-        ['three colours and a brand colour', { ...complete, brand: '#2563eb' }],
-        ['null (that would drop the look)', null],
+    it('refuses input that is not a whole design, and writes nothing', async () => {
+      const whole = wholeDesign()
+      const { general, ...otherPages } = whole.values
+      const { body_font: _noFont, ...generalWithoutFont } = general
+      const bad: unknown[] = [
+        null,
+        'design',
+        { venueId, design: whole },
+        { venueId, expectedRevision: -1, design: whole },
+        { venueId, expectedRevision: 0, design: null },
+        { venueId, expectedRevision: 0, design: { ...whole, style: 'made-up' } },
+        { venueId, expectedRevision: 0, design: { ...whole, brand: '#2563eb' } },
+        { venueId, expectedRevision: 0, design: { ...whole, extra: 1 } },
+        {
+          venueId,
+          expectedRevision: 0,
+          design: { ...whole, values: { ...otherPages, general: generalWithoutFont } },
+        },
+        {
+          venueId,
+          expectedRevision: 0,
+          design: { ...whole, values: { ...otherPages, general: { ...general, body_font: 'x' } } },
+        },
+        {
+          venueId,
+          expectedRevision: 0,
+          design: { ...whole, colors: { primary: 'red', secondary: '#fff', tertiary: '#000' } },
+        },
+        { venueId: 'vn_nope', expectedRevision: 0, design: whole },
+        { venueId, expectedRevision: 0, design: whole, extra: 1 },
       ]
-      for (const [label, theme] of partial) {
-        expect(await saveLookAction({ venueId, expectedRevision: 0, theme }), label).toEqual({
+      for (const input of bad) {
+        expect(await saveDesignAction(input), JSON.stringify(input)).toEqual({
           ok: false,
           error: 'invalid',
         })
@@ -254,40 +261,11 @@ describe.skipIf(!hasDatabase)('the Design tab’s actions (as the restro_app rol
       expect(revalidated).toEqual([])
     })
 
-    it('refuses input that is not a look at all', async () => {
-      const bad: unknown[] = [
-        null,
-        'theme',
-        { venueId, theme: wholeTheme() },
-        { venueId, expectedRevision: -1, theme: wholeTheme() },
-        { venueId, expectedRevision: 0, theme: wholeTheme({ font: 'comic-sans' }) },
-        { venueId, expectedRevision: 0, theme: wholeTheme({ radius: 99 }) },
-        {
-          venueId,
-          expectedRevision: 0,
-          theme: wholeTheme({ colors: { primary: 'red', secondary: '#fff', tertiary: '#000' } }),
-        },
-        { venueId, expectedRevision: 0, theme: wholeTheme({ extra: 1 }) },
-        { venueId: 'vn_nope', expectedRevision: 0, theme: wholeTheme() },
-        { venueId, expectedRevision: 0, theme: wholeTheme(), extra: 1 },
-      ]
-      for (const input of bad) {
-        expect(await saveLookAction(input), JSON.stringify(input)).toEqual({
-          ok: false,
-          error: 'invalid',
-        })
-      }
-      expect(await recordOf(venueId)).toBeNull()
-    })
-
     it('refuses a logo that is not a stored image of this organisation', async () => {
-      expect(
-        await saveLookAction({
-          venueId,
-          expectedRevision: 0,
-          theme: wholeTheme({ logo_asset_id: NO_ASSET }),
-        }),
-      ).toEqual({ ok: false, error: 'logo_not_usable' })
+      expect(await saveNow(wholeDesign('lora', { logo_asset_id: NO_ASSET }))).toEqual({
+        ok: false,
+        error: 'logo_not_usable',
+      })
       expect(await recordOf(venueId)).toBeNull()
     })
 
@@ -304,72 +282,20 @@ describe.skipIf(!hasDatabase)('the Design tab’s actions (as the restro_app rol
 
     it('does not find a venue of another organisation', async () => {
       expect(
-        await saveLookAction({
+        await saveDesignAction({
           venueId: otherVenueId,
           expectedRevision: 0,
-          theme: wholeTheme(),
+          design: wholeDesign(),
         }),
       ).toEqual({ ok: false, error: 'not_found' })
       expect(await recordOf(otherVenueId)).toBeNull()
       expect(
-        await saveLookAction({
+        await saveDesignAction({
           venueId: newId('vn'),
           expectedRevision: 0,
-          theme: wholeTheme(),
+          design: wholeDesign(),
         }),
       ).toEqual({ ok: false, error: 'not_found' })
-    })
-  })
-
-  describe('saveLayoutAction', () => {
-    it('saves the layout and the guest switch into the record and keeps the rest', async () => {
-      await saveNow()
-      expect(await saveLayoutAction({ venueId, layout: 'two', guestSwitch: true })).toEqual({
-        ok: true,
-      })
-      const stored = await recordOf(venueId)
-      expect(stored?.revision).toBe(2)
-      expect(stored?.values.items).toMatchObject({ layout: 'two', guest_switch: 'on' })
-      expect(stored?.values.general.body_font).toBe('lora')
-      expect(revalidated).toContain(`/venues/${venueId}`)
-    })
-
-    it('makes the first record of a venue that has none, on Basic', async () => {
-      expect(await saveLayoutAction({ venueId, layout: 'one', guestSwitch: false })).toEqual({
-        ok: true,
-      })
-      const stored = await recordOf(venueId)
-      expect(stored?.revision).toBe(1)
-      expect(stored?.values).toEqual({
-        ...BASIC_DESIGN_VALUES,
-        items: { ...BASIC_DESIGN_VALUES.items, layout: 'one', guest_switch: 'off' },
-      })
-    })
-
-    it('refuses a member, a layout that is not one, and another organisation’s venue', async () => {
-      asked.role = 'member'
-      expect(await saveLayoutAction({ venueId, layout: 'list', guestSwitch: true })).toEqual({
-        ok: false,
-        error: 'not_allowed',
-      })
-      asked.role = 'owner'
-      for (const input of [
-        null,
-        { venueId, layout: 'grid', guestSwitch: true },
-        { venueId, layout: 'list', guestSwitch: 'yes' },
-        { venueId, layout: 'list' },
-        { venueId, layout: 'list', guestSwitch: true, colour: 'red' },
-      ]) {
-        expect(await saveLayoutAction(input), JSON.stringify(input)).toEqual({
-          ok: false,
-          error: 'invalid',
-        })
-      }
-      expect(
-        await saveLayoutAction({ venueId: otherVenueId, layout: 'list', guestSwitch: true }),
-      ).toEqual({ ok: false, error: 'unknown_venue' })
-      expect(await recordOf(venueId)).toBeNull()
-      expect(await recordOf(otherVenueId)).toBeNull()
     })
   })
 
@@ -381,17 +307,19 @@ describe.skipIf(!hasDatabase)('the Design tab’s actions (as the restro_app rol
       const view = await loadDesign(getPool(), tenant, row, noStore, 'owner')
       expect(view).toEqual({
         revision: 0,
+        design: designContentOf(DEFAULT_DESIGN),
         theme: designThemeOf(DEFAULT_DESIGN),
         logo: null,
         canEdit: true,
       })
     })
 
-    it('gives the saved look and its revision, and read-only for a member', async () => {
+    it('gives the saved design and its revision, and read-only for a member', async () => {
       await saveNow()
       const row = { settings: (await settingsOf(venueId)) ?? {} }
       const view = await loadDesign(getPool(), tenant, row, noStore, 'member')
       expect(view.revision).toBe(1)
+      expect((view.design as DesignContent).values.general.body_font).toBe('lora')
       expect(view.theme.font).toBe('lora')
       expect(view.theme.colors).toEqual(midnight.colours)
       expect(view.canEdit).toBe(false)

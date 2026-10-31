@@ -5,7 +5,7 @@
 // - `MIXED`: the attacker's own venue with the victim's child ids (the way past a venue check).
 //
 // `pin` is left out: the caller is a signed-in person on their own phone.
-import { newId, THEME_PRESETS } from '@restro/core'
+import { DEFAULT_DESIGN, newId } from '@restro/core'
 
 import * as composer from '@/composer/actions'
 import * as paymentMode from '@/composer/payment-mode-actions'
@@ -45,17 +45,6 @@ export interface Attack {
   readonly ownOrganisation?: boolean
 }
 
-const midnight = THEME_PRESETS.find((preset) => preset.id === 'midnight')
-if (midnight === undefined) throw new Error('the Midnight preset is missing')
-const WHOLE_THEME = {
-  logo_asset_id: null,
-  colors: midnight.colours,
-  overrides: midnight.overrides,
-  font: 'lora',
-  radius: midnight.radius,
-  shadow: 3,
-  scheme: 'dark',
-}
 const KEYS = (id: string) => [{ id, key: 'a1' }]
 
 /** All the victim's ids. */
@@ -282,14 +271,13 @@ export const ATTACKS: readonly Attack[] = [
       }),
   },
   {
-    action: 'saveLookAction',
+    action: 'saveDesignAction',
     call: (v) =>
-      design.saveLookAction({ venueId: v.venues[0].id, expectedRevision: 0, theme: WHOLE_THEME }),
-  },
-  {
-    action: 'saveLayoutAction',
-    call: (v) =>
-      design.saveLayoutAction({ venueId: v.venues[0].id, layout: 'list', guestSwitch: false }),
+      design.saveDesignAction({
+        venueId: v.venues[0].id,
+        expectedRevision: 0,
+        design: DEFAULT_DESIGN,
+      }),
   },
 
   // Integrations.

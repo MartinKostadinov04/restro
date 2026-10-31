@@ -120,7 +120,7 @@ test('the sidebar lists the venues by name, then All venues, New venue and Setti
   await expect(venueList(page).locator('[aria-current="page"]')).toHaveCount(1)
 
   // The venues' sections are the tabs of a venue's page: the sidebar lists none of them.
-  for (const section of ['Composer', 'Tables & QR', 'Design']) {
+  for (const section of ['Studio', 'Tables & QR', 'Design']) {
     await expect(page.locator('[data-sidebar="sidebar"]').getByText(section)).toHaveCount(0)
   }
   // One organisation: its name, nothing to switch; and no venue switcher in the footer.
@@ -139,9 +139,9 @@ test('open a venue from the sidebar, then swap to another on the same tab', asyn
   await expect(page.getByTestId('venue-nav-all')).not.toHaveAttribute('aria-current', 'page')
 
   // The venue's tabs (D97): no Publishing tab; the Publish button heads every tab instead. Design
-  // is the composer's subtab (D92), drawn in a tab list of its own under the composer.
+  // is the Studio's subtab (D129), drawn in a tab list of its own under the Studio.
   await expect(page.getByRole('tablist').first().getByRole('tab')).toHaveText([
-    'Composer',
+    'Studio',
     'Tables & QR',
     'Tonight',
     'Settings',

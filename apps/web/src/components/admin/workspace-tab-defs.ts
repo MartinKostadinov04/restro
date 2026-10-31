@@ -29,12 +29,12 @@ export interface WorkspaceTabDef {
 }
 
 /**
- * The venue page's tabs (D97, #85): Composer, Tables & QR, Tonight, Settings. Design is the composer's second
- * subtab (D92, brief S6). The Publishing tab is gone: the Publish button is in the header on
+ * The venue page's tabs (D97, #85): Studio, Tables & QR, Tonight, Settings. Structure and Design are the
+ * Studio's subtabs (D129). The Publishing tab is gone: the Publish button is in the header on
  * every tab, and its settings are Settings › Publish and › Versioning.
  */
 export const WORKSPACE_TAB_DEFS = [
-  { value: 'composer', labelKey: 'workspace.tabs.composer', icon: LayoutListIcon },
+  { value: 'studio', labelKey: 'workspace.tabs.studio', icon: LayoutListIcon },
   { value: 'tables', labelKey: 'workspace.tabs.tables', icon: QrCodeIcon },
   { value: 'tonight', labelKey: 'workspace.tabs.tonight', icon: ConciergeBellIcon },
   { value: 'settings', labelKey: 'workspace.tabs.settings', icon: SettingsIcon },
@@ -44,7 +44,7 @@ export const WORKSPACE_TAB_DEFS = [
 export type WorkspaceTabValue = (typeof WORKSPACE_TAB_DEFS)[number]['value']
 
 /** The tab shown when `?tab=` is absent or unknown. */
-export const DEFAULT_WORKSPACE_TAB: WorkspaceTabValue = 'composer'
+export const DEFAULT_WORKSPACE_TAB: WorkspaceTabValue = 'studio'
 
 export function isWorkspaceTab(value: unknown): value is WorkspaceTabValue {
   return WORKSPACE_TAB_DEFS.some((tab) => tab.value === value)
@@ -53,17 +53,18 @@ export function isWorkspaceTab(value: unknown): value is WorkspaceTabValue {
 /**
  * The tab a `?tab=` value opens. Tabs that are gone open where their content went: the venue's
  * Integration tab (CF-09b, D73: the venue's part is the Menu source card) and the Publishing tab
- * (D97: Settings › Publish and › Versioning) open Settings; the Design tab (D92) opens the
- * composer, whose Design subtab the page then shows. Anything else unknown opens the default tab.
+ * (D97: Settings › Publish and › Versioning) open Settings; the composer and the Design tab open the
+ * Studio (the page sends an old link on to its new address). Anything else unknown opens the default
+ * tab.
  */
 export function workspaceTabOf(requested: unknown): WorkspaceTabValue {
   if (requested === 'integration' || requested === 'publishing') return 'settings'
-  if (requested === 'design') return 'composer'
+  if (requested === 'composer' || requested === 'design') return 'studio'
   return isWorkspaceTab(requested) ? requested : DEFAULT_WORKSPACE_TAB
 }
 
 /**
- * The tabs a shared device has (D122 §7, RR-83, RR-84, RR-85): it works Tonight, and the composer,
+ * The tabs a shared device has (D122 §7, RR-83, RR-84, RR-85): it works Tonight, and the Studio,
  * Tables & QR and Settings need the person's own sign-in, so they aren't there and Tonight is where
  * it opens.
  */
