@@ -26,7 +26,7 @@ import type {
 import { designValuesOfStyle, SAVED_STYLE_NAME_MAX, styleValuesOf } from '@restro/core'
 import { MoreHorizontalIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useDeferredValue, useId, useMemo, useState, useTransition } from 'react'
+import { useDeferredValue, useId, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -102,7 +102,7 @@ export function MyStyles({
   const nameId = useId()
   const [naming, setNaming] = useState(false)
   const [name, setName] = useState('')
-  const [busy, startBusy] = useTransition()
+  const [busy, setBusy] = useState(false)
   const entries = useMemo(() => entriesOf(data), [data])
 
   // Typing a colour must stay smooth: the pictures follow a moment later.
@@ -115,19 +115,27 @@ export function MyStyles({
   /** The values the draft holds as a Style carries them: the body font dropped (D128). */
   const draftStyleValues = () => styleValuesOf(values)
 
+  /**
+   * One Style write, with the button and the menu switched off while it runs. Not a React
+   * transition: `onChanged` reloads the page's data, and a pending transition around the dialog's
+   * own open state left the dialog unable to open a second time in a real browser.
+   */
   function run(
     work: Promise<{ ok: boolean; error?: string }>,
     done: (result: { ok: true; styleId?: string }) => void,
   ) {
-    startBusy(async () => {
-      const result = await work.catch(() => ({ ok: false, error: 'failed' }) as const)
-      if (result.ok) {
-        done(result as { ok: true; styleId?: string })
-        onChanged()
-        return
-      }
-      toast.error(t(`errors.${result.error ?? 'failed'}`))
-    })
+    setBusy(true)
+    void work
+      .catch(() => ({ ok: false, error: 'failed' }) as const)
+      .then((result) => {
+        if (result.ok) {
+          done(result as { ok: true; styleId?: string })
+          onChanged()
+          return
+        }
+        toast.error(t(`errors.${result.error ?? 'failed'}`))
+      })
+      .finally(() => setBusy(false))
   }
 
   function onSave() {

@@ -177,6 +177,18 @@ describe('My styles', () => {
     expect(refresh).toHaveBeenCalled()
   })
 
+  it('opens the box again after a save, so a second Style can be named', async () => {
+    setup()
+    await userEvent.click(screen.getByTestId('design-save-style'))
+    await userEvent.type(screen.getByTestId('design-save-style-name'), 'First')
+    await userEvent.click(screen.getByTestId('design-save-style-confirm'))
+    await waitFor(() => expect(screen.queryByTestId('design-save-style-dialog')).toBeNull())
+    await userEvent.click(screen.getByTestId('design-save-style'))
+    await waitFor(() => expect(screen.getByTestId('design-save-style-name')).toBeTruthy())
+    // The box opens empty: the name just saved is not still in it.
+    expect((screen.getByTestId('design-save-style-name') as HTMLInputElement).value).toBe('')
+  })
+
   it('names a name the organisation already has, and keeps the dialog open', async () => {
     actions.saveStyleAction.mockResolvedValue({ ok: false, error: 'name_taken' })
     setup()
