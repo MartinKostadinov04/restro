@@ -311,7 +311,13 @@ for (const style of ORDER_STYLES) {
       await expect(page.locator('[data-sent-order]')).toHaveCount(0)
 
       // Pay again: the card form, then the guest "pays" in the simulator and comes back.
-      await page.locator('[data-send]').click()
+      // A phone starts one payment in 15 seconds, and the cancelled one may still be closing: the
+      // host may say "slow down" first, so the guest taps again until the payment opens.
+      await expect(async () => {
+        const again = page.locator('[data-send]')
+        if (await again.isVisible()) await again.click({ timeout: 5_000 })
+        await expect(page.locator('[data-pay-screen]')).toBeVisible({ timeout: 10_000 })
+      }).toPass({ timeout: 90_000, intervals: [5_000] })
       await expect(page.locator('[data-slot="pay.form.submit"]')).toBeVisible(SETTLED)
       // The payment's id is the harness's to name: read it with the handle the page keeps.
       const handle = await page.evaluate(() => {
