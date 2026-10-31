@@ -58,11 +58,12 @@ export function UserMenu({ name, email }: UserMenuProps) {
   const theme = useSyncExternalStore(subscribeToTheme, readThemeChoice, () => 'system' as const)
 
   async function signOut() {
-    await stopPushOnThisBrowser()
+    // The session first: a sign-out that fails keeps this phone's alerts on (RR-88).
     if (!(await endSession())) {
       toast.error(t('signOutFailed'))
       return
     }
+    await stopPushOnThisBrowser()
     router.replace('/login')
     router.refresh()
   }

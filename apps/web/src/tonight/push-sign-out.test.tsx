@@ -59,7 +59,7 @@ const tapSignOut = () =>
   userEvent.click(screen.getByRole('button', { name: messages.user.signOut }))
 
 describe('the sign-out button', () => {
-  it('ends this browser’s subscription for the staff scope, then signs out', async () => {
+  it('signs out, then ends this browser’s subscription for the staff scope', async () => {
     const { unsubscribe, getRegistration } = holding()
     drawButton()
     await tapSignOut()
@@ -72,11 +72,14 @@ describe('the sign-out button', () => {
   it('stays where it is and says so when the sign-out cannot reach the server (RR-88)', async () => {
     toastError.mockClear()
     replace.mockClear()
+    const { unsubscribe } = holding()
     signOut.mockRejectedValueOnce(new TypeError('Failed to fetch'))
     drawButton()
     await tapSignOut()
     await waitFor(() => expect(toastError).toHaveBeenCalledWith(messages.user.signOutFailed))
     expect(replace).not.toHaveBeenCalled()
+    // Still signed in, so this phone's alerts stay on.
+    expect(unsubscribe).not.toHaveBeenCalled()
   })
 
   it('still signs out when the browser throws', async () => {

@@ -16,11 +16,12 @@ export function SignOutButton() {
   const router = useRouter()
 
   async function signOut() {
-    await stopPushOnThisBrowser()
+    // The session first: a sign-out that fails keeps this phone's alerts on (RR-88).
     if (!(await endSession())) {
       toast.error(t('signOutFailed'))
       return
     }
+    await stopPushOnThisBrowser()
     router.replace('/login')
     router.refresh()
   }
