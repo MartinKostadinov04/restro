@@ -19,6 +19,9 @@ import { forgetGuestCodes, guestAct, guestState } from './guest'
 import { GuestLimiter } from './guest-limits'
 
 const KEY = 'pay-test-key-'.padEnd(48, 'x')
+// The payment account's reference is unique per provider across the whole database
+// (payment_accounts_account_unique), and test files run side by side: each run makes its own.
+const ACCOUNT = `acct_${randomUUID().replaceAll('-', '')}`
 
 const OLD_LEGAL = {
   name: 'Club EOOD',
@@ -133,8 +136,8 @@ describe.skipIf(!hasDatabase)('an open phone and a change of paying state (RR-2)
     await world.owner.query(
       `insert into restro.payment_accounts
          (tenant_id, venue_id, provider_kind, account_ref, state, checks, connected_at, source, actor, job_id)
-       values ($1, $2, 'sim-pay', 'acct_paytest1', 'connected', '{"cardPayments":true,"ticks":{"cardTypeInTill":{"at":"2026-10-27T00:00:00Z","by":"system"},"receiptEmailsOff":{"at":"2026-10-27T00:00:00Z","by":"system"}}}'::jsonb, now(), 'restro', 'system', 'test-seed')`,
-      [world.tenantId, world.venueId],
+       values ($1, $2, 'sim-pay', $3, 'connected', '{"cardPayments":true,"ticks":{"cardTypeInTill":{"at":"2026-10-27T00:00:00Z","by":"system"},"receiptEmailsOff":{"at":"2026-10-27T00:00:00Z","by":"system"}}}'::jsonb, now(), 'restro', 'system', 'test-seed')`,
+      [world.tenantId, world.venueId, ACCOUNT],
     )
     await world.owner.query(
       `update restro.payments set state = 'released', reason = 'test', form_values = null,
@@ -157,7 +160,7 @@ describe.skipIf(!hasDatabase)('an open phone and a change of paying state (RR-2)
   const lose = async () => {
     const { result } = await applyService(
       world.app,
-      { type: 'payment_account.lost', accountRef: 'acct_paytest1' } as never,
+      { type: 'payment_account.lost', accountRef: ACCOUNT } as never,
       {
         tenantId: world.tenantId,
         venueId: world.venueId,

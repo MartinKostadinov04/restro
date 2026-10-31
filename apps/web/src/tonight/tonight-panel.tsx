@@ -7,7 +7,6 @@
 // announced to a screen reader and by one short sound that can be muted on the device. Nothing
 // moves: no animation, no reordering for style.
 import { EllipsisIcon, Volume2Icon, VolumeXIcon } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -27,7 +26,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
+import { useTimedRefresh } from '@/hooks/use-timed-refresh'
 import { cn } from '@/lib/utils'
+import { WRAPS } from '@/lib/wrapping'
 import {
   closeAllTablesAction,
   openAllTablesAction,
@@ -41,6 +42,7 @@ import { ActionRowItem, OutOfStockNotice, useAgo } from './action-rows'
 import { callKindsText } from './call-kinds'
 import { useMoney } from './money'
 import { moneyTitleKey } from './money-rows'
+import { OfflineLine } from './offline-line'
 import { PauseBanners } from './pause-banners'
 import { PushControl } from './push-control'
 import { RunProvider, useTonightRun, wroteSomething } from './run'
@@ -112,7 +114,7 @@ function PauseMenu({ view }: { view: TonightView }) {
       <Button
         type="button"
         variant="outline"
-        className="h-11"
+        className={WRAPS}
         disabled={busy}
         onClick={() => only && pause(only.barId, only.name)}
       >
@@ -123,7 +125,7 @@ function PauseMenu({ view }: { view: TonightView }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="outline" className="h-11" disabled={busy}>
+        <Button type="button" variant="outline" className={WRAPS} disabled={busy}>
           {label}
         </Button>
       </DropdownMenuTrigger>
@@ -145,8 +147,8 @@ function PauseMenu({ view }: { view: TonightView }) {
 function Content({ view, pushKey }: { view: TonightView; pushKey: string | undefined }) {
   const t = useTranslations('tonight')
   const money = useMoney()
-  const router = useRouter()
   const { run, busy } = useTonightRun()
+  const { offline } = useTimedRefresh({ every: REFRESH_MS, visibleOnly: true })
   const ago = useAgo(view.now)
   const tableName = useTableName()
   const [part, setPart] = useState<'needs' | 'tables'>('needs')
@@ -156,12 +158,6 @@ function Content({ view, pushKey }: { view: TonightView; pushKey: string | undef
   const seen = useRef<Set<string> | null>(null)
 
   useEffect(() => setMuted(readMuted()), [])
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') router.refresh()
-    }, REFRESH_MS)
-    return () => window.clearInterval(timer)
-  }, [router])
 
   // A row that was not there on the last render is announced, and sounds once (not the first load).
   useEffect(() => {
@@ -390,7 +386,7 @@ function Content({ view, pushKey }: { view: TonightView; pushKey: string | undef
           {t('title')}
           <span className="ml-2 text-base font-normal text-muted-foreground">{t('tab_act')}</span>
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="ghost"
@@ -405,6 +401,7 @@ function Content({ view, pushKey }: { view: TonightView; pushKey: string | undef
           <PauseMenu view={view} />
         </div>
       </div>
+      <OfflineLine offline={offline} stoodAt={view.now} timezone={view.timezone} />
       <PauseBanners view={view} />
       {pushKey === undefined ? null : (
         <PushControl venueId={view.venueId} pushKey={pushKey} sharedDevice={view.device} />
@@ -426,7 +423,7 @@ function Content({ view, pushKey }: { view: TonightView; pushKey: string | undef
             type="button"
             variant={part === value ? 'default' : 'ghost'}
             aria-pressed={part === value}
-            className="h-11 flex-1"
+            className={`${WRAPS} min-w-0 flex-1`}
             onClick={() => setPart(value)}
           >
             {label}

@@ -11,8 +11,8 @@ import { CreditCardIcon, PackageSearchIcon, TriangleAlertIcon, WalletCardsIcon }
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import type { ReactNode } from 'react'
-
 import { Button } from '@/components/ui/button'
+import { WRAPS_WIDE } from '@/lib/wrapping'
 import { answerPaymentAction, doneAlertAction } from '@/server/tonight/actions'
 import type { ActionRow, MoneyRow, RowKind, TonightView } from '@/server/tonight/view'
 
@@ -56,7 +56,7 @@ export function variantTitleKey(variant: MoneyRow['variant'], linesNotBack: bool
   }
 }
 
-const BUTTON = 'h-12 min-w-32 whitespace-normal'
+const BUTTON = WRAPS_WIDE
 
 /** The answer words of a payment question, by what it asks: the receipt's or the till's. */
 const QUESTION_WORDS = {

@@ -40,15 +40,18 @@ const WRAPS = 'h-auto min-h-9 max-w-full whitespace-normal'
 
 export function PublishBar({
   view,
-  onlyWhatWorks = false,
+  onlyWhatWorks: tonightWay = false,
 }: {
   view: PublishBarView
   /**
    * Tonight's way (RR-80, operational-screens.md): never a disabled control, so what can't be
    * pressed now isn't drawn, nor the words on why. With nothing to press the bar is not there.
+   * A role that may not publish always gets it (RR-90): never a disabled control for a role that
+   * may not act.
    */
   onlyWhatWorks?: boolean
 }) {
+  const onlyWhatWorks = tonightWay || !view.canPublish
   const t = useTranslations('publish.bar')
   const reasonOf = useBlockReason()
   const publisher = usePublisherContext()

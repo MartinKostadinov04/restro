@@ -185,3 +185,33 @@ test('a tablet with an owner’s account is not offered what it would be refused
   await expect(onScreen(owner, 'new-venue')).toBeVisible({ timeout: 30_000 })
   await tablet.context().close()
 })
+
+test('Tonight and the Settings screens wrap at 200% text inside a 390 px phone (RR-79)', async () => {
+  // A busy night, so the rows, their buttons and the phone's switch are all there to wrap.
+  seed('night', 'busy')
+  const screens = [
+    ['Tonight', '?tab=tonight', 'tonight'],
+    ['the end of the night', '?tab=tonight&view=night', 'tonight-night'],
+    ['Settings › General', '?tab=settings&section=general', 'settings-general'],
+    ['Settings › Hours', '?tab=settings&section=hours', 'hours-panel'],
+    ['Settings › Ordering', '?tab=settings&section=ordering', 'ordering-panel'],
+    ['Settings › Staff and roles', '?tab=settings&section=staff', 'staff-panel'],
+    ['Settings › Alerts', '?tab=settings&section=alerts', 'alerts-panel'],
+  ] as const
+  for (const [name, query, testId] of screens) {
+    await owner.goto(`${venuePath}${query}`)
+    await expect(onScreen(owner, testId)).toBeVisible({ timeout: 30_000 })
+    await owner.evaluate(() => {
+      document.documentElement.style.fontSize = '200%'
+    })
+    await expect
+      .poll(
+        () =>
+          owner.evaluate(
+            () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          ),
+        { message: `${name} at 200% text` },
+      )
+      .toBeLessThanOrEqual(0)
+  }
+})

@@ -79,12 +79,18 @@ beforeEach(() => {
     vi.mocked(action).mockReset()
   }
   refresh.mockReset()
+  // The server answers its liveness check (a timed refresh waits for it, RR-88).
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response('{}')),
+  )
   vi.mocked(toast.success).mockReset()
   vi.mocked(toast.error).mockReset()
 })
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.unstubAllGlobals()
 })
 
 describe('Settings › Alerts', () => {

@@ -124,10 +124,29 @@ describe('the Publish bar with one menu', () => {
     expect(reason()).toBe('Nothing visible to publish: show at least one item in Structure.')
   })
 
-  it('says who may publish', () => {
+  it('draws no Publish for a role that may not publish, and no sentence on why (RR-90)', () => {
     render(barView({ canPublish: false }))
-    expect(button().disabled).toBe(true)
-    expect(reason()).toBe('Only an owner or admin can publish.')
+    expect(screen.queryByTestId('publish-button')).toBeNull()
+    expect(screen.queryByText('Only an owner or admin can publish.')).toBeNull()
+    expect(document.querySelector(':disabled')).toBeNull()
+    // What they can do stays: the guest page, when there is one.
+    expect(screen.getByTestId('guest-link').getAttribute('href')).toBe('/m/demo-org/demo-club')
+  })
+
+  it('draws nothing at all for that role when there is no guest page to open (RR-90)', () => {
+    render(barView({ canPublish: false, guestPath: null }))
+    expect(screen.queryByTestId('publish-bar')).toBeNull()
+  })
+
+  it('draws no Publish for that role with several menus either (RR-90)', () => {
+    render(
+      barView({
+        canPublish: false,
+        menus: [barMenu(), barMenu({ menuId: 'nd_other', live: false })],
+      }),
+    )
+    expect(screen.queryByTestId('publish-button')).toBeNull()
+    expect(document.querySelector(':disabled')).toBeNull()
   })
 
   it('before the first publish: everything is new', async () => {

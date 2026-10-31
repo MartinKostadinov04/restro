@@ -9,8 +9,8 @@
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
-
 import { Button } from '@/components/ui/button'
+import { WRAPS } from '@/lib/wrapping'
 import type { Frame, NightView } from '@/server/tonight/night-view'
 import { nightPaymentsAction } from '@/server/tonight/payment-actions'
 import type {
@@ -125,7 +125,7 @@ export function NightPayFixRows({
         >
           <span className="min-w-0 [overflow-wrap:anywhere]">{t('nt_fix_paused')}</span>
           {payments.paying !== 'paused' && frame.canConnect ? (
-            <Button asChild variant="outline" className="h-12 whitespace-normal">
+            <Button asChild variant="outline" className={WRAPS}>
               <Link href={`/venues/${frame.venueId}?tab=settings&section=paying`}>
                 {t('pb_reconnect')}
               </Link>

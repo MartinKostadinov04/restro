@@ -90,7 +90,7 @@ export function HoursPanel({ view }: { view: OrderingView }) {
   }
 
   return (
-    <div className="grid gap-4" data-testid="hours-panel" aria-busy={pending}>
+    <div className="grid grid-cols-1 gap-4" data-testid="hours-panel" aria-busy={pending}>
       <div>
         <h2 className="text-xl font-semibold tracking-tight">{t('st_hours')}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{t('st_hours_lede', { dayEnd })}</p>
@@ -225,7 +225,7 @@ function DayDialog({
     <Dialog open={day !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <form
-          className="grid gap-4"
+          className="grid grid-cols-1 gap-4"
           noValidate
           onSubmit={(event) => {
             event.preventDefault()
@@ -238,7 +238,7 @@ function DayDialog({
               {t('st_hours_lede', { dayEnd })}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <TimeField id="hours-opens" label={t('st_opens')} value={opens} onChange={setOpens} />
             <TimeField
               id="hours-last"
@@ -255,7 +255,7 @@ function DayDialog({
               problem={shown?.field === 'closes' ? t(shown.key, { dayEnd }) : null}
             />
           </div>
-          <fieldset className="grid gap-2">
+          <fieldset className="grid grid-cols-1 gap-2">
             <legend className="text-sm font-medium">{t('st_same_on')}</legend>
             <div className="flex flex-wrap gap-x-4 gap-y-2">
               {WEEKDAYS.filter((other) => other !== day).map((other) => (
@@ -297,7 +297,7 @@ function TimeField({
   problem?: string | null
 }) {
   return (
-    <div className="grid content-start gap-2">
+    <div className="grid grid-cols-1 content-start gap-2">
       <Label htmlFor={id}>{label}</Label>
       <Input
         id={id}
@@ -342,7 +342,7 @@ function PreOpening({
 
   const alerts = CHOICES.preOpeningAlert.filter((minutes) => minutes <= start)
   return (
-    <section className="grid gap-2" aria-labelledby="hours-preopen">
+    <section className="grid grid-cols-1 gap-2" aria-labelledby="hours-preopen">
       <h3 id="hours-preopen" className="text-lg font-medium">
         {t('st_preopen_h')}
       </h3>
@@ -365,7 +365,7 @@ function PreOpening({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <form
-            className="grid gap-4"
+            className="grid grid-cols-1 gap-4"
             onSubmit={(event) => {
               event.preventDefault()
               setOpen(false)
@@ -451,7 +451,7 @@ export function MinutesSelect({
 }) {
   const duration = useDuration()
   return (
-    <div className="grid gap-2">
+    <div className="grid grid-cols-1 gap-2">
       {label === '' ? null : <Label htmlFor={id}>{label}</Label>}
       <Select value={String(value)} onValueChange={(next) => onChange(Number(next))}>
         <SelectTrigger id={id} className="w-full">

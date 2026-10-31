@@ -19,7 +19,6 @@ import {
 import { unstable_rethrow } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { type ReactNode, useState } from 'react'
-
 import { Button } from '@/components/ui/button'
 import {
   Drawer,
@@ -36,6 +35,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { WRAPS_WIDE } from '@/lib/wrapping'
 import {
   handleWaiterCallAction,
   receiptBroughtAction,
@@ -117,7 +117,7 @@ export function ActionRowItem({
   const Icon = ICONS[row.kind]
   const moneyParts = useMoneyRowParts(row, view, name)
   const variant = primary ? 'default' : 'outline'
-  const button = 'h-12 min-w-32 whitespace-normal'
+  const button = WRAPS_WIDE
 
   let title: string
   let body: ReactNode = null

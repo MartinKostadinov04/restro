@@ -388,7 +388,8 @@
       "light": "Light",
       "dark": "Dark"
     },
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "signOutFailed": "Couldn't sign out. Check the connection and try again."
   },
   "nav": {
     "venues": "Venues",
@@ -1933,6 +1934,7 @@
     "e_open_d": "Table calls and money alerts show up here.",
     "e_night_t": "Tables aren't open yet",
     "e_night_d": "Open them for phones to start ordering.",
+    "offline": "No connection. This is how things stood at {time}. It refreshes by itself.",
     "ago": "{m} min ago",
     "now0": "just now",
     "s_t": "Sent order not confirmed",
