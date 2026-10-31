@@ -1912,6 +1912,19 @@
         "two": "Two columns"
       },
       "guestSwitch": "Guests may switch the layout"
+    },
+    "advanced": {
+      "mode": "Level of detail",
+      "simple": "Simple",
+      "advanced": "Advanced",
+      "pages": "Design pages",
+      "styledIn": "Styled in Advanced",
+      "show": "Show Advanced",
+      "dismiss": "Close this note",
+      "notes": {
+        "bleed": "Edge-to-edge photos have no corners of their own",
+        "heavy": "{font} has no weight heavier than {weight}, so Heavy is drawn at its heaviest."
+      }
     }
   },
   "tonight": {

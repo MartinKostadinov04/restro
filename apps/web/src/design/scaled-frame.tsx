@@ -19,6 +19,7 @@ export function ScaledFrame({
   picture = false,
   className,
   testId,
+  onPart,
 }: {
   venueId: string
   /** The frame's name on this page. */
@@ -30,16 +31,20 @@ export function ScaledFrame({
   picture?: boolean
   className?: string
   testId?: string
+  /** A tap on a marked part of the frame (`data-design-part`), by the part's name. */
+  onPart?: (marker: string) => void
 }) {
   const box = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState<{ width: number; height: number } | null>(null)
   const store = useRef<ReturnType<typeof openFrameStore> | null>(null)
   const latest = useRef(content)
   latest.current = content
+  const tapped = useRef(onPart)
+  tapped.current = onPart
 
   // Before the frame is put in, so its page always finds its store.
   useLayoutEffect(() => {
-    const opened = openFrameStore(slot)
+    const opened = openFrameStore(slot, (marker) => tapped.current?.(marker))
     opened.set(latest.current)
     store.current = opened
     return () => {

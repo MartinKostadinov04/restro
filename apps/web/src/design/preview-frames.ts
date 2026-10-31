@@ -11,6 +11,8 @@ import type { LiveOverlay, MenuSnapshot } from '@restro/core'
 
 import type { PreviewScheme } from '@/publish/draft-face'
 
+import type { Stage } from './advanced-model'
+
 /** What one frame draws. */
 export interface FrameContent {
   readonly snapshot: MenuSnapshot
@@ -18,11 +20,19 @@ export interface FrameContent {
   readonly scheme: PreviewScheme
   /** Draw the service screens the venue switched on, with demo data (D71). */
   readonly services: boolean
+  /** What the frame shows first: the menu, or a sheet opened for it (a tile of a screen's page). */
+  readonly stage?: Stage
+  /** The parts (`data-design-part`) the frame scrolls to, the first it finds. */
+  readonly focus?: readonly string[]
+  /** Where the frame reads photos from, when it draws the demo photo (`specimen.ts`). */
+  readonly assetBase?: string
 }
 
 export interface FrameStore {
   read(): FrameContent | null
   subscribe(listener: () => void): () => void
+  /** A tap on a marked part of the frame (`data-design-part`): the page opens that part's page. */
+  tap(marker: string): void
 }
 
 const STORES_KEY = '__restroDesignFrames'
@@ -35,7 +45,10 @@ export function framePath(venueId: string, slot: string): string {
 }
 
 /** The page's side: makes the store of a frame, and the way to give it new content. */
-export function openFrameStore(slot: string): {
+export function openFrameStore(
+  slot: string,
+  onPart?: (marker: string) => void,
+): {
   readonly set: (content: FrameContent | null) => void
   readonly close: () => void
 } {
@@ -46,6 +59,7 @@ export function openFrameStore(slot: string): {
   owner[STORES_KEY] = stores
   const store: FrameStore = {
     read: () => current,
+    tap: (marker) => onPart?.(marker),
     subscribe(listener) {
       listeners.add(listener)
       return () => listeners.delete(listener)

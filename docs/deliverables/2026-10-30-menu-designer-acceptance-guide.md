@@ -90,6 +90,25 @@ Open Demo Bar in the admin, on a computer first, in English and then in Bulgaria
 - **On a phone:** open it at phone width. The preview is under the panel and scrolls inside itself. Done and Cancel stay at the bottom of the screen wherever you scroll. Nothing runs off sideways, including the long Bulgarian words.
 - **A venue from the till and a venue made by hand:** both get the same page.
 
+## E. Advanced on the Design page (#176)
+
+Open Demo Bar's Design page, on a computer first, then at phone width, in English and then in Bulgarian. At the top of the panel, next to the colours, is a switch: **Simple** and **Advanced**.
+
+- **The switch keeps your work:** change a colour in Simple, tap Advanced, tap Simple again. The colour is still changed, "Unsaved" still shows, Undo and Cancel still work as before.
+- **The list of pages:** in Advanced, **General** is first, then thirteen more: Header, Navigation, Sections, Items, Photos, Labels and allergens, Dish page, Sheets and footer, Call a waiter, Bill, Order, Pay, Receipt. On a phone they are a row you slide sideways; on a wide screen, a list.
+- **General:** your Style, colours, fonts and logo are here as before, and under them Screen, Heading weight, Corners, Depth, Density, Text size and Buttons. Each is a row of small pictures.
+- **A tile is a picture of the part:** open Items. Each choice (Rows, Cards, Open) is a tiny piece of your own menu drawn that way, in your colours and font. Open Photos: the tiles show a sample photo even if your menu has none yet.
+- **One tap, one step:** tap Cards. The preview changes at once and "Unsaved" appears. Tap Undo: it is back to Rows in one step. Pick it again and tap Done: a message says guests see it on the next publish.
+- **Tap the preview to edit:** in Advanced, tap a dish name in the preview: the Items page opens, at the top. Tap a section title: Sections. Tap the header: Header. Tap a dish to open it, then tap the open dish: Dish page.
+- **The rest of the screens:** switch on "Preview guest services" under the preview (switch on the services under Guest functions first). Open the bill, then tap inside it: the Bill page opens. Do the same with the waiter sheet (Call a waiter) and tap the order bar (Order). The Bill, Order, Pay and Receipt pages draw their tiles with sample data and a small "Preview" mark.
+- **In Simple:** tap a dish name in the preview. A line says **Styled in Advanced** with a **Show Advanced** button. Tap it: you land on the Items page. Tap the small cross instead and the line goes.
+- **A row that does not apply:** open Photos, pick Frame **Edge to edge**. The Corners row greys out and says "Edge-to-edge photos have no corners of their own"; none of its tiles can be picked. Pick Frame **Inset** and it wakes up.
+- **A note, not a block:** choose the font Lora as the body font, then open General. Heading weight says Lora has no weight heavier than 700, so Heavy is drawn at its heaviest. It can still be picked.
+- **A plain member:** the pages and tiles are there to look at, every tile is greyed out, and there is no Done or Cancel.
+- **On a phone, one hand:** the page list slides sideways with your thumb and every tile is at least as tall as a fingertip. Nothing runs off the side.
+- **In Bulgarian:** open Items and look at "Място на порцията" and its tiles ("До цената", "На отделен ред"): the words stay inside their tile. Page names are in Bulgarian, for example "Панели и долна част", "Повикване на сервитьор".
+- **Calm:** the screen should read at a glance: one accent colour, the picture rows doing the talking. If a screen looks busy to you, say which.
+
 ## What to report
 
 For each check: as written, or what you saw instead, and on which Style.
