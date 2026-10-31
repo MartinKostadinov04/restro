@@ -463,32 +463,34 @@ test('Advanced lists General and the thirteen pages; a tile draws the part with 
 test('a tap on a part of the preview opens its page; in Simple it says the part is styled in Advanced', async () => {
   await openDesign()
   // Simple: the note and the switch, nothing else moves.
-  await previewRoot().locator('[data-design-part="item.name"]').first().click()
+  await previewRoot().locator('[data-design-part="section.title"]').first().click()
   const note = page.getByTestId('design-styled-in-advanced')
   await expect(note).toContainText('Styled in Advanced')
   await expect(page.getByTestId('design-style-section')).toBeVisible()
   await note.getByRole('button', { name: 'Show Advanced' }).click()
-  await expect(pageChip('items')).toHaveAttribute('aria-current', 'page')
+  await expect(pageChip('sections')).toHaveAttribute('aria-current', 'page')
   await expect(page.getByTestId('design-advanced-title')).toBeFocused()
 
   // Advanced: a tap on a part opens the page that owns it, whatever page was open.
   for (const [part, pageId, title] of [
     ['header.title', 'header', 'Header'],
     ['section.title', 'sections', 'Sections'],
-    ['item.name', 'items', 'Items'],
   ] as const) {
     await pageChip('general').click()
     await previewRoot().locator(`[data-design-part="${part}"]`).first().click()
     await expect(pageChip(pageId)).toHaveAttribute('aria-current', 'page')
     await expect(page.getByTestId('design-advanced-title')).toHaveText(title)
   }
-  // The dish page, opened by the tap that opens the dish.
+  // A dish's name opens the dish as it does for a guest, and its page; a tap in the open dish opens
+  // the Dish page.
   await pageChip('general').click()
-  await previewRoot().locator('[data-slot="item.open"]').first().click()
+  await previewRoot().locator('[data-design-part="item.name"]').first().click()
   await expect(pageChip('items')).toHaveAttribute('aria-current', 'page')
+  await expect(frame().locator('[data-design-part="dish"]').first()).toBeVisible()
   await frame().locator('[data-design-part="dish"]').first().click()
   await expect(pageChip('dish')).toHaveAttribute('aria-current', 'page')
   await page.keyboard.press('Escape')
+  await expect(frame().locator('[role="dialog"]')).toHaveCount(0)
 })
 
 test('Photo corners are off while the Frame is edge to edge, with the hint', async () => {
