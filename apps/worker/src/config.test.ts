@@ -143,6 +143,11 @@ describe('loadConfig', () => {
     expect(lines.join('\n')).not.toMatch(/s3cret|my-chat|plain/)
   })
 
+  it('reads no Web Push keys as off: unset or blank, nothing pushed, nothing refused (RR-86)', () => {
+    expect(loadConfig({ DATABASE_URL: URL }).alerts?.vapid).toBeNull()
+    expect(loadConfig({ DATABASE_URL: URL, VAPID_PUBLIC_KEY: '' }).alerts?.vapid).toBeNull()
+  })
+
   it('reads the receipt email settings (#186): the address switches it on and needs the key, the key alone does not', () => {
     const key = `re_${'k'.repeat(30)}`
     const from = 'receipts@mail.restro.example'

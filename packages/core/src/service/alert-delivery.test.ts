@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest'
 
 import {
   type DeliveryState,
-  HOLD_LAST_DAY_MS,
-  holdReminderPoints,
   type PlanInput,
   type PlannedAlert,
   planDelivery,
@@ -11,7 +9,15 @@ import {
   recordStep,
   withDelivery,
 } from './alert-delivery'
-import { PAUSED_KIND, PAYMENT_UNCONFIRMED_KIND } from './alert-rules'
+import {
+  MONEY_REPEAT_MS,
+  PAUSED_KIND,
+  PAYMENT_ALERT_KINDS,
+  PAYMENT_CAPTURE_FAILED_KIND,
+  PAYMENT_DISPUTED_KIND,
+  PAYMENT_STRANDED_KIND,
+  PAYMENT_UNCONFIRMED_KIND,
+} from './alert-rules'
 
 const NOW = new Date('2026-10-23T20:00:00Z')
 const at = (secondsAgo: number) => new Date(NOW.getTime() - secondsAgo * 1000)
@@ -220,69 +226,90 @@ describe('reminders', () => {
   })
 })
 
-describe("a held card's question as the hold runs out (#112)", () => {
-  const HOUR = 3_600_000
-  const DAY = 24 * HOUR
-  const raised = new Date('2026-10-20T22:00:00Z')
-  const captureBefore = new Date(raised.getTime() + 7 * DAY)
-
-  it('is due again at half the time left and with 24 hours left, only after it was raised', () => {
-    expect(holdReminderPoints(raised, captureBefore)).toEqual([
-      raised.getTime() + 3.5 * DAY,
-      captureBefore.getTime() - HOLD_LAST_DAY_MS,
-    ])
-    // Raised with less than a day left: half the time left only.
-    const late = new Date(captureBefore.getTime() - 10 * HOUR)
-    expect(holdReminderPoints(late, captureBefore)).toEqual([captureBefore.getTime() - 5 * HOUR])
-    expect(holdReminderPoints(captureBefore, captureBefore)).toEqual([])
-  })
-
-  /** The question, its first messages and reminder sent `toldAgo` before `now`. */
-  const question = (now: Date, toldAgo: number): PlannedAlert => {
-    const lastAt = new Date(now.getTime() - toldAgo).toISOString()
-    const once = { firstAt: raised.toISOString(), lastAt, count: 2 }
-    return {
-      id: 'al_q',
-      kind: PAYMENT_UNCONFIRMED_KIND,
-      audience: 'venue',
-      raisedAt: raised,
-      doneAt: null,
-      delivery: { push: once, venueTelegram: once, team: once },
-      telegramRef: null,
-      captureBefore,
-    }
+describe('a money alert (D122 §7)', () => {
+  const told = (agoMs: number, count = 1): DeliveryState => {
+    const lastAt = new Date(NOW.getTime() - agoMs).toISOString()
+    const state = { firstAt: iso(3600), lastAt, count }
+    return { push: state, venueTelegram: state, team: state }
   }
-  const at = (now: Date, toldAgo: number) =>
-    planDelivery({
-      now,
-      window: { ...OPEN_WINDOW, inService: true },
-      reachable: EVERYWHERE,
-      alerts: [question(now, toldAgo)],
-    }).steps.map((step) => `${step.receiver}:${step.step}`)
+  const steps = (result: ReturnType<typeof plan>) =>
+    result.steps.map((step) => `${step.receiver}:${step.step}`)
 
-  it('reminds the staff once at each point, never the team, and nothing between', () => {
-    const half = new Date(raised.getTime() + 3.5 * DAY)
-    // A minute before half the time left, nothing; a minute after, the staff are reminded.
-    expect(at(new Date(half.getTime() - 60_000), DAY)).toEqual([])
-    expect(at(new Date(half.getTime() + 60_000), DAY)).toEqual([
-      'push:reminder',
-      'venueTelegram:reminder',
+  it.each(PAYMENT_ALERT_KINDS)('%s raised after closing is told, not dropped', (kind) => {
+    const result = plan([alert({ id: 'al_m', kind })], { window: CLOSED_WINDOW })
+    expect(result.suppress).toEqual([])
+    expect(steps(result)).toContain('push:new')
+    expect(steps(result)).toContain('team:new')
+  })
+
+  it('reaches the people an earlier version dropped, however late', () => {
+    const result = plan([
+      alert({
+        id: 'al_m',
+        kind: PAYMENT_STRANDED_KIND,
+        raisedAt: at(24 * 3600),
+        delivery: { suppressed: true },
+      }),
     ])
-    // Told since the point: not again.
-    expect(at(new Date(half.getTime() + 120_000), 60_000)).toEqual([])
-    const lastDay = new Date(captureBefore.getTime() - HOLD_LAST_DAY_MS)
-    expect(at(new Date(lastDay.getTime() + 60_000), DAY)).toEqual([
-      'push:reminder',
-      'venueTelegram:reminder',
+    expect(steps(result)).toEqual(['push:new', 'venueTelegram:new', 'team:new'])
+  })
+
+  it('repeats at 5 minutes, after closing too, and the team is told once', () => {
+    const open = (agoMs: number, count: number) =>
+      plan(
+        [
+          alert({
+            id: 'al_m',
+            kind: PAYMENT_UNCONFIRMED_KIND,
+            raisedAt: at(3600),
+            delivery: told(agoMs, count),
+          }),
+        ],
+        { window: CLOSED_WINDOW },
+      )
+    expect(steps(open(MONEY_REPEAT_MS - 1000, 1))).toEqual([])
+    expect(steps(open(MONEY_REPEAT_MS, 1))).toEqual(['push:reminder', 'venueTelegram:reminder'])
+    // There is no last one: the fiftieth repeat is due as the second was.
+    expect(steps(open(MONEY_REPEAT_MS, 50))).toEqual(['push:reminder', 'venueTelegram:reminder'])
+  })
+
+  it('stops as soon as a person closes it', () => {
+    const result = plan([
+      alert({
+        id: 'al_m',
+        kind: PAYMENT_STRANDED_KIND,
+        raisedAt: at(3600),
+        doneAt: at(10),
+        telegramRef: '-1:7',
+        delivery: told(MONEY_REPEAT_MS),
+      }),
+    ])
+    expect(steps(result)).toEqual(['venueTelegram:done_edit'])
+  })
+
+  it('keeps a failed capture to the owners, and repeats it to them', () => {
+    const result = plan(
+      [
+        alert({
+          id: 'al_m',
+          kind: PAYMENT_CAPTURE_FAILED_KIND,
+          raisedAt: at(3600),
+          delivery: { push: told(MONEY_REPEAT_MS).push, team: told(MONEY_REPEAT_MS).team },
+        }),
+      ],
+      { window: CLOSED_WINDOW },
+    )
+    expect(result.steps).toEqual([
+      { receiver: 'push', step: 'reminder', alertIds: ['al_m'], ownersOnly: true },
     ])
   })
 
-  it('says nothing for a question without a deadline, past its own reminder', () => {
-    const now = new Date(raised.getTime() + 4 * DAY)
-    const alert = { ...question(now, DAY), captureBefore: null }
-    expect(
-      planDelivery({ now, window: OPEN_WINDOW, reachable: EVERYWHERE, alerts: [alert] }).steps,
-    ).toEqual([])
+  it('leaves paperwork alone: a dispute after closing is still dropped', () => {
+    const result = plan([alert({ id: 'al_d', kind: PAYMENT_DISPUTED_KIND })], {
+      window: CLOSED_WINDOW,
+    })
+    expect(result.steps).toEqual([])
+    expect(result.suppress).toEqual(['al_d'])
   })
 })
 

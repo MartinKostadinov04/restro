@@ -32,11 +32,12 @@ import {
   venueTables,
   withTenant,
 } from '@restro/db'
-import { and, asc, desc, eq, ilike, inArray, ne, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, isNull, ne, notInArray, or, sql } from 'drizzle-orm'
 
 import { serviceDate } from '../service-day'
+import { TEAM_ALERT_KINDS } from './alert-rules'
 import type { ServiceActor } from './context'
-import { resolveGrants } from './grants'
+import { holdsOperatorGrant, resolveGrants } from './grants'
 import type { LogKind } from './log'
 import { isLogGroup, type LogGroup, logKindsOf } from './log-view'
 import type { Permission } from './permissions'
@@ -77,6 +78,8 @@ export interface Reader {
   readonly held: ReadonlySet<Permission>
   /** A shared device's own account: a person's PIN names who answers (D122 §7). */
   readonly device: boolean
+  /** Restro's admin team: only they read the team's own alerts in the Log (D122 §7). */
+  readonly operator: boolean
   readonly today: string
 }
 
@@ -88,6 +91,16 @@ export interface NightAccess {
   /** The venue's current service day. */
   readonly today: string
 }
+
+/** The Log's filter for a reader who isn't Restro's team: none of the team's own alerts (D122 §7). */
+const venueSeesOnly = (reader: Reader) =>
+  reader.operator
+    ? undefined
+    : or(
+        notInArray(logEntries.kind, ['alert.raised', 'alert.done', 'alert.cleared']),
+        isNull(logEntries.reason),
+        notInArray(logEntries.reason, [...TEAM_ALERT_KINDS]),
+      )
 
 export const accessOf = (reader: Reader): NightAccess => ({
   venue: reader.venue,
@@ -121,7 +134,17 @@ export async function open(tx: ReadTx, input: ReadInput): Promise<Opened> {
   if (venue.archivedAt !== null) return { ok: false, code: 'venue_archived' }
   const grants = await resolveGrants(tx, input.tenantId, venue.id, input.actor, { quick: true })
   if (!grants.ok) return { ok: false, code: grants.code }
-  if (grants.permissions.size === 0) return { ok: false, code: 'permission_denied' }
+  // Restro's team reads the Log with its own alerts, signed in as themselves too: the team's grant
+  // adds that one right to whatever they hold here (D122 §7, RR-55). Never on a shared device.
+  const operator =
+    input.actor.kind === 'operator' ||
+    (input.actor.kind === 'user' &&
+      grants.device !== true &&
+      (await holdsOperatorGrant(tx, input.actor.userId)))
+  const held: ReadonlySet<Permission> = operator
+    ? new Set([...grants.permissions, 'log.view'])
+    : grants.permissions
+  if (held.size === 0) return { ok: false, code: 'permission_denied' }
   return {
     ok: true,
     reader: {
@@ -132,8 +155,9 @@ export async function open(tx: ReadTx, input: ReadInput): Promise<Opened> {
         dayEndsAt: String(venue.serviceDayEndsAt).slice(0, 5),
         currency: venue.currency,
       },
-      held: grants.permissions,
+      held,
       device: grants.device === true,
+      operator,
       today: serviceDate(input.now ?? new Date(), venue.timezone, venue.serviceDayEndsAt),
     },
   }
@@ -442,6 +466,8 @@ export interface SentOrderDetail {
     readonly note: string | null
   }[]
   readonly sentAt: Date | null
+  /** The POS bill it joined, as staff know it there (rule 3: staff screens only). */
+  readonly posBillRef: string | null
   readonly steps: readonly SentOrderStep[]
 }
 
@@ -463,6 +489,7 @@ export async function readSentOrderDetail(
         serviceDate: sentOrders.serviceDate,
         lines: sentOrders.lines,
         sentAt: sentOrders.sentAt,
+        posBillRef: sentOrders.posBillRef,
         reference: sentOrders.reference,
       })
       .from(sentOrders)
@@ -515,6 +542,7 @@ export async function readSentOrderDetail(
           note: notes.get(line.id) ?? null,
         })),
         sentAt: row.sentAt,
+        posBillRef: row.posBillRef,
         steps: stepRows.map((step) => ({
           at: step.at,
           kind: step.kind as SentOrderStep['kind'],
@@ -650,6 +678,7 @@ export async function readLog(
         and(
           eq(logEntries.venueId, reader.venue.id),
           inArray(logEntries.kind, [...logKindsOf(group)]),
+          venueSeesOnly(reader),
           // A refund's amount may hold the tip: those who read no tips never see the line (#222).
           fullNight ? undefined : ne(logEntries.kind, 'payment.refund_seen'),
           or(
@@ -743,7 +772,7 @@ export async function readLog(
     const dayRows = await tx
       .selectDistinct({ day: logEntries.serviceDate })
       .from(logEntries)
-      .where(eq(logEntries.venueId, reader.venue.id))
+      .where(and(eq(logEntries.venueId, reader.venue.id), venueSeesOnly(reader)))
       .orderBy(desc(logEntries.serviceDate))
       .limit(60)
 
@@ -1209,6 +1238,7 @@ export async function readExportDays(
         and(
           eq(logEntries.venueId, reader.venue.id),
           inArray(logEntries.kind, [...logKindsOf(null)]),
+          venueSeesOnly(reader),
           sql`${logEntries.serviceDate} >= ${from} and ${logEntries.serviceDate} <= ${to}`,
         ),
       )

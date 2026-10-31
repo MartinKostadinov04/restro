@@ -5,12 +5,76 @@ import { randomUUID } from 'node:crypto'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { hasDatabase } from '../apply/test-database'
+import { provisionVenue } from '../apply/provision'
+import { hasDatabase, testSlug } from '../apply/test-database'
 import { newId } from '../ids'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import { readDelivery } from './alert-delivery'
-import { endpointHashOf } from './alerts'
+import { endpointHashOf, PushSubscribeSchema } from './alerts'
 import { applyService, type ServiceContext } from './index'
+
+describe('the push services a device may name (RR-86)', () => {
+  const BACKSLASH = String.fromCharCode(92)
+  const accepted = (endpoint: string) =>
+    PushSubscribeSchema.safeParse({
+      type: 'push.subscribe',
+      endpoint,
+      p256dh: 'B'.repeat(87),
+      auth: 'a'.repeat(22),
+    }).success
+
+  it.each([
+    'https://fcm.googleapis.com/fcm/send/abc',
+    'https://jmt17.google.com/fcm/send/abc',
+    'https://updates.push.services.mozilla.com/wpush/v2/abc',
+    'https://web.push.apple.com/abc',
+    'https://wns2-par02p.notify.windows.com/w/?token=abc',
+  ])('accepts %s', (endpoint) => {
+    expect(accepted(endpoint)).toBe(true)
+  })
+
+  it.each([
+    // Lookalikes.
+    'https://evilpush.apple.com.example.org/abc',
+    'https://web.push.apple.com.example.org/abc',
+    'https://xnotify.windows.com/abc',
+    'https://evilfcm.googleapis.com/abc',
+    'https://google.com/abc',
+    'https://mail.google.com/abc',
+    'https://evil.jmt17.google.com/abc',
+    'https://notjmt17.google.com/abc',
+    'https://jmt1700.google.com/abc',
+    'https://jmt17.google.com.example.org/abc',
+    'https://sub.fcm.googleapis.com/abc',
+    'https://fcm.googleapis.com.example.org/abc',
+    'https://push.apple.com/abc',
+    // Not https.
+    'http://fcm.googleapis.com/fcm/send/abc',
+    // A port, even the default one.
+    'https://fcm.googleapis.com:8443/fcm/send/abc',
+    'https://fcm.googleapis.com:443/fcm/send/abc',
+    // A user or password in the address.
+    'https://user@fcm.googleapis.com/fcm/send/abc',
+    'https://user:secret@fcm.googleapis.com/fcm/send/abc',
+    'https://fcm.googleapis.com@example.org/abc',
+    // Internal addresses.
+    'https://localhost/abc',
+    'https://127.0.0.1/abc',
+    'https://10.0.0.5/abc',
+    'https://169.254.169.254/latest/meta-data',
+    'https://[::1]/abc',
+    // What parsers read differently.
+    `https://fcm.googleapis.com${BACKSLASH}@example.org/abc`,
+    'https://FCM.GOOGLEAPIS.COM/fcm/send/abc',
+    'https://fcm.googleapis.com./fcm/send/abc',
+    // Not an address.
+    'https://fcm.googleapis.com',
+    'not an address',
+    '',
+  ])('refuses %s', (endpoint) => {
+    expect(accepted(endpoint)).toBe(false)
+  })
+})
 
 describe.skipIf(!hasDatabase)('alerts (as the restro_app role)', () => {
   let world: ServiceWorld
@@ -309,7 +373,7 @@ describe.skipIf(!hasDatabase)('alerts (as the restro_app role)', () => {
 
   describe('devices for Web Push', () => {
     const subscription = (n: number) => ({
-      endpoint: `https://push.example.test/send/${n}-${'x'.repeat(30)}`,
+      endpoint: `https://fcm.googleapis.com/fcm/send/${n}-${'x'.repeat(30)}`,
       p256dh: 'B'.repeat(87),
       auth: 'a'.repeat(22),
     })
@@ -358,6 +422,61 @@ describe.skipIf(!hasDatabase)('alerts (as the restro_app role)', () => {
       )
       expect(result).toMatchObject({ status: 'refused', code: 'account_required' })
       expect(await stored(device.endpoint)).toBeUndefined()
+    })
+
+    describe('on the bar tablet (D120, RR-86)', () => {
+      const onTablet = (userId: string, sessionId: string): ServiceContext => ({
+        ...user(userId),
+        actor: { kind: 'user', userId, sessionId },
+      })
+
+      it('lets the tablet’s account subscribe with no PIN: the row lands on that account', async () => {
+        const device = subscription(5)
+        const sessionId = `shared-${randomUUID()}`
+        await world.addSharedDevice(sessionId)
+        const { result } = await applyService(
+          world.app,
+          { type: 'push.subscribe', ...device },
+          onTablet(plainId, sessionId),
+        )
+        expect(result.status).toBe('accepted')
+        expect((await stored(device.endpoint))?.user_id).toBe(plainId)
+      })
+
+      it('still asks a PIN to end it: no silent, nameless Off (D122 §7)', async () => {
+        const device = subscription(6)
+        const sessionId = `shared-${randomUUID()}`
+        await world.addSharedDevice(sessionId)
+        await applyService(
+          world.app,
+          { type: 'push.subscribe', ...device },
+          onTablet(ownerId, sessionId),
+        )
+        const { result } = await applyService(
+          world.app,
+          { type: 'push.revoke', endpointHash: endpointHashOf(device.endpoint) },
+          onTablet(ownerId, sessionId),
+        )
+        expect(result).toMatchObject({ status: 'refused', code: 'pin_required' })
+        expect((await stored(device.endpoint))?.revoked_at).toBeNull()
+      })
+
+      it('refuses the tablet of another venue, and stores nothing (RR-84)', async () => {
+        const other = await provisionVenue(world.app, world.tenantId, {
+          name: 'Second club',
+          slug: testSlug('alerts-second'),
+        })
+        const sessionId = `shared-${randomUUID()}`
+        await world.addSharedDevice(sessionId)
+        const device = subscription(7)
+        const { result } = await applyService(
+          world.app,
+          { type: 'push.subscribe', ...device },
+          { ...onTablet(ownerId, sessionId), venueId: other.id },
+        )
+        expect(result).toMatchObject({ status: 'refused', code: 'actor_unknown' })
+        expect(await stored(device.endpoint)).toBeUndefined()
+      })
     })
 
     it('ends a device for its own account, never for another, and for the worker', async () => {

@@ -6,10 +6,10 @@
 // Per receiver (the ticked accounts' push, the venue's Telegram group, the Restro team's chat):
 // - a new alert goes after the kind's first delay, grouped, with at most one message per minute
 //   (push) or per 10 minutes (team) for the kind at the venue;
-// - nothing goes outside service hours (the pre-opening check excepted): an alert raised while the
-//   venue is closed is dropped, never sent late;
-// - reminders follow the kind's rules while nobody has acted; an unconfirmed card payment is
-//   reminded again as its hold runs out, at half the time left and with 24 hours left (#112);
+// - nothing goes outside service hours (the pre-opening check and the money alerts excepted): an
+//   alert raised while the venue is closed is dropped, never sent late;
+// - reminders follow the kind's rules while nobody has acted; a money alert every 5 minutes until
+//   a person closes it (D122 §7);
 // - a pause that ends is announced ("Ordering is back") to those told it began, once it has been
 //   over for 10 minutes; one still on when the venue opens is announced once ("still paused");
 // - an alert answered in Restro gets its Telegram message edited to "Done by …".
@@ -20,22 +20,6 @@ import { type KindRule, ruleOf, type ServiceHoursWindow } from './alert-rules'
 
 /** A new alert older than this was raised for another night: it is not announced now. */
 export const STALE_NEW_MS = 6 * 3_600_000
-
-/** The last reminder before a card's hold runs out comes this long before (design §5.3). */
-export const HOLD_LAST_DAY_MS = 24 * 3_600_000
-
-/**
- * When a question about a held card is reminded again as the hold runs out (design §5.3): at half
- * the time left from when it was raised, and with 24 hours left; only the points after the raise.
- */
-export function holdReminderPoints(raisedAt: Date, captureBefore: Date): number[] {
-  const from = raisedAt.getTime()
-  const to = captureBefore.getTime()
-  if (to <= from) return []
-  return [from + Math.floor((to - from) / 2), to - HOLD_LAST_DAY_MS]
-    .filter((point) => point > from)
-    .sort((a, b) => a - b)
-}
 
 /** Who is told. */
 export const RECEIVERS = ['push', 'venueTelegram', 'team'] as const
@@ -127,8 +111,6 @@ export interface PlannedAlert {
   readonly delivery: DeliveryState
   /** The venue group's message to edit, once sent. */
   readonly telegramRef: string | null
-  /** Until when the card's hold may be captured, for a question about one (#112). */
-  readonly captureBefore?: Date | null
 }
 
 /** What the planner is given. */
@@ -212,9 +194,12 @@ export function planDelivery(input: PlanInput): DeliveryPlan {
       const fresh = open.filter(
         (alert) =>
           stateOf(alert) === undefined &&
-          !alert.delivery.suppressed &&
+          // A money alert is never given up on (D122 §7), even one dropped before that was the rule.
+          (rule.untilDone === true || !alert.delivery.suppressed) &&
           !announced.has(alert.id) &&
-          (rule.closesItself || nowMs - alert.raisedAt.getTime() <= STALE_NEW_MS) &&
+          (rule.closesItself ||
+            rule.untilDone === true ||
+            nowMs - alert.raisedAt.getTime() <= STALE_NEW_MS) &&
           alert.raisedAt.getTime() + forReceiver.firstDelayMs <= nowMs,
       )
       if (fresh.length > 0) {
@@ -231,29 +216,17 @@ export function planDelivery(input: PlanInput): DeliveryPlan {
         }
       }
 
-      // Reminders while nobody has acted; a held card's question also as the hold runs out, to
-      // the staff (push and the venue's group), once for each point passed since the last message.
+      // Reminders while nobody has acted.
       const reminder = forReceiver.reminder
-      const expiry = rule.holdExpiryReminders === true && receiver !== 'team'
-      if ((reminder !== null || expiry) && speaking) {
+      if (reminder !== null && speaking) {
         const due = open.filter((alert) => {
           const state = stateOf(alert)
           if (state === undefined || announced.has(alert.id)) return false
-          const lastAt = Date.parse(state.lastAt)
-          const timed =
-            reminder !== null &&
-            state.count - 1 < reminder.max &&
-            lastAt + reminder.afterMs <= nowMs
-          const runningOut =
-            expiry &&
-            alert.captureBefore !== undefined &&
-            alert.captureBefore !== null &&
-            holdReminderPoints(alert.raisedAt, alert.captureBefore).some(
-              (point) => lastAt < point && point <= nowMs,
-            )
-          return timed || runningOut
+          return (
+            state.count - 1 < reminder.max && Date.parse(state.lastAt) + reminder.afterMs <= nowMs
+          )
         })
-        add('reminder', due, (reminder?.ownersOnly ?? false) || (forReceiver.ownersOnly ?? false))
+        add('reminder', due, reminder.ownersOnly || (forReceiver.ownersOnly ?? false))
       }
 
       // Told it ended, once it has stayed over.

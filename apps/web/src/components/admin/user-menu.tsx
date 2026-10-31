@@ -36,6 +36,7 @@ import {
   subscribeToTheme,
   THEME_CHOICES,
 } from '@/lib/theme'
+import { stopPushOnThisBrowser } from '@/tonight/push-device'
 
 interface UserMenuProps {
   name: string
@@ -56,6 +57,7 @@ export function UserMenu({ name, email }: UserMenuProps) {
   const theme = useSyncExternalStore(subscribeToTheme, readThemeChoice, () => 'system' as const)
 
   async function signOut() {
+    await stopPushOnThisBrowser()
     await authClient.signOut()
     router.replace('/login')
     router.refresh()

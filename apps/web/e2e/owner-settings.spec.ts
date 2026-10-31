@@ -78,16 +78,16 @@ test('Hours: opens a night through its dialog, refuses hours that do not fit, ke
   const { context, page } = await open(browser, { width: 1280, height: 900, colorScheme: 'light' })
   await page.goto(section('hours'))
   await expect(page.getByRole('heading', { name: 'Работно време', level: 2 })).toBeVisible()
-  // The page must be interactive before the click, and Thursday must start closed (a reused
-  // database may keep it from an earlier run): switching it on is what opens the dialog.
+  // The page must be interactive before the click. A day that never had times asks for them when
+  // switched on; one a reused database keeps open, or keeps the times of (switching off keeps them),
+  // is changed from its row.
   await page.waitForLoadState('networkidle')
   const thursday = page.getByRole('switch', { name: 'Четвъртък' })
-  if (await thursday.isChecked()) {
-    await thursday.click()
-    await expect(thursday).not.toBeChecked()
-  }
-  await thursday.click()
   const dialog = page.getByRole('dialog')
+  const change = page.getByRole('button', { name: /^Четвъртък: / })
+  if (!(await thursday.isChecked())) await thursday.click()
+  await expect(dialog.or(change)).toBeVisible()
+  if (!(await dialog.isVisible())) await change.click()
   await expect(dialog.getByLabel('Отваря')).toBeVisible()
   await dialog.getByLabel('Отваря').fill('23:00')
   await dialog.getByLabel('Последни поръчки').fill('06:50')

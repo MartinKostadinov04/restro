@@ -40,7 +40,7 @@ export function ReadOnlyLine() {
   )
 }
 
-/** The Settings tab on a shared device: nothing else is drawn. */
+/** The organisation's Settings on a shared device, by an old link: nothing else is drawn. */
 export function OwnSignInNotice() {
   const t = useTranslations('ownerSettings')
   return (

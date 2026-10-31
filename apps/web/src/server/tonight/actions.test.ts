@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const runTableCommand = vi.hoisted(() => vi.fn())
 const queuePaymentStep = vi.hoisted(() => vi.fn())
+const identifyAtSharedDevice = vi.hoisted(() => vi.fn())
 const getVenue = vi.hoisted(() =>
   vi.fn(async (_tenant: string, id: string): Promise<{ id: string } | null> => ({ id })),
 )
@@ -22,7 +23,13 @@ vi.mock('../session', () => ({
     signedInAt: new Date('2026-10-29T20:00:00Z'),
   }),
 }))
-vi.mock('../staff/service', () => ({ identifyAtSharedDevice: vi.fn() }))
+vi.mock('../staff/service', () => ({
+  identifyAtSharedDevice,
+  ownActor: (user: { id: string }, sessionId: string, options?: { asOperator?: boolean }) =>
+    options?.asOperator === true
+      ? { kind: 'operator', userId: user.id }
+      : { kind: 'user', userId: user.id, sessionId },
+}))
 vi.mock('../venues', () => ({ getVenue }))
 vi.mock('../guest-api', () => ({ queuePaymentStep }))
 vi.mock('./load', () => ({ loadTableBill: vi.fn() }))
@@ -34,6 +41,7 @@ import {
   closeTableAction,
   doneAlertAction,
   liftOrderingAction,
+  liftRestroPauseAction,
   openAllTablesAction,
   openTableAction,
   pauseOrderingAction,
@@ -42,6 +50,8 @@ import {
   stornoDoneAction,
   stornoUndoAction,
   undoOpenAllAction,
+  undoPauseAction,
+  undoWaiterCallAction,
 } from './actions'
 
 const VENUE = 'vn_0123456789ABCDEFGHIJKL'
@@ -204,7 +214,50 @@ describe('the undo token of a staff Undo (#219)', () => {
   const TABLE = 'tb_0123456789ABCDEFGHIJKL'
   const PAUSE = 'pa_0123456789ABCDEFGHIJKL'
   const BAR = 'br_0123456789ABCDEFGHIJKL'
+  const CALL = 'wc_0123456789ABCDEFGHIJKL'
   const ok = { ok: true, details: {} }
+
+  it('refuses an Undo of a pause or of Handled without its token, and a lift with one', async () => {
+    runTableCommand.mockResolvedValue(ok)
+    const invalid = { ok: false, error: 'invalid' }
+    expect(await undoPauseAction({ venueId: VENUE, pauseId: PAUSE })).toEqual(invalid)
+    expect(await undoWaiterCallAction({ venueId: VENUE, waiterCallId: CALL })).toEqual(invalid)
+    expect(
+      await liftOrderingAction({ venueId: VENUE, pauseId: PAUSE, undo: { entry: 1 } }),
+    ).toEqual(invalid)
+    expect(runTableCommand).not.toHaveBeenCalled()
+  })
+
+  it('lifts a Restro pause as the Restro team, never as the person at the venue (D120)', async () => {
+    runTableCommand.mockResolvedValue(ok)
+    await liftRestroPauseAction({ venueId: VENUE, pauseId: PAUSE })
+    const [scope, command] = runTableCommand.mock.calls[0] as [{ actor: unknown }, unknown]
+    expect(command).toEqual({ type: 'ordering.lift', pauseId: PAUSE })
+    expect(scope.actor).toEqual({ kind: 'operator', userId: 'us_1' })
+    // A PIN is no way in: only the session's own grant, which the command path checks.
+    expect(await liftRestroPauseAction({ venueId: VENUE, pauseId: PAUSE, pin: '1234' })).toEqual({
+      ok: false,
+      error: 'invalid',
+    })
+  })
+
+  it('names whom the PIN named, and nobody on a person’s own session', async () => {
+    runTableCommand.mockResolvedValue({ ok: true, details: { changed: true } })
+    identifyAtSharedDevice.mockResolvedValue({
+      ok: true,
+      staffMemberId: 'st_1',
+      name: 'Ivana',
+      deviceId: 'dv_1',
+    })
+    expect(await liftOrderingAction({ venueId: VENUE, pauseId: PAUSE, pin: '1234' })).toEqual({
+      ok: true,
+      details: { changed: true, who: 'Ivana' },
+    })
+    expect(await liftOrderingAction({ venueId: VENUE, pauseId: PAUSE })).toEqual({
+      ok: true,
+      details: { changed: true },
+    })
+  })
 
   it('sends the token on with each inverse command, and none when there is none', async () => {
     const undo = { entry: 4821 }
@@ -212,14 +265,16 @@ describe('the undo token of a staff Undo (#219)', () => {
     await closeTableAction({ venueId: VENUE, tableId: TABLE, undo })
     await openTableAction({ venueId: VENUE, tableId: TABLE, undo })
     await pauseOrderingAction({ venueId: VENUE, barId: BAR, undo })
-    await liftOrderingAction({ venueId: VENUE, pauseId: PAUSE, undo })
+    await undoPauseAction({ venueId: VENUE, pauseId: PAUSE, undo })
+    await undoWaiterCallAction({ venueId: VENUE, waiterCallId: CALL, undo })
     await receiptUnbroughtAction({ venueId: VENUE, paymentId: PAYMENT, undo })
     await openTableAction({ venueId: VENUE, tableId: TABLE })
     expect(runTableCommand.mock.calls.map((call) => call[1])).toEqual([
       { type: 'table.close', tableId: TABLE, undo },
       { type: 'table.open', tableId: TABLE, undo },
       { type: 'ordering.pause', barId: BAR, undo },
-      { type: 'ordering.lift', pauseId: PAUSE, undo },
+      { type: 'ordering.undo_pause', pauseId: PAUSE, undo },
+      { type: 'waiter_call.undone', waiterCallId: CALL, undo },
       { type: 'receipt.unbrought', paymentId: PAYMENT, undo },
       { type: 'table.open', tableId: TABLE },
     ])

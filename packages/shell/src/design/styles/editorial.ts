@@ -13,6 +13,10 @@ import type { StyleFile } from '../style'
 //
 // Departures from today's look, each forced by a floor or a renderer rule (listed in `departures`
 // below; the lead checks the list against the rendering).
+//
+// Where Editorial keeps today's look against a renderer rule (#172), so nothing moves on its page:
+//   - in two columns at the largest name size, the price (16 px) stands above the name (14 px);
+//   - the dish page's inset landscape hero keeps its tall crop, not the 4:3 of the Photos page.
 
 export const editorialStyle = {
   id: 'editorial',

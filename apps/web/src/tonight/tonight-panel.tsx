@@ -30,12 +30,11 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/u
 import { cn } from '@/lib/utils'
 import {
   closeAllTablesAction,
-  liftOrderingAction,
   openAllTablesAction,
   pauseOrderingAction,
   undoOpenAllAction,
+  undoPauseAction,
 } from '@/server/tonight/actions'
-import type { UndoToken } from '@/server/tonight/tables'
 import type { TonightView } from '@/server/tonight/view'
 
 import { ActionRowItem, OutOfStockNotice, useAgo } from './action-rows'
@@ -43,6 +42,7 @@ import { callKindsText } from './call-kinds'
 import { useMoney } from './money'
 import { moneyTitleKey } from './money-rows'
 import { PauseBanners } from './pause-banners'
+import { PushControl } from './push-control'
 import { RunProvider, useTonightRun, wroteSomething } from './run'
 import { useTableName } from './table-name'
 import { TablesGrid } from './tables-grid'
@@ -93,21 +93,14 @@ function PauseMenu({ view }: { view: TonightView }) {
       id: `pause:${barId ?? 'all'}`,
       act: () => pauseOrderingAction({ venueId: view.venueId, barId }),
       done: t('p_toast', { scope: name }),
-      // Lifting needs a manager; without that right the toast has no Undo.
-      ...(view.can.lift && !view.device
-        ? {
-            undo: (
-              done: { details: Record<string, string | number | boolean | null> },
-              undo: UndoToken | undefined,
-            ) =>
-              liftOrderingAction({
-                venueId: view.venueId,
-                pauseId: String(done.details.pauseId),
-                undo,
-              }),
-            undoWhen: wroteSomething,
-          }
-        : {}),
+      // The person's own pause, whatever their role and on the tablet too; the token decides.
+      undo: (done, undo) =>
+        undoPauseAction({
+          venueId: view.venueId,
+          pauseId: String(done.details.pauseId),
+          undo,
+        }),
+      undoWhen: wroteSomething,
     })
   }
 
@@ -149,7 +142,7 @@ function PauseMenu({ view }: { view: TonightView }) {
   )
 }
 
-function Content({ view }: { view: TonightView }) {
+function Content({ view, pushKey }: { view: TonightView; pushKey: string | undefined }) {
   const t = useTranslations('tonight')
   const money = useMoney()
   const router = useRouter()
@@ -247,15 +240,9 @@ function Content({ view }: { view: TonightView }) {
         : {}),
       act: (pin) => openAllTablesAction({ venueId: view.venueId, pin }),
       done: t('oa_toast', { k: closedIds.length }),
-      // On a shared device Open all names a person by their PIN, and its Undo would have to name
-      // the same person: it has no PIN to do so, so the toast offers none there (#219).
-      ...(view.device
-        ? {}
-        : {
-            undo: (_: unknown, undo: UndoToken | undefined) =>
-              undoOpenAllAction({ venueId: view.venueId, undo }),
-            undoWhen: wroteSomething,
-          }),
+      // On a shared device the Undo names the same person, with the PIN of the write.
+      undo: (_, undo, pin) => undoOpenAllAction({ venueId: view.venueId, undo, pin }),
+      undoWhen: wroteSomething,
     })
   }
   function confirmCloseAll() {
@@ -419,6 +406,9 @@ function Content({ view }: { view: TonightView }) {
         </div>
       </div>
       <PauseBanners view={view} />
+      {pushKey === undefined ? null : (
+        <PushControl venueId={view.venueId} pushKey={pushKey} sharedDevice={view.device} />
+      )}
       <p role="status" aria-live="polite" className="sr-only" data-testid="announcement">
         {announcement}
       </p>
@@ -488,13 +478,20 @@ function Content({ view }: { view: TonightView }) {
 }
 
 /** The Tonight screen for one venue. */
-export function TonightPanel({ view }: { view: TonightView }) {
+export function TonightPanel({
+  view,
+  pushKey,
+}: {
+  view: TonightView
+  /** The Web Push public key, for whoever may answer alerts; without it the control doesn't show. */
+  pushKey?: string | undefined
+}) {
   const t = useTranslations('tonight')
   // A venue with no POS still reads right where a sentence names its system.
   const named = view.source === '' ? { ...view, source: t('source_none') } : view
   return (
     <RunProvider>
-      <Content view={named} />
+      <Content view={named} pushKey={pushKey} />
     </RunProvider>
   )
 }

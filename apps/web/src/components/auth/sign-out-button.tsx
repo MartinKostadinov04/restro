@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
 import { authClient } from '@/lib/auth-client'
+import { stopPushOnThisBrowser } from '@/tonight/push-device'
 
 /** A plain sign-out button for pages outside the admin frame. */
 export function SignOutButton() {
@@ -13,6 +14,7 @@ export function SignOutButton() {
   const router = useRouter()
 
   async function signOut() {
+    await stopPushOnThisBrowser()
     await authClient.signOut()
     router.replace('/login')
     router.refresh()

@@ -6,16 +6,22 @@
 // action; then it calls tables.ts, whose service write path checks the permission. The mark of a
 // payment table is a settings change: it takes no PIN, only the person's own sign-in.
 import { idSchema } from '@restro/core'
-import { paymentWorkerJob, readVenueAccess, type ServiceActor } from '@restro/core/service'
+import {
+  endpointHashOf,
+  PushSubscribeSchema,
+  paymentWorkerJob,
+  readVenueAccess,
+  type ServiceActor,
+} from '@restro/core/service'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { getPool } from '../db'
 import { queuePaymentStep } from '../guest-api'
 import { enqueueJob } from '../jobs'
-import { logError } from '../log'
+import { logError, logWarn } from '../log'
 import { requireTenant } from '../session'
-import { identifyAtSharedDevice } from '../staff/service'
+import { identifyAtSharedDevice, ownActor } from '../staff/service'
 import { getVenue } from '../venues'
 import { loadTableBill, type TableSheetBill } from './load'
 import {
@@ -43,6 +49,9 @@ const NewGuests = z.strictObject({ venueId, tableId, sittingId: idSchema('st').o
 const OnVenue = z.strictObject({ venueId, pin })
 const MarkPayment = z.strictObject({ venueId, tableId, isPaymentTable: z.boolean() })
 
+const PushDevice = PushSubscribeSchema.omit({ type: true }).extend({ venueId })
+const PushEnd = PushDevice.pick({ venueId: true, endpoint: true })
+
 const INVALID: TonightResult = { ok: false, error: 'invalid' }
 const NOT_FOUND: TonightResult = { ok: false, error: 'venue_missing' }
 
@@ -53,13 +62,15 @@ const NOT_FOUND: TonightResult = { ok: false, error: 'venue_missing' }
 async function perform(
   input: { readonly venueId: string; readonly pin?: string | undefined },
   act: (scope: TonightScope) => Promise<TonightResult>,
+  options: { readonly asOperator?: boolean } = {},
 ): Promise<TonightResult> {
   try {
     const { organization, user, sessionId, signedInAt } = await requireTenant()
     // Another tenant's venue and a made-up id both come back as null (row-level security).
     const venue = await getVenue(organization.id, input.venueId)
     if (!venue) return NOT_FOUND
-    let actor: ServiceActor = { kind: 'user', userId: user.id, sessionId }
+    let actor: ServiceActor = await ownActor(user, sessionId, options)
+    let named: string | null = null
     if (input.pin !== undefined) {
       const identity = await identifyAtSharedDevice({
         tenantId: organization.id,
@@ -74,6 +85,7 @@ async function perform(
           : { ok: false, error: identity.code }
       }
       actor = { kind: 'staff', staffMemberId: identity.staffMemberId, sessionId }
+      named = identity.name
     }
     const result = await act({
       pool: getPool(),
@@ -83,7 +95,10 @@ async function perform(
       signedInAt,
     })
     if (result.ok) revalidatePath(`/venues/${venue.id}`)
-    return result
+    // The toast names whom the PIN named (plan §5: "· {who}").
+    return result.ok && named !== null
+      ? { ...result, details: { ...result.details, who: named } }
+      : result
   } catch (error) {
     // redirect() and notFound() are control flow, not failures.
     if (error instanceof Error && 'digest' in error) throw error
@@ -163,7 +178,7 @@ export async function markPaymentTableAction(input: unknown): Promise<TonightRes
 }
 
 const OnCall = z.strictObject({ venueId, waiterCallId: idSchema('wc'), pin })
-const OnPause = z.strictObject({ venueId, pauseId: idSchema('pa'), pin, undo })
+const OnPause = z.strictObject({ venueId, pauseId: idSchema('pa'), pin })
 const OnBar = z.strictObject({ venueId, barId: idSchema('br').nullable(), pin, undo })
 const OnSentOrder = z.strictObject({
   venueId,
@@ -180,6 +195,18 @@ export async function handleWaiterCallAction(input: unknown): Promise<TonightRes
   if (!parsed.success) return INVALID
   return perform(parsed.data, (scope) =>
     command(scope, { type: 'waiter_call.done', waiterCallId: parsed.data.waiterCallId }),
+  )
+}
+
+const UndoCall = z.strictObject({ venueId, waiterCallId: idSchema('wc'), undo: undo.unwrap() })
+
+/** The Undo of "Handled" (RR-58): no PIN, as "Handled" itself. */
+export async function undoWaiterCallAction(input: unknown): Promise<TonightResult> {
+  const parsed = UndoCall.safeParse(input)
+  if (!parsed.success) return INVALID
+  const { waiterCallId, undo: token } = parsed.data
+  return perform(parsed.data, (scope) =>
+    command(scope, { type: 'waiter_call.undone', waiterCallId, undo: token }),
   )
 }
 
@@ -229,13 +256,34 @@ export async function pauseOrderingAction(input: unknown): Promise<TonightResult
 export async function liftOrderingAction(input: unknown): Promise<TonightResult> {
   const parsed = OnPause.safeParse(input)
   if (!parsed.success) return INVALID
+  const { pauseId } = parsed.data
+  return perform(parsed.data, (scope) => command(scope, { type: 'ordering.lift', pauseId }))
+}
+
+const RestroPause = z.strictObject({ venueId, pauseId: idSchema('pa') })
+
+/**
+ * Lifts a pause Restro started: Restro's admin team only (D120, D122 §6). Anyone else stays the
+ * account they are, and core refuses them `restro_pause`.
+ */
+export async function liftRestroPauseAction(input: unknown): Promise<TonightResult> {
+  const parsed = RestroPause.safeParse(input)
+  if (!parsed.success) return INVALID
+  const { pauseId } = parsed.data
+  return perform(parsed.data, (scope) => command(scope, { type: 'ordering.lift', pauseId }), {
+    asOperator: true,
+  })
+}
+
+const UndoPause = z.strictObject({ venueId, pauseId: idSchema('pa'), undo: undo.unwrap() })
+
+/** The Undo of the person's own pause (RR-58): no PIN and no manager, inside its 30 seconds. */
+export async function undoPauseAction(input: unknown): Promise<TonightResult> {
+  const parsed = UndoPause.safeParse(input)
+  if (!parsed.success) return INVALID
   const { pauseId, undo: token } = parsed.data
   return perform(parsed.data, (scope) =>
-    command(scope, {
-      type: 'ordering.lift',
-      pauseId,
-      ...(token === undefined ? {} : { undo: token }),
-    }),
+    command(scope, { type: 'ordering.undo_pause', pauseId, undo: token }),
   )
 }
 
@@ -417,4 +465,39 @@ export async function answerPaymentAction(input: unknown): Promise<TonightResult
     }
     return result
   })
+}
+
+/**
+ * A browser's real push service missing from core's list would otherwise refuse phones with no trace.
+ * The host alone: the endpoint's path is the device's secret.
+ */
+function logRefusedPushHost(input: unknown): void {
+  const endpoint = (input as { endpoint?: unknown } | null)?.endpoint
+  if (typeof endpoint !== 'string' || !URL.canParse(endpoint)) return
+  logWarn('push_endpoint_refused', { host: new URL(endpoint).hostname.slice(0, 253) })
+}
+
+/**
+ * Registers this browser for the signed-in account's alerts (RR-86, D120), or says it again so a
+ * rotated endpoint doesn't silently stop. On a shared device that is the device's own account, with
+ * no PIN, at the device's own venue: core refuses any other.
+ */
+export async function subscribePushAction(input: unknown): Promise<TonightResult> {
+  const parsed = PushDevice.safeParse(input)
+  if (!parsed.success) {
+    logRefusedPushHost(input)
+    return INVALID
+  }
+  const { endpoint, p256dh, auth } = parsed.data
+  return perform(parsed.data, (scope) =>
+    command(scope, { type: 'push.subscribe', endpoint, p256dh, auth }),
+  )
+}
+
+/** Ends this browser's alerts on a person's own sign-in. A shared device needs a PIN: refused. */
+export async function revokePushAction(input: unknown): Promise<TonightResult> {
+  const parsed = PushEnd.safeParse(input)
+  if (!parsed.success) return INVALID
+  const endpointHash = endpointHashOf(parsed.data.endpoint)
+  return perform(parsed.data, (scope) => command(scope, { type: 'push.revoke', endpointHash }))
 }

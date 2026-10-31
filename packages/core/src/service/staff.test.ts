@@ -273,7 +273,7 @@ describe.skipIf(!hasDatabase)('the people commands (as the restro_app role)', ()
       ok: false,
       code: 'not_shared_device',
     })
-    expect(await identify(pin)).toEqual({ ok: true, staffMemberId, deviceId })
+    expect(await identify(pin)).toEqual({ ok: true, staffMemberId, deviceId, name: 'Hristo' })
 
     // An owner's PIN on the shared device still never reaches settings.
     const staffActor: ServiceActor = {

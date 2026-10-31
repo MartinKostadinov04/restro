@@ -134,7 +134,10 @@ describe('Settings › Hours', () => {
     await waitFor(() =>
       expect(saveOrderingAction).toHaveBeenCalledWith({
         venueId: VENUE,
-        changes: { serviceHours: { ...settings.serviceHours, fri: null } },
+        changes: {
+          serviceHours: { ...settings.serviceHours, fri: null },
+          closedDayHours: { fri: THU },
+        },
       }),
     )
     await waitFor(() => expect(toast.success).toHaveBeenCalled())
@@ -148,6 +151,60 @@ describe('Settings › Hours', () => {
         changes: { serviceHours: settings.serviceHours },
       }),
     )
+  })
+
+  it('brings a closed day’s times back when it is switched on again, with no dialog (RR-58)', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<HoursPanel view={view({ closedDayHours: { fri: THU } })} />)
+    await user.click(screen.getByRole('switch', { name: 'Friday' }))
+    await waitFor(() =>
+      expect(saveOrderingAction).toHaveBeenCalledWith({
+        venueId: VENUE,
+        changes: { serviceHours: { ...DEFAULT_ORDERING_SETTINGS.serviceHours, fri: THU } },
+      }),
+    )
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('opens the dialog on kept times the service day has moved past, with them in it', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(
+      <HoursPanel view={view({ closedDayHours: { fri: THU } }, { dayEndsAt: '04:00' })} />,
+    )
+    await user.click(screen.getByRole('switch', { name: 'Friday' }))
+    await screen.findByRole('dialog')
+    expect(saveOrderingAction).not.toHaveBeenCalled()
+  })
+
+  it('keeps the dialog and what was typed when the connection is down (RR-76)', async () => {
+    const user = userEvent.setup()
+    vi.mocked(saveOrderingAction).mockRejectedValue(new TypeError('Failed to fetch'))
+    const settings = { serviceHours: { ...DEFAULT_ORDERING_SETTINGS.serviceHours, thu: THU } }
+    renderWithIntl(<HoursPanel view={view(settings)} />)
+    await user.click(screen.getByRole('button', { name: 'Thursday: Change' }))
+    const dialog = await screen.findByRole('dialog')
+    const saveButton = within(dialog).getByRole('button', { name: 'Save' })
+    await user.click(saveButton)
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(toast.error).mock.calls[0]).toEqual([
+      "Couldn't save. Check the connection and try again.",
+      { duration: Number.POSITIVE_INFINITY, closeButton: true },
+    ])
+    // The screen is still there, the dialog with it; nothing says it was saved.
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('gives a refused save’s toast a close button (RR-58)', async () => {
+    const user = userEvent.setup()
+    vi.mocked(saveOrderingAction).mockResolvedValue({ ok: false, error: 'permission_denied' })
+    renderWithIntl(<HoursPanel view={view({ closedDayHours: { fri: THU } })} />)
+    await user.click(screen.getByRole('switch', { name: 'Friday' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(toast.error).mock.calls[0]?.[1]).toEqual({
+      duration: Number.POSITIVE_INFINITY,
+      closeButton: true,
+    })
   })
 
   it('says "Applies from now." when a night is open and its hours change', async () => {
@@ -196,7 +253,6 @@ describe('Settings › Ordering', () => {
       "Set the venue's spot, or nobody can order",
     )
     expect(screen.getByRole('button', { name: "I'm at the venue – use this spot" })).toBeTruthy()
-    expect(screen.getByRole('switch', { name: 'Only at tables a waiter has opened' })).toBeTruthy()
   })
 
   it('changes the cap in place: Enter saves through the money module, Escape cancels', async () => {
@@ -219,6 +275,47 @@ describe('Settings › Ordering', () => {
       '9{Escape}',
     )
     expect(saveOrderingAction).not.toHaveBeenCalled()
+  })
+
+  it('saves a changed cap when the field is left, once; an unchanged one just closes (RR-58)', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<OrderingPanel view={view()} />)
+    await user.click(screen.getByRole('button', { name: 'Change the largest order' }))
+    await user.tab()
+    expect(saveOrderingAction).not.toHaveBeenCalled()
+    expect(screen.queryByRole('textbox')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Change the largest order' }))
+    const input = screen.getByLabelText('Largest order on the bill without paying first')
+    await user.clear(input)
+    await user.type(input, '75')
+    await user.tab()
+    await waitFor(() => expect(saveOrderingAction).toHaveBeenCalledTimes(1))
+    expect(saveOrderingAction).toHaveBeenCalledWith({
+      venueId: VENUE,
+      changes: { capMinor: 7_500 },
+    })
+  })
+
+  it('keeps what was typed when the field is left with no amount in it', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<OrderingPanel view={view()} />)
+    await user.click(screen.getByRole('button', { name: 'Change the largest order' }))
+    const input = screen.getByLabelText('Largest order on the bill without paying first')
+    await user.clear(input)
+    await user.type(input, 'lots')
+    await user.tab()
+    expect(saveOrderingAction).not.toHaveBeenCalled()
+    expect(
+      (screen.getByLabelText('Largest order on the bill without paying first') as HTMLInputElement)
+        .value,
+    ).toBe('lots')
+    expect(screen.getByRole('alert').textContent).toContain('Enter an amount')
+  })
+
+  it('has no switch for tables a waiter has opened: nothing read it (RR-35)', () => {
+    renderWithIntl(<OrderingPanel view={view()} />)
+    expect(screen.queryByText('Only at tables a waiter has opened')).toBeNull()
   })
 
   it('refuses a cap that is not an amount', async () => {

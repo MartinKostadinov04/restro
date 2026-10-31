@@ -20,6 +20,22 @@ describe('ordering settings', () => {
     )
   })
 
+  it('reads a venue saved with the retired switch as saved, not as the defaults (RR-35)', () => {
+    const fri = { opens: '23:00', lastOrders: '04:30', closes: '05:00' }
+    const { closedDayHours: _new, ...saved } = {
+      ...DEFAULT_ORDERING_SETTINGS,
+      capMinor: 9_900,
+      serviceHours: { ...DEFAULT_ORDERING_SETTINGS.serviceHours, fri },
+    }
+    const read = readOrderingSettings({ ordering: { ...saved, onlyOpenTables: false } })
+    expect(read.capMinor).toBe(9_900)
+    expect(read.serviceHours.fri).toEqual(fri)
+    expect(read).not.toHaveProperty('onlyOpenTables')
+    expect(read.closedDayHours).toEqual({})
+    // And what is read passes the schema again, so a save merges into it.
+    expect(OrderingSettingsSchema.safeParse(read).success).toBe(true)
+  })
+
   it('falls back to the defaults when the stored value does not pass', () => {
     expect(readOrderingSettings({ ordering: { capMinor: -1 } })).toEqual(DEFAULT_ORDERING_SETTINGS)
   })

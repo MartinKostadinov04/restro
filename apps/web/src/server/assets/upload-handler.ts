@@ -18,6 +18,7 @@ const MULTIPART_OVERHEAD = 64 * 1024
 export type UploadFailure =
   | 'unauthorized'
   | 'bad_origin'
+  | 'own_sign_in'
   | 'no_file'
   | 'empty'
   | 'too_large'
@@ -29,6 +30,7 @@ export type UploadFailure =
 const STATUS: Record<UploadFailure, number> = {
   unauthorized: 401,
   bad_origin: 403,
+  own_sign_in: 403,
   no_file: 400,
   empty: 400,
   too_large: 413,
@@ -84,6 +86,8 @@ export async function readBodyLimited(request: Request, limit: number): Promise<
 export interface UploadDependencies {
   /** The tenant of the signed-in person, or null when nobody is signed in. */
   readonly tenantId: () => Promise<string | null>
+  /** Whether this sign-in is a shared device: the menu's photos need the person's own (RR-85). */
+  readonly sharedDevice: (tenantId: string) => Promise<boolean>
   readonly pool: DbPool
   readonly store: () => Promise<AssetStore>
   /**
@@ -98,6 +102,7 @@ export async function handleUpload(request: Request, deps: UploadDependencies): 
   const tenantId = await deps.tenantId()
   if (tenantId === null) return failure('unauthorized')
   if (!isSameOrigin(request)) return failure('bad_origin')
+  if (await deps.sharedDevice(tenantId)) return failure('own_sign_in')
 
   const contentType = request.headers.get('content-type') ?? ''
   if (!contentType.toLowerCase().startsWith('multipart/form-data')) return failure('no_file')

@@ -11,11 +11,13 @@ import { z } from 'zod'
 
 import { logError } from '../log'
 import { requireTenant } from '../session'
+import { identifyAtSharedDevice } from '../staff/service'
 import { getVenue } from '../venues'
 import type { NightScope } from './night-load'
 import type { Frame } from './night-view'
 import { loadNightPayments, loadPaymentDetail } from './payment-load'
 import type { PaymentDetailView, PaymentsView } from './payment-view'
+import type { TonightResult } from './tables'
 
 const venueId = idSchema('vn')
 const Payment = z.strictObject({ venueId, paymentId: idSchema('py') })
@@ -76,6 +78,54 @@ export async function nightPaymentsAction(
       all: parsed.data.all,
     })
   })
+}
+
+const Evidence = Payment.extend({ pin: z.string().regex(/^\d{4}$/) })
+
+/**
+ * A dispute's evidence on a shared device (RR-58): the tablet's account can't read it, a PIN of
+ * someone who may does. Any other PIN is told a manager's is needed.
+ */
+export async function paymentEvidenceAction(
+  input: unknown,
+): Promise<
+  { readonly ok: true; readonly detail: PaymentDetailView } | Extract<TonightResult, { ok: false }>
+> {
+  const parsed = Evidence.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'invalid' }
+  try {
+    const { organization, user, sessionId } = await requireTenant()
+    const venue = await getVenue(organization.id, parsed.data.venueId)
+    if (!venue) return { ok: false, error: 'venue_missing' }
+    const identity = await identifyAtSharedDevice({
+      tenantId: organization.id,
+      venueId: venue.id,
+      userId: user.id,
+      sessionId,
+      pin: parsed.data.pin,
+    })
+    if (!identity.ok) {
+      return identity.code === 'device_waiting'
+        ? { ok: false, error: identity.code, retryAfterSeconds: identity.retryAfterSeconds }
+        : { ok: false, error: identity.code }
+    }
+    const read = await loadPaymentDetail(
+      {
+        tenantId: organization.id,
+        venue,
+        actor: { kind: 'staff', staffMemberId: identity.staffMemberId, sessionId },
+        sourceNone: (await getTranslations('tonight'))('source_none'),
+      },
+      parsed.data.paymentId,
+    )
+    if (!read.ok) return { ok: false, error: read.code }
+    if (read.detail?.evidence == null) return { ok: false, error: 'permission_denied' }
+    return { ok: true, detail: read.detail }
+  } catch (error) {
+    if (error instanceof Error && 'digest' in error) throw error
+    logError('tonight_payment_evidence_failed', error)
+    return { ok: false, error: 'failed' }
+  }
 }
 
 /** One payment's sheet. */

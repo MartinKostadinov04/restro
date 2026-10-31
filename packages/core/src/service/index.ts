@@ -74,7 +74,7 @@ export {
   tableLabel,
   telegramAnswer,
 } from './alert-text'
-export { endpointHashOf, PAUSE_RETURN_MS } from './alerts'
+export { endpointHashOf, PAUSE_RETURN_MS, PushSubscribeSchema } from './alerts'
 export { type AppliedService, applyService } from './apply-service'
 export {
   type BillLineView,

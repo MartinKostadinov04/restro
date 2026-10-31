@@ -26,11 +26,49 @@ export const PAUSE_RETURN_MS = 10 * 60_000
 /** The scopes of a pause that is an alert: a venue, a bar or the POS connection (not a table). */
 const PAUSE_ALERT_SCOPES = ['venue', 'bar', 'connection'] as const
 
+/**
+ * The push services a browser's subscription really names (RR-86). The worker POSTs to the endpoint a
+ * staff account gave, so anything else would let that account aim the worker at any address.
+ */
+const PUSH_SERVICE_HOSTS: readonly string[] = [
+  // Chrome, and the browsers built on it that use Google's service (Samsung Internet, Opera).
+  'fcm.googleapis.com',
+]
+// Chromium builds outside branded stable Chrome, and some Chrome versions: Google's push service on
+// numbered hosts (seen as jmt17.google.com, not documented by Google). Exact shape only: a wider
+// `.google.com` would let an account aim the worker at any Google host.
+const GOOGLE_NUMBERED_HOST = /^jmt[0-9]{1,3}[.]google[.]com$/
+const PUSH_SERVICE_SUFFIXES = [
+  // Firefox.
+  '.push.services.mozilla.com',
+  // Safari, and an app added to an iPhone's Home Screen.
+  '.push.apple.com',
+  // Edge.
+  '.notify.windows.com',
+]
+
+/**
+ * True for https to one of those hosts, with no port and no user or password. The address must start
+ * exactly as its parsed host says, so a port, a user, capitals or a backslash, which parsers can read
+ * differently, are refused rather than interpreted.
+ */
+function isPushServiceEndpoint(endpoint: string): boolean {
+  let host: string
+  try {
+    host = new URL(endpoint).hostname
+  } catch {
+    return false
+  }
+  return (
+    endpoint.startsWith(`https://${host}/`) &&
+    (PUSH_SERVICE_HOSTS.includes(host) ||
+      GOOGLE_NUMBERED_HOST.test(host) ||
+      PUSH_SERVICE_SUFFIXES.some((suffix) => host.endsWith(suffix)))
+  )
+}
+
 const SubscriptionKeys = {
-  endpoint: z
-    .string()
-    .max(1024)
-    .regex(/^https:\/\//),
+  endpoint: z.string().max(1024).refine(isPushServiceEndpoint),
   p256dh: z.string().regex(/^[A-Za-z0-9_-]{40,200}$/),
   auth: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/),
 }

@@ -112,20 +112,17 @@ describe('WorkspaceTabs: tabs and the URL', () => {
     })
   })
 
-  it('a shared device has no composer tab, and an old link to it opens Tonight (RR-83)', () => {
-    navigation.search = 'tab=composer'
+  it.each([
+    ['composer', 'RR-83'],
+    ['tables', 'RR-84'],
+    ['settings', 'RR-85'],
+  ])('a shared device opens Tonight on an old link to %s, with no tabs to choose (%s)', (tab) => {
+    navigation.search = `tab=${tab}`
     renderWithIntl(<WorkspaceTabs contents={contents} sharedDevice />)
-    expect(screen.queryByRole('tab', { name: 'Composer' })).toBeNull()
-    expect(screen.getByRole('tab', { name: 'Tonight' }).getAttribute('aria-selected')).toBe('true')
-    expect(screen.queryByText('content of composer')).toBeNull()
-  })
-
-  it('a shared device has no Tables & QR tab, and an old link to it opens Tonight (RR-84)', () => {
-    navigation.search = 'tab=tables'
-    renderWithIntl(<WorkspaceTabs contents={contents} sharedDevice />)
-    expect(screen.queryByRole('tab', { name: 'Tables & QR' })).toBeNull()
-    expect(screen.getByRole('tab', { name: 'Tonight' }).getAttribute('aria-selected')).toBe('true')
-    expect(screen.queryByText('content of tables')).toBeNull()
+    expect(screen.queryByRole('tab')).toBeNull()
+    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(screen.getByText('content of tonight')).toBeTruthy()
+    expect(screen.queryByText(`content of ${tab}`)).toBeNull()
   })
 
   it('does not touch the URL when the current tab is clicked again', async () => {

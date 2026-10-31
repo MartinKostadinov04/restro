@@ -414,7 +414,7 @@ describe.skipIf(!hasDatabase)('the Undo window of Tonight (as the restro_app rol
       const paused = await accepted({ type: 'ordering.pause', barId: null })
       expect(paused).toHaveProperty('undoEntry')
       const undone = await accepted({
-        type: 'ordering.lift',
+        type: 'ordering.undo_pause',
         pauseId: paused.pauseId,
         undo: tokenOf(paused),
       })
@@ -427,7 +427,7 @@ describe.skipIf(!hasDatabase)('the Undo window of Tonight (as the restro_app rol
       const paused = await accepted({ type: 'ordering.pause', barId: null })
       await ageBeyondWindow(tokenOf(paused).entry)
       expect(
-        await run({ type: 'ordering.lift', pauseId: paused.pauseId, undo: tokenOf(paused) }),
+        await run({ type: 'ordering.undo_pause', pauseId: paused.pauseId, undo: tokenOf(paused) }),
       ).toMatchObject({ code: 'undo_expired' })
       expect(await activePauses()).toEqual([paused.pauseId])
       // No token: a normal lift.
@@ -438,9 +438,92 @@ describe.skipIf(!hasDatabase)('the Undo window of Tonight (as the restro_app rol
       const third = await accepted({ type: 'ordering.pause', barId: null })
       // Their pause is not the one the Undo meant: the lift of `second` is stale.
       expect(
-        await run({ type: 'ordering.lift', pauseId: second.pauseId, undo: tokenOf(second) }),
+        await run({ type: 'ordering.undo_pause', pauseId: second.pauseId, undo: tokenOf(second) }),
       ).toMatchObject({ code: 'undo_stale' })
       expect(await activePauses()).toEqual([third.pauseId])
+      await liftAll()
+    })
+
+    it('lets the tablet and a waiter who may not lift take back their own pause, nothing else (RR-58)', async () => {
+      await liftAll()
+      const as = async (actor: ServiceActor, command: unknown) =>
+        (
+          await applyService(
+            world.app,
+            command as ServiceCommand,
+            {
+              tenantId: world.tenantId,
+              venueId: world.venueId,
+              origin: 'staff',
+              actor,
+              jobId: `req-${randomUUID()}`,
+              via: 'tonight',
+            } as ServiceContext,
+          )
+        ).result
+      const details = (result: Awaited<ReturnType<typeof as>>) => {
+        if (result.status !== 'accepted') throw new Error(`refused: ${JSON.stringify(result)}`)
+        return result.details
+      }
+
+      // The tablet's own account: quick on the pause, quick on its Undo, a lift asks a PIN.
+      const session = `sess-${randomUUID()}`
+      await world.addSharedDevice(session)
+      const deviceId = await world.addUser('member')
+      const device: ServiceActor = { kind: 'user', userId: deviceId, sessionId: session }
+      const onTablet = details(await as(device, { type: 'ordering.pause', barId: null }))
+      expect(await as(device, { type: 'ordering.lift', pauseId: onTablet.pauseId })).toMatchObject({
+        code: 'pin_required',
+      })
+      expect(
+        details(
+          await as(device, {
+            type: 'ordering.undo_pause',
+            pauseId: onTablet.pauseId,
+            undo: tokenOf(onTablet),
+          }),
+        ),
+      ).toMatchObject({ lifted: true })
+      expect(await activePauses()).toEqual([])
+
+      // A waiter who may pause but not lift.
+      const waiterId = await world.addUser('member')
+      await world.addStaff(['ordering.pause'], waiterId)
+      const waiter: ServiceActor = {
+        kind: 'user',
+        userId: waiterId,
+        sessionId: `sess-${randomUUID()}`,
+      }
+      const theirs = details(await as(waiter, { type: 'ordering.pause', barId: null }))
+      expect(await as(waiter, { type: 'ordering.lift', pauseId: theirs.pauseId })).toMatchObject({
+        code: 'permission_denied',
+      })
+      expect(
+        details(
+          await as(waiter, {
+            type: 'ordering.undo_pause',
+            pauseId: theirs.pauseId,
+            undo: tokenOf(theirs),
+          }),
+        ),
+      ).toMatchObject({ lifted: true })
+
+      // Someone else's pause, even with its token: the waiter can't lift the owner's pause so.
+      const owners = await accepted({ type: 'ordering.pause', barId: null })
+      expect(
+        await as(waiter, {
+          type: 'ordering.undo_pause',
+          pauseId: owners.pauseId,
+          undo: tokenOf(owners),
+        }),
+      ).toMatchObject({ code: 'undo_stale' })
+      // Nor another entry's token for this pause, nor a pause Restro started.
+      const other = await accepted({ type: 'table.open', tableId: table(3) })
+      expect(
+        await run({ type: 'ordering.undo_pause', pauseId: owners.pauseId, undo: tokenOf(other) }),
+      ).toMatchObject({ code: 'undo_stale' })
+      expect(await activePauses()).toEqual([owners.pauseId])
+      await accepted({ type: 'table.close', tableId: table(3) })
       await liftAll()
     })
 

@@ -63,12 +63,11 @@ export function workspaceTabOf(requested: unknown): WorkspaceTabValue {
 }
 
 /**
- * The tabs a shared device has (D122 §7, RR-83, RR-84): it works Tonight, and the composer and
- * Tables & QR need the person's own sign-in, so they aren't there and Tonight is where it opens.
+ * The tabs a shared device has (D122 §7, RR-83, RR-84, RR-85): it works Tonight, and the composer,
+ * Tables & QR and Settings need the person's own sign-in, so they aren't there and Tonight is where
+ * it opens.
  */
-export const SHARED_DEVICE_TAB_DEFS = WORKSPACE_TAB_DEFS.filter(
-  (tab) => tab.value !== 'composer' && tab.value !== 'tables',
-)
+export const SHARED_DEVICE_TAB_DEFS = WORKSPACE_TAB_DEFS.filter((tab) => tab.value === 'tonight')
 
 /** The tab a `?tab=` value opens on a shared device. */
 export function sharedDeviceTabOf(requested: unknown): WorkspaceTabValue {
