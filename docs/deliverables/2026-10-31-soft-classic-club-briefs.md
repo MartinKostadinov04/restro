@@ -47,7 +47,7 @@ printed, everything tappable.
 | Navigation | pills on the page | The filled pill is the app's section mark; on the page band it draws in the accent. |
 | Sections | plain headers, medium title, as written, medium strip cards | The cards carry the page, so the headers stay quiet. |
 | Items | cards, medium name at bold, as written, price at the end, 2 description lines, the list layout, the guest switch on | A card per row with the price at the end of the name's line is what a guest scans in an app. |
-| Photos | square, fill the frame, panel backdrop, edge to edge, corners as in General | Square is the app thumbnail; the card clips it, so the round corners come from General. |
+| Photos | square, fill the frame, panel backdrop, edge to edge, corners as in General | Square everywhere: the list's own thumbnail is square whatever this says, so the value is what the strip cards and the dish sheet take. The card clips the photo, so its round corners come from General. |
 | Labels | soft, numbers | A soft fill is the app's chip. |
 | Dish page | sheet, large photo | A sheet slides up over the menu, as an app's does. |
 | Sheets | panel | The sheets sit a step off the page, like the cards. |

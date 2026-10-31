@@ -34,12 +34,19 @@ Green. `runDesignContract` now sweeps 87 cases — the five Styles and every val
 over Basic — on 17 fixtures each, 1,479 renders, and reports no failure: a name never cut, the price in the ink and at
 or above the description's size, the allergens on the item's row, every part the view has drawn and
 marked, the 12 px text and 16 px input floors at each design's own sizes, and the stylesheet on the
-theme's tokens inside the face's root. The 51 new stored renderings (three Styles × 17 fixtures) were
-read before they were committed.
+theme's tokens inside the face's root. Of the 51 new stored renderings (three Styles × 17 fixtures),
+the root's attributes were read on all three Styles and the markup on one hostile fixture each.
 
 One existing row moved, and it was meant to: `general.corners=square` changed its stylesheet
 fingerprint, not its markup, because of the finding below. Basic's and Editorial's stored renderings
 are byte-identical.
+
+**One thing a reader of those files will trip over.** Club's root reads `data-screen="dark"` beside
+`data-scheme="auto"`. The design's Screen option reaches the renderer through the published theme, not
+that attribute: `designThemeOf` writes `theme.scheme` from `general.screen`, the host passes it to the
+face as the `scheme` prop, and `.rm[data-scheme="dark"]` is the rule that swaps the colour set. The
+unit renderings pass no host props, so every Style's stays `auto` there; the Playwright sweeps publish
+the snapshot, so Club is drawn dark in both emulated schemes.
 
 ## 4. The look
 
