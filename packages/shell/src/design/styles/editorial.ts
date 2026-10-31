@@ -32,6 +32,8 @@ export const editorialStyle = {
     'Buttons is `ink` and Send and Pay follow it (today they are accent); on an ink sheet they invert (ink on ink).',
     'The receipt’s dashed rules are ruled rows (a dashed edge would dress the confirmation as a fiscal document, D122).',
     'Two-column cards draw the choices summary and the extra fields, which today’s layout hides.',
+    'A dish with no photo starts under the Back button (today its title is drawn against the button).',
+    'A label, a badge or a filter chip with no spaces wraps inside its box (today it clips, in the list layout, or widens the card).',
   ],
   values: {
     general: {

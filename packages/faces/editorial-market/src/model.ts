@@ -2,15 +2,16 @@
 // attributes, the guest's filters, the layouts (the menu's and a section's strip) and the theme
 // as CSS variables. No React and nothing from outside @restro/shell.
 
-import type {
-  DesignValues,
-  Locale,
-  ViewBadge,
-  ViewImage,
-  ViewItem,
-  ViewSection,
-  ViewText,
-  ViewTheme,
+import {
+  type DesignValues,
+  fontFamilyOf,
+  type Locale,
+  type ViewBadge,
+  type ViewImage,
+  type ViewItem,
+  type ViewSection,
+  type ViewText,
+  type ViewTheme,
 } from '@restro/shell'
 
 /** `bg_BG` to the BCP 47 tag the `lang` attribute wants (`bg-BG`). */
@@ -246,10 +247,22 @@ export function designAttributes(design: DesignValues): Readonly<Record<string, 
 }
 
 /**
- * What a design adds to the root's variables. The photos' `white` backdrop is the one colour the
- * venue does not choose (D130: white on both screens), and the stylesheet holds no colour of its
- * own (R13), so it comes in here, and only for the design that asks for it.
+ * What a design adds to the root's variables. Two values are no stylesheet's to hold (R13): the
+ * photos' `white` backdrop is the one colour the venue does not choose (D130: white on both
+ * screens), and a heading font other than `same` is a stack the host maps (`fontStacks`, our own
+ * files first). Each comes in only for the design that asks for it, so `same` and every other
+ * backdrop leave the root as it was and the heading font loads nothing the body font did not.
  */
-export function designVariables(design: DesignValues): Readonly<Record<string, string>> {
-  return design.photos?.backdrop === 'white' ? { '--rm-photo-backdrop': '#ffffff' } : {}
+export function designVariables(
+  design: DesignValues,
+  fontStacks: Readonly<Record<string, string>> = {},
+): Readonly<Record<string, string>> {
+  const variables: Record<string, string> = {}
+  if (design.photos?.backdrop === 'white') variables['--rm-photo-backdrop'] = '#ffffff'
+  const heading = design.general?.heading_font
+  if (heading !== undefined && heading !== 'same') {
+    const family = fontFamilyOf(heading)
+    variables['--rm-font-heading'] = fontStacks[family] ?? `"${family}", ${SYSTEM_FONTS}`
+  }
+  return variables
 }

@@ -706,6 +706,9 @@
 .rm-empty .rm-clear { margin-top: 8px }
 @media (min-width: 641px) .rm-empty { padding-left: 34px }
 @media (min-width: 641px) .rm-empty { padding-right: 34px }
+.rm-detail-copy:first-child { padding-top: 72px }
+.rm-labels span, .rm-badge, .rm-filter-group button { max-width: 100% }
+.rm-labels span, .rm-badge, .rm-filter-group button { overflow-wrap: anywhere }
 .rm { --ro-btn: clamp(32px, 8.6vw, 38px) }
 .rm { --ro-bar: clamp(46px, 12.4vw, 52px) }
 .rm { --ro-icon: clamp(16px, 4.4vw, 18px) }

@@ -20,6 +20,7 @@ export function Overlay({
   onClose,
   children,
   detail = false,
+  dish = false,
   leaving = false,
   extra = null,
 }: {
@@ -33,6 +34,8 @@ export function Overlay({
   readonly children: ReactNode
   /** The dish page: full screen, a round back button over the photo. */
   readonly detail?: boolean
+  /** The dish as a sheet (the Dish page's kind): the sheets' panel, tall, a round close button over its photo. */
+  readonly dish?: boolean
   /** The dialog is on its way out (the exit animation is playing). */
   readonly leaving?: boolean
   /** One more control beside the close button. */
@@ -80,7 +83,13 @@ export function Overlay({
     >
       <div
         ref={panel}
-        className={detail ? 'rm-overlay-panel is-detail' : 'rm-overlay-panel'}
+        className={
+          detail
+            ? 'rm-overlay-panel is-detail'
+            : dish
+              ? 'rm-overlay-panel is-dish'
+              : 'rm-overlay-panel'
+        }
         data-design-part={detail ? undefined : 'sheet'}
       >
         <div className="rm-overlay-head">

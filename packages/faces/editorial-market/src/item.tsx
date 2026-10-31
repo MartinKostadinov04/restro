@@ -5,6 +5,7 @@
 // phone, a "+" sits beside the price (services/quick-add.tsx); otherwise nothing is added.
 
 import type { ViewItem } from '@restro/shell'
+import { Fragment } from 'react'
 
 import { badgeKey, langOf, localeLang, photoSizes } from './model'
 import { type PageContext, Photo, Slot, Text } from './parts'
@@ -139,11 +140,20 @@ export function Item({
               onClick={(event) => ctx.openAllergens(item.id, event.currentTarget)}
               aria-label={`${strings.allergens}: ${item.allergens.map((a) => a.label.text).join(', ')}`}
             >
-              {item.allergens.map((allergen) => (
-                <b key={allergen.code} data-allergen={allergen.code}>
-                  {allergen.number}
-                </b>
-              ))}
+              {ctx.allergenNames
+                ? item.allergens.map((allergen, index) => (
+                    <Fragment key={allergen.code}>
+                      {index > 0 ? ' · ' : null}
+                      <span data-allergen={allergen.code} lang={langOf(allergen.label, locale)}>
+                        {allergen.label.text}
+                      </span>
+                    </Fragment>
+                  ))
+                : item.allergens.map((allergen) => (
+                    <b key={allergen.code} data-allergen={allergen.code}>
+                      {allergen.number}
+                    </b>
+                  ))}
             </button>
           </Slot>
         ) : null}

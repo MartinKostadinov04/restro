@@ -1,6 +1,9 @@
 // The six fonts of the venues' look (src/fonts.ts). `next/font/google` is a stand-in here (see
 // vitest.setup.ts) that keeps the options of each call, which is what these tests read: next/font
 // takes its options from the call at build time, so the call is the contract.
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import { THEME_FONTS } from '@restro/core'
 import * as google from 'next/font/google'
 import { describe, expect, it, vi } from 'vitest'
@@ -56,6 +59,33 @@ describe('the font loaders', () => {
       if (font.id === 'inter') expect(preload ?? true).toBe(true)
       else expect(preload, font.family).toBe(false)
     }
+  })
+})
+
+describe('the heaviest weight of each font (D130, Heading weight)', () => {
+  const data = JSON.parse(
+    readFileSync(
+      fileURLToPath(
+        new URL(
+          '../node_modules/next/dist/compiled/@next/font/dist/google/font-data.json',
+          import.meta.url,
+        ),
+      ),
+      'utf8',
+    ),
+  ) as Record<string, { weights: string[] }>
+
+  it.each(THEME_FONTS)('is what Next’s font data says $family serves', (font) => {
+    const weights = (data[font.family]?.weights ?? [])
+      .filter((weight) => weight !== 'variable')
+      .map(Number)
+    expect(data[font.family]?.weights).toContain('variable')
+    expect(font.heaviest).toBe(Math.max(...weights))
+  })
+
+  it('stops short of the Heavy step (880) for Lora and Manrope only', () => {
+    const short = THEME_FONTS.filter((font) => font.heaviest < 880).map((font) => font.id)
+    expect(short).toEqual(['manrope', 'lora'])
   })
 })
 

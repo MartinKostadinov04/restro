@@ -684,9 +684,6 @@
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-badge { font-size: 12px }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-badge { padding: 3px 6px }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-badge { max-width: 90px }
-.rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-badge { white-space: nowrap }
-.rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-badge { overflow: hidden }
-.rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-badge { text-overflow: ellipsis }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy { grid-column: 1 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy { grid-row: 1 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy { min-width: 0 }
@@ -752,6 +749,50 @@
 .rm[data-header-band="page"] .rm-titleblock > p, .rm[data-header-band="page"] .rm-language button:not([aria-pressed="true"]), .rm[data-sheets-sheets="panel"] .rm-footer > p, .rm[data-sheets-sheets="panel"] .rm-overlay-intro { color: var(--rm-muted) }
 .rm[data-sheets-sheets="panel"] .rm-allergen-sheet li:not(.is-present) { opacity: 1 }
 .rm[data-sheets-sheets="panel"] .rm-allergen-sheet li:not(.is-present) { color: var(--rm-muted) }
+.rm-detail-copy:first-child { padding-top: 72px }
+.rm-labels span, .rm-badge, .rm-filter-group button { max-width: 100% }
+.rm-labels span, .rm-badge, .rm-filter-group button { overflow-wrap: anywhere }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish { --rm-bg: var(--rm-surface) }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish { --rm-text: var(--rm-text) }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish { position: relative }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish { display: flex }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish { flex-direction: column }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish { min-height: min(100%, 78dvh) }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish { padding: 0 }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish { background: var(--rm-bg) }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish { color: var(--rm-text) }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head { position: sticky }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head { top: 0 }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head { z-index: 3 }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head { flex: none }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head { display: flex }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head { justify-content: space-between }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head { align-items: flex-start }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head { width: 100% }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head { height: 0 }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head { min-height: 0 }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head { padding: 14px 14px 0 }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head { background: transparent }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head { border: 0 }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head { pointer-events: none }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head > span { position: absolute }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head > span { width: 1px }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head > span { height: 1px }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head > span { overflow: hidden }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head > span { clip: rect(0, 0, 0, 0) }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head button { border-radius: 999px }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head button { background: var(--rm-bg) }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head button { color: var(--rm-text) }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head button { box-shadow: 0 4px 12px color-mix(in srgb, var(--rm-text) 20%, transparent) }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish > .rm-overlay-head button { pointer-events: auto }
+.rm[data-dish-kind="sheet"][data-photos-frame="bleed"] .rm-overlay-panel.is-dish:has(.rm-detail-photo) > .rm-overlay-head { margin-bottom: -14px }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish .rm-detail { display: flex }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish .rm-detail { flex: 1 0 auto }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish .rm-detail { flex-direction: column }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish .rm-detail-copy { flex: 1 0 auto }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish .rm-detail-photo img { max-height: 40dvh }
+.rm[data-dish-kind="sheet"] .rm-overlay-panel.is-dish .rm-detail-photo img { border-radius: 0px }
+.rm[data-dish-kind="sheet"] .rm-detail-bar { border-top: 1px solid var(--rm-border) }
 .rm { --ro-btn: clamp(32px, 8.6vw, 38px) }
 .rm { --ro-bar: clamp(46px, 12.4vw, 52px) }
 .rm { --ro-icon: clamp(16px, 4.4vw, 18px) }
