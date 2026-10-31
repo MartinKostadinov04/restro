@@ -1,17 +1,20 @@
 'use client'
 
-// The Design page in Simple (D129): the editing panel on the left, the live preview on the right
-// (under the panel on a phone). The panel holds the Style tiles, the three colours with their harmony
-// suggestions and Advanced roles, the body and heading fonts and the logo. Every change is a change
+// The Design page (D129): the editing panel on the left, the live preview on the right (under the
+// panel on a phone). In Simple the panel holds the Style tiles, the three colours with their harmony
+// suggestions and Advanced roles, the body and heading fonts and the logo. In Advanced (D130) it holds
+// General and the thirteen component pages, drawn from the contract file (`advanced-panel.tsx`); the
+// two are one draft, so switching keeps every edit. A tap on a marked part of the preview opens the
+// page that owns it (click to edit), or, in Simple, says the part is styled in Advanced. Every change is a change
 // to a draft in this browser: the preview follows at once, and nothing is written until Done, which
 // saves the whole design through `saveDesignAction` (D129, rule 1) from the revision the page loaded.
 // Someone else's save in between refuses it: the page says so and takes the saved design. The design
 // reaches guests on the next publish; nothing here writes a published file.
 //
 // A POS venue and a hand-made venue both get this page: the design is Restro's own.
-import type { DesignOption, DesignValues, SnapshotLayout } from '@restro/core'
+import type { DesignOption, DesignPageId, DesignValues, SnapshotLayout } from '@restro/core'
 import { DESIGN_PAGES, designLayoutOf, SNAPSHOT_MENU_LAYOUTS, THEME_FONTS } from '@restro/core'
-import { ArrowLeftIcon, Undo2Icon } from 'lucide-react'
+import { ArrowLeftIcon, Undo2Icon, XIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
@@ -39,10 +42,13 @@ import { Switch } from '@/components/ui/switch'
 import { studioPath } from '@/composer/design-path'
 import { FONT_STACKS } from '@/fonts'
 import { resolveAdminLocale } from '@/i18n/locales'
+import { WRAPS } from '@/lib/wrapping'
 import type { PreviewScheme } from '@/publish/draft-face'
 import { saveDesignAction } from '@/server/design/actions'
 import type { DesignView } from '@/server/design/service'
 
+import { FIRST_PAGE, type PanelMode, pageOfMarker, withOption } from './advanced-model'
+import { AdvancedPanel } from './advanced-panel'
 import { ColourPanel } from './colour-panel'
 import {
   changed,
@@ -212,6 +218,13 @@ export function DesignPage({
   const [uploading, setUploading] = useState(false)
   const [saving, startSaving] = useTransition()
   const [leaving, setLeaving] = useState(false)
+  // Simple or Advanced, and the page open in Advanced. Both look at the one draft.
+  const [mode, setMode] = useState<PanelMode>('simple')
+  const [pageId, setPageId] = useState<DesignPageId>(FIRST_PAGE)
+  // Counts the taps on the preview that opened a page: the page lands on its first option.
+  const [revealed, setRevealed] = useState(0)
+  // In Simple, the page of a tapped part that only Advanced styles.
+  const [styledIn, setStyledIn] = useState<DesignPageId | null>(null)
 
   const view = useMemo(() => lookViewOfDraft(draft), [draft])
   // While a box holds half a colour the look has no value; the roles and the preview keep the last
@@ -302,6 +315,89 @@ export function DesignPage({
     followScreen(next.draft.values)
   }
 
+  // --- Simple and Advanced ---
+  function openPage(id: DesignPageId) {
+    setPageId(id)
+    setRevealed((count) => count + 1)
+  }
+
+  // Click to edit: a tap on a marked part of the preview opens the page that owns it. In Simple the
+  // part is styled in Advanced only, and the panel says so.
+  function onPart(marker: string) {
+    const owner = pageOfMarker(marker)
+    if (owner === null) return
+    if (mode === 'simple') setStyledIn(owner)
+    else openPage(owner)
+  }
+
+  function showAdvanced() {
+    setMode('advanced')
+    if (styledIn !== null) openPage(styledIn)
+    setStyledIn(null)
+  }
+
+  function pick(page: string, option: string, value: string) {
+    const next = withOption(draft, page, option, value)
+    change(next)
+    if (page === 'general' && option === 'screen') followScreen(next.values)
+  }
+
+  // Simple's controls, one of each: Simple lists them, Advanced's General hands them to its rows.
+  const styleControl = (
+    <StyleTiles
+      venueId={venueId}
+      locale={locale}
+      current={draft.style}
+      draft={previewDraft}
+      theme={shown.theme}
+      values={draft.values}
+      canEdit={canEdit}
+      onPick={(styleId) => {
+        const next = withStyle(draft, styleId)
+        change(next)
+        followScreen(next.values)
+      }}
+    />
+  )
+  const coloursControl = (
+    <ColourPanel
+      state={draft.look}
+      view={view}
+      roles={shown.roles}
+      derived={shown.derived}
+      issues={shown.issues}
+      canEdit={canEdit}
+      onChange={(look) => change({ ...draft, look }, 'colours')}
+    />
+  )
+  const bodyFontControl = (
+    <FontSelect
+      optionId="body_font"
+      value={draft.values.general.body_font}
+      locale={locale}
+      canEdit={canEdit}
+      onChange={(font) => change(withBodyFont(draft, font))}
+    />
+  )
+  const headingFontControl = (
+    <FontSelect
+      optionId="heading_font"
+      value={draft.values.general.heading_font}
+      locale={locale}
+      canEdit={canEdit}
+      onChange={(font) => change(withHeadingFont(draft, font))}
+    />
+  )
+  const logoControl = (
+    <LogoField
+      logo={draft.logo}
+      savedAssetId={baseline.logo?.assetId ?? null}
+      canEdit={canEdit}
+      onChange={(logo) => change(withLogo(draft, logo))}
+      onBusy={setUploading}
+    />
+  )
+
   return (
     <div className="flex min-h-svh flex-col md:h-svh" data-testid="design-page">
       <header className="flex min-w-0 items-center gap-3 border-b px-2 py-2 sm:px-4">
@@ -335,69 +431,103 @@ export function DesignPage({
               {t('readOnly')}
             </p>
           )}
-          <PanelSection title={t('styles.title')} testId="design-style-section">
-            <StyleTiles
+          <Segmented
+            label={t('advanced.mode')}
+            value={mode}
+            options={[
+              { value: 'simple', label: t('advanced.simple') },
+              { value: 'advanced', label: t('advanced.advanced') },
+            ]}
+            onChange={(next) => {
+              setMode(next)
+              setStyledIn(null)
+            }}
+          />
+
+          {mode === 'simple' ? (
+            <>
+              {styledIn === null ? null : (
+                <div
+                  role="status"
+                  className="flex flex-wrap items-center gap-2 rounded-md border p-3 text-sm"
+                  data-testid="design-styled-in-advanced"
+                >
+                  <span className="min-w-0 flex-1 font-medium">{t('advanced.styledIn')}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={WRAPS}
+                    onClick={showAdvanced}
+                    data-testid="design-show-advanced"
+                  >
+                    {t('advanced.show')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t('advanced.dismiss')}
+                    onClick={() => setStyledIn(null)}
+                  >
+                    <XIcon aria-hidden />
+                  </Button>
+                </div>
+              )}
+
+              <PanelSection title={t('styles.title')} testId="design-style-section">
+                {styleControl}
+              </PanelSection>
+
+              <PanelSection title={t('colours.title')} testId="design-colours-section">
+                {coloursControl}
+              </PanelSection>
+
+              <PanelSection title={t('fonts.title')} testId="design-fonts-section">
+                {bodyFontControl}
+                {headingFontControl}
+              </PanelSection>
+
+              <PanelSection title={t('logo.title')} testId="design-logo-section">
+                {logoControl}
+              </PanelSection>
+
+              <PanelSection title={t('layout.title')} testId="design-layout-section">
+                <LayoutField
+                  values={draft.values}
+                  canEdit={canEdit}
+                  onChange={(layout) => change(withLayout(draft, layout))}
+                />
+              </PanelSection>
+            </>
+          ) : (
+            <AdvancedPanel
               venueId={venueId}
               locale={locale}
-              current={draft.style}
-              draft={previewDraft}
-              theme={shown.theme}
+              open={pageId}
+              onOpen={openPage}
+              revealed={revealed}
               values={draft.values}
+              theme={shown.theme}
+              draft={previewDraft}
+              scheme={scheme}
               canEdit={canEdit}
-              onPick={(styleId) => {
-                const next = withStyle(draft, styleId)
-                change(next)
-                followScreen(next.values)
+              onPick={pick}
+              custom={{
+                style: styleControl,
+                colours: (
+                  <>
+                    {coloursControl}
+                    <PanelSection title={t('logo.title')} testId="design-logo-section">
+                      {logoControl}
+                    </PanelSection>
+                  </>
+                ),
+                body_font: bodyFontControl,
+                heading_font: headingFontControl,
               }}
             />
-          </PanelSection>
-
-          <PanelSection title={t('colours.title')} testId="design-colours-section">
-            <ColourPanel
-              state={draft.look}
-              view={view}
-              roles={shown.roles}
-              derived={shown.derived}
-              issues={shown.issues}
-              canEdit={canEdit}
-              onChange={(look) => change({ ...draft, look }, 'colours')}
-            />
-          </PanelSection>
-
-          <PanelSection title={t('fonts.title')} testId="design-fonts-section">
-            <FontSelect
-              optionId="body_font"
-              value={draft.values.general.body_font}
-              locale={locale}
-              canEdit={canEdit}
-              onChange={(font) => change(withBodyFont(draft, font))}
-            />
-            <FontSelect
-              optionId="heading_font"
-              value={draft.values.general.heading_font}
-              locale={locale}
-              canEdit={canEdit}
-              onChange={(font) => change(withHeadingFont(draft, font))}
-            />
-          </PanelSection>
-
-          <PanelSection title={t('logo.title')} testId="design-logo-section">
-            <LogoField
-              logo={draft.logo}
-              savedAssetId={baseline.logo?.assetId ?? null}
-              canEdit={canEdit}
-              onChange={(logo) => change(withLogo(draft, logo))}
-              onBusy={setUploading}
-            />
-          </PanelSection>
-
-          <PanelSection title={t('layout.title')} testId="design-layout-section">
-            <LayoutField
-              values={draft.values}
-              canEdit={canEdit}
-              onChange={(layout) => change(withLayout(draft, layout))}
-            />
-          </PanelSection>
+          )}
         </div>
 
         <section
@@ -412,6 +542,7 @@ export function DesignPage({
             values={draft.values}
             scheme={scheme}
             onScheme={setScheme}
+            onPart={onPart}
           />
         </section>
 
