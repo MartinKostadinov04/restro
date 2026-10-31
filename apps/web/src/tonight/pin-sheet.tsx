@@ -46,6 +46,13 @@ export function PinSheet({
   const [problem, setProblem] = useState<string | null>(null)
   const [waiting, setWaiting] = useState(false)
   const sending = useRef(false)
+  // The digits typed so far, kept beside the state: the fourth digit starts the write, and starting
+  // it inside a state updater would set the screen's own state while this sheet renders (RR-93).
+  const typed = useRef('')
+  const setTyped = useCallback((next: string) => {
+    typed.current = next
+    setDigits(next)
+  }, [])
 
   const submit = useCallback(
     async (pin: string) => {
@@ -56,7 +63,7 @@ export function PinSheet({
       sending.current = false
       setWaiting(false)
       if (result.ok) return
-      setDigits('')
+      setTyped('')
       // A staff member's PIN where a manager's is needed: the write was refused for the person's
       // role, which is not a wrong PIN.
       setProblem(
@@ -67,27 +74,25 @@ export function PinSheet({
             : failureText(result.error, result.retryAfterSeconds, result.details),
       )
     },
-    [failureText, level, onSubmit, t],
+    [failureText, level, onSubmit, setTyped, t],
   )
 
   const press = useCallback(
     (digit: string) => {
       if (sending.current) return
       setProblem(null)
-      setDigits((now) => {
-        if (now.length >= 4) return now
-        const next = now + digit
-        if (next.length === 4) void submit(next)
-        return next
-      })
+      if (typed.current.length >= 4) return
+      const next = typed.current + digit
+      setTyped(next)
+      if (next.length === 4) void submit(next)
     },
-    [submit],
+    [setTyped, submit],
   )
   const erase = useCallback(() => {
     if (sending.current) return
     setProblem(null)
-    setDigits((now) => now.slice(0, -1))
-  }, [])
+    setTyped(typed.current.slice(0, -1))
+  }, [setTyped])
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
