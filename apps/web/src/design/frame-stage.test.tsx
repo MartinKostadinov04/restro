@@ -73,7 +73,7 @@ describe('the stages of a frame', () => {
     ['menu', ['item']],
     ['dish', ['dish']],
     ['order', ['order.bar']],
-    ['bag', ['order']],
+    ['bag', ['order', 'order.bar']],
     ['bill', ['bill.lines']],
     ['call', ['call']],
     ['pay', ['pay.tip']],

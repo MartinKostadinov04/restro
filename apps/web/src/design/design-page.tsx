@@ -423,7 +423,7 @@ export function DesignPage({
 
       <div className="grid flex-1 md:min-h-0 md:grid-cols-[22rem_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)_auto] lg:grid-cols-[26rem_minmax(0,1fr)]">
         <div
-          className="grid min-w-0 content-start gap-8 p-4 md:overflow-y-auto md:border-r"
+          className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-8 p-4 md:overflow-y-auto md:border-r"
           data-testid="design-panel"
         >
           {canEdit ? null : (

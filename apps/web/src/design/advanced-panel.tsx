@@ -56,7 +56,7 @@ function PageList({
                 onClick={() => onOpen(page.id as DesignPageId)}
                 className={cn(
                   'inline-flex min-h-11 items-center rounded-full border px-3 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
-                  'min-[820px]:min-h-9 min-[820px]:w-full min-[820px]:rounded-md min-[820px]:border-transparent min-[820px]:whitespace-normal min-[820px]:text-left',
+                  'min-[820px]:min-h-8 min-[820px]:w-full min-[820px]:rounded-md min-[820px]:border-transparent min-[820px]:whitespace-normal min-[820px]:text-left',
                   isOpen && 'border-primary bg-accent/40 text-foreground',
                 )}
               >
@@ -118,9 +118,15 @@ export function AdvancedPanel({
   if (page === undefined) throw new Error('the design contract has no pages')
 
   return (
-    <div className="grid gap-6" data-testid="design-advanced-panel">
+    <div
+      className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6"
+      data-testid="design-advanced-panel"
+    >
       <PageList pages={pages} open={page.id} locale={locale} onOpen={onOpen} />
-      <section className="grid gap-6" aria-labelledby="design-advanced-title">
+      <section
+        className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6"
+        aria-labelledby="design-advanced-title"
+      >
         <h2
           id="design-advanced-title"
           ref={heading}

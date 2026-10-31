@@ -35,18 +35,56 @@ export const WAYS: Readonly<
 const GIVE_UP_MS = 20_000
 const STEP_MS = 120
 
-/** Scrolls to the first part that exists: the page for a part of the menu, the sheet for one in a sheet. */
-export function reveal(markers: readonly string[]): void {
+/**
+ * A frame must scroll itself and nothing around it: `focus()` and `scrollIntoView()` in an iframe
+ * also scroll the page that holds the iframe, and a panel of tiles would jump about while its pictures
+ * load. A tile's frame keeps `focus()` from scrolling at all (the sheet it opens focuses its close
+ * button), and moves the sheet's own scroller by hand.
+ */
+export function holdScroll(frame: Window & typeof globalThis): void {
+  const proto = frame.HTMLElement.prototype
+  if ((proto.focus as { held?: true }).held === true) return
+  const focus = proto.focus
+  const held = function (this: HTMLElement, options?: FocusOptions) {
+    return focus.call(this, { ...options, preventScroll: true })
+  }
+  ;(held as { held?: true }).held = true
+  proto.focus = held
+}
+
+/** Scrolls the nearest scrolling box inside the sheet so that the part is in its middle. */
+function scrollSheetTo(part: HTMLElement): void {
+  for (
+    let box = part.parentElement;
+    box !== null && box !== document.body;
+    box = box.parentElement
+  ) {
+    const overflowY = getComputedStyle(box).overflowY
+    if (box.scrollHeight > box.clientHeight && (overflowY === 'auto' || overflowY === 'scroll')) {
+      const inside = part.getBoundingClientRect().top - box.getBoundingClientRect().top
+      box.scrollTop += inside - (box.clientHeight - part.clientHeight) / 2
+      return
+    }
+  }
+}
+
+/**
+ * Scrolls to the first part that exists: the page for a part of the menu, the sheet for one in a
+ * sheet. True when one was found (or none was asked for).
+ */
+export function reveal(markers: readonly string[]): boolean {
+  if (markers.length === 0) return true
   for (const marker of markers) {
     const part = document.querySelector<HTMLElement>(`[data-design-part="${marker}"]`)
     if (part === null) continue
     if (part.closest('[role="dialog"], dialog') !== null) {
-      part.scrollIntoView({ block: 'center' })
+      scrollSheetTo(part)
     } else {
       window.scrollTo({ top: Math.max(0, part.getBoundingClientRect().top + window.scrollY - 8) })
     }
-    return
+    return true
   }
+  return false
 }
 
 /** Presses the stage's controls one after the other, then scrolls. Returns what stops it. */
@@ -56,6 +94,23 @@ export function drive(stage: Stage, focus: readonly string[], onReached?: () => 
   let step = 0
   let timer: ReturnType<typeof setTimeout> | undefined
   let stopped = false
+  const later = (run: () => void, ms: number) => {
+    timer = setTimeout(run, ms)
+  }
+  const late = () => Date.now() - started > GIVE_UP_MS
+  // The screen is up: scroll to the part once it is drawn (the renderer's code may still be on its
+  // way), and once more a moment later, when fonts and photos have settled the page.
+  const settle = () => {
+    if (stopped) return
+    if (reveal(focus) || late()) {
+      later(() => {
+        reveal(focus)
+        onReached?.()
+      }, 500)
+      return
+    }
+    later(settle, STEP_MS)
+  }
   const tick = () => {
     if (stopped) return
     const press = way.press[step]
@@ -66,19 +121,14 @@ export function drive(stage: Stage, focus: readonly string[], onReached?: () => 
         step += 1
       }
     } else if (way.until === null || document.querySelector(way.until) !== null) {
-      // The screen is up; a moment for its own entrance, then to the part.
-      timer = setTimeout(() => {
-        reveal(focus)
-        onReached?.()
-      }, 250)
+      later(settle, 250)
       return
     }
-    if (Date.now() - started > GIVE_UP_MS) {
-      reveal(focus)
-      onReached?.()
+    if (late()) {
+      settle()
       return
     }
-    timer = setTimeout(tick, STEP_MS)
+    later(tick, STEP_MS)
   }
   tick()
   return () => {

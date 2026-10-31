@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
 
 import { DraftFace } from '@/publish/draft-face'
 
-import { drive } from './frame-stage'
+import { drive, holdScroll } from './frame-stage'
 import { type FrameContent, frameStoreOf } from './preview-frames'
 
 const nothing = (): FrameContent | null => null
@@ -55,12 +55,14 @@ export function DesignFrame({ slot }: { slot: string }) {
   }, [slot])
 
   // The stage is reached once per frame and stage: a change of value redraws the same frame.
-  const stage = content?.stage ?? 'menu'
+  const stage = content?.stage
   const focus = content?.focus?.join(' ') ?? ''
   const ready = content !== null
   useEffect(() => {
     if (!ready) return undefined
-    return drive(stage, focus === '' ? [] : focus.split(' '))
+    // A tile's frame (it names a stage) never scrolls the panel it sits in.
+    if (stage !== undefined) holdScroll(window)
+    return drive(stage ?? 'menu', focus === '' ? [] : focus.split(' '))
   }, [ready, stage, focus])
 
   return (

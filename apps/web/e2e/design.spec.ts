@@ -444,6 +444,15 @@ test('Advanced lists General and the thirteen pages; a tile draws the part with 
     .locator('[data-face="editorial-market"]:not([data-testid])')
   await expect(picture).toHaveAttribute('data-items-frame', 'cards', WORKER_WAIT)
   await expect(picture.locator('[data-design-part="item"]').first()).toBeVisible()
+  // The frame is scrolled to the part the option styles, not left at the top of the menu.
+  await expect
+    .poll(() =>
+      cards
+        .frameLocator('[data-testid="design-tile-specimen"]')
+        .locator('html')
+        .evaluate(() => window.scrollY),
+    )
+    .toBeGreaterThan(0)
   await page.screenshot({ path: shotPath('advanced-items') })
 
   // One tap: the preview follows at once, and it is one Undo step.
