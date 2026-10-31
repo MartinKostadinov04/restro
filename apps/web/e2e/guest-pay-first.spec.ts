@@ -300,8 +300,11 @@ for (const style of ORDER_STYLES) {
       // Pay later: before the hold the guest may leave; the line is back on the order, still not ordered.
       await page.locator('[data-slot="pay.later"]').click()
       await expect(page.locator('[data-pay-screen]')).toHaveCount(0, SETTLED)
-      await expect(orderLine).toHaveCount(1)
-      await expect(orderLine.locator('[data-pay-first-line]')).toHaveText('Not ordered until paid')
+      await expect(orderLine).toHaveCount(1, SETTLED)
+      await expect(orderLine.locator('[data-pay-first-line]')).toHaveText(
+        'Not ordered until paid',
+        SETTLED,
+      )
       await expect(page.locator('[data-send]')).toHaveText(/^Pay .*11\.00/, SETTLED)
       // Nothing reached the POS, and nothing was shown as sent.
       expect(await harness.paymentTableBills()).toEqual([])
