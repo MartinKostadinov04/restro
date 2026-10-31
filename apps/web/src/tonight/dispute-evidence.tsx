@@ -9,8 +9,8 @@
 import { CopyIcon, PrinterIcon } from 'lucide-react'
 import { useLocale, useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-
 import { Button } from '@/components/ui/button'
+import { WRAPS } from '@/lib/wrapping'
 
 const PRINT_ROOT = 'evidence-print-root'
 const PRINT_STYLE = 'evidence-print-style'
@@ -83,7 +83,7 @@ export function DisputeEvidence({
         <Button
           type="button"
           variant="outline"
-          className="h-12 whitespace-normal"
+          className={WRAPS}
           onClick={() => void copyText(own)}
         >
           <CopyIcon aria-hidden className="size-4" />
@@ -92,7 +92,7 @@ export function DisputeEvidence({
         <Button
           type="button"
           variant="outline"
-          className="h-12 whitespace-normal"
+          className={WRAPS}
           onClick={() => void copyText(evidence.en)}
         >
           <CopyIcon aria-hidden className="size-4" />
@@ -101,7 +101,7 @@ export function DisputeEvidence({
         <Button
           type="button"
           variant="outline"
-          className="h-12 whitespace-normal"
+          className={WRAPS}
           onClick={() => printEvidence(own)}
         >
           <PrinterIcon aria-hidden className="size-4" />

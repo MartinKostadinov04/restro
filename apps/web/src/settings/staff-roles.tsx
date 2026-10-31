@@ -7,7 +7,6 @@
 import { ChevronRightIcon } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
-
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -28,6 +27,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { WRAPS_FORM } from '@/lib/wrapping'
 import {
   archiveRoleAction,
   copyRoleAction,
@@ -78,7 +78,7 @@ export function StaffRoles({ view, runner }: { view: StaffView; runner: Runner }
   const role = view.roles.find((candidate) => candidate.ref === open) ?? null
 
   return (
-    <section className="grid gap-3" aria-labelledby="staff-roles">
+    <section className="grid grid-cols-1 gap-3" aria-labelledby="staff-roles">
       <h3 id="staff-roles" className="text-lg font-medium">
         {t('sf_roles')}
       </h3>
@@ -135,7 +135,7 @@ function CopyDialog({
     <Dialog open={role !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <form
-          className="grid gap-4"
+          className="grid grid-cols-1 gap-4"
           onSubmit={(event) => {
             event.preventDefault()
             if (role === null || name.trim() === '') return
@@ -158,7 +158,7 @@ function CopyDialog({
           <DialogHeader>
             <DialogTitle>{t('sf_copy')}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-2">
+          <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="role-copy-name">{t('sf_name')}</Label>
             <Input
               id="role-copy-name"
@@ -255,9 +255,9 @@ function RoleSheet({
                 {role.defaultKind === null ? '' : ` · ${t('sf_default')}`}
               </SheetDescription>
             </SheetHeader>
-            <div className="grid gap-5 px-4">
+            <div className="grid grid-cols-1 gap-5 px-4">
               {PERMISSION_GROUPS.map((group) => (
-                <fieldset key={group.key} className="grid gap-2">
+                <fieldset key={group.key} className="grid grid-cols-1 gap-2">
                   <legend className="text-sm font-medium">{t(group.key)}</legend>
                   {group.key === 'sf_g_settings' ? (
                     <p className="text-xs text-muted-foreground">{t('sf_own_signin')}</p>
@@ -329,7 +329,7 @@ export function StaffDevices({ view, runner }: { view: StaffView; runner: Runner
   const [stopping, setStopping] = useState<StaffView['devices'][number] | null>(null)
 
   return (
-    <section className="grid gap-3" aria-labelledby="staff-devices">
+    <section className="grid grid-cols-1 gap-3" aria-labelledby="staff-devices">
       <h3 id="staff-devices" className="text-lg font-medium">
         {t('sf_devices')}
       </h3>
@@ -355,9 +355,9 @@ export function StaffDevices({ view, runner }: { view: StaffView; runner: Runner
         </ul>
       )}
       {view.thisBrowserShared || view.operator ? null : (
-        <div className="grid gap-1">
+        <div className="grid grid-cols-1 gap-1">
           <div>
-            <Button variant="outline" onClick={() => setMaking(true)}>
+            <Button variant="outline" className={WRAPS_FORM} onClick={() => setMaking(true)}>
               {t('sf_dev_make')}
             </Button>
           </div>
@@ -368,7 +368,7 @@ export function StaffDevices({ view, runner }: { view: StaffView; runner: Runner
       <Dialog open={making} onOpenChange={setMaking}>
         <DialogContent>
           <form
-            className="grid gap-4"
+            className="grid grid-cols-1 gap-4"
             onSubmit={(event) => {
               event.preventDefault()
               if (name.trim() === '') return
@@ -384,7 +384,7 @@ export function StaffDevices({ view, runner }: { view: StaffView; runner: Runner
               <DialogTitle>{t('sf_dev_make')}</DialogTitle>
               <DialogDescription>{t('sf_dev_line')}</DialogDescription>
             </DialogHeader>
-            <div className="grid gap-2">
+            <div className="grid grid-cols-1 gap-2">
               <Label htmlFor="device-name">{t('sf_dev_name')}</Label>
               <Input
                 id="device-name"

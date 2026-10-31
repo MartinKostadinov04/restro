@@ -13,7 +13,6 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -33,6 +32,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { WRAPS_FORM } from '@/lib/wrapping'
 import {
   disconnectPayingAction,
   finishConnectionAction,
@@ -179,7 +179,7 @@ export function PayingPanel({
   const expired = expiredSeen && (connecting || connected)
 
   return (
-    <div className="grid gap-4" data-testid="paying-panel" aria-busy={pending}>
+    <div className="grid grid-cols-1 gap-4" data-testid="paying-panel" aria-busy={pending}>
       <div>
         <h2 className="text-xl font-semibold tracking-tight">{t('pa_title')}</h2>
         {never ? (
@@ -194,7 +194,7 @@ export function PayingPanel({
 
       {lost ? (
         <Alert variant="destructive" data-testid="paying-lost">
-          <AlertDescription className="grid gap-3">
+          <AlertDescription className="grid grid-cols-1 gap-3">
             <span>
               {view.lostReason === 'account_restricted'
                 ? t('pa_lost_restricted', provider)
@@ -203,6 +203,7 @@ export function PayingPanel({
             {can ? (
               <div>
                 <Button
+                  className={WRAPS_FORM}
                   onClick={leave}
                   disabled={pending || leaving}
                   data-testid="paying-reconnect"
@@ -222,11 +223,16 @@ export function PayingPanel({
       ) : null}
 
       {never ? (
-        <div className="grid gap-3 rounded-lg border bg-card p-3">
+        <div className="grid grid-cols-1 gap-3 rounded-lg border bg-card p-3">
           <p className="text-sm text-muted-foreground">{t('pa_connect_d', provider)}</p>
           {can ? (
             <div>
-              <Button onClick={leave} disabled={pending || leaving} data-testid="paying-connect">
+              <Button
+                className={WRAPS_FORM}
+                onClick={leave}
+                disabled={pending || leaving}
+                data-testid="paying-connect"
+              >
                 {t('pa_connect', provider)}
               </Button>
             </div>
@@ -235,13 +241,21 @@ export function PayingPanel({
       ) : null}
 
       {connecting || expired ? (
-        <div className="grid gap-3 rounded-lg border bg-card p-3" data-testid="paying-connecting">
+        <div
+          className="grid grid-cols-1 gap-3 rounded-lg border bg-card p-3"
+          data-testid="paying-connecting"
+        >
           <p className="text-sm">
             {expired ? t('pa_expired', provider) : t('pa_connecting', provider)}
           </p>
           {can ? (
             <div>
-              <Button onClick={leave} disabled={pending || leaving} data-testid="paying-continue">
+              <Button
+                className={WRAPS_FORM}
+                onClick={leave}
+                disabled={pending || leaving}
+                data-testid="paying-continue"
+              >
                 {t('pa_continue', provider)}
               </Button>
             </div>
@@ -283,9 +297,12 @@ export function PayingPanel({
       ) : null}
 
       {missing.length > 0 ? (
-        <section className="grid gap-2 rounded-lg border bg-card p-3" data-testid="paying-missing">
+        <section
+          className="grid grid-cols-1 gap-2 rounded-lg border bg-card p-3"
+          data-testid="paying-missing"
+        >
           <h3 className="font-medium">{t('pa_missing_t')}</h3>
-          <ul className="grid divide-y">
+          <ul className="grid grid-cols-1 divide-y">
             {missing.map((item) => (
               <li
                 key={item}
@@ -316,12 +333,18 @@ export function PayingPanel({
                   </p>
                 )}
                 {can && item === 'card' && providerAsks ? (
-                  <Button variant="outline" size="sm" onClick={leave} disabled={pending || leaving}>
+                  <Button
+                    className={WRAPS_FORM}
+                    variant="outline"
+                    size="sm"
+                    onClick={leave}
+                    disabled={pending || leaving}
+                  >
                     {t('pa_continue', provider)}
                   </Button>
                 ) : null}
                 {can && item === 'tables' ? (
-                  <Button asChild variant="outline" size="sm">
+                  <Button className={WRAPS_FORM} asChild variant="outline" size="sm">
                     <Link href={`/venues/${venueId}?tab=tables`}>{t('pa_m_tables_go')}</Link>
                   </Button>
                 ) : null}
@@ -331,8 +354,8 @@ export function PayingPanel({
         </section>
       ) : null}
 
-      <div className="grid divide-y rounded-lg border bg-card">
-        <div className="grid gap-2 p-3">
+      <div className="grid grid-cols-1 divide-y rounded-lg border bg-card">
+        <div className="grid grid-cols-1 gap-2 p-3">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <Label htmlFor="pay-min" className="min-w-0 flex-1 basis-56 break-words font-normal">
               {t('pa_min')}
@@ -341,7 +364,7 @@ export function PayingPanel({
               <Input
                 id="pay-min"
                 inputMode="decimal"
-                className="w-32"
+                className="w-32 max-w-full"
                 value={minText}
                 autoFocus
                 aria-invalid={minProblem === null ? undefined : true}
@@ -359,7 +382,7 @@ export function PayingPanel({
                 }}
               />
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium tabular-nums" data-testid="paying-min-value">
                   {view.minCardMinor === null
                     ? t('pa_min_default', {
@@ -398,13 +421,19 @@ export function PayingPanel({
           <p className="text-sm text-muted-foreground">{t('pa_min_d')}</p>
           {can && view.minCardMinor !== null && !editingMin ? (
             <div>
-              <Button variant="ghost" size="sm" onClick={() => setMin(null)} disabled={pending}>
+              <Button
+                className={WRAPS_FORM}
+                variant="ghost"
+                size="sm"
+                onClick={() => setMin(null)}
+                disabled={pending}
+              >
                 {t('pa_min_reset', provider)}
               </Button>
             </div>
           ) : null}
         </div>
-        <div className="grid gap-1 p-3">
+        <div className="grid grid-cols-1 gap-1 p-3">
           <p className="font-medium">{t('pa_tips')}</p>
           <p className="text-sm text-muted-foreground" data-testid="paying-tips">
             {view.tips
@@ -427,10 +456,15 @@ export function PayingPanel({
             <DialogDescription>{t('pa_dc_b', provider)}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDisconnecting(false)}>
+            <Button
+              className={WRAPS_FORM}
+              variant="outline"
+              onClick={() => setDisconnecting(false)}
+            >
               {t('pa_dc_keep')}
             </Button>
             <Button
+              className={WRAPS_FORM}
               variant="destructive"
               disabled={pending}
               data-testid="paying-disconnect-confirm"

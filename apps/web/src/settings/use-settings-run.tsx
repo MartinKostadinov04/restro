@@ -194,13 +194,13 @@ function PasswordAgain({
             event.preventDefault()
             void submit()
           }}
-          className="grid gap-4"
+          className="grid grid-cols-1 gap-4"
         >
           <DialogHeader>
             <DialogTitle>{t('st_password_title')}</DialogTitle>
             <DialogDescription>{t('st_password_line', { email })}</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-2">
+          <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="settings-password">{t('st_password')}</Label>
             <Input
               id="settings-password"

@@ -72,13 +72,16 @@ export function PayingPayFirstCard({
   }
 
   return (
-    <section className="grid gap-4 rounded-lg border bg-card p-3" data-testid="paying-pay-first">
-      <div className="grid gap-1">
+    <section
+      className="grid grid-cols-1 gap-4 rounded-lg border bg-card p-3"
+      data-testid="paying-pay-first"
+    >
+      <div className="grid grid-cols-1 gap-1">
         <h3 className="font-medium">{t('pf_title')}</h3>
         <p className="text-sm text-muted-foreground">{t('pf_lede')}</p>
       </div>
 
-      <fieldset className="grid gap-2" disabled={pending}>
+      <fieldset className="grid grid-cols-1 gap-2" disabled={pending}>
         <legend className="mb-2 text-sm font-medium">{t('pf_default_t')}</legend>
         {PAYMENT_MODES.map((mode) => {
           const checked = shown.itemMode === mode
@@ -108,7 +111,7 @@ export function PayingPayFirstCard({
         })}
       </fieldset>
 
-      <div className="grid gap-1">
+      <div className="grid grid-cols-1 gap-1">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <Label
             htmlFor="pay-first-applies"
@@ -160,7 +163,7 @@ function ModeText({ mode }: { mode: PaymentMode }) {
   const t = useTranslations('ownerSettings')
   const modes = useTranslations('options.payment_mode')
   return (
-    <span className="grid min-w-0 gap-0.5">
+    <span className="grid grid-cols-1 min-w-0 gap-0.5">
       <span className="break-words text-sm font-medium">{modes(mode)}</span>
       <span className="break-words text-xs text-muted-foreground">
         {mode === 'on_bill' ? t('pf_default_bill_d') : t('pf_default_first_d')}

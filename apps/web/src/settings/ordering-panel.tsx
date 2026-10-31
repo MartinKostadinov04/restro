@@ -128,21 +128,21 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
   }
 
   return (
-    <div className="grid gap-4" data-testid="ordering-panel" aria-busy={pending}>
+    <div className="grid grid-cols-1 gap-4" data-testid="ordering-panel" aria-busy={pending}>
       <div>
         <h2 className="text-xl font-semibold tracking-tight">{t('st_ordering')}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{t('st_ordering_lede')}</p>
       </div>
       {can ? null : <ReadOnlyLine />}
 
-      <div className="grid divide-y rounded-lg border bg-card">
+      <div className="grid grid-cols-1 divide-y rounded-lg border bg-card">
         <Row label={t('st_cap')} htmlFor="ord-cap">
           {editingCap ? (
-            <div className="grid gap-1">
+            <div className="grid grid-cols-1 gap-1">
               <Input
                 id="ord-cap"
                 inputMode="decimal"
-                className="w-32"
+                className="w-32 max-w-full"
                 value={capText}
                 autoFocus
                 aria-invalid={capProblem ? true : undefined}
@@ -167,7 +167,7 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
               ) : null}
             </div>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {settings.capMinor === null ? (
                 <Value>{t('st_cap_off')}</Value>
               ) : (
@@ -203,7 +203,7 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
           )}
         </Row>
 
-        <div className="grid gap-2 p-3">
+        <div className="grid grid-cols-1 gap-2 p-3">
           {settings.spot === null ? (
             <p className="text-sm text-destructive" data-testid="ord-spot-unset">
               {t('st_spot_unset')}
@@ -231,7 +231,7 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
           {t('st_more')}
           <ChevronDownIcon aria-hidden className="size-4" />
         </CollapsibleTrigger>
-        <CollapsibleContent className="grid divide-y border-t">
+        <CollapsibleContent className="grid grid-cols-1 divide-y border-t">
           <Row label={t('st_loc')} htmlFor="ord-loc">
             {can ? (
               <Switch
