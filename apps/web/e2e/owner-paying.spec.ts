@@ -48,7 +48,8 @@ async function signIn(page: Page, email: string, password = ADMIN_PASSWORD) {
     await page.getByLabel('Парола').fill(password)
     await page.getByRole('button', { name: 'Вход' }).click()
     try {
-      await expect(page).toHaveURL(/\/venues$/, { timeout: 8_000 })
+      // A staff-only account (the viewer) lands on its venue's Tonight page, not on the list.
+      await expect(page).toHaveURL(/\/venues(\/vn_[^/?]+)?(\?.*)?$/, { timeout: 8_000 })
       return
     } catch {
       await page.waitForTimeout(10_000)
