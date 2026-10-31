@@ -222,7 +222,7 @@ export function DesignPage({
   const [mode, setMode] = useState<PanelMode>('simple')
   const [pageId, setPageId] = useState<DesignPageId>(FIRST_PAGE)
   // Counts the taps on the preview that opened a page: the page lands on its first option.
-  const [revealed, setRevealed] = useState(0)
+  const [reveal, setReveal] = useState(false)
   // In Simple, the page of a tapped part that only Advanced styles.
   const [styledIn, setStyledIn] = useState<DesignPageId | null>(null)
 
@@ -318,7 +318,7 @@ export function DesignPage({
   // --- Simple and Advanced ---
   function openPage(id: DesignPageId) {
     setPageId(id)
-    setRevealed((count) => count + 1)
+    setReveal(true)
   }
 
   // Click to edit: a tap on a marked part of the preview opens the page that owns it. In Simple the
@@ -505,8 +505,9 @@ export function DesignPage({
               venueId={venueId}
               locale={locale}
               open={pageId}
-              onOpen={openPage}
-              revealed={revealed}
+              reveal={reveal}
+              onRevealed={() => setReveal(false)}
+              onOpen={setPageId}
               values={draft.values}
               theme={shown.theme}
               draft={previewDraft}

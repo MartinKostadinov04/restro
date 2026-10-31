@@ -297,7 +297,8 @@ describe('the panel is driven by the contract file', () => {
           pages={pages}
           open="sections"
           onOpen={() => undefined}
-          revealed={0}
+          reveal={false}
+          onRevealed={() => undefined}
           values={DEFAULT_DESIGN.values}
           theme={designThemeOf(DEFAULT_DESIGN)}
           draft={{ state: 'loading' }}

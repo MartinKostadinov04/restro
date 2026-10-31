@@ -10,6 +10,7 @@
 import {
   ALLERGENS,
   type AssetId,
+  CALL_WAITER_KINDS,
   DEFAULT_GUEST_FEATURES,
   type GuestFeatures,
   type Locale,
@@ -62,7 +63,11 @@ export function allFeatures(base: GuestFeatures | undefined): GuestFeatures {
   const features = base ?? DEFAULT_GUEST_FEATURES
   return {
     ...features,
-    call_waiter: { ...features.call_waiter, enabled: true },
+    call_waiter: {
+      enabled: true,
+      kinds:
+        features.call_waiter.kinds.length > 0 ? features.call_waiter.kinds : [...CALL_WAITER_KINDS],
+    },
     bill: true,
     ordering: true,
     pay: true,

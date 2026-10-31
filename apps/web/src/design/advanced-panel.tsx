@@ -76,7 +76,8 @@ export function AdvancedPanel({
   pages = DESIGN_PAGES,
   open,
   onOpen,
-  revealed,
+  reveal,
+  onRevealed,
   values,
   theme,
   draft,
@@ -91,8 +92,9 @@ export function AdvancedPanel({
   pages?: readonly DesignPage[]
   open: string
   onOpen: (id: DesignPageId) => void
-  /** Changes when a tap on the preview opened the page: the page's first option is scrolled to. */
-  revealed: number
+  /** True when a tap on the preview opened the page: it lands on its first option, then says so. */
+  reveal: boolean
+  onRevealed: () => void
   values: DesignValues
   theme: VenueTheme
   draft: Draft
@@ -106,10 +108,11 @@ export function AdvancedPanel({
 
   // A tap on the preview opens the page and lands on its first option.
   useEffect(() => {
-    if (revealed === 0) return
+    if (!reveal) return
     heading.current?.focus()
     heading.current?.scrollIntoView?.({ block: 'start' })
-  }, [revealed])
+    onRevealed()
+  }, [reveal, onRevealed])
 
   const page = pages.find((entry) => entry.id === open) ?? pages[0]
   if (page === undefined) throw new Error('the design contract has no pages')
