@@ -505,10 +505,11 @@ test('Photo corners are off while the Frame is edge to edge, with the hint', asy
   await expect(corners.getByTestId('design-option-note')).toHaveText(
     'Edge-to-edge photos have no corners of their own',
   )
-  await expect(corners).toBeDisabled()
+  await expect(corners).toHaveAttribute('disabled', '')
   await expect(corners.getByRole('radio').first()).toBeDisabled()
   await optionTile('photos', 'frame', 'inset').getByRole('radio').click()
-  await expect(corners).toBeEnabled()
+  await expect(corners).not.toHaveAttribute('disabled', '')
+  await expect(corners.getByRole('radio').first()).toBeEnabled()
   if (await cancel().isEnabled()) await cancel().click()
 })
 
