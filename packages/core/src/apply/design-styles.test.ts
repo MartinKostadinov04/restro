@@ -226,8 +226,10 @@ describe.skipIf(!hasDatabase)('the organisation’s saved Styles (as the restro_
     expect((await setStatus(id, 'active')).result).toMatchObject({ applied: 1, rejected: [] })
     expect((await storedStyles(tenant)).find((row) => row.id === id)?.removed_at).toBeNull()
 
+    // Three status changes wrote a row: the first removal, the other Style's, and the restore. The
+    // second removal was a no-op and the refused restore wrote nothing.
     const events = await styleEvents()
-    expect(events.filter((row) => row.op === 'setStyleStatus')).toHaveLength(4)
+    expect(events.filter((row) => row.op === 'setStyleStatus')).toHaveLength(3)
     expect(events.at(-1)).toMatchObject({
       op: 'setStyleStatus',
       node_id: null,

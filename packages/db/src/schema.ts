@@ -921,6 +921,8 @@ export const EVENT_OPS = [
   'unlinkSource',
   'setLinkState',
   'setDesign',
+  'setStyle',
+  'setStyleStatus',
 ] as const
 
 /**
