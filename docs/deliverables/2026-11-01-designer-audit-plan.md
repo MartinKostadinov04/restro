@@ -2,7 +2,7 @@
 
 > Filed 2026-11-01 by the repair-review lead, at Martin's request through the Design lead. A plan only; nothing has been audited. Decisions 128 to 131 live on `st/foundation`, so they are written here without their usual prefix.
 
-**What is audited:** `st/foundation` at 7dccd3a4, against `or/foundation`, which the repair-review already covered. The pin contains every repair-review fix except one ledger note. Its CI run was still going when this was written, so the audit pins it only once that run is green.
+**What is audited:** `st/foundation` at 7dccd3a4, against `or/foundation`, which the repair-review already covered. The pin contains every repair-review fix except one ledger note. Its CI run was still going when this was written, so the audit pins it only once that run is green; if it is red, the pin moves to the fix.
 
 **The size:** about 10,700 lines of written code (faces 3,100, the Design page 2,800, core 1,800, other web 1,600, shell 700, db 300), plus 12,700 lines of tests and 50,000 of generated renderings. That is roughly a sixth of the last review's code. My estimate is one night of machine time.
 
@@ -33,7 +33,7 @@ This has to be right before staging, and staging migrations can't easily be undo
 - **0045 on messy old data:** junk colours, half-set themes, missing menus. Every venue's record must then parse with the schema, and a guest must see the same look before and after the first real save.
 - **The same migration with an owner that can't bypass row security,** the class of RR-44. CI still can't catch this (RR-O9).
 - **A venue whose published snapshot still names `qr-phone`.** I found no remaining reference to it in the app's code, so what does its guest page show after a deploy and before a republish? Old snapshots with the new renderer in general.
-- **Deploy order:** 0046 drops `menus.settings` while the old web app may still be running.
+- **Deploy order:** 0045, 0046 and 0047 in the order of the journal on `st/foundation`, because the merges renumbered them. 0046 drops `menus.settings` while the old web app may still be running.
 - **Events with no node:** every reader of `events` (the item sheet, exports, the purge) now meets rows with no node.
 
 ### 4. Attack (Opus)
