@@ -27,6 +27,9 @@ import { assertDevEnvironment, readAdminCredentials } from './lib/guard'
 
 const ORGANIZATION = { name: 'Design Club', slug: 'design-club' }
 const VENUE = { name: 'Design Club Sofia', slug: 'design-club' }
+// A second venue of the same organisation, for My styles (D129): its design shows as a tile on
+// the first venue's Design page, and the saved Styles are the organisation's, so both list them.
+const VENUE_TWO = { name: 'Design Club Varna', slug: 'design-club-varna' }
 const OWNER_EMAIL = 'design-owner@demo-club.test'
 const MEMBER_EMAIL = 'design-member@demo-club.test'
 
@@ -141,6 +144,17 @@ async function seed(): Promise<void> {
   const venue =
     existing ?? (await provisionVenue(pool, organizationId, { name: VENUE.name, slug: VENUE.slug }))
   const menu = await provisionMenu(pool, organizationId, venue.id)
+  const [existingTwo] = await withTenant(pool, organizationId, (tx) =>
+    tx
+      .select({ id: venues.id, publicId: venues.publicId })
+      .from(venues)
+      .where(eq(venues.slug, VENUE_TWO.slug))
+      .limit(1),
+  )
+  const venueTwo =
+    existingTwo ??
+    (await provisionVenue(pool, organizationId, { name: VENUE_TWO.name, slug: VENUE_TWO.slug }))
+  await provisionMenu(pool, organizationId, venueTwo.id)
 
   // The document: created once, its values put back to the baseline every time.
   const known = new Set(
@@ -197,9 +211,12 @@ async function seed(): Promise<void> {
   // cannot delete the publish tables.
   const owner = new pg.Pool({ connectionString: ownerUrl, max: 1 })
   try {
-    await owner.query(`update restro.venues set settings = settings - 'design' where id = $1`, [
-      venue.id,
-    ])
+    await owner.query(
+      `update restro.venues set settings = settings - 'design' where id = any($1)`,
+      [[venue.id, venueTwo.id]],
+    )
+    // No saved Style of an earlier run: My styles starts with the two venues' designs alone.
+    await owner.query('delete from restro.design_styles where tenant_id = $1', [organizationId])
     for (const table of ['job_runs', 'item_first_published', 'publish_pointers', 'snapshots']) {
       await owner.query(`delete from restro.${table} where tenant_id = $1`, [organizationId])
     }

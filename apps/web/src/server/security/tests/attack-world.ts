@@ -5,7 +5,7 @@
 // leak in an answer shows; `fingerprint` hashes every tenant-bound row, so a write shows.
 import { randomUUID } from 'node:crypto'
 
-import { hashTableCode, newId } from '@restro/core'
+import { BASIC_DESIGN_VALUES, hashTableCode, newId, styleValuesOf } from '@restro/core'
 import {
   createArea,
   createIntegration,
@@ -59,6 +59,8 @@ export interface SeededOrg {
   readonly memberId: string
   readonly integration: string
   readonly asset: string
+  /** A saved Style of the organisation (D129, My styles), which no other organisation may name. */
+  readonly styleId: string
   /** A device of the owner's for Web Push, which an attack may name but never end. */
   readonly pushEndpoint: string
   readonly venues: readonly [SeededVenue, SeededVenue]
@@ -66,7 +68,7 @@ export interface SeededOrg {
 
 /** Every id the organisation holds: what must never show up in another's rows. */
 export function idsOf(org: SeededOrg): string[] {
-  const ids = [org.tenantId, org.integration, org.asset]
+  const ids = [org.tenantId, org.integration, org.asset, org.styleId]
   for (const venue of org.venues) {
     for (const value of Object.values(venue)) {
       if (/^[a-z]{2}_/.test(value)) ids.push(value)
@@ -320,6 +322,21 @@ export async function seedOrg(
     asset,
     tenantId,
   ])
+  const styleId = newId('ds')
+  await owner.query(
+    `insert into restro.design_styles
+       (id, tenant_id, name, style, style_values, layer, source, actor, job_id, change_set_id)
+     values ($1, $2, $3, 'basic', $4::jsonb, 'manual', 'manual', $5, $6, $7)`,
+    [
+      styleId,
+      tenantId,
+      `${marker} style`,
+      JSON.stringify(styleValuesOf(BASIC_DESIGN_VALUES)),
+      `user:${ownerId}`,
+      newId('jb'),
+      newId('cs'),
+    ],
+  )
   const pushEndpoint = `https://fcm.googleapis.com/fcm/send/${tenantId}-${'x'.repeat(30)}`
   await owner.query(
     `insert into restro.push_subscriptions
@@ -343,6 +360,7 @@ export async function seedOrg(
     memberId,
     integration: integration.id,
     asset,
+    styleId,
     pushEndpoint,
     venues: [one, two],
   }

@@ -178,6 +178,60 @@ Style's choice.
 - **Club's docked bar:** the bar with the total sits on the screen's bottom edge. Does your browser's
   own bar cover it?
 
+## G. My styles (#177): your own saved Styles, and copying between venues
+
+Open Demo Bar › Studio › Design, in English first and then in Bulgarian. The Style tiles now stand in
+two groups: **Restro styles** (Basic, Editorial, Soft, Classic, Club) and **My styles** below them.
+A saved Style is your organisation's, not one venue's: every venue of the organisation sees the same
+list. A Style keeps your design choices only — never your colours, your logo or your body font, so
+every venue it is applied at keeps its own brand.
+
+The copying checks need two venues in the same organisation, and the dev seed makes one. Add a second
+by hand first: All venues > Add a venue, made by hand, any name (this guide calls it "the second
+venue"). It needs no menu.
+
+- **The two groups:** "Restro styles" with the five tiles, and "My styles" under it. Each venue of
+  your organisation except the one you are on shows a tile that reads **"In use at {venue}"**. The
+  venue you are on is not in the list: its design is what the panel already holds.
+- **Save as a style…:** change the Style and a colour, then tap the quiet **"Save as a style…"**
+  button under My styles. A small box asks for one thing, the **Name**. Type one and tap **Save**: a
+  message says "Style saved" and a new tile appears under My styles, drawn in your colours. Four
+  steps in all, three of them taps.
+- **It is the organisation's, not the venue's:** open the second venue's Design page. The Style you
+  just saved is in its My styles too.
+- **It carries no brand:** on the second venue, set a brand colour of its own and tap Done. Then tap
+  the saved Style's tile: the preview changes, and the brand colour stays the second venue's. The
+  logo and the body font stay its own too.
+- **Applying one:** tap a tile under My styles and then **Done**. Three steps from opening Design.
+  The tile you tapped is the ticked one, and the Restro tile above is no longer ticked.
+- **Copying another venue's design:** on the second venue, tap the **"In use at Demo Bar"** tile and
+  Done. The second venue now looks like Demo Bar, in the second venue's own colours and logo. It is a
+  one-time copy: change Demo Bar's design afterwards and the second venue does not follow.
+- **Update with this design:** change something, then tap the **"…"** on a saved Style's tile and
+  **"Update with this design"**. Two taps. A message names the Style. No venue's design changes: the
+  venues that were applied from it keep what they have, including the one you are on.
+- **A name twice:** try to save a second Style under a name you already used, in any capitals. It
+  says "A style with this name exists. Choose another name." and the box stays open.
+- **Delete style, with Undo:** tap the **"…"** and **"Delete style"**. Two taps. The tile goes and a
+  message says "Style deleted" with **Undo** beside it. Tap Undo: the tile is back, with its name and
+  its choices. Do it again and let the message pass: the Style stays gone from the list. No venue's
+  design changes either way.
+- **A long name:** save a Style under a name of about 40 Bulgarian characters. The name wraps to two
+  lines on the tile and is then cut; hovering it shows the whole name. The tile does not run off the
+  side of the panel. A name longer than 60 characters cannot be typed into the box.
+- **Many Styles:** save five or six. The tiles wrap onto new rows, with no cap and no scrolling
+  sideways.
+- **A plain member:** sign in as someone who is a member and not an owner or admin. My styles and its
+  tiles are there to look at, and there is no "Save as a style…" button and no "…" on any tile.
+- **On a phone:** open Design at phone width. Every tile, the "…" and the box's buttons are easy to
+  hit with a thumb, and nothing runs off the side.
+- **In Bulgarian:** the group reads "Моите стилове", the button „Запази като стил…“, the menu
+  „Обнови с този дизайн“ and „Изтрий стила“, the tiles „Използва се в {venue}“, and the messages
+  „Стилът е запазен“, „Стилът е изтрит“ with „Отмени“.
+- **Beside the colours:** under Colours, the switch that opens the worked-out colours now reads
+  **"Colour roles"** / „Цветови роли“, not "Advanced": there is only one Advanced on this page, the
+  one at the top.
+
 ## What to report
 
 For each check: as written, or what you saw instead, and on which Style.

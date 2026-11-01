@@ -33,10 +33,16 @@
 // (D129, `venues.settings.design`) over the revision the editor started from. Its event has no
 // node, the field key `design`, the manual layer and the venue's scope; the record carries the
 // same provenance. It is the record's only writer (scripts/design-writers.test.ts).
+//
+// Three ops are about the organisation rather than one venue: `setStyle` saves one of its own
+// Styles (D129, My styles) and `setStyleStatus` removes one or puts it back. Their rows live in
+// `design_styles`, carry the same provenance, and their events have no node, the master scope, the
+// manual layer and the field key `style` or `style_status`. They are those rows' only writers.
 
 import {
   assets,
   type DbPool,
+  designStyles,
   events,
   fieldValues,
   integrations,
@@ -49,7 +55,7 @@ import {
   venues,
 } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
-import { asc, type SQL, sql } from 'drizzle-orm'
+import { asc, eq, type SQL, sql } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
 import {
@@ -67,6 +73,8 @@ import {
   type Scope,
   type SetDesign,
   type SetLinkState,
+  type SetStyle,
+  type SetStyleStatus,
   type SourceLink,
   tillIntegrationOf,
   tillSource,
@@ -87,6 +95,7 @@ import {
   type StoredDesign,
   sameDesign,
 } from '../design/record'
+import { styleNameKey } from '../design/saved-style'
 import { FIELD_TYPES, type FieldTypeSpec } from '../field-types/specs'
 import { canonicalJson, sha256Hex } from '../hash'
 import type { NodeId } from '../ids'
@@ -164,6 +173,10 @@ export type ApplyRejectionCode =
   | 'unreadable'
   /** setDesign: a new logo that is not a stored image of this tenant. */
   | 'logo_not_usable'
+  /** setStyle, setStyleStatus: this organisation has no saved Style with that id, or it is removed. */
+  | 'unknown_style'
+  /** setStyle, setStyleStatus: another saved Style of the organisation already has that name. */
+  | 'style_name_taken'
 
 /** One refused op: its index in `changeSet.ops`, a code and a reason for people. */
 export interface ApplyRejection {
@@ -281,6 +294,19 @@ interface LinkState {
   readonly lastHash: string | null
 }
 
+/**
+ * One saved Style of the organisation (D129), as this change set leaves it. The values are held as
+ * stored: a row whose values no longer fit the contract (an option removed since) still blocks its
+ * name, can be renamed over and can be removed or put back.
+ */
+interface StyleState {
+  readonly id: string
+  readonly name: string
+  readonly style: string
+  readonly values: unknown
+  readonly removed: boolean
+}
+
 interface ValueRow {
   readonly nodeId: NodeId
   readonly fieldKey: string
@@ -301,7 +327,7 @@ interface ValueRow {
 
 interface EventRow {
   readonly op: ChangeSetOpName
-  /** Null only for `setDesign`, which is about a venue (its scope), not a node. */
+  /** Null for the ops that are not about the document: `setDesign` and the saved-Style ops. */
   readonly nodeId: NodeId | null
   readonly fieldKey: string
   readonly layer: Layer
@@ -323,6 +349,11 @@ type Outcome =
 const APPLIED: Outcome = { kind: 'applied' }
 const UNCHANGED: Outcome = { kind: 'unchanged' }
 const SKIPPED: Outcome = { kind: 'skipped' }
+
+/** A saved Style as the changelog records it: its name, where its values came from, and them. */
+function styleValue(style: StyleState): { name: string; style: string; values: unknown } {
+  return { name: style.name, style: style.style, values: style.values }
+}
 
 function refused(code: ApplyRejectionCode, reason: string): Outcome {
   return { kind: 'rejected', code, reason }
@@ -391,6 +422,14 @@ class DocumentState {
   readonly usableLogos = new Map<string, boolean>()
   /** The venues whose design record this change set rewrites, with the record to write. */
   readonly dirtyDesigns = new Map<string, DesignRecord>()
+  /**
+   * Every saved Style of the organisation (D129), read when the change set has a style op, then as
+   * this change set leaves it. The tenant's document lock serialises two writers, so the name check
+   * below sees every Style this organisation has.
+   */
+  readonly styles = new Map<string, StyleState>()
+  /** The saved Styles this change set writes, each with whether its row is new. */
+  readonly dirtyStyles = new Map<string, { state: StyleState; isNew: boolean }>()
 
   readonly createdNodes: NodeState[] = []
   /** Where each moved node stood before this change set (the first move records it). */
@@ -559,6 +598,28 @@ async function loadState(tx: WriteTx, set: ChangeSet, template: Template): Promi
         .where(anyOf(assets.id, logos))) {
         state.usableLogos.set(row.id, row.status === 'stored' && row.width !== null)
       }
+    }
+  }
+  // The organisation's saved Styles (D129): all of them, because a save's name must be unique
+  // among the ones that are not removed. The tenant's document lock keeps two writers apart.
+  if (set.ops.some((op) => op.op === 'setStyle' || op.op === 'setStyleStatus')) {
+    for (const row of await tx
+      .select({
+        id: designStyles.id,
+        name: designStyles.name,
+        style: designStyles.style,
+        styleValues: designStyles.styleValues,
+        removedAt: designStyles.removedAt,
+      })
+      .from(designStyles)
+      .orderBy(asc(designStyles.id))) {
+      state.styles.set(row.id, {
+        id: row.id,
+        name: row.name,
+        style: row.style,
+        values: row.styleValues,
+        removed: row.removedAt !== null,
+      })
     }
   }
   if (state.archivedVenues.size > 0) {
@@ -931,6 +992,12 @@ class Run {
           break
         case 'setDesign':
           outcome = this.setDesign(op)
+          break
+        case 'setStyle':
+          outcome = this.setStyle(op)
+          break
+        case 'setStyleStatus':
+          outcome = this.setStyleStatus(op)
           break
       }
       if (outcome.kind === 'rejected') {
@@ -1636,6 +1703,104 @@ class Run {
     return APPLIED
   }
 
+  /** The event of a saved Style: no node, the master scope, the manual layer (D129). */
+  private styleEvent(
+    op: 'setStyle' | 'setStyleStatus',
+    fieldKey: 'style' | 'style_status',
+    oldValue: unknown,
+    newValue: unknown,
+  ) {
+    this.event({ op, nodeId: null, fieldKey, layer: 'manual', scope: 'master' }, oldValue, newValue)
+  }
+
+  /** The saved Style, not removed, whose name is `name` and whose id is not `exceptId`. */
+  private styleNamed(name: string, exceptId: string): StyleState | undefined {
+    const key = styleNameKey(name)
+    for (const style of this.state.styles.values()) {
+      if (style.id !== exceptId && !style.removed && styleNameKey(style.name) === key) return style
+    }
+    return undefined
+  }
+
+  private rememberStyle(next: StyleState, isNew: boolean): void {
+    this.state.styles.set(next.id, next)
+    const already = this.state.dirtyStyles.get(next.id)
+    this.state.dirtyStyles.set(next.id, { state: next, isNew: already?.isNew ?? isNew })
+  }
+
+  /**
+   * Saves one of the organisation's own Styles (D129): a new row for an id it does not have, else
+   * the name and values of the one it names. A name another live Style holds is refused, whatever
+   * the case; a removed Style is unknown until Undo puts it back.
+   */
+  private setStyle(op: SetStyle): Outcome {
+    if (this.set.source !== 'manual') {
+      return refused('source_not_allowed', `a ${this.set.source} change set cannot save a style`)
+    }
+    const current = this.state.styles.get(op.styleId)
+    if (current !== undefined && current.removed) {
+      return refused('unknown_style', `the style ${op.styleId} is removed`)
+    }
+    const taken = this.styleNamed(op.content.name, op.styleId)
+    if (taken !== undefined) {
+      return refused(
+        'style_name_taken',
+        `the style ${taken.id} already has the name ${op.content.name}`,
+      )
+    }
+    const next: StyleState = {
+      id: op.styleId,
+      name: op.content.name,
+      style: op.content.style,
+      values: op.content.values,
+      removed: false,
+    }
+    if (
+      current !== undefined &&
+      current.name === next.name &&
+      canonicalJson({ style: current.style, values: current.values }) ===
+        canonicalJson({ style: next.style, values: next.values })
+    ) {
+      return UNCHANGED
+    }
+    this.styleEvent('setStyle', 'style', current === undefined ? null : styleValue(current), {
+      ...styleValue(next),
+      id: next.id,
+    })
+    this.rememberStyle(next, current === undefined)
+    return APPLIED
+  }
+
+  /**
+   * Removes a saved Style or puts it back (D129): a soft removal, so the toast's Undo is this op
+   * with `active` again. A venue's design that came from the Style is never touched.
+   */
+  private setStyleStatus(op: SetStyleStatus): Outcome {
+    if (this.set.source !== 'manual') {
+      return refused('source_not_allowed', `a ${this.set.source} change set cannot save a style`)
+    }
+    const current = this.state.styles.get(op.styleId)
+    if (current === undefined) {
+      return refused('unknown_style', `this organisation has no style ${op.styleId}`)
+    }
+    const removed = op.status === 'removed'
+    if (current.removed === removed) return UNCHANGED
+    if (!removed) {
+      const taken = this.styleNamed(current.name, current.id)
+      if (taken !== undefined) {
+        return refused('style_name_taken', `the style ${taken.id} now has the name ${current.name}`)
+      }
+    }
+    this.styleEvent(
+      'setStyleStatus',
+      'style_status',
+      { id: current.id, status: current.removed ? 'removed' : 'active' },
+      { id: current.id, status: op.status },
+    )
+    this.rememberStyle({ ...current, removed }, false)
+    return APPLIED
+  }
+
   /**
    * Moves a link through the Link lifecycle, and records when its source last saw the object.
    * Only the link's own source may do this. The state follows `LINK_TRANSITIONS`; the same state
@@ -1968,6 +2133,39 @@ async function flush(
     await tx.execute(
       sql`update restro.venues set settings = jsonb_set(settings, '{design}', ${JSON.stringify(record)}::jsonb) where id = ${venueId}`,
     )
+  }
+
+  // The organisation's saved Styles (setStyle, setStyleStatus): the row, with its provenance.
+  for (const [styleId, { state: style, isNew }] of state.dirtyStyles) {
+    const row = {
+      tenantId,
+      id: styleId,
+      name: style.name,
+      style: style.style,
+      styleValues: style.values as Record<string, unknown>,
+      removedAt: style.removed ? new Date() : null,
+      layer: 'manual',
+      source: set.source,
+      actor: set.actor,
+      jobId: set.jobId,
+      changeSetId: set.id,
+    }
+    if (isNew) await tx.insert(designStyles).values(row)
+    else {
+      await tx
+        .update(designStyles)
+        .set({
+          name: row.name,
+          style: row.style,
+          styleValues: row.styleValues,
+          removedAt: row.removedAt,
+          source: row.source,
+          actor: row.actor,
+          jobId: row.jobId,
+          changeSetId: row.changeSetId,
+        })
+        .where(eq(designStyles.id, styleId))
+    }
   }
 
   // The changelog, in op order, then one revision step per touched node that existed before.

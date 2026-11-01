@@ -11,6 +11,7 @@ import { getAssetStore } from '@/server/assets'
 import { composerMenusOf } from '@/server/composer/menu'
 import { getPool } from '@/server/db'
 import { loadDesign } from '@/server/design/service'
+import { loadMyStyles } from '@/server/design/styles'
 import { requireTenant } from '@/server/session'
 import { onSharedDevice } from '@/server/staff/shared-device'
 import { getVenue } from '@/server/venues'
@@ -34,8 +35,9 @@ export default async function VenueDesignPage({
     redirect(`/venues/${venue.id}?tab=tonight`)
   }
   const query = await searchParams
-  const [initial, { current }] = await Promise.all([
+  const [initial, myStyles, { current }] = await Promise.all([
     loadDesign(getPool(), organization.id, venue, getAssetStore, organization.role),
+    loadMyStyles(getPool(), organization.id, venue.id),
     composerMenusOf(organization.id, venue.id, query.menu),
   ])
   return (
@@ -43,6 +45,7 @@ export default async function VenueDesignPage({
       venueId={venue.id}
       venueName={venue.name}
       initial={initial}
+      myStyles={myStyles}
       menuId={current?.id ?? null}
     />
   )

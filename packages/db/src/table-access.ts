@@ -131,6 +131,12 @@ export const TABLE_ACCESS = {
   // (`archived_at`), never deleted by the app: items and old snapshots still name a tag by its id.
   tags: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
 
+  // The organisation's saved Styles (migration 0047; D129, My styles): written only by `apply()`,
+  // removed by setting `removed_at` (the toast's Undo clears it), never deleted by the app. They
+  // belong to the organisation, not to a venue, so a venue's purge leaves them; the purge role
+  // holds nothing here (organisations are not purged, as `organization_slug_history` has it).
+  design_styles: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'] },
+
   // The purge's own records (migration 0023; D83): the app reads, only the purge writes. A
   // tombstone or a log line is never changed or removed.
   tombstones: { tenancy: 'system', app: ['SELECT'], purge: ['SELECT', 'INSERT'] },

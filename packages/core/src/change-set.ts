@@ -9,6 +9,11 @@
 import { z } from 'zod'
 
 import { DesignContentSchema } from './design/record'
+import {
+  SavedStyleContentSchema,
+  SavedStyleIdSchema,
+  StyleStatusSchema,
+} from './design/saved-style'
 import { FIELD_KEY_PATTERN } from './field-definition'
 import { idSchema, isId } from './ids'
 import { NodeStatusSchema, type NodeType, NodeTypeSchema } from './node-types'
@@ -377,6 +382,36 @@ export const SetDesignSchema = z.strictObject({
 /** A design save. */
 export type SetDesign = z.output<typeof SetDesignSchema>
 
+/**
+ * Saves one of the organisation's own Styles (D129, My styles): a new one when the id is unknown,
+ * else the name and values of the one it names. Manual only, like a design: a Style is the
+ * organisation's own, never a till's. `apply()` refuses a name another live Style of the
+ * organisation holds (`style_name_taken`) and a removed Style (`unknown_style`); a save that
+ * changes nothing is `unchanged`. It names no node: its event has none and the master scope.
+ */
+export const SetStyleSchema = z.strictObject({
+  op: z.literal('setStyle'),
+  styleId: SavedStyleIdSchema,
+  content: SavedStyleContentSchema,
+})
+
+/** A saved Style's save. */
+export type SetStyle = z.output<typeof SetStyleSchema>
+
+/**
+ * Removes one of the organisation's saved Styles, or puts it back (D129): a soft removal, so the
+ * owner's Undo in the toast is this op with `active` again (nothing is ever deleted from app code,
+ * D83). It never touches a venue's design that came from the Style.
+ */
+export const SetStyleStatusSchema = z.strictObject({
+  op: z.literal('setStyleStatus'),
+  styleId: SavedStyleIdSchema,
+  status: StyleStatusSchema,
+})
+
+/** A saved Style's removal or restore. */
+export type SetStyleStatus = z.output<typeof SetStyleStatusSchema>
+
 /** Any structural op: node creation, placements, status, source links and their state. */
 export const StructuralOpSchema = z.discriminatedUnion('op', [
   CreateNodeSchema,
@@ -405,6 +440,8 @@ export const ChangeSetOpSchema = z.discriminatedUnion('op', [
   UnlinkSourceSchema,
   SetLinkStateSchema,
   SetDesignSchema,
+  SetStyleSchema,
+  SetStyleStatusSchema,
 ])
 
 /** One op of a change set. */
@@ -426,6 +463,8 @@ export const CHANGE_SET_OP_NAMES = [
   'unlinkSource',
   'setLinkState',
   'setDesign',
+  'setStyle',
+  'setStyleStatus',
 ] as const satisfies readonly ChangeSetOpName[]
 
 /** The layers each kind of source may write: a till → `till`, manual → the rest. */
@@ -455,6 +494,10 @@ export function nodeRefsOf(op: ChangeSetOp): NodeRef[] {
       return []
     case 'setDesign':
       // Names a venue, not a node.
+      return []
+    case 'setStyle':
+    case 'setStyleStatus':
+      // Names one of the organisation's saved Styles, not a node.
       return []
   }
 }
@@ -512,6 +555,13 @@ export const ChangeSetSchema = z
       }
       if (op.op === 'setDesign' && set.actor.startsWith('integration:')) {
         issue('an integration cannot save a design: a member or the system does')
+      }
+      const styleOp = op.op === 'setStyle' || op.op === 'setStyleStatus'
+      if (styleOp && set.source !== 'manual') {
+        issue(`a ${set.source} change set cannot save a style`)
+      }
+      if (styleOp && set.actor.startsWith('integration:')) {
+        issue('an integration cannot save a style: a member does')
       }
       if (op.op === 'createNode') {
         if (created.has(op.id)) issue(`node ${op.id} is created twice`)

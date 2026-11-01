@@ -7,7 +7,9 @@
 // when it is worked out (`lookOf`).
 //
 // Picking a Style fills every option of the draft from the Style's file, and keeps the colours, the
-// roles, the logo and the body font: those are the venue's.
+// roles, the logo and the body font: those are the venue's. One of the organisation's own saved
+// Styles, and the design in use at another of its venues (D129, My styles), are picked the same way
+// and keep the same things: a saved Style and a copy carry values only.
 //
 // Undo takes back the last step. A step is one action of the person: a burst of changes to one
 // control (typing a colour, dragging a picker) is one step.
@@ -16,8 +18,10 @@ import {
   DEPTH_SHADOW,
   type DesignContent,
   type DesignValues,
+  designValuesOfStyle,
   type PremadeStyleId,
   type SnapshotLayout,
+  type StyleValues,
   type ThemeFontId,
   type VenueTheme,
 } from '@restro/core'
@@ -26,6 +30,16 @@ import { PREMADE_STYLES } from '@restro/shell'
 import type { LogoState } from './logo-field'
 import { type LookState, type LookView, lookStateOf, lookViewOf } from './look-state'
 
+/**
+ * Which tile the panel shows as chosen: one of Restro's premade Styles, one of the organisation's
+ * own (D129), or the design in use at another of its venues. It is not stored: the design record
+ * keeps only `style`, the premade Style the values came from.
+ */
+export type PickedStyle =
+  | { readonly kind: 'premade' }
+  | { readonly kind: 'saved'; readonly id: string }
+  | { readonly kind: 'venue'; readonly venueId: string }
+
 export interface DesignDraft {
   readonly style: PremadeStyleId
   readonly values: DesignValues
@@ -33,6 +47,8 @@ export interface DesignDraft {
   readonly look: LookState
   /** What the page shows of the logo. */
   readonly logo: LogoState | null
+  /** The tile shown as chosen; a saved design always opens on its premade Style. */
+  readonly picked: PickedStyle
 }
 
 /** The saved design as the page holds it. */
@@ -48,6 +64,7 @@ export function draftOf({ design, theme, logo }: SavedDesign): DesignDraft {
     values: design.values,
     look: lookStateOf(theme),
     logo: logo === null ? null : { assetId: logo.assetId, url: logo.url },
+    picked: { kind: 'premade' },
   }
 }
 
@@ -125,7 +142,25 @@ export function valuesOfStyle(styleId: PremadeStyleId, values: DesignValues): De
 /** Picks a Style: every option comes from it; the colours, roles, logo and body font stay. */
 export function withStyle(draft: DesignDraft, styleId: PremadeStyleId): DesignDraft {
   const values = valuesOfStyle(styleId, draft.values)
-  return values === null ? draft : { ...draft, style: styleId, values }
+  return values === null ? draft : { ...draft, style: styleId, values, picked: { kind: 'premade' } }
+}
+
+/**
+ * Picks one of the organisation's saved Styles, or the design in use at another of its venues
+ * (D129): every option comes from it, and this venue's colours, roles, logo and body font stay —
+ * the Style carries none of them (D128). `style` keeps the premade Style the values came from.
+ */
+export function withStyleValues(
+  draft: DesignDraft,
+  from: { readonly style: PremadeStyleId; readonly values: StyleValues },
+  picked: PickedStyle,
+): DesignDraft {
+  return {
+    ...draft,
+    style: from.style,
+    values: designValuesOfStyle(from.values, draft.values.general.body_font),
+    picked,
+  }
 }
 
 export function withBodyFont(draft: DesignDraft, font: string): DesignDraft {

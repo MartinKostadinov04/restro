@@ -13,6 +13,7 @@ import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { getPool } from '../db'
+import * as design from '../design/actions'
 import * as integration from '../integration/actions'
 import * as organization from '../organization-actions'
 import * as tables from '../tables/actions'
@@ -35,12 +36,17 @@ vi.mock('next-intl/server', async () => (await import('./attack-session')).intlM
 vi.mock('@/server/jobs', async () => (await import('./attack-session')).jobsModule)
 vi.mock('@/server/log', async () => (await import('./attack-session')).logModule)
 
-/** Every action of these four files: none of them is Tonight's, or the tablet's landing's. */
+/**
+ * Every action of these five files: none of them is Tonight's, or the tablet's landing's. The design
+ * ones are here since #177: a Style is the organisation's, not a venue's, so they take no venue to
+ * aim at and only the device check can refuse them on a shared tablet.
+ */
 const ADMIN_ACTIONS: ReadonlySet<string> = new Set([
   ...Object.keys(tables),
   ...Object.keys(integration),
   ...Object.keys(venues),
   ...Object.keys(organization),
+  ...Object.keys(design),
 ])
 
 const refused = (answer: unknown) =>
