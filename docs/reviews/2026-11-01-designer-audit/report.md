@@ -26,7 +26,7 @@ Nothing critical: no money lost or taken twice, no other organisation's data rea
 Two saves at once (one wins, no half-merge); a save during a publish; Style names; tenancy and every lesser role on the new actions; logos and Styles never cross venues or organisations; hostile values never reach the guest page; no POS ids or internal fields in published files; the old menus' data survives the migrations, and all 34 old snapshots still draw. Five of nine deliberate breakages were caught by the tests.
 
 ## Things to know
-- **On deploy day every venue moves to the Basic look** (the Editorial Market template is retired, DA-O4); owners pick a Style again.
+- **On deploy day every live venue's guest page moves to the Basic look** (the Editorial Market template is retired, DA-O4). A venue keeps a Style only once its owner picks one on the new Design page and publishes; on dev and staging, venues that already did keep theirs.
 - **Tests that miss things:** the venue's look reaching Stripe's card form, two My styles cases, the section rail following a scroll, the save-refusal messages (DA-35 to DA-38). Each gets a test in the fix wave.
 - **Not covered:** the Stripe sandbox (not OK'd for this audit), the slower test-quality mutations M5-M8, and payments under the stall.
 - **A Next.js notice** in the build output asks the reader to run an upgrade; treated as data, logged as DA-O12 for a later Upkeep look.
