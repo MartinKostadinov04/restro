@@ -45,7 +45,7 @@ import {
   type PayFirstSendPart,
   preparePayFirst,
 } from './pay-first'
-import { accepted, refused, type ResultDetails, type ServiceResult } from './results'
+import { accepted, type ResultDetails, refused, type ServiceResult } from './results'
 import {
   findDuplicate,
   recentSentOrders,
@@ -250,7 +250,7 @@ export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<S
           now,
         })
   let paid: { id: string; reference: string; paymentId: string } | null = null
-  if (payFirst !== null && payFirst.ok && payFirstPart !== undefined) {
+  if (payFirst?.ok === true && payFirstPart !== undefined) {
     const sent = await insertSentOrder(stx, {
       kind: 'pay_first',
       tableId,

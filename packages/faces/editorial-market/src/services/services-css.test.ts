@@ -265,10 +265,13 @@ describe('the payment number on the Paid screen (D127, #293 DA-11)', () => {
       (rule) => rule.media === null && rule.selectors.includes('.rm .ro-state p'),
     )
     expect(faded?.declarations.get('opacity')).toBe('0.75')
-    const own = services.filter(
-      (rule) => rule.media === null && rule.selectors.includes(paid),
-    )
-    expect(own.map((rule) => rule.declarations.get('opacity')).filter(Boolean).at(-1)).toBe('1')
+    const own = services.filter((rule) => rule.media === null && rule.selectors.includes(paid))
+    expect(
+      own
+        .map((rule) => rule.declarations.get('opacity'))
+        .filter(Boolean)
+        .at(-1),
+    ).toBe('1')
   })
 })
 

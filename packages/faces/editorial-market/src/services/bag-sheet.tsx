@@ -211,9 +211,7 @@ function PayFirstBelowMinimum({ o }: { readonly o: Services }) {
       ) : null}
       {phase === 'sending' ? <small role="status">{words.requesting}</small> : null}
       {phase === 'sent' ? <small role="status">{words.requestStates.sent.title}</small> : null}
-      {phase === 'failed' ? (
-        <small role="alert">{refused ?? words.requestFailed}</small>
-      ) : null}
+      {phase === 'failed' ? <small role="alert">{refused ?? words.requestFailed}</small> : null}
     </section>
   )
 }
@@ -475,10 +473,7 @@ export function BagSheet() {
                 ? words.paying.payFirstBusy
                 : refusalText(words, o.payFirstRefused, {
                     command: 'pay.start',
-                    minCard:
-                      o.state.paying == null
-                        ? null
-                        : money(o.state.paying.minCardMinor),
+                    minCard: o.state.paying == null ? null : money(o.state.paying.minCardMinor),
                   })}
             </p>
           )}

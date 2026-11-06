@@ -1065,7 +1065,14 @@ export async function guestAct(
   const type = input.command.type === 'service.request' ? 'waiter.call' : input.command.type
   const reject = (code: string): GuestActed => ({
     ok: true,
-    result: { actionId, status: 'rejected', code, subjectId: null, ref: null, payFirstRefused: null },
+    result: {
+      actionId,
+      status: 'rejected',
+      code,
+      subjectId: null,
+      ref: null,
+      payFirstRefused: null,
+    },
     state: null,
     pass: null,
     retryAfter: null,
@@ -1187,7 +1194,17 @@ interface GuardedCommand {
 async function guardedAct(
   pool: DbPool,
   input: GuestActInput,
-  { target, type, reject, count, limits, subject, payFirst, payRefused, repeatSend }: GuardedCommand,
+  {
+    target,
+    type,
+    reject,
+    count,
+    limits,
+    subject,
+    payFirst,
+    payRefused,
+    repeatSend,
+  }: GuardedCommand,
 ): Promise<GuestActed | GuestStateless> {
   const { actionId } = input.command
   const position = input.check?.location
@@ -1283,13 +1300,13 @@ async function guardedAct(
       ok: true,
       result: holds
         ? {
-          actionId,
-          status: 'accepted',
-          code: null,
-          subjectId: null,
-          ref: null,
-          payFirstRefused: null,
-        }
+            actionId,
+            status: 'accepted',
+            code: null,
+            subjectId: null,
+            ref: null,
+            payFirstRefused: null,
+          }
         : {
             actionId,
             status: 'rejected',
@@ -1469,7 +1486,14 @@ async function payAct(
   const { type, actionId } = input.command
   const reject = (code: string): GuestActed => ({
     ok: true,
-    result: { actionId, status: 'rejected', code, subjectId: null, ref: null, payFirstRefused: null },
+    result: {
+      actionId,
+      status: 'rejected',
+      code,
+      subjectId: null,
+      ref: null,
+      payFirstRefused: null,
+    },
     state: null,
     pass: null,
     retryAfter: null,

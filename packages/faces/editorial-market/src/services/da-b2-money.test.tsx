@@ -139,7 +139,7 @@ describe('DA-B2-2: Call a waiter claims "Request sent" when the answer was lost'
     return screen.getByRole('dialog', { name: 'Call a server' })
   }
 
-  it("shows \"Request sent\" for the guest client's pending answer_lost (a network error or a 5xx)", async () => {
+  it('shows "Request sent" for the guest client\'s pending answer_lost (a network error or a 5xx)', async () => {
     const host = fakeHost()
     drawFace(host)
     const sheet = openCall()
