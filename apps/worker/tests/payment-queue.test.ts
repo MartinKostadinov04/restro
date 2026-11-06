@@ -1,7 +1,8 @@
 // Repair-review, hot spot 6 (RR-16) and hot spot 9: the real queue policy on real pg-boss, with the
 // options the worker registers. A send while a run of the same payment goes is not dropped (pg-boss
-// `stately`: one job waiting and one running per key): it runs after, and never beside it. One
-// payment's long run must not hold up another's, and one table's Send must not hold up another's.
+// `short` and a group per key: one job waiting and one running per key): it runs after, and never
+// beside it. One payment's long run must not hold up another's, and one table's Send must not hold
+// up another's.
 import { tmpdir } from 'node:os'
 import { JOB_NAMES } from '@restro/core'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -185,8 +186,9 @@ describe.skipIf(!hasDatabase)('the payment and Send queues on real pg-boss', () 
   )
 
   // RR-61, the case the options alone do not cover: a hung run with a second job of its own key
-  // waiting. pg-boss's fetch takes the oldest job first, and claiming it breaks the unique index
-  // of `stately`, which a fetch reads as "nothing to do": that job must not block the queue.
+  // waiting. pg-boss's fetch takes the oldest job first: that job must not block the queue. Once
+  // the hung run ends, its waiting job starts at once (#286: on `stately` it waited up to two
+  // minutes for pg-boss's count of running keys).
   it.each([
     ['a payment', JOB_NAMES.paymentPrepare],
     ['a table', JOB_NAMES.orderSend],
@@ -230,9 +232,9 @@ describe.skipIf(!hasDatabase)('the payment and Send queues on real pg-boss', () 
       } finally {
         release.open()
       }
-      await waitFor('the waiting job of the hung key', () => runs.get(hung) === 2, 150_000)
+      await waitFor('the waiting job of the hung key', () => runs.get(hung) === 2)
       expect(beside).toBe(0)
     },
-    180_000,
+    60_000,
   )
 })

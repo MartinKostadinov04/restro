@@ -2,8 +2,8 @@
 // made from core's `readTonight` by one pure function so the ordering of "Needs you", the tile of
 // each table and the pause banners can be tested without a database. Plain data, safe to send to
 // the browser: our ids and public fields only (rule 3), times as text in the venue's zone.
-import type { CallWaiterKind } from '@restro/core'
-import type { Tonight } from '@restro/core/service'
+import type { CallWaiterKind, PayingMissing } from '@restro/core'
+import { holdsStaffRightsOnly, type Tonight } from '@restro/core/service'
 
 /**
  * The rows of "Needs you", most costly to leave first (plan §4; paying plan 2026-10-29): a payment
@@ -199,6 +199,11 @@ export interface TonightView {
   readonly device: boolean
   /** Restro's admin team, on their own session: a Restro pause has their button (D120). */
   readonly operator: boolean
+  /**
+   * A staff-only account on a browser that is not shared yet, holding the `night.view` the command
+   * asks for: "Make this the bar tablet" is offered (RR-O35). The command checks it all again.
+   */
+  readonly barTablet: boolean
   readonly can: Can
   readonly banners: readonly PauseBanner[]
   /**
@@ -206,9 +211,11 @@ export interface TonightView {
    * Restro's own connection pause shows (a venue pause already stops paying, D120).
    */
   readonly paying: {
-    readonly state: 'paused' | 'lost' | 'restricted'
+    readonly state: 'paused' | 'lost' | 'restricted' | 'setup'
     /** The person holds `settings.connect_payments`: "Reconnect" is offered. */
     readonly canReconnect: boolean
+    /** For `setup`: the first Paying setup check still open (RR-O1); absent otherwise. */
+    readonly missing?: PayingMissing
   } | null
   readonly rows: readonly ActionRow[]
   /** Items the POS says ran out, in the order they ran out; empty for none (plan §12 A). */
@@ -623,12 +630,23 @@ export function buildTonightView(input: {
     provider: input.provider ?? null,
     device: tonight.device,
     operator: input.operator === true && !tonight.device,
+    barTablet:
+      !tonight.device &&
+      input.operator !== true &&
+      held.has('night.view') &&
+      holdsStaffRightsOnly(held),
     can,
     banners,
     paying:
-      tonight.paying === null || restro.length > 0
+      restro.length > 0
         ? null
-        : { state: tonight.paying, canReconnect: held.has('settings.connect_payments') },
+        : tonight.paying !== null
+          ? { state: tonight.paying, canReconnect: held.has('settings.connect_payments') }
+          : // Paying is not on yet because a setup check is open: only the person who finishes the
+            // setup is told, in one line (RR-O1).
+            tonight.payingSetup !== null && held.has('settings.connect_payments')
+            ? { state: 'setup', canReconnect: true, missing: tonight.payingSetup }
+            : null,
     rows,
     outOfStock: out.sort((a, b) => a.at.getTime() - b.at.getTime()).map((entry) => entry.name),
     groups,

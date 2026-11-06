@@ -11,6 +11,7 @@
 // and the guest functions' own.
 import {
   CurrencySchema,
+  hasPrivacyNotice,
   type Locale,
   liveEditions,
   mergeDocumentParts,
@@ -38,6 +39,7 @@ import { getPool } from '@/server/db'
 import { canManageIntegration, canMarkSoldOut } from '@/server/roles'
 import { loadTillLabels, tillLabelOf } from '@/server/till-label'
 import { venueHasTill } from '@/server/venues'
+import { privacyHref } from '@/settings/privacy-href'
 
 import { Composer } from './composer'
 import { ComposerSkeleton } from './composer-skeleton'
@@ -78,6 +80,10 @@ async function StructureSubtab({ tenantId, role, venue, menu: requested }: Compo
       venueId={venue.id}
       features={readGuestFeatures(venue.settings)}
       canEdit={manager}
+      privacy={{
+        onFile: hasPrivacyNotice(venue.settings),
+        href: privacyHref(venue.id),
+      }}
     />
   )
   if (current === null) {

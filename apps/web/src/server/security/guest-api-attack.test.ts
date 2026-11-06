@@ -4,6 +4,7 @@
 // text in the bill. The per-phone limits and the Turnstile answers are in their own files.
 import { generateKeyPairSync, randomUUID } from 'node:crypto'
 
+import { DEFAULT_GUEST_FEATURES } from '@restro/core'
 import { applyService } from '@restro/core/service'
 import type { DbPool } from '@restro/db'
 import type pg from 'pg'
@@ -112,6 +113,11 @@ describe.skipIf(!hasDatabase)('the guest API, attacked (as restro_app)', () => {
                 coalesce(settings->'ordering', '{}'::jsonb) || '{"locationCheck": false}'::jsonb)
         where id = $1`,
       [venue.id],
+    )
+    // Ordering from the phone is on, so an action reaches the checks these tests are about.
+    await owner.query(
+      `update restro.venues set settings = jsonb_set(settings, '{guest_features}', $2::jsonb) where id = $1`,
+      [venue.id, JSON.stringify({ ...DEFAULT_GUEST_FEATURES, ordering: true })],
     )
     const { result } = await applyService(
       app,

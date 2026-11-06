@@ -31,12 +31,24 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { saveGuestFeaturesAction } from '@/server/composer/guest-features-actions'
+import { PrivacyLine } from '@/settings/privacy-line'
 
 export interface GuestFeaturesCardProps {
   readonly venueId: string
   readonly features: GuestFeatures
   /** Owners and admins only; for anyone else every switch is read-only. */
   readonly canEdit: boolean
+  /**
+   * The venue's privacy notice link (RR-O44): ordering turns on only once it is on file
+   * (`onFile`); `href` is the form on Settings › Ordering where it is set.
+   */
+  readonly privacy: PrivacyNotice
+}
+
+/** Whether the venue has a privacy notice link, and where it is set. */
+export interface PrivacyNotice {
+  readonly onFile: boolean
+  readonly href: string
 }
 
 /** The guest functions as a card of their own in the Studio, under Structure (D129). */
@@ -55,7 +67,7 @@ export function GuestFeaturesCard(props: GuestFeaturesCardProps) {
   )
 }
 
-function FeaturesForm({ venueId, features, canEdit }: GuestFeaturesCardProps) {
+function FeaturesForm({ venueId, features, canEdit, privacy }: GuestFeaturesCardProps) {
   const t = useTranslations('composer.guestFeatures')
   const ids = useId()
   const [saved, setSaved] = useState<GuestFeatures>(features)
@@ -193,11 +205,20 @@ function FeaturesForm({ venueId, features, canEdit }: GuestFeaturesCardProps) {
               id={`${ids}-ordering`}
               label={t('ordering')}
               checked={draft.ordering}
-              disabled={locked}
+              // Ordering turns on only once the venue has a privacy notice link (RR-O44); ordering
+              // already on stays on, and can be turned off.
+              disabled={locked || (!privacy.onFile && !saved.ordering)}
               testId="feature-ordering"
               onChange={(on) => setFeature((current) => ({ ...current, ordering: on }))}
             >
               <Note>{t('stage4')}</Note>
+              {privacy.onFile ? null : (
+                <PrivacyLine
+                  state={saved.ordering ? 'missing' : 'need'}
+                  href={privacy.href}
+                  testId="feature-ordering-privacy"
+                />
+              )}
             </SwitchRow>
             <SwitchRow
               id={`${ids}-pay`}

@@ -675,7 +675,11 @@ export function createSendJobs(deps: SendJobDeps): JobDefinition[] {
   const orderSend = defineJob<OrderSendJob>({
     name: JOB_NAMES.orderSend,
     options: {
-      policy: 'stately',
+      // One waiting and one running per table (`ONE_RUN_PER_GROUP_JOBS` in core/jobs.ts). Never
+      // `stately`: its stale list of running keys held a table's next round up to two minutes (#286).
+      policy: 'short',
+      // The sweep queues a waiting order again, so the queue may be created again (registry.ts).
+      previousPolicy: 'stately',
       queue: {
         // Never retried: a step the run didn't reach is the sweep's (a waiting order is queued
         // again, an order that may have reached the POS is settled as Unconfirmed).

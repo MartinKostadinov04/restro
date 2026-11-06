@@ -1,14 +1,17 @@
 'use client'
 
-// The venue's details for guests, on Settings › Paying (#116, #198): the legal name, ЕИК, registered
-// address and a privacy notice link, in one card with Save (more than three fields, so a form, not
-// a control per field). It shows "Unsaved" and warns before leaving with unsaved edits. All four
-// must be filled before card payments can start; the missing list counts them as one check.
-// The guest side (the pay screen's link to these) is #195's and not drawn here.
+// The venue's details for guests (#116, #198, #288): the legal name, ЕИК, registered address and a
+// privacy notice link, in one card with Save (more than three fields, so a form, not a control per
+// field). It shows "Unsaved" and warns before leaving with unsaved edits. One form, drawn on
+// Settings › Paying and on Settings › Ordering (every venue: the privacy notice link is needed
+// before ordering from the phone turns on, RR-O15), saved by the same action and command
+// (`settings.paying_set`, the right to connect payments). All four must be filled before card
+// payments or ordering can start. The guest side (the pay screen's link to these) is #195's.
 import {
   LEGAL_ADDRESS_MAX,
   LEGAL_NAME_MAX,
   LEGAL_PRIVACY_URL_MAX,
+  type LegalDetails,
   type LegalDraft,
   type LegalField,
   legalProblems,
@@ -22,35 +25,53 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { WRAPS_FORM } from '@/lib/wrapping'
 import { savePayingAction } from '@/server/settings/paying-actions'
-import type { PayingView } from '@/server/settings/paying-view'
 
 import type { useSettingsRun } from './use-settings-run'
 
 const EMPTY: LegalDraft = { name: '', eik: '', address: '', privacyUrl: '' }
 
-/** The saved details as the form holds them. */
-function draftOf(view: PayingView): LegalDraft {
-  return view.legal ?? EMPTY
+/** Where the card is drawn: its test id (and its fields' ids) and the words that differ. */
+export type LegalDetailsPlace = 'paying' | 'ordering'
+
+const PLACES: Record<
+  LegalDetailsPlace,
+  { readonly testId: string; readonly lede: string; readonly required: string }
+> = {
+  paying: { testId: 'paying-legal', lede: 'pa_legal_d', required: 'pa_req' },
+  ordering: { testId: 'ord-legal', lede: 'st_legal_d', required: 'st_legal_req' },
 }
 
 /** The field's problem as its sentence key, or null. */
-function problemKey(field: LegalField, problem: 'required' | 'bad' | undefined): string | null {
+function problemKey(
+  field: LegalField,
+  problem: 'required' | 'bad' | undefined,
+  required: string,
+): string | null {
   if (problem === undefined) return null
-  if (problem === 'required') return 'pa_req'
-  return field === 'eik' ? 'pa_eik_err' : field === 'privacyUrl' ? 'pa_privacy_err' : 'pa_req'
+  if (problem === 'required') return required
+  return field === 'eik' ? 'pa_eik_err' : field === 'privacyUrl' ? 'pa_privacy_err' : required
 }
 
-export function PayingLegalCard({
-  view,
+export function LegalDetailsCard({
+  place,
+  venueId,
+  legal,
+  canEdit,
   runner,
 }: {
-  view: PayingView
+  place: LegalDetailsPlace
+  venueId: string
+  /** The saved details, or null until all four are filled in. */
+  legal: LegalDetails | null
+  /** True when the person holds `settings.connect_payments`: otherwise read-only. */
+  canEdit: boolean
   runner: ReturnType<typeof useSettingsRun>
 }) {
   const t = useTranslations('ownerSettings')
   const { pending, run } = runner
-  const can = view.canConnect
-  const saved = draftOf(view)
+  const can = canEdit
+  const words = PLACES[place]
+  const saved = legal ?? EMPTY
   const [draft, setDraft] = useState<LegalDraft>(saved)
   const [tried, setTried] = useState(false)
   const savedKey = JSON.stringify(saved)
@@ -81,16 +102,15 @@ export function PayingLegalCard({
   function save() {
     setTried(true)
     if (Object.keys(legalProblems(draft)).length > 0) return
-    const previous = view.legal
-    run(() => savePayingAction({ venueId: view.venueId, changes: { legalDetails: trimmed } }), {
+    const previous = legal
+    run(() => savePayingAction({ venueId, changes: { legalDetails: trimmed } }), {
       done: t('st_saved'),
       // The first save has nothing to go back to: clearing the details is not offered (a connected
       // account's paying would go off with no signal, #198).
       ...(previous === null
         ? {}
         : {
-            undo: () =>
-              savePayingAction({ venueId: view.venueId, changes: { legalDetails: previous } }),
+            undo: () => savePayingAction({ venueId, changes: { legalDetails: previous } }),
           }),
     })
   }
@@ -109,18 +129,19 @@ export function PayingLegalCard({
   ]
 
   if (!can) {
-    if (view.legal === null) return null
+    if (legal === null) return null
     return (
       <section
+        id={words.testId}
         className="grid grid-cols-1 gap-3 rounded-lg border bg-card p-3"
-        data-testid="paying-legal"
+        data-testid={words.testId}
       >
         <h3 className="font-medium">{t('pa_legal_t')}</h3>
         <dl className="grid grid-cols-1 gap-2 text-sm">
           {fields.map(({ field, label }) => (
             <div key={field} className="grid grid-cols-1 gap-0.5">
               <dt className="text-muted-foreground">{label}</dt>
-              <dd className="break-words">{view.legal?.[field]}</dd>
+              <dd className="break-words">{legal[field]}</dd>
             </div>
           ))}
         </dl>
@@ -130,8 +151,9 @@ export function PayingLegalCard({
 
   return (
     <form
+      id={words.testId}
       className="grid grid-cols-1 gap-4 rounded-lg border bg-card p-3"
-      data-testid="paying-legal"
+      data-testid={words.testId}
       noValidate
       onSubmit={(event) => {
         event.preventDefault()
@@ -143,12 +165,12 @@ export function PayingLegalCard({
           <h3 className="font-medium">{t('pa_legal_t')}</h3>
           {dirty ? <Badge variant="secondary">{t('pa_unsaved')}</Badge> : null}
         </div>
-        <p className="text-sm text-muted-foreground">{t('pa_legal_d')}</p>
+        <p className="text-sm text-muted-foreground">{t(words.lede)}</p>
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {fields.map(({ field, label, max, inputMode }) => {
-          const key = problemKey(field, problems[field])
-          const id = `pay-legal-${field}`
+          const key = problemKey(field, problems[field], words.required)
+          const id = `${words.testId}-${field}`
           return (
             <div
               key={field}
@@ -185,7 +207,7 @@ export function PayingLegalCard({
           type="submit"
           variant={dirty ? 'default' : 'outline'}
           disabled={pending || !dirty}
-          data-testid="paying-legal-save"
+          data-testid={`${words.testId}-save`}
         >
           {t('st_save')}
         </Button>

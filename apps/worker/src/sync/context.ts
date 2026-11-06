@@ -35,7 +35,12 @@ import type { LimiterRegistry } from './limiter'
 export type Enqueue = (
   name: string,
   data: object,
-  options: { singletonKey: string; startAfter?: number | undefined },
+  options: {
+    singletonKey: string
+    startAfter?: number | undefined
+    /** The group of a one-run-per-key queue (`prepareJob`, `ONE_RUN_PER_GROUP_JOBS`). */
+    group?: { readonly id: string } | undefined
+  },
 ) => Promise<string | null>
 
 /** The photo store as the worker uses it: put only. */

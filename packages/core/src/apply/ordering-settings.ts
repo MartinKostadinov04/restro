@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema } from '../ids'
+import { hasPrivacyNotice } from '../legal-details'
 import {
   type OrderingSettings,
   OrderingSettingsSchema,
@@ -26,6 +27,11 @@ export type OrderingSettingsErrorCode =
   | 'venue_not_found'
   /** The venue was deleted (D76). */
   | 'venue_archived'
+  /**
+   * The location check was being turned on while the venue has no privacy notice link on file
+   * (RR-O15): nothing was written. One already on stays on.
+   */
+  | 'privacy_missing'
 
 /** Thrown by `setOrderingSettings`. */
 export class OrderingSettingsError extends Error {
@@ -72,6 +78,19 @@ export async function setOrderingSettings(
       )
     }
     if (ordering !== null) {
+      // RR-O15: the location check turns on only once the venue has a privacy notice link; one
+      // already on stays on.
+      const before = readOrderingSettings(locked.venue.settings)
+      if (
+        ordering.locationCheck &&
+        !before.locationCheck &&
+        !hasPrivacyNotice(locked.venue.settings)
+      ) {
+        throw new OrderingSettingsError(
+          'privacy_missing',
+          'the location check needs the venue privacy notice link first',
+        )
+      }
       for (const day of WEEKDAYS) {
         const hours = ordering.serviceHours[day]
         const problem =
@@ -101,8 +120,9 @@ export interface OrderingSettingsPatched {
  * what is saved now under the venue's row lock, so two owners changing different keys never undo
  * each other. The service write path's settings commands call it (`settings.ordering_set`,
  * `settings.alerts_set`, the Telegram link) and write the Log entry beside it; nothing else does.
- * Hours are checked against the venue's service day. Throws `OrderingSettingsError` for a merged
- * result that does not pass its checks or a venue that is gone; nothing is written then.
+ * Hours are checked against the venue's service day, and the location check is turned on only once
+ * the venue has a privacy notice link (`privacy_missing`). Throws `OrderingSettingsError` for a
+ * merged result that does not pass its checks or a venue that is gone; nothing is written then.
  */
 export async function patchOrderingSettingsIn(
   tx: WriteTx,
@@ -122,6 +142,12 @@ export async function patchOrderingSettingsIn(
     throw new OrderingSettingsError('invalid_input', z.prettifyError(merged.error))
   }
   const after = merged.data
+  if (after.locationCheck && !before.locationCheck && !hasPrivacyNotice(locked.venue.settings)) {
+    throw new OrderingSettingsError(
+      'privacy_missing',
+      'the location check needs the venue privacy notice link first',
+    )
+  }
   for (const day of WEEKDAYS) {
     const hours = after.serviceHours[day]
     const problem =

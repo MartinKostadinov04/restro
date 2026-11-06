@@ -44,6 +44,7 @@ import type { TableSheetBill } from '@/server/tonight/load'
 import type { TableTile, TonightView } from '@/server/tonight/view'
 
 import { useMoney } from './money'
+import { readAttempt } from './read-attempt'
 import { useTonightRun, wroteSomething } from './run'
 import { useTableName } from './table-name'
 
@@ -69,9 +70,11 @@ export function TableSheet({
 
   useEffect(() => {
     let live = true
-    void tableBillAction({ venueId: view.venueId, tableId: tile.id }).then((result) => {
-      if (live) setBill(result.ok ? result.bill : null)
-    })
+    void readAttempt(() => tableBillAction({ venueId: view.venueId, tableId: tile.id })).then(
+      (result) => {
+        if (live) setBill(result.ok ? result.bill : null)
+      },
+    )
     return () => {
       live = false
     }

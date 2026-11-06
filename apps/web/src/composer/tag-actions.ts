@@ -1,7 +1,8 @@
 'use server'
 
 // The composer's tag writes (brief S3-06, D60). Like ./actions.ts: each is a server action that
-// checks who is asking (requireTenant), that the venue is theirs, parses its input with Zod and
+// checks who is asking (requireTenant), that their role may edit the menu (owners and admins,
+// `canEditMenu`; RR-70), that the venue is theirs, parses its input with Zod and
 // hands it to core: the tag list through the writers in `@restro/core/apply` (a venue's side
 // table), the assignment of tags to items through `setItemTags`, which builds one atomic change
 // set for `apply()` (rule 1). Then it revalidates the venue page so the client gets the fresh
@@ -23,6 +24,7 @@ import { z } from 'zod'
 
 import { getPool } from '@/server/db'
 import { logError } from '@/server/log'
+import { canEditMenu } from '@/server/roles'
 import { requireTenant } from '@/server/session'
 import { onSharedDevice } from '@/server/staff/shared-device'
 import { getVenue } from '@/server/venues'
@@ -75,6 +77,7 @@ async function perform(
 ): Promise<ActionResult> {
   try {
     const { organization, user, sessionId } = await requireTenant()
+    if (!canEditMenu(organization.role)) return { ok: false, error: 'not_allowed' }
     if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
       return { ok: false, error: 'not_allowed' }
     }

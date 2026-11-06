@@ -240,6 +240,23 @@ describe.skipIf(!hasDatabase)('the service read side (as the restro_app role)', 
     await world.owner.query('delete from restro.pauses where id = $1', [byDevice])
   })
 
+  it('names the first open Paying setup check while the account is connected (RR-O1)', async () => {
+    expect((await tonightOf(user(ownerId))).payingSetup).toBeNull()
+    await world.owner.query(
+      `insert into restro.payment_accounts
+         (tenant_id, venue_id, provider_kind, account_ref, state, checks, connected_at, source, actor, job_id)
+       values ($1, $2, 'sim-pay', 'acct_setup1', 'connected', '{"cardPayments":true,"ticks":{}}'::jsonb, now(), 'restro', 'system', 'test-seed')`,
+      [world.tenantId, world.venueId],
+    )
+    try {
+      expect((await tonightOf(user(ownerId))).payingSetup).toBe('cardTypeInTill')
+    } finally {
+      await world.owner.query('delete from restro.payment_accounts where venue_id = $1', [
+        world.venueId,
+      ])
+    }
+  })
+
   it('shows a shared device the money alerts and the managers’ to-dos, without a tip; a staff phone not (#85)', async () => {
     const subject = newId('py')
     const seed = ['worker', 'system', 'test-seed']

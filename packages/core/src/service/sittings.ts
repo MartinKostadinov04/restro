@@ -563,6 +563,8 @@ export async function markPaymentTable(
   if (!command.isPaymentTable && (await paymentHoldsTable(stx, command.tableId))) {
     return refused(null, 'payment_table_busy')
   }
+  // The unmark's row comes after the lease it took; the ledger refuses the other order (RR-O13).
+  if (!command.isPaymentTable) stx.rows.claim('table', [command.tableId])
   await stx.tx
     .select({ id: venueTables.id })
     .from(venueTables)

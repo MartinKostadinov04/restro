@@ -9,8 +9,8 @@ import {
   JOB_NAMES,
   JOB_PAYLOADS,
   jobSingletonKey,
+  ONE_RUN_PER_GROUP_JOBS,
   prepareJob,
-  STATELY_JOBS,
 } from './jobs'
 
 const tenantId = newId('tn')
@@ -22,7 +22,8 @@ describe('job names and payloads', () => {
   it('every produced job has a payload schema and exactly one queue policy', () => {
     for (const name of Object.keys(JOB_PAYLOADS)) {
       expect(isProducedJob(name)).toBe(true)
-      expect(Number(EXCLUSIVE_JOBS.has(name)) + Number(STATELY_JOBS.has(name)), name).toBe(1)
+      const policies = [EXCLUSIVE_JOBS, ONE_RUN_PER_GROUP_JOBS]
+      expect(policies.filter((jobs) => jobs.has(name)).length, name).toBe(1)
     }
     expect(isProducedJob(JOB_NAMES.barsySyncTick)).toBe(false)
     expect(isProducedJob('constructor')).toBe(false)
@@ -54,13 +55,35 @@ describe('job names and payloads', () => {
     ).toThrow()
   })
 
-  it('a Send is keyed by its table, stately: a Send while one runs waits behind it (#77)', () => {
+  it('a Send is keyed and grouped by its table: one waiting and one running per table (#77, #286)', () => {
     const tableId = newId('tb')
     const job = prepareJob(JOB_NAMES.orderSend, { tenantId, venueId, tableId })
     expect(job.singletonKey).toBe(tableId)
-    expect(STATELY_JOBS.has(JOB_NAMES.orderSend)).toBe(true)
+    expect(ONE_RUN_PER_GROUP_JOBS.has(JOB_NAMES.orderSend)).toBe(true)
     expect(job.group).toEqual({ id: tableId })
     expect(isProducedJob(JOB_NAMES.orderSlotSweep)).toBe(false)
+  })
+
+  it('every one-run-per-key job is sent in the group of its key (#308)', () => {
+    const payloads: Record<string, object> = {
+      [JOB_NAMES.orderSend]: { tenantId, venueId, tableId: newId('tb') },
+      [JOB_NAMES.paymentPrepare]: { tenantId, venueId, paymentId: newId('py') },
+      [JOB_NAMES.paymentCheck]: { tenantId, venueId, paymentId: newId('py') },
+      [JOB_NAMES.publishMenu]: { tenantId, menuId, venueId, reason: 'manual', actor: 'system' },
+      [JOB_NAMES.publishFiles]: { tenantId, menuId, venueId },
+      [JOB_NAMES.publishLive]: { tenantId, menuId, venueId },
+      [JOB_NAMES.publishTableTokens]: { tenantId, venueId, retired: [] },
+      [JOB_NAMES.publishOrganizationIndex]: { tenantId },
+      [JOB_NAMES.purgeVenue]: { tenantId, venueId },
+      [JOB_NAMES.connectionProbe]: { tenantId, integrationId },
+    }
+    expect(new Set(Object.keys(payloads))).toEqual(ONE_RUN_PER_GROUP_JOBS)
+    for (const name of ONE_RUN_PER_GROUP_JOBS) {
+      const job = prepareJob(name, payloads[name])
+      expect(job.group, name).toEqual({ id: job.singletonKey })
+    }
+    const pull = prepareJob(JOB_NAMES.barsyFullPull, { tenantId, integrationId, venueId })
+    expect(pull).not.toHaveProperty('group')
   })
 
   it('two venues of one integration never share a pull key, so neither pull drops the other', () => {

@@ -16,6 +16,7 @@ import { and, eq } from 'drizzle-orm'
 import { createAuth } from '../src/server/auth'
 import { getAuthDb, getPool } from '../src/server/db'
 import { authModelId } from '../src/server/ids'
+import { runSettingsCommand } from '../src/server/settings/command'
 import {
   assertDevEnvironment,
   readAdminCredentials,
@@ -115,6 +116,33 @@ async function main(): Promise<void> {
   // reaches guests with the next publish. Its page draws Basic, the default design.
   if (demoBar !== null) {
     const demoBarId = demoBar.venueId as VenueId
+    // Its legal details first: ordering from the phone turns on only once the venue has a privacy
+    // notice link (RR-O44), and paying needs them too (#198). Made-up values, saved the way the
+    // owner's Paying settings save them.
+    const legal = await runSettingsCommand(
+      {
+        pool,
+        tenantId: organizationId,
+        venueId: demoBarId,
+        userId,
+        sessionId: 'seed-dev',
+        signedInAt: new Date(),
+        operator: false,
+      },
+      {
+        type: 'settings.paying_set',
+        changes: {
+          legalDetails: {
+            name: 'Demo Bar EOOD',
+            eik: '123456789',
+            address: 'Sofia, 1 Demo Street',
+            privacyUrl: 'https://demo-bar.example/privacy',
+          },
+        },
+        providerMinMinor: 0,
+      },
+    )
+    if (!legal.ok) throw new Error(`the Demo Bar's legal details were refused: ${legal.error}`)
     await setGuestFeatures(pool, organizationId, {
       venueId: demoBarId,
       features: {

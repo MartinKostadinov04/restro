@@ -99,7 +99,8 @@ test.beforeAll(async ({ browser }) => {
   seed('seed')
   waiter = await person(browser, TONIGHT_WAITER_EMAIL, TABLET)
   tablet = await person(browser, TONIGHT_TABLET_EMAIL, TABLET)
-  // The bar tablet's session becomes a shared device, as the owner's "mark this device" does.
+  // The bar tablet's session becomes a shared device, seeded directly: in the app a staff account
+  // does it on Tonight with "Make this the bar tablet".
   seed('device', TONIGHT_TABLET_EMAIL)
 })
 
