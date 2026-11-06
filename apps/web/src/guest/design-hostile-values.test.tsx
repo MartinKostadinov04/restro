@@ -7,7 +7,12 @@
 //      server render (renderToString) and the browser (jsdom) put out, and that the face's
 //      stylesheet is the constant and nothing else.
 // And what goes to Stripe's Appearance API from a view that parsed.
-import { BASIC_DESIGN_VALUES, type MenuSnapshot, MenuSnapshotSchema } from '@restro/core'
+import {
+  BASIC_DESIGN_VALUES,
+  DesignValuesSchema,
+  type MenuSnapshot,
+  MenuSnapshotSchema,
+} from '@restro/core'
 import { EDITORIAL_MARKET_MANIFEST, EditorialMarketFace } from '@restro/editorial-market'
 import { buildViewModel, imageSlotsFor, type ViewModel } from '@restro/shell'
 import { snapshotFromSpec } from '@restro/shell/testing'
@@ -73,6 +78,10 @@ const PATHS: readonly Mutation[] = [
   ],
   ['theme.scheme', (s, v) => Object.assign(s.theme, { scheme: v })],
   ['theme.logo', (s, v) => Object.assign(s.theme, { logo: v })],
+]
+
+/** The design record is read leniently (DA-15): a hostile value is replaced, never refused. */
+const DESIGN_PATHS: readonly Mutation[] = [
   ['design.general.corners', (s, v) => Object.assign(s.design?.general ?? {}, { corners: v })],
   [
     'design.general.heading_font',
@@ -85,7 +94,7 @@ const PATHS: readonly Mutation[] = [
 
 afterEach(() => cleanup())
 
-describe('the published snapshot refuses every hostile design or theme value', () => {
+describe('the published snapshot refuses every hostile theme value', () => {
   it('the base snapshot parses (the control)', () => {
     const parsed = MenuSnapshotSchema.safeParse(baseSnapshot())
     expect(parsed.success, JSON.stringify(parsed.error?.issues?.slice(0, 2))).toBe(true)
@@ -96,6 +105,28 @@ describe('the published snapshot refuses every hostile design or theme value', (
         const snapshot = baseSnapshot()
         mutate(snapshot, value)
         expect(MenuSnapshotSchema.safeParse(snapshot).success).toBe(false)
+      })
+    }
+  }
+})
+
+describe('the published snapshot replaces every hostile design value with the contract’s own', () => {
+  // The design block is read as the option list is now (DA-15): an unknown option or page is
+  // dropped and a value off the list falls back to Basic's. The parse succeeds, and what comes back
+  // is the contract's words, never the hostile string. (The publisher writes the block strictly.)
+  for (const [path, mutate] of DESIGN_PATHS) {
+    for (const value of HOSTILE) {
+      it(`${path} = ${JSON.stringify(value.slice(0, 40))}: replaced`, () => {
+        const snapshot = baseSnapshot()
+        mutate(snapshot, value)
+        const parsed = MenuSnapshotSchema.safeParse(snapshot)
+        expect(parsed.success, JSON.stringify(parsed.error?.issues?.slice(0, 2))).toBe(true)
+        const design = parsed.data?.design
+        // Whole and on the contract: every option has one of its listed values.
+        expect(DesignValuesSchema.safeParse(design).success).toBe(true)
+        // The base design is Basic's, and the one hostile value is gone: Basic's is back.
+        expect(design).toEqual(BASIC_DESIGN_VALUES)
+        expect(JSON.stringify(parsed.data)).not.toContain(value)
       })
     }
   }
