@@ -1,8 +1,8 @@
 // Repair-review, hot spot 6 (RR-16) and hot spot 9: the real queue policy on real pg-boss, with the
 // options the worker registers. A send while a run of the same payment goes is not dropped (pg-boss
 // `short` and a group per key: one job waiting and one running per key): it runs after, and never
-// beside it. One
-// payment's long run must not hold up another's, and one table's Send must not hold up another's.
+// beside it. One payment's long run must not hold up another's, and one table's Send must not hold
+// up another's.
 import { tmpdir } from 'node:os'
 import { JOB_NAMES } from '@restro/core'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'

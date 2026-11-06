@@ -7,9 +7,11 @@
 //
 // Real pg-boss on Postgres, with the worker's own registry and queue options around a handler the
 // test scripts. The monitor is off and the test writes its count itself, the same aggregate pg-boss
-// runs (plans.js `getQueueStats`: the keys of active `singleton`/`stately` jobs), so the count
-// stays as stale as the test needs; the worker's cache of it is read every second instead of every
-// minute. No test here sleeps out a pg-boss interval.
+// runs (plans.js `getQueueStats`: the keys of active `singleton`/`stately` jobs; a pg-boss upgrade
+// that changes it must change this copy too), so the count stays as stale as the test needs; the
+// worker's cache of it is read every second instead of every minute. (pg-boss's own monitor at its
+// one-second minimum would count again before a stale count could show.) No test here sleeps out a
+// pg-boss interval.
 import { tmpdir } from 'node:os'
 import { JOB_NAMES, newId, prepareJob } from '@restro/core'
 import type { DbPool } from '@restro/db'
@@ -130,7 +132,7 @@ describe.skipIf(!hasDatabase)("the route's queues and pg-boss's count of running
 
   /** pg-boss's monitor counting now: the keys of the queue's running singleton/stately jobs. */
   async function countRunningKeys(name: string): Promise<void> {
-    await withOwnerClient(db.appUrl, (client) =>
+    await withOwnerClient(db.ownerUrl, (client) =>
       client.query(
         `UPDATE ${QUEUE_SCHEMA}.queue SET singletons_active = (
            SELECT array_agg(j.singleton_key) FROM ${QUEUE_SCHEMA}.job j

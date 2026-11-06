@@ -9,9 +9,10 @@
 //
 // Both queues are `short` with one singleton key and group per payment (`prepareJob`,
 // `ONE_RUN_PER_GROUP_JOBS`): a send while one waits is the same job, and one sent while a step runs
-// waits behind it, never beside it. The guest API queues
-// them after each pay command and again from the paying phone's poll; a provider notice queues a
-// check. A check that finds the guest still at the form queues itself again for the deadline, under
+// waits behind it. (A failed run waiting for its retry is not the waiting job, so it can sit beside
+// one, and two fetches in the same instant could then start both: see "Should two runs meet" below.)
+// The guest API queues them after each pay command and again from the paying phone's poll; a
+// provider notice queues a check. A check that finds the guest still at the form queues itself again for the deadline, under
 // a key of its own so a nudge is never swallowed by the waiting deadline check.
 //
 // What the jobs keep to:
