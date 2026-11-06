@@ -991,6 +991,8 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       answer(body.result.status, body.result.code, {
         ref: body.result.ref,
         subjectId: body.result.subjectId,
+        // An accepted Send whose pay-first part alone was refused (#293, DA-1).
+        payFirstRefused: body.result.payFirstRefused,
       }),
     )
   }

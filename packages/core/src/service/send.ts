@@ -45,7 +45,7 @@ import {
   type PayFirstSendPart,
   preparePayFirst,
 } from './pay-first'
-import { accepted, refused, type ServiceResult } from './results'
+import { accepted, refused, type ResultDetails, type ServiceResult } from './results'
 import {
   findDuplicate,
   recentSentOrders,
@@ -222,8 +222,16 @@ export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<S
           isPayFirst,
           whole: command.lines.length > 0,
         })
+  // A refused pay-first part no longer refuses the Send's on-the-bill lines (#293, DA-1; Martin
+  // 11-01): a gin below the card minimum, or a table already at its open payments, must not keep a
+  // friend's beer off the bill, which is D117's reason for sending the two parts together. The bill
+  // lines go, the pay-first lines stay on the order for the guest to try again, and the answer says
+  // which refusal the face words. With no bill lines ("Pay" alone) there is nothing to accept, so
+  // the Send is refused as before.
+  let payFirstRefused: { readonly code: string; readonly details: ResultDetails } | null = null
   if (payFirst !== null && !payFirst.ok) {
-    return refused(actionId, payFirst.code, payFirst.details ?? {})
+    if (onBill === null) return refused(actionId, payFirst.code, payFirst.details ?? {})
+    payFirstRefused = { code: payFirst.code, details: payFirst.details ?? {} }
   }
 
   const sittingId = row.sittingId
@@ -242,7 +250,7 @@ export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<S
           now,
         })
   let paid: { id: string; reference: string; paymentId: string } | null = null
-  if (payFirst !== null && payFirstPart !== undefined) {
+  if (payFirst !== null && payFirst.ok && payFirstPart !== undefined) {
     const sent = await insertSentOrder(stx, {
       kind: 'pay_first',
       tableId,
@@ -275,6 +283,10 @@ export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<S
     details: {
       ...(made === null ? {} : { sentOrderId: made.id }),
       ...(paid === null ? {} : { paymentId: paid.paymentId, state: 'requested' }),
+      // The bill lines went and the pay-first part did not: its own refusal, for the face's words.
+      ...(payFirstRefused === null
+        ? {}
+        : { ...payFirstRefused.details, payFirstRefused: payFirstRefused.code }),
     },
   })
 }

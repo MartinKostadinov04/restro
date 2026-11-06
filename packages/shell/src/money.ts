@@ -8,6 +8,7 @@ import {
   type Currency,
   decimalToMinor,
   formatMoney,
+  formatSignedMoney,
   type Locale,
   type Money,
   MoneyError,
@@ -45,6 +46,15 @@ export function viewMoney(money: Money, currency: Currency, locale: Locale): Vie
 /** An amount of integer minor units as shown. Throws (core's `MoneyError`) for anything that is not one. */
 export function viewMinor(minor: number, currency: Currency, locale: Locale): ViewMoney {
   return { minor, currency, text: formatMoney(minor, currency, locale) }
+}
+
+/**
+ * A signed amount of integer minor units as shown, for the POS's own amounts alone: a waiter's
+ * discount line reads "-4,00 €" instead of throwing (#293, DA-8). Everything Restro prices goes
+ * through `viewMinor`, which refuses a negative amount (rule 8). Still a format, never a sum.
+ */
+export function viewSignedMinor(minor: number, currency: Currency, locale: Locale): ViewMoney {
+  return { minor, currency, text: formatSignedMoney(minor, currency, locale) }
 }
 
 /**

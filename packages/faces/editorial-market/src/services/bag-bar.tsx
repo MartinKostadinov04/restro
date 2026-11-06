@@ -7,10 +7,36 @@
 // is hidden while a sheet is open. The last refusal of an order command shows over the bar when no
 // sheet is open (inside the bag sheet it shows there).
 
-import { callIsSingleStep } from '@restro/shell'
+import { callIsSingleStep, paymentIsFinal } from '@restro/shell'
 
 import { HandIcon } from '../icons'
 import { orderBusy, useServices } from './provider'
+
+/**
+ * The slim line at the top of the menu while this phone has a payment that has not settled and its
+ * sheet is closed (#293, DA-24; Martin 11-06): a closed browser or a redirect return brings the
+ * guest back to the menu with the payment still going, and nothing on the page said so. A tap opens
+ * the screen the payment is on, which is the bag for a pay-first round and the pay sheet for the
+ * bill's lines. It states no outcome of its own (D72): the payment's own screen does that.
+ */
+export function PaymentProgress() {
+  const o = useServices()
+  if (o === null) return null
+  const payment = o.state.payment ?? null
+  if (payment === null || paymentIsFinal(payment) || o.sheet !== null) return null
+  const sheet = payment.mode === 'pay_first' ? 'bag' : 'pay'
+  if (!(sheet === 'bag' ? o.features.ordering : o.features.pay)) return null
+  return (
+    <button
+      type="button"
+      className="ro-payline"
+      data-slot="menu.pay_progress"
+      onClick={(event) => o.openSheet(sheet, event.currentTarget)}
+    >
+      {o.words.paying.inProgress}
+    </button>
+  )
+}
 
 export function ServiceBar() {
   const o = useServices()

@@ -6,12 +6,14 @@ import {
   CURRENCY_SCALE,
   decimalToMinor,
   formatMoney,
+  formatSignedMoney,
   MoneyError,
   MoneySchema,
   minorToDecimal,
   multiplyMinor,
   percentOfMinor,
   ratioOfMinor,
+  signedMinorToDecimal,
   subtractMinor,
   sumSignedMinor,
 } from './money'
@@ -437,5 +439,49 @@ describe('MoneySchema', () => {
     ]) {
       expect(MoneySchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false)
     }
+  })
+})
+
+describe("the POS's own signed amounts (#293, DA-8; rule 8)", () => {
+  // A waiter's discount reaches Restro negative. It is shown, never priced: the conversions that
+  // price something keep refusing a negative amount (the tests above), and these two are display
+  // only, still through an exact decimal string and never a float.
+  it('writes a signed amount as an exact decimal string', () => {
+    expect(signedMinorToDecimal(1250)).toBe('12.50')
+    expect(signedMinorToDecimal(-400)).toBe('-4.00')
+    expect(signedMinorToDecimal(-5)).toBe('-0.05')
+    expect(signedMinorToDecimal(0)).toBe('0.00')
+    expect(signedMinorToDecimal(-1234, 0)).toBe('-1234')
+  })
+
+  it('refuses a float, NaN and an unsafe integer, as the unsigned one does', () => {
+    for (const bad of [1.5, -1.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53]) {
+      expect(() => signedMinorToDecimal(bad), String(bad)).toThrow(MoneyError)
+    }
+  })
+
+  it('shows a discount with its minus and agrees with formatMoney above zero', () => {
+    expect(formatSignedMoney(-400, 'EUR', 'en_US')).toContain('4.00')
+    expect(formatSignedMoney(-400, 'EUR', 'en_US')).toContain('-')
+    for (const minor of [0, 5, 1250, 999_999]) {
+      expect(formatSignedMoney(minor, 'EUR', 'bg_BG')).toBe(formatMoney(minor, 'EUR', 'bg_BG'))
+    }
+    // The unsigned one still refuses it, so nothing Restro prices can slip through (check V2).
+    expect(() => formatMoney(-400, 'EUR', 'en_US')).toThrow(MoneyError)
+  })
+
+  it('keeps the digits of any signed amount, in every locale', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: -9_999_999, max: 9_999_999 }),
+        fc.constantFrom('en_US' as const, 'bg_BG' as const),
+        (minor, locale) => {
+          const shown = formatSignedMoney(minor, 'EUR', locale)
+          expect(Number(shown.replace(/[^\d]/g, ''))).toBe(Math.abs(minor))
+          expect(shown.includes('-')).toBe(minor < 0)
+        },
+      ),
+      { numRuns: 400 },
+    )
   })
 })

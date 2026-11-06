@@ -281,6 +281,25 @@ export interface PayingStrings {
   readonly notUpToDate: string
   readonly cardsPaused: string
   readonly nothingPicked: string
+  /**
+   * The greyed Pay's reason when the ticked lines come to nothing or less, the POS's own discount
+   * being as big as them (#293, DA-8): a card payment of zero does not exist, so the waiter does it.
+   */
+  readonly nothingOwed: string
+  /**
+   * Pay-first at Send, below the venue's smallest card payment (Martin 11-01, DA-1): the pay-first
+   * part is greyed with this line while the on-the-bill lines still go.
+   */
+  readonly payFirstBelowMinimum: string
+  /** The button under it: it calls a waiter with the bill so the guest pays cash (Martin 11-01). */
+  readonly payCash: string
+  /**
+   * Pay-first at Send refused as rate-limited (3 open payments at the table, or a payment in the
+   * last 15 s): the bill lines went, the pay-first lines stay (Martin 11-01, DA-1).
+   */
+  readonly payFirstBusy: string
+  /** The slim line at the top of the menu while a payment is open and its sheet closed (DA-24). */
+  readonly inProgress: string
   readonly sameQuestion: (minutes: number) => string
   readonly sameYes: string
   readonly sameNo: string
@@ -641,6 +660,11 @@ const EN: Strings = {
       notUpToDate: 'We can’t read the bill right now. We keep trying.',
       cardsPaused: 'Card payments are paused right now. Ask your waiter.',
       nothingPicked: 'Choose at least one line.',
+      nothingOwed: 'There is nothing to pay on these lines. Ask your waiter.',
+      payFirstBelowMinimum: 'Your bill is under the minimum for card payment',
+      payCash: 'Pay cash',
+      payFirstBusy: 'Another payment is in progress, try again in a moment',
+      inProgress: 'Payment in progress, tap to see',
       sameQuestion: (minutes) => `Same amount as ${minutes} minutes ago. Pay again?`,
       sameYes: 'Yes, pay',
       sameNo: 'Back',
@@ -994,6 +1018,11 @@ const BG: Strings = {
       notUpToDate: 'В момента не можем да прочетем сметката. Опитваме отново.',
       cardsPaused: 'Плащането с карта е спряно в момента. Попитайте сервитьора.',
       nothingPicked: 'Изберете поне един ред.',
+      nothingOwed: 'По тези редове няма нищо за плащане. Попитайте сервитьора.',
+      payFirstBelowMinimum: 'Сметката ви е под минимума за плащане с карта',
+      payCash: 'Плати в брой',
+      payFirstBusy: 'В момента върви друго плащане, опитайте пак след малко',
+      inProgress: 'Има текущо плащане, докоснете за да го видите',
       sameQuestion: (minutes) => `Същата сума като преди ${minutes} мин. Да платите ли отново?`,
       sameYes: 'Да, плати',
       sameNo: 'Назад',

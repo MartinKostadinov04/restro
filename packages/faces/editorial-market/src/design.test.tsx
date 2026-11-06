@@ -413,4 +413,8 @@ const DEPARTURES: readonly ((line: string, added: boolean) => boolean)[] = [
     /^(?:max-width|overflow-wrap)$/.test(property(line)),
   // A sold-out item is not drawn (D131): the greyed card's rules are gone.
   (line, added) => !added && /data-state="(?:sold_out|unavailable)"/.test(line),
+  // The payment number is 48 px at the sheet's full writing colour (#293, DA-11).
+  (line, added) => added && line.includes('.ro-pay-number'),
+  // The slim line at the top of the menu for a payment that has not settled (#293, DA-24).
+  (line, added) => added && line.startsWith('.rm .ro-payline {'),
 ]
