@@ -112,7 +112,8 @@ export const JOB_NAMES = {
    * Send a table's waiting sent orders to its POS, one at a time (#77, D115): take the table's
    * slot, read the bill, add the round once, and when the answer is unknown read it back for a
    * minute. The guest API queues it after an accepted Send; the sweep queues it for a table with a
-   * waiting sent order and no slot holder. Stately per table: a Send while one runs waits behind it.
+   * waiting sent order and no slot holder. One waiting and one running per table
+   * (`ONE_RUN_PER_GROUP_JOBS`): a Send while one runs waits behind it.
    */
   orderSend: 'order-send',
   /**
@@ -378,12 +379,7 @@ export const STATELY_JOBS: ReadonlySet<string> = new Set<string>([
   JOB_NAMES.publishTableTokens,
   JOB_NAMES.publishOrganizationIndex,
   JOB_NAMES.purgeVenue,
-  JOB_NAMES.orderSend,
   JOB_NAMES.connectionProbe,
-  // A payment's step: a send while one runs waits behind it, so a notice that comes during a check
-  // is read again after it (#110).
-  JOB_NAMES.paymentPrepare,
-  JOB_NAMES.paymentCheck,
 ])
 
 /**
@@ -429,7 +425,8 @@ export function jobSingletonKey<N extends ProducedJobName>(name: N, data: JobPay
       // One reading job per table (#74): a second send while one is queued or running is dropped.
       return (data as TableReadJob).tableId
     case JOB_NAMES.orderSend:
-      // One sender per table (#77); a Send while it runs queues one more run behind it.
+      // One sender per table (#77): a Send while one waits is the same job, while it runs one more
+      // run waits behind it.
       return (data as OrderSendJob).tableId
     case JOB_NAMES.publishFiles:
     case JOB_NAMES.publishLive: {
@@ -478,12 +475,22 @@ export function jobStartAfter<N extends ProducedJobName>(
 }
 
 /**
- * The queues the route runs several runs of at once (`work.localConcurrency`). A run of one key
- * must not hold up another key's, so each of their jobs is sent in a group of its key and the
- * worker fetches with `groupConcurrency: 1`: pg-boss then skips a job whose group has a run going,
- * live, in the fetch itself. Without the group, a job waiting behind a hung run of its key is
- * the oldest in the queue: every fetch picks it, loses on the stately unique index, and comes back
- * empty until the queue's cached singleton list is refreshed, up to two minutes later.
+ * The queues the route runs several runs of at once (`work.localConcurrency`), one run at a time
+ * per key: a table's Send, a payment's steps. They use pg-boss's `short` policy, so a send while
+ * one waits is the same job (`send` returns null) and a send while one runs waits behind it. Each
+ * job is sent in a group of its key and the worker fetches with `groupConcurrency: 1`: pg-boss skips
+ * a job whose group has a run going, read live in the fetch itself, so one key's run never holds up
+ * another's and a key never runs twice at once. (Two fetches in the same instant could each take a
+ * job of one group only when the group has two ready at once: a payment's retry or deadline check
+ * beside its waiting job. A table's Send has none, and the payment route tolerates two runs, see
+ * apps/worker/src/jobs/payments.ts.)
+ *
+ * Not `stately` (#286): pg-boss fetches past the singleton keys of `singleton` and `stately` queues
+ * that were active at its monitor's last count (`queue.singletons_active`, written about once a
+ * minute and cached by each worker for a minute more). A job whose key ran at that count, a table's
+ * next round or a payment's next step, was skipped for up to two minutes after its run had ended,
+ * and after every restart. `short` keeps the one waiting job per key and is never in that list; the
+ * group keeps the one run.
  */
 export const ONE_RUN_PER_GROUP_JOBS: ReadonlySet<ProducedJobName> = new Set<ProducedJobName>([
   JOB_NAMES.orderSend,

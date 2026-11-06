@@ -56,6 +56,17 @@ describe('PinSheet', () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('4321'))
   })
 
+  it('raises no React warning while the four digits are typed (RR-O22)', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const onSubmit = vi.fn(async () => ACCEPTED)
+    sheet(onSubmit)
+    await userEvent.keyboard('1234')
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('1234'))
+    const warnings = error.mock.calls.map((call) => String(call[0]))
+    error.mockRestore()
+    expect(warnings).toEqual([])
+  })
+
   it('clears the dots and says the PIN was wrong', async () => {
     const onSubmit = vi.fn(async (): Promise<TonightResult> => ({ ok: false, error: 'pin_wrong' }))
     sheet(onSubmit)

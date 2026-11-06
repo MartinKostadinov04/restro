@@ -12,7 +12,10 @@ const SECRET = 'jane.doe@example.com'
 type Call = [method: string, ...args: unknown[]]
 
 /** Records the pg-boss calls the registry makes. */
-function fakeBoss(existingSchedules: { name: string; key: string }[] = []) {
+function fakeBoss(
+  existingSchedules: { name: string; key: string }[] = [],
+  existingPolicies: Record<string, string> = {},
+) {
   const calls: Call[] = []
   const handlers = new Map<string, (batch: Job<object>[]) => Promise<void>>()
   const record =
@@ -26,6 +29,12 @@ function fakeBoss(existingSchedules: { name: string; key: string }[] = []) {
     schedule: record('schedule'),
     unschedule: record('unschedule'),
     getSchedules: async () => existingSchedules,
+    getQueue: async (name: string) => {
+      calls.push(['getQueue', name])
+      const policy = existingPolicies[name]
+      return policy === undefined ? null : { name, policy }
+    },
+    deleteQueue: record('deleteQueue'),
     work: async (
       name: string,
       options: unknown,
@@ -158,6 +167,60 @@ describe('registerJobs', () => {
     const scheduling = calls.filter(([method]) => method === 'schedule' || method === 'unschedule')
     expect(scheduling).toEqual([])
     expect(calls.some(([method, name]) => method === 'work' && name === 'reading')).toBe(true)
+  })
+})
+
+describe('a queue whose policy changed (#286)', () => {
+  const changed = (name: string) =>
+    job(name, { options: { queue: {}, policy: 'short', previousPolicy: 'stately' } })
+  const queueCalls = (calls: Call[], name: string) =>
+    calls.filter(([method, queue]) => method !== 'work' && queue === name).map(([method]) => method)
+
+  it('is deleted and created again when it is still on the previous policy', async () => {
+    const { boss, calls } = fakeBoss([], { 'order-send': 'stately' })
+    const { ctx, lines } = await context()
+    await registerJobs(boss, [changed('order-send')], ctx)
+    expect(queueCalls(calls, 'order-send')).toEqual([
+      'getQueue',
+      'deleteQueue',
+      'createQueue',
+      'updateQueue',
+    ])
+    expect(calls).toContainEqual([
+      'createQueue',
+      'order-send',
+      { deadLetter: 'order-send.dead', policy: 'short' },
+    ])
+    expect(lines.join('\n')).toContain('queue created again with its new policy')
+  })
+
+  it('is left alone once it has the new policy, and created when missing', async () => {
+    const { boss, calls } = fakeBoss([], { 'order-send': 'short' })
+    const { ctx } = await context()
+    await registerJobs(boss, [changed('order-send'), changed('payment-check')], ctx)
+    expect(calls.filter(([method]) => method === 'deleteQueue')).toEqual([])
+    expect(queueCalls(calls, 'payment-check')).toEqual(['getQueue', 'createQueue', 'updateQueue'])
+  })
+
+  it('is never deleted on any other policy: that is logged as an error', async () => {
+    const { boss, calls } = fakeBoss([], { 'order-send': 'exclusive' })
+    const { ctx, lines } = await context()
+    await registerJobs(boss, [changed('order-send')], ctx)
+    expect(calls.filter(([method]) => method === 'deleteQueue')).toEqual([])
+    expect(lines.join('\n')).toContain('queue has another policy than its job')
+  })
+
+  it('a job without a previous policy never reads the queue', async () => {
+    const { boss, calls } = fakeBoss([], { 'menu-publish': 'exclusive' })
+    const { ctx } = await context()
+    await registerJobs(
+      boss,
+      [job('menu-publish', { options: { queue: {}, policy: 'stately' } })],
+      ctx,
+    )
+    expect(calls.filter(([method]) => method === 'getQueue' || method === 'deleteQueue')).toEqual(
+      [],
+    )
   })
 })
 

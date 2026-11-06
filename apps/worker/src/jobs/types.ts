@@ -73,6 +73,14 @@ export interface JobOptions {
    * barsy jobs use `exclusive`: one queued-or-running job per queue and singleton key.
    */
   readonly policy?: QueuePolicy
+  /**
+   * The policy the queue had before `policy` changed. pg-boss cannot change a queue's policy, so
+   * the registry deletes a queue it finds still on this one and creates it again: its waiting
+   * jobs go with it, so only a queue whose jobs something queues again may name one (a sweep, a
+   * recovery tick). Any other policy found is left as it is, with an error in the log. A one-off
+   * for a change of policy: remove it once every database has the queue on its new one.
+   */
+  readonly previousPolicy?: QueuePolicy
   /** How the worker fetches: `batchSize`, `localConcurrency`, `pollingIntervalSeconds`. */
   readonly work?: WorkOptions
 }

@@ -2,7 +2,7 @@
 // made from core's `readTonight` by one pure function so the ordering of "Needs you", the tile of
 // each table and the pause banners can be tested without a database. Plain data, safe to send to
 // the browser: our ids and public fields only (rule 3), times as text in the venue's zone.
-import type { CallWaiterKind } from '@restro/core'
+import type { CallWaiterKind, PayingMissing } from '@restro/core'
 import { holdsStaffRightsOnly, type Tonight } from '@restro/core/service'
 
 /**
@@ -211,9 +211,11 @@ export interface TonightView {
    * Restro's own connection pause shows (a venue pause already stops paying, D120).
    */
   readonly paying: {
-    readonly state: 'paused' | 'lost' | 'restricted'
+    readonly state: 'paused' | 'lost' | 'restricted' | 'setup'
     /** The person holds `settings.connect_payments`: "Reconnect" is offered. */
     readonly canReconnect: boolean
+    /** For `setup`: the first Paying setup check still open (RR-O1); absent otherwise. */
+    readonly missing?: PayingMissing
   } | null
   readonly rows: readonly ActionRow[]
   /** Items the POS says ran out, in the order they ran out; empty for none (plan §12 A). */
@@ -636,9 +638,15 @@ export function buildTonightView(input: {
     can,
     banners,
     paying:
-      tonight.paying === null || restro.length > 0
+      restro.length > 0
         ? null
-        : { state: tonight.paying, canReconnect: held.has('settings.connect_payments') },
+        : tonight.paying !== null
+          ? { state: tonight.paying, canReconnect: held.has('settings.connect_payments') }
+          : // Paying is not on yet because a setup check is open: only the person who finishes the
+            // setup is told, in one line (RR-O1).
+            tonight.payingSetup !== null && held.has('settings.connect_payments')
+            ? { state: 'setup', canReconnect: true, missing: tonight.payingSetup }
+            : null,
     rows,
     outOfStock: out.sort((a, b) => a.at.getTime() - b.at.getTime()).map((entry) => entry.name),
     groups,
