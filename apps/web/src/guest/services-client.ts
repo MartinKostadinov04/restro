@@ -74,6 +74,7 @@ import {
   type GuestScreen,
   GuestStateAnswerSchema,
   type GuestTableState,
+  HOST_ANSWER_TIMEOUT_MS,
   LOST_SEND_HOLD_MS,
   type LocationControls,
   type LocationView,
@@ -100,8 +101,12 @@ export const POLL_BACKOFF_MS = [4_000, 8_000, 16_000, 30_000] as const
 /** Without an answer for this long, the state says `offline`. */
 export const OFFLINE_AFTER_MS = 10_000
 
-/** A request that has not answered after this long is aborted (D121: "about 10 seconds"). */
-export const REQUEST_TIMEOUT_MS = 10_000
+/**
+ * A request that has not answered after this long is aborted (D121: "about 10 seconds"), and the
+ * command is answered `pending` with `answer_lost`. It is the shell's own number, so a face's wait
+ * for the host can be set from it and stay longer than it (DA-2).
+ */
+export const REQUEST_TIMEOUT_MS = HOST_ANSWER_TIMEOUT_MS
 
 /** What the client needs from the page; tests pass their own. */
 export interface TableServicesDeps {

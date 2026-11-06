@@ -165,7 +165,7 @@ describe('the demo host', () => {
     expect(result.current.state.preview).toBe(true)
   })
 
-  it('sends a waiter request, makes it "on the way" a moment later, and cancels it', async () => {
+  it('sends a waiter request, makes it "on the way", and adds a second kind to the open call', async () => {
     render(<Demo />)
     click('Call a server')
     const sheet = dialog('Call a server')
@@ -178,9 +178,14 @@ describe('the demo host', () => {
     expect(sheet.textContent).not.toContain('on the way')
     await later(DEMO_DELAYS.onTheWay)
     expect(within(sheet).getByText('A waiter is on the way')).toBeTruthy()
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Cancel request' }))
+    // One open call per table (D127): no Cancel, and "Something else" joins the kinds on it.
+    expect(within(sheet).queryByRole('button', { name: 'Cancel request' })).toBeNull()
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Send another request' }))
+    fireEvent.click(within(sheet).getByRole('radio', { name: 'Ice' }))
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Send' }))
     await later(DEMO_DELAYS.request)
-    expect(within(sheet).getByText('Request cancelled')).toBeTruthy()
+    expect(within(sheet).getByText('Call waiter, Ice')).toBeTruthy()
+    expect(within(sheet).getByText('A waiter is on the way')).toBeTruthy()
   })
 
   it('pays ticked lines through the form slot: held, then captured, and the paid lines leave the bill', async () => {

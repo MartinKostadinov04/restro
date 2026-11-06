@@ -9,6 +9,10 @@
 // It runs on the renderer in both Styles (guest-faces.ts): the order lives in the bag sheet and the
 // location questions in a sheet of their own.
 //
+// Calling a waiter runs here too (#180, D127, DA-10): the venue takes calls, so one phone opens the
+// sheet, calls for Ice, and adds Water to the same open call; the sheet never offers a Cancel,
+// because nothing withdraws a call.
+//
 // The venue checks location (#76): a phone sees the order only once it holds a pass. The first
 // phone gets one by adding (the consent screen, Allow, and the add goes through), the second by its
 // own "Allow location"; a phone across town is told the check failed, and offered "Call a waiter"
@@ -132,6 +136,30 @@ for (const style of ORDER_STYLES) {
       } finally {
         await first.context.close()
         await second.context.close()
+      }
+    })
+
+    test('one open call takes a second kind, with no Cancel (D127)', async ({ browser }) => {
+      // Through the real client and the real guest API: the server keeps one open call per table
+      // and adds a later kind to it, the sheet draws them as one call, and nothing withdraws a
+      // call (`service.cancel` is not built), so there is no Cancel to offer.
+      const guest = await phone(browser)
+      const sheet = guest.page.getByRole('dialog')
+      try {
+        await guest.page.locator('button[data-slot="menu.call_waiter"]').click()
+        await sheet.getByRole('radio', { name: 'Ice' }).click()
+        await sheet.getByRole('button', { name: 'Send', exact: true }).click()
+        await expect(sheet.getByText('Request sent')).toBeVisible(SEEN)
+        await expect(sheet.locator('.ro-kind')).toHaveText('Ice')
+        await expect(sheet.getByRole('button', { name: 'Cancel request' })).toHaveCount(0)
+        // "Something else": the kind joins the call the server already has open.
+        await sheet.getByRole('button', { name: 'Send another request' }).click()
+        await sheet.getByRole('radio', { name: 'Water' }).click()
+        await sheet.getByRole('button', { name: 'Send', exact: true }).click()
+        await expect(sheet.locator('.ro-kind')).toHaveText('Ice, Water', SEEN)
+        await expect(sheet.getByRole('button', { name: 'Cancel request' })).toHaveCount(0)
+      } finally {
+        await guest.context.close()
       }
     })
 
