@@ -328,10 +328,15 @@ describe('the leak guard and the new words', () => {
     expect(snapshot.design.items.description_lines).toBe('2')
   })
 
-  it('refuses a design block off the contract, whatever the forbidden values', () => {
+  it('replaces a design block off the contract, so the block can say nothing of its own', () => {
+    // Why the walk may skip the block: the parse holds it to the contract's words. Since DA-15 it
+    // does that by replacing a word it does not know (the publisher is refused instead, above), so
+    // a value that is not the contract's still never reaches a face.
     const snapshot = snapshotOf(context({ design: DESIGN })) as Poke
     snapshot.design.items.layout = 'secret'
-    expect(() => assertSnapshotSafe(snapshot, new Map())).toThrow(SnapshotError)
+    const safe = assertSnapshotSafe(snapshot, new Map()) as Poke
+    expect(safe.design.items.layout).toBe(DESIGN.items.layout)
+    expect(JSON.stringify(safe.design)).not.toContain('secret')
   })
 
   it('does not let the contract’s words through anywhere else', () => {
