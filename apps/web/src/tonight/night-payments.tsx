@@ -192,7 +192,10 @@ export function NightPaymentsList({ initial, frame }: { initial: PaymentsView; f
     failed: boolean
   } | null>(null)
   const limit = all?.limit
+  // Bumped by "Try again": the same read, asked once more.
+  const [tries, setTries] = useState(0)
   const day = initial.day
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `tries` only asks for the read again
   useEffect(() => {
     if (limit === undefined) return
     let live = true
@@ -211,7 +214,7 @@ export function NightPaymentsList({ initial, frame }: { initial: PaymentsView; f
     return () => {
       live = false
     }
-  }, [limit, day, frame.venueId])
+  }, [limit, day, frame.venueId, tries])
 
   const { counts } = initial
   const rows = all?.view?.rows ?? initial.rows
@@ -231,7 +234,15 @@ export function NightPaymentsList({ initial, frame }: { initial: PaymentsView; f
           })}
         </p>
       )}
-      {all?.failed ? <FailedBlock text={t('so_fail')} /> : null}
+      {all?.failed ? (
+        <FailedBlock
+          text={t('sh_fail')}
+          onRetry={() => {
+            setAll((before) => (before === null ? before : { ...before, failed: false }))
+            setTries((n) => n + 1)
+          }}
+        />
+      ) : null}
       {rows.length === 0 ? null : (
         <ul className="divide-y rounded-lg border" data-testid="night-pay-list">
           {rows.map((row) => (
