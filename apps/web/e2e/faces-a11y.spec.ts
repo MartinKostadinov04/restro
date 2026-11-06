@@ -209,6 +209,33 @@ test.describe('the screen width', () => {
       ),
     ).toBe(true)
   })
+
+  test('the section rail marks the section the guest scrolls to, not only the one tapped', async ({
+    page,
+  }) => {
+    // DA-37: the rail's highlight follows an IntersectionObserver, which jsdom does not have, so no
+    // unit test sees it. Here the guest only scrolls; no link is tapped.
+    await openMenu(page)
+    const links = page.locator(`${FACE} .rm-sections a`)
+    const marked = page.locator(`${FACE} .rm-sections a[aria-current="true"]`)
+    const hrefOf = async (index: number) => (await links.nth(index).getAttribute('href')) ?? ''
+    await expect(marked).toHaveCount(1)
+    await expect(marked).toHaveAttribute('href', await hrefOf(0))
+    for (const index of [1, 2]) {
+      const href = await hrefOf(index)
+      // Put the top of that section 100 px below the top of the screen: inside the reading band.
+      await page.evaluate((id) => {
+        const section = document.getElementById(id)
+        if (section === null) throw new Error(`no section ${id}`)
+        window.scrollBy({ top: section.getBoundingClientRect().top - 100, behavior: 'instant' })
+      }, href.slice(1))
+      await expect(marked).toHaveCount(1)
+      await expect(marked).toHaveAttribute('href', href)
+    }
+    // And back up: the mark follows the scroll in both directions.
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }))
+    await expect(marked).toHaveAttribute('href', await hrefOf(0))
+  })
 })
 
 test.describe('the names', () => {
