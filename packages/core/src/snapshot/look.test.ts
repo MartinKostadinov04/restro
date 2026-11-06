@@ -175,10 +175,10 @@ describe('menu-snapshot/1 stays readable (parser first)', () => {
 
   it('reads a design block the option list has moved past, as the list is now (DA-15)', () => {
     // A design that is not Basic in two places, so a fallback to Basic's value shows.
-    const chosen = {
+    const chosen: typeof DESIGN = {
       ...DESIGN,
       items: { ...DESIGN.items, layout: 'two', name_size: 'l' },
-    } as typeof DESIGN
+    }
     const read = (change: (block: Poke) => void): Poke => {
       const snapshot = snapshotOf(context({ design: chosen, features: FEATURES })) as Poke
       change(snapshot.design)

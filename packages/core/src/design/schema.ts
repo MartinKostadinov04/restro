@@ -65,7 +65,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * is this, re-exported where the rest of the code already looks for it.
  */
 export const FIRST_DESIGN_VALUES: DesignValues = DesignValuesSchema.parse(
-  Object.fromEntries(DESIGN_PAGES.map((page) => [page.id, Object.fromEntries(choicesOf(page))])),
+  Object.fromEntries(
+    DESIGN_PAGES.map((page) => [
+      page.id,
+      Object.fromEntries(choicesOf(page).map(([option, first]) => [option.id, first])),
+    ]),
+  ),
 )
 
 /**

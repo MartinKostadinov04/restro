@@ -25,11 +25,11 @@ const COLOURS = { primary: '#f5f1ea', secondary: '#e7e0d4', tertiary: '#e0a43a' 
 const LOGO = `as_${'L'.repeat(22)}`
 
 /** A design that is not Basic in three places, so a fallback to Basic's value shows. */
-const CHOSEN = {
+const CHOSEN: DesignValues = {
   ...BASIC_DESIGN_VALUES,
   general: { ...BASIC_DESIGN_VALUES.general, corners: 'round', screen: 'dark' },
   items: { ...BASIC_DESIGN_VALUES.items, layout: 'two' },
-} as DesignValues
+}
 
 /**
  * The record migration 0045 writes: it carries `overrides` over exactly when the stored theme held
@@ -57,15 +57,22 @@ function record(overrides: unknown, values: DesignValues = CHOSEN): Record<strin
 
 const settingsWith = (design: unknown) => ({ design })
 
+/** A page of a block a test is about to change (every page of `CHOSEN` is there). */
+function page(block: Record<string, unknown>, id: string): Record<string, unknown> {
+  const own = block[id]
+  if (own === undefined) throw new Error(`no page ${id}`)
+  return own as Record<string, unknown>
+}
+
 describe('readDesignValues: a block from an older or newer option list', () => {
   it('takes every value the contract still lists, and Basic’s for the rest (D130)', () => {
-    const added = structuredClone(CHOSEN) as Record<string, Record<string, string>>
-    delete added.items.layout
+    const added = structuredClone(CHOSEN) as Record<string, unknown>
+    delete page(added, 'items').layout
     expect(readDesignValues(added).items.layout).toBe(BASIC_DESIGN_VALUES.items.layout)
     expect(readDesignValues(added).general).toEqual(CHOSEN.general)
 
-    const renamed = structuredClone(CHOSEN) as Record<string, Record<string, string>>
-    renamed.general.corners = 'rounded'
+    const renamed = structuredClone(CHOSEN) as Record<string, unknown>
+    page(renamed, 'general').corners = 'rounded'
     expect(readDesignValues(renamed).general.corners).toBe(BASIC_DESIGN_VALUES.general.corners)
     expect(readDesignValues(renamed).general.screen).toBe('dark')
     expect(readDesignValues(renamed).items).toEqual(CHOSEN.items)
@@ -73,7 +80,7 @@ describe('readDesignValues: a block from an older or newer option list', () => {
 
   it('drops an option, and a page, the contract no longer lists', () => {
     const retired = structuredClone(CHOSEN) as Record<string, unknown>
-    ;(retired.items as Record<string, unknown>).sparkle = 'on'
+    page(retired, 'items').sparkle = 'on'
     retired.footer = { colour: 'red' }
     expect(readDesignValues(retired)).toEqual(CHOSEN)
   })
@@ -144,9 +151,9 @@ describe('readDesignValues: a block from an older or newer option list', () => {
             block[change.page] = 'not a page'
             continue
           }
-          const page = block[change.page]
-          if (typeof page !== 'object' || page === null) continue
-          const own = page as Record<string, unknown>
+          const held = block[change.page]
+          if (typeof held !== 'object' || held === null) continue
+          const own = held as Record<string, unknown>
           if (change.kind === 'addOption') {
             own[change.name] = 'whatever'
             continue
@@ -194,8 +201,8 @@ describe('readDesignToShow: a stored record that does not parse (DA-33, DA-28)',
   })
 
   it('reads the colours, the logo and every value it can out of a row the contract moved past', () => {
-    const moved = structuredClone(CHOSEN) as Record<string, Record<string, string>>
-    moved.general.corners = 'rounded'
+    const moved = structuredClone(CHOSEN) as Record<string, unknown>
+    page(moved, 'general').corners = 'rounded'
     const settings = settingsWith(record(undefined, moved as unknown as DesignValues))
     // The plain read (what `apply` compares against, what the publisher would draw) stays Basic.
     expect(readDesign(settings).design).toEqual(DEFAULT_DESIGN)
