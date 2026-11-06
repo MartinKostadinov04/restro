@@ -1166,6 +1166,9 @@ export async function guestAct(
   if (answer.ok && answer.result.status === 'accepted') {
     const sentOrderId = answer.result.subjectId
     if (sentOrderId !== null) limits.setLastSend(subject, { sentOrderId, at: takenAt })
+    // The bill lines went and the pay part did not (#293, DA-1): no payment was made, so the Pay's
+    // own hits go back and the guest can pay at the Pay screen without waiting out the gap.
+    if (answer.result.payFirstRefused !== null) limits.giveBack(subject, payNames, takenAt)
   } else {
     limits.giveBack(
       subject,
@@ -1335,6 +1338,10 @@ async function guardedAct(
 
   // A Send that pays gets a fresh handle, a repeat too: the engine stores its hash (#113).
   const handle = payFirst === null ? null : randomBytes(16).toString('base64url')
+  // The phone's own pay-first part (its lines and tip, no handle hash) never reaches the engine:
+  // the one below is built here. Where `guestAct` dropped the part (#293, DA-1) the Send goes
+  // without it, rather than carrying a part the Send's schema refuses as `invalid_command`.
+  const { payFirst: _phonePayFirst, ...sent } = input.command
   const command =
     type === 'waiter.call'
       ? {
@@ -1345,7 +1352,7 @@ async function guardedAct(
           ageMs: input.ageMs,
         }
       : {
-          ...input.command,
+          ...sent,
           tableId: target.tableId,
           ageMs: input.ageMs,
           ...(payFirst === null || handle === null
