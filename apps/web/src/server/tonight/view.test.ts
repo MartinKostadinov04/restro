@@ -707,3 +707,44 @@ describe('the paying banner (#115)', () => {
     expect(view(tonight()).paying).toBeNull()
   })
 })
+
+describe('"Make this the bar tablet" (RR-O35)', () => {
+  const STAFF = [
+    'tables.open_close',
+    'tables.resume',
+    'ordering.pause',
+    'alerts.answer',
+    'night.view',
+  ]
+
+  it('is offered to a staff-only account on a browser that is not shared yet', () => {
+    expect(view(tonight({ permissions: STAFF as Tonight['permissions'] })).barTablet).toBe(true)
+  })
+
+  it.each([
+    ['a manager', [...STAFF, 'ordering.lift', 'night.view_full']],
+    ['an owner or admin', [...STAFF, 'settings.roles', 'settings.guards']],
+    ['staff without the end of night', STAFF.filter((key) => key !== 'night.view')],
+    ['no role here', []],
+  ])('is not offered to %s', (_label, permissions) => {
+    expect(view(tonight({ permissions: permissions as Tonight['permissions'] })).barTablet).toBe(
+      false,
+    )
+  })
+
+  it('is not offered on a shared device, nor to Restro’s admin team', () => {
+    expect(
+      view(tonight({ permissions: STAFF as Tonight['permissions'], device: true })).barTablet,
+    ).toBe(false)
+    const operator = buildTonightView({
+      tonight: tonight({ permissions: STAFF as Tonight['permissions'] }),
+      venueId: VENUE,
+      timezone: 'Europe/Sofia',
+      source: 'The till',
+      currency: 'EUR',
+      now: NOW,
+      operator: true,
+    })
+    expect(operator.barTablet).toBe(false)
+  })
+})

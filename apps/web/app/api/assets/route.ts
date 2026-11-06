@@ -8,6 +8,7 @@ import { getAssetStore } from '@/server/assets'
 import { handleUpload } from '@/server/assets/upload-handler'
 import { getPool } from '@/server/db'
 import { enqueueJob } from '@/server/jobs'
+import { canEditMenu } from '@/server/roles'
 import { getAccess } from '@/server/session'
 import { onSharedDevice } from '@/server/staff/shared-device'
 
@@ -17,6 +18,7 @@ export async function POST(request: Request): Promise<Response> {
     tenantId: async () => access?.organization?.id ?? null,
     sharedDevice: async (tenantId) =>
       access !== null && (await onSharedDevice({ tenantId, sessionId: access.sessionId })),
+    editsMenu: () => canEditMenu(access?.organization?.role),
     pool: getPool(),
     store: getAssetStore,
     // The phone-sized webp variants are made by the worker.

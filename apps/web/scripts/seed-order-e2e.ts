@@ -25,6 +25,7 @@ import {
 } from '@restro/assets'
 import {
   type ChangeSet,
+  DEFAULT_GUEST_FEATURES,
   DEFAULT_ORDERING_SETTINGS,
   hashTableCode,
   menuPath,
@@ -163,6 +164,13 @@ async function seed(): Promise<void> {
         venue.id,
         JSON.stringify({ ...DEFAULT_ORDERING_SETTINGS, locationCheck: true, spot: ORDER_SPOT }),
       ],
+    )
+    // Ordering from the phone on (the Design tab's switch): with it off the server refuses an order.
+    await owner.query(
+      `update restro.venues
+          set settings = jsonb_set(coalesce(settings, '{}'::jsonb), '{guest_features}', $2::jsonb)
+        where id = $1`,
+      [venue.id, JSON.stringify({ ...DEFAULT_GUEST_FEATURES, ordering: true })],
     )
     await owner.query(
       `insert into restro.sittings

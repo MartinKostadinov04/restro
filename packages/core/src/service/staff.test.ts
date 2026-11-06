@@ -12,7 +12,12 @@ import { PinGuard } from '../pin-guard'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import type { ServiceActor, ServiceContext } from './context'
 import { identifyStaffByPin } from './identify'
-import { applyService, readStaffSettings, type ServiceCommand } from './index'
+import {
+  applyService,
+  DEFAULT_ROLE_PERMISSIONS,
+  readStaffSettings,
+  type ServiceCommand,
+} from './index'
 import { pinHmac } from './pins'
 
 const { publicKey } = generateKeyPairSync('x25519')
@@ -237,11 +242,62 @@ describe.skipIf(!hasDatabase)('the people commands (as the restro_app role)', ()
     await accepted({ type: 'role.archive', roleId: rl(roleId) })
   })
 
+  it('makes a browser the bar tablet only for a staff-only account (RR-O35), with a fresh sign-in', async () => {
+    const person = async (
+      orgRole: 'owner' | 'admin' | 'member' | null,
+      venueRole: 'staff' | 'manager' | null,
+    ): Promise<ServiceActor> => {
+      const userId = await world.addUser(orgRole ?? undefined)
+      if (venueRole !== null) await world.addStaff(DEFAULT_ROLE_PERMISSIONS[venueRole], userId)
+      return { kind: 'user', userId, sessionId: `sess-${randomUUID()}` }
+    }
+    const mark = { type: 'device.mark_shared', name: 'Bar tablet' } as const
+    const devices = async () =>
+      (
+        await world.owner.query<{ n: number }>(
+          'select count(*)::int as n from restro.shared_devices where venue_id = $1',
+          [world.venueId],
+        )
+      ).rows[0]?.n
+    const before = await devices()
+
+    // Owner, admin and manager hold more than staff: one refusal that names the account to use.
+    for (const actor of [
+      owner(),
+      await person('admin', null),
+      await person('owner', 'staff'),
+      await person('member', 'manager'),
+    ]) {
+      expect(await run(mark, actor)).toMatchObject({
+        status: 'refused',
+        code: 'staff_account_required',
+      })
+    }
+    // A plain member holds nothing here; Restro's admin team never marks a venue's device.
+    expect(await run(mark, await person('member', null))).toMatchObject({
+      status: 'refused',
+      code: 'permission_denied',
+    })
+    const operatorId = await world.addUser()
+    await world.addOperator(operatorId)
+    expect((await run(mark, { kind: 'operator', userId: operatorId })).status).toBe('refused')
+    expect(await devices()).toBe(before)
+
+    // The staff account: only with the password of the last 15 minutes.
+    const waiter = await person('member', 'staff')
+    expect(await run(mark, waiter, new Date(Date.now() - 20 * 60_000))).toMatchObject({
+      code: 'sign_in_again',
+    })
+    expect(await run(mark, waiter)).toMatchObject({ status: 'accepted' })
+    expect(await devices()).toBe((before ?? 0) + 1)
+  })
+
   it('asks a shared device for a PIN; the PIN never unlocks settings', async () => {
     const barId = await world.addUser('member')
     const barSession = `sess-${randomUUID()}`
     const bar: ServiceActor = { kind: 'user', userId: barId, sessionId: barSession }
-    await world.addStaff(['settings.roles'], barId)
+    // The bar tablet's account: a staff-only one (RR-O35).
+    await world.addStaff(DEFAULT_ROLE_PERMISSIONS.staff, barId)
     const { deviceId } = await accepted({ type: 'device.mark_shared', name: 'Bar tablet' }, bar)
     // The bar device's own sign-in no longer counts: every write there asks for a PIN.
     expect(await run({ type: 'device.mark_shared', name: 'Again' }, bar)).toMatchObject({

@@ -19,6 +19,7 @@ export type UploadFailure =
   | 'unauthorized'
   | 'bad_origin'
   | 'own_sign_in'
+  | 'not_allowed'
   | 'no_file'
   | 'empty'
   | 'too_large'
@@ -31,6 +32,7 @@ const STATUS: Record<UploadFailure, number> = {
   unauthorized: 401,
   bad_origin: 403,
   own_sign_in: 403,
+  not_allowed: 403,
   no_file: 400,
   empty: 400,
   too_large: 413,
@@ -88,6 +90,8 @@ export interface UploadDependencies {
   readonly tenantId: () => Promise<string | null>
   /** Whether this sign-in is a shared device: the menu's photos need the person's own (RR-85). */
   readonly sharedDevice: (tenantId: string) => Promise<boolean>
+  /** Whether the person's role edits the menu (owners and admins, RR-70): a photo is a menu edit. */
+  readonly editsMenu: () => boolean
   readonly pool: DbPool
   readonly store: () => Promise<AssetStore>
   /**
@@ -102,6 +106,7 @@ export async function handleUpload(request: Request, deps: UploadDependencies): 
   const tenantId = await deps.tenantId()
   if (tenantId === null) return failure('unauthorized')
   if (!isSameOrigin(request)) return failure('bad_origin')
+  if (!deps.editsMenu()) return failure('not_allowed')
   if (await deps.sharedDevice(tenantId)) return failure('own_sign_in')
 
   const contentType = request.headers.get('content-type') ?? ''

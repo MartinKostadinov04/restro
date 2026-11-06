@@ -26,7 +26,7 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { GuestFeaturesCard } from '@/composer/guest-features-panel'
+import { GuestFeaturesCard, type PrivacyNotice } from '@/composer/guest-features-panel'
 import { type FaceEntry, faceEntry } from '@/faces/registry'
 import { resolveAdminLocale } from '@/i18n/locales'
 import type { PreviewScheme } from '@/publish/draft-face'
@@ -88,6 +88,7 @@ export function DesignPanel({
   menu,
   venueName,
   features,
+  privacy,
 }: {
   venueId: string
   initial: DesignView
@@ -97,6 +98,8 @@ export function DesignPanel({
   venueName: string
   /** The guest services the venue switched on. */
   features: GuestFeatures
+  /** Whether the venue has a privacy notice link, and where it is set (RR-O44). */
+  privacy: PrivacyNotice
 }) {
   const t = useTranslations('design')
   const locale = resolveAdminLocale(useLocale())
@@ -285,6 +288,7 @@ export function DesignPanel({
           features={features}
           options={featureOptionsOf(entry.manifest, savedPresentation)}
           canEdit={canEdit}
+          privacy={privacy}
         />
 
         <Section

@@ -91,6 +91,7 @@ describe.skipIf(!hasDatabase)('uploading an image (as the restro_app role)', () 
     withTenant(app, tenantId, (tx) => tx.select().from(assets).where(eq(assets.id, assetId)))
   const deps = (tenantId: string | null) => ({
     sharedDevice: async () => false,
+    editsMenu: () => true,
     tenantId: async () => tenantId,
     pool: app,
     store: async () => store as AssetStore,
@@ -238,6 +239,17 @@ describe.skipIf(!hasDatabase)('uploading an image (as the restro_app role)', () 
       )
       expect(response.status).toBe(status)
       expect(await response.json()).toEqual({ error })
+      expect(store.objects.size).toBe(0)
+    })
+
+    it('refuses a role that does not edit the menu with 403, before reading the file (RR-70)', async () => {
+      store = new MemoryStore()
+      const response = await handleUpload(uploadRequest(makePng(8, 8)), {
+        ...deps(tenant),
+        editsMenu: () => false,
+      })
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ error: 'not_allowed' })
       expect(store.objects.size).toBe(0)
     })
 

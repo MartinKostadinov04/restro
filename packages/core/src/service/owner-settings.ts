@@ -68,6 +68,10 @@ async function change(
     if (error instanceof OrderingSettingsError && error.code === 'invalid_input') {
       return refused(null, 'invalid_settings', { problem: error.message.slice(0, 200) })
     }
+    // The location check waits for the venue's privacy notice link (RR-O15).
+    if (error instanceof OrderingSettingsError && error.code === 'privacy_missing') {
+      return refused(null, 'privacy_missing')
+    }
     throw error
   }
 }

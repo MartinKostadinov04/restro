@@ -800,7 +800,8 @@
       "errors": {
         "forbidden": "Only owners and admins can change guest features.",
         "invalid": "These changes could not be saved. Reload the page and try again.",
-        "failed": "Something went wrong. Try again."
+        "failed": "Something went wrong. Try again.",
+        "privacy_missing": "Add the venue's privacy notice link in Settings › Ordering first."
       }
     },
     "toolbar": {
@@ -2442,7 +2443,9 @@
       "invalid_settings": "Those hours don't fit the night. Check the times.",
       "telegram_off": "Telegram isn't set up for this installation yet.",
       "telegram_failed": "Couldn't reach Telegram. Try again.",
-      "no_group": "No Telegram group is linked."
+      "no_group": "No Telegram group is linked.",
+      "privacy_missing": "Add the venue's privacy notice link in Settings › Ordering first.",
+      "staff_account_required": "Only a staff account can make this the bar tablet: sign in here with an account whose role is Staff."
     },
     "sf_title": "Staff and roles",
     "sf_people": "People",
@@ -2512,14 +2515,13 @@
         "roles": "Manage staff, roles, PINs and devices"
       }
     },
-    "sf_dev_make": "Make this browser a shared device",
     "sf_dev_line": "From then on this browser asks for a PIN for every action and can't open settings.",
     "sf_dev_name": "Device name",
     "sf_dev_example": "Bar tablet",
     "sf_dev_go": "Make shared",
     "sf_dev_since": "Since {date}",
     "sf_dev_stop": "Stop sharing",
-    "sf_dev_stop_body": "\"{device}\" becomes an ordinary sign-in again. To share it again, its owner signs in on it.",
+    "sf_dev_stop_body": "\"{device}\" becomes an ordinary sign-in again. To share it again, a staff account signs in on it.",
     "sf_e_denied": "You can't change {name}: they hold rights you don't.",
     "sf_e_taken": "There's already a role called {name}.",
     "sf_e_account": "That account is already linked to {other}.",
@@ -2697,6 +2699,13 @@
       "manager": "Manager",
       "owner": "Owner"
     },
-    "al_money_line": "Payment alerts ring only for people who may follow up payments; if none of them is switched on, they ring for all of them."
+    "al_money_line": "Payment alerts ring only for people who may follow up payments; if none of them is switched on, they ring for all of them.",
+    "st_legal_d": "Guests see the privacy notice link before they share their location or order, and these details behind a link on the pay screen. Write them as in the Commercial Register.",
+    "st_legal_req": "Fill this in to turn ordering from the phone on.",
+    "st_privacy_need": "Turns on once the venue has a privacy notice link. <link>Add it in Settings › Ordering</link>.",
+    "st_privacy_missing": "On, but the venue has no privacy notice link, so guests are shown none. <link>Add it in Settings › Ordering</link>.",
+    "st_privacy_ordering": "Ordering from the phone is on, but the venue has no privacy notice link, so guests are shown none. <link>Add it in Settings › Ordering</link>.",
+    "sf_dev_how": "The bar tablet signs in with a staff account, one whose role here is Staff (not an owner, admin or manager, who get money alerts and see tips). Sign in on the tablet with it and choose \"Make this the bar tablet\" on Tonight.",
+    "sf_dev_tablet": "Make this the bar tablet"
   }
 }
