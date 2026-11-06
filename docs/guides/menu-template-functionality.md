@@ -77,7 +77,7 @@ A service control is drawn only when its `view.features` field is on, and carrie
 
 ### Confirm being at the table (the location check)
 - **Shell key:** none (host `services.state.location` and `services.location`)
-- **Status:** drawn, platform parked
+- **Status:** supported
 - **Drawn means:** (the platform runs it since #76, on Editorial Market since #239, where a location sheet draws the consent, the check and the failed check, and the bag sheet the reason an order is hidden) where the venue checks location, a phone needs a pass from the table's current sitting before it sees the table's order and bill or adds to or changes a line on the bill; removing a line and Undo never need one. The host asks and checks; the template only draws what `location.prompt` says, with the shell's words:
   - `consent`: the consent text (`locationConsent`, naming the venue from `location.venueName`), **ending with the Privacy link** (the word `paying.legalPrivacyLink`, to `location.privacyUrl`, the venue's privacy notice, opened in a new tab with `rel="noopener noreferrer"`; D119 and D121 tie it to the consent, not to paying, so the host sends it wherever the venue checks, whatever paying is, and it is `null` where the venue has not filled in its legal details: then no link is drawn. D119 says the details of who checks, the joint control and the complaints sit behind it), with "Allow" (`allow()`) and "Not now" (`decline()`), never a promise of anything else; nothing is asked before the guest tries something that needs it. The consent sheet's own close only goes back (`dismiss()`): it is not an answer;
   - `checking`: "Checking your location…" while the phone reads its position;
@@ -90,7 +90,7 @@ A service control is drawn only when its `view.features` field is on, and carrie
 
 ### See the bill
 - **Shell key:** `bill` (slot `menu.bill`)
-- **Status:** drawn, platform parked
+- **Status:** supported
 - **Drawn means:** the table's bill as the host read it from the POS (#74), the template adds up nothing; where the venue checks location, only once the phone holds a pass (see the location check):
   - its lines, from guests and staff alike, nothing marking a line as "from your phones": the name of our own item, or "Other item" (worded by the shell) where the POS line is no item of ours; the quantity as the POS gives it, which may be a decimal ("0.5"); the POS's own signed amount, so a discount shows negative and a free line at 0, as the POS gives them;
   - the POS's total, what is paid and what is still owed, and a part being paid marked as such: a bill or a line with `beingPaid` is in some phone's payment that isn't final (#110), drawn greyed with no controls and nothing else, never who pays, how much or for how long; it ungreys when that payment ends;
@@ -100,7 +100,7 @@ A service control is drawn only when its `view.features` field is on, and carrie
 
 ### Order from the phone
 - **Shell key:** `ordering` (slot `menu.bag`)
-- **Status:** drawn, platform parked
+- **Status:** supported
 - **Drawn means:** (the platform runs the shared order since #75 and Send since #77, on Editorial Market since #239, which draws it in its bag sheet, the sent orders and the "Show this to your waiter" card in the same sheet, the duplicate check in the sheet and a refusal over the bar when no sheet is open; where the venue checks location, adding and changing lines and seeing the order need a pass, #76) a control on each orderable item, marked `item.add`, that puts the dish in the table's order; the order (the bag) with each line's choices (modifier groups and options) and quantity, and a note only where notes reach the POS's ticket (`services.state.ordering.notesAndOptions`, see Send's guards); a send that waits for the host's answer, and a rejected send that keeps the order. The order is the table's, not the phone's:
   - every phone at the table sees and edits the same lines (`services.state.order`); a line someone else added is drawn like one's own, and the template marks no line as "mine";
   - a line the host is still saving (`pending`) is drawn as such; a refused edit goes back to what the server holds and shows the shell's words for its refusal code (`refusals`), never a success of its own. An **edit whose answer was lost** (the command answer is `pending` with the code `answer_lost`) is taken back by the host too, so the template says the weak-connection line (`offline`) in its place rather than letting the counter slide away in silence (DA-23). It is the edit's line, not a Send's: a Send has its own (`sendLost`, below);
@@ -278,7 +278,7 @@ Decided in #45 (D127, "The guest's bill screen"; Martin read them in the prototy
 | `call_sent` | Call a waiter: sent; also Pay cash (#296: the shell now says this, it said "Request sent") | Сервитьорът е повикан | Waiter called |
 | `call_more` | Call a waiter: sent | Още нещо | Something else |
 | `call_done` | Call a waiter: handled | Повикването е прието. | Your call was handled. |
-| `call_rejected` | Call a waiter: nobody answered | Никой не отговори. Моля, попитайте сервитьор. | Nobody answered. Please ask a waiter. |
+| `call_rejected` | Call a waiter: the panel for a call that could not be taken. One title and hint (the shell's `requestStates.rejected`) cover two causes: a refusal of the command (`calls_off`, `kind_not_offered`, `table_not_open`), where the hint is the refusal's own word, and a table call nobody answered in the venue's time. Splitting the title by cause is a later designer pass | Екипът не можа да приеме заявката / Попитайте сервитьора. | The team could not take this request / Ask your waiter. |
 | `no_calls` | Staff screen takes no calls | Моля, поръчайте от сервитьора | Please order from your waiter |
 | `cancel` | Call sheet | Затвори | Close |
 

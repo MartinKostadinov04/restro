@@ -179,8 +179,13 @@ describe('DA-B2-2: Call a waiter never claims "Request sent" when the answer was
     expect(host.of('service.request')[1]?.command).toEqual(host.of('service.request')[0]?.command)
   })
 
-  it('words every refusal the same: calls_off, kind_not_offered and table_not_open read "Ask your waiter."', async () => {
-    for (const code of ['calls_off', 'kind_not_offered', 'table_not_open']) {
+  it('words each refusal from its code: calls_off, kind_not_offered and table_not_open', async () => {
+    const said: Record<string, string> = {
+      calls_off: 'Calling a waiter from your phone is off here. Ask your waiter.',
+      kind_not_offered: 'This can’t be asked for from your phone here. Ask your waiter.',
+      table_not_open: 'This table is not taking orders from phones right now.',
+    }
+    for (const code of Object.keys(said)) {
       const host = fakeHost()
       drawFace(host)
       const sheet = openCall()
@@ -189,7 +194,7 @@ describe('DA-B2-2: Call a waiter never claims "Request sent" when the answer was
       await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
       // The guest client answers with message null and the code only.
       await act(async () => host.of('service.request')[0]?.answer({ status: 'rejected', code }))
-      expect(within(sheet).getByText('Ask your waiter.'), code).toBeTruthy()
+      expect(within(sheet).getByText(said[code] ?? ''), code).toBeTruthy()
       cleanup()
       resetPage()
     }

@@ -67,6 +67,8 @@ interface Asked {
   readonly actionId: string
   readonly phase: 'sending' | 'sent' | 'lost' | 'failed' | 'rejected'
   readonly message: ViewText | null
+  /** Why the host refused it (`rejected` only), to word when it gave no message. */
+  readonly code?: string | null
 }
 
 /**
@@ -221,8 +223,8 @@ export function CallSheet() {
       outcome = { ok: false }
     }
     if (!alive.current) return
-    const settle = (phase: Asked['phase'], message: ViewText | null) =>
-      setAsked((now) => (now?.actionId === actionId ? { actionId, phase, message } : now))
+    const settle = (phase: Asked['phase'], message: ViewText | null, code: string | null = null) =>
+      setAsked((now) => (now?.actionId === actionId ? { actionId, phase, message, code } : now))
     if (!outcome.ok) {
       settle('failed', null) // the request may or may not have gone: a retry reuses the actionId
     } else if (outcome.result.status === 'pending') {
@@ -230,7 +232,7 @@ export function CallSheet() {
       settle('lost', null)
     } else if (outcome.result.status === 'rejected') {
       attempt.current = null
-      settle('rejected', outcome.result.message)
+      settle('rejected', outcome.result.message, outcome.result.code ?? null)
     } else {
       attempt.current = null
       settle('sent', null)
@@ -272,7 +274,12 @@ export function CallSheet() {
           title={rejected.title}
           hint={
             inFlight.message === null ? (
-              rejected.hint
+              // The host's own message, else the code in the shell's words, else the panel's line.
+              inFlight.code == null ? (
+                rejected.hint
+              ) : (
+                refusalText(words, inFlight.code, { command: 'service.request' })
+              )
             ) : (
               <Text value={inFlight.message} page={locale} />
             )

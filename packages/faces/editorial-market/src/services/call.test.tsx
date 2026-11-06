@@ -225,6 +225,13 @@ describe('after sending: only what the host says', () => {
     expect(within(sheet).getAllByRole('radio')).toHaveLength(7)
   })
 
+  it("words a refusal's code on the sheet itself when the host gave no message", async () => {
+    const { sheet, call } = await sent()
+    await act(async () => call?.answer({ status: 'rejected', code: 'calls_off' }))
+    expect(within(sheet).getByText('The team could not take this request')).toBeTruthy()
+    expect(sheet.textContent).toContain('Calling a waiter from your phone is off here.')
+  })
+
   it('never says a lost answer was sent, and retries it with the same actionId (D72, DA-2)', async () => {
     const { host, sheet, call } = await sent()
     // What the page's host answers when a request threw, timed out or came back unusable.
