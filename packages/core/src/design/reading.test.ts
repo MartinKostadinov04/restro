@@ -157,10 +157,7 @@ describe('readDesignValues: a block from an older or newer option list', () => {
           if (change.kind === 'dropOption') delete own[id]
           else own[id] = change.value
         }
-        const values = readDesignValues(block) as unknown as Record<
-          string,
-          Record<string, string>
-        >
+        const values = readDesignValues(block) as unknown as Record<string, Record<string, string>>
         // Drawable: the strict schema, the renderer's own, accepts it.
         expect(DesignValuesSchema.safeParse(values).success).toBe(true)
         // Nothing invented: a value the block still holds, and the contract still lists, is kept.
