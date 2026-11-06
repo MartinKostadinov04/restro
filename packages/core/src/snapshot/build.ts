@@ -11,6 +11,7 @@
 
 import { ALLERGENS, DIETARY_LABELS } from '../allergens'
 import type { DesignValues } from '../design/contract'
+import { DesignValuesSchema } from '../design/schema'
 import type { FieldDefinition } from '../field-definition'
 import {
   FIELD_VALUE_SCHEMAS,
@@ -44,7 +45,7 @@ import {
   DEFAULT_GUEST_FEATURES,
   type GuestFeatures,
 } from '../theme/presentation'
-import { parseSnapshot } from './errors'
+import { parseSnapshot, SnapshotError, snapshotPath } from './errors'
 import {
   type MenuSnapshot,
   NEW_BADGE,
@@ -128,11 +129,27 @@ export function designLayoutOf(design: DesignValues): SnapshotLayout {
   return { default: design.items.layout, guest_switch: design.items.guest_switch === 'on' }
 }
 
-/** A fresh copy of a design's values, page by page (the snapshot never shares the caller's objects). */
+/**
+ * A fresh copy of a design's values, page by page (the snapshot never shares the caller's objects),
+ * held to the contract as it is now. The readers take an older or newer block (D130, DA-15), but
+ * the publisher writes a strict one: a block that is not the contract's own words is a refused
+ * snapshot, never a published guess.
+ */
 function designBlock(design: DesignValues): DesignValues {
-  return Object.fromEntries(
+  const copy = Object.fromEntries(
     Object.entries(design).map(([page, values]) => [page, { ...values }]),
-  ) as DesignValues
+  )
+  const parsed = DesignValuesSchema.safeParse(copy)
+  if (!parsed.success) {
+    throw new SnapshotError(
+      'invalid_snapshot',
+      parsed.error.issues.map((issue) => ({
+        path: snapshotPath(['design', ...issue.path]),
+        code: issue.code,
+      })),
+    )
+  }
+  return parsed.data
 }
 
 /** A stored section layout, or the default when the value is not one. */

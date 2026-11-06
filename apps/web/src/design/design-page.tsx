@@ -258,7 +258,13 @@ export function DesignPage({
   )
 
   const design = view.theme === null ? null : designOf(draft, view.theme)
-  const dirty = useMemo(() => keyOfDraft(draft) !== keyOfDraft(baseline), [draft, baseline])
+  const edited = useMemo(() => keyOfDraft(draft) !== keyOfDraft(baseline), [draft, baseline])
+  // A stored design that is not a valid record opens as what could be read of it, and counts as
+  // changed from the start: the publisher refuses the venue until a save replaces the row, and its
+  // refusal says to save the design again, so Done must not be greyed out (DA-33). It stops
+  // counting once a save has gone through.
+  const [repair, setRepair] = useState(initial.repair === true)
+  const dirty = edited || repair
   const readable = view.issues.length === 0
   const canSave = canEdit && dirty && design !== null && readable && !uploading && !saving
 
@@ -266,11 +272,11 @@ export function DesignPage({
 
   // Leaving the page with edits that are not saved: the browser's own warning.
   useEffect(() => {
-    if (!canEdit || !dirty) return undefined
+    if (!canEdit || !edited) return undefined
     const warn = (event: BeforeUnloadEvent) => event.preventDefault()
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)
-  }, [canEdit, dirty])
+  }, [canEdit, edited])
 
   function change(next: DesignDraft, key?: string) {
     setHistory((current) => changed(current, next, { key, now: Date.now() }))
@@ -291,6 +297,7 @@ export function DesignPage({
     setHistory(historyOf(next))
     setBaseline(next)
     setRevision(stored.revision)
+    setRepair(stored.repair === true)
     followScreen(next.values)
   }
 
@@ -304,6 +311,7 @@ export function DesignPage({
         setRevision(result.revision)
         setBaseline(draft)
         setHistory(historyOf(draft))
+        setRepair(false)
         toast.success(t('saved'))
         // A new logo has its picture for guests only now.
         refresh()

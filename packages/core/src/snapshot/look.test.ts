@@ -169,10 +169,49 @@ describe('menu-snapshot/1 stays readable (parser first)', () => {
     fails((s) => Object.assign(s.presentation.options, { snake_key: true }))
     fails((s) => Object.assign(s.features, { tips: true }))
     fails((s) => Object.assign(s.features.call_waiter, { kinds: ['taxi'] }))
-    fails((s) => Object.assign(s.design.items, { layout: 'grid' }))
-    fails((s) => Object.assign(s.design.items, { sparkle: 'on' }))
-    fails((s) => Object.assign(s.design, { footer: {} }))
-    fails((s) => delete s.design.items.layout)
+    // The `design` block is the exception: it is read as the option list is now, and the
+    // strictness is the publisher's (the two tests below, DA-15).
+  })
+
+  it('reads a design block the option list has moved past, as the list is now (DA-15)', () => {
+    // A design that is not Basic in two places, so a fallback to Basic's value shows.
+    const chosen = {
+      ...DESIGN,
+      items: { ...DESIGN.items, layout: 'two', name_size: 'l' },
+    } as typeof DESIGN
+    const read = (change: (block: Poke) => void): Poke => {
+      const snapshot = snapshotOf(context({ design: chosen, features: FEATURES })) as Poke
+      change(snapshot.design)
+      const parsed = MenuSnapshotSchema.safeParse(snapshot)
+      expect(parsed.success, JSON.stringify(parsed.error?.issues.slice(0, 3))).toBe(true)
+      return (parsed.data as Poke).design as Poke
+    }
+    // A value renamed since, and an option added since (the block lacks it): Basic's value for
+    // that option (D130), everything else as stored.
+    const basicLayout = { ...chosen.items, layout: BASIC_DESIGN_VALUES.items.layout }
+    expect(read((d) => Object.assign(d.items, { layout: 'grid' })).items).toEqual(basicLayout)
+    expect(read((d) => delete d.items.layout).items).toEqual(basicLayout)
+    // An option, and a whole page, the contract no longer lists: dropped.
+    expect(read((d) => Object.assign(d.items, { sparkle: 'on' })).items).toEqual(chosen.items)
+    expect(read((d) => Object.assign(d, { footer: {} }))).toEqual(chosen)
+    // A page added since, and a block that is not a block: Basic's, never a failed parse.
+    expect(read((d) => delete d.pay)).toEqual({ ...chosen, pay: BASIC_DESIGN_VALUES.pay })
+    expect(read((d) => Object.assign(d, { items: 'rows' }))).toEqual({
+      ...chosen,
+      items: BASIC_DESIGN_VALUES.items,
+    })
+  })
+
+  it('never publishes a design block that is not the contract’s own words (DA-15)', () => {
+    const fails = (change: (block: Poke) => void) => {
+      const design = structuredClone(DESIGN) as Poke
+      change(design)
+      expect(() => snapshotOf(context({ design: design as typeof DESIGN }))).toThrow(SnapshotError)
+    }
+    fails((d) => Object.assign(d.items, { layout: 'grid' }))
+    fails((d) => Object.assign(d.items, { sparkle: 'on' }))
+    fails((d) => Object.assign(d, { footer: {} }))
+    fails((d) => delete d.items.layout)
   })
 
   it('still parses a snapshot published with a presentation (the field stays, optional)', () => {
