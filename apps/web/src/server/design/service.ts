@@ -18,7 +18,7 @@ import {
   designThemeOf,
   newId,
   type PairIssue,
-  readDesign,
+  readDesignToShow,
   type StoredDesign,
   type VenueTheme,
 } from '@restro/core'
@@ -50,6 +50,12 @@ export interface DesignView {
   readonly logo: DesignLogo | null
   /** Owners and admins edit; everyone else reads. */
   readonly canEdit: boolean
+  /**
+   * True when the stored value is not a valid record: the page shows what could be read of it and
+   * opens already changed, so Done saves and replaces the row (DA-33). The publisher refuses such
+   * a venue (`invalid_design`) and says to save the design again, so Done has to be able to.
+   */
+  readonly repair?: boolean
 }
 
 /** The link lifetime for the page (the admin page is open for minutes, not hours). */
@@ -65,7 +71,7 @@ export async function loadVenueLogo(
   venue: Pick<Venue, 'settings'>,
   store: () => Promise<Pick<AssetStore, 'getUrl'>>,
 ): Promise<DesignLogo | null> {
-  return logoOf(pool, tenantId, readDesign(venue.settings).design.logo_asset_id, store)
+  return logoOf(pool, tenantId, readDesignToShow(venue.settings).design.logo_asset_id, store)
 }
 
 /** A logo with a signed link to it: null when there is none, or the asset is not stored. */
@@ -97,14 +103,14 @@ export async function loadDesign(
   store: () => Promise<Pick<AssetStore, 'getUrl'>>,
   role: string | null | undefined,
 ): Promise<DesignView> {
-  return designView(pool, tenantId, readDesign(venue.settings), store, role)
+  return designView(pool, tenantId, readDesignToShow(venue.settings), store, role)
 }
 
 /** A stored design as the page shows it. */
 async function designView(
   pool: DbPool,
   tenantId: string,
-  { revision, design }: StoredDesign,
+  { revision, design, repair = false }: StoredDesign & { readonly repair?: boolean },
   store: () => Promise<Pick<AssetStore, 'getUrl'>>,
   role: string | null | undefined,
 ): Promise<DesignView> {
@@ -114,6 +120,7 @@ async function designView(
     theme: designThemeOf(design),
     logo: await logoOf(pool, tenantId, design.logo_asset_id, store),
     canEdit: canManageIntegration(role),
+    ...(repair ? { repair: true } : {}),
   }
 }
 

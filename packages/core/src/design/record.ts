@@ -15,14 +15,20 @@ import { canonicalJson } from '../hash'
 import { idSchema } from '../ids'
 import { AssetIdSchema } from '../snapshot/schema'
 import type { ThemeFontId } from '../theme/fonts'
+import { ROLE_MODES, ROLE_NAMES } from '../theme/roles'
 import {
   HexInputSchema,
   RoleOverridesSchema,
   ThemeColoursSchema,
   type VenueTheme,
 } from '../theme/settings'
-import { DESIGN_PAGES, type DesignValues, type PremadeStyleId } from './contract'
-import { DesignValuesSchema, PremadeStyleIdSchema } from './schema'
+import type { DesignValues, PremadeStyleId } from './contract'
+import {
+  DesignValuesSchema,
+  FIRST_DESIGN_VALUES,
+  PremadeStyleIdSchema,
+  readDesignValues,
+} from './schema'
 
 /** The key of `venues.settings` the record is stored under. */
 export const DESIGN_SETTINGS_KEY = 'design'
@@ -90,21 +96,8 @@ export const DesignRecordSchema = z
 /** The stored record. */
 export type DesignRecord = z.output<typeof DesignRecordSchema>
 
-/** Basic's values (D130: the first value of each row), built from the contract. */
-function firstValues(): DesignValues {
-  const values: Record<string, Record<string, string>> = {}
-  for (const page of DESIGN_PAGES) {
-    const choices: Record<string, string> = {}
-    for (const option of page.options) {
-      if (option.kind === 'choice') choices[option.id] = option.values[0].id
-    }
-    values[page.id] = choices
-  }
-  return DesignValuesSchema.parse(values)
-}
-
-/** The values of a design on Basic. */
-export const BASIC_DESIGN_VALUES: DesignValues = firstValues()
+/** The values of a design on Basic (D130: the first value of each row), built from the contract. */
+export const BASIC_DESIGN_VALUES: DesignValues = FIRST_DESIGN_VALUES
 
 /** The design of a venue with no record: Basic, no colours, no logo (D128: every venue starts on Basic). */
 export const DEFAULT_DESIGN: DesignContent = Object.freeze({
@@ -180,6 +173,89 @@ export function readDesign(settings: unknown): StoredDesign {
   return {
     revision: Number.isSafeInteger(revision) && (revision as number) > 0 ? (revision as number) : 0,
     design: DEFAULT_DESIGN,
+  }
+}
+
+/** A plain object, or undefined. */
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+/**
+ * The Advanced roles that can be read out of a stored `overrides`: every `#rrggbb` set for a role
+ * of a scheme the theme knows, and nothing else. A hand-edited row (or one migration 0045 carried
+ * over, DA-28) can hold an unknown scheme, an unknown role or a value that is not a colour: those
+ * go, the rest stays, and `undefined` means there is nothing left to show.
+ */
+function readOverrides(stored: unknown): DesignContent['overrides'] {
+  const held = asRecord(stored)
+  if (held === undefined) return undefined
+  const kept: Record<string, Record<string, string>> = {}
+  for (const scheme of ROLE_MODES) {
+    const roles = asRecord(held[scheme])
+    if (roles === undefined) continue
+    const own: Record<string, string> = {}
+    for (const role of ROLE_NAMES) {
+      const colour = HexInputSchema.safeParse(roles[role])
+      if (colour.success) own[role] = colour.data
+    }
+    if (Object.keys(own).length > 0) kept[scheme] = own
+  }
+  if (Object.keys(kept).length === 0) return undefined
+  const parsed = RoleOverridesSchema.safeParse(kept)
+  return parsed.success ? parsed.data : undefined
+}
+
+/** A venue's design as the editor shows it, with whether the stored value has to be replaced. */
+export interface DesignToShow extends StoredDesign {
+  /**
+   * True when the stored value is not a valid record, so what is shown was read out of it piece by
+   * piece. The page opens with it already changed: the publisher refuses the venue
+   * (`invalid_design`) and says to save the design again, so Done must be able to (D129, DA-33).
+   */
+  readonly repair: boolean
+}
+
+/**
+ * A venue's design read piece by piece, for the Design page: a valid record as it is, and anything
+ * else reduced to what can still be read of it — its Style, every option value the contract still
+ * lists (`readDesignValues`: the rest at Basic's), its three colours or its brand colour, the
+ * Advanced roles that are colours, its logo. The revision is the stored one, as in `readDesign`,
+ * so the next save replaces the row rather than being refused as stale forever.
+ *
+ * `readDesign` stays the plain read (Basic for anything that does not parse): it is what `apply`
+ * compares a save against and what the publisher would have drawn.
+ */
+export function readDesignToShow(settings: unknown): DesignToShow {
+  const record = readDesignRecord(settings)
+  if (record !== null) {
+    return { revision: record.revision, design: designContentOf(record), repair: false }
+  }
+  const plain = readDesign(settings)
+  const stored = storedValue(settings)
+  if (stored === undefined) return { ...plain, repair: false }
+  const held = asRecord(stored) ?? {}
+  const style = PremadeStyleIdSchema.safeParse(held.style)
+  const colors = ThemeColoursSchema.safeParse(held.colors)
+  const brand = HexInputSchema.safeParse(held.brand)
+  const logo = AssetIdSchema.nullable().safeParse(held.logo_asset_id)
+  const overrides = readOverrides(held.overrides)
+  return {
+    revision: plain.revision,
+    design: {
+      style: style.success ? style.data : DEFAULT_DESIGN.style,
+      // Core cannot reach a premade Style's own values (they are Style files in the shell, which
+      // imports core), so an option whose stored value has gone falls back to Basic's.
+      values: readDesignValues(held.values),
+      // The three colours win over a brand colour, as they do everywhere else (the record holds
+      // one or the other, never both).
+      ...(colors.success ? { colors: colors.data } : brand.success ? { brand: brand.data } : {}),
+      ...(overrides === undefined ? {} : { overrides }),
+      logo_asset_id: logo.success ? logo.data : null,
+    },
+    repair: true,
   }
 }
 

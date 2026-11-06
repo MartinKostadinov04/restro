@@ -12,7 +12,7 @@ import { z } from 'zod'
 
 import { ALLERGENS, DIETARY_LABELS } from '../allergens'
 import { MAX_IMAGE_SIDE } from '../assets'
-import { DesignValuesSchema } from '../design/schema'
+import { DesignValuesSchema, readDesignValues } from '../design/schema'
 import { FIELD_TYPE_NAMES, FIELD_VALUE_SCHEMAS, type FieldType } from '../field-types/catalog'
 import { LocaleSchema, LocalizedTextSchema } from '../locales'
 import { CurrencySchema, MoneySchema } from '../money'
@@ -266,9 +266,10 @@ const SnapshotShape = z.strictObject({
    */
   layout: SnapshotLayoutSchema.optional(),
   /**
-   * The venue's design (D129, D130): every choice option's value, as the contract lists them
-   * (strict: an unknown page or option, a missing one or a value off the list is refused). The
-   * publisher always writes it.
+   * The venue's design (D129, D130): every choice option's value, as the contract lists them. The
+   * publisher always writes it, and writes it strictly (`buildSnapshot`). It is READ through
+   * `readDesignValues` (see `MenuSnapshotSchema`), so a snapshot published before or after a
+   * change to the option list still parses, here against the list as it is now.
    */
   design: DesignValuesSchema.optional(),
 })
@@ -424,8 +425,30 @@ function checkReferences(snapshot: Shape, ctx: z.RefinementCtx): void {
   }
 }
 
-/** The strict schema of `menu-snapshot/1`. */
-export const MenuSnapshotSchema = SnapshotShape.superRefine(checkReferences)
+/**
+ * The `design` block as the option list is now (D130), before the strict shape sees it: an option
+ * added since reads at its first value, one removed since is dropped, a value renamed since falls
+ * back to Basic's. Nothing else in the snapshot is touched, and a snapshot without a design block
+ * stays without one.
+ *
+ * This is the one place a published file is read more loosely than it is written (designer audit
+ * DA-15): the option list is a contract that keeps moving, and every published snapshot, every
+ * admin read and the republish's read of the previous snapshot would otherwise fail the moment it
+ * moved — with no way out but a code change. `buildSnapshot` holds the publisher to the strict
+ * block, so nothing but the contract's own words is ever written.
+ */
+function withReadableDesign(snapshot: unknown): unknown {
+  if (typeof snapshot !== 'object' || snapshot === null || Array.isArray(snapshot)) return snapshot
+  const { design } = snapshot as { design?: unknown }
+  if (design === undefined) return snapshot
+  return { ...snapshot, design: readDesignValues(design) }
+}
+
+/** The schema of `menu-snapshot/1`: strict, with the `design` block read as described above. */
+export const MenuSnapshotSchema = z.preprocess(
+  withReadableDesign,
+  SnapshotShape.superRefine(checkReferences),
+)
 
 /** A `menu-snapshot/1` document. */
 export type MenuSnapshot = z.output<typeof MenuSnapshotSchema>
@@ -447,7 +470,9 @@ export type SnapshotItem = MenuSnapshot['items'][string]
  *
  * The snapshot (`MenuSnapshotSchema`) works differently. It stays strict for unknown keys, and it
  * gains known, optional fields in place (`theme.roles`, `theme.scheme`, `presentation`,
- * `features`: D69–D71; `layout` and the sections' `hints.layout`: D92; `design`: D129). After
+ * `features`: D69–D71; `layout` and the sections' `hints.layout`: D92; `design`: D129). Inside the
+ * `design` block the option list itself keeps moving, so that one block is read as the list is now
+ * (`withReadableDesign`) instead of strictly; everything written stays strict. After
  * the first deploy, a new field ships in the reader one deploy before the producer writes it. A phone still running an older reader keeps its current menu on screen
  * until it reloads, because the pointer poll ignores a snapshot it cannot parse.
  */
