@@ -152,9 +152,10 @@ jobs:
   # the service container's superuser, so a migration that works only for an owner with BYPASSRLS
   # (or SUPERUSER) would pass them and fail on a hosted database (RR-43, RR-44, RR-45). Here the
   # database is owned by `restro_owner`, which has what a managed Postgres gives its owner
-  # (LOGIN, CREATEROLE, CREATEDB) and neither SUPERUSER nor BYPASSRLS. Every migration, `db:roles`
-  # and the catalog tests run as that owner. Tests that insert rows as the owner for set-up are
-  # not run here: with row security forced the owner cannot, by design; they run in `unit`.
+  # (LOGIN, CREATEROLE, CREATEDB) and neither SUPERUSER nor BYPASSRLS. Every migration
+  # and `db:roles` run as that owner; the catalog tests then read what it built, using the
+  # superuser for their own set-up (tests/database.ts requires one). Tests that insert rows are
+  # not run here (they run in `unit`).
   migrations-nobypass:
     name: Migrations without a bypassing owner
     runs-on: ubuntu-latest
@@ -175,10 +176,6 @@ jobs:
           --health-timeout 3s
           --health-retries 10
 
-    env:
-      # Replaces the top-level owner URL: db:migrate and db:roles connect as restro_owner.
-      DATABASE_URL_OWNER: postgres://restro_owner:ci-only-owner-not-a-secret@localhost:5432/restro
-
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -197,7 +194,7 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      # The service's superuser creates the owner and its database, then is never used again.
+      # The service's superuser creates the owner and its database; the migrations and roles never use it.
       - name: Create the non-bypassing owner
         env:
           PGPASSWORD: postgres
@@ -217,9 +214,13 @@ jobs:
           [ "$result" = "f" ]
 
       - name: Replay the migrations and create the roles as that owner
+        env:
+          DATABASE_URL_OWNER: postgres://restro_owner:ci-only-owner-not-a-secret@localhost:5432/restro
         run: pnpm db:migrate && pnpm db:roles
 
       - name: Row-security guard and role tests
+        # The tests need a superuser for their own set-up (tests/database.ts refuses any other), so
+        # they use the top-level owner URL; what they check was built by restro_owner above.
         run: pnpm vitest run --project packages/db packages/db/tests/rls-guard.test.ts packages/db/tests/app-role.test.ts packages/db/tests/purge-role.test.ts
 
   e2e:
