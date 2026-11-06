@@ -1232,6 +1232,18 @@
 .rm .ro-notice .ro-ghost { margin: 4px 0 0 }
 .rm .ro-notice ul { margin: 0 }
 .rm .ro-notice ul { padding-left: 18px }
+.rm .ro-payline { display: block }
+.rm .ro-payline { box-sizing: border-box }
+.rm .ro-payline { width: 100% }
+.rm .ro-payline { min-height: 44px }
+.rm .ro-payline { padding: 11px 16px }
+.rm .ro-payline { border: 0 }
+.rm .ro-payline { background: var(--rm-accent) }
+.rm .ro-payline { color: var(--rm-on-accent) }
+.rm .ro-payline { font-family: var(--rm-font) }
+.rm .ro-payline { font-size: 14px }
+.rm .ro-payline { text-align: center }
+.rm .ro-payline { touch-action: manipulation }
 .rm .ro-barnote { position: fixed }
 .rm .ro-barnote { z-index: 41 }
 .rm .ro-barnote { right: max(14px, env(safe-area-inset-right)) }
@@ -1339,6 +1351,11 @@
 .rm .ro-state p { max-width: 32ch }
 .rm .ro-state p { margin: 0 }
 .rm .ro-state p { opacity: 0.75 }
+.rm .ro-state p.ro-pay-number, .rm .ro-pay-number { font-size: 48px }
+.rm .ro-state p.ro-pay-number, .rm .ro-pay-number { font-weight: 800 }
+.rm .ro-state p.ro-pay-number, .rm .ro-pay-number { letter-spacing: 0.08em }
+.rm .ro-state p.ro-pay-number, .rm .ro-pay-number { line-height: 1.1 }
+.rm .ro-state p.ro-pay-number, .rm .ro-pay-number { opacity: 1 }
 .rm .ro-state .ro-kind { font-weight: 800 }
 .rm .ro-state .ro-kind { opacity: 0.9 }
 .rm .ro-state .ro-primary, .rm .ro-state .ro-ghost { max-width: 340px }

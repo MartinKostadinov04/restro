@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto'
 import type { MenuSnapshot } from '@restro/core'
 import { buildViewModel, type GuestPaymentAnswer, type GuestTableState } from '@restro/shell'
 import { fixture } from '@restro/shell/testing'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DEFAULT_FACE_ID, faceEntry } from '@/faces/registry'
@@ -119,7 +119,7 @@ const tableState = (): GuestTableState =>
 
 /** This phone's payment, waiting at the card form. */
 const paymentAnswer = (): GuestPaymentAnswer => ({
-  id: 'py_cardformlook000000001',
+  id: 'py_cardformlook0000000000',
   mode: 'bill',
   number: 'K7Q4M',
   state: 'awaiting_guest',
@@ -147,6 +147,9 @@ function serve(bodies: Map<string, unknown>) {
   )
 }
 
+// The page loads its face, polls the table and then the payment before the form can mount.
+vi.setConfig({ testTimeout: 40_000 })
+
 beforeEach(() => {
   mounted.length = 0
 })
@@ -154,6 +157,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   window.sessionStorage.clear()
+  window.localStorage.clear()
 })
 
 describe('the venue’s look on the provider’s card form (DA-35, decision 130)', () => {
@@ -162,13 +166,21 @@ describe('the venue’s look on the provider’s card form (DA-35, decision 130)
     serve(bodies)
     // The phone holds the payment's handle, as it does after a Pay or a redirect back: the value
     // and when the client may forget it.
-    window.sessionStorage.setItem(payHandleKey(CODE), `${HANDLE}|${Date.now() + 3_600_000}`)
+    // The client's key is the table's token, which is what the page gives it as its `code`.
+    window.localStorage.setItem(payHandleKey(TOKEN), `${HANDLE}|${Date.now() + 3_600_000}`)
     window.history.replaceState(null, '', `/m/${PARAM}?lang=en#t=${TOKEN}`)
     const { GuestMenu } = await import('../../guest/guest-menu')
     render(<GuestMenu venue={PARAM} />)
     expect(await screen.findByText('Hummus')).toBeTruthy()
-    // The payment opens its own screens; the card form is mounted into the face's slot.
-    await waitFor(() => expect(mounted).toHaveLength(1), { timeout: 10_000 })
+    // The guest opens Pay from the header: the payment draws its card screen and the page fills the
+    // face's form slot with the provider's form.
+    const pay = await waitFor(() => {
+      const button = document.querySelector('[data-slot="menu.pay"]')
+      if (button === null) throw new Error('no Pay entry yet')
+      return button
+    })
+    fireEvent.click(pay)
+    await waitFor(() => expect(mounted).toHaveLength(1), { timeout: 20_000 })
     const look = mounted[0]?.look ?? null
     expect(look).not.toBeNull()
     if (look === null) return

@@ -22,11 +22,11 @@
 // the order for a payment of kind `pay_first` with its own `waiting` sent order (`pay-first.ts`).
 // A Send may have either part, or both; its pay-first part names the lines the guest pays for now:
 // any of the order's pay-first lines no payment holds, or all of them where the bill part goes too
-// ("Send and pay"). A pay-first part that cannot be taken (below the card minimum, the table's
-// open payments spent) no longer refuses the Send: where the Send also has bill lines they go, the
-// pay-first lines stay free on the order, and the answer is `accepted` with the pay part's own
-// refusal in `details.payFirstRefused` (#293, DA-1; Martin 11-01). With no bill lines there is
-// nothing to accept, so the Send is refused with that code as before.
+// ("Send and pay"). A pay-first part the payment's own limits turn down (below the venue's smallest
+// card payment, or the table's open payments spent) no longer refuses the Send: where the Send also
+// has bill lines they go, the pay-first lines stay free on the order, and the answer is `accepted`
+// with the pay part's own refusal in `details.payFirstRefused` (#293, DA-1; Martin 11-01). With no
+// bill lines there is nothing to accept, and every other refusal refuses the whole Send as before.
 // The worker takes it from there (`sent-order.ts`): Restro never calls the POS here.
 
 import { randomInt } from 'node:crypto'
@@ -60,6 +60,13 @@ import {
 import { lineAvailable, type PricedLine, priceSentLines } from './send-menu'
 import { type SentOrderLine, SentOrderLineSchema } from './sent-lines'
 import { readTableCapabilities } from './table-capabilities'
+
+/**
+ * The pay-first refusals that take the pay part alone and leave the Send's bill lines to go (#293,
+ * DA-1): the payment's own limits, the venue's smallest card payment and the table's open payments.
+ * Every other refusal is about the round itself or about paying here, and refuses the whole Send.
+ */
+const PAY_FIRST_PART_ONLY: ReadonlySet<string> = new Set(['below_minimum', 'rate_limited'])
 
 /** The letters a reference is drawn from: no 0/O, 1/I/L, 2/Z, 5/S, 8/B, G or so look-alikes. */
 export const REFERENCE_ALPHABET = 'ACDEFHJKMNPQRTUVWXY34679'
@@ -226,15 +233,19 @@ export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<S
           isPayFirst,
           whole: command.lines.length > 0,
         })
-  // A refused pay-first part no longer refuses the Send's on-the-bill lines (#293, DA-1; Martin
-  // 11-01): a gin below the card minimum, or a table already at its open payments, must not keep a
-  // friend's beer off the bill, which is D117's reason for sending the two parts together. The bill
-  // lines go, the pay-first lines stay on the order for the guest to try again, and the answer says
-  // which refusal the face words. With no bill lines ("Pay" alone) there is nothing to accept, so
-  // the Send is refused as before.
+  // A pay-first part the payment's own limits turn down no longer refuses the Send's on-the-bill
+  // lines (#293, DA-1; Martin 11-01): a gin below the card minimum, or a table already at its open
+  // payments, must not keep a friend's beer off the bill, which is D117's reason for sending the two
+  // parts together. The bill lines go, the pay-first lines stay free on the order for the guest to
+  // try again, and the answer says which refusal the face words. With no bill lines ("Pay" alone)
+  // there is nothing to accept. Every other refusal still refuses the whole Send: a stale phone
+  // (`order_changed`), a line the POS cannot take (`order_from_waiter`, `item_unavailable`), a tip
+  // the till cannot record, and paying paused or not offered here, which the guide keeps whole.
   let payFirstRefused: { readonly code: string; readonly details: ResultDetails } | null = null
   if (payFirst !== null && !payFirst.ok) {
-    if (onBill === null) return refused(actionId, payFirst.code, payFirst.details ?? {})
+    if (onBill === null || !PAY_FIRST_PART_ONLY.has(payFirst.code)) {
+      return refused(actionId, payFirst.code, payFirst.details ?? {})
+    }
     payFirstRefused = { code: payFirst.code, details: payFirst.details ?? {} }
   }
 
