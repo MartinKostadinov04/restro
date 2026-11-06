@@ -278,7 +278,8 @@ describe('a bill with the POS’s own negative lines (#293, DA-8; rule 8)', () =
         const shown = paySignedMoney(minor, 'EUR', 'en_US')
         const digits = Number(shown.replace(/[^\d]/g, ''))
         expect(digits).toBe(Math.abs(minor))
-        expect(shown.includes('-')).toBe(minor < 0)
+        // A locale may write the minus as U+2212 rather than a hyphen.
+        expect(/[-\u2212]/.test(shown)).toBe(minor < 0)
       }),
       { numRuns: 400 },
     )

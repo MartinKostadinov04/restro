@@ -442,6 +442,9 @@ describe('MoneySchema', () => {
   })
 })
 
+/** The minus a locale may write: a hyphen, or the typographic minus sign. */
+const MINUS = /[-\u2212]/
+
 describe("the POS's own signed amounts (#293, DA-8; rule 8)", () => {
   // A waiter's discount reaches Restro negative. It is shown, never priced: the conversions that
   // price something keep refusing a negative amount (the tests above), and these two are display
@@ -462,7 +465,7 @@ describe("the POS's own signed amounts (#293, DA-8; rule 8)", () => {
 
   it('shows a discount with its minus and agrees with formatMoney above zero', () => {
     expect(formatSignedMoney(-400, 'EUR', 'en_US')).toContain('4.00')
-    expect(formatSignedMoney(-400, 'EUR', 'en_US')).toContain('-')
+    expect(formatSignedMoney(-400, 'EUR', 'en_US')).toMatch(MINUS)
     for (const minor of [0, 5, 1250, 999_999]) {
       expect(formatSignedMoney(minor, 'EUR', 'bg_BG')).toBe(formatMoney(minor, 'EUR', 'bg_BG'))
     }
@@ -478,7 +481,7 @@ describe("the POS's own signed amounts (#293, DA-8; rule 8)", () => {
         (minor, locale) => {
           const shown = formatSignedMoney(minor, 'EUR', locale)
           expect(Number(shown.replace(/[^\d]/g, ''))).toBe(Math.abs(minor))
-          expect(shown.includes('-')).toBe(minor < 0)
+          expect(MINUS.test(shown)).toBe(minor < 0)
         },
       ),
       { numRuns: 400 },
