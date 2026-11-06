@@ -22,7 +22,11 @@
 // the order for a payment of kind `pay_first` with its own `waiting` sent order (`pay-first.ts`).
 // A Send may have either part, or both; its pay-first part names the lines the guest pays for now:
 // any of the order's pay-first lines no payment holds, or all of them where the bill part goes too
-// ("Send and pay").
+// ("Send and pay"). A pay-first part that cannot be taken (below the card minimum, the table's
+// open payments spent) no longer refuses the Send: where the Send also has bill lines they go, the
+// pay-first lines stay free on the order, and the answer is `accepted` with the pay part's own
+// refusal in `details.payFirstRefused` (#293, DA-1; Martin 11-01). With no bill lines there is
+// nothing to accept, so the Send is refused with that code as before.
 // The worker takes it from there (`sent-order.ts`): Restro never calls the POS here.
 
 import { randomInt } from 'node:crypto'
