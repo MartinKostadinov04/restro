@@ -43,7 +43,7 @@ function useActiveSection(ids: readonly string[]) {
         }
         // The last section whose top has come into the band is the one being read.
         const current = ids.filter((id) => inBand.has(id)).at(-1)
-        // MUTATION M3: removed
+        if (current !== undefined) setActive(current)
       },
       { rootMargin: READING_BAND, threshold: [0, 0.1] },
     )
