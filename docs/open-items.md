@@ -116,7 +116,7 @@ Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a n
 - T74 Claude: Editorial Market template (D69–D72), plan approved 10-11; SH-01 to SH-08 all merged into `sh/foundation` on 10-11; left: acceptance with Martin, then the PRs; open points per step in the tracker.
 - T73 Claude: one role rule for composer writes (recommend owner/admin); with CF-09.
 - T71 Claude: barsy shares items by catalogue; follow it (sync unit = catalogue); decides CF-05/CF-07 (Opus).
-- T69 Martin: ask Mistral (office@mistral.bg) for API docs, a test installation and terms; second till.
+- T69 Martin: ask Mistral (office@mistral.bg) for API docs, a test installation and terms; second till. 11-06: the documentation is in hand (`Zamboo api v1`, OpenAPI, no login) and reviewed in `docs/deliverables/2026-11-06-zamboo-api-review.md`; what is left is the ten questions A1–A10 there, on #48 — above all whether a table-service interface exists beside the documented delivery API, the чл. 52з, ал. 5 authorisation, and a sandbox.
 - T63 Claude: tag colour and order to the face; colour required at `menu-snapshot/2`.
 - T65 Claude (Haiku): `/t/<token>` keeps `lang` on redirect.
 - T66 Claude (CF-10): Tables tab by `salon_id`; per-venue place types; hide place 0; no code for non-public places.

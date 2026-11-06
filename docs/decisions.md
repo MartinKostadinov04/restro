@@ -136,6 +136,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D129](decisions/D129.md) | The Studio: one design per venue, Simple and Advanced, Done saves the whole design | firm; refines D128; revises D92; refines D122 |
 | [D130](decisions/D130.md) | The design option set: 48 options on 14 pages, and the never-list | firm; refines D128 and D129 |
 | [D131](decisions/D131.md) | Sold-out and unavailable items are hidden; scheduled items are out of scope | firm; supersedes D22 |
+| [D132](decisions/D132.md) | Three wordings settled: a stamped new bill is never resent, a payment's return address, refunds are read and never made | firm; refines D112, D116 and D127 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

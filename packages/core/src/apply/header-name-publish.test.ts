@@ -23,12 +23,17 @@ describe.skipIf(!hasDatabase)('the menu’s header name in a publish', () => {
   let venueId: `vn_${string}`
   let menu: ProvisionedMenu
 
+  // Publishes and drafts share one real clock: the 14-day "new" badge (NEW_BADGE_MS) is worked out
+  // from it, so a fixed past date drops the badge from the draft but not from the live menu and
+  // counts the item as changed once that date is more than 14 days gone.
+  const base = Date.now()
+  const at = (minutes: number) => ({ now: new Date(base + minutes * 60_000) })
   const publish = (minutes: number) =>
     publishMenu(
       app,
       tenant,
       { menuId: menu.id, venueId, reason: 'manual', actor: 'user:us_test' },
-      { now: new Date(Date.parse('2026-10-18T18:00:00Z') + minutes * 60_000) },
+      at(minutes),
     )
   const rename = async (name: string) =>
     expect((await renameMenu(app, tenant, { venueId, menuId: menu.id, name })).ok).toBe(true)
@@ -94,7 +99,7 @@ describe.skipIf(!hasDatabase)('the menu’s header name in a publish', () => {
 
   it('a rename is one change waiting, and the next publish carries the header name', async () => {
     await rename('Club Sofia')
-    const draft = await loadDraft(app, tenant, { menuId: menu.id, venueId })
+    const draft = await loadDraft(app, tenant, { menuId: menu.id, venueId }, at(1))
     expect(diffSnapshots(live, draft.snapshot)).toMatchObject({ areas: ['menu'], total: 1 })
     const second = await publish(5)
     expect(second.status).toBe('published')
@@ -103,9 +108,9 @@ describe.skipIf(!hasDatabase)('the menu’s header name in a publish', () => {
   })
 
   it('clearing the name is a change too: the heading goes back to the venue’s name', async () => {
-    const before = await loadDraft(app, tenant, { menuId: menu.id, venueId })
+    const before = await loadDraft(app, tenant, { menuId: menu.id, venueId }, at(6))
     await rename('')
-    const after = await loadDraft(app, tenant, { menuId: menu.id, venueId })
+    const after = await loadDraft(app, tenant, { menuId: menu.id, venueId }, at(6))
     expect(diffSnapshots(before.snapshot, after.snapshot)).toMatchObject({
       areas: ['menu'],
       total: 1,
