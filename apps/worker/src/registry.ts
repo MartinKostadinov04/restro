@@ -71,6 +71,10 @@ async function ensureQueue(
   await boss.createQueue(name, policy === undefined ? options : { ...options, policy })
   await boss.updateQueue(name, options)
   if (carried === undefined) return
+  // One waiting job per key on the new policy: of a key's queued job and its retry (`stately` kept
+  // one of each), the queued one is sent first and kept, then the earliest due.
+  const order = (job: JobWithMetadata<object>) => (job.state === 'created' ? 0 : 1)
+  carried.sort((a, b) => order(a) - order(b) || a.startAfter.getTime() - b.startAfter.getTime())
   let sent = 0
   for (const job of carried) if (await sendAgain(boss, name, job, context)) sent += 1
   context.log.warn(

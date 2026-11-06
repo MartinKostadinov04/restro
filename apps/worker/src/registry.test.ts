@@ -217,6 +217,7 @@ describe('a queue whose policy changed (#286)', () => {
     const venueId = newId('vn')
     const menuId = newId('nd')
     const due = new Date('2026-11-06T12:00:30Z')
+    const later = new Date('2026-11-06T12:01:30Z')
     const auto = { tenantId, menuId, venueId, reason: 'auto_sync', actor: 'system' }
     const autoKey = `${menuId}:${venueId}:auto`
     const name = JOB_NAMES.publishMenu
@@ -225,11 +226,12 @@ describe('a queue whose policy changed (#286)', () => {
       { [name]: 'stately' },
       {
         [name]: [
-          { id: 'a', data: auto, singletonKey: autoKey, startAfter: due },
-          // The same publish waiting for its retry: one waiting job of the key is enough.
-          { id: 'b', data: auto, singletonKey: autoKey, startAfter: due },
+          // The same publish waiting for its retry, listed first: the queued one is kept (one
+          // waiting job of a key), with its own start.
+          { id: 'b', state: 'retry', data: auto, singletonKey: autoKey, startAfter: later },
+          { id: 'a', state: 'created', data: auto, singletonKey: autoKey, startAfter: due },
           // A payload that no longer validates is logged, never sent.
-          { id: 'c', data: { tenantId }, singletonKey: 'old', startAfter: due },
+          { id: 'c', state: 'created', data: { tenantId }, singletonKey: 'old', startAfter: due },
         ],
       },
     )

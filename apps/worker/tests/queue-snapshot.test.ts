@@ -15,7 +15,13 @@
 // one-second minimum would count again before a stale count could show.) No test here sleeps out a
 // pg-boss interval.
 import { tmpdir } from 'node:os'
-import { JOB_NAMES, newId, type ProducedJobName, prepareJob } from '@restro/core'
+import {
+  JOB_NAMES,
+  newId,
+  ONE_RUN_PER_GROUP_JOBS,
+  type ProducedJobName,
+  prepareJob,
+} from '@restro/core'
 import type { DbPool } from '@restro/db'
 import { PgBoss } from 'pg-boss'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -232,6 +238,14 @@ describe.skipIf(!hasDatabase)(
     afterAll(async () => {
       await boss?.stop({ graceful: false })
       await db?.drop()
+    })
+
+    it('covers every one-run-per-key queue, each `short` and fetched one run per group', () => {
+      expect(new Set(QUEUES.map(([, name]) => name))).toEqual(ONE_RUN_PER_GROUP_JOBS)
+      for (const job of jobs) {
+        expect(job.options.policy, job.name).toBe('short')
+        expect(job.options.work?.groupConcurrency, job.name).toBe(1)
+      }
     })
 
     it('the worker creates a queue it finds on its old policy again, with the new one', async () => {
