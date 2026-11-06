@@ -44,12 +44,7 @@ function setup({
   locale?: 'en' | 'bg'
 } = {}) {
   renderWithIntl(
-    <GuestFeaturesCard
-      venueId={VENUE}
-      features={features}
-      canEdit={canEdit}
-      privacy={privacy}
-    />,
+    <GuestFeaturesCard venueId={VENUE} features={features} canEdit={canEdit} privacy={privacy} />,
     { locale },
   )
 }

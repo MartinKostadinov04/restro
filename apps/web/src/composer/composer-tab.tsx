@@ -11,11 +11,11 @@
 // and the guest functions' own.
 import {
   CurrencySchema,
+  hasPrivacyNotice,
   type Locale,
   liveEditions,
   mergeDocumentParts,
   type NodeId,
-  hasPrivacyNotice,
   readGuestFeatures,
   resolve,
   serviceDate,
