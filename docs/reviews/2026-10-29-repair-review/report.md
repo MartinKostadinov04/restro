@@ -53,7 +53,7 @@ Does a line keep its id when moved? Can a tip go on the receipt? What is the rat
 ## For deploy day
 Set Turnstile, `PAYMENTS_ENV` and the three alert keys. Add the Cloudflare rules (RR-7, RR-75). Upgrade `next` and clear 14 known vulnerabilities (PR #203).
 Staging's first deploy of the designer wave drops `menus.settings` (migration 0046) a moment before the new app replaces the old one: for that minute staging's menu pages fail, then recover (designer audit DA-12). No guest sees staging, so it is accepted there. From then on a column is dropped one release after the code stops reading it.
-Before the stage branch reaches `main`, remove the worker's one-off `previousPolicy` (it deletes a route queue still on `stately`; only local databases ever had one, #305).
+Keep the worker's one-off `previousPolicy` until staging and production have each run the new worker once, then remove it (#305, #309). It creates a queue still on `stately` again as `short` and carries its waiting jobs over. `main` already has the publish and purge queues on `stately`, so removing it before then would leave those queues stalling there and log an error on every start.
 
 ## Smaller things
 - Copilot review is out of quota, so my reviews stood in for it. Please check the quota.
