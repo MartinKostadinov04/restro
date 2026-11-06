@@ -57,3 +57,6 @@ Set Turnstile, `PAYMENTS_ENV` and the three alert keys. Add the Cloudflare rules
 - Copilot review is out of quota, so my reviews stood in for it. Please check the quota.
 - Decide whether the 135 skipped browser tests should run nightly.
 - A CI job should replay migrations with an owner that can't bypass row security.
+
+## Your answers (Martin, 11-06)
+"I agree with all": every recommendation in "Yours to decide" stands (1-9), as asked again in the designer audit's list of 15 (`../2026-11-01-designer-audit/report.md`, "Your answers").

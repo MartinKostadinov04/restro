@@ -35,3 +35,14 @@ Two saves at once (one wins, no half-merge); a save during a publish; Style name
 1. Your walk notes, then step 6.
 2. Fix tickets labelled `designer-audit`: the highs first, the mediums and the missing tests with them; DA-34 as its own ticket on or/foundation.
 3. Fixes merge once #285 (split CI) lands and you OK the Design lead's fixers working into st/foundation.
+
+## Your answers (Martin, 11-06)
+"I agree with all" to the fifteen recommendations:
+1-9. The repair review's nine (staging read-only check first; real-phone alerts after the hands-on; Stripe sandbox checks, now with the card form's look; a staff-only account on the bar tablet; owner and admin edit the menu; money alerts keep repeating after closing, D122; paying after closing goes to the waiter; a privacy link before ordering, lawyer to confirm; the lead words the decision tidy-ups).
+10. Stop for the location check stays in the bag and on the Pay and Call a waiter screens (DA-9).
+11. A slim "Payment in progress" line on the menu until a payment settles (DA-24).
+12. Fixing starts now with #285 and the fixes nothing on screen shows; screen fixes wait for the walk notes.
+13. Fixers build into st/foundation (designer) and or/foundation (ordering); merges on green CI and the lead's review, never main, staging or a deploy.
+14. The Next.js security upgrade (#203) lands on or/foundation now.
+15. An audit of the code already on main after this fix wave, before the pilot.
+The lead decides the rest (the Paid number's size, the sold-out staff text, no Cancel on an open call, the tip reset, the discount line, dropping the old column one release later, the old one-colour looks).
