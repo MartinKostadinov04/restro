@@ -90,6 +90,7 @@ import {
   type DesignRecord,
   designContentOf,
   designThemeOf,
+  hasInvalidDesign,
   readDesign,
   readDesignRecord,
   type StoredDesign,
@@ -415,9 +416,14 @@ class DocumentState {
   readonly itemVenues = new Map<NodeId, Set<string>>()
   /**
    * The design of each venue a setDesign names, read under a row lock, then as this change set
-   * leaves it: the record (null while the venue has none) and the design it reads as.
+   * leaves it: the record (null while the venue has none, or the stored value does not parse), the
+   * design it reads as, and `replace` for a stored value that is not a valid record, which the
+   * next save has to replace however much it looks like what the editor showed (DA-33).
    */
-  readonly designs = new Map<string, { record: DesignRecord | null; stored: StoredDesign }>()
+  readonly designs = new Map<
+    string,
+    { record: DesignRecord | null; stored: StoredDesign; replace: boolean }
+  >()
   /** Whether each logo a setDesign names is a stored image of this tenant. */
   readonly usableLogos = new Map<string, boolean>()
   /** The venues whose design record this change set rewrites, with the record to write. */
@@ -553,19 +559,13 @@ async function loadState(tx: WriteTx, set: ChangeSet, template: Template): Promi
     .from(integrations)) {
     state.integrations.set(row.id, { kind: row.kind })
   }
-  // The tenant's venues, locked shared (in id order, so two writers cannot wait for each other):
-  // a deletion (`archiveVenue`, FOR UPDATE) waits for this change set to commit, and one that
-  // committed first is read here, so nothing is written into a venue that was deleted (D76).
-  for (const row of await tx
-    .select({ id: venues.id, archivedAt: venues.archivedAt })
-    .from(venues)
-    .orderBy(asc(venues.id))
-    .for('share')) {
-    state.venues.add(row.id)
-    if (row.archivedAt !== null) state.archivedVenues.add(row.id)
-  }
-  // The design records a setDesign names, locked in id order (after the share locks above, which
-  // this transaction already holds): a concurrent save waits, then sees this revision.
+  // The design records a setDesign names, locked `for no key update` in id order, BEFORE the
+  // share locks below and so before this transaction holds any lock on them (D130, DA-32): this
+  // writer updates those rows, and a lock it took shared and then had to upgrade would deadlock
+  // (40P01) against a publish that brings an Unpublished venue back to Live, which share-locks the
+  // venue and then upgrades the same way (`publish.ts`, `serveVenueAgain`). The tenant's document
+  // lock is already held, so no second change set is in here with us, and the share pass below
+  // asks for nothing more than this on these rows. `venue-publish-rules.ts` takes the same care.
   const designVenues = [
     ...new Set(set.ops.flatMap((op) => (op.op === 'setDesign' ? [op.venueId] : []))),
   ].sort()
@@ -579,8 +579,22 @@ async function loadState(tx: WriteTx, set: ChangeSet, template: Template): Promi
       state.designs.set(row.id, {
         record: readDesignRecord(row.settings),
         stored: readDesign(row.settings),
+        replace: hasInvalidDesign(row.settings),
       })
     }
+  }
+  // The tenant's venues, locked shared (in id order, so two writers cannot wait for each other):
+  // a deletion (`archiveVenue`, FOR UPDATE) waits for this change set to commit, and one that
+  // committed first is read here, so nothing is written into a venue that was deleted (D76).
+  for (const row of await tx
+    .select({ id: venues.id, archivedAt: venues.archivedAt })
+    .from(venues)
+    .orderBy(asc(venues.id))
+    .for('share')) {
+    state.venues.add(row.id)
+    if (row.archivedAt !== null) state.archivedVenues.add(row.id)
+  }
+  if (designVenues.length > 0) {
     const logos = [
       ...new Set(
         set.ops.flatMap((op) =>
@@ -1625,9 +1639,10 @@ class Run {
   /**
    * Saves a venue's whole design record (D129). Refused for a till source, an unknown or deleted
    * venue, a stale revision (with the stored design), colours that do not read and a new logo
-   * that is not a stored image; unchanged when the design equals the stored one. Otherwise the
-   * record is written with the next revision and the change set's provenance, and one event (no
-   * node, the venue's scope) holds the record before and after.
+   * that is not a stored image; unchanged when the design equals the stored RECORD (a stored value
+   * that is not a valid record is always replaced, DA-33). Otherwise the record is written with
+   * the next revision and the change set's provenance, and one event (no node, the venue's scope)
+   * holds the record before and after.
    */
   private setDesign(op: SetDesign): Outcome {
     if (this.set.source !== 'manual') {
@@ -1671,7 +1686,13 @@ class Run {
     ) {
       return refused('logo_not_usable', `${logo} is not a stored image of this tenant`)
     }
-    if (sameDesign(design, current.stored.design)) return UNCHANGED
+    // Unchanged only when there is nothing to replace: a venue with no record saving Basic has
+    // Basic already, but a venue whose stored value is not a valid record (a row the contract has
+    // moved past, a hand-edited one) does NOT hold what the editor showed, so that save has to go
+    // through. Otherwise the venue would be stuck — the publisher refuses it (`invalid_design`)
+    // and tells the owner to save the design again, and that save would be a no-op for ever
+    // (DA-33).
+    if (!current.replace && sameDesign(design, current.stored.design)) return UNCHANGED
 
     const record: DesignRecord = {
       ...design,
@@ -1698,6 +1719,7 @@ class Run {
     this.state.designs.set(op.venueId, {
       record,
       stored: { revision: record.revision, design },
+      replace: false,
     })
     this.state.dirtyDesigns.set(op.venueId, record)
     return APPLIED

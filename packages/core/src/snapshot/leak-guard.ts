@@ -42,7 +42,8 @@ export type ForbiddenValues = ReadonlyMap<string, ForbiddenKind>
 
 /**
  * The paths the walk does not enter: the `design` block (D129). `parseSnapshot` has just held it to
- * the contract's words (D130, a strict schema), so it can say nothing private, and a till's id that
+ * the contract's words (D130: it reads an older or newer block, and what it returns is the
+ * contract's own words either way), so it can say nothing private, and a till's id that
  * reads `2` must not refuse Basic's two description lines. Its words stay out of the vocabulary:
  * `2`, `name` or `all` in an internal note is still refused everywhere else in the snapshot.
  */
