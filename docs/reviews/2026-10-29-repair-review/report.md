@@ -52,8 +52,12 @@ Does a line keep its id when moved? Can a tip go on the receipt? What is the rat
 
 ## For deploy day
 Set Turnstile, `PAYMENTS_ENV` and the three alert keys. Add the Cloudflare rules (RR-7, RR-75). Upgrade `next` and clear 14 known vulnerabilities (PR #203).
+Staging's first deploy of the designer wave drops `menus.settings` (migration 0046) a moment before the new app replaces the old one: for that minute staging's menu pages fail, then recover (designer audit DA-12). No guest sees staging, so it is accepted there. From then on a column is dropped one release after the code stops reading it.
 
 ## Smaller things
 - Copilot review is out of quota, so my reviews stood in for it. Please check the quota.
 - Decide whether the 135 skipped browser tests should run nightly.
 - A CI job should replay migrations with an owner that can't bypass row security.
+
+## Your answers (Martin, 11-06)
+"I agree with all": every recommendation in "Yours to decide" stands (1-9), as asked again in the designer audit's list of 15 (`../2026-11-01-designer-audit/report.md`, "Your answers").
