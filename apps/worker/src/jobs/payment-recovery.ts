@@ -19,7 +19,7 @@
 // - names a payment table held by a payment that no longer owns it (it has no deadline): logged
 //   for Restro's team, never freed by guess;
 // - probes a paused payment provider when its breaker says one is due (./payment-breaker.ts).
-// The queues are stately per payment, so a payment already queued is not queued twice. One worker
+// The queues hold one waiting job per payment, so a payment already queued is not queued twice. One worker
 // runs for the pilot: "a close is sent once" holds within one process (the close's `attempting`
 // row is checked inside the instance's turn), so a second worker is not started beside it.
 
@@ -260,7 +260,7 @@ export async function recoverPayments(
                     ? FINAL_TABLE_READ_SECONDS
                     : 0,
               )
-              // A payment already queued (stately) answers no job id: nothing new was queued.
+              // A payment already queued answers no job id: nothing new was queued.
               if (queued) prepared += 1
             }
           }

@@ -7,8 +7,9 @@
 //   payment-check    read the provider's payment while the guest is at the card form
 //                    (`awaiting_guest`): held, still waiting, or past its deadline
 //
-// Both queues are `stately` with one singleton key per payment (`prepareJob`): a send while one
-// waits is the same job, and one sent while a step runs waits behind it. The guest API queues
+// Both queues are `short` with one singleton key and group per payment (`prepareJob`,
+// `ONE_RUN_PER_GROUP_JOBS`): a send while one waits is the same job, and one sent while a step runs
+// waits behind it, never beside it. The guest API queues
 // them after each pay command and again from the paying phone's poll; a provider notice queues a
 // check. A check that finds the guest still at the form queues itself again for the deadline, under
 // a key of its own so a nudge is never swallowed by the waiting deadline check.
@@ -2401,7 +2402,10 @@ export function createPaymentJobs(deps: PaymentJobDeps): JobDefinition[] {
   const prepare = defineJob<PaymentJob>({
     name: JOB_NAMES.paymentPrepare,
     options: {
-      policy: 'stately',
+      // Never `stately`: its stale list of running keys held a payment's next step up to two
+      // minutes (#286). The recovery tick queues a payment again, so the queue may be created again.
+      policy: 'short',
+      previousPolicy: 'stately',
       // Never failed (and run again beside itself) while a run is still going.
       queue: { ...queue, expireInSeconds: PAYMENT_PREPARE_EXPIRE_SECONDS },
       work: {
@@ -2415,7 +2419,8 @@ export function createPaymentJobs(deps: PaymentJobDeps): JobDefinition[] {
   const check = defineJob<PaymentJob>({
     name: JOB_NAMES.paymentCheck,
     options: {
-      policy: 'stately',
+      policy: 'short',
+      previousPolicy: 'stately',
       queue,
       work: {
         pollingIntervalSeconds: 1,
