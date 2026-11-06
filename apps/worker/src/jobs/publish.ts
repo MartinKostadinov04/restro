@@ -10,8 +10,9 @@
 //   publish-table-tokens  the t/<token>.json files of a venue's table QR codes: writes the active
 //                    ones, removes the retired ones (S3-07; the only writer of those files)
 //
-// The three publish queues use pg-boss's `stately` policy with a singleton key per menu + venue
-// (core/jobs.ts): one job waits and one runs. An automatic publish is sent with a 30 s delay, so
+// The publish queues keep one job waiting and one running per key, menu + venue for the three
+// publish queues (core/jobs.ts `ONE_RUN_PER_GROUP_JOBS`: pg-boss's `short` policy and a group per
+// key; never `stately`, #308). An automatic publish is sent with a 30 s delay, so
 // syncs close together find one waiting job (their `send` returns null) and publish once, with
 // everything that changed by the time it runs.
 import type { AssetStore, PublishStore } from '@restro/assets'
@@ -116,6 +117,7 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
       const tokens = prepareJob(JOB_NAMES.publishTableTokens, { tenantId, venueId, retired: [] })
       await context.queue.send(JOB_NAMES.publishTableTokens, tokens.data, {
         singletonKey: tokens.singletonKey,
+        ...(tokens.group === undefined ? {} : { group: tokens.group }),
       })
     } catch (error) {
       context.log.warn({ err: error }, 'the table files could not be queued after a publish')
@@ -127,7 +129,11 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
   const publish = defineJob<PublishMenuJob>({
     name: JOB_NAMES.publishMenu,
     options: {
-      policy: 'stately',
+      // One waiting and one running per key, through its group (`ONE_RUN_PER_GROUP_JOBS` in
+      // core/jobs.ts). Never `stately`: its stale list of running keys held a key's next run up to
+      // two minutes (#308). The registry carries the waiting jobs over when it creates it again.
+      policy: 'short',
+      previousPolicy: 'stately',
       queue: {
         retryLimit: 2,
         retryDelay: 30,
@@ -135,7 +141,7 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
         expireInSeconds: 5 * 60,
         deleteAfterSeconds: 24 * 60 * 60,
       },
-      work: { pollingIntervalSeconds: 2 },
+      work: { pollingIntervalSeconds: 2, groupConcurrency: 1 },
     },
     async handler(jobs, context) {
       for (const job of jobs) {
@@ -262,7 +268,11 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
   const files = defineJob<PublishScopeJob>({
     name: JOB_NAMES.publishFiles,
     options: {
-      policy: 'stately',
+      // One waiting and one running per key, through its group (`ONE_RUN_PER_GROUP_JOBS` in
+      // core/jobs.ts). Never `stately`: its stale list of running keys held a key's next run up to
+      // two minutes (#308). The registry carries the waiting jobs over when it creates it again.
+      policy: 'short',
+      previousPolicy: 'stately',
       queue: {
         retryLimit: 2,
         retryDelay: 30,
@@ -270,7 +280,7 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
         expireInSeconds: 5 * 60,
         deleteAfterSeconds: 24 * 60 * 60,
       },
-      work: { pollingIntervalSeconds: 2 },
+      work: { pollingIntervalSeconds: 2, groupConcurrency: 1 },
     },
     async handler(jobs, context) {
       for (const job of jobs) {
@@ -307,7 +317,11 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
   const live = defineJob<PublishScopeJob>({
     name: JOB_NAMES.publishLive,
     options: {
-      policy: 'stately',
+      // One waiting and one running per key, through its group (`ONE_RUN_PER_GROUP_JOBS` in
+      // core/jobs.ts). Never `stately`: its stale list of running keys held a key's next run up to
+      // two minutes (#308). The registry carries the waiting jobs over when it creates it again.
+      policy: 'short',
+      previousPolicy: 'stately',
       queue: {
         // A mark the guests do not see is the thing this job exists to prevent: try a few times.
         retryLimit: 3,
@@ -317,7 +331,7 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
         retentionSeconds: 10 * 60,
         deleteAfterSeconds: 60 * 60,
       },
-      work: { pollingIntervalSeconds: 1 },
+      work: { pollingIntervalSeconds: 1, groupConcurrency: 1 },
     },
     async handler(jobs, context) {
       for (const job of jobs) {
@@ -406,9 +420,12 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
   const tableTokens = defineJob<PublishTableTokensJob>({
     name: JOB_NAMES.publishTableTokens,
     options: {
-      // One job waits and one runs per venue + set of retired tokens (core/jobs.ts), so two jobs
-      // that must remove different tokens are both kept.
-      policy: 'stately',
+      // One waiting and one running per venue + set of retired tokens, through its group
+      // (`ONE_RUN_PER_GROUP_JOBS` in core/jobs.ts), so two jobs that must remove different tokens
+      // are both kept. Never `stately`: its stale list of running keys held a key's next run up to
+      // two minutes (#308). The registry carries the waiting jobs over when it creates it again.
+      policy: 'short',
+      previousPolicy: 'stately',
       queue: {
         retryLimit: 3,
         retryDelay: 10,
@@ -417,7 +434,7 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
         retentionSeconds: 10 * 60,
         deleteAfterSeconds: 60 * 60,
       },
-      work: { pollingIntervalSeconds: 1 },
+      work: { pollingIntervalSeconds: 1, groupConcurrency: 1 },
     },
     async handler(jobs, context) {
       for (const job of jobs) {
@@ -440,7 +457,11 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
   const organizationIndex = defineJob<PublishOrganizationIndexJob>({
     name: JOB_NAMES.publishOrganizationIndex,
     options: {
-      policy: 'stately',
+      // One waiting and one running per key, through its group (`ONE_RUN_PER_GROUP_JOBS` in
+      // core/jobs.ts). Never `stately`: its stale list of running keys held a key's next run up to
+      // two minutes (#308). The registry carries the waiting jobs over when it creates it again.
+      policy: 'short',
+      previousPolicy: 'stately',
       queue: {
         retryLimit: 2,
         retryDelay: 30,
@@ -448,7 +469,7 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
         expireInSeconds: 5 * 60,
         deleteAfterSeconds: 24 * 60 * 60,
       },
-      work: { pollingIntervalSeconds: 2 },
+      work: { pollingIntervalSeconds: 2, groupConcurrency: 1 },
     },
     async handler(jobs, context) {
       for (const job of jobs) {

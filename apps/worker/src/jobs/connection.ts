@@ -227,6 +227,7 @@ async function requeue(env: BreakerEnvironment, ref: ConnectionRef, at: number):
   const job = prepareJob(JOB_NAMES.connectionProbe, ConnectionProbeJobSchema.parse(ref))
   await env.queue.send(JOB_NAMES.connectionProbe, job.data, {
     singletonKey: job.singletonKey,
+    ...(job.group === undefined ? {} : { group: job.group }),
     startAfter: Math.max(0, Math.ceil((at - env.now().getTime()) / 1000)),
   })
 }
@@ -256,7 +257,11 @@ export function createConnectionJobs(deps: ConnectionJobDeps): JobDefinition[] {
   const connectionProbe = defineJob<ConnectionProbeJob>({
     name: JOB_NAMES.connectionProbe,
     options: {
-      policy: 'stately',
+      // One waiting and one running per key, through its group (`ONE_RUN_PER_GROUP_JOBS` in
+      // core/jobs.ts). Never `stately`: its stale list of running keys held a key's next run up to
+      // two minutes (#308). The registry carries the waiting jobs over when it creates it again.
+      policy: 'short',
+      previousPolicy: 'stately',
       queue: {
         // Never retried: the breaker queues the next probe, and the tick covers a lost one.
         retryLimit: 0,
@@ -264,7 +269,7 @@ export function createConnectionJobs(deps: ConnectionJobDeps): JobDefinition[] {
         retentionSeconds: 10 * 60,
         deleteAfterSeconds: 60 * 60,
       },
-      work: { pollingIntervalSeconds: 1 },
+      work: { pollingIntervalSeconds: 1, groupConcurrency: 1 },
     },
     async handler(jobs: Job<ConnectionProbeJob>[], context: WorkerContext) {
       for (const job of jobs) {
@@ -308,6 +313,7 @@ export function createConnectionJobs(deps: ConnectionJobDeps): JobDefinition[] {
           const at = paused.nextProbeAt?.getTime() ?? now
           const id = await context.queue.send(JOB_NAMES.connectionProbe, job.data, {
             singletonKey: job.singletonKey,
+            ...(job.group === undefined ? {} : { group: job.group }),
             startAfter: Math.max(0, Math.ceil((at - now) / 1000)),
           })
           if (id !== null) queued += 1

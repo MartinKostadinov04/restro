@@ -2,7 +2,8 @@
 
 // The composer's payment-mode write for a selection of items (#218; D113, D122 §5): the selection
 // bar's "Payment mode…". In the shape of ./tag-actions.ts: it checks who is asking (requireTenant),
-// that the venue is theirs, parses its input with Zod and hands it to core's `setItemPaymentMode`,
+// that their role may edit the menu (owners and admins, `canEditMenu`; RR-70), that the venue is
+// theirs, parses its input with Zod and hands it to core's `setItemPaymentMode`,
 // one atomic change set for `apply()` (rule 1). Then it revalidates the venue page.
 import { idSchema, PAYMENT_MODES } from '@restro/core'
 import { ApplyError, PaymentModeError, setItemPaymentMode } from '@restro/core/apply'
@@ -12,6 +13,7 @@ import { z } from 'zod'
 import { readItemPayFirstDefault } from '@/server/composer/pay-first'
 import { getPool } from '@/server/db'
 import { logError } from '@/server/log'
+import { canEditMenu } from '@/server/roles'
 import { requireTenant } from '@/server/session'
 import { onSharedDevice } from '@/server/staff/shared-device'
 import { getVenue } from '@/server/venues'
@@ -32,6 +34,7 @@ export async function setItemPaymentModeAction(input: unknown): Promise<ActionRe
   const { venueId, itemIds, mode } = parsed.data
   try {
     const { organization, user, sessionId } = await requireTenant()
+    if (!canEditMenu(organization.role)) return { ok: false, error: 'not_allowed' }
     if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
       return { ok: false, error: 'not_allowed' }
     }

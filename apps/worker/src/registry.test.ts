@@ -1,5 +1,6 @@
+import { JOB_NAMES, newId } from '@restro/core'
 import type { DbPool } from '@restro/db'
-import type { Job, PgBoss } from 'pg-boss'
+import type { Job, JobWithMetadata, PgBoss } from 'pg-boss'
 import { describe, expect, it } from 'vitest'
 
 import { WorkerStatus } from './health'
@@ -12,7 +13,11 @@ const SECRET = 'jane.doe@example.com'
 type Call = [method: string, ...args: unknown[]]
 
 /** Records the pg-boss calls the registry makes. */
-function fakeBoss(existingSchedules: { name: string; key: string }[] = []) {
+function fakeBoss(
+  existingSchedules: { name: string; key: string }[] = [],
+  existingPolicies: Record<string, string> = {},
+  waiting: Record<string, Partial<JobWithMetadata<object>>[]> = {},
+) {
   const calls: Call[] = []
   const handlers = new Map<string, (batch: Job<object>[]) => Promise<void>>()
   const record =
@@ -26,6 +31,27 @@ function fakeBoss(existingSchedules: { name: string; key: string }[] = []) {
     schedule: record('schedule'),
     unschedule: record('unschedule'),
     getSchedules: async () => existingSchedules,
+    getQueue: async (name: string) => {
+      calls.push(['getQueue', name])
+      const policy = existingPolicies[name]
+      return policy === undefined ? null : { name, policy }
+    },
+    deleteQueue: record('deleteQueue'),
+    findJobs: async (name: string, options: unknown) => {
+      calls.push(['findJobs', name, options])
+      return waiting[name] ?? []
+    },
+    send: async (name: string, data: unknown, options: { singletonKey?: string }) => {
+      calls.push(['send', name, data, options])
+      // A second job of a key while one waits is the same job (`short`).
+      const sent = calls.filter(
+        ([method, queue, , other]) =>
+          method === 'send' &&
+          queue === name &&
+          (other as { singletonKey?: string }).singletonKey === options.singletonKey,
+      )
+      return sent.length > 1 ? null : `job-${sent.length}`
+    },
     work: async (
       name: string,
       options: unknown,
@@ -158,6 +184,106 @@ describe('registerJobs', () => {
     const scheduling = calls.filter(([method]) => method === 'schedule' || method === 'unschedule')
     expect(scheduling).toEqual([])
     expect(calls.some(([method, name]) => method === 'work' && name === 'reading')).toBe(true)
+  })
+})
+
+describe('a queue whose policy changed (#286)', () => {
+  const changed = (name: string) =>
+    job(name, { options: { queue: {}, policy: 'short', previousPolicy: 'stately' } })
+  const queueCalls = (calls: Call[], name: string) =>
+    calls.filter(([method, queue]) => method !== 'work' && queue === name).map(([method]) => method)
+
+  it('is deleted and created again when it is still on the previous policy', async () => {
+    const { boss, calls } = fakeBoss([], { 'order-send': 'stately' })
+    const { ctx, lines } = await context()
+    await registerJobs(boss, [changed('order-send')], ctx)
+    expect(queueCalls(calls, 'order-send')).toEqual([
+      'getQueue',
+      'findJobs',
+      'deleteQueue',
+      'createQueue',
+      'updateQueue',
+    ])
+    expect(calls).toContainEqual([
+      'createQueue',
+      'order-send',
+      { deadLetter: 'order-send.dead', policy: 'short' },
+    ])
+    expect(lines.join('\n')).toContain('queue created again with its new policy')
+  })
+
+  it('sends its waiting jobs again into the new queue, with their key, group and start (#308)', async () => {
+    const tenantId = newId('tn')
+    const venueId = newId('vn')
+    const menuId = newId('nd')
+    const due = new Date('2026-11-06T12:00:30Z')
+    const later = new Date('2026-11-06T12:01:30Z')
+    const auto = { tenantId, menuId, venueId, reason: 'auto_sync', actor: 'system' }
+    const autoKey = `${menuId}:${venueId}:auto`
+    const name = JOB_NAMES.publishMenu
+    const { boss, calls } = fakeBoss(
+      [],
+      { [name]: 'stately' },
+      {
+        [name]: [
+          // The same publish waiting for its retry, listed first: the queued one is kept (one
+          // waiting job of a key), with its own start.
+          { id: 'b', state: 'retry', data: auto, singletonKey: autoKey, startAfter: later },
+          { id: 'a', state: 'created', data: auto, singletonKey: autoKey, startAfter: due },
+          // A payload that no longer validates is logged, never sent.
+          { id: 'c', state: 'created', data: { tenantId }, singletonKey: 'old', startAfter: due },
+        ],
+      },
+    )
+    const { ctx, lines } = await context()
+    await registerJobs(boss, [changed(name)], ctx)
+    expect(queueCalls(calls, name)).toEqual([
+      'getQueue',
+      'findJobs',
+      'deleteQueue',
+      'createQueue',
+      'updateQueue',
+      'send',
+      'send',
+    ])
+    expect(calls).toContainEqual([
+      'send',
+      name,
+      auto,
+      { singletonKey: autoKey, group: { id: autoKey }, startAfter: due },
+    ])
+    const log = lines.join('\n')
+    expect(log).toContain('"waiting":3,"sent":1')
+    expect(log).toContain('a waiting job could not be sent again')
+  })
+
+  it('is left alone once it has the new policy, and created when missing', async () => {
+    const { boss, calls } = fakeBoss([], { 'order-send': 'short' })
+    const { ctx } = await context()
+    await registerJobs(boss, [changed('order-send'), changed('payment-check')], ctx)
+    expect(calls.filter(([method]) => method === 'deleteQueue')).toEqual([])
+    expect(queueCalls(calls, 'payment-check')).toEqual(['getQueue', 'createQueue', 'updateQueue'])
+  })
+
+  it('is never deleted on any other policy: that is logged as an error', async () => {
+    const { boss, calls } = fakeBoss([], { 'order-send': 'exclusive' })
+    const { ctx, lines } = await context()
+    await registerJobs(boss, [changed('order-send')], ctx)
+    expect(calls.filter(([method]) => method === 'deleteQueue')).toEqual([])
+    expect(lines.join('\n')).toContain('queue has another policy than its job')
+  })
+
+  it('a job without a previous policy never reads the queue', async () => {
+    const { boss, calls } = fakeBoss([], { 'menu-publish': 'exclusive' })
+    const { ctx } = await context()
+    await registerJobs(
+      boss,
+      [job('menu-publish', { options: { queue: {}, policy: 'stately' } })],
+      ctx,
+    )
+    expect(calls.filter(([method]) => method === 'getQueue' || method === 'deleteQueue')).toEqual(
+      [],
+    )
   })
 })
 

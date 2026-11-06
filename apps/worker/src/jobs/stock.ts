@@ -156,7 +156,10 @@ async function announce(
   if (env.queue === undefined) return
   for (const scope of await liveScopesOfVenue(env.pool, target.tenantId, target.venueId)) {
     const job = prepareJob(JOB_NAMES.publishLive, { tenantId: target.tenantId, ...scope })
-    await env.queue.send(JOB_NAMES.publishLive, job.data, { singletonKey: job.singletonKey })
+    await env.queue.send(JOB_NAMES.publishLive, job.data, {
+      singletonKey: job.singletonKey,
+      ...(job.group === undefined ? {} : { group: job.group }),
+    })
   }
 }
 

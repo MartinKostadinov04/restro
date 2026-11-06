@@ -5,10 +5,11 @@
 // database is asked, so a wrong order is found by the first test that runs it, not by a deadlock
 // on a busy night.
 //
-// The ledger has no rank for a table's row, because opening a table holds it before its sitting. For
-// a payment table the rule is by hand: its lease comes before its row. A claim's write of
-// `payment_table_id` takes the row through the foreign key, after the lease, so an unmark takes the
-// lease first too (`markPaymentTable`), and they queue at the lease.
+// The ledger sees a table's row only where it is locked after a lease: a payment table's lease comes
+// before its row (RR-62). A claim's write of `payment_table_id` takes the row through the foreign
+// key, after the lease, so an unmark takes the lease first too (`markPaymentTable`), and they queue
+// at the lease. Opening a table, and marking one, hold the row before the sittings, by hand: they
+// never take a lease, so they do not claim it here.
 //
 // Pure: no I/O. `rows.ts` asks the ledger before every `FOR UPDATE` / `FOR SHARE`.
 
@@ -21,6 +22,8 @@ export const LOCK_RANKS = [
   'table_order',
   'sent_order',
   'lease',
+  // A payment table's row, after its lease (RR-O13); `markPaymentTable`'s unmark claims it.
+  'table',
   'bill_reading',
   'waiter_call',
   'pause',

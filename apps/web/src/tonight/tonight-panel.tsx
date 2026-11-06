@@ -40,6 +40,7 @@ import type { TonightView } from '@/server/tonight/view'
 
 import { ActionRowItem, OutOfStockNotice, useAgo } from './action-rows'
 import { callKindsText } from './call-kinds'
+import { MakeTablet } from './make-tablet'
 import { useMoney } from './money'
 import { moneyTitleKey } from './money-rows'
 import { OfflineLine } from './offline-line'
@@ -144,7 +145,15 @@ function PauseMenu({ view }: { view: TonightView }) {
   )
 }
 
-function Content({ view, pushKey }: { view: TonightView; pushKey: string | undefined }) {
+function Content({
+  view,
+  pushKey,
+  tablet,
+}: {
+  view: TonightView
+  pushKey: string | undefined
+  tablet: Tablet | undefined
+}) {
   const t = useTranslations('tonight')
   const money = useMoney()
   const { run, busy } = useTonightRun()
@@ -214,6 +223,9 @@ function Content({ view, pushKey }: { view: TonightView; pushKey: string | undef
     .filter((x) => x.state === 'closed')
     .map((x) => x.id)
   const nothingOpen = view.openCount === 0
+  // "Open them" only where there are tables to open; a venue with none gets its own line (RR-O33).
+  const noTables = view.tableCount === 0
+  const notOpenYet = nothingOpen && !noTables
   // The empty block (with its one filled "Open all") shows while nothing waits at all; a stock notice
   // alone keeps the header's button, so a night with a notice can still be opened.
   const emptyShown = view.rows.length === 0 && view.outOfStock.length === 0
@@ -285,10 +297,14 @@ function Content({ view, pushKey }: { view: TonightView; pushKey: string | undef
       {view.rows.length === 0 && view.outOfStock.length === 0 ? (
         <Empty className="p-6 md:p-6">
           <EmptyHeader>
-            <EmptyTitle>{nothingOpen ? t('e_night_t') : t('e_open_t')}</EmptyTitle>
-            <EmptyDescription>{nothingOpen ? t('e_night_d') : t('e_open_d')}</EmptyDescription>
+            <EmptyTitle>
+              {noTables ? t('e_none_t') : notOpenYet ? t('e_night_t') : t('e_open_t')}
+            </EmptyTitle>
+            <EmptyDescription>
+              {noTables ? t('e_none_d') : notOpenYet ? t('e_night_d') : t('e_open_d')}
+            </EmptyDescription>
           </EmptyHeader>
-          {nothingOpen ? openAllButton : null}
+          {notOpenYet ? openAllButton : null}
         </Empty>
       ) : (
         <>
@@ -406,6 +422,7 @@ function Content({ view, pushKey }: { view: TonightView; pushKey: string | undef
       {pushKey === undefined ? null : (
         <PushControl venueId={view.venueId} pushKey={pushKey} sharedDevice={view.device} />
       )}
+      {tablet === undefined ? null : <MakeTablet venueId={view.venueId} email={tablet.email} />}
       <p role="status" aria-live="polite" className="sr-only" data-testid="announcement">
         {announcement}
       </p>
@@ -474,21 +491,30 @@ function Content({ view, pushKey }: { view: TonightView; pushKey: string | undef
   )
 }
 
+/** A staff-only account on a browser that is not shared yet (RR-O35): it may make it the bar tablet. */
+export interface Tablet {
+  /** The account's, for the password asked again. */
+  readonly email: string
+}
+
 /** The Tonight screen for one venue. */
 export function TonightPanel({
   view,
   pushKey,
+  tablet,
 }: {
   view: TonightView
   /** The Web Push public key, for whoever may answer alerts; without it the control doesn't show. */
   pushKey?: string | undefined
+  /** Set when "Make this the bar tablet" is offered. */
+  tablet?: Tablet | undefined
 }) {
   const t = useTranslations('tonight')
   // A venue with no POS still reads right where a sentence names its system.
   const named = view.source === '' ? { ...view, source: t('source_none') } : view
   return (
     <RunProvider>
-      <Content view={named} pushKey={pushKey} />
+      <Content view={named} pushKey={pushKey} tablet={tablet} />
     </RunProvider>
   )
 }

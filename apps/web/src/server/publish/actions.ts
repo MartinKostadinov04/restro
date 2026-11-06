@@ -66,12 +66,22 @@ async function withScope<T>(
   }
 }
 
-/** Runs one action that changes something; the tab is refreshed when it worked. */
+/**
+ * Runs one action that changes something; the tab is refreshed when it worked. A role that may not
+ * publish is refused here, before the service is asked (RR-70); the service checks it again.
+ */
 async function perform(
   venue: unknown,
   run: (scope: PublishScope, services: PublishServices) => Promise<PublishActionResult>,
 ): Promise<PublishActionResult> {
-  const result = await withScope(venue, run, (error): PublishActionResult => ({ ok: false, error }))
+  const result = await withScope(
+    venue,
+    (scope, services) =>
+      scope.canPublish
+        ? run(scope, services)
+        : Promise.resolve<PublishActionResult>({ ok: false, error: 'not_allowed' }),
+    (error): PublishActionResult => ({ ok: false, error }),
+  )
   if (result.ok && venueIdSchema.safeParse(venue).success) revalidatePath(`/venues/${venue}`)
   return result
 }

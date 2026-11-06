@@ -15,6 +15,7 @@ import { appDatabaseUrl, cleanUp, openOwnerPool, testSlug } from '../apply/test-
 import { newId } from '../ids'
 import { storedServiceCapabilities } from '../service-capabilities-config'
 import { serviceDate } from '../service-day'
+import { DEFAULT_GUEST_FEATURES } from '../theme/presentation'
 
 /** The provenance of seeded rows. */
 const SEED = ['restro', 'system', 'test-seed'] as const
@@ -76,6 +77,12 @@ export async function openServiceWorld(name: string): Promise<ServiceWorld> {
     `Service ${name}`,
   ])
   const venue = await provisionVenue(app, tenantId, { name: 'Club', slug: testSlug(name) })
+  // Ordering from the phone is on (the Design tab's switch): guests may order, as the service
+  // path's tests need. A test that is about the switch turns it off itself.
+  await owner.query(
+    `update restro.venues set settings = jsonb_set(settings, '{guest_features}', $2::jsonb) where id = $1`,
+    [venue.id, JSON.stringify({ ...DEFAULT_GUEST_FEATURES, ordering: true })],
+  )
   const area = await createArea(app, tenantId, venue.id, 'Hall')
   if (!area.ok) throw new Error(`area refused: ${JSON.stringify(area)}`)
   const tables: string[] = []

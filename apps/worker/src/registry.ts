@@ -1,6 +1,7 @@
 // Registers the jobs from jobs/index.ts with pg-boss: queues, dead-letter queues, workers and
 // schedules. The convention a job author follows is described in jobs/types.ts.
-import type { Job, PgBoss, QueueOptions, QueuePolicy } from 'pg-boss'
+import { isProducedJob, prepareJob } from '@restro/core'
+import type { Job, JobWithMetadata, PgBoss, QueueOptions, QueuePolicy } from 'pg-boss'
 
 import { summarizeError } from './errors'
 import type { JobDefinition, WorkerContext } from './jobs/types'
@@ -42,16 +43,74 @@ export function assertValidJobs(jobs: readonly JobDefinition[]): void {
 
 /**
  * Creates the queue if it is missing, then applies the options (createQueue never updates). The
- * policy is part of creation only: pg-boss cannot change it afterwards.
+ * policy is part of creation only: pg-boss cannot change it afterwards. A queue still on the
+ * job's `previousPolicy` is deleted first, so it is created again with the new one; its waiting
+ * jobs (queued or waiting for a retry) are sent again into it, as their producers send them.
  */
 async function ensureQueue(
   boss: PgBoss,
   name: string,
   options: QueueOptions & { deadLetter?: string },
+  context: WorkerContext,
   policy?: QueuePolicy,
+  previousPolicy?: QueuePolicy,
 ) {
+  let carried: JobWithMetadata<object>[] | undefined
+  if (policy !== undefined && previousPolicy !== undefined) {
+    const found = (await boss.getQueue(name))?.policy
+    if (found === previousPolicy && found !== policy) {
+      carried = await boss.findJobs<object>(name, { queued: true })
+      await boss.deleteQueue(name)
+    } else if (found !== undefined && found !== policy) {
+      context.log.error(
+        { queue: name, found, wanted: policy },
+        'queue has another policy than its job, which pg-boss cannot change',
+      )
+    }
+  }
   await boss.createQueue(name, policy === undefined ? options : { ...options, policy })
   await boss.updateQueue(name, options)
+  if (carried === undefined) return
+  // One waiting job per key on the new policy: of a key's queued job and its retry (`stately` kept
+  // one of each), the queued one is sent first and kept, then the earliest due.
+  const order = (job: JobWithMetadata<object>) => (job.state === 'created' ? 0 : 1)
+  carried.sort((a, b) => order(a) - order(b) || a.startAfter.getTime() - b.startAfter.getTime())
+  let sent = 0
+  for (const job of carried) if (await sendAgain(boss, name, job, context)) sent += 1
+  context.log.warn(
+    { queue: name, from: previousPolicy, to: policy, waiting: carried.length, sent },
+    'queue created again with its new policy; its waiting jobs were sent again',
+  )
+}
+
+/**
+ * Sends a job of a queue created again (`ensureQueue`) as its producer sends it (`prepareJob`: its
+ * key and its group), to start when it was due. True when it is queued; false when the same job
+ * was already queued again (one waiting per key), or its payload is no longer valid (logged).
+ */
+async function sendAgain(
+  boss: PgBoss,
+  name: string,
+  job: JobWithMetadata<object>,
+  context: WorkerContext,
+): Promise<boolean> {
+  try {
+    // Its group as `prepareJob` gives it, which also checks the payload is still valid.
+    const group = isProducedJob(name) ? prepareJob(name, job.data).group : undefined
+    const id = await boss.send(name, job.data, {
+      // The key it had: a producer may send a key of its own (a payment's deadline check).
+      ...(job.singletonKey == null ? {} : { singletonKey: job.singletonKey }),
+      ...(group === undefined ? {} : { group }),
+      startAfter: job.startAfter,
+    })
+    return id !== null
+  } catch (error) {
+    context.log.error(
+      { queue: name, jobId: job.id, error: summarizeError(error) },
+      'a waiting job could not be sent again',
+    )
+    return false
+  }
 }
 
 /**
@@ -120,8 +179,20 @@ export async function registerJobs(
   for (const job of jobs) {
     const deadLetter = deadLetterName(job.name)
     // The dead-letter queue must exist before the queue that points at it.
-    await ensureQueue(boss, deadLetter, { retentionSeconds: DEAD_LETTER_RETENTION_SECONDS })
-    await ensureQueue(boss, job.name, { ...job.options.queue, deadLetter }, job.options.policy)
+    await ensureQueue(
+      boss,
+      deadLetter,
+      { retentionSeconds: DEAD_LETTER_RETENTION_SECONDS },
+      context,
+    )
+    await ensureQueue(
+      boss,
+      job.name,
+      { ...job.options.queue, deadLetter },
+      context,
+      job.options.policy,
+      job.options.previousPolicy,
+    )
     await boss.work(job.name, job.options.work ?? {}, guarded(job, context))
     if (schedules && job.schedule) {
       await boss.schedule(job.name, job.schedule.cron, null, { tz: job.schedule.tz ?? 'UTC' })

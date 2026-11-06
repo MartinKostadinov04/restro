@@ -1,8 +1,7 @@
 // Roles, attacked (the repair-review's A7), on a real Postgres as restro_app. A plain member of the
 // organisation against owner and admin actions, and a person with a role at one venue against the
 // other venue, and the bill of a table and the composer's items bound to the venue in the call
-// (RR-71, RR-72). What should hold and does is here; RR-70, which doesn't yet, is in
-// roles-actions.red.test.ts.
+// (RR-71, RR-72), and the composer's writes refused to a plain member (RR-70).
 import { randomUUID } from 'node:crypto'
 
 import { applyService, PERMISSIONS } from '@restro/core/service'
@@ -37,25 +36,12 @@ vi.mock('@/server/log', async () => (await import('./attack-session')).logModule
 const label = (entry: Attack) =>
   `${entry.action}${entry.how === undefined ? '' : ` (${entry.how})`}`
 
-/** Open to a plain member at the pin: RR-70 in roles-actions.red.test.ts settles the writes. */
+/**
+ * Open to a plain member at the pin. The composer's writes are not (RR-70, Martin 11-06: owner and
+ * admin edit the menu), so the member's sweep below covers them; menu-editors.test.ts has the role
+ * matrix.
+ */
 export const MEMBER_MAY_AT_THE_PIN: ReadonlySet<string> = new Set([
-  // The composer's writes that are not `ownersOnly`.
-  'placeItemAction',
-  'moveSectionAction',
-  'createSectionAction',
-  'setItemHiddenAction',
-  'setSectionHiddenAction',
-  'setSectionLayoutAction',
-  'renameSectionAction',
-  'renameItemAction',
-  'createTagAction',
-  'updateTagAction',
-  'moveTagAction',
-  'setTagArchivedAction',
-  'setItemTagsAction',
-  'saveItemFieldAction',
-  'saveItemTranslationAction',
-  'removeItemImageAction',
   // Reads of the draft.
   'loadItemSheetAction',
   'loadItemHistoryAction',

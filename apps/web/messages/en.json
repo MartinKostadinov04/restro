@@ -800,7 +800,8 @@
       "errors": {
         "forbidden": "Only owners and admins can change guest features.",
         "invalid": "These changes could not be saved. Reload the page and try again.",
-        "failed": "Something went wrong. Try again."
+        "failed": "Something went wrong. Try again.",
+        "privacy_missing": "Add the venue's privacy notice link in Settings › Ordering first."
       }
     },
     "toolbar": {
@@ -866,7 +867,6 @@
   "workspace": {
     "switchTab": "Switch tab",
     "switchSection": "Switch section",
-    "comingInStage": "Coming in Stage {stage}",
     "tabs": {
       "studio": "Studio",
       "tables": "Tables & QR",
@@ -1969,6 +1969,8 @@
     "later": "Later",
     "e_open_t": "Nothing is waiting",
     "e_open_d": "Table calls and money alerts show up here.",
+    "e_none_t": "There are no tables yet",
+    "e_none_d": "Add them in Tables & QR. Their calls and money alerts show up here.",
     "e_night_t": "Tables aren't open yet",
     "e_night_d": "Open them for phones to start ordering.",
     "offline": "No connection. This is how things stood at {time}. It refreshes by itself.",
@@ -2109,6 +2111,9 @@
     "so_empty_t": "No orders sent tonight yet",
     "so_empty_d": "Orders from phones show up here as soon as they're sent.",
     "so_empty_b": "Go to Actions and tables",
+    "sh_fail_t": "Couldn't load this",
+    "sh_fail": "No answer yet. Check the connection and try again.",
+    "retry": "Try again",
     "so_fail": "Couldn't load the sent orders. Check the connection; the list tries again by itself.",
     "so_none": "No sent order matches \"{q}\" tonight.",
     "st_waiting": "Waiting",
@@ -2179,7 +2184,6 @@
     "nt_csv": "Download CSV",
     "nt_fix": "To fix",
     "nt_fix_none": "Nothing to fix.",
-    "nt_fix_so": "Sent order {ref}, {table}: still unconfirmed",
     "nt_sent": "Sent orders",
     "nt_sent_sum": "{n} sent · {a} added · {ns} not sent · {u} unconfirmed",
     "nt_show_all": "Show all {n}",
@@ -2272,6 +2276,13 @@
     "pb_lost": "Card payments in the app are paused: Restro lost access to the venue's {provider} account. Ordering goes on; take payments in {source}.",
     "pb_restricted": "Card payments in the app are paused: {provider} can't take card payments on the venue's account. Ordering goes on; take payments in {source}.",
     "pb_reconnect": "Reconnect",
+    "pb_setup": "Card payments in the app aren't on yet: {what}.",
+    "pb_s_card": "{provider} still needs details from you",
+    "pb_s_till": "the card payment type isn't chosen in {source} yet",
+    "pb_s_tables": "a payment table isn't marked for each bar yet",
+    "pb_s_emails": "{provider}'s emails to guests aren't turned off yet",
+    "pb_s_details": "the venue's details aren't filled in yet",
+    "pb_finish": "Finish setup",
     "pb_who": "Someone allowed to connect payments reconnects it in Settings, Paying.",
     "nt_pay": "Payments",
     "nt_pay_sum": "{n} payments · {c} charged · {r} released · {u} not confirmed",
@@ -2292,7 +2303,6 @@
     "nt_t_tips": "Tips",
     "nt_t_unconf_pay": "Payments not confirmed",
     "nt_t_unconf_amt": "Held on unconfirmed payments",
-    "nt_tg_pay": "Payments: {n} taken, {k} to fix",
     "py_title": "Payment for {table}",
     "py_number": "Payment number {ref}",
     "py_steps": "Steps",
@@ -2430,7 +2440,9 @@
       "invalid_settings": "Those hours don't fit the night. Check the times.",
       "telegram_off": "Telegram isn't set up for this installation yet.",
       "telegram_failed": "Couldn't reach Telegram. Try again.",
-      "no_group": "No Telegram group is linked."
+      "no_group": "No Telegram group is linked.",
+      "privacy_missing": "Add the venue's privacy notice link in Settings › Ordering first.",
+      "staff_account_required": "Only a staff account can make this the bar tablet: sign in here with an account whose role is Staff."
     },
     "sf_title": "Staff and roles",
     "sf_people": "People",
@@ -2500,17 +2512,15 @@
         "roles": "Manage staff, roles, PINs and devices"
       }
     },
-    "sf_dev_make": "Make this browser a shared device",
     "sf_dev_line": "From then on this browser asks for a PIN for every action and can't open settings.",
     "sf_dev_name": "Device name",
     "sf_dev_example": "Bar tablet",
     "sf_dev_go": "Make shared",
     "sf_dev_since": "Since {date}",
     "sf_dev_stop": "Stop sharing",
-    "sf_dev_stop_body": "\"{device}\" becomes an ordinary sign-in again. To share it again, its owner signs in on it.",
+    "sf_dev_stop_body": "\"{device}\" becomes an ordinary sign-in again. To share it again, a staff account signs in on it.",
     "sf_e_denied": "You can't change {name}: they hold rights you don't.",
     "sf_e_taken": "There's already a role called {name}.",
-    "sf_e_pins": "Couldn't make a new PIN. Try again; if it keeps failing, ask Restro.",
     "sf_e_account": "That account is already linked to {other}.",
     "sf_e_shared": "This browser is already a shared device.",
     "sf_e_in_use": "Move its people to another role first.",
@@ -2686,6 +2696,13 @@
       "manager": "Manager",
       "owner": "Owner"
     },
-    "al_money_line": "Payment alerts ring only for people who may follow up payments; if none of them is switched on, they ring for all of them."
+    "al_money_line": "Payment alerts ring only for people who may follow up payments; if none of them is switched on, they ring for all of them.",
+    "st_legal_d": "Guests see the privacy notice link before they share their location or order, and these details behind a link on the pay screen. Write them as in the Commercial Register.",
+    "st_legal_req": "Fill this in to turn ordering from the phone on.",
+    "st_privacy_need": "Turns on once the venue has a privacy notice link. <link>Add it in Settings › Ordering</link>.",
+    "st_privacy_missing": "On, but the venue has no privacy notice link, so guests are shown none. <link>Add it in Settings › Ordering</link>.",
+    "st_privacy_ordering": "Ordering from the phone is on, but the venue has no privacy notice link, so guests are shown none. <link>Add it in Settings › Ordering</link>.",
+    "sf_dev_how": "The bar tablet signs in with a staff account, one whose role here is Staff (not an owner, admin or manager, who get money alerts and see tips). Sign in on the tablet with it and choose \"Make this the bar tablet\" on Tonight.",
+    "sf_dev_tablet": "Make this the bar tablet"
   }
 }

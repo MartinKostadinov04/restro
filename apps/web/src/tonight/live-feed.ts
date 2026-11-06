@@ -6,6 +6,7 @@
 // the rows already drawn only change in place and a still line says "{k} new", and one tap shows
 // them. Nothing slides. A new query (a search, a filter, a day, "Show earlier") fetches at once
 // and replaces the list.
+import { unstable_rethrow } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 /** How often the list asks the server again. */
@@ -28,6 +29,14 @@ interface Options<V> {
   readonly live: boolean
 }
 
+/** A read that never got an answer is a failed read (RR-O47), not an unhandled rejection. */
+function ask<V>(load: () => Promise<V | null>): Promise<V | null> {
+  return load().catch((error: unknown) => {
+    unstable_rethrow(error)
+    return null
+  })
+}
+
 export function useLiveFeed<V>(options: Options<V>) {
   const [shown, setShown] = useState(options.initial)
   const [pending, setPending] = useState<V | null>(null)
@@ -48,7 +57,7 @@ export function useLiveFeed<V>(options: Options<V>) {
     }
     const mine = ++generation.current
     setLoading(true)
-    void latest.current.load().then((view) => {
+    void ask(latest.current.load).then((view) => {
       if (mine !== generation.current) return
       setLoading(false)
       if (view === null) {
@@ -68,7 +77,7 @@ export function useLiveFeed<V>(options: Options<V>) {
     const timer = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
       const mine = generation.current
-      void latest.current.load().then((view) => {
+      void ask(latest.current.load).then((view) => {
         if (mine !== generation.current) return
         if (view === null) {
           setFailed(true)
@@ -102,7 +111,7 @@ export function useLiveFeed<V>(options: Options<V>) {
   /** Reads again now and shows the result, wherever the page is scrolled (after an answer). */
   const reload = useCallback(() => {
     const mine = ++generation.current
-    void latest.current.load().then((view) => {
+    void ask(latest.current.load).then((view) => {
       if (mine !== generation.current || view === null) return
       setShown(view)
       setPending(null)

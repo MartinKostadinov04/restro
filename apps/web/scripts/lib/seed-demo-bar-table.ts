@@ -228,7 +228,20 @@ export async function seedDemoBarTable(
     )
 
     // The venue's Style and guest features, then the menu published as the publish job does: the
-    // snapshot, then its files.
+    // snapshot, then its files. The legal details first: ordering from the phone turns on only
+    // once the venue has a privacy notice link on file (RR-O44), and `setGuestFeatures` refuses
+    // without one. Made-up values, written straight into the settings as a fixture may.
+    await owner.query(`update restro.venues set settings = settings || $2::jsonb where id = $1`, [
+      demo.venueId,
+      JSON.stringify({
+        legalDetails: {
+          name: `${options.organizationName} EOOD`,
+          eik: '123456789',
+          address: 'Sofia, 1 Demo Street',
+          privacyUrl: 'https://demo-bar.example/privacy',
+        },
+      }),
+    ])
     await setStyle(pool, tenantId, demo.venueId, options.style)
     await setGuestFeatures(pool, tenantId, { venueId: demo.venueId, features: options.features })
     const menu = await provisionMenu(pool, tenantId, demo.venueId)

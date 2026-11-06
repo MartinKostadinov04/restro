@@ -45,6 +45,7 @@ import {
   DEFAULT_ROLE_NAMES,
   DEFAULT_ROLE_PERMISSIONS,
   grantedPermissions,
+  holdsStaffRightsOnly,
   isDefaultRoleKind,
   PERMISSIONS,
   type Permission,
@@ -745,12 +746,16 @@ export async function revealPins(
 /**
  * `device.mark_shared`: the actor's own browser session becomes a shared device of the venue.
  * Restro's admin team can't: which account sits on the bar device is the venue's choice (D122 §7).
+ * Only a staff-only account may (RR-O35, Martin 11-06): an owner's, an admin's or a manager's would
+ * ring with the money alerts and show the tips on the bar's screen (RR-92); they get
+ * `staff_account_required`. The owner still sees and stops every shared device in Settings.
  */
 export async function markSharedDevice(
   stx: ServiceTx,
   command: { readonly name: string },
 ): Promise<ServiceResult> {
   if (stx.actor.kind !== 'user') return refused(null, 'own_session_required')
+  if (!holdsStaffRightsOnly(stx.permissions)) return refused(null, 'staff_account_required')
   const id = newId('dv')
   const [row] = await stx.tx
     .insert(sharedDevices)
