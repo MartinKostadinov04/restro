@@ -205,7 +205,7 @@ export interface Services {
   readonly payFirstBlock: 'below_minimum' | null
   /**
    * The pay-first part of the last Send was refused on its own while the bill lines went (DA-1):
-   * the server's code, for the face to word. Cleared by the next Send and by "Dismiss".
+   * the server's code, for the face to word. The next Send clears it.
    */
   readonly payFirstRefused: string | null
   /** The tip chosen for the pay-first part, and the text typed in "Other amount" (none to start). */
