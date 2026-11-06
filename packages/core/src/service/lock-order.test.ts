@@ -14,6 +14,16 @@ describe('the lock ledger', () => {
     expect(ledger.claim('lease', ['order_slot:tb_1'])).toEqual(['order_slot:tb_1'])
   })
 
+  it('has a rank for a payment table row, after its lease and not before it (RR-O13)', () => {
+    expect(LOCK_RANKS.indexOf('table')).toBeGreaterThan(LOCK_RANKS.indexOf('lease'))
+    const ledger = new LockLedger()
+    expect(ledger.claim('lease', ['payment_table:tb_1'])).toEqual(['payment_table:tb_1'])
+    expect(ledger.claim('table', ['tb_1'])).toEqual(['tb_1'])
+    const wrong = new LockLedger()
+    wrong.claim('table', ['tb_1'])
+    expect(() => wrong.claim('lease', ['payment_table:tb_1'])).toThrow(LockOrderError)
+  })
+
   it('refuses a kind that comes earlier in the order than one already held', () => {
     const ledger = new LockLedger()
     ledger.claim('sent_order', ['so_1'])

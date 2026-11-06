@@ -62,6 +62,21 @@ export function FailedBlock({ text }: { text: string }) {
   )
 }
 
+/** A sheet whose read did not get through: what to do, and one button to read again (RR-O32). */
+export function ReadFailed({ onRetry }: { onRetry: () => void }) {
+  const t = useTranslations('tonight')
+  return (
+    <Empty className="p-6 md:p-6" role="alert" data-testid="read-failed">
+      <EmptyHeader>
+        <EmptyDescription>{t('sh_fail')}</EmptyDescription>
+      </EmptyHeader>
+      <Button type="button" variant="outline" className="h-11" onClick={onRetry}>
+        {t('retry')}
+      </Button>
+    </Empty>
+  )
+}
+
 /** A block with a title and a line, and optionally one button. */
 export function NothingHere({
   title,

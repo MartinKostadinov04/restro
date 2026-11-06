@@ -23,6 +23,7 @@ import { useMoney } from './money'
 import { type NightSlots, visibleSections } from './night-slots'
 import { clockAt, OfflineLine } from './offline-line'
 import { PAGE } from './pages'
+import { readAttempt } from './read-attempt'
 import { RunProvider } from './run'
 import { SentRow } from './sent-row'
 import { SentOrderSheet } from './sent-sheet'
@@ -81,16 +82,18 @@ function Content({ view, frame, slots }: { view: NightView; frame: Frame; slots:
   useEffect(() => {
     if (limit === undefined) return
     let live = true
-    void sentOrdersAction({ venueId: frame.venueId, day, limit }).then((result) => {
-      if (!live) return
-      setAll((before) =>
-        before === null
-          ? before
-          : result.ok
-            ? { ...before, list: result.list, failed: false }
-            : { ...before, failed: true },
-      )
-    })
+    void readAttempt(() => sentOrdersAction({ venueId: frame.venueId, day, limit })).then(
+      (result) => {
+        if (!live) return
+        setAll((before) =>
+          before === null
+            ? before
+            : result.ok
+              ? { ...before, list: result.list, failed: false }
+              : { ...before, failed: true },
+        )
+      },
+    )
     return () => {
       live = false
     }

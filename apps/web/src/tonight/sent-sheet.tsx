@@ -30,8 +30,10 @@ import { sentOrderDetailAction } from '@/server/tonight/night-actions'
 import type { Frame, SentDetailView } from '@/server/tonight/night-view'
 
 import { useMoney } from './money'
+import { READ_FAILED, readAttempt } from './read-attempt'
 import { SentOrderAnswers } from './sent-order-answers'
 import { useReasonWord, useStateWord } from './sent-row'
+import { ReadFailed } from './tab-parts'
 import { useTableName } from './table-name'
 import { useWho } from './who'
 
@@ -155,9 +157,16 @@ export function SentOrderSheet({
   // undefined while loading; null when the order is not this venue's.
   const [detail, setDetail] = useState<SentDetailView | null | undefined>(undefined)
 
+  // The read never got an answer (no connection): a retry line, not a sheet that loads for ever.
+  const [failed, setFailed] = useState(false)
+
   const load = useCallback(() => {
-    void sentOrderDetailAction({ venueId: frame.venueId, sentOrderId }).then((result) =>
-      setDetail(result.ok ? result.detail : null),
+    setFailed(false)
+    void readAttempt(() => sentOrderDetailAction({ venueId: frame.venueId, sentOrderId })).then(
+      (result) => {
+        if (result === READ_FAILED) setFailed(true)
+        else setDetail(result.ok ? result.detail : null)
+      },
     )
   }, [frame.venueId, sentOrderId])
   useEffect(() => load(), [load])
@@ -166,14 +175,22 @@ export function SentOrderSheet({
     load()
     onChanged()
   }
-  const title = detail ? t('sh_ref', { ref: detail.row.reference }) : t('loading')
+  const title = detail
+    ? t('sh_ref', { ref: detail.row.reference })
+    : failed
+      ? t('sh_fail_t')
+      : t('loading')
   const sub = detail
     ? t('sh_table', {
         table: tableName(detail.row.table, detail.row.numbered),
         time: detail.row.time,
       })
     : ''
-  const body = detail ? <Body detail={detail} frame={frame} onAnswered={onAnswered} /> : null
+  const body = detail ? (
+    <Body detail={detail} frame={frame} onAnswered={onAnswered} />
+  ) : failed ? (
+    <ReadFailed onRetry={load} />
+  ) : null
   const close = (
     <Button type="button" variant="outline" className="h-12" onClick={onClose}>
       {t('close')}

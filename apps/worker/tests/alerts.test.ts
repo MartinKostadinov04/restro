@@ -498,6 +498,28 @@ describe.skipIf(!hasDatabase)('alerts reach people', () => {
       expect(endpointsPushed()).toEqual(['3'])
     })
 
+    it('counts a delivery with no device to ring as finished, not a retry every 30 seconds (RR-O31)', async () => {
+      // Only Maria is switched on, and she may not follow up money; the owner and Boris have no
+      // device left, so the push has nobody to go to.
+      await setOrdering({ alertRecipientUserIds: [answererId] })
+      await query(
+        'update restro.push_subscriptions set revoked_at = now() where tenant_id = $1 and user_id = any($2)',
+        [tenantId, [ownerId, managerId]],
+      )
+      try {
+        const id = await seedAlert('payment_unconfirmed', { permission: 'money.follow_up' })
+        await pass()
+        expect(pushed).toEqual([])
+        expect([...retryAfter.keys()].filter((key) => key.includes(':push:'))).toEqual([])
+        expect((await rowOf(id))?.details.delivery).toHaveProperty('push')
+      } finally {
+        await query(
+          'update restro.push_subscriptions set revoked_at = null where tenant_id = $1 and user_id = any($2)',
+          [tenantId, [ownerId, managerId]],
+        )
+      }
+    })
+
     it('leaves an alert with another permission to the switched-on people as before', async () => {
       await seedAlert('order_unconfirmed')
       await pass()

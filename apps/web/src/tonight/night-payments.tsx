@@ -27,6 +27,7 @@ import { variantTitleKey } from './money-rows'
 import { PAGE } from './pages'
 import { PaymentSheet } from './payment-sheet'
 import { PAYMENT_ANSWER_WORDS, PAYMENT_STATE_WORDS, releaseReasonWord } from './payment-state-words'
+import { readAttempt } from './read-attempt'
 import { FailedBlock } from './tab-parts'
 import { useTableName } from './table-name'
 import { useWho } from './who'
@@ -195,16 +196,18 @@ export function NightPaymentsList({ initial, frame }: { initial: PaymentsView; f
   useEffect(() => {
     if (limit === undefined) return
     let live = true
-    void nightPaymentsAction({ venueId: frame.venueId, day, all: limit }).then((result) => {
-      if (!live) return
-      setAll((before) =>
-        before === null
-          ? before
-          : result.ok
-            ? { ...before, view: result.payments, failed: false }
-            : { ...before, failed: true },
-      )
-    })
+    void readAttempt(() => nightPaymentsAction({ venueId: frame.venueId, day, all: limit })).then(
+      (result) => {
+        if (!live) return
+        setAll((before) =>
+          before === null
+            ? before
+            : result.ok
+              ? { ...before, view: result.payments, failed: false }
+              : { ...before, failed: true },
+        )
+      },
+    )
     return () => {
       live = false
     }
