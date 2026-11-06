@@ -10,8 +10,10 @@
 //   your waiter"), "Stop location check" and Cancel. The call's own outcome shows here and the
 //   sheet goes only once the host took it (D72): a refusal or a lost answer is no success (DA-5).
 //
-// "Stop location check" is also on the bill (bill-sheet.tsx). The face shows no position, pass or
-// token: it only calls the host's controls (`binding.location`).
+// "Stop location check" is also on every service sheet while the phone holds a pass (sheets.tsx):
+// Martin 11-06, DA-9 — it must stay reachable whatever the venue's Bill switch is, because the
+// consent text promises "You can stop anytime". The face shows no position, pass or token: it only
+// calls the host's controls (`binding.location`).
 
 import { useEffect, useRef } from 'react'
 
@@ -46,6 +48,26 @@ function CallWaiterFromFailed({ dismiss }: { readonly dismiss: () => void }) {
       </button>
       {notice}
     </>
+  )
+}
+
+/**
+ * Why the order and the bill are hidden while the phone has no pass, with the guest's own "Allow
+ * location", which brings the consent screen back (`location.reopen`). D119: after "Not now" or
+ * "Stop location check" the check never asks again that day by itself, so this tap is the way back.
+ * It is in the bag, and on the menu itself once a tap was refused for it (DA-22).
+ */
+export function LocationNeeded() {
+  const o = useServices()
+  const reopen = o?.binding.location?.reopen
+  if (o === null || reopen === undefined) return null
+  return (
+    <div className="ro-notice" data-slot="location.needed" data-location-prompt="none">
+      <span>{o.words.locationNeeded}</span>
+      <button type="button" className="ro-ghost" onClick={() => reopen()}>
+        {o.words.locationAllowAgain}
+      </button>
+    </div>
   )
 }
 

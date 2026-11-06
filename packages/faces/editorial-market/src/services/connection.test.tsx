@@ -196,6 +196,40 @@ describe('Stop location check (RR-49, D119)', () => {
     const bill = screen.getByRole('dialog', { name: bg.tab })
     expect(within(bill).getByRole('button', { name: bg.locationStop })).toBeTruthy()
   })
+
+  it('stays reachable in the bag, on Pay and in Call a waiter with the Bill switch off (DA-9)', async () => {
+    // The narrow set-up of DA-9: the venue checks location and takes orders, its Bill switch is
+    // off, and a bill reading has come in all the same. There is no bill sheet to stop the check
+    // from, so the bag, Pay and Call a waiter each carry the stop (Martin 11-06).
+    const noBill = { ...view, features: { ...view.features, bill: false } }
+    const host = fakeHost({
+      location: location('none', 'held'),
+      order: orderOf([orderLine(hummus)]),
+      tableBill: tableBillOf(),
+      paying: payingOf(),
+    })
+    drawFace(host, noBill)
+    expect(screen.queryByRole('button', { name: en.tab })).toBeNull()
+    const stopFrom = async (open: string | RegExp, title: string) => {
+      fireEvent.click(screen.getByRole('button', { name: open }))
+      const sheet = screen.getByRole('dialog', { name: title })
+      fireEvent.click(within(sheet).getByRole('button', { name: en.locationStop }))
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Close' }))
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    }
+    await stopFrom(/View bag/, en.bag)
+    await stopFrom(en.payTitle, en.payTitle)
+    await stopFrom(en.callServer, en.callServer)
+    expect(host.located).toEqual(['stop', 'stop', 'stop'])
+  })
+
+  it('is not drawn on a sheet before the phone holds a pass', () => {
+    const host = fakeHost({ location: location('none', 'needed'), order: orderOf([]) })
+    drawFace(host)
+    fireEvent.click(screen.getByRole('button', { name: en.callServer }))
+    const call = screen.getByRole('dialog', { name: en.callServer })
+    expect(within(call).queryByRole('button', { name: en.locationStop })).toBeNull()
+  })
 })
 
 /** A host whose table order holds one Hummus (the host's, not the face's). */
@@ -296,6 +330,23 @@ describe('Send and Pay greyed while offline (RR-51, D120, D121)', () => {
     const sheet = screen.getByRole('dialog', { name: 'Pay' })
     expect(within(sheet).getByRole('button', { name: /^Pay / }).hasAttribute('disabled')).toBe(true)
     expect(sheet.textContent).toContain(en.offline)
+  })
+
+  it('says the weak connection on the menu itself, not only inside a sheet (DA-23)', () => {
+    const host = withHummus({ offline: true })
+    const page = drawFace(host)
+    expect(document.querySelector('[data-slot="menu.offline"]')?.textContent).toBe(en.offline)
+    // The bag says the same line in its own place, so the page's goes while a sheet is open.
+    fireEvent.click(screen.getByRole('button', { name: /View bag/ }))
+    expect(document.querySelector('[data-slot="menu.offline"]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    page.update({ offline: false })
+    expect(document.querySelector('[data-slot="menu.offline"]')).toBeNull()
+  })
+
+  it('says it on the menu in Bulgarian', () => {
+    drawFace(withHummus({ offline: true }), orderingView('bg_BG'))
+    expect(document.querySelector('[data-slot="menu.offline"]')?.textContent).toBe(bg.offline)
   })
 })
 

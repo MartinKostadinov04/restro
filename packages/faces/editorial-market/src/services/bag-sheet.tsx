@@ -5,10 +5,11 @@
 // once. The total is an estimate, labelled so; the bill that follows is the host's.
 //
 // From top to bottom: the weak-connection line or D120's lost-Send line, why the order is hidden
-// (no location pass), the host's words when ordering is paused, the table closed, last orders or
-// the venue closed for tonight, the last refusal, the lines (each with its steppers and Remove, a
-// removed line's Undo, the earlier order's Restore), Send (or the duplicate check) and the table's
-// sent orders with their states and the "Show this to your waiter" card.
+// (no location pass, with the guest's own "Allow location"), the host's words when ordering is
+// paused, the table closed, last orders or the venue closed for tonight, the last refusal, the
+// lines (each with its steppers and Remove, a removed line's Undo, the earlier order's Restore),
+// Send (or the duplicate check) and the table's sent orders with their states and the "Show this to
+// your waiter" card.
 //
 // Send says how many items go and waits for the host. A line the live overlay shows sold out, or
 // that the POS refused as out of stock, stays on the order marked, and the button then says "Send
@@ -23,16 +24,11 @@ import { useState } from 'react'
 
 import { Photo, Text } from '../parts'
 import { newActionId } from './command'
-import { StopLocationCheck } from './location-sheet'
+import { LocationNeeded } from './location-sheet'
 import { Stepper } from './parts'
 import { PaymentScreen } from './pay-sheet'
 import { type Services, useServicesRequired } from './provider'
 import { TipRow } from './tip-row'
-
-/** Whether the bill is drawn: the host has the table's bill or this phone's payment. */
-function billShown(o: Services): boolean {
-  return o.state.tableBill != null || o.state.payment != null
-}
 
 /** A line's name when only its item id is at hand: the menu's, or the hidden item's (D131). */
 function lineName(o: Services, itemId: string): string {
@@ -80,28 +76,12 @@ function OrderingNotes({ o }: { readonly o: Services }) {
 /**
  * While the phone has no location pass the host has no order and no bill: why, and the guest's own
  * "Allow location" (it brings the consent sheet back after "Not now" or "Stop location check").
- * With a pass and no bill drawn, the stop control sits here; with a bill it sits on the bill.
+ * The stop control is the sheet's own, drawn for every service screen (sheets.tsx, DA-9).
  */
 function LocationNotes({ o }: { readonly o: Services }) {
-  const { words, state, binding } = o
-  const location = state.location ?? null
-  if (location === null || binding.location === undefined || location.prompt !== 'none') return null
-  if (location.state === 'held') {
-    return billShown(o) ? null : (
-      <div data-location-prompt="none">
-        <StopLocationCheck />
-      </div>
-    )
-  }
-  if (location.state !== 'needed') return null
-  return (
-    <div className="ro-notice" data-location-prompt="none">
-      <span>{words.locationNeeded}</span>
-      <button type="button" className="ro-ghost" onClick={() => binding.location?.reopen()}>
-        {words.locationAllowAgain}
-      </button>
-    </div>
-  )
+  const location = o.state.location ?? null
+  if (location === null || location.prompt !== 'none' || location.state !== 'needed') return null
+  return <LocationNeeded />
 }
 
 /** The table's sent orders, each with its state, and the card to show a waiter (D116, D120, D122 §5). */

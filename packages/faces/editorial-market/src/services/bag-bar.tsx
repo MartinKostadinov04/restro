@@ -5,12 +5,31 @@
 // it holds the button once there is something to open: lines, a removed line's Undo, the earlier
 // order, a sent order, a lost Send, or the reason the order is hidden (no location pass). The bar
 // is hidden while a sheet is open. The last refusal of an order command shows over the bar when no
-// sheet is open (inside the bag sheet it shows there).
+// sheet is open (inside the bag sheet it shows there), and so does why the order is hidden once a
+// tap was refused for the location check (DA-22). The weak-connection line is a slim line at the
+// top of the menu (DA-23).
 
 import { callIsSingleStep, paymentIsFinal } from '@restro/shell'
 
 import { HandIcon } from '../icons'
+import { LocationNeeded } from './location-sheet'
 import { orderBusy, useServices } from './provider'
+
+/**
+ * The slim line at the top of the menu while the phone is not reaching Restro (RR-51, D121, DA-23):
+ * the weak-connection line was drawn only inside the bag and the pay sheet, so a guest browsing the
+ * menu watched a "+" slide back with nothing said. It states no outcome of its own (D72), and it is
+ * left to the sheets while one is open, which say the same line in their own place.
+ */
+export function ConnectionLine() {
+  const o = useServices()
+  if (o === null || o.sheet !== null || o.state.offline !== true) return null
+  return (
+    <p className="ro-topline" role="status" data-slot="menu.offline">
+      {o.words.offline}
+    </p>
+  )
+}
 
 /**
  * The slim line at the top of the menu while this phone has a payment that has not settled and its
@@ -53,6 +72,18 @@ export function ServiceBar() {
           <button type="button" className="ro-barnote" onClick={o.dismissNotice}>
             {o.notice}
           </button>
+        </div>
+      ) : null}
+      {/* After "Not now" or "Stop location check" a tap on "+" is refused and the check asks
+          nothing (D119), so the reason and the guest's own "Allow location" come to the page
+          itself rather than waiting inside the bag (DA-22). Only while the host is asking nothing
+          and still has no pass: its own sheet speaks the moment it does ask. */}
+      {o.locationBlocked &&
+      o.sheet === null &&
+      o.state.location?.prompt === 'none' &&
+      o.state.location.state === 'needed' ? (
+        <div className="ro-barbox" role="alert" data-location-blocked="">
+          <LocationNeeded />
         </div>
       ) : null}
       <div className="ro-bagbar" data-bag={filled ? 'true' : 'false'} hidden={o.sheet !== null}>
