@@ -76,8 +76,12 @@ export function ServiceBar() {
       ) : null}
       {/* After "Not now" or "Stop location check" a tap on "+" is refused and the check asks
           nothing (D119), so the reason and the guest's own "Allow location" come to the page
-          itself rather than waiting inside the bag (DA-22). */}
-      {o.locationBlocked && o.sheet === null ? (
+          itself rather than waiting inside the bag (DA-22). Only while the host is asking nothing
+          and still has no pass: its own sheet speaks the moment it does ask. */}
+      {o.locationBlocked &&
+      o.sheet === null &&
+      o.state.location?.prompt === 'none' &&
+      o.state.location.state === 'needed' ? (
         <div className="ro-barbox" role="alert" data-location-blocked="">
           <LocationNeeded />
         </div>
