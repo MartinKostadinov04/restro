@@ -4,13 +4,15 @@
 // server/design/actions.ts, the guest-feature actions and the menus' rename. Who may change things
 // is decided from the person's role, here for what to draw and again in every action for what to
 // allow.
-import { readGuestFeatures } from '@restro/core'
+import { hasPrivacyNotice, readGuestFeatures } from '@restro/core'
 import type { Venue } from '@restro/db'
 
 import { getAssetStore } from '@/server/assets'
 import { composerMenusOf } from '@/server/composer/menu'
 import { getPool } from '@/server/db'
 import { loadDesign } from '@/server/design/service'
+import { payingOffered } from '@/server/settings/paying-offer'
+import { privacyHref } from '@/settings/privacy-href'
 
 import { DesignPanel } from './design-panel'
 
@@ -26,9 +28,10 @@ export async function DesignTab({
   /** `?menu=`: the menu to preview and to name (else the live one). */
   menu?: unknown
 }) {
-  const [initial, { current }] = await Promise.all([
+  const [initial, { current }, paying] = await Promise.all([
     loadDesign(getPool(), tenantId, venue, getAssetStore, role),
     composerMenusOf(tenantId, venue.id, menu),
+    payingOffered(tenantId, venue.id),
   ])
   return (
     <DesignPanel
@@ -37,6 +40,10 @@ export async function DesignTab({
       menu={current === null ? null : { id: current.id, name: current.name }}
       venueName={venue.name}
       features={readGuestFeatures(venue.settings)}
+      privacy={{
+        onFile: hasPrivacyNotice(venue.settings),
+        href: paying ? privacyHref(venue.id) : null,
+      }}
     />
   )
 }

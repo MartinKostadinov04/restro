@@ -342,6 +342,7 @@ export {
   DEFAULT_ROLE_KINDS,
   DEFAULT_ROLE_PERMISSIONS,
   type DefaultRoleKind,
+  holdsStaffRightsOnly,
   isPermission,
   isSettingsPermission,
   OPERATOR_PERMISSIONS,

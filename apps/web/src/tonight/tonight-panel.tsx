@@ -40,6 +40,7 @@ import type { TonightView } from '@/server/tonight/view'
 
 import { ActionRowItem, OutOfStockNotice, useAgo } from './action-rows'
 import { callKindsText } from './call-kinds'
+import { MakeTablet } from './make-tablet'
 import { useMoney } from './money'
 import { moneyTitleKey } from './money-rows'
 import { OfflineLine } from './offline-line'
@@ -144,7 +145,15 @@ function PauseMenu({ view }: { view: TonightView }) {
   )
 }
 
-function Content({ view, pushKey }: { view: TonightView; pushKey: string | undefined }) {
+function Content({
+  view,
+  pushKey,
+  tablet,
+}: {
+  view: TonightView
+  pushKey: string | undefined
+  tablet: Tablet | undefined
+}) {
   const t = useTranslations('tonight')
   const money = useMoney()
   const { run, busy } = useTonightRun()
@@ -406,6 +415,7 @@ function Content({ view, pushKey }: { view: TonightView; pushKey: string | undef
       {pushKey === undefined ? null : (
         <PushControl venueId={view.venueId} pushKey={pushKey} sharedDevice={view.device} />
       )}
+      {tablet === undefined ? null : <MakeTablet venueId={view.venueId} email={tablet.email} />}
       <p role="status" aria-live="polite" className="sr-only" data-testid="announcement">
         {announcement}
       </p>
@@ -474,21 +484,30 @@ function Content({ view, pushKey }: { view: TonightView; pushKey: string | undef
   )
 }
 
+/** A staff-only account on a browser that is not shared yet (RR-O35): it may make it the bar tablet. */
+export interface Tablet {
+  /** The account's, for the password asked again. */
+  readonly email: string
+}
+
 /** The Tonight screen for one venue. */
 export function TonightPanel({
   view,
   pushKey,
+  tablet,
 }: {
   view: TonightView
   /** The Web Push public key, for whoever may answer alerts; without it the control doesn't show. */
   pushKey?: string | undefined
+  /** Set when "Make this the bar tablet" is offered. */
+  tablet?: Tablet | undefined
 }) {
   const t = useTranslations('tonight')
   // A venue with no POS still reads right where a sentence names its system.
   const named = view.source === '' ? { ...view, source: t('source_none') } : view
   return (
     <RunProvider>
-      <Content view={named} pushKey={pushKey} />
+      <Content view={named} pushKey={pushKey} tablet={tablet} />
     </RunProvider>
   )
 }

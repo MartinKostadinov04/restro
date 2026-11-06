@@ -59,6 +59,16 @@ export function readLegalDetails(settings: Readonly<Record<string, unknown>>): L
   return parsed.success ? parsed.data : null
 }
 
+/**
+ * True when the venue has a privacy notice link on file (its legal details, all four filled in).
+ * Until then it can't turn on the location check or ordering from the phone: the guest's consent
+ * ends with that link (D121; RR-O15, RR-O44, Martin 11-06). A venue that already has either on keeps
+ * it on; its settings say what is missing.
+ */
+export function hasPrivacyNotice(settings: Readonly<Record<string, unknown>>): boolean {
+  return readLegalDetails(settings) !== null
+}
+
 /** The four fields as the screen's form holds them: any of them may be empty. */
 export interface LegalDraft {
   readonly name: string

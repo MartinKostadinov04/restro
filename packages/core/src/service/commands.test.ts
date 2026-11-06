@@ -4,7 +4,13 @@ import { describe, expect, it } from 'vitest'
 
 import { SERVICE_COMMANDS, ServiceCommandSchema } from './commands'
 import { actorText, ServiceContextSchema } from './context'
-import { isSettingsPermission, type Permission } from './permissions'
+import {
+  DEFAULT_ROLE_PERMISSIONS,
+  holdsStaffRightsOnly,
+  isSettingsPermission,
+  PERMISSIONS,
+  type Permission,
+} from './permissions'
 
 const TENANT = 'tn_0123456789ABCDEFGHIJKL'
 const VENUE = 'vn_0123456789ABCDEFGHIJKL'
@@ -87,7 +93,6 @@ describe('the service commands', () => {
       'staff.link_account',
       'pin.reset',
       'pin.reveal',
-      'device.mark_shared',
       'device.revoke',
     ] as const
     for (const type of types) {
@@ -115,6 +120,14 @@ describe('the service commands', () => {
         permissions: ['x'],
       }).success,
     ).toBe(false)
+  })
+
+  it('builds device.mark_shared for a staff-only account (RR-O35): what Tonight needs, a fresh sign-in', () => {
+    const definition = SERVICE_COMMANDS['device.mark_shared']
+    expect(definition.permission).toBe('night.view')
+    expect(definition.origins).toEqual(['staff'])
+    expect(definition.freshSignIn).toBe(true)
+    expect(definition.quickOnSharedDevice).toBeUndefined()
   })
 
   it('builds pay_first.set (#216): one change, each shape on its own right, a fresh sign-in', () => {
@@ -191,6 +204,19 @@ describe('the service commands', () => {
     }
     expect(ServiceCommandSchema.parse(add)).toEqual(add)
     expect(ServiceCommandSchema.safeParse({ ...add, priceMinor: 1 }).success).toBe(false)
+  })
+})
+
+describe('a staff-only account (RR-O35)', () => {
+  it.each([
+    ['the Staff role', DEFAULT_ROLE_PERMISSIONS.staff, true],
+    ['part of it', ['tables.open_close', 'night.view'], true],
+    ['the Manager role', DEFAULT_ROLE_PERMISSIONS.manager, false],
+    ['the Owner role, or an owner or admin of the organisation', PERMISSIONS, false],
+    ['staff and one setting', [...DEFAULT_ROLE_PERMISSIONS.staff, 'settings.roles'], false],
+    ['no role here', [], false],
+  ] as const)('%s', (_label, held, staffOnly) => {
+    expect(holdsStaffRightsOnly(held)).toBe(staffOnly)
   })
 })
 

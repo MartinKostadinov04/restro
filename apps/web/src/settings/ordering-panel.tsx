@@ -30,6 +30,8 @@ import { useMoney } from '@/tonight/money'
 
 import { CHOICES, SPOT_ACCURACY_LIMIT_METRES } from './hours'
 import { MinutesSelect } from './hours-panel'
+import { privacyHref } from './privacy-href'
+import { PrivacyLine } from './privacy-line'
 import { ReadOnlyLine } from './section-notices'
 import { useSettingsRun } from './use-settings-run'
 
@@ -48,6 +50,10 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
   const { pending, run } = runner
   const settings = view.settings
   const can = view.canChange
+  const privacyLink = view.payingListed ? privacyHref(view.venueId) : null
+  // The location check turns on only once the venue has a privacy notice link (RR-O15); one already
+  // on stays on.
+  const locationLocked = !view.privacyNotice && !settings.locationCheck
   const [editingCap, setEditingCap] = useState(false)
   // Enter or Escape has answered: the blur of the field going away is no second answer.
   const capAnswered = useRef(false)
@@ -134,6 +140,9 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
         <p className="mt-1 text-sm text-muted-foreground">{t('st_ordering_lede')}</p>
       </div>
       {can ? null : <ReadOnlyLine />}
+      {view.orderingOn && !view.privacyNotice ? (
+        <PrivacyLine state="ordering" href={privacyLink} testId="ord-privacy-ordering" />
+      ) : null}
 
       <div className="grid grid-cols-1 divide-y rounded-lg border bg-card">
         <Row label={t('st_cap')} htmlFor="ord-cap">
@@ -237,7 +246,7 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
               <Switch
                 id="ord-loc"
                 checked={settings.locationCheck}
-                disabled={pending}
+                disabled={pending || locationLocked}
                 onCheckedChange={(on) =>
                   save({ locationCheck: on }, { locationCheck: settings.locationCheck })
                 }
@@ -250,6 +259,15 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
             <p className="p-3 text-sm text-muted-foreground" data-testid="ord-loc-off">
               {t('st_loc_off')}
             </p>
+          )}
+          {view.privacyNotice ? null : (
+            <div className="p-3">
+              <PrivacyLine
+                state={settings.locationCheck ? 'missing' : 'need'}
+                href={privacyLink}
+                testId="ord-loc-privacy"
+              />
+            </div>
           )}
           <Row label={t('st_radius')} htmlFor="ord-radius">
             <ChoiceSelect

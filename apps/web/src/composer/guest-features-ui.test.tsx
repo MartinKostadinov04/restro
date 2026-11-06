@@ -15,7 +15,11 @@ import {
 } from '@/server/composer/guest-features-actions'
 import { renderWithIntl } from '@/test-utils'
 
-import { GuestFeaturesCard, type TemplateFeatureOptions } from './guest-features-panel'
+import {
+  GuestFeaturesCard,
+  type PrivacyNotice,
+  type TemplateFeatureOptions,
+} from './guest-features-panel'
 
 vi.mock('@/server/composer/guest-features-actions', () => ({
   saveGuestFeaturesAction: vi.fn(),
@@ -54,14 +58,24 @@ function setup({
   features = FEATURES,
   options = OPTIONS,
   canEdit = true,
+  privacy = { onFile: true, href: null },
+  locale = 'en',
 }: {
   features?: GuestFeatures
   options?: TemplateFeatureOptions
   canEdit?: boolean
+  privacy?: PrivacyNotice
+  locale?: 'en' | 'bg'
 } = {}) {
   renderWithIntl(
-    <GuestFeaturesCard venueId={VENUE} features={features} options={options} canEdit={canEdit} />,
-    { locale: 'en' },
+    <GuestFeaturesCard
+      venueId={VENUE}
+      features={features}
+      options={options}
+      canEdit={canEdit}
+      privacy={privacy}
+    />,
+    { locale },
   )
 }
 
@@ -182,6 +196,49 @@ describe('the guest features panel', () => {
     expect(switchNamed('Order from the phone').getAttribute('aria-checked')).toBe('true')
     // The save is over once the button is pressable again (the transition ends after the toast).
     await waitFor(() => expect(save().hasAttribute('disabled')).toBe(false))
+  })
+
+  describe('the privacy notice link (RR-O44)', () => {
+    const PAYING = `/venues/${VENUE}?tab=settings&section=paying`
+
+    it('keeps ordering off until the venue has the link, and says where to add it', () => {
+      setup({ privacy: { onFile: false, href: PAYING } })
+      expect(switchNamed('Order from the phone').hasAttribute('disabled')).toBe(true)
+      const line = screen.getByTestId('feature-ordering-privacy')
+      expect(line.textContent).toContain('privacy notice link')
+      expect(within(line).getByRole('link').getAttribute('href')).toBe(PAYING)
+    })
+
+    it('leaves ordering that is already on as it is, and says guests are shown no link', () => {
+      setup({
+        features: { ...FEATURES, ordering: true },
+        privacy: { onFile: false, href: PAYING },
+      })
+      const ordering = switchNamed('Order from the phone')
+      expect(ordering.getAttribute('aria-checked')).toBe('true')
+      expect(ordering.hasAttribute('disabled')).toBe(false)
+      expect(screen.getByTestId('feature-ordering-privacy').textContent).toContain(
+        'guests are shown none',
+      )
+    })
+
+    it('names the section without a link where the venue has no Paying section', () => {
+      setup({ privacy: { onFile: false, href: null } })
+      expect(within(screen.getByTestId('feature-ordering-privacy')).queryByRole('link')).toBeNull()
+    })
+
+    it('shows no line once the link is on file', () => {
+      setup()
+      expect(switchNamed('Order from the phone').hasAttribute('disabled')).toBe(false)
+      expect(screen.queryByTestId('feature-ordering-privacy')).toBeNull()
+    })
+
+    it('says it in Bulgarian', () => {
+      setup({ privacy: { onFile: false, href: PAYING }, locale: 'bg' })
+      expect(screen.getByTestId('feature-ordering-privacy').textContent).toContain(
+        'политиката за поверителност',
+      )
+    })
   })
 
   it('is read-only for a person who may not change the venue', () => {

@@ -37,6 +37,9 @@ function view(
     openNow: false,
     spotSetAt: null,
     email: 'owner@example.com',
+    privacyNotice: true,
+    orderingOn: false,
+    payingListed: true,
     ...more,
   }
 }
@@ -409,6 +412,77 @@ describe('Settings › Ordering', () => {
     const link = within(line).getByRole('link', { name: 'See on a map' })
     expect(link.getAttribute('href')).toContain('openstreetmap.org')
     expect(screen.getByRole('button', { name: 'Use where I am now' })).toBeTruthy()
+  })
+
+  describe('the privacy notice link (RR-O15, RR-O44)', () => {
+    const PAYING = `/venues/${VENUE}?tab=settings&section=paying`
+
+    it('keeps the location check off without the link, and says where to add it', async () => {
+      const user = userEvent.setup()
+      renderWithIntl(
+        <OrderingPanel view={view({ locationCheck: false }, { privacyNotice: false })} />,
+      )
+      await user.click(screen.getByRole('button', { name: 'More' }))
+      const check = screen.getByRole('switch', { name: 'Check guests are in the venue' })
+      expect(check.hasAttribute('disabled')).toBe(true)
+      const line = screen.getByTestId('ord-loc-privacy')
+      expect(line.textContent).toBe(
+        'Turns on once the venue has a privacy notice link. Add it in Settings › Paying.',
+      )
+      expect(within(line).getByRole('link').getAttribute('href')).toBe(PAYING)
+      await user.click(check)
+      expect(saveOrderingAction).not.toHaveBeenCalled()
+    })
+
+    it('leaves a location check that is on as it is, with the same line', async () => {
+      const user = userEvent.setup()
+      renderWithIntl(
+        <OrderingPanel view={view({ locationCheck: true }, { privacyNotice: false })} />,
+      )
+      await user.click(screen.getByRole('button', { name: 'More' }))
+      const check = screen.getByRole('switch', { name: 'Check guests are in the venue' })
+      expect(check.getAttribute('aria-checked')).toBe('true')
+      expect(check.hasAttribute('disabled')).toBe(false)
+      expect(screen.getByTestId('ord-loc-privacy').textContent).toMatch(
+        /^On, but the venue has no privacy notice link/,
+      )
+    })
+
+    it('says so at the top when ordering from the phone is on without the link', () => {
+      renderWithIntl(<OrderingPanel view={view({}, { privacyNotice: false, orderingOn: true })} />)
+      const line = screen.getByTestId('ord-privacy-ordering')
+      expect(line.textContent).toMatch(/^Ordering from the phone is on, but the venue has no/)
+      expect(within(line).getByRole('link').getAttribute('href')).toBe(PAYING)
+    })
+
+    it('names Paying without a link where the venue has no Paying section', async () => {
+      const user = userEvent.setup()
+      renderWithIntl(
+        <OrderingPanel
+          view={view({ locationCheck: false }, { privacyNotice: false, payingListed: false })}
+        />,
+      )
+      await user.click(screen.getByRole('button', { name: 'More' }))
+      expect(within(screen.getByTestId('ord-loc-privacy')).queryByRole('link')).toBeNull()
+    })
+
+    it('shows no line once the link is on file', () => {
+      renderWithIntl(<OrderingPanel view={view({}, { orderingOn: true })} />)
+      expect(screen.queryByTestId('ord-privacy-ordering')).toBeNull()
+      expect(screen.queryByTestId('ord-loc-privacy')).toBeNull()
+    })
+
+    it('writes the line in Bulgarian', async () => {
+      const user = userEvent.setup()
+      renderWithIntl(
+        <OrderingPanel view={view({ locationCheck: false }, { privacyNotice: false })} />,
+        { locale: 'bg' },
+      )
+      await user.click(screen.getByRole('button', { name: 'Още' }))
+      expect(screen.getByTestId('ord-loc-privacy').textContent).toBe(
+        'Включва се, след като заведението има връзка към политиката за поверителност. Добавете я в Настройки › Плащане.',
+      )
+    })
   })
 
   it('has no controls for a role without the right', () => {

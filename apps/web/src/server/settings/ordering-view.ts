@@ -2,12 +2,18 @@
 // the venue's saved ordering settings (the defaults where none are saved) and, for the venue's spot,
 // when it was last set: the Log's `settings.changed` entry that names it (nothing else keeps the
 // time, and no table is added). Reads only; plain data safe for the browser.
-import { type OrderingSettings, readOrderingSettings } from '@restro/core'
+import {
+  hasPrivacyNotice,
+  type OrderingSettings,
+  readGuestFeatures,
+  readOrderingSettings,
+} from '@restro/core'
 import { serviceHoursWindow } from '@restro/core/service'
 import { logEntries, type Venue, withTenant } from '@restro/db'
 import { and, desc, eq, sql } from 'drizzle-orm'
 
 import { getPool } from '../db'
+import { payingOffered } from './paying-offer'
 
 /** Everything the two sections draw. */
 export interface OrderingView {
@@ -29,6 +35,15 @@ export interface OrderingView {
   readonly spotSetAt: string | null
   /** The signed-in person's email, for the password again. */
   readonly email: string
+  /**
+   * True when the venue has a privacy notice link on file: until then the location check doesn't
+   * turn on (RR-O15).
+   */
+  readonly privacyNotice: boolean
+  /** True while ordering from the phone is on (the Design tab's guest features). */
+  readonly orderingOn: boolean
+  /** True where Settings › Paying is listed, which is where the privacy notice link is set. */
+  readonly payingListed: boolean
 }
 
 /** The time of the Log entry that last changed the spot, or null. */
@@ -59,7 +74,10 @@ export async function loadOrderingView(input: {
   readonly email: string
 }): Promise<OrderingView> {
   const settings = readOrderingSettings(input.venue.settings)
-  const at = settings.spot === null ? null : await spotSetAt(input.tenantId, input.venue.id)
+  const [at, payingListed] = await Promise.all([
+    settings.spot === null ? null : spotSetAt(input.tenantId, input.venue.id),
+    payingOffered(input.tenantId, input.venue.id),
+  ])
   return {
     venueId: input.venue.id,
     settings,
@@ -76,5 +94,8 @@ export async function loadOrderingView(input: {
     ).inService,
     spotSetAt: at === null ? null : at.toISOString(),
     email: input.email,
+    privacyNotice: hasPrivacyNotice(input.venue.settings),
+    orderingOn: readGuestFeatures(input.venue.settings).ordering,
+    payingListed,
   }
 }

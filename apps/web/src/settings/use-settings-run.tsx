@@ -74,6 +74,8 @@ const KNOWN = new Set([
   'telegram_off',
   'telegram_failed',
   'no_group',
+  'privacy_missing',
+  'staff_account_required',
 ])
 
 /**

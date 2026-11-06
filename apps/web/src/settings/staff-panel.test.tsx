@@ -30,7 +30,6 @@ vi.mock('@/server/settings/staff-actions', () => ({
   copyRoleAction: vi.fn(),
   updateRoleAction: vi.fn(),
   archiveRoleAction: vi.fn(),
-  markSharedDeviceAction: vi.fn(),
   revokeSharedDeviceAction: vi.fn(),
 }))
 vi.mock('@/lib/auth-client', () => ({ authClient: { signIn: { email: vi.fn() } } }))
@@ -126,7 +125,6 @@ function view(overrides: Partial<StaffView> = {}): StaffView {
     devices: [],
     held: ['tables.open_close', 'settings.roles'],
     operator: false,
-    thisBrowserShared: false,
     email: 'owner@example.com',
     ...overrides,
   }
@@ -311,11 +309,14 @@ describe('Settings › Staff and roles', () => {
     )
   })
 
-  it('offers "Make this browser a shared device" only to a person, never to Restro’s team', () => {
-    const { unmount } = renderWithIntl(<StaffPanel view={view()} />)
-    expect(screen.getByRole('button', { name: 'Make this browser a shared device' })).toBeTruthy()
-    unmount()
-    renderWithIntl(<StaffPanel view={view({ operator: true })} />)
-    expect(screen.queryByRole('button', { name: 'Make this browser a shared device' })).toBeNull()
+  it('makes no shared device here: it says the bar tablet signs in with a staff account (RR-O35)', () => {
+    renderWithIntl(<StaffPanel view={view()} />)
+    expect(screen.queryByRole('button', { name: /shared device|bar tablet/i })).toBeNull()
+    expect(screen.getByTestId('staff-devices-how').textContent).toContain('staff account')
+  })
+
+  it('says it in Bulgarian', () => {
+    renderWithIntl(<StaffPanel view={view()} />, { locale: 'bg' })
+    expect(screen.getByTestId('staff-devices-how').textContent).toContain('служебен акаунт')
   })
 })

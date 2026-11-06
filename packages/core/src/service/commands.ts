@@ -685,12 +685,19 @@ export const SERVICE_COMMANDS = {
     { staffMemberIds: z.array(staffMemberId).min(1).max(MAX_REVEALED_PINS) },
     revealPins,
   ),
-  // #72: shared devices (the signed-in session marks itself; revoking is done from another).
-  'device.mark_shared': rolesChange(
-    'device.mark_shared',
-    { name: DeviceNameSchema },
-    markSharedDevice,
-  ),
+  // #72: shared devices (the signed-in session marks itself; revoking is done from another). A
+  // staff-only account marks its own browser the bar tablet (RR-O35, Martin 11-06): it holds no
+  // `settings.roles`, so marking needs `night.view` (which the Staff role holds), the handler
+  // refuses every account that holds more than staff, and the password of the last 15 minutes
+  // stays. Stopping one stays the owner's, in Settings.
+  'device.mark_shared': defineCommand({
+    schema: z.strictObject({ type: z.literal('device.mark_shared'), name: DeviceNameSchema }),
+    origins: ['staff'],
+    permission: 'night.view',
+    freshSignIn: true,
+    idempotency: 'by_nature',
+    handle: markSharedDevice,
+  }),
   'device.revoke': rolesChange('device.revoke', { deviceId: idSchema('dv') }, revokeSharedDevice),
 
   // Worker (D122 §9: readings, sent orders, pauses, sittings, notices, sweeps, the day's end).
