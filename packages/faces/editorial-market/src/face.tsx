@@ -43,7 +43,7 @@ import {
 } from './model'
 import type { PageContext } from './parts'
 import { SectionBlock } from './section'
-import { PaymentProgress, ServiceBar } from './services/bag-bar'
+import { ConnectionLine, PaymentProgress, ServiceBar } from './services/bag-bar'
 import { HeaderTools } from './services/header-tools'
 import { ServicesProvider, serviceBarShown, servicesShown } from './services/provider'
 import { SERVICES_CSS } from './services/services-css'
@@ -220,6 +220,7 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
         tableLabel={tableLabel}
         openDish={dish.open}
       >
+        <ConnectionLine />
         <PaymentProgress />
         <Header
           view={view}

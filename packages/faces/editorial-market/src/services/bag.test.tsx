@@ -6,7 +6,7 @@
 // `order.restore` and `order.send`. No local success: nothing is drawn that the host's state does
 // not hold, and a Send is pending, then whatever the host says.
 
-import { stringsFor, type ViewModel } from '@restro/shell'
+import { ANSWER_LOST_CODE, stringsFor, type ViewModel } from '@restro/shell'
 import { fixture } from '@restro/shell/testing'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -295,8 +295,16 @@ describe('putting a dish on the table’s order', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('leaves the location codes to the location sheet: no refusal is worded for them', async () => {
-    const host = orderHost()
+  it('leaves the location codes to the location sheet while it asks: no refusal is worded', async () => {
+    const host = orderHost({
+      location: {
+        state: 'needed',
+        prompt: 'consent',
+        consent: 'unknown',
+        venueName: 'Club X',
+        privacyUrl: null,
+      },
+    })
     drawFace(host)
     fireEvent.click(quickAdd('Mojito'))
     await waitFor(() => expect(host.of('order.add')).toHaveLength(1))
@@ -304,6 +312,44 @@ describe('putting a dish on the table’s order', () => {
       host.of('order.add')[0]?.answer({ status: 'rejected', code: 'location_needed' }),
     )
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('says why the "+" did nothing after Not now, and offers the consent screen again (DA-22)', async () => {
+    // After "Not now" or "Stop location check" the check asks no more that day (D119), so the host
+    // refuses the tap and draws no prompt: the page itself must say why and offer the way back.
+    const host = orderHost({
+      location: {
+        state: 'needed',
+        prompt: 'none',
+        consent: 'declined',
+        venueName: 'Club X',
+        privacyUrl: null,
+      },
+    })
+    drawFace(host)
+    fireEvent.click(quickAdd('Mojito'))
+    await waitFor(() => expect(host.of('order.add')).toHaveLength(1))
+    await act(async () =>
+      host.of('order.add')[0]?.answer({ status: 'rejected', code: 'location_needed' }),
+    )
+    const note = await screen.findByRole('alert')
+    expect(note.textContent).toContain(W.locationNeeded)
+    fireEvent.click(within(note).getByRole('button', { name: W.locationAllowAgain }))
+    expect(host.located).toEqual(['reopen'])
+  })
+
+  it('says the weak-connection line when an add’s answer is lost, never nothing (DA-23)', async () => {
+    // The host takes the edit back (D72), so the counter slides away under the guest's finger. The
+    // line says why; it is never "Try again" of its own (the next poll shows what happened).
+    const host = orderHost()
+    drawFace(host)
+    fireEvent.click(quickAdd('Mojito'))
+    await waitFor(() => expect(host.of('order.add')).toHaveLength(1))
+    await act(async () =>
+      host.of('order.add')[0]?.answer({ status: 'pending', code: ANSWER_LOST_CODE }),
+    )
+    const note = await screen.findByRole('alert')
+    expect(note.textContent).toBe(W.offline)
   })
 })
 

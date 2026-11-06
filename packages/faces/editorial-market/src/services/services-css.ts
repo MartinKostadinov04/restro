@@ -739,8 +739,24 @@ export const SERVICES_CSS = `
   text-align: center;
   touch-action: manipulation;
 }
-/* The last refusal of an order command, over the bar when no sheet is open; a tap dismisses it. */
-.rm .ro-barnote {
+/* The weak-connection line at the top of the menu (RR-51, DA-23). Not a control: it is read, never
+   tapped, so it carries the page's own colours and no 44 px target. */
+.rm .ro-topline {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  background: var(--rm-bg);
+  color: var(--rm-text);
+  font-size: calc(14px * var(--rm-type));
+  text-align: center;
+}
+/* The last refusal of an order command, over the bar when no sheet is open; a tap dismisses it.
+   The box beside it is the same place for a notice that carries its own controls (DA-22). */
+.rm .ro-barnote,
+.rm .ro-barbox {
   position: fixed;
   z-index: 41;
   right: max(14px, env(safe-area-inset-right));
@@ -758,6 +774,12 @@ export const SERVICES_CSS = `
   font-size: calc(14px * var(--rm-type));
   text-align: left;
   touch-action: manipulation;
+}
+/* The notice inside the box is the box: no second border and no margin of its own. */
+.rm .ro-barbox .ro-notice {
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 /* "Order this from your waiter" on a card, where the POS's ticket takes no choices (#78). */
 .rm .ro-quick-note {

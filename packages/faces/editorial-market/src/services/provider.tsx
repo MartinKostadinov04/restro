@@ -174,6 +174,13 @@ export interface Services {
   /** The last refusal's words, or null. */
   readonly notice: string | null
   readonly dismissNotice: () => void
+  /**
+   * A tap the host refused for the location check while it draws no prompt of its own (DA-22):
+   * after "Not now" or "Stop location check" the check asks no more that day (D119), so a "+" on
+   * the menu would do nothing and say nothing. The page then says why the order is hidden and
+   * offers the consent screen again on the guest's own tap, never by itself.
+   */
+  readonly locationBlocked: boolean
   /** Puts an item on the table's order. */
   readonly add: (
     item: ViewItem,
@@ -475,6 +482,14 @@ function ActiveServices({
   /* --- commands on the order ------------------------------------------------------------ */
   const [notice, setNotice] = useState<string | null>(null)
   const dismissNotice = useCallback(() => setNotice(null), [])
+  // A tap the check refused while the host asks nothing (DA-22). It goes the moment the host does
+  // ask, or the phone holds a pass: then the sheet or the order itself answers.
+  const [locationBlocked, setLocationBlocked] = useState(false)
+  const locationAsks = (state.location?.prompt ?? 'none') !== 'none'
+  const locationHeld = state.location?.state === 'held'
+  useEffect(() => {
+    if (locationAsks || locationHeld) setLocationBlocked(false)
+  }, [locationAsks, locationHeld])
   // The last Send's answer was lost, before the host's state says so (it draws the line from then).
   // It is no notice: the line is `state.sendLost`'s, and this only bridges the moment before it.
   const [answerLost, setAnswerLost] = useState(false)
@@ -539,19 +554,25 @@ function ActiveServices({
         return null
       }
       const { result } = outcome
-      if (isSend && result.status === 'pending' && result.code === ANSWER_LOST_CODE) {
-        setAnswerLost(true)
+      if (result.status === 'pending' && result.code === ANSWER_LOST_CODE) {
+        // A Send may already be in the POS, so D120's line speaks and no re-send is offered. An
+        // edit is taken back by the host, and the weak-connection line says so rather than the
+        // counter sliding back with nothing said (DA-23).
+        if (isSend) setAnswerLost(true)
+        else setNotice(words.offline)
         return result
       }
       if (result.status === 'rejected') {
         const code = result.code ?? null
         // The location sheet answers these itself (the consent screen, the failed check), and the
         // order sheet the duplicate check.
-        if (
-          code === 'location_needed' ||
-          code === 'location_failed' ||
-          code === 'duplicate_order'
-        ) {
+        if (code === 'location_failed' || code === 'duplicate_order') return result
+        if (code === 'location_needed') {
+          // While the host asks, its sheet answers. After "Not now" or "Stop location check" it
+          // asks no more (D119), so the tap would do nothing: the page says why instead (DA-22).
+          if ((latest.current.services.state.location?.prompt ?? 'none') === 'none') {
+            setLocationBlocked(true)
+          }
           return result
         }
         const named =
@@ -715,6 +736,7 @@ function ActiveServices({
       notesAndOptions: state.ordering?.notesAndOptions === true,
       notice,
       dismissNotice,
+      locationBlocked,
       add,
       change,
       remove,
@@ -757,6 +779,7 @@ function ActiveServices({
       order,
       notice,
       dismissNotice,
+      locationBlocked,
       add,
       change,
       remove,

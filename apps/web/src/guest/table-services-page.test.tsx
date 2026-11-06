@@ -234,6 +234,96 @@ describe('a table link on Editorial Market', () => {
   })
 })
 
+describe('a tap the page cannot carry out (DA-22, DA-23)', () => {
+  /** The guest API's answer to one command, with no fresh state. */
+  const answered = (result: {
+    readonly status: 'accepted' | 'rejected'
+    readonly code: string | null
+  }) => ({
+    result: { actionId: null, subjectId: null, ref: null, payFirstRefused: null, ...result },
+    state: null,
+    pass: null,
+    handle: null,
+  })
+
+  /** The page on a table of a venue that checks location, with the actions endpoint the test's. */
+  async function page(
+    state: GuestTableState,
+    onAction: (body: unknown) => Response | never,
+  ): Promise<string> {
+    const { snapshot, bodies } = published('features-on')
+    const [, mojito = ''] = Object.keys(snapshot.items)
+    requests = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, headers: new Headers(init?.headers) })
+        if (url.endsWith('/api/guest/actions')) {
+          return onAction(JSON.parse(String(init?.body ?? '{}')))
+        }
+        if (url.startsWith('/api/guest/state')) return Response.json(state)
+        const body = bodies.get(url)
+        return body === undefined ? new Response(null, { status: 404 }) : Response.json(body)
+      }),
+    )
+    visit(`#t=${TOKEN}`)
+    render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Hummus')).toBeTruthy()
+    await waitFor(() => expect(slot('item.add')).not.toBeNull())
+    return mojito
+  }
+
+  /** A table whose venue checks location and has no pass for this phone yet. */
+  const needsLocation = (): GuestTableState => {
+    const base = tableState(null)
+    return {
+      ...base,
+      location: { ...base.location, state: 'needed', venueName: 'Club' },
+      order: null,
+    } as GuestTableState
+  }
+
+  it('says why "+" does nothing after Not now, and offers the consent screen again (DA-22)', async () => {
+    // The real client: the server refuses the tap with `location_needed`, the consent screen comes
+    // up, the guest taps Not now, and the next tap is refused with no prompt at all (D119: the
+    // check never asks again that day by itself). The page has to say why, and offer the way back.
+    await page(needsLocation(), () =>
+      Response.json(answered({ status: 'rejected', code: 'location_needed' })),
+    )
+    const add = screen.getAllByRole('button', { name: /^Add / })[0] as HTMLElement
+    await userEvent.click(add)
+    const consent = await screen.findByRole('dialog', { name: 'Allow location' })
+    await userEvent.click(within(consent).getByRole('button', { name: 'Not now' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Allow location' })).toBeNull())
+    await userEvent.click(add)
+    const note = await waitFor(() => {
+      const found = document.querySelector('[data-location-blocked]')
+      expect(found).not.toBeNull()
+      return found as HTMLElement
+    })
+    expect(note.textContent).toContain('Allow location to see and add')
+    // And the guest's own tap brings the consent screen back.
+    await userEvent.click(within(note).getByRole('button', { name: 'Allow location' }))
+    expect(await screen.findByRole('dialog', { name: 'Allow location' })).toBeTruthy()
+  })
+
+  it('says the weak-connection line on the menu when an add’s answer is lost (DA-23)', async () => {
+    // The real client takes the optimistic line back when the answer never comes (D72), so the
+    // counter slides away under the guest's finger. Nothing said it before; now the menu does.
+    const base = tableState(null)
+    const mojito = await page(base, () => {
+      throw new TypeError('network')
+    })
+    expect(mojito).not.toBe('')
+    await userEvent.click(screen.getAllByRole('button', { name: /^Add / })[0] as HTMLElement)
+    await waitFor(() =>
+      expect(document.querySelector('[data-order-notice]')?.textContent).toContain(
+        'Weak connection',
+      ),
+    )
+  })
+})
+
 describe('which venues are asked the guest API about (hasTableService)', () => {
   const off = { filters: true, bill: false, ordering: false, pay: false }
   it('is off for a snapshot that has not loaded, has no features, or has every service off', () => {

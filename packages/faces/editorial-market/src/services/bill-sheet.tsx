@@ -10,7 +10,6 @@ import { lineNameText, paySignedMoney } from '@restro/shell'
 
 import { Text } from '../parts'
 import { distinctRounds, keyed } from './bill'
-import { StopLocationCheck } from './location-sheet'
 import { CallWaiter, PaidInApp } from './pay-sheet'
 import { useServicesRequired } from './provider'
 
@@ -143,8 +142,6 @@ export function BillSheet() {
         // The lines paid in the app in this sitting stay on the bill, greyed (D127 1.2).
         <PaidInApp lines={paidLines} money={money} />
       )}
-      {/* "Stop location check" (D119) sits on the bill while the phone holds a pass. */}
-      {state.location?.state === 'held' ? <StopLocationCheck /> : null}
       {features.pay && owed !== null ? (
         <button
           type="button"
