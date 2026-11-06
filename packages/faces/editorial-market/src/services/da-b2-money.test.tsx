@@ -68,9 +68,9 @@ describe('DA-B2-1: below the smallest card payment, the bill lines go on their o
     expect(sendButton(sheet).disabled).toBe(false)
     expect(sendButton(sheet).textContent).toBe('Send 1 item')
     // The pay-first part is drawn greyed, with Martin's line and a way to pay cash.
-    const blocked = sheet.querySelector('[data-slot="pay.first.blocked"]') as HTMLElement
-    expect(blocked).not.toBeNull()
-    expect(blocked.textContent).toContain('Your bill is under the minimum for card payment')
+    const blocked = () => sheet.querySelector('[data-slot="pay.first.blocked"]')
+    expect(blocked()).not.toBeNull()
+    expect(blocked()?.textContent).toContain('Your bill is under the minimum for card payment')
     fireEvent.click(sendButton(sheet))
     await waitFor(() => expect(host.of('order.send')).toHaveLength(1))
     const sent = host.of('order.send')[0]?.command
@@ -85,7 +85,7 @@ describe('DA-B2-1: below the smallest card payment, the bill lines go on their o
     await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
     expect(host.of('service.request')[0]?.command.request).toBe('bill')
     await act(async () => host.of('service.request')[0]?.answer())
-    await waitFor(() => expect(blocked.textContent).toContain('Request sent'))
+    await waitFor(() => expect(blocked()?.textContent).toContain('Request sent'))
   })
 
   it('sends the bill lines and keeps the pay-first ones when the payment is rate-limited', async () => {

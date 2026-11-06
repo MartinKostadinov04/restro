@@ -808,11 +808,14 @@ export function guestResult(
     code: result.status === 'refused' ? result.code : null,
     subjectId: typeof subject === 'string' ? subject : null,
     ref: result.status === 'accepted' ? result.ref : null,
+    // Only an accepted Send carries it: a refused command's own code says everything.
     payFirstRefused:
-      payFirstRefused ??
-      (typeof result.details.payFirstRefused === 'string'
-        ? result.details.payFirstRefused
-        : null),
+      result.status !== 'accepted'
+        ? null
+        : (payFirstRefused ??
+          (typeof result.details.payFirstRefused === 'string'
+            ? result.details.payFirstRefused
+            : null)),
   }
 }
 
@@ -1062,7 +1065,7 @@ export async function guestAct(
   const type = input.command.type === 'service.request' ? 'waiter.call' : input.command.type
   const reject = (code: string): GuestActed => ({
     ok: true,
-    result: { actionId, status: 'rejected', code, subjectId: null, ref: null },
+    result: { actionId, status: 'rejected', code, subjectId: null, ref: null, payFirstRefused: null },
     state: null,
     pass: null,
     retryAfter: null,
@@ -1254,7 +1257,14 @@ async function guardedAct(
     if (!checks) {
       return {
         ok: true,
-        result: { actionId, status: 'accepted', code: null, subjectId: null, ref: null },
+        result: {
+          actionId,
+          status: 'accepted',
+          code: null,
+          subjectId: null,
+          ref: null,
+          payFirstRefused: null,
+        },
         state: null,
         pass: null,
         retryAfter: null,
@@ -1272,8 +1282,22 @@ async function guardedAct(
     return {
       ok: true,
       result: holds
-        ? { actionId, status: 'accepted', code: null, subjectId: null, ref: null }
-        : { actionId, status: 'rejected', code: 'location_needed', subjectId: null, ref: null },
+        ? {
+          actionId,
+          status: 'accepted',
+          code: null,
+          subjectId: null,
+          ref: null,
+          payFirstRefused: null,
+        }
+        : {
+            actionId,
+            status: 'rejected',
+            code: 'location_needed',
+            subjectId: null,
+            ref: null,
+            payFirstRefused: null,
+          },
       state: state.unchanged
         ? null
         : walked(
@@ -1445,7 +1469,7 @@ async function payAct(
   const { type, actionId } = input.command
   const reject = (code: string): GuestActed => ({
     ok: true,
-    result: { actionId, status: 'rejected', code, subjectId: null, ref: null },
+    result: { actionId, status: 'rejected', code, subjectId: null, ref: null, payFirstRefused: null },
     state: null,
     pass: null,
     retryAfter: null,

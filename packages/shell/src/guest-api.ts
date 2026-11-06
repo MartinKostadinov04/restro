@@ -351,7 +351,7 @@ export const GuestCommandResultSchema = z.strictObject({
    * An accepted "Send and pay" whose pay-first part alone was refused (#293, DA-1): the bill lines
    * went, the pay-first lines stayed, and this is the code the face words. Null otherwise.
    */
-  payFirstRefused: z.string().max(64).nullable(),
+  payFirstRefused: z.string().max(64).nullable().default(null),
 })
 
 /** What `POST /api/guest/actions` answers with 200: the result and the table's fresh state. */
