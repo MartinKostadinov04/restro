@@ -4,7 +4,7 @@
 //   - publish-menu writes the snapshot file and current.json; unchanged writes nothing new;
 //   - a rollback moves current.json back (publish-files), and the files are repairable;
 //   - a held publish (V11) writes no files; a refused one (V10) is recorded, not retried;
-//   - two automatic publishes inside the merge window are one publish (pg-boss `stately`);
+//   - two automatic publishes inside the merge window are one publish (one waiting job per key);
 //   - asset-variants: widths, aspect ratio, no metadata, a small original, idempotence, the backfill.
 import { createHash } from 'node:crypto'
 import { mkdtemp, rm, unlink } from 'node:fs/promises'
@@ -806,10 +806,10 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
       await worker?.stop()
     })
 
-    it('the queues use the stately policy', async () => {
+    it('the queues keep one run per key (short, grouped by key; #308)', async () => {
       for (const name of [JOB_NAMES.publishMenu, JOB_NAMES.publishFiles, JOB_NAMES.publishLive]) {
         expect(await worker.boss.getQueue(name), name).toMatchObject({
-          policy: 'stately',
+          policy: 'short',
           deadLetter: `${name}.dead`,
         })
       }

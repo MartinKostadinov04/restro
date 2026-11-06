@@ -75,10 +75,11 @@ export interface JobOptions {
   readonly policy?: QueuePolicy
   /**
    * The policy the queue had before `policy` changed. pg-boss cannot change a queue's policy, so
-   * the registry deletes a queue it finds still on this one and creates it again: its waiting
-   * jobs go with it, so only a queue whose jobs something queues again may name one (a sweep, a
-   * recovery tick). Any other policy found is left as it is, with an error in the log. A one-off
-   * for a change of policy: remove it once every database has the queue on its new one.
+   * the registry deletes a queue it finds still on this one and creates it again, then sends its
+   * waiting jobs (queued, or waiting for a retry) again with their key, group and start time. A
+   * job that was running then is lost with the old queue: its run goes on, but its retry and its
+   * dead letter are gone. Any other policy found is left as it is, with an error in the log. A
+   * one-off for a change of policy: remove it once every database has the queue on its new one.
    */
   readonly previousPolicy?: QueuePolicy
   /** How the worker fetches: `batchSize`, `localConcurrency`, `pollingIntervalSeconds`. */

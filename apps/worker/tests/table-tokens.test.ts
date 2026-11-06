@@ -126,9 +126,10 @@ describe.skipIf(!hasDatabase)('the table code files', () => {
     )
   }
 
-  it('is registered as a stately queue, with the other publish jobs', () => {
+  it('is registered one run per key, with the other publish jobs (#308)', () => {
     const job = publishJobs.get(JOB_NAMES.publishTableTokens)
-    expect(job?.options.policy).toBe('stately')
+    expect(job?.options.policy).toBe('short')
+    expect(job?.options.work).toMatchObject({ groupConcurrency: 1 })
   })
 
   it('writes a file per active code with the right name, repeats without writing, and follows a rename', async () => {

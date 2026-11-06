@@ -105,7 +105,7 @@ async function ensureQueue(): Promise<void> {
   boss.on('error', () => undefined)
   await boss.start()
   try {
-    await boss.createQueue(JOB_NAMES.publishTableTokens, { policy: 'stately' })
+    await boss.createQueue(JOB_NAMES.publishTableTokens, { policy: 'short' })
   } finally {
     await boss.stop({ graceful: false })
   }
