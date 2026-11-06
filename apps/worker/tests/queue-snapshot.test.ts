@@ -1,9 +1,11 @@
-// #286 (designer audit DA-34): a table's next round, or a payment's next step, must start at once
-// when nothing of its key is running. pg-boss fetches past the singleton keys of `singleton` and
-// `stately` queues that were running at its monitor's last count (`queue.singletons_active`,
-// written about once a minute, cached by each worker for `queueCacheIntervalSeconds`). On a
-// `stately` route queue a job whose key ran at that count waited up to two minutes, after a restart
-// and in steady state. The route's queues are `short` now (core/jobs.ts `ONE_RUN_PER_GROUP_JOBS`).
+// #286, #308 (designer audit DA-34): the next job of a key must start at once when nothing of its
+// key is running: a table's next round, a payment's next step, a menu's next publish, a venue's
+// next table files or purge, an organisation's next index, a connection's next probe. pg-boss
+// fetches past the singleton keys of `singleton` and `stately` queues that were running at its
+// monitor's last count (`queue.singletons_active`, written about once a minute, cached by each
+// worker for `queueCacheIntervalSeconds`). On a `stately` queue a job whose key ran at that count
+// waited up to two minutes, after a restart and in steady state. These queues are `short` now, one
+// run at a time per key through its group (core/jobs.ts `ONE_RUN_PER_GROUP_JOBS`).
 //
 // Real pg-boss on Postgres, with the worker's own registry and queue options around a handler the
 // test scripts. The monitor is off and the test writes its count itself, the same aggregate pg-boss
@@ -13,15 +15,18 @@
 // one-second minimum would count again before a stale count could show.) No test here sleeps out a
 // pg-boss interval.
 import { tmpdir } from 'node:os'
-import { JOB_NAMES, newId, prepareJob } from '@restro/core'
+import { JOB_NAMES, newId, type ProducedJobName, prepareJob } from '@restro/core'
 import type { DbPool } from '@restro/db'
 import { PgBoss } from 'pg-boss'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { QUEUE_SCHEMA } from '../src/connection'
 import { WorkerStatus } from '../src/health'
+import { createConnectionJobs } from '../src/jobs/connection'
 import { createSendJobs } from '../src/jobs/order-send'
 import { createPaymentJobs } from '../src/jobs/payments'
+import { createPublishJobs } from '../src/jobs/publish'
+import { createPurgeJobs } from '../src/jobs/purge'
 import type { JobDefinition, WorkerContext } from '../src/jobs/types'
 import { createLogger } from '../src/logger'
 import { registerJobs } from '../src/registry'
@@ -36,29 +41,37 @@ import {
 
 allowSlowSetup()
 
-/** How soon a job must start: a few fetches at the worker's one-second polling. */
-const START_MS = 5_000
+/** How soon a job must start: a few fetches at the worker's polling (one to five seconds). */
+const START_MS = 12_000
 /** Longer than the worker's cache of the count here (one second), so it holds the count. */
 const CACHE_MS = 2_500
 
-type RouteQueue =
-  | typeof JOB_NAMES.orderSend
-  | typeof JOB_NAMES.paymentPrepare
-  | typeof JOB_NAMES.paymentCheck
+/** A payload as the producers send it: a new key each time. */
+type Payload = () => object
 
-const QUEUES: readonly [string, RouteQueue][] = [
-  ["a table's Send", JOB_NAMES.orderSend],
-  ["a payment's prepare step", JOB_NAMES.paymentPrepare],
-  ["a payment's check", JOB_NAMES.paymentCheck],
+const venue = () => ({ tenantId: newId('tn'), venueId: newId('vn') })
+const scope = () => ({ ...venue(), menuId: newId('nd') })
+
+const QUEUES: readonly [string, ProducedJobName, Payload][] = [
+  ["a table's Send", JOB_NAMES.orderSend, () => ({ ...venue(), tableId: newId('tb') })],
+  ["a payment's prepare step", JOB_NAMES.paymentPrepare, () => ({ ...venue(), paymentId: newId('py') })],
+  ["a payment's check", JOB_NAMES.paymentCheck, () => ({ ...venue(), paymentId: newId('py') })],
+  [
+    "a menu's publish",
+    JOB_NAMES.publishMenu,
+    () => ({ ...scope(), reason: 'manual', actor: 'system' }),
+  ],
+  ["a menu's files", JOB_NAMES.publishFiles, scope],
+  ["a menu's live overlay", JOB_NAMES.publishLive, scope],
+  ["a venue's table files", JOB_NAMES.publishTableTokens, () => ({ ...venue(), retired: [] })],
+  ["an organisation's index", JOB_NAMES.publishOrganizationIndex, () => ({ tenantId: newId('tn') })],
+  ["a venue's purge", JOB_NAMES.purgeVenue, venue],
+  [
+    "a connection's probe",
+    JOB_NAMES.connectionProbe,
+    () => ({ tenantId: newId('tn'), integrationId: newId('in') }),
+  ],
 ]
-
-/** A payload as the producers send it: a new table or payment each time. */
-function payloadOf(name: RouteQueue) {
-  const venue = { tenantId: newId('tn'), venueId: newId('vn') }
-  return name === JOB_NAMES.orderSend
-    ? { ...venue, tableId: newId('tb') }
-    : { ...venue, paymentId: newId('py') }
-}
 
 /** A promise and its release. */
 function gate() {
@@ -75,7 +88,7 @@ async function waitFor(what: string, done: () => boolean, ms: number) {
   if (!done()) throw new Error(`waited ${ms} ms for ${what}`)
 }
 
-describe.skipIf(!hasDatabase)("the route's queues and pg-boss's count of running keys", () => {
+describe.skipIf(!hasDatabase)("the one-run-per-key queues and pg-boss's count of running keys", () => {
   let db: TestDatabase
   let boss: PgBoss | undefined
   let context: WorkerContext
@@ -91,8 +104,7 @@ describe.skipIf(!hasDatabase)("the route's queues and pg-boss's count of running
     ...job,
     handler: async (batch) => {
       for (const one of batch) {
-        const data = one.data as { tableId?: string; paymentId?: string }
-        const key = data.tableId ?? data.paymentId ?? ''
+        const key = prepareJob(job.name as ProducedJobName, one.data).singletonKey
         runs.set(key, (runs.get(key) ?? 0) + 1)
         running.set(key, (running.get(key) ?? 0) + 1)
         if ((running.get(key) ?? 0) > 1) beside += 1
@@ -115,7 +127,7 @@ describe.skipIf(!hasDatabase)("the route's queues and pg-boss's count of running
       supervise: false,
       schedule: false,
       queueCacheIntervalSeconds: 1,
-      max: 4,
+      max: 6,
       application_name: 'restro-worker-queue-snapshot-test',
     })
     started.on('error', () => undefined)
@@ -144,17 +156,14 @@ describe.skipIf(!hasDatabase)("the route's queues and pg-boss's count of running
   }
 
   /** Sends a job as the producers do (`prepareJob`: its key, and its group). */
-  function send(name: RouteQueue, payload: ReturnType<typeof payloadOf>) {
-    const job = prepareJob(name, payload)
-    return (boss as PgBoss).send(name, job.data, {
-      singletonKey: job.singletonKey,
-      ...(job.group === undefined ? {} : { group: job.group }),
-    })
+  function send(name: ProducedJobName, payload: object) {
+    const { data, ...options } = prepareJob(name, payload)
+    return (boss as PgBoss).send(name, data, options)
   }
 
   /** Sends a first job of a new key and holds its run until `release` opens. */
-  async function holdFirstRun(name: RouteQueue) {
-    const payload = payloadOf(name)
+  async function holdFirstRun(name: ProducedJobName, payloadOf: Payload) {
+    const payload = payloadOf()
     const key = prepareJob(name, payload).singletonKey
     const release = gate()
     const started = gate()
@@ -185,14 +194,23 @@ describe.skipIf(!hasDatabase)("the route's queues and pg-boss's count of running
       status: new WorkerStatus(),
       queue: { send: async () => null },
     }
-    const deps = { sim: { env: 'test', allowHosts: [] }, assets: { kind: 'local', dir: tmpdir() } }
+    const deps = {
+      sim: { env: 'test', allowHosts: [] },
+      assets: { kind: 'local', dir: tmpdir() },
+      publishStore: {},
+      assetStore: {},
+      purgeDatabaseUrl: 'postgres://unused',
+    }
     const all = [
       ...createSendJobs(deps as never),
       ...createPaymentJobs(deps as never),
+      ...createPublishJobs(deps as never),
+      ...createPurgeJobs(deps as never),
+      ...createConnectionJobs(deps as never),
     ] as JobDefinition[]
     jobs = QUEUES.map(([, name]) => scripted(all.find((job) => job.name === name) as JobDefinition))
 
-    // A database from before #286: the three queues were created `stately`.
+    // A database from before #286 and #308: these queues were created `stately`.
     const old = await startBoss()
     for (const [, name] of QUEUES) await old.createQueue(name, { policy: 'stately' })
     await old.stop({ graceful: false })
@@ -212,8 +230,8 @@ describe.skipIf(!hasDatabase)("the route's queues and pg-boss's count of running
 
   it.each(QUEUES)(
     '%s whose key ran at the last count starts at once after a restart',
-    async (_what, name) => {
-      const first = await holdFirstRun(name)
+    async (_what, name, payloadOf) => {
+      const first = await holdFirstRun(name, payloadOf)
       // The monitor counts while the run goes; the run ends; the worker restarts and reads the
       // count when it starts (by default the next count is up to a minute away).
       await countRunningKeys(name)
@@ -231,8 +249,8 @@ describe.skipIf(!hasDatabase)("the route's queues and pg-boss's count of running
 
   it.each(QUEUES)(
     '%s whose key ran at the last count starts at once in steady state',
-    async (_what, name) => {
-      const first = await holdFirstRun(name)
+    async (_what, name, payloadOf) => {
+      const first = await holdFirstRun(name, payloadOf)
       // The monitor counts while the run goes and the worker caches the count; the run ends
       // before the next count.
       await countRunningKeys(name)
@@ -249,8 +267,8 @@ describe.skipIf(!hasDatabase)("the route's queues and pg-boss's count of running
 
   it.each(QUEUES)(
     '%s sent while its key runs waits behind it, once, and never runs beside it',
-    async (_what, name) => {
-      const first = await holdFirstRun(name)
+    async (_what, name, payloadOf) => {
+      const first = await holdFirstRun(name, payloadOf)
       expect(await send(name, first.payload)).not.toBeNull()
       // A send while one waits is the same job.
       expect(await send(name, first.payload)).toBeNull()
