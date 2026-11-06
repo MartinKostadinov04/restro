@@ -125,7 +125,8 @@ export const JOB_NAMES = {
   orderSlotSweep: 'order-slot-sweep',
   /**
    * Probe one POS instance's connection (#79, D120): while it is paused, and for the five minutes
-   * after a lift. Each run sends the next at the breaker's next probe time. Stately per instance.
+   * after a lift. Each run sends the next at the breaker's next probe time. One waiting and one
+   * running per instance (`ONE_RUN_PER_GROUP_JOBS`).
    */
   connectionProbe: 'connection-probe',
   /**
@@ -367,22 +368,6 @@ export const EXCLUSIVE_JOBS: ReadonlySet<string> = new Set<string>([
 ])
 
 /**
- * The publish jobs use `stately`: per queue and singleton key at most one job WAITING and one
- * RUNNING. A send while one waits returns null (so two automatic publishes within the delay are
- * one job), and a send while one runs waits behind it (the run may have read the document
- * already, so the later change needs its own publish).
- */
-export const STATELY_JOBS: ReadonlySet<string> = new Set<string>([
-  JOB_NAMES.publishMenu,
-  JOB_NAMES.publishFiles,
-  JOB_NAMES.publishLive,
-  JOB_NAMES.publishTableTokens,
-  JOB_NAMES.publishOrganizationIndex,
-  JOB_NAMES.purgeVenue,
-  JOB_NAMES.connectionProbe,
-])
-
-/**
  * The pg-boss singleton key of a job: one key per integration for connect; one per integration
  * and venue for the two pulls and the places read (brief CF-16, T50), so a venue's pull is never
  * dropped because another venue's is queued; one picture is fetched once at a time. The
@@ -475,27 +460,41 @@ export function jobStartAfter<N extends ProducedJobName>(
 }
 
 /**
- * The queues the route runs several runs of at once (`work.localConcurrency`), one run at a time
- * per key: a table's Send, a payment's steps. They use pg-boss's `short` policy, so a send while
- * one waits is the same job (`send` returns null) and a send while one runs waits behind it. Each
- * job is sent in a group of its key and the worker fetches with `groupConcurrency: 1`: pg-boss skips
- * a job whose group has a run going, read live in the fetch itself, so one key's run never holds up
- * another's and a key never runs twice at once. (Two fetches in the same instant could each take a
- * job of one group only when the group has two ready at once: a payment's retry or deadline check
- * beside its waiting job. A table's Send has none, and the payment route tolerates two runs, see
+ * The queues that run one run at a time per key, and keep one waiting job per key: a table's Send
+ * and a payment's steps (which the route runs several keys of at once, `work.localConcurrency`), a
+ * menu's publish, files and live overlay, a venue's table files and purge, an organisation's index
+ * and a connection's probe. They use pg-boss's `short` policy, so a send while one waits is the
+ * same job (`send` returns null; two automatic publishes within the delay are one job) and a send
+ * while one runs waits behind it (the run may have read the document already, so the later change
+ * needs its own run). Each job is sent in a group of its key and the worker fetches with
+ * `groupConcurrency: 1`: pg-boss skips a job whose group has a run going, read live in the fetch
+ * itself, so one key's run never holds up another's and a key never runs twice at once. (Two
+ * fetches in the same instant, in two worker processes or with `localConcurrency` above one, could
+ * each take a job of one group only when the group has two ready at once: a retry, or a payment's
+ * deadline check, beside its waiting job. A table's Send and a probe are never retried; a publish
+ * is serialised per menu + venue by its advisory lock (core/apply/publish.ts), the files and the
+ * purge are idempotent, and the payment route tolerates two runs, see
  * apps/worker/src/jobs/payments.ts.)
  *
- * Not `stately` (#286): pg-boss fetches past the singleton keys of `singleton` and `stately` queues
- * that were active at its monitor's last count (`queue.singletons_active`, written about once a
- * minute and cached by each worker for a minute more). A job whose key ran at that count, a table's
- * next round or a payment's next step, was skipped for up to two minutes after its run had ended,
- * and after every restart. `short` keeps the one waiting job per key and is never in that list; the
- * group keeps the one run.
+ * Not `stately` (#286, #308): pg-boss fetches past the singleton keys of `singleton` and `stately`
+ * queues that were active at its monitor's last count (`queue.singletons_active`, written about
+ * once a minute and cached by each worker for a minute more). A job whose key ran at that count was
+ * skipped for up to two minutes after its run had ended, and after every restart: a table's next
+ * round, a payment's next step, a menu's next publish. `short` keeps the one waiting job per key
+ * and is never in that list; the group keeps the one run. What `stately` kept and `short` does
+ * not: one job per key in `retry`; several failed runs of a key can wait for their retry.
  */
 export const ONE_RUN_PER_GROUP_JOBS: ReadonlySet<ProducedJobName> = new Set<ProducedJobName>([
   JOB_NAMES.orderSend,
   JOB_NAMES.paymentPrepare,
   JOB_NAMES.paymentCheck,
+  JOB_NAMES.publishMenu,
+  JOB_NAMES.publishFiles,
+  JOB_NAMES.publishLive,
+  JOB_NAMES.publishTableTokens,
+  JOB_NAMES.publishOrganizationIndex,
+  JOB_NAMES.purgeVenue,
+  JOB_NAMES.connectionProbe,
 ])
 
 /** Validates a payload for `name` and returns it with the options `send` needs. */
@@ -507,7 +506,7 @@ export function prepareJob<N extends ProducedJobName>(
   readonly singletonKey: string
   /** Seconds before the job may start; absent for a job that starts at once. */
   readonly startAfter?: number
-  /** The group a route job runs in: one run at a time per group (`ONE_RUN_PER_GROUP_JOBS`). */
+  /** The group a job runs in: one run at a time per group (`ONE_RUN_PER_GROUP_JOBS`). */
   readonly group?: { readonly id: string }
 } {
   const parsed = JOB_PAYLOADS[name].safeParse(data)

@@ -806,10 +806,10 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
       await worker?.stop()
     })
 
-    it('the queues use the stately policy', async () => {
+    it('the queues keep one run per key (short, grouped by key; #308)', async () => {
       for (const name of [JOB_NAMES.publishMenu, JOB_NAMES.publishFiles, JOB_NAMES.publishLive]) {
         expect(await worker.boss.getQueue(name), name).toMatchObject({
-          policy: 'stately',
+          policy: 'short',
           deadLetter: `${name}.dead`,
         })
       }

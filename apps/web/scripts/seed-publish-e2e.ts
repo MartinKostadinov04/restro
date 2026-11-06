@@ -312,7 +312,10 @@ async function auto(): Promise<void> {
   boss.on('error', () => undefined)
   await boss.start()
   try {
-    const id = await boss.send(JOB_NAMES.publishMenu, job.data, { singletonKey: job.singletonKey })
+    const id = await boss.send(JOB_NAMES.publishMenu, job.data, {
+      singletonKey: job.singletonKey,
+      ...(job.group === undefined ? {} : { group: job.group }),
+    })
     if (id === null) throw new Error('an automatic publish is already waiting')
   } finally {
     await boss.stop({ graceful: false })

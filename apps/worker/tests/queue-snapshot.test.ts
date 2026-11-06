@@ -54,7 +54,11 @@ const scope = () => ({ ...venue(), menuId: newId('nd') })
 
 const QUEUES: readonly [string, ProducedJobName, Payload][] = [
   ["a table's Send", JOB_NAMES.orderSend, () => ({ ...venue(), tableId: newId('tb') })],
-  ["a payment's prepare step", JOB_NAMES.paymentPrepare, () => ({ ...venue(), paymentId: newId('py') })],
+  [
+    "a payment's prepare step",
+    JOB_NAMES.paymentPrepare,
+    () => ({ ...venue(), paymentId: newId('py') }),
+  ],
   ["a payment's check", JOB_NAMES.paymentCheck, () => ({ ...venue(), paymentId: newId('py') })],
   [
     "a menu's publish",
@@ -64,7 +68,11 @@ const QUEUES: readonly [string, ProducedJobName, Payload][] = [
   ["a menu's files", JOB_NAMES.publishFiles, scope],
   ["a menu's live overlay", JOB_NAMES.publishLive, scope],
   ["a venue's table files", JOB_NAMES.publishTableTokens, () => ({ ...venue(), retired: [] })],
-  ["an organisation's index", JOB_NAMES.publishOrganizationIndex, () => ({ tenantId: newId('tn') })],
+  [
+    "an organisation's index",
+    JOB_NAMES.publishOrganizationIndex,
+    () => ({ tenantId: newId('tn') }),
+  ],
   ["a venue's purge", JOB_NAMES.purgeVenue, venue],
   [
     "a connection's probe",
@@ -88,198 +96,203 @@ async function waitFor(what: string, done: () => boolean, ms: number) {
   if (!done()) throw new Error(`waited ${ms} ms for ${what}`)
 }
 
-describe.skipIf(!hasDatabase)("the one-run-per-key queues and pg-boss's count of running keys", () => {
-  let db: TestDatabase
-  let boss: PgBoss | undefined
-  let context: WorkerContext
-  let jobs: JobDefinition[]
-  /** What the handler does for each job of a key, in turn. */
-  const scripts = new Map<string, (() => Promise<void>)[]>()
-  const runs = new Map<string, number>()
-  const running = new Map<string, number>()
-  let beside = 0
+describe.skipIf(!hasDatabase)(
+  "the one-run-per-key queues and pg-boss's count of running keys",
+  () => {
+    let db: TestDatabase
+    let boss: PgBoss | undefined
+    let context: WorkerContext
+    let jobs: JobDefinition[]
+    /** What the handler does for each job of a key, in turn. */
+    const scripts = new Map<string, (() => Promise<void>)[]>()
+    const runs = new Map<string, number>()
+    const running = new Map<string, number>()
+    let beside = 0
 
-  /** The worker's own queue options, around a handler the test scripts. */
-  const scripted = (job: JobDefinition): JobDefinition => ({
-    ...job,
-    handler: async (batch) => {
-      for (const one of batch) {
-        const key = prepareJob(job.name as ProducedJobName, one.data).singletonKey
-        runs.set(key, (runs.get(key) ?? 0) + 1)
-        running.set(key, (running.get(key) ?? 0) + 1)
-        if ((running.get(key) ?? 0) > 1) beside += 1
-        try {
-          await scripts.get(key)?.shift()?.()
-        } finally {
-          running.set(key, (running.get(key) ?? 0) - 1)
+    /** The worker's own queue options, around a handler the test scripts. */
+    const scripted = (job: JobDefinition): JobDefinition => ({
+      ...job,
+      handler: async (batch) => {
+        for (const one of batch) {
+          const key = prepareJob(job.name as ProducedJobName, one.data).singletonKey
+          runs.set(key, (runs.get(key) ?? 0) + 1)
+          running.set(key, (running.get(key) ?? 0) + 1)
+          if ((running.get(key) ?? 0) > 1) beside += 1
+          try {
+            await scripts.get(key)?.shift()?.()
+          } finally {
+            running.set(key, (running.get(key) ?? 0) - 1)
+          }
         }
-      }
-    },
-  })
-
-  /** A worker's pg-boss: no monitor, and its cache of the count read every second. */
-  async function startBoss(): Promise<PgBoss> {
-    const started = new PgBoss({
-      connectionString: db.appUrl,
-      schema: QUEUE_SCHEMA,
-      createSchema: false,
-      migrate: true,
-      supervise: false,
-      schedule: false,
-      queueCacheIntervalSeconds: 1,
-      max: 6,
-      application_name: 'restro-worker-queue-snapshot-test',
+      },
     })
-    started.on('error', () => undefined)
-    await started.start()
-    return started
-  }
 
-  /** Starts a worker: its registry, its queues and its fetch options. */
-  async function startWorker(): Promise<PgBoss> {
-    const started = await startBoss()
-    await registerJobs(started, jobs, context, { schedules: false })
-    return started
-  }
+    /** A worker's pg-boss: no monitor, and its cache of the count read every second. */
+    async function startBoss(): Promise<PgBoss> {
+      const started = new PgBoss({
+        connectionString: db.appUrl,
+        schema: QUEUE_SCHEMA,
+        createSchema: false,
+        migrate: true,
+        supervise: false,
+        schedule: false,
+        queueCacheIntervalSeconds: 1,
+        max: 6,
+        application_name: 'restro-worker-queue-snapshot-test',
+      })
+      started.on('error', () => undefined)
+      await started.start()
+      return started
+    }
 
-  /** pg-boss's monitor counting now: the keys of the queue's running singleton/stately jobs. */
-  async function countRunningKeys(name: string): Promise<void> {
-    await withOwnerClient(db.ownerUrl, (client) =>
-      client.query(
-        `UPDATE ${QUEUE_SCHEMA}.queue SET singletons_active = (
+    /** Starts a worker: its registry, its queues and its fetch options. */
+    async function startWorker(): Promise<PgBoss> {
+      const started = await startBoss()
+      await registerJobs(started, jobs, context, { schedules: false })
+      return started
+    }
+
+    /** pg-boss's monitor counting now: the keys of the queue's running singleton/stately jobs. */
+    async function countRunningKeys(name: string): Promise<void> {
+      await withOwnerClient(db.ownerUrl, (client) =>
+        client.query(
+          `UPDATE ${QUEUE_SCHEMA}.queue SET singletons_active = (
            SELECT array_agg(j.singleton_key) FROM ${QUEUE_SCHEMA}.job j
            WHERE j.name = $1 AND j.state = 'active' AND j.policy IN ('singleton', 'stately')
          ) WHERE name = $1`,
-        [name],
-      ),
-    )
-  }
-
-  /** Sends a job as the producers do (`prepareJob`: its key, and its group). */
-  function send(name: ProducedJobName, payload: object) {
-    const { data, ...options } = prepareJob(name, payload)
-    return (boss as PgBoss).send(name, data, options)
-  }
-
-  /** Sends a first job of a new key and holds its run until `release` opens. */
-  async function holdFirstRun(name: ProducedJobName, payloadOf: Payload) {
-    const payload = payloadOf()
-    const key = prepareJob(name, payload).singletonKey
-    const release = gate()
-    const started = gate()
-    scripts.set(key, [
-      async () => {
-        started.open()
-        await release.opened
-      },
-    ])
-    expect(await send(name, payload)).not.toBeNull()
-    await started.opened
-    return { payload, key, release }
-  }
-
-  beforeAll(async () => {
-    db = await createTestDatabase()
-    const log = await createLogger({
-      level: 'silent',
-      pretty: false,
-      destination: { write: () => undefined },
-    })
-    context = {
-      pool: {} as DbPool,
-      log,
-      workerId: 'queue-snapshot-test',
-      version: '0.0.0',
-      now: () => new Date(),
-      status: new WorkerStatus(),
-      queue: { send: async () => null },
+          [name],
+        ),
+      )
     }
-    const deps = {
-      sim: { env: 'test', allowHosts: [] },
-      assets: { kind: 'local', dir: tmpdir() },
-      publishStore: {},
-      assetStore: {},
-      purgeDatabaseUrl: 'postgres://unused',
+
+    /** Sends a job as the producers do (`prepareJob`: its key, and its group). */
+    function send(name: ProducedJobName, payload: object) {
+      const { data, ...options } = prepareJob(name, payload)
+      return (boss as PgBoss).send(name, data, options)
     }
-    const all = [
-      ...createSendJobs(deps as never),
-      ...createPaymentJobs(deps as never),
-      ...createPublishJobs(deps as never),
-      ...createPurgeJobs(deps as never),
-      ...createConnectionJobs(deps as never),
-    ] as JobDefinition[]
-    jobs = QUEUES.map(([, name]) => scripted(all.find((job) => job.name === name) as JobDefinition))
 
-    // A database from before #286 and #308: these queues were created `stately`.
-    const old = await startBoss()
-    for (const [, name] of QUEUES) await old.createQueue(name, { policy: 'stately' })
-    await old.stop({ graceful: false })
-    boss = await startWorker()
-  }, SETUP_TIMEOUT_MS)
-
-  afterAll(async () => {
-    await boss?.stop({ graceful: false })
-    await db?.drop()
-  })
-
-  it('the worker creates a queue it finds on its old policy again, with the new one', async () => {
-    for (const [, name] of QUEUES) {
-      expect((await (boss as PgBoss).getQueue(name))?.policy, name).toBe('short')
+    /** Sends a first job of a new key and holds its run until `release` opens. */
+    async function holdFirstRun(name: ProducedJobName, payloadOf: Payload) {
+      const payload = payloadOf()
+      const key = prepareJob(name, payload).singletonKey
+      const release = gate()
+      const started = gate()
+      scripts.set(key, [
+        async () => {
+          started.open()
+          await release.opened
+        },
+      ])
+      expect(await send(name, payload)).not.toBeNull()
+      await started.opened
+      return { payload, key, release }
     }
-  })
 
-  it.each(QUEUES)(
-    '%s whose key ran at the last count starts at once after a restart',
-    async (_what, name, payloadOf) => {
-      const first = await holdFirstRun(name, payloadOf)
-      // The monitor counts while the run goes; the run ends; the worker restarts and reads the
-      // count when it starts (by default the next count is up to a minute away).
-      await countRunningKeys(name)
-      first.release.open()
-      await waitFor('the first run to end', () => running.get(first.key) === 0, START_MS)
-      await (boss as PgBoss).stop({ graceful: true, timeout: 5_000 })
+    beforeAll(async () => {
+      db = await createTestDatabase()
+      const log = await createLogger({
+        level: 'silent',
+        pretty: false,
+        destination: { write: () => undefined },
+      })
+      context = {
+        pool: {} as DbPool,
+        log,
+        workerId: 'queue-snapshot-test',
+        version: '0.0.0',
+        now: () => new Date(),
+        status: new WorkerStatus(),
+        queue: { send: async () => null },
+      }
+      const deps = {
+        sim: { env: 'test', allowHosts: [] },
+        assets: { kind: 'local', dir: tmpdir() },
+        publishStore: {},
+        assetStore: {},
+        purgeDatabaseUrl: 'postgres://unused',
+      }
+      const all = [
+        ...createSendJobs(deps as never),
+        ...createPaymentJobs(deps as never),
+        ...createPublishJobs(deps as never),
+        ...createPurgeJobs(deps as never),
+        ...createConnectionJobs(deps as never),
+      ] as JobDefinition[]
+      jobs = QUEUES.map(([, name]) =>
+        scripted(all.find((job) => job.name === name) as JobDefinition),
+      )
+
+      // A database from before #286 and #308: these queues were created `stately`.
+      const old = await startBoss()
+      for (const [, name] of QUEUES) await old.createQueue(name, { policy: 'stately' })
+      await old.stop({ graceful: false })
       boss = await startWorker()
+    }, SETUP_TIMEOUT_MS)
 
-      expect(await send(name, first.payload)).not.toBeNull()
-      await waitFor('the next run', () => runs.get(first.key) === 2, START_MS)
-      expect(beside).toBe(0)
-    },
-    60_000,
-  )
+    afterAll(async () => {
+      await boss?.stop({ graceful: false })
+      await db?.drop()
+    })
 
-  it.each(QUEUES)(
-    '%s whose key ran at the last count starts at once in steady state',
-    async (_what, name, payloadOf) => {
-      const first = await holdFirstRun(name, payloadOf)
-      // The monitor counts while the run goes and the worker caches the count; the run ends
-      // before the next count.
-      await countRunningKeys(name)
-      await new Promise((resolve) => setTimeout(resolve, CACHE_MS))
-      first.release.open()
-      await waitFor('the first run to end', () => running.get(first.key) === 0, START_MS)
+    it('the worker creates a queue it finds on its old policy again, with the new one', async () => {
+      for (const [, name] of QUEUES) {
+        expect((await (boss as PgBoss).getQueue(name))?.policy, name).toBe('short')
+      }
+    })
 
-      expect(await send(name, first.payload)).not.toBeNull()
-      await waitFor('the next run', () => runs.get(first.key) === 2, START_MS)
-      expect(beside).toBe(0)
-    },
-    60_000,
-  )
+    it.each(QUEUES)(
+      '%s whose key ran at the last count starts at once after a restart',
+      async (_what, name, payloadOf) => {
+        const first = await holdFirstRun(name, payloadOf)
+        // The monitor counts while the run goes; the run ends; the worker restarts and reads the
+        // count when it starts (by default the next count is up to a minute away).
+        await countRunningKeys(name)
+        first.release.open()
+        await waitFor('the first run to end', () => running.get(first.key) === 0, START_MS)
+        await (boss as PgBoss).stop({ graceful: true, timeout: 5_000 })
+        boss = await startWorker()
 
-  it.each(QUEUES)(
-    '%s sent while its key runs waits behind it, once, and never runs beside it',
-    async (_what, name, payloadOf) => {
-      const first = await holdFirstRun(name, payloadOf)
-      expect(await send(name, first.payload)).not.toBeNull()
-      // A send while one waits is the same job.
-      expect(await send(name, first.payload)).toBeNull()
-      await new Promise((resolve) => setTimeout(resolve, CACHE_MS))
-      expect(runs.get(first.key)).toBe(1)
-      first.release.open()
-      await waitFor('the waiting run', () => runs.get(first.key) === 2, START_MS)
-      await new Promise((resolve) => setTimeout(resolve, 1_500))
-      expect(runs.get(first.key)).toBe(2)
-      expect(beside).toBe(0)
-    },
-    60_000,
-  )
-})
+        expect(await send(name, first.payload)).not.toBeNull()
+        await waitFor('the next run', () => runs.get(first.key) === 2, START_MS)
+        expect(beside).toBe(0)
+      },
+      60_000,
+    )
+
+    it.each(QUEUES)(
+      '%s whose key ran at the last count starts at once in steady state',
+      async (_what, name, payloadOf) => {
+        const first = await holdFirstRun(name, payloadOf)
+        // The monitor counts while the run goes and the worker caches the count; the run ends
+        // before the next count.
+        await countRunningKeys(name)
+        await new Promise((resolve) => setTimeout(resolve, CACHE_MS))
+        first.release.open()
+        await waitFor('the first run to end', () => running.get(first.key) === 0, START_MS)
+
+        expect(await send(name, first.payload)).not.toBeNull()
+        await waitFor('the next run', () => runs.get(first.key) === 2, START_MS)
+        expect(beside).toBe(0)
+      },
+      60_000,
+    )
+
+    it.each(QUEUES)(
+      '%s sent while its key runs waits behind it, once, and never runs beside it',
+      async (_what, name, payloadOf) => {
+        const first = await holdFirstRun(name, payloadOf)
+        expect(await send(name, first.payload)).not.toBeNull()
+        // A send while one waits is the same job.
+        expect(await send(name, first.payload)).toBeNull()
+        await new Promise((resolve) => setTimeout(resolve, CACHE_MS))
+        expect(runs.get(first.key)).toBe(1)
+        first.release.open()
+        await waitFor('the waiting run', () => runs.get(first.key) === 2, START_MS)
+        await new Promise((resolve) => setTimeout(resolve, 1_500))
+        expect(runs.get(first.key)).toBe(2)
+        expect(beside).toBe(0)
+      },
+      60_000,
+    )
+  },
+)

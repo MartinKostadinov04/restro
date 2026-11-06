@@ -1,5 +1,6 @@
+import { JOB_NAMES, newId } from '@restro/core'
 import type { DbPool } from '@restro/db'
-import type { Job, PgBoss } from 'pg-boss'
+import type { Job, JobWithMetadata, PgBoss } from 'pg-boss'
 import { describe, expect, it } from 'vitest'
 
 import { WorkerStatus } from './health'
@@ -15,6 +16,7 @@ type Call = [method: string, ...args: unknown[]]
 function fakeBoss(
   existingSchedules: { name: string; key: string }[] = [],
   existingPolicies: Record<string, string> = {},
+  waiting: Record<string, Partial<JobWithMetadata<object>>[]> = {},
 ) {
   const calls: Call[] = []
   const handlers = new Map<string, (batch: Job<object>[]) => Promise<void>>()
@@ -35,6 +37,21 @@ function fakeBoss(
       return policy === undefined ? null : { name, policy }
     },
     deleteQueue: record('deleteQueue'),
+    findJobs: async (name: string, options: unknown) => {
+      calls.push(['findJobs', name, options])
+      return waiting[name] ?? []
+    },
+    send: async (name: string, data: unknown, options: { singletonKey?: string }) => {
+      calls.push(['send', name, data, options])
+      // A second job of a key while one waits is the same job (`short`).
+      const sent = calls.filter(
+        ([method, queue, , other]) =>
+          method === 'send' &&
+          queue === name &&
+          (other as { singletonKey?: string }).singletonKey === options.singletonKey,
+      )
+      return sent.length > 1 ? null : `job-${sent.length}`
+    },
     work: async (
       name: string,
       options: unknown,
@@ -182,6 +199,7 @@ describe('a queue whose policy changed (#286)', () => {
     await registerJobs(boss, [changed('order-send')], ctx)
     expect(queueCalls(calls, 'order-send')).toEqual([
       'getQueue',
+      'findJobs',
       'deleteQueue',
       'createQueue',
       'updateQueue',
@@ -192,6 +210,49 @@ describe('a queue whose policy changed (#286)', () => {
       { deadLetter: 'order-send.dead', policy: 'short' },
     ])
     expect(lines.join('\n')).toContain('queue created again with its new policy')
+  })
+
+  it('sends its waiting jobs again into the new queue, with their key, group and start (#308)', async () => {
+    const tenantId = newId('tn')
+    const venueId = newId('vn')
+    const menuId = newId('nd')
+    const due = new Date('2026-11-06T12:00:30Z')
+    const auto = { tenantId, menuId, venueId, reason: 'auto_sync', actor: 'system' }
+    const autoKey = `${menuId}:${venueId}:auto`
+    const name = JOB_NAMES.publishMenu
+    const { boss, calls } = fakeBoss(
+      [],
+      { [name]: 'stately' },
+      {
+        [name]: [
+          { id: 'a', data: auto, singletonKey: autoKey, startAfter: due },
+          // The same publish waiting for its retry: one waiting job of the key is enough.
+          { id: 'b', data: auto, singletonKey: autoKey, startAfter: due },
+          // A payload that no longer validates is logged, never sent.
+          { id: 'c', data: { tenantId }, singletonKey: 'old', startAfter: due },
+        ],
+      },
+    )
+    const { ctx, lines } = await context()
+    await registerJobs(boss, [changed(name)], ctx)
+    expect(queueCalls(calls, name)).toEqual([
+      'getQueue',
+      'findJobs',
+      'deleteQueue',
+      'createQueue',
+      'updateQueue',
+      'send',
+      'send',
+    ])
+    expect(calls).toContainEqual([
+      'send',
+      name,
+      auto,
+      { singletonKey: autoKey, group: { id: autoKey }, startAfter: due },
+    ])
+    const log = lines.join('\n')
+    expect(log).toContain('"waiting":3,"sent":1')
+    expect(log).toContain('a waiting job could not be sent again')
   })
 
   it('is left alone once it has the new policy, and created when missing', async () => {
