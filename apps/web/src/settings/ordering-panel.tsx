@@ -4,7 +4,9 @@
 // tables only, the cap per sent order, the venue's spot (only by "I'm at the venue – use this spot",
 // no map library, Martin 10-27) and, under "More", the location check, its radius and pass, the
 // pace limit and how long a waiter call waits. Every control saves at once with Undo; the labels say
-// "order". Writes go through `settings.ordering_set`.
+// "order". Writes go through `settings.ordering_set`. Last, the venue's legal details with its
+// privacy notice link, the form Settings › Paying draws too (#288): the location check and ordering
+// from the phone turn on only once it is filled in.
 import { decimalToMinor, MoneyError, minorToDecimal } from '@restro/core'
 import { ChevronDownIcon, PencilIcon } from 'lucide-react'
 import Link from 'next/link'
@@ -30,6 +32,7 @@ import { useMoney } from '@/tonight/money'
 
 import { CHOICES, SPOT_ACCURACY_LIMIT_METRES } from './hours'
 import { MinutesSelect } from './hours-panel'
+import { LegalDetailsCard } from './legal-details-card'
 import { privacyHref } from './privacy-href'
 import { PrivacyLine } from './privacy-line'
 import { ReadOnlyLine } from './section-notices'
@@ -50,7 +53,7 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
   const { pending, run } = runner
   const settings = view.settings
   const can = view.canChange
-  const privacyLink = view.payingListed ? privacyHref(view.venueId) : null
+  const privacyLink = privacyHref(view.venueId)
   // The location check turns on only once the venue has a privacy notice link (RR-O15); one already
   // on stays on.
   const locationLocked = !view.privacyNotice && !settings.locationCheck
@@ -336,6 +339,13 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
           </p>
         </CollapsibleContent>
       </Collapsible>
+      <LegalDetailsCard
+        place="ordering"
+        venueId={view.venueId}
+        legal={view.legal}
+        canEdit={view.canEditLegal}
+        runner={runner}
+      />
       {runner.dialog}
     </div>
   )

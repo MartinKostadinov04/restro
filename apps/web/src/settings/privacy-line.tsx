@@ -4,8 +4,7 @@
 // 11-06): the location check and ordering from the phone turn on only once the venue has one, since
 // the guest's consent ends with it (D121). `need`: the switch is off and stays off until then.
 // `missing` and `ordering`: it is already on (a live venue is never switched off), and guests are
-// shown no link. The link is kept in Settings › Paying (its legal details); where that section isn't
-// listed, the line names it without a link.
+// shown no link. The link is set with the venue's legal details on Settings › Ordering (#288).
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import type { ReactNode } from 'react'
@@ -16,19 +15,16 @@ export function PrivacyLine({
   testId,
 }: {
   state: 'need' | 'missing' | 'ordering'
-  /** Settings › Paying, or null where the venue has no Paying section. */
-  href: string | null
+  /** The legal details' form on Settings › Ordering. */
+  href: string
   testId: string
 }) {
   const t = useTranslations('ownerSettings')
-  const link = (chunks: ReactNode) =>
-    href === null ? (
-      chunks
-    ) : (
-      <Link href={href} className="underline underline-offset-2">
-        {chunks}
-      </Link>
-    )
+  const link = (chunks: ReactNode) => (
+    <Link href={href} className="underline underline-offset-2">
+      {chunks}
+    </Link>
+  )
   const key =
     state === 'need'
       ? 'st_privacy_need'

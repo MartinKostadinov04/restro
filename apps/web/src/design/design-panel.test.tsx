@@ -64,7 +64,7 @@ function setup(
       menu={extra.menu === undefined ? { id: MENU, name: null } : extra.menu}
       venueName={VENUE_NAME}
       features={DEFAULT_GUEST_FEATURES}
-      privacy={{ onFile: true, href: null }}
+      privacy={{ onFile: true, href: `/venues/${VENUE}?tab=settings&section=ordering#ord-legal` }}
     />,
     { locale: 'en' },
   )
@@ -143,7 +143,7 @@ describe('the template chooser', () => {
         menu={{ id: MENU, name: null }}
         venueName={VENUE_NAME}
         features={DEFAULT_GUEST_FEATURES}
-        privacy={{ onFile: true, href: null }}
+        privacy={{ onFile: true, href: `/venues/${VENUE}?tab=settings&section=ordering#ord-legal` }}
       />,
       { locale: 'bg' },
     )

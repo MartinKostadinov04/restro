@@ -1,7 +1,8 @@
-// Where a venue's privacy notice link is set: Settings › Paying, with its legal details (#198).
-// Plain, so a server component and a client one both use it.
+// Where a venue's privacy notice link is set: Settings › Ordering's form for the venue's legal
+// details (#288; Settings › Paying draws the same form). Plain, so a server component and a client
+// one both use it.
 
-/** The address of the venue's Settings › Paying. */
+/** The address of the legal details' form on the venue's Settings › Ordering. */
 export function privacyHref(venueId: string): string {
-  return `/venues/${venueId}?tab=settings&section=paying`
+  return `/venues/${venueId}?tab=settings&section=ordering#ord-legal`
 }

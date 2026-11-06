@@ -801,7 +801,7 @@
         "forbidden": "Only owners and admins can change guest features.",
         "invalid": "These changes could not be saved. Reload the page and try again.",
         "failed": "Something went wrong. Try again.",
-        "privacy_missing": "Add the venue's privacy notice link in Settings › Paying first."
+        "privacy_missing": "Add the venue's privacy notice link in Settings › Ordering first."
       }
     },
     "toolbar": {
@@ -2444,7 +2444,7 @@
       "telegram_off": "Telegram isn't set up for this installation yet.",
       "telegram_failed": "Couldn't reach Telegram. Try again.",
       "no_group": "No Telegram group is linked.",
-      "privacy_missing": "Add the venue's privacy notice link in Settings › Paying first.",
+      "privacy_missing": "Add the venue's privacy notice link in Settings › Ordering first.",
       "staff_account_required": "Only a staff account can make this the bar tablet: sign in here with an account whose role is Staff."
     },
     "sf_title": "Staff and roles",
@@ -2700,9 +2700,11 @@
       "owner": "Owner"
     },
     "al_money_line": "Payment alerts ring only for people who may follow up payments; if none of them is switched on, they ring for all of them.",
-    "st_privacy_need": "Turns on once the venue has a privacy notice link. <link>Add it in Settings › Paying</link>.",
-    "st_privacy_missing": "On, but the venue has no privacy notice link, so guests are shown none. <link>Add it in Settings › Paying</link>.",
-    "st_privacy_ordering": "Ordering from the phone is on, but the venue has no privacy notice link, so guests are shown none. <link>Add it in Settings › Paying</link>.",
+    "st_legal_d": "Guests see the privacy notice link before they share their location or order, and these details behind a link on the pay screen. Write them as in the Commercial Register.",
+    "st_legal_req": "Fill this in to turn ordering from the phone on.",
+    "st_privacy_need": "Turns on once the venue has a privacy notice link. <link>Add it in Settings › Ordering</link>.",
+    "st_privacy_missing": "On, but the venue has no privacy notice link, so guests are shown none. <link>Add it in Settings › Ordering</link>.",
+    "st_privacy_ordering": "Ordering from the phone is on, but the venue has no privacy notice link, so guests are shown none. <link>Add it in Settings › Ordering</link>.",
     "sf_dev_how": "The bar tablet signs in with a staff account, one whose role here is Staff (not an owner, admin or manager, who get money alerts and see tips). Sign in on the tablet with it and choose \"Make this the bar tablet\" on Tonight.",
     "sf_dev_tablet": "Make this the bar tablet"
   }

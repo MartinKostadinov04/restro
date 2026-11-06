@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { DEFAULT_ORDERING_SETTINGS, type OrderingSettings } from '@restro/core'
+import { DEFAULT_ORDERING_SETTINGS, type LegalDetails, type OrderingSettings } from '@restro/core'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { saveOrderingAction } from '@/server/settings/ordering-actions'
 import type { OrderingView } from '@/server/settings/ordering-view'
+import { savePayingAction } from '@/server/settings/paying-actions'
 import { renderWithIntl } from '@/test-utils'
 
 import { hoursProblemOf, isNextMorning, nearestOpenDay, noNightOpen } from './hours'
@@ -14,6 +15,7 @@ import { HoursPanel } from './hours-panel'
 import { OrderingPanel } from './ordering-panel'
 
 vi.mock('@/server/settings/ordering-actions', () => ({ saveOrderingAction: vi.fn() }))
+vi.mock('@/server/settings/paying-actions', () => ({ savePayingAction: vi.fn() }))
 vi.mock('@/lib/auth-client', () => ({ authClient: { signIn: { email: vi.fn() } } }))
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), message: vi.fn() },
@@ -39,7 +41,8 @@ function view(
     email: 'owner@example.com',
     privacyNotice: true,
     orderingOn: false,
-    payingListed: true,
+    legal: null,
+    canEditLegal: true,
     ...more,
   }
 }
@@ -286,7 +289,10 @@ describe('Settings › Ordering', () => {
     await user.click(screen.getByRole('button', { name: 'Change the largest order' }))
     await user.tab()
     expect(saveOrderingAction).not.toHaveBeenCalled()
-    expect(screen.queryByRole('textbox')).toBeNull()
+    // The cap's field closed (the legal details' fields below stay).
+    expect(
+      screen.queryByRole('textbox', { name: 'Largest order on the bill without paying first' }),
+    ).toBeNull()
 
     await user.click(screen.getByRole('button', { name: 'Change the largest order' }))
     const input = screen.getByLabelText('Largest order on the bill without paying first')
@@ -415,7 +421,13 @@ describe('Settings › Ordering', () => {
   })
 
   describe('the privacy notice link (RR-O15, RR-O44)', () => {
-    const PAYING = `/venues/${VENUE}?tab=settings&section=paying`
+    const LEGAL_FORM = `/venues/${VENUE}?tab=settings&section=ordering#ord-legal`
+    const LEGAL: LegalDetails = {
+      name: 'Club Nights EOOD',
+      eik: '123456789',
+      address: 'Sofia, 1 Example Street',
+      privacyUrl: 'https://club.example/privacy',
+    }
 
     it('keeps the location check off without the link, and says where to add it', async () => {
       const user = userEvent.setup()
@@ -427,9 +439,9 @@ describe('Settings › Ordering', () => {
       expect(check.hasAttribute('disabled')).toBe(true)
       const line = screen.getByTestId('ord-loc-privacy')
       expect(line.textContent).toBe(
-        'Turns on once the venue has a privacy notice link. Add it in Settings › Paying.',
+        'Turns on once the venue has a privacy notice link. Add it in Settings › Ordering.',
       )
-      expect(within(line).getByRole('link').getAttribute('href')).toBe(PAYING)
+      expect(within(line).getByRole('link').getAttribute('href')).toBe(LEGAL_FORM)
       await user.click(check)
       expect(saveOrderingAction).not.toHaveBeenCalled()
     })
@@ -452,18 +464,45 @@ describe('Settings › Ordering', () => {
       renderWithIntl(<OrderingPanel view={view({}, { privacyNotice: false, orderingOn: true })} />)
       const line = screen.getByTestId('ord-privacy-ordering')
       expect(line.textContent).toMatch(/^Ordering from the phone is on, but the venue has no/)
-      expect(within(line).getByRole('link').getAttribute('href')).toBe(PAYING)
+      expect(within(line).getByRole('link').getAttribute('href')).toBe(LEGAL_FORM)
     })
 
-    it('names Paying without a link where the venue has no Paying section', async () => {
+    it('has the form for the legal details with the link, saved as Settings › Paying saves it (#288)', async () => {
+      vi.mocked(savePayingAction).mockReset().mockResolvedValue(OK)
       const user = userEvent.setup()
-      renderWithIntl(
-        <OrderingPanel
-          view={view({ locationCheck: false }, { privacyNotice: false, payingListed: false })}
-        />,
+      renderWithIntl(<OrderingPanel view={view({}, { privacyNotice: false })} />)
+      const form = screen.getByTestId('ord-legal')
+      expect(form.getAttribute('id')).toBe('ord-legal')
+      expect(form.textContent).toContain('before they share their location or order')
+      await user.type(within(form).getByLabelText('Legal name'), LEGAL.name)
+      await user.click(within(form).getByRole('button', { name: 'Save' }))
+      expect(form.textContent).toContain('Fill this in to turn ordering from the phone on.')
+      expect(savePayingAction).not.toHaveBeenCalled()
+      await user.type(within(form).getByLabelText('ЕИК (company number)'), LEGAL.eik)
+      await user.type(within(form).getByLabelText('Registered address'), LEGAL.address)
+      await user.type(within(form).getByLabelText('Privacy notice link'), LEGAL.privacyUrl)
+      await user.click(within(form).getByRole('button', { name: 'Save' }))
+      await waitFor(() =>
+        expect(savePayingAction).toHaveBeenCalledWith({
+          venueId: VENUE,
+          changes: { legalDetails: LEGAL },
+        }),
       )
-      await user.click(screen.getByRole('button', { name: 'More' }))
-      expect(within(screen.getByTestId('ord-loc-privacy')).queryByRole('link')).toBeNull()
+    })
+
+    it('shows the saved details read-only to a person without the right to save them', () => {
+      renderWithIntl(<OrderingPanel view={view({}, { legal: LEGAL, canEditLegal: false })} />)
+      const card = screen.getByTestId('ord-legal')
+      expect(card.textContent).toContain(LEGAL.privacyUrl)
+      expect(within(card).queryByRole('textbox')).toBeNull()
+      expect(within(card).queryByRole('button')).toBeNull()
+    })
+
+    it('shows nothing of them to a person without the right while none are saved', () => {
+      renderWithIntl(
+        <OrderingPanel view={view({}, { privacyNotice: false, canEditLegal: false })} />,
+      )
+      expect(screen.queryByTestId('ord-legal')).toBeNull()
     })
 
     it('shows no line once the link is on file', () => {
@@ -480,7 +519,7 @@ describe('Settings › Ordering', () => {
       )
       await user.click(screen.getByRole('button', { name: 'Още' }))
       expect(screen.getByTestId('ord-loc-privacy').textContent).toBe(
-        'Включва се, след като заведението има връзка към политиката за поверителност. Добавете я в Настройки › Плащане.',
+        'Включва се, след като заведението има връзка към политиката за поверителност. Добавете я в Настройки › Поръчки.',
       )
     })
   })

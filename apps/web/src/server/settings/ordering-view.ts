@@ -4,8 +4,10 @@
 // time, and no table is added). Reads only; plain data safe for the browser.
 import {
   hasPrivacyNotice,
+  type LegalDetails,
   type OrderingSettings,
   readGuestFeatures,
+  readLegalDetails,
   readOrderingSettings,
 } from '@restro/core'
 import { serviceHoursWindow } from '@restro/core/service'
@@ -13,7 +15,6 @@ import { logEntries, type Venue, withTenant } from '@restro/db'
 import { and, desc, eq, sql } from 'drizzle-orm'
 
 import { getPool } from '../db'
-import { payingOffered } from './paying-offer'
 
 /** Everything the two sections draw. */
 export interface OrderingView {
@@ -42,8 +43,13 @@ export interface OrderingView {
   readonly privacyNotice: boolean
   /** True while ordering from the phone is on (the Design tab's guest features). */
   readonly orderingOn: boolean
-  /** True where Settings › Paying is listed, which is where the privacy notice link is set. */
-  readonly payingListed: boolean
+  /**
+   * The venue's legal details with its privacy notice link (#198), or null until all four are
+   * filled in: the section's form for them, the same one Settings › Paying draws (#288).
+   */
+  readonly legal: LegalDetails | null
+  /** True when the person holds `settings.connect_payments`, the right that saves the details. */
+  readonly canEditLegal: boolean
 }
 
 /** The time of the Log entry that last changed the spot, or null. */
@@ -71,13 +77,11 @@ export async function loadOrderingView(input: {
   readonly venue: Venue
   readonly hasPos: boolean
   readonly canChange: boolean
+  readonly canEditLegal: boolean
   readonly email: string
 }): Promise<OrderingView> {
   const settings = readOrderingSettings(input.venue.settings)
-  const [at, payingListed] = await Promise.all([
-    settings.spot === null ? null : spotSetAt(input.tenantId, input.venue.id),
-    payingOffered(input.tenantId, input.venue.id),
-  ])
+  const at = settings.spot === null ? null : await spotSetAt(input.tenantId, input.venue.id)
   return {
     venueId: input.venue.id,
     settings,
@@ -96,6 +100,7 @@ export async function loadOrderingView(input: {
     email: input.email,
     privacyNotice: hasPrivacyNotice(input.venue.settings),
     orderingOn: readGuestFeatures(input.venue.settings).ordering,
-    payingListed,
+    legal: readLegalDetails(input.venue.settings),
+    canEditLegal: input.canEditLegal,
   }
 }

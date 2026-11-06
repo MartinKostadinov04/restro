@@ -207,6 +207,7 @@ export default async function VenueWorkspacePage({
                         part="hours"
                         hasPos={hasTill}
                         canChange={held.includes('settings.guards')}
+                        canEditLegal={held.includes('settings.connect_payments')}
                         email={user.email}
                       />
                     </Suspense>
@@ -221,6 +222,7 @@ export default async function VenueWorkspacePage({
                         part="ordering"
                         hasPos={hasTill}
                         canChange={held.includes('settings.guards')}
+                        canEditLegal={held.includes('settings.connect_payments')}
                         email={user.email}
                       />
                     </Suspense>

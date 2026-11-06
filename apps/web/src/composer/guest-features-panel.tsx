@@ -62,7 +62,7 @@ export interface GuestFeaturesCardProps {
   readonly canEdit: boolean
   /**
    * The venue's privacy notice link (RR-O44): ordering turns on only once it is on file
-   * (`onFile`); `href` is Settings › Paying, where it is set, or null where that isn't listed.
+   * (`onFile`); `href` is the form on Settings › Ordering where it is set.
    */
   readonly privacy: PrivacyNotice
 }
@@ -70,7 +70,7 @@ export interface GuestFeaturesCardProps {
 /** Whether the venue has a privacy notice link, and where it is set. */
 export interface PrivacyNotice {
   readonly onFile: boolean
-  readonly href: string | null
+  readonly href: string
 }
 
 /** What is saved (the baseline) and what is drawn (the draft). */

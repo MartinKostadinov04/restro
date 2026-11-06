@@ -28,6 +28,8 @@ vi.mock('@/server/composer/guest-features-actions', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const VENUE = 'vn_0123456789ABCDEFGHIJKL'
+/** The legal details' form on Settings › Ordering, where the privacy notice link is set. */
+const LEGAL_FORM = `/venues/${VENUE}?tab=settings&section=ordering#ord-legal`
 
 /** Filters on, every service off: what a venue has until it chooses. */
 const FEATURES: GuestFeatures = {
@@ -58,7 +60,7 @@ function setup({
   features = FEATURES,
   options = OPTIONS,
   canEdit = true,
-  privacy = { onFile: true, href: null },
+  privacy = { onFile: true, href: LEGAL_FORM },
   locale = 'en',
 }: {
   features?: GuestFeatures
@@ -199,20 +201,18 @@ describe('the guest features panel', () => {
   })
 
   describe('the privacy notice link (RR-O44)', () => {
-    const PAYING = `/venues/${VENUE}?tab=settings&section=paying`
-
     it('keeps ordering off until the venue has the link, and says where to add it', () => {
-      setup({ privacy: { onFile: false, href: PAYING } })
+      setup({ privacy: { onFile: false, href: LEGAL_FORM } })
       expect(switchNamed('Order from the phone').hasAttribute('disabled')).toBe(true)
       const line = screen.getByTestId('feature-ordering-privacy')
       expect(line.textContent).toContain('privacy notice link')
-      expect(within(line).getByRole('link').getAttribute('href')).toBe(PAYING)
+      expect(within(line).getByRole('link').getAttribute('href')).toBe(LEGAL_FORM)
     })
 
     it('leaves ordering that is already on as it is, and says guests are shown no link', () => {
       setup({
         features: { ...FEATURES, ordering: true },
-        privacy: { onFile: false, href: PAYING },
+        privacy: { onFile: false, href: LEGAL_FORM },
       })
       const ordering = switchNamed('Order from the phone')
       expect(ordering.getAttribute('aria-checked')).toBe('true')
@@ -222,11 +222,6 @@ describe('the guest features panel', () => {
       )
     })
 
-    it('names the section without a link where the venue has no Paying section', () => {
-      setup({ privacy: { onFile: false, href: null } })
-      expect(within(screen.getByTestId('feature-ordering-privacy')).queryByRole('link')).toBeNull()
-    })
-
     it('shows no line once the link is on file', () => {
       setup()
       expect(switchNamed('Order from the phone').hasAttribute('disabled')).toBe(false)
@@ -234,7 +229,7 @@ describe('the guest features panel', () => {
     })
 
     it('says it in Bulgarian', () => {
-      setup({ privacy: { onFile: false, href: PAYING }, locale: 'bg' })
+      setup({ privacy: { onFile: false, href: LEGAL_FORM }, locale: 'bg' })
       expect(screen.getByTestId('feature-ordering-privacy').textContent).toContain(
         'политиката за поверителност',
       )

@@ -11,7 +11,6 @@ import { getAssetStore } from '@/server/assets'
 import { composerMenusOf } from '@/server/composer/menu'
 import { getPool } from '@/server/db'
 import { loadDesign } from '@/server/design/service'
-import { payingOffered } from '@/server/settings/paying-offer'
 import { privacyHref } from '@/settings/privacy-href'
 
 import { DesignPanel } from './design-panel'
@@ -28,10 +27,9 @@ export async function DesignTab({
   /** `?menu=`: the menu to preview and to name (else the live one). */
   menu?: unknown
 }) {
-  const [initial, { current }, paying] = await Promise.all([
+  const [initial, { current }] = await Promise.all([
     loadDesign(getPool(), tenantId, venue, getAssetStore, role),
     composerMenusOf(tenantId, venue.id, menu),
-    payingOffered(tenantId, venue.id),
   ])
   return (
     <DesignPanel
@@ -42,7 +40,7 @@ export async function DesignTab({
       features={readGuestFeatures(venue.settings)}
       privacy={{
         onFile: hasPrivacyNotice(venue.settings),
-        href: paying ? privacyHref(venue.id) : null,
+        href: privacyHref(venue.id),
       }}
     />
   )
