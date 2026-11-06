@@ -15,16 +15,16 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import { DEFAULT_FACE_ID, faceEntry } from '@/faces/registry'
 
-import type { CardFormContext } from '../connectors/card-form-types'
-import { stripeOptions } from '../connectors/stripe/appearance'
-import { files } from './load'
-import { payHandleKey } from './services-client'
+import { files } from '../../guest/load'
+import { payHandleKey } from '../../guest/services-client'
+import type { CardFormContext } from '../card-form-types'
+import { stripeOptions } from './appearance'
 
 /** What the registry's card form was handed, mount by mount. */
 const mounted: CardFormContext[] = []
 
-vi.mock('../connectors/card-forms', async (importOriginal) => {
-  const real = await importOriginal<typeof import('../connectors/card-forms')>()
+vi.mock('../card-forms', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../card-forms')>()
   return {
     ...real,
     cardFormFor: (kind: string) =>
@@ -164,7 +164,7 @@ describe('the venue’s look on the provider’s card form (DA-35, decision 130)
     // and when the client may forget it.
     window.sessionStorage.setItem(payHandleKey(CODE), `${HANDLE}|${Date.now() + 3_600_000}`)
     window.history.replaceState(null, '', `/m/${PARAM}?lang=en#t=${TOKEN}`)
-    const { GuestMenu } = await import('./guest-menu')
+    const { GuestMenu } = await import('../../guest/guest-menu')
     render(<GuestMenu venue={PARAM} />)
     expect(await screen.findByText('Hummus')).toBeTruthy()
     // The payment opens its own screens; the card form is mounted into the face's slot.
