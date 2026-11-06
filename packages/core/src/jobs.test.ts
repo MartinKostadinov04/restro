@@ -9,6 +9,7 @@ import {
   JOB_NAMES,
   JOB_PAYLOADS,
   jobSingletonKey,
+  ONE_RUN_PER_GROUP_JOBS,
   prepareJob,
   STATELY_JOBS,
 } from './jobs'
@@ -22,7 +23,8 @@ describe('job names and payloads', () => {
   it('every produced job has a payload schema and exactly one queue policy', () => {
     for (const name of Object.keys(JOB_PAYLOADS)) {
       expect(isProducedJob(name)).toBe(true)
-      expect(Number(EXCLUSIVE_JOBS.has(name)) + Number(STATELY_JOBS.has(name)), name).toBe(1)
+      const policies = [EXCLUSIVE_JOBS, STATELY_JOBS, ONE_RUN_PER_GROUP_JOBS]
+      expect(policies.filter((jobs) => jobs.has(name)).length, name).toBe(1)
     }
     expect(isProducedJob(JOB_NAMES.barsySyncTick)).toBe(false)
     expect(isProducedJob('constructor')).toBe(false)
@@ -54,11 +56,12 @@ describe('job names and payloads', () => {
     ).toThrow()
   })
 
-  it('a Send is keyed by its table, stately: a Send while one runs waits behind it (#77)', () => {
+  it('a Send is keyed and grouped by its table: one waiting and one running per table (#77, #286)', () => {
     const tableId = newId('tb')
     const job = prepareJob(JOB_NAMES.orderSend, { tenantId, venueId, tableId })
     expect(job.singletonKey).toBe(tableId)
-    expect(STATELY_JOBS.has(JOB_NAMES.orderSend)).toBe(true)
+    expect(ONE_RUN_PER_GROUP_JOBS.has(JOB_NAMES.orderSend)).toBe(true)
+    expect(STATELY_JOBS.has(JOB_NAMES.orderSend)).toBe(false)
     expect(job.group).toEqual({ id: tableId })
     expect(isProducedJob(JOB_NAMES.orderSlotSweep)).toBe(false)
   })

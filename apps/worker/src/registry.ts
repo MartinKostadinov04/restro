@@ -42,14 +42,32 @@ export function assertValidJobs(jobs: readonly JobDefinition[]): void {
 
 /**
  * Creates the queue if it is missing, then applies the options (createQueue never updates). The
- * policy is part of creation only: pg-boss cannot change it afterwards.
+ * policy is part of creation only: pg-boss cannot change it afterwards. A queue still on the
+ * job's `previousPolicy` is deleted first, so it is created again with the new one.
  */
 async function ensureQueue(
   boss: PgBoss,
   name: string,
   options: QueueOptions & { deadLetter?: string },
+  context: WorkerContext,
   policy?: QueuePolicy,
+  previousPolicy?: QueuePolicy,
 ) {
+  if (policy !== undefined && previousPolicy !== undefined) {
+    const found = (await boss.getQueue(name))?.policy
+    if (found === previousPolicy && found !== policy) {
+      await boss.deleteQueue(name)
+      context.log.warn(
+        { queue: name, from: found, to: policy },
+        'queue created again with its new policy; its waiting jobs are queued again by their sweeps',
+      )
+    } else if (found !== undefined && found !== policy) {
+      context.log.error(
+        { queue: name, found, wanted: policy },
+        'queue has another policy than its job, which pg-boss cannot change',
+      )
+    }
+  }
   await boss.createQueue(name, policy === undefined ? options : { ...options, policy })
   await boss.updateQueue(name, options)
 }
@@ -120,8 +138,20 @@ export async function registerJobs(
   for (const job of jobs) {
     const deadLetter = deadLetterName(job.name)
     // The dead-letter queue must exist before the queue that points at it.
-    await ensureQueue(boss, deadLetter, { retentionSeconds: DEAD_LETTER_RETENTION_SECONDS })
-    await ensureQueue(boss, job.name, { ...job.options.queue, deadLetter }, job.options.policy)
+    await ensureQueue(
+      boss,
+      deadLetter,
+      { retentionSeconds: DEAD_LETTER_RETENTION_SECONDS },
+      context,
+    )
+    await ensureQueue(
+      boss,
+      job.name,
+      { ...job.options.queue, deadLetter },
+      context,
+      job.options.policy,
+      job.options.previousPolicy,
+    )
     await boss.work(job.name, job.options.work ?? {}, guarded(job, context))
     if (schedules && job.schedule) {
       await boss.schedule(job.name, job.schedule.cron, null, { tz: job.schedule.tz ?? 'UTC' })
