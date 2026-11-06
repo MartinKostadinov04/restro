@@ -639,20 +639,17 @@ function ActiveServices({
           // One tap, one Send: the pay-first lines go with it and open their payment (D113).
           ...(paying === null ? {} : { payFirst: paying.part }),
         })
-        if (!alive.current) {
-          // nothing more to draw
-        } else if (result?.status === 'accepted' && paying !== null) {
-          // The pay part may have been refused on its own while the bill lines went (DA-1): its code
-          // is drawn in the bag. A payment that did start takes the tip with it, so the next one
-          // starts with nothing selected (D127, DA-6).
-          const refusedPay = result.payFirstRefused ?? null
+        if (alive.current && result?.status === 'accepted') {
+          // The pay part may have been refused on its own while the bill lines went (DA-1): its
+          // code is drawn in the bag.
+          const refusedPay = paying === null ? null : (result.payFirstRefused ?? null)
           setPayFirstRefused(refusedPay)
-          if (refusedPay === null) {
+          // A payment that did start takes the tip with it, so the next one opens with nothing
+          // selected (D127, DA-6).
+          if (paying !== null && refusedPay === null) {
             setTipChoice(NO_TIP)
             setTipOther('')
           }
-        } else if (result?.status === 'accepted') {
-          setPayFirstRefused(null)
         }
         if (result?.code === 'duplicate_order' && result.subjectId != null && alive.current) {
           setAsked({
