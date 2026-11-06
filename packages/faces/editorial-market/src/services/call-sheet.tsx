@@ -275,7 +275,11 @@ export function CallSheet() {
           tone="bad"
           title={rejected.title}
           hint={
-            asked.message === null ? rejected.hint : <Text value={asked.message} page={locale} />
+            inFlight.message === null ? (
+              rejected.hint
+            ) : (
+              <Text value={inFlight.message} page={locale} />
+            )
           }
         >
           <button
@@ -292,7 +296,10 @@ export function CallSheet() {
     // Lost (D120) and failed read differently: a lost request may be with the staff already, so it
     // never says it did not go through. Both offer the retry, which reuses the same action id.
     return (
-      <StatePanel tone="bad" title={asked.phase === 'lost' ? words.sendLost : words.requestFailed}>
+      <StatePanel
+        tone="bad"
+        title={inFlight.phase === 'lost' ? words.sendLost : words.requestFailed}
+      >
         <button
           type="button"
           className="ro-primary is-wide"
