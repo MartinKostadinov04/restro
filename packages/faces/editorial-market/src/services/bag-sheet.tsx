@@ -166,11 +166,13 @@ function SentOrders({ o }: { readonly o: Services }) {
  * venue takes a request for the bill, a "Pay cash" button that calls a waiter with it. The Send
  * button above carries the on-the-bill lines alone, so a friend's beer is never held back.
  *
- * No local success (D72): the button shows pending, then what the host said of the request.
+ * No local success (D72): the button shows pending, then what the host said of the request. An
+ * answer that was lost (`pending`) is never success and never "Try again" (D120): the request may
+ * have reached the staff, so the guest is told to call a waiter if nobody comes.
  */
 function PayFirstBelowMinimum({ o }: { readonly o: Services }) {
   const { words } = o
-  const [phase, setPhase] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle')
+  const [phase, setPhase] = useState<'idle' | 'sending' | 'sent' | 'lost' | 'failed'>('idle')
   const [refused, setRefused] = useState<string | null>(null)
   // The venue must offer a request for the bill; otherwise the server would refuse the call.
   const offered = o.features.callWaiter?.kinds.includes('bill') === true
@@ -188,6 +190,10 @@ function PayFirstBelowMinimum({ o }: { readonly o: Services }) {
       setPhase('failed')
       return
     }
+    if (outcome.result.status === 'pending') {
+      setPhase('lost')
+      return
+    }
     if (outcome.result.status === 'rejected') {
       setPhase('failed')
       setRefused(refusalText(words, outcome.result.code, { command: 'service.request' }))
@@ -203,7 +209,7 @@ function PayFirstBelowMinimum({ o }: { readonly o: Services }) {
           type="button"
           className="ro-ghost"
           data-slot="pay.first.cash"
-          disabled={phase === 'sending' || phase === 'sent'}
+          disabled={phase === 'sending' || phase === 'sent' || phase === 'lost'}
           onClick={() => void payCash()}
         >
           {words.paying.payCash}
@@ -211,6 +217,7 @@ function PayFirstBelowMinimum({ o }: { readonly o: Services }) {
       ) : null}
       {phase === 'sending' ? <small role="status">{words.requesting}</small> : null}
       {phase === 'sent' ? <small role="status">{words.requestStates.sent.title}</small> : null}
+      {phase === 'lost' ? <small role="alert">{words.sendLost}</small> : null}
       {phase === 'failed' ? <small role="alert">{refused ?? words.requestFailed}</small> : null}
     </section>
   )

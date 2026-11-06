@@ -88,6 +88,26 @@ describe('DA-B2-1: below the smallest card payment, the bill lines go on their o
     await waitFor(() => expect(blocked()?.textContent).toContain('Request sent'))
   })
 
+  it('never claims "Request sent" when the "Pay cash" answer was lost (D72, DA-2 again)', async () => {
+    const host = payFirstHost()
+    host.set({ paying: payingOf({ minCardMinor: 1500 }), tableBill: tableBillOf() })
+    drawFace(host)
+    const sheet = openBag()
+    const blocked = () => sheet.querySelector('[data-slot="pay.first.blocked"]') as HTMLElement
+    const cash = sheet.querySelector('[data-slot="pay.first.cash"]') as HTMLButtonElement
+    fireEvent.click(cash)
+    await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
+    // services-client.ts unknown(): what the page's host answers for a request whose answer was
+    // lost (a network error or a 5xx). It may have reached the staff, so neither word is true.
+    await act(async () =>
+      host.of('service.request')[0]?.answer({ status: 'pending', code: ANSWER_LOST_CODE }),
+    )
+    expect(blocked().textContent).not.toContain('Request sent')
+    expect(within(blocked()).getByRole('alert').textContent).toContain('reach Restro right now')
+    // D120: no "Try again" for a request that may have landed.
+    expect(cash.disabled).toBe(true)
+  })
+
   it('sends the bill lines and keeps the pay-first ones when the payment is rate-limited', async () => {
     const host = payFirstHost()
     host.set({ paying: payingOf(), tableBill: tableBillOf() })
