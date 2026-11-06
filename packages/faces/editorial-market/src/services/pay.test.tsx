@@ -689,8 +689,8 @@ describe('paid in the app (#197, D127 1.2)', () => {
       ordering: { state: 'on' as const, tips: true },
     })
     drawFace(host)
-    fireEvent.click(screen.getByRole('button', { name: 'Table order' }))
-    const bill = screen.getByRole('dialog', { name: 'Table order' })
+    fireEvent.click(screen.getByRole('button', { name: 'Your table’s bill' }))
+    const bill = screen.getByRole('dialog', { name: 'Your table’s bill' })
     expect(bill.querySelector('[data-slot="bill.paid"]')?.textContent).toContain('Nachos · €9.00')
   })
 
@@ -742,8 +742,8 @@ describe('paid in the app (#197, D127 1.2)', () => {
       ordering: { state: 'on' as const, tips: true },
     })
     drawFace(host)
-    fireEvent.click(screen.getByRole('button', { name: 'Table order' }))
-    const bill = screen.getByRole('dialog', { name: 'Table order' })
+    fireEvent.click(screen.getByRole('button', { name: 'Your table’s bill' }))
+    const bill = screen.getByRole('dialog', { name: 'Your table’s bill' })
     expect(bill.querySelector('.ro-empty')).toBeNull()
     expect(bill.querySelector('[data-slot="bill.paid"]')).not.toBeNull()
   })

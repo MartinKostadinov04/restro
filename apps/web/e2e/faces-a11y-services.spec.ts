@@ -85,8 +85,8 @@ test.describe('the dialogs', () => {
     view = await openPreview(here(), 390)
     await fillBag(view)
     await exerciseDialog(view, opener(view, 'bag'), 'Your bag')
-    await exerciseDialog(view, opener(view, 'bill'), 'Table order')
-    await exerciseDialog(view, opener(view, 'call'), 'Call a server')
+    await exerciseDialog(view, opener(view, 'bill'), 'Your table’s bill')
+    await exerciseDialog(view, opener(view, 'call'), 'Call a waiter')
     await exerciseDialog(view, opener(view, 'pay'), 'Pay')
     // The paid screen, reached from the pay sheet: the focus goes back to where the guest began.
     await exerciseDialog(view, opener(view, 'pay'), 'Pay', () => payTheBill(view))

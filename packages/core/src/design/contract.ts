@@ -622,7 +622,7 @@ export const DESIGN_PAGES = [
   {
     id: 'receipt',
     en: 'Receipt',
-    bg: 'Бележка',
+    bg: 'Разписка',
     markers: ['receipt', 'receipt.venue'],
     options: [
       {

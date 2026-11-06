@@ -1,7 +1,7 @@
 // Stock from the POS (#80; D122 §4 Stock, D124 §6). Stock lives in the POS: what the POS says ran
 // out is marked sold out in the POS layer (core's `recordPosStock`, through apply()), Tonight gets
-// the notice "Out of stock in {source}: Mojito. Greyed out on the menu." (`notice.record`), and
-// every phone sees the item greyed at its next poll of `live.json` (`publish-live`, queued here).
+// the notice "Out of stock in {source}: Mojito. Hidden from the guest menu." (`notice.record`), and
+// every phone loses the item from its menu at its next poll of `live.json` (`publish-live`, queued here).
 //
 // Two passes find it, both in `order-send`: the availability read right before a Send, where the
 // connector declares `itemAvailability`, and otherwise the POS's refusal that names the line. The

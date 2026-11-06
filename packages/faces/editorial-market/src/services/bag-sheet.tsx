@@ -197,7 +197,7 @@ function PayFirstBelowMinimum({ o }: { readonly o: Services }) {
       ) : null}
       {phase === 'sending' ? <small role="status">{words.requesting}</small> : null}
       {phase === 'sent' ? <small role="status">{words.requestStates.sent.title}</small> : null}
-      {phase === 'lost' ? <small role="alert">{words.sendLost}</small> : null}
+      {phase === 'lost' ? <small role="alert">{words.callLost}</small> : null}
       {phase === 'failed' ? <small role="alert">{refused ?? words.requestFailed}</small> : null}
     </section>
   )

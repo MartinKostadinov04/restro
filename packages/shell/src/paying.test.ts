@@ -213,6 +213,20 @@ describe('choosing what to pay (#45, D127)', () => {
     }
   })
 
+  it('words a lost call with its own line, and the call refusals with real words', () => {
+    for (const lang of ['en_US', 'bg_BG'] as const) {
+      const words = stringsFor(lang).services
+      expect(refusalText(words, 'answer_lost', { command: 'service.request' })).toBe(words.callLost)
+      expect(words.callLost).not.toBe(words.sendLost)
+      expect(words.callLost).not.toMatch(/try again|опитай|order|поръчка/i)
+      for (const code of ['calls_off', 'kind_not_offered']) {
+        const said = refusalText(words, code, { command: 'service.request' })
+        expect(said).toBe(words.refusals[code as 'calls_off' | 'kind_not_offered'])
+        expect(said).not.toBe(words.refusedOther)
+      }
+    }
+  })
+
   it("keeps the ticks across a friend's new round and clears only a line that changed or went", () => {
     const picks = pickWhole(new Map(), b)
     const friendAdded = bill([

@@ -89,7 +89,7 @@ describe('what is drawn, and what is not (test 1)', () => {
     render(<EditorialMarketFace view={view} />)
     expect(screen.queryByRole('button', { name: /^Add / })).toBeNull()
     expect(bagButton()).toBeNull()
-    for (const name of ['Call a server', 'Table order', 'Pay']) {
+    for (const name of ['Call a waiter', 'Your table’s bill', 'Pay']) {
       expect(screen.queryByRole('button', { name }), name).toBeNull()
     }
     expect(document.querySelector('.ro-bagbar')).toBeNull()
@@ -571,7 +571,7 @@ describe('Send: no local success (test 3)', () => {
     // The face spent nothing and opened nothing: the lines stay until the host's order moves them
     // into a sent order.
     expect(within(sheet).getByText('Hummus')).toBeTruthy()
-    expect(screen.queryByRole('dialog', { name: 'Table order' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Your table’s bill' })).toBeNull()
     page.update({
       order: orderOf([]),
       sentOrders: [

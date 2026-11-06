@@ -149,7 +149,7 @@ for (const style of ORDER_STYLES) {
         await guest.page.locator('button[data-slot="menu.call_waiter"]').click()
         await sheet.getByRole('radio', { name: 'Ice' }).click()
         await sheet.getByRole('button', { name: 'Send', exact: true }).click()
-        await expect(sheet.getByText('Request sent')).toBeVisible(SEEN)
+        await expect(sheet.getByText('Waiter called')).toBeVisible(SEEN)
         await expect(sheet.locator('.ro-kind')).toHaveText('Ice')
         await expect(sheet.getByRole('button', { name: 'Cancel request' })).toHaveCount(0)
         // "Something else": the kind joins the call the server already has open.

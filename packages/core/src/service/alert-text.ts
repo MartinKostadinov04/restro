@@ -132,7 +132,7 @@ const EN: Strings = {
   unstable: (venue, source) => `${venue}: the connection to ${source} is unstable`,
   codeBlock: (venue) => `${venue}: a network was blocked after too many wrong table codes`,
   outOfStock: (source, item) =>
-    `Out of stock in ${source}: ${item ?? 'an item'}. Greyed out on the menu.`,
+    `Out of stock in ${source}: ${item ?? 'an item'}. Hidden from the guest menu.`,
   paymentUnconfirmed: (table) => `${table}: a card payment is unconfirmed`,
   paymentUnconfirmedBody: (source) =>
     `Check in ${source} whether its receipt printed, then answer in Restro.`,
@@ -208,7 +208,8 @@ const BG: Strings = {
   rate: (venue, table) => `${venue}: поръчката на ${table} се променя твърде бързо`,
   unstable: (venue, source) => `${venue}: връзката с ${source} е нестабилна`,
   codeBlock: (venue) => `${venue}: мрежа е блокирана след твърде много грешни кодове на маси`,
-  outOfStock: (source, item) => `Изчерпано в ${source}: ${item ?? 'артикул'}. Посивено в менюто.`,
+  outOfStock: (source, item) =>
+    `Изчерпано в ${source}: ${item ?? 'артикул'}. Скрито от менюто за гостите.`,
   paymentUnconfirmed: (table) => `${table}: плащане с карта без потвърждение`,
   paymentUnconfirmedBody: (source) =>
     `Проверете в ${source} дали бележката е отпечатана и отговорете в Restro.`,
