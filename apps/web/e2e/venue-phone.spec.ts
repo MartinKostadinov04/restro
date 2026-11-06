@@ -153,7 +153,8 @@ test('a tablet with an owner’s account is not offered what it would be refused
   browser,
 }) => {
   const tablet = await signIn(browser, TONIGHT_OWNER_EMAIL)
-  // The newest session of the account becomes a shared device, as "mark this device" does.
+  // The newest session of the account becomes a shared device, seeded directly: in the app only a
+  // staff account does it, on Tonight ("Make this the bar tablet").
   seed('device', TONIGHT_OWNER_EMAIL)
 
   await tablet.goto('/venues')

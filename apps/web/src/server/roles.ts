@@ -37,8 +37,10 @@ export function canManageOrganization(role: string | null | undefined): boolean 
 
 /**
  * True for the roles that may edit the menu (Martin 11-06, RR-70): an owner or admin. Every write of
- * the composer, its tags, the item sheet, a photo upload and the guest features asks here first; a
- * plain member, whatever their role at a venue, reads the menu but changes nothing in it.
+ * the composer, its tags and payment modes, the item sheet and a photo upload asks here first; a
+ * plain member, whatever their role at a venue, reads the menu but changes nothing in it. The guest
+ * features and the Design tab ask `canManageIntegration`, and publishing asks
+ * `canPublishMenu`.
  */
 export function canEditMenu(role: string | null | undefined): boolean {
   return canManageIntegration(role)
