@@ -22,6 +22,7 @@ import {
   NO_TIP,
   offersPay,
   offersReceiptEmail,
+  type PayBlock,
   type PayFormSlot,
   type PayingStrings,
   type PayingView,
@@ -32,13 +33,14 @@ import {
   paidReceiptText,
   payBlock,
   payFormLocale,
-  payMoney,
   payScreen,
+  paySignedMoney,
   payStartCommand,
   pickWhole,
   prepareConfirmation,
   reconcilePicks,
   refusalText,
+  type ServiceStrings,
   sameAmountAgo,
   saveConfirmation,
   type TableBillLineView,
@@ -96,6 +98,42 @@ const CONFIRMATION_ID = 'ro-pay-confirmation'
 
 /** "×2" for a line of more than one. */
 const mark = (quantity: string) => (quantity === '1' ? '' : ` ×${quantity}`)
+
+/** Why Pay is greyed, in the guest's words; `bad_email` says it at the field itself. */
+function payBlockText(
+  block: PayBlock | null,
+  said: {
+    readonly words: ServiceStrings
+    readonly w: PayingStrings
+    /** The venue's smallest card payment as text, for `below_minimum`. */
+    readonly minCard: string
+  },
+): string | null {
+  const { words, w } = said
+  switch (block) {
+    case null:
+      return null
+    case 'offline':
+      return words.offline
+    case 'ordering_paused':
+      return words.orderingPaused
+    case 'cards_paused':
+      return w.cardsPaused
+    case 'not_up_to_date':
+      return w.notUpToDate
+    case 'nothing_picked':
+      return w.nothingPicked
+    // The POS's discount is as big as the ticked lines: there is nothing a card can be charged.
+    case 'nothing_owed':
+      return w.nothingOwed
+    case 'below_minimum':
+      return w.belowMinimum(said.minCard)
+    case 'tip_too_big':
+      return w.tipTooBig
+    case 'bad_email':
+      return w.emailInvalid
+  }
+}
 
 /**
  * Who processes the payment and for which legal entity, with the links to the legal details and
@@ -291,8 +329,11 @@ export function PaySheet() {
   const payment = state.payment ?? null
   const tipsOffered = state.ordering?.tips === true
   const receiptEmailOffered = offersReceiptEmail(paying)
+  // Every amount here is the POS's or the server's, and a line of the POS's may be negative (a
+  // waiter's discount, #293 DA-8): one signed format, so a discount shows as "-4,00 EUR" and the
+  // whole menu is never replaced by the load-failure notice.
   const money = useMemo(
-    () => (minor: number) => payMoney(minor, bill?.currency ?? 'EUR', locale),
+    () => (minor: number) => paySignedMoney(minor, bill?.currency ?? 'EUR', locale),
     [bill?.currency, locale],
   )
 
@@ -388,24 +429,11 @@ export function PaySheet() {
     // D120: while ordering is paused Pay is greyed, with the pause's own line.
     state.ordering?.state === 'paused',
   )
-  const blockWords =
-    block === 'offline'
-      ? words.offline
-      : block === 'ordering_paused'
-        ? words.orderingPaused
-        : block === 'cards_paused'
-          ? w.cardsPaused
-          : block === 'not_up_to_date'
-            ? w.notUpToDate
-            : block === 'nothing_picked'
-              ? w.nothingPicked
-              : block === 'below_minimum'
-                ? w.belowMinimum(money(paying.minCardMinor))
-                : block === 'tip_too_big'
-                  ? w.tipTooBig
-                  : block === 'bad_email'
-                    ? w.emailInvalid
-                    : null
+  const blockWords = payBlockText(block, {
+    words,
+    w,
+    minCard: money(paying.minCardMinor),
+  })
   const free = freeLines(bill)
   // Everything is paid: nothing is free to pay and the sitting has paid lines, so the choosing, the
   // totals and Pay go, and the bill shows what was paid (D127 1.2).

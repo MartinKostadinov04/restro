@@ -206,6 +206,7 @@ export {
   payMoney,
   paymentIsFinal,
   payScreen,
+  paySignedMoney,
   payStartCommand,
   payTotalsOf,
   pickWhole,

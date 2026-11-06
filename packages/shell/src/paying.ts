@@ -21,7 +21,7 @@ import {
   sumSignedMinor,
 } from '@restro/core'
 
-import { viewMinor } from './money'
+import { viewMinor, viewSignedMinor } from './money'
 import { PAY_ENDS, type PayEnd } from './service-vocabulary'
 import { ANSWER_LOST_CODE, OFFLINE_CODE } from './services'
 import type { PayingStrings, ServiceStrings } from './strings'
@@ -196,6 +196,12 @@ export type PayBlock =
   | 'cards_paused'
   | 'not_up_to_date'
   | 'nothing_picked'
+  /**
+   * What was ticked comes to nothing or less: the POS's discount is as big as the lines (#293,
+   * DA-8). A card payment of zero or a negative amount does not exist, so the guest is told to ask
+   * the waiter instead of being offered a Pay that the server would refuse.
+   */
+  | 'nothing_owed'
   | 'below_minimum'
   | 'tip_too_big'
   /** An address was typed in the receipt field and is not a valid one (no words: the field says). */
@@ -223,6 +229,8 @@ export function payBlock(
   if (!bill.complete) return 'not_up_to_date'
   if (picks.size === 0) return 'nothing_picked'
   const totals = choosePay(picks, tip, tipsOffered)
+  // A ticked set the POS's own discount brings to zero or below: there is nothing to charge a card.
+  if (totals.itemsMinor <= 0) return 'nothing_owed'
   if (!totals.tipValid) return 'tip_too_big'
   // The smallest card payment is measured on what is held: the lines plus the tip (D127).
   if (totals.totalMinor < paying.minCardMinor) return 'below_minimum'
@@ -399,6 +407,15 @@ export function lineNameText(
 /** An amount of the paying screens as text for the guest's language ("27,50 EUR" / "27.50 EUR"). */
 export function payMoney(minor: number, currency: Currency, locale: Locale): string {
   return viewMinor(minor, currency, locale).text
+}
+
+/**
+ * The same for an amount that comes from the POS signed, so a waiter's discount line reads
+ * "-4,00 €" (#293, DA-8): the bill's and a payment's lines, their sums and what is left to pay. A
+ * face uses `payMoney` for its own estimates, which are never negative (rule 8).
+ */
+export function paySignedMoney(minor: number, currency: Currency, locale: Locale): string {
+  return viewSignedMinor(minor, currency, locale).text
 }
 
 /** The language code a card form is shown in ("bg", "en"): the shell's locale without its region. */

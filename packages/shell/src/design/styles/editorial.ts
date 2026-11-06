@@ -34,6 +34,8 @@ export const editorialStyle = {
     'Two-column cards draw the choices summary and the extra fields, which today’s layout hides.',
     'A dish with no photo starts under the Back button (today its title is drawn against the button).',
     'A label, a badge or a filter chip with no spaces wraps inside its box (today it clips, in the list layout, or widens the card).',
+    'The payment number on the Paid screen and in the Payment confirmation is 48 px at the sheet’s full writing colour (today it is body text at 75 %, which a waiter cannot read across a bar).',
+    'A payment that has not settled while its sheet is closed draws a slim line at the top of the menu (today nothing on the menu shows it).',
   ],
   values: {
     general: {

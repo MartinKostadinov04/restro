@@ -347,6 +347,12 @@ export interface CommandResult {
    * made, the item an `item_unavailable` names), or null.
    */
   readonly subjectId?: string | null
+  /**
+   * An accepted Send whose pay-first part alone was refused (#293, DA-1): the on-the-bill lines
+   * went, the pay-first lines stayed in the bag, and this code says why they did ("below_minimum",
+   * "rate_limited"). Null or absent for every other answer.
+   */
+  readonly payFirstRefused?: string | null
 }
 
 /* ---------------------------------------------------------------------------------------------

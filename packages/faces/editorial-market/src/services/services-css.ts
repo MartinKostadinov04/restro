@@ -722,6 +722,23 @@ export const SERVICES_CSS = `
   margin: 0;
   padding-left: 18px;
 }
+/* The slim line at the top of the menu while a payment has not settled and its sheet is closed
+   (#293, DA-24): the full width of the page, the accent's fill so it is seen at a glance, and a
+   44 px target because it is a button. */
+.rm .ro-payline {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 16px;
+  border: 0;
+  background: var(--rm-accent);
+  color: var(--rm-on-accent);
+  font-family: var(--rm-font);
+  font-size: calc(14px * var(--rm-type));
+  text-align: center;
+  touch-action: manipulation;
+}
 /* The last refusal of an order command, over the bar when no sheet is open; a tap dismisses it. */
 .rm .ro-barnote {
   position: fixed;
@@ -904,6 +921,17 @@ export const SERVICES_CSS = `
   max-width: 32ch;
   margin: 0;
   opacity: 0.75;
+}
+/* The payment number (D127, the guide's Paid: "the number in large type", at least 40 px at 7:1):
+   the guest turns the phone round and a waiter reads it across a bar, so it takes the waiter
+   reference's 48 px and the sheet's full writing colour, not the status panel's 75 % (#293, DA-11). */
+.rm .ro-state p.ro-pay-number,
+.rm .ro-pay-number {
+  font-size: calc(48px * var(--rm-type));
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  opacity: 1;
 }
 .rm .ro-state .ro-kind {
   font-weight: 800;

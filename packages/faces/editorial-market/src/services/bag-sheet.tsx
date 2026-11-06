@@ -18,10 +18,11 @@
 // phone is offline Send is greyed with the weak-connection line (D121). While ordering is paused
 // (D120) Send is drawn and greyed under the pause's own line; the lines stay editable.
 
-import { orderingClosedText, payFirstWords, payMoney, sentWords } from '@restro/shell'
+import { orderingClosedText, payFirstWords, payMoney, refusalText, sentWords } from '@restro/shell'
 import { useState } from 'react'
 
 import { Photo, Text } from '../parts'
+import { newActionId } from './command'
 import { StopLocationCheck } from './location-sheet'
 import { Stepper } from './parts'
 import { PaymentScreen } from './pay-sheet'
@@ -159,6 +160,69 @@ function SentOrders({ o }: { readonly o: Services }) {
   )
 }
 
+/**
+ * The pay-first part under the Send button when it cannot be paid by card now (#293, DA-1; Martin
+ * 11-01): the part is greyed with "Your bill is under the minimum for card payment" and, where the
+ * venue takes a request for the bill, a "Pay cash" button that calls a waiter with it. The Send
+ * button above carries the on-the-bill lines alone, so a friend's beer is never held back.
+ *
+ * No local success (D72): the button shows pending, then what the host said of the request. An
+ * answer that was lost (`pending`) is never success and never "Try again" (D120): the request may
+ * have reached the staff, so the guest is told to call a waiter if nobody comes.
+ */
+function PayFirstBelowMinimum({ o }: { readonly o: Services }) {
+  const { words } = o
+  const [phase, setPhase] = useState<'idle' | 'sending' | 'sent' | 'lost' | 'failed'>('idle')
+  const [refused, setRefused] = useState<string | null>(null)
+  // The venue must offer a request for the bill; otherwise the server would refuse the call.
+  const offered = o.features.callWaiter?.kinds.includes('bill') === true
+  async function payCash() {
+    if (phase === 'sending') return
+    setPhase('sending')
+    setRefused(null)
+    const outcome = await o.run({
+      kind: 'service.request',
+      actionId: newActionId(),
+      request: 'bill',
+      note: '',
+    })
+    if (!outcome.ok) {
+      setPhase('failed')
+      return
+    }
+    if (outcome.result.status === 'pending') {
+      setPhase('lost')
+      return
+    }
+    if (outcome.result.status === 'rejected') {
+      setPhase('failed')
+      setRefused(refusalText(words, outcome.result.code, { command: 'service.request' }))
+      return
+    }
+    setPhase('sent')
+  }
+  return (
+    <section className="ro-notice" data-slot="pay.first.blocked" data-pay-first-blocked="">
+      <span>{words.paying.payFirstBelowMinimum}</span>
+      {offered ? (
+        <button
+          type="button"
+          className="ro-ghost"
+          data-slot="pay.first.cash"
+          disabled={phase === 'sending' || phase === 'sent' || phase === 'lost'}
+          onClick={() => void payCash()}
+        >
+          {words.paying.payCash}
+        </button>
+      ) : null}
+      {phase === 'sending' ? <small role="status">{words.requesting}</small> : null}
+      {phase === 'sent' ? <small role="status">{words.requestStates.sent.title}</small> : null}
+      {phase === 'lost' ? <small role="alert">{words.sendLost}</small> : null}
+      {phase === 'failed' ? <small role="alert">{refused ?? words.requestFailed}</small> : null}
+    </section>
+  )
+}
+
 export function BagSheet() {
   const o = useServicesRequired()
   const { words, order, locale, state, sendLost, asked } = o
@@ -172,6 +236,9 @@ export function BagSheet() {
   const paused = ordering === 'paused'
   const linePhotos = o.view.design.order?.line_photos === 'shown'
   const plan = o.payFirst
+  // The pay-first part the next Send can carry: none while it is under the card minimum (#293,
+  // DA-1), where the part is drawn greyed under a Send of the bill lines alone.
+  const paying = o.payFirstBlock === null ? plan : null
   const money = (minor: number) => payMoney(minor, o.view.currency, locale)
 
   // A Send with pay-first lines opens their payment at once (#258, D113): its screens are Pay's, in
@@ -357,47 +424,66 @@ export function BagSheet() {
         phonesMayOrder &&
         sendLost === null ? (
         <>
-          {plan !== null && o.state.ordering?.tips === true ? (
+          {paying !== null && o.state.ordering?.tips === true ? (
             <TipRow
               tip={o.tip.choice}
               other={o.tip.other}
-              totals={plan.totals}
+              totals={paying.totals}
               money={money}
               onTip={o.setTip}
               onOther={o.setTipOther}
             />
           ) : null}
-          <button
-            type="button"
-            className="ro-primary is-wide"
-            data-design-part="button"
-            data-send=""
-            data-pay-first={plan === null ? undefined : ''}
-            disabled={o.sending || offline || paused || (plan !== null && !plan.totals.tipValid)}
-            onClick={() => void o.sendOrder()}
-          >
-            {o.sending ? (
-              <span>{words.sendingNow}</span>
-            ) : plan !== null ? (
-              // The bill lines go with it ("Send and pay"); with none, it is paying alone ("Pay").
-              <span>
-                {order.sendCount > 0
-                  ? words.sendAndPay(money(plan.totals.totalMinor))
-                  : words.paying.payX(money(plan.totals.totalMinor))}
-              </span>
-            ) : (
-              <span>
-                {order.keptBack
-                  ? words.sendOthers(order.sendCount)
-                  : words.sendItems(order.sendCount)}
-              </span>
-            )}
-          </button>
-          {plan !== null && !plan.totals.tipValid ? (
+          {order.sendCount > 0 || paying !== null ? (
+            <button
+              type="button"
+              className="ro-primary is-wide"
+              data-design-part="button"
+              data-send=""
+              data-pay-first={paying === null ? undefined : ''}
+              disabled={
+                o.sending || offline || paused || (paying !== null && !paying.totals.tipValid)
+              }
+              onClick={() => void o.sendOrder()}
+            >
+              {o.sending ? (
+                <span>{words.sendingNow}</span>
+              ) : paying !== null ? (
+                // The bill lines go with it ("Send and pay"); with none, it is paying alone ("Pay").
+                <span>
+                  {order.sendCount > 0
+                    ? words.sendAndPay(money(paying.totals.totalMinor))
+                    : words.paying.payX(money(paying.totals.totalMinor))}
+                </span>
+              ) : (
+                <span>
+                  {order.keptBack
+                    ? words.sendOthers(order.sendCount)
+                    : words.sendItems(order.sendCount)}
+                </span>
+              )}
+            </button>
+          ) : null}
+          {paying !== null && !paying.totals.tipValid ? (
             <p className="ro-notice" role="status" data-slot="pay.blocked">
               {words.paying.tipTooBig}
             </p>
           ) : null}
+          {/* The pay-first part that cannot be paid by card now, greyed, with "Pay cash" (DA-1). */}
+          {plan !== null && o.payFirstBlock === 'below_minimum' ? (
+            <PayFirstBelowMinimum o={o} />
+          ) : null}
+          {/* Its refusal where the bill lines went without it: "Another payment is in progress…". */}
+          {o.payFirstRefused === null ? null : (
+            <p className="ro-notice is-bad" role="alert" data-slot="pay.first.refused">
+              {o.payFirstRefused === 'rate_limited'
+                ? words.paying.payFirstBusy
+                : refusalText(words, o.payFirstRefused, {
+                    command: 'pay.start',
+                    minCard: o.state.paying == null ? null : money(o.state.paying.minCardMinor),
+                  })}
+            </p>
+          )}
         </>
       ) : null}
 

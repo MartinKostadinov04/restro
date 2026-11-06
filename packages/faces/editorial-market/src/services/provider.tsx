@@ -197,6 +197,17 @@ export interface Services {
    * free pay-first lines. It makes the Send "Send and pay" (or "Pay" when nothing else goes).
    */
   readonly payFirst: PayFirstPlan | null
+  /**
+   * Why the pay-first part cannot go with this Send (#293, DA-1; Martin 11-01): `below_minimum`
+   * where it and its tip are under the venue's smallest card payment. The part is drawn greyed, the
+   * Send carries the bill lines alone, and the guest is offered "Pay cash" (a waiter with the bill).
+   */
+  readonly payFirstBlock: 'below_minimum' | null
+  /**
+   * The pay-first part of the last Send was refused on its own while the bill lines went (DA-1):
+   * the server's code, for the face to word. The next Send clears it.
+   */
+  readonly payFirstRefused: string | null
   /** The tip chosen for the pay-first part, and the text typed in "Other amount" (none to start). */
   readonly tip: { readonly choice: TipChoice; readonly other: string }
   readonly setTip: (choice: TipChoice) => void
@@ -449,8 +460,17 @@ function ActiveServices({
     [payFirstState, order.payFirstLines, tipChoice, tipsOffered],
   )
   const tip = useMemo(() => ({ choice: tipChoice, other: tipOther }), [tipChoice, tipOther])
-  // The smallest card payment, for the words of a refusal that names it (`below_minimum`).
+  // The smallest card payment, for the words of a refusal that names it (`below_minimum`) and for
+  // greying the pay-first part before the Send (#293, DA-1).
   const minCardMinor = state.paying?.minCardMinor ?? null
+  // D117 "Pay unlocks at the minimum": under the venue's smallest card payment the pay-first part
+  // cannot be paid by card, so the Send takes the bill lines alone and the part is drawn greyed.
+  const payFirstBlock: Services['payFirstBlock'] =
+    payFirst !== null && minCardMinor !== null && payFirst.totals.totalMinor < minCardMinor
+      ? 'below_minimum'
+      : null
+  // The last Send's pay-first refusal, where its bill lines went without it.
+  const [payFirstRefused, setPayFirstRefused] = useState<string | null>(null)
 
   /* --- commands on the order ------------------------------------------------------------ */
   const [notice, setNotice] = useState<string | null>(null)
@@ -579,10 +599,13 @@ function ActiveServices({
     async (confirmDuplicateOf?: string) => {
       if (sendingNow.current) return // two quick taps are one send
       const taking = order.resolved.lines.filter(order.sendable)
+      // Under the venue's smallest card payment the pay-first part stays behind (#293, DA-1): the
+      // Send is the bill lines alone, or nothing at all when there are none.
+      const paying = payFirstBlock === null ? payFirst : null
       // The Send may be pay-first lines alone (#258): "Pay", which is such a Send with no bill lines.
-      if (taking.length === 0 && payFirst === null) return
+      if (taking.length === 0 && paying === null) return
       // A tip over the lines is refused by the host: the sheet greys the button, and so is this.
-      if (payFirst !== null && !payFirst.totals.tipValid) return
+      if (paying !== null && !paying.totals.tipValid) return
       // Send is blocked while the phone is offline, never queued (D121); the sheet greys the button.
       if (latest.current.services.state.offline === true) return
       // Nor while ordering is paused (D120): the sheet greys Send, and the bag stays as it is.
@@ -590,6 +613,7 @@ function ActiveServices({
       sendingNow.current = true
       setAsked(null)
       setSending(true)
+      setPayFirstRefused(null)
       setLastSend({
         before: new Set(
           (latest.current.services.state.sentOrders ?? NO_SENT).map((sent) => sent.id),
@@ -613,8 +637,20 @@ function ActiveServices({
           })),
           ...(confirmDuplicateOf === undefined ? {} : { confirmDuplicateOf }),
           // One tap, one Send: the pay-first lines go with it and open their payment (D113).
-          ...(payFirst === null ? {} : { payFirst: payFirst.part }),
+          ...(paying === null ? {} : { payFirst: paying.part }),
         })
+        if (alive.current && result?.status === 'accepted') {
+          // The pay part may have been refused on its own while the bill lines went (DA-1): its
+          // code is drawn in the bag.
+          const refusedPay = paying === null ? null : (result.payFirstRefused ?? null)
+          setPayFirstRefused(refusedPay)
+          // A payment that did start takes the tip with it, so the next one opens with nothing
+          // selected (D127, DA-6).
+          if (paying !== null && refusedPay === null) {
+            setTipChoice(NO_TIP)
+            setTipOther('')
+          }
+        }
         if (result?.code === 'duplicate_order' && result.subjectId != null && alive.current) {
           setAsked({
             of: result.subjectId,
@@ -630,7 +666,7 @@ function ActiveServices({
         if (alive.current) setSending(false)
       }
     },
-    [act, order, payFirst],
+    [act, order, payFirst, payFirstBlock],
   )
 
   // Escape closes the sheet, unless the location sheet is over it: that one is the top and takes the key.
@@ -688,6 +724,8 @@ function ActiveServices({
       openDish,
       payFirstState,
       payFirst,
+      payFirstBlock,
+      payFirstRefused,
       tip,
       setTip,
       setTipOther,
@@ -728,6 +766,8 @@ function ActiveServices({
       openDish,
       payFirstState,
       payFirst,
+      payFirstBlock,
+      payFirstRefused,
       tip,
       setTip,
       sending,

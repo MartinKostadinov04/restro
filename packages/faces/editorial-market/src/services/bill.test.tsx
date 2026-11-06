@@ -290,3 +290,70 @@ describe("the table's bill as the POS reads it (state.tableBill, D127)", () => {
     expect(within(sheet).queryByRole('button', { name: /^Pay/ })).toBeNull()
   })
 })
+
+describe("a waiter's discount on the POS's bill (#293, DA-8)", () => {
+  const w = stringsFor('en_US').services
+  // The POS sends its own signed amount, so a discount line is negative and a free line is 0. It
+  // used to throw in render and the whole menu was replaced by the load-failure notice.
+  const discounted = () =>
+    fakeHost({
+      tableBill: tableBillOf(
+        [
+          tableLine(1, 'House wine', 1250),
+          tableLine(2, 'Discount', -400),
+          tableLine(3, 'Tap water', 0, { quantity: '0.5' }),
+        ],
+        { totalMinor: 850, owedMinor: 850 },
+      ),
+      paying: payingOf(),
+    })
+
+  it('draws the discount as its own minus line, with the decimal quantity and the free line', () => {
+    drawFace(discounted())
+    const sheet = openBill()
+    const lines = [...sheet.querySelectorAll('[data-slot="bill.lines"] li')]
+    expect(lines.map((line) => line.textContent)).toEqual([
+      'House wine · €12.50',
+      'Discount · -€4.00',
+      'Tap water ×0.5 · €0.00',
+    ])
+    // The minus line is marked, so a Style can set it apart from a line that was ordered.
+    expect(lines.map((line) => line.hasAttribute('data-discount'))).toEqual([false, true, false])
+    expect(sheet.querySelector('[data-slot="bill.owed"]')?.textContent).toBe(
+      `${w.paying.leftToPay}€8.50`,
+    )
+  })
+
+  it('opens Pay with the discount ticked and nothing throws', () => {
+    drawFace(discounted())
+    const bill = openBill()
+    fireEvent.click(within(bill).getByRole('button', { name: /^Pay/ }))
+    const sheet = screen.getByRole('dialog', { name: 'Pay' })
+    expect(
+      [...sheet.querySelectorAll('.ro-lines li')].map((line) => line.textContent?.trim()),
+    ).toEqual(['House wine · €12.50', 'Discount · -€4.00', 'Tap water ×0.5 · €0.00'])
+    fireEvent.click(sheet.querySelector('[data-slot="pay.whole"]') as Element)
+    expect(sheet.querySelector('[data-slot="pay.start"]')?.textContent).toContain('€8.50')
+  })
+
+  it('offers no Pay for a ticked set the discount takes to zero or less: ask the waiter', () => {
+    drawFace(
+      fakeHost({
+        tableBill: tableBillOf(
+          [tableLine(1, 'House wine', 1000), tableLine(2, 'Discount', -1000)],
+          { totalMinor: 0, owedMinor: 0 },
+        ),
+        paying: payingOf(),
+      }),
+    )
+    const sheet = openBill()
+    // Nothing is left to pay, so the bill offers no Pay at all; the pay sheet, reached from the
+    // card in the bar, greys Pay with the line that says to ask the waiter.
+    expect(within(sheet).queryByRole('button', { name: /^Pay/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Pay' }))
+    const pay = screen.getByRole('dialog', { name: 'Pay' })
+    fireEvent.click(pay.querySelector('[data-slot="pay.whole"]') as Element)
+    expect((pay.querySelector('[data-slot="pay.start"]') as HTMLButtonElement).disabled).toBe(true)
+    expect(pay.querySelector('[data-slot="pay.blocked"]')?.textContent).toBe(w.paying.nothingOwed)
+  })
+})

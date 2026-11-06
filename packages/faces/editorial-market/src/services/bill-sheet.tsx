@@ -6,7 +6,7 @@
 // round the guest just sent appears here when the host's state has it), and a guest round that the
 // state lists twice is drawn once.
 
-import { lineNameText, payMoney } from '@restro/shell'
+import { lineNameText, paySignedMoney } from '@restro/shell'
 
 import { Text } from '../parts'
 import { distinctRounds, keyed } from './bill'
@@ -24,7 +24,8 @@ export function BillSheet() {
   const rounds = distinctRounds(state.bill)
   const bill = state.bill
   const table = state.tableBill ?? null
-  const money = (minor: number) => payMoney(minor, table?.currency ?? 'EUR', locale)
+  // The POS's own amounts are signed: a waiter's discount line is negative (#293, DA-8).
+  const money = (minor: number) => paySignedMoney(minor, table?.currency ?? 'EUR', locale)
   const paidLines = table?.paidLines ?? []
   // The POS's own lines are the bill where the host has no record of rounds (the guest page's host
   // has none); where it has, the rounds are the same lines with their status and who ordered them.
@@ -76,7 +77,11 @@ export function BillSheet() {
             {tableLines.map(({ part, line }) => {
               const greyed = part.beingPaid || line.beingPaid
               return (
-                <li key={line.id} data-being-paid={greyed ? '' : undefined}>
+                <li
+                  key={line.id}
+                  data-being-paid={greyed ? '' : undefined}
+                  data-discount={line.amountMinor < 0 ? '' : undefined}
+                >
                   <span>
                     {lineNameText(line.name, locale, words.otherItem)}
                     {mark(line.quantity)} · {money(line.amountMinor)}

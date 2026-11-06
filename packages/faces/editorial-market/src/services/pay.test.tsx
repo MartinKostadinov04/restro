@@ -23,6 +23,7 @@ import {
   type FakeHost,
   fakeHost,
   orderingView,
+  orderOf,
   payingOf,
   paymentOf,
   resetPage,
@@ -984,5 +985,53 @@ describe('the venue’s electronic receipt (#186, D127)', () => {
       for (const pattern of RECEIPT_LOOK) expect(note).not.toMatch(pattern)
       cleanup()
     }
+  })
+})
+
+describe('a payment that has not settled while its sheet is closed (#293, DA-24)', () => {
+  const w = stringsFor('en_US').services
+  const line = () => document.querySelector('[data-slot="menu.pay_progress"]')
+
+  it('says so in a slim line at the top of the menu, and a tap opens the payment', () => {
+    const host = fakeHost({
+      tableBill: tableBillOf(),
+      paying: payingOf(),
+      payment: paymentOf({ state: 'held', form: null }),
+    })
+    drawFace(host)
+    // The guest closed the browser or came back from a redirect: no sheet is open, and the menu
+    // alone used to show nothing of the payment.
+    expect(line()?.textContent).toBe(w.paying.inProgress)
+    fireEvent.click(line() as Element)
+    expect(screen.getByRole('dialog', { name: 'Pay' })).toBeTruthy()
+    // While the sheet is open the line goes: the payment's own screen speaks there.
+    expect(line()).toBeNull()
+  })
+
+  it('opens the bag for a pay-first round, where that payment’s screens live', () => {
+    const host = fakeHost({
+      order: orderOf(),
+      ordering: { state: 'on', notesAndOptions: true, payFirst: 'on' },
+      paying: payingOf(),
+      payment: paymentOf({ mode: 'pay_first', state: 'queued', form: null }),
+    })
+    drawFace(host)
+    fireEvent.click(line() as Element)
+    expect(screen.getByRole('dialog', { name: 'Your bag' })).toBeTruthy()
+  })
+
+  it('goes once the payment has settled, and is never there without one', () => {
+    const page = drawFace(
+      fakeHost({
+        tableBill: tableBillOf(),
+        paying: payingOf(),
+        payment: paymentOf({ state: 'held', form: null }),
+      }),
+    )
+    expect(line()).not.toBeNull()
+    page.update({ payment: paymentOf({ state: 'captured', form: null, amountMinor: 2250 }) })
+    expect(line()).toBeNull()
+    page.update({ payment: null })
+    expect(line()).toBeNull()
   })
 })

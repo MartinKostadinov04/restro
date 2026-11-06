@@ -14,6 +14,7 @@ import {
   payFormLocale,
   paymentIsFinal,
   payScreen,
+  paySignedMoney,
   payStartCommand,
   pickWhole,
   receiptEmailOf,
@@ -259,6 +260,65 @@ describe('choosing what to pay (#45, D127)', () => {
     expect(offersPay({ ...base, tableBill: null })).toBe(false)
     expect(offersPay({ ...base, payment: payment({}) })).toBe(false)
     expect(offersPay(EMPTY_SERVICE_STATE)).toBe(false)
+  })
+})
+
+describe('a bill with the POS’s own negative lines (#293, DA-8; rule 8)', () => {
+  // A waiter puts a discount on the table's bill, so a line comes to Restro negative. Nothing here
+  // may throw (the face's only error boundary wraps the whole menu), and no card may be offered an
+  // amount of zero or less, which no provider takes.
+  const amounts = fc.array(fc.integer({ min: -50_000, max: 50_000 }), {
+    minLength: 1,
+    maxLength: 8,
+  })
+
+  it('shows every signed amount, and reads back to the minor units it came from', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: -9_999_999, max: 9_999_999 }), (minor) => {
+        const shown = paySignedMoney(minor, 'EUR', 'en_US')
+        const digits = Number(shown.replace(/[^\d]/g, ''))
+        expect(digits).toBe(Math.abs(minor))
+        // A locale may write the minus as U+2212 rather than a hyphen.
+        expect(/[-\u2212]/.test(shown)).toBe(minor < 0)
+      }),
+      { numRuns: 400 },
+    )
+  })
+
+  it('never offers a payable set at or below zero, and words the greyed Pay', () => {
+    fc.assert(
+      fc.property(amounts, fc.boolean(), (values, tipped) => {
+        const b = bill(values.map((amountMinor, index) => ({ id: index + 1, amountMinor })))
+        const picks = pickWhole(new Map(), b)
+        const tip = tipped ? ({ kind: 'percent', percent: 10 } as const) : NO_TIP
+        // Every amount of the choice can be shown: a signed format never throws.
+        const totals = choosePay(picks, tip, tipped)
+        expect(() => paySignedMoney(totals.itemsMinor, 'EUR', 'bg_BG')).not.toThrow()
+        expect(() => paySignedMoney(totals.totalMinor, 'EUR', 'bg_BG')).not.toThrow()
+        const block = payBlock(PAYING, b, picks, tip, tipped)
+        if (totals.itemsMinor <= 0) {
+          expect(block).toBe('nothing_owed')
+        } else {
+          expect(block).not.toBe('nothing_owed')
+          // What the server would be asked for is always above zero.
+          expect(totals.totalMinor).toBeGreaterThan(0)
+        }
+      }),
+      { numRuns: 300 },
+    )
+  })
+
+  it('tells the guest to ask the waiter where a discount takes the lines to zero or less', () => {
+    const words = stringsFor('en_US').services.paying
+    const b = bill([
+      { id: 1, amountMinor: 1000 },
+      { id: 2, amountMinor: -1000 },
+    ])
+    expect(payBlock(PAYING, b, pickWhole(new Map(), b), NO_TIP, false)).toBe('nothing_owed')
+    expect(words.nothingOwed).toBe('There is nothing to pay on these lines. Ask your waiter.')
+    // One line only: the discount alone is also nothing to pay.
+    const only = bill([{ id: 1, amountMinor: -400 }])
+    expect(payBlock(PAYING, only, pickWhole(new Map(), only), NO_TIP, false)).toBe('nothing_owed')
   })
 })
 
