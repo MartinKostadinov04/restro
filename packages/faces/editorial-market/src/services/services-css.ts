@@ -753,10 +753,8 @@ export const SERVICES_CSS = `
   font-size: calc(14px * var(--rm-type));
   text-align: center;
 }
-/* The last refusal of an order command, over the bar when no sheet is open; a tap dismisses it.
-   The box beside it is the same place for a notice that carries its own controls (DA-22). */
-.rm .ro-barnote,
-.rm .ro-barbox {
+/* The last refusal of an order command, over the bar when no sheet is open; a tap dismisses it. */
+.rm .ro-barnote {
   position: fixed;
   z-index: 41;
   right: max(14px, env(safe-area-inset-right));
@@ -774,6 +772,25 @@ export const SERVICES_CSS = `
   font-size: calc(14px * var(--rm-type));
   text-align: left;
   touch-action: manipulation;
+}
+/* The same place for a notice that carries its own controls, so the box itself is not a tap (DA-22).
+   Its own rule, not a second selector on the one above: that one's look is stored and must not move. */
+.rm .ro-barbox {
+  position: fixed;
+  z-index: 41;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: calc(max(44px, var(--ro-bar)) + 28px + env(safe-area-inset-bottom));
+  left: max(14px, env(safe-area-inset-left));
+  box-sizing: border-box;
+  max-width: 560px;
+  margin-inline: auto;
+  padding: 10px 14px;
+  border: 1px solid currentColor;
+  border-radius: var(--rm-radius);
+  background: var(--rm-bg);
+  color: var(--rm-text);
+  font-size: calc(14px * var(--rm-type));
+  text-align: left;
 }
 /* The notice inside the box is the box: no second border and no margin of its own. */
 .rm .ro-barbox .ro-notice {

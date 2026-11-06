@@ -417,4 +417,8 @@ const DEPARTURES: readonly ((line: string, added: boolean) => boolean)[] = [
   (line, added) => added && line.includes('.ro-pay-number'),
   // The slim line at the top of the menu for a payment that has not settled (#293, DA-24).
   (line, added) => added && line.startsWith('.rm .ro-payline {'),
+  // The weak-connection line at the top of the menu (#295, DA-23), and the box over the bar for a
+  // notice that carries its own controls (#295, DA-22). Service lines: no browsing look moves.
+  (line, added) => added && line.startsWith('.rm .ro-topline {'),
+  (line, added) => added && line.startsWith('.rm .ro-barbox'),
 ]

@@ -1233,6 +1233,16 @@
 .rm .ro-payline { font-size: 14px }
 .rm .ro-payline { text-align: center }
 .rm .ro-payline { touch-action: manipulation }
+.rm .ro-topline { display: block }
+.rm .ro-topline { box-sizing: border-box }
+.rm .ro-topline { width: 100% }
+.rm .ro-topline { margin: 0 }
+.rm .ro-topline { padding: 10px 16px }
+.rm .ro-topline { border-bottom: 1px solid color-mix(in srgb, currentColor 24%, transparent) }
+.rm .ro-topline { background: var(--rm-bg) }
+.rm .ro-topline { color: var(--rm-text) }
+.rm .ro-topline { font-size: 14px }
+.rm .ro-topline { text-align: center }
 .rm .ro-barnote { position: fixed }
 .rm .ro-barnote { z-index: 41 }
 .rm .ro-barnote { right: max(14px, env(safe-area-inset-right)) }
@@ -1250,6 +1260,24 @@
 .rm .ro-barnote { font-size: 14px }
 .rm .ro-barnote { text-align: left }
 .rm .ro-barnote { touch-action: manipulation }
+.rm .ro-barbox { position: fixed }
+.rm .ro-barbox { z-index: 41 }
+.rm .ro-barbox { right: max(14px, env(safe-area-inset-right)) }
+.rm .ro-barbox { bottom: calc(max(44px, var(--ro-bar)) + 28px + env(safe-area-inset-bottom)) }
+.rm .ro-barbox { left: max(14px, env(safe-area-inset-left)) }
+.rm .ro-barbox { box-sizing: border-box }
+.rm .ro-barbox { max-width: 560px }
+.rm .ro-barbox { margin-inline: auto }
+.rm .ro-barbox { padding: 10px 14px }
+.rm .ro-barbox { border: 1px solid currentColor }
+.rm .ro-barbox { border-radius: var(--rm-radius) }
+.rm .ro-barbox { background: var(--rm-bg) }
+.rm .ro-barbox { color: var(--rm-text) }
+.rm .ro-barbox { font-size: 14px }
+.rm .ro-barbox { text-align: left }
+.rm .ro-barbox .ro-notice { margin: 0 }
+.rm .ro-barbox .ro-notice { padding: 0 }
+.rm .ro-barbox .ro-notice { border: 0 }
 .rm .ro-quick-note { margin: 0 }
 .rm .ro-quick-note { padding: 6px 10px }
 .rm .ro-quick-note { border-radius: var(--rm-radius) }
