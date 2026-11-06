@@ -12,7 +12,9 @@ import { z } from 'zod'
 
 import { PayingSettingsError, patchPayingSettingsIn } from '../apply/paying-settings'
 import { LegalDetailsSchema, readLegalDetails } from '../legal-details'
+import { readOrderingSettings } from '../ordering-settings'
 import { MIN_CARD_MAX_MINOR } from '../paying-settings'
+import { readGuestFeatures } from '../theme'
 import type { ServiceTx } from './definition'
 import { accepted, refused, type ServiceResult } from './results'
 
@@ -48,6 +50,18 @@ export async function setPayingChoices(
       return refused(null, 'invalid_settings', {
         problem:
           'the legal details cannot be cleared while the venue has a connected payment account',
+      })
+    }
+    // Ordering and the location check are turned on only with a privacy link (#288, RR-O15,
+    // RR-O44); clearing the details afterwards would leave guests asked to consent with none. The
+    // owner turns both off first, or replaces the details.
+    const settings = venue?.settings ?? {}
+    if (
+      readLegalDetails(settings) !== null &&
+      (readGuestFeatures(settings).ordering || readOrderingSettings(settings).locationCheck)
+    ) {
+      return refused(null, 'invalid_settings', {
+        problem: 'the legal details cannot be cleared while ordering or the location check is on',
       })
     }
   }

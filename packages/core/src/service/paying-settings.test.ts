@@ -8,8 +8,10 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { hasDatabase } from '../apply/test-database'
 import { readLegalDetails } from '../legal-details'
+import { DEFAULT_ORDERING_SETTINGS } from '../ordering-settings'
 import { readPayingSettings } from '../paying-settings'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
+import { DEFAULT_GUEST_FEATURES } from '../theme/presentation'
 import type { ServiceActor, ServiceContext } from './context'
 import { applyService, readPayingOffer, type ServiceCommand } from './index'
 
@@ -55,6 +57,19 @@ describe.skipIf(!hasDatabase)('the paying choices command (as the restro_app rol
       ...(signedInAt === null ? {} : { signedInAt }),
     }
     return (await applyService(world.app, command, context)).result
+  }
+  /** Sets the venue's ordering switch (Design) and location check (Settings › Ordering). */
+  const setSwitches = async (to: { ordering: boolean; locationCheck: boolean }) => {
+    await world.owner.query(
+      `update restro.venues
+          set settings = jsonb_set(jsonb_set(settings, '{guest_features}', $2::jsonb), '{ordering}', $3::jsonb)
+        where id = $1`,
+      [
+        world.venueId,
+        JSON.stringify({ ...DEFAULT_GUEST_FEATURES, ordering: to.ordering }),
+        JSON.stringify({ ...DEFAULT_ORDERING_SETTINGS, locationCheck: to.locationCheck }),
+      ],
+    )
   }
   const stored = async () => {
     const { rows } = await world.owner.query<{ settings: Record<string, unknown> }>(
@@ -148,6 +163,8 @@ describe.skipIf(!hasDatabase)('the paying choices command (as the restro_app rol
   })
 
   it('keeps both of two saves that meet on the venue row, one field each', async () => {
+    // Clearing the details needs ordering and the location check off (#288).
+    await setSwitches({ ordering: false, locationCheck: false })
     await run({
       type: 'settings.paying_set',
       changes: { minCardMinor: null, legalDetails: null },
@@ -205,7 +222,25 @@ describe.skipIf(!hasDatabase)('the paying choices command (as the restro_app rol
     }
   })
 
-  it('clears the details with null', async () => {
+  it('refuses to clear the details while ordering or the location check is on (#288)', async () => {
+    await run({
+      type: 'settings.paying_set',
+      changes: { legalDetails: LEGAL },
+      providerMinMinor: 50,
+    })
+    const clear = () =>
+      run({ type: 'settings.paying_set', changes: { legalDetails: null }, providerMinMinor: 50 })
+    await setSwitches({ ordering: true, locationCheck: true })
+    expect(await clear()).toMatchObject({ status: 'refused', code: 'invalid_settings' })
+    await setSwitches({ ordering: false, locationCheck: true })
+    expect(await clear()).toMatchObject({ status: 'refused', code: 'invalid_settings' })
+    await setSwitches({ ordering: true, locationCheck: false })
+    expect(await clear()).toMatchObject({ status: 'refused', code: 'invalid_settings' })
+    expect(readLegalDetails(await stored())).toEqual(LEGAL)
+  })
+
+  it('clears the details with null once ordering and the location check are off', async () => {
+    await setSwitches({ ordering: false, locationCheck: false })
     await run({
       type: 'settings.paying_set',
       changes: { legalDetails: null },
