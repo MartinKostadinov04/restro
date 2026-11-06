@@ -109,7 +109,8 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
+  // In CI each shard writes a blob report; the `e2e-report` job merges them into one html report.
+  reporter: process.env.CI ? [['github'], ['blob']] : 'list',
   use: {
     baseURL: ORIGIN,
     trace: 'on-first-retry',
