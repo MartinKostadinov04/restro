@@ -23,21 +23,18 @@ describe.skipIf(!hasDatabase)('the menu’s header name in a publish', () => {
   let venueId: `vn_${string}`
   let menu: ProvisionedMenu
 
-  /**
-   * The clock of this test, for the publishes AND the drafts: an item's `new` badge lasts 14 days
-   * after it is first published (`resolve.ts`), so a draft read at the real now and a snapshot
-   * published at a fixed date would differ by that badge alone once the fixed date is 14 days old.
-   */
-  const at = (minutes: number) => new Date(Date.parse('2026-10-18T18:00:00Z') + minutes * 60_000)
+  // Publishes and drafts share one real clock: the 14-day "new" badge (NEW_BADGE_MS) is worked out
+  // from it, so a fixed past date drops the badge from the draft but not from the live menu and
+  // counts the item as changed once that date is more than 14 days gone.
+  const base = Date.now()
+  const at = (minutes: number) => ({ now: new Date(base + minutes * 60_000) })
   const publish = (minutes: number) =>
     publishMenu(
       app,
       tenant,
       { menuId: menu.id, venueId, reason: 'manual', actor: 'user:us_test' },
-      { now: at(minutes) },
+      at(minutes),
     )
-  const draftAt = (minutes: number) =>
-    loadDraft(app, tenant, { menuId: menu.id, venueId }, { now: at(minutes) })
   const rename = async (name: string) =>
     expect((await renameMenu(app, tenant, { venueId, menuId: menu.id, name })).ok).toBe(true)
 
@@ -102,7 +99,7 @@ describe.skipIf(!hasDatabase)('the menu’s header name in a publish', () => {
 
   it('a rename is one change waiting, and the next publish carries the header name', async () => {
     await rename('Club Sofia')
-    const draft = await draftAt(4)
+    const draft = await loadDraft(app, tenant, { menuId: menu.id, venueId }, at(1))
     expect(diffSnapshots(live, draft.snapshot)).toMatchObject({ areas: ['menu'], total: 1 })
     const second = await publish(5)
     expect(second.status).toBe('published')
@@ -111,9 +108,9 @@ describe.skipIf(!hasDatabase)('the menu’s header name in a publish', () => {
   })
 
   it('clearing the name is a change too: the heading goes back to the venue’s name', async () => {
-    const before = await draftAt(9)
+    const before = await loadDraft(app, tenant, { menuId: menu.id, venueId }, at(6))
     await rename('')
-    const after = await draftAt(9)
+    const after = await loadDraft(app, tenant, { menuId: menu.id, venueId }, at(6))
     expect(diffSnapshots(before.snapshot, after.snapshot)).toMatchObject({
       areas: ['menu'],
       total: 1,
