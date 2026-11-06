@@ -29,6 +29,7 @@ import {
   withLogo,
   withStyle,
 } from './design-draft'
+import { setColour } from './look-state'
 
 const COLOURS = { primary: '#f5f1ea', secondary: '#e7e0d4', tertiary: '#e0a43a' }
 const LOGO = 'as_0123456789ABCDEFGHIJKL'
@@ -148,11 +149,32 @@ describe('what counts as changed', () => {
     expect(keyOfDraft(half as DesignDraft)).toBeNull()
   })
 
-  it('nothing, on a look saved with one brand colour: it opens as its three colours', () => {
+  it('nothing, on a look saved with one brand colour: it opens as that look (DA-13)', () => {
     const brand = { ...DEFAULT_DESIGN, brand: '#e11d48' } as SavedDesign['design']
     const first = draftOf({ design: brand, theme: designThemeOf(brand), logo: null })
-    expect(keyOfDraft(first)).not.toBeNull()
-    expect(keyOfDraft(first)).toBe(keyOfDraft({ ...first }))
+    // The draft saves the design that is stored, so the page opens with nothing to save…
+    expect(JSON.parse(keyOfDraft(first) as string)).toEqual(brand)
+    // …and a change to another option keeps the brand colour: no colour role is rewritten.
+    const font = designOf(
+      withBodyFont(first, 'manrope'),
+      wholeTheme(withBodyFont(first, 'manrope')),
+    )
+    expect(font).toMatchObject({ brand: '#e11d48' })
+    expect(font).not.toHaveProperty('colors')
+    expect(font.values.general.body_font).toBe('manrope')
+  })
+
+  it('the three colours, once a colour of a brand-only look is touched (DA-13)', () => {
+    const brand = { ...DEFAULT_DESIGN, brand: '#e11d48' } as SavedDesign['design']
+    const first = draftOf({ design: brand, theme: designThemeOf(brand), logo: null })
+    const touched: DesignDraft = {
+      ...first,
+      look: setColour(first.look, 'primary', '#f5f1ea'),
+    }
+    expect(keyOfDraft(touched)).not.toBe(keyOfDraft(first))
+    const content = designOf(touched, wholeTheme(touched))
+    expect(content).not.toHaveProperty('brand')
+    expect(content.colors).toMatchObject({ primary: '#f5f1ea', tertiary: '#e11d48' })
   })
 })
 

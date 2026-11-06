@@ -24,7 +24,7 @@ import {
 } from '@restro/core'
 import { apply } from '@restro/core/apply'
 import { type DbPool, designStyles, venues, withTenant } from '@restro/db'
-import { and, asc, isNull, ne } from 'drizzle-orm'
+import { and, asc, eq, isNull, ne } from 'drizzle-orm'
 
 /** One venue's design as a tile under My styles: "In use at {venue}". */
 export interface VenueStyle {
@@ -136,9 +136,31 @@ function oneOp(actor: Actor, op: ChangeSet['ops'][number]): ChangeSet {
 }
 
 /**
+ * True when the organisation holds a saved Style with that id, removed or not: the read runs inside
+ * `withTenant`, so row-level security answers for another organisation's id exactly as it does for
+ * one no one holds. `apply` has the last word on a removed one (`unknown_style`).
+ */
+async function holdsStyle(pool: DbPool, tenantId: string, styleId: string): Promise<boolean> {
+  const rows = await withTenant(pool, tenantId, (tx) =>
+    tx
+      .select({ id: designStyles.id })
+      .from(designStyles)
+      .where(eq(designStyles.id, styleId))
+      .limit(1),
+  )
+  return rows.length > 0
+}
+
+/**
  * Saves one of the organisation's Styles through `apply` (rule 1): a new row when `styleId` is
  * null, else the name and values of the one it names. The caller has checked the person's role and
  * their device.
+ *
+ * An id is the server's to make (DA-31): null means a new Style, under a fresh `newId('ds')`, and
+ * an id from the caller only ever means "replace this Style of mine". An id this organisation does
+ * not hold is `not_found`, as `setStyleStatus` answers it — never a row under an id the caller
+ * chose, and never the global primary key of `design_styles` (0047) refusing the insert, which
+ * would come back as a bare `failed` and tell the caller the id exists somewhere.
  */
 export async function saveStyle(
   pool: DbPool,
@@ -151,13 +173,16 @@ export async function saveStyle(
     readonly actor: Actor
   },
 ): Promise<StyleSaveResult> {
-  const styleId = input.styleId ?? newId('ds')
   const content = SavedStyleContentSchema.safeParse({
     name: input.name,
     style: input.style,
     values: input.values,
   })
   if (!content.success) return { ok: false, error: 'invalid' }
+  if (input.styleId !== null && !(await holdsStyle(pool, tenantId, input.styleId))) {
+    return { ok: false, error: 'not_found' }
+  }
+  const styleId = input.styleId ?? newId('ds')
   const result = await apply(
     pool,
     tenantId,

@@ -106,6 +106,9 @@ export function designOf(
     style,
     values,
     ...(theme.colors === undefined ? {} : { colors: theme.colors }),
+    // A look saved the old way keeps its one brand colour until a colour is touched (DA-13); the
+    // record holds one or the other, never both.
+    ...(theme.colors === undefined && theme.brand !== undefined ? { brand: theme.brand } : {}),
     ...(theme.overrides === undefined ? {} : { overrides: theme.overrides }),
     logo_asset_id: theme.logo_asset_id,
   }
@@ -115,9 +118,10 @@ export function designOf(
 export const keyOfDesign = (design: DesignContent): string => JSON.stringify(design)
 
 /**
- * The key of a draft as the page would save it, or null while a box holds half a colour. Something is
- * unsaved when the draft's key differs from the key of the draft the page opened or last saved: a look
- * saved the old way (one brand colour) opens as its three colours and counts as nothing changed.
+ * The key of a draft as the page would save it, or null while a box holds half a colour. Something
+ * is unsaved when the draft's key differs from the key of the draft the page opened or last saved:
+ * a look saved the old way (one brand colour) opens as that look, so nothing has changed and the
+ * first save of another option keeps the brand colour (DA-13).
  */
 export function keyOfDraft(draft: DesignDraft): string | null {
   const { theme } = lookViewOfDraft(draft)

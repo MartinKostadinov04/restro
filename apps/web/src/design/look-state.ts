@@ -11,8 +11,12 @@
 // tab can point at, not a value that vanishes.
 //
 // A look that is saved the old way loads as its three colours: a brand-only look as its brand
-// colour with the tints of it, a preset look as its colours and the roles it pinned. The form never saves a preset or a brand colour any more: it saves `colors` with
-// `preset: null` and the overrides.
+// colour with the tints of it, a preset look as its colours and the roles it pinned. The form never
+// saves a preset any more: it saves `colors` with `preset: null` and the overrides. The one
+// exception is a look saved the old way, with one brand colour and no `colors` (D92's v1 shape):
+// that colour is kept as it is, and the page draws the look guests have, until a colour is touched
+// (DA-13). Saving another option then changes no colour role; the first colour the person sets
+// turns the look into its three colours for good.
 import {
   type AnyRoleName,
   contrastRatio,
@@ -67,6 +71,13 @@ export interface LookState {
   /** True for the page / the panels once the person has set it: the brand colour stops filling it. */
   readonly edited: Readonly<Record<FilledKey, boolean>>
   readonly overrides: RoleTexts
+  /**
+   * The one brand colour of a look saved the old way (no `colors`), kept until a colour is
+   * touched: the look is then the one guests have, and a save of another option saves that colour
+   * again instead of rewriting every colour role as three colours (DA-13). Null for every other
+   * look, and as soon as a colour is set — from then on the form saves the three colours.
+   */
+  readonly brand: string | null
   readonly font: ThemeFontId
   readonly radius: number
   readonly shadow: number
@@ -142,6 +153,9 @@ export function lookStateOf(theme: VenueTheme | null): LookState {
       light: { ...theme?.overrides?.light },
       dark: { ...theme?.overrides?.dark },
     },
+    // A look saved the old way keeps its one brand colour (DA-13); the boxes still show it and
+    // the tints of it, so the person edits the same three colours as anyone else.
+    brand: isBrandOnlyLook(theme) ? (theme?.brand ?? null) : null,
     font: theme?.font ?? DEFAULT_FONT_ID,
     radius: theme?.radius ?? DEFAULT_THEME.radius,
     shadow: theme?.shadow ?? DEFAULT_THEME.shadow,
@@ -152,8 +166,9 @@ export function lookStateOf(theme: VenueTheme | null): LookState {
 
 /**
  * True when a saved look is the old way, one brand colour: guests get colours from the palette
- * path, which the form's three colours replace. Saving it from the form changes them a little, so
- * the tab offers it as an unsaved change rather than showing a preview that guests do not have.
+ * path, which the form's three colours would replace. Such a look keeps its brand colour
+ * (`LookState.brand`) until a colour is touched, so the page draws what guests have and a save of
+ * another option changes no colour role (DA-13).
  */
 export function isBrandOnlyLook(theme: VenueTheme | null): boolean {
   return theme !== null && theme.colors === undefined && theme.brand !== undefined
@@ -235,8 +250,15 @@ export function lookViewOf(state: LookState): LookView {
 
   const theme: VenueTheme = {
     logo_asset_id: state.logoAssetId,
-    // Never a brand colour and never a preset: the three colours, saying it started from none.
-    ...(colours === undefined ? {} : { preset: null, colors: colours }),
+    // A look saved the old way keeps its one brand colour while no colour has been touched: the
+    // page draws the look guests have, and a save of another option leaves every colour role as
+    // it is (DA-13). Otherwise never a brand colour and never a preset: the three colours, saying
+    // it started from none.
+    ...(state.brand !== null
+      ? { brand: state.brand }
+      : colours === undefined
+        ? {}
+        : { preset: null, colors: colours }),
     ...(Object.keys(overrides).length > 0 ? { overrides } : {}),
     font: state.font,
     radius: state.radius,
@@ -276,7 +298,8 @@ export function setBrand(state: LookState, text: string): LookState {
     if (!state.edited.primary) colours.primary = tints.page
     if (!state.edited.secondary) colours.secondary = tints.panels
   }
-  return { ...state, colours, overrides: releaseLight(state.overrides, 'accent') }
+  // A colour was touched: a look saved the old way is its three colours from now on (DA-13).
+  return { ...state, colours, brand: null, overrides: releaseLight(state.overrides, 'accent') }
 }
 
 /** Sets one of the three colours as typed. The page and the panels are the person's from then on. */
@@ -287,6 +310,7 @@ export function setColour(state: LookState, key: ColourKey, text: string): LookS
     ...state,
     colours: { ...state.colours, [key]: text },
     edited: { ...state.edited, [key]: true },
+    brand: null,
     overrides: releaseLight(state.overrides, role),
   }
 }
@@ -301,6 +325,7 @@ export function followBrand(state: LookState): LookState {
     ...state,
     colours: { ...state.colours, primary: tints.page, secondary: tints.panels },
     edited: { primary: false, secondary: false },
+    brand: null,
     overrides: releaseLight(releaseLight(state.overrides, 'background'), 'surface'),
   }
 }
@@ -325,6 +350,7 @@ export function applyHarmony(state: LookState, rule: HarmonyRule): LookState {
     ...state,
     colours,
     edited: { primary: true, secondary: true },
+    brand: null,
     overrides: releaseLight(releaseLight(state.overrides, 'background'), 'surface'),
   }
 }
