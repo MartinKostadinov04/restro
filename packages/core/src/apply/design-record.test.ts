@@ -305,6 +305,31 @@ describe.skipIf(!hasDatabase)('the design record (as the restro_app role)', () =
       expect(await eventsOf(venueId)).toHaveLength(1)
     })
 
+    it('of a stale revision over a row that does not parse carries what the editor can show', async () => {
+      // The venue that lost the race opens again on the design it had, not on Basic: the refusal
+      // carries the same salvaged read the page opens with (`readDesignToShow`, #291).
+      await save(venueId, 0, { ...DEFAULT_DESIGN, style: 'editorial', colors: COLOURS })
+      await owner.query(
+        `update restro.venues
+           set settings = jsonb_set(settings, '{design,values,general,corners}', '"rounded"')
+         where id = $1`,
+        [venueId],
+      )
+      const { result } = await save(venueId, 0, DEFAULT_DESIGN)
+      const refusal = result.rejected[0]
+      expect(refusal?.code).toBe('stale_revision')
+      expect(refusal?.storedDesign).toMatchObject({
+        revision: 1,
+        repair: true,
+        design: { style: 'editorial', colors: COLOURS },
+      })
+      // The value the contract no longer has reads as Basic's; the rest of the design is its own.
+      expect(refusal?.storedDesign?.design.values.general.corners).toBe(
+        BASIC_DESIGN_VALUES.general.corners,
+      )
+      expect(await eventsOf(venueId)).toHaveLength(1)
+    })
+
     it('of two saves at once lets one through, the other told it is stale', async () => {
       const first = { ...DEFAULT_DESIGN, colors: COLOURS }
       const second = { ...DEFAULT_DESIGN, colors: { ...COLOURS, tertiary: '#123456' } }

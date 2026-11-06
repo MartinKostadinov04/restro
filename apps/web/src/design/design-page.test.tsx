@@ -125,9 +125,28 @@ describe('the Design page', () => {
     setup({ design: old, theme: designThemeOf(old) })
     expect(done().disabled).toBe(true)
     expect(cancel().disabled).toBe(true)
+    expect(brand().value).toBe(BRAND)
     expect(screen.queryByTestId('design-unsaved')).toBeNull()
     fireEvent.click(screen.getByTestId('design-back'))
     expect(screen.queryByTestId('design-leave')).toBeNull()
+  })
+
+  it('keeps that one brand colour until a colour is touched (DA-13)', async () => {
+    const old = { ...DEFAULT_DESIGN, brand: BRAND } as DesignView['design']
+    setup({ design: old, theme: designThemeOf(old) })
+    // Another option is saved on its own: the brand colour stays, so no colour role is rewritten.
+    await userEvent.click(radio('editorial'))
+    await userEvent.click(done())
+    await waitFor(() => expect(actions.saveDesignAction).toHaveBeenCalledTimes(1))
+    expect(sent().design).toMatchObject({ style: 'editorial', brand: BRAND })
+    expect(sent().design).not.toHaveProperty('colors')
+
+    // The first colour the person sets turns the look into its three colours.
+    type(brand(), '#16a34a')
+    await userEvent.click(done())
+    await waitFor(() => expect(actions.saveDesignAction).toHaveBeenCalledTimes(2))
+    expect(sent().design).not.toHaveProperty('brand')
+    expect(sent().design.colors.tertiary).toBe('#16a34a')
   })
 
   it('a Style fills the draft and keeps the colours; Done saves the whole design from the loaded revision', async () => {
@@ -216,6 +235,37 @@ describe('the Design page', () => {
     await userEvent.click(done())
     await waitFor(() => expect(sent().expectedRevision).toBe(7))
   })
+
+  // DA-38: each refusal has its own message. One generic toast for every one of them would pass
+  // nothing here, and the owner would be told to try again where the answer is "you may not".
+  const REFUSALS = [
+    ['forbidden', 'Only owners and admins can change the design.'],
+    ['not_found', 'This venue could not be found.'],
+    ['unreadable', 'The look was not saved: some text would be hard to read.'],
+    ['logo_not_usable', 'That logo could not be used. Upload it again.'],
+    ['failed', 'Something went wrong. Try again.'],
+    ['invalid', 'Check the look and try again.'],
+  ] as const
+
+  it('has a message of its own for every save refusal, and no two are the same', () => {
+    expect(new Set(REFUSALS.map(([, message]) => message)).size).toBe(REFUSALS.length)
+  })
+
+  for (const [error, message] of REFUSALS) {
+    it(`says what a save refused as ${error} means, and keeps the edits`, async () => {
+      actions.saveDesignAction.mockResolvedValue(
+        error === 'unreadable' ? { ok: false, error, issues: [] } : { ok: false, error },
+      )
+      setup()
+      type(brand(), '#16a34a')
+      await userEvent.click(done())
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith(message))
+      // The refusal is the only toast, and the edit is still there to try again with.
+      expect(vi.mocked(toast.error).mock.calls).toEqual([[message]])
+      expect(toast.success).not.toHaveBeenCalled()
+      expect(brand().value).toBe('#16a34a')
+    })
+  }
 
   it('says what went wrong when the save fails, and keeps the edits', async () => {
     actions.saveDesignAction.mockRejectedValue(new Error('network'))

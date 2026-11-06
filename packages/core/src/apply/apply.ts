@@ -88,11 +88,12 @@ import {
 import {
   type DesignContent,
   type DesignRecord,
+  type DesignToShow,
   designContentOf,
   designThemeOf,
-  hasInvalidDesign,
   readDesign,
   readDesignRecord,
+  readDesignToShow,
   type StoredDesign,
   sameDesign,
 } from '../design/record'
@@ -164,7 +165,8 @@ export type ApplyRejectionCode =
   | 'unknown_tag'
   /**
    * setDesign: the revision the editor started from is not the stored one (someone saved in
-   * between). The rejection carries the stored design (`storedDesign`) for the editor to reload.
+   * between). The rejection carries the stored design as the editor can show it (`storedDesign`,
+   * `readDesignToShow`) for it to reload.
    */
   | 'stale_revision'
   /**
@@ -191,8 +193,12 @@ export interface ApplyRejection {
   readonly nodeRef?: string
   /** The field the op was about (`setField`, `clearField`). */
   readonly fieldKey?: string
-  /** `stale_revision` only: the design as stored, with its revision, for the editor to reload. */
-  readonly storedDesign?: StoredDesign
+  /**
+   * `stale_revision` only: the design as stored, with its revision, for the editor to reload —
+   * read the way the editor opens it (`readDesignToShow`), so the venue that lost the race sees
+   * its own design and not Basic, and `repair` says whether the row has to be replaced.
+   */
+  readonly storedDesign?: DesignToShow
   /** `unreadable` only: the text-on-colour pairs that do not read. */
   readonly issues?: readonly PairIssue[]
 }
@@ -343,7 +349,7 @@ type Outcome =
       readonly kind: 'rejected'
       readonly code: ApplyRejectionCode
       readonly reason: string
-      readonly storedDesign?: StoredDesign
+      readonly storedDesign?: DesignToShow
       readonly issues?: readonly PairIssue[]
     }
 
@@ -417,12 +423,13 @@ class DocumentState {
   /**
    * The design of each venue a setDesign names, read under a row lock, then as this change set
    * leaves it: the record (null while the venue has none, or the stored value does not parse), the
-   * design it reads as, and `replace` for a stored value that is not a valid record, which the
-   * next save has to replace however much it looks like what the editor showed (DA-33).
+   * design it reads as, and the design as the editor shows it (`shown`, whose `repair` marks a
+   * stored value that is not a valid record: the next save has to replace it however much it
+   * looks like what the editor showed, DA-33, and a stale save hands it back, DA-13's class).
    */
   readonly designs = new Map<
     string,
-    { record: DesignRecord | null; stored: StoredDesign; replace: boolean }
+    { record: DesignRecord | null; stored: StoredDesign; shown: DesignToShow }
   >()
   /** Whether each logo a setDesign names is a stored image of this tenant. */
   readonly usableLogos = new Map<string, boolean>()
@@ -579,7 +586,7 @@ async function loadState(tx: WriteTx, set: ChangeSet, template: Template): Promi
       state.designs.set(row.id, {
         record: readDesignRecord(row.settings),
         stored: readDesign(row.settings),
-        replace: hasInvalidDesign(row.settings),
+        shown: readDesignToShow(row.settings),
       })
     }
   }
@@ -1660,7 +1667,9 @@ class Run {
         kind: 'rejected',
         code: 'stale_revision',
         reason: `the design was saved in between: revision ${current.stored.revision}, not ${op.expectedRevision}`,
-        storedDesign: current.stored,
+        // What the editor can show of the stored row, not the plain read: the venue that lost the
+        // race gets its own design back, not Basic.
+        storedDesign: current.shown,
       }
     }
     const design: DesignContent = designContentOf(op.design)
@@ -1692,7 +1701,7 @@ class Run {
     // through. Otherwise the venue would be stuck — the publisher refuses it (`invalid_design`)
     // and tells the owner to save the design again, and that save would be a no-op for ever
     // (DA-33).
-    if (!current.replace && sameDesign(design, current.stored.design)) return UNCHANGED
+    if (!current.shown.repair && sameDesign(design, current.stored.design)) return UNCHANGED
 
     const record: DesignRecord = {
       ...design,
@@ -1719,7 +1728,7 @@ class Run {
     this.state.designs.set(op.venueId, {
       record,
       stored: { revision: record.revision, design },
-      replace: false,
+      shown: { revision: record.revision, design, repair: false },
     })
     this.state.dirtyDesigns.set(op.venueId, record)
     return APPLIED
