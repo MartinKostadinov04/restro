@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 // The sent-order sheet says which POS bill the order joined, as staff know it there (RR-56), and
 // nothing until it has joined one.
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Frame, SentDetailView } from '@/server/tonight/night-view'
@@ -65,5 +66,21 @@ describe('the bill on the sent-order sheet', () => {
   it('says nothing before the order has joined a bill', async () => {
     await open(null)
     expect(screen.queryByTestId('sent-bill')).toBeNull()
+  })
+})
+
+describe('a sheet whose read never got an answer (RR-O32)', () => {
+  it('says so and reads again on the button, instead of loading for ever', async () => {
+    sentOrderDetailAction.mockRejectedValueOnce(new Error('no connection'))
+    sentOrderDetailAction.mockResolvedValueOnce({ ok: true, detail: detail('1042') })
+    renderWithIntl(
+      <RunProvider>
+        <SentOrderSheet frame={frame} sentOrderId="so_1" onClose={vi.fn()} onChanged={vi.fn()} />
+      </RunProvider>,
+    )
+    const line = await screen.findByTestId('read-failed')
+    expect(line.textContent).toContain('Check the connection')
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(screen.getByTestId('sent-bill')).toBeTruthy())
   })
 })

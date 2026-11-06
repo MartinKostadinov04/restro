@@ -230,7 +230,12 @@ test.beforeAll(async ({ browser }) => {
       await page.waitForTimeout(10_000)
     }
   }
-  await page.getByTestId('venue-card').first().getByRole('link', { name: 'Отвори' }).click()
+  // By name: a database seeded with `pnpm db:seed:dev` also lists a Demo Bar, and it sorts first.
+  await page
+    .getByTestId('venue-card')
+    .filter({ hasText: 'Demo Club Sofia' })
+    .getByRole('link', { name: 'Отвори' })
+    .click()
   await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}$/)
   origin = new URL(page.url()).origin
   venueUrl = page.url()

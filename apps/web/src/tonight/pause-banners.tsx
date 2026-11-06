@@ -103,6 +103,15 @@ function RestroBanner({ banner, view }: { banner: PauseBanner; view: TonightView
   )
 }
 
+/** What the Paying setup still misses, for the end of `pb_setup` (RR-O1): one `tonight` key each. */
+const SETUP_WORDS = {
+  cardPayments: 'pb_s_card',
+  cardTypeInTill: 'pb_s_till',
+  paymentTables: 'pb_s_tables',
+  receiptEmailsOff: 'pb_s_emails',
+  legalDetails: 'pb_s_details',
+} as const
+
 /**
  * Card payments in the app are stopped (#115; paying plan Q5): shown to every role so a waiter
  * takes the payment at the till, stacked under any ordering pause, not dismissible. "Reconnect"
@@ -115,11 +124,13 @@ function PayingBanner({ view }: { view: TonightView }) {
   const provider = view.provider ?? t('pb_provider_none')
   const words = { source: view.source, provider }
   const text =
-    paying.state === 'paused'
-      ? t('pb_paused', words)
-      : paying.state === 'lost'
-        ? t('pb_lost', words)
-        : t('pb_restricted', words)
+    paying.state === 'setup'
+      ? t('pb_setup', { what: t(SETUP_WORDS[paying.missing ?? 'cardPayments'], words) })
+      : paying.state === 'paused'
+        ? t('pb_paused', words)
+        : paying.state === 'lost'
+          ? t('pb_lost', words)
+          : t('pb_restricted', words)
   return (
     <div
       role="status"
@@ -138,7 +149,7 @@ function PayingBanner({ view }: { view: TonightView }) {
       {paying.state !== 'paused' && paying.canReconnect ? (
         <Button asChild variant="outline" className={WRAPS}>
           <Link href={`/venues/${view.venueId}?tab=settings&section=paying`}>
-            {t('pb_reconnect')}
+            {t(paying.state === 'setup' ? 'pb_finish' : 'pb_reconnect')}
           </Link>
         </Button>
       ) : null}

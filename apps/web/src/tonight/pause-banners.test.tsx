@@ -78,3 +78,20 @@ describe('the banner of a Restro pause', () => {
     expect(toast.mock.calls[0]?.[1]).not.toHaveProperty('action')
   })
 })
+
+describe('the banner of an unfinished Paying setup (RR-O1)', () => {
+  it('says in one line what is still open, with a button to Settings, Paying', () => {
+    draw({
+      banners: [],
+      paying: { state: 'setup', canReconnect: true, missing: 'cardTypeInTill' },
+    })
+    const banner = screen.getByTestId('pause-banner')
+    expect(banner.getAttribute('data-state')).toBe('setup')
+    expect(banner.textContent).toContain(
+      "Card payments in the app aren't on yet: the card payment type isn't chosen in Mistral yet.",
+    )
+    expect(screen.getByRole('link', { name: 'Finish setup' }).getAttribute('href')).toBe(
+      `/venues/${VENUE}?tab=settings&section=paying`,
+    )
+  })
+})

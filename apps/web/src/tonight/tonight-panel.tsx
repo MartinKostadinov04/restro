@@ -214,6 +214,9 @@ function Content({ view, pushKey }: { view: TonightView; pushKey: string | undef
     .filter((x) => x.state === 'closed')
     .map((x) => x.id)
   const nothingOpen = view.openCount === 0
+  // "Open them" only where there are tables to open; a venue with none gets its own line (RR-O33).
+  const noTables = view.tableCount === 0
+  const notOpenYet = nothingOpen && !noTables
   // The empty block (with its one filled "Open all") shows while nothing waits at all; a stock notice
   // alone keeps the header's button, so a night with a notice can still be opened.
   const emptyShown = view.rows.length === 0 && view.outOfStock.length === 0
@@ -285,10 +288,14 @@ function Content({ view, pushKey }: { view: TonightView; pushKey: string | undef
       {view.rows.length === 0 && view.outOfStock.length === 0 ? (
         <Empty className="p-6 md:p-6">
           <EmptyHeader>
-            <EmptyTitle>{nothingOpen ? t('e_night_t') : t('e_open_t')}</EmptyTitle>
-            <EmptyDescription>{nothingOpen ? t('e_night_d') : t('e_open_d')}</EmptyDescription>
+            <EmptyTitle>
+              {noTables ? t('e_none_t') : notOpenYet ? t('e_night_t') : t('e_open_t')}
+            </EmptyTitle>
+            <EmptyDescription>
+              {noTables ? t('e_none_d') : notOpenYet ? t('e_night_d') : t('e_open_d')}
+            </EmptyDescription>
           </EmptyHeader>
-          {nothingOpen ? openAllButton : null}
+          {notOpenYet ? openAllButton : null}
         </Empty>
       ) : (
         <>

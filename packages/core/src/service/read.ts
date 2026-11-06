@@ -39,6 +39,7 @@ import type { LegalDetails } from '../legal-details'
 import { PAID_LINES_MAX } from '../paid-lines'
 import { payFirstApplies, readPayFirstSettings } from '../pay-first-settings'
 import { CARD_FLOOR_MINOR, readPayingSettings, smallestCardMinor } from '../paying-settings'
+import type { PayingMissing } from '../payment-connection'
 import { serviceDate } from '../service-day'
 import { nextOrderChangeAt, orderFromRow } from '../table-order'
 import type { CallWaiterKind } from '../theme'
@@ -666,6 +667,11 @@ export interface Tonight {
    * unable to take card payments (`restricted`). Every role that sees Tonight reads it (#115).
    */
   readonly paying: 'paused' | 'lost' | 'restricted' | null
+  /**
+   * The first thing the Paying setup still misses, while the account is connected but card payments
+   * are not on yet (RR-O1); null once they are on, and while there is no connected account.
+   */
+  readonly payingSetup: PayingMissing | null
   /** The venue's payment provider (its kind), for the words that name it; null with no account. */
   readonly payingProvider: string | null
   /**
@@ -1086,6 +1092,10 @@ export async function readTonight(
       waiterCalls:
         calls === null ? null : calls.map((call) => ({ ...call, kinds: orderedKinds(call.kinds) })),
       paying,
+      payingSetup:
+        connection.state === 'connected' && !connection.readiness.on
+          ? (connection.readiness.missing[0] ?? null)
+          : null,
       payingProvider: connection.providerKind,
       pauses: active.map(({ actor: starter, ...pause }) => ({
         ...pause,
