@@ -118,6 +118,8 @@ export interface ServiceStrings {
   readonly pay: string
   // Calling a waiter.
   readonly callServer: string
+  /** The question over the options of Call a waiter. */
+  readonly callPrompt: string
   /** The label of the waiter button before the bag has anything in it. */
   readonly bell: string
   readonly kinds: { readonly [K in ServiceKind]: string }
@@ -201,6 +203,12 @@ export interface ServiceStrings {
    * call a waiter, with the reference when the host has one (`reference`), and never "Try again".
    */
   readonly sendLost: string
+  /**
+   * After a call (Call a waiter, Pay cash) whose answer was lost (D120): the team may already have
+   * it, so it never says "Try again" in words and never claims it was sent; it sends the guest to
+   * a waiter in person.
+   */
+  readonly callLost: string
   // Send and its states (#77, D116, D122 §5).
   /** The Send button: "Send 3 items". */
   readonly sendItems: (count: number) => string
@@ -490,7 +498,7 @@ const EN: Strings = {
     reference: (ref) => `Reference ${ref}`,
     retry: 'Try again',
     bill: 'Bill',
-    tab: 'Table order',
+    tab: 'Your table’s bill',
     tabIntro: 'Everything ordered at this table, from the app and from the waiter.',
     emptyTab: 'Nothing has been ordered yet.',
     round: 'Round',
@@ -504,10 +512,11 @@ const EN: Strings = {
     },
     tableTotal: 'Table total',
     pay: 'Pay',
-    callServer: 'Call a server',
+    callServer: 'Call a waiter',
+    callPrompt: 'What do you need?',
     bell: 'Waiter',
     kinds: {
-      waiter: 'Call waiter',
+      waiter: 'Call the waiter',
       bill: 'Bring the bill',
       ice: 'Ice',
       water: 'Water',
@@ -520,13 +529,13 @@ const EN: Strings = {
     requesting: 'Sending your request',
     requestFailed: 'Your request did not go through. Try again, or call a waiter over.',
     requestStates: {
-      sent: { title: 'Request sent', hint: 'We are waiting for the team to confirm it.' },
+      sent: { title: 'Waiter called', hint: 'We are waiting for the team to confirm it.' },
       accepted: { title: 'The team has your request', hint: 'You can keep browsing.' },
       on_the_way: {
         title: 'A waiter is on the way',
         hint: 'You can keep browsing. We let the team know.',
       },
-      done: { title: 'Done', hint: 'The team has taken care of your request.' },
+      done: { title: 'Your call was handled', hint: 'The team has taken care of your request.' },
       cancelled: { title: 'Request cancelled', hint: 'You can send a new one.' },
       rejected: { title: 'The team could not take this request', hint: 'Ask your waiter.' },
     },
@@ -572,6 +581,8 @@ const EN: Strings = {
     locationStop: 'Stop location check',
     sendLost:
       'We can’t reach Restro right now. If your order isn’t on your bill in a few minutes, please call a waiter.',
+    callLost:
+      'We can’t reach Restro right now. If nobody comes in a few minutes, please ask a waiter in person.',
     sendItems: (count) => (count === 1 ? 'Send 1 item' : `Send ${count} items`),
     sendingNow: 'Sending…',
     beingSent: 'Being sent',
@@ -606,6 +617,8 @@ const EN: Strings = {
       stale_action: 'That took too long to arrive. Try again.',
       rate_limited: 'Slow down a moment.',
       table_not_open: 'This table is not taking orders from phones right now.',
+      calls_off: 'Calling a waiter from your phone is off here. Ask your waiter.',
+      kind_not_offered: 'This can’t be asked for from your phone here. Ask your waiter.',
       code_retired: 'This table code is no longer in use. Scan the code on your table again.',
       location_needed: 'Allow location to order onto the bill.',
       location_failed: 'We could not confirm you are at the venue.',
@@ -844,7 +857,7 @@ const BG: Strings = {
     reference: (ref) => `Номер ${ref}`,
     retry: 'Опитай отново',
     bill: 'Сметка',
-    tab: 'Поръчка на масата',
+    tab: 'Сметката на масата',
     tabIntro: 'Всичко поръчано на тази маса — от приложението и от сервитьора.',
     emptyTab: 'Все още няма поръчки.',
     round: 'Поръчка',
@@ -859,6 +872,7 @@ const BG: Strings = {
     tableTotal: 'Общо за масата',
     pay: 'Плати',
     callServer: 'Повикай сервитьор',
+    callPrompt: 'Какво ви трябва?',
     bell: 'Сервитьор',
     kinds: {
       waiter: 'Повикай сервитьор',
@@ -874,13 +888,13 @@ const BG: Strings = {
     requesting: 'Заявката се изпраща',
     requestFailed: 'Заявката не стигна до екипа. Опитайте отново или повикайте сервитьора.',
     requestStates: {
-      sent: { title: 'Заявката е изпратена', hint: 'Чакаме екипът да я потвърди.' },
+      sent: { title: 'Сервитьорът е повикан', hint: 'Чакаме екипът да я потвърди.' },
       accepted: { title: 'Екипът получи заявката', hint: 'Може да продължите да разглеждате.' },
       on_the_way: {
         title: 'Сервитьор идва',
         hint: 'Може да продължите да разглеждате. Екипът е уведомен.',
       },
-      done: { title: 'Готово', hint: 'Екипът се погрижи за заявката ви.' },
+      done: { title: 'Повикването е прието', hint: 'Екипът се погрижи за заявката ви.' },
       cancelled: { title: 'Заявката е отменена', hint: 'Може да изпратите нова.' },
       rejected: { title: 'Екипът не можа да приеме заявката', hint: 'Попитайте сервитьора.' },
     },
@@ -927,6 +941,8 @@ const BG: Strings = {
     locationStop: 'Спри проверката на местоположението',
     sendLost:
       'В момента не можем да се свържем с Restro. Ако поръчката ви не се появи в сметката след няколко минути, моля, повикайте сервитьор.',
+    callLost:
+      'В момента не можем да се свържем с Restro. Ако никой не дойде след няколко минути, моля, обърнете се към сервитьор.',
     sendItems: (count) => (count === 1 ? 'Изпрати 1 артикул' : `Изпрати ${count} артикула`),
     sendingNow: 'Изпраща се…',
     beingSent: 'Изпраща се',
@@ -963,6 +979,8 @@ const BG: Strings = {
       stale_action: 'Това пристигна твърде късно. Опитайте отново.',
       rate_limited: 'Малко по-бавно, моля.',
       table_not_open: 'Тази маса не приема поръчки от телефон в момента.',
+      calls_off: 'Повикването на сервитьор от телефона е изключено тук. Попитайте сервитьора.',
+      kind_not_offered: 'Това не може да се поиска от телефона тук. Попитайте сервитьора.',
       code_retired: 'Този код на маса вече не се използва. Сканирайте отново кода на масата.',
       location_needed: 'Разрешете местоположението, за да поръчвате към сметката.',
       location_failed: 'Не успяхме да потвърдим, че сте в заведението.',

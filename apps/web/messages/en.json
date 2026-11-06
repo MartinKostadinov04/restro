@@ -247,8 +247,8 @@
         "offSaleOther": "Not on sale",
         "mark": "Mark sold out tonight",
         "unmark": "Back on sale",
-        "markNote": "Guests see it as sold out within about 15 seconds. The mark ends by itself when the service day ends.",
-        "lapsesNote": "Guests see it as sold out. The mark ends by itself when the service day ends.",
+        "markNote": "It leaves the guest menu within about 15 seconds. The mark ends by itself when the service day ends.",
+        "lapsesNote": "It is hidden from the guest menu. The mark ends by itself when the service day ends.",
         "offSaleTillNote": "{source} has taken this off sale. Put it back on sale in {source}: this page can only add to what {source} says.",
         "offSaleOtherNote": "Another setting has taken this off sale. This page cannot put it back on sale.",
         "managersOnly": "Only an owner or admin can mark an item sold out."
@@ -651,7 +651,7 @@
       "unmarkFor": "Back on sale: {name}",
       "chip": "Sold out ({count})",
       "listTitle": "Sold out tonight",
-      "listDescription": "Guests see these as sold out. Each mark ends by itself when the service day ends, or put an item back on sale here.",
+      "listDescription": "These are hidden from the guest menu. Each mark ends by itself when the service day ends, or put an item back on sale here.",
       "liveLater": "Saved. The guest menu may take a few minutes to follow."
     },
     "visibility": {
@@ -1953,7 +1953,7 @@
   },
   "tonight": {
     "notices": {
-      "item_out_of_stock": "Out of stock in {source}: {item}. Greyed out on the menu."
+      "item_out_of_stock": "Out of stock in {source}: {item}. Hidden from the guest menu."
     },
     "title": "Tonight",
     "tab_act": "Actions and tables",
@@ -2051,7 +2051,7 @@
     "ph_tables": "Tables",
     "more": "More actions",
     "oos_t": "Out of stock in {source}",
-    "oos_d": "{items}. Greyed out on the menu.",
+    "oos_d": "{items}. Hidden from the guest menu.",
     "oos_more": "+{k} more",
     "noTables": "This venue has no tables yet. Add them in Tables & QR.",
     "noAccess": "You don't have access to Tonight at this venue.",

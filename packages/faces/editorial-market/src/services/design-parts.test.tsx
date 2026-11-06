@@ -68,10 +68,10 @@ describe('the design parts of a sheet', () => {
           ...paying(),
           bill: billOf([billRound('g1', 'guest', [billLine('g1-1', 'Hummus', 1, 700)])], 700),
         }),
-      'Table order',
+      'Your table’s bill',
       ['bill', 'bill.lines', 'bill.total', 'button'],
     ],
-    ['the call', () => fakeHost(), 'Call a server', ['call', 'call.kinds', 'button']],
+    ['the call', () => fakeHost(), 'Call a waiter', ['call', 'call.kinds', 'button']],
     ['the pay sheet', () => fakeHost(paying()), 'Pay', ['pay', 'pay.scope', 'pay.tip', 'button']],
   ] as const)('%s holds its parts, all of the contract', (_name, host, button, parts) => {
     openWith(host(), button)

@@ -6,7 +6,7 @@ Each check is one thing to see; if it is not as written, note it and go on.
 
 ## Before you start (once)
 
-Follow "Before you start" in [the ordering guide](2026-10-30-ordering-acceptance-walk.md), on the branch `st/foundation`. Two things read differently from that guide now: there is no test template any more, and Demo Bar draws **Basic**, the plain Style every venue starts on. After `pnpm db:seed:dev`, publish Demo Bar once (Demo Bar › Composer › Publish).
+Follow "Before you start" in [the ordering guide](2026-10-30-ordering-acceptance-walk.md), on the branch `st/foundation`. Two things read differently from that guide now: there is no test template any more, and Demo Bar draws **Basic**, the plain Style every venue starts on. After `pnpm db:seed:dev`, publish Demo Bar once (Demo Bar › Studio › Publish).
 
 ## A. The renderer (#171): what you can see today
 
@@ -14,7 +14,7 @@ Every venue's menu is now drawn by one renderer, in a Style. Basic is a plain, r
 
 - **Basic on a phone:** open Demo Bar's guest page. A plain list: names, prices and allergens readable at a glance, nothing cut off, no sideways scrolling.
 - **A phone, a tablet and a PC:** widen the browser window from phone width to full width. The menu stays readable and nothing sticks out.
-- **Sold out leaves the menu (D131):** in the Composer, mark a drink sold out. Within 20 seconds it is gone from a guest page that is already open, with no reload, and no "Sold out" label is left in its place. Put it back on sale and it returns.
+- **Sold out leaves the menu (D131):** in Studio › Structure, mark a drink sold out. Within 20 seconds it is gone from a guest page that is already open, with no reload, and no "Sold out" label is left in its place. Put it back on sale and it returns.
 - **A POS item off sale:** an item the POS has off sale is not on the guest page either.
 - **Old menus:** a menu published before this change still opens, and is drawn by the renderer.
 

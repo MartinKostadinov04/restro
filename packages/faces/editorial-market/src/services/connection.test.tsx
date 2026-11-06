@@ -173,7 +173,7 @@ describe('Stop location check (RR-49, D119)', () => {
   it('is on the bill while the phone holds a pass, and one tap stops the check', () => {
     const host = fakeHost({ location: location('none', 'held') })
     drawFace(host)
-    fireEvent.click(screen.getByRole('button', { name: 'Table order' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Your table’s bill' }))
     const bill = screen.getByRole('dialog', { name: en.tab })
     fireEvent.click(within(bill).getByRole('button', { name: en.locationStop }))
     expect(host.located).toEqual(['stop'])
@@ -181,7 +181,7 @@ describe('Stop location check (RR-49, D119)', () => {
 
   it('is not on the bill before the guest allowed anything', () => {
     drawFace(fakeHost({ location: location('none', 'needed') }))
-    fireEvent.click(screen.getByRole('button', { name: 'Table order' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Your table’s bill' }))
     const bill = screen.getByRole('dialog', { name: en.tab })
     expect(within(bill).queryByRole('button', { name: en.locationStop })).toBeNull()
     // And the bill says why it is empty, with the guest's own Allow location.
@@ -359,7 +359,7 @@ describe('the screen the face has open (RR-52, D121)', () => {
     expect(host.screens.at(-1)).toBe('bag')
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(host.screens.at(-1)).toBe('menu'))
-    fireEvent.click(screen.getByRole('button', { name: 'Table order' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Your table’s bill' }))
     expect(host.screens.at(-1)).toBe('bill')
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(host.screens.at(-1)).toBe('menu'))

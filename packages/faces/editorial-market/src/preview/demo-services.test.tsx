@@ -40,8 +40,8 @@ const dialog = (name: string) => screen.getByRole('dialog', { name })
 describe('the demo host', () => {
   it('starts with a table: one waiter round, a total, and the "Preview" marker on the sheet', () => {
     render(<Demo />)
-    click('Table order')
-    const sheet = dialog('Table order')
+    click('Your table’s bill')
+    const sheet = dialog('Your table’s bill')
     expect(sheet.querySelector('.ro-preview')?.textContent).toBe('Preview')
     const rounds = sheet.querySelectorAll('.ro-round')
     expect(rounds).toHaveLength(1)
@@ -53,8 +53,8 @@ describe('the demo host', () => {
 
   it('speaks Bulgarian to a Bulgarian menu', () => {
     render(<Demo source={orderingView('bg_BG')} />)
-    click('Поръчка на масата')
-    const sheet = dialog('Поръчка на масата')
+    click('Сметката на масата')
+    const sheet = dialog('Сметката на масата')
     expect(sheet.textContent).toContain('Минерална вода 750 мл')
     expect(sheet.querySelector('.ro-preview')?.textContent).toBe('Преглед')
   })
@@ -103,9 +103,9 @@ describe('the demo host', () => {
     fireEvent.click(within(bag).getByRole('button', { name: 'Close' }))
     // Closing goes back in the history, which takes a moment: open the bill after it.
     await later(100)
-    click('Table order')
+    click('Your table’s bill')
 
-    const bill = dialog('Table order')
+    const bill = dialog('Your table’s bill')
     const rounds = [...bill.querySelectorAll('.ro-round')]
     expect(rounds.map((round) => round.getAttribute('data-source'))).toEqual(['staff', 'guest'])
     expect(rounds[1]?.textContent).toContain('Hummus')
@@ -167,14 +167,14 @@ describe('the demo host', () => {
 
   it('sends a waiter request, makes it "on the way", and adds a second kind to the open call', async () => {
     render(<Demo />)
-    click('Call a server')
-    const sheet = dialog('Call a server')
-    fireEvent.click(within(sheet).getByRole('radio', { name: 'Call waiter' }))
+    click('Call a waiter')
+    const sheet = dialog('Call a waiter')
+    fireEvent.click(within(sheet).getByRole('radio', { name: 'Call the waiter' }))
     fireEvent.click(within(sheet).getByRole('button', { name: 'Send' }))
     await later(0)
     expect(within(sheet).getByText('Sending your request')).toBeTruthy()
     await later(DEMO_DELAYS.request)
-    expect(within(sheet).getByText('Request sent')).toBeTruthy()
+    expect(within(sheet).getByText('Waiter called')).toBeTruthy()
     expect(sheet.textContent).not.toContain('on the way')
     await later(DEMO_DELAYS.onTheWay)
     expect(within(sheet).getByText('A waiter is on the way')).toBeTruthy()
@@ -184,7 +184,7 @@ describe('the demo host', () => {
     fireEvent.click(within(sheet).getByRole('radio', { name: 'Ice' }))
     fireEvent.click(within(sheet).getByRole('button', { name: 'Send' }))
     await later(DEMO_DELAYS.request)
-    expect(within(sheet).getByText('Call waiter, Ice')).toBeTruthy()
+    expect(within(sheet).getByText('Call the waiter, Ice')).toBeTruthy()
     expect(within(sheet).getByText('A waiter is on the way')).toBeTruthy()
   })
 

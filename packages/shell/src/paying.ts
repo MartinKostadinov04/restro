@@ -441,7 +441,10 @@ export function refusalText(
   // The client's own answers (no server code): a Send or Pay it did not make while offline, and a
   // Send whose answer was lost (D120, D121).
   if (code === OFFLINE_CODE) return words.offline
-  if (code === ANSWER_LOST_CODE) return words.sendLost
+  // A call (Call a waiter, Pay cash) has its own lost-answer line: "if your order isn't on your
+  // bill" makes no sense for it.
+  if (code === ANSWER_LOST_CODE)
+    return context.command === 'service.request' ? words.callLost : words.sendLost
   if (code === 'rate_limited' && context.command?.startsWith('pay.'))
     return words.paying.rateLimited
   return Object.hasOwn(words.refusals, code)

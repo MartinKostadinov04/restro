@@ -67,6 +67,8 @@ interface Asked {
   readonly actionId: string
   readonly phase: 'sending' | 'sent' | 'lost' | 'failed' | 'rejected'
   readonly message: ViewText | null
+  /** Why the host refused it (`rejected` only), to word when it gave no message. */
+  readonly code?: string | null
 }
 
 /**
@@ -148,11 +150,7 @@ export function useWaiterCall(kind: ServiceKind = 'waiter'): {
     }
     if (outcome.result.status === 'rejected') {
       setPhase('failed')
-      const said = refusalText(words, outcome.result.code, { command: 'service.request' })
-      // A call's own refusals (`calls_off`, `kind_not_offered`) have no word of their own, and
-      // "that did not work" would have the guest tapping again: the sheet's line for a call the
-      // team could not take says the useful thing instead (the words themselves are #296's).
-      setRefused(said === words.refusedOther ? words.requestStates.rejected.hint : said)
+      setRefused(refusalText(words, outcome.result.code, { command: 'service.request' }))
       return false
     }
     setPhase('sent')
@@ -164,7 +162,7 @@ export function useWaiterCall(kind: ServiceKind = 'waiter'): {
     ) : phase === 'sent' ? (
       <small role="status">{words.requestStates.sent.title}</small>
     ) : phase === 'lost' ? (
-      <small role="alert">{words.sendLost}</small>
+      <small role="alert">{words.callLost}</small>
     ) : phase === 'failed' ? (
       <small role="alert">{refused ?? words.requestFailed}</small>
     ) : null
@@ -225,8 +223,8 @@ export function CallSheet() {
       outcome = { ok: false }
     }
     if (!alive.current) return
-    const settle = (phase: Asked['phase'], message: ViewText | null) =>
-      setAsked((now) => (now?.actionId === actionId ? { actionId, phase, message } : now))
+    const settle = (phase: Asked['phase'], message: ViewText | null, code: string | null = null) =>
+      setAsked((now) => (now?.actionId === actionId ? { actionId, phase, message, code } : now))
     if (!outcome.ok) {
       settle('failed', null) // the request may or may not have gone: a retry reuses the actionId
     } else if (outcome.result.status === 'pending') {
@@ -234,7 +232,7 @@ export function CallSheet() {
       settle('lost', null)
     } else if (outcome.result.status === 'rejected') {
       attempt.current = null
-      settle('rejected', outcome.result.message)
+      settle('rejected', outcome.result.message, outcome.result.code ?? null)
     } else {
       attempt.current = null
       settle('sent', null)
@@ -276,7 +274,12 @@ export function CallSheet() {
           title={rejected.title}
           hint={
             inFlight.message === null ? (
-              rejected.hint
+              // The host's own message, else the code in the shell's words, else the panel's line.
+              inFlight.code == null ? (
+                rejected.hint
+              ) : (
+                refusalText(words, inFlight.code, { command: 'service.request' })
+              )
             ) : (
               <Text value={inFlight.message} page={locale} />
             )
@@ -298,7 +301,7 @@ export function CallSheet() {
     return (
       <StatePanel
         tone="bad"
-        title={inFlight.phase === 'lost' ? words.sendLost : words.requestFailed}
+        title={inFlight.phase === 'lost' ? words.callLost : words.requestFailed}
       >
         <button
           type="button"
@@ -361,7 +364,7 @@ export function CallSheet() {
   return (
     <div className="ro-sheet" data-design-part="call">
       <ChoiceGroup
-        label={words.callServer}
+        label={words.callPrompt}
         className="ro-choicegrid"
         part="call.kinds"
         value={chosen}

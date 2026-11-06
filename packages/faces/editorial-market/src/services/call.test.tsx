@@ -35,8 +35,8 @@ afterEach(() => {
 const view = orderingView()
 
 const openCall = () => {
-  fireEvent.click(screen.getByRole('button', { name: 'Call a server' }))
-  return screen.getByRole('dialog', { name: 'Call a server' })
+  fireEvent.click(screen.getByRole('button', { name: 'Call a waiter' }))
+  return screen.getByRole('dialog', { name: 'Call a waiter' })
 }
 const pick = (sheet: HTMLElement, name: string) =>
   fireEvent.click(within(sheet).getByRole('radio', { name }))
@@ -52,10 +52,10 @@ describe('the waiter button', () => {
     drawFace(fakeHost())
     const slots = document.querySelectorAll('[data-slot="menu.call_waiter"]')
     expect(slots).toHaveLength(1)
-    expect(slots[0]).toBe(screen.getByRole('button', { name: 'Call a server' }))
+    expect(slots[0]).toBe(screen.getByRole('button', { name: 'Call a waiter' }))
     cleanup()
     drawFace(fakeHost(), { ...view, features: { ...view.features, callWaiter: null } })
-    expect(screen.queryByRole('button', { name: 'Call a server' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Call a waiter' })).toBeNull()
   })
 
   it('shrinks to a round bell, with the word kept for a screen reader, once the bag has something in it', () => {
@@ -64,7 +64,7 @@ describe('the waiter button', () => {
     expect(bar?.getAttribute('data-bag')).toBe('false')
     page.update({ order: orderOf([orderLine(itemNamed(view, 'Hummus'))]) })
     expect(bar?.getAttribute('data-bag')).toBe('true')
-    expect(screen.getByRole('button', { name: 'Call a server' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Call a waiter' })).toBeTruthy()
   })
 })
 
@@ -76,7 +76,7 @@ describe('the kinds', () => {
       within(sheet)
         .getAllByRole('radio')
         .map((button) => button.textContent),
-    ).toEqual(['Water', 'Call waiter', 'Glasses'])
+    ).toEqual(['Water', 'Call the waiter', 'Glasses'])
     for (const name of ['Bring the bill', 'Ice', 'Card terminal']) {
       expect(within(sheet).queryByRole('radio', { name })).toBeNull()
     }
@@ -121,7 +121,7 @@ describe('after sending: only what the host says', () => {
   async function sent(host = fakeHost()) {
     const page = drawFace(host)
     const sheet = openCall()
-    pick(sheet, 'Call waiter')
+    pick(sheet, 'Call the waiter')
     fireEvent.click(sendButton(sheet))
     await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
     return { host, page, sheet, call: host.of('service.request')[0] }
@@ -132,11 +132,11 @@ describe('after sending: only what the host says', () => {
     expect(within(sheet).getByText('Sending your request')).toBeTruthy()
     await act(async () => call?.answer())
     // Accepted, but the host's state does not list the request yet: it was sent, nothing more.
-    expect(within(sheet).getByText('Request sent')).toBeTruthy()
+    expect(within(sheet).getByText('Waiter called')).toBeTruthy()
     expect(sheet.textContent).not.toContain('on the way')
     // The host lists it as sent, then accepted: still not on the way.
     page.update({ requests: [request('rq-1', call?.command.actionId ?? '', 'waiter', 'sent')] })
-    expect(within(sheet).getByText('Request sent')).toBeTruthy()
+    expect(within(sheet).getByText('Waiter called')).toBeTruthy()
     page.update({ requests: [request('rq-1', call?.command.actionId ?? '', 'waiter', 'accepted')] })
     expect(within(sheet).getByText('The team has your request')).toBeTruthy()
     expect(sheet.textContent).not.toContain('on the way')
@@ -145,7 +145,7 @@ describe('after sending: only what the host says', () => {
       requests: [request('rq-1', call?.command.actionId ?? '', 'waiter', 'on_the_way')],
     })
     expect(within(sheet).getByText('A waiter is on the way')).toBeTruthy()
-    expect(within(sheet).getByText('Call waiter')).toBeTruthy()
+    expect(within(sheet).getByText('Call the waiter')).toBeTruthy()
   })
 
   it('offers no Cancel on an open call: the guide says there is no withdrawing one (DA-10)', async () => {
@@ -163,7 +163,7 @@ describe('after sending: only what the host says', () => {
     await act(async () => call?.answer())
     // The host lists one request per kind of the table's one call, all carrying the call's own id.
     page.update({ requests: [request('wc-7:ice', 'wc-7', 'ice', 'sent')] })
-    expect(within(sheet).getByText('Request sent')).toBeTruthy()
+    expect(within(sheet).getByText('Waiter called')).toBeTruthy()
     expect(within(sheet).getByText('Ice')).toBeTruthy()
     // "Something else" brings the picker back over the open call: the kind joins it, server side.
     fireEvent.click(within(sheet).getByRole('button', { name: 'Send another request' }))
@@ -225,11 +225,18 @@ describe('after sending: only what the host says', () => {
     expect(within(sheet).getAllByRole('radio')).toHaveLength(7)
   })
 
+  it("words a refusal's code on the sheet itself when the host gave no message", async () => {
+    const { sheet, call } = await sent()
+    await act(async () => call?.answer({ status: 'rejected', code: 'calls_off' }))
+    expect(within(sheet).getByText('The team could not take this request')).toBeTruthy()
+    expect(sheet.textContent).toContain('Calling a waiter from your phone is off here.')
+  })
+
   it('never says a lost answer was sent, and retries it with the same actionId (D72, DA-2)', async () => {
     const { host, sheet, call } = await sent()
     // What the page's host answers when a request threw, timed out or came back unusable.
     await act(async () => call?.answer({ status: 'pending', code: ANSWER_LOST_CODE }))
-    expect(within(sheet).queryByText('Request sent')).toBeNull()
+    expect(within(sheet).queryByText('Waiter called')).toBeNull()
     // D120's line: the request may be with the staff, so nothing is claimed either way.
     expect(within(sheet).getByRole('alert').textContent).toContain('reach Restro right now')
     expect(sheet.textContent).not.toContain('did not go through')
@@ -310,7 +317,7 @@ describe('only `waiter` ticked: the single step (D127)', () => {
     })
     expect(within(sheet).getByText('Sending your request')).toBeTruthy()
     await act(async () => host.of('service.request')[0]?.answer())
-    expect(within(sheet).getByText('Request sent')).toBeTruthy()
+    expect(within(sheet).getByText('Waiter called')).toBeTruthy()
     expect(host.of('service.request')).toHaveLength(1)
   })
 
@@ -326,10 +333,10 @@ describe('only `waiter` ticked: the single step (D127)', () => {
     window.history.replaceState(null, '', '/#call')
     const host = fakeHost()
     drawFace(host, single)
-    const sheet = screen.getByRole('dialog', { name: 'Call a server' })
+    const sheet = screen.getByRole('dialog', { name: 'Call a waiter' })
     expect(host.of('service.request')).toHaveLength(0)
     expect(within(sheet).queryByRole('radio')).toBeNull()
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Call a server' }))
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Call a waiter' }))
     await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
   })
 

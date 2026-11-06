@@ -44,8 +44,8 @@ const staff = billRound('s1', 'staff', [
 const guest = billRound('g1', 'guest', [billLine('g1-1', 'Hummus', 1, 700, 'received')], A, '20:15')
 
 const openBill = () => {
-  fireEvent.click(screen.getByRole('button', { name: 'Table order' }))
-  return screen.getByRole('dialog', { name: 'Table order' })
+  fireEvent.click(screen.getByRole('button', { name: 'Your table’s bill' }))
+  return screen.getByRole('dialog', { name: 'Your table’s bill' })
 }
 
 describe('distinctRounds', () => {
@@ -106,11 +106,13 @@ describe('the bill sheet', () => {
   it("shows the bill button with the host's total only once the bill has a round", () => {
     const host = fakeHost()
     const page = drawFace(host)
-    expect(screen.getByRole('button', { name: 'Table order' }).textContent).toBe('Bill')
+    expect(screen.getByRole('button', { name: 'Your table’s bill' }).textContent).toBe('Bill')
     page.update({ bill: billOf([staff], 1850) })
-    expect(screen.getByRole('button', { name: 'Table order' }).textContent).toBe('Bill · €18.50')
+    expect(screen.getByRole('button', { name: 'Your table’s bill' }).textContent).toBe(
+      'Bill · €18.50',
+    )
     page.update({ bill: billOf([], 0) })
-    expect(screen.getByRole('button', { name: 'Table order' }).textContent).toBe('Bill')
+    expect(screen.getByRole('button', { name: 'Your table’s bill' }).textContent).toBe('Bill')
   })
 
   it('draws a guest round once even when the state lists it twice', () => {
@@ -137,11 +139,11 @@ describe('the bill sheet', () => {
     await waitFor(() => expect(host.of('order.send')).toHaveLength(1))
     await act(async () => host.of('order.send')[0]?.answer())
     // The face opens nothing and draws no round: the bill is the host's.
-    expect(screen.queryByRole('dialog', { name: 'Table order' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Your table’s bill' })).toBeNull()
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    fireEvent.click(screen.getByRole('button', { name: 'Table order' }))
-    const sheet = await screen.findByRole('dialog', { name: 'Table order' })
+    fireEvent.click(screen.getByRole('button', { name: 'Your table’s bill' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Your table’s bill' })
     expect(within(sheet).getByText('Nothing has been ordered yet.')).toBeTruthy()
     expect(sheet.querySelector('.ro-round')).toBeNull()
     expect(within(sheet).queryByRole('button', { name: /^Pay/ })).toBeNull()
@@ -195,8 +197,8 @@ describe('the bill sheet', () => {
 
   it('draws the bill in Bulgarian, with the words of the language', () => {
     drawFace(fakeHost({ bill: billOf([staff, guest], 2550) }), orderingView('bg_BG'))
-    fireEvent.click(screen.getByRole('button', { name: 'Поръчка на масата' }))
-    const sheet = screen.getByRole('dialog', { name: 'Поръчка на масата' })
+    fireEvent.click(screen.getByRole('button', { name: 'Сметката на масата' }))
+    const sheet = screen.getByRole('dialog', { name: 'Сметката на масата' })
     expect(sheet.textContent).toContain('От сервитьора')
     expect(sheet.textContent).toContain('От приложението')
     expect(sheet.textContent).toContain('Сервирана')
@@ -263,7 +265,9 @@ describe("the table's bill as the POS reads it (state.tableBill, D127)", () => {
 
   it('offers Pay with the amount left, and shows the same amount on the bill button in the bar', () => {
     drawFace(own())
-    expect(screen.getByRole('button', { name: 'Table order' }).textContent).toContain('€22.50')
+    expect(screen.getByRole('button', { name: 'Your table’s bill' }).textContent).toContain(
+      '€22.50',
+    )
     const sheet = openBill()
     expect(within(sheet).getByRole('button', { name: /^Pay/ }).textContent).toContain('€22.50')
   })

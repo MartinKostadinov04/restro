@@ -144,7 +144,7 @@ const text = (value: string) => ({ text: value, lang: 'en_US' as const })
 
 /** The screens, each with the host state that fills it and the way a guest opens it. */
 const SCREENS: Record<string, { host: (view: ViewModel) => FakeHost; open: () => void }> = {
-  call: { host: () => fakeHost(), open: () => click('Call a server') },
+  call: { host: () => fakeHost(), open: () => click('Call a waiter') },
   bag: {
     host: (view) => {
       const bowl = itemNamed(view, 'Bowl')
@@ -180,7 +180,7 @@ const SCREENS: Record<string, { host: (view: ViewModel) => FakeHost; open: () =>
           3650,
         ),
       }),
-    open: () => click('Table order'),
+    open: () => click('Your table’s bill'),
   },
   pay: {
     host: () =>
