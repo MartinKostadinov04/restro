@@ -51,13 +51,37 @@ export function ShowEarlier({ onClick }: { onClick: () => void }) {
   )
 }
 
-/** A list that cannot load: what to do, in place of the list; it tries again by itself. */
-export function FailedBlock({ text }: { text: string }) {
+/**
+ * A list that cannot load: what to do, in place of the list. A list that polls tries again by
+ * itself; a one-shot read passes `onRetry` and gets the button instead (D72: say what is true).
+ */
+export function FailedBlock({ text, onRetry }: { text: string; onRetry?: () => void }) {
+  const t = useTranslations('tonight')
   return (
     <Empty className="p-6 md:p-6" role="alert" data-testid="load-failed">
       <EmptyHeader>
         <EmptyDescription>{text}</EmptyDescription>
       </EmptyHeader>
+      {onRetry === undefined ? null : (
+        <Button type="button" variant="outline" className="h-11" onClick={onRetry}>
+          {t('retry')}
+        </Button>
+      )}
+    </Empty>
+  )
+}
+
+/** A sheet whose read did not get through: what to do, and one button to read again (RR-O32). */
+export function ReadFailed({ onRetry }: { onRetry: () => void }) {
+  const t = useTranslations('tonight')
+  return (
+    <Empty className="p-6 md:p-6" role="alert" data-testid="read-failed">
+      <EmptyHeader>
+        <EmptyDescription>{t('sh_fail')}</EmptyDescription>
+      </EmptyHeader>
+      <Button type="button" variant="outline" className="h-11" onClick={onRetry}>
+        {t('retry')}
+      </Button>
     </Empty>
   )
 }

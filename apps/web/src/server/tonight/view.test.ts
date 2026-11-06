@@ -38,6 +38,7 @@ function tonight(overrides: Partial<Tonight> = {}): Tonight {
     sentOrders: [],
     alerts: [],
     paying: null,
+    payingSetup: null,
     payingProvider: null,
     landedLate: [],
     receipts: [],
@@ -660,6 +661,27 @@ describe('the paying banner (#115)', () => {
     expect(waiter.paying).toEqual({ state: 'lost', canReconnect: false })
     expect(view(tonight({ paying: 'paused' })).paying?.state).toBe('paused')
     expect(view(tonight({ paying: 'restricted' })).paying?.state).toBe('restricted')
+  })
+
+  it('names the open setup check, to the person who finishes the setup only (RR-O1)', () => {
+    const owner = view(
+      tonight({
+        payingSetup: 'paymentTables',
+        permissions: ['alerts.answer', 'settings.connect_payments'],
+      }),
+    )
+    expect(owner.paying).toEqual({ state: 'setup', canReconnect: true, missing: 'paymentTables' })
+    expect(view(tonight({ payingSetup: 'paymentTables' })).paying).toBeNull()
+    expect(view(tonight({ payingSetup: null })).paying).toBeNull()
+    // A stopped connection is the stronger reason.
+    const lost = view(
+      tonight({
+        paying: 'lost',
+        payingSetup: 'paymentTables',
+        permissions: ['settings.connect_payments'],
+      }),
+    )
+    expect(lost.paying?.state).toBe('lost')
   })
 
   it("is hidden while Restro's own connection pause shows", () => {

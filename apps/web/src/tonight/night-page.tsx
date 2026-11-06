@@ -23,6 +23,7 @@ import { useMoney } from './money'
 import { type NightSlots, visibleSections } from './night-slots'
 import { clockAt, OfflineLine } from './offline-line'
 import { PAGE } from './pages'
+import { readAttempt } from './read-attempt'
 import { RunProvider } from './run'
 import { SentRow } from './sent-row'
 import { SentOrderSheet } from './sent-sheet'
@@ -78,23 +79,28 @@ function Content({ view, frame, slots }: { view: NightView; frame: Frame; slots:
 
   const day = view.day
   const limit = all?.limit
+  // Bumped by "Try again": the same read, asked once more.
+  const [tries, setTries] = useState(0)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `tries` only asks for the read again
   useEffect(() => {
     if (limit === undefined) return
     let live = true
-    void sentOrdersAction({ venueId: frame.venueId, day, limit }).then((result) => {
-      if (!live) return
-      setAll((before) =>
-        before === null
-          ? before
-          : result.ok
-            ? { ...before, list: result.list, failed: false }
-            : { ...before, failed: true },
-      )
-    })
+    void readAttempt(() => sentOrdersAction({ venueId: frame.venueId, day, limit })).then(
+      (result) => {
+        if (!live) return
+        setAll((before) =>
+          before === null
+            ? before
+            : result.ok
+              ? { ...before, list: result.list, failed: false }
+              : { ...before, failed: true },
+        )
+      },
+    )
     return () => {
       live = false
     }
-  }, [limit, day, frame.venueId])
+  }, [limit, day, frame.venueId, tries])
 
   const sections = visibleSections(slots.sections, view.full)
   const counts = view.sent.counts
@@ -220,7 +226,15 @@ function Content({ view, frame, slots }: { view: NightView; frame: Frame; slots:
                 u: counts.unconfirmed,
               })}
             </p>
-            {all?.failed ? <FailedBlock text={t('so_fail')} /> : null}
+            {all?.failed ? (
+              <FailedBlock
+                text={t('sh_fail')}
+                onRetry={() => {
+                  setAll((before) => (before === null ? before : { ...before, failed: false }))
+                  setTries((n) => n + 1)
+                }}
+              />
+            ) : null}
             {shownRows.length === 0 ? null : (
               <ul className="space-y-2" data-testid="night-sent-list">
                 {shownRows.map((row) => (

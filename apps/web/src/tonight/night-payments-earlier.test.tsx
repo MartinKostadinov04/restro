@@ -2,20 +2,30 @@
 // An earlier night's open payment question on today's end of night (#220): the view carries the
 // night it was asked on (`earlier`), a question of tonight carries none, and the row draws the
 // words "From the night of {date}" (`m_earlier`) for the one and not the other.
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { paymentsView } from '@/server/tonight/payment-view'
 import { renderWithIntl } from '@/test-utils'
 
 import { ActionRowItem } from './action-rows'
+import { NightPaymentsList } from './night-payments'
 import { RunProvider } from './run'
 
 type NightPayments = Parameters<typeof paymentsView>[0]
 type NightPayFix = NightPayments['fix'][number]
 type NightPaymentRow = NightPayFix['payment']
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+  unstable_rethrow: vi.fn(),
+}))
+const nightPaymentsAction = vi.hoisted(() => vi.fn())
+vi.mock('@/server/tonight/payment-actions', () => ({
+  nightPaymentsAction,
+  paymentDetailAction: vi.fn(),
+}))
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { error: vi.fn() }) }))
 
 const paymentRow = (id: string): NightPaymentRow => ({
@@ -120,5 +130,31 @@ describe("an earlier night's question on today's end of night", () => {
       </RunProvider>,
     )
     expect(screen.getAllByText(/From the night of 25 October/)).toHaveLength(1)
+  })
+})
+
+describe('the one-shot "show all" read of the end of the night', () => {
+  it('says what is true when it fails and reads again on the button, not by itself (D72)', async () => {
+    const initial = {
+      ...paymentsView(read([]), 'Europe/Sofia'),
+      counts: { all: 5, captured: 0, released: 0, unconfirmed: 0 },
+    }
+    nightPaymentsAction.mockRejectedValueOnce(new Error('no connection'))
+    nightPaymentsAction.mockResolvedValueOnce({ ok: true, payments: initial })
+    renderWithIntl(
+      <RunProvider>
+        <NightPaymentsList
+          initial={initial}
+          frame={{ venueId: 'vn_1', source: 'Till', currency: 'EUR', device: false } as never}
+        />
+      </RunProvider>,
+    )
+    await userEvent.click(screen.getByTestId('night-pay-show-all'))
+    const line = await screen.findByTestId('load-failed')
+    expect(line.textContent).not.toContain('by itself')
+    expect(nightPaymentsAction).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(nightPaymentsAction).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByTestId('load-failed')).toBeNull())
   })
 })

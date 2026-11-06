@@ -97,6 +97,21 @@ describe('useLiveFeed', () => {
     expect(result.current.loading).toBe(false)
   })
 
+  it('flags a read that was rejected, with no unhandled rejection, and clears it when the next works (RR-O47)', async () => {
+    const unhandled = vi.fn()
+    process.on('unhandledRejection', unhandled)
+    const load = vi.fn<() => Promise<View | null>>()
+    load.mockRejectedValueOnce(new Error('no connection'))
+    load.mockResolvedValueOnce(view([2, 'two'], [1, 'one']))
+    const { result } = feed(load)
+    await tick()
+    expect(result.current.failed).toBe(true)
+    await tick()
+    expect(result.current.failed).toBe(false)
+    process.off('unhandledRejection', unhandled)
+    expect(unhandled).not.toHaveBeenCalled()
+  })
+
   it('flags a read that failed and clears it when the next works', async () => {
     const load = vi.fn<() => Promise<View | null>>()
     load.mockResolvedValueOnce(null)
