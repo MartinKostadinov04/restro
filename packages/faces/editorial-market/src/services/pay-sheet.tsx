@@ -50,6 +50,7 @@ import {
 } from '@restro/shell'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { Photo } from '../parts'
+import { useWaiterCall } from './call-sheet'
 import { newActionId } from './command'
 import { StatePanel } from './parts'
 import { useServicesRequired } from './provider'
@@ -622,26 +623,29 @@ function Screen({
   )
 }
 
-/** Call a waiter: the way on from every failure screen of paying (D127), where the venue takes calls. */
+/**
+ * Call a waiter: the way on from every failure screen of paying (D127), where the venue takes
+ * calls. It shows what became of its own call (D72, DA-5): pending, then the host's word, and an
+ * answer that was lost is never success (D120). The button stays out of reach once the call may be
+ * with the staff; a refusal leaves it as it was, so the guest can ask again.
+ */
 export function CallWaiter() {
   const o = useServicesRequired()
+  const { busy, notice, call } = useWaiterCall()
   if (o.features.callWaiter === null) return null
   return (
-    <button
-      type="button"
-      className="ro-ghost"
-      data-slot="pay.call"
-      onClick={() =>
-        void o.run({
-          kind: 'service.request',
-          actionId: newActionId(),
-          request: 'waiter',
-          note: '',
-        })
-      }
-    >
-      {o.words.paying.callWaiter}
-    </button>
+    <>
+      <button
+        type="button"
+        className="ro-ghost"
+        data-slot="pay.call"
+        disabled={busy}
+        onClick={() => void call()}
+      >
+        {o.words.paying.callWaiter}
+      </button>
+      {notice}
+    </>
   )
 }
 

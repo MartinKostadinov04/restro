@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-// DA-B2 (designer audit, money on the new screens), brought in by #293. DA-B2-1 and DA-B2-4 are
-// fixed here and now say what the face must do; DA-B2-2 and DA-B2-3 belong to #294 (Call a waiter)
-// and still pin the behaviour as it stands, so that ticket's fix turns them round.
+// DA-B2 (designer audit, money on the new screens), brought in by #293. Every one of them now says
+// what the face must do: DA-B2-1 and DA-B2-4 were fixed by #293, DA-B2-2 and DA-B2-3 by #294 (Call
+// a waiter, which turned the last two round).
 
 import { ANSWER_LOST_CODE } from '@restro/shell'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
@@ -153,13 +153,13 @@ describe('DA-B2-4: the tip chosen for one payment does not carry to the next', (
   })
 })
 
-describe('DA-B2-2: Call a waiter claims "Request sent" when the answer was lost', () => {
+describe('DA-B2-2: Call a waiter never claims "Request sent" when the answer was lost', () => {
   const openCall = () => {
     fireEvent.click(screen.getByRole('button', { name: 'Call a server' }))
     return screen.getByRole('dialog', { name: 'Call a server' })
   }
 
-  it('shows "Request sent" for the guest client\'s pending answer_lost (a network error or a 5xx)', async () => {
+  it("says D120's line for the guest client's pending answer_lost (a network error or a 5xx)", async () => {
     const host = fakeHost()
     drawFace(host)
     const sheet = openCall()
@@ -170,9 +170,13 @@ describe('DA-B2-2: Call a waiter claims "Request sent" when the answer was lost'
     await act(async () =>
       host.of('service.request')[0]?.answer({ status: 'pending', code: ANSWER_LOST_CODE }),
     )
-    expect(within(sheet).getByText('Request sent')).toBeTruthy()
-    expect(within(sheet).queryByRole('alert')).toBeNull()
-    expect(within(sheet).queryByRole('button', { name: 'Try again' })).toBeNull()
+    expect(within(sheet).queryByText('Request sent')).toBeNull()
+    expect(within(sheet).getByRole('alert').textContent).toContain('reach Restro right now')
+    // A retry is safe for a call: it carries the same action id and a repeat of a kind adds nothing.
+    const retry = within(sheet).getByRole('button', { name: 'Try again' })
+    fireEvent.click(retry)
+    await waitFor(() => expect(host.of('service.request')).toHaveLength(2))
+    expect(host.of('service.request')[1]?.command).toEqual(host.of('service.request')[0]?.command)
   })
 
   it('words every refusal the same: calls_off, kind_not_offered and table_not_open read "Ask your waiter."', async () => {
@@ -192,8 +196,8 @@ describe('DA-B2-2: Call a waiter claims "Request sent" when the answer was lost'
   })
 })
 
-describe('DA-B2-3: Call a waiter on the paying screens shows nothing of its answer', () => {
-  it('a refused call from the "checking" screen leaves the screen as it was, with no word', async () => {
+describe('DA-B2-3: Call a waiter on the paying screens shows what became of it', () => {
+  it('shows sending, then the refusal, and leaves the button usable (D72)', async () => {
     const host = payFirstHost(false, [
       orderLine(mojito, 1, { mode: 'pay_first' as const, held: true }),
     ])
@@ -201,18 +205,52 @@ describe('DA-B2-3: Call a waiter on the paying screens shows nothing of its answ
     drawFace(host)
     const sheet = openBag()
     expect(sheet.querySelector('[data-pay-screen="checking"]')).not.toBeNull()
-    const before = sheet.textContent
     const call = sheet.querySelector('[data-slot="pay.call"]') as HTMLButtonElement
     fireEvent.click(call)
     await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
-    // No "Sending your request" while it is on its way.
-    expect(sheet.textContent).toBe(before)
+    // On its way: the guest is told, and cannot send a second one meanwhile.
+    expect(sheet.textContent).toContain('Sending your request')
+    expect(call.disabled).toBe(true)
     await act(async () =>
       host.of('service.request')[0]?.answer({ status: 'rejected', code: 'calls_off' }),
     )
-    // Refused, and the guest is told nothing: no alert, no change on the screen.
-    expect(within(sheet).queryByRole('alert')).toBeNull()
-    expect(sheet.textContent).toBe(before)
+    // Refused: the guest reads it, and the button is theirs again.
+    expect(within(sheet).getByRole('alert').textContent).toContain('Ask your waiter')
     expect(call.disabled).toBe(false)
+  })
+
+  it('never says a lost call was taken, and keeps the button out of reach (D120)', async () => {
+    const host = payFirstHost(false, [
+      orderLine(mojito, 1, { mode: 'pay_first' as const, held: true }),
+    ])
+    host.set({ payment: paymentOf({ mode: 'pay_first', state: 'unconfirmed', form: null }) })
+    drawFace(host)
+    const sheet = openBag()
+    const call = sheet.querySelector('[data-slot="pay.call"]') as HTMLButtonElement
+    fireEvent.click(call)
+    await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
+    await act(async () =>
+      host.of('service.request')[0]?.answer({ status: 'pending', code: ANSWER_LOST_CODE }),
+    )
+    expect(sheet.textContent).not.toContain('Request sent')
+    expect(within(sheet).getByRole('alert').textContent).toContain('reach Restro right now')
+    expect(call.disabled).toBe(true)
+  })
+
+  it('shows the host taking the call, on the bill with no location pass', async () => {
+    const host = payFirstHost()
+    host.set({
+      location: { state: 'needed', prompt: 'none', consent: 'unknown', venueName: 'Club X' },
+    })
+    drawFace(host)
+    fireEvent.click(screen.getByRole('button', { name: 'Table order' }))
+    const sheet = screen.getByRole('dialog', { name: 'Table order' })
+    const call = sheet.querySelector('[data-slot="pay.call"]') as HTMLButtonElement
+    expect(call).not.toBeNull()
+    fireEvent.click(call)
+    await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
+    await act(async () => host.of('service.request')[0]?.answer())
+    expect(sheet.textContent).toContain('Request sent')
+    expect(call.disabled).toBe(true)
   })
 })

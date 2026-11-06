@@ -510,40 +510,39 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
           return answer(command, 'accepted')
         }
 
+        // One open call per table, as the platform keeps it (D127): a later kind joins the open
+        // call, every request of it carries the call's own id, and a repeat of a kind changes
+        // nothing. There is no `service.cancel`: withdrawing a call is not built.
         case 'service.request': {
           await wait(DEMO_DELAYS.request)
-          const id = nextId('demo-request')
+          const OPEN: readonly RequestView['status'][] = ['sent', 'accepted', 'on_the_way']
+          const open = storeRef.current.requests.filter((r) => OPEN.includes(r.status))
+          const callId = open[0]?.actionId ?? nextId('demo-call')
+          if (open.some((r) => r.kind === command.request)) return answer(command, 'accepted')
           const request: RequestView = {
-            id,
-            actionId: command.actionId,
+            id: `${callId}:${command.request}`,
+            actionId: callId,
             kind: command.request,
-            status: 'sent',
-            note: command.note,
+            status: open[0]?.status ?? 'sent',
+            note: '',
           }
           commit((current) => ({ ...current, requests: [...current.requests, request] }))
           later(DEMO_DELAYS.onTheWay, () =>
             commit((current) => ({
               ...current,
               requests: current.requests.map((r) =>
-                r.id === id && r.status === 'sent' ? { ...r, status: 'on_the_way' } : r,
+                r.actionId === callId && r.status === 'sent' ? { ...r, status: 'on_the_way' } : r,
               ),
             })),
           )
           return answer(command, 'accepted')
         }
 
-        case 'service.cancel': {
+        // Withdrawing a call is not built (D127), so nothing sends this and the demo refuses it
+        // exactly as the platform does.
+        case 'service.cancel':
           await wait(DEMO_DELAYS.request)
-          commit((current) => ({
-            ...current,
-            requests: current.requests.map((r) =>
-              r.id === command.requestId && ['sent', 'accepted', 'on_the_way'].includes(r.status)
-                ? { ...r, status: 'cancelled' }
-                : r,
-            ),
-          }))
-          return answer(command, 'accepted')
-        }
+          return answer(command, 'rejected', say('This is not available yet.', 'Още не е налично.'))
 
         case 'pay.start': {
           await wait(DEMO_DELAYS.pay)

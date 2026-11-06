@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 
-// Calling a waiter (brief SH-06 test 5): only the kinds the venue allows, "on the way" only when
-// the host's request says so, and cancel sends `service.cancel`.
+// Calling a waiter (brief SH-06 test 5): only the kinds the venue allows, and "on the way" only
+// when the host's request says so. One open call per table (D127, DA-10): another kind joins it and
+// there is no withdrawing it, so the sheet has no Cancel. A lost answer is never "Request sent"
+// (D72, DA-2), and a call nobody answered still speaks when the sheet is opened again (DA-27).
 
-import type { ServiceKind, ViewModel } from '@restro/shell'
+import { ANSWER_LOST_CODE, type ServiceKind, type ViewModel } from '@restro/shell'
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -146,46 +148,50 @@ describe('after sending: only what the host says', () => {
     expect(within(sheet).getByText('Call waiter')).toBeTruthy()
   })
 
-  it("cancels with service.cancel and the request's own id, and shows the cancellation the host reports", async () => {
+  it('offers no Cancel on an open call: the guide says there is no withdrawing one (DA-10)', async () => {
     const { host, page, sheet, call } = await sent()
     await act(async () => call?.answer())
-    page.update({
-      requests: [request('rq-7', call?.command.actionId ?? '', 'waiter', 'on_the_way')],
-    })
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Cancel request' }))
-    await waitFor(() => expect(host.of('service.cancel')).toHaveLength(1))
-    const cancel = host.of('service.cancel')[0]
-    expect(cancel?.command).toMatchObject({ kind: 'service.cancel', requestId: 'rq-7' })
-    await act(async () => cancel?.answer())
-    // Accepted, but the request is on the way until the host says otherwise.
+    page.update({ requests: [request('wc-7:waiter', 'wc-7', 'waiter', 'on_the_way')] })
     expect(within(sheet).getByText('A waiter is on the way')).toBeTruthy()
-    page.update({
-      requests: [request('rq-7', call?.command.actionId ?? '', 'waiter', 'cancelled')],
-    })
-    expect(within(sheet).getByText('Request cancelled')).toBeTruthy()
     expect(within(sheet).queryByRole('button', { name: 'Cancel request' })).toBeNull()
-    // Then the guest can ask again.
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Send another request' }))
-    expect(within(sheet).getAllByRole('radio')).toHaveLength(7)
+    expect(sheet.textContent).not.toContain('Cancel')
+    expect(host.of('service.cancel')).toHaveLength(0)
   })
 
-  it('says so when the cancel is refused or fails, and keeps the request as it is', async () => {
+  it('draws the open call as one thing and sends a second kind onto it (D127, DA-10)', async () => {
     const { host, page, sheet, call } = await sent()
     await act(async () => call?.answer())
-    page.update({ requests: [request('rq-7', call?.command.actionId ?? '', 'waiter', 'accepted')] })
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Cancel request' }))
-    await waitFor(() => expect(host.of('service.cancel')).toHaveLength(1))
-    await act(async () =>
-      host
-        .of('service.cancel')[0]
-        ?.answer({ status: 'rejected', message: text('Too late, sorry.') }),
+    // The host lists one request per kind of the table's one call, all carrying the call's own id.
+    page.update({ requests: [request('wc-7:ice', 'wc-7', 'ice', 'sent')] })
+    expect(within(sheet).getByText('Request sent')).toBeTruthy()
+    expect(within(sheet).getByText('Ice')).toBeTruthy()
+    // "Something else" brings the picker back over the open call: the kind joins it, server side.
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Send another request' }))
+    pick(sheet, 'Water')
+    fireEvent.click(sendButton(sheet))
+    await waitFor(() => expect(host.of('service.request')).toHaveLength(2))
+    expect(host.of('service.request')[1]?.command).toMatchObject({ request: 'water' })
+    // A new action, not the first one's retry.
+    expect(host.of('service.request')[1]?.command.actionId).not.toBe(call?.command.actionId)
+    expect(within(sheet).getByText('Sending your request')).toBeTruthy()
+    await act(async () => host.of('service.request')[1]?.answer())
+    page.update({
+      requests: [
+        request('wc-7:ice', 'wc-7', 'ice', 'sent'),
+        request('wc-7:water', 'wc-7', 'water', 'sent'),
+      ],
+    })
+    expect(within(sheet).getByText('Ice, Water')).toBeTruthy()
+  })
+
+  it('offers nothing else to ask for where only the waiter is ticked', async () => {
+    drawFace(
+      fakeHost({ requests: [request('wc-9:waiter', 'wc-9', 'waiter', 'sent')] }),
+      withKinds(['waiter']),
     )
-    expect(within(sheet).getByRole('alert').textContent).toContain('Too late, sorry.')
-    expect(within(sheet).getByText('The team has your request')).toBeTruthy()
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Cancel request' }))
-    await waitFor(() => expect(host.of('service.cancel')).toHaveLength(2))
-    await act(async () => host.of('service.cancel')[1]?.fail())
-    expect(within(sheet).getByRole('alert').textContent).toContain('did not go through')
+    const sheet = openCall()
+    expect(within(sheet).queryByRole('button', { name: 'Send another request' })).toBeNull()
+    expect(within(sheet).queryByRole('button', { name: 'Cancel request' })).toBeNull()
   })
 
   it('shows what the host reports even for a request the sheet did not send (after a reload)', () => {
@@ -215,6 +221,33 @@ describe('after sending: only what the host says', () => {
     expect(within(sheet).getByText('The team could not take this request')).toBeTruthy()
     expect(sheet.textContent).toContain('The bar is closed.')
     expect(sheet.textContent).not.toContain('on the way')
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Send another request' }))
+    expect(within(sheet).getAllByRole('radio')).toHaveLength(7)
+  })
+
+  it('never says a lost answer was sent, and retries it with the same actionId (D72, DA-2)', async () => {
+    const { host, sheet, call } = await sent()
+    // What the page's host answers when a request threw, timed out or came back unusable.
+    await act(async () => call?.answer({ status: 'pending', code: ANSWER_LOST_CODE }))
+    expect(within(sheet).queryByText('Request sent')).toBeNull()
+    // D120's line: the request may be with the staff, so nothing is claimed either way.
+    expect(within(sheet).getByRole('alert').textContent).toContain('reach Restro right now')
+    expect(sheet.textContent).not.toContain('did not go through')
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(host.of('service.request')).toHaveLength(2))
+    expect(host.of('service.request')[1]?.command).toEqual(call?.command)
+  })
+
+  it('still speaks about a call nobody answered when the sheet is opened again (DA-27)', () => {
+    // The host keeps a lapsed call for a few minutes, so the guest who comes back reads what became
+    // of it instead of a picker as though nothing had happened.
+    drawFace(fakeHost({ requests: [request('wc-4:water', 'wc-4', 'water', 'rejected')] }))
+    const sheet = openCall()
+    expect(within(sheet).getByText('The team could not take this request')).toBeTruthy()
+    expect(within(sheet).getByText('Ask your waiter.')).toBeTruthy()
+    expect(within(sheet).getByText('Water')).toBeTruthy()
+    expect(within(sheet).queryByRole('radio')).toBeNull()
+    // And the way on is a fresh request, not another kind on a call that has ended.
     fireEvent.click(within(sheet).getByRole('button', { name: 'Send another request' }))
     expect(within(sheet).getAllByRole('radio')).toHaveLength(7)
   })
@@ -308,6 +341,14 @@ describe('only `waiter` ticked: the single step (D127)', () => {
     const sheet = openCall()
     expect(within(sheet).getByText('A waiter is on the way')).toBeTruthy()
     expect(host.of('service.request')).toHaveLength(0)
+  })
+
+  it('calls on the tap when the last call lapsed: only an open one holds it back (DA-27)', async () => {
+    const host = fakeHost({ requests: [request('wc-5:waiter', 'wc-5', 'waiter', 'rejected')] })
+    drawFace(host, single)
+    const sheet = openCall()
+    await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
+    expect(within(sheet).getByText('Sending your request')).toBeTruthy()
   })
 
   it('retries a failed call with the same actionId', async () => {

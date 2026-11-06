@@ -235,6 +235,7 @@ export {
   GuestCommandSchema,
   type GuestRefusalCode,
   type GuestScreen,
+  HOST_ANSWER_TIMEOUT_MS,
   LOST_SEND_HOLD_MS,
   type LocationControls,
   type LocationView,

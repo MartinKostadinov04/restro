@@ -7,7 +7,8 @@
 //   and Not now. Closing the sheet is not an answer: it only goes back (`dismiss`).
 // - `checking`: "Checking your location…".
 // - `failed`: Call a waiter where the venue takes calls (else the still card "Please order from
-//   your waiter"), "Stop location check" and Cancel.
+//   your waiter"), "Stop location check" and Cancel. The call's own outcome shows here and the
+//   sheet goes only once the host took it (D72): a refusal or a lost answer is no success (DA-5).
 //
 // "Stop location check" is also on the bill (bill-sheet.tsx). The face shows no position, pass or
 // token: it only calls the host's controls (`binding.location`).
@@ -15,9 +16,38 @@
 import { useEffect, useRef } from 'react'
 
 import { Overlay } from '../overlay'
-import { newActionId } from './command'
+import { useWaiterCall } from './call-sheet'
 import { PreviewMarker, StatePanel } from './parts'
-import { useServices } from './provider'
+import { useServices, useServicesRequired } from './provider'
+
+/**
+ * The way on from a failed check where the venue takes calls: Call a waiter. The sheet goes only
+ * once the host has taken the call (D72, DA-5); a refusal or an answer that was lost keeps the card
+ * up with its word, so the guest is never left believing a waiter is coming.
+ */
+function CallWaiterFromFailed({ dismiss }: { readonly dismiss: () => void }) {
+  const o = useServicesRequired()
+  const { busy, notice, call } = useWaiterCall()
+  return (
+    <>
+      <button
+        type="button"
+        className="ro-primary"
+        data-design-part="button"
+        data-slot="location.call"
+        disabled={busy}
+        onClick={() => {
+          void call().then((taken) => {
+            if (taken) dismiss()
+          })
+        }}
+      >
+        {o.words.locationCallWaiter}
+      </button>
+      {notice}
+    </>
+  )
+}
 
 /** The stop control: one small button, only where the host can stop the check. */
 export function StopLocationCheck() {
@@ -106,22 +136,7 @@ export function LocationSheet() {
         <div className="ro-sheet" data-slot="location.failed" data-location-prompt="failed">
           <StatePanel tone="bad" title={words.locationFailed} hint={words.locationWhy}>
             {o.features.callWaiter !== null ? (
-              <button
-                type="button"
-                className="ro-primary"
-                data-design-part="button"
-                onClick={() => {
-                  void o.run({
-                    kind: 'service.request',
-                    actionId: newActionId(),
-                    request: 'waiter',
-                    note: '',
-                  })
-                  controls.dismiss()
-                }}
-              >
-                {words.locationCallWaiter}
-              </button>
+              <CallWaiterFromFailed dismiss={controls.dismiss} />
             ) : (
               <p className="ro-notice" data-slot="location.still-card" data-location-still-card="">
                 {words.locationOrderFromWaiter}
