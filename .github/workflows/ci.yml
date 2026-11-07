@@ -148,16 +148,17 @@ jobs:
       - name: Test
         run: pnpm test
 
-  # Migrations under an owner that cannot bypass row security (RR-O9). The other jobs migrate as
-  # the service container's superuser, so a migration that works only for an owner with BYPASSRLS
-  # (or SUPERUSER) would pass them and fail on a hosted database (RR-43, RR-44, RR-45). Here the
-  # database is owned by `restro_owner`, which has what a managed Postgres gives its owner
-  # (LOGIN, CREATEROLE, CREATEDB) and neither SUPERUSER nor BYPASSRLS. Every migration
+  # Migrations under an owner shaped like the hosted one (RR-O9, RR-43). The other jobs migrate as
+  # the service container's superuser, so a migration that works only for a superuser would pass
+  # them and fail on the hosted database (RR-44, RR-45). Here the database is owned by
+  # `restro_owner`, which has what staging's `postgres` has (query 7 of
+  # docs/runbooks/supabase-setup.md, run on staging by Martin 11-07: rolsuper false,
+  # rolbypassrls true): LOGIN, CREATEROLE, CREATEDB and BYPASSRLS, no SUPERUSER. Every migration
   # and `db:roles` run as that owner; the catalog tests then read what it built, using the
   # superuser for their own set-up (tests/database.ts requires one). Tests that insert rows are
   # not run here (they run in `unit`).
-  migrations-nobypass:
-    name: Migrations without a bypassing owner
+  migrations-hosted-owner:
+    name: Migrations as a hosted-style owner
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -195,23 +196,23 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # The service's superuser creates the owner and its database; the migrations and roles never use it.
-      - name: Create the non-bypassing owner
+      - name: Create the hosted-style owner
         env:
           PGPASSWORD: postgres
         run: |
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
-            -c "create role restro_owner login password 'ci-only-owner-not-a-secret' nosuperuser nobypassrls createrole createdb" \
+            -c "create role restro_owner login password 'ci-only-owner-not-a-secret' nosuperuser bypassrls createrole createdb" \
             -c "create database restro owner restro_owner"
 
       # Fails the job if the owner is not what this job says it is, so it cannot pass vacuously.
-      - name: Owner has no superuser or BYPASSRLS
+      - name: Owner is not a superuser and has BYPASSRLS, like staging
         env:
           PGPASSWORD: ci-only-owner-not-a-secret
         run: |
           result=$(psql -h localhost -U restro_owner -d restro -At \
-            -c "select rolsuper or rolbypassrls from pg_roles where rolname = current_user")
-          echo "superuser or bypassrls: $result"
-          [ "$result" = "f" ]
+            -c "select rolsuper::text || ',' || rolbypassrls::text from pg_roles where rolname = current_user")
+          echo "superuser,bypassrls: $result"
+          [ "$result" = "false,true" ]
 
       - name: Replay the migrations and create the roles as that owner
         env:
@@ -340,7 +341,7 @@ jobs:
   # above passed (a skipped or cancelled one counts as red).
   checks:
     name: Lint, types, import rules, secrets, tests, build, e2e
-    needs: [static, unit, migrations-nobypass, e2e]
+    needs: [static, unit, migrations-hosted-owner, e2e]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -348,9 +349,9 @@ jobs:
     steps:
       - name: Every job passed
         env:
-          RESULTS: ${{ needs.static.result }} ${{ needs.unit.result }} ${{ needs.migrations-nobypass.result }} ${{ needs.e2e.result }}
+          RESULTS: ${{ needs.static.result }} ${{ needs.unit.result }} ${{ needs.migrations-hosted-owner.result }} ${{ needs.e2e.result }}
         run: |
-          echo "static, unit, migrations-nobypass, e2e: $RESULTS"
+          echo "static, unit, migrations-hosted-owner, e2e: $RESULTS"
           for result in $RESULTS; do
             [ "$result" = "success" ] || exit 1
           done

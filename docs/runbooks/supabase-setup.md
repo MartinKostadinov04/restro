@@ -142,7 +142,7 @@ select id, hash, created_at from drizzle.__drizzle_migrations order by id;
 select rolsuper, rolbypassrls from pg_roles where rolname = 'postgres';
 ```
 
-If (7) shows `rolbypassrls = false`, then `postgres` too sees no tenant rows (FORCE RLS applies to the owner): a manual data fix as `postgres` must run `select set_config('app.tenant_id', '<tn_…>', true)` inside its transaction first.
+Staging's answer (Martin 11-07): `rolsuper = false`, `rolbypassrls = true`, so `postgres` bypasses row-level security, the guest lookup `guest_table_by_code_hash` finds tables, and CI's `migrations-hosted-owner` job uses an owner shaped the same way (RR-43). If (7) ever shows `rolbypassrls = false`, then `postgres` too sees no tenant rows (FORCE RLS applies to the owner): a manual data fix as `postgres` must run `select set_config('app.tenant_id', '<tn_…>', true)` inside its transaction first.
 
 ## 8. Rotating the app password
 
