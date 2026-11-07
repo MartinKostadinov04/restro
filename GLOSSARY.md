@@ -190,6 +190,54 @@ _Avoid_: URL, link, slug
 A venue's business day, which ends at 07:00 local time by default, not at midnight.
 _Avoid_: day, night, shift
 
+## Reservations
+
+A **spot** and a **floor plan** are above, with tables and addresses.
+
+**Reservation**:
+A party's claim on one or more spots for one night, from an hour, held by the venue. It never reaches a POS.
+_Avoid_: booking record, table booking, event
+
+**Walk-in**:
+A party seated now, with no reservation taken beforehand and no name needed.
+_Avoid_: unbooked guest, drop-in
+
+**Waiting list**:
+The parties with no spot for a night, in the order they were added. A hostess gives a spot and calls by hand; nothing on it is automated.
+_Avoid_: queue, standby list
+
+**Not seated**:
+How a party still on the waiting list when the night ends is recorded. It is not a no-show: nobody failed to come.
+_Avoid_: unseated, missed, expired
+
+**Block**:
+A spot taken out of use with a reason, as a reservation on that spot, until someone removes it or its dates pass.
+_Avoid_: lock, out of order, closed table
+
+**Turn time**:
+One value per spot: how long it is held and the shortest gap before a later reservation on it.
+_Avoid_: duration, slot length, buffer
+
+**Guest record**:
+What a venue keeps about one guest — a name, a phone, an email, a note and this venue's own counts of coming and not coming — keyed by his phone, and erased on request as an update that leaves his past reservations standing.
+_Avoid_: customer, contact, CRM entry
+
+**Regular**:
+A guest on the venue's own list, suggested while a hostess types a name. The list belongs to the venue; a manager may also keep a private one.
+_Avoid_: VIP, favourite, loyal customer
+
+**Booking page**:
+A venue's public page where guests ask for or book a spot themselves, in that venue's Style.
+_Avoid_: reservation widget, booking form, landing page
+
+**Prepayment**:
+Money a guest pays in advance to hold a reservation, taken on the venue's own payment account.
+_Avoid_: deposit (which is the guest's own word for it), down payment, booking fee
+
+**Pay rule**:
+What a table's guests must do before they can order — the venue's own rule, everything on the bill, or pay first — settled per table, per reservation, and per venue.
+_Avoid_: payment mode, pay-first setting
+
 ## Ordering and bills
 
 **Order**:
