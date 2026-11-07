@@ -132,6 +132,14 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D125](decisions/D125.md) | How a venue connects Stripe, and how Restro uses it | firm; refines D98, D126, D41 and D110; supersedes D19; closes D98's open line |
 | [D126](decisions/D126.md) | Stripe is the first payment provider; the pretend till stays for tables and bills | firm; refines D98 and D122; refined by D125 |
 | [D127](decisions/D127.md) | How the guest page pays: the commands, the route with its failure rules, Stripe's notices, tips only on the same receipt, the smallest card payment, the bank's check on every payment, where each call runs | firm; refines D98, D121, D122 and D125 |
+| [D132](decisions/D132.md) | The floor plan: spots a venue owns rather than Tables, its own kinds and shapes, who may edit it, and that reservations never touch the POS | firm; refines D101, D95 and D107 |
+| [D133](decisions/D133.md) | A reservation and its life: the seven statuses, who may work another hostess's booking, the read-only past, the turn time, and the pay rule a reservation carries | firm; refines D101, D122 and D107 |
+| [D134](decisions/D134.md) | Booking online, and money on a reservation: the hosted booking page and what guests may do on it, the email of every change, the prepayment held on the venue's own Stripe, and the fiscal receipt behind it | firm; refines D38, D101, D98, D125, D126 and D127 |
+| [D135](decisions/D135.md) | The night on the plan: one-tap arrivals that open the table, walk-ins, the waiting list, one Change tables screen, the bill move, and blocks as reservations | firm; refines D122, D107 and D110 |
+| [D136](decisions/D136.md) | Ending the night: the closing hour that closes every code, the admin's early end with its open-bills warning, no bulk undo, and the three moments named apart | firm; refines D122, D45 and D107 |
+| [D137](decisions/D137.md) | Linked groups: one party across several tables, cumulated inside Restro with no lead table and no common POS bill | firm; refines D117 and D122 |
+| [D138](decisions/D138.md) | Guests and regulars: the venue's own list, what is kept and what erasing clears, and why the visit counts are for audits and never for accounting | firm; refines D83 |
+| [D139](decisions/D139.md) | Who may do what in reservations, where the PIN falls on a shared device, sessions on remembered devices, and one Log for the night | firm; refines D122 and D123 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

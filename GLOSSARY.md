@@ -151,6 +151,18 @@ A place in an area where guests sit and scan a table code.
 The QR code on a table; it opens the menu routed to that table.
 _Avoid_: QR token, QR link, sticker
 
+**Spot**:
+What a reservation holds on a venue's floor plan: a table, a booth, a stool or a standing place, as the venue defines it. It belongs to reservations and may name the table codes that belong to it.
+_Avoid_: place, seat, reservable
+
+**Floor plan**:
+A drawing of one floor of a venue with its spots; a venue has one or more.
+_Avoid_: map, layout, venue map
+
+**Linked group**:
+Tables marked as one party for a stretch of a night: booked together, and reviewed and settled together. Each table keeps its own bill in the POS and its own tickets; Restro holds the pointers and shows the total grouped by table yet cumulative for the group.
+_Avoid_: merged table, table combination
+
 **Open for phones**:
 A table where staff let phones order to the bill, opened and closed by staff in Restro (one table, "Open all", "Close all") or closed at the venue's closing hour. Phones at other tables see the menu only.
 _Avoid_: open table, seated table, active table, occupied table
