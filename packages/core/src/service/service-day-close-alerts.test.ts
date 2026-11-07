@@ -1,7 +1,8 @@
 // The end of a service day clears the night's open alerts (#162; Martin 10-27) on a real Postgres,
 // as the restro_app role: every open venue alert of the closing day is Done in the close's own
 // transaction with one `alert.cleared` Log entry each, except a pause (it ends by itself), a
-// payment question only an answer closes (never Done, #112) and Restro's own alerts. A Done by staff, another day's
+// payment question only an answer closes (never Done, #112), a money alert (repeated until Done,
+// D122 §7) and Restro's own alerts. A Done by staff, another day's
 // alert and another venue's are left alone, and a close that is refused clears nothing. Skipped
 // without a database.
 import { randomUUID } from 'node:crypto'
@@ -161,10 +162,10 @@ describe.skipIf(!hasDatabase)('closing a service day clears its open alerts (res
 
     expect(await close(DAY)).toMatchObject({
       status: 'accepted',
-      details: { changed: true, alertsCleared: 3 },
+      details: { changed: true, alertsCleared: 2 },
     })
 
-    for (const id of [unconfirmed, outOfStock, checkFailed]) {
+    for (const id of [unconfirmed, outOfStock]) {
       expect(await alertRow(id)).toMatchObject({
         via: 'worker',
         done_by: 'system',
@@ -176,7 +177,7 @@ describe.skipIf(!hasDatabase)('closing a service day clears its open alerts (res
     // The delivery state and the other details stay with the alert.
     expect((await alertRow(unconfirmed))?.details).toMatchObject({ reference: 'K7Q' })
 
-    for (const id of [paymentUnconfirmed, linesNotBack, paused, restroOwn, otherDay]) {
+    for (const id of [paymentUnconfirmed, linesNotBack, checkFailed, paused, restroOwn, otherDay]) {
       expect(await alertRow(id)).toMatchObject({ done_at: null, via: null })
     }
     expect((await alertRow(otherVenue, elsewhere))?.done_at).toBeNull()
@@ -187,14 +188,13 @@ describe.skipIf(!hasDatabase)('closing a service day clears its open alerts (res
     expect(log).toEqual([
       expect.objectContaining({ reason: 'item_out_of_stock', details: expect.anything() }),
       expect.objectContaining({ reason: 'order_unconfirmed' }),
-      expect.objectContaining({ reason: 'payment_check_failed' }),
     ])
     expect(
       log
         .map((entry) => entry.details)
         .sort((a, b) => `${a.alertId}`.localeCompare(`${b.alertId}`)),
     ).toEqual(
-      [unconfirmed, outOfStock, checkFailed]
+      [unconfirmed, outOfStock]
         .sort((a, b) => a.localeCompare(b))
         .map((alertId) => ({ alertId, at: 'day_close' })),
     )
@@ -236,6 +236,6 @@ describe.skipIf(!hasDatabase)('closing a service day clears its open alerts (res
 
   it('does nothing more when the day is closed again', async () => {
     expect(await close(DAY)).toMatchObject({ status: 'accepted', details: { changed: false } })
-    expect(await clearedLog()).toHaveLength(3)
+    expect(await clearedLog()).toHaveLength(2)
   })
 })

@@ -4,8 +4,10 @@
 // estimate, labelled so; the bill that follows is the host's.
 //
 // "Send to kitchen" shows what the host says: pending, then accepted (the bag is spent and the bill
-// opens) or rejected (the bag stays, with the host's reason). An error or a timeout keeps the bag
-// and offers the same send again.
+// opens) or rejected (the bag stays, with the host's reason). An error, a timeout or a lost answer
+// keeps the bag and says D120's line (call a waiter, with the reference where there is one): the
+// order may already be in the POS, so there is no "Try again" and no re-send for a few minutes.
+// While the phone is offline Send is greyed with the weak-connection line (D121).
 
 import { Text } from '../parts'
 import { StatePanel, Stepper } from './parts'
@@ -31,6 +33,11 @@ export function BagSheet() {
   if (resolved.lines.length === 0) return <p className="ro-empty">{words.emptyBag}</p>
 
   const pending = send.status === 'pending'
+  const offline = o.state.offline === true
+  // A Send whose answer was lost (this face's, or the host's own word for it): D120's line in place
+  // of the weak-signal line, with the reference where the host has one, and no re-send offered.
+  const lost = send.status === 'failed' || o.state.sendLost != null
+  const lostRef = o.state.sendLost?.ref ?? null
   return (
     <div className="ro-sheet" aria-busy={pending}>
       <ul className="ro-lines">
@@ -106,11 +113,15 @@ export function BagSheet() {
           {words.unavailableHint}
         </p>
       )}
-      {send.status === 'failed' ? (
-        <div className="ro-notice is-bad" role="alert">
-          <strong>{words.sendFailedTitle}</strong>
-          <span>{words.sendFailedHint}</span>
+      {lost ? (
+        <div className="ro-notice is-bad" role="alert" data-slot="send.lost">
+          <span>{words.sendLost}</span>
+          {lostRef === null ? null : <small>{words.reference(lostRef)}</small>}
         </div>
+      ) : offline ? (
+        <p className="ro-notice" role="status" data-slot="send.offline">
+          {words.offline}
+        </p>
       ) : null}
       {send.status === 'rejected' ? (
         <div className="ro-notice is-bad" role="alert">
@@ -132,14 +143,14 @@ export function BagSheet() {
       <button
         type="button"
         className="ro-primary is-wide"
-        disabled={pending || !resolved.canSend}
+        disabled={pending || !resolved.canSend || offline || lost}
         onClick={o.sendBag}
       >
         {pending ? (
           <span>{words.sending}</span>
         ) : (
           <>
-            <span>{send.status === 'failed' ? words.retry : words.sendToKitchen}</span>
+            <span>{words.sendToKitchen}</span>
             <b>
               {words.approx} {resolved.total.text}
             </b>

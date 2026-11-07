@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { frameHeaders } from './src/frame-headers'
 import { GUEST_PAGE_SOURCES, guestHeaders } from './src/guest/headers'
 
 // The real headers on a running server are checked by e2e/guest.spec.ts. This reads the config
@@ -22,7 +23,8 @@ describe('the guest pages send no referrer (A5-F5)', () => {
     vi.spyOn(process, 'loadEnvFile').mockImplementation(() => {})
     const { default: config } = await import('./next.config')
     const rules = await config.headers?.()
-    expect(rules).toEqual(guestHeaders())
+    // The admin pages' framing rules (DA-O8) follow the guest pages' rules.
+    expect(rules).toEqual([...guestHeaders(), ...frameHeaders()])
     const sources = (rules ?? []).map((rule) => rule.source)
     expect(sources).toContain('/m/:path*')
     expect(sources).toContain('/t/:path*')

@@ -48,6 +48,7 @@ const untouched = (id: string, venueId: string) => ({
   changedMs: '120000',
   captureDue: false,
   releaseRefused: false,
+  holdUnread: false,
 })
 
 describe('the payment recovery across organisations', () => {

@@ -3,7 +3,12 @@
 // I/O. The conformance kit is `@restro/core/connectors/testing`, for tests only.
 
 export * from './capabilities'
-export type { ServiceConnector, ServiceContext, ServiceReader } from './connector'
+export {
+  CAUTIOUS_CALLS_PER_SECOND,
+  type ServiceConnector,
+  type ServiceContext,
+  type ServiceReader,
+} from './connector'
 export * from './landed'
 export * from './pos-ref'
 export * from './schemas'

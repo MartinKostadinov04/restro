@@ -61,6 +61,9 @@ const serverEnvironment = (origin: string) => ({
   // The PIN pepper (#72) for the Tonight screen's PIN sheet (#85), for the test servers only.
   STAFF_PIN_PEPPER: process.env.STAFF_PIN_PEPPER ?? TONIGHT_PIN_PEPPER,
   PAYMENTS_PROVIDER: 'sim-pay',
+  // Tonight's "Turn on" (RR-86) needs the public key; the spec stubs the browser's push APIs. In the
+  // key's shape, no key at all: nothing is ever pushed in a test.
+  VAPID_PUBLIC_KEY: `B${'p'.repeat(86)}`,
   // `localhost`, not 127.0.0.1: the endpoint answers a Host of localhost or *.railway.internal only.
   WORKER_REVEAL_URL: `http://localhost:${WORKER_PORT}`,
   // Cloudflare's published test secret (it passes every token, .env.example), for the Send's test
@@ -77,6 +80,8 @@ const serverEnvironment = (origin: string) => ({
 // calls a till. WORKER_SEND=on runs the Send (#77), which only reaches the simulated POS here.
 const workerEnvironment = {
   ...serverEnvironment(ORIGIN),
+  // The worker takes all three VAPID settings or none: here none, so it pushes nothing.
+  VAPID_PUBLIC_KEY: '',
   WORKER_ID: 'e2e-worker',
   WORKER_HEALTH_PORT: String(WORKER_PORT),
   LOG_LEVEL: process.env.E2E_WORKER_LOG_LEVEL ?? 'warn',
@@ -104,7 +109,8 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
+  // In CI each shard writes a blob report; the `e2e-report` job merges them into one html report.
+  reporter: process.env.CI ? [['github'], ['blob']] : 'list',
   use: {
     baseURL: ORIGIN,
     trace: 'on-first-retry',

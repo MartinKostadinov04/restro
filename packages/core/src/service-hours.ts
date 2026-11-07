@@ -150,6 +150,12 @@ export function serviceNightAt(now: Date, clock: ServiceClock): ServiceNight {
   }
 }
 
+/** True when that service day (`YYYY-MM-DD`) had a closing time and it has passed. */
+export function closingHourPassed(date: string, now: Date, clock: ServiceClock): boolean {
+  const hours = clock.hours[weekdayOf(date)]
+  return hours !== null && timesOf(date, hours, clock).closesAt.getTime() <= now.getTime()
+}
+
 /** A pre-opening check that is due. */
 export interface PreOpeningCheck {
   /** The service day about to open. */

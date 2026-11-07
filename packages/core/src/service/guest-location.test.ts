@@ -138,6 +138,44 @@ describe.skipIf(!hasDatabase)('the location check and the guest limits (as restr
     code = await reissue()
   })
 
+  it('gives the consent screen the venue’s privacy link where the venue checks, whatever paying is (RR-48)', async () => {
+    const DETAILS = {
+      name: 'Nova Club EOOD',
+      eik: '123456789',
+      address: 'Sofia, 1 Vitosha Blvd',
+      privacyUrl: 'https://club.example/privacy',
+    }
+    const setDetails = (details: unknown) =>
+      world.owner.query(
+        `update restro.venues set settings = jsonb_set(settings - 'legalDetails', '{legalDetails}', $2::jsonb) where id = $1`,
+        [world.venueId, JSON.stringify(details)],
+      )
+    try {
+      await setDetails(DETAILS)
+      // Paying is off here (no connected account), so no legal details travel with it...
+      const read = await state()
+      expect(read.ordering.paying).toBe('off')
+      expect(read.ordering.payingLegal).toBeNull()
+      // ...yet the location part names the privacy notice.
+      expect(read.location).toMatchObject({
+        state: 'needed',
+        privacyUrl: 'https://club.example/privacy',
+      })
+      // Not a link without all four details being filled in: none, and the venue still checks.
+      await setDetails({ ...DETAILS, privacyUrl: 'http://not-https.example' })
+      expect((await state()).location).toMatchObject({ state: 'needed', privacyUrl: null })
+      // A venue that does not check gives no link: there is no consent screen to put it on.
+      await setDetails(DETAILS)
+      await setOrdering({ locationCheck: false })
+      expect((await state()).location).toMatchObject({ state: 'off', privacyUrl: null })
+    } finally {
+      await world.owner.query(
+        `update restro.venues set settings = settings - 'legalDetails' where id = $1`,
+        [world.venueId],
+      )
+    }
+  })
+
   it('shows a phone without a pass the table but not its order, sent orders or bill', async () => {
     const read = await state()
     expect(read.location).toMatchObject({ state: 'needed', passSeconds: null, venueName: 'Club' })
@@ -205,6 +243,34 @@ describe.skipIf(!hasDatabase)('the location check and the guest limits (as restr
     expect(undone.result.status).toBe('accepted')
     // Its answer still hides the order from a phone without a pass.
     expect(undone.state).toMatchObject({ location: { state: 'needed' }, order: null })
+  })
+
+  it('lets a phone take a line to nothing without a pass, and no less (RR-32)', async () => {
+    const { pass, lineId } = await locatedAdd()
+    expect((await act({ type: 'order.change', lineId, delta: 1 }, { pass })).result.status).toBe(
+      'accepted',
+    )
+    // Two of it: taking one away keeps the line, so it is a change like any other.
+    expect((await act({ type: 'order.change', lineId, delta: -1 })).result).toMatchObject({
+      status: 'rejected',
+      code: 'location_needed',
+    })
+    // A rise is located, and so is a line this order does not hold.
+    expect((await act({ type: 'order.change', lineId, delta: 1 })).result.code).toBe(
+      'location_needed',
+    )
+    expect((await act({ type: 'order.change', lineId: newId('ol'), delta: -1 })).result.code).toBe(
+      'location_needed',
+    )
+    // Taking all of it away removes the line: never located (D122 §7).
+    const gone = await act({ type: 'order.change', lineId, delta: -2 })
+    expect(gone.result.status).toBe('accepted')
+    const undone = await act({ type: 'order.undo', lineId })
+    expect(undone.result.status).toBe('accepted')
+    expect((await act({ type: 'order.change', lineId, delta: -1 }, { pass })).result.status).toBe(
+      'accepted',
+    )
+    expect((await act({ type: 'order.change', lineId, delta: -1 })).result.status).toBe('accepted')
   })
 
   it('kills the pass when the sitting ends: it never outlives its sitting', async () => {
@@ -371,14 +437,12 @@ describe.skipIf(!hasDatabase)('the location check and the guest limits (as restr
       expect(checks).toEqual([])
     })
 
-    it('takes one Send per 15 s from a phone', async () => {
+    it('spends no Send on a refused one (RR-26; the 429 is in guest-send-limits.test.ts)', async () => {
       limiter = limits({ sendGap: GUEST_LIMITS.sendGap, sends: GUEST_LIMITS.sends })
       const { pass } = await locatedAdd()
       const token = { check: { humanToken: 'token' }, humanCheck: verdictOf('passed') }
       expect((await act(send, { pass, ...token })).result.code).toBe('menu_unavailable')
-      await expect(act(send, { pass, ...token })).rejects.toThrow(/rate_limited/)
-      const friend = await act(send, { pass, ...token, phone: 'phone-two-bbbbbbbbbbbbb' })
-      expect(friend.result.code).toBe('menu_unavailable')
+      expect((await act(send, { pass, ...token })).result.code).toBe('menu_unavailable')
     })
   })
 })

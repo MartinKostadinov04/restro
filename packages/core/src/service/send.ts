@@ -3,7 +3,7 @@
 // (a repeat gets the sent order it made). Here, under the order's lock:
 // 1. a table, bar or venue whose ordering is paused refuses the Send (`ordering_paused`, D120), and
 //    so does a night that is not open for phones: before opening, after last orders, a closed
-//    weekday (`ordering_closed`, #82);
+//    weekday, or a venue whose ordering from the phone is off (`ordering_closed`, #82, #288);
 // 2. the lines the Send names must be the order's live lines that no payment holds, as the guest
 //    saw them (`order_changed`), and there must be some (`order_empty`);
 // 3. each line is priced from the table's menu (the snapshot plus tonight's sold-out marks, which
@@ -28,13 +28,14 @@
 import { randomInt } from 'node:crypto'
 
 import { sentOrderNotes, sentOrders, venueTables } from '@restro/db'
-import { eq, inArray } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 
 import { type AreaId, type BarId, newId, type TableId } from '../ids'
 import { readOrderingSettings } from '../ordering-settings'
 import { itemPaymentMode, payFirstApplies, readPayFirstSettings } from '../pay-first-settings'
 import { guestNight, phonesMaySend } from '../service-hours'
 import { orderFromRow, type SendRequestLine, takeSentLines, tidyOrder } from '../table-order'
+import { readGuestFeatures } from '../theme'
 import type { ServiceTx } from './definition'
 import { recordRetainUntil } from './log'
 import { writeOrder } from './order'
@@ -88,7 +89,12 @@ export const SEND_REFUSALS = [
   ...PAY_FIRST_SEND_REFUSALS,
 ] as const
 
-export { type SentOrderLine, SentOrderLineSchema, sentOrderLinesOf } from './sent-lines'
+export {
+  type SentOrderLine,
+  SentOrderLineSchema,
+  sentOrderLinesOf,
+  sentOrderNotesOf,
+} from './sent-lines'
 
 /** The `order.send` command, as its schema parses it. */
 export interface SendCommand {
@@ -108,6 +114,8 @@ export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<S
   const { actionId, tableId } = command
   const row = stx.rows.heldOrder(tableId)
   if (row === null) return refused(actionId, 'table_not_open')
+  // Ordering from the phone is off (the Design tab's switch, #288): the guest orders from a waiter.
+  if (!readGuestFeatures(stx.venue.settings).ordering) return refused(actionId, 'ordering_closed')
   const [table] = await stx.tx
     .select({ barId: venueTables.barId, areaId: venueTables.areaId })
     .from(venueTables)
@@ -371,17 +379,4 @@ async function insertSentOrder(
     details: { lines: input.lines.length, totalMinor: input.totalMinor },
   })
   return { id, reference }
-}
-
-/** The notes of a sent order's lines, by line id. */
-export async function sentOrderNotesOf(
-  stx: ServiceTx,
-  sentOrderIds: readonly string[],
-): Promise<Map<string, string>> {
-  if (sentOrderIds.length === 0) return new Map()
-  const rows = await stx.tx
-    .select({ lineId: sentOrderNotes.lineId, note: sentOrderNotes.note })
-    .from(sentOrderNotes)
-    .where(inArray(sentOrderNotes.sentOrderId, [...sentOrderIds]))
-  return new Map(rows.map((row) => [row.lineId, row.note]))
 }

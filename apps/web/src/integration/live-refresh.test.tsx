@@ -10,9 +10,15 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: navigation.refr
 beforeEach(() => {
   vi.useFakeTimers()
   navigation.refresh.mockReset()
+  // The server answers its liveness check (a refresh waits for it, RR-88).
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response('{}')),
+  )
 })
 afterEach(() => {
   vi.useRealTimers()
+  vi.unstubAllGlobals()
 })
 
 describe('LiveRefresh', () => {

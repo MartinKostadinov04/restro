@@ -35,7 +35,13 @@ const STATE = {
     receiptEmail: false,
     night: { state: 'open', at: null },
   },
-  location: { state: 'off', passSeconds: null, dayEndsInSeconds: 3_600, venueName: 'Club' },
+  location: {
+    state: 'off',
+    passSeconds: null,
+    dayEndsInSeconds: 3_600,
+    venueName: 'Club',
+    privacyUrl: null,
+  },
   order: {
     lines: [
       {
@@ -154,10 +160,30 @@ describe('the guest API wire shapes (#75)', () => {
   it('hides the order and the bill while the phone has no pass (#76)', () => {
     const needed = {
       ...STATE,
-      location: { state: 'needed', passSeconds: null, dayEndsInSeconds: 3_600, venueName: 'Club' },
+      location: {
+        state: 'needed',
+        passSeconds: null,
+        dayEndsInSeconds: 3_600,
+        venueName: 'Club',
+        privacyUrl: null,
+      },
       order: null,
     }
     expect(GuestStateAnswerSchema.parse(needed)).toEqual(needed)
+  })
+
+  it('carries the venue’s privacy link in the location part: an https link or nothing (RR-48)', () => {
+    const at = (privacyUrl: unknown) => ({
+      ...STATE,
+      location: { ...STATE.location, state: 'needed', privacyUrl },
+    })
+    expect(GuestStateAnswerSchema.safeParse(at('https://club.example/privacy')).success).toBe(true)
+    expect(GuestStateAnswerSchema.safeParse(at(null)).success).toBe(true)
+    expect(GuestStateAnswerSchema.safeParse(at('http://club.example/privacy')).success).toBe(false)
+    expect(GuestStateAnswerSchema.safeParse(at(`https://${'x'.repeat(500)}`)).success).toBe(false)
+    // Not left out: a state from a server that does not say is not a state of this contract.
+    const { privacyUrl: _left, ...without } = STATE.location
+    expect(GuestStateAnswerSchema.safeParse({ ...STATE, location: without }).success).toBe(false)
   })
 
   it('takes a check with a position, a consent version and a token, and nothing more (#76)', () => {

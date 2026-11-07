@@ -7,11 +7,9 @@
 // `settings.alerts_set` and the worker's Telegram link; each change is a `record` Log entry.
 import { EllipsisIcon, ExternalLinkIcon } from 'lucide-react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -29,6 +27,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
+import { useTimedRefresh } from '@/hooks/use-timed-refresh'
+import { WRAPS_FORM } from '@/lib/wrapping'
 import {
   type LinkResult,
   linkGroupAction,
@@ -48,23 +48,18 @@ const WATCH_MS = 3_000
 
 /** Looks at the page again until `until` is true (or `endsAt` passes), while a link is waiting. */
 function useWatch(active: boolean, until: boolean, endsAt: number | null, onEnd: () => void) {
-  const router = useRouter()
+  // Offline it does not ask (RR-88): the page would be replaced by the browser's own.
+  useTimedRefresh({ every: WATCH_MS, enabled: active && !until })
   useEffect(() => {
     if (!active) return
     if (until) {
       onEnd()
       return
     }
-    const timer = setInterval(() => {
-      if (endsAt !== null && Date.now() >= endsAt) {
-        clearInterval(timer)
-        onEnd()
-        return
-      }
-      router.refresh()
-    }, WATCH_MS)
-    return () => clearInterval(timer)
-  }, [active, until, endsAt, onEnd, router])
+    if (endsAt === null) return
+    const timer = setTimeout(onEnd, Math.max(0, endsAt - Date.now()))
+    return () => clearTimeout(timer)
+  }, [active, until, endsAt, onEnd])
 }
 
 export function AlertsPanel({ view }: { view: AlertsView }) {
@@ -86,10 +81,10 @@ export function AlertsPanel({ view }: { view: AlertsView }) {
   }
 
   return (
-    <div className="grid gap-8" data-testid="alerts-panel" aria-busy={pending}>
+    <div className="grid grid-cols-1 gap-8" data-testid="alerts-panel" aria-busy={pending}>
       <h2 className="text-xl font-semibold tracking-tight">{t('al_title')}</h2>
 
-      <section className="grid gap-3" aria-labelledby="alerts-phones">
+      <section className="grid grid-cols-1 gap-3" aria-labelledby="alerts-phones">
         <div>
           <h3 id="alerts-phones" className="text-lg font-medium">
             {t('al_phones')}
@@ -182,7 +177,7 @@ function TelegramGroup({ view, runner }: { view: AlertsView; runner: Runner }) {
 
   const group = view.telegram.state === 'none' ? '' : view.telegram.group || 'Telegram'
   return (
-    <section className="grid gap-3" aria-labelledby="alerts-tg">
+    <section className="grid grid-cols-1 gap-3" aria-labelledby="alerts-tg">
       <div>
         <h3 id="alerts-tg" className="text-lg font-medium">
           {t('al_tg')}
@@ -235,7 +230,7 @@ function TelegramGroup({ view, runner }: { view: AlertsView; runner: Runner }) {
         </div>
       ) : (
         <div>
-          <Button variant="outline" disabled={pending} onClick={startLink}>
+          <Button variant="outline" className={WRAPS_FORM} disabled={pending} onClick={startLink}>
             {t('al_tg_link')}
           </Button>
         </div>
@@ -325,7 +320,7 @@ function DoneFromTelegram({
   }
 
   return (
-    <section className="grid gap-3" aria-labelledby="alerts-done">
+    <section className="grid grid-cols-1 gap-3" aria-labelledby="alerts-done">
       <div>
         <h3 id="alerts-done" className="text-lg font-medium">
           {t('al_done')}
@@ -380,7 +375,7 @@ function DoneFromTelegram({
             </DialogDescription>
           </DialogHeader>
           {link === null ? null : (
-            <div className="grid justify-items-center gap-3">
+            <div className="grid grid-cols-1 justify-items-center gap-3">
               <QrPicture
                 svg={link.svg}
                 alt={t('al_link_qr', { name: linking?.name ?? '' })}

@@ -15,6 +15,7 @@ import { newId } from '../ids'
 import { DEFAULT_ORDERING_SETTINGS } from '../ordering-settings'
 import { hashTableCode } from '../qr'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
+import { DEFAULT_GUEST_FEATURES } from '../theme/presentation'
 import { applyService } from './apply-service'
 import type { ServiceContext } from './context'
 import type { SendMenu } from './send-menu'
@@ -249,6 +250,64 @@ describe.skipIf(!hasDatabase)('Send and the sent order (as the restro_app role)'
     expect(notes.rows).toEqual([{ line_id: lines[1]?.id, note: 'no ice' }])
   })
 
+  // Repair-review, hot spot 1 (D117: one shared bag, the server locks): many phones Send one bag
+  // in the same second, one taps twice, and a friend adds a drink meanwhile. The bag's lines are
+  // sent exactly once, and the added line is in the bag or in the round, never lost or doubled.
+  it('sends the lines of one bag exactly once when many phones Send at once', async () => {
+    for (let night = 0; night < 8; night += 1) {
+      // A different quantity each night, so the duplicate guard (send-guards) stays out of it.
+      const beers = night + 2
+      await add(beer, beers)
+      const before = await world.owner.query<{ n: string }>(
+        'select count(*) as n from restro.sent_orders where sitting_id = $1',
+        [sittingId],
+      )
+      const tapped = randomUUID()
+      const answers = await Promise.all([
+        send(),
+        send(),
+        send({ actionId: tapped }),
+        send({ actionId: tapped }),
+        send(),
+        night % 2 === 0 ? add(gin, 1).then(() => null) : null,
+        send(),
+      ])
+      const accepted = answers.flatMap((answer) =>
+        answer !== null && answer.result.status === 'accepted'
+          ? [answer.result.details.sentOrderId as string]
+          : [],
+      )
+      // A friend's add can make every Send's lines out of date: then all are refused, and the
+      // bag is untouched. Without the add, exactly one Send gets through.
+      if (night % 2 === 1) expect(new Set(accepted).size).toBe(1)
+      const { rows } = await world.owner.query<{
+        id: string
+        lines: { itemId: string; qty: number }[]
+      }>(`select id, lines from restro.sent_orders where sitting_id = $1 order by created_at`, [
+        sittingId,
+      ])
+      const sentNow = rows.slice(Number(before.rows[0]?.n ?? 0))
+      expect(sentNow.map((row) => row.id).sort()).toEqual([...new Set(accepted)].sort())
+      const quantity = (itemId: string, lines: readonly { itemId: string; qty: number }[]) =>
+        lines.filter((line) => line.itemId === itemId).reduce((sum, line) => sum + line.qty, 0)
+      const sentLines = sentNow.flatMap((row) => row.lines)
+      const left = await orderLines()
+      expect(quantity(beer, sentLines) + quantity(beer, left)).toBe(beers)
+      expect(quantity(gin, sentLines) + quantity(gin, left)).toBe(night % 2 === 0 ? 1 : 0)
+      // Clear what is left for the next night.
+      for (const row of sentNow) {
+        await world.owner.query(
+          `update restro.sent_orders set state = 'added', settled_at = now() where id = $1`,
+          [row.id],
+        )
+      }
+      await world.owner.query(
+        `update restro.table_orders set lines = '[]'::jsonb where table_id = $1 and sitting_id = $2`,
+        [tableId, sittingId],
+      )
+    }
+  }, 120_000)
+
   it('answers a repeated Send with its first answer, and makes one sent order', async () => {
     await add(beer, 1)
     const actionId = randomUUID()
@@ -317,6 +376,42 @@ describe.skipIf(!hasDatabase)('Send and the sent order (as the restro_app role)'
       [beer, 1],
       [soldOut, 1],
     ])
+    const { rows } = await world.owner.query(
+      'select count(*)::int as n from restro.sent_orders where sitting_id = $1',
+      [sittingId],
+    )
+    expect(rows[0]?.n).toBe(0)
+  })
+
+  it('refuses adding to the order and sending it while ordering from the phone is off; the lines stay', async () => {
+    await add(beer, 2)
+    const features = async (ordering: boolean) =>
+      world.owner.query(
+        `update restro.venues set settings = jsonb_set(settings, '{guest_features}', $2::jsonb) where id = $1`,
+        [world.venueId, JSON.stringify({ ...DEFAULT_GUEST_FEATURES, ordering })],
+      )
+    await features(false)
+    try {
+      expect((await send()).result).toMatchObject({ status: 'refused', code: 'ordering_closed' })
+      const added = await applyService(
+        world.app,
+        {
+          type: 'order.add',
+          tableId,
+          actionId: randomUUID(),
+          ageMs: 50,
+          itemId: gin,
+          optionIds: [],
+          qty: 1,
+          note: '',
+        },
+        guest(),
+      )
+      expect(added.result).toMatchObject({ status: 'refused', code: 'ordering_closed' })
+    } finally {
+      await features(true)
+    }
+    expect((await orderLines()).map((line) => [line.itemId, line.qty])).toEqual([[beer, 2]])
     const { rows } = await world.owner.query(
       'select count(*)::int as n from restro.sent_orders where sitting_id = $1',
       [sittingId],

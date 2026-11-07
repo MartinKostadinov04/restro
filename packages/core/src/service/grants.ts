@@ -50,6 +50,15 @@ export type Grants =
 
 const NONE: Grants = { ok: true, permissions: new Set() }
 
+/** True while the person is on Restro's admin team. */
+export async function holdsOperatorGrant(tx: ReadOnly, userId: string): Promise<boolean> {
+  const [grant] = await tx
+    .select({ userId: operators.userId })
+    .from(operators)
+    .where(and(eq(operators.userId, userId), isNull(operators.revokedAt)))
+  return grant !== undefined
+}
+
 /** The organisation roles that hold every venue permission. */
 const ALL_PERMISSION_ROLES: ReadonlySet<string> = new Set(['owner', 'admin'])
 
@@ -61,23 +70,26 @@ function holdsEverything(role: string): boolean {
     .some((part) => ALL_PERMISSION_ROLES.has(part))
 }
 
-/** The live shared device of this venue signed in with `sessionId`, or null. */
-async function sharedDeviceOf(
+/**
+ * The venue whose live shared device is signed in with `sessionId`, or null. A session is at most
+ * one live device of an organisation (`shared_devices_session_unique`).
+ */
+async function sharedDeviceVenueOf(
   tx: ReadOnly,
-  venueId: string,
+  tenantId: string,
   sessionId: string,
-): Promise<{ readonly id: string } | null> {
+): Promise<string | null> {
   const [device] = await tx
-    .select({ id: sharedDevices.id })
+    .select({ venueId: sharedDevices.venueId })
     .from(sharedDevices)
     .where(
       and(
+        eq(sharedDevices.tenantId, tenantId),
         eq(sharedDevices.sessionId, sessionId),
-        eq(sharedDevices.venueId, venueId),
         isNull(sharedDevices.revokedAt),
       ),
     )
-  return device ?? null
+  return device?.venueId ?? null
 }
 
 /** The permissions of a staff member's live assignment at the venue; none without one. */
@@ -124,16 +136,12 @@ export async function resolveGrants(
     case 'integration':
       return NONE
     case 'operator': {
-      const [grant] = await tx
-        .select({ userId: operators.userId })
-        .from(operators)
-        .where(and(eq(operators.userId, actor.userId), isNull(operators.revokedAt)))
-      if (grant === undefined) return { ok: false, code: 'actor_unknown' }
+      if (!(await holdsOperatorGrant(tx, actor.userId))) return { ok: false, code: 'actor_unknown' }
       return { ok: true, permissions: new Set(OPERATOR_PERMISSIONS) }
     }
     case 'staff': {
       // A PIN is entered only on a shared device of this venue.
-      if ((await sharedDeviceOf(tx, venueId, actor.sessionId)) === null) {
+      if ((await sharedDeviceVenueOf(tx, tenantId, actor.sessionId)) !== venueId) {
         return { ok: false, code: 'actor_unknown' }
       }
       const [member] = await tx
@@ -145,7 +153,14 @@ export async function resolveGrants(
       return { ok: true, permissions: new Set(held.filter((p) => !isSettingsPermission(p))) }
     }
     case 'user': {
-      const onDevice = (await sharedDeviceOf(tx, venueId, actor.sessionId)) !== null
+      // A tablet is a device everywhere in the organisation (RR-84, D122 §7): its account may hold
+      // everything, so at another venue it holds nothing, quick answers included. A PIN isn't good
+      // there either, so this refuses rather than asks for one.
+      const deviceVenue = await sharedDeviceVenueOf(tx, tenantId, actor.sessionId)
+      if (deviceVenue !== null && deviceVenue !== venueId) {
+        return { ok: false, code: 'actor_unknown' }
+      }
+      const onDevice = deviceVenue !== null
       if (onDevice && options.quick !== true) return { ok: false, code: 'pin_required' }
       const [membership] = await tx
         .select({ role: authMember.role })

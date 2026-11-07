@@ -76,7 +76,10 @@ describe('bill ids', () => {
   })
 
   it('say nothing of the POS id they come from', () => {
-    for (const pos of ['7001', '42', 'abc']) expect(billIdOf(key, tenantId, pos)).not.toContain(pos)
+    // Long ones: a random id can hold a short string by chance (RR-69).
+    for (const pos of ['pos-bill-7001-of-table-12', 'POS42BILLREF0099', 'abcdefghijklmnop']) {
+      expect(billIdOf(key, tenantId, pos)).not.toContain(pos)
+    }
   })
 
   it('refuse a short key', () => {

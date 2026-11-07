@@ -99,7 +99,8 @@ test.beforeAll(async ({ browser }) => {
   seed('seed')
   waiter = await person(browser, TONIGHT_WAITER_EMAIL, TABLET)
   tablet = await person(browser, TONIGHT_TABLET_EMAIL, TABLET)
-  // The bar tablet's session becomes a shared device, as the owner's "mark this device" does.
+  // The bar tablet's session becomes a shared device, seeded directly: in the app a staff account
+  // does it on Tonight with "Make this the bar tablet".
   seed('device', TONIGHT_TABLET_EMAIL)
 })
 
@@ -116,6 +117,22 @@ test('a staff-only sign-in lands on Tonight, whose tab sits after Tables & QR', 
   const tabs = page.getByRole('tablist', { name: 'Switch tab' }).getByRole('tab')
   await expect(tabs).toHaveText(['Composer', 'Tables & QR', 'Tonight', 'Settings'])
   await expect(page.getByRole('tab', { name: 'Tonight' })).toHaveAttribute('aria-selected', 'true')
+})
+
+test('a shared tablet has no composer or Tables & QR: an old link lands on Tonight (RR-83, RR-84)', async () => {
+  const { page } = tablet
+  await page.goto('/venues')
+  await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=tonight/)
+  const venue = new URL(page.url()).pathname
+  await page.goto(`${venue}?tab=composer`)
+  await expect(page).toHaveURL(new RegExp(`${venue}\\?tab=tonight`))
+  await page.goto(`${venue}?tab=tables`)
+  await expect(page).toHaveURL(new RegExp(`${venue}\\?tab=tonight`))
+  // A PIN unlocks Tonight only (D122 §9, RR-85), so there is no tab to choose.
+  await page.goto(`${venue}?tab=settings`)
+  await expect(page).toHaveURL(new RegExp(`${venue}\\?tab=tonight`))
+  await expect(page.getByRole('tablist', { name: 'Switch tab' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Publish' })).toHaveCount(0)
 })
 
 test('Needs you is ordered by what costs most to leave, with the notice apart', async () => {

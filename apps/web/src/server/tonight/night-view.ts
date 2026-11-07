@@ -18,6 +18,7 @@ import {
   type SentOrderDetail,
   type SentOrderPage,
   type SentOrderRow,
+  tableLabel,
   type Who,
 } from '@restro/core/service'
 
@@ -276,6 +277,8 @@ export interface SentDetailView {
     readonly options: readonly string[]
     readonly note: string | null
   }[]
+  /** The POS bill it joined, as staff know it there; null until it has joined one. */
+  readonly billRef: string | null
   readonly steps: readonly StepView[]
 }
 
@@ -289,6 +292,7 @@ export function sentDetailView(detail: SentOrderDetail, timezone: string): SentD
       options: line.optionNames,
       note: line.note,
     })),
+    billRef: detail.posBillRef,
     steps: detail.steps.map((step) => ({
       time: clock(step.at) ?? '',
       landedLate: step.kind === 'sent_order.landed_late',
@@ -369,6 +373,8 @@ export interface LogLineView {
   readonly sentOrdersOfDay: number | null
   /** A waiter call entry's kinds (#180): the one asked for, or all of a call that ended. */
   readonly callKinds: readonly string[]
+  /** The Undo of "Handled" (RR-58): a `waiter_call.done` line that opens the call again. */
+  readonly callUndone: boolean
   /**
    * A paper receipt's mark (#200), for `receipt.brought` lines only: `undone` is Undo of the mark
    * (the receipt is to be brought again), `paymentNumber` the number the guest shows.
@@ -391,6 +397,7 @@ export function logLineView(
     readonly clock: ReturnType<typeof clockIn>
     readonly locale: AlertLocale
     readonly source: string
+    readonly venueName: string
   },
 ): LogLineView {
   const alerting =
@@ -419,8 +426,25 @@ export function logLineView(
     cause: line.cause === null ? null : (CAUSE_WORDS[line.cause] ?? null),
     alertTitle: alerting
       ? alertMessage(
-          { kind: line.reason ?? '', details: {} },
-          { locale: input.locale, venueName: '', tableLabel: null, source: input.source },
+          {
+            kind: line.reason ?? '',
+            details: line.scope?.kind === 'bar' ? { scope: 'bar', barName: line.scope.name } : {},
+          },
+          {
+            locale: input.locale,
+            venueName: input.venueName,
+            tableLabel:
+              line.table === null
+                ? null
+                : tableLabel(
+                    input.locale,
+                    line.numbered
+                      ? { name: null, number: line.table }
+                      : { name: line.table, number: null },
+                  ),
+            source: input.source,
+            provider: providerDisplayName(line.providerKind),
+          },
           'new',
         ).title
       : null,
@@ -443,6 +467,7 @@ export function logLineView(
     refundSeenUndone: line.kind === 'payment.refund_failed_seen' && line.toState === 'open',
     sentOrdersOfDay: line.sentOrdersOfDay,
     callKinds: line.callKinds,
+    callUndone: line.kind === 'waiter_call.done' && line.toState === 'open',
     ...(line.kind === 'receipt.brought'
       ? {
           receipt: {
@@ -456,14 +481,24 @@ export function logLineView(
 
 export function logView(
   page: LogPage,
-  input: { readonly timezone: string; readonly locale: AlertLocale; readonly source: string },
+  input: {
+    readonly timezone: string
+    readonly locale: AlertLocale
+    readonly source: string
+    readonly venueName: string
+  },
 ): LogView {
   const clock = clockIn(input.timezone)
   return {
     day: page.day,
     today: page.today,
     rows: page.rows.map((line) =>
-      logLineView(line, { clock, locale: input.locale, source: input.source }),
+      logLineView(line, {
+        clock,
+        locale: input.locale,
+        source: input.source,
+        venueName: input.venueName,
+      }),
     ),
     hasMore: page.hasMore,
     days: page.days,

@@ -65,13 +65,15 @@ export function isSettingsPermission(permission: Permission): boolean {
 
 /**
  * What Restro's admin team holds at any venue (D122 §7; spec #64, 12): it adds roles, changes
- * rights and manages staff PINs (`settings.roles`), lifts any pause (`ordering.lift`), and
- * connects a venue's payment account (`settings.connect_payments`, D125 2.2).
+ * rights and manages staff PINs (`settings.roles`), lifts any pause (`ordering.lift`), connects a
+ * venue's payment account (`settings.connect_payments`, D125 2.2), and reads the Log, where its
+ * own alerts are (`log.view`, RR-55).
  */
 export const OPERATOR_PERMISSIONS: readonly Permission[] = [
   'settings.roles',
   'ordering.lift',
   'settings.connect_payments',
+  'log.view',
 ]
 
 /** The default roles every venue has (D122 §7; decision log 4.4: the names are Martin's). */
@@ -118,6 +120,22 @@ export const DEFAULT_ROLE_PERMISSIONS: Readonly<Record<DefaultRoleKind, readonly
     'money.follow_up',
   ],
   owner: PERMISSIONS,
+}
+
+/**
+ * True when what a person holds at a venue is the Staff default role's rights or fewer, and not
+ * none: the account a bar tablet signs in with (RR-O35, Martin 11-06: "a staff-only account"). An
+ * owner or admin of the organisation holds every permission and a manager more than staff (the
+ * money alerts and the tips, RR-92), so none of them is one; nor is an account with no role here.
+ */
+export function holdsStaffRightsOnly(held: Iterable<string>): boolean {
+  const staff = new Set<string>(STAFF_PERMISSIONS)
+  let any = false
+  for (const permission of held) {
+    if (!staff.has(permission)) return false
+    any = true
+  }
+  return any
 }
 
 /**

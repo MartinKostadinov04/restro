@@ -90,7 +90,6 @@ describe.skipIf(!hasDatabase)('the owner settings commands (as the restro_app ro
     expect(result).toMatchObject({ status: 'accepted', details: { changed: true } })
     expect(await settings()).toMatchObject({
       capMinor: 20_000,
-      onlyOpenTables: true,
       serviceHours: { thu: THURSDAY },
     })
     const entries = await logOf('ordering')
@@ -124,6 +123,47 @@ describe.skipIf(!hasDatabase)('the owner settings commands (as the restro_app ro
     })
     expect(result).toMatchObject({ status: 'refused', code: 'invalid_settings' })
     expect(await settings()).toEqual(before)
+  })
+
+  it('turns the location check on only once the venue has a privacy notice link, and never off by itself (RR-O15)', async () => {
+    const LEGAL = {
+      legalDetails: {
+        name: 'Club EOOD',
+        eik: '123456789',
+        address: 'Sofia, 1 Vitosha Blvd',
+        privacyUrl: 'https://club.example/privacy',
+      },
+    }
+    const legal = (on: boolean) =>
+      on
+        ? world.owner.query(
+            'update restro.venues set settings = settings || $2::jsonb where id = $1',
+            [world.venueId, JSON.stringify(LEGAL)],
+          )
+        : world.owner.query(
+            `update restro.venues set settings = settings - 'legalDetails' where id = $1`,
+            [world.venueId],
+          )
+    const turn = (locationCheck: boolean) =>
+      run({ type: 'settings.ordering_set', changes: { locationCheck } })
+
+    await legal(false)
+    // Off is always allowed; back on waits for the link, and nothing is saved meanwhile.
+    expect(await turn(false)).toMatchObject({ status: 'accepted' })
+    const before = await settings()
+    expect(await turn(true)).toMatchObject({ status: 'refused', code: 'privacy_missing' })
+    expect(await settings()).toEqual(before)
+
+    await legal(true)
+    expect(await turn(true)).toMatchObject({ status: 'accepted' })
+
+    // The link gone again: the check stays on, and other changes still save.
+    await legal(false)
+    expect(
+      await run({ type: 'settings.ordering_set', changes: { capMinor: 7_000 } }),
+    ).toMatchObject({ status: 'accepted' })
+    expect(await settings()).toMatchObject({ capMinor: 7_000, locationCheck: true })
+    expect(await turn(true)).toMatchObject({ status: 'accepted' })
   })
 
   it('refuses last orders closer than 15 minutes to the day end', async () => {

@@ -19,7 +19,13 @@ import { pinHmac } from './pins'
 
 /** What a PIN on a shared device found. */
 export type PinIdentity =
-  | { readonly ok: true; readonly staffMemberId: string; readonly deviceId: string }
+  | {
+      readonly ok: true
+      readonly staffMemberId: string
+      /** The person's name, for the toast that answers their write (D123, RR-58). */
+      readonly name: string
+      readonly deviceId: string
+    }
   | { readonly ok: false; readonly code: 'not_shared_device' | 'pin_wrong' }
   | { readonly ok: false; readonly code: 'device_waiting'; readonly retryAfterSeconds: number }
 
@@ -62,7 +68,7 @@ export async function identifyStaffByPin(
 
     if (STAFF_PIN_PATTERN.test(input.pin)) {
       const [member] = await tx
-        .select({ id: staffMembers.id })
+        .select({ id: staffMembers.id, name: staffMembers.displayName })
         .from(staffMembers)
         .where(
           and(
@@ -72,7 +78,7 @@ export async function identifyStaffByPin(
         )
       if (member !== undefined) {
         input.guard.succeed(device.id)
-        return { ok: true, staffMemberId: member.id, deviceId: device.id }
+        return { ok: true, staffMemberId: member.id, name: member.name, deviceId: device.id }
       }
     }
 

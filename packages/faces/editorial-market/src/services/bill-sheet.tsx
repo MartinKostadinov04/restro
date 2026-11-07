@@ -7,6 +7,7 @@ import { payMoney } from '@restro/shell'
 
 import { Text } from '../parts'
 import { distinctRounds, keyed } from './bill'
+import { StopLocationCheck } from './location-sheet'
 import { PaidInApp } from './pay-sheet'
 import { useServicesRequired } from './provider'
 
@@ -18,6 +19,25 @@ export function BillSheet() {
   const paidLines = state.tableBill?.paidLines ?? []
   // What the table owes, as the host states it; nothing when the bill is empty or settled.
   const owed = bill !== null && bill.total.minor > 0 ? bill.total : null
+  // Without a location pass there is no bill: why, and the guest's own way to allow it (the pay
+  // sheet says the same).
+  if (state.location?.state === 'needed') {
+    return (
+      <div className="ro-sheet" data-slot="bill.hidden">
+        <h3 className="ro-h">{words.paying.locationTitle}</h3>
+        <p>{words.paying.locationBody}</p>
+        {o.binding.location === undefined ? null : (
+          <button
+            type="button"
+            className="ro-primary is-wide"
+            onClick={() => o.binding.location?.reopen()}
+          >
+            <span>{words.paying.allowLocation}</span>
+          </button>
+        )}
+      </div>
+    )
+  }
   return (
     <div className="ro-sheet">
       <p className="rm-overlay-intro">{words.tabIntro}</p>
@@ -76,6 +96,8 @@ export function BillSheet() {
           money={(minor) => payMoney(minor, state.tableBill?.currency ?? 'EUR', locale)}
         />
       )}
+      {/* "Stop location check" (D119) sits on the bill while the phone holds a pass. */}
+      {state.location?.state === 'held' ? <StopLocationCheck /> : null}
       {features.pay && owed !== null ? (
         <button
           type="button"

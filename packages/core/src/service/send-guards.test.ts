@@ -318,6 +318,12 @@ describe.skipIf(!hasDatabase)("Send's guards (as the restro_app role)", () => {
     expect((await send()).status).toBe('accepted')
   })
 
+  it('lets a round exactly at the cap through', async () => {
+    await settings({ capMinor: 1350 })
+    await add(beer, 3)
+    expect((await send()).status).toBe('accepted')
+  })
+
   it('refuses a round over the cap, pausing the table for "ask your waiter" with one Log entry', async () => {
     await settings({ capMinor: 1000 })
     await add(beer, 3)
@@ -383,6 +389,127 @@ describe.skipIf(!hasDatabase)("Send's guards (as the restro_app role)", () => {
     await clearOrder()
     await add(shot, 1, 'salt', [lime])
     expect((await send()).status).toBe('accepted')
+  })
+
+  describe('a reading of the table (repair-review)', () => {
+    const BILL_IDS = 'send-guards-test-key-'.padEnd(48, 'x')
+    const record = async (reading: unknown) =>
+      (
+        await applyService(
+          world.app,
+          { type: 'reading.record', tableId, reading } as never,
+          {
+            tenantId: world.tenantId,
+            venueId: world.venueId,
+            origin: 'worker',
+            actor: { kind: 'system' },
+            jobId: `jb-${randomUUID()}`,
+          },
+          { billIdKey: BILL_IDS },
+        )
+      ).result
+    const withBill = {
+      complete: true,
+      currency: 'EUR',
+      bills: [
+        {
+          pos: 'bill-1',
+          totalMinor: 450,
+          paidMinor: 0,
+          openedAt: new Date().toISOString(),
+          openedByRestro: false,
+          paymentInFlight: false,
+          lines: [
+            {
+              pos: 'row-1',
+              itemPos: null,
+              posName: 'Beer',
+              quantity: '1',
+              amountMinor: 450,
+              enteredBy: 'staff',
+              enteredAt: null,
+              restroRef: null,
+            },
+          ],
+        },
+      ],
+    }
+
+    // RR-29, D120: "A single failed reading of one bill only pauses that table until its next good
+    // reading (D111)."
+    it('a failed reading pauses the table until its next good reading', async () => {
+      await add(beer, 1)
+      expect(await record(withBill)).toMatchObject({ status: 'accepted' })
+      expect(
+        await record({ complete: false, reason: 'the table could not be read' }),
+      ).toMatchObject({ status: 'accepted', details: { complete: false } })
+      expect(await send()).toMatchObject({ status: 'refused', code: 'ordering_paused' })
+      expect(await record(withBill)).toMatchObject({ status: 'accepted' })
+      expect((await send()).status).toBe('accepted')
+    })
+
+    // RR-27, D122 §2 ("ask your waiter to put your first item on" is for a table with no POS bill),
+    // rule 6: the sitting's end empties the stored reading, which is no reading of the POS. A new
+    // group at a table whose POS bill is still open is not told to ask for a first item.
+    it('new guests on a table whose bill stays open are not asked for a first item', async () => {
+      expect(await record(withBill)).toMatchObject({ status: 'accepted' })
+      const managerId = await world.addUser('owner')
+      const { result } = await applyService(world.app, { type: 'table.new_guests', tableId }, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        origin: 'staff',
+        actor: { kind: 'user', userId: managerId, sessionId: `se-${randomUUID()}` },
+        jobId: `jb-${randomUUID()}`,
+        signedInAt: new Date(),
+      } as never)
+      expect(result).toMatchObject({ status: 'accepted' })
+      const { rows } = await world.owner.query<{ id: string }>(
+        'select id from restro.sittings where table_id = $1 and ended_at is null',
+        [tableId],
+      )
+      sittingId = rows[0]?.id as string
+      await add(beer, 1)
+      expect(await send()).not.toMatchObject({ code: 'needs_first_item' })
+
+      // A real reading of the POS still speaks: complete, empty and fresh, it asks for a first item.
+      expect(await record({ complete: true, currency: 'EUR', bills: [] })).toMatchObject({
+        status: 'accepted',
+      })
+      await add(beer, 1)
+      expect(await send()).toMatchObject({ status: 'refused', code: 'needs_first_item' })
+    })
+
+    it("lifts only the failed reading's pause at a good reading, and starts one however many fail", async () => {
+      const failed = { complete: false, reason: 'the table could not be read' }
+      expect(await record(withBill)).toMatchObject({ status: 'accepted' })
+      // The world is shared: only this test's pauses count.
+      const since = (await world.owner.query<{ now: Date }>('select now() as now')).rows[0]?.now
+      await record(failed)
+      await record(failed)
+      const pausesOf = async () =>
+        (
+          await world.owner.query<{ cause: string; lifted: boolean; reason: string | null }>(
+            `select cause, lifted_at is not null as lifted, lift_reason as reason
+               from restro.pauses
+              where scope = 'table' and target_id = $1 and started_at >= $2
+              order by started_at`,
+            [tableId, since],
+          )
+        ).rows
+      expect(await pausesOf()).toEqual([{ cause: 'pos_unreachable', lifted: false, reason: null }])
+      await world.owner.query(
+        `insert into restro.pauses (id, tenant_id, venue_id, service_date, scope, target_id, cause,
+           restro_started, details, source, actor, job_id)
+         values ($1, $2, $3, current_date, 'table', $4, 'order_unconfirmed', true, '{}'::jsonb,
+           'worker', 'system', 'test-pause')`,
+        [newId('pa'), world.tenantId, world.venueId, tableId],
+      )
+      expect(await record(withBill)).toMatchObject({ status: 'accepted' })
+      expect(await pausesOf()).toEqual([
+        { cause: 'pos_unreachable', lifted: true, reason: 'good_reading' },
+        { cause: 'order_unconfirmed', lifted: false, reason: null },
+      ])
+    })
   })
 
   it('asks the waiter for the first item where a fresh reading shows no POS bill', async () => {

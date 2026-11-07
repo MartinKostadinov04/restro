@@ -23,6 +23,7 @@ import {
   readingSchema,
   SERVICE_TIMINGS,
   type ServiceConnector,
+  type ServiceContext,
   type ServiceTimings,
   type StockReading,
 } from '@restro/core'
@@ -155,7 +156,10 @@ async function announce(
   if (env.queue === undefined) return
   for (const scope of await liveScopesOfVenue(env.pool, target.tenantId, target.venueId)) {
     const job = prepareJob(JOB_NAMES.publishLive, { tenantId: target.tenantId, ...scope })
-    await env.queue.send(JOB_NAMES.publishLive, job.data, { singletonKey: job.singletonKey })
+    await env.queue.send(JOB_NAMES.publishLive, job.data, {
+      singletonKey: job.singletonKey,
+      ...(job.group === undefined ? {} : { group: job.group }),
+    })
   }
 }
 
@@ -170,7 +174,7 @@ export type HearCall = (call: { readonly ok: boolean; readonly elapsedMs?: numbe
 export async function readAvailability(
   connector: ServiceConnector,
   budget: Limiter,
-  now: () => Date,
+  context: ServiceContext,
   timings: ServiceTimings,
   items: readonly PosRef[],
   hear: HearCall = () => undefined,
@@ -182,14 +186,17 @@ export async function readAvailability(
   const started = Date.now()
   try {
     const answer = await bounded(budget, timings.readTimeoutMs, () =>
-      read.call(connector, serviceContext(now, timings), [...items]),
+      read.call(connector, context, [...items]),
     )
     if (answer.kind !== 'answered') {
       if (answer.kind === 'late') await hear({ ok: false })
       return { complete: false, reason: 'the read did not answer' }
     }
     const parsed = readingSchema(AvailabilitySchema).safeParse(answer.value)
-    await hear({ ok: parsed.success && parsed.data.complete, elapsedMs: Date.now() - started })
+    // A definite busy says nothing of the connection: no failed call.
+    if (!parsed.success || parsed.data.complete || parsed.data.busy !== true) {
+      await hear({ ok: parsed.success && parsed.data.complete, elapsedMs: Date.now() - started })
+    }
     return parsed.success
       ? parsed.data
       : { complete: false, reason: 'the reading did not have the expected shape' }
@@ -278,11 +285,13 @@ async function askAgain(
   }
   if (!connector.capabilities.itemAvailability) return { marked: [], cleared: [] }
   const byPos = new Map(links.map((link) => [link.externalId, link.nodeId]))
+  const budgets = deps.budgets ?? SHARED_BUDGETS
+  const timings = deps.timings ?? SERVICE_TIMINGS
   const reading = await readAvailability(
     connector,
-    (deps.budgets ?? SHARED_BUDGETS).forInstance(target.integrationId),
-    env.now,
-    deps.timings ?? SERVICE_TIMINGS,
+    budgets.forInstance(target.integrationId),
+    serviceContext(env.now, budgets.paceOf(target.integrationId, connector), timings),
+    timings,
     links.map((link) => posRef(link.externalId)),
   )
   if (!reading.complete) return { marked: [], cleared: [] }

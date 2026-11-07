@@ -44,8 +44,11 @@ const DIR = fileURLToPath(new URL('../fixtures/recordings', import.meta.url))
 const ACCOUNT = process.env.STRIPE_HARNESS_ACCOUNT ?? 'acct_1UUjd8H6CXJeKV2v'
 const OTHER_ACCOUNT = process.env.STRIPE_HARNESS_OTHER_ACCOUNT ?? 'acct_1UUjixH6CXaVmuUR'
 
-/** Checks not recorded yet, each with why: none since 10-26. */
-const PENDING: Readonly<Record<string, string>> = {}
+/** Checks not recorded yet, each with why. */
+const PENDING: Readonly<Record<string, string>> = {
+  "a payment's refunds list one by one, oldest first":
+    "#261: needs both sandbox keys; the list's shape is pinned by refunds-read.test.ts until it's recorded",
+}
 
 /** A key from the environment, refused unless it is a sandbox key; the error names only the variable. */
 function sandboxKey(name: 'STRIPE_SECRET_KEY' | 'STRIPE_HARNESS_KEY'): string {

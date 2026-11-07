@@ -215,11 +215,37 @@ describe('the lines a Send takes and gives back (#77)', () => {
     expect(taken.order.lines).toEqual([])
   })
 
-  it('refuses a Send that differs from the order in any line or quantity', () => {
-    expect(takeSentLines(two, asSeen.slice(0, 1), NOW)).toEqual({
+  it('takes only the named lines: a change to a line it does not send leaves the Send alone', () => {
+    const [first, second] = two.lines
+    if (first === undefined || second === undefined) throw new Error('two lines expected')
+    // The guest saw one line; a friend added another in the second before.
+    const taken = takeSentLines(two, asSeen.slice(0, 1), NOW)
+    if (!taken.ok) throw new Error(taken.code)
+    expect(taken.lines).toEqual([first])
+    expect(taken.order.lines).toEqual([second])
+    expect(taken.order.idleExpiresAt).toBe(NOW + ORDER_IDLE_MS)
+  })
+
+  it('refuses a Send when a line it sends changed or went', () => {
+    const [first, second] = two.lines
+    if (first === undefined || second === undefined) throw new Error('two lines expected')
+    const gone: TableOrderDraft = { ...two, lines: [second] }
+    expect(takeSentLines(gone, asSeen.slice(0, 1), NOW)).toEqual({
       ok: false,
       code: 'order_changed',
     })
+    // The same line named twice takes one line once: the second naming is a change.
+    const twice = [asSeen[0], asSeen[0]] as typeof asSeen
+    expect(takeSentLines(two, twice, NOW)).toEqual({ ok: false, code: 'order_changed' })
+    // Nothing named sends nothing.
+    expect(takeSentLines(two, [], NOW)).toEqual({ ok: false, code: 'order_changed' })
+    expect(takeSentLines({ ...two, lines: [first] }, [], NOW)).toEqual({
+      ok: false,
+      code: 'order_changed',
+    })
+  })
+
+  it('refuses a Send that differs from the order in any quantity', () => {
     const more = asSeen.map((line, index) => (index === 0 ? { ...line, qty: 3 } : line))
     expect(takeSentLines(two, more, NOW)).toEqual({ ok: false, code: 'order_changed' })
     expect(takeSentLines(EMPTY_TABLE_ORDER, asSeen, NOW)).toEqual({

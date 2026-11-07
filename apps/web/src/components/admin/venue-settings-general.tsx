@@ -40,7 +40,7 @@ export async function VenueSettingsGeneral({
     .map(row)
 
   return (
-    <div className="grid gap-8" data-testid="settings-general">
+    <div className="grid grid-cols-1 gap-8" data-testid="settings-general">
       <VenueSettings venue={venue} role={role} />
       <MenusCard
         venueId={venue.id}

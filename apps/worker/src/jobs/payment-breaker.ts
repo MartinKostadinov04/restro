@@ -306,6 +306,7 @@ export function watchedProvider(
     findByPaymentId: watch(provider.findByPaymentId.bind(provider), read),
     readPayment: watch(provider.readPayment.bind(provider), read),
     readNoticeSubject: watch(provider.readNoticeSubject.bind(provider), read),
+    readRefunds: watch(provider.readRefunds.bind(provider), read),
     capture: watch(provider.capture.bind(provider), wrote),
     release: watch(provider.release.bind(provider), wrote),
   }

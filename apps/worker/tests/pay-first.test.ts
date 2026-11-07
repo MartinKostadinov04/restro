@@ -12,6 +12,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 
 import {
+  DEFAULT_GUEST_FEATURES,
   DEFAULT_ORDERING_SETTINGS,
   hashTableCode,
   type IntegrationId,
@@ -34,6 +35,7 @@ import {
 import {
   applyService,
   DEFAULT_ROLE_PERMISSIONS,
+  HOLD_READ_TRIES,
   type SendMenu,
   type ServiceContext,
 } from '@restro/core/service'
@@ -54,7 +56,7 @@ import {
 } from '@restro/sim-pos'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
+import { readFloorOf } from '../src/jobs/floor'
 import {
   checkPayment,
   type PaymentJobDeps,
@@ -73,6 +75,7 @@ import {
   testSlug,
   withOwnerClient,
 } from './database'
+import { simBudgets, TEST_WRITE_TIMEOUT_MS } from './sim-pace'
 
 allowSlowSetup()
 
@@ -84,7 +87,7 @@ const POS_PRICE = 1_100
 /** How long one connector call takes on the simulator's clock: a read is two calls, the limit 5 a second. */
 const CALL_MS = 500
 /** Short write and read timeouts, so a hanging call is `unknown` quickly. */
-const TIMINGS = { ...SERVICE_TIMINGS, readTimeoutMs: 2_000, writeTimeoutMs: 300 }
+const TIMINGS = { ...SERVICE_TIMINGS, readTimeoutMs: 2_000, writeTimeoutMs: TEST_WRITE_TIMEOUT_MS }
 /** How much time passes between two runs of a job: its read-back, on both clocks. */
 const BETWEEN_RUNS_MS = 5_000
 /** The states a run ends in when nobody needs to act. */
@@ -141,7 +144,7 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
   const deps = (): PaymentJobDeps => ({
     sim: policy,
     providers: new Map([[SIM_PAY_KIND, provider]]),
-    budgets: new InstanceBudgets(),
+    budgets: simBudgets(simClock),
     connectorFor,
     timings: TIMINGS,
     sleep: async (ms) => {
@@ -165,7 +168,7 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
     const floor = await readFloorOf(
       { pool, log, now: () => new Date() },
       { tenantId, ...demo },
-      { sim: policy, budgets: new InstanceBudgets() },
+      { sim: policy, budgets: simBudgets(simClock) },
     )
     expect(floor.kind).toBe('read')
   }
@@ -213,6 +216,11 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
     await query(
       `update restro.venues set settings = jsonb_set(settings, '{ordering}', $2::jsonb) where id = $1`,
       [demo.venueId, JSON.stringify({ ...DEFAULT_ORDERING_SETTINGS, locationCheck: false })],
+    )
+    // Ordering from the phone is on: guests order here.
+    await query(
+      `update restro.venues set settings = jsonb_set(settings, '{guest_features}', $2::jsonb) where id = $1`,
+      [demo.venueId, JSON.stringify({ ...DEFAULT_GUEST_FEATURES, ordering: true })],
     )
     // The pay-first item, linked to the POS's article (what a menu sync writes).
     await query(`insert into restro.nodes (id, tenant_id, node_type) values ($1, $2, 'item')`, [
@@ -594,6 +602,31 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
     await drive(id, 3)
     expect(await stored(id)).toMatchObject({ state: 'unconfirmed' })
     expect(holdOf(id)).toEqual([expect.objectContaining({ status: 'held' })])
+  })
+
+  // RR-18: the provider won't show the hold. A bounded number of tries, then what any failed check
+  // of an entered round does: a manager is asked, the hold neither charged nor released.
+  it('a hold the provider stops showing: unconfirmed for a manager, never charged or released', async () => {
+    const id = await held()
+    await query(`update restro.payment_accounts set account_ref = $1 where venue_id = $2`, [
+      `${accountRef}_other`,
+      demo.venueId,
+    ])
+    const row = await drive(id).finally(() =>
+      query(`update restro.payment_accounts set account_ref = $1 where venue_id = $2`, [
+        accountRef,
+        demo.venueId,
+      ]),
+    )
+    expect(row).toMatchObject({ state: 'unconfirmed', reason: 'entered_check_failed' })
+    expect(await alertsOf(id)).toEqual(['payment_unconfirmed:money.follow_up'])
+    expect(calls('closeBill')).toBe(0)
+    expect(holdOf(id)).toEqual([expect.objectContaining({ status: 'held' })])
+    const [tries] = await query<{ count: string }>(
+      `select count(*) from restro.log_entries where payment_id = $1 and kind = 'payment.hold_unread'`,
+      [id],
+    )
+    expect(Number(tries?.count)).toBe(HOLD_READ_TRIES)
   })
 
   it('waits while a waiter has the payment tables, and enters the round once one is free', async () => {

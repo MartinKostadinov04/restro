@@ -77,6 +77,11 @@ describe.skipIf(!hasDatabase)('linking Telegram', () => {
       'A person',
       `${id}@example.test`,
     ])
+    // A real sign-in: the internal endpoints look the session up (RR-10).
+    await query(
+      "insert into restro.auth_session (id, expires_at, token, user_id) values ($1, now() + interval '1 hour', $2, $3)",
+      [`sess-${id}`, `tok-${id}`, id],
+    )
     await query(
       'insert into restro.auth_member (id, organization_id, user_id, role) values ($1, $2, $3, $4)',
       [`mb-${id}`, tenantId, id, role],
@@ -303,7 +308,7 @@ describe.skipIf(!hasDatabase)('linking Telegram', () => {
       ({
         tenantId,
         venueId,
-        actor: { kind: 'user', userId: ownerId, sessionId: 'session-1' },
+        actor: { kind: 'user', userId: ownerId, sessionId: `sess-${ownerId}` },
         signedInAt: new Date().toISOString(),
       }) as const
 
@@ -332,7 +337,7 @@ describe.skipIf(!hasDatabase)('linking Telegram', () => {
       expect(
         await api()({
           ...owner(),
-          actor: { kind: 'user', userId: memberId, sessionId: 'session-2' },
+          actor: { kind: 'user', userId: memberId, sessionId: `sess-${memberId}` },
           action: 'link_group',
         }),
       ).toEqual({ status: 'refused', code: 'permission_denied' })

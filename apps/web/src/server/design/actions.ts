@@ -14,6 +14,7 @@ import { getPool } from '../db'
 import { logError } from '../log'
 import { canManageIntegration } from '../roles'
 import { requireTenant } from '../session'
+import { onSharedDevice } from '../staff/shared-device'
 import { getVenue } from '../venues'
 import {
   chooseTemplate,
@@ -43,8 +44,11 @@ export async function saveLookAction(input: unknown): Promise<LookResult> {
   const parsed = LookInput.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'invalid' }
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
     if (!canManageIntegration(organization.role)) return { ok: false, error: 'forbidden' }
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'forbidden' }
+    }
     const venue = await getVenue(organization.id, parsed.data.venueId)
     if (!venue) return { ok: false, error: 'not_found' }
     const result = await saveLook(getPool(), organization.id, parsed.data)
@@ -63,8 +67,11 @@ export async function chooseTemplateAction(input: unknown): Promise<TemplateResu
   const parsed = TemplateInput.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'invalid' }
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
     if (!canManageIntegration(organization.role)) return { ok: false, error: 'forbidden' }
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'forbidden' }
+    }
     const venue = await getVenue(organization.id, parsed.data.venueId)
     if (!venue) return { ok: false, error: 'not_found' }
     const result = await chooseTemplate(getPool(), organization.id, venue, parsed.data)

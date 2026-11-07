@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { hasDatabase } from '../apply/test-database'
 import { newId } from '../ids'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
+import { TEAM_ALERT_KINDS } from './alert-rules'
 import type { ServiceActor } from './context'
 import {
   MAX_EXPORT_DAYS,
@@ -374,6 +375,44 @@ describe.skipIf(!hasDatabase)(
         if (!byTable.ok) throw new Error(byTable.code)
         expect(byTable.page.rows.map((row) => row.kind)).toEqual(['waiter_call.called'])
         expect(byTable.page.rows[0]?.who).toEqual({ kind: 'guest' })
+      })
+
+      it('shows the Restro team’s own alerts to the Restro team only (D122 §7)', async () => {
+        const operatorId = await world.addUser('member')
+        await world.addOperator(operatorId)
+        // A venue alert, and a day holding nothing but one of the team's own.
+        const lonelyDay = '2026-01-05'
+        await addLog({ kind: 'alert.raised', reason: 'ordering_paused' })
+        for (const reason of TEAM_ALERT_KINDS) {
+          await addLog({ kind: 'alert.raised', reason })
+          await addLog({ kind: 'alert.done', reason })
+        }
+        await addLog({ kind: 'alert.raised', reason: 'order_pace', serviceDate: lonelyDay })
+
+        const alertsFor = async (actor: ServiceActor) => {
+          const read = await readLog(world.app, input(actor))
+          if (!read.ok) throw new Error(read.code)
+          return {
+            reasons: read.page.rows
+              .filter((row) => row.kind.startsWith('alert.'))
+              .map((row) => row.reason),
+            others: read.page.rows.filter((row) => !row.kind.startsWith('alert.')).length,
+            days: read.page.days,
+          }
+        }
+
+        const venue = await alertsFor(user(managerUser))
+        expect(venue.reasons).toEqual(['ordering_paused'])
+        expect(venue.days).not.toContain(lonelyDay)
+
+        const team = await alertsFor({ kind: 'operator', userId: operatorId })
+        expect(team.reasons).toContain('ordering_paused')
+        for (const reason of TEAM_ALERT_KINDS) expect(team.reasons).toContain(reason)
+        expect(team.days).toContain(lonelyDay)
+        // Nothing else moves: both read the same other lines.
+        expect(team.others).toBe(venue.others)
+        // The same person signed in as themselves, as the admin app reads.
+        expect(await alertsFor(user(operatorId))).toEqual(team)
       })
 
       it('reads an earlier night by its date, and a future one as today', async () => {

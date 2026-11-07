@@ -112,6 +112,19 @@ describe('WorkspaceTabs: tabs and the URL', () => {
     })
   })
 
+  it.each([
+    ['composer', 'RR-83'],
+    ['tables', 'RR-84'],
+    ['settings', 'RR-85'],
+  ])('a shared device opens Tonight on an old link to %s, with no tabs to choose (%s)', (tab) => {
+    navigation.search = `tab=${tab}`
+    renderWithIntl(<WorkspaceTabs contents={contents} sharedDevice />)
+    expect(screen.queryByRole('tab')).toBeNull()
+    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(screen.getByText('content of tonight')).toBeTruthy()
+    expect(screen.queryByText(`content of ${tab}`)).toBeNull()
+  })
+
   it('does not touch the URL when the current tab is clicked again', async () => {
     navigation.search = 'tab=settings'
     renderTabs()

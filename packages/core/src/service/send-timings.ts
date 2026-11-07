@@ -6,6 +6,12 @@
 
 import { SERVICE_TIMINGS, type ServiceTimings } from '../timings'
 
+/**
+ * Tries of the round when its POS bill turns out closed or locked (D115: read the table again, the
+ * next open bill or a new one). Nothing is written by a try that is refused.
+ */
+export const ADD_TRIES = 3
+
 /** Tries of the read before the round, and the pause between two. */
 export const BEFORE_READ_TRIES = 3
 export const BEFORE_READ_PAUSE_MS = 1_000
@@ -31,11 +37,12 @@ export const LEASE_MARGIN_MS = 15_000
 
 export interface SlotLeaseSeconds {
   /**
-   * From `sent_order.start`: the probe the breaker may ask for first (#79, after a write timed
-   * out), then the availability read (#80) and the read before the round, with its tries and pauses.
+   * From `sent_order.start`: the wait for the POS's turn among the tables, the probe the breaker
+   * may ask for first (#79, after a write timed out), then the availability read (#80) and the read
+   * before the round, with its tries and pauses.
    */
   readonly start: number
-  /** From `sending`: the write, and the one more try after a closed bill. */
+  /** From `sending`: the write, and its further tries after a closed or locked bill. */
   readonly sending: number
   /** From `checking`: the read-back window, then the last read it started. */
   readonly checking: number
@@ -49,11 +56,12 @@ export function slotLeaseSeconds(timings: ServiceTimings = SERVICE_TIMINGS): Slo
   const seconds = (ms: number) => Math.ceil((ms + LEASE_MARGIN_MS) / 1_000)
   return {
     start: seconds(
-      probe +
+      BUDGET_WAIT_MS +
+        probe +
         (AVAILABILITY_READS + BEFORE_READ_TRIES) * read +
         (BEFORE_READ_TRIES - 1) * BEFORE_READ_PAUSE_MS,
     ),
-    sending: seconds(2 * write),
+    sending: seconds(ADD_TRIES * write),
     checking: seconds(timings.readBackWindowMs + read),
   }
 }

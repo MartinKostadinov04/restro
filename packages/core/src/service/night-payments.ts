@@ -34,6 +34,7 @@ import { and, asc, desc, eq, inArray, lt, ne, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { serviceDate } from '../service-day'
 import {
+  PAYMENT_ALERT_KINDS,
   PAYMENT_CAPTURE_FAILED_KIND,
   PAYMENT_CHECK_FAILED_KIND,
   PAYMENT_HOLD_EXPIRED_KIND,
@@ -65,16 +66,7 @@ import type { Permission } from './permissions'
 import { type ReceiptNotBrought, receiptsNotBrought } from './receipt-rows'
 import { withoutTipMinor } from './staff-amount'
 
-/** The kinds of alert that are about one payment (their subject is the payment). */
-export const PAYMENT_ALERT_KINDS = [
-  PAYMENT_UNCONFIRMED_KIND,
-  PAYMENT_LINES_NOT_BACK_KIND,
-  PAYMENT_CHECK_FAILED_KIND,
-  PAYMENT_STRANDED_KIND,
-  PAYMENT_CAPTURE_FAILED_KIND,
-  PAYMENT_RELEASE_REFUSED_KIND,
-  PAYMENT_HOLD_EXPIRED_KIND,
-] as const
+export { PAYMENT_ALERT_KINDS }
 
 /** What is wrong with a payment at the end of the night. */
 export type NightPayProblem =

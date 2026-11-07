@@ -68,8 +68,6 @@ export interface StaffView {
   readonly held: readonly Permission[]
   /** True for Restro's admin team: it may give any right and never shares a device. */
   readonly operator: boolean
-  /** True when this browser is already a shared device. */
-  readonly thisBrowserShared: boolean
   /** The signed-in person's email, for the password again. */
   readonly email: string
 }
@@ -160,7 +158,6 @@ export async function buildStaffView(input: {
     })),
     held: input.held,
     operator: input.operator,
-    thisBrowserShared: settings.devices.some((device) => device.isThisSession),
     email: input.email,
   }
 }

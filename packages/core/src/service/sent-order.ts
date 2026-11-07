@@ -29,7 +29,6 @@ import { z } from 'zod'
 
 import { idSchema, newId } from '../ids'
 import { type LandingBasis, LandingBasisSchema } from '../landing-match'
-import { orderFromRow, returnSentLines, tidyOrder } from '../table-order'
 import { defineCommand, type ServiceTx } from './definition'
 import {
   holdsLease,
@@ -39,11 +38,11 @@ import {
   renewLease,
   takeLease,
 } from './leases'
-import { writeOrder } from './order'
 import { accepted, refused, type ServiceResult } from './results'
 import type { SentOrder } from './rows'
-import { orderingPaused, type SentOrderLine, sentOrderLinesOf, sentOrderNotesOf } from './send'
+import { orderingPaused, type SentOrderLine, sentOrderLinesOf } from './send'
 import { slotLeaseSeconds } from './send-timings'
+import { giveLinesBack } from './sent-lines'
 
 const SLOT_LEASE = slotLeaseSeconds()
 /** How long a start holds the table's slot: the read before the write, with its retries. */
@@ -200,34 +199,6 @@ function markOutOfStock(stored: unknown, itemIds: readonly string[]): SentOrderL
   const out = new Set(itemIds)
   return sentOrderLinesOf(stored).map((line) =>
     out.has(line.itemId) ? { ...line, outOfStock: true as const } : line,
-  )
-}
-
-/**
- * Puts the lines of these sent orders back on the table's order, with their notes, when the order
- * is still their sitting's (a new group never gets the last group's lines).
- */
-async function giveLinesBack(stx: ServiceTx, sent: readonly SentOrder[]): Promise<void> {
-  if (sent.length === 0) return
-  const table = sent[0]?.tableId
-  if (table === undefined) return
-  const row = stx.rows.heldOrder(table)
-  if (row === null) return
-  const ours = sent.filter((one) => one.sittingId === row.sittingId)
-  if (ours.length === 0) return
-  const notes = await sentOrderNotesOf(
-    stx,
-    ours.map((one) => one.id),
-  )
-  const now = (await stx.dbNow()).getTime()
-  const current = tidyOrder(orderFromRow(row), now).order
-  const lines = ours.flatMap((one) =>
-    sentOrderLinesOf(one.lines).map((line) => ({ ...line, note: notes.get(line.id) ?? '' })),
-  )
-  await writeOrder(
-    stx,
-    row,
-    returnSentLines(current, lines, now, () => newId('ol')),
   )
 }
 
@@ -429,7 +400,7 @@ export async function transitionSentOrder(
   const [found] = await stx.tx
     .select({ tableId: sentOrders.tableId })
     .from(sentOrders)
-    .where(eq(sentOrders.id, command.sentOrderId))
+    .where(and(eq(sentOrders.id, command.sentOrderId), eq(sentOrders.venueId, stx.venueId)))
   if (found === undefined) return refused(null, 'sent_order_missing')
   const { sent: locked, waiting } = await lockAround(
     stx,

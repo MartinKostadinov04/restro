@@ -51,7 +51,7 @@ import {
 } from '@restro/sim-pos'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
+import { readFloorOf } from '../src/jobs/floor'
 import { recoverPayments } from '../src/jobs/payment-recovery'
 import {
   checkPayment,
@@ -72,6 +72,7 @@ import {
   withOwnerClient,
 } from './database'
 import { createFakeEmailSender } from './fake-email-sender'
+import { simBudgets, TEST_WRITE_TIMEOUT_MS } from './sim-pace'
 
 allowSlowSetup()
 
@@ -79,7 +80,7 @@ const KEY = 'receipt-email-test-key-'.padEnd(48, 'x')
 const POS_TABLE = '30001'
 /** An address no other text in the database or in a log can hold by chance. */
 const EMAIL = 'receipt-guest-7f3a91@example.test'
-const TIMINGS = { ...SERVICE_TIMINGS, readTimeoutMs: 2_000, writeTimeoutMs: 300 }
+const TIMINGS = { ...SERVICE_TIMINGS, readTimeoutMs: 2_000, writeTimeoutMs: TEST_WRITE_TIMEOUT_MS }
 const CALL_MS = 500
 const BETWEEN_RUNS_MS = 5_000
 const SETTLED = ['captured', 'released', 'stranded', 'capture_failed']
@@ -129,7 +130,7 @@ describe.skipIf(!hasDatabase).each([
   const deps = (overrides: Partial<PaymentJobDeps> = {}): PaymentJobDeps => ({
     sim: policy,
     providers: new Map([[SIM_PAY_KIND, provider]]),
-    budgets: new InstanceBudgets(),
+    budgets: simBudgets(simClock),
     timings: TIMINGS,
     sleep: async (ms) => {
       simClock.advance(ms)
@@ -149,7 +150,7 @@ describe.skipIf(!hasDatabase).each([
     return readFloorOf(
       { pool, log, now: () => clock },
       { tenantId, ...demo },
-      { sim: policy, budgets: new InstanceBudgets(), receiptSender },
+      { sim: policy, budgets: simBudgets(simClock), receiptSender },
     )
   }
 
@@ -275,7 +276,7 @@ describe.skipIf(!hasDatabase).each([
         {
           sim: policy,
           billIdKey: KEY,
-          budgets: new InstanceBudgets(),
+          budgets: simBudgets(simClock),
           readingBudgets: new ReadingBudgets(),
         },
       ),

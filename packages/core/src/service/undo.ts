@@ -77,6 +77,7 @@ export async function tokenEntry(stx: ServiceTx, token: UndoToken) {
       tableId: logEntries.tableId,
       sittingId: logEntries.sittingId,
       jobId: logEntries.jobId,
+      actor: logEntries.actor,
       details: logEntries.details,
     })
     .from(logEntries)

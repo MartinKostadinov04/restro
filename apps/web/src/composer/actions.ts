@@ -1,8 +1,9 @@
 'use server'
 
 // The composer's writes. Each is a server action: it checks who is asking (requireTenant), that
-// the venue is theirs and that the menu it names is one of the venue's menus in use (the composer
-// works on the menu in its URL, D88, brief S6), builds a manual change set (source `manual`,
+// their role may edit the menu (owners and admins, `canEditMenu`; RR-70), that the venue is theirs
+// and that the menu it names is one of the venue's menus in use (the composer works on the menu in
+// its URL, D88, brief S6), builds a manual change set (source `manual`,
 // actor = the user, a fresh `jb_` job) from ./ops.ts or `@/server/composer/structure` and hands
 // it to core's apply(): rule 1, no SQL here. Then it revalidates the venue page, so the client
 // gets the fresh view in the same round trip. Every input is parsed with Zod first; ids are
@@ -26,7 +27,13 @@ import {
   SECTION_LAYOUTS,
   SortKeySchema,
 } from '@restro/core'
-import { ApplyError, apply, loadMenuDocument, loadUnplacedItems } from '@restro/core/apply'
+import {
+  ApplyError,
+  apply,
+  itemsOfVenue,
+  loadMenuDocument,
+  loadUnplacedItems,
+} from '@restro/core/apply'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -36,8 +43,9 @@ import { deleteSectionPlan, renamePlan } from '@/server/composer/structure'
 import { getPool } from '@/server/db'
 import { logError } from '@/server/log'
 import { getNodeBasics, isNodeInMenu } from '@/server/menus'
-import { canManageIntegration } from '@/server/roles'
+import { canEditMenu } from '@/server/roles'
 import { requireTenant } from '@/server/session'
+import { onSharedDevice } from '@/server/staff/shared-device'
 import { getVenue, venueHasTill } from '@/server/venues'
 
 import type { ActionResult } from './action-result'
@@ -124,19 +132,20 @@ const UNCHANGED: ActionResult = { ok: true }
  * Runs one composer intent: checks the venue and its menu, builds the ops, applies them as one
  * atomic manual change set, and refreshes the page. `build` returns null for a request that makes
  * no sense (the intent is refused as invalid), or an answer of its own (an `ActionResult`: a
- * refusal, or `UNCHANGED`). With `ownersOnly`, a person who is not an owner or admin of the
- * organisation is refused with `not_allowed` before anything is read.
+ * refusal, or `UNCHANGED`). A person who is not an owner or admin of the organisation is refused
+ * with `not_allowed` before anything is read (Martin 11-06, RR-70: owner and admin edit the menu).
  */
 async function perform(
   scope: { readonly venueId: string; readonly menuId: string },
   build: (
     context: Context,
   ) => Promise<ChangeSetOp[] | ActionResult | null> | ChangeSetOp[] | ActionResult | null,
-  options: { readonly ownersOnly?: boolean } = {},
 ): Promise<ActionResult> {
   try {
-    const { organization, user } = await requireTenant()
-    if (options.ownersOnly && !canManageIntegration(organization.role)) return NOT_ALLOWED
+    const { organization, user, sessionId } = await requireTenant()
+    if (!canEditMenu(organization.role)) return NOT_ALLOWED
+    // A shared tablet never edits the menu (D122 §7, RR-83): the person's own sign-in does.
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) return NOT_ALLOWED
     const venue = await getVenue(organization.id, scope.venueId)
     if (!venue) return NOT_FOUND
     // The menu the composer shows: one of this venue's menus in use (never a binned one, another
@@ -196,6 +205,12 @@ async function inMenu(context: Context, ...ids: readonly (NodeId | null)[]): Pro
   return true
 }
 
+/** True when the item is one of this venue's: the tenant's rows are all the database hides (RR-72). */
+async function ofVenue(context: Context, itemId: NodeId): Promise<boolean> {
+  const ours = await itemsOfVenue(getPool(), context.tenantId, context.venueId, [itemId])
+  return ours.has(itemId)
+}
+
 /** A live (not deleted) section of this menu, or false. */
 async function liveSection(context: Context, sectionId: NodeId): Promise<boolean> {
   const node = await getNodeBasics(context.tenantId, sectionId)
@@ -220,6 +235,7 @@ export async function placeItemAction(input: unknown): Promise<ActionResult> {
   const { venueId, menuId, ...move } = parsed.data
   return perform({ venueId, menuId }, async (context) => {
     if (!(await inMenu(context, move.fromSectionId, move.toSectionId))) return null
+    if (!(await ofVenue(context, move.itemId))) return NOT_FOUND
     return placeItemOps(move)
   })
 }
@@ -262,40 +278,35 @@ export async function createItemAction(input: unknown): Promise<ActionResult> {
   const parsed = CreateItemInput.safeParse(input)
   if (!parsed.success) return INVALID
   const { venueId, menuId, ...item } = parsed.data
-  return perform(
-    { venueId, menuId },
-    async (context) => {
-      // A venue with a till gets its items from the till only (D66): hand-made items cannot reach
-      // the POS. One check, here; a later setting for display-only items on a till venue flips it.
-      if (await venueHasTill(context.tenantId, context.venueId)) return TILL_VENUE
-      // The id is the client's: a new item, never an existing node (apply() would treat a repeated
-      // createNode as done and go on to overwrite that node's name and price).
-      if (await getNodeBasics(context.tenantId, item.id)) return null
-      const name = item.name as LocalizedText
-      // An item needs a name in the venue's default language (check V3), and only in languages
-      // the venue has enabled.
-      if (!name[context.defaultLocale as keyof LocalizedText]) return null
-      if (Object.keys(name).some((locale) => !context.enabledLocales.includes(locale))) return null
+  return perform({ venueId, menuId }, async (context) => {
+    // A venue with a till gets its items from the till only (D66): hand-made items cannot reach
+    // the POS. One check, here; a later setting for display-only items on a till venue flips it.
+    if (await venueHasTill(context.tenantId, context.venueId)) return TILL_VENUE
+    // The id is the client's: a new item, never an existing node (apply() would treat a repeated
+    // createNode as done and go on to overwrite that node's name and price).
+    if (await getNodeBasics(context.tenantId, item.id)) return null
+    const name = item.name as LocalizedText
+    // An item needs a name in the venue's default language (check V3), and only in languages
+    // the venue has enabled.
+    if (!name[context.defaultLocale as keyof LocalizedText]) return null
+    if (Object.keys(name).some((locale) => !context.enabledLocales.includes(locale))) return null
 
-      const currency = CurrencySchema.safeParse(context.currency)
-      if (!currency.success) return null
-      const price =
-        item.price === undefined ? undefined : parseMoneyInput(item.price, currency.data)
-      if (price === 'invalid') return null
+    const currency = CurrencySchema.safeParse(context.currency)
+    if (!currency.success) return null
+    const price = item.price === undefined ? undefined : parseMoneyInput(item.price, currency.data)
+    if (price === 'invalid') return null
 
-      // The section must be a live section of THIS menu: an id from another menu (or another
-      // venue's) is refused, never trusted.
-      if (item.sectionId !== null && !(await liveSection(context, item.sectionId))) return null
-      return createItemOps({
-        id: item.id,
-        sectionId: item.sectionId,
-        name,
-        price: price ?? null,
-        sortKey: item.sortKey,
-      })
-    },
-    { ownersOnly: true },
-  )
+    // The section must be a live section of THIS menu: an id from another menu (or another
+    // venue's) is refused, never trusted.
+    if (item.sectionId !== null && !(await liveSection(context, item.sectionId))) return null
+    return createItemOps({
+      id: item.id,
+      sectionId: item.sectionId,
+      name,
+      price: price ?? null,
+      sortKey: item.sortKey,
+    })
+  })
 }
 
 /**
@@ -306,9 +317,10 @@ export async function setItemHiddenAction(input: unknown): Promise<ActionResult>
   const parsed = SetItemHiddenInput.safeParse(input)
   if (!parsed.success) return INVALID
   const { venueId, menuId, itemId, hidden } = parsed.data
-  return perform({ venueId, menuId }, async ({ tenantId }) => {
-    const node = await getNodeBasics(tenantId, itemId)
+  return perform({ venueId, menuId }, async (context) => {
+    const node = await getNodeBasics(context.tenantId, itemId)
     if (node?.type !== 'item' || node.status === 'archived') return null
+    if (!(await ofVenue(context, itemId))) return NOT_FOUND
     return setItemHiddenOps({ itemId, hidden, status: node.status })
   })
 }
@@ -381,19 +393,15 @@ export async function deleteSectionAction(input: unknown): Promise<ActionResult>
   const parsed = SectionInput.safeParse(input)
   if (!parsed.success) return INVALID
   const { venueId, menuId, sectionId } = parsed.data
-  return perform(
-    { venueId, menuId },
-    async (context) => {
-      if (!(await liveSection(context, sectionId))) return null
-      const plan = deleteSectionPlan(
-        await loadMenuDocument(getPool(), context.tenantId, context.menuId),
-        sectionId,
-      )
-      if (!plan.ok) return plan.error === 'till_section' ? TILL_SECTION : null
-      return plan.ops
-    },
-    { ownersOnly: true },
-  )
+  return perform({ venueId, menuId }, async (context) => {
+    if (!(await liveSection(context, sectionId))) return null
+    const plan = deleteSectionPlan(
+      await loadMenuDocument(getPool(), context.tenantId, context.menuId),
+      sectionId,
+    )
+    if (!plan.ok) return plan.error === 'till_section' ? TILL_SECTION : null
+    return plan.ops
+  })
 }
 
 /**
@@ -443,13 +451,9 @@ export async function deleteItemAction(input: unknown): Promise<ActionResult> {
   const parsed = ItemInput.safeParse(input)
   if (!parsed.success) return INVALID
   const { venueId, menuId, itemId } = parsed.data
-  return perform(
-    { venueId, menuId },
-    async (context) => {
-      const doc = await handMadeItem(context, itemId)
-      if (doc === null || !('nodes' in doc)) return doc
-      return [{ op: 'setNodeStatus', node: { id: itemId }, status: 'archived' }]
-    },
-    { ownersOnly: true },
-  )
+  return perform({ venueId, menuId }, async (context) => {
+    const doc = await handMadeItem(context, itemId)
+    if (doc === null || !('nodes' in doc)) return doc
+    return [{ op: 'setNodeStatus', node: { id: itemId }, status: 'archived' }]
+  })
 }

@@ -64,8 +64,14 @@ export const REFUSAL_CODES = [
   'amount_mismatch',
   /** The step was already done (a second close of the same bill). */
   'already_done',
-  /** The POS is busy with this bill (another device holds it). */
+  /**
+   * The POS is busy: another device holds this bill, or, only where the connector knows its POS
+   * answers so before doing anything, it took no more calls just now. Either way nothing was
+   * written.
+   */
   'busy',
+  /** A read the step needs first failed, so nothing was written: the step never went out (D116). */
+  'read_failed',
   /** The POS login's credentials are refused. */
   'credentials',
   /** The POS login lacks a right this step needs. */
@@ -89,6 +95,8 @@ export const RefusalSchema = z
     line: z.int().nonnegative().nullable(),
     /** The POS's own words, for the Restro team's Log only: never shown to a guest (rule 3). */
     detail: z.string().max(500).nullable(),
+    /** The POS bill the refusal is about, where the step chose one (D115: use the next one). */
+    bill: PosRefSchema.optional(),
   })
   .refine((refusal) => (refusal.scope === 'line') === (refusal.line !== null), {
     message: 'a line refusal names its line, and only a line refusal does',
@@ -126,12 +134,25 @@ export type WriteOutcome<R, F = Refusal> =
 export function readingSchema<T extends z.ZodType>(value: T) {
   return z.discriminatedUnion('complete', [
     z.strictObject({ complete: z.literal(true), value }),
-    z.strictObject({ complete: z.literal(false), reason: z.string().max(500) }),
+    z.strictObject({
+      complete: z.literal(false),
+      reason: z.string().max(500),
+      busy: z.literal(true).optional(),
+    }),
   ])
 }
 export type Reading<T> =
   | { readonly complete: true; readonly value: T }
-  | { readonly complete: false; readonly reason: string }
+  | {
+      readonly complete: false
+      readonly reason: string
+      /**
+       * Set only by a connector that knows its POS answered "busy" before doing anything, or when
+       * the call never left for want of room in the budget. Then nothing is wrong with the table
+       * or the connection: it is no failed reading, the same as a read the budget skipped.
+       */
+      readonly busy?: true
+    }
 
 // ---------------------------------------------------------------------------------------------
 // The probe (D120's "cheap POS read", D122 §6, D124 §5)
@@ -264,6 +285,20 @@ export const IsolatedBillSchema = z.strictObject({
   bill: PosBillSchema.nullable(),
 })
 export type IsolatedBill = z.output<typeof IsolatedBillSchema>
+
+/**
+ * One closed POS bill as a read of closed bills shows it, only where `readClosedBills` is declared:
+ * what D127's third proof of a close looks at.
+ */
+export const ClosedBillSchema = z.strictObject({
+  ref: PosRefSchema,
+  totalMinor: SignedMinorSchema,
+  /** The receipt number the bill carries, where the POS gives one (`receiptNumberOnClose`). */
+  receiptNumber: z.string().min(1).max(200).nullable(),
+  /** Restro's references on its lines, where the POS keeps them (`ownLineReference`). */
+  restroRefs: z.array(z.string().min(1).max(200)),
+})
+export type ClosedBill = z.output<typeof ClosedBillSchema>
 
 /** The item-availability read (D122 §4, Stock), only where `itemAvailability` is declared. */
 export const AvailabilitySchema = z.strictObject({

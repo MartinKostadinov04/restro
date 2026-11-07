@@ -12,6 +12,8 @@ import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import type { ServiceContext } from './context'
 import { applyService } from './index'
 
+type Listed = { ref: string; amountMinor: number; failed: boolean }
+
 describe.skipIf(!hasDatabase)('recording a payment as the provider reads it back', () => {
   let world: ServiceWorld
 
@@ -74,9 +76,10 @@ describe.skipIf(!hasDatabase)('recording a payment as the provider reads it back
     )
     return { id, providerPaymentRef }
   }
+  const refund = (ref: string, amountMinor: number): Listed => ({ ref, amountMinor, failed: false })
   const observe = (
     target: { id: string; providerPaymentRef: string },
-    reading: { refundedMinor: number; dispute: 'open' | 'won' | 'lost' | null },
+    reading: { refunds: readonly Listed[] | null; dispute: 'open' | 'won' | 'lost' | null },
     overrides: Record<string, unknown> = {},
   ) => ({
     type: 'payment.observe',
@@ -95,11 +98,11 @@ describe.skipIf(!hasDatabase)('recording a payment as the provider reads it back
       )
     ).rows[0] as { refunded_minor: string; dispute: string | null; source: string; actor: string }
 
-  it('records the refund total and the dispute as read, and a repeat changes nothing', async () => {
+  it('records the refunds and the dispute as read, and a repeat changes nothing', async () => {
     const target = await payment()
     const first = await applyService(
       world.app,
-      observe(target, { refundedMinor: 500, dispute: null }),
+      observe(target, { refunds: [refund('re_1', 500)], dispute: null }),
       worker(),
     )
     expect(first.result).toMatchObject({
@@ -113,8 +116,9 @@ describe.skipIf(!hasDatabase)('recording a payment as the provider reads it back
       actor: 'system',
     })
 
-    // A later reading carries the total, never the step: 500 + 700 is read as 1 200.
-    const later = observe(target, { refundedMinor: 1_200, dispute: 'open' })
+    // A later reading carries all of them, never the step: 500 + 700 is read as 1 200.
+    const both = [refund('re_1', 500), refund('re_2', 700)]
+    const later = observe(target, { refunds: both, dispute: 'open' })
     expect((await applyService(world.app, later, worker())).result).toMatchObject({
       status: 'accepted',
       details: { changed: true, refundedMinor: 1_200, dispute: 'open' },
@@ -125,14 +129,14 @@ describe.skipIf(!hasDatabase)('recording a payment as the provider reads it back
     })
     expect(await stored(target.id)).toMatchObject({ refunded_minor: '1200', dispute: 'open' })
 
-    const closed = observe(target, { refundedMinor: 1_200, dispute: 'lost' })
+    const closed = observe(target, { refunds: null, dispute: 'lost' })
     await applyService(world.app, closed, worker())
     expect(await stored(target.id)).toMatchObject({ refunded_minor: '1200', dispute: 'lost' })
   })
 
   it("refuses a payment that is missing, another provider's, not captured or captured otherwise", async () => {
     const target = await payment()
-    const reading = { refundedMinor: 100, dispute: null }
+    const reading = { refunds: [refund('re_1', 100)], dispute: null }
     const missing = observe({ ...target, id: newId('py') }, reading)
     expect((await applyService(world.app, missing, worker())).result).toMatchObject({
       status: 'refused',
@@ -142,7 +146,7 @@ describe.skipIf(!hasDatabase)('recording a payment as the provider reads it back
       [{ providerPaymentRef: 'simpay_other' }, 'another_provider_payment'],
       [{ providerKind: 'other-pay' }, 'another_provider_payment'],
       [{ capturedMinor: 1_999 }, 'captured_amount'],
-      [{ refundedMinor: 2_001 }, 'captured_amount'],
+      [{ refunds: [refund('re_1', 2_000), refund('re_2', 1)] }, 'captured_amount'],
     ] as const) {
       const { result } = await applyService(
         world.app,
@@ -166,7 +170,7 @@ describe.skipIf(!hasDatabase)('recording a payment as the provider reads it back
 
   it('takes the step from the worker only', async () => {
     const target = await payment()
-    const command = observe(target, { refundedMinor: 100, dispute: null })
+    const command = observe(target, { refunds: [refund('re_1', 100)], dispute: null })
     const guest = await applyService(world.app, command, {
       ...worker(),
       origin: 'guest',

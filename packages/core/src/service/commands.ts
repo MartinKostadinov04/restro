@@ -63,6 +63,7 @@ import {
   resumeTable,
   sweepPauses,
   transitionPause,
+  undoPause,
 } from './pauses'
 import {
   payCancel,
@@ -148,7 +149,7 @@ import {
 import { stockNotice } from './stock'
 import { MAX_REVEALED_CODES, reissueTableCode, revealTableCodes } from './table-codes'
 import { changedSince, type UndoToken, UndoTokenSchema } from './undo'
-import { callWaiter, lapseWaiterCall, waiterCallDone } from './waiter-call'
+import { callWaiter, lapseWaiterCall, waiterCallDone, waiterCallUndone } from './waiter-call'
 
 const tableId = idSchema('tb')
 const actionId = z.uuid()
@@ -415,6 +416,7 @@ export const SERVICE_COMMANDS = {
   'table.resume': staffOnTable('table.resume', 'tables.resume', resumeTable),
   'ordering.pause': pauseOrdering(),
   'ordering.lift': liftOrdering(),
+  'ordering.undo_pause': undoPause(),
   // #85: staff settle an Unconfirmed sent order: "Found on the bill" or "Not on the bill".
   'sent_order.answer': sentOrderAnswer(),
   // #83: Done in Tonight or from the venue's Telegram group (`via`), and what the worker sends.
@@ -447,11 +449,14 @@ export const SERVICE_COMMANDS = {
     handle: syncPauseAlerts,
   }),
   // #83: a signed-in account's installed device for Web Push (D122 §7).
+  // D120 names the bar's tablet for push (RR-86): its account subscribes this device with no PIN.
+  // `push.revoke` is not quick: one tap with no name would silence the tablet's money alerts.
   'push.subscribe': defineCommand({
     schema: PushSubscribeSchema,
     origins: ['staff'],
     permission: 'alerts.answer',
     idempotency: 'by_nature',
+    quickOnSharedDevice: true,
     handle: pushSubscribe,
   }),
   'push.revoke': defineCommand({
@@ -476,7 +481,28 @@ export const SERVICE_COMMANDS = {
     permission: 'alerts.answer',
     quickOnSharedDevice: true,
     idempotency: 'by_nature',
+    undoable: { kinds: ['waiter_call.done'] },
     handle: waiterCallDone,
+  }),
+  // RR-58: the Undo of "Handled", on a shared device as "Handled" itself is.
+  'waiter_call.undone': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('waiter_call.undone'),
+      waiterCallId: idSchema('wc'),
+      undo: UndoTokenSchema,
+    }),
+    origins: ['staff'],
+    permission: 'alerts.answer',
+    quickOnSharedDevice: true,
+    idempotency: 'by_nature',
+    undoStale: (stx, command, entry) =>
+      changedSince(
+        stx,
+        entry,
+        sql`${logEntries.kind} = 'waiter_call.done'
+          and ${logEntries.details} ->> 'waiterCallId' = ${command.waiterCallId}`,
+      ),
+    handle: waiterCallUndone,
   }),
   // #200: staff mark a captured payment's paper receipt Brought (no PIN on a shared device), and
   // Undo it.
@@ -536,6 +562,7 @@ export const SERVICE_COMMANDS = {
   // the last 15 minutes. The return reads the account back, which needs the right but no new
   // sign-in (the provider's hosted form can take longer than 15 minutes).
   'payment_account.connect': defineCommand({
+    payingState: true,
     schema: ConnectSchema,
     origins: ['staff'],
     permission: CONNECT_PERMISSION,
@@ -544,6 +571,7 @@ export const SERVICE_COMMANDS = {
     handle: connectAccount,
   }),
   'payment_account.return': defineCommand({
+    payingState: true,
     schema: ReturnSchema,
     origins: ['staff'],
     permission: CONNECT_PERMISSION,
@@ -551,6 +579,7 @@ export const SERVICE_COMMANDS = {
     handle: returnFromProvider,
   }),
   'payment_account.disconnect': defineCommand({
+    payingState: true,
     schema: DisconnectSchema,
     origins: ['staff'],
     permission: CONNECT_PERMISSION,
@@ -560,6 +589,7 @@ export const SERVICE_COMMANDS = {
   }),
   // #116: the smallest card payment and the venue's legal details (#198), by the same right.
   'settings.paying_set': defineCommand({
+    payingState: true,
     schema: SetPayingSchema,
     origins: ['staff'],
     permission: CONNECT_PERMISSION,
@@ -573,6 +603,7 @@ export const SERVICE_COMMANDS = {
   // table's (Tables & QR) the right to mark payment tables. A settings change, serialised on the
   // venue's row: two saves of different tables both stay.
   'pay_first.set': defineCommand({
+    payingState: true,
     schema: SetPayFirstSchema,
     origins: ['staff'],
     permission: CONNECT_PERMISSION,
@@ -585,6 +616,7 @@ export const SERVICE_COMMANDS = {
     handle: setPayFirst,
   }),
   'payment_account.tick': defineCommand({
+    payingState: true,
     schema: TickCheckSchema,
     origins: ['staff'],
     permission: CONNECT_PERMISSION,
@@ -653,12 +685,19 @@ export const SERVICE_COMMANDS = {
     { staffMemberIds: z.array(staffMemberId).min(1).max(MAX_REVEALED_PINS) },
     revealPins,
   ),
-  // #72: shared devices (the signed-in session marks itself; revoking is done from another).
-  'device.mark_shared': rolesChange(
-    'device.mark_shared',
-    { name: DeviceNameSchema },
-    markSharedDevice,
-  ),
+  // #72: shared devices (the signed-in session marks itself; revoking is done from another). A
+  // staff-only account marks its own browser the bar tablet (RR-O35, Martin 11-06): it holds no
+  // `settings.roles`, so marking needs `night.view` (which the Staff role holds), the handler
+  // refuses every account that holds more than staff, and the password of the last 15 minutes
+  // stays. Stopping one stays the owner's, in Settings.
+  'device.mark_shared': defineCommand({
+    schema: z.strictObject({ type: z.literal('device.mark_shared'), name: DeviceNameSchema }),
+    origins: ['staff'],
+    permission: 'night.view',
+    freshSignIn: true,
+    idempotency: 'by_nature',
+    handle: markSharedDevice,
+  }),
   'device.revoke': rolesChange('device.revoke', { deviceId: idSchema('dv') }, revokeSharedDevice),
 
   // Worker (D122 §9: readings, sent orders, pauses, sittings, notices, sweeps, the day's end).
@@ -700,6 +739,7 @@ export const SERVICE_COMMANDS = {
   // #109: what the provider answered about a venue's account: its account, a reading, the access
   // lost, the guest domain registered. A provider notice only nudges the worker to read.
   'payment_account.started': defineCommand({
+    payingState: true,
     schema: StartedSchema,
     origins: ['worker'],
     permission: null,
@@ -707,6 +747,7 @@ export const SERVICE_COMMANDS = {
     handle: accountStarted,
   }),
   'payment_account.observed': defineCommand({
+    payingState: true,
     schema: ObservedSchema,
     origins: ['worker'],
     permission: null,
@@ -714,6 +755,7 @@ export const SERVICE_COMMANDS = {
     handle: accountObserved,
   }),
   'payment_account.lost': defineCommand({
+    payingState: true,
     schema: LostSchema,
     origins: ['worker'],
     permission: null,
@@ -721,6 +763,7 @@ export const SERVICE_COMMANDS = {
     handle: accountLost,
   }),
   'payment_account.domain': defineCommand({
+    payingState: true,
     schema: DomainSchema,
     origins: ['worker'],
     permission: null,

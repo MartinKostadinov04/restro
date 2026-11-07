@@ -4,12 +4,14 @@
 // tables only, the cap per sent order, the venue's spot (only by "I'm at the venue – use this spot",
 // no map library, Martin 10-27) and, under "More", the location check, its radius and pass, the
 // pace limit and how long a waiter call waits. Every control saves at once with Undo; the labels say
-// "order". Writes go through `settings.ordering_set`.
+// "order". Writes go through `settings.ordering_set`. Last, the venue's legal details with its
+// privacy notice link, the form Settings › Paying draws too (#288): the location check and ordering
+// from the phone turn on only once it is filled in.
 import { decimalToMinor, MoneyError, minorToDecimal } from '@restro/core'
 import { ChevronDownIcon, PencilIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useFormatter, useTranslations } from 'next-intl'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -30,6 +32,9 @@ import { useMoney } from '@/tonight/money'
 
 import { CHOICES, SPOT_ACCURACY_LIMIT_METRES } from './hours'
 import { MinutesSelect } from './hours-panel'
+import { LegalDetailsCard } from './legal-details-card'
+import { privacyHref } from './privacy-href'
+import { PrivacyLine } from './privacy-line'
 import { ReadOnlyLine } from './section-notices'
 import { useSettingsRun } from './use-settings-run'
 
@@ -48,7 +53,13 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
   const { pending, run } = runner
   const settings = view.settings
   const can = view.canChange
+  const privacyLink = privacyHref(view.venueId)
+  // The location check turns on only once the venue has a privacy notice link (RR-O15); one already
+  // on stays on.
+  const locationLocked = !view.privacyNotice && !settings.locationCheck
   const [editingCap, setEditingCap] = useState(false)
+  // Enter or Escape has answered: the blur of the field going away is no second answer.
+  const capAnswered = useRef(false)
   const [capText, setCapText] = useState('')
   const [capProblem, setCapProblem] = useState(false)
   const [reading, setReading] = useState(false)
@@ -64,7 +75,21 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
   function startCap() {
     setCapText(minorToDecimal(settings.capMinor ?? DEFAULT_CAP_MINOR))
     setCapProblem(false)
+    capAnswered.current = false
     setEditingCap(true)
+  }
+
+  /**
+   * Leaving the field keeps what was typed (RR-58): a change saves as Enter does, and one that is no
+   * amount stays there with its problem shown. Only Escape discards it.
+   */
+  function leaveCap() {
+    if (capAnswered.current) return
+    if (capText.trim() === minorToDecimal(settings.capMinor ?? DEFAULT_CAP_MINOR)) {
+      setEditingCap(false)
+      return
+    }
+    saveCap()
   }
 
   function saveCap() {
@@ -80,6 +105,7 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
       setCapProblem(true)
       return
     }
+    capAnswered.current = true
     setEditingCap(false)
     if (minor !== settings.capMinor) save({ capMinor: minor }, { capMinor: settings.capMinor })
   }
@@ -111,36 +137,24 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
   }
 
   return (
-    <div className="grid gap-4" data-testid="ordering-panel" aria-busy={pending}>
+    <div className="grid grid-cols-1 gap-4" data-testid="ordering-panel" aria-busy={pending}>
       <div>
         <h2 className="text-xl font-semibold tracking-tight">{t('st_ordering')}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{t('st_ordering_lede')}</p>
       </div>
       {can ? null : <ReadOnlyLine />}
+      {view.orderingOn && !view.privacyNotice ? (
+        <PrivacyLine state="ordering" href={privacyLink} testId="ord-privacy-ordering" />
+      ) : null}
 
-      <div className="grid divide-y rounded-lg border bg-card">
-        <Row label={t('st_open_only')} htmlFor="ord-open-only">
-          {can ? (
-            <Switch
-              id="ord-open-only"
-              checked={settings.onlyOpenTables}
-              disabled={pending}
-              onCheckedChange={(on) =>
-                save({ onlyOpenTables: on }, { onlyOpenTables: settings.onlyOpenTables })
-              }
-            />
-          ) : (
-            <Value>{settings.onlyOpenTables ? t('st_open') : t('st_off')}</Value>
-          )}
-        </Row>
-
+      <div className="grid grid-cols-1 divide-y rounded-lg border bg-card">
         <Row label={t('st_cap')} htmlFor="ord-cap">
           {editingCap ? (
-            <div className="grid gap-1">
+            <div className="grid grid-cols-1 gap-1">
               <Input
                 id="ord-cap"
                 inputMode="decimal"
-                className="w-32"
+                className="w-32 max-w-full"
                 value={capText}
                 autoFocus
                 aria-invalid={capProblem ? true : undefined}
@@ -151,9 +165,12 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
                 }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') saveCap()
-                  if (event.key === 'Escape') setEditingCap(false)
+                  if (event.key === 'Escape') {
+                    capAnswered.current = true
+                    setEditingCap(false)
+                  }
                 }}
-                onBlur={() => setEditingCap(false)}
+                onBlur={leaveCap}
               />
               {capProblem ? (
                 <p id="ord-cap-problem" className="text-sm text-destructive" role="alert">
@@ -162,7 +179,7 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
               ) : null}
             </div>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {settings.capMinor === null ? (
                 <Value>{t('st_cap_off')}</Value>
               ) : (
@@ -198,7 +215,7 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
           )}
         </Row>
 
-        <div className="grid gap-2 p-3">
+        <div className="grid grid-cols-1 gap-2 p-3">
           {settings.spot === null ? (
             <p className="text-sm text-destructive" data-testid="ord-spot-unset">
               {t('st_spot_unset')}
@@ -226,13 +243,13 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
           {t('st_more')}
           <ChevronDownIcon aria-hidden className="size-4" />
         </CollapsibleTrigger>
-        <CollapsibleContent className="grid divide-y border-t">
+        <CollapsibleContent className="grid grid-cols-1 divide-y border-t">
           <Row label={t('st_loc')} htmlFor="ord-loc">
             {can ? (
               <Switch
                 id="ord-loc"
                 checked={settings.locationCheck}
-                disabled={pending}
+                disabled={pending || locationLocked}
                 onCheckedChange={(on) =>
                   save({ locationCheck: on }, { locationCheck: settings.locationCheck })
                 }
@@ -245,6 +262,15 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
             <p className="p-3 text-sm text-muted-foreground" data-testid="ord-loc-off">
               {t('st_loc_off')}
             </p>
+          )}
+          {view.privacyNotice ? null : (
+            <div className="p-3">
+              <PrivacyLine
+                state={settings.locationCheck ? 'missing' : 'need'}
+                href={privacyLink}
+                testId="ord-loc-privacy"
+              />
+            </div>
           )}
           <Row label={t('st_radius')} htmlFor="ord-radius">
             <ChoiceSelect
@@ -313,6 +339,13 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
           </p>
         </CollapsibleContent>
       </Collapsible>
+      <LegalDetailsCard
+        place="ordering"
+        venueId={view.venueId}
+        legal={view.legal}
+        canEdit={view.canEditLegal}
+        runner={runner}
+      />
       {runner.dialog}
     </div>
   )

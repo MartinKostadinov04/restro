@@ -342,25 +342,23 @@ describe('sending the bag: no local success (test 3)', () => {
     expect(within(sheet).getByRole('alert').textContent).toContain('Ask your waiter.')
   })
 
-  it('keeps the bag after a thrown error, and the retry reuses the actionId', async () => {
+  it('keeps the bag after a thrown error, says D120’s line and offers no re-send (RR-50)', async () => {
     const { host, sheet } = await bagWithTwo()
     const first = await send(host, sheet, 1)
     await act(async () => first?.fail())
     const alert = within(sheet).getByRole('alert')
-    expect(alert.textContent).toContain('Your order was not confirmed')
+    // The order may already be in the POS: call a waiter, never "Try again".
+    expect(alert.textContent).toContain('We can’t reach Restro right now')
+    expect(sheet.textContent).not.toContain('Try again')
     expect(within(sheet).getByText('Hummus')).toBeTruthy()
     expect(screen.queryByRole('dialog', { name: 'Table order' })).toBeNull()
-
-    fireEvent.click(within(sheet).getByRole('button', { name: /Try again/ }))
-    await waitFor(() => expect(host.of('order.send')).toHaveLength(2))
-    const second = host.of('order.send')[1]
-    expect(second?.command.actionId).toBe(first?.command.actionId)
-    expect(second?.command.lines).toEqual(first?.command.lines)
-    await act(async () => second?.answer())
-    await screen.findByRole('dialog', { name: 'Table order' })
+    expect(sendButton(sheet).hasAttribute('disabled')).toBe(true)
+    fireEvent.click(sendButton(sheet))
+    await act(async () => {})
+    expect(host.of('order.send')).toHaveLength(1)
   })
 
-  it('treats a host that does not answer in time as a failure, keeps the bag, and retries with the same actionId', async () => {
+  it('treats a host that does not answer in time as a lost answer, keeps the bag and offers no re-send', async () => {
     const { host, sheet } = await bagWithTwo()
     vi.useFakeTimers()
     fireEvent.click(sendButton(sheet))
@@ -374,7 +372,9 @@ describe('sending the bag: no local success (test 3)', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(SERVICE_TIMEOUT_MS + 10)
     })
-    expect(within(sheet).getByRole('alert').textContent).toContain('Your order was not confirmed')
+    expect(within(sheet).getByRole('alert').textContent).toContain(
+      'We can’t reach Restro right now',
+    )
     expect(within(sheet).getByText('Hummus')).toBeTruthy()
 
     // The host answers late: that answer is ignored (it is the answer to a send the face gave up on).
@@ -382,12 +382,12 @@ describe('sending the bag: no local success (test 3)', () => {
     expect(screen.queryByRole('dialog', { name: 'Table order' })).toBeNull()
     expect(within(sheet).getByText('Hummus')).toBeTruthy()
 
-    fireEvent.click(within(sheet).getByRole('button', { name: /Try again/ }))
+    // No re-send: the button is greyed, and nothing more goes out.
+    fireEvent.click(sendButton(sheet))
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
-    expect(host.of('order.send')).toHaveLength(2)
-    expect(host.of('order.send')[1]?.command.actionId).toBe(first?.command.actionId)
+    expect(host.of('order.send')).toHaveLength(1)
   })
 
   it('uses a new actionId when the bag changed after a failure', async () => {
@@ -441,7 +441,7 @@ describe('sending the bag: no local success (test 3)', () => {
     expect(bagButton()).toBeNull()
   })
 
-  it('lets the guest try again when the host stays undecided', async () => {
+  it('says D120’s line, not "Try again", when the host stays undecided', async () => {
     const { host, sheet } = await bagWithTwo()
     const call = await send(host, sheet, 1)
     vi.useFakeTimers()
@@ -449,12 +449,12 @@ describe('sending the bag: no local success (test 3)', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(SERVICE_TIMEOUT_MS + 10)
     })
-    expect(within(sheet).getByRole('alert').textContent).toContain('Your order was not confirmed')
-    fireEvent.click(within(sheet).getByRole('button', { name: /Try again/ }))
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0)
-    })
-    expect(host.of('order.send')[1]?.command.actionId).toBe(call?.command.actionId)
+    expect(within(sheet).getByRole('alert').textContent).toContain(
+      'We can’t reach Restro right now',
+    )
+    expect(sheet.textContent).not.toContain('Try again')
+    expect(sendButton(sheet).hasAttribute('disabled')).toBe(true)
+    expect(host.of('order.send')).toHaveLength(1)
   })
 
   it("takes the bill's round for the answer of a send whose answer never came", async () => {
@@ -537,7 +537,9 @@ describe('sending the bag: no local success (test 3)', () => {
     const { host, sheet } = await bagWithTwo()
     const call = await send(host, sheet, 1)
     await act(async () => call?.answer({ actionId: '00000000-0000-4000-8000-000000000000' }))
-    expect(within(sheet).getByRole('alert').textContent).toContain('Your order was not confirmed')
+    expect(within(sheet).getByRole('alert').textContent).toContain(
+      'We can’t reach Restro right now',
+    )
     expect(screen.queryByRole('dialog', { name: 'Table order' })).toBeNull()
   })
 })

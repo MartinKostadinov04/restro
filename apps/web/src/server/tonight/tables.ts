@@ -50,6 +50,7 @@ export type TableCommand =
       readonly answer: 'found' | 'not_found'
     }
   | { readonly type: 'waiter_call.done'; readonly waiterCallId: string }
+  | { readonly type: 'waiter_call.undone'; readonly waiterCallId: string; readonly undo: UndoToken }
   | { readonly type: 'receipt.brought'; readonly paymentId: string }
   | { readonly type: 'receipt.unbrought'; readonly paymentId: string; readonly undo?: UndoToken }
   | { readonly type: 'payment.storno_done'; readonly refundId: string }
@@ -68,7 +69,15 @@ export type TableCommand =
       readonly answer: 'receipt_printed' | 'no_receipt' | 'on_till' | 'not_on_till'
     }
   | { readonly type: 'ordering.pause'; readonly barId: string | null; readonly undo?: UndoToken }
-  | { readonly type: 'ordering.lift'; readonly pauseId: string; readonly undo?: UndoToken }
+  | { readonly type: 'ordering.lift'; readonly pauseId: string }
+  | { readonly type: 'ordering.undo_pause'; readonly pauseId: string; readonly undo: UndoToken }
+  | {
+      readonly type: 'push.subscribe'
+      readonly endpoint: string
+      readonly p256dh: string
+      readonly auth: string
+    }
+  | { readonly type: 'push.revoke'; readonly endpointHash: string }
 
 /** Who acts at which venue. The tenant is the person's organisation, never the request's. */
 export interface TonightScope {

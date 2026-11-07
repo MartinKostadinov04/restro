@@ -42,8 +42,15 @@ export interface JobQueue {
   send(
     name: string,
     data: object,
-    /** `startAfter`: seconds to wait before the job may start. */
-    options?: { singletonKey?: string; startAfter?: number | undefined },
+    /**
+     * `startAfter`: seconds to wait before the job may start. `group`: the route queues' one run
+     * at a time per key (`ONE_RUN_PER_GROUP_JOBS`).
+     */
+    options?: {
+      singletonKey?: string
+      startAfter?: number | undefined
+      group?: { readonly id: string } | undefined
+    },
   ): Promise<string | null>
 }
 
@@ -66,6 +73,15 @@ export interface JobOptions {
    * barsy jobs use `exclusive`: one queued-or-running job per queue and singleton key.
    */
   readonly policy?: QueuePolicy
+  /**
+   * The policy the queue had before `policy` changed. pg-boss cannot change a queue's policy, so
+   * the registry deletes a queue it finds still on this one and creates it again, then sends its
+   * waiting jobs (queued, or waiting for a retry) again with their key, group and start time. A
+   * job that was running then is lost with the old queue: its run goes on, but its retry and its
+   * dead letter are gone. Any other policy found is left as it is, with an error in the log. A
+   * one-off for a change of policy: remove it once every database has the queue on its new one.
+   */
+  readonly previousPolicy?: QueuePolicy
   /** How the worker fetches: `batchSize`, `localConcurrency`, `pollingIntervalSeconds`. */
   readonly work?: WorkOptions
 }

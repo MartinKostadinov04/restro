@@ -34,6 +34,7 @@ import {
   type ProviderNotice,
   type ProviderPayment,
   type ProviderRef,
+  type ProviderRefund,
   providerRef,
   type Reading,
   type ReleaseRequest,
@@ -111,6 +112,8 @@ interface SimPayment {
   capturedMinor: number
   /** What the venue refunded in its dashboard, in total. */
   refundedMinor: number
+  /** Each refund the venue made, oldest first. */
+  readonly refunds: { readonly ref: string; readonly amountMinor: number; failed: boolean }[]
   /** The latest dispute's ref, once the guest's bank opened one. */
   disputeRef: string | null
   /** The hold ran out uncaptured (`captureBefore` passed). */
@@ -282,12 +285,14 @@ export class SimPayEngine {
       payment.refundedMinor = addMinor(payment.refundedMinor, amountMinor)
       const ref = `simrefund_${this.#tag()}`
       this.#refunds.set(ref, { payment: payment.ref.provider })
+      payment.refunds.push({ ref, amountMinor, failed: false })
       return this.#send('refund.made', payment.account, ref, this.switches.refundNotices)
     },
     /**
-     * A refund the venue made does not go through at the provider (#222): the refund total falls
-     * back by that amount, and the provider sends its notice. A choice of the simulator: whether
-     * a real provider lowers the total on a failed refund is for its documentation.
+     * A refund the venue made does not go through at the provider (#222): the newest refund of that
+     * amount reads failed, the refund total falls back by it, and the provider sends its notice
+     * about that refund. A choice of the simulator: whether a real provider lowers the total on a
+     * failed refund is for its documentation; Restro goes by the list (#261).
      */
     refundFails: (
       accountRef: ProviderRef,
@@ -295,19 +300,15 @@ export class SimPayEngine {
       amountMinor: number,
     ): SimPayEvent => {
       const payment = this.#capturedPayment(accountRef, paymentRef)
-      if (
-        !Number.isSafeInteger(amountMinor) ||
-        amountMinor <= 0 ||
-        amountMinor > payment.refundedMinor
-      ) {
-        throw new Error(
-          `a refund of ${amountMinor} failed where ${payment.refundedMinor} is refunded`,
-        )
+      const refund = payment.refunds.findLast(
+        (made) => !made.failed && made.amountMinor === amountMinor,
+      )
+      if (refund === undefined) {
+        throw new Error(`a refund of ${amountMinor} failed where the payment has none of it`)
       }
+      refund.failed = true
       payment.refundedMinor = subtractMinor(payment.refundedMinor, amountMinor)
-      const ref = `simrefund_${this.#tag()}`
-      this.#refunds.set(ref, { payment: payment.ref.provider })
-      return this.#send('refund.failed', payment.account, ref, this.switches.refundNotices)
+      return this.#send('refund.failed', payment.account, refund.ref, this.switches.refundNotices)
     },
   }
 
@@ -424,6 +425,7 @@ export class SimPayEngine {
         heldMinor: 0,
         capturedMinor: 0,
         refundedMinor: 0,
+        refunds: [],
         disputeRef: null,
         expired: false,
         captureBefore: null,
@@ -470,6 +472,26 @@ export class SimPayEngine {
     const payment = this.#payments.get(paymentRef)
     if (payment === undefined || payment.account !== accountRef.provider) return complete(null)
     return complete(this.#view(payment))
+  }
+
+  /** A payment's refunds as they stand now, oldest first. A read only: nothing moves. */
+  readRefunds(
+    accountRef: ProviderRef,
+    paymentRef: ProviderRef,
+  ): Reading<readonly ProviderRefund[]> {
+    if (this.#failReads) return { complete: false, reason: 'the refunds read failed part-way' }
+    const payment = this.#payments.get(paymentRef.provider)
+    if (payment === undefined || payment.account !== accountRef.provider) {
+      return { complete: false, reason: 'no such payment on this account' }
+    }
+    return {
+      complete: true,
+      value: payment.refunds.map((refund) => ({
+        ref: providerRef(refund.ref),
+        amountMinor: refund.amountMinor,
+        failed: refund.failed,
+      })),
+    }
   }
 
   capture(request: CaptureRequest): PaymentWriteOutcome<ProviderPayment> {

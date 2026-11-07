@@ -11,6 +11,10 @@
 // bill). The fixture is scripts/seed-send-e2e.ts (run here before each test: a new code, a fresh
 // sitting, no pause). Cloudflare's Turnstile script is stubbed in the page; the server checks its
 // token with Cloudflare's published test secret (playwright.config.ts).
+//
+// Run it once per fresh database, as CI does. It can't be repeated: each run sends four rounds from
+// table 1, and D118's pace allows 6 rounds per table per 15 minutes, so a second local run inside
+// that window is refused and fails like a flake. Wait out the window or reseed to run it again.
 import { devices, expect, type Page, test } from '@playwright/test'
 
 import { runScript } from './global-setup'

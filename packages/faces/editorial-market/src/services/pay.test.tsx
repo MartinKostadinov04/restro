@@ -412,7 +412,7 @@ describe("this phone's payment", () => {
       [
         'not_on_till',
         'The payment wasn’t completed. Nothing was charged. Any amount your bank reserved will be released.',
-        false,
+        true,
       ],
       [
         'item_unavailable',

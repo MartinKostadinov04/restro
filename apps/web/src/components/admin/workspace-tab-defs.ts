@@ -63,6 +63,19 @@ export function workspaceTabOf(requested: unknown): WorkspaceTabValue {
 }
 
 /**
+ * The tabs a shared device has (D122 §7, RR-83, RR-84, RR-85): it works Tonight, and the composer,
+ * Tables & QR and Settings need the person's own sign-in, so they aren't there and Tonight is where
+ * it opens.
+ */
+export const SHARED_DEVICE_TAB_DEFS = WORKSPACE_TAB_DEFS.filter((tab) => tab.value === 'tonight')
+
+/** The tab a `?tab=` value opens on a shared device. */
+export function sharedDeviceTabOf(requested: unknown): WorkspaceTabValue {
+  const tab = workspaceTabOf(requested)
+  return SHARED_DEVICE_TAB_DEFS.some((one) => one.value === tab) ? tab : 'tonight'
+}
+
+/**
  * The sections of the Settings tab (D97, #87): General, Hours, Ordering, Staff and roles, Alerts,
  * Publish (only for a venue with a till) and Versioning, in the order of
  * docs/deliverables/2026-10-27-owner-settings-grouping.md. Paying (#116) goes between Ordering and

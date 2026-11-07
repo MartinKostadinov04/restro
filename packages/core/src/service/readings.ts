@@ -4,7 +4,8 @@
 //
 // - With no open sitting nothing is stored: the bill is the sitting's.
 // - A partial reading concludes nothing (rule 6): the bill shown stays the last complete one, the
-//   row only says the latest reading failed. No sitting ends, no order clears, no pause lifts.
+//   row only says the latest reading failed. No sitting ends, no order clears, no pause lifts. It
+//   pauses that table until its next good reading (D111, D120).
 // - A complete reading overwrites the row in place with our ids and names (`bill.ts`) and marks
 //   the sitting as having had lines once any POS bill holds one.
 // - A complete reading is also matched with the table's Unconfirmed sent orders (`late-landing.ts`,
@@ -17,7 +18,7 @@
 // whether the latest reading was complete.
 //
 // Locks, in the fixed order: the sitting `update` (the reading may end it), the order, the
-// reading's row.
+// reading's row, the pause.
 
 import {
   billReadings,
@@ -33,7 +34,7 @@ import { z } from 'zod'
 
 import type { Layer, Scope, Source } from '../change-set'
 import { canonicalJson } from '../hash'
-import { idSchema, type NodeId } from '../ids'
+import { idSchema, type NodeId, newId } from '../ids'
 import { venueLanguages } from '../languages'
 import type { LocalizedText } from '../locales'
 import { combineField, readsLayer } from '../resolve/combine'
@@ -51,7 +52,7 @@ import {
 } from './bill'
 import { defineCommand, type ServiceTx } from './definition'
 import { lockLateCandidates, recordLateLandings } from './late-landing'
-import { LIFT_REASONS, liftTablePauses } from './pauses'
+import { LIFT_REASONS, liftTablePauses, READING_FAILED_CAUSE } from './pauses'
 import { accepted } from './results'
 import { ORDER_UNCONFIRMED_CAUSE } from './sent-order'
 import { endSitting } from './sittings'
@@ -198,6 +199,42 @@ async function liftUnconfirmed(
   }
 }
 
+/** Starts the table's pause for a failed reading; while one is active a repeat changes nothing. */
+async function pauseForFailedReading(
+  stx: ServiceTx,
+  tableId: string,
+  sittingId: string,
+): Promise<void> {
+  stx.rows.claim('pause', [`table:${tableId}:${READING_FAILED_CAUSE}`])
+  const [active] = await stx.tx
+    .select({ id: pauses.id })
+    .from(pauses)
+    .where(
+      and(
+        eq(pauses.scope, 'table'),
+        eq(pauses.targetId, tableId),
+        eq(pauses.cause, READING_FAILED_CAUSE),
+        isNull(pauses.liftedAt),
+      ),
+    )
+    .for('update')
+  if (active !== undefined) return
+  await stx.tx.insert(pauses).values({
+    id: newId('pa'),
+    tenantId: stx.tenantId,
+    venueId: stx.venueId,
+    serviceDate: stx.serviceDate,
+    scope: 'table',
+    targetId: tableId,
+    cause: READING_FAILED_CAUSE,
+    restroStarted: true,
+    details: {},
+    ...stx.provenance,
+  })
+  await stx.log({ kind: 'pause.started', tableId, sittingId, reason: READING_FAILED_CAUSE })
+  stx.rows.touch(tableId)
+}
+
 /** `reading.record`: stores a reading of the table's POS bills and ends the sitting it closes. */
 export function recordReading() {
   return defineCommand({
@@ -250,6 +287,7 @@ export function recordReading() {
         }
         // A phone sees the change only where a bill was shown: it is now marked not up to date.
         if (before?.complete === true) stx.rows.touch(command.tableId)
+        await pauseForFailedReading(stx, command.tableId, sitting.id)
         return accepted(null, { details: { recorded: true, complete: false, ended: false } })
       }
 
@@ -310,6 +348,9 @@ export function recordReading() {
           parseStoredBills(before?.bills ?? []),
           bills,
         )
+        await liftTablePauses(stx, command.tableId, LIFT_REASONS.goodReading, [
+          READING_FAILED_CAUSE,
+        ])
       }
       return accepted(null, {
         details: { recorded: true, complete: true, ended: ends, bills: bills.length, lines },

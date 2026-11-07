@@ -26,7 +26,7 @@ import { type ApplyResult, apply } from './apply'
 import { loadMenuDocument } from './load-document'
 import { type ProvisionedMenu, provisionMenu, provisionTenant, provisionVenue } from './provision'
 import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
-import { loadUnplacedItems } from './unplaced'
+import { itemsOfVenue, loadUnplacedItems } from './unplaced'
 
 const EXTERNAL_ARTICLE = '556677889'
 
@@ -602,6 +602,52 @@ describe.skipIf(!hasDatabase)('structure: moveNode, structural events, atomic, u
       expect((await loadUnplacedItems(app, tenant, secondMenu.id)).itemIds).toContain(item)
       // The other venue never sees it, nameless and priceless, in its Unsorted.
       expect((await loadUnplacedItems(app, tenant, menu.id)).itemIds).not.toContain(item)
+      // RR-72: the same answer when an action asks.
+      expect(await itemsOfVenue(app, tenant, secondVenueId, [item])).toContain(item)
+      expect(await itemsOfVenue(app, tenant, venueId, [item])).not.toContain(item)
+    })
+
+    it('itemsOfVenue: everything the composer shows is the venue’s, and what is another’s is not (RR-72)', async () => {
+      // Placed in a nested section of the live menu.
+      const top = await makeSection(menu.id)
+      const nested = await makeSection(top)
+      const inNested = await makeItem('Вложен')
+      // Placed in a menu of the venue that is not live.
+      const notLive = await provisionMenu(app, tenant, venueId)
+      const inNotLive = await makeItem('Не е активно')
+      const notLiveSection = await makeSection(notLive.id)
+      // Placed at the other venue, and only there.
+      const there = await makeSection(secondMenu.id)
+      const atOther = await makeItem('На другото място')
+      await run([
+        { op: 'setPlacement', item: { id: inNested }, section: { id: nested }, sortKey: 'end' },
+        {
+          op: 'setPlacement',
+          item: { id: inNotLive },
+          section: { id: notLiveSection },
+          sortKey: 'end',
+        },
+        { op: 'setPlacement', item: { id: atOther }, section: { id: there }, sortKey: 'end' },
+      ])
+      // Unsorted: hand-made and placed nowhere.
+      const unsorted = await makeItem('Несортиран')
+
+      // What the composer's two lists hold, asked of the real query: nothing shown is refused.
+      const shown = [
+        ...(await loadUnplacedItems(app, tenant, menu.id)).itemIds,
+        ...(await loadUnplacedItems(app, tenant, notLive.id)).itemIds,
+        inNested,
+        inNotLive,
+      ]
+      expect(shown).toContain(unsorted)
+      const ours = await itemsOfVenue(app, tenant, venueId, shown)
+      expect(shown.filter((id) => !ours.has(id))).toEqual([])
+
+      expect([...(await itemsOfVenue(app, tenant, venueId, [atOther]))]).toEqual([])
+      expect([...(await itemsOfVenue(app, tenant, secondVenueId, [atOther]))]).toEqual([atOther])
+      expect([...(await itemsOfVenue(app, tenant, secondVenueId, [inNested]))]).toEqual([])
+      // Another tenant's item is nobody's here.
+      expect([...(await itemsOfVenue(app, otherTenant, venueId, [inNested]))]).toEqual([])
     })
 
     it('refuses a menu the tenant does not have, and never returns another tenant’s items', async () => {

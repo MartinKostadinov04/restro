@@ -62,7 +62,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D55](decisions/D55.md) | Stage 2 plan approved | firm |
 | [D56](decisions/D56.md) | Read public catalogue data only | firm; refined by D88 (a venue's menus are barsy's designated roots) |
 | [D57](decisions/D57.md) | Menu photos in private R2 bucket restro-assets-staging | applied |
-| [D58](decisions/D58.md) | Haiku for simple exactly specified tasks, Sonnet by default, Opus only for genuinely… | firm; refined by D104 (planning tiers) |
+| [D58](decisions/D58.md) | Haiku for simple exactly specified tasks, Sonnet by default, Opus only for genuinely… | firm; refined by D104 (planning tiers) and D133 |
 | [D59](decisions/D59.md) | Publishing is a sync setting | firm; refined by D82 (allergen key per instance) and D77 (languages) |
 | [D60](decisions/D60.md) | Venue-defined tags and dietary labels are assigned in the composer and shown on the… | firm |
 | [D61](decisions/D61.md) | QR links: ours (/t/<token>, default) or the venue's own link, both supported with a… | firm; refined by D80 (custom domains) |
@@ -108,11 +108,11 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D101](decisions/D101.md) | Reservations become a module of the platform on Areas and Tables, hosted page first | direction; after ordering from the menu (T83) |
 | [D102](decisions/D102.md) | The night promise: the menu never goes down; everything else degrades to paused and alerts | firm; refined by D120 (push alerts, the outside watchdog) |
 | [D103](decisions/D103.md) | Keep the D43 hosting split through 10 clubs; agent time goes into portability, not moves | firm |
-| [D104](decisions/D104.md) | Fable plans the heavy zone; "I don't know" gets a higher model's proposal | firm; refines D58; refined by D108 |
+| [D104](decisions/D104.md) | Fable plans the heavy zone; "I don't know" gets a higher model's proposal | firm; refines D58; refined by D108 and D133 |
 | [D105](decisions/D105.md) | Templates are designed by agents in the repo, from the menu functionality file | firm; supersedes D63; refines D69 |
 | [D106](decisions/D106.md) | The design-skill set in force: frontend-design vendored for templates, Vercel rules pinned, UI UX Pro Max rejected | firm; refined by D109 |
 | [D107](decisions/D107.md) | Operational screens are for an owner who is not a tech person: plain words, undo, few taps | firm |
-| [D108](decisions/D108.md) | Planning climbs one rung at a time; the rung is sticky; the lead switches itself | firm; refines D104 |
+| [D108](decisions/D108.md) | Planning climbs one rung at a time; the rung is sticky; the lead switches itself | firm; refines D104; refined by D133 |
 | [D109](decisions/D109.md) | What enters from Emil Kowalski's skills, where, and what stays out | firm; refines D106, D105, D107 |
 | [D110](decisions/D110.md) | Restro writes into a POS only as a waiter would | firm; rewrites rule 7; refines D41; refined by D125 (scope line, provider notices) |
 | [D111](decisions/D111.md) | A bill is the table's view of the POS's bills; Restro keeps only its own orders and payments | firm; supersedes D5 with D112 and D113; refined by D115 (no visit, no bar counter) and D120 (table and venue pauses); refined by D122 |
@@ -132,6 +132,8 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D125](decisions/D125.md) | How a venue connects Stripe, and how Restro uses it | firm; refines D98, D126, D41 and D110; supersedes D19; closes D98's open line |
 | [D126](decisions/D126.md) | Stripe is the first payment provider; the pretend till stays for tables and bills | firm; refines D98 and D122; refined by D125 |
 | [D127](decisions/D127.md) | How the guest page pays: the commands, the route with its failure rules, Stripe's notices, tips only on the same receipt, the smallest card payment, the bank's check on every payment, where each call runs | firm; refines D98, D121, D122 and D125 |
+| [D132](decisions/D132.md) | Three wordings settled: a stamped new bill is never resent, a payment's return address, refunds are read and never made | firm; refines D112, D116 and D127 |
+| [D133](decisions/D133.md) | The model follows the job, not the session; Opus checks the heavy zone, Sonnet builds and keeps the books, sessions stay short | firm; refines D58, D104 and D108 |
 | [D134](decisions/D134.md) | The floor plan: spots a venue owns rather than Tables, its own kinds and shapes, who may edit it, and that reservations never touch the POS | firm; refines D101, D95 and D107 |
 | [D135](decisions/D135.md) | A reservation and its life: the seven statuses, who may work another hostess's booking, the read-only past, the turn time, and the pay rule a reservation carries | firm; refines D101, D122 and D107 |
 | [D136](decisions/D136.md) | Booking online, and money on a reservation: the hosted booking page and what guests may do on it, the email of every change, the prepayment held on the venue's own Stripe, and the fiscal receipt behind it | firm; refines D38, D101, D98, D125, D126 and D127 |

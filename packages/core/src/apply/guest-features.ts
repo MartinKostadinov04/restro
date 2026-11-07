@@ -11,6 +11,7 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema } from '../ids'
+import { hasPrivacyNotice } from '../legal-details'
 import {
   canonicalFeatures,
   type GuestFeatures,
@@ -27,6 +28,11 @@ export type GuestFeaturesErrorCode =
   | 'venue_not_found'
   /** The venue was deleted (D76). */
   | 'venue_archived'
+  /**
+   * Ordering was being turned on while the venue has no privacy notice link on file (RR-O44):
+   * nothing was written. Ordering already on stays on.
+   */
+  | 'privacy_missing'
 
 /** Thrown by `setGuestFeatures`. */
 export class GuestFeaturesError extends Error {
@@ -69,6 +75,13 @@ export async function setGuestFeatures(
       throw new GuestFeaturesError(
         locked.refused === 'venue_archived' ? 'venue_archived' : 'venue_not_found',
         venueRefusalText(venueId, locked.refused),
+      )
+    }
+    const previous = readGuestFeatures(locked.venue.settings)
+    if (features?.ordering && !previous.ordering && !hasPrivacyNotice(locked.venue.settings)) {
+      throw new GuestFeaturesError(
+        'privacy_missing',
+        'ordering needs the venue privacy notice link first',
       )
     }
     const { guest_features: _previous, ...others } = locked.venue.settings

@@ -29,6 +29,7 @@ import {
   type ProviderPayment,
   type ProviderRef,
   ProviderRefSchema,
+  type ProviderRefund,
   providerRef,
   type Reading,
   ReleaseRequestSchema,
@@ -60,6 +61,7 @@ import {
   type Mapped,
   PAYMENT_METADATA_KEY,
   providerPayment,
+  providerRefund,
 } from './mapping'
 
 /** The provider kind (`payments.provider_kind`, `apps/web/src/connectors/stripe/`). */
@@ -109,6 +111,9 @@ const RECENT_WINDOW_S = 2 * 60 * 60
 
 /** At most this many pages of 100 are listed; past that the read-back is incomplete. */
 const RECENT_PAGES = 10
+
+/** At most this many pages of 100 refunds are listed; past that the reading is incomplete. */
+const REFUND_PAGES = 10
 
 /** A request with no answer by then is `unknown`. */
 const DEFAULT_TIMEOUT_MS = 20_000
@@ -543,6 +548,38 @@ export function createStripeProvider(options: StripeProviderOptions): PaymentPro
       }
       const payment = await paymentOf(account, read.value)
       return payment.ok ? { complete: true, value: payment.value } : incomplete(payment.reason)
+    },
+
+    async readRefunds(accountRef, paymentRef): Promise<Reading<readonly ProviderRefund[]>> {
+      const account = ProviderRefSchema.parse(accountRef)
+      const ref = ProviderRefSchema.parse(paymentRef)
+      // GET /v1/refunds?payment_intent=…: newest first, a read only
+      // (https://docs.stripe.com/api/refunds/list.md). The seam's list is oldest first.
+      const newestFirst: ProviderRefund[] = []
+      let startingAfter: string | undefined
+      for (let page = 0; ; page++) {
+        if (page === REFUND_PAGES) return incomplete('too many refunds to list')
+        const listed = await get(listSchema(RefundSchema), () =>
+          stripe.refunds.list(
+            {
+              payment_intent: ref.provider,
+              limit: 100,
+              ...(startingAfter === undefined ? {} : { starting_after: startingAfter }),
+            },
+            on(account),
+          ),
+        )
+        if (!listed.ok) return incomplete(`the refunds were not read: ${listed.reason}`)
+        for (const refund of listed.value.data) {
+          const mapped = providerRefund(refund)
+          if (!mapped.ok) return incomplete(mapped.reason)
+          newestFirst.push(mapped.value)
+        }
+        const last = listed.value.data.at(-1)
+        if (!listed.value.has_more || last === undefined) break
+        startingAfter = last.id
+      }
+      return { complete: true, value: newestFirst.reverse() }
     },
 
     async capture(request) {

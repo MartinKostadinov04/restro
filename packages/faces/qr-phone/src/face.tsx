@@ -27,7 +27,7 @@ import {
   themeVariables,
 } from './model'
 import { PayPanel } from './pay-panel'
-import { OrderPanel, useOrderCommands } from './table-order'
+import { billShown, OrderPanel, useOrderCommands } from './table-order'
 
 /**
  * What the host gives the face besides the view model: the same props for every face. This face
@@ -257,8 +257,13 @@ export function QrPhoneFace(props: QrPhoneFaceProps) {
   const serviceStrings = stringsFor(locale).services
   // The table's shared order (#75): only where the shell turned ordering on (R15).
   const orderingOn = view.features.ordering
-  const { send, notice } = useOrderCommands(services, serviceStrings, view)
+  const { send, notice, answerLost } = useOrderCommands(services, serviceStrings, view)
   const notesAndOptions = services?.state.ordering?.notesAndOptions === true
+  // The screen the host polls for (D121): the bill once it is drawn, else the bag, which the
+  // reference face keeps on the page while ordering is on.
+  const setScreen = services?.setScreen
+  const screen = billShown(services?.state) ? 'bill' : orderingOn ? 'bag' : 'menu'
+  useEffect(() => setScreen?.(screen), [setScreen, screen])
   const ordering = useMemo(
     () => (orderingOn ? { strings: serviceStrings, send, notesAndOptions } : null),
     [orderingOn, serviceStrings, send, notesAndOptions],
@@ -473,6 +478,7 @@ export function QrPhoneFace(props: QrPhoneFaceProps) {
             strings={serviceStrings}
             send={send}
             notice={notice}
+            answerLost={answerLost}
           />
         ) : null}
 

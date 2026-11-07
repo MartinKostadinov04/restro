@@ -11,7 +11,7 @@ import { VenueName } from './venue-name'
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid gap-1 sm:grid-cols-3 sm:gap-4">
+    <div className="grid grid-cols-1 gap-1 sm:grid-cols-3 sm:gap-4">
       <dt className="text-sm font-medium text-foreground">{label}</dt>
       <dd className="text-sm text-muted-foreground sm:col-span-2">{children}</dd>
     </div>
@@ -34,7 +34,7 @@ export async function VenueSettings({ venue, role }: { venue: Venue; role: strin
 
   return (
     <FormSection title={t('title')} description={t('description')}>
-      <dl className="grid gap-4">
+      <dl className="grid grid-cols-1 gap-4">
         <Row label={t('name')}>
           {/* A new key when the name changes elsewhere, so the field starts from the saved name. */}
           <VenueName

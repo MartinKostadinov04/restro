@@ -131,6 +131,49 @@ describe('the toast after a write', () => {
     expect(undo).toHaveBeenCalledWith(expect.anything(), { entry: 77 }, '4321')
   })
 
+  it('names whom the PIN named, and only then', async () => {
+    const [named] = await tap({
+      act: async (): Promise<TonightResult> => ({ ok: true, details: { who: 'Ivana' } }),
+    })
+    expect(named).toBe('Receipt for Table 1 brought · Ivana')
+    cleanup()
+    toast.mockClear()
+    const [plain] = await tap({ act: async () => answered(true) })
+    expect(plain).toBe('Receipt for Table 1 brought')
+  })
+
+  it('says what failed when the write never reached the server, and keeps the toast (RR-78)', async () => {
+    const after = vi.fn()
+    renderWithIntl(
+      <RunProvider>
+        <Button
+          spec={{
+            id: 'call:wc_1',
+            done: 'Handled',
+            act: async () => {
+              // What a server action does with the Wi-Fi down.
+              throw new TypeError('Failed to fetch')
+            },
+            undo: after,
+          }}
+        />
+      </RunProvider>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'go' }))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
+    const [text, options] = toast.error.mock.calls[0] as [
+      string,
+      { duration?: number; closeButton?: boolean },
+    ]
+    expect(text).toMatch(/\S/)
+    expect(text).toBe('Not saved. Check the connection and press it again.')
+    expect(options.duration).toBe(Number.POSITIVE_INFINITY)
+    expect(options.closeButton).toBe(true)
+    // Nothing says it was done, and no Undo is on offer.
+    expect(toast).not.toHaveBeenCalled()
+    expect(after).not.toHaveBeenCalled()
+  })
+
   it('shows the words of the two Undo refusals in the error toast', async () => {
     for (const [error, text] of [
       ['undo_expired', 'Too late to undo.'],

@@ -173,7 +173,11 @@ export async function createWorld(
   const send = async (
     name: string,
     data: object,
-    options?: { singletonKey?: string; startAfter?: number | undefined },
+    options?: {
+      singletonKey?: string
+      startAfter?: number | undefined
+      group?: { readonly id: string } | undefined
+    },
   ) => {
     enqueued.push({
       name,

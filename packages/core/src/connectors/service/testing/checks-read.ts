@@ -59,6 +59,14 @@ export const capabilitiesCheck: Check<ReadHarness> = async ({ connector }) => {
         : 'itemAvailability is declared but readAvailability is missing',
     )
   }
+  const readsClosed = typeof connector.readClosedBill === 'function'
+  if (readsClosed !== connector.capabilities.readClosedBills) {
+    problems.push(
+      readsClosed
+        ? 'readClosedBill is offered but readClosedBills is not declared'
+        : 'readClosedBills is declared but readClosedBill is missing',
+    )
+  }
   return problems
 }
 

@@ -2839,12 +2839,15 @@ export const payments = restro.table(
 )
 
 /**
- * One refund the venue made in its provider's dashboard, as Restro read it back (#222; D122 §8,
- * decision log 5.1): each rise of the payment's refund total is one row, with the amount of the
- * rise, when it was seen and on which service day. The storno is the venue's own work at the till:
- * "Storno done" records who and when (`storno_at`, `storno_by`). A refund total that falls marks
- * the row `failed_at` ("didn't go through"). Written only by `payment.observe` and the storno
+ * One refund the venue made in its provider's dashboard, as Restro read it back (#222, #261; D122
+ * §8): one row per provider refund, matched by the provider's id (`provider_refund_ref`), with its
+ * amount, when it was seen and on which service day. The storno is the venue's own work at the
+ * till: "Storno done" records who and when (`storno_at`, `storno_by`). A refund the provider says
+ * did not go through marks its row `failed_at`. Written only by `payment.observe` and the storno
  * commands; goes with its payment when the payment is purged.
+ *
+ * A row from before migration 0044 has no id: one row per rise of the old refund total. The first
+ * reading by id gives it the id of the refund of its amount, if there is one (`reconcileRefunds`).
  */
 export const paymentRefunds = restro.table(
   'payment_refunds',
@@ -2855,13 +2858,15 @@ export const paymentRefunds = restro.table(
       .references(() => tenants.id, { onDelete: 'restrict' }),
     venueId: text('venue_id').notNull(),
     paymentId: text('payment_id').notNull(),
-    /** The rise in the payment's refund total, in minor units (rule 8). */
+    /** *Backend*: the provider's id of this refund; null on a row from before migration 0044. */
+    providerRefundRef: text('provider_refund_ref'),
+    /** The refund's amount in minor units (rule 8); on an older row, the rise it was read as. */
     amountMinor: bigint('amount_minor', { mode: 'number' }).notNull(),
-    /** When Restro read the rise. */
+    /** When Restro first read it. */
     seenAt: timestamp('seen_at', { withTimezone: true }).notNull().defaultNow(),
     /** The venue's service day it was seen on. */
     serviceDate: date('service_date', { mode: 'string' }).notNull(),
-    /** Set when the payment's refund total fell back: the refund did not go through. */
+    /** Set when the provider says the refund did not go through. */
     failedAt: timestamp('failed_at', { withTimezone: true }),
     /** When staff said the storno was made at the till, and the account that said so. */
     stornoAt: timestamp('storno_at', { withTimezone: true }),
@@ -2879,6 +2884,10 @@ export const paymentRefunds = restro.table(
       foreignColumns: [payments.tenantId, payments.id],
     }),
     index('payment_refunds_payment_idx').on(t.paymentId, t.seenAt),
+    // One row per provider refund: a reading repeated, or two at once, can't make a second.
+    uniqueIndex('payment_refunds_provider_ref_unique')
+      .on(t.paymentId, t.providerRefundRef)
+      .where(sql`${t.providerRefundRef} is not null`),
     // Tonight's storno to-dos: the refunds still waiting for a storno, whatever their day.
     index('payment_refunds_open_idx')
       .on(t.venueId, t.seenAt)
@@ -2886,6 +2895,10 @@ export const paymentRefunds = restro.table(
     index('payment_refunds_day_idx').on(t.venueId, t.serviceDate),
     check('payment_refunds_id_format', sql`${t.id} ~ '^rf_[0-9A-Za-z]+$'`),
     check('payment_refunds_amount', sql`${t.amountMinor} > 0`),
+    check(
+      'payment_refunds_provider_ref',
+      sql`${t.providerRefundRef} is null or ${t.providerRefundRef} ~ ${PROVIDER_REF_PATTERN}`,
+    ),
     check(
       'payment_refunds_storno',
       sql`(${t.stornoAt} is null) = (${t.stornoBy} is null) and (${t.stornoBy} is null or ${t.stornoBy} ~ ${SERVICE_ACTOR_PATTERN})`,
@@ -2931,7 +2944,9 @@ export const paymentLines = restro.table(
     /** The quantity the POS closed (a pay-first round's line may close for fewer); set with `closed_minor`. */
     closedQuantity: numeric('closed_quantity', { precision: 21, scale: 6 }),
     /**
-     * True while its payment is not final; the database clears it when the payment settles. A POS
+     * True while its payment claims it; the database clears it when the payment ends (`captured`,
+     * `released`, `stranded` or `capture_failed`). An `unconfirmed` payment is settled but has not
+     * ended: a manager's answer can still capture its card, so its lines stay claimed (0043). A POS
      * line is in one open payment at a time (D127 5.2): the unique index below refuses a second.
      */
     open: boolean('open').notNull().default(true),
@@ -2989,7 +3004,10 @@ export const paymentSteps = restro.table(
     /** The call, e.g. `createHold`, `isolateLines`, `payAndClose`, `capture`. */
     step: text('step').notNull(),
     outcome: text('outcome').notNull(),
-    /** The connector's or provider's answer in short: a code, never a raw response. */
+    /**
+     * The connector's or provider's answer in short: a code, never a raw response. *Backend*: on a
+     * `payAndClose` `attempting` row, the POS reference of the bill it closes (rule 3).
+     */
     answer: text('answer'),
     /** The idempotency key the call carried. */
     idempotencyKey: text('idempotency_key'),

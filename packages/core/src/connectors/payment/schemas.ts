@@ -208,6 +208,18 @@ export const ProviderPaymentSchema = z
   })
 export type ProviderPayment = z.output<typeof ProviderPaymentSchema>
 
+/**
+ * One refund the venue made in its own dashboard, as the provider lists it (#261; `readRefunds`).
+ * Its ref is what a refund row is matched by: two refunds of one amount stay two. `failed` is the
+ * provider saying it did not go through: a refund that was made and came back, or was cancelled.
+ */
+export const ProviderRefundSchema = z.strictObject({
+  ref: ProviderRefSchema,
+  amountMinor: PositiveMinorSchema,
+  failed: z.boolean(),
+})
+export type ProviderRefund = z.output<typeof ProviderRefundSchema>
+
 // ---------------------------------------------------------------------------------------------
 // Notices (D127 1.4, design §8; ticket #108)
 
@@ -360,6 +372,7 @@ export const PAYMENT_ANSWER_SCHEMAS = {
   findByPaymentId: readingSchema(ProviderPaymentSchema.nullable()),
   readPayment: readingSchema(ProviderPaymentSchema),
   readNoticeSubject: readingSchema(ProviderPaymentSchema.nullable()),
+  readRefunds: readingSchema(z.array(ProviderRefundSchema)),
   capture: paymentWriteOutcomeSchema(ProviderPaymentSchema),
   release: paymentWriteOutcomeSchema(ProviderPaymentSchema),
 } as const

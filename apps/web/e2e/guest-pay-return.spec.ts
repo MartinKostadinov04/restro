@@ -42,7 +42,9 @@ test('the provider values leave the address before anything else is asked for', 
   })
 
   await page.goto(`${path}?lang=en&${RETURN_QUERY}#t=${code}`)
-  await expect(page.locator('[data-face="qr-phone"]').first()).toBeVisible()
+  // The cleaning is what is under test, and it runs in the page's mount effect. The face's marker is
+  // no sign that it ran: the server-rendered skeleton carries it too. So wait for the address itself.
+  await expect.poll(() => new URL(page.url()).search).toBe('?lang=en')
 
   // The address bar holds nothing of the provider's, and still holds the guest's language and table.
   const url = new URL(page.url())
@@ -52,7 +54,7 @@ test('the provider values leave the address before anything else is asked for', 
   expect(page.url()).not.toContain(SECRET)
 
   // No request the page made carried them: not the menu's files, not the guest API, not a font.
-  expect(asked.length).toBeGreaterThan(0)
+  await expect.poll(() => asked.length).toBeGreaterThan(0)
   expect(
     asked.filter((requested) => requested.includes(SECRET) || requested.includes('payment_intent')),
   ).toEqual([])

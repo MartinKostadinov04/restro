@@ -7,10 +7,12 @@
 //   payment-check    read the provider's payment while the guest is at the card form
 //                    (`awaiting_guest`): held, still waiting, or past its deadline
 //
-// Both queues are `stately` with one singleton key per payment (`prepareJob`): a send while one
-// waits is the same job, and one sent while a step runs waits behind it. The guest API queues
-// them after each pay command and again from the paying phone's poll; a provider notice queues a
-// check. A check that finds the guest still at the form queues itself again for the deadline, under
+// Both queues are `short` with one singleton key and group per payment (`prepareJob`,
+// `ONE_RUN_PER_GROUP_JOBS`): a send while one waits is the same job, and one sent while a step runs
+// waits behind it. (A failed run waiting for its retry is not the waiting job, so it can sit beside
+// one, and two fetches in the same instant could then start both: see "Should two runs meet" below.)
+// The guest API queues them after each pay command and again from the paying phone's poll; a
+// provider notice queues a check. A check that finds the guest still at the form queues itself again for the deadline, under
 // a key of its own so a nudge is never swallowed by the waiting deadline check.
 //
 // What the jobs keep to:
@@ -28,9 +30,11 @@
 // - The route (#111): every POS write is a `payment.step` too, recorded inside the instance's
 //   budget right before the call, so a write that never left is never counted as attempted. An
 //   unknown move or undo is read back from the payment table for the read-back window and never
-//   sent again inside it (D127 3.4); an unknown close is never read back as a close (an empty
-//   payment table is no proof): it is `unconfirmed` for a manager or owner after D115's read-back
-//   window (a later landing is not ruled out, C52). A close is sent once. After a manager's "No
+//   sent again inside it (D127 3.4); an unknown close is `unconfirmed` for a manager or owner after
+//   D115's read-back window (a later landing is not ruled out, C52), unless, where the connector
+//   declares `readClosedBills`, the bill it was sent for reads closed carrying Restro's reference
+//   or a receipt number (D127's third proof; an empty payment table is no proof). A close is sent
+//   once. After a manager's "No
 //   receipt" the hold is released only once a fresh read shows the lines back on the real table;
 //   otherwise a manager is asked again (#153).
 //   An unknown capture is read back from the provider: captured is done; still held is tried
@@ -57,8 +61,10 @@
 
 import {
   addMinor,
+  ClosedBillSchema,
   CURRENCIES,
   type Currency,
+  closeProof,
   IsolatedBillSchema,
   type IsolatedHandle,
   JOB_NAMES,
@@ -79,6 +85,7 @@ import {
   type ServiceConnector,
   type ServiceTimings,
   serviceDayStartsAt,
+  sumSignedMinor,
   type TableBills,
   TableBillsSchema,
   type WriteOutcome,
@@ -88,6 +95,7 @@ import {
   applyService,
   BUDGET_WAIT_MS,
   billIsRound,
+  HOLD_READ_TRIES,
   isFinalPaymentState,
   LEASE_MARGIN_MS,
   PAYMENT_CONFIRM_MS,
@@ -108,6 +116,7 @@ import {
   type DbPool,
   integrations,
   locks,
+  logEntries,
   paymentAccounts,
   paymentLines,
   paymentSteps,
@@ -124,13 +133,14 @@ import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import type { Job } from 'pg-boss'
 
 import type { SimPolicy } from '../config'
+import { ROUTE_RUNS_AT_ONCE } from '../connection'
 import type { PaymentProviders } from '../connectors'
 import type { Logger } from '../logger'
 import { EmailSendError, type EmailSender, RECEIPT_CALL_TIMEOUT_MS } from '../receipts/email-sender'
 import { assertSimAllowed, serviceConnectorFor, serviceContext } from '../service-connectors'
 import type { Limiter } from '../sync/limiter'
 import { type Bounded, bounded } from './connection'
-import { connectionPaused, type InstanceBudgets, SHARED_BUDGETS } from './floor'
+import { connectionPaused, type InstanceBudgets, PosTurn, SHARED_BUDGETS } from './floor'
 import { toOrderLine } from './order-send'
 import { type PaymentBreakers, SHARED_PAYMENT_BREAKERS, watchedProvider } from './payment-breaker'
 import { defineJob, type JobDefinition, type JobQueue, type WorkerContext } from './types'
@@ -174,13 +184,16 @@ export const RECEIPT_SEND_MS =
   RECEIPT_RETRY_DELAYS_MS.reduce((sum, wait) => sum + wait, 0)
 
 /**
- * The longest one route step takes for these timings: the last check's three POS reads and the
- * hold's read at the provider, the pause and the close, each POS call with its turn at the budget.
+ * The longest one route step takes for these timings: its turn on the POS, the last check's three
+ * POS reads and the hold's read at the provider, the pause and the close, each POS call with its
+ * turn at the budget.
  */
 export function paymentStepMs(timings: ServiceTimings = SERVICE_TIMINGS): number {
   const read = BUDGET_WAIT_MS + timings.readTimeoutMs
   const write = BUDGET_WAIT_MS + timings.writeTimeoutMs
-  return 3 * read + PROVIDER_CALL_MS + PAYMENT_WRITE_PAUSE_MS + write + RECEIPT_SEND_MS
+  return (
+    BUDGET_WAIT_MS + 3 * read + PROVIDER_CALL_MS + PAYMENT_WRITE_PAUSE_MS + write + RECEIPT_SEND_MS
+  )
 }
 
 /**
@@ -201,6 +214,8 @@ export interface PaymentJobDeps {
   readonly sleep?: (ms: number) => Promise<void>
   /** The provider breakers (`SHARED_PAYMENT_BREAKERS`); tests pass their own. */
   readonly breakers?: PaymentBreakers
+  /** The step's turn on the POS, among the instance's other chains of calls; set by the run. */
+  readonly posTurn?: PosTurn
   /**
    * Sends the POS's own receipt file to the guest, from the venue's name (#186); null or absent
    * where RECEIPT_FROM_ADDRESS is unset: a connector that returns the file is then never given
@@ -338,6 +353,24 @@ async function latestStep(
       .limit(1),
   )
   return row ?? null
+}
+
+/** True once the last check could not read this payment's hold (`payment.hold_unread`). */
+async function holdWentUnread(env: PaymentEnvironment, target: PaymentJob): Promise<boolean> {
+  const [row] = await withTenant(env.pool, target.tenantId, (tx) =>
+    tx
+      .select({ seq: logEntries.seq })
+      .from(logEntries)
+      .where(
+        and(
+          eq(logEntries.venueId, target.venueId),
+          eq(logEntries.paymentId, target.paymentId),
+          eq(logEntries.kind, 'payment.hold_unread'),
+        ),
+      )
+      .limit(1),
+  )
+  return row !== undefined
 }
 
 /**
@@ -615,6 +648,16 @@ async function cancel(
   // A release the provider refused is never sent again (#112, R3): the hold is read back until the
   // provider drops it (it runs out at its capture deadline at the latest), which settles the
   // payment `released`, reason `expired`.
+  // A hold the last check could not read is read before any release: never released on a guess.
+  // Unread, it stays as it is, and the recovery reads it again every 10 minutes (D125, RR-18).
+  if (await holdWentUnread(env, target)) {
+    const read = await provider.readPayment(accountRef, providerRef(paymentRef))
+    if (!read.complete) throw new PaymentStepRetry('the unread hold could not be read back')
+    if (isOver(read.value)) {
+      await expire(env, target, read.value.status)
+      return
+    }
+  }
   const lastRelease = await latestStep(env, target, 'release')
   if (lastRelease?.outcome === 'refused' && lastRelease.answer !== 'not_found') {
     const read = await provider.readPayment(accountRef, providerRef(paymentRef))
@@ -759,14 +802,19 @@ async function posOf(
   if (found === null) return null
   const { integration, place } = found
   if (integration.kind === 'sim') assertSimAllowed(deps.sim)
+  if (deps.posTurn !== undefined && !(await deps.posTurn.take(integration.id))) {
+    throw new PaymentStepRetry('the POS gave the step no turn')
+  }
   const timings = deps.timings ?? SERVICE_TIMINGS
+  const budgets = deps.budgets ?? SHARED_BUDGETS
+  const connector = (deps.connectorFor ?? serviceConnectorFor)(integration, deps.sim)
   return {
-    connector: (deps.connectorFor ?? serviceConnectorFor)(integration, deps.sim),
-    budget: (deps.budgets ?? SHARED_BUDGETS).forInstance(integration.id),
+    connector,
+    budget: budgets.forInstance(integration.id),
     table: posRef(place.placeId),
     paused: await connectionPaused(env.pool, target.tenantId, integration.id),
     timings,
-    context: serviceContext(env.now, timings),
+    context: serviceContext(env.now, budgets.paceOf(integration.id, connector), timings),
     pause: () => (deps.sleep ?? sleepFor)(PAYMENT_WRITE_PAUSE_MS),
   }
 }
@@ -820,6 +868,8 @@ async function writePos<R>(
   lines: PaymentStepLines | null = null,
   /** False for the close: its answer is recorded with its state (`payment.closed`, #112). */
   recordAnswer = true,
+  /** On the close's `attempting` row: the POS bill it closes (`closeProofOf`). */
+  attemptAnswer: string | null = null,
 ): Promise<WriteOutcome<R>> {
   await pos.pause()
   const record = recordStep(env, target, step, ref, lines)
@@ -835,7 +885,7 @@ async function writePos<R>(
           throw new PaymentStepRetry(`the ${step} was attempted already`)
         }
       }
-      await record('attempting')
+      await record('attempting', attemptAnswer)
       attempted = true
       return call()
     })
@@ -1054,12 +1104,18 @@ async function isolate(
   // is unknown may land late: inside the read-back window it is read back, never sent again
   // (D127 3.4, design §5.3). Past it, it is sent again only from a real table that still has the
   // lines and an empty payment table. (A first move is not read for: the connector reads the
-  // payment table itself, and every read counts towards the POS's calls per second.)
+  // payment table itself, and every read counts towards the POS's calls per second.) Only a bill of
+  // the payment's own lines is that move (as `enter`'s `landed`): a waiter's bill there is not.
   const earlier = await callsOf(env, target, 'isolateLines')
-  const landed = async () => (await readPos(pos, paymentTable)).bills.length > 0
+  const own = await ownLines(env, target)
+  const landedOn = (table: TableBills) => table.bills.some((bill) => wholeOwnBill(bill, own))
+  const landed = async () => landedOn(await readPos(pos, paymentTable))
   if (earlier !== null) {
-    if (await landed()) return MOVED
+    const onPaymentTable = await readPos(pos, paymentTable)
+    if (landedOn(onPaymentTable)) return MOVED
     if (mayStillLand(earlier, pos.timings)) return 'later'
+    // A waiter's bill on the payment table: nothing is sent, the hold is released, a manager told.
+    if (onPaymentTable.bills.length > 0) return { outcome: 'refused', code: 'payment_table_busy' }
   }
   const real = await readPos(pos, pos.table)
   const lines = await withTenant(env.pool, target.tenantId, (tx) =>
@@ -1352,11 +1408,81 @@ async function enteredBill(
 }
 
 /**
+ * D127's third proof of an unknown close, where the connector declares `readClosedBills`: the bill
+ * the close was sent for, closed, for the amount, carrying the close's reference or a receipt
+ * number (`closeProof`). The table's other closed bills are earlier payments': they prove nothing.
+ * Null for everything else, a read that failed too: the close stays unknown. Never throws, so a
+ * POS that can't be read never holds back asking a manager.
+ */
+async function closeProofOf(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  deps: PaymentJobDeps,
+): Promise<{ readonly receiptNumber: string | null } | null> {
+  if (payment.amountMinor === null) return null
+  const { amountMinor } = payment
+  try {
+    const found = await placeOf(env, target, payment.tableId)
+    if (found === null) return null
+    if (found.integration.kind === 'sim') assertSimAllowed(deps.sim)
+    const offered = (deps.connectorFor ?? serviceConnectorFor)(found.integration, deps.sim)
+    if (!offered.capabilities.readClosedBills) return null
+    const { attempt, rounds } = await withTenant(env.pool, target.tenantId, async (tx) => ({
+      attempt: (
+        await tx
+          .select({ answer: paymentSteps.answer })
+          .from(paymentSteps)
+          .where(
+            and(
+              eq(paymentSteps.paymentId, target.paymentId),
+              eq(paymentSteps.step, 'payAndClose'),
+              eq(paymentSteps.outcome, 'attempting'),
+            ),
+          )
+          .orderBy(desc(paymentSteps.seq))
+          .limit(1)
+      )[0],
+      rounds: await tx
+        .select({ id: sentOrders.id })
+        .from(sentOrders)
+        .where(eq(sentOrders.sittingId, payment.sittingId)),
+    }))
+    if (attempt?.answer === null || attempt?.answer === undefined) return null
+    const pos = await posOf(env, target, payment, deps)
+    const read = pos?.connector.readClosedBill
+    if (pos === null || pos.paused || read === undefined) return null
+    const handle = {
+      ref: posRef(attempt.answer),
+      table: await paymentTableOf(env, target, payment),
+    }
+    const answer = await bounded(pos.budget, pos.timings.readTimeoutMs, () =>
+      read.call(pos.connector, pos.context, handle),
+    )
+    if (answer.kind !== 'answered') return null
+    const parsed = readingSchema(ClosedBillSchema.nullable()).safeParse(answer.value)
+    if (!parsed.success || !parsed.data.complete) return null
+    return closeProof(parsed.data.value, {
+      // What Restro puts on a POS line: a round's id, a pay-first round's or a tip's reference.
+      refs: new Set([
+        ...rounds.map((round) => round.id),
+        `${payment.id}-enter`,
+        `${payment.id}-close`,
+      ]),
+      amountMinor,
+    })
+  } catch (error) {
+    env.log.warn({ paymentId: payment.id, err: error }, 'the closed bills could not be read')
+    return null
+  }
+}
+
+/**
  * `isolated` (or `checked` with no close attempted): the last check on a reading of the isolated
  * bill and a fresh one of the real table (`payment.checked`), then the close (`payAndClose`) with
  * the amount, the tip and the card payment type, then `payment.closed`. Once a close was
  * attempted, nothing but its proof closes it: an unknown is `unconfirmed` after D115's read-back
- * window (a later landing is not ruled out, C52).
+ * window (a later landing is not ruled out, C52) unless a closed bill proves it (`closeProofOf`).
  */
 const checkAndClose: RouteStep = async (env, target, payment, deps) => {
   const close = payment.state === 'checked' ? await callsOf(env, target, 'payAndClose') : null
@@ -1390,6 +1516,20 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
     if (close.outcome === 'attempting' && close.lastAgeMs < inFlight) {
       await queuePrepare(env, target, WAIT_SECONDS)
       return 'wait'
+    }
+    const proof = await closeProofOf(env, target, payment, deps)
+    if (proof !== null) {
+      const { receiptNumber } = proof
+      await route(env, target, {
+        type: 'payment.closed',
+        outcome: 'done',
+        code: null,
+        // A receipt number longer than Restro keeps is left out rather than cut.
+        receiptNumber: receiptNumber !== null && receiptNumber.length <= 64 ? receiptNumber : null,
+        fiscalMemoryNumber: null,
+        step: { outcome: 'done', answer: null, idempotencyKey: `${payment.id}-close` },
+      })
+      return 'next'
     }
     const window = Math.max(inFlight, timings.readBackWindowMs)
     if (close.lastAgeMs < window) {
@@ -1429,7 +1569,7 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
   // line have been voided, which lowers the amount on a fresh read that shows it gone. A bill not
   // short that misses a line has another in its place, and fails the check without it. (Every
   // read counts towards the POS's calls per second.)
-  const found = lines.reduce((sum, line) => addMinor(sum, line.amountMinor), payment.tipMinor)
+  const found = sumSignedMinor([payment.tipMinor, ...lines.map((line) => line.amountMinor)])
   const short = payment.amountMinor === null || found < payment.amountMinor
   // A pay-first round was never on the real table: only the payment table's bill is checked.
   const onBill = payment.kind === 'on_bill'
@@ -1438,21 +1578,30 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
   // The hold, read again right before the close: one cancelled or run out at the provider stops
   // the payment here, before a receipt is printed for a card that can't be charged.
   const account = await accountOf(env, target)
-  if (account === null || account.accountRef === null || payment.providerPaymentRef === null) {
-    throw new PaymentStepRetry("the payment's hold can't be read")
+  const hold =
+    account === null || account.accountRef === null || payment.providerPaymentRef === null
+      ? null
+      : await provider.readPayment(
+          providerRef(account.accountRef),
+          providerRef(payment.providerPaymentRef),
+        )
+  // A read that says nothing is tried again, a bounded number of times; then the check goes on with
+  // no hold, and fails. It never reads as a hold gone or one still there (D125, D127 3.10).
+  let heldMinor: number | null = null
+  if (hold?.complete === true) {
+    heldMinor = hold.value.status === 'held' ? hold.value.heldMinor : 0
+  } else {
+    const { details } = await route(env, target, { type: 'payment.hold_unread' })
+    if (typeof details.tries !== 'number' || details.tries < HOLD_READ_TRIES) {
+      throw new PaymentStepRetry('the hold could not be read')
+    }
   }
-  const hold = await provider.readPayment(
-    providerRef(account.accountRef),
-    providerRef(payment.providerPaymentRef),
-  )
-  if (!hold.complete) throw new PaymentStepRetry('the hold could not be read')
   const reading =
     isolated === null
       ? null
       : {
           bills: onTable.bills.length,
-          totalMinor:
-            bill?.totalMinor ?? onTable.bills.reduce((sum, b) => addMinor(sum, b.totalMinor), 0),
+          totalMinor: bill?.totalMinor ?? sumSignedMinor(onTable.bills.map((b) => b.totalMinor)),
           paidMinor:
             bill?.paidMinor ?? onTable.bills.reduce((sum, b) => addMinor(sum, b.paidMinor), 0),
           lines: lines.map((line) => ({
@@ -1467,7 +1616,6 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
       ? null
       : ((await enterLinesOf(env, target, payment, pos))?.items ?? null)
   const partialCapture = provider.capabilities.partialCapture
-  const heldMinor = hold.value.status === 'held' ? hold.value.heldMinor : 0
   const checked = onBill
     ? await route(env, target, {
         type: 'payment.checked',
@@ -1529,7 +1677,10 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
       }),
     null,
     false,
+    isolated.ref.pos,
   )
+  // What follows is the database and the receipt's email: the POS's other tables go on.
+  deps.posTurn?.release()
   const proof =
     outcome.kind === 'done' ||
     (outcome.kind === 'refused' && outcome.refusal.code === 'already_done')
@@ -1778,9 +1929,14 @@ async function undo(
 ): Promise<'returned' | 'stranded' | 'not_back' | 'later'> {
   const onTable = await readPos(pos, paymentTable)
   const earlier = await callsOf(env, target, 'undoIsolate')
+  const own = await ownLines(env, target)
+  // Only the payment's own bill goes back; a waiter's bill on the payment table stays there.
+  const mine = billsToMoveBack(onTable, own)
+  // Two bills that may each be the payment's: which one it moved can't be told. Staff move it.
+  if (mine === null) return 'stranded'
   // A move back whose outcome is unknown may land late: inside the read-back window it is read
   // back, never sent again (D127 3.4, design §5.3).
-  if (onTable.bills.length > 0 && earlier !== null && mayStillLand(earlier, pos.timings)) {
+  if (mine.length > 0 && earlier !== null && mayStillLand(earlier, pos.timings)) {
     return 'later'
   }
   // After "No receipt" a close was attempted, and it may land after the read-back window (C52):
@@ -1792,12 +1948,9 @@ async function undo(
   const proving = payment.reason === 'no_receipt'
   const recorded = proving ? await recordedLines(env, target) : []
   if (recorded === null) return 'not_back'
-  const moved = [...recorded, ...linesOf(onTable)]
+  const moved = [...recorded, ...linesOf({ ...onTable, bills: mine })]
   if (proving && moved.length === 0) return 'not_back'
-  const own = proving ? await ownLines(env, target) : []
-  // The POS refs of someone else's bills closed on the payment table: not the payment's to prove.
-  const others = new Set<string>()
-  for (const [index, bill] of onTable.bills.entries()) {
+  for (const [index, bill] of mine.entries()) {
     const ref = `${payment.id}-undo${index === 0 ? '' : `-${index}`}`
     const isolated: IsolatedHandle = { ref: bill.ref, table: paymentTable }
     const lines = PaymentStepLinesSchema.safeParse(linesOf({ ...onTable, bills: [bill] }))
@@ -1812,10 +1965,8 @@ async function undo(
     )
     if (outcome.kind === 'refused') {
       if (outcome.refusal.code === 'bill_closed') {
-        // Only the payment's own bill closed is no proof (#155, finding 5); a bill that is not its
-        // own closed by someone else leaves the payment's lines to prove.
-        if (proving && ownBill(bill, own)) return 'not_back'
-        for (const line of bill.lines) others.add(line.ref.pos)
+        // The payment's own bill closed is no proof (#155, finding 5).
+        if (proving) return 'not_back'
         continue
       }
       // A waiter holding the bill, or the POS busy, passes: tried again for the read-back window
@@ -1830,12 +1981,7 @@ async function undo(
     }
   }
   if (!proving) return 'returned'
-  return (await backOnTable(
-    pos,
-    moved.filter((line) => !others.has(line.pos)),
-  ))
-    ? 'returned'
-    : 'not_back'
+  return (await backOnTable(pos, moved)) ? 'returned' : 'not_back'
 }
 
 /** The payment's own lines, as `ownBill` compares them. */
@@ -1876,6 +2022,47 @@ function ownBill(
           mine.amountMinor === line.amountMinor),
     ),
   )
+}
+
+/** True when each line of a bill, and at least one, is one of the payment's own lines. */
+function wholeOwnBill(
+  bill: TableBills['bills'][number],
+  own: readonly {
+    readonly pos: string | null
+    readonly quantity: string
+    readonly amountMinor: number
+  }[],
+): boolean {
+  const left = [...own]
+  for (const line of bill.lines) {
+    const mine = left.findIndex(
+      (candidate) =>
+        candidate.pos === line.ref.pos ||
+        (quantityKey(candidate.quantity) === quantityKey(line.quantity) &&
+          candidate.amountMinor === line.amountMinor),
+    )
+    if (mine < 0) return false
+    left.splice(mine, 1)
+  }
+  return bill.lines.length > 0
+}
+
+/**
+ * The bills on the payment table a move back takes: those that may be the payment's own. Of several,
+ * the one that holds the payment's lines and nothing else; null where that names no single bill.
+ */
+function billsToMoveBack(
+  table: TableBills,
+  own: readonly {
+    readonly pos: string | null
+    readonly quantity: string
+    readonly amountMinor: number
+  }[],
+): TableBills['bills'] | null {
+  const mine = table.bills.filter((bill) => ownBill(bill, own))
+  if (mine.length <= 1) return mine
+  const whole = mine.filter((bill) => wholeOwnBill(bill, own))
+  return whole.length === 1 ? whole : null
 }
 
 /**
@@ -2030,6 +2217,8 @@ async function queueDeadlineCheck(env: PaymentEnvironment, target: PaymentJob, a
   const job = prepareJob(JOB_NAMES.paymentCheck, target)
   await env.queue.send(JOB_NAMES.paymentCheck, job.data, {
     singletonKey: `${job.singletonKey}:deadline`,
+    // In the payment's own group: a deadline never runs beside another check of the payment.
+    ...(job.group === undefined ? {} : { group: job.group }),
     startAfter: Math.max(1, Math.ceil(afterMs / 1000)),
   })
 }
@@ -2039,6 +2228,7 @@ export async function queuePrepare(env: PaymentEnvironment, target: PaymentJob, 
   const job = prepareJob(JOB_NAMES.paymentPrepare, target)
   await env.queue.send(JOB_NAMES.paymentPrepare, job.data, {
     singletonKey: job.singletonKey,
+    ...(job.group === undefined ? {} : { group: job.group }),
     ...(afterSeconds > 0 ? { startAfter: afterSeconds } : {}),
   })
 }
@@ -2068,7 +2258,14 @@ export async function preparePayment(
     last = where
     const step = routeStep(payment)
     if (step === null) return { kind: 'at', state: payment.state }
-    if ((await step(env, target, payment, deps)) === 'wait') {
+    const posTurn = new PosTurn(deps.budgets ?? SHARED_BUDGETS)
+    let done: StepDone
+    try {
+      done = await step(env, target, payment, { ...deps, posTurn })
+    } finally {
+      posTurn.release()
+    }
+    if (done === 'wait') {
       // Where the step left it (a held payment that waits is queued now).
       const after = await paymentOf(env, target)
       return after === null ? { kind: 'missing' } : { kind: 'at', state: after.state }
@@ -2206,16 +2403,32 @@ export function createPaymentJobs(deps: PaymentJobDeps): JobDefinition[] {
   const prepare = defineJob<PaymentJob>({
     name: JOB_NAMES.paymentPrepare,
     options: {
-      policy: 'stately',
+      // Never `stately`: its stale list of running keys held a payment's next step up to two
+      // minutes (#286). The recovery tick queues a payment again, so the queue may be created again.
+      policy: 'short',
+      previousPolicy: 'stately',
       // Never failed (and run again beside itself) while a run is still going.
       queue: { ...queue, expireInSeconds: PAYMENT_PREPARE_EXPIRE_SECONDS },
-      work: { pollingIntervalSeconds: 1 },
+      work: {
+        pollingIntervalSeconds: 1,
+        localConcurrency: ROUTE_RUNS_AT_ONCE,
+        groupConcurrency: 1,
+      },
     },
     handler: run(JOB_NAMES.paymentPrepare, preparePayment),
   })
   const check = defineJob<PaymentJob>({
     name: JOB_NAMES.paymentCheck,
-    options: { policy: 'stately', queue, work: { pollingIntervalSeconds: 1 } },
+    options: {
+      policy: 'short',
+      previousPolicy: 'stately',
+      queue,
+      work: {
+        pollingIntervalSeconds: 1,
+        localConcurrency: ROUTE_RUNS_AT_ONCE,
+        groupConcurrency: 1,
+      },
+    },
     handler: run(JOB_NAMES.paymentCheck, checkPayment),
   })
   return [prepare, check] as JobDefinition[]

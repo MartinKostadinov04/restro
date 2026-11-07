@@ -596,7 +596,8 @@ test.describe('the table code', () => {
     await expect(page.getByText('Този код за маса не е активен.')).toBeVisible()
     await expect(page.getByText('Попитайте персонала.')).toBeVisible()
     expect(await page.content()).not.toContain(GUEST_SLUG)
-    await page.screenshot({ path: shot('table-code-not-active') })
+    // A picture for the docs only: it checks nothing, so a run without SCREENSHOT_DIR takes none.
+    if (process.env.SCREENSHOT_DIR) await page.screenshot({ path: shot('table-code-not-active') })
   })
 
   test('the menu and the table address send no referrer, so the code in the address stays here (A5-F5)', async ({

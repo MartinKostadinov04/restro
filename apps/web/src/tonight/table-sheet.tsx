@@ -7,7 +7,6 @@
 // closing is two taps (plan §10 Q5).
 import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
-
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -34,6 +33,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { WRAPS } from '@/lib/wrapping'
 import {
   closeTableAction,
   newGuestsAction,
@@ -44,6 +44,7 @@ import type { TableSheetBill } from '@/server/tonight/load'
 import type { TableTile, TonightView } from '@/server/tonight/view'
 
 import { useMoney } from './money'
+import { readAttempt } from './read-attempt'
 import { useTonightRun, wroteSomething } from './run'
 import { useTableName } from './table-name'
 
@@ -69,9 +70,11 @@ export function TableSheet({
 
   useEffect(() => {
     let live = true
-    void tableBillAction({ venueId: view.venueId, tableId: tile.id }).then((result) => {
-      if (live) setBill(result.ok ? result.bill : null)
-    })
+    void readAttempt(() => tableBillAction({ venueId: view.venueId, tableId: tile.id })).then(
+      (result) => {
+        if (live) setBill(result.ok ? result.bill : null)
+      },
+    )
     return () => {
       live = false
     }
@@ -98,7 +101,7 @@ export function TableSheet({
       <Button
         type="button"
         variant="outline"
-        className="h-12 whitespace-normal"
+        className={WRAPS}
         disabled={busy}
         onClick={() => {
           onClose()
@@ -116,7 +119,7 @@ export function TableSheet({
       <Button
         type="button"
         variant="outline"
-        className="h-12 whitespace-normal"
+        className={WRAPS}
         disabled={busy}
         onClick={() => setNewGuests(true)}
       >

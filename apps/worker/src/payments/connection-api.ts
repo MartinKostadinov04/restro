@@ -20,6 +20,7 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import type { Logger } from '../logger'
+import { sessionIsLive } from '../session-check'
 import {
   type ConnectionFailure,
   type ConnectionProvider,
@@ -106,6 +107,9 @@ export function createConnectionApi(
   }
 
   return async (request) => {
+    if (!(await sessionIsLive(deps.pool, request.actor))) {
+      return { status: 'refused', code: 'session_unknown' }
+    }
     const jobId = `connection-api-${randomUUID()}`
     const context: ServiceContext = {
       tenantId: request.tenantId,

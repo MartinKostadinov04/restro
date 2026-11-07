@@ -74,7 +74,7 @@ export {
   tableLabel,
   telegramAnswer,
 } from './alert-text'
-export { endpointHashOf, PAUSE_RETURN_MS } from './alerts'
+export { endpointHashOf, PAUSE_RETURN_MS, PushSubscribeSchema } from './alerts'
 export { type AppliedService, applyService } from './apply-service'
 export {
   type BillLineView,
@@ -306,6 +306,7 @@ export {
   readPayFirstTablesBoard,
 } from './pay-first-settings'
 export {
+  HOLD_READ_TRIES,
   type LastCheck,
   lastCheck,
   PAYMENT_ANSWERS,
@@ -341,6 +342,7 @@ export {
   DEFAULT_ROLE_KINDS,
   DEFAULT_ROLE_PERMISSIONS,
   type DefaultRoleKind,
+  holdsStaffRightsOnly,
   isPermission,
   isSettingsPermission,
   OPERATOR_PERMISSIONS,
@@ -402,6 +404,7 @@ export {
   type SendMenuItem,
 } from './send-menu'
 export {
+  ADD_TRIES,
   AVAILABILITY_READS,
   BEFORE_READ_PAUSE_MS,
   BEFORE_READ_TRIES,

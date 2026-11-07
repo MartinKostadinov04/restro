@@ -566,7 +566,8 @@ export function payFirstCheck(input: {
     }[]
   } | null
   readonly partialCapture: boolean
-  readonly heldMinor: number
+  /** What the provider holds; null for a hold it would not show (`HOLD_READ_TRIES`). */
+  readonly heldMinor: number | null
 }): PayFirstCheck {
   const bill = input.bill
   if (bill === null || bill.lines.length === 0) return { ok: false, why: 'no_bill' }
@@ -584,6 +585,7 @@ export function payFirstCheck(input: {
   const lowered = bill.totalMinor < linesMinor
   if (lowered && !input.partialCapture) return { ok: false, why: 'partial_not_supported' }
   const amountMinor = addMinor(bill.totalMinor, input.tipMinor)
+  if (input.heldMinor === null) return { ok: false, why: 'hold_unreadable' }
   if (input.heldMinor < amountMinor) return { ok: false, why: 'hold_lost' }
   return { ok: true, amountMinor, lowered, closed }
 }
@@ -614,8 +616,8 @@ export function paymentPayFirstChecked() {
       items: z.array(z.string().min(1).max(200)).max(100).nullable(),
       /** The provider captures less than the hold (`capabilities.partialCapture`). */
       partialCapture: z.boolean(),
-      /** What the provider holds now; zero for a hold no longer `held`. */
-      heldMinor: MinorSchema,
+      /** What the provider holds now; zero for a hold no longer `held`, null for one unread. */
+      heldMinor: MinorSchema.nullable(),
     }),
     origins: ['worker'],
     permission: null,

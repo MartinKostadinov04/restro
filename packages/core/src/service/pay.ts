@@ -11,6 +11,8 @@
 //   the lines read `beingPaid` on every phone. The database keeps a POS line in one open payment
 //   (`payment_lines_open_line_unique`, migration 0032), so two friends picking the same line can't
 //   both win, whatever the timing; the table's order row lock makes the loser a clean refusal.
+//   `unconfirmed` is final for the run, not for its lines: they stay claimed until the manager's
+//   answer ends it (D127 3.1, migration 0043).
 // - The worker reads the table fresh and prices it (`payment.price`): the POS's own line amounts
 //   plus the tip, never price × quantity (rule 8). A picked line that changed or went is
 //   `bill_changed`; the provider's minimum is `below_minimum`.
@@ -467,7 +469,7 @@ export function payStart() {
         }
       }
 
-      // The grey: a line in a payment that isn't final.
+      // The grey: a line a payment still claims, an `unconfirmed` one's too (migration 0043).
       const refs = lines.map(({ line }) => line.pos)
       const greyed = await stx.tx
         .select({ ref: paymentLines.posLineRef })
@@ -988,7 +990,9 @@ export async function closeAttempted(stx: ServiceTx, id: string): Promise<boolea
 /**
  * `payment.step`: one POS or provider write, recorded `attempting` before the call and with its outcome
  * after (append-only, D127 3.9). The answer is a short code, never the provider's response; the
- * form's values never go here. A move back's `attempting` row carries the lines it moves (#153).
+ * form's values never go here. A move back's `attempting` row carries the lines it moves (#153); a
+ * close's `attempting` row carries, as its answer, the POS reference of the bill it closes, so a
+ * closed bill can later be told for this close's (D127's third proof, backend only: rule 3).
  */
 export function paymentStep() {
   return defineCommand({
@@ -998,10 +1002,17 @@ export function paymentStep() {
         paymentId,
         step: z.enum(PAYMENT_STEP_NAMES),
         outcome: z.enum(['attempting', 'done', 'refused', 'unknown']),
-        answer: CodeSchema.nullable(),
+        answer: PosRefSchema.nullable(),
         idempotencyKey: ProviderRefTextSchema,
         lines: PaymentStepLinesSchema.nullable().default(null),
       })
+      .refine(
+        (command) =>
+          command.answer === null ||
+          CodeSchema.safeParse(command.answer).success ||
+          (command.step === 'payAndClose' && command.outcome === 'attempting'),
+        { message: 'an answer is a code; only a close, before the call, names its bill' },
+      )
       .refine(
         (command) =>
           command.lines === null ||

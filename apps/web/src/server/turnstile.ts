@@ -14,6 +14,8 @@ import type { HumanCheck, HumanCheckVerdict } from '@restro/core/service'
 import { TURNSTILE_PAY_ACTION, TURNSTILE_SEND_ACTION } from '@restro/shell'
 import { z } from 'zod'
 
+import { isTurnstileTestSecret } from './env'
+
 /** The address of siteverify. */
 export const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
 
@@ -25,11 +27,6 @@ const SiteverifySchema = z.object({
   'error-codes': z.array(z.string()).default([]),
   action: z.string().optional(),
 })
-
-/** Cloudflare's published test secrets (`1x…AA` passes, `2x…AA` fails, `3x…AA` is spent). */
-function isTestSecret(secret: string): boolean {
-  return /^[123]x0{31}AA$/.test(secret)
-}
 
 /** Builds the check with the secret, or one that fails every token without it. */
 export function turnstileCheck(
@@ -60,7 +57,7 @@ export function turnstileCheck(
     // secrets answer the action `test` or none at all (the `1x…AA` secret for the dummy token, seen
     // 2026-10-26), which only they may.
     const action = use === 'pay' ? TURNSTILE_PAY_ACTION : TURNSTILE_SEND_ACTION
-    const expected = isTestSecret(secret) ? [undefined, 'test', action] : [action]
+    const expected = isTurnstileTestSecret(secret) ? [undefined, 'test', action] : [action]
     return expected.includes(answer.action) ? 'passed' : 'failed'
   }
 }

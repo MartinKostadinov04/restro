@@ -172,9 +172,9 @@ test('the guest page and the table code work before the venue is deleted', async
   expect(hasItem(text)).toBe(true)
   const code = await request.get(`/t/${seed.token}`, { maxRedirects: 0 })
   expect(code.status()).toBe(302)
-  expect(code.headers().location).toContain(
-    `/m/${seed.barSlug}-${seed.barPublicId}#t=${seed.token}`,
-  )
+  // The table file names the organisation (the seed writes it as the worker does), so the code
+  // opens the address of D84, whether or not the worker has rewritten the file since the seed.
+  expect(code.headers().location).toContain(`/m/lifecycle-club/${seed.barSlug}#t=${seed.token}`)
 })
 
 const venueCard = (target: Page, name: string) =>

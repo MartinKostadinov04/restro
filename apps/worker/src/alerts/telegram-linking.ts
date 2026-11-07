@@ -19,7 +19,7 @@ import { eq } from 'drizzle-orm'
 
 import type { Logger } from '../logger'
 import type { MembershipChange, StartMessage, TelegramClient } from './telegram'
-import { type LinkClaims, openLinkCode } from './telegram-link'
+import { type LinkClaims, linkIssuedAt, openLinkCode } from './telegram-link'
 
 /** What linking needs besides the pool and the bot. */
 export interface LinkingDeps {
@@ -27,7 +27,7 @@ export interface LinkingDeps {
   readonly telegram: TelegramClient
   readonly log: Pick<Logger, 'warn' | 'info'>
   readonly now: () => Date
-  /** The secret the links are signed with (REVEAL_SERVICE_TOKEN); null: linking is off. */
+  /** The secret the links are signed with (`linkSecretOf`); null: linking is off. */
   readonly linkSecret: string | null
   /** The codes accepted so far with their end time: a link is used once. */
   readonly used: Map<string, number>
@@ -121,16 +121,24 @@ async function link(
   venue: FoundVenue,
   claims: LinkClaims,
   start: StartMessage,
-): Promise<'ok' | 'person_taken' | 'not_working_here' | 'failed'> {
+): Promise<'ok' | 'link_expired' | 'person_taken' | 'not_working_here' | 'failed'> {
+  const issued = linkIssuedAt(claims).toISOString()
   const { result } = await applyService(
     deps.pool,
     claims.purpose === 'group'
-      ? { type: 'telegram.link', what: 'group', chatId: start.chatId, title: start.title }
+      ? {
+          type: 'telegram.link',
+          what: 'group',
+          chatId: start.chatId,
+          title: start.title,
+          linkIssuedAt: issued,
+        }
       : {
           type: 'telegram.link',
           what: 'person',
           staffMemberId: claims.staffMemberId,
           telegramUserId: start.userId,
+          linkIssuedAt: issued,
         },
     {
       tenantId: venue.tenantId,
@@ -141,6 +149,7 @@ async function link(
     },
   )
   if (result.status === 'accepted') return 'ok'
+  if (result.code === 'link_spent') return 'link_expired'
   if (result.code === 'telegram_taken') return 'person_taken'
   if (result.code === 'staff_missing') return 'not_working_here'
   return 'failed'

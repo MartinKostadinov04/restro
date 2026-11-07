@@ -89,6 +89,19 @@ export const ServerEnvSchema = z.object({
       const trimmed = value?.trim()
       return trimmed === undefined || trimmed === '' ? undefined : trimmed
     }),
+  /**
+   * The public half of the worker's Web Push key pair (#83, RR-86): Tonight subscribes a staff device
+   * with it. Without it the control doesn't show. The web app never declares the private half. Whether
+   * it is a valid key is read by `webPushPublicKey`, so a bad value never takes the whole app down.
+   * Empty counts as missing.
+   */
+  VAPID_PUBLIC_KEY: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim()
+      return trimmed === undefined || trimmed === '' ? undefined : trimmed
+    }),
   /** The bearer token the reveal endpoint expects (the worker's REVEAL_SERVICE_TOKEN). */
   REVEAL_SERVICE_TOKEN: z
     .string()
@@ -104,6 +117,24 @@ export type ServerEnv = z.output<typeof ServerEnvSchema>
 
 let cached: ServerEnv | undefined
 
+/** Cloudflare's published test secrets (`1x…AA` passes, `2x…AA` fails, `3x…AA` is spent). */
+export function isTurnstileTestSecret(secret: string): boolean {
+  return /^[123]x0{31}AA$/.test(secret)
+}
+
+/**
+ * The settings that may never reach the environment meaning real money: under a test secret
+ * every Send and Pay passes the human check with any token. `PAYMENTS_ENV` is what says so, as for
+ * the payment provider's key (`checkStripeKey`): `next start` alone means nothing, since local e2e
+ * and CI run it with a test secret and `PAYMENTS_ENV=test`.
+ */
+function refusedForEnvironment(env: ServerEnv, source: NodeJS.ProcessEnv): readonly string[] {
+  const environment = (source.PAYMENTS_ENV ?? '').trim().toLowerCase()
+  if (environment !== 'production') return []
+  const secret = env.TURNSTILE_SECRET_KEY
+  return secret !== undefined && isTurnstileTestSecret(secret) ? ['TURNSTILE_SECRET_KEY'] : []
+}
+
 export function serverEnv(): ServerEnv {
   if (cached) return cached
   const parsed = ServerEnvSchema.safeParse(process.env)
@@ -114,8 +145,20 @@ export function serverEnv(): ServerEnv {
         'fill them in (BETTER_AUTH_SECRET needs 32 or more characters).',
     )
   }
+  const refused = refusedForEnvironment(parsed.data, process.env)
+  if (refused.length > 0) {
+    throw new Error(`A test value in production for setting(s): ${refused.join(', ')}.`)
+  }
   cached = parsed.data
   return cached
+}
+
+/** The key Tonight subscribes a staff device with, or undefined: unset, or not in a key's shape. */
+export function webPushPublicKey(
+  env: Pick<ServerEnv, 'VAPID_PUBLIC_KEY'> = serverEnv(),
+): string | undefined {
+  const key = env.VAPID_PUBLIC_KEY
+  return key !== undefined && /^[A-Za-z0-9_-]{60,120}$/.test(key) ? key : undefined
 }
 
 /**

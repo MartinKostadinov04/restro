@@ -7,7 +7,6 @@
 // announced to a screen reader and by one short sound that can be muted on the device. Nothing
 // moves: no animation, no reordering for style.
 import { EllipsisIcon, Volume2Icon, VolumeXIcon } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -27,22 +26,26 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
+import { useTimedRefresh } from '@/hooks/use-timed-refresh'
 import { cn } from '@/lib/utils'
+import { WRAPS } from '@/lib/wrapping'
 import {
   closeAllTablesAction,
-  liftOrderingAction,
   openAllTablesAction,
   pauseOrderingAction,
   undoOpenAllAction,
+  undoPauseAction,
 } from '@/server/tonight/actions'
-import type { UndoToken } from '@/server/tonight/tables'
 import type { TonightView } from '@/server/tonight/view'
 
 import { ActionRowItem, OutOfStockNotice, useAgo } from './action-rows'
 import { callKindsText } from './call-kinds'
+import { MakeTablet } from './make-tablet'
 import { useMoney } from './money'
 import { moneyTitleKey } from './money-rows'
+import { OfflineLine } from './offline-line'
 import { PauseBanners } from './pause-banners'
+import { PushControl } from './push-control'
 import { RunProvider, useTonightRun, wroteSomething } from './run'
 import { useTableName } from './table-name'
 import { TablesGrid } from './tables-grid'
@@ -93,21 +96,14 @@ function PauseMenu({ view }: { view: TonightView }) {
       id: `pause:${barId ?? 'all'}`,
       act: () => pauseOrderingAction({ venueId: view.venueId, barId }),
       done: t('p_toast', { scope: name }),
-      // Lifting needs a manager; without that right the toast has no Undo.
-      ...(view.can.lift && !view.device
-        ? {
-            undo: (
-              done: { details: Record<string, string | number | boolean | null> },
-              undo: UndoToken | undefined,
-            ) =>
-              liftOrderingAction({
-                venueId: view.venueId,
-                pauseId: String(done.details.pauseId),
-                undo,
-              }),
-            undoWhen: wroteSomething,
-          }
-        : {}),
+      // The person's own pause, whatever their role and on the tablet too; the token decides.
+      undo: (done, undo) =>
+        undoPauseAction({
+          venueId: view.venueId,
+          pauseId: String(done.details.pauseId),
+          undo,
+        }),
+      undoWhen: wroteSomething,
     })
   }
 
@@ -119,7 +115,7 @@ function PauseMenu({ view }: { view: TonightView }) {
       <Button
         type="button"
         variant="outline"
-        className="h-11"
+        className={WRAPS}
         disabled={busy}
         onClick={() => only && pause(only.barId, only.name)}
       >
@@ -130,7 +126,7 @@ function PauseMenu({ view }: { view: TonightView }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="outline" className="h-11" disabled={busy}>
+        <Button type="button" variant="outline" className={WRAPS} disabled={busy}>
           {label}
         </Button>
       </DropdownMenuTrigger>
@@ -149,11 +145,19 @@ function PauseMenu({ view }: { view: TonightView }) {
   )
 }
 
-function Content({ view }: { view: TonightView }) {
+function Content({
+  view,
+  pushKey,
+  tablet,
+}: {
+  view: TonightView
+  pushKey: string | undefined
+  tablet: Tablet | undefined
+}) {
   const t = useTranslations('tonight')
   const money = useMoney()
-  const router = useRouter()
   const { run, busy } = useTonightRun()
+  const { offline } = useTimedRefresh({ every: REFRESH_MS, visibleOnly: true })
   const ago = useAgo(view.now)
   const tableName = useTableName()
   const [part, setPart] = useState<'needs' | 'tables'>('needs')
@@ -163,12 +167,6 @@ function Content({ view }: { view: TonightView }) {
   const seen = useRef<Set<string> | null>(null)
 
   useEffect(() => setMuted(readMuted()), [])
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') router.refresh()
-    }, REFRESH_MS)
-    return () => window.clearInterval(timer)
-  }, [router])
 
   // A row that was not there on the last render is announced, and sounds once (not the first load).
   useEffect(() => {
@@ -225,6 +223,9 @@ function Content({ view }: { view: TonightView }) {
     .filter((x) => x.state === 'closed')
     .map((x) => x.id)
   const nothingOpen = view.openCount === 0
+  // "Open them" only where there are tables to open; a venue with none gets its own line (RR-O33).
+  const noTables = view.tableCount === 0
+  const notOpenYet = nothingOpen && !noTables
   // The empty block (with its one filled "Open all") shows while nothing waits at all; a stock notice
   // alone keeps the header's button, so a night with a notice can still be opened.
   const emptyShown = view.rows.length === 0 && view.outOfStock.length === 0
@@ -247,15 +248,9 @@ function Content({ view }: { view: TonightView }) {
         : {}),
       act: (pin) => openAllTablesAction({ venueId: view.venueId, pin }),
       done: t('oa_toast', { k: closedIds.length }),
-      // On a shared device Open all names a person by their PIN, and its Undo would have to name
-      // the same person: it has no PIN to do so, so the toast offers none there (#219).
-      ...(view.device
-        ? {}
-        : {
-            undo: (_: unknown, undo: UndoToken | undefined) =>
-              undoOpenAllAction({ venueId: view.venueId, undo }),
-            undoWhen: wroteSomething,
-          }),
+      // On a shared device the Undo names the same person, with the PIN of the write.
+      undo: (_, undo, pin) => undoOpenAllAction({ venueId: view.venueId, undo, pin }),
+      undoWhen: wroteSomething,
     })
   }
   function confirmCloseAll() {
@@ -302,10 +297,14 @@ function Content({ view }: { view: TonightView }) {
       {view.rows.length === 0 && view.outOfStock.length === 0 ? (
         <Empty className="p-6 md:p-6">
           <EmptyHeader>
-            <EmptyTitle>{nothingOpen ? t('e_night_t') : t('e_open_t')}</EmptyTitle>
-            <EmptyDescription>{nothingOpen ? t('e_night_d') : t('e_open_d')}</EmptyDescription>
+            <EmptyTitle>
+              {noTables ? t('e_none_t') : notOpenYet ? t('e_night_t') : t('e_open_t')}
+            </EmptyTitle>
+            <EmptyDescription>
+              {noTables ? t('e_none_d') : notOpenYet ? t('e_night_d') : t('e_open_d')}
+            </EmptyDescription>
           </EmptyHeader>
-          {nothingOpen ? openAllButton : null}
+          {notOpenYet ? openAllButton : null}
         </Empty>
       ) : (
         <>
@@ -403,7 +402,7 @@ function Content({ view }: { view: TonightView }) {
           {t('title')}
           <span className="ml-2 text-base font-normal text-muted-foreground">{t('tab_act')}</span>
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="ghost"
@@ -418,7 +417,12 @@ function Content({ view }: { view: TonightView }) {
           <PauseMenu view={view} />
         </div>
       </div>
+      <OfflineLine offline={offline} stoodAt={view.now} timezone={view.timezone} />
       <PauseBanners view={view} />
+      {pushKey === undefined ? null : (
+        <PushControl venueId={view.venueId} pushKey={pushKey} sharedDevice={view.device} />
+      )}
+      {tablet === undefined ? null : <MakeTablet venueId={view.venueId} email={tablet.email} />}
       <p role="status" aria-live="polite" className="sr-only" data-testid="announcement">
         {announcement}
       </p>
@@ -436,7 +440,7 @@ function Content({ view }: { view: TonightView }) {
             type="button"
             variant={part === value ? 'default' : 'ghost'}
             aria-pressed={part === value}
-            className="h-11 flex-1"
+            className={`${WRAPS} min-w-0 flex-1`}
             onClick={() => setPart(value)}
           >
             {label}
@@ -487,14 +491,30 @@ function Content({ view }: { view: TonightView }) {
   )
 }
 
+/** A staff-only account on a browser that is not shared yet (RR-O35): it may make it the bar tablet. */
+export interface Tablet {
+  /** The account's, for the password asked again. */
+  readonly email: string
+}
+
 /** The Tonight screen for one venue. */
-export function TonightPanel({ view }: { view: TonightView }) {
+export function TonightPanel({
+  view,
+  pushKey,
+  tablet,
+}: {
+  view: TonightView
+  /** The Web Push public key, for whoever may answer alerts; without it the control doesn't show. */
+  pushKey?: string | undefined
+  /** Set when "Make this the bar tablet" is offered. */
+  tablet?: Tablet | undefined
+}) {
   const t = useTranslations('tonight')
   // A venue with no POS still reads right where a sentence names its system.
   const named = view.source === '' ? { ...view, source: t('source_none') } : view
   return (
     <RunProvider>
-      <Content view={named} />
+      <Content view={named} pushKey={pushKey} tablet={tablet} />
     </RunProvider>
   )
 }

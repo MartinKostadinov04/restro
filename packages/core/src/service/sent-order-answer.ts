@@ -44,7 +44,7 @@ async function answer(
   const [found] = await stx.tx
     .select({ tableId: sentOrders.tableId })
     .from(sentOrders)
-    .where(eq(sentOrders.id, command.sentOrderId))
+    .where(and(eq(sentOrders.id, command.sentOrderId), eq(sentOrders.venueId, stx.venueId)))
   if (found === undefined) return refused(null, 'sent_order_missing')
   await stx.rows.tableOrder(found.tableId)
   const sent = (await stx.rows.sentOrders([command.sentOrderId])).get(command.sentOrderId)
@@ -105,8 +105,12 @@ async function answer(
         updatedAt: sql`now()`,
       })
       .where(eq(alerts.id, alert.id))
+    // The same table and sent order as the raised line, so the Log names the table of both (RR-91).
     await stx.log({
       kind: 'alert.done',
+      tableId: sent.tableId,
+      sittingId: sent.sittingId,
+      sentOrderId: sent.id,
       reason: ORDER_UNCONFIRMED_ALERT,
       details: { alertId: alert.id },
     })

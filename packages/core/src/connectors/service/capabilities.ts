@@ -28,7 +28,7 @@ export const SERVICE_CAPABILITIES = [
    * Declared, `addLines` that opens one returns its reference (pay-first, D127, #113).
    */
   'firstItemsOpenBill',
-  /** Read closed bills. */
+  /** Read closed bills (`readClosedBill`: D127's third proof of a close). */
   'readClosedBills',
   /** Notes and options reach the ticket. */
   'notesReachTicket',

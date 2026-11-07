@@ -58,7 +58,12 @@ export function VenueName({ venueId, name, canEdit }: VenueNameProps) {
   }
 
   return (
-    <form onSubmit={submit} className="grid gap-2" noValidate data-testid="venue-name-form">
+    <form
+      onSubmit={submit}
+      className="grid grid-cols-1 gap-2"
+      noValidate
+      data-testid="venue-name-form"
+    >
       <Label htmlFor={`${formId}-name`} className="sr-only">
         {t('label')}
       </Label>

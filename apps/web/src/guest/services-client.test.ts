@@ -11,6 +11,8 @@ import { describe, expect, it } from 'vitest'
 import {
   CONSENT_KEY,
   createTableServices,
+  LOCATION_BLOCKED,
+  locateWith,
   newPhoneValue,
   OFFLINE_AFTER_MS,
   PASS_KEY,
@@ -54,6 +56,7 @@ function tableState(version: number, lines: Lines = [], location: LocationState 
       passSeconds: location === 'held' ? 7_000 : null,
       dayEndsInSeconds: 3_600,
       venueName: 'Club',
+      privacyUrl: 'https://club.example/privacy',
     },
     order: location === 'needed' ? null : { lines, removed: [], earlier: null },
     sentOrders: [],
@@ -87,7 +90,8 @@ function harness(
   more: Partial<TableServicesDeps> = {},
 ) {
   let clock = 1_000_000
-  const timers: { run: () => void; ms: number; cancelled: boolean }[] = []
+  const timers: { run: () => void; ms: number; cancelled: boolean; guard: boolean; at: number }[] =
+    []
   const calls: { url: string; init: RequestInit }[] = []
   const client = createTableServices({
     code: 'table-code-123',
@@ -98,8 +102,8 @@ function harness(
       calls.push({ url, init })
       return answer(url, init)
     },
-    setTimer(run, ms) {
-      const timer = { run, ms, cancelled: false }
+    setTimer(run, ms, kind) {
+      const timer = { run, ms, cancelled: false, guard: kind === 'guard', at: clock + ms }
       timers.push(timer)
       return () => {
         timer.cancelled = true
@@ -113,11 +117,26 @@ function harness(
     advance(ms: number) {
       clock += ms
     },
-    /** The wait of the timer due next. */
-    nextWait: () => timers.filter((timer) => !timer.cancelled).at(-1)?.ms,
+    /** The wait of the poll timer due next (the guards, a request's timeout and the offline watch, are no polls). */
+    nextWait: () => timers.filter((timer) => !timer.cancelled && !timer.guard).at(-1)?.ms,
+    /** Lets `ms` pass and runs the guard timers that come due, in order. */
+    async elapse(ms: number) {
+      const until = clock + ms
+      for (;;) {
+        const due = timers
+          .filter((t) => !t.cancelled && t.guard && t.at <= until)
+          .sort((a, b) => a.at - b.at)[0]
+        if (due === undefined) break
+        clock = Math.max(clock, due.at)
+        due.cancelled = true
+        due.run()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
+      clock = until
+    },
     /** Runs the live timer and lets its fetch settle. */
     async tick() {
-      const timer = timers.filter((t) => !t.cancelled).at(-1)
+      const timer = timers.filter((t) => !t.cancelled && !t.guard).at(-1)
       if (timer === undefined) throw new Error('no timer')
       timer.cancelled = true
       timer.run()
@@ -331,7 +350,8 @@ describe('the services client', () => {
     const h = harness(() => json(401, { code: 'code_retired' }))
     h.client.start()
     await h.tick()
-    expect(h.client.getState().ordering).toEqual({ state: 'closed' })
+    // Closed for good, and the face can say why: the code is no longer in use (D121, RR-58).
+    expect(h.client.getState().ordering).toEqual({ state: 'closed', retired: true })
     expect(h.nextWait()).toBeUndefined()
     const calls = h.calls.length
     expect(await h.client.dispatch(add())).toMatchObject({
@@ -379,6 +399,7 @@ describe('the services client', () => {
           ref: 'K7Q',
           lines: [{ itemId: ITEM, optionIds: [], qty: 2 }],
           sentAgoSeconds: 30,
+          sentClock: '19:42',
         },
       ],
     })
@@ -414,6 +435,7 @@ describe('the services client', () => {
         ref: 'K7Q',
         lines: [{ itemId: ITEM, optionIds: [], qty: 2 }],
         sentAt: 1_000_000 - 30_000,
+        sentClock: '19:42',
         mine: true,
       },
     ])
@@ -516,6 +538,7 @@ describe('the services client and the location check', () => {
       prompt: 'none',
       consent: 'unknown',
       venueName: 'Club',
+      privacyUrl: 'https://club.example/privacy',
     })
     const command = add()
     expect(await h.client.dispatch(command)).toMatchObject({ code: 'location_needed' })
@@ -534,7 +557,7 @@ describe('the services client and the location check', () => {
       consent: 'allowed',
     })
     expect(kept.kept.get(PASS_KEY)).toBe('pass-1')
-    expect(kept.kept.get(CONSENT_KEY)).toMatch(/^allowed:v1:\d+$/)
+    expect(kept.kept.get(`${CONSENT_KEY}:Club`)).toMatch(/^allowed:v1:\d+$/)
     // The pass goes back on the next poll, never in the address.
     await h.tick()
     expect(server.headers.at(-1)).toMatchObject({ 'X-Restro-Pass': 'pass-1' })
@@ -545,7 +568,7 @@ describe('the services client and the location check', () => {
     const server = checkingServer()
     const dayEnds = 1_000_000 + 3_600_000
     const h = harness(server.answer, {
-      memory: memory({ [CONSENT_KEY]: `allowed:${LOCATION_CONSENT_VERSION}:${dayEnds}` }),
+      memory: memory({ [`${CONSENT_KEY}:Club`]: `allowed:${LOCATION_CONSENT_VERSION}:${dayEnds}` }),
       locate: async () => AT_THE_BAR,
     })
     h.client.start()
@@ -556,7 +579,9 @@ describe('the services client and the location check', () => {
 
   it('asks again for consent to an older text, or after the service day ended', async () => {
     for (const seed of [`allowed:v0:${2_000_000}`, `allowed:${LOCATION_CONSENT_VERSION}:999999`]) {
-      const h = harness(checkingServer().answer, { memory: memory({ [CONSENT_KEY]: seed }) })
+      const h = harness(checkingServer().answer, {
+        memory: memory({ [`${CONSENT_KEY}:Club`]: seed }),
+      })
       h.client.start()
       await h.tick()
       await h.client.dispatch(add())
@@ -595,6 +620,177 @@ describe('the services client and the location check', () => {
     // Nothing waits: "Allow" gets the pass with the phone's own check.
     expect(await h.client.location.allow()).toBeNull()
     expect(kept.kept.get(PASS_KEY)).toBe('pass-1')
+  })
+
+  describe('the answer lasts per phone per service day (RR-58, D119)', () => {
+    const allowedToday = `allowed:${LOCATION_CONSENT_VERSION}:${1_000_000 + 3_600_000}`
+
+    it('is not asked again in a new tab, whose pass starts empty', async () => {
+      const durable = memory()
+      const first = harness(checkingServer().answer, {
+        memory: memory(),
+        durable,
+        locate: async () => AT_THE_BAR,
+      })
+      first.client.start()
+      await first.tick()
+      await first.client.dispatch(add())
+      await first.client.location.allow()
+      expect(durable.kept.get(`${CONSENT_KEY}:Club`)).toMatch(/^allowed:/)
+      // The pass stays the tab's; only the answer outlives it.
+      expect(durable.kept.has(PASS_KEY)).toBe(false)
+
+      const server = checkingServer()
+      const tab = harness(server.answer, {
+        memory: memory(),
+        durable,
+        locate: async () => AT_THE_BAR,
+      })
+      tab.client.start()
+      await tab.tick()
+      expect(tab.client.getState().location).toMatchObject({ prompt: 'none', consent: 'allowed' })
+      expect(await tab.client.dispatch(add())).toMatchObject({ status: 'accepted' })
+      expect(tab.client.getState().location?.prompt).toBe('none')
+    })
+
+    it('locates at once on the guest’s tap in a new tab, with no second consent screen (RR-89)', async () => {
+      const durable = memory({ [`${CONSENT_KEY}:Club`]: allowedToday })
+      const server = checkingServer()
+      const tab = harness(server.answer, {
+        memory: memory(),
+        durable,
+        locate: async () => AT_THE_BAR,
+      })
+      tab.client.start()
+      await tab.tick()
+      // The page of a phone that allowed in another tab: no pass here, the answer kept.
+      expect(tab.client.getState().location).toMatchObject({
+        state: 'needed',
+        prompt: 'none',
+        consent: 'allowed',
+      })
+      tab.client.location.reopen()
+      expect(tab.client.getState().location?.prompt).not.toBe('consent')
+      await tab.tick()
+      expect(server.bodies.some((body) => body.check?.location !== undefined)).toBe(true)
+      expect(tab.client.getState().location).toMatchObject({ state: 'held', prompt: 'none' })
+      // The answer is the same one, not a second proof: nothing but its own key was written.
+      expect(durable.kept.get(`${CONSENT_KEY}:Club`)).toMatch(/^allowed:/)
+    })
+
+    it('keeps "Not now" for the new tab too', async () => {
+      const durable = memory()
+      const first = harness(checkingServer().answer, { memory: memory(), durable })
+      first.client.start()
+      await first.tick()
+      await first.client.dispatch(add())
+      first.client.location.decline()
+      const tab = harness(checkingServer().answer, { memory: memory(), durable })
+      tab.client.start()
+      await tab.tick()
+      expect(await tab.client.dispatch(add())).toMatchObject({ code: 'location_needed' })
+      expect(tab.client.getState().location).toMatchObject({ prompt: 'none', consent: 'declined' })
+    })
+
+    it('never carries one venue’s answer to another: the consent names the venue', async () => {
+      const durable = memory({ [`${CONSENT_KEY}:Another club`]: allowedToday })
+      const h = harness(checkingServer().answer, { memory: memory(), durable })
+      h.client.start()
+      await h.tick()
+      await h.client.dispatch(add())
+      expect(h.client.getState().location).toMatchObject({ prompt: 'consent', consent: 'unknown' })
+    })
+
+    it('forgets the answer once the service day has ended', async () => {
+      const key = `${CONSENT_KEY}:Club`
+      const durable = memory({ [key]: `allowed:${LOCATION_CONSENT_VERSION}:999999` })
+      const h = harness(checkingServer().answer, { memory: memory(), durable })
+      h.client.start()
+      await h.tick()
+      expect(h.client.getState().location?.consent).toBe('unknown')
+      expect(durable.kept.has(key)).toBe(false)
+    })
+
+    it('counts a browser that blocks location as a refusal, and only the guest’s tap asks again', async () => {
+      const asked: string[] = []
+      const durable = memory()
+      const h = harness(checkingServer().answer, {
+        memory: memory(),
+        durable,
+        locate: async () => {
+          asked.push('browser')
+          return LOCATION_BLOCKED
+        },
+      })
+      h.client.start()
+      await h.tick()
+      await h.client.dispatch(add())
+      expect(await h.client.location.allow()).toMatchObject({ code: 'location_failed' })
+      expect(asked).toHaveLength(1)
+      // The failed screen this once, with the refusal remembered.
+      expect(h.client.getState().location).toMatchObject({ prompt: 'failed', consent: 'declined' })
+      h.client.location.dismiss()
+
+      // A later edit doesn't ask the browser, nor the guest; nor does a new tab.
+      expect(await h.client.dispatch(add())).toMatchObject({ code: 'location_needed' })
+      expect(asked).toHaveLength(1)
+      expect(h.client.getState().location?.prompt).toBe('none')
+      const tab = harness(checkingServer().answer, {
+        memory: memory(),
+        durable,
+        locate: async () => {
+          asked.push('browser')
+          return LOCATION_BLOCKED
+        },
+      })
+      tab.client.start()
+      await tab.tick()
+      expect(await tab.client.dispatch(add())).toMatchObject({ code: 'location_needed' })
+      expect(asked).toHaveLength(1)
+
+      // The guest's own "Allow location" tap does ask, and is refused again.
+      h.client.location.reopen()
+      await h.client.location.allow()
+      expect(asked).toHaveLength(2)
+      expect(h.client.getState().location).toMatchObject({ prompt: 'failed', consent: 'declined' })
+    })
+
+    it('doesn’t take a slow or missing fix for a refusal: the next edit tries again', async () => {
+      const asked: string[] = []
+      const durable = memory({ [`${CONSENT_KEY}:Club`]: allowedToday })
+      const h = harness(checkingServer().answer, {
+        memory: memory(),
+        durable,
+        locate: async () => {
+          asked.push('browser')
+          return null
+        },
+      })
+      h.client.start()
+      await h.tick()
+      expect(await h.client.dispatch(add())).toMatchObject({ code: 'location_failed' })
+      expect(h.client.getState().location).toMatchObject({ prompt: 'failed', consent: 'allowed' })
+      h.client.location.dismiss()
+      await h.client.dispatch(add())
+      expect(asked).toHaveLength(2)
+    })
+
+    it('reads the browser’s answer: denied or no API is blocked, anything else says nothing', async () => {
+      const denied = { code: 1, PERMISSION_DENIED: 1 } as GeolocationPositionError
+      const timedOut = { code: 3, PERMISSION_DENIED: 1 } as GeolocationPositionError
+      const failing = (error: GeolocationPositionError) => ({
+        getCurrentPosition: (_ok: PositionCallback, fail?: PositionErrorCallback | null) =>
+          fail?.(error),
+      })
+      expect(await locateWith(undefined)).toBe(LOCATION_BLOCKED)
+      expect(await locateWith(failing(denied))).toBe(LOCATION_BLOCKED)
+      expect(await locateWith(failing(timedOut))).toBeNull()
+      const coords = { latitude: 42.6977, longitude: 23.3219, accuracy: 20 }
+      const found = {
+        getCurrentPosition: (ok: PositionCallback) => ok({ coords } as GeolocationPosition),
+      }
+      expect(await locateWith(found)).toEqual(AT_THE_BAR)
+    })
   })
 
   it('drops a kept pass the server no longer holds', async () => {
@@ -680,6 +876,44 @@ describe('the services client and the location check', () => {
 })
 
 describe('paying (#110, #114, D127)', () => {
+  it('RR-2: a poll with a higher version moves the phone to the paused state and the new details', async () => {
+    const legal = {
+      name: 'Nova Club EOOD',
+      eik: '123456789',
+      address: 'Sofia, 1 Vitosha Blvd',
+      privacyUrl: 'https://club.example/privacy',
+    }
+    const before = tableState(5)
+    before.ordering = {
+      ...before.ordering,
+      paying: 'on',
+      payingProvider: 'stripe',
+      payingLegal: legal,
+    } as never
+    const after = tableState(6)
+    after.ordering = {
+      ...after.ordering,
+      paying: 'paused',
+      payingProvider: 'stripe',
+      payingLegal: { ...legal, name: 'Nova Club 2 EOOD' },
+    } as never
+    let answer: unknown = before
+    const h = harness(() => json(200, answer))
+    h.client.start()
+    await h.tick()
+    expect(h.client.getState().paying?.state).toBe('on')
+
+    answer = after
+    await h.tick()
+    expect(h.client.getState().paying?.state).toBe('paused')
+    expect(h.client.getState().paying?.legal?.name).toBe('Nova Club 2 EOOD')
+
+    // An "unchanged" for that version leaves what the phone has.
+    answer = { unchanged: true, version: 6, next: 10_000 }
+    await h.tick()
+    expect(h.client.getState().paying?.state).toBe('paused')
+  })
+
   const BN = `bn_${'0'.repeat(21)}1` as const
   const PY = newId('py')
   const HANDLE = 'AbCdEfGhIjKlMnOpQrStUv'
@@ -1119,5 +1353,342 @@ describe('paying (#110, #114, D127)', () => {
     expect(session.store.has(PAY_RETURNED_KEY)).toBe(false)
     expect(mem.store.has(PAY_RETURNED_KEY)).toBe(false)
     expect(mem.store.has(PAY_RECENT_KEY)).toBe(false)
+  })
+})
+
+describe('a stalled connection (RR-51, D121)', () => {
+  const never = () => new Promise<Response>(() => {})
+  const send = (actionId = crypto.randomUUID()): GuestCommand => ({
+    kind: 'order.send',
+    actionId,
+    lines: [{ itemId: ITEM, optionIds: [], qty: 1, note: '' }],
+  })
+  const pay = (): GuestCommand => ({
+    kind: 'pay.start',
+    actionId: crypto.randomUUID(),
+    pick: { kind: 'whole' },
+    seen: [{ lineId: `bn_${'0'.repeat(21)}1`, quantity: '1', amountMinor: 100 }],
+    tipMinor: null,
+    tipPercent: null,
+  })
+
+  it('aborts a request that never settles at about 10 s and says offline at once', async () => {
+    const signals: (AbortSignal | null | undefined)[] = []
+    const h = harness((_url, init) => {
+      signals.push(init.signal)
+      return never()
+    })
+    h.client.start()
+    await h.tick()
+    expect(h.client.getState().offline).not.toBe(true)
+    await h.elapse(OFFLINE_AFTER_MS + 1)
+    expect(h.client.getState().offline).toBe(true)
+    expect(signals[0]?.aborted).toBe(true)
+    // It keeps trying, quietly: the next poll waits the back-off and goes out.
+    expect(h.nextWait()).toBe(POLL_BACKOFF_MS[0])
+    await h.tick()
+    expect(h.calls).toHaveLength(2)
+  })
+
+  it('says offline when nothing settles and no request ends (the watch, not a request, turns it on)', async () => {
+    // A server that answered once, then every later request stalls and ignores the abort.
+    let answered = false
+    const h = harness(() => {
+      if (answered) return never()
+      answered = true
+      return json(200, tableState(1))
+    })
+    h.client.start()
+    await h.tick()
+    expect(h.client.getState().offline).toBe(false)
+    // The next poll goes out at the server's cadence and then stalls.
+    await h.elapse(10_000)
+    expect(h.client.getState().offline).toBe(false)
+    await h.tick()
+    await h.elapse(OFFLINE_AFTER_MS - 1)
+    expect(h.client.getState().offline).toBe(false)
+    await h.elapse(2)
+    expect(h.client.getState().offline).toBe(true)
+  })
+
+  it('never says offline to a healthy phone on the 10 s cadence, however its requests wait', async () => {
+    const waiting: ((response: Response) => void)[] = []
+    const h = harness(
+      () =>
+        new Promise<Response>((resolve) => {
+          waiting.push(resolve)
+        }),
+    )
+    h.client.start()
+    await h.tick()
+    waiting.shift()?.(json(200, tableState(1)))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(h.nextWait()).toBe(10_000)
+    for (let n = 0; n < 4; n += 1) {
+      // The idle gap before the next poll is no silence: nothing is outstanding.
+      await h.elapse(10_000)
+      expect(h.client.getState().offline).toBe(false)
+      await h.tick()
+      // The request is out for a moment, across the old 10 001 ms mark.
+      await h.elapse(1)
+      expect(h.client.getState().offline).toBe(false)
+      await h.elapse(300)
+      expect(h.client.getState().offline).toBe(false)
+      waiting.shift()?.(json(200, tableState(2 + n)))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(h.client.getState().offline).toBe(false)
+    }
+    // And a request that stalls from here on does turn it on.
+    await h.elapse(10_000)
+    await h.tick()
+    await h.elapse(OFFLINE_AFTER_MS + 1)
+    expect(h.client.getState().offline).toBe(true)
+  })
+
+  it('refuses Send and Pay while offline and queues nothing, and clears when a request answers', async () => {
+    let up = false
+    const h = harness(() => (up ? json(200, tableState(1)) : never()))
+    h.client.start()
+    await h.tick()
+    await h.elapse(OFFLINE_AFTER_MS + 1)
+    expect(h.client.getState().offline).toBe(true)
+    const before = h.calls.length
+    expect(await h.client.dispatch(send())).toMatchObject({ status: 'rejected', code: 'offline' })
+    expect(await h.client.dispatch(pay())).toMatchObject({ status: 'rejected', code: 'offline' })
+    expect(h.calls).toHaveLength(before)
+    // The bag stays editable: an edit still goes out.
+    void h.client.dispatch(add())
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/actions')
+    // A later request answers: the state clears, and a Send is let through again.
+    up = true
+    await h.elapse(OFFLINE_AFTER_MS + 1)
+    await h.tick()
+    expect(h.client.getState().offline).toBe(false)
+    const calls = h.calls.length
+    void h.client.dispatch(send())
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(h.calls).toHaveLength(calls + 1)
+  })
+
+  it('aborts a stalled action at about 10 s and takes the edit back', async () => {
+    const h = harness((url) => (url.endsWith('/actions') ? never() : json(200, tableState(1))))
+    h.client.start()
+    await h.tick()
+    const edit = h.client.dispatch(add())
+    expect(h.client.getState().order?.lines).toHaveLength(1)
+    await h.elapse(OFFLINE_AFTER_MS)
+    expect(await edit).toMatchObject({ status: 'pending' })
+    expect(h.client.getState().order?.lines).toEqual([])
+  })
+})
+
+describe('a Send whose answer was lost (RR-50, D120)', () => {
+  const sendCommand = (): GuestCommand => ({
+    kind: 'order.send',
+    actionId: crypto.randomUUID(),
+    lines: [{ itemId: ITEM, optionIds: [], qty: 1, note: '' }],
+  })
+  const sentOrder = (id: string) => ({
+    id,
+    state: 'sending' as const,
+    reason: null,
+    ref: 'K7Q',
+    lines: [{ itemId: ITEM, optionIds: [], qty: 1 }],
+    sentAgoSeconds: 1,
+    sentClock: '19:42',
+  })
+
+  it('answers a Send that threw as lost, and the state says so, with no reference to show', async () => {
+    const h = harness((url) => {
+      if (url.endsWith('/actions')) throw new TypeError('network')
+      return json(200, tableState(1))
+    })
+    h.client.start()
+    await h.tick()
+    expect(h.client.getState().sendLost).toBeNull()
+    const result = await h.client.dispatch(sendCommand())
+    expect(result).toMatchObject({ status: 'pending', code: 'answer_lost', ref: null })
+    expect(h.client.getState().sendLost).toEqual({ ref: null })
+  })
+
+  it('treats a 5xx and an unreadable answer to a Send as lost too', async () => {
+    for (const reply of [() => json(502, {}), () => json(200, { nonsense: true })]) {
+      const h = harness((url) => (url.endsWith('/actions') ? reply() : json(200, tableState(1))))
+      h.client.start()
+      await h.tick()
+      expect(await h.client.dispatch(sendCommand())).toMatchObject({ code: 'answer_lost' })
+      expect(h.client.getState().sendLost).toEqual({ ref: null })
+    }
+  })
+
+  it('does not call an edit’s lost answer a lost Send', async () => {
+    const h = harness((url) => {
+      if (url.endsWith('/actions')) throw new TypeError('network')
+      return json(200, tableState(1))
+    })
+    h.client.start()
+    await h.tick()
+    await h.client.dispatch(add())
+    expect(h.client.getState().sendLost).toBeNull()
+  })
+
+  it('offers no immediate re-send, and another phone’s order does not let go of it', async () => {
+    let other = false
+    let version = 1
+    const h = harness((url) => {
+      if (url.endsWith('/actions')) throw new TypeError('network')
+      version += 1
+      return json(200, {
+        ...tableState(version),
+        sentOrders: other ? [sentOrder(newId('so'))] : [],
+      })
+    })
+    h.client.start()
+    await h.tick()
+    await h.client.dispatch(sendCommand())
+    const calls = h.calls.length
+    // A second Send is not made: the answer is the same lost line, and nothing goes out.
+    expect(await h.client.dispatch(sendCommand())).toMatchObject({ code: 'answer_lost' })
+    expect(h.calls).toHaveLength(calls)
+    // A poll that finds nothing new does not let go yet.
+    await h.tick()
+    expect(h.client.getState().sendLost).toEqual({ ref: null })
+    // Someone else's order at the table (sent orders carry no action id, so this phone's cannot be
+    // told apart): the hold is the time limit alone, and the line stays.
+    other = true
+    await h.tick()
+    expect(h.client.getState().sendLost).toEqual({ ref: null })
+    await h.tick()
+    expect(h.client.getState().sendLost).toEqual({ ref: null })
+  })
+
+  it('a whole state after the phone had no pass (nothing listed at the loss) does not let go either', async () => {
+    let version = 1
+    let theirs = false
+    const h = harness((url) => {
+      if (url.endsWith('/actions')) throw new TypeError('network')
+      version += 1
+      return json(200, {
+        ...tableState(version),
+        sentOrders: theirs ? [sentOrder(newId('so'))] : [],
+      })
+    })
+    h.client.start()
+    await h.tick()
+    await h.client.dispatch(sendCommand())
+    h.client.location.stop?.()
+    theirs = true
+    await h.tick()
+    expect(h.client.getState().sendLost).toEqual({ ref: null })
+  })
+
+  it('lets go after a few minutes of polls that answered and found nothing', async () => {
+    const h = harness((url) => {
+      if (url.endsWith('/actions')) throw new TypeError('network')
+      return json(200, tableState(1))
+    })
+    h.client.start()
+    await h.tick()
+    await h.client.dispatch(sendCommand())
+    h.advance(60_000)
+    await h.tick()
+    expect(h.client.getState().sendLost).toEqual({ ref: null })
+    h.advance(3 * 60_000)
+    await h.tick()
+    expect(h.client.getState().sendLost).toBeNull()
+  })
+})
+
+describe('Stop location check (RR-49, D119)', () => {
+  it('drops the pass, remembers the choice, takes an on-the-bill edit down the refused path, and the guest’s own tap brings consent back', async () => {
+    const server = checkingServer()
+    const kept = memory()
+    const h = harness(server.answer, { memory: kept, locate: async () => AT_THE_BAR })
+    h.client.start()
+    await h.tick()
+    await h.client.dispatch(add())
+    await h.client.location.allow()
+    expect(kept.kept.get(PASS_KEY)).toBe('pass-1')
+    await h.tick()
+    expect(h.client.getState().location).toMatchObject({ state: 'held', consent: 'allowed' })
+
+    h.client.location.stop?.()
+    expect(kept.kept.has(PASS_KEY)).toBe(false)
+    expect(h.client.getState().location).toMatchObject({
+      state: 'needed',
+      prompt: 'none',
+      consent: 'declined',
+    })
+    expect(h.client.getState().order).toBeNull()
+    // The next poll goes without the pass, at once, for the whole state.
+    expect(h.nextWait()).toBe(0)
+    await h.tick()
+    expect(h.client.getState().location?.state).toBe('needed')
+
+    // The refused path: no consent screen, no position asked for, the refusal comes back.
+    const located = server.bodies.filter((body) => body.check?.location !== undefined).length
+    expect(await h.client.dispatch(add())).toMatchObject({ code: 'location_needed' })
+    expect(h.client.getState().location?.prompt).toBe('none')
+    expect(server.bodies.filter((body) => body.check?.location !== undefined)).toHaveLength(located)
+
+    h.client.location.reopen()
+    expect(h.client.getState().location?.prompt).toBe('consent')
+  })
+})
+
+describe('Stop location check with a poll in flight (RR-49)', () => {
+  it('discards the answer of a poll that went out before the stop', async () => {
+    const row = line(orderLineIdFor(crypto.randomUUID()), 1)
+    let release: (response: Response) => void = () => {}
+    let hold = false
+    const h = harness(() => {
+      if (!hold) return json(200, tableState(1, [row], 'held'))
+      return new Promise<Response>((resolve) => {
+        release = resolve
+      })
+    })
+    h.client.start()
+    await h.tick()
+    expect(h.client.getState().order?.lines).toHaveLength(1)
+    hold = true
+    await h.tick()
+    h.client.location.stop?.()
+    expect(h.client.getState().order).toBeNull()
+    release(json(200, tableState(2, [row], 'held')))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(h.client.getState().order).toBeNull()
+    expect(h.client.getState().location?.state).toBe('needed')
+  })
+})
+
+describe('the screen the face has open (RR-52, D121)', () => {
+  it('asks for the bill’s state when the face says the bill is open, at once, and the bag’s on the bag', async () => {
+    const h = harness(() => json(200, tableState(1)))
+    h.client.start()
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=menu')
+    h.client.setScreen('bill')
+    expect(h.nextWait()).toBe(0)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill&since=1')
+    h.client.setScreen('bag')
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=order&since=1')
+    h.client.setScreen('menu')
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=menu&since=1')
+  })
+
+  it('sends the open screen with an action too, and an empty bag on the bill is the bill', async () => {
+    const h = harness((url) =>
+      url.endsWith('/actions') ? json(500, {}) : json(200, tableState(1)),
+    )
+    h.client.start()
+    await h.tick()
+    h.client.setScreen('bill')
+    await h.client.dispatch(add())
+    const body = JSON.parse(String(h.calls.at(-1)?.init.body))
+    expect(body.view).toBe('bill')
   })
 })

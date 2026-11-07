@@ -8,6 +8,7 @@
 // Then it revalidates the venue page so the client gets the fresh view in the same round trip.
 // There is no input that means "on sale": `soldOut: false` only removes OUR mark (rule 5).
 import { idSchema } from '@restro/core'
+import { itemsOfVenue } from '@restro/core/apply'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -17,6 +18,7 @@ import { logError } from '@/server/log'
 import { canMarkSoldOut } from '@/server/roles'
 import { requireTenant } from '@/server/session'
 import { setItemsSoldOut } from '@/server/sold-out/service'
+import { onSharedDevice } from '@/server/staff/shared-device'
 import { getVenue } from '@/server/venues'
 
 import type { ActionResult } from './action-result'
@@ -33,9 +35,15 @@ export async function setItemsSoldOutAction(input: unknown): Promise<ActionResul
   if (!parsed.success) return { ok: false, error: 'invalid' }
   const { venueId, itemIds, soldOut } = parsed.data
   try {
-    const { organization, user } = await requireTenant()
+    const { organization, user, sessionId } = await requireTenant()
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'not_allowed' }
+    }
     const venue = await getVenue(organization.id, venueId)
     if (!venue) return { ok: false, error: 'not_found' }
+    // The tenant's rows are all the database hides: another venue's item is refused here (RR-72).
+    const ours = await itemsOfVenue(getPool(), organization.id, venue.id, itemIds)
+    if (itemIds.some((id) => !ours.has(id))) return { ok: false, error: 'not_found' }
     const result = await setItemsSoldOut(
       {
         pool: getPool(),

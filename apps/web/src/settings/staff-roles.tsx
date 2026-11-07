@@ -3,11 +3,12 @@
 // Staff and roles › Roles and › Shared devices (#87, plan §3). A role is a row; its sheet shows the
 // name (own roles rename in place) and the permissions as ticks in three groups, each tick saving at
 // once with Undo. The three default roles are read-only and are copied to make a venue's own
-// (D122 §7). Nobody gives what they don't hold: such a tick is shown unticked and read-only.
+// (D122 §7). Nobody gives what they don't hold: such a tick is shown unticked and read-only. A shared
+// device is listed and stopped here; it is made on the bar tablet itself, by a staff-only account,
+// from Tonight (RR-O35).
 import { ChevronRightIcon } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
-
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -31,7 +32,6 @@ import {
 import {
   archiveRoleAction,
   copyRoleAction,
-  markSharedDeviceAction,
   revokeSharedDeviceAction,
   updateRoleAction,
 } from '@/server/settings/staff-actions'
@@ -78,7 +78,7 @@ export function StaffRoles({ view, runner }: { view: StaffView; runner: Runner }
   const role = view.roles.find((candidate) => candidate.ref === open) ?? null
 
   return (
-    <section className="grid gap-3" aria-labelledby="staff-roles">
+    <section className="grid grid-cols-1 gap-3" aria-labelledby="staff-roles">
       <h3 id="staff-roles" className="text-lg font-medium">
         {t('sf_roles')}
       </h3>
@@ -135,7 +135,7 @@ function CopyDialog({
     <Dialog open={role !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <form
-          className="grid gap-4"
+          className="grid grid-cols-1 gap-4"
           onSubmit={(event) => {
             event.preventDefault()
             if (role === null || name.trim() === '') return
@@ -158,7 +158,7 @@ function CopyDialog({
           <DialogHeader>
             <DialogTitle>{t('sf_copy')}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-2">
+          <div className="grid grid-cols-1 gap-2">
             <Label htmlFor="role-copy-name">{t('sf_name')}</Label>
             <Input
               id="role-copy-name"
@@ -255,9 +255,9 @@ function RoleSheet({
                 {role.defaultKind === null ? '' : ` · ${t('sf_default')}`}
               </SheetDescription>
             </SheetHeader>
-            <div className="grid gap-5 px-4">
+            <div className="grid grid-cols-1 gap-5 px-4">
               {PERMISSION_GROUPS.map((group) => (
-                <fieldset key={group.key} className="grid gap-2">
+                <fieldset key={group.key} className="grid grid-cols-1 gap-2">
                   <legend className="text-sm font-medium">{t(group.key)}</legend>
                   {group.key === 'sf_g_settings' ? (
                     <p className="text-xs text-muted-foreground">{t('sf_own_signin')}</p>
@@ -324,12 +324,10 @@ export function StaffDevices({ view, runner }: { view: StaffView; runner: Runner
   const t = useTranslations('ownerSettings')
   const format = useFormatter()
   const { pending, run } = runner
-  const [making, setMaking] = useState(false)
-  const [name, setName] = useState('')
   const [stopping, setStopping] = useState<StaffView['devices'][number] | null>(null)
 
   return (
-    <section className="grid gap-3" aria-labelledby="staff-devices">
+    <section className="grid grid-cols-1 gap-3" aria-labelledby="staff-devices">
       <h3 id="staff-devices" className="text-lg font-medium">
         {t('sf_devices')}
       </h3>
@@ -354,58 +352,10 @@ export function StaffDevices({ view, runner }: { view: StaffView; runner: Runner
           ))}
         </ul>
       )}
-      {view.thisBrowserShared || view.operator ? null : (
-        <div className="grid gap-1">
-          <div>
-            <Button variant="outline" onClick={() => setMaking(true)}>
-              {t('sf_dev_make')}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">{t('sf_dev_line')}</p>
-        </div>
-      )}
-
-      <Dialog open={making} onOpenChange={setMaking}>
-        <DialogContent>
-          <form
-            className="grid gap-4"
-            onSubmit={(event) => {
-              event.preventDefault()
-              if (name.trim() === '') return
-              setMaking(false)
-              run(() => markSharedDeviceAction({ venueId: view.venueId, name: name.trim() }), {
-                done: t('st_saved'),
-                words: (error) => (error === 'already_shared' ? t('sf_e_shared') : undefined),
-                onOk: () => setName(''),
-              })
-            }}
-          >
-            <DialogHeader>
-              <DialogTitle>{t('sf_dev_make')}</DialogTitle>
-              <DialogDescription>{t('sf_dev_line')}</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-2">
-              <Label htmlFor="device-name">{t('sf_dev_name')}</Label>
-              <Input
-                id="device-name"
-                value={name}
-                maxLength={40}
-                autoFocus
-                placeholder={t('sf_dev_example')}
-                onChange={(event) => setName(event.target.value)}
-              />
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setMaking(false)}>
-                {t('st_cancel')}
-              </Button>
-              <Button type="submit" disabled={pending || name.trim() === ''}>
-                {t('sf_dev_go')}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* The bar tablet is made on the tablet itself, by a staff-only account (RR-O35). */}
+      <p className="text-sm text-muted-foreground" data-testid="staff-devices-how">
+        {t('sf_dev_how')}
+      </p>
 
       <Dialog open={stopping !== null} onOpenChange={(open) => !open && setStopping(null)}>
         <DialogContent>

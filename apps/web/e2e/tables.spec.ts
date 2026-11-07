@@ -230,7 +230,12 @@ test.beforeAll(async ({ browser }) => {
       await page.waitForTimeout(10_000)
     }
   }
-  await page.getByTestId('venue-card').first().getByRole('link', { name: 'Отвори' }).click()
+  // By name: a database seeded with `pnpm db:seed:dev` also lists a Demo Bar, and it sorts first.
+  await page
+    .getByTestId('venue-card')
+    .filter({ hasText: 'Demo Club Sofia' })
+    .getByRole('link', { name: 'Отвори' })
+    .click()
   await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}$/)
   origin = new URL(page.url()).origin
   venueUrl = page.url()
@@ -243,6 +248,9 @@ test.afterAll(async () => {
   workerHelper?.stop()
   // The second menu belongs to this spec only: the other specs see the demo venue with one menu.
   runScript('./scripts/seed-tables-e2e.ts', 'second-menu-remove')
+  // The area test's own `finally` cannot run once its page is gone (a timeout): put the areas back
+  // here, from the database, so the other specs see the demo venue as the till has it.
+  runScript('./scripts/seed-tables-e2e.ts', 'areas-restore')
   await context.close()
 })
 
@@ -390,6 +398,10 @@ test('a name given in the tab reaches the guest page, shown as it is', async () 
 })
 
 test('an area is renamed and moved; a table is hidden (its file goes), shown again and moved', async () => {
+  // A rename, a reload, area and table moves, a hide, five worker rounds, a print sheet in a second
+  // page: well over the default 30 s on a two-core runner that also runs `next dev`, the worker and
+  // the simulator.
+  test.setTimeout(180_000)
   await page.goto(tabUrl)
   const terrace = areaOfRow(rowOf('6'))
   const original = await terrace.getByTestId('hall-name').inputValue()

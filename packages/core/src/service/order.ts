@@ -18,6 +18,7 @@ import {
   type TableOrderDraft,
   tidyOrder,
 } from '../table-order'
+import { readGuestFeatures } from '../theme'
 import type { ServiceTx } from './definition'
 import { accepted, refused, type ServiceResult } from './results'
 import type { TableOrder } from './rows'
@@ -45,6 +46,12 @@ export type OrderEditCommand = OrderEdit & { readonly tableId: string; readonly 
 export async function editOrder(stx: ServiceTx, command: OrderEditCommand): Promise<ServiceResult> {
   const row = stx.rows.heldOrder(command.tableId)
   if (row === null) return refused(command.actionId, 'table_not_open')
+  // Nothing new goes on the order while ordering from the phone is off (the Design tab's switch):
+  // the guest page shows no bag then, so only a stale page or a crafted request gets here. The
+  // phone's answer is the closed night's: order from a waiter. Lines already there can still go.
+  if (command.type === 'order.add' && !readGuestFeatures(stx.venue.settings).ordering) {
+    return refused(command.actionId, 'ordering_closed')
+  }
   const now = (await stx.dbNow()).getTime()
   // What time has done first: a line whose Undo closed is gone, an idle order is aside.
   const current = tidyOrder(orderFromRow(row), now).order

@@ -10,6 +10,9 @@ import { BackIcon, CloseIcon } from './icons'
 const FOCUSABLE =
   'button:not([disabled]):not([tabindex="-1"]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
 
+/** How many dialogs hold the page still: stacked dialogs close in any order, the last one frees it. */
+let scrollLocks = 0
+
 export function Overlay({
   title,
   titleLang,
@@ -41,7 +44,7 @@ export function Overlay({
 
   useEffect(() => {
     close.current?.focus({ preventScroll: true })
-    const previous = document.body.style.overflow
+    scrollLocks += 1
     document.body.style.overflow = 'hidden'
     const keepFocusInside = (event: KeyboardEvent) => {
       if (event.key !== 'Tab') return
@@ -59,7 +62,8 @@ export function Overlay({
     }
     document.addEventListener('keydown', keepFocusInside)
     return () => {
-      document.body.style.overflow = previous
+      scrollLocks -= 1
+      if (scrollLocks === 0) document.body.style.overflow = ''
       document.removeEventListener('keydown', keepFocusInside)
     }
   }, [])

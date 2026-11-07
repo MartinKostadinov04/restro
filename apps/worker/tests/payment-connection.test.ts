@@ -130,6 +130,11 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
       'A person',
       `${id}@example.test`,
     ])
+    // A real sign-in: the internal endpoints look the session up (RR-10).
+    await query(
+      "insert into restro.auth_session (id, expires_at, token, user_id) values ($1, now() + interval '1 hour', $2, $3)",
+      [`sess-${id}`, `tok-${id}`, id],
+    )
     await query(
       'insert into restro.auth_member (id, organization_id, user_id, role) values ($1, $2, $3, $4)',
       [`mb-${id}`, tenantId, id, role],
@@ -145,7 +150,11 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
   ): ConnectionRequest => ({
     tenantId: tenantId as `tn_${string}`,
     venueId: venueId as `vn_${string}`,
-    actor: { kind: 'user', userId: options.userId ?? ownerId, sessionId: `sess-${randomUUID()}` },
+    actor: {
+      kind: 'user',
+      userId: options.userId ?? ownerId,
+      sessionId: `sess-${options.userId ?? ownerId}`,
+    },
     signedInAt: new Date(Date.now() - (options.signedInMinutesAgo ?? 0) * 60_000).toISOString(),
     action,
     returnUrl: `https://restro.test/venues/${venueId}?tab=settings&section=paying&connection=return`,
@@ -223,7 +232,7 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
         tenantId,
         venueId,
         origin: 'staff',
-        actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
+        actor: { kind: 'user', userId: ownerId, sessionId: `sess-${ownerId}` },
         jobId: `req-${randomUUID()}`,
         signedInAt: new Date(),
       })

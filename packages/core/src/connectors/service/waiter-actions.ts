@@ -36,6 +36,7 @@ export const SERVICE_READ_STEPS = [
   'readTable',
   'readIsolated',
   'readAvailability',
+  'readClosedBill',
 ] as const
 
 export type ServiceWriteStep = keyof typeof SERVICE_WRITE_STEPS

@@ -58,7 +58,7 @@ import {
 } from '@restro/shell'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 
-import type { CommandDraft } from './table-order'
+import { type CommandDraft, StopLocationCheck } from './table-order'
 
 /** What the bill panel needs from the face. */
 export interface PayPanelProps {
@@ -596,22 +596,25 @@ export function PayPanel(props: PayPanelProps): ReactNode {
   if (bill === null || paying === null) return null
 
   const totals = choosePay(picks, tip, tipsOffered)
-  const block = payBlock(paying, bill, picks, tip, tipsOffered, receiptEmail)
+  const offline = state?.offline === true
+  const block = payBlock(paying, bill, picks, tip, tipsOffered, receiptEmail, offline)
   const free = freeLines(bill)
   const blockWords =
-    block === 'cards_paused'
-      ? words.cardsPaused
-      : block === 'not_up_to_date'
-        ? words.notUpToDate
-        : block === 'nothing_picked'
-          ? words.nothingPicked
-          : block === 'below_minimum'
-            ? words.belowMinimum(money(paying.minCardMinor))
-            : block === 'tip_too_big'
-              ? words.tipTooBig
-              : block === 'bad_email'
-                ? words.emailInvalid
-                : null
+    block === 'offline'
+      ? serviceWords.offline
+      : block === 'cards_paused'
+        ? words.cardsPaused
+        : block === 'not_up_to_date'
+          ? words.notUpToDate
+          : block === 'nothing_picked'
+            ? words.nothingPicked
+            : block === 'below_minimum'
+              ? words.belowMinimum(money(paying.minCardMinor))
+              : block === 'tip_too_big'
+                ? words.tipTooBig
+                : block === 'bad_email'
+                  ? words.emailInvalid
+                  : null
   const all = free.length > 0 && free.every((line) => picks.has(line.id))
   // Everything is paid: nothing is free to pay and the sitting has paid lines, so "Nothing on your
   // bill yet", the choosing, the totals and Pay go, and the bill shows what was paid (D127 1.2).
@@ -796,6 +799,12 @@ export function PayPanel(props: PayPanelProps): ReactNode {
         otherItem={serviceWords.otherItem}
         money={money}
       />
+      {/* "Stop location check" (D119) sits on the bill while the phone holds a pass. */}
+      {state?.location?.state === 'held' ? (
+        <p>
+          <StopLocationCheck services={services} strings={serviceWords} />
+        </p>
+      ) : null}
     </section>
   )
 }

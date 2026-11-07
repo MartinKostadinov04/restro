@@ -1,9 +1,10 @@
 // The refunds the venue made in its provider's dashboard, and the storno they leave to do (#222;
 // D122 §8; decision log `docs/deliverables/2026-10-21-refunds-disputes-decision-log.md` 5.1–5.8).
 //
-// Restro never refunds (rule 7, D125 3.5): `payment.observe` reads the provider's refund total back
-// and `reconcileRefunds` keeps one `payment_refunds` row per rise of it. A total that falls back
-// marks the newest rows "didn't go through". The storno is the venue's own work at the till, so
+// Restro never refunds (rule 7, D125 3.5): `payment.observe` reads the provider's refunds back and
+// `reconcileRefunds` keeps one `payment_refunds` row per refund, matched by the provider's id
+// (#261). A refund the provider says failed marks its row "didn't go through". The storno is the
+// venue's own work at the till, so
 // "Storno done" (`payment.storno_done`) only records who said it was made and when; Restro never
 // checks the POS for it. Both commands are `money.follow_up`: a manager's PIN on the shared tablet,
 // one tap on a manager's own session.
@@ -16,11 +17,11 @@
 // then the refund rows of the payment.
 
 import { alerts, logEntries, paymentRefunds } from '@restro/db'
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema, newId } from '../ids'
-import { subtractMinor } from '../money'
+import { addMinor, subtractMinor } from '../money'
 import { PAYMENT_REFUNDED_KIND } from './alert-rules'
 import { defineCommand, type ServiceTx } from './definition'
 import { type Locked, lockRoute, refusedLock } from './pay-route'
@@ -83,73 +84,156 @@ export async function openAlertsOf(
     )
 }
 
+/** The most refunds one reading carries: a provider's list stops well before it. */
+export const REFUND_LIST_CAP = 1_000
+
+/** One refund as the provider lists it, in the database's words. */
+export interface ObservedRefund {
+  readonly ref: string
+  readonly amountMinor: number
+  readonly failed: boolean
+}
+
+/** What the provider says was refunded: its refunds that did not fail. */
+export function refundTotalMinor(refunds: readonly ObservedRefund[]): number {
+  return refunds
+    .filter((refund) => !refund.failed)
+    .reduce((total, refund) => addMinor(total, refund.amountMinor), 0)
+}
+
+/** `a - b`, stopping at nothing: a total from before the ids may be less than its rows. */
+function lessMinor(a: number, b: number): number {
+  return b > a ? 0 : subtractMinor(a, b)
+}
+
 /**
- * Brings the payment's refund rows in line with the provider's refund total (`targetMinor`, an
- * absolute reading), measured from the total stored before this reading:
- * - A total above it is a new refund: one row for the rise (two refunds read back at once make
- *   one), one `record` Log entry and one alert for the venue's group. A duplicate or out-of-order
- *   notice reads the same total and so adds nothing. A refund made before the rows existed (a
- *   stored total and no row) counts as recorded; rows are made only for later rises.
- * - A total below it is a refund that did not go through. Only the newest active row of exactly
- *   that amount is marked, its alert closes, and a row already answered is left for the
- *   accountant. A fall no row matches marks nothing and makes no row (`unmatched`: the worker logs
- *   it); the rows are never invented from a fall. A reading that marks rows adds none.
+ * Brings the payment's refund rows in line with the provider's list (`refunds`, oldest first), by
+ * the provider's id, never by an amount:
+ * - A refund with no row is new: one row, one `record` Log entry and one alert for the venue's
+ *   group. A refund that failed before Restro ever saw it makes no row: it has no storno to do.
+ * - A refund the list says failed marks its row, and its alert closes. A row already answered is
+ *   left for the accountant (Tonight reads it from the row).
+ * - A row the list contradicts (back after failing, or more on the rows than the list adds up to:
+ *   neither documented) is left as it is and counted `unmatched`, and the worker logs it.
  *
- * Known limit: the total is one number, so a refund that fails and a new one made before the next
- * reading cancel out in it. With a 500 refund stored, a failed 500 and a new 800 refund read as
- * 500 → 800: a 300 row is added and the 500 is not marked. A failed 500 and a new 300 read as
- * 500 → 300, a fall by 200 no row has: it is unmatched, and the new refund gets no row. Telling
- * them apart needs the provider's refunds one by one, by their ids (the follow-up in the Stripe
- * knowledge file, open item 12).
+ * Rows and totals from before migration 0044 have no id, and a reading can't count them twice:
+ * - A row with no id is given the id of a refund of exactly its amount, active refunds first, with
+ *   no new Log entry or alert: it is that refund, already told. If that refund failed, the row is
+ *   marked like any other.
+ * - What the stored total holds beyond the rows with an id (`recorded`) stands for refunds already
+ *   counted: a row of two refunds read at once, or a refund made before the rows existed. Refunds
+ *   with no row use it up, oldest first, and make none; a refund it can't cover is new. Once every
+ *   refund has a row, the stored total is what those rows add up to and `recorded` is nothing, so
+ *   it can't hide a new refund.
  */
 export async function reconcileRefunds(
   stx: ServiceTx,
   locked: Locked,
-  targetMinor: number,
-): Promise<{ readonly added: number; readonly failed: number; readonly unmatched: number }> {
+  refunds: readonly ObservedRefund[],
+  totalMinor: number,
+): Promise<{
+  readonly added: number
+  readonly failed: number
+  readonly named: number
+  readonly unmatched: number
+}> {
   const { payment } = locked
-  const previousMinor = payment.refundedMinor
-  if (targetMinor < previousMinor) {
-    const fallMinor = subtractMinor(previousMinor, targetMinor)
-    const rows = await stx.tx
-      .select()
-      .from(paymentRefunds)
-      .where(and(eq(paymentRefunds.paymentId, payment.id), isNull(paymentRefunds.failedAt)))
-      .orderBy(desc(paymentRefunds.seenAt), desc(paymentRefunds.id))
-      .for('update')
-    const failing = rows.find((row) => row.amountMinor === fallMinor)
-    if (failing === undefined) return { added: 0, failed: 0, unmatched: 1 }
+  const rows = await stx.tx
+    .select()
+    .from(paymentRefunds)
+    .where(eq(paymentRefunds.paymentId, payment.id))
+    .orderBy(asc(paymentRefunds.seenAt), asc(paymentRefunds.id))
+    .for('update')
+  const byRef = new Map<string, RefundRow>()
+  let recorded = payment.refundedMinor
+  let rowsMinor = 0
+  for (const row of rows) {
+    if (row.providerRefundRef !== null) byRef.set(row.providerRefundRef, row)
+    if (row.failedAt !== null) continue
+    rowsMinor = addMinor(rowsMinor, row.amountMinor)
+    if (row.providerRefundRef !== null) recorded = lessMinor(recorded, row.amountMinor)
+  }
+
+  let named = 0
+  const unnamed = rows.filter((row) => row.providerRefundRef === null && row.failedAt === null)
+  const activeFirst = [...refunds.filter((r) => !r.failed), ...refunds.filter((r) => r.failed)]
+  for (const refund of activeFirst) {
+    if (byRef.has(refund.ref)) continue
+    const at = unnamed.findIndex((row) => row.amountMinor === refund.amountMinor)
+    const row = unnamed[at]
+    if (row === undefined) continue
+    unnamed.splice(at, 1)
     await stx.tx
       .update(paymentRefunds)
-      .set({ failedAt: sql`now()`, ...stx.provenance, updatedAt: sql`now()` })
-      .where(eq(paymentRefunds.id, failing.id))
-    await stx.log({
-      kind: 'payment.refund_seen',
-      paymentId: payment.id,
-      tableId: payment.tableId,
-      sittingId: payment.sittingId,
-      toState: 'failed',
-      details: {
-        refundId: failing.id,
-        amountMinor: failing.amountMinor,
-        providerKind: payment.providerKind,
-      },
-    })
-    await closeAlertRows(
-      stx,
-      await openAlertsOf(stx, payment.id, PAYMENT_REFUNDED_KIND, failing.id),
-    )
-    return { added: 0, failed: 1, unmatched: 0 }
+      .set({ providerRefundRef: refund.ref, ...stx.provenance, updatedAt: sql`now()` })
+      .where(eq(paymentRefunds.id, row.id))
+    byRef.set(refund.ref, row)
+    recorded = lessMinor(recorded, row.amountMinor)
+    named += 1
   }
-  if (targetMinor === previousMinor) return { added: 0, failed: 0, unmatched: 0 }
+
+  let added = 0
+  let failed = 0
+  let unmatched = 0
+  for (const refund of refunds) {
+    const row = byRef.get(refund.ref)
+    if (row === undefined) {
+      if (refund.failed) continue
+      if (refund.amountMinor <= recorded) {
+        recorded = subtractMinor(recorded, refund.amountMinor)
+        continue
+      }
+      await addRefundRow(stx, locked, refund)
+      rowsMinor = addMinor(rowsMinor, refund.amountMinor)
+      added += 1
+    } else if (refund.failed && row.failedAt === null) {
+      await markRefundFailed(stx, locked, row)
+      rowsMinor = subtractMinor(rowsMinor, row.amountMinor)
+      failed += 1
+    } else if (!refund.failed && row.failedAt !== null) {
+      // Back after failing: not documented, and the row stays marked. The total counts it, so it
+      // must not count as `recorded` for a later refund.
+      recorded = lessMinor(recorded, refund.amountMinor)
+      unmatched += 1
+    }
+  }
+  if (rowsMinor > totalMinor) unmatched += 1
+  return { added, failed, named, unmatched }
+}
+
+/** A refund the provider says did not go through: its row is marked and its alert closes. */
+async function markRefundFailed(stx: ServiceTx, locked: Locked, row: RefundRow): Promise<void> {
+  const { payment } = locked
+  await stx.tx
+    .update(paymentRefunds)
+    .set({ failedAt: sql`now()`, ...stx.provenance, updatedAt: sql`now()` })
+    .where(eq(paymentRefunds.id, row.id))
+  await stx.log({
+    kind: 'payment.refund_seen',
+    paymentId: payment.id,
+    tableId: payment.tableId,
+    sittingId: payment.sittingId,
+    toState: 'failed',
+    details: {
+      refundId: row.id,
+      amountMinor: row.amountMinor,
+      providerKind: payment.providerKind,
+    },
+  })
+  await closeAlertRows(stx, await openAlertsOf(stx, payment.id, PAYMENT_REFUNDED_KIND, row.id))
+}
+
+/** A new refund: its row, its Log entry and one alert for the venue's group. */
+async function addRefundRow(stx: ServiceTx, locked: Locked, refund: ObservedRefund): Promise<void> {
+  const { payment } = locked
   const id = newId('rf')
-  const amountMinor = subtractMinor(targetMinor, previousMinor)
   await stx.tx.insert(paymentRefunds).values({
     id,
     tenantId: stx.tenantId,
     venueId: stx.venueId,
     paymentId: payment.id,
-    amountMinor,
+    providerRefundRef: refund.ref,
+    amountMinor: refund.amountMinor,
     seenAt: await stx.dbNow(),
     serviceDate: stx.serviceDate,
     ...stx.provenance,
@@ -160,7 +244,7 @@ export async function reconcileRefunds(
     tableId: payment.tableId,
     sittingId: payment.sittingId,
     toState: 'seen',
-    details: { refundId: id, amountMinor, providerKind: payment.providerKind },
+    details: { refundId: id, amountMinor: refund.amountMinor, providerKind: payment.providerKind },
   })
   // The group is told once, with the table and the payment's day and no amount (decision log 5.8).
   await stx.tx.insert(alerts).values({
@@ -182,7 +266,6 @@ export async function reconcileRefunds(
     ...stx.provenance,
     updatedAt: sql`now()`,
   })
-  return { added: 1, failed: 0, unmatched: 0 }
 }
 
 const StornoSchema = (type: 'payment.storno_done' | 'payment.storno_undo') =>

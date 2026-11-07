@@ -4,7 +4,10 @@ import { describe, expect, it } from 'vitest'
 import {
   CHANGE_LOG_DAYS,
   cutoff,
+  INSTANCE_BIN_DAYS,
   isDue,
+  MENU_BIN_DAYS,
+  TABLE_BIN_DAYS,
   VENUE_BIN_DAYS,
   VERSION_PURGE_DAYS,
   VERSIONS_KEPT,
@@ -27,6 +30,24 @@ function row(version: number, ageDays: number, overrides: Partial<VersionRow> = 
     ...overrides,
   }
 }
+
+describe('how long the bin keeps things (D83)', () => {
+  it('is 30 days for a venue, a menu and a table, and 61 for the change log', () => {
+    expect([VENUE_BIN_DAYS, MENU_BIN_DAYS, TABLE_BIN_DAYS, CHANGE_LOG_DAYS]).toEqual([
+      30, 30, 30, 61,
+    ])
+    expect(isDue(daysAgo(29), NOW, VENUE_BIN_DAYS)).toBe(false)
+    expect(isDue(daysAgo(29), NOW, MENU_BIN_DAYS)).toBe(false)
+    expect(isDue(daysAgo(29), NOW, TABLE_BIN_DAYS)).toBe(false)
+    expect(isDue(daysAgo(59), NOW, CHANGE_LOG_DAYS)).toBe(false)
+  })
+
+  it('is 30 days for a removed POS instance (D91) and for a version that is not live (D96), and 2 are kept (D96)', () => {
+    expect(INSTANCE_BIN_DAYS).toBe(30)
+    expect(VERSION_PURGE_DAYS).toBe(30)
+    expect(VERSIONS_KEPT).toBe(2)
+  })
+})
 
 describe('what is due (D83)', () => {
   it('a venue is due 30 days after its deletion, not before; nothing undated is due', () => {

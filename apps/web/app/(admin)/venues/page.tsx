@@ -16,6 +16,7 @@ import {
 import { getPool } from '@/server/db'
 import { canManageIntegration } from '@/server/roles'
 import { requireTenant } from '@/server/session'
+import { onSharedDevice } from '@/server/staff/shared-device'
 import { staffLandingVenue } from '@/server/tonight/landing'
 import { listVenueCards } from '@/server/venues'
 
@@ -37,8 +38,11 @@ export default async function VenuesPage() {
   if (landing !== null) redirect(`/venues/${landing}?tab=tonight`)
   const venues = await listVenueCards(getPool(), organization.id)
   const t = await getTranslations('venues')
-  // Owners and admins add and unpublish venues (the actions check the role again).
-  const canCreate = canManageIntegration(organization.role)
+  // Owners and admins add and unpublish venues (the actions check the role again), on their own
+  // sign-in: a shared device is not offered it (RR-85).
+  const canCreate =
+    canManageIntegration(organization.role) &&
+    !(await onSharedDevice({ tenantId: organization.id, sessionId }))
 
   return (
     <>

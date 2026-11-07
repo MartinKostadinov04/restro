@@ -20,6 +20,7 @@
 // - The web app never calls a POS; this job is the only reader.
 
 import {
+  CAUTIOUS_CALLS_PER_SECOND,
   JOB_NAMES,
   prepareJob,
   type ServiceReader,
@@ -27,7 +28,7 @@ import {
   VenueSyncJobSchema,
 } from '@restro/core'
 import { applyFloor, finishJobRun, startJobRun } from '@restro/core/apply'
-import { applyService } from '@restro/core/service'
+import { applyService, BUDGET_WAIT_MS } from '@restro/core/service'
 import {
   authOrganization,
   type DbPool,
@@ -53,6 +54,7 @@ import {
 } from '../service-connectors'
 import { createLimiter, type Limiter } from '../sync/limiter'
 import { type ConnectionBreakers, SHARED_BREAKERS } from './breaker'
+import { CallPacer, type PacerClock } from './call-pacer'
 import { defineJob, type JobDefinition, type WorkerContext } from './types'
 
 const MINUTE = 60_000
@@ -68,11 +70,44 @@ const FLOOR_KINDS = ['sim'] as const
 
 /**
  * One budget per POS instance, shared by every job of this process (verification, round-2 row 11):
- * two venues of one installation never read it at the same time. One call chain at a time is the
- * starting value; a connector with a stated rate limit gets its own figure with its own ticket.
+ * two venues of one installation never read it at the same time. An instance is one login (rule 9),
+ * so its budgets are the login's: one call chain at a time, one call at a time, and a number of
+ * calls a second (`paceOf`), the connector's figure or the cautious default.
  */
 export class InstanceBudgets {
   readonly #limiters = new Map<string, Limiter>()
+  readonly #chains = new Map<string, Limiter>()
+  readonly #pacers = new Map<string, CallPacer>()
+  readonly #clock: PacerClock | undefined
+
+  /** `clock`: what the per-second budget runs on; tests pass the simulated POS's. */
+  constructor(options: { readonly clock?: PacerClock } = {}) {
+    this.#clock = options.clock
+  }
+
+  #pacer(integrationId: string, perSecond: number): CallPacer {
+    let pacer = this.#pacers.get(integrationId)
+    if (pacer === undefined || pacer.perSecond !== perSecond) {
+      pacer = new CallPacer(perSecond, this.#clock)
+      this.#pacers.set(integrationId, pacer)
+    }
+    return pacer
+  }
+
+  /** The login's per-second budget, for the seam's context: every call on the wire takes a place. */
+  paceOf(
+    integrationId: string,
+    connector: Pick<ServiceReader, 'callsPerSecond'>,
+  ): (signal: AbortSignal) => Promise<boolean> {
+    const perSecond = connector.callsPerSecond ?? CAUTIOUS_CALLS_PER_SECOND
+    return (signal) => this.#pacer(integrationId, perSecond).take(signal)
+  }
+
+  /** True while a read may start: it never takes the room a round or a payment needs. */
+  hasRoomForRead(integrationId: string, connector: Pick<ServiceReader, 'callsPerSecond'>): boolean {
+    const perSecond = connector.callsPerSecond ?? CAUTIOUS_CALLS_PER_SECOND
+    return this.#pacer(integrationId, perSecond).hasRoomForRead()
+  }
 
   forInstance(integrationId: string): Limiter {
     let limiter = this.#limiters.get(integrationId)
@@ -81,6 +116,63 @@ export class InstanceBudgets {
       this.#limiters.set(integrationId, limiter)
     }
     return limiter
+  }
+
+  /** One chain of POS calls at a time on an instance (`PosTurn`). */
+  chainOf(integrationId: string): Limiter {
+    let limiter = this.#chains.get(integrationId)
+    if (limiter === undefined) {
+      limiter = createLimiter(1)
+      this.#chains.set(integrationId, limiter)
+    }
+    return limiter
+  }
+}
+
+/**
+ * A run's turn for a chain of POS calls that belong together (the reads before a round and the
+ * round; a route step's reads and its write). The worker runs several tables at once, and each
+ * call of `forInstance` is one at a time but counts several calls on the POS's side (a table read
+ * is two, a round three). Chains of two tables that took turns call by call use up a POS's limit
+ * per second where one table's chain does not: the round's own read is then answered "busy", the
+ * round's outcome is unknown, and the table pauses. So one instance runs one chain at a time, as
+ * it did with one run per queue, while a run that only waits (a read-back window) holds nothing.
+ */
+export class PosTurn {
+  readonly #budgets: InstanceBudgets
+  #release: (() => void) | null = null
+
+  constructor(budgets: InstanceBudgets) {
+    this.#budgets = budgets
+  }
+
+  /** True once this run holds the instance's turn; false when none came within the wait. */
+  async take(integrationId: string, waitMs: number = BUDGET_WAIT_MS): Promise<boolean> {
+    if (this.#release !== null) return true
+    return new Promise<boolean>((resolve, reject) => {
+      let gaveUp = false
+      const timer = setTimeout(() => {
+        gaveUp = true
+        resolve(false)
+      }, waitMs)
+      this.#budgets
+        .chainOf(integrationId)
+        .run(async () => {
+          if (gaveUp) return
+          clearTimeout(timer)
+          await new Promise<void>((released) => {
+            this.#release = released
+            resolve(true)
+          })
+        })
+        .catch(reject)
+    })
+  }
+
+  /** Gives the turn up; nothing when this run holds none. */
+  release(): void {
+    this.#release?.()
+    this.#release = null
   }
 }
 
@@ -211,7 +303,9 @@ export async function readFloorOf(
     ])
   }
 
-  const budget = (deps.budgets ?? SHARED_BUDGETS).forInstance(integrationId)
+  const budgets = deps.budgets ?? SHARED_BUDGETS
+  const budget = budgets.forInstance(integrationId)
+  const posContext = serviceContext(now, budgets.paceOf(integrationId, connector))
   const call = (ok: boolean) =>
     (deps.breakers ?? SHARED_BREAKERS).record(
       env,
@@ -220,14 +314,15 @@ export async function readFloorOf(
     )
   let reading: Awaited<ReturnType<ServiceReader['readFloor']>>
   try {
-    reading = await budget.run(() => connector.readFloor(serviceContext(now)))
+    reading = await budget.run(() => connector.readFloor(posContext))
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'the floor could not be read'
     log.warn({ integrationId, venueId, err: error }, 'the floor could not be read')
     await call(false)
     return finish('failed', { kind: 'failed', reason }, {}, [`failed: ${reason}`])
   }
-  await call(reading.complete)
+  // A definite busy says nothing of the connection: no failed call.
+  if (reading.complete || reading.busy !== true) await call(reading.complete)
   if (!reading.complete) {
     // Rule 6: nothing is concluded. `applyFloor` would refuse it too; the run says why.
     return finish('failed', { kind: 'incomplete', reason: reading.reason }, {}, [

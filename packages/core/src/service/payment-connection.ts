@@ -34,7 +34,7 @@ import {
   venueTables,
   withTenant,
 } from '@restro/db'
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { newId } from '../ids'
@@ -448,7 +448,8 @@ export const DisconnectSchema = z.strictObject({ type: z.literal('payment_accoun
 
 /**
  * `payment_account.disconnect`: the owner stops Restro using the account. Refused while any
- * payment of the venue is not final (D125 2.4: wait until no guest is mid-payment). The account
+ * payment of the venue is not final (D125 2.4: wait until no guest is mid-payment), or is
+ * `unconfirmed`: settled, but its card is still held until a manager's answer ends it. The account
  * stays the venue's own at the provider; Restro keeps its reference so a later refund or dispute
  * notice still finds the venue.
  */
@@ -460,7 +461,12 @@ export async function disconnectAccount(stx: ServiceTx): Promise<ServiceResult> 
   const [open] = await stx.tx
     .select({ id: payments.id })
     .from(payments)
-    .where(and(eq(payments.venueId, stx.venueId), isNull(payments.settledAt)))
+    .where(
+      and(
+        eq(payments.venueId, stx.venueId),
+        or(isNull(payments.settledAt), eq(payments.state, 'unconfirmed')),
+      ),
+    )
     .limit(1)
   if (open !== undefined) return refused(null, 'payment_in_flight')
   await stx.tx

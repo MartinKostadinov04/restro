@@ -2,7 +2,7 @@
 // short page makes a reading incomplete, refusals keep their reach, and a bill with a charge of
 // its own is not split.
 
-import { posRef, type ServiceContext } from '@restro/core'
+import { posRef, type ServiceConnector, type ServiceContext } from '@restro/core'
 import { describe, expect, it } from 'vitest'
 
 import { createSimPosConnector, SimPosConnectorError } from './connector'
@@ -43,6 +43,144 @@ const request = (table: string, item = '1001') => ({
   ref: 'test-round',
   serviceDayStartsAt: '2026-10-22T05:00:00.000Z',
   excludeBills: [],
+})
+
+describe('its limit, and what never left (RR-67, RR-24)', () => {
+  const limited = () => setUp({ rateLimit: { concurrent: 1, perSecond: 5 } })
+  const useUpTheSecond = async (connector: ServiceConnector, ctx: ServiceContext) => {
+    for (let call = 0; call < 5; call++) await connector.probe(ctx)
+  }
+
+  it('states its figure', () => {
+    expect(limited().connector.callsPerSecond).toBe(5)
+  })
+
+  it('a rate-limit answer is a definite busy, and nothing was written', async () => {
+    const { engine, connector, ctx } = limited()
+    await useUpTheSecond(connector, ctx)
+    const before = engine.digest()
+    expect(await connector.probe(ctx)).toMatchObject({
+      kind: 'refused',
+      refusal: { code: 'busy' },
+    })
+    expect(await connector.readTable(ctx, posRef('T 8 hall'))).toMatchObject({
+      complete: false,
+      busy: true,
+    })
+    expect(await connector.addLines(ctx, request('T 8 hall'))).toMatchObject({
+      kind: 'refused',
+      refusal: { code: 'busy' },
+    })
+    expect(engine.digest()).toBe(before)
+    expect(engine.calls().filter((call) => call.status === 429)).toHaveLength(3)
+    expect(engine.calls().some((call) => call.method === 'addRows')).toBe(false)
+  })
+
+  it('the same answer to the round itself writes nothing either', async () => {
+    const { engine, connector, ctx } = setUp()
+    engine.faults.add({ on: 'addRows', fault: { kind: 'refuse', code: 'busy' } })
+    const before = engine.digest()
+    expect(await connector.addLines(ctx, request('T 8 hall'))).toMatchObject({
+      kind: 'refused',
+      refusal: { code: 'busy' },
+    })
+    expect(engine.digest()).toBe(before)
+  })
+
+  it('a call the budget had no room for never leaves', async () => {
+    const { engine, connector, ctx } = setUp()
+    const noRoom = { ...ctx, pace: async () => false }
+    expect(await connector.readTable(noRoom, posRef('T 8 hall'))).toMatchObject({
+      complete: false,
+      busy: true,
+    })
+    expect(await connector.addLines(noRoom, request('T 8 hall'))).toMatchObject({
+      kind: 'refused',
+      refusal: { code: 'busy' },
+    })
+    expect(engine.calls()).toEqual([])
+  })
+
+  it('every call on the wire takes a place in the budget', async () => {
+    const { engine, connector, ctx } = setUp()
+    let places = 0
+    await connector.addLines(
+      {
+        ...ctx,
+        pace: async () => {
+          places += 1
+          return true
+        },
+      },
+      request('T 8 hall'),
+    )
+    expect(places).toBe(engine.calls().length)
+    expect(places).toBeGreaterThan(1)
+  })
+
+  it('a read before the round that fails is a refusal: nothing went out', async () => {
+    const { engine, connector, ctx } = setUp()
+    engine.faults.add({ on: 'read', fault: { kind: 'fail' } })
+    const before = engine.digest()
+    expect(await connector.addLines(ctx, request('T 8 hall'))).toMatchObject({
+      kind: 'refused',
+      refusal: { code: 'read_failed' },
+    })
+    expect(engine.calls().some((call) => call.method === 'addRows')).toBe(false)
+    expect(engine.digest()).toBe(before)
+  })
+
+  it('a round that fails on its way stays unknown', async () => {
+    const { engine, connector, ctx } = setUp()
+    engine.faults.add({ on: 'addRows', fault: { kind: 'fail' } })
+    expect(await connector.addLines(ctx, request('T 8 hall'))).toMatchObject({ kind: 'unknown' })
+  })
+
+  it('a locked bill is refused naming the bill, so the next try goes past it', async () => {
+    const { engine, connector, ctx } = setUp()
+    const bill = engine.state.bills.find((b) => b.table === 'T 8 hall')
+    engine.waiter.lockBill(bill?.id ?? '')
+    expect(await connector.addLines(ctx, request('T 8 hall'))).toMatchObject({
+      kind: 'refused',
+      refusal: { code: 'bill_locked', bill: posRef(bill?.id ?? '') },
+    })
+  })
+})
+
+describe('reading a closed bill (D127)', () => {
+  const closed = (changes: Partial<SimSwitches>) => {
+    const { engine, connector, ctx } = setUp({ readClosedBills: true, ...changes })
+    const bill = engine.state.bills.find((b) => b.table === 'T 8 hall')
+    if (bill === undefined) throw new Error('expected a bill')
+    const read = connector.readClosedBill
+    if (read === undefined) throw new Error('expected the capability')
+    const handle = { ref: posRef(bill.id), table: posRef('T 8 hall') }
+    return { engine, bill, read: () => read(ctx, handle) }
+  }
+
+  it('is absent where the capability is off', () => {
+    expect(setUp().connector.readClosedBill).toBeUndefined()
+  })
+
+  it('an open bill reads as null', async () => {
+    const { read } = closed({})
+    expect(await read()).toEqual({ complete: true, value: null })
+  })
+
+  it('a closed bill shows its receipt number where the POS gives one', async () => {
+    const { engine, bill, read } = closed({ receiptNumberOnClose: true })
+    engine.waiter.closeBill(bill.id, 'card')
+    expect(await read()).toMatchObject({
+      complete: true,
+      value: { ref: posRef(bill.id), receiptNumber: expect.any(String), restroRefs: [] },
+    })
+  })
+
+  it('a closed bill shows no receipt number where the POS gives none', async () => {
+    const { engine, bill, read } = closed({})
+    engine.waiter.closeBill(bill.id, 'card')
+    expect(await read()).toMatchObject({ complete: true, value: { receiptNumber: null } })
+  })
 })
 
 describe('the sim-pos connector', () => {

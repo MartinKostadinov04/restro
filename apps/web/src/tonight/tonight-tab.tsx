@@ -10,6 +10,7 @@ import type { Venue } from '@restro/db'
 import { getLocale, getTranslations } from 'next-intl/server'
 
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
+import { webPushPublicKey } from '@/server/env'
 import { loadTonightView } from '@/server/tonight/load'
 import {
   loadLog,
@@ -32,6 +33,7 @@ export async function TonightTab({
   tenantId,
   venue,
   userId,
+  email,
   sessionId,
   view,
   day,
@@ -39,6 +41,8 @@ export async function TonightTab({
   tenantId: string
   venue: Venue
   userId: string
+  /** The account's, for the password asked again when it makes this browser the bar tablet. */
+  email: string
   sessionId: string
   /** `?view=`: which of Tonight's screens is open. */
   view?: string | undefined
@@ -78,7 +82,11 @@ export async function TonightTab({
   if (open === 'actions') {
     const result = await loadTonightView({ tenantId, venue, userId, sessionId })
     content = result.ok ? (
-      <TonightPanel view={result.view} />
+      <TonightPanel
+        view={result.view}
+        pushKey={result.view.can.answer ? webPushPublicKey() : undefined}
+        tablet={result.view.barTablet ? { email } : undefined}
+      />
     ) : (
       <Empty>
         <EmptyHeader>

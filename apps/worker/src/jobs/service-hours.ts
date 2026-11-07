@@ -1,7 +1,8 @@
 // The venue's night in the worker (#82; D120, D122 §4).
 //
 //   service-hours-tick  every minute: at a venue's closing hour, closes every table for phones
-//                       (`hours.close_tables`: a Log entry per table, reason `closing_hour`)
+//                       (`hours.close_tables`: a Log entry per table, reason `closing_hour`), and
+//                       later, even by day, a table that closing kept for a payment, once it ended
 //   pre-opening-tick    every minute: from 2 hours before a venue opens, every 10 minutes (both
 //                       the venue's settings), checks that Restro can work with its POS: the
 //                       connector's read-only probe, the one a pause uses. A refusal pauses the
@@ -30,12 +31,13 @@ import {
   authOrganization,
   type DbPool,
   integrations,
+  payments,
   sittings,
   venues,
   withSystem,
   withTenant,
 } from '@restro/db'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, exists, isNull, lt, notExists } from 'drizzle-orm'
 import type { Logger } from '../logger'
 import {
   assertSimAllowed,
@@ -96,8 +98,9 @@ const clockOf = (venue: NightVenue) => ({
 })
 
 /**
- * Closes every table of each venue whose closing hour has come and that still has one open.
- * Answers how many tables were closed. A venue that fails is logged and skipped.
+ * Closes every table of each venue whose closing hour has come and that still has one open, and a
+ * table an earlier night's closing kept for its payment. Answers how many tables were closed. A
+ * venue that fails is logged and skipped.
  */
 export async function closeTablesAtClosingHour(
   pool: DbPool,
@@ -106,13 +109,43 @@ export async function closeTablesAtClosingHour(
 ): Promise<number> {
   let closed = 0
   for (const venue of await venuesWithHours(pool)) {
-    if (!serviceNightAt(now, clockOf(venue)).tablesClosed) continue
+    const night = serviceNightAt(now, clockOf(venue))
     try {
+      // Outside the closing time, only a sitting with a payment of an earlier service day, and no
+      // payment still going, can be due: the command decides, and it is not asked for nothing.
       const [open] = await withTenant(pool, venue.tenantId, (tx) =>
         tx
           .select({ id: sittings.id })
           .from(sittings)
-          .where(and(eq(sittings.venueId, venue.venueId), isNull(sittings.endedAt)))
+          .where(
+            and(
+              eq(sittings.venueId, venue.venueId),
+              isNull(sittings.endedAt),
+              night.tablesClosed
+                ? undefined
+                : and(
+                    exists(
+                      tx
+                        .select({ id: payments.id })
+                        .from(payments)
+                        .where(
+                          and(
+                            eq(payments.sittingId, sittings.id),
+                            lt(payments.serviceDate, night.serviceDate),
+                          ),
+                        ),
+                    ),
+                    notExists(
+                      tx
+                        .select({ id: payments.id })
+                        .from(payments)
+                        .where(
+                          and(eq(payments.sittingId, sittings.id), isNull(payments.settledAt)),
+                        ),
+                    ),
+                  ),
+            ),
+          )
           .limit(1),
       )
       if (open === undefined) continue

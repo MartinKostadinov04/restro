@@ -49,6 +49,7 @@ import {
 import { pickLocalized } from '@/fields/localized'
 import { parseMoneyInput } from '@/fields/money-input'
 import { TillLabelProvider } from '@/fields/till-label'
+import { refreshIfReachable } from '@/hooks/use-timed-refresh'
 import { isAdminLocale, toDataLocale } from '@/i18n/locales'
 import { cn } from '@/lib/utils'
 import type { ActionResult } from './action-result'
@@ -875,8 +876,8 @@ export function Composer({
               if (open) return
               clearOpenItem()
               // The sheet saves through its own actions; reload the composer's view so names,
-              // badges and issue counts match what was saved.
-              router.refresh()
+              // badges and issue counts match what was saved. With no connection the screen stays.
+              void refreshIfReachable(router.refresh)
             }}
           />
         ) : null}

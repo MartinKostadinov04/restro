@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { defaultQrBaseUrl, ServerEnvSchema } from './env'
+import { defaultQrBaseUrl, ServerEnvSchema, webPushPublicKey } from './env'
 
 // Built from two halves so that this file does not match its own search.
 const PRIVATE_KEY_VARIABLE = ['SEAL', 'PRIVATE', 'KEY'].join('_')
@@ -23,6 +23,39 @@ function sourceFiles(dir: string): string[] {
     return /\.(ts|tsx|js|mjs|cjs|json)$/.test(name) ? [path] : []
   })
 }
+
+describe('the web app and the Web Push keys (RR-86)', () => {
+  const base = {
+    DATABASE_URL: 'postgres://restro_app:x@localhost:54329/restro',
+    BETTER_AUTH_SECRET: 'x'.repeat(32),
+  }
+  const PUBLIC_KEY = `B${'p'.repeat(86)}`
+  // Built from two halves so that this file does not match its own search.
+  const PRIVATE_PUSH_KEY = ['VAPID', 'PRIVATE', 'KEY'].join('_')
+
+  it('declares the public key: unset, empty or misshapen means no control, and nothing throws', () => {
+    expect(webPushPublicKey(ServerEnvSchema.parse(base))).toBeUndefined()
+    expect(
+      webPushPublicKey(ServerEnvSchema.parse({ ...base, VAPID_PUBLIC_KEY: ' ' })),
+    ).toBeUndefined()
+    expect(
+      webPushPublicKey(ServerEnvSchema.parse({ ...base, VAPID_PUBLIC_KEY: 'not a key' })),
+    ).toBeUndefined()
+    expect(
+      webPushPublicKey(ServerEnvSchema.parse({ ...base, VAPID_PUBLIC_KEY: ` ${PUBLIC_KEY} ` })),
+    ).toBe(PUBLIC_KEY)
+  })
+
+  it('never reads the private key, which the worker alone holds', () => {
+    expect(Object.keys(ServerEnvSchema.shape)).not.toContain(PRIVATE_PUSH_KEY)
+    const parsed = ServerEnvSchema.parse({ ...base, [PRIVATE_PUSH_KEY]: 'should-never-be-kept' })
+    expect(Object.keys(parsed)).not.toContain(PRIVATE_PUSH_KEY)
+    const named = sourceFiles(WEB_ROOT).filter((file) =>
+      readFileSync(file, 'utf8').includes(PRIVATE_PUSH_KEY),
+    )
+    expect(named).toEqual([])
+  })
+})
 
 describe('the web app and the sealing private key', () => {
   it('the server settings do not declare it', () => {

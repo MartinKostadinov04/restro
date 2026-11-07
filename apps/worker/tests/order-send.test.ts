@@ -11,7 +11,15 @@
 // and the job in any order: no sent order ever reaches the POS twice, and none loses a line (each
 // ends Added and on the bill, Not sent with its lines back on the table's order, or Unconfirmed
 // with an alert for the staff).
-import { type IntegrationId, newId, SERVICE_TIMINGS, type VenueId } from '@restro/core'
+import {
+  type IntegrationId,
+  JOB_NAMES,
+  newId,
+  SERVICE_TIMINGS,
+  type ServiceConnector,
+  type ServiceContext,
+  type VenueId,
+} from '@restro/core'
 import {
   createIntegration,
   mapBarsyVenue,
@@ -20,15 +28,28 @@ import {
   setFloorSource,
   upsertBarsyVenues,
 } from '@restro/core/apply'
-import { BUDGET_WAIT_MS, SLOT_CHECKING_SECONDS } from '@restro/core/service'
+import { applyService, BUDGET_WAIT_MS, SLOT_CHECKING_SECONDS } from '@restro/core/service'
 import { createPool, type DbPool } from '@restro/db'
-import { createSimServer, ManualClock, type SimFault, type SimServer } from '@restro/sim-pos'
+import {
+  buildEngine,
+  createSimPosConnector,
+  createSimServer,
+  fetchTransport,
+  loadScenarioFile,
+  ManualClock,
+  readingLogin,
+  type SimFault,
+  type SimServer,
+  type SimSwitches,
+} from '@restro/sim-pos'
 import fc from 'fast-check'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { APP_POOL_MAX, ROUTE_RUNS_AT_ONCE } from '../src/connection'
 import { ConnectionBreakers } from '../src/jobs/breaker'
 import { InstanceBudgets, readFloorOf } from '../src/jobs/floor'
 import { sendTableOrders, slotTargets } from '../src/jobs/order-send'
+import { ReadingBudgets, readTableOf } from '../src/jobs/readings'
 import { stockTick } from '../src/jobs/stock'
 import { createLogger } from '../src/logger'
 import { serviceConnectorFor } from '../src/service-connectors'
@@ -40,6 +61,7 @@ import {
   testSlug,
   withOwnerClient,
 } from './database'
+import { simBudgets, TEST_WRITE_TIMEOUT_MS } from './sim-pace'
 
 allowSlowSetup()
 
@@ -50,14 +72,25 @@ const ARTICLE_B = '2002'
 /** The waiter's first item: on the pilot profile only a waiter opens a POS bill. */
 const FIRST = '2003'
 
+/** A door a test opens once. */
+function gate() {
+  let open = () => {}
+  const opened = new Promise<void>((resolve) => {
+    open = resolve
+  })
+  return { opened, open }
+}
+
 describe.skipIf(!hasDatabase)('the Send job', () => {
   let db: TestDatabase
   let pool: DbPool
   let sim: SimServer
+  let otherSim: SimServer
   const simClock = new ManualClock()
   const tenantId = newId('tn')
   let log: Awaited<ReturnType<typeof createLogger>>
   let demo: { venueId: VenueId; integrationId: IntegrationId }
+  let secondLogin: { venueId: VenueId; integrationId: IntegrationId }
   let tableId: `tb_${string}`
   let sittingId: string
   let references = 0
@@ -78,12 +111,12 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
   /** A fresh breaker per run, so one test's write timeout holds no later test's order. */
   const deps = (breakers = new ConnectionBreakers(() => 0.5)) => ({
     sim: policy,
-    budgets: new InstanceBudgets(),
+    budgets: simBudgets(simClock),
     breakers,
     timings: {
       probeBudgetMs: 3_000,
       readTimeoutMs: 5_000,
-      writeTimeoutMs: 300,
+      writeTimeoutMs: TEST_WRITE_TIMEOUT_MS,
       readBackWindowMs: 3_000,
     },
     readBackEveryMs: 1_000,
@@ -120,7 +153,7 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
     const floor = await readFloorOf(
       env(),
       { tenantId, ...demo },
-      { sim: policy, budgets: new InstanceBudgets() },
+      { sim: policy, budgets: simBudgets(simClock) },
     )
     expect(floor.kind).toBe('read')
     const [table] = await query<{ id: `tb_${string}` }>(
@@ -129,6 +162,39 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
     )
     if (table === undefined) throw new Error('no table 1')
     tableId = table.id
+
+    // A second POS with its own login and venue (`several tables at once`).
+    otherSim = createSimServer({ scenario: 'demo-bar', print: () => {}, clock: simClock })
+    const otherIntegration = (
+      await createIntegration(pool, tenantId, {
+        kind: 'sim',
+        host: `127.0.0.1:${await otherSim.listen(0)}`,
+      })
+    ).id
+    const otherVenue = await provisionVenue(pool, tenantId, {
+      name: 'Other Bar',
+      slug: testSlug('send-other'),
+    })
+    await upsertBarsyVenues(pool, tenantId, otherIntegration, [{ bid: 1, name: 'Other Bar' }])
+    expect((await mapBarsyVenue(pool, tenantId, otherIntegration, 1, otherVenue.id)).ok).toBe(true)
+    secondLogin = {
+      venueId: otherVenue.id as VenueId,
+      integrationId: otherIntegration as IntegrationId,
+    }
+    await setFloorSource(pool, tenantId, {
+      venueId: secondLogin.venueId,
+      source: { halls: null, bars: null, paymentTables: [] },
+    })
+    simClock.advance(1100)
+    expect(
+      (
+        await readFloorOf(
+          env(),
+          { tenantId, ...secondLogin },
+          { sim: policy, budgets: simBudgets(simClock) },
+        )
+      ).kind,
+    ).toBe('read')
 
     // Two menu items linked to the POS's articles (what a menu sync writes), and one without.
     await query(
@@ -140,10 +206,16 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
        values ($1, $2, 'article', $3, $4), ($1, $2, 'article', $5, $6)`,
       [tenantId, integrationId, ARTICLE_A, itemA, ARTICLE_B, itemB],
     )
+    await query(
+      `insert into restro.source_links (tenant_id, integration_id, external_type, external_id, node_id)
+       values ($1, $2, 'article', $3, $4)`,
+      [tenantId, otherIntegration, ARTICLE_A, itemA],
+    )
   })
 
   afterAll(async () => {
     await sim?.close()
+    await otherSim?.close()
     await pool?.end()
     await db?.drop()
   })
@@ -176,7 +248,10 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
   }
 
   /** A waiting sent order of the open sitting, as a guest's Send writes it. */
-  async function waiting(lines: { itemId: string; qty: number; unitMinor: number }[]) {
+  async function waiting(
+    lines: { itemId: string; qty: number; unitMinor: number }[],
+    on: { tableId: `tb_${string}`; sittingId: string; venueId?: string } = { tableId, sittingId },
+  ) {
     const id = newId('so')
     const stored = lines.map((line) => ({
       id: newId('ol'),
@@ -198,9 +273,9 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
       [
         id,
         tenantId,
-        demo.venueId,
-        tableId,
-        sittingId,
+        on.venueId ?? demo.venueId,
+        on.tableId,
+        on.sittingId,
         new Date().toISOString().slice(0, 10),
         reference,
         JSON.stringify(stored),
@@ -237,6 +312,11 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
     )
 
   const addCalls = () => sim.host.engine.calls().filter((call) => call.method === 'addRows').length
+
+  const pausesNow = () =>
+    query('select cause from restro.pauses where target_id = any($1) and lifted_at is null', [
+      [tableId, demo.integrationId],
+    ])
 
   const orderLines = async () =>
     (
@@ -569,6 +649,757 @@ describe.skipIf(!hasDatabase)('the Send job', () => {
     expect(took).toBeGreaterThanOrEqual(SERVICE_TIMINGS.readBackWindowMs)
     expect(took).toBeLessThan(SLOT_CHECKING_SECONDS * 1_000)
     expect(addCalls()).toBe(0)
+  })
+
+  // Repair-review, hot spot 2: the job is never retried (retryLimit 0) and a sent order that may
+  // have reached the POS is the sweep's to settle as Unconfirmed, never sent again (D115, D116).
+  describe('a worker killed around the add', () => {
+    class Killed extends Error {}
+
+    const expireAndSweep = async () => {
+      await query(
+        `update restro.locks set deadline = now() - interval '1 second' where scope = 'order_slot' and key = $1`,
+        [tableId],
+      )
+      const { expired } = await slotTargets(pool)
+      expect(expired.map((target) => target.tableId)).toContain(tableId)
+      const { result } = await applyService(
+        pool,
+        { type: 'sent_order.expire', tableId },
+        {
+          tenantId,
+          venueId: demo.venueId,
+          origin: 'worker',
+          actor: { kind: 'system' },
+          jobId: `sweep-${newId('jb')}`,
+        },
+      )
+      return result
+    }
+
+    it.each([
+      [
+        'after the round landed, before its answer was written',
+        'sending',
+        1,
+        () => ({
+          breakers: Object.assign(new ConnectionBreakers(() => 0.5), {
+            record: async (
+              _env: unknown,
+              _connection: unknown,
+              event: { kind: string; elapsedMs?: number },
+            ) => {
+              // The read before carries its time; the record right after the add does not.
+              if (event.kind === 'call' && event.elapsedMs === undefined) throw new Killed()
+            },
+          }),
+        }),
+      ],
+      [
+        'in the read-back of a round that landed and hung',
+        'checking',
+        1,
+        () => {
+          sim.host.engine.faults.add({ on: 'addRows', fault: { kind: 'landsThenHangs' } })
+          return {
+            sleep: async () => {
+              throw new Killed()
+            },
+          }
+        },
+      ],
+      [
+        'in the read-back of a round that never landed',
+        'checking',
+        0,
+        () => {
+          sim.host.engine.faults.add({ on: 'addRows', fault: { kind: 'hang' } })
+          return {
+            sleep: async () => {
+              throw new Killed()
+            },
+          }
+        },
+      ],
+    ] as const)(
+      '%s: settled by the sweep, never sent again',
+      async (_name, leftIn, landed, kill) => {
+        sim.host.engine.faults.clear()
+        firstItem()
+        const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+        const before = addCalls()
+        await expect(
+          sendTableOrders(
+            env(),
+            { tenantId, venueId: demo.venueId, tableId },
+            { ...deps(), ...kill() },
+          ),
+        ).rejects.toBeInstanceOf(Killed)
+        sim.host.engine.faults.clear()
+        expect((await sentOrder(id))?.state).toBe(leftIn)
+
+        // The next job finds the slot held and sends nothing.
+        simClock.advance(1_100)
+        expect(await run()).toEqual([])
+        expect(addCalls() - before).toBeLessThanOrEqual(1)
+
+        // The sweep settles it, and the job after that still sends nothing.
+        expect(await expireAndSweep()).toMatchObject({
+          details: { expired: true, sentOrderId: id },
+        })
+        expect(await sentOrder(id)).toMatchObject({
+          state: 'unconfirmed',
+          reason: 'check_timed_out',
+        })
+        const calls = addCalls()
+        simClock.advance(1_100)
+        await run()
+        expect(addCalls()).toBe(calls)
+        const rows = onBill().filter(([article]) => article === ARTICLE_A)
+        expect(rows).toHaveLength(landed)
+        // Its lines stay out of the bag: Try again is offered only after a definite no (D116).
+        expect((await orderLines()).filter((line) => line.itemId === itemA)).toEqual([])
+      },
+    )
+  })
+
+  // Repair-review, RR-24 (D116: Not sent = "it never went out"): the connector's own read before
+  // the round fails, so nothing was written and the connector says so in its reason.
+  it('a read inside the add that fails before anything is written: Not sent, the lines back', async () => {
+    sim.host.engine.faults.clear()
+    firstItem()
+    const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+    const before = addCalls()
+    const outcomes = await sendTableOrders(
+      env(),
+      { tenantId, venueId: demo.venueId, tableId },
+      {
+        ...deps(),
+        connectorFor: (integration, policy) => {
+          const real = serviceConnectorFor(integration, policy)
+          return {
+            ...real,
+            addLines: async (context, request) => {
+              // The read inside the add fails, and only that one.
+              sim.host.engine.faults.add({ on: 'read', times: 1, fault: { kind: 'fail' } })
+              return real.addLines(context, request)
+            },
+          }
+        },
+      },
+    )
+    sim.host.engine.faults.clear()
+    expect(addCalls()).toBe(before)
+    expect(outcomes).toEqual([
+      { kind: 'settled', sentOrderId: id, state: 'not_sent', reason: 'pos_unreachable' },
+    ])
+    expect((await orderLines()).map((line) => [line.itemId, line.qty])).toContainEqual([itemA, 1])
+    expect(await pausesNow()).toEqual([])
+    expect(await query('select kind from restro.alerts where subject_id = $1', [id])).toEqual([])
+    expect(await sentOrder(id)).toMatchObject({ state: 'not_sent', reason: 'pos_unreachable' })
+  })
+
+  // Repair-review, RR-67: on the simulator a rate-limit answer comes before anything is done.
+  describe('a rate-limit answer of the simulated POS', () => {
+    const useUpTheSecond = async (real: ServiceConnector, context: ServiceContext) => {
+      for (let call = 0; call < 5; call++) {
+        await real.probe({ now: context.now, timings: context.timings })
+      }
+    }
+    const failedCalls = (breakers: ConnectionBreakers) => {
+      const record = vi.spyOn(breakers, 'record')
+      return () => record.mock.calls.filter(([, , event]) => event.kind !== 'call' || !event.ok)
+    }
+
+    it('on the read inside the add: Not sent, never Unconfirmed, no pause, no breaker count', async () => {
+      firstItem()
+      const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+      const before = addCalls()
+      const breakers = new ConnectionBreakers(() => 0.5)
+      const failed = failedCalls(breakers)
+      const state = sim.host.engine.digest()
+      const outcomes = await sendTableOrders(
+        env(),
+        { tenantId, venueId: demo.venueId, tableId },
+        {
+          ...deps(breakers),
+          connectorFor: (integration, simPolicy) => {
+            const real = serviceConnectorFor(integration, simPolicy)
+            return {
+              ...real,
+              addLines: async (context, request) => {
+                await useUpTheSecond(real, context)
+                return real.addLines(context, request)
+              },
+            }
+          },
+        },
+      )
+      expect(outcomes).toEqual([
+        { kind: 'settled', sentOrderId: id, state: 'not_sent', reason: 'pos_unreachable' },
+      ])
+      expect(sim.host.engine.calls().at(-1)?.status).toBe(429)
+      expect(addCalls()).toBe(before)
+      expect(sim.host.engine.digest()).toBe(state)
+      expect(failed()).toEqual([])
+      expect(await pausesNow()).toEqual([])
+      expect((await orderLines()).map((line) => [line.itemId, line.qty])).toEqual([[itemA, 1]])
+    })
+
+    it('on the round itself: Not sent, the round not on the POS, no pause, no breaker count', async () => {
+      firstItem()
+      const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+      const breakers = new ConnectionBreakers(() => 0.5)
+      const failed = failedCalls(breakers)
+      sim.host.engine.faults.add({ on: 'addRows', fault: { kind: 'refuse', code: 'busy' } })
+      expect(await run(breakers)).toEqual([
+        { kind: 'settled', sentOrderId: id, state: 'not_sent', reason: 'pos_unreachable' },
+      ])
+      expect(onBill()).toEqual([[FIRST, 1000]])
+      expect(failed()).toEqual([])
+      expect(await pausesNow()).toEqual([])
+      expect(await query('select kind from restro.alerts where subject_id = $1', [id])).toEqual([])
+    })
+
+    it('on the read before the round: Not sent, no pause, no breaker count', async () => {
+      firstItem()
+      const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+      const breakers = new ConnectionBreakers(() => 0.5)
+      const failed = failedCalls(breakers)
+      sim.host.engine.faults.add({
+        on: 'read',
+        times: Infinity,
+        fault: { kind: 'refuse', code: 'busy' },
+      })
+      expect(await run(breakers)).toEqual([
+        { kind: 'settled', sentOrderId: id, state: 'not_sent', reason: 'pos_unreachable' },
+      ])
+      sim.host.engine.faults.clear()
+      expect(failed()).toEqual([])
+      expect(await pausesNow()).toEqual([])
+    })
+  })
+
+  // RR-67: one budget for a chain and the tick together, on real time: the simulator counts its
+  // second on its own clock, and nothing here moves it.
+  describe('a chain and the tick on one login', () => {
+    const REAL_TIME = { now: () => new Date() }
+    const KEY = 'order-send-test-key-'.padEnd(48, 'x')
+    const realDeps = (budgets: InstanceBudgets) => ({
+      sim: policy,
+      budgets,
+      breakers: new ConnectionBreakers(() => 0.5),
+      timings: SERVICE_TIMINGS,
+    })
+    /** Three rounds on table 1 while the tick reads it as fast as it may. */
+    async function chainAndTick(connectorFor?: typeof serviceConnectorFor) {
+      sim.host.engine = buildEngine(loadScenarioFile('demo-bar'), { clock: REAL_TIME })
+      sim.host.engine.waiter.addRound(POS_TABLE, [{ article: FIRST }])
+      for (let round = 0; round < 3; round++) {
+        await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+      }
+      const budgets = new InstanceBudgets()
+      const seam = connectorFor === undefined ? {} : { connectorFor }
+      let done = false
+      let reads = 0
+      const tick = (async () => {
+        while (!done) {
+          const read = await readTableOf(
+            env(),
+            { tenantId, venueId: demo.venueId, tableId },
+            { ...realDeps(budgets), ...seam, billIdKey: KEY, readingBudgets: new ReadingBudgets() },
+          )
+          if (read.kind === 'recorded') reads += 1
+          await new Promise((resolve) => setTimeout(resolve, 5))
+        }
+      })()
+      const chain = await sendTableOrders(
+        env(),
+        { tenantId, venueId: demo.venueId, tableId },
+        { ...realDeps(budgets), ...seam },
+      )
+      done = true
+      await tick
+      const calls = sim.host.engine.calls()
+      const atMs = calls.map((call) => new Date(call.at).getTime())
+      const mostInASecond = Math.max(
+        ...atMs.map((start) => atMs.filter((at) => at >= start && at < start + 1_000).length),
+      )
+      return {
+        chain,
+        reads,
+        total: calls.length,
+        mostInASecond,
+        limited: calls.filter((call) => call.status === 429).length,
+      }
+    }
+
+    it('stays inside five a second, and every round is Added', { timeout: 60_000 }, async () => {
+      const paced = await chainAndTick()
+      expect(paced.chain.map((outcome) => outcome.kind === 'settled' && outcome.state)).toEqual([
+        'added',
+        'added',
+        'added',
+      ])
+      expect(paced.reads).toBeGreaterThan(0)
+      expect(paced.total).toBeGreaterThan(5)
+      expect(paced.limited).toBe(0)
+      expect(paced.mostInASecond).toBeLessThanOrEqual(5)
+    })
+
+    it('without the budget the same run passes the limit', { timeout: 60_000 }, async () => {
+      const unpaced = await chainAndTick((integration, simPolicy) => ({
+        ...serviceConnectorFor(integration, simPolicy),
+        callsPerSecond: 1_000,
+      }))
+      expect(unpaced.limited).toBeGreaterThan(0)
+      // Even so: nothing lost, nothing Unconfirmed, a busy round is Not sent.
+      expect(
+        unpaced.chain.every(
+          (outcome) => outcome.kind === 'settled' && outcome.state !== 'unconfirmed',
+        ),
+      ).toBe(true)
+    })
+  })
+
+  // RR-30 (D115): a closed or locked POS bill: read again, the next open bill or a new one.
+  describe('a locked POS bill', () => {
+    const several = { billsPerTable: 'several', firstItemsOpenBill: true } as const
+    const seeded = (switches: Partial<SimSwitches>) => {
+      const scenario = loadScenarioFile('demo-bar')
+      const all = { ...scenario.switches, ...switches }
+      sim.host.engine = buildEngine({ ...scenario, switches: all }, { clock: simClock })
+      const connectorFor: typeof serviceConnectorFor = (integration, simPolicy) =>
+        createSimPosConnector({
+          transport: fetchTransport(`http://${integration.host}`, {
+            env: simPolicy.env,
+            allowHosts: simPolicy.allowHosts,
+          }),
+          login: readingLogin(scenario),
+          switches: all,
+        })
+      return { ...deps(), connectorFor }
+    }
+    const openBills = () =>
+      sim.host.engine.state.bills.filter(
+        (bill) => bill.table === POS_TABLE && bill.state === 'open',
+      )
+    const send = (seam: ReturnType<typeof seeded>) =>
+      sendTableOrders(env(), { tenantId, venueId: demo.venueId, tableId }, seam)
+    const articlesOf = (bill: string) =>
+      openBills()
+        .find((open) => open.id === bill)
+        ?.rows.map((row) => row.article)
+
+    it('goes on the next open bill, once', async () => {
+      const seam = seeded(several)
+      const locked = sim.host.engine.waiter.addRound(POS_TABLE, [{ article: FIRST }]).bill
+      const next = sim.host.engine.waiter.addRound(POS_TABLE, [{ article: ARTICLE_B }], {
+        bill: 'new',
+      }).bill
+      sim.host.engine.waiter.lockBill(locked)
+      simClock.advance(1100)
+      const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+      expect(await send(seam)).toEqual([
+        { kind: 'settled', sentOrderId: id, state: 'added', reason: null },
+      ])
+      expect(articlesOf(locked)).toEqual([FIRST])
+      expect(articlesOf(next)).toEqual([ARTICLE_B, ARTICLE_A])
+      expect((await sentOrder(id))?.pos_bill_ref).toBe(next)
+    })
+
+    it('opens a new one where the locked bill is the only one, once', async () => {
+      const seam = seeded(several)
+      const locked = sim.host.engine.waiter.addRound(POS_TABLE, [{ article: FIRST }]).bill
+      sim.host.engine.waiter.lockBill(locked)
+      simClock.advance(1100)
+      const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+      expect(await send(seam)).toEqual([
+        { kind: 'settled', sentOrderId: id, state: 'added', reason: null },
+      ])
+      expect(openBills()).toHaveLength(2)
+      expect(articlesOf(locked)).toEqual([FIRST])
+      expect(onBill().filter(([article]) => article === ARTICLE_A)).toEqual([[ARTICLE_A, 1000]])
+      expect((await sentOrder(id))?.pos_bill_ref).not.toBe(locked)
+    })
+
+    it('is Not sent with the reason where the POS allows no other bill, the lines back', async () => {
+      const seam = seeded({})
+      const locked = sim.host.engine.waiter.addRound(POS_TABLE, [{ article: FIRST }]).bill
+      sim.host.engine.waiter.lockBill(locked)
+      simClock.advance(1100)
+      const id = await waiting([{ itemId: itemA, qty: 2, unitMinor: 1050 }])
+      expect(await send(seam)).toEqual([
+        { kind: 'settled', sentOrderId: id, state: 'not_sent', reason: 'bill_locked' },
+      ])
+      expect(onBill()).toEqual([[FIRST, 1000]])
+      expect((await orderLines()).map((line) => [line.itemId, line.qty])).toEqual([[itemA, 2]])
+    })
+  })
+
+  // RR-28 (D116): after Added a reading of the table is queued, so every phone sees the round.
+  describe('a reading after Added', () => {
+    const queued: { name: string; data: object; options?: object }[] = []
+    const queue = {
+      send: async (name: string, data: object, options?: object) => {
+        queued.push({ name, data, ...(options === undefined ? {} : { options }) })
+        return 'job'
+      },
+    }
+    const reading = () => ({
+      name: JOB_NAMES.tableRead,
+      data: { tenantId, venueId: demo.venueId, tableId },
+      options: expect.objectContaining({ singletonKey: expect.any(String), startAfter: 2 }),
+    })
+    const readings = () => queued.filter((job) => job.name === JOB_NAMES.tableRead)
+    const send = () =>
+      sendTableOrders({ ...env(), queue }, { tenantId, venueId: demo.venueId, tableId }, deps())
+    beforeEach(() => {
+      queued.length = 0
+    })
+
+    it('is queued after a round answered Added', async () => {
+      firstItem()
+      await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+      expect(await send()).toMatchObject([{ state: 'added' }])
+      expect(readings()).toEqual([reading()])
+    })
+
+    it('is queued after a round found Added on the read-back', async () => {
+      firstItem()
+      await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+      sim.host.engine.faults.add({ on: 'addRows', fault: { kind: 'landsThenHangs' } })
+      expect(await send()).toMatchObject([{ state: 'added' }])
+      expect(readings()).toEqual([reading()])
+    })
+
+    it('is not queued after Not sent', async () => {
+      await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+      expect(await send()).toMatchObject([{ state: 'not_sent' }])
+      expect(readings()).toEqual([])
+    })
+
+    it('a queue that fails changes nothing of the outcome', async () => {
+      firstItem()
+      await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+      const outcomes = await sendTableOrders(
+        {
+          ...env(),
+          queue: {
+            send: async () => {
+              throw new Error('no queue')
+            },
+          },
+        },
+        { tenantId, venueId: demo.venueId, tableId },
+        deps(),
+      )
+      expect(outcomes).toMatchObject([{ state: 'added' }])
+    })
+  })
+
+  // Repair-review, RR-61: several runs at once on the worker (`ROUTE_RUNS_AT_ONCE`), on a pool as
+  // small as the worker's (`APP_POOL_MAX`), so a run that held a connection across a POS call, or
+  // took a second one, would stop the others here.
+  describe('several tables at once', () => {
+    let smallPool: DbPool
+    const small = () => ({ pool: smallPool, log, now: () => new Date() })
+    const article = [{ itemId: itemA, qty: 1, unitMinor: 1050 }]
+
+    beforeAll(() => {
+      smallPool = createPool(db.appUrl, {
+        applicationName: 'restro-worker-order-send-small',
+        max: APP_POOL_MAX,
+      })
+    })
+    afterAll(async () => {
+      await smallPool?.end()
+    })
+
+    /** A table with its sitting open and a waiter's first item on its POS bill. */
+    async function openTable(number: string, venueId: string = demo.venueId, pos = sim) {
+      const [table] = await query<{ id: `tb_${string}`; pos: string }>(
+        `select t.id, p.place_id as pos from restro.tables t
+           join restro.places p on p.table_id = t.id
+          where t.venue_id = $1 and t.number = $2`,
+        [venueId, number],
+      )
+      if (table === undefined) throw new Error(`no table ${number}`)
+      await query(
+        `update restro.sittings set ended_at = now(), end_reason = 'staff_closed'
+          where table_id = $1 and ended_at is null`,
+        [table.id],
+      )
+      const sitting = newId('st')
+      await query(
+        `insert into restro.sittings (id, tenant_id, venue_id, table_id, service_date, opened_how, source, actor, job_id)
+         values ($1, $2, $3, $4, $5, 'one', 'staff', 'system', 'test')`,
+        [sitting, tenantId, venueId, table.id, new Date().toISOString().slice(0, 10)],
+      )
+      pos.host.engine.waiter.addRound(table.pos, [{ article: FIRST }])
+      simClock.advance(1100)
+      return { tableId: table.id, sittingId: sitting, pos: table.pos, venueId }
+    }
+
+    /** The calls on the POS per login: how many at most were in flight at once. */
+    function watched() {
+      const inFlight = new Map<string, number>()
+      const most = new Map<string, number>()
+      const during = async <T>(login: string, call: () => Promise<T>) => {
+        const now = (inFlight.get(login) ?? 0) + 1
+        inFlight.set(login, now)
+        most.set(login, Math.max(most.get(login) ?? 0, now))
+        // Past the simulator's rate limit: its limit is another question than the overlap here.
+        simClock.advance(1_100)
+        try {
+          return await call()
+        } finally {
+          inFlight.set(login, (inFlight.get(login) ?? 1) - 1)
+        }
+      }
+      const connectorFor: typeof serviceConnectorFor = (integration, policy) => {
+        const real = serviceConnectorFor(integration, policy)
+        return {
+          ...real,
+          readTable: (context, table) =>
+            during(integration.host, () => real.readTable(context, table)),
+          addLines: (context, request) =>
+            during(integration.host, () => real.addLines(context, request)),
+        }
+      }
+      return { connectorFor, most }
+    }
+
+    it('a table stuck reading back holds up no other table, and the POS is called one at a time', async () => {
+      sim.host.engine.faults.clear()
+      const first = await openTable('1')
+      const second = await openTable('2')
+      const firstOrder = await waiting(article, first)
+      const secondOrder = await waiting(article, second)
+      const { connectorFor, most } = watched()
+      const stillReading = gate()
+      const inWindow = gate()
+      const shared = { ...deps(), budgets: simBudgets(simClock) }
+      const hung = sendTableOrders(
+        small(),
+        { tenantId, venueId: demo.venueId, tableId: first.tableId },
+        {
+          ...shared,
+          // The round lands and the answer is lost: the run reads back, and waits there.
+          connectorFor: (integration, policy) => {
+            const real = connectorFor(integration, policy)
+            return {
+              ...real,
+              addLines: async (context, request) => {
+                await real.addLines(context, request)
+                throw new Error('the answer was lost')
+              },
+            }
+          },
+          sleep: async (ms) => {
+            inWindow.open()
+            await stillReading.opened
+            await shared.sleep(ms)
+          },
+        },
+      )
+      await inWindow.opened
+      const beside = await sendTableOrders(
+        small(),
+        { tenantId, venueId: demo.venueId, tableId: second.tableId },
+        { ...shared, connectorFor },
+      )
+      expect(beside).toEqual([
+        { kind: 'settled', sentOrderId: secondOrder, state: 'added', reason: null },
+      ])
+      expect((await sentOrder(firstOrder))?.state).toBe('checking')
+      stillReading.open()
+      expect(await hung).toEqual([
+        { kind: 'settled', sentOrderId: firstOrder, state: 'added', reason: null },
+      ])
+      expect(addCalls()).toBe(2)
+      expect([...most.values()]).toEqual([1])
+    })
+
+    // On the simulator's default limit (one call at a time, five a second). A table read is two
+    // calls and a round three, so two tables' calls taking turns use the second up: the round's
+    // own read was answered "busy", the round's outcome unknown, and ordering paused. With one
+    // chain at a time per login each table is what it was when the queue ran one at a time.
+    it.each([1, ROUTE_RUNS_AT_ONCE])(
+      'many tables at %d at once on a strict POS: every order Added, none Unconfirmed',
+      async (atOnce) => {
+        sim.host.engine.faults.clear()
+        const tables = []
+        for (const number of ['1', '2', '3', '4', '5', '6', '7', '8']) {
+          tables.push(await openTable(number))
+        }
+        for (const table of tables) await waiting(article, table)
+        // The simulator's second goes by as real ones go by.
+        let last = Date.now()
+        const inRealTime: typeof serviceConnectorFor = (integration, policy) => {
+          const real = serviceConnectorFor(integration, policy)
+          const moved = () => {
+            const now = Date.now()
+            simClock.advance(now - last)
+            last = now
+          }
+          return {
+            ...real,
+            readTable: (context, table) => {
+              moved()
+              return real.readTable(context, table)
+            },
+            addLines: (context, request) => {
+              moved()
+              return real.addLines(context, request)
+            },
+          }
+        }
+        const runDeps = {
+          sim: policy,
+          budgets: simBudgets(simClock),
+          breakers: new ConnectionBreakers(() => 0.5),
+          connectorFor: inRealTime,
+        }
+        const queue = [...tables]
+        const outcomes = (
+          await Promise.all(
+            Array.from({ length: atOnce }, async () => {
+              const sent = []
+              for (let table = queue.shift(); table !== undefined; table = queue.shift()) {
+                sent.push(
+                  ...(await sendTableOrders(
+                    small(),
+                    { tenantId, venueId: demo.venueId, tableId: table.tableId },
+                    runDeps,
+                  )),
+                )
+              }
+              return sent
+            }),
+          )
+        ).flat()
+        expect(
+          outcomes.map((outcome) => (outcome.kind === 'settled' ? outcome.state : outcome.kind)),
+        ).toEqual(tables.map(() => 'added'))
+        expect(addCalls()).toBe(tables.length)
+      },
+      60_000,
+    )
+
+    it("a call hung on one login does not hold another login's table", async () => {
+      sim.host.engine.faults.clear()
+      const first = await openTable('1')
+      otherSim.host.load('demo-bar')
+      const second = await openTable('2', secondLogin.venueId, otherSim)
+      const firstOrder = await waiting(article, first)
+      const secondOrder = await waiting(article, second)
+      const { connectorFor, most } = watched()
+      const callEnds = gate()
+      const called = gate()
+      const shared = { ...deps(), budgets: simBudgets(simClock) }
+      const hung = sendTableOrders(
+        small(),
+        { tenantId, venueId: demo.venueId, tableId: first.tableId },
+        {
+          ...shared,
+          connectorFor: (integration, policy) => {
+            const real = connectorFor(integration, policy)
+            return {
+              ...real,
+              addLines: async (context, request) => {
+                called.open()
+                await callEnds.opened
+                return real.addLines(context, request)
+              },
+            }
+          },
+        },
+      )
+      await called.opened
+      expect(
+        await sendTableOrders(
+          small(),
+          { tenantId, venueId: secondLogin.venueId, tableId: second.tableId },
+          { ...shared, connectorFor },
+        ),
+      ).toEqual([{ kind: 'settled', sentOrderId: secondOrder, state: 'added', reason: null }])
+      callEnds.open()
+      const [outcome] = await hung
+      expect(outcome).toMatchObject({ kind: 'settled', sentOrderId: firstOrder })
+      // Each login's calls went one at a time, the two logins' side by side.
+      expect([...most.values()]).toEqual([1, 1])
+    })
+
+    it('two runs on one table: one round at a time, each order on the POS once', async () => {
+      sim.host.engine.faults.clear()
+      const first = await openTable('1')
+      const orders = [
+        await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }], first),
+        await waiting([{ itemId: itemB, qty: 1, unitMinor: 1100 }], first),
+      ]
+      const { connectorFor, most } = watched()
+      const job = { tenantId, venueId: demo.venueId, tableId: first.tableId }
+      let adding = 0
+      let mostAdding = 0
+      const both = { ...deps(), budgets: simBudgets(simClock) }
+      const oneAtATime: typeof serviceConnectorFor = (integration, policy) => {
+        const real = connectorFor(integration, policy)
+        return {
+          ...real,
+          addLines: async (context, request) => {
+            adding += 1
+            mostAdding = Math.max(mostAdding, adding)
+            try {
+              return await real.addLines(context, request)
+            } finally {
+              adding -= 1
+            }
+          },
+        }
+      }
+      await Promise.all([
+        sendTableOrders(small(), job, { ...both, connectorFor: oneAtATime }),
+        sendTableOrders(small(), job, { ...both, connectorFor: oneAtATime }),
+      ])
+      // The slot lets one order through at a time; what the second run left, a later run sends.
+      await sendTableOrders(small(), job, { ...both, connectorFor: oneAtATime })
+      expect(mostAdding).toBe(1)
+      expect([...most.values()]).toEqual([1])
+      for (const id of orders) expect((await sentOrder(id))?.state).toBe('added')
+      expect(addCalls()).toBe(2)
+    })
+  })
+
+  // RR-33, the lead's ruling 10-30: indistinguishable on this profile, Added is accepted; spec #64 line 164 is read with line 165's match.
+  // The round never lands; a waiter enters the same round during the read-back.
+  it("a waiter's identical round alone in the read-back window is Added", async () => {
+    sim.host.engine.faults.clear()
+    firstItem()
+    const id = await waiting([{ itemId: itemA, qty: 1, unitMinor: 1050 }])
+    sim.host.engine.faults.add({ on: 'addRows', fault: { kind: 'hang' } })
+    let waiter = false
+    const outcomes = await sendTableOrders(
+      env(),
+      { tenantId, venueId: demo.venueId, tableId },
+      {
+        ...deps(),
+        sleep: async (ms: number) => {
+          await deps().sleep(ms)
+          if (!waiter) {
+            waiter = true
+            sim.host.engine.waiter.addRound(POS_TABLE, [{ article: ARTICLE_A }])
+          }
+        },
+      },
+    )
+    sim.host.engine.faults.clear()
+    expect(onBill()).toEqual([
+      [FIRST, 1000],
+      [ARTICLE_A, 1000],
+    ])
+    // Nothing tells this round from Restro's on this profile: it is matched as Restro's.
+    expect(outcomes).toEqual([{ kind: 'settled', sentOrderId: id, state: 'added', reason: null }])
   })
 
   it('never sends an item the POS has no link for', async () => {

@@ -12,17 +12,53 @@ import {
   type ProviderPayment,
   ProviderPaymentSchema,
   type ProviderPaymentStatus,
+  type ProviderRefund,
+  ProviderRefundSchema,
   providerRef,
   type ThreeDsResult,
 } from '@restro/core'
 
-import type { StripeAccount, StripeCharge, StripeDispute, StripePaymentIntent } from './api'
+import type {
+  StripeAccount,
+  StripeCharge,
+  StripeDispute,
+  StripePaymentIntent,
+  StripeRefund,
+} from './api'
 
 /** The metadata key that carries our payment id on the PaymentIntent (design §10). */
 export const PAYMENT_METADATA_KEY = 'restro_payment'
 
 /** A mapping that worked, or why it did not. */
 export type Mapped<T> = { ok: true; value: T } | { ok: false; reason: string }
+
+const REFUND_FAILED_BY_STATUS = new Map<string, boolean>([
+  ['pending', false],
+  ['requires_action', false],
+  ['succeeded', false],
+  ['failed', true],
+  ['canceled', true],
+])
+
+/**
+ * One refund as the seam has it (https://docs.stripe.com/api/refunds/object.md). `failed` and
+ * `canceled` did not go through (https://docs.stripe.com/refunds.md: a cancellation is a type of
+ * refund failure); `pending`, `requires_action` and `succeeded` count as refunded. Any other
+ * status, or none, is not understood: the reading stops and concludes nothing.
+ */
+export function providerRefund(refund: StripeRefund): Mapped<ProviderRefund> {
+  const failed = REFUND_FAILED_BY_STATUS.get(refund.status ?? '')
+  if (failed === undefined) {
+    return { ok: false, reason: `unknown refund status ${refund.status ?? 'none'}` }
+  }
+  const parsed = ProviderRefundSchema.safeParse({
+    ref: providerRef(refund.id),
+    amountMinor: refund.amount,
+    failed,
+  })
+  if (!parsed.success) return { ok: false, reason: 'the refund does not fit the seam' }
+  return { ok: true, value: parsed.data }
+}
 
 /**
  * The platform's status of a PaymentIntent

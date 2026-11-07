@@ -155,6 +155,7 @@ export {
   NO_TIP,
   offersPay,
   offersReceiptEmail,
+  orderingClosedText,
   PAY_ENDS,
   type PayBlock,
   type PayEnd,
@@ -181,6 +182,7 @@ export {
 } from './paying'
 export { type ScheduleStatus, scheduleStatus } from './schedule'
 export {
+  ANSWER_LOST_CODE,
   BILL_LINE_STATUSES,
   type BillLineStatus,
   type BillLineView,
@@ -192,8 +194,11 @@ export {
   type GuestCommand,
   GuestCommandSchema,
   type GuestRefusalCode,
+  type GuestScreen,
+  LOST_SEND_HOLD_MS,
   type LocationControls,
   type LocationView,
+  OFFLINE_CODE,
   type OrderLine,
   type OrderLineView,
   PAYMENT_STATES,

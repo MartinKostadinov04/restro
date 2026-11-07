@@ -171,8 +171,9 @@ describe.skipIf(!hasDatabase)('the end-of-night message retry (as the restro_app
       new URL('../../../packages/db/migrations/0037_night_report_sent.sql', import.meta.url),
       'utf8',
     )
-      .split('--> statement-breakpoint')[1]
-      ?.trim()
+      .split('--> statement-breakpoint')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith('UPDATE'))
     expect(statement).toMatch(/^UPDATE "restro"\."service_days"/)
     const v = await venue('Backfill Bar', '-1007')
     const day = dayOffset(now, 1)

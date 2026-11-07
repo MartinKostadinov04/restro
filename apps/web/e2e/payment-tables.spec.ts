@@ -33,12 +33,33 @@ const PAYING_VENUE = 'Paying Club Sofia'
 
 let venueId = ''
 
+// Better Auth's limiter lets 3 sign-ins through per path, then refuses until 10 s have passed since
+// the last one it let through (a refused one does not move that clock). The password dialog signs in
+// too, so it is one more of the same count. Every sign-in this file makes is noted here, so a test
+// that needs one more can wait for room instead of meeting "Too many attempts" when the machine is fast.
+const SIGN_IN_LIMIT = 3
+const SIGN_IN_WINDOW_MS = 10_000
+const signIns = { count: 0, last: 0 }
+
+function noteSignIn() {
+  const now = Date.now()
+  signIns.count = now - signIns.last >= SIGN_IN_WINDOW_MS ? 1 : signIns.count + 1
+  signIns.last = now
+}
+
+/** Waits until the limiter has room for one more sign-in (the dialog's). */
+async function leaveRoomForSignIn(page: Page) {
+  const waitMs = signIns.last + SIGN_IN_WINDOW_MS + 500 - Date.now()
+  if (signIns.count >= SIGN_IN_LIMIT && waitMs > 0) await page.waitForTimeout(waitMs)
+}
+
 async function signIn(page: Page, email: string) {
   // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await page.goto('/venues')
     await page.getByLabel('Имейл').fill(email)
     await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
+    noteSignIn()
     await page.getByRole('button', { name: 'Вход' }).click()
     try {
       // A person who holds more than an operator's rights lands on the venue itself.
@@ -210,6 +231,8 @@ test('an older sign-in asks for the password, then the mark goes through; the ba
   const password = page.getByRole('dialog').filter({ hasText: 'Въведете паролата си' })
   await expect(password).toBeVisible()
   await password.getByLabel('Парола').fill(ADMIN_PASSWORD)
+  await leaveRoomForSignIn(page)
+  noteSignIn()
   await password.getByRole('button', { name: 'Потвърди' }).click()
   await expect(page.getByText('Маса 1 е маса за плащане')).toBeVisible()
   await expect(card(page, 1).getByTestId('payment-table-badge')).toBeVisible()

@@ -11,6 +11,8 @@
 import {
   alerts,
   areas,
+  authSession,
+  authUser,
   bars,
   billReadings,
   type DbPool,
@@ -21,6 +23,7 @@ import {
   payments,
   type ReadTx,
   sentOrders,
+  sharedDevices,
   sittings,
   staffMembers,
   tableOrders,
@@ -36,6 +39,7 @@ import type { LegalDetails } from '../legal-details'
 import { PAID_LINES_MAX } from '../paid-lines'
 import { payFirstApplies, readPayFirstSettings } from '../pay-first-settings'
 import { CARD_FLOOR_MINOR, readPayingSettings, smallestCardMinor } from '../paying-settings'
+import type { PayingMissing } from '../payment-connection'
 import { serviceDate } from '../service-day'
 import { nextOrderChangeAt, orderFromRow } from '../table-order'
 import type { CallWaiterKind } from '../theme'
@@ -425,27 +429,24 @@ export async function readTableState(
       .where(eq(billReadings.tableId, table.id))
 
     const stored = reading === undefined ? [] : parseStoredBills(reading.bills)
-    // The table's payments that aren't final (#110): their lines read `beingPaid`, and their
-    // provider values join the walk, so no other answer can carry them (rule 3).
+    // The table's payments that aren't final (#110): their provider values join the walk, so no
+    // other answer can carry them (rule 3). A settled payment's stay out of it.
     const open = await tx
       .select({ id: payments.id, ref: payments.providerPaymentRef, form: payments.formValues })
       .from(payments)
       .where(and(eq(payments.tableId, table.id), isNull(payments.settledAt)))
-    const greyed =
-      open.length === 0
-        ? []
-        : await tx
-            .select({ ref: paymentLines.posLineRef })
-            .from(paymentLines)
-            .where(
-              and(
-                inArray(
-                  paymentLines.paymentId,
-                  open.map((payment) => payment.id),
-                ),
-                eq(paymentLines.open, true),
-              ),
-            )
+    // The lines a payment still claims read `beingPaid`, an `unconfirmed` one's too, wherever they
+    // read back (migration 0043): the same check as `pay.start`'s, so the grey and the refusal agree.
+    const greyed = await tx
+      .select({ ref: paymentLines.posLineRef })
+      .from(paymentLines)
+      .where(
+        and(
+          eq(paymentLines.venueId, table.venueId),
+          eq(paymentLines.open, true),
+          isNotNull(paymentLines.posLineRef),
+        ),
+      )
     const beingPaid = new Set(greyed.flatMap((line) => (line.ref === null ? [] : [line.ref])))
     // The lines paid in the app in this sitting (D127 1.2): the lines the POS closed on the
     // captured payments, at what it closed them for (#197), oldest payment first. They name no
@@ -666,6 +667,11 @@ export interface Tonight {
    * unable to take card payments (`restricted`). Every role that sees Tonight reads it (#115).
    */
   readonly paying: 'paused' | 'lost' | 'restricted' | null
+  /**
+   * The first thing the Paying setup still misses, while the account is connected but card payments
+   * are not on yet (RR-O1); null once they are on, and while there is no connected account.
+   */
+  readonly payingSetup: PayingMissing | null
   /** The venue's payment provider (its kind), for the words that name it; null with no account. */
   readonly payingProvider: string | null
   /**
@@ -957,8 +963,9 @@ export async function readTonight(
       .where(and(eq(bars.venueId, venue.id), isNull(bars.archivedAt)))
       .orderBy(bars.name, bars.id)
 
-    // A staff pause names the person who started it: a PIN's staff member, or the staff member
-    // the signed-in account is linked to. Anyone else (a shared device's account) is not named.
+    // A staff pause names the person who started it: a PIN's staff member, the staff member the
+    // signed-in account is linked to, or the account itself (an owner on their own phone, RR-77).
+    // A shared device's account is not named: the tablet is no person.
     const starters = [...new Set(active.filter((p) => !p.restroStarted).map((p) => p.actor))]
     const memberIds = starters.flatMap((a) => (a.startsWith('staff:') ? [a.slice(6)] : []))
     const accountIds = starters.flatMap((a) => (a.startsWith('user:') ? [a.slice(5)] : []))
@@ -980,6 +987,26 @@ export async function readTonight(
       for (const person of people) {
         named.set(`staff:${person.id}`, person.name)
         if (person.userId !== null) named.set(`user:${person.userId}`, person.name)
+      }
+      const bare = accountIds.filter((id) => !named.has(`user:${id}`))
+      if (bare.length > 0) {
+        const accounts = await tx
+          .select({ id: authUser.id, name: authUser.name, device: sharedDevices.id })
+          .from(authUser)
+          .leftJoin(authSession, eq(authSession.userId, authUser.id))
+          .leftJoin(
+            sharedDevices,
+            and(
+              eq(sharedDevices.sessionId, authSession.id),
+              eq(sharedDevices.venueId, venue.id),
+              isNull(sharedDevices.revokedAt),
+            ),
+          )
+          .where(inArray(authUser.id, bare))
+        const devices = new Set(accounts.flatMap((a) => (a.device === null ? [] : [a.id])))
+        for (const account of accounts) {
+          if (!devices.has(account.id)) named.set(`user:${account.id}`, account.name)
+        }
       }
     }
 
@@ -1065,6 +1092,10 @@ export async function readTonight(
       waiterCalls:
         calls === null ? null : calls.map((call) => ({ ...call, kinds: orderedKinds(call.kinds) })),
       paying,
+      payingSetup:
+        connection.state === 'connected' && !connection.readiness.on
+          ? (connection.readiness.missing[0] ?? null)
+          : null,
       payingProvider: connection.providerKind,
       pauses: active.map(({ actor: starter, ...pause }) => ({
         ...pause,

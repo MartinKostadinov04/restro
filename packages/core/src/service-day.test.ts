@@ -88,6 +88,19 @@ describe('localInstant (a wall-clock time of a service day, as an instant)', () 
   })
 
   it('follows the offset of that date, across the autumn change', () => {
+    // A time the spring change skips lands where the clocks jump to, 04:00 EEST: never past a
+    // later time of the night (RR-65), and every skipped time lands on the same instant.
+    for (const skipped of ['03:00', '03:30', '03:59']) {
+      expect(localInstant('2027-03-27', skipped, SOFIA, '07:00').toISOString()).toBe(
+        '2027-03-28T01:00:00.000Z',
+      )
+    }
+    expect(localInstant('2027-03-27', '02:59', SOFIA, '07:00').toISOString()).toBe(
+      '2027-03-28T00:59:00.000Z',
+    )
+    expect(localInstant('2027-03-27', '04:00', SOFIA, '07:00').toISOString()).toBe(
+      '2027-03-28T01:00:00.000Z',
+    )
     // 2026-10-25 03:30 local is after the clocks went back (EET, +02:00).
     expect(localInstant('2026-10-24', '03:30', SOFIA, '07:00').toISOString()).toBe(
       '2026-10-25T01:30:00.000Z',

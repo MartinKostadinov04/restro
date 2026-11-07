@@ -6,12 +6,16 @@
 // it was added to (or removed from) through the same function: a signed link the owner made, not a
 // person, is its authority.
 
-import { authMember } from '@restro/db'
-import { and, eq, inArray } from 'drizzle-orm'
+import { authMember, logEntries } from '@restro/db'
+import { and, eq, gte, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { OrderingSettingsError, patchOrderingSettingsIn } from '../apply/ordering-settings'
-import { OrderingSettingsSchema, PreOpeningRuleSchema } from '../ordering-settings'
+import {
+  ClosedDayHoursSchema,
+  OrderingSettingsSchema,
+  PreOpeningRuleSchema,
+} from '../ordering-settings'
 import type { ServiceTx } from './definition'
 import { accepted, refused, type ServiceResult } from './results'
 import { telegramLinkPerson } from './staff'
@@ -23,6 +27,7 @@ const {
   alertRecipientUserIds,
   telegramChatId,
   preOpeningCheck: _preOpeningCheck,
+  closedDayHours: _closedDayHours,
   ...guardKeys
 } = OrderingSettingsSchema.shape
 
@@ -30,7 +35,11 @@ const {
 export const OrderingChangesSchema = z
   .strictObject(guardKeys)
   .partial()
-  .extend({ preOpeningCheck: PreOpeningRuleSchema.optional() })
+  // Without their defaults: a key left out stays.
+  .extend({
+    preOpeningCheck: PreOpeningRuleSchema.optional(),
+    closedDayHours: ClosedDayHoursSchema.optional(),
+  })
 
 /** The keys `settings.alerts_set` may change. */
 export const AlertChangesSchema = z
@@ -58,6 +67,10 @@ async function change(
   } catch (error) {
     if (error instanceof OrderingSettingsError && error.code === 'invalid_input') {
       return refused(null, 'invalid_settings', { problem: error.message.slice(0, 200) })
+    }
+    // The location check waits for the venue's privacy notice link (RR-O15).
+    if (error instanceof OrderingSettingsError && error.code === 'privacy_missing') {
+      return refused(null, 'privacy_missing')
     }
     throw error
   }
@@ -90,6 +103,26 @@ export async function setAlertSettings(
   return change(stx, command.changes as Changes, unlinks ? 'telegram_unlinked' : 'alerts')
 }
 
+/**
+ * True when the venue's group was linked, unlinked or left since the link was made (RR-9). The Log
+ * is what outlives a worker's restart.
+ */
+async function groupLinkSpent(stx: ServiceTx, issuedAt: Date): Promise<boolean> {
+  const rows = await stx.tx
+    .select({ seq: logEntries.seq })
+    .from(logEntries)
+    .where(
+      and(
+        eq(logEntries.venueId, stx.venueId),
+        gte(logEntries.at, issuedAt),
+        eq(logEntries.kind, 'settings.changed'),
+        inArray(logEntries.reason, ['telegram_linked', 'telegram_left', 'telegram_unlinked']),
+      ),
+    )
+    .limit(1)
+  return rows.length > 0
+}
+
 /** The Telegram link command's payload: what the worker heard, after checking a signed link. */
 export const TelegramLinkSchema = z.strictObject({
   type: z.literal('telegram.link'),
@@ -105,6 +138,8 @@ export const TelegramLinkSchema = z.strictObject({
     .regex(/^sm_[0-9A-Za-z]+$/)
     .optional(),
   telegramUserId: TelegramUserIdSchema.optional(),
+  /** When the signed link was made: one older than the current link is spent (RR-9). */
+  linkIssuedAt: z.iso.datetime({ offset: true }).optional(),
 })
 
 /**
@@ -123,10 +158,21 @@ export async function telegramLink(
     return telegramLinkPerson(stx, {
       staffMemberId: command.staffMemberId,
       telegramUserId: command.telegramUserId,
+      ...(command.linkIssuedAt === undefined
+        ? {}
+        : { linkIssuedAt: new Date(command.linkIssuedAt) }),
     })
   }
   if (command.chatId === undefined) return refused(null, 'invalid_command')
   if (command.what === 'group') {
+    if (
+      command.linkIssuedAt !== undefined &&
+      (await patchOrderingSettingsIn(stx.tx, stx.venueId, {})).after.telegramChatId !==
+        command.chatId &&
+      (await groupLinkSpent(stx, new Date(command.linkIssuedAt)))
+    ) {
+      return refused(null, 'link_spent')
+    }
     const done = await patchOrderingSettingsIn(stx.tx, stx.venueId, {
       telegramChatId: command.chatId,
     })

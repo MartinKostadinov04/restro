@@ -187,6 +187,18 @@ async function seed(simHost: string): Promise<void> {
       venueId: demo.venueId,
       presentation: { face: 'qr-phone', options: {} },
     })
+    // Ordering from the phone turns on only once the venue has a privacy notice link (RR-O44).
+    await owner.query(`update restro.venues set settings = settings || $2::jsonb where id = $1`, [
+      demo.venueId,
+      JSON.stringify({
+        legalDetails: {
+          name: 'Send Club EOOD',
+          eik: '123456789',
+          address: 'Sofia, 1 Send Street',
+          privacyUrl: 'https://send-club.example/privacy',
+        },
+      }),
+    ])
     await setGuestFeatures(pool, TENANT_ID, {
       venueId: demo.venueId,
       features: {

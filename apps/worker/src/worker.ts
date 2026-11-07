@@ -27,6 +27,7 @@ import { JOB_NAMES } from '@restro/core'
 import { createPool, type DbPool, withSystem } from '@restro/db'
 import { PgBoss } from 'pg-boss'
 import { createTelegramClient } from './alerts/telegram'
+import { linkSecretOf } from './alerts/telegram-link'
 import { createTelegramApi } from './alerts/telegram-link-api'
 import { type Poller, startTelegramPoller } from './alerts/telegram-poller'
 import type { WorkerConfig } from './config'
@@ -195,12 +196,13 @@ export async function startWorker(
         telegram,
         log,
         now,
-        linkSecret: config.revealToken,
+        linkSecret: linkSecretOf(config),
       })
       // The owner's "Link Telegram" (#87): the web app asks here for a link to open, over the
-      // private network, with the same token as the reveal endpoint, which also signs the link.
+      // private network, with the same token as the reveal endpoint. The link is signed with the
+      // bot's own token, which the web app doesn't hold (RR-10).
       if (config.revealToken !== null) {
-        const api = createTelegramApi({ pool, telegram, secret: config.revealToken, now })
+        const api = createTelegramApi({ pool, telegram, secret: telegramToken, now })
         health.setTelegramHandler({
           token: config.revealToken,
           handle: api,

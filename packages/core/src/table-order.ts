@@ -402,19 +402,20 @@ export function takeSentLines(
     (line) => live(line) && line.heldBy === null && !keepBack(line),
   )
   if (sendable.length === 0) return { ok: false, code: 'order_empty' }
-  if (requested.length !== sendable.length) return { ok: false, code: 'order_changed' }
-  const wanted = new Map<string, number>()
+  if (requested.length === 0) return { ok: false, code: 'order_changed' }
+  // Refused only when a line it sends changed or went (D117): every named line must be on the order
+  // as the guest saw it. A line it does not name stays on the order, whatever happened to it.
+  const left = [...sendable]
+  const picked: TableOrderLine[] = []
   for (const line of requested) {
     const key = `${orderLineKey(line)}|${line.qty}`
-    wanted.set(key, (wanted.get(key) ?? 0) + 1)
+    const at = left.findIndex((other) => `${orderLineKey(other)}|${other.qty}` === key)
+    const found = left[at]
+    if (found === undefined) return { ok: false, code: 'order_changed' }
+    picked.push(found)
+    left.splice(at, 1)
   }
-  for (const line of sendable) {
-    const key = `${orderLineKey(line)}|${line.qty}`
-    const left = wanted.get(key) ?? 0
-    if (left === 0) return { ok: false, code: 'order_changed' }
-    wanted.set(key, left - 1)
-  }
-  const lines = order.lines.filter((line) => !sendable.includes(line))
+  const lines = order.lines.filter((line) => !picked.includes(line))
   return {
     ok: true,
     order: {
@@ -422,7 +423,8 @@ export function takeSentLines(
       earlier: order.earlier,
       idleExpiresAt: lines.some(live) ? now + ORDER_IDLE_MS : null,
     },
-    lines: sendable,
+    // In the order's own order, as the round is entered.
+    lines: sendable.filter((line) => picked.includes(line)),
   }
 }
 

@@ -11,7 +11,8 @@ import { withTenantWrite } from '@restro/db/write'
 import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import { hasDatabase } from '../apply/test-database'
+import { provisionVenue } from '../apply/provision'
+import { hasDatabase, testSlug } from '../apply/test-database'
 import { newId } from '../ids'
 import { DEFAULT_ORDERING_SETTINGS } from '../ordering-settings'
 import { hashTableCode } from '../qr'
@@ -30,7 +31,9 @@ import {
 import { GUEST_LIMITS, type GuestLimit, GuestLimiter, type GuestLimitName } from './guest-limits'
 
 const KEY = 'pay-test-key-'.padEnd(48, 'x')
-const ACCOUNT = 'acct_paytest1'
+// The payment account's reference is unique per provider across the whole database
+// (payment_accounts_account_unique), and test files run side by side: each run makes its own.
+const ACCOUNT = `acct_${randomUUID().replaceAll('-', '')}`
 /** The provider's id of a payment's hold: one per payment. */
 const holdRef = (paymentId: string) => `simpay_${paymentId}`
 /** A value the card form needs and nothing else may show (Stripe's is a client secret). */
@@ -367,6 +370,58 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
     expect(await stranger.payment()).toEqual({ ok: false, code: 'unknown_payment' })
   })
 
+  it('does not touch a payment of another venue of the same organisation', async () => {
+    const venue = await provisionVenue(world.app, world.tenantId, {
+      name: 'Second club',
+      slug: testSlug('pay-second'),
+    })
+    const { id } = await awaiting()
+    const { result } = await applyService(
+      world.app,
+      {
+        type: 'payment.check',
+        paymentId: id,
+        reading: {
+          ref: holdRef(id),
+          status: 'released',
+          needsGuestAction: false,
+          currency: 'EUR',
+          amountMinor: 1_000,
+          heldMinor: 0,
+          captureBefore: null,
+          threeDs: null,
+          authorisationCode: null,
+        },
+      },
+      {
+        tenantId: world.tenantId,
+        venueId: venue.id,
+        origin: 'worker',
+        actor: { kind: 'system' },
+        jobId: `job-${randomUUID()}`,
+      },
+    )
+    expect(result).toMatchObject({ status: 'refused', code: 'payment_missing' })
+    expect(await stored(id)).toMatchObject({ state: 'awaiting_guest' })
+  })
+
+  it('rounds a percent tip half-up on an odd amount (rule 8)', async () => {
+    // 15 % of 4.50 is 0.675: 0.68, never 0.67.
+    const id = paymentIdOf(await start(phone(), ['L2'], { tipPercent: 15 }))
+    expect(await price(id)).toMatchObject({ details: { state: 'priced', amountMinor: 518 } })
+    expect(await stored(id)).toMatchObject({ amount_minor: '518', tip_minor: '68' })
+  })
+
+  it.each([
+    ['less held than the amount', { heldMinor: 900 }],
+    ['another amount', { amountMinor: 900, heldMinor: 900 }],
+    ['another currency', { currency: 'USD' }],
+  ])('does not call a reading held with %s', async (_what, reading) => {
+    const { id } = await awaiting()
+    await check(id, 1_000, reading)
+    expect(await stored(id)).toMatchObject({ state: 'awaiting_guest' })
+  })
+
   it('prices the hold as the POS amounts plus the tip, and keeps the form values only at the form', async () => {
     const payer = phone()
     // 10 % of 13.00 is 1.30 (rounded half-up, rule 8).
@@ -671,6 +726,14 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
         [world.venueId],
       )
       expect(await refusal(await start(phone(), ['L3']))).toBe('below_minimum')
+      paymentIdOf(await start(phone(), ['L1']))
+    })
+
+    it('below_minimum: an amount exactly at the floor starts a payment', async () => {
+      await world.owner.query(
+        `update restro.venues set settings = jsonb_set(settings, '{paying}', '{"minCardMinor": 1000}') where id = $1`,
+        [world.venueId],
+      )
       paymentIdOf(await start(phone(), ['L1']))
     })
 
