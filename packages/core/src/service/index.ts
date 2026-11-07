@@ -407,13 +407,17 @@ export {
   moveStatus,
   putBack,
   putBackStatus,
+  RESERVATION_KINDS,
   RESERVATION_STATUS_MOVES,
   RESERVATION_STATUS_REFUSALS,
   RESERVATION_STATUSES,
+  type ReservationKind,
+  ReservationKindSchema,
   type ReservationStatus,
   type ReservationStatusRefusal,
   ReservationStatusSchema,
   type StatusMove,
+  undoArrival,
 } from './reservations/status'
 export {
   REFUSAL_CODES,

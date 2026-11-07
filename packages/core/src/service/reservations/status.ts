@@ -94,6 +94,8 @@ export const RESERVATION_STATUS_REFUSALS = [
   'status_move_not_allowed',
   /** "Put back" was asked for a status it does not return from. */
   'put_back_not_allowed',
+  /** An arrival was undone for a reservation that is not at a table, or for a block. */
+  'undo_arrival_not_allowed',
 ] as const
 
 /** One status refusal code. */
@@ -141,4 +143,36 @@ export function putBack(from: ReservationStatus): StatusMove {
  */
 export function countsAsNoShow(status: ReservationStatus): boolean {
   return status === 'no_show'
+}
+
+/** What a reservation is: a booking, a walk-in off the queue, or a block of the spot (D137). */
+export const RESERVATION_KINDS = ['booking', 'walk_in', 'block'] as const
+
+/** One reservation kind. */
+export type ReservationKind = (typeof RESERVATION_KINDS)[number]
+
+/** Zod schema of one kind. */
+export const ReservationKindSchema = z.enum(RESERVATION_KINDS)
+
+/**
+ * Undoing "Arrived" inside the undo window Tonight already enforces (ticket #329): the party goes
+ * back to where it was a moment ago — a booking to Reserved, a walk-in to the queue it was taken
+ * off, Waiting.
+ *
+ * It is deliberately **not** an edge in the table of moves: nothing leaves Seated but Finished,
+ * because a party at a table that is suddenly not there again is not a state anyone may move it
+ * to. An undo is the erasure of a write, not a change of state, and only the person who just made
+ * that write may do it, only within the window. It lives here all the same, so that no command
+ * writes a status this module has not decided — the whole point of the table above is that there
+ * is one place to read.
+ *
+ * A block is never seated, so undoing an arrival of one is refused. What the undo does besides the
+ * status — closing the codes the arrival opened, and refusing once the window has passed — is the
+ * command's, in ticket #329.
+ */
+export function undoArrival(from: ReservationStatus, kind: ReservationKind): StatusMove {
+  if (from !== 'seated' || kind === 'block') {
+    return { ok: false, code: 'undo_arrival_not_allowed' }
+  }
+  return { ok: true, status: kind === 'walk_in' ? 'waiting' : 'reserved' }
 }

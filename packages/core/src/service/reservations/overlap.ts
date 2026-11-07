@@ -9,6 +9,14 @@
 // A seated party keeps its spots until it is finished, until its own end time passes, or until the
 // night's sweep — the plan's state (ticket #327) derives from `holdsSpotAt` alone.
 //
+// The two questions this module answers are different, and a writer must pick the right one
+// (ticket #329 tests both): `spotConflict` asks whether a stretch of the night may be **booked**,
+// where the turn time is a planning assumption, so a spot reads free once that time has passed;
+// `holdsSpotAt` asks whether anyone is **on** the spot at a moment, where an overstaying party
+// still holds it. So a booking at 22:30 onto a table seated at 21:00 for ninety minutes is
+// allowed, and seating a walk-in there at 22:30 is not. Booking paths check `spotConflict`;
+// seating and walk-in paths check `holdsSpotAt` at the moment of seating.
+//
 // Pure: no I/O. The caller injects `now`.
 
 import { z } from 'zod'

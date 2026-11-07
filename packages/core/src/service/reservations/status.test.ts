@@ -10,9 +10,11 @@ import {
   moveStatus,
   putBack,
   putBackStatus,
+  RESERVATION_KINDS,
   RESERVATION_STATUS_MOVES,
   RESERVATION_STATUSES,
   type ReservationStatus,
+  undoArrival,
 } from './status'
 
 const anyStatus = fc.constantFrom(...RESERVATION_STATUSES)
@@ -143,5 +145,37 @@ describe('countsAsNoShow', () => {
   it('counts nothing else', () => {
     const counted: ReservationStatus[] = RESERVATION_STATUSES.filter(countsAsNoShow)
     expect(counted).toEqual(['no_show'])
+  })
+})
+
+describe('undoArrival', () => {
+  it('puts a booking back to Reserved and a walk-in back on the queue', () => {
+    expect(undoArrival('seated', 'booking')).toEqual({ ok: true, status: 'reserved' })
+    expect(undoArrival('seated', 'walk_in')).toEqual({ ok: true, status: 'waiting' })
+  })
+
+  it('refuses a block, which is never seated', () => {
+    expect(undoArrival('seated', 'block')).toEqual({
+      ok: false,
+      code: 'undo_arrival_not_allowed',
+    })
+  })
+
+  it('refuses every status but Seated: there is no arrival to undo', () => {
+    fc.assert(
+      fc.property(anyStatus, fc.constantFrom(...RESERVATION_KINDS), (status, kind) => {
+        if (status === 'seated' && kind !== 'block') return
+        expect(undoArrival(status, kind)).toEqual({
+          ok: false,
+          code: 'undo_arrival_not_allowed',
+        })
+      }),
+    )
+  })
+
+  it('is not an edge in the table of moves: nothing leaves Seated but Finished', () => {
+    expect(RESERVATION_STATUS_MOVES.seated).toEqual(['finished'])
+    expect(canMove('seated', 'reserved')).toBe(false)
+    expect(canMove('seated', 'waiting')).toBe(false)
   })
 })
