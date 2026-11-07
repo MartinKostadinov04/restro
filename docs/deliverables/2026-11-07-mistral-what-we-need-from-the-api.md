@@ -2,7 +2,7 @@
 
 Restro is a QR-to-phone ordering app: the guest scans the code on their table, sees the venue's menu and orders from their phone; when they pay, the venue's fiscal device has to print.
 
-We have read the published `Zamboo api v1` description in full (OpenAPI 3.0.4, 45 operations) and made read-only calls against the demo installation. The menu reads well. The eleven points below are what we could not find for ordering and paying at a table, and after them eight questions about behaviour the description does not settle. Each one says what is missing, why we need it, and how barsy's API does the same thing — not as a comparison of products, but because a working precedent is the quickest way to show what we are asking for. The barsy pages sit behind their integrator sign-in, so each point summarises what the page says as well as linking it.
+We have read the published `Zamboo api v1` description in full (OpenAPI 3.0.4, 45 operations) and made read-only calls against the demo installation. The menu reads well. The eleven points below are what we could not find for ordering and paying at a table, and after them ten questions about behaviour the description does not settle. Each one says what is missing, why we need it, and how barsy's API does the same thing — not as a comparison of products, but because a working precedent is the quickest way to show what we are asking for. The barsy pages sit behind their integrator sign-in, so each point summarises what the page says as well as linking it.
 
 Your own Zamboo web interface applies actions to an open bill, so this exists inside your product. **Our question is whether there is a second interface for tables and open bills, and whether you will open it to us.** Where the answer is "it already does that", the work is ours — we need the documentation and permission, nothing more.
 
@@ -56,13 +56,13 @@ Your own Zamboo web interface applies actions to an open bill, so this exists in
 
 **How barsy does it.** [`Accounts_divide`](https://docs.lukanet.com/barsy.api/methods/accounts/divide.html) takes the original bill and the items with quantities to move, creates a new bill from them and returns its id; that new bill is then paid and closed on its own. [`Accounts_merge`](https://docs.lukanet.com/barsy.api/methods/accounts/merge.html) moves rows into the oldest bill and closes the others empty, and refuses when a bill is already closed or fiscally marked. [`Accounts_move`](https://docs.lukanet.com/barsy.api/methods/accounts/move.html) moves an open bill to another table or another member of staff.
 
-## 7. Cancelling a row, and reversing a bill already closed
+## 7. Cancelling a row before the bill is closed
 
-**Missing.** No call refuses a row or cancels an order, and there is no storno.
+**Missing.** No call refuses a row or cancels an order.
 
-**Why we need it.** The bar declines a round because the bottle is finished, or the guest leaves before it arrives. Someone has to undo it without a waiter hand-deleting our rows, and the declined attempt has to survive for the audit trail rather than disappear.
+**Why we need it.** The bar declines a round because the bottle is finished, or the guest leaves before it arrives. Someone has to undo it without a waiter hand-deleting our rows, and the declined attempt has to survive for the audit trail rather than disappear. To be clear about the limit: reversing a bill that is already closed, and refunding, stay with the venue's staff at the till. We only need to read that it happened, never to do it ourselves.
 
-**How barsy does it.** An order row can carry a reason chosen from the list the POS supplies through [`Reasons_getlist`](https://docs.lukanet.com/barsy.api/methods/reasons/getlist.html), which also states whether the item still leaves stock. For a bill that is already closed, [`Accounts_storno`](https://docs.lukanet.com/barsy.api/methods/accounts/storno.html) creates a reversing bill with its own unique number and a storno fiscal receipt naming the receipt being reversed, with the reason taken from the standard Н-18 list in [`Accounts_getstornoreasons`](https://docs.lukanet.com/barsy.api/methods/accounts/getstornoreasons.html) that the fiscal device itself demands.
+**How barsy does it.** An order row can carry a reason chosen from the list the POS supplies through [`Reasons_getlist`](https://docs.lukanet.com/barsy.api/methods/reasons/getlist.html), which also states whether the item still leaves stock.
 
 ## 8. Asking whether an order can be taken right now
 
@@ -98,7 +98,7 @@ Your own Zamboo web interface applies actions to an open bill, so this exists in
 
 ---
 
-## Eight things the description does not settle
+## Ten things the description does not settle
 
 These are not missing endpoints but behaviour we could not read anywhere, and each one decides something we have to build. Short answers are enough.
 
@@ -106,15 +106,19 @@ These are not missing endpoints but behaviour we could not read anywhere, and ea
 
 - **Is a round all or nothing, and does a refusal name the item?** If one item sold out since our last menu sync, does the POS refuse the whole round or quietly drop that row? We tell the guest "nothing was sent, something ran out — send the rest when you're ready", which is only honest if the call is atomic and the error names what failed. Your `ResError` carries a code and a message; what we need to know is whether there is a catalogue of codes behind it, the way barsy publishes its refusal reasons as a list the POS supplies through [`Reasons_getlist`](https://docs.lukanet.com/barsy.api/methods/reasons/getlist.html).
 
-- **If a payment times out and we send it again, can anything be paid twice?** You already refuse a repeated `ExtId` on an order with a `409`. We need that same promise on the call that takes money: the second attempt refused, nothing captured twice, and a way to find out whether the first one landed. Paying in the app cannot go live without it.
+- **If a payment times out and we send it again, can anything be paid twice?** You already refuse a repeated `ExtId` on an order with a `409`. We need that same promise on the call that takes money: can a close carry our own reference, is a repeat of it refused, and can we read back by that reference whether the bill closed and with which receipt? When we cannot prove a close either way we have to ask staff to settle it by hand, so without this paying in the app cannot go live.
 
 - **What happens when the fiscal device fails during a close?** No paper, no link, printer switched off: does the call fail, or does the bill close with nothing printed? And at a venue with a till per bar, which device prints for a payment taken through the API, so we can tell the guest where to collect the receipt? In barsy's own staff screens the bill closes only after the print succeeds, which is the behaviour we would want.
+
+- **Can a close carry a tip?** Guests tip in our app, and the Bulgarian tax authority's opinion of 23.10.2025 puts a card tip on the fiscal receipt, in tax group А with no VAT. So we only offer a tip at all where the till can record it on the same bill and the same receipt as the drinks. Can a closed bill carry an amount above the bill's total, is it fiscalised, and as what payment type or article? Where the answer is no, we simply show no tip row at that venue.
+
+- **Which currency, and how does the POS round?** Prices come back as plain numbers with five decimals (`1.99000`) and nothing names a currency. We hold money in whole cents and we never re-round what the POS has decided, so we need two things stated: the currency of prices and totals, and whether the POS rounds per row or per bill, and in which direction. A total we compute differently from yours by one cent is a guest disputing a receipt.
 
 - **What does `SaveOrder` print and return?** It already takes `paymentKindGuid` and `sumPaid`, so an order can be recorded as card-paid in one call, but today it returns only an operation GUID. If it also prints a fiscal receipt and can hand back the receipt reference — sale number, receipt number, device, date and time — then it is most of a pay-at-the-table path on its own, which is worth knowing before anything else is built. barsy does this in one call: [`Accounts_place`](https://docs.lukanet.com/barsy.api/methods/accounts/place.html) takes the payments together with a close-the-bill flag, and accepts payments only when the call closes the bill.
 
 - **What are `orderValidationType` and `selectOrderType`?** `GetExternalSystems` returned `WebOrders` with `selectOrderType` 5 and `orderValidationType` 2, both undocumented integers. If `orderValidationType` is approval of an outside order at the bar, it decides whether we can offer a venue the choice between an order going straight through and one a bartender accepts first.
 
-- **Can staff and the API work on the same bill?** Can a waiter split, close and take cash at the till on a bill opened through the API, and can the API read and close a bill a waiter opened? Which rights does each side need? A venue where the two cannot touch each other's bills cannot run a normal night.
+- **Can staff and the API work on the same bill?** Can a waiter split, close and take cash at the till on a bill opened through the API, and can the API read and close a bill a waiter opened? Which rights does each side need? And at a venue with several bars, does one key act for all of them or does each bar need its own? A venue where the two sides cannot touch each other's bills cannot run a normal night.
 
 - **Is there a rate limit, and a cheap way to ask what changed?** Guests' phones refresh a table's bill every few seconds and our worker polls the tables, so a published limit is a number we need before we build. barsy's table read supports a checksum so an unchanged table can be skipped ([`Places_getlistwithaccountsonly`](https://docs.lukanet.com/barsy.api/methods/places/getlistwithaccountsonly.html)); anything of that kind — a checksum, a "changed since" filter — saves both sides a great deal of traffic.
 

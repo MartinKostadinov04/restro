@@ -335,5 +335,5 @@ These came up in the sources and are not in the list, because a decision settles
 - Refunds, storno, credit notes and a refund to a card without cash in the drawer (Lukanet 8; requirements F5): refunds happen at the venue.
 - Payment links made by the POS (Lukanet 10): not something a waiter does, and the money would bypass Restro's payment provider. This is a product choice for Martin, not a question for a POS.
 - Reservation deposits (Lukanet 7, requirements F3) and paid song requests as POS articles (requirements F4): not part of ordering from the menu. Add them if deposits or paid requests ever reach the POS.
-- Tips: none in the pilot.
+- Tips: no C number, because the tip rides on the close (C38, C43) rather than being its own capability. Guests do tip in the app at the pilot (D122), and a tip is offered only where the till records it on the same bill and fiscal receipt (D127). Asked of Mistral in `docs/deliverables/2026-11-07-mistral-what-we-need-from-the-api.md`; for barsy it waits on Lukanet confirming its API can add the Бакшиш line.
 - Questions for the lawyer (L numbers) and the tax audit export (requirements G7): legal work, not a POS capability Restro builds on.
