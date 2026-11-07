@@ -30,6 +30,7 @@ describe('loadConfig', () => {
     expect(loadConfig({ DATABASE_URL: URL }, () => 'my-host')).toEqual({
       databaseUrl: URL,
       purgeDatabaseUrl: null,
+      backup: null,
       workerId: 'my-host',
       healthPort: DEFAULT_HEALTH_PORT,
       logLevel: 'info',
@@ -76,6 +77,7 @@ describe('loadConfig', () => {
     ).toEqual({
       databaseUrl: URL,
       purgeDatabaseUrl: 'postgres://restro_purge:secret@localhost:5432/restro',
+      backup: null,
       workerId: 'worker-a',
       healthPort: 9090,
       logLevel: 'debug',
@@ -99,6 +101,38 @@ describe('loadConfig', () => {
     })
     // Unset, the Send follows the sync.
     expect(loadConfig({ DATABASE_URL: URL, WORKER_POS_SYNC: 'off' }).send).toBe(false)
+  })
+
+  it('reads the backup’s settings only where the backup role is set (ticket #320)', () => {
+    // Without DATABASE_URL_BACKUP the store's variables are ignored, even wrong ones.
+    expect(loadConfig({ DATABASE_URL: URL, BACKUP_STORE: 's3' }).backup).toBeNull()
+    const backup = loadConfig({
+      DATABASE_URL: URL,
+      DATABASE_URL_BACKUP: ' postgres://restro_backup:pw-for-backup@localhost:54329/restro ',
+      LOCAL_BACKUP_DIR: '/data/backups',
+      PG_DUMP_PATH: ' /usr/lib/postgresql/17/bin/pg_dump ',
+    }).backup
+    expect(backup).toEqual({
+      databaseUrl: 'postgres://restro_backup:pw-for-backup@localhost:54329/restro',
+      store: { kind: 'local', dir: expect.stringMatching(/backups$/) },
+      pgDumpPath: '/usr/lib/postgresql/17/bin/pg_dump',
+    })
+  })
+
+  it('names the backup variables that are wrong, never their values', () => {
+    const lines = problemsOf({
+      DATABASE_URL: URL,
+      DATABASE_URL_BACKUP: 'postgres://restro_backup:pw-for-backup@localhost/restro',
+      NODE_ENV: 'production',
+      ASSET_STORE: 'local',
+      PUBLISH_STORE: 'local',
+    })
+    expect(lines).toEqual(['BACKUP_STORE must be set to "local" or "r2" in production.'])
+    const wrong = problemsOf({
+      DATABASE_URL: URL,
+      DATABASE_URL_BACKUP: 'mysql://user:pw-for-backup@host/db',
+    })
+    expect(wrong).toEqual(['DATABASE_URL_BACKUP must be a postgres:// or postgresql:// URL.'])
   })
 
   it('reads the alerts’ settings (#83) and keeps the secrets out of the errors', () => {

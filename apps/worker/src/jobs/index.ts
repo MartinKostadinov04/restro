@@ -15,11 +15,13 @@
 // tick (#82) needs nothing but the database. The connection probe (#79) runs wherever a POS is
 // read or written to: a breaker that pauses must probe to lift; the pre-opening check (#82) runs
 // with it.
+// The database backup (ticket #320) runs where the backup role's connection is set; without it no
+// dump is taken, and the log says so once.
 // The payment jobs (#110) read the POS too, so they run beside the floor reading when the worker
 // has a payment provider.
 import { randomBytes } from 'node:crypto'
 
-import { createAssetStore, createPublishStore } from '@restro/assets'
+import { createAssetStore, createBackupStore, createPublishStore } from '@restro/assets'
 
 import { ConfigError, requireSealKeys, type SealKeys, type WorkerConfig } from '../config'
 import { paymentProviders } from '../connectors'
@@ -28,6 +30,7 @@ import { createResendSender } from '../receipts/email-sender'
 import { createAlertJobs, telegramClientOf } from './alerts'
 import { createBarsyJobs } from './barsy'
 import { createConnectionJobs } from './connection'
+import { createDbBackupJob, pgDump } from './db-backup'
 import { createFloorJobs } from './floor'
 import { createSendJobs } from './order-send'
 import { orderTidyTick } from './order-tidy'
@@ -124,6 +127,35 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
     log.warn('DATABASE_URL_PURGE is not set: the purge jobs are not registered (nothing is erased)')
   }
 
+  // The backup (ticket #320, D103) runs only where the backup role's connection is set. A failed
+  // dump tells the Restro team's Telegram chat; without a bot and a team chat it is only logged.
+  const backupJobs: JobDefinition[] = []
+  if (config.backup == null) {
+    log.warn('DATABASE_URL_BACKUP is not set: the db-backup job is not registered (no dumps)')
+  } else {
+    const backup = config.backup
+    const teamChat = config.alerts?.teamChatId ?? null
+    const teamTelegram = config.alerts === undefined ? null : telegramClientOf(config.alerts)
+    if (teamTelegram === null || teamChat === null) {
+      log.warn(
+        'TELEGRAM_BOT_TOKEN and TELEGRAM_TEAM_CHAT_ID are not both set: a failed database backup is only in the log and the db-backup.dead queue',
+      )
+    }
+    backupJobs.push(
+      createDbBackupJob({
+        databaseUrl: backup.databaseUrl,
+        store: await createBackupStore(backup.store),
+        dump: pgDump(backup.pgDumpPath ?? undefined),
+        notify:
+          teamTelegram === null || teamChat === null
+            ? null
+            : async (text) => {
+                await teamTelegram.sendMessage(teamChat, text)
+              },
+      }),
+    )
+  }
+
   let keys: SealKeys
   try {
     keys = requireSealKeys(config)
@@ -141,6 +173,7 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
       ...noticeJobs,
       ...alertJobs,
       ...purgeJobs,
+      ...backupJobs,
     ]
   }
   const sealJobs = [createSealTableCodesJob({ publishStore, publicKey: keys.publicKey })]
@@ -154,6 +187,7 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
       ...noticeJobs,
       ...alertJobs,
       ...purgeJobs,
+      ...backupJobs,
       ...sealJobs,
     ]
   }
@@ -167,6 +201,7 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
     ...noticeJobs,
     ...alertJobs,
     ...purgeJobs,
+    ...backupJobs,
     ...sealJobs,
   ]
 }

@@ -145,6 +145,19 @@ jobs:
       - name: Database migrations and app role
         run: pnpm db:migrate && pnpm db:roles
 
+      # The worker's backup test runs the real pg_dump and pg_restore (ticket #320), which must be the
+      # server's major version (17) or newer; the runner's own are older. The repository is the
+      # PostgreSQL project's official one, set up by the script postgresql-common ships.
+      - name: PostgreSQL 17 client tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17
+          /usr/lib/postgresql/17/bin/pg_dump --version
+          echo "PG_DUMP_PATH=/usr/lib/postgresql/17/bin/pg_dump" >> "$GITHUB_ENV"
+          echo "PG_RESTORE_PATH=/usr/lib/postgresql/17/bin/pg_restore" >> "$GITHUB_ENV"
+
       - name: Test
         run: pnpm test
 
