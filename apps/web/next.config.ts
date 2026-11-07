@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 import type { NextConfig } from 'next'
 
+import { frameHeaders } from './src/frame-headers'
 import { guestHeaders } from './src/guest/headers'
 
 // Next.js reads .env files from this folder only, but the repo keeps one `.env.local` at its root
@@ -23,7 +24,8 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   // No referrer from the guest's pages: the table code is in their address (src/guest/headers.ts).
-  headers: async () => guestHeaders(),
+  // No other site frames the admin (src/frame-headers.ts, DA-O8).
+  headers: async () => [...guestHeaders(), ...frameHeaders()],
   // Workspace packages export TypeScript source (see README, "Workspace packages"),
   // so Next has to compile them. @restro/barsy is deliberately absent: the web app
   // never imports it (CLAUDE.md, import boundaries).

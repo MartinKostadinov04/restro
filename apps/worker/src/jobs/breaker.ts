@@ -343,6 +343,7 @@ async function queueProbe(env: BreakerEnvironment, ref: ConnectionRef, at: numbe
     )
     await env.queue.send(JOB_NAMES.connectionProbe, job.data, {
       singletonKey: job.singletonKey,
+      ...(job.group === undefined ? {} : { group: job.group }),
       startAfter: Math.max(0, Math.ceil((at - env.now().getTime()) / 1000)),
     })
   } catch (error) {

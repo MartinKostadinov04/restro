@@ -15,7 +15,7 @@ import { getAssetStore } from '../assets'
 import { getAuthDb, getPool } from '../db'
 import { enqueueJob } from '../jobs'
 import { logError } from '../log'
-import { canMarkSoldOut } from '../roles'
+import { canEditMenu, canMarkSoldOut } from '../roles'
 import { requireTenant } from '../session'
 import { setItemsSoldOut } from '../sold-out/service'
 import { onSharedDevice } from '../staff/shared-device'
@@ -80,11 +80,16 @@ async function userNames(
 
 /**
  * The sheet's session, or why there is none: a shared tablet never edits the menu (D122 §7, RR-83),
- * and an item of another venue is not this venue's sheet (RR-72; the tenant's rows are all the
- * database hides).
+ * a save needs a role that edits the menu (owners and admins, RR-70; anyone of the organisation
+ * reads the sheet), and an item of another venue is not this venue's sheet (RR-72; the tenant's
+ * rows are all the database hides).
  */
-async function session(ids: z.infer<typeof Ids>): Promise<Session | 'not_allowed' | 'not_found'> {
+async function session(
+  ids: z.infer<typeof Ids>,
+  purpose: 'read' | 'write' = 'read',
+): Promise<Session | 'not_allowed' | 'not_found'> {
   const { user, organization, sessionId } = await requireTenant()
+  if (purpose === 'write' && !canEditMenu(organization.role)) return 'not_allowed'
   if (await onSharedDevice({ tenantId: organization.id, sessionId })) return 'not_allowed'
   const ours = await itemsOfVenue(getPool(), organization.id, ids.venueId, [ids.itemId])
   if (!ours.has(ids.itemId)) return 'not_found'
@@ -111,7 +116,7 @@ async function save(
   run: (session: Session) => Promise<SheetResult>,
 ): Promise<SheetResult> {
   try {
-    const opened = await session(ids)
+    const opened = await session(ids, 'write')
     if (typeof opened === 'string') return { ok: false, error: opened }
     const result = await run(opened)
     if (result.ok) revalidatePath(`/venues/${ids.venueId}`)

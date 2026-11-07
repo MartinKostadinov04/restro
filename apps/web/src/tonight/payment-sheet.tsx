@@ -34,6 +34,8 @@ import { useDateText } from './day-picker'
 import { DisputeEvidence } from './dispute-evidence'
 import { useMoney } from './money'
 import { PAYMENT_ANSWER_WORDS, PAYMENT_STATE_WORDS, releaseReasonWord } from './payment-state-words'
+import { READ_FAILED, readAttempt } from './read-attempt'
+import { ReadFailed } from './tab-parts'
 import { useTableName } from './table-name'
 import { useWho } from './who'
 
@@ -196,9 +198,16 @@ export function PaymentSheet({
   // undefined while loading; null when the payment is not this venue's.
   const [detail, setDetail] = useState<PaymentDetailView | null | undefined>(loaded)
 
+  // The read never got an answer (no connection): a retry line, not a sheet that loads for ever.
+  const [failed, setFailed] = useState(false)
+
   const load = useCallback(() => {
-    void paymentDetailAction({ venueId: frame.venueId, paymentId }).then((result) =>
-      setDetail(result.ok ? result.detail : null),
+    setFailed(false)
+    void readAttempt(() => paymentDetailAction({ venueId: frame.venueId, paymentId })).then(
+      (result) => {
+        if (result === READ_FAILED) setFailed(true)
+        else setDetail(result.ok ? result.detail : null)
+      },
     )
   }, [frame.venueId, paymentId])
   useEffect(() => {
@@ -207,9 +216,15 @@ export function PaymentSheet({
 
   const title = detail
     ? t('py_title', { table: tableName(detail.row.table, detail.row.numbered) })
-    : t('loading')
+    : failed
+      ? t('sh_fail_t')
+      : t('loading')
   const sub = detail ? t('py_number', { ref: detail.number }) : ''
-  const body = detail ? <Body detail={detail} frame={frame} /> : null
+  const body = detail ? (
+    <Body detail={detail} frame={frame} />
+  ) : failed ? (
+    <ReadFailed onRetry={load} />
+  ) : null
   const close = (
     <Button type="button" variant="outline" className="h-12" onClick={onClose}>
       {t('close')}

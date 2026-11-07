@@ -235,6 +235,37 @@ describe.skipIf(!hasDatabase)('presentation and guest features against Postgres'
     })
   })
 
+  it('turns ordering on only once the venue has a privacy notice link, and leaves it on (RR-O44)', async () => {
+    const ORDERING = { ...CANONICAL, ordering: true }
+    await expect(
+      setGuestFeatures(app, tenant, { venueId, features: ORDERING }),
+    ).rejects.toMatchObject({ name: 'GuestFeaturesError', code: 'privacy_missing' })
+    expect(await settingsOf()).toMatchObject({ guest_features: CANONICAL })
+
+    await owner.query(`update restro.venues set settings = settings || $2::jsonb where id = $1`, [
+      venueId,
+      JSON.stringify({
+        legalDetails: {
+          name: 'Club EOOD',
+          eik: '123456789',
+          address: 'Sofia, 1 Vitosha Blvd',
+          privacyUrl: 'https://club.example/privacy',
+        },
+      }),
+    ])
+    expect(await setGuestFeatures(app, tenant, { venueId, features: ORDERING })).toEqual(ORDERING)
+
+    // The link gone again: ordering stays on, and the other switches still save.
+    await owner.query(
+      `update restro.venues set settings = settings - 'legalDetails' where id = $1`,
+      [venueId],
+    )
+    const fewer = { ...ORDERING, bill: false }
+    expect(await setGuestFeatures(app, tenant, { venueId, features: fewer })).toEqual(fewer)
+    // Back to what the next test expects.
+    expect(await setGuestFeatures(app, tenant, { venueId, features: CANONICAL })).toEqual(CANONICAL)
+  })
+
   it('goes back to the defaults with null, leaving other settings alone', async () => {
     expect(await setGuestFeatures(app, tenant, { venueId, features: null })).toEqual(
       DEFAULT_GUEST_FEATURES,

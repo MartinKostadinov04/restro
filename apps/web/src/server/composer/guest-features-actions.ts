@@ -41,6 +41,8 @@ const SaveOptionsInput = z.strictObject({
 const FORBIDDEN = { ok: false, error: 'forbidden' } as const
 const INVALID = { ok: false, error: 'invalid' } as const
 const FAILED = { ok: false, error: 'failed' } as const
+/** Ordering turns on only once the venue has a privacy notice link (RR-O44). */
+const PRIVACY_MISSING = { ok: false, error: 'privacy_missing' } as const
 
 /** Saves the venue's guest services: the switches and the request kinds. */
 export async function saveGuestFeaturesAction(input: unknown) {
@@ -59,7 +61,9 @@ export async function saveGuestFeaturesAction(input: unknown) {
   } catch (error) {
     // redirect() and notFound() are control flow, not failures.
     if (error instanceof Error && 'digest' in error) throw error
-    if (error instanceof GuestFeaturesError) return INVALID
+    if (error instanceof GuestFeaturesError) {
+      return error.code === 'privacy_missing' ? PRIVACY_MISSING : INVALID
+    }
     logError('guest_features_action_failed', error)
     return FAILED
   }

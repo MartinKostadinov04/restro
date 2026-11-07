@@ -173,6 +173,7 @@ export default async function VenueWorkspacePage({
                   tenantId={organization.id}
                   venue={venue}
                   userId={user.id}
+                  email={user.email}
                   sessionId={sessionId}
                   view={typeof query.view === 'string' ? query.view : undefined}
                   day={typeof query.day === 'string' ? query.day : undefined}
@@ -206,6 +207,7 @@ export default async function VenueWorkspacePage({
                         part="hours"
                         hasPos={hasTill}
                         canChange={held.includes('settings.guards')}
+                        canEditLegal={held.includes('settings.connect_payments')}
                         email={user.email}
                       />
                     </Suspense>
@@ -220,6 +222,7 @@ export default async function VenueWorkspacePage({
                         part="ordering"
                         hasPos={hasTill}
                         canChange={held.includes('settings.guards')}
+                        canEditLegal={held.includes('settings.connect_payments')}
                         email={user.email}
                       />
                     </Suspense>

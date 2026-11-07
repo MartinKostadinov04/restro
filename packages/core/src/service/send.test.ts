@@ -15,6 +15,7 @@ import { newId } from '../ids'
 import { DEFAULT_ORDERING_SETTINGS } from '../ordering-settings'
 import { hashTableCode } from '../qr'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
+import { DEFAULT_GUEST_FEATURES } from '../theme/presentation'
 import { applyService } from './apply-service'
 import type { ServiceContext } from './context'
 import type { SendMenu } from './send-menu'
@@ -375,6 +376,42 @@ describe.skipIf(!hasDatabase)('Send and the sent order (as the restro_app role)'
       [beer, 1],
       [soldOut, 1],
     ])
+    const { rows } = await world.owner.query(
+      'select count(*)::int as n from restro.sent_orders where sitting_id = $1',
+      [sittingId],
+    )
+    expect(rows[0]?.n).toBe(0)
+  })
+
+  it('refuses adding to the order and sending it while ordering from the phone is off; the lines stay', async () => {
+    await add(beer, 2)
+    const features = async (ordering: boolean) =>
+      world.owner.query(
+        `update restro.venues set settings = jsonb_set(settings, '{guest_features}', $2::jsonb) where id = $1`,
+        [world.venueId, JSON.stringify({ ...DEFAULT_GUEST_FEATURES, ordering })],
+      )
+    await features(false)
+    try {
+      expect((await send()).result).toMatchObject({ status: 'refused', code: 'ordering_closed' })
+      const added = await applyService(
+        world.app,
+        {
+          type: 'order.add',
+          tableId,
+          actionId: randomUUID(),
+          ageMs: 50,
+          itemId: gin,
+          optionIds: [],
+          qty: 1,
+          note: '',
+        },
+        guest(),
+      )
+      expect(added.result).toMatchObject({ status: 'refused', code: 'ordering_closed' })
+    } finally {
+      await features(true)
+    }
+    expect((await orderLines()).map((line) => [line.itemId, line.qty])).toEqual([[beer, 2]])
     const { rows } = await world.owner.query(
       'select count(*)::int as n from restro.sent_orders where sitting_id = $1',
       [sittingId],

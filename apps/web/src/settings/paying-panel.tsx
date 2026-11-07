@@ -43,7 +43,7 @@ import {
 import type { PayingView } from '@/server/settings/paying-view'
 import { useMoney } from '@/tonight/money'
 
-import { PayingLegalCard } from './paying-legal'
+import { LegalDetailsCard } from './legal-details-card'
 import { PayingPayFirstCard } from './paying-pay-first'
 import { useSettingsRun } from './use-settings-run'
 
@@ -447,7 +447,13 @@ export function PayingPanel({
         <PayingPayFirstCard view={view} card={view.payFirst} runner={runner} />
       )}
 
-      <PayingLegalCard view={view} runner={runner} />
+      <LegalDetailsCard
+        place="paying"
+        venueId={view.venueId}
+        legal={view.legal}
+        canEdit={view.canConnect}
+        runner={runner}
+      />
 
       <Dialog open={disconnecting} onOpenChange={setDisconnecting}>
         <DialogContent>

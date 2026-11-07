@@ -3,7 +3,13 @@
 // alone, so a run that races a phone changes nothing; a table that throws is skipped, not the run.
 import { randomUUID } from 'node:crypto'
 
-import { DEFAULT_ORDERING_SETTINGS, hashTableCode, newId, serviceDate } from '@restro/core'
+import {
+  DEFAULT_GUEST_FEATURES,
+  DEFAULT_ORDERING_SETTINGS,
+  hashTableCode,
+  newId,
+  serviceDate,
+} from '@restro/core'
 import { createArea, createTable, provisionTenant, provisionVenue } from '@restro/core/apply'
 import { forgetGuestCodes, guestAct, guestState } from '@restro/core/service'
 import { createPool, type DbPool } from '@restro/db'
@@ -64,6 +70,11 @@ describe.skipIf(!hasDatabase)('the idle order job', () => {
     await query(
       `update restro.venues set settings = jsonb_set(settings, '{ordering}', $2::jsonb) where id = $1`,
       [venue.id, JSON.stringify({ ...DEFAULT_ORDERING_SETTINGS, locationCheck: false })],
+    )
+    // Ordering from the phone is on: these phones add to their orders.
+    await query(
+      `update restro.venues set settings = jsonb_set(settings, '{guest_features}', $2::jsonb) where id = $1`,
+      [venue.id, JSON.stringify({ ...DEFAULT_GUEST_FEATURES, ordering: true })],
     )
     const area = await createArea(pool, tenantId, venue.id, 'Hall')
     if (!area.ok) throw new Error(area.reason)

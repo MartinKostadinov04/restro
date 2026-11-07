@@ -151,20 +151,24 @@ const Save = z.strictObject({
  * Saves the smallest card payment and/or the venue's legal details (#104, #198). The provider's
  * smallest charge is the server's to name, from the venue's own account (or this deployment's
  * provider before it connects), never the browser's. The service path refuses a value below it
- * or above €1,000, and one that is not a full set of details.
+ * or above €1,000, and one that is not a full set of details. The legal details alone need no
+ * provider: Settings › Ordering saves them too, at a venue that offers no paying (#288).
  */
 export async function savePayingAction(input: unknown): Promise<SettingsResult> {
   const parsed = Save.safeParse(input)
   if (!parsed.success) return INVALID
   return inSettingsScope(parsed.data.venueId, async (scope) => {
-    const venue = await getVenue(scope.tenantId, scope.venueId)
-    if (venue === null) return { ok: false, error: 'venue_missing' } as const
-    const connection = await readPayingConnection(scope.pool, scope.tenantId, scope.venueId)
-    const currency = CURRENCIES.find((c): c is Currency => c === venue.currency) ?? 'EUR'
-    const provider = providerOf(connection.providerKind)
-    // Without a known provider there is no minimum to hold the amount to: nothing is saved.
-    if (provider === null) return { ok: false, error: 'no_provider' } as const
-    const providerMinMinor = provider.minimumMinor(currency)
+    let providerMinMinor = 0
+    if (parsed.data.changes.minCardMinor !== undefined) {
+      const venue = await getVenue(scope.tenantId, scope.venueId)
+      if (venue === null) return { ok: false, error: 'venue_missing' } as const
+      const connection = await readPayingConnection(scope.pool, scope.tenantId, scope.venueId)
+      const currency = CURRENCIES.find((c): c is Currency => c === venue.currency) ?? 'EUR'
+      const provider = providerOf(connection.providerKind)
+      // Without a known provider there is no minimum to hold the amount to: nothing is saved.
+      if (provider === null) return { ok: false, error: 'no_provider' } as const
+      providerMinMinor = provider.minimumMinor(currency)
+    }
     const result = await runSettingsCommand(scope, {
       type: 'settings.paying_set',
       changes: parsed.data.changes,

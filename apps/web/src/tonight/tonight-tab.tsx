@@ -33,6 +33,7 @@ export async function TonightTab({
   tenantId,
   venue,
   userId,
+  email,
   sessionId,
   view,
   day,
@@ -40,6 +41,8 @@ export async function TonightTab({
   tenantId: string
   venue: Venue
   userId: string
+  /** The account's, for the password asked again when it makes this browser the bar tablet. */
+  email: string
   sessionId: string
   /** `?view=`: which of Tonight's screens is open. */
   view?: string | undefined
@@ -82,6 +85,7 @@ export async function TonightTab({
       <TonightPanel
         view={result.view}
         pushKey={result.view.can.answer ? webPushPublicKey() : undefined}
+        tablet={result.view.barTablet ? { email } : undefined}
       />
     ) : (
       <Empty>

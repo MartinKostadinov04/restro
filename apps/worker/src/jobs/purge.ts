@@ -1202,7 +1202,11 @@ export function createPurgeJobs(deps: PurgeJobDeps): JobDefinition[] {
   const purgeOne = defineJob<PurgeVenueJob>({
     name: JOB_NAMES.purgeVenue,
     options: {
-      policy: 'stately',
+      // One waiting and one running per key, through its group (`ONE_RUN_PER_GROUP_JOBS` in
+      // core/jobs.ts). Never `stately`: its stale list of running keys held a key's next run up to
+      // two minutes (#308). The registry carries the waiting jobs over when it creates it again.
+      policy: 'short',
+      previousPolicy: 'stately',
       queue: {
         retryLimit: 2,
         retryDelay: 60,
@@ -1210,7 +1214,7 @@ export function createPurgeJobs(deps: PurgeJobDeps): JobDefinition[] {
         expireInSeconds: 10 * 60,
         deleteAfterSeconds: 7 * 24 * 60 * 60,
       },
-      work: { pollingIntervalSeconds: 5 },
+      work: { pollingIntervalSeconds: 5, groupConcurrency: 1 },
     },
     async handler(jobs, context) {
       const purgePool = openPurgePool()

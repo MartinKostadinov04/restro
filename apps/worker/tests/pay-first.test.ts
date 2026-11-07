@@ -12,6 +12,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 
 import {
+  DEFAULT_GUEST_FEATURES,
   DEFAULT_ORDERING_SETTINGS,
   hashTableCode,
   type IntegrationId,
@@ -215,6 +216,11 @@ describe.skipIf(!hasDatabase)('pay-first items on the payment route', () => {
     await query(
       `update restro.venues set settings = jsonb_set(settings, '{ordering}', $2::jsonb) where id = $1`,
       [demo.venueId, JSON.stringify({ ...DEFAULT_ORDERING_SETTINGS, locationCheck: false })],
+    )
+    // Ordering from the phone is on: guests order here.
+    await query(
+      `update restro.venues set settings = jsonb_set(settings, '{guest_features}', $2::jsonb) where id = $1`,
+      [demo.venueId, JSON.stringify({ ...DEFAULT_GUEST_FEATURES, ordering: true })],
     )
     // The pay-first item, linked to the POS's article (what a menu sync writes).
     await query(`insert into restro.nodes (id, tenant_id, node_type) values ($1, $2, 'item')`, [

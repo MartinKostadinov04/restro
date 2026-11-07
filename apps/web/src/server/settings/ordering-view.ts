@@ -2,7 +2,14 @@
 // the venue's saved ordering settings (the defaults where none are saved) and, for the venue's spot,
 // when it was last set: the Log's `settings.changed` entry that names it (nothing else keeps the
 // time, and no table is added). Reads only; plain data safe for the browser.
-import { type OrderingSettings, readOrderingSettings } from '@restro/core'
+import {
+  hasPrivacyNotice,
+  type LegalDetails,
+  type OrderingSettings,
+  readGuestFeatures,
+  readLegalDetails,
+  readOrderingSettings,
+} from '@restro/core'
 import { serviceHoursWindow } from '@restro/core/service'
 import { logEntries, type Venue, withTenant } from '@restro/db'
 import { and, desc, eq, sql } from 'drizzle-orm'
@@ -29,6 +36,20 @@ export interface OrderingView {
   readonly spotSetAt: string | null
   /** The signed-in person's email, for the password again. */
   readonly email: string
+  /**
+   * True when the venue has a privacy notice link on file: until then the location check doesn't
+   * turn on (RR-O15).
+   */
+  readonly privacyNotice: boolean
+  /** True while ordering from the phone is on (the Design tab's guest features). */
+  readonly orderingOn: boolean
+  /**
+   * The venue's legal details with its privacy notice link (#198), or null until all four are
+   * filled in: the section's form for them, the same one Settings › Paying draws (#288).
+   */
+  readonly legal: LegalDetails | null
+  /** True when the person holds `settings.connect_payments`, the right that saves the details. */
+  readonly canEditLegal: boolean
 }
 
 /** The time of the Log entry that last changed the spot, or null. */
@@ -56,6 +77,7 @@ export async function loadOrderingView(input: {
   readonly venue: Venue
   readonly hasPos: boolean
   readonly canChange: boolean
+  readonly canEditLegal: boolean
   readonly email: string
 }): Promise<OrderingView> {
   const settings = readOrderingSettings(input.venue.settings)
@@ -76,5 +98,9 @@ export async function loadOrderingView(input: {
     ).inService,
     spotSetAt: at === null ? null : at.toISOString(),
     email: input.email,
+    privacyNotice: hasPrivacyNotice(input.venue.settings),
+    orderingOn: readGuestFeatures(input.venue.settings).ordering,
+    legal: readLegalDetails(input.venue.settings),
+    canEditLegal: input.canEditLegal,
   }
 }

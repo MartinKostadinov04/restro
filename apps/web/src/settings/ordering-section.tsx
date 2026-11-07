@@ -15,6 +15,7 @@ export async function OrderingSection({
   part,
   hasPos,
   canChange,
+  canEditLegal,
   email,
 }: {
   tenantId: string
@@ -22,11 +23,18 @@ export async function OrderingSection({
   part: 'hours' | 'ordering'
   hasPos: boolean
   canChange: boolean
+  /** Holds `settings.connect_payments`: may save the venue's legal details on Ordering (#288). */
+  canEditLegal: boolean
   email: string
 }) {
-  const view = await loadOrderingView({ tenantId, venue, hasPos, canChange, email }).catch(
-    () => null,
-  )
+  const view = await loadOrderingView({
+    tenantId,
+    venue,
+    hasPos,
+    canChange,
+    canEditLegal,
+    email,
+  }).catch(() => null)
   if (view === null) return <SectionFailed what="settings" />
   return part === 'hours' ? <HoursPanel view={view} /> : <OrderingPanel view={view} />
 }

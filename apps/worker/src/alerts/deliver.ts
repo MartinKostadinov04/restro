@@ -532,7 +532,12 @@ async function sendStep(deps: DeliveryDeps, input: StepInput): Promise<boolean> 
           )
         })
         const devices = sends.map((send) => send.device)
-        if (devices.length === 0) return false
+        // Nobody to push to (no device of anyone who may see it): nothing to retry. The step counts
+        // as done, so it is not tried again every 30 seconds for nothing (RR-O31).
+        if (devices.length === 0) {
+          await record()
+          return true
+        }
         const outcomes = await Promise.all(
           sends.map((send) => deps.push?.send(send.device, send.payload)),
         )

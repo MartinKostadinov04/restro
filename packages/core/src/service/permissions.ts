@@ -123,6 +123,22 @@ export const DEFAULT_ROLE_PERMISSIONS: Readonly<Record<DefaultRoleKind, readonly
 }
 
 /**
+ * True when what a person holds at a venue is the Staff default role's rights or fewer, and not
+ * none: the account a bar tablet signs in with (RR-O35, Martin 11-06: "a staff-only account"). An
+ * owner or admin of the organisation holds every permission and a manager more than staff (the
+ * money alerts and the tips, RR-92), so none of them is one; nor is an account with no role here.
+ */
+export function holdsStaffRightsOnly(held: Iterable<string>): boolean {
+  const staff = new Set<string>(STAFF_PERMISSIONS)
+  let any = false
+  for (const permission of held) {
+    if (!staff.has(permission)) return false
+    any = true
+  }
+  return any
+}
+
+/**
  * The permissions a role's stored list grants: the keys on the list, in the list's order. A key
  * the code no longer knows grants nothing.
  */
