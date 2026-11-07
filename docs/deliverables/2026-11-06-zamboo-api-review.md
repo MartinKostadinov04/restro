@@ -4,8 +4,6 @@ Made by: the lead session (Opus), 11-06, for Martin. For: T69, the go/no-go on M
 
 This replaces the "unknown" column of `2026-10-20-mistral-api-checker.md`. It is the living reference for Mistral Software (Zamboo): every row carries its source and the date it was learnt. Tags: **[DOC]** read in the OpenAPI description; **[TESTED]** a call made against the demo installation on 11-06; **[UNKNOWN]** not answerable from either.
 
-The requirements this is measured against are listed row by row, with their verdicts, in [2026-11-07-pos-api-requirements-checklist](2026-11-07-pos-api-requirements-checklist.md).
-
 ## The short answer
 
 Mistral **does have a documented API**, and the 10-20 conclusion ("no public API") is out of date. It is `Zamboo api v1`, OpenAPI 3.0.4, 45 endpoints, served without a login at `https://demorestaurant.zamboo.bg/swagger/v1/swagger.json`.
