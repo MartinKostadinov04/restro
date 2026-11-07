@@ -141,13 +141,14 @@ describe.skipIf(!hasDatabase || !hasTools)('the real dump and restore', () => {
 
   afterAll(async () => {
     await pool?.end()
-    await db?.drop()
+    // The restored copy first: it is dropped through the database it was made from.
     if (restored !== null) {
       const name = restored
       await withOwnerClient(db.ownerUrl, (client) =>
         client.query(`drop database if exists ${client.escapeIdentifier(name)} with (force)`),
       )
     }
+    await db?.drop()
     if (folder) await rm(folder, { recursive: true, force: true })
   })
 
