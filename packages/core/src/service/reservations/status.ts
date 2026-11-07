@@ -155,9 +155,28 @@ export type ReservationKind = (typeof RESERVATION_KINDS)[number]
 export const ReservationKindSchema = z.enum(RESERVATION_KINDS)
 
 /**
+ * The reason a reservation Cancelled by an undone arrival carries, so the one case where an undo
+ * cannot put a party back reads as what it is wherever it is shown or logged.
+ */
+export const UNDONE_ARRIVAL_REASON = 'arrival_undone'
+
+/**
  * Undoing "Arrived" inside the undo window Tonight already enforces (ticket #329): the party goes
- * back to where it was a moment ago — a booking to Reserved, a walk-in to the queue it was taken
- * off, Waiting.
+ * back to where it was a moment before the tap. **Where it was is what the caller passes**, not
+ * something read off the kind, because a walk-in reaches Seated by two routes (D141 lists them as
+ * two actions, and #329 builds them as two):
+ * - off the waiting list, where Waiting is where it was: `previous` is `waiting`, and it goes back
+ *   on the queue;
+ * - straight off the plan, where the seat tap *created* the reservation and there is no earlier
+ *   status at all: `previous` is null, and the party is **Cancelled**. It cannot go to Waiting —
+ *   that would put a party a hostess works by hand (#330) onto a list it was never on, holding a
+ *   place in the queue for somebody who does not exist — and the row cannot be deleted, since app
+ *   code deletes nothing (CLAUDE.md's never-list). Cancelled with the reason
+ *   `UNDONE_ARRIVAL_REASON` is the honest record: a walk-in was seated and the write was undone.
+ *   It counts against nobody (`countsAsNoShow` is false for Cancelled).
+ *
+ * A booking goes back to Reserved. The pair must make sense, so a booking with no previous status
+ * and a walk-in that was somehow Reserved are both refused rather than guessed at.
  *
  * It is deliberately **not** an edge in the table of moves: nothing leaves Seated but Finished,
  * because a party at a table that is suddenly not there again is not a state anyone may move it
@@ -167,12 +186,18 @@ export const ReservationKindSchema = z.enum(RESERVATION_KINDS)
  * is one place to read.
  *
  * A block is never seated, so undoing an arrival of one is refused. What the undo does besides the
- * status — closing the codes the arrival opened, and refusing once the window has passed — is the
- * command's, in ticket #329.
+ * status — closing the codes the arrival opened, writing the reason and the Log entry, and
+ * refusing once the window has passed — is the command's, in ticket #329.
  */
-export function undoArrival(from: ReservationStatus, kind: ReservationKind): StatusMove {
-  if (from !== 'seated' || kind === 'block') {
-    return { ok: false, code: 'undo_arrival_not_allowed' }
-  }
-  return { ok: true, status: kind === 'walk_in' ? 'waiting' : 'reserved' }
+export function undoArrival(
+  from: ReservationStatus,
+  kind: ReservationKind,
+  previous: ReservationStatus | null,
+): StatusMove {
+  const refused = { ok: false, code: 'undo_arrival_not_allowed' } as const
+  if (from !== 'seated' || kind === 'block') return refused
+  if (kind === 'booking')
+    return previous === 'reserved' ? { ok: true, status: 'reserved' } : refused
+  if (previous === null) return { ok: true, status: 'cancelled' }
+  return previous === 'waiting' ? { ok: true, status: 'waiting' } : refused
 }

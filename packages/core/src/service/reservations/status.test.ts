@@ -14,6 +14,7 @@ import {
   RESERVATION_STATUS_MOVES,
   RESERVATION_STATUSES,
   type ReservationStatus,
+  UNDONE_ARRIVAL_REASON,
   undoArrival,
 } from './status'
 
@@ -149,26 +150,68 @@ describe('countsAsNoShow', () => {
 })
 
 describe('undoArrival', () => {
-  it('puts a booking back to Reserved and a walk-in back on the queue', () => {
-    expect(undoArrival('seated', 'booking')).toEqual({ ok: true, status: 'reserved' })
-    expect(undoArrival('seated', 'walk_in')).toEqual({ ok: true, status: 'waiting' })
+  it('puts a booking back to Reserved', () => {
+    expect(undoArrival('seated', 'booking', 'reserved')).toEqual({ ok: true, status: 'reserved' })
   })
 
-  it('refuses a block, which is never seated', () => {
-    expect(undoArrival('seated', 'block')).toEqual({
+  it('puts a walk-in taken off the queue back on it', () => {
+    expect(undoArrival('seated', 'walk_in', 'waiting')).toEqual({ ok: true, status: 'waiting' })
+  })
+
+  it('cancels a walk-in the seat tap created, rather than inventing a queue row', () => {
+    // The two routes to Seated must not collapse into one answer: this party was never on the
+    // waiting list, and the hostess of ticket #330 works that list by hand.
+    expect(undoArrival('seated', 'walk_in', null)).toEqual({ ok: true, status: 'cancelled' })
+    expect(countsAsNoShow('cancelled')).toBe(false)
+    expect(UNDONE_ARRIVAL_REASON).toBe('arrival_undone')
+  })
+
+  it('refuses a pair that does not make sense instead of guessing', () => {
+    expect(undoArrival('seated', 'booking', null)).toEqual({
+      ok: false,
+      code: 'undo_arrival_not_allowed',
+    })
+    expect(undoArrival('seated', 'walk_in', 'reserved')).toEqual({
+      ok: false,
+      code: 'undo_arrival_not_allowed',
+    })
+    expect(undoArrival('seated', 'booking', 'waiting')).toEqual({
       ok: false,
       code: 'undo_arrival_not_allowed',
     })
   })
 
+  it('refuses a block, which is never seated', () => {
+    for (const previous of ['reserved', 'waiting', null] as const) {
+      expect(undoArrival('seated', 'block', previous)).toEqual({
+        ok: false,
+        code: 'undo_arrival_not_allowed',
+      })
+    }
+  })
+
   it('refuses every status but Seated: there is no arrival to undo', () => {
     fc.assert(
+      fc.property(
+        anyStatus,
+        fc.constantFrom(...RESERVATION_KINDS),
+        fc.constantFrom<ReservationStatus | null>('reserved', 'waiting', null),
+        (status, kind, previous) => {
+          if (status === 'seated') return
+          expect(undoArrival(status, kind, previous)).toEqual({
+            ok: false,
+            code: 'undo_arrival_not_allowed',
+          })
+        },
+      ),
+    )
+  })
+
+  it('never answers Waiting for a party that has no earlier status', () => {
+    fc.assert(
       fc.property(anyStatus, fc.constantFrom(...RESERVATION_KINDS), (status, kind) => {
-        if (status === 'seated' && kind !== 'block') return
-        expect(undoArrival(status, kind)).toEqual({
-          ok: false,
-          code: 'undo_arrival_not_allowed',
-        })
+        const move = undoArrival(status, kind, null)
+        if (move.ok) expect(move.status).toBe('cancelled')
       }),
     )
   })
@@ -177,5 +220,6 @@ describe('undoArrival', () => {
     expect(RESERVATION_STATUS_MOVES.seated).toEqual(['finished'])
     expect(canMove('seated', 'reserved')).toBe(false)
     expect(canMove('seated', 'waiting')).toBe(false)
+    expect(canMove('seated', 'cancelled')).toBe(false)
   })
 })

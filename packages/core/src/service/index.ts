@@ -417,6 +417,7 @@ export {
   type ReservationStatusRefusal,
   ReservationStatusSchema,
   type StatusMove,
+  UNDONE_ARRIVAL_REASON,
   undoArrival,
 } from './reservations/status'
 export {
