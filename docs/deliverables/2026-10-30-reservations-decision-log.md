@@ -191,7 +191,7 @@ Features, in the order given to Martin 10-30: 1 Places and the floor plan; 2 A r
 | # | Decision | Why | Status | Recorded in |
 |---|---|---|---|---|
 | 7.1 | A deposit is information only: no money is taken, moved or returned; the hostess records an amount, one of five states and a method (R8, RV-340, RV-341) | The club does not use deposits today (their Q26) | out | Contested: replaced by 7.20; prepayment through Stripe is 2.27 |
-| 7.2 | Deleting or cancelling a booking with a deposit demands a state: to return, returned or retained; no-show, finish and the evening close never touch it (RV-339) | firm | D134 |
+| 7.2 | Deleting or cancelling a booking with a deposit demands a state: to return, returned or retained; no-show, finish and the evening close never touch it (RV-339) | None recorded; kept in the simpler shape of 7.20 and 6.23 | firm | D134 |
 
 ## Feature 8: Guest details and regular clients
 
