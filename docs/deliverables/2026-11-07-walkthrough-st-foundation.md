@@ -95,10 +95,12 @@ PORT=3100 pnpm dev
 6. The five Styles: your taste call.
 7. DA-O14: three different behaviours for a lost call (see 3.4).
 8. DA-O4: every venue lands on Basic on deploy day.
+9. DA-O16: "Stop location check" is also on the Pay sheet, so a guest can stop the check with the card form open and the bill hides at once (see 3.5). Leave it, or take it off Pay?
+10. DA-O17: the call panel's title should say why a call was lost (no connection vs. refused); this waits until paying is released.
 
 ## Open points I could not resolve
 
 1. **Creating the empty database `restro_walk_st`:** no guide gives the command; the lead should supply it (or set the whole thing up for you as for the repair-review hands-on).
-2. **DA-O16 and DA-O17** are named in the brief but appear in neither ledger on `st/foundation` (the designer audit's last numbered observation is DA-O14); if they live in the lead's own notes, add them to section 5.
+2. *(Resolved by the lead: DA-O16 and DA-O17 sit in the ledger on `or/foundation`; added to section 5 as points 9 and 10.)*
 3. **Guest features** sits in the Studio per the Bulgarian string "Функции за гостите"; I did not confirm its exact tab or button name in the English admin.
 4. **The `PORT=3100` hint** relies on Next's standard variable; not tried, and the web app's `BETTER_AUTH_URL` must match the port or sign-in fails.
