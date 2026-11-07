@@ -382,6 +382,40 @@ export {
 } from './receipt-rows'
 export { readReceiptsNotBrought, readReceiptsToBring } from './receipts'
 export {
+  type ClaimedStretch,
+  heldStretch,
+  holdsSpotAt,
+  isSpotConflict,
+  overlaps,
+  resolveTurnMinutes,
+  SPOT_CLAIM_REFUSALS,
+  type SpotClaim,
+  type SpotClaimRefusal,
+  type SpotConflict,
+  type SpotHold,
+  type Stretch,
+  spotConflict,
+  TurnMinutesSchema,
+} from './reservations/overlap'
+export {
+  canMove,
+  countsAsNoShow,
+  END_STATUSES,
+  HOLDING_STATUSES,
+  holdsSpots,
+  isEndStatus,
+  moveStatus,
+  putBack,
+  putBackStatus,
+  RESERVATION_STATUS_MOVES,
+  RESERVATION_STATUS_REFUSALS,
+  RESERVATION_STATUSES,
+  type ReservationStatus,
+  type ReservationStatusRefusal,
+  ReservationStatusSchema,
+  type StatusMove,
+} from './reservations/status'
+export {
   REFUSAL_CODES,
   type RefusalCode,
   type ServiceResult,
