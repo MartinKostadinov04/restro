@@ -20,7 +20,13 @@ import { createPool, type DbPool } from '@restro/db'
 import type { Job } from 'pg-boss'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { BACKUP_SCHEMAS, createDbBackupJob, pgDump } from '../src/jobs/db-backup'
+import {
+  BACKUP_SCHEMAS,
+  createDbBackupJob,
+  MIN_DUMP_BYTES,
+  pgDump,
+  SCHEMAS_NOT_BACKED_UP,
+} from '../src/jobs/db-backup'
 import type { WorkerContext } from '../src/jobs/types'
 import { createLogger } from '../src/logger'
 import {
@@ -75,7 +81,7 @@ describe.skipIf(!hasDatabase)('the database schemas', () => {
   })
   afterAll(() => db?.drop())
 
-  it('are all in the backup’s list, or are the empty public schema', async () => {
+  it('are all in the backup’s list, or are left out on purpose', async () => {
     const found = await withOwnerClient(db.ownerUrl, async (client) =>
       (
         await client.query<{ name: string }>(
@@ -85,9 +91,11 @@ describe.skipIf(!hasDatabase)('the database schemas', () => {
       ).rows.map((row) => row.name),
     )
     const unbacked = found.filter(
-      (name) => name !== 'public' && !(BACKUP_SCHEMAS as readonly string[]).includes(name),
+      (name) =>
+        !(BACKUP_SCHEMAS as readonly string[]).includes(name) &&
+        !(SCHEMAS_NOT_BACKED_UP as readonly string[]).includes(name),
     )
-    // A new schema must be added to BACKUP_SCHEMAS (apps/worker/src/jobs/db-backup.ts) on purpose.
+    // A new schema is added to BACKUP_SCHEMAS or SCHEMAS_NOT_BACKED_UP (jobs/db-backup.ts) on purpose.
     expect(unbacked).toEqual([])
     expect(found).toEqual(expect.arrayContaining(['restro', 'drizzle']))
   })
@@ -161,7 +169,8 @@ describe.skipIf(!hasDatabase || !hasTools)('the real dump and restore', () => {
       destination: { write: (line: string) => void lines.push(line) },
     })
     const job = createDbBackupJob({
-      databaseUrl: db.ownerUrl,
+      // The backup role where the environment has one (CI does): proves it reads every row.
+      databaseUrl: db.backupUrl ?? db.ownerUrl,
       store,
       notify: null,
       dump: pgDump(pgDumpPath ?? undefined),
@@ -179,8 +188,9 @@ describe.skipIf(!hasDatabase || !hasTools)('the real dump and restore', () => {
         .subarray(0, 5)
         .toString('latin1'),
     ).toBe('PGDMP')
+    expect(dump?.byteLength).toBeGreaterThanOrEqual(MIN_DUMP_BYTES)
     // And the log names no credential.
-    expect(lines.join('\n')).not.toContain(new URL(db.ownerUrl).password)
+    expect(lines.join('\n')).not.toContain(new URL(db.backupUrl ?? db.ownerUrl).password)
 
     // Restore it into a database that has nothing.
     restored = `restro_worker_restore_${newId('tn').slice(3, 13).toLowerCase()}`
@@ -204,6 +214,32 @@ describe.skipIf(!hasDatabase || !hasTools)('the real dump and restore', () => {
     expect(before['restro.venues']).toBe(1)
     expect(before['restro.tables']).toBe(3)
     expect(before['drizzle.__drizzle_migrations']).toBeGreaterThan(0)
+  })
+
+  it('writes no empty dump when the role cannot bypass row-level security: it fails', async () => {
+    // A role that may read every table but is held to row-level security, like restro_app.
+    const role = `restro_nobypass_${newId('tn').slice(3, 11).toLowerCase()}`
+    await withOwnerClient(db.ownerUrl, async (client) => {
+      await client.query(`create role ${role} login password 'nobypass-test-pw' nobypassrls`)
+      await client.query(`grant usage on schema restro, drizzle to ${role}`)
+      await client.query(`grant select on all tables in schema restro, drizzle to ${role}`)
+      await client.query(`grant select on all sequences in schema restro, drizzle to ${role}`)
+    })
+    try {
+      const url = new URL(db.ownerUrl)
+      url.username = role
+      url.password = 'nobypass-test-pw'
+      const error = await pgDump(pgDumpPath ?? undefined)(url.toString()).catch(
+        (caught: Error) => caught,
+      )
+      expect(error).toBeInstanceOf(Error)
+      expect((error as Error).message).toMatch(/row-level security|row_security/i)
+    } finally {
+      await withOwnerClient(db.ownerUrl, async (client) => {
+        await client.query(`drop owned by ${role}`)
+        await client.query(`drop role if exists ${role}`)
+      })
+    }
   })
 
   it('fails loudly, with the error and no credential, when the server cannot be reached', async () => {

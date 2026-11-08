@@ -16,15 +16,20 @@
 // alert row always has one, so the message goes to the chat directly. Without a bot token and a team
 // chat the failure is only in the log and the dead-letter queue (the worker says so at start).
 //
-// What is dumped: the schemas `restro` (the data), `pgboss` (the queue) and `drizzle` (the migration
-// journal, without which a restored database would apply every migration again), by an explicit
-// list, so the host's own schemas never end up in a dump that has to restore elsewhere. The dump is held in
+// What is dumped: the schemas `restro` (the data) and `drizzle` (the migration journal, without
+// which a restored database would apply every migration again), by an explicit list, so the host's
+// own schemas never end up in a dump that has to restore elsewhere. The queue schema `pgboss` is
+// left out on purpose: pg-boss creates tables there at run time, which the backup role could not be
+// granted beforehand, and what it holds (queued runs, schedules) is rebuilt at the worker's start. The dump is held in
 // memory (at pilot size a few megabytes); `MAX_DUMP_BYTES` fails the run loudly long before that
 // matters, which is the day to stream the dump into the store instead.
 //
-// The connection is the role `restro_backup` (DATABASE_URL_BACKUP): one that can read every row,
-// which neither the app role nor the purge role can by design (row-level security). Never logged,
-// never on a command line: `pg_dump` gets it through its environment variables.
+// The connection is the role `restro_backup` (DATABASE_URL_BACKUP, D143): SELECT only, with BYPASSRLS,
+// because neither the app role nor the purge role can read every row by design (row-level security).
+// `pg_dump` sets `row_security = off`, so a role without the bypass makes it fail with an error, not
+// write an empty dump (a test proves it); as a last guard a dump smaller than `MIN_DUMP_BYTES` is
+// refused. The connection is never logged and never on a command line: `pg_dump` gets it through
+// its environment variables.
 //
 // `pg_dump` must be the same major version as the server, or newer; it refuses an older client by
 // itself. If the binary is missing, the run fails with a message that says so.
@@ -49,7 +54,11 @@ export const NIGHTLY_AFTER_MS = DAY_MS - 10 * 60_000
 /** A venue still counts as in service this long after it closed, so the last hour is dumped. */
 export const AFTER_CLOSE_MS = 60 * 60_000
 /** The schemas that make a backup. A new schema is added here on purpose (a test checks). */
-export const BACKUP_SCHEMAS = ['restro', 'pgboss', 'drizzle'] as const
+export const BACKUP_SCHEMAS = ['restro', 'drizzle'] as const
+/** Schemas the migrations create that are not dumped, on purpose (see the top of this file). */
+export const SCHEMAS_NOT_BACKED_UP = ['public', 'pgboss'] as const
+/** No dump of this database is smaller than this: its schema alone (tables, policies) is larger. */
+export const MIN_DUMP_BYTES = 16 * 1024
 /** A dump larger than this fails the run: it is time to stream it instead of holding it. */
 export const MAX_DUMP_BYTES = 512 * 1024 * 1024
 /** A dump that takes longer than this is stopped (the queue also expires the run at 55 minutes). */
@@ -283,6 +292,11 @@ export async function runBackup(
   let bytes = 0
   if (due) {
     const dump = await (deps.dump ?? pgDump())(deps.databaseUrl, signal)
+    if (dump.byteLength < MIN_DUMP_BYTES) {
+      throw new DumpFailedError(
+        `the dump is only ${dump.byteLength} bytes, less than any dump of this database can be (${MIN_DUMP_BYTES}); it was not stored`,
+      )
+    }
     dumped = backupKey(now)
     bytes = dump.byteLength
     await deps.store.put(dumped, dump)

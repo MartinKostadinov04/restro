@@ -20,6 +20,7 @@ import {
   createDbBackupJob,
   DB_BACKUP_JOB,
   type DumpDatabase,
+  MIN_DUMP_BYTES,
   NIGHTLY_AFTER_MS,
   PgDumpMissingError,
   pgDump,
@@ -34,7 +35,8 @@ const URL = `postgres://restro_backup:${SECRET}@db.example.com:5432/restro?sslmo
 const NOW = new Date('2026-11-08T14:00:00Z')
 const HOUR = 60 * 60_000
 const DAY = 24 * HOUR
-const DUMP = Uint8Array.from([...Buffer.from('PGDMP'), 1, 2, 3])
+// A custom-format archive's first bytes, then enough to pass for a dump of this database.
+const DUMP = Uint8Array.from([...Buffer.from('PGDMP'), ...new Uint8Array(MIN_DUMP_BYTES)])
 const pool = {} as DbPool
 
 const ago = (ms: number) => new Date(NOW.getTime() - ms)
@@ -94,7 +96,7 @@ describe('the job', () => {
   })
 
   it('keeps the schemas it dumps in one list', () => {
-    expect(BACKUP_SCHEMAS).toEqual(['restro', 'pgboss', 'drizzle'])
+    expect(BACKUP_SCHEMAS).toEqual(['restro', 'drizzle'])
   })
 })
 
@@ -296,6 +298,17 @@ describe('a failed dump', () => {
     const error = await runJob({ store: broken, notify, dump })
     expect(error?.message).toContain('bucket gone')
     expect(notify).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses a dump too small to be one of this database, and stores nothing', async () => {
+    dump.mockImplementation(async () => Uint8Array.from([...Buffer.from('PGDMP'), 1, 2, 3]))
+    await store.put(keyAgo(31 * DAY), DUMP)
+    const notify = vi.fn(async (_text: string) => undefined)
+    const error = await runJob({ notify })
+    expect(error?.message).toMatch(/only 8 bytes/)
+    expect(notify).toHaveBeenCalledTimes(1)
+    // Nothing new, and retention did not run.
+    expect(await keys()).toEqual([keyAgo(31 * DAY)])
   })
 
   it('runBackup throws before it removes anything', async () => {

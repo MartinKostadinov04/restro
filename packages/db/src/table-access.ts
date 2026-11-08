@@ -36,6 +36,14 @@ export const APP_ROLE = 'restro_app'
  */
 export const PURGE_ROLE = 'restro_purge'
 
+/**
+ * The login role the worker's database backup connects as (ticket #320, D143): SELECT on every
+ * table and sequence of `restro` and `drizzle`, nothing else, and BYPASSRLS, because a dump that
+ * is held to row-level security is structurally valid and empty. The only role with BYPASSRLS;
+ * nothing but the backup job may use it.
+ */
+export const BACKUP_ROLE = 'restro_backup'
+
 /** The schema that holds every Restro table. */
 export const APP_SCHEMA = 'restro'
 
@@ -235,4 +243,14 @@ export const APP_SCHEMA_PRIVILEGES = {
 /** Schema privileges of the purge role: it only uses `restro`, and never the queue schema. */
 export const PURGE_SCHEMA_PRIVILEGES = {
   [APP_SCHEMA]: ['USAGE'],
+} as const satisfies Record<string, readonly ('USAGE' | 'CREATE')[]>
+
+/**
+ * Schema privileges of the backup role: it reads `restro` and the migration journal in `drizzle`
+ * (without which a restored database would apply every migration again). Never the queue schema:
+ * pg-boss creates tables there at run time, which no grant made beforehand could cover.
+ */
+export const BACKUP_SCHEMA_PRIVILEGES = {
+  [APP_SCHEMA]: ['USAGE'],
+  drizzle: ['USAGE'],
 } as const satisfies Record<string, readonly ('USAGE' | 'CREATE')[]>

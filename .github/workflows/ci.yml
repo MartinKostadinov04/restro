@@ -47,6 +47,9 @@ env:
   DATABASE_APP_PASSWORD: ci-only-not-a-secret
   # The purge role (D83), created by `pnpm db:roles` and used by the purge-role tests.
   DATABASE_PURGE_PASSWORD: ci-only-purge-not-a-secret
+  # The backup role (D143), created by `pnpm db:roles` and used by the backup-role tests and the
+  # worker's backup test.
+  DATABASE_BACKUP_PASSWORD: ci-only-backup-not-a-secret
   # The purge role's own connection, for the worker the e2e run starts: without it the worker
   # registers no purge job and a "Delete permanently" is never queued (D83).
   DATABASE_URL_PURGE: postgres://restro_purge:ci-only-purge-not-a-secret@localhost:5432/restro
@@ -232,10 +235,12 @@ jobs:
           DATABASE_URL_OWNER: postgres://restro_owner:ci-only-owner-not-a-secret@localhost:5432/restro
         run: pnpm db:migrate && pnpm db:roles
 
+      # Includes the backup role (D143): BYPASSRLS can be given only by an owner that holds it, as
+      # this one does, so this is the check that the role can be created on the hosted database.
       - name: Row-security guard and role tests
         # The tests need a superuser for their own set-up (tests/database.ts refuses any other), so
         # they use the top-level owner URL; what they check was built by restro_owner above.
-        run: pnpm vitest run --project packages/db packages/db/tests/rls-guard.test.ts packages/db/tests/app-role.test.ts packages/db/tests/purge-role.test.ts
+        run: pnpm vitest run --project packages/db packages/db/tests/rls-guard.test.ts packages/db/tests/app-role.test.ts packages/db/tests/purge-role.test.ts packages/db/tests/backup-role.test.ts
 
   e2e:
     name: End-to-end tests (shard ${{ matrix.shard }} of 4)

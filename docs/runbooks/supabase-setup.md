@@ -41,6 +41,7 @@ Free projects have an IPv6-only direct host (`db.<ref>.supabase.co`); GitHub run
 | `DATABASE_URL` | `restro_app` (web app, worker) | `postgresql://restro_app.<ref>:<app password>@<pooler host>:5432/postgres?sslmode=verify-full&sslrootcert=<cert path>` |
 | `DATABASE_APP_PASSWORD` | the password `db:roles` sets for `restro_app` | same value as in `DATABASE_URL` |
 | `DATABASE_PURGE_PASSWORD` | the password `db:roles` sets for `restro_purge` (the purge job's role, D83) | a second generated password |
+| `DATABASE_BACKUP_PASSWORD` | optional: the password `db:roles` sets for `restro_backup` (the backup job's role, D143); without it the role is not created | a third generated password |
 | `DATABASE_URL_PURGE` | `restro_purge` (worker only, the purge job) | like `DATABASE_URL` with `restro_purge.<ref>` and the purge password |
 
 Through the shared pooler every user name carries the project ref (`<role>.<ref>`); custom roles work the same way as `postgres`.
