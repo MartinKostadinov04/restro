@@ -180,6 +180,12 @@ export const TABLE_ACCESS = {
   // one system table it may delete from.
   provider_notices: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
 
+  // The guest events (migration 0045; D142; ticket #335): what a guest's phone did, append-only
+  // and free of personal data. Written only by `recordEvents()` in `@restro/core/events`, so the
+  // app role has no UPDATE and no DELETE; the purge erases a venue's rows when their retention
+  // class runs out (31 days or 18 months, as the Log's), or with the venue.
+  guest_events: { tenancy: 'tenant', app: ['SELECT', 'INSERT'], purge: PURGED },
+
   // Better Auth (apps/web talks to these through its own pool on the app role). They are not
   // tenant-scoped: a person signs in before any tenant is known, and the organisation id is the
   // tenant id (see schema.ts). The app role can read every row of them, password hashes

@@ -134,6 +134,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D127](decisions/D127.md) | How the guest page pays: the commands, the route with its failure rules, Stripe's notices, tips only on the same receipt, the smallest card payment, the bank's check on every payment, where each call runs | firm; refines D98, D121, D122 and D125 |
 | [D132](decisions/D132.md) | Three wordings settled: a stamped new bill is never resent, a payment's return address, refunds are read and never made | firm; refines D112, D116 and D127 |
 | [D133](decisions/D133.md) | The model follows the job, not the session; Opus checks the heavy zone, Sonnet builds and keeps the books, sessions stay short | firm; refines D58, D104 and D108 |
+| [D142](decisions/D142.md) | The event model: the minimal key set of what a night can be measured by, with no personal data anywhere in it | firm; refines D122; serves #321 and #323 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

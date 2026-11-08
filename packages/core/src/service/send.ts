@@ -30,6 +30,7 @@ import { randomInt } from 'node:crypto'
 import { sentOrderNotes, sentOrders, venueTables } from '@restro/db'
 import { eq } from 'drizzle-orm'
 
+import { guestEventOutcome } from '../events'
 import { type AreaId, type BarId, newId, type TableId } from '../ids'
 import { readOrderingSettings } from '../ordering-settings'
 import { itemPaymentMode, payFirstApplies, readPayFirstSettings } from '../pay-first-settings'
@@ -109,8 +110,29 @@ export interface SendCommand {
 
 export { orderingPaused } from './pause-scope'
 
-/** Sends the table's order (the engine holds the order row). */
+/**
+ * Sends the table's order (the engine holds the order row), and records the attempt (D142): one
+ * `order.send_attempted` per Send, `ok` or the code it was refused with, so a night shows the
+ * scan-to-send conversion and the time from the scan to the first Send. A refused Send's event is
+ * kept (`keepOnRefusal`), since the refusal rolls the handler's own writes back; a repeat the
+ * engine answers from the sent order never reaches here, so it records nothing twice.
+ */
 export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<ServiceResult> {
+  const sittingId = stx.rows.heldOrder(command.tableId)?.sittingId
+  const result = await attemptSend(stx, command)
+  const event = {
+    kind: 'order.send_attempted',
+    outcome: result.status === 'accepted' ? 'ok' : guestEventOutcome(result.code),
+    ...(sittingId === undefined || sittingId === null ? {} : { sittingId }),
+  } as const
+  const record = () => stx.recordEvents(command.tableId, [event])
+  if (result.status === 'accepted') await record()
+  else stx.keepOnRefusal(record)
+  return result
+}
+
+/** Decides and writes one Send; `sendOrder` records the attempt around it. */
+async function attemptSend(stx: ServiceTx, command: SendCommand): Promise<ServiceResult> {
   const { actionId, tableId } = command
   const row = stx.rows.heldOrder(tableId)
   if (row === null) return refused(actionId, 'table_not_open')
