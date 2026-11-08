@@ -10,7 +10,7 @@
 
 import { logEntries, reservations } from '@restro/db'
 import { and, eq, isNull, sql } from 'drizzle-orm'
-
+import { sortKeyBetween } from '../../sort-keys'
 import type { ServiceTx } from '../definition'
 import { accepted, refused, type ServiceResult } from '../results'
 import {
@@ -21,7 +21,7 @@ import {
   releaseHeldSpots,
   writeHeldSpots,
 } from './book'
-import { keyBetween, lockReservation, nextQueueKey, refuse, spotsOfReservation } from './rows'
+import { lockReservation, nextQueueKey, refuse, spotsOfReservation } from './rows'
 import {
   isEndStatus,
   moveStatus,
@@ -336,7 +336,10 @@ export async function reorderWaitingList(
   const after = await neighbourKey(stx, command.afterId ?? null)
   const before = await neighbourKey(stx, command.beforeId ?? null)
   if (after === 'missing' || before === 'missing') return refuse('reservation_missing')
-  const queueKey = keyBetween(after, before)
+  // The two neighbours as the queue has them: a pair named the wrong way round is a mistake on the
+  // caller's side, not a key to invent, so it is refused rather than squeezed in somewhere.
+  if (after !== null && before !== null && !(after < before)) return refuse('invalid_command')
+  const queueKey = sortKeyBetween(after, before)
   await stx.tx
     .update(reservations)
     .set({ queueKey, ...stx.provenance, updatedAt: sql`now()` })

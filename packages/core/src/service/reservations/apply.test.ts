@@ -229,8 +229,9 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
       'select source, actor, job_id from restro.reservations where id = $1',
       [id],
     )
-    // Service provenance, NOT NULL, and no layer (D122 §9).
-    expect(stored.rows[0]).toMatchObject({ source: 'restro', actor: `user:${ownerId}` })
+    // Service provenance, NOT NULL, and no layer (D122 §9): the source is where the write came
+    // from, which for a booking taken on the staff app is the staff app itself.
+    expect(stored.rows[0]).toMatchObject({ source: 'staff', actor: `user:${ownerId}` })
     expect(stored.rows[0]?.job_id).toBeTruthy()
     const log = (await logOf(['reservation.created'])).filter(
       (entry) => entry.reservation_id === id,
@@ -270,7 +271,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
         status: 'reserved',
         partySize: 2,
         partyLabel: 'Nowhere',
-        spotIds: ['sp_notaspotofthisvenue01'],
+        spotIds: ['sp_notaspotofthisvenue012'],
       } as ServiceCommand),
     ).toMatchObject({ status: 'refused', code: 'spot_missing' })
   })
@@ -432,9 +433,13 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
         staff(managerId),
       )
     ).guestId as Id<'gu'>
-    // One person is one row, however many bookings he has: the same number finds the same record.
+    // One person is one row, however many bookings he has: the number is refused a second record,
+    // and the record it already belongs to is updated by name.
     expect(
-      await accept({ type: 'guest.save', phone, isRegular: true }, staff(managerId)),
+      await run({ type: 'guest.save', phone, isRegular: true } as ServiceCommand, staff(managerId)),
+    ).toMatchObject({ status: 'refused', code: 'guest_exists' })
+    expect(
+      await accept({ type: 'guest.save', guestId, phone, isRegular: true }, staff(managerId)),
     ).toMatchObject({ guestId })
     await accept(
       { type: 'guest.private_note', guestId, note: 'asks for the corner booth' },

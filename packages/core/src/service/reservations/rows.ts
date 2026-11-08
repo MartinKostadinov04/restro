@@ -19,6 +19,7 @@ import {
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 
 import type { Id } from '../../ids'
+import { sortKeyBetween } from '../../sort-keys'
 import type { ServiceTx } from '../definition'
 import { refused, type ServiceResult } from '../results'
 import type { SpotHold, Stretch } from './overlap'
@@ -368,45 +369,5 @@ export async function nextQueueKey(stx: ServiceTx, serviceDate: string): Promise
         isNull(reservations.deletedAt),
       ),
     )
-  return keyAfter(row?.last ?? null)
-}
-
-/**
- * The alphabet of a queue key: digits then capitals then lower case, which is the byte order
- * `placements` sorts its own keys in, so the queue sorts in the database exactly as it does here.
- */
-const DIGITS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-
-/** The lowest and the second digit, and the highest: a key between two others is built from them. */
-const FIRST = DIGITS[0] as string
-const SECOND = DIGITS[1] as string
-const LAST = DIGITS[DIGITS.length - 1] as string
-
-/**
- * A key that sorts after `last`: the next digit where there is one, else `last` with a digit
- * appended, which is longer and so sorts after it. A key always begins with a letter, as the
- * column's own check demands.
- */
-export function keyAfter(last: string | null): string {
-  if (last === null) return 'a0'
-  const tail = last.slice(-1)
-  const next = DIGITS.indexOf(tail)
-  if (next >= 0 && tail !== LAST) return `${last.slice(0, -1)}${DIGITS[next + 1] as string}`
-  return `${last}${SECOND}`
-}
-
-/**
- * A key strictly between two keys of the queue: what a party dropped between two others gets.
- * Where no key fits between them by a single digit, the lower key grows by one, which is still
- * below the higher one because it begins with it.
- */
-export function keyBetween(before: string | null, after: string | null): string {
-  if (before === null && after === null) return 'a0'
-  if (before === null) {
-    const above = after as string
-    return `${above.slice(0, -1)}${FIRST}${SECOND}`
-  }
-  if (after === null || before >= after) return keyAfter(before)
-  const next = keyAfter(before)
-  return next < after ? next : `${before}${SECOND}`
+  return sortKeyBetween(row?.last ?? null, null)
 }

@@ -117,17 +117,20 @@ export const DEFAULT_ROLE_NAMES: Readonly<Record<DefaultRoleKind, string>> = {
   owner: 'Owner',
 }
 
-/** What staff hold: tables, pauses, alerts and the night's first sections (design §5). */
+/**
+ * What staff hold: tables, pauses, alerts and the night's first sections (design §5).
+ *
+ * The eight reservation keys of D141 are in no default role on purpose: "working with
+ * reservations is a permission, not a job title. Any role a venue makes can be given it, and no
+ * role has it because of its name." A venue gives them to whichever roles work the door; the
+ * owner holds them because the owner holds every permission.
+ */
 const STAFF_PERMISSIONS: readonly Permission[] = [
   'tables.open_close',
   'tables.resume',
   'ordering.pause',
   'alerts.answer',
   'night.view',
-  // D141: a hostess works tonight's floor with taps, and that is what Staff is for. The booking
-  // book, the pay rule, blocks, a past night, the night's end and the two settings-class keys are
-  // a manager's.
-  'reservations.tonight',
 ]
 
 /**
@@ -145,15 +148,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Readonly<Record<DefaultRoleKind, readonly
     'log.view',
     'night.view_full',
     'money.follow_up',
-    // Reservations: a manager holds all eight of D141's keys (ticket #323). The two
-    // settings-class ones still need their holder's own sign-in, never a PIN.
-    'reservations.manage',
-    'reservations.pay_rule',
-    'reservations.block',
-    'reservations.edit_past',
-    'reservations.end_night',
-    'settings.reservations',
-    'settings.guests',
   ],
   owner: PERMISSIONS,
 }

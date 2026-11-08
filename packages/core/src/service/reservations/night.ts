@@ -36,13 +36,17 @@ export async function closeReservationNight(
 ): Promise<ServiceResult> {
   const settings = await readSettings(stx)
   if (settings === null) return refuse('settings_missing')
+  // The night's lines first and its record after them, which is the order `LOCK_RANKS` fixes: a
+  // command given one line's id locks the line and reads its night from it, so the night's own
+  // commands take their locks the same way round and the two never cross.
+  const lines = await lockNightReservations(stx, command.serviceDate)
   const night = await lockNight(stx, command.serviceDate)
   if (night?.closedAt != null) {
     return accepted(null, {
       details: { serviceDate: command.serviceDate, closed: true, changed: false },
     })
   }
-  const swept = await sweepWaiting(stx, command.serviceDate)
+  const swept = await sweepWaiting(stx, lines)
   const values = {
     closedAt: sql`now()`,
     closedBy: stx.provenance.actor,
@@ -82,11 +86,12 @@ export async function sweepReservationNight(
   stx: ServiceTx,
   command: { readonly serviceDate: string },
 ): Promise<ServiceResult> {
+  const lines = await lockNightReservations(stx, command.serviceDate)
   const night = await lockNight(stx, command.serviceDate)
   if (night?.sweptAt != null) {
     return accepted(null, { details: { serviceDate: command.serviceDate, changed: false } })
   }
-  const swept = await sweepWaiting(stx, command.serviceDate)
+  const swept = await sweepWaiting(stx, lines)
   await writeNight(stx, command.serviceDate, night !== null, { sweptAt: sql`now()` })
   await stx.log({
     kind: 'night.swept',
@@ -100,10 +105,13 @@ export async function sweepReservationNight(
 
 /**
  * Marks every party still waiting on a night as Not seated, through the status machine, so the
- * move is the one `status.ts` allows and not a write around it. Returns the lines it moved.
+ * move is the one `status.ts` allows and not a write around it. Returns the lines it moved. The
+ * night's lines are locked by the caller, before the night's record (`LOCK_RANKS`).
  */
-async function sweepWaiting(stx: ServiceTx, serviceDate: string): Promise<string[]> {
-  const lines = await lockNightReservations(stx, serviceDate)
+async function sweepWaiting(
+  stx: ServiceTx,
+  lines: Awaited<ReturnType<typeof lockNightReservations>>,
+): Promise<string[]> {
   const moved: string[] = []
   for (const line of lines) {
     if (line.status !== 'waiting') continue
