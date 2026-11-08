@@ -86,6 +86,24 @@ export function purgeDatabaseUrl(): string {
 }
 
 /**
+ * restro_backup connection string (D143): DATABASE_URL_BACKUP, or the owner URL with
+ * restro_backup's password (DATABASE_BACKUP_PASSWORD). Null when neither is set.
+ */
+export function backupDatabaseUrl(): string | null {
+  const explicit = process.env.DATABASE_URL_BACKUP
+  if (explicit) {
+    assertLocal(explicit, 'DATABASE_URL_BACKUP')
+    return explicit
+  }
+  const password = process.env.DATABASE_BACKUP_PASSWORD
+  if (!password) return null
+  const url = new URL(ownerDatabaseUrl())
+  url.username = 'restro_backup'
+  url.password = encodeURIComponent(password)
+  return url.toString()
+}
+
+/**
  * A venue slug with a random suffix. Slugs are unique within an organisation (D84), and tests
  * that share a database with other test files need one nobody else uses.
  */

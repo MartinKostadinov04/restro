@@ -10,6 +10,9 @@ import {
   type AssetStoreConfig,
   AssetStoreConfigError,
   assetStoreConfig,
+  type BackupStoreConfig,
+  BackupStoreConfigError,
+  backupStoreConfig,
   type PublishStoreConfig,
   PublishStoreConfigError,
   publishStoreConfig,
@@ -38,6 +41,11 @@ export interface WorkerConfig {
    * Never the app role, never the owner.
    */
   readonly purgeDatabaseUrl: string | null
+  /**
+   * The database backup (ticket #320), or null when DATABASE_URL_BACKUP is not set: the `db-backup`
+   * job is then not registered. Holds a connection string: never logged.
+   */
+  readonly backup?: BackupConfig | null
   /** Identifies this process in `restro.worker_heartbeats`. */
   readonly workerId: string
   /** TCP port of `GET /health`. `0` picks a free port (tests only; the environment cannot set it). */
@@ -92,6 +100,16 @@ export interface WorkerConfig {
    * Never logged: a secret.
    */
   readonly receiptEmail?: ReceiptEmailConfig | null
+}
+
+/** How the database is backed up (ticket #320; D103). */
+export interface BackupConfig {
+  /** Connection string of the backup role `restro_backup`, which can read every row. A secret. */
+  readonly databaseUrl: string
+  /** Where the dumps are kept: a private bucket of their own on R2, or a folder in development. */
+  readonly store: BackupStoreConfig
+  /** The `pg_dump` to run (PG_DUMP_PATH), or null for the one on the PATH. */
+  readonly pgDumpPath: string | null
 }
 
 /** Where a receipt file is emailed from (#186; D127). */
@@ -269,6 +287,15 @@ function environmentSchema(defaultWorkerId: () => string) {
         unsetWhenBlank,
         z.string().trim().refine(isPostgresUrl, { error: NOT_A_POSTGRES_URL }).optional(),
       ),
+      DATABASE_URL_BACKUP: z.preprocess(
+        unsetWhenBlank,
+        z.string().trim().refine(isPostgresUrl, { error: NOT_A_POSTGRES_URL }).optional(),
+      ),
+      PG_DUMP_PATH: z.preprocess(unsetWhenBlank, z.string().trim().optional()),
+      // Passed on to @restro/assets (backupStoreConfig); the other R2_* are shared with the asset store.
+      BACKUP_STORE: z.string().optional(),
+      LOCAL_BACKUP_DIR: z.string().optional(),
+      R2_BACKUP_BUCKET: z.string().optional(),
       WORKER_ID: z
         .string()
         .optional()
@@ -497,11 +524,39 @@ function environmentSchema(defaultWorkerId: () => string) {
         ctx.addIssue({ code: 'custom', path: ['PUBLISH_STORE'], message })
         return z.NEVER
       }
+      // The backup's store is read only where the backup runs; elsewhere its variables are ignored.
+      let backup: BackupConfig | null = null
+      if (env.DATABASE_URL_BACKUP !== undefined) {
+        try {
+          backup = {
+            databaseUrl: env.DATABASE_URL_BACKUP,
+            store: backupStoreConfig({
+              NODE_ENV: env.NODE_ENV,
+              BACKUP_STORE: env.BACKUP_STORE,
+              LOCAL_BACKUP_DIR: env.LOCAL_BACKUP_DIR,
+              R2_ACCOUNT_ID: env.R2_ACCOUNT_ID,
+              R2_ACCESS_KEY_ID: env.R2_ACCESS_KEY_ID,
+              R2_SECRET_ACCESS_KEY: env.R2_SECRET_ACCESS_KEY,
+              R2_BACKUP_BUCKET: env.R2_BACKUP_BUCKET,
+              R2_ENDPOINT: env.R2_ENDPOINT,
+            }),
+            pgDumpPath: env.PG_DUMP_PATH ?? null,
+          }
+        } catch (error) {
+          const message =
+            error instanceof BackupStoreConfigError
+              ? error.message.replace(/^BACKUP_STORE /, '')
+              : 'is not usable.'
+          ctx.addIssue({ code: 'custom', path: ['BACKUP_STORE'], message })
+          return z.NEVER
+        }
+      }
       // The deployment's environment label: the host rules and the simulated POS's policy share it.
       const label = env.BARSY_ENV
       return {
         databaseUrl: env.DATABASE_URL,
         purgeDatabaseUrl: env.DATABASE_URL_PURGE ?? null,
+        backup,
         workerId: env.WORKER_ID,
         healthPort: env.WORKER_HEALTH_PORT,
         logLevel: env.LOG_LEVEL,
@@ -560,6 +615,9 @@ function describeIssue(issue: z.core.$ZodIssue): string {
  * |---|---|---|
  * | `DATABASE_URL` | postgres:// URL of the app role `restro_app` | required |
  * | `DATABASE_URL_PURGE` | postgres:// URL of the purge role `restro_purge` (D83); without it no purge job runs | unset |
+ * | `DATABASE_URL_BACKUP` | postgres:// URL of the backup role `restro_backup` (ticket #320); without it no `db-backup` job runs | unset |
+ * | `BACKUP_STORE`, `LOCAL_BACKUP_DIR`, `R2_BACKUP_BUCKET` | where the dumps go (see @restro/assets); read only with `DATABASE_URL_BACKUP` | local in development |
+ * | `PG_DUMP_PATH` | the `pg_dump` to run; its major version must be the database's or newer | the PATH's |
  * | `WORKER_ID` | name of this process in `worker_heartbeats` | the host name |
  * | `WORKER_HEALTH_PORT` | port of `GET /health` | 8081 |
  * | `LOG_LEVEL` | fatal, error, warn, info, debug, trace or silent | info |
