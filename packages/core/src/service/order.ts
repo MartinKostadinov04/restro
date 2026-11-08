@@ -39,6 +39,11 @@ export async function writeOrder(
   stx.rows.touch(row.tableId)
 }
 
+/** What is live on the order: the quantity of every line not removed. */
+function liveQuantity(order: TableOrderDraft): number {
+  return order.lines.reduce((sum, line) => (line.removedAt === null ? sum + line.qty : sum), 0)
+}
+
 /** An edit's command: the edit with the table and the action id around it. */
 export type OrderEditCommand = OrderEdit & { readonly tableId: string; readonly actionId: string }
 
@@ -65,6 +70,15 @@ export async function editOrder(stx: ServiceTx, command: OrderEditCommand): Prom
   })
   if (!outcome.ok) return refused(command.actionId, outcome.code)
   await writeOrder(stx, row, outcome.order)
+  // The guest's own side of the change (D142): one event per edit that moved what is live on the
+  // order, so a night shows intent and second thoughts. An edit that left the live lines as they
+  // were (a restore of nothing) records none; an Undo puts its line back, so it reads as an add.
+  const moved = liveQuantity(outcome.order) - liveQuantity(current)
+  if (moved !== 0) {
+    await stx.recordEvents(command.tableId, [
+      { kind: moved > 0 ? 'order.line_added' : 'order.line_removed', sittingId: row.sittingId },
+    ])
+  }
   return accepted(command.actionId, {
     details: outcome.lineId === null ? {} : { lineId: outcome.lineId },
   })

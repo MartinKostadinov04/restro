@@ -189,6 +189,9 @@ export async function callWaiter(
     toState: 'open',
     details: { waiterCallId: id, kind: command.kind, kinds: kinds.join(',') },
   })
+  // A call opened (D142): calls per night, against the night's orders. A kind added to a call that
+  // is already open is the same call, so it records nothing; neither does a repeat of the same tap.
+  await stx.recordEvents(command.tableId, [{ kind: 'waiter.call_opened', sittingId: sitting.id }])
   touchTable(stx, command.tableId)
   return accepted(command.actionId, {
     details: { waiterCallId: id, repeat: false, kinds: kinds.join(',') },

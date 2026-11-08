@@ -3,6 +3,7 @@
 //   GET  /api/guest/state?since=<version>&view=menu|order|bill   the table's state, or "unchanged"
 //   POST /api/guest/actions                                      one guest command, and the state
 //   GET  /api/guest/payment                                      the paying phone's own payment
+//   POST /api/guest/events                                       what the phone did (D142)
 //
 // The table's code comes in `Authorization: Table <code>`, never in the address or the body. A
 // code of the wrong shape is answered 401 before the database is asked. Bodies are read up to
@@ -37,6 +38,7 @@ import {
   ForbiddenValueError,
   type GuardEvent,
   type GuestActInput,
+  type GuestEventsInput,
   guestAct,
   guestPayment,
   guestState,
@@ -44,6 +46,7 @@ import {
   MAX_PASS_LENGTH,
   type PaymentTarget,
   type QueuePayment,
+  reportGuestEvents,
 } from '@restro/core/service'
 import type { DbPool } from '@restro/db'
 import {
@@ -55,6 +58,8 @@ import {
   GuestActionAnswerSchema,
   GuestActionRequestSchema,
   type GuestApiError,
+  GuestEventsAnswerSchema,
+  GuestEventsRequestSchema,
   GuestPaymentAnswerSchema,
   GuestStateAnswerSchema,
   GuestStateQuerySchema,
@@ -306,6 +311,41 @@ export async function handleGuestAction(request: Request, deps: GuestApiDeps): P
     )
   } catch (error) {
     return failed('guest_action_failed', error)
+  }
+}
+
+/**
+ * `POST /api/guest/events`: what the phone itself did (D142) — the menu opened, an item opened, a
+ * language chosen. The table's code says where it belongs; the body carries no venue, no table and
+ * nothing personal, and a kind outside the three a phone may report is refused 400 by the schema.
+ * Nothing about the request is logged, its paths on a bad body apart.
+ */
+export async function handleGuestEvents(request: Request, deps: GuestApiDeps): Promise<Response> {
+  const code = tableCodeOf(request)
+  if (code === null) return wrongCode(request, deps)
+  // No phone value is asked for and none is kept: an event is the table's, not a device's (D142).
+  const body = await readCapped(request)
+  if (!body.ok) return refuse('too_large', 413)
+  let parsedJson: unknown
+  try {
+    parsedJson = JSON.parse(body.text)
+  } catch {
+    return refuse('invalid_request', 400)
+  }
+  const parsed = GuestEventsRequestSchema.safeParse(parsedJson)
+  if (!parsed.success) {
+    logWarn('guest_events_invalid', { paths: issuePaths(parsed.error).join(',') })
+    return refuse('invalid_request', 400)
+  }
+  try {
+    const recorded = await reportGuestEvents(deps.pool, {
+      code,
+      events: parsed.data.events as GuestEventsInput['events'],
+    })
+    if (!recorded.ok) return stateless(recorded, request, deps)
+    return json(GuestEventsAnswerSchema.parse({ recorded: recorded.recorded }))
+  } catch (error) {
+    return failed('guest_events_failed', error)
   }
 }
 

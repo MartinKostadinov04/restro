@@ -21,6 +21,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { resolveRoutesIn } from '../apply/menu-routes'
+import { guestEventAmount } from '../events'
 import { idSchema, newId, type TableId } from '../ids'
 import type { LegalDetails } from '../legal-details'
 import { addMinor } from '../money'
@@ -334,6 +335,14 @@ export async function insertPayFirst(
     providerKind: prepared.providerKind,
     ...stx.provenance,
   })
+  // Paying began (D142); a pay-first payment is held for the priced lines and its tip.
+  await stx.recordEvents(input.tableId, [
+    {
+      kind: 'pay.started',
+      sittingId: input.sittingId,
+      ...guestEventAmount(addMinor(prepared.totalMinor, prepared.tipMinor), input.currency),
+    },
+  ])
   await stx.tx.insert(paymentLines).values(
     prepared.lines.map((line, index) => {
       const price = prepared.priced[index]
