@@ -37,12 +37,12 @@ describe.skipIf(!hasDatabase)('the events of a night (as the restro_app role)', 
     return fresh
   }
 
-  async function act(command: Record<string, unknown>) {
+  async function act(command: Record<string, unknown>, view: 'order' | 'menu' = 'order') {
     const answer = await guestAct(world.app, {
       code,
       command: { actionId: randomUUID(), ...command } as never,
       ageMs: 50,
-      view: 'order',
+      view,
       phone: randomUUID(),
       limiter,
       check: { humanToken: 'XXXX.DUMMY.TOKEN.XXXX' },
@@ -168,10 +168,16 @@ describe.skipIf(!hasDatabase)('the events of a night (as the restro_app role)', 
   })
 
   it('records a waiter called once per call, not once per tap', async () => {
-    await act({ type: 'waiter.call', tableId, kind: 'waiter' })
+    // The shell's own command (`service.request`), which the guest API maps to `waiter.call`.
+    const tap = async () => {
+      const answer = await act({ type: 'service.request', request: 'waiter', note: '' }, 'menu')
+      // A refusal here would leave the event list empty for a reason that is not the model's.
+      expect(answer.result.status, answer.result.code ?? '').toBe('accepted')
+    }
+    await tap()
     expect(await kinds()).toEqual(['waiter.call_opened'])
     // The same call, asked again: one call, one event.
-    await act({ type: 'waiter.call', tableId, kind: 'waiter' })
+    await tap()
     expect(await kinds()).toEqual(['waiter.call_opened'])
   })
 

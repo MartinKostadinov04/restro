@@ -59,6 +59,19 @@ describe.skipIf(!hasDatabase)('recordEvents (as the restro_app role)', () => {
     return withTenantWrite(world.app, world.tenantId, (tx) => recordEvents(tx, scope(over), events))
   }
 
+  /**
+   * The message a refusal from Postgres carries. Drizzle wraps it ("Failed query: …") and keeps
+   * the database's own words as the cause, so a posture test must read both.
+   */
+  async function refusal(promise: Promise<unknown>): Promise<string> {
+    try {
+      await promise
+      return 'the database allowed it'
+    } catch (error) {
+      return `${String(error)} ${String((error as { cause?: unknown }).cause ?? '')}`
+    }
+  }
+
   /** Every event of the world's venue, oldest first. */
   async function rows(): Promise<readonly Row[]> {
     const read = await withTenantWrite(world.app, world.tenantId, (tx) =>
@@ -143,12 +156,14 @@ describe.skipIf(!hasDatabase)('recordEvents (as the restro_app role)', () => {
     expect((await rows())[0]?.sitting_id).toBeNull()
   })
 
-  it('refuses an unknown kind, an oversized batch and an empty one, writing nothing', async () => {
+  it('refuses an unknown kind and an oversized batch, writing nothing', async () => {
     await expect(record([{ kind: 'menu.closed' } as never])).rejects.toThrow()
     await expect(
       record(Array.from({ length: GUEST_EVENT_BATCH_MAX + 1 }, () => ({ kind: 'menu.opened' }))),
     ).rejects.toThrow()
-    await expect(record([])).rejects.toThrow()
+    // Nothing to record is not a mistake: a handler that measured nothing asks the database
+    // nothing and is not made to fail for it.
+    expect(await record([])).toEqual([])
     // A scope that names no table, or a table of another kind, is refused the same way.
     await expect(record([{ kind: 'menu.opened' }], { tableId: 'nd_not_a_table' })).rejects.toThrow()
     expect(await rows()).toEqual([])
@@ -177,16 +192,20 @@ describe.skipIf(!hasDatabase)('recordEvents (as the restro_app role)', () => {
 
   it('lets the app role add and read, and nothing else', async () => {
     await record([{ kind: 'menu.opened' }])
-    await expect(
-      withTenantWrite(world.app, world.tenantId, (tx) =>
-        tx.execute(sql`delete from restro.guest_events where venue_id = ${world.venueId}`),
+    expect(
+      await refusal(
+        withTenantWrite(world.app, world.tenantId, (tx) =>
+          tx.execute(sql`delete from restro.guest_events where venue_id = ${world.venueId}`),
+        ),
       ),
-    ).rejects.toThrow(/permission denied/)
-    await expect(
-      withTenantWrite(world.app, world.tenantId, (tx) =>
-        tx.execute(sql`update restro.guest_events set kind = 'menu.opened'`),
+    ).toMatch(/permission denied/)
+    expect(
+      await refusal(
+        withTenantWrite(world.app, world.tenantId, (tx) =>
+          tx.execute(sql`update restro.guest_events set kind = 'menu.opened'`),
+        ),
       ),
-    ).rejects.toThrow(/permission denied/)
+    ).toMatch(/permission denied/)
     expect(await rows()).toHaveLength(1)
   })
 
