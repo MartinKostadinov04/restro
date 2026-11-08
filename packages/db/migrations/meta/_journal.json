@@ -323,6 +323,13 @@
       "when": 1794093961706,
       "tag": "0045_guest_events",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1794135366166,
+      "tag": "0046_reservations",
+      "breakpoints": true
     }
   ]
 }
