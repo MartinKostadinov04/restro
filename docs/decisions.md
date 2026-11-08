@@ -142,6 +142,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D139](decisions/D139.md) | Linked groups: one party across several tables, cumulated inside Restro with no lead table and no common POS bill | firm; refines D117 and D122 |
 | [D140](decisions/D140.md) | Guests and regulars: the venue's own list, what is kept and what erasing clears, and why the visit counts are for audits and never for accounting | firm; refines D83 |
 | [D141](decisions/D141.md) | Who may do what in reservations, where the PIN falls on a shared device, sessions on remembered devices, and one Log for the night | firm; refines D122 and D123 |
+| [D142](decisions/D142.md) | The event model: the minimal key set of what a night can be measured by, with no personal data anywhere in it | firm; refines D122; serves #321 and #323 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

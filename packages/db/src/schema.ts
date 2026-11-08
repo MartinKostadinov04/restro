@@ -3164,3 +3164,81 @@ export const providerNotices = restro.table(
     ...provenanceChecks('provider_notices', t),
   ],
 )
+
+// --- Guest events -----------------------------------------------------------------------------
+
+/**
+ * The guest events (D142; ticket #335, tracker T84): the one append-only record of what a guest's
+ * phone did — the menu opened, an item opened, a line added to or taken off the table's order, a
+ * Send attempted, a payment started and finished, a waiter called, a language chosen. The staff
+ * side of a night is already in the service rows and the Log, so nothing here repeats them.
+ *
+ * No personal data of any kind (D111, rule 3): no name, phone, email, IP address, device id, card
+ * digit or free text. A guest is only ever the table's sitting, and nothing links one sitting to
+ * another. Written only by `recordEvents()` in `@restro/core/events` (rule 1); the kinds and their
+ * retention classes live there, so a new kind needs no migration.
+ *
+ * No foreign key, not even to `tenants`: the rows carry ids only, so nothing joins a core table
+ * (D103's no-join rule) and the model can move to an edge ingest without touching the menu engine.
+ * Row-level security still isolates it: FORCE RLS on `tenant_id` like every other tenant table.
+ */
+export const guestEvents = restro.table(
+  'guest_events',
+  {
+    seq: bigint('seq', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    tenantId: text('tenant_id').notNull(),
+    venueId: text('venue_id').notNull(),
+    /** When it happened: the server's clock, less the age the phone reported for its own taps. */
+    at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+    serviceDate: date('service_date', { mode: 'string' }).notNull(),
+    /** A kind from core's list, e.g. `menu.opened`, `order.send_attempted`. */
+    kind: text('kind').notNull(),
+    /** The table whose code the phone showed; every guest event has one. */
+    tableId: text('table_id').notNull(),
+    /** The table's open sitting, or null where the table had none. */
+    sittingId: text('sitting_id'),
+    /**
+     * The item a guest opened (`item.opened`) or put on and took off the order
+     * (`order.line_added`, `order.line_removed`); null for every other kind.
+     */
+    nodeId: text('node_id'),
+    /** A pay event's amount in minor units (rule 8), with its currency; null for the rest. */
+    amountMinor: bigint('amount_minor', { mode: 'number' }),
+    currency: text('currency'),
+    /** The menu language a guest chose (`language.chosen`); null for every other kind. */
+    locale: text('locale'),
+    /** How it ended: `ok`, or a short failure class. Null where the kind has no outcome. */
+    outcome: text('outcome'),
+    /** `night` (31 days) or `record` (18 months), as the Log's classes (D122 §9). */
+    retention: text('retention').notNull(),
+    ...serviceProvenance(),
+  },
+  (t) => [
+    // Counting a night: scans, items looked at, sends, payments, per venue and service day.
+    index('guest_events_venue_service_date_kind_idx').on(t.venueId, t.serviceDate, t.kind),
+    // One table's funnel through the night, in order.
+    index('guest_events_venue_table_at_idx').on(t.venueId, t.tableId, t.at),
+    // The purge compares the class and the service day only.
+    index('guest_events_retention_service_date_idx').on(t.retention, t.serviceDate),
+    check('guest_events_tenant_id_format', sql`${t.tenantId} ~ '^tn_[0-9A-Za-z]+$'`),
+    check('guest_events_venue_id_format', sql`${t.venueId} ~ '^vn_[0-9A-Za-z]+$'`),
+    check('guest_events_kind', sql`${t.kind} ~ ${NAME_PATTERN}`),
+    check(
+      'guest_events_ids',
+      sql`${t.tableId} ~ '^tb_[0-9A-Za-z]+$' and (${t.sittingId} is null or ${t.sittingId} ~ '^st_[0-9A-Za-z]+$') and (${t.nodeId} is null or ${t.nodeId} ~ '^nd_[0-9A-Za-z]+$')`,
+    ),
+    check('guest_events_amount_minor', sql`${t.amountMinor} is null or ${t.amountMinor} >= 0`),
+    check(
+      'guest_events_amount_currency_pair',
+      sql`(${t.amountMinor} is null) = (${t.currency} is null)`,
+    ),
+    check('guest_events_currency', sql`${t.currency} is null or ${t.currency} ~ '^[A-Z]{3}$'`),
+    check('guest_events_locale', sql`${t.locale} is null or ${t.locale} ~ '^[a-z]{2}_[A-Z]{2}$'`),
+    check(
+      'guest_events_outcome',
+      sql`${t.outcome} is null or ${t.outcome} ~ '^[a-z][a-z0-9_]{0,63}$'`,
+    ),
+    check('guest_events_retention', sql`${t.retention} in ('night', 'record')`),
+    ...provenanceChecks('guest_events', t),
+  ],
+)

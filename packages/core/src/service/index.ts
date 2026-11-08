@@ -141,6 +141,8 @@ export {
   type GuestActInput,
   type GuestCheck,
   type GuestCommandResult,
+  type GuestEventReportInput,
+  type GuestEventsInput,
   type GuestLocation,
   type GuestLocationState,
   type GuestPaymentInput,
@@ -163,6 +165,7 @@ export {
   paymentWorkerJob,
   projectGuestState,
   type QueuePayment,
+  reportGuestEvents,
 } from './guest'
 export { GUEST_LIMITS, type GuestLimit, GuestLimiter, type GuestLimitName } from './guest-limits'
 export { identifyStaffByPin, type PinIdentity } from './identify'

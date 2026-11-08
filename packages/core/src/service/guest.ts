@@ -51,11 +51,13 @@ import {
   venues,
   withTenant,
 } from '@restro/db'
+import { withTenantWrite } from '@restro/db/write'
 import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 
+import { type GuestEventInput, recordEvents } from '../events'
 import { TABLE_TOKEN_PATTERN } from '../guest-files'
 import { type LegalDetails, readLegalDetails } from '../legal-details'
-import type { LocalizedText } from '../locales'
+import type { Locale, LocalizedText } from '../locales'
 import {
   type GuestPosition,
   LOCATION_CONSENT_VERSION,
@@ -64,7 +66,7 @@ import {
 } from '../location-check'
 import { type OrderingSettings, readOrderingSettings } from '../ordering-settings'
 import { hashTableCode } from '../qr'
-import { wallClock } from '../service-day'
+import { serviceDate, wallClock } from '../service-day'
 import { type GuestNight, guestNight } from '../service-hours'
 import { orderFromRow, UNDO_WINDOW_MS } from '../table-order'
 import type { CallWaiterKind } from '../theme'
@@ -1748,4 +1750,85 @@ export async function guestPayment(
   const paths = forbiddenPaths({ ...answer, form: null }, backend)
   if (paths.length > 0) throw new ForbiddenValueError(paths)
   return { ok: true, answer }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The guest events a phone reports (D142)
+
+/** What a phone reports: a kind it may report, with the age of the tap that made it. */
+export type GuestEventReportInput =
+  | { readonly kind: 'menu.opened'; readonly ageMs: number }
+  | { readonly kind: 'item.opened'; readonly itemId: string; readonly ageMs: number }
+  | { readonly kind: 'language.chosen'; readonly locale: Locale; readonly ageMs: number }
+
+/** What a report of guest events needs from its caller. */
+export interface GuestEventsInput {
+  /** The table code from the `Authorization: Table <code>` header. */
+  readonly code: string
+  /** The batch, already parsed against the wire shape (`GuestEventsRequestSchema`). */
+  readonly events: readonly GuestEventReportInput[]
+  readonly limiter?: GuestLimiter
+  readonly jobId?: string
+}
+
+/**
+ * Records what a phone reports of its own side of the night (`POST /api/guest/events`, D142): the
+ * menu opened, an item opened, a language chosen. The table's code says where it belongs — the
+ * venue, the table, the table's open sitting and the venue's service day are read here, never
+ * taken from the body — and `recordEvents()` writes it. The three kinds are all a phone may
+ * report: an unknown kind, an unknown field or an oversized batch is refused by the wire shape
+ * before this, and refused again by core's own union, so a tampered phone can never invent a
+ * conversion, a payment or a waiter call.
+ *
+ * The moment is the server's clock less the age the phone reported for its tap, so a batch a phone
+ * held while it was offline lands at the time it happened. Nothing personal is read or written:
+ * there is no field for it, and the phone's own value in `X-Restro-Phone` is not asked for here.
+ */
+export async function reportGuestEvents(
+  pool: DbPool,
+  input: GuestEventsInput,
+): Promise<{ readonly ok: true; readonly recorded: number } | GuestStateless> {
+  const target = await targetOf(pool, input.code)
+  if (target === null) return { ok: false, code: 'code_retired' }
+  const codeLimit = (input.limiter ?? limiter).take(target.hash, ['codeRequests'], Date.now())
+  if (!codeLimit.ok) return limited(codeLimit)
+  const guard = await readGuard(pool, target)
+  if (guard === null) return { ok: false, code: 'code_retired' }
+
+  const now = Date.now()
+  const batch: GuestEventInput[] = []
+  for (const report of input.events) {
+    // The phone's own tap, placed back by the age it reported; never ahead of the server's clock.
+    const at = new Date(now - Math.max(0, report.ageMs))
+    switch (report.kind) {
+      case 'menu.opened':
+        batch.push({ kind: 'menu.opened', at })
+        break
+      case 'item.opened':
+        batch.push({ kind: 'item.opened', itemId: report.itemId, at })
+        break
+      case 'language.chosen':
+        batch.push({ kind: 'language.chosen', locale: report.locale, at })
+        break
+    }
+  }
+  if (batch.length === 0) return { ok: true, recorded: 0 }
+
+  const written = await withTenantWrite(pool, target.tenantId, (tx) =>
+    recordEvents(
+      tx,
+      {
+        tenantId: target.tenantId,
+        venueId: target.venueId,
+        tableId: target.tableId,
+        serviceDate: serviceDate(new Date(now), guard.timezone, guard.dayEndsAt),
+        sittingId: guard.sittingId,
+        source: 'guest',
+        actor: 'guest',
+        jobId: input.jobId ?? `guest-events-${randomUUID()}`,
+      },
+      batch,
+    ),
+  )
+  return { ok: true, recorded: written.length }
 }
