@@ -39,6 +39,7 @@ import {
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
+import { guestEventAmount, guestEventOutcome } from '../events'
 import { idSchema, newId } from '../ids'
 import { addMinor, percentOfMinor, sumSignedMinor } from '../money'
 import { readPayingSettings } from '../paying-settings'
@@ -289,6 +290,7 @@ export async function release(
     .where(eq(payments.id, payment.id))
   if (tableOpen) stx.rows.touch(payment.tableId)
   await logPayment(stx, payment, state, reason)
+  await recordPayFinished(stx, payment, state)
   if (payment.kind === 'pay_first') await endPayFirstBeforePos(stx, payment, reason)
 }
 
@@ -310,6 +312,31 @@ export async function endPayFirstBeforePos(
     }
   }
   await movePayFirstSentOrder(stx, payment, ['waiting'], 'not_sent', { reason })
+}
+
+/**
+ * Records that paying ended (D142), once per payment: `ok` for a captured one, else its final
+ * state as the failure class. Only the write that settles the payment records it, so a re-check or
+ * a storno of a settled payment adds nothing. The amount is what was taken, or what was held and
+ * then not taken, so an abandoned payment can be counted in money as well as in taps.
+ */
+export async function recordPayFinished(
+  stx: ServiceTx,
+  payment: Pick<
+    PaymentRow,
+    'tableId' | 'sittingId' | 'settledAt' | 'currency' | 'amountMinor' | 'capturedMinor'
+  >,
+  state: string,
+): Promise<void> {
+  if (payment.settledAt !== null) return
+  await stx.recordEvents(payment.tableId, [
+    {
+      kind: 'pay.finished',
+      outcome: state === 'captured' ? 'ok' : guestEventOutcome(state),
+      sittingId: payment.sittingId,
+      ...guestEventAmount(payment.capturedMinor ?? payment.amountMinor, payment.currency),
+    },
+  ])
 }
 
 /** The Log's line of a payment's step on its route (#111): a money record, kept 18 months. */
@@ -547,6 +574,11 @@ export function payStart() {
         .returning({ position: paymentLines.position })
       // The database's word on the grey (`payment_lines_open_line_unique`): refused, rolled back.
       if (made.length !== lines.length) return refuse('being_paid')
+      // Paying began (D142): with `pay.finished` it shows the payments a guest abandoned, which no
+      // service row of ours does.
+      await stx.recordEvents(command.tableId, [
+        { kind: 'pay.started', sittingId: sitting.id, ...guestEventAmount(amountMinor, currency) },
+      ])
       stx.rows.touch(command.tableId)
       return at(command, { id }, 'requested', true)
     },

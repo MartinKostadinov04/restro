@@ -309,6 +309,7 @@ const VENUE_SERVICE_TABLES = [
   'alerts',
   'pauses',
   'log_entries',
+  'guest_events',
   'bill_readings',
   'locks',
   // One statement for all of them: a duplicate's `duplicate_of` is checked at its end.
@@ -1099,6 +1100,18 @@ export async function purgeService(
         await deleteRows(
           tx,
           'log_entries',
+          sql`${ofVenue} and ((retention = 'night' and service_date < ${night})
+                           or (retention = 'record' and service_date < ${record}))`,
+        ),
+      )
+      // The night's own events (D142), by the same two classes and the same service day: a count
+      // of a night needs the night, not the phone that was there.
+      count(
+        counts,
+        'guest_events',
+        await deleteRows(
+          tx,
+          'guest_events',
           sql`${ofVenue} and ((retention = 'night' and service_date < ${night})
                            or (retention = 'record' and service_date < ${record}))`,
         ),

@@ -35,6 +35,7 @@ import { withTenantWrite } from '@restro/db/write'
 import { and, eq, isNull, ne, sql } from 'drizzle-orm'
 
 import { lockLiveVenue } from '../apply/venue-lock'
+import { recordEvents as recordGuestEvents } from '../events'
 import { serviceDate } from '../service-day'
 import { ORDER_CHANGES_PER_MINUTE } from '../table-order'
 import { actionsSince, findInRing, pushToRing } from './action-ring'
@@ -259,6 +260,19 @@ export async function executeCommand(
             entry,
           )
           logged.push({ ...written, kind: entry.kind })
+        },
+        recordEvents: async (tableId, events) => {
+          await recordGuestEvents(
+            tx,
+            {
+              tenantId: context.tenantId,
+              venueId: venue.id,
+              tableId,
+              serviceDate: day,
+              ...provenance,
+            },
+            events,
+          )
         },
         lastLogged: (kinds) =>
           logged.findLast((entry) => kinds.includes(entry.kind as never)) ?? null,

@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest'
 const srcRoot = fileURLToPath(new URL('.', import.meta.url))
 const applyRoot = join(srcRoot, 'apply')
 const serviceRoot = join(srcRoot, 'service')
+const eventsRoot = join(srcRoot, 'events')
 
 /**
  * The service side: the Drizzle exports and Postgres names of the tables only `applyService`
@@ -255,5 +256,56 @@ describe('the write-target guard', () => {
       'sittings',
       'venues',
     ])
+  })
+})
+
+// The guest events (D142; ticket #335). A third write path shares the write side of the db
+// package: `recordEvents()` in core/events writes `guest_events` and nothing else, and nothing
+// else in the repo writes `guest_events`. Only tightens (D67).
+describe('the guest-events write path', () => {
+  const eventsFiles = sourceFiles(eventsRoot)
+  const applyFiles = sourceFiles(applyRoot)
+  const serviceFiles = sourceFiles(serviceRoot)
+
+  it('finds the write path (the guard is looking at real files)', () => {
+    expect(eventsFiles.length).toBeGreaterThan(1)
+    expect(
+      eventsFiles.some((file) => drizzleWriteTargets(readFileSync(file, 'utf8')).length > 0),
+    ).toBe(true)
+  })
+
+  it('core/events writes `guestEvents` and nothing else', () => {
+    const found = eventsFiles.flatMap((file) => {
+      const text = readFileSync(file, 'utf8')
+      return [
+        ...drizzleWriteTargets(text).filter((name) => name !== 'guestEvents'),
+        ...sqlWriteTargets(text).filter((name) => name !== 'guest_events'),
+      ].map((name) => `${rel(file)}: ${name}`)
+    })
+    expect(found).toEqual([])
+  })
+
+  it('neither core/apply nor core/service names the table itself', () => {
+    const found = [...applyFiles, ...serviceFiles]
+      .filter((file) => /guestEvents|guest_events/.test(readFileSync(file, 'utf8')))
+      .map(rel)
+    expect(found).toEqual([])
+  })
+
+  it('nothing outside core/events writes `guest_events`, anywhere in the repo', () => {
+    const files = ['apps', 'packages'].flatMap((top) => sourceFiles(join(repoRoot, top)))
+    expect(files.length).toBeGreaterThan(100)
+    const outside = (dir: string) => (file: string) => !file.startsWith(dir + sep)
+    const found = files
+      .filter(outside(eventsRoot))
+      .filter(outside(join(repoRoot, 'packages', 'db')))
+      .flatMap((file) => {
+        const text = readFileSync(file, 'utf8')
+        return [
+          ...drizzleWriteTargets(text).filter((name) => name === 'guestEvents'),
+          ...sqlWriteTargets(text).filter((name) => name === 'guest_events'),
+        ].map((name) => `${relative(repoRoot, file).replaceAll(sep, '/')}: ${name}`)
+      })
+    expect(found).toEqual([])
   })
 })

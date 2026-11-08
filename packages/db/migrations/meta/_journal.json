@@ -316,6 +316,13 @@
       "when": 1793354900000,
       "tag": "0044_refund_provider_ref",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1794093961706,
+      "tag": "0045_guest_events",
+      "breakpoints": true
     }
   ]
 }
