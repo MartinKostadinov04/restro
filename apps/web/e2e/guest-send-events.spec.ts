@@ -8,6 +8,12 @@
 // The fixture is the Send's own (scripts/seed-send-e2e.ts): a fresh code, a fresh sitting, no
 // pause. Nothing here Sends, so this spec spends none of D118's pace (6 rounds per table per 15
 // minutes) and leaves guest-send.spec.ts its four.
+//
+// The file is named to sort beside guest-send.spec.ts on purpose. Playwright runs a shard's files
+// in name order on one worker, and the admin specs later in the shard open "the first venue card",
+// so which venue a seed creates first is shared state. Sitting next to the spec whose fixture this
+// is keeps that order as it was; a name that sorted first (guest-events) made Demo Bar the first
+// card and broke touch-targets.spec.ts.
 import { devices, expect, test } from '@playwright/test'
 
 import { runScript } from './global-setup'
