@@ -31,6 +31,13 @@ export const LOCK_RANKS = [
   'staff',
   // A payment (#108's `payment.observe` locks it alone; the paying route places its own locks).
   'payment',
+  // Reservations (#323), at the very end on purpose: seating a party opens the table, so a
+  // handler locks the sitting and its order first and the reservation after it (tickets #329 and
+  // #332 need exactly that order). A handler that would need the other way round — a reservation
+  // held before a sitting — is a stop-and-ask, not a reordering of this list.
+  'reservation',
+  'reservation_night',
+  'guest',
 ] as const
 
 /** One kind of row. */

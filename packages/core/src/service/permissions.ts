@@ -30,6 +30,21 @@ export const PERMISSIONS = [
   'night.view_full',
   /** Storno done, Mark as disputed, Dispute evidence. */
   'money.follow_up',
+  // Reservations (D141, the lead's calls; ticket #323). Any role a venue makes can be given each
+  // of them, and no role has one because of its name: there is no reservations-only account and
+  // no job title anywhere in this list.
+  /** Working tonight's reservations: arrivals, walk-ins, the waiting list, the plan's taps. */
+  'reservations.tonight',
+  /** The booking book: create, edit, cancel, delete another's, restore, copy to another night. */
+  'reservations.manage',
+  /** Set a reservation's pay rule (D136; ticket #334 uses it). */
+  'reservations.pay_rule',
+  /** Block and unblock a table (D137: a block is a reservation). */
+  'reservations.block',
+  /** Write a night that has passed, where the venue switched that on (D135). */
+  'reservations.edit_past',
+  /** End the night, with its preview and its open-bills warning (D138). */
+  'reservations.end_night',
   /** Guards, limits, service hours, the pre-opening check. */
   'settings.guards',
   /** Re-issue table codes. */
@@ -42,6 +57,14 @@ export const PERMISSIONS = [
   'settings.connect_payments',
   /** Roles, staff, PINs, shared devices. */
   'settings.roles',
+  /** The venue's reservation settings: the turn time, the past-nights switch, where the PIN falls. */
+  'settings.reservations',
+  /**
+   * The venue's guest records (D140), erasing a guest among them. Settings-class on purpose: a PIN
+   * on a shared device can never reach it, so erasing somebody always has a person's own sign-in
+   * behind it (D141).
+   */
+  'settings.guests',
 ] as const
 
 /** One venue permission. */
@@ -101,6 +124,10 @@ const STAFF_PERMISSIONS: readonly Permission[] = [
   'ordering.pause',
   'alerts.answer',
   'night.view',
+  // D141: a hostess works tonight's floor with taps, and that is what Staff is for. The booking
+  // book, the pay rule, blocks, a past night, the night's end and the two settings-class keys are
+  // a manager's.
+  'reservations.tonight',
 ]
 
 /**
@@ -118,6 +145,15 @@ export const DEFAULT_ROLE_PERMISSIONS: Readonly<Record<DefaultRoleKind, readonly
     'log.view',
     'night.view_full',
     'money.follow_up',
+    // Reservations: a manager holds all eight of D141's keys (ticket #323). The two
+    // settings-class ones still need their holder's own sign-in, never a PIN.
+    'reservations.manage',
+    'reservations.pay_rule',
+    'reservations.block',
+    'reservations.edit_past',
+    'reservations.end_night',
+    'settings.reservations',
+    'settings.guests',
   ],
   owner: PERMISSIONS,
 }
