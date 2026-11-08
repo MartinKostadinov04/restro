@@ -371,6 +371,11 @@ export interface LogLineView {
   /** A "Got it" line taken back by Undo (#234). */
   readonly refundSeenUndone: boolean
   readonly sentOrdersOfDay: number | null
+  /**
+   * A reservation entry's own code (#323): what the thing became — the party's status, the spots
+   * held or freed, a plan or a guest record kept, removed or erased. Null for every other kind.
+   */
+  readonly reservationStatus: string | null
   /** A waiter call entry's kinds (#180): the one asked for, or all of a call that ended. */
   readonly callKinds: readonly string[]
   /** The Undo of "Handled" (RR-58): a `waiter_call.done` line that opens the call again. */
@@ -390,6 +395,26 @@ export interface LogView {
   readonly hasMore: boolean
   readonly days: readonly string[]
 }
+
+/**
+ * The reservations' kinds (#323). Each of their entries says in its `to_state` what the thing
+ * became — the party's status, the spots held or freed, a plan kept or removed, a guest's record
+ * listed, archived or erased — and the Log's sentence picks the word for it. Nothing else of the
+ * entry reaches the screen: a guest's name and number are never in the Log (D140).
+ */
+const RESERVATION_KINDS = new Set<string>([
+  'reservation.created',
+  'reservation.changed',
+  'reservation.status',
+  'reservation.spots',
+  'reservation.restored',
+  'night.closed',
+  'plan.changed',
+  'spot.changed',
+  'reservation_settings.changed',
+  'guest.changed',
+  'guest.erased',
+])
 
 export function logLineView(
   line: LogLine,
@@ -466,6 +491,7 @@ export function logLineView(
     stornoUndone: line.kind === 'payment.storno' && line.toState === 'open',
     refundSeenUndone: line.kind === 'payment.refund_failed_seen' && line.toState === 'open',
     sentOrdersOfDay: line.sentOrdersOfDay,
+    reservationStatus: RESERVATION_KINDS.has(line.kind) ? line.toState : null,
     callKinds: line.callKinds,
     callUndone: line.kind === 'waiter_call.done' && line.toState === 'open',
     ...(line.kind === 'receipt.brought'

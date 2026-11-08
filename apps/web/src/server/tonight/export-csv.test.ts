@@ -61,6 +61,7 @@ const logLine = (fields: Partial<LogLineView> = {}): LogLineView => ({
   refundSeenUndone: false,
   paymentId: null,
   sentOrdersOfDay: null,
+  reservationStatus: null,
   callKinds: [],
   callUndone: false,
   ...fields,
