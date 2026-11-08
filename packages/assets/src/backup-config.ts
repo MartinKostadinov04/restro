@@ -3,10 +3,16 @@
 //   BACKUP_STORE       local | r2. Unset means local in development and tests, and an error in
 //                      production: a production deploy must say where its dumps go.
 //   LOCAL_BACKUP_DIR   local only. Default: `.local/backups` in the repository (git ignores it).
-//   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BACKUP_BUCKET
-//                      r2 only, all required (the account and key are the asset store's). The
-//                      bucket is its own, private, and never the asset or the public one.
-//   R2_ENDPOINT        r2 only. As for the asset store.
+//   R2_ACCOUNT_ID, R2_BACKUP_ACCESS_KEY_ID, R2_BACKUP_SECRET_ACCESS_KEY, R2_BACKUP_BUCKET
+//                      r2 only, all required. Only the account is shared with the asset store (it
+//                      names the account and grants nothing). The key is the dumps' own, scoped to
+//                      their bucket, and never falls back to the asset store's R2_ACCESS_KEY_ID: a
+//                      fallback is how a shared key creeps back in. The bucket is private and never
+//                      the asset or the public one.
+//   R2_BACKUP_ENDPOINT r2 only. Default: https://<R2_ACCOUNT_ID>.eu.r2.cloudflarestorage.com, the EU
+//                      jurisdiction endpoint, because the dumps' bucket is created in the EU
+//                      jurisdiction (which cannot be changed afterwards) and a jurisdiction endpoint
+//                      cannot reach buckets outside it. So it cannot be the asset store's R2_ENDPOINT.
 //
 // Errors name the variables, never their values.
 import path from 'node:path'
@@ -31,10 +37,10 @@ export class BackupStoreConfigError extends Error {
 
 const R2Schema = z.object({
   R2_ACCOUNT_ID: z.string().regex(/^[0-9a-zA-Z]{8,64}$/),
-  R2_ACCESS_KEY_ID: z.string().min(8),
-  R2_SECRET_ACCESS_KEY: z.string().min(8),
+  R2_BACKUP_ACCESS_KEY_ID: z.string().min(8),
+  R2_BACKUP_SECRET_ACCESS_KEY: z.string().min(8),
   R2_BACKUP_BUCKET: z.string().regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/),
-  R2_ENDPOINT: z.url({ protocol: /^https$/ }).optional(),
+  R2_BACKUP_ENDPOINT: z.url({ protocol: /^https$/ }).optional(),
 })
 
 /** Reads the settings from `env`; `cwd` only locates the default local folder. */
@@ -65,9 +71,11 @@ export function backupStoreConfig(
   const settings = parsed.data
   return {
     kind,
-    accessKeyId: settings.R2_ACCESS_KEY_ID,
-    secretAccessKey: settings.R2_SECRET_ACCESS_KEY,
+    accessKeyId: settings.R2_BACKUP_ACCESS_KEY_ID,
+    secretAccessKey: settings.R2_BACKUP_SECRET_ACCESS_KEY,
     bucket: settings.R2_BACKUP_BUCKET,
-    endpoint: settings.R2_ENDPOINT ?? `https://${settings.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    endpoint:
+      settings.R2_BACKUP_ENDPOINT ??
+      `https://${settings.R2_ACCOUNT_ID}.eu.r2.cloudflarestorage.com`,
   }
 }

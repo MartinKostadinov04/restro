@@ -119,6 +119,39 @@ describe('loadConfig', () => {
     })
   })
 
+  it('passes the dumps’ own key and endpoint through, and not the asset store’s', () => {
+    const base = {
+      DATABASE_URL: URL,
+      DATABASE_URL_BACKUP: 'postgres://restro_backup:pw-for-backup@localhost:54329/restro',
+      BACKUP_STORE: 'r2',
+      R2_ACCOUNT_ID: '0123456789abcdef',
+      R2_BACKUP_BUCKET: 'restro-backups-staging',
+      PUBLISH_STORE: 'local',
+      ASSET_STORE: 'local',
+    }
+    const backup = loadConfig({
+      ...base,
+      R2_BACKUP_ACCESS_KEY_ID: 'AKIABACKUPFAKE0',
+      R2_BACKUP_SECRET_ACCESS_KEY: 'backup-not-a-real-secret',
+    }).backup
+    expect(backup?.store).toEqual({
+      kind: 'r2',
+      accessKeyId: 'AKIABACKUPFAKE0',
+      secretAccessKey: 'backup-not-a-real-secret',
+      bucket: 'restro-backups-staging',
+      endpoint: 'https://0123456789abcdef.eu.r2.cloudflarestorage.com',
+    })
+    // The asset store's key does not stand in for the dumps' key.
+    const lines = problemsOf({
+      ...base,
+      R2_ACCESS_KEY_ID: 'AKIAFAKEFAKEFAKE',
+      R2_SECRET_ACCESS_KEY: 'not-a-real-secret-key',
+    })
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toContain('R2_BACKUP_ACCESS_KEY_ID')
+    expect(lines[0]).not.toContain('AKIAFAKEFAKEFAKE')
+  })
+
   it('names the backup variables that are wrong, never their values', () => {
     const lines = problemsOf({
       DATABASE_URL: URL,
