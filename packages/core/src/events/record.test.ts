@@ -98,17 +98,17 @@ describe.skipIf(!hasDatabase)('recordEvents (as the restro_app role)', () => {
 
   it('writes one row per event, with the venue, the day, the table and the moment', async () => {
     const before = new Date()
-    const seqs = await record([{ kind: 'menu.opened' }, { kind: 'order.line_added' }])
+    const seqs = await record([{ kind: 'menu.opened' }, { kind: 'waiter.call_opened' }])
     expect(seqs).toHaveLength(2)
     expect(seqs[1]).toBeGreaterThan(seqs[0] as number)
     const written = await rows()
-    expect(written.map((row) => row.kind)).toEqual(['menu.opened', 'order.line_added'])
+    expect(written.map((row) => row.kind)).toEqual(['menu.opened', 'waiter.call_opened'])
     for (const row of written) {
       expect(row.venue_id).toBe(world.venueId)
       expect(row.table_id).toBe(tableId)
       expect(row.sitting_id).toBe(sittingId)
       expect(row.service_date).toBe(DAY)
-      expect(row.retention).toBe('night')
+      expect(row.retention).toBe('record')
       // Provenance, NOT NULL on every row (rule 2); service data carries no layer (D122 §9).
       expect(row.source).toBe('guest')
       expect(row.actor).toBe('guest')
@@ -130,6 +130,8 @@ describe.skipIf(!hasDatabase)('recordEvents (as the restro_app role)', () => {
       { kind: 'language.chosen', locale: 'en_US' },
       { kind: 'order.send_attempted', outcome: 'pos_unreachable' },
       { kind: 'pay.finished', outcome: 'ok', amount: { amount_minor: 1750, currency: 'EUR' } },
+      { kind: 'order.line_added', itemId },
+      { kind: 'order.line_removed', itemId },
     ])
     const written = await rows()
     expect(written[0]).toMatchObject({ kind: 'item.opened', node_id: itemId, locale: null })
@@ -141,6 +143,16 @@ describe.skipIf(!hasDatabase)('recordEvents (as the restro_app role)', () => {
       amount_minor: '1750',
       currency: 'EUR',
     })
+    // The dish a line was added for and taken off again reaches the row: without it the pair
+    // measures nothing, because an unsent line leaves no service row of its own (D142).
+    expect(written[4]).toMatchObject({
+      kind: 'order.line_added',
+      node_id: itemId,
+      outcome: null,
+      locale: null,
+      amount_minor: null,
+    })
+    expect(written[5]).toMatchObject({ kind: 'order.line_removed', node_id: itemId })
   })
 
   it('takes the moment a phone reports, and the clock when it reports none', async () => {

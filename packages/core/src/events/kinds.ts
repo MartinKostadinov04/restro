@@ -23,24 +23,29 @@ export type GuestEventRetention = 'night' | 'record'
  * The kinds and their retention class. A later question of Martin's adds a kind here, with no
  * migration: the database checks the shape of a kind, not the list. A kind moves from `night` to
  * `record` only, never back (it would erase a record early), as the Log's kinds do.
+ *
+ * Every kind is `record` (18 months). These rows hold no personal data by construction, so
+ * keeping them longer costs nothing a guest could mind, and the nights a later question will want
+ * to compare against are the pilot's first ones. `night` would have thrown those away before the
+ * question arrived, and the one-way move does not bring purged rows back.
  */
 export const GUEST_EVENT_KINDS = {
   /** A phone opened the menu at a table: scans per night and per table, the top of the funnel. */
-  'menu.opened': 'night',
+  'menu.opened': 'record',
   /** A guest opened one item: what gets looked at and never ordered. */
-  'item.opened': 'night',
+  'item.opened': 'record',
   /** A line went onto the table's order, and one came off it: intent, and second thoughts. */
-  'order.line_added': 'night',
-  'order.line_removed': 'night',
+  'order.line_added': 'record',
+  'order.line_removed': 'record',
   /** A Send was tried: scan-to-send conversion, and the time from the scan to the first Send. */
-  'order.send_attempted': 'night',
+  'order.send_attempted': 'record',
   /** Paying in the app began, and ended: the abandoned payments no service row shows. */
-  'pay.started': 'night',
-  'pay.finished': 'night',
+  'pay.started': 'record',
+  'pay.finished': 'record',
   /** A waiter was called: calls per night, against orders per night. */
-  'waiter.call_opened': 'night',
+  'waiter.call_opened': 'record',
   /** A guest chose a menu language: whether the Bulgarian or the English menu is read. */
-  'language.chosen': 'night',
+  'language.chosen': 'record',
 } as const satisfies Record<string, GuestEventRetention>
 
 /** One guest event kind. */
@@ -94,8 +99,20 @@ export const GuestEventInputSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('menu.opened'), ...CommonFields }),
   // The item, as our own node id: never a POS id and never its name (rule 3).
   z.strictObject({ kind: z.literal('item.opened'), itemId: idSchema('nd'), ...CommonFields }),
-  z.strictObject({ kind: z.literal('order.line_added'), ...CommonFields }),
-  z.strictObject({ kind: z.literal('order.line_removed'), ...CommonFields }),
+  // The dish, as our own node id. A line added and taken off again before a Send leaves no
+  // service row at all, so these two are its only record: without the item they would say that
+  // somebody changed their mind once, which measures nothing. A sent line is in the service rows,
+  // so look-then-buy is `item.opened` against the order's own lines.
+  z.strictObject({
+    kind: z.literal('order.line_added'),
+    itemId: idSchema('nd'),
+    ...CommonFields,
+  }),
+  z.strictObject({
+    kind: z.literal('order.line_removed'),
+    itemId: idSchema('nd'),
+    ...CommonFields,
+  }),
   z.strictObject({
     kind: z.literal('order.send_attempted'),
     /** `ok`, or the code the Send was refused with. */

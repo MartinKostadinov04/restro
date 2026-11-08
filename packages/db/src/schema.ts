@@ -3197,7 +3197,10 @@ export const guestEvents = restro.table(
     tableId: text('table_id').notNull(),
     /** The table's open sitting, or null where the table had none. */
     sittingId: text('sitting_id'),
-    /** The item a guest opened (`item.opened`); null for every other kind. */
+    /**
+     * The item a guest opened (`item.opened`) or put on and took off the order
+     * (`order.line_added`, `order.line_removed`); null for every other kind.
+     */
     nodeId: text('node_id'),
     /** A pay event's amount in minor units (rule 8), with its currency; null for the rest. */
     amountMinor: bigint('amount_minor', { mode: 'number' }),

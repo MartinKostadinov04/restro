@@ -158,13 +158,27 @@ describe.skipIf(!hasDatabase)('the events of a night (as the restro_app role)', 
     // A refused edit records nothing: the line it names is not on the order.
     await act({ type: 'order.change', lineId: newId('ol'), delta: 1 })
     expect(await kinds()).toHaveLength(5)
-    // Every event of the write path carries the guest as its source and the command as its job.
+    // Every event of the write path carries the guest as its source, the command as its job, and
+    // the dish it moved — the pair's whole point, since an unsent line leaves no service row.
     const rows = await recorded()
     for (const row of rows) {
       expect(row.source).toBe('guest')
       expect(String(row.job_id).length).toBeGreaterThan(0)
       expect(row.sitting_id).not.toBeNull()
+      expect(row.node_id).toBe(item)
     }
+  })
+
+  it('records a dish per dish an edit moved, naming each one', async () => {
+    const other = newId('nd')
+    await act({ type: 'order.add', itemId: item, optionIds: [], qty: 1, note: '' })
+    const second = await act({ type: 'order.add', itemId: other, optionIds: [], qty: 1, note: '' })
+    await act({ type: 'order.remove', lineId: second.result.subjectId as string })
+    expect((await recorded()).map((row) => [row.kind, row.node_id])).toEqual([
+      ['order.line_added', item],
+      ['order.line_added', other],
+      ['order.line_removed', other],
+    ])
   })
 
   it('records a waiter called once per call, not once per tap', async () => {

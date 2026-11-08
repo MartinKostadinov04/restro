@@ -114,14 +114,19 @@ test('a night at a table is measured, and nothing about the phone is kept', asyn
   expect(events.filter((event) => event.kind === 'order.line_added')).toHaveLength(2)
   expect(events.filter((event) => event.kind === 'order.line_removed')).toHaveLength(1)
   expect(events.filter((event) => event.kind === 'menu.opened')).toHaveLength(1)
-  // The phone's own two carry what the guest chose and nothing else; the order's two carry no item.
+  // The phone's own carry what the guest chose; the scan carries no dish and the order's three
+  // all name the one dish that moved, which is what makes them worth anything (D142).
   const chosen = events.find((event) => event.kind === 'language.chosen')
   expect(chosen?.locale).toBe('en_US')
   expect(chosen?.source).toBe('guest')
   expect(events.find((event) => event.kind === 'menu.opened')?.node_id).toBeNull()
+  const moved = events.filter((event) => event.kind.startsWith('order.line_'))
+  expect(moved).toHaveLength(3)
+  expect(new Set(moved.map((event) => event.node_id)).size).toBe(1)
+  expect(moved[0]?.node_id).toMatch(/^nd_[0-9A-Za-z]+$/)
   for (const event of events) {
     expect(event.actor).toBe('guest')
-    expect(event.retention).toBe('night')
+    expect(event.retention).toBe('record')
   }
 
   // The table itself has nowhere to put anything personal.

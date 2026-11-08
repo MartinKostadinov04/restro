@@ -31,8 +31,8 @@ import {
 const ONE_OF_EACH: Record<string, GuestEventInput> = {
   'menu.opened': { kind: 'menu.opened' },
   'item.opened': { kind: 'item.opened', itemId: newId('nd') },
-  'order.line_added': { kind: 'order.line_added' },
-  'order.line_removed': { kind: 'order.line_removed' },
+  'order.line_added': { kind: 'order.line_added', itemId: newId('nd') },
+  'order.line_removed': { kind: 'order.line_removed', itemId: newId('nd') },
   'order.send_attempted': { kind: 'order.send_attempted', outcome: 'ok' },
   'pay.started': { kind: 'pay.started' },
   'pay.finished': { kind: 'pay.finished', outcome: 'ok' },
@@ -51,6 +51,15 @@ describe('the kinds', () => {
     expect(Object.keys(ONE_OF_EACH).sort()).toEqual([...GUEST_EVENT_KIND_NAMES].sort())
   })
 
+  it('keeps every kind the full 18 months (D142)', () => {
+    // These rows hold no personal data, so a longer retention costs nothing a guest could mind,
+    // and the nights a later question wants to compare against are the earliest ones. A kind that
+    // should not be kept that long is a decision to write down, not a value to change here.
+    for (const kind of GUEST_EVENT_KIND_NAMES) {
+      expect(guestEventRetentionOf(kind), kind).toBe('record')
+    }
+  })
+
   it('refuses a kind that is not in the union', () => {
     for (const kind of ['', 'menu', 'menu.closed', 'order.line_moved', 'pay', 'PAY.STARTED']) {
       expect(GuestEventInputSchema.safeParse({ kind }).success, kind).toBe(false)
@@ -62,6 +71,13 @@ describe('the kinds', () => {
     expect(GuestEventInputSchema.safeParse({ kind: 'order.send_attempted' }).success).toBe(false)
     expect(GuestEventInputSchema.safeParse({ kind: 'pay.finished' }).success).toBe(false)
     expect(GuestEventInputSchema.safeParse({ kind: 'language.chosen' }).success).toBe(false)
+    // The two order kinds need the dish they moved, or they measure nothing.
+    expect(GuestEventInputSchema.safeParse({ kind: 'order.line_added' }).success).toBe(false)
+    expect(GuestEventInputSchema.safeParse({ kind: 'order.line_removed' }).success).toBe(false)
+    expect(
+      GuestEventInputSchema.safeParse({ kind: 'order.line_added', itemId: 'ol_1234567890' })
+        .success,
+    ).toBe(false)
     // A POS id or a name where our own node id belongs (rule 3).
     expect(GuestEventInputSchema.safeParse({ kind: 'item.opened', itemId: '30001' }).success).toBe(
       false,

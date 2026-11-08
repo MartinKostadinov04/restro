@@ -86,7 +86,12 @@ export async function recordEvents(
     kind: event.kind,
     tableId: where.tableId,
     sittingId: event.sittingId ?? where.sittingId ?? null,
-    nodeId: event.kind === 'item.opened' ? event.itemId : null,
+    nodeId:
+      event.kind === 'item.opened' ||
+      event.kind === 'order.line_added' ||
+      event.kind === 'order.line_removed'
+        ? event.itemId
+        : null,
     amountMinor:
       (event.kind === 'pay.started' || event.kind === 'pay.finished') && event.amount !== undefined
         ? event.amount.amount_minor
