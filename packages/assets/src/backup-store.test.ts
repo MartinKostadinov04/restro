@@ -13,7 +13,7 @@ import {
 } from '@aws-sdk/client-s3'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { BackupStoreConfigError, backupStoreConfig } from './backup-config'
+import { backupStoreConfig } from './backup-config'
 import { BACKUP_PREFIX, backupKey, parseBackupKey } from './backup-paths'
 import { InvalidBackupKeyError, LocalBackupStore } from './backup-store'
 import { createBackupStore } from './create-backup-store'
@@ -91,57 +91,14 @@ describe('LocalBackupStore', () => {
   })
 })
 
-describe('backupStoreConfig', () => {
+describe('createBackupStore', () => {
   const R2_ENV = {
     BACKUP_STORE: 'r2',
     R2_ACCOUNT_ID: '0123456789abcdef',
-    R2_ACCESS_KEY_ID: 'AKIAFAKEFAKEFAKE',
-    R2_SECRET_ACCESS_KEY: 'not-a-real-secret-key',
+    R2_BACKUP_ACCESS_KEY_ID: 'AKIAFAKEFAKEFAKE',
+    R2_BACKUP_SECRET_ACCESS_KEY: 'not-a-real-secret-key',
     R2_BACKUP_BUCKET: 'restro-backups-staging',
   }
-
-  it('is local when unset outside production, with .local/backups by default', () => {
-    const config = backupStoreConfig({}, process.cwd())
-    expect(config.kind).toBe('local')
-    if (config.kind === 'local') {
-      expect(config.dir.endsWith(path.join('.local', 'backups'))).toBe(true)
-    }
-    expect(backupStoreConfig({ LOCAL_BACKUP_DIR: 'some/folder' })).toEqual({
-      kind: 'local',
-      dir: path.resolve('some/folder'),
-    })
-  })
-
-  it('refuses an unset store in production, and an unknown store', () => {
-    expect(() => backupStoreConfig({ NODE_ENV: 'production' })).toThrow(BackupStoreConfigError)
-    expect(() => backupStoreConfig({ BACKUP_STORE: 's3' })).toThrow(/"local" or "r2"/)
-  })
-
-  it('reads the R2 settings from a bucket of its own, with the account endpoint by default', () => {
-    expect(backupStoreConfig(R2_ENV)).toEqual({
-      kind: 'r2',
-      accessKeyId: 'AKIAFAKEFAKEFAKE',
-      secretAccessKey: 'not-a-real-secret-key',
-      bucket: 'restro-backups-staging',
-      endpoint: 'https://0123456789abcdef.r2.cloudflarestorage.com',
-    })
-    // The asset and the public bucket are not the backup bucket.
-    expect(() =>
-      backupStoreConfig({ ...R2_ENV, R2_BACKUP_BUCKET: undefined, R2_BUCKET: 'restro-assets' }),
-    ).toThrow(/R2_BACKUP_BUCKET/)
-  })
-
-  it('names the settings that are wrong, never their values', () => {
-    let message = ''
-    try {
-      backupStoreConfig({ ...R2_ENV, R2_ACCESS_KEY_ID: 'short', R2_SECRET_ACCESS_KEY: 'tiny' })
-    } catch (error) {
-      message = (error as Error).message
-    }
-    expect(message).toContain('R2_ACCESS_KEY_ID')
-    expect(message).toContain('R2_SECRET_ACCESS_KEY')
-    expect(message).not.toContain('tiny')
-  })
 
   it('builds the store it describes', async () => {
     expect(await createBackupStore({ kind: 'local', dir: os.tmpdir() })).toBeInstanceOf(

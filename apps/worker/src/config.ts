@@ -292,10 +292,14 @@ function environmentSchema(defaultWorkerId: () => string) {
         z.string().trim().refine(isPostgresUrl, { error: NOT_A_POSTGRES_URL }).optional(),
       ),
       PG_DUMP_PATH: z.preprocess(unsetWhenBlank, z.string().trim().optional()),
-      // Passed on to @restro/assets (backupStoreConfig); the other R2_* are shared with the asset store.
+      // Passed on to @restro/assets (backupStoreConfig). The dumps have their own key and endpoint;
+      // only R2_ACCOUNT_ID is shared with the asset store (it names the account, it grants nothing).
       BACKUP_STORE: z.string().optional(),
       LOCAL_BACKUP_DIR: z.string().optional(),
       R2_BACKUP_BUCKET: z.string().optional(),
+      R2_BACKUP_ACCESS_KEY_ID: z.string().optional(),
+      R2_BACKUP_SECRET_ACCESS_KEY: z.string().optional(),
+      R2_BACKUP_ENDPOINT: z.string().optional(),
       WORKER_ID: z
         .string()
         .optional()
@@ -535,10 +539,10 @@ function environmentSchema(defaultWorkerId: () => string) {
               BACKUP_STORE: env.BACKUP_STORE,
               LOCAL_BACKUP_DIR: env.LOCAL_BACKUP_DIR,
               R2_ACCOUNT_ID: env.R2_ACCOUNT_ID,
-              R2_ACCESS_KEY_ID: env.R2_ACCESS_KEY_ID,
-              R2_SECRET_ACCESS_KEY: env.R2_SECRET_ACCESS_KEY,
+              R2_BACKUP_ACCESS_KEY_ID: env.R2_BACKUP_ACCESS_KEY_ID,
+              R2_BACKUP_SECRET_ACCESS_KEY: env.R2_BACKUP_SECRET_ACCESS_KEY,
               R2_BACKUP_BUCKET: env.R2_BACKUP_BUCKET,
-              R2_ENDPOINT: env.R2_ENDPOINT,
+              R2_BACKUP_ENDPOINT: env.R2_BACKUP_ENDPOINT,
             }),
             pgDumpPath: env.PG_DUMP_PATH ?? null,
           }
@@ -616,7 +620,7 @@ function describeIssue(issue: z.core.$ZodIssue): string {
  * | `DATABASE_URL` | postgres:// URL of the app role `restro_app` | required |
  * | `DATABASE_URL_PURGE` | postgres:// URL of the purge role `restro_purge` (D83); without it no purge job runs | unset |
  * | `DATABASE_URL_BACKUP` | postgres:// URL of the backup role `restro_backup` (ticket #320); without it no `db-backup` job runs | unset |
- * | `BACKUP_STORE`, `LOCAL_BACKUP_DIR`, `R2_BACKUP_BUCKET` | where the dumps go (see @restro/assets); read only with `DATABASE_URL_BACKUP` | local in development |
+ * | `BACKUP_STORE`, `LOCAL_BACKUP_DIR`, `R2_BACKUP_BUCKET`, `R2_BACKUP_ACCESS_KEY_ID`, `R2_BACKUP_SECRET_ACCESS_KEY`, `R2_BACKUP_ENDPOINT` | where the dumps go and the key that reaches them (see @restro/assets); read only with `DATABASE_URL_BACKUP` | local in development |
  * | `PG_DUMP_PATH` | the `pg_dump` to run; its major version must be the database's or newer | the PATH's |
  * | `WORKER_ID` | name of this process in `worker_heartbeats` | the host name |
  * | `WORKER_HEALTH_PORT` | port of `GET /health` | 8081 |
