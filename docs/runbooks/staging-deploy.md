@@ -112,10 +112,12 @@ paid on staging.
 9. The worker needs **no** public domain. It talks to the web app over Railway's private network.
 
 **What is not ready yet.** The repository has no deploy configuration in it — no `railway.json`, no
-Dockerfile, nothing that tells a builder how to build a pnpm workspace with a pinned Node 24. The
-commands in step 7 are the right ones, but whether Railway's builder gets there on its own is only
-proven by the first build. Expect the lead to have one ticket's worth of work here, and tell the
-lead when the first build fails rather than changing settings at random.
+Dockerfile, nothing that tells a builder how to build a pnpm workspace with a pinned Node 24. That
+is ticket #375, and it puts the commands in step 7 into `apps/web/railway.json` and
+`apps/worker/railway.json` so nobody types them into a dashboard; once it has landed, point each
+service's config path at its file instead of filling the two command boxes. Whether Railway's
+builder gets there is only truly proven by the first build, so tell the lead when a build fails
+rather than changing settings at random.
 
 ## 6. The staging variables
 

@@ -74,7 +74,7 @@ Actions → **DB migrate (staging)** → **Run workflow**, from `main` → then 
 
 `docs/runbooks/staging-deploy.md` §5 covers this click by click; in short: a Railway account on the Hobby plan ($5, includes $5 of usage), one project, region **EU West (Amsterdam)**, two services from this repository — the web app and the worker, both with an empty root directory and a filtered build command — and a **staging** environment that you stop when you are not using it (about $3–5 a month while running). Do not connect a production environment yet.
 
-Two things the runbook found that this plan did not know when it was written. **Cloudflare Turnstile** needs its own staging widget, because the published test keys must not be used off this PC and without the secret a guest's Send fails its check: five minutes in the Cloudflare account Martin already has. And **there is no deploy configuration in the repository** — no `railway.json`, no Dockerfile — so the first build is likely to need a ticket's worth of work from the lead.
+Two things the runbook found that this plan did not know when it was written. **Cloudflare Turnstile** needs its own staging widget, because the published test keys must not be used off this PC and without the secret a guest's Send fails its check: five minutes in the Cloudflare account Martin already has. And **there is no deploy configuration in the repository** — no `railway.json`, no Dockerfile — which is now ticket #375, opened on Martin's go-ahead the same day and linked as a blocker of #117 so the board shows the two checks waiting on it.
 
 ### 4.4 The staging variables
 

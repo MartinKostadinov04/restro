@@ -82,6 +82,7 @@ Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a n
 - #311 Martin (triage): a staff-only account for the bar tablet.
 - #320 Claude (upkeep): hourly database dumps to R2, 30-day retention, alert on failure; #340 the dumps get their own storage key and EU endpoint; #339 Martin: switch the database backups on (bucket, role, client tools, a first dump).
 - #202 Claude (upkeep): security advisories (Next.js 16.4.1 and others) before the first deploy.
+- #375 Claude (upkeep): the Railway deploy configuration (`railway.json` for web and worker, the builder's Node, the `NEXT_PUBLIC_*` values the web build inlines); blocks #117's checks 4 and 5. Nothing deploys from it.
 - #117 Martin: the six sandbox checks before the pilot. 1–3 passed 10-29; 6 (3-D Secure in the card form) runs 11-09. 4 and 5 wait on a staging deploy, planned step by step in `docs/deliverables/2026-11-09-staging-chain-for-stripe-checks.md`, with his clicks written out in `docs/runbooks/staging-deploy.md`: his part is the acceptance walk, the five `staging` secrets, the migration run, a Turnstile widget, Railway, the variables, the deploy, and for 5 the domain and his own phone. Open for him there: `sim-pos` on staging, and whether Railway's Hobby plan lets him pick the Amsterdam region.
 - #349 Martin: walk-through of st/foundation, pick from the low points.
 - #281 Claude: the card form draws in the venue's font.
