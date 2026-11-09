@@ -58,12 +58,19 @@ const SYMBOL_ICON: Record<SpotSymbol, LucideIcon> = {
 }
 
 /** Each state's own symbol and surface. The word beside it is `plan-words.ts`'s. */
+// One accent and nothing more (D107, D123, and the night's list beside it, which marks a state with
+// a plain outline badge): the room is read by its words and its symbols, the surfaces only say how
+// taken a spot is — empty, held, full — and the single accent is kept for the one state that asks
+// the hostess to do something now. A block is dashed, which is a shape, not a colour (WCAG 1.4.1).
 const STATE_LOOK: Record<RvSpotState, { readonly icon: LucideIcon; readonly tile: string }> = {
   free: { icon: CircleIcon, tile: 'border-border bg-card text-foreground' },
-  held: { icon: ClockIcon, tile: 'border-info/70 bg-info/10 text-foreground' },
-  sitting: { icon: UsersIcon, tile: 'border-success/70 bg-success/15 text-foreground' },
-  late: { icon: TriangleAlertIcon, tile: 'border-warning/80 bg-warning/20 text-foreground' },
-  blocked: { icon: BanIcon, tile: 'border-foreground/40 bg-muted text-muted-foreground' },
+  held: { icon: ClockIcon, tile: 'border-foreground/25 bg-muted/50 text-foreground' },
+  sitting: { icon: UsersIcon, tile: 'border-foreground/50 bg-muted text-foreground' },
+  late: { icon: TriangleAlertIcon, tile: 'border-warning bg-warning/20 text-foreground' },
+  blocked: {
+    icon: BanIcon,
+    tile: 'border-dashed border-foreground/40 bg-muted/40 text-muted-foreground',
+  },
 }
 
 /** One kind's symbol, by name. */
