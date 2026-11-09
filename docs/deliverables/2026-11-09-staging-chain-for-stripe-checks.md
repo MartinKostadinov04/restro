@@ -49,6 +49,9 @@ A shortcut exists and I recommend against it: letting the migrate workflow run f
 
 ## 4. Martin's steps, click by click
 
+Written out in full, with the Railway and Turnstile steps and the whole variable list, in
+`docs/runbooks/staging-deploy.md` (Martin asked for it the same day). What follows is the summary.
+
 ### 4.1 The five GitHub secrets (about 20 minutes)
 
 GitHub → the repository → **Settings → Environments → staging** (create it if it is not there) → **Add secret**, five times. `docs/runbooks/supabase-setup.md` sections 4 and 5 say where each value comes from; sections 5 and 8 cover generating and later rotating the passwords. Also add a **required reviewer** (yourself) on that environment, so a run always waits for your approval.
@@ -69,11 +72,13 @@ Actions → **DB migrate (staging)** → **Run workflow**, from `main` → then 
 
 ### 4.3 Railway (about 20 minutes)
 
-The T25 guide covers this in full; in short: a Railway account on the Hobby plan ($5, includes $5 of usage), one project, region **EU West (Amsterdam)**, two services from this repository — the web app and the worker — and a **staging** environment that you stop when you are not using it (about $3–5 a month while running). Do not connect a production environment yet.
+`docs/runbooks/staging-deploy.md` §5 covers this click by click; in short: a Railway account on the Hobby plan ($5, includes $5 of usage), one project, region **EU West (Amsterdam)**, two services from this repository — the web app and the worker, both with an empty root directory and a filtered build command — and a **staging** environment that you stop when you are not using it (about $3–5 a month while running). Do not connect a production environment yet.
+
+Two things the runbook found that this plan did not know when it was written. **Cloudflare Turnstile** needs its own staging widget, because the published test keys must not be used off this PC and without the secret a guest's Send fails its check: five minutes in the Cloudflare account Martin already has. And **there is no deploy configuration in the repository** — no `railway.json`, no Dockerfile — so the first build is likely to need a ticket's worth of work from the lead.
 
 ### 4.4 The staging variables
 
-The lead gives you the exact list when step 5 is done; it is drawn from `.env.example` and from what is already in `E:\Restro\.env.local`. It is one paste per variable into Railway's variables screen and includes the database URLs, the R2 keys you already have, the auth secret, and the Stripe **test** keys. No value goes through chat.
+The whole list is in the runbook §6, split by service. The lead fills a git-ignored file on this PC once the Railway address exists, generating every random key locally, and Martin pastes it into Railway's raw editor — no value through chat. One finding worth having here: both stores can be `local`, which the code allows outside development as long as the setting is explicit, so **staging needs no public R2 bucket and no CDN domain**. The price is that published files are gone after each deploy and a venue has to be published again; a Railway volume fixes that if it becomes annoying.
 
 ### 4.5 The domain (check 5 only)
 
@@ -95,3 +100,5 @@ Sources: <https://support.stripe.com/questions/testing-apple-pay-with-stripe>, <
 
 1. **Does the acceptance walk have to come first?** It is listed first because merging ordering and paying into `main` before Martin has seen them working would put code he has not accepted on the deploy path. *Recommendation:* yes, keep it first; it is also the longest-standing item.
 2. **Staging subdomain or the bare domain for check 5?** *Recommendation:* `staging.<domain>`, registered for test mode only, so the pilot's own host is registered fresh and live-mode registration is never done against a test deployment.
+3. **`sim-pos` on staging.** To pay there has to be a bill, and a bill comes from a POS; the stack doc says a simulated POS on staging "is a later step that needs Martin's OK". *Recommendation:* yes, for these checks. The guardrail is already in the code — the worker refuses source kind `sim` in production and the picker hides it there — so a yes for staging cannot reach production. Pointing staging at the barsy test installation instead drags a second system into a payment check that has nothing to do with it.
+4. **Does Railway's Hobby plan allow choosing a region?** Railway's current documentation does not gate it and the pricing page has no region row; one old forum answer says it is Pro-only. *Recommendation:* try it on Hobby, and if Railway refuses, Pro at $20 a month is not optional — running outside the EU is not a trade we can make (D43, D54). Martin finds out in one click at §5.5 of the runbook.
