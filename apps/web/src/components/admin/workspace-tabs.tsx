@@ -185,7 +185,10 @@ export function SettingsSections({
       select={select}
       contents={contents}
       label={t('switchSection')}
-      listClassName="hidden lg:inline-flex"
+      // Nine sections on a venue with everything (Reservations made the ninth) do not fit one row
+      // beside their icons below 2xl: the icons go first, and the row scrolls inside itself
+      // rather than the page.
+      listClassName="hidden max-w-full overflow-x-auto lg:inline-flex [&_svg]:hidden 2xl:[&_svg]:block"
     />
   )
 }
