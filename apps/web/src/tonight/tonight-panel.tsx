@@ -513,7 +513,7 @@ export function TonightPanel({
   // A venue with no POS still reads right where a sentence names its system.
   const named = view.source === '' ? { ...view, source: t('source_none') } : view
   return (
-    <RunProvider>
+    <RunProvider asks={view.asks}>
       <Content view={named} pushKey={pushKey} tablet={tablet} />
     </RunProvider>
   )

@@ -197,6 +197,13 @@ export interface TonightView {
   /** The payment provider's name for `{provider}`, or null when it is not known. */
   readonly provider: string | null
   readonly device: boolean
+  /**
+   * Whether a write must name a person before it runs: true on a shared device nobody is on, false
+   * on a person's own session and on a shared device whose person is still on it (their PIN started
+   * their own short session, D141 12.11, #324). `device` stays true there: the controls a shared
+   * device shows and the tips it hides do not change because somebody typed a PIN.
+   */
+  readonly asks: boolean
   /** Restro's admin team, on their own session: a Restro pause has their button (D120). */
   readonly operator: boolean
   /**
@@ -344,6 +351,8 @@ export function buildTonightView(input: {
   readonly currency: string
   readonly provider?: string | null
   readonly operator?: boolean
+  /** A person's own short session is on this shared device: no write asks for a PIN (#324). */
+  readonly remembered?: boolean
   readonly now: Date
 }): TonightView {
   const { tonight, timezone } = input
@@ -629,6 +638,7 @@ export function buildTonightView(input: {
     currency: input.currency,
     provider: input.provider ?? null,
     device: tonight.device,
+    asks: tonight.device && input.remembered !== true,
     operator: input.operator === true && !tonight.device,
     barTablet:
       !tonight.device &&
