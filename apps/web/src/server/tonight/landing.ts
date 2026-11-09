@@ -10,20 +10,24 @@ import { getPool } from '../db'
 import { reservationsOffered } from '../reservations/load'
 import { canManageIntegration } from '../roles'
 
-/** The one venue a staff-only sign-in works at, or null (then the venues list shows). */
-export async function staffLandingVenue(input: {
+/** The one venue a staff-only sign-in works at, and whether this session is a shared device. */
+async function staffLandingPlace(input: {
   readonly tenantId: string
   readonly role: string
   readonly userId: string
   readonly sessionId: string
-}): Promise<string | null> {
-  if (canManageIntegration(input.role)) return null
+}): Promise<{ venueId: string | null; device: boolean }> {
+  if (canManageIntegration(input.role)) return { venueId: null, device: false }
+  let device = false
   const venueIds = await withTenant(getPool(), input.tenantId, async (tx) => {
-    const device = await tx
+    const found = await tx
       .select({ venueId: sharedDevices.venueId })
       .from(sharedDevices)
       .where(and(eq(sharedDevices.sessionId, input.sessionId), isNull(sharedDevices.revokedAt)))
-    if (device.length > 0) return device.map((row) => row.venueId)
+    if (found.length > 0) {
+      device = true
+      return found.map((row) => row.venueId)
+    }
     const assigned = await tx
       .select({ venueId: staffAssignments.venueId })
       .from(staffAssignments)
@@ -38,7 +42,17 @@ export async function staffLandingVenue(input: {
     return assigned.map((row) => row.venueId)
   })
   const unique = [...new Set(venueIds)]
-  return unique.length === 1 ? (unique[0] ?? null) : null
+  return { venueId: unique.length === 1 ? (unique[0] ?? null) : null, device }
+}
+
+/** The one venue a staff-only sign-in works at, or null (then the venues list shows). */
+export async function staffLandingVenue(input: {
+  readonly tenantId: string
+  readonly role: string
+  readonly userId: string
+  readonly sessionId: string
+}): Promise<string | null> {
+  return (await staffLandingPlace(input)).venueId
 }
 
 /** Where a staff-only sign-in lands: the venue, and the screen their role starts a shift on. */
@@ -51,8 +65,12 @@ export interface StaffLanding {
 /**
  * Where a staff-only sign-in lands (D141; Martin, 11-08): the first screen the person's
  * permissions allow — Reservations if they work tonight's reservations, else Tonight if they open
- * and close tables, else the venue's page. It follows the role, never the device and never a
- * per-person choice; a venue that ever wants another home screen puts it on the role.
+ * and close tables, else the venue's page. It follows the role, never a per-person choice; a venue
+ * that ever wants another home screen puts it on the role.
+ *
+ * A shared device is the one exception, and not a per-person one: a tablet on a counter is
+ * Tonight's (D122 §7, RR-83), so it opens there and reaches the night's list as a tab (#326). The
+ * tab it may open at all is `sharedDeviceTabOf`'s answer, and this never sends it elsewhere.
  */
 export async function staffLanding(input: {
   readonly tenantId: string
@@ -60,8 +78,9 @@ export async function staffLanding(input: {
   readonly userId: string
   readonly sessionId: string
 }): Promise<StaffLanding | null> {
-  const venueId = await staffLandingVenue(input)
+  const { venueId, device } = await staffLandingPlace(input)
   if (venueId === null) return null
+  if (device) return { venueId, tab: 'tonight' }
   const actor = { kind: 'user', userId: input.userId, sessionId: input.sessionId } as const
   if (
     await reservationsOffered({

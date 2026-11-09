@@ -214,10 +214,8 @@ test('on the shared tablet: subscribes the tablet’s account with no PIN, and h
   })
   seed('device', TONIGHT_TABLET_EMAIL)
   await page.goto('/venues')
-  // The device's role works tonight's reservations, so it opens there (D141); the control is on
-  // Tonight, one tab away.
-  await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=reservations/)
-  await page.goto(`${new URL(page.url()).pathname}?tab=tonight`)
+  // A shared device opens on Tonight, where this control is (D122 §7, #326).
+  await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=tonight/)
   await inState(page, 'off')
   await expect(control(page)).toContainText('Alerts on this tablet: off')
   await page.getByRole('button', { name: 'Turn on' }).click()
