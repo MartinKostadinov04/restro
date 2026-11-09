@@ -356,6 +356,54 @@ test('the targets are 44 px or more on the tablet, in both themes', async () => 
   }
 })
 
+test('the tables grid has no sideways scroll from 768 to 1366 px, with the longest Bulgarian status word (#348)', async () => {
+  const { page, context } = tablet
+  const origin = new URL(page.url()).origin
+  await context.addCookies([{ name: 'NEXT_LOCALE', value: 'bg', url: origin }])
+  try {
+    await openTonight(page, 'busy')
+    for (const width of [768, 1024, 1180, 1366]) {
+      await page.setViewportSize({ width, height: 820 })
+      // Below lg (1024) one part shows at a time, and Tables is one tap on the switch.
+      const tablesSwitch = tonight(page).getByRole('button', { name: 'Маси', exact: true })
+      if (await tablesSwitch.isVisible()) await tablesSwitch.click()
+      const tiles = page.getByTestId('table-tile')
+      await expect(tiles.first()).toBeVisible()
+      // The page itself has no sideways scroll either.
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth),
+        `${width} px page`,
+      ).toBe(false)
+      // From the grid up to Tonight (its scrolling columns sit inside it): nothing wider than its box.
+      const wider = await tiles.first().evaluate((first) => {
+        const out: string[] = []
+        for (let el: HTMLElement | null = first.closest('ul'); el !== null; el = el.parentElement) {
+          if (el.scrollWidth > el.clientWidth)
+            out.push(`${el.tagName}.${el.className}`.slice(0, 60))
+          if (el.dataset.testid === 'tonight') break
+        }
+        return out
+      })
+      expect(wider, `${width} px`).toEqual([])
+      // Every tile fits its box and is a 44 px target, and its status word stays on one line
+      // (13 px text, 16 px line): wrapping is the safety net, not what a tile normally does.
+      const tight = await tiles.evaluateAll(
+        (els) =>
+          els.filter(
+            (el) =>
+              el.scrollWidth > el.clientWidth ||
+              el.getBoundingClientRect().height < 44 ||
+              (el.lastElementChild?.getBoundingClientRect().height ?? 0) > 20,
+          ).length,
+      )
+      expect(tight, `${width} px tiles`).toBe(0)
+    }
+  } finally {
+    await context.addCookies([{ name: 'NEXT_LOCALE', value: 'en', url: origin }])
+    await page.setViewportSize(TABLET)
+  }
+})
+
 test('on a phone: one column, a switch between Needs you and Tables, no sideways scroll', async () => {
   const { page } = waiter
   await page.setViewportSize(PHONE)
