@@ -117,7 +117,7 @@ export interface SheetSale {
    * The venue's stock comes from its POS (D124 §6): nobody marks sold out here, whatever the role.
    * Tells "mark it there" apart from "your role may not" when `canMark` is false.
    */
-  readonly tillStock: boolean
+  readonly stockFromTill: boolean
 }
 
 /** Everything the item sheet needs to draw its four tabs. */

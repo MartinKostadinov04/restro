@@ -239,17 +239,23 @@ describe.skipIf(!hasDatabase)('sold out tonight (as the restro_app role)', () =>
         soldOutTonight: false,
         offSale: null,
         canMark: true,
-        tillStock: false,
+        stockFromTill: false,
       })
       await setItemsSoldOut(scope(), realClock, { itemIds: [other], soldOut: true })
       expect((await loadItemSheet(mayMark, mayMarkServices))?.sale).toEqual({
         soldOutTonight: true,
         offSale: null,
         canMark: true,
-        tillStock: false,
+        stockFromTill: false,
       })
       const [mayNot, mayNotServices] = sheet(other, false)
       expect((await loadItemSheet(mayNot, mayNotServices))?.sale.canMark).toBe(false)
+      // A POS venue's sheet says the POS is the reason, apart from the role.
+      const posSheet = await loadItemSheet(
+        { ...mayNot, canMarkSoldOut: false, venueHasTill: true },
+        mayNotServices,
+      )
+      expect(posSheet?.sale).toMatchObject({ canMark: false, stockFromTill: true })
 
       await setItemsSoldOut(scope(), realClock, { itemIds: [other], soldOut: false })
       expect((await loadItemSheet(mayMark, mayMarkServices))?.sale.soldOutTonight).toBe(false)

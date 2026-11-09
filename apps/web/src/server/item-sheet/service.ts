@@ -362,7 +362,7 @@ export async function loadItemSheet(
     sale: {
       ...saleStateOf(state.item.fields.for_sale),
       canMark: scope.canMarkSoldOut === true,
-      tillStock: scope.venueHasTill === true,
+      stockFromTill: scope.venueHasTill === true,
     },
     nameFromTill: state.nameFromTill,
     payFirstDefault,

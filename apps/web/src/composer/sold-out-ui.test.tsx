@@ -242,7 +242,7 @@ describe('the sale card of the item sheet', () => {
     soldOutTonight: false,
     offSale: null,
     canMark: true,
-    tillStock: false,
+    stockFromTill: false,
     ...change,
   })
 
@@ -315,7 +315,7 @@ describe('the sale card of the item sheet', () => {
 
   it('on a POS venue blames the stock, not the role, even for an owner', () => {
     // An owner on a POS venue: canMark is false because the POS says what ran out (D124 §6).
-    const pos = sale({ canMark: false, tillStock: true })
+    const pos = sale({ canMark: false, stockFromTill: true })
     const en = renderWithIntl(<ItemSheetSale sale={pos} busy={false} onChange={noop} />)
     expect(screen.queryByRole('button')).toBeNull()
     expect(screen.getByTestId('sale-note').textContent).toBe(
