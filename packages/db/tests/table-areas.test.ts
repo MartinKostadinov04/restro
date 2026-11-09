@@ -12,7 +12,7 @@ import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { APP_SCHEMA, TABLE_ACCESS } from '../src/table-access'
-import { TABLE_AREAS, type TableArea, tablesInArea } from '../src/table-areas'
+import { NON_CORE_TABLE_AREAS, TABLE_AREAS, type TableArea, tablesInArea } from '../src/table-areas'
 import { hasDatabase, openOwnerPool } from './database'
 
 interface ForeignKey {
@@ -52,6 +52,16 @@ describe('the table areas list', () => {
 
   it('gives every table of the access list an area, and names no table that is not there', () => {
     expect(Object.keys(areas).sort()).toEqual(Object.keys(TABLE_ACCESS).sort())
+    for (const name of Object.keys(NON_CORE_TABLE_AREAS))
+      expect(TABLE_ACCESS, name).toHaveProperty(name)
+  })
+
+  // Core is the default, so a new events table that was not named would be checked by nothing.
+  // The naming catches the obvious case; the rule in table-areas.ts says to name it on creation.
+  it('keeps every table named for guest events in the events area (core is only the default)', () => {
+    const named = Object.keys(TABLE_ACCESS).filter((name) => /^guest_event/.test(name))
+    expect(named.length).toBeGreaterThan(0)
+    for (const name of named) expect(areas[name], name).toBe('events')
   })
 
   it('puts guest events in the events area and the provenance log, which shares a name, in core', () => {

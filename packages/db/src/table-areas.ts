@@ -10,73 +10,32 @@
 //   purpose, because the database refusing a payment that points at nothing is protection the
 //   service relies on. Do not "fix" them; tests/table-areas.test.ts asserts nothing about money.
 // - This list, tests/table-areas.test.ts and any later schema split read the same definition.
-// - The list is typed over `TABLE_ACCESS`, so a table added there without an area here is a
-//   compile error, and the test fails on a table in the database that is in neither.
+// - Core is the default: a table in `TABLE_ACCESS` that is not named below is core. So a new table
+//   of the events area MUST be named below the day it is created, or the foreign-key test never
+//   looks at it; the naming test in tests/table-areas.test.ts catches the obvious forgetting.
 //
-// Adding a table: put it in `TABLE_ACCESS` (see table-access.ts) and give it its area here. A table
-// of guest-event analytics (D103, T84) belongs to `events` and must not reference a core table:
-// ids of core rows are plain text, validated by a CHECK, as `guest_events` does (migration 0045).
-// The reservation tables (#323) are not here yet: they join `bookings`' own area when they land.
-//
-// This file must stay free of runtime imports, like table-access.ts.
-import type { RestroTableName } from './table-access'
+// Adding a table: put it in `TABLE_ACCESS` (see table-access.ts); if it is not core, name it below.
+// A table of guest-event analytics (D103, T84) belongs to `events` and must not reference a core
+// table: ids of core rows are plain text, validated by a CHECK, as `guest_events` does (migration
+// 0045). The reservation tables (#323) are not here yet: they join `bookings`' own area when they
+// land.
+import { type RestroTableName, TABLE_ACCESS } from './table-access'
 
 /** The areas D103 names for the later schema split. */
 export type TableArea = 'core' | 'events' | 'money' | 'auth' | 'jobs'
 
 /**
- * Every table in schema `restro` and the area it belongs to. Note the name clash: the table
- * `events` is the append-only provenance log of every change (rule 2), so it is **core**; the
- * guest events of D103 are `guest_events`.
+ * The tables that are NOT core, by area. Core is everything else in `TABLE_ACCESS`: the venues,
+ * menus and documents, publishing, tables and service, the connector's records and the purge
+ * records. (Core is the default so that this file names no connector's table: the vendor-words
+ * guardrail, D67, keeps vendor names out of `packages/db/src`.)
+ *
+ * Note the name clash: the table `events` is the append-only provenance log of every change
+ * (rule 2), so it is **core**; the guest events of D103 are `guest_events`. `job_runs`, the record
+ * of each sync/resolve/publish run with foreign keys into the integrations, is core too; whether
+ * it moves to `jobs` with the queue is a call for the split itself.
  */
-export const TABLE_AREAS = {
-  // --- core: venues, menus and documents, publishing, tables and service -------------------
-  tenants: 'core',
-  venues: 'core',
-  templates: 'core',
-  integrations: 'core',
-  barsy_venues: 'core',
-  menus: 'core',
-  nodes: 'core',
-  placements: 'core',
-  field_values: 'core',
-  source_records: 'core',
-  source_links: 'core',
-  events: 'core',
-  // The record of each sync/resolve/publish run, with FKs into integrations; it is purged with
-  // the venue's data. Whether it moves to `jobs` with the queue is a call for the split itself.
-  job_runs: 'core',
-  places: 'core',
-  assets: 'core',
-  areas: 'core',
-  tables: 'core',
-  menu_routes: 'core',
-  venue_slug_history: 'core',
-  organization_slug_history: 'core',
-  snapshots: 'core',
-  publish_pointers: 'core',
-  item_first_published: 'core',
-  tags: 'core',
-  tombstones: 'core',
-  purge_log: 'core',
-  bars: 'core',
-  sittings: 'core',
-  table_orders: 'core',
-  sent_orders: 'core',
-  sent_order_notes: 'core',
-  locks: 'core',
-  bill_readings: 'core',
-  log_entries: 'core',
-  waiter_calls: 'core',
-  alerts: 'core',
-  pauses: 'core',
-  service_days: 'core',
-  staff_members: 'core',
-  venue_roles: 'core',
-  staff_assignments: 'core',
-  shared_devices: 'core',
-  push_subscriptions: 'core',
-
+export const NON_CORE_TABLE_AREAS = {
   // --- events: guest events (D103; T84). No foreign key into the core, ever. ----------------
   guest_events: 'events',
 
@@ -100,11 +59,22 @@ export const TABLE_AREAS = {
 
   // --- jobs: the worker's own bookkeeping (the pg-boss queue itself lives in schema `pgboss`) --
   worker_heartbeats: 'jobs',
-} as const satisfies Record<RestroTableName, TableArea>
+} as const satisfies Partial<Record<RestroTableName, Exclude<TableArea, 'core'>>>
+
+/**
+ * Every table in schema `restro` and the area it belongs to: the non-core ones above, and core
+ * for the rest. A table added to `TABLE_ACCESS` is core until it is named above.
+ */
+export const TABLE_AREAS: Readonly<Record<RestroTableName, TableArea>> = Object.fromEntries(
+  (Object.keys(TABLE_ACCESS) as RestroTableName[]).map((name) => [
+    name,
+    (NON_CORE_TABLE_AREAS as Partial<Record<string, TableArea>>)[name] ?? 'core',
+  ]),
+) as Record<RestroTableName, TableArea>
 
 /** The names of the tables in an area, sorted. */
 export function tablesInArea(area: TableArea): string[] {
-  return Object.entries(TABLE_AREAS as Record<string, TableArea>)
+  return Object.entries(TABLE_AREAS)
     .filter(([, value]) => value === area)
     .map(([name]) => name)
     .sort()
