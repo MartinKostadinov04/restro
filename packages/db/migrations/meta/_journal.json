@@ -341,8 +341,15 @@
     {
       "idx": 48,
       "version": "7",
-      "when": 1794228520121,
-      "tag": "0048_reservation_rules",
+      "when": 1794228530910,
+      "tag": "0048_editable_default_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1794232371549,
+      "tag": "0049_reservation_rules",
       "breakpoints": true
     }
   ]

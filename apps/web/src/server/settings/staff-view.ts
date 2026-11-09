@@ -3,6 +3,7 @@
 // for the browser: our ids and public fields only (rule 3). No PIN, HMAC or seal is ever read.
 import {
   DEFAULT_ROLE_KINDS,
+  DEFAULT_ROLE_PERMISSIONS,
   type Permission,
   type PinFallSettings,
   readPinFallSettings,
@@ -21,8 +22,15 @@ export interface StaffRoleView {
   readonly ref: string
   readonly name: string
   readonly defaultKind: (typeof DEFAULT_ROLE_KINDS)[number] | null
+  /** The Owner role only: it holds every ability and nothing comes off it (#366). */
   readonly readOnly: boolean
   readonly permissions: readonly Permission[]
+  /** A default role the venue has ticked itself: Reset puts back what Restro ships (#366). */
+  readonly edited: boolean
+  /** Abilities Restro added after the venue's edit: unticked, and marked as new (#366). */
+  readonly newPermissions: readonly Permission[]
+  /** What this default role holds as Restro ships it, for the Reset confirm; empty on own roles. */
+  readonly shipped: readonly Permission[]
   readonly people: number
 }
 
@@ -127,6 +135,9 @@ export async function buildStaffView(input: {
     defaultKind: role.defaultKind,
     readOnly: role.readOnly,
     permissions: role.permissions,
+    edited: role.edited,
+    newPermissions: role.newPermissions,
+    shipped: role.defaultKind === null ? [] : [...DEFAULT_ROLE_PERMISSIONS[role.defaultKind]],
     people: role.id === null ? 0 : (count.get(role.id) ?? 0),
   }))
   const accounts = await organizationAccounts(input.tenantId)

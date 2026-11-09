@@ -724,6 +724,10 @@ export const ATTACKS: readonly Attack[] = [
     },
   },
   {
+    action: 'resetRoleAction',
+    call: (v) => staff.resetRoleAction({ venueId: v.venues[0].id, roleId: 'staff' }),
+  },
+  {
     action: 'archiveRoleAction',
     call: (v) => {
       const x = v.venues[0]
@@ -1661,6 +1665,10 @@ export const MIXED: readonly Attack[] = [
     action: 'updateRoleAction',
     call: (v, a) =>
       staff.updateRoleAction({ venueId: a.venues[0].id, roleId: v.venues[0].role, name: 'attack' }),
+  },
+  {
+    action: 'resetRoleAction',
+    call: (v, a) => staff.resetRoleAction({ venueId: a.venues[0].id, roleId: v.venues[0].role }),
   },
   {
     action: 'archiveRoleAction',

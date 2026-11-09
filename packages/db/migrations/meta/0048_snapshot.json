@@ -1,5 +1,5 @@
 {
-  "id": "0af45301-6e2b-4965-a591-f01f65920fe5",
+  "id": "eb65dc1a-dcb6-4ecc-b960-9f427db03aab",
   "prevId": "4374406c-cdd6-4b88-9f25-cf040f647aba",
   "version": "7",
   "dialect": "postgresql",
@@ -6875,21 +6875,7 @@
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": true
-        },
-        "phone_required": {
-          "name": "phone_required",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "closed_dates": {
-          "name": "closed_dates",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
+          "default": false
         },
         "pin_actions": {
           "name": "pin_actions",
@@ -6903,7 +6889,7 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true,
-          "default": "'{\"guestMay\":\"night\",\"autoConfirm\":false,\"prepayment\":false,\"prepaymentMinor\":null,\"prepaymentWording\":{},\"refundWording\":{}}'::jsonb"
+          "default": "'{}'::jsonb"
         },
         "source": {
           "name": "source",
@@ -6981,10 +6967,6 @@
         "reservation_settings_online_object": {
           "name": "reservation_settings_online_object",
           "value": "jsonb_typeof(\"restro\".\"reservation_settings\".\"online\") = 'object'"
-        },
-        "reservation_settings_closed_dates_array": {
-          "name": "reservation_settings_closed_dates_array",
-          "value": "jsonb_typeof(\"restro\".\"reservation_settings\".\"closed_dates\") = 'array'"
         },
         "reservation_settings_source": {
           "name": "reservation_settings_source",
@@ -10364,6 +10346,12 @@
           "notNull": true,
           "default": "'[]'::jsonb"
         },
+        "known_permissions": {
+          "name": "known_permissions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "default_kind": {
           "name": "default_kind",
           "type": "text",
@@ -10476,6 +10464,14 @@
         "venue_roles_permissions_array": {
           "name": "venue_roles_permissions_array",
           "value": "jsonb_typeof(\"restro\".\"venue_roles\".\"permissions\") = 'array'"
+        },
+        "venue_roles_known_permissions_array": {
+          "name": "venue_roles_known_permissions_array",
+          "value": "\"restro\".\"venue_roles\".\"known_permissions\" is null or jsonb_typeof(\"restro\".\"venue_roles\".\"known_permissions\") = 'array'"
+        },
+        "venue_roles_known_permissions_default_only": {
+          "name": "venue_roles_known_permissions_default_only",
+          "value": "\"restro\".\"venue_roles\".\"known_permissions\" is null or \"restro\".\"venue_roles\".\"default_kind\" in ('staff', 'manager')"
         },
         "venue_roles_default_kind": {
           "name": "venue_roles_default_kind",

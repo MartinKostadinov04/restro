@@ -2372,8 +2372,12 @@ export const staffMembers = restro.table(
 )
 
 /**
- * A role at one venue (`rl_`; #55 §5): a name and permissions from core's fixed list. Default roles
- * (`default_kind` set) are read-only; a venue copies one to make its own.
+ * A role at one venue (`rl_`; #55 §5): a name and permissions from core's fixed list. The default
+ * roles (`default_kind` set) are the preselection Restro ships, which a venue may tick and untick
+ * in place (Martin 11-09, #366); only the owner's is fixed. `known_permissions` says which: null
+ * while the venue has never edited the role, so it follows core's table and a permission Restro
+ * adds reaches it; once the venue edits it, the keys the code knew at that moment, and the row's
+ * own `permissions` is what the role holds. Core's `roleGrants` is the one reader of the pair.
  */
 export const venueRoles = restro.table(
   'venue_roles',
@@ -2386,6 +2390,11 @@ export const venueRoles = restro.table(
     name: text('name').notNull(),
     /** Permission keys, checked against core's list. */
     permissions: jsonb('permissions').$type<string[]>().notNull().default([]),
+    /**
+     * On a default role the venue has edited: the permission keys the code knew then, so a key
+     * added later is seen as new and arrives unticked. Null on every other role.
+     */
+    knownPermissions: jsonb('known_permissions').$type<string[]>(),
     defaultKind: text('default_kind'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     ...serviceProvenance(),
@@ -2404,6 +2413,15 @@ export const venueRoles = restro.table(
       sql`char_length(${t.name}) between 1 and 40 and ${t.name} = btrim(${t.name})`,
     ),
     check('venue_roles_permissions_array', sql`jsonb_typeof(${t.permissions}) = 'array'`),
+    check(
+      'venue_roles_known_permissions_array',
+      sql`${t.knownPermissions} is null or jsonb_typeof(${t.knownPermissions}) = 'array'`,
+    ),
+    // Only a default role below the owner's is edited, so only such a row carries the marker.
+    check(
+      'venue_roles_known_permissions_default_only',
+      sql`${t.knownPermissions} is null or ${t.defaultKind} in ('staff', 'manager')`,
+    ),
     check(
       'venue_roles_default_kind',
       sql`${t.defaultKind} is null or ${t.defaultKind} in ('staff', 'manager', 'owner')`,

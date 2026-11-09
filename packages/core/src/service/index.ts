@@ -345,13 +345,19 @@ export {
   DEFAULT_ROLE_KINDS,
   DEFAULT_ROLE_PERMISSIONS,
   type DefaultRoleKind,
+  EDITABLE_DEFAULT_ROLE_KINDS,
   holdsStaffRightsOnly,
+  isEditableDefaultKind,
   isPermission,
   isSettingsPermission,
+  newPermissionsOf,
   OPERATOR_PERMISSIONS,
   PERMISSIONS,
   type Permission,
   PermissionSchema,
+  type RoleRow,
+  roleGrants,
+  roleIsEdited,
 } from './permissions'
 export { checkPinPepper, MIN_PIN_PEPPER_LENGTH } from './pins'
 export {
