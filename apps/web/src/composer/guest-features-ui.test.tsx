@@ -166,12 +166,16 @@ describe('the guest features panel', () => {
     )
   })
 
-  it('shows the Stage 4 note under waiter, bill and ordering, and the Stage 5 note under pay', () => {
+  // What each switch really waits for (Martin, 11-09): the bill and ordering wait for the venue's
+  // POS, paying waits for card payments, and calling a waiter waits for nothing — it is Restro's
+  // own, so a note there would be false. No roadmap stage numbers: they mean nothing to an owner.
+  it('tells the owner what the bill, ordering and paying wait for, and says nothing under the call', () => {
     setup()
+    expect(screen.getAllByText("Guests see this once the venue's POS is connected")).toHaveLength(2)
     expect(
-      screen.getAllByText('Guests see this once ordering is connected (Stage 4)'),
-    ).toHaveLength(3)
-    expect(screen.getByText('Guests see this once payment is connected (Stage 5)')).toBeTruthy()
+      screen.getByText('Guests see this once card payments are connected for the venue'),
+    ).toBeTruthy()
+    expect(screen.queryByText(/Stage [45]/)).toBeNull()
   })
 
   it('saves a template feature switch through its own action, not the guest features one', async () => {
