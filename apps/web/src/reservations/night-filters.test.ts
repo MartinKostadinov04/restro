@@ -4,9 +4,9 @@
 
 import { describe, expect, it } from 'vitest'
 import type { RvCountsView, RvRowView } from '@/server/reservations/view'
-import { RV_STATUSES } from '@/server/reservations/view'
 
 import { filterCount, filterRows, RESERVATION_FILTERS } from './night-filters'
+import { RV_STATUSES } from './statuses'
 
 const row = (over: Partial<RvRowView> = {}): RvRowView => ({
   id: 'rv_one',

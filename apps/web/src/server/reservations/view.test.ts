@@ -13,7 +13,9 @@ import type {
 } from '@restro/core/service'
 import { describe, expect, it } from 'vitest'
 
-import { RV_STATUSES, rvDetailView, rvFrameOf, rvNightView, rvRowView } from './view'
+import { RV_STATUSES } from '@/reservations/statuses'
+
+import { rvDetailView, rvFrameOf, rvNightView, rvRowView } from './view'
 
 const SOFIA = 'Europe/Sofia'
 

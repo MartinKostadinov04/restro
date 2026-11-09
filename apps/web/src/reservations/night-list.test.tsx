@@ -8,10 +8,10 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { RvCan, RvFrame, RvNightView, RvRowView } from '@/server/reservations/view'
-import { RV_STATUSES } from '@/server/reservations/view'
 import { renderWithIntl } from '@/test-utils'
 
 import { NightList } from './night-list'
+import { RV_STATUSES } from './statuses'
 
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { error: vi.fn(), dismiss: vi.fn() }))
 vi.mock('sonner', () => ({ toast }))

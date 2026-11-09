@@ -4,12 +4,9 @@
 //
 // The order is the order a night runs in, not the order of the status list: who is still to come,
 // who is waiting, who is in, then how the evening ended for them.
-import {
-  RV_STATUSES,
-  type RvCountsView,
-  type RvRowView,
-  type RvStatus,
-} from '@/server/reservations/view'
+import type { RvCountsView, RvRowView, RvStatus } from '@/server/reservations/view'
+
+import { RV_STATUSES } from './statuses'
 
 /** One filter: everything, the late ones, or one state. */
 export type ReservationFilter = 'all' | 'late' | RvStatus

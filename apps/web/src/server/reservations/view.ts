@@ -14,11 +14,14 @@ import type {
   ReservationStatus,
 } from '@restro/core/service'
 
+import type { RV_STATUSES } from '@/reservations/statuses'
+
 import { clockIn, type WhoView, whoView } from '../tonight/night-view'
 
 /**
- * A list of states that leaves none out: a state core adds and this file forgets makes the type
- * `never`, and the build fails rather than the screen quietly dropping a row's own filter.
+ * The browser's list of states (`src/reservations/statuses.ts`) and core's are one list: a state
+ * core adds and that file forgets makes this type `never`, and the views below stop compiling
+ * rather than the screen quietly dropping a row's own filter.
  */
 type EveryStatus<T extends readonly ReservationStatus[]> = [
   Exclude<ReservationStatus, T[number]>,
@@ -26,27 +29,8 @@ type EveryStatus<T extends readonly ReservationStatus[]> = [
   ? T
   : never
 
-const STATUSES = [
-  'reserved',
-  'waiting',
-  'seated',
-  'finished',
-  'no_show',
-  'not_seated',
-  'cancelled',
-  'requested',
-] as const satisfies readonly ReservationStatus[]
-
-/**
- * The states (D138) in the order a night runs in: who is still to come, who waits, who is in, then
- * how the evening ended for them. They are listed here, not imported from the service layer, so
- * that the screens need no import of their own (dependency rule
- * `core-service-only-from-service-callers`); core's own type rules the list either way.
- */
-export const RV_STATUSES: EveryStatus<typeof STATUSES> = STATUSES
-
-/** One reservation's state, as the browser knows it: core's own states, nothing else. */
-export type RvStatus = (typeof STATUSES)[number]
+/** One state, named as the browser's list names it. */
+export type RvStatus = EveryStatus<typeof RV_STATUSES>[number]
 
 /** What the screens know about the actor: a control the server would refuse is not drawn. */
 export interface RvCan {
