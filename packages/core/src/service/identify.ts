@@ -5,6 +5,9 @@
 // - The PIN is looked up by `HMAC(pepper, tenant ‖ pin)`, unique in the organisation.
 // - A wrong PIN counts against the device (`PinGuard`, in the web process's memory); the fifth in
 //   five minutes makes the device wait and writes a `guard.tripped` entry, kept 18 months.
+// - A right PIN starts that person's own short session on the device (D141 12.11, #324): the next
+//   write is taken from the device and asks for nothing, until the device has been idle a few
+//   minutes (`shared-device.ts`).
 // Nothing here logs or returns a PIN or its HMAC.
 
 import { type DbPool, sharedDevices, staffMembers, venues } from '@restro/db'
@@ -16,6 +19,7 @@ import { serviceDate } from '../service-day'
 import { actorText } from './context'
 import { appendLogEntry } from './log'
 import { pinHmac } from './pins'
+import { keepDevicePerson } from './shared-device'
 
 /** What a PIN on a shared device found. */
 export type PinIdentity =
@@ -78,6 +82,23 @@ export async function identifyStaffByPin(
         )
       if (member !== undefined) {
         input.guard.succeed(device.id)
+        // D141 12.11: the PIN starts this person's own short session on the device, so the next
+        // write of theirs is taken from the device and asks nothing.
+        await keepDevicePerson(tx, {
+          venueId: input.venueId,
+          sessionId: input.sessionId,
+          staffMemberId: member.id,
+          at: now,
+          provenance: {
+            source: 'staff',
+            actor: actorText({
+              kind: 'staff',
+              staffMemberId: member.id,
+              sessionId: input.sessionId,
+            }),
+            jobId: input.jobId,
+          },
+        })
         return { ok: true, staffMemberId: member.id, name: member.name, deviceId: device.id }
       }
     }

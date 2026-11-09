@@ -208,7 +208,7 @@ test('a table opens in one tap with Undo, and closes in two', async () => {
   expect(close.count).toBe(2)
 })
 
-test('on the shared tablet: Handled asks no PIN; Resume asks the person’s own', async () => {
+test('on the shared tablet: Handled asks no PIN; Resume asks the person’s own, and the next action is already hers', async () => {
   const { page } = tablet
   await openTonight(page, 'busy')
   const call = new Taps()
@@ -236,20 +236,42 @@ test('on the shared tablet: Handled asks no PIN; Resume asks the person’s own'
   await expect(rows(page).filter({ hasText: 'Table 3 is paused' })).toHaveCount(0)
   expect(resume.count).toBe(1)
 
-  // The unconfirmed order: one tap and the PIN, which names what will be recorded.
+  // The unconfirmed order, straight after: Maria's PIN started her own short session on the
+  // tablet, so this one is hers already and asks for nothing (D141 12.11, #324). The toast names
+  // her, which is how the tablet says whose work was recorded.
   const check = new Taps()
   await check.tap(
     rows(page)
       .filter({ hasText: 'Sent order not confirmed' })
       .getByRole('button', { name: 'Not on the bill' }),
   )
-  await expect(page.getByTestId('pin-sheet')).toContainText(
-    'The order counts as not sent and Table 1 can order again.',
-  )
+  await expect(toast(page, 'Saved: not on the bill · Maria')).toBeVisible()
+  await expect(page.getByTestId('pin-sheet')).toHaveCount(0)
+  await expect(rows(page).filter({ hasText: 'Sent order not confirmed' })).toHaveCount(0)
+  expect(check.count).toBe(1)
+})
+
+test('the tablet forgets her once it has been idle, and asks again (#324)', async () => {
+  const { page } = tablet
+  await openTonight(page, 'busy')
+  // One record action, typed once: her session is on the tablet from here.
+  await page.getByRole('button', { name: 'Resume table' }).first().click()
+  await typePin(page, '1234')
+  await expect(rows(page).filter({ hasText: 'Table 3 is paused' })).toHaveCount(0)
+
+  // The tablet is left alone for longer than it keeps anybody: the fixture ages her last action,
+  // which is what the server reads. The next record action asks for four digits again.
+  seed('idle')
+  await rows(page)
+    .filter({ hasText: 'Sent order not confirmed' })
+    .getByRole('button', { name: 'Not on the bill' })
+    .click()
+  const again = page.getByTestId('pin-sheet')
+  await expect(again).toContainText('Enter your PIN')
+  await expect(again).toContainText('The order counts as not sent and Table 1 can order again.')
   await typePin(page, '1234')
   await expect(toast(page, 'Saved: not on the bill')).toBeVisible()
   await expect(rows(page).filter({ hasText: 'Sent order not confirmed' })).toHaveCount(0)
-  expect(check.count).toBe(1)
 })
 
 test('pausing ordering is two taps; lifting it needs a manager’s PIN on the tablet', async () => {
@@ -263,7 +285,9 @@ test('pausing ordering is two taps; lifting it needs a manager’s PIN on the ta
   await pause.tap(page.getByRole('button', { name: 'Pause ordering' }))
   await pause.tap(page.getByRole('menuitem', { name: 'Main bar' }))
   const banner = page.getByTestId('pause-banner')
-  await expect(banner).toContainText('Ordering at Main bar was paused by the bar tablet')
+  // "Open all" was typed with Maria's PIN a moment ago, so her own short session is on the tablet
+  // and the pause is hers, not the tablet's (D141 12.11, #324).
+  await expect(banner).toContainText('Ordering at Main bar was paused by Maria')
   expect(pause.count).toBe(2)
   // The paused bar's heading and tiles read Paused; the other bar is as it was. The menu now
   // leaves out the bar already paused (all bars stays: it covers the rest).
@@ -274,6 +298,8 @@ test('pausing ordering is two taps; lifting it needs a manager’s PIN on the ta
   await expect(page.getByRole('menuitem')).toHaveText(['All bars', 'Second bar'])
   await page.keyboard.press('Escape')
 
+  // Lifting is not Maria's to do: the server sends the tap to a manager's PIN instead of refusing
+  // it, so whoever may types theirs (#324).
   const lift = new Taps()
   await lift.tap(banner.getByRole('button', { name: 'Resume ordering' }))
   const sheet = page.getByTestId('pin-sheet')

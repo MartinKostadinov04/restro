@@ -118,12 +118,26 @@ export const DEFAULT_ROLE_NAMES: Readonly<Record<DefaultRoleKind, string>> = {
 }
 
 /**
- * What staff hold: tables, pauses, alerts and the night's first sections (design §5).
- *
- * The eight reservation keys of D141 are in no default role on purpose: "working with
- * reservations is a permission, not a job title. Any role a venue makes can be given it, and no
- * role has it because of its name." A venue gives them to whichever roles work the door; the
- * owner holds them because the owner holds every permission.
+ * The eight reservation permissions (D141; ticket #324): the six `reservations.*` keys and the two
+ * settings keys nothing but reservations uses. Working the door is a permission, not a job title:
+ * any role a venue makes can be given these, and no role holds one because of its name. The
+ * default roles below carry the table of #324 — staff work tonight's reservations, a manager holds
+ * all eight — and a venue that wants it otherwise copies a default role and ticks its own.
+ */
+const RESERVATION_PERMISSIONS: readonly Permission[] = [
+  'reservations.tonight',
+  'reservations.manage',
+  'reservations.pay_rule',
+  'reservations.block',
+  'reservations.edit_past',
+  'reservations.end_night',
+  'settings.reservations',
+  'settings.guests',
+]
+
+/**
+ * What staff hold: tables, pauses, alerts, the night's first sections (design §5) and tonight's
+ * reservations — the arrivals, walk-ins and waiting list of whoever is on the floor.
  */
 const STAFF_PERMISSIONS: readonly Permission[] = [
   'tables.open_close',
@@ -131,24 +145,37 @@ const STAFF_PERMISSIONS: readonly Permission[] = [
   'ordering.pause',
   'alerts.answer',
   'night.view',
+  'reservations.tonight',
 ]
 
 /**
- * What each default role holds (design §5's table; D122 §7). A manager also lifts a pause, marks
- * sold out, sees the Log and the whole night, and follows up money; the owner holds every
- * permission. A permission added to the list later reaches a default role only through this table,
- * and so reaches every venue at once (decision log 4.5).
+ * What a manager holds: everything staff hold, plus lifting a pause, sold out, the Log, the whole
+ * night, money follow-ups and all eight reservation permissions — the booking book, the pay rule,
+ * blocks, past nights, ending the night, and the two reservation settings. Those last two are the
+ * one place a default role below the owner holds a settings key, so a manager needs their own
+ * sign-in for them: a PIN on a shared device never reaches a settings permission (D141).
+ *
+ * Kept in the list's own order, each key once (`grantedPermissions`), so a hand-written duplicate
+ * can't change what a role holds.
+ */
+const MANAGER_PERMISSIONS: readonly Permission[] = grantedPermissions([
+  ...STAFF_PERMISSIONS,
+  'ordering.lift',
+  'sold_out',
+  'log.view',
+  'night.view_full',
+  'money.follow_up',
+  ...RESERVATION_PERMISSIONS,
+])
+
+/**
+ * What each default role holds (design §5's table; D122 §7; #324 for the reservation keys); the
+ * owner holds every permission. A permission added to the list later reaches a default role only
+ * through this table, and so reaches every venue at once (decision log 4.5).
  */
 export const DEFAULT_ROLE_PERMISSIONS: Readonly<Record<DefaultRoleKind, readonly Permission[]>> = {
   staff: STAFF_PERMISSIONS,
-  manager: [
-    ...STAFF_PERMISSIONS,
-    'ordering.lift',
-    'sold_out',
-    'log.view',
-    'night.view_full',
-    'money.follow_up',
-  ],
+  manager: MANAGER_PERMISSIONS,
   owner: PERMISSIONS,
 }
 

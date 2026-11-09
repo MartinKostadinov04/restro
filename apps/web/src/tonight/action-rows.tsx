@@ -249,6 +249,8 @@ export function ActionRowItem({
                         rcptTime: storno.receiptTime ?? dash,
                         fm: storno.fiscalMemoryNumber ?? dash,
                       })} ${t('st_b', { source: view.source })}`,
+                      // The money the storno names is confirmed on the sheet, remembered or not.
+                      confirm: true,
                     },
                   }
                 : {}),
@@ -351,7 +353,16 @@ export function ActionRowItem({
             run({
               id: `refund_failed:${refundFailed.refundId}`,
               ...(view.device
-                ? { pin: { level: 'manager' as const, title: t('rf_ok'), body: title } }
+                ? {
+                    // A refund that failed at the provider: the sheet states the money and the
+                    // follow-up, so it opens even when the device remembers the person.
+                    pin: {
+                      level: 'manager' as const,
+                      title: t('rf_ok'),
+                      body: title,
+                      confirm: true,
+                    },
+                  }
                 : {}),
               act: (pin) =>
                 refundFailedSeenAction({
