@@ -21,6 +21,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import type { Id } from '../../ids'
 import { sortKeyBetween } from '../../sort-keys'
 import type { ServiceTx } from '../definition'
+import type { Permission } from '../permissions'
 import { refused, type ServiceResult } from '../results'
 import type { SpotHold, Stretch } from './overlap'
 import type { ReservationStatus } from './status'
@@ -322,7 +323,10 @@ export async function spotsOfReservation(
  * closing it is what makes it one (D138).
  */
 export function nightWritable(
-  stx: ServiceTx,
+  stx: {
+    readonly serviceDate: string
+    readonly permissions: ReadonlySet<Permission>
+  },
   serviceDate: string,
   settings: Pick<ReservationSettings, 'editPastNights'>,
   night: Pick<ReservationNight, 'closedAt'> | null,
