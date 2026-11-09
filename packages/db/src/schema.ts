@@ -2463,6 +2463,15 @@ export const sharedDevices = restro.table(
     name: text('name').notNull(),
     /** The Better Auth session it belongs to (sessions are deleted on sign-out, so no key). */
     sessionId: text('session_id').notNull(),
+    /**
+     * The person whose own short session is on the device, and when they last acted (D141, #324):
+     * typing the PIN starts that session instead of authorising one action, every write of theirs
+     * pushes `personAt` forward, and the device forgets them once it has been idle
+     * (`SHARED_DEVICE_IDLE_MINUTES`), so a run of record work is typed once and nobody is cut off
+     * mid-task. The two columns move together: a device with nobody on it holds two nulls.
+     */
+    personStaffMemberId: text('person_staff_member_id'),
+    personAt: timestamp('person_at', { withTimezone: true }),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     ...serviceProvenance(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -2474,10 +2483,19 @@ export const sharedDevices = restro.table(
     uniqueIndex('shared_devices_session_unique')
       .on(t.tenantId, t.sessionId)
       .where(sql`${t.revokedAt} is null`),
+    foreignKey({
+      name: 'shared_devices_person_fk',
+      columns: [t.tenantId, t.personStaffMemberId],
+      foreignColumns: [staffMembers.tenantId, staffMembers.id],
+    }),
     check('shared_devices_id_format', sql`${t.id} ~ '^dv_[0-9A-Za-z]+$'`),
     check(
       'shared_devices_name_length',
       sql`char_length(${t.name}) between 1 and 40 and ${t.name} = btrim(${t.name})`,
+    ),
+    check(
+      'shared_devices_person_pair',
+      sql`(${t.personStaffMemberId} is null) = (${t.personAt} is null)`,
     ),
     ...provenanceChecks('shared_devices', t),
   ],

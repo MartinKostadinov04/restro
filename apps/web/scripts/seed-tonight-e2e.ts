@@ -10,6 +10,8 @@
 //   call <table>      a guest at the open table (its number) calls a waiter, as the phone's tap does.
 //   device <email>    marks the newest session of the account a shared device of the venue, as the
 //                     owner's "mark this device" would.
+//   idle              ages the person on the shared device by an hour, so the next action asks for
+//                     a PIN again: the device has been idle longer than it keeps anybody (#324).
 //
 // Everything is written the way the service paths write it, as the database owner (the screen
 // under test is the only thing that should use the app role). Like `db:seed:dev` this refuses to
@@ -331,6 +333,13 @@ async function night(name: string): Promise<void> {
     for (const table of NIGHT_TABLES) {
       await owner.query(`delete from restro.${table} where tenant_id = $1`, [tenantId])
     }
+    // Nobody is on the shared device when a night starts (#324): each story decides for itself
+    // whether a PIN has been typed, so no story inherits another's session.
+    await owner.query(
+      `update restro.shared_devices set person_staff_member_id = null, person_at = null
+        where tenant_id = $1`,
+      [tenantId],
+    )
     const [venue] = await withTenant(getPool(), tenantId, (tx) =>
       tx.select().from(venues).where(eq(venues.id, venueId)),
     )
@@ -858,6 +867,25 @@ async function call(number: string): Promise<void> {
   }
 }
 
+/**
+ * Pushes the person on the venue's shared devices an hour into the past: their own short session
+ * has run out, as it would after the device sat idle (D141 12.11, #324), and the next record
+ * action asks for a PIN again. The engine reads the stamp, so nothing else has to pretend.
+ */
+async function idle(): Promise<void> {
+  const { tenantId } = await target()
+  const owner = ownerPool()
+  try {
+    await owner.query(
+      `update restro.shared_devices set person_at = now() - interval '1 hour'
+        where tenant_id = $1 and person_at is not null`,
+      [tenantId],
+    )
+  } finally {
+    await owner.end()
+  }
+}
+
 /** Marks the newest session of the account a shared device of the venue. */
 async function device(email: string): Promise<void> {
   const { tenantId, venueId } = await target()
@@ -891,7 +919,11 @@ const run =
         ? call(argument)
         : step === 'device' && argument !== undefined
           ? device(argument)
-          : Promise.reject(new Error('seed | night <name> | call <table> | device <email>'))
+          : step === 'idle'
+            ? idle()
+            : Promise.reject(
+                new Error('seed | night <name> | call <table> | device <email> | idle'),
+              )
 run
   .then(async () => {
     await getPool().end()

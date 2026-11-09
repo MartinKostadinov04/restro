@@ -7,6 +7,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 const runTableCommand = vi.hoisted(() => vi.fn())
 const queuePaymentStep = vi.hoisted(() => vi.fn())
 const identifyAtSharedDevice = vi.hoisted(() => vi.fn())
+const personAtSharedDevice = vi.hoisted(() =>
+  vi.fn(
+    async (): Promise<{ deviceId: string; staffMemberId: string; name: string } | null> => null,
+  ),
+)
 const getVenue = vi.hoisted(() =>
   vi.fn(async (_tenant: string, id: string): Promise<{ id: string } | null> => ({ id })),
 )
@@ -25,6 +30,7 @@ vi.mock('../session', () => ({
 }))
 vi.mock('../staff/service', () => ({
   identifyAtSharedDevice,
+  personAtSharedDevice,
   ownActor: (user: { id: string }, sessionId: string, options?: { asOperator?: boolean }) =>
     options?.asOperator === true
       ? { kind: 'operator', userId: user.id }
@@ -61,6 +67,9 @@ const ALERT = 'al_0123456789ABCDEFGHIJKL'
 afterEach(() => {
   runTableCommand.mockReset()
   queuePaymentStep.mockReset()
+  // The device remembers nobody unless a test says so (D141 12.11, #324).
+  personAtSharedDevice.mockReset()
+  personAtSharedDevice.mockResolvedValue(null)
 })
 
 describe('answering a payment question', () => {
@@ -410,4 +419,65 @@ describe('a venue the organisation cannot see (the `venue_missing` guard, RR-42)
       expect(queuePaymentStep).not.toHaveBeenCalled()
     },
   )
+})
+
+describe('the person a shared device remembers (D141 12.11, #324)', () => {
+  const TABLE = 'tb_0123456789ABCDEFGHIJKL'
+  const PAUSE = 'pa_0123456789ABCDEFGHIJKL'
+  const maria = { deviceId: 'dv_1', staffMemberId: 'sm_1', name: 'Maria' }
+
+  it('acts as the person still on the device, and names them in the answer', async () => {
+    runTableCommand.mockResolvedValue({ ok: true, details: { changed: true } })
+    personAtSharedDevice.mockResolvedValue(maria)
+    expect(await closeTableAction({ venueId: VENUE, tableId: TABLE })).toEqual({
+      ok: true,
+      details: { changed: true, who: 'Maria' },
+    })
+    // Her own short session acts: the write carries her, not the tablet's account, so a run of
+    // work is typed once and the Log names a person.
+    expect(runTableCommand.mock.calls[0]?.[0]).toMatchObject({
+      actor: { kind: 'staff', staffMemberId: 'sm_1', sessionId: 'sess-1' },
+    })
+  })
+
+  it('asks for a PIN when the person on the device may not do it', async () => {
+    // A manager's PIN lifts a pause the person at the door may not lift: the sheet opens rather
+    // than the tablet telling somebody who never asked that they may not.
+    runTableCommand.mockResolvedValue({ ok: false, error: 'permission_denied' })
+    personAtSharedDevice.mockResolvedValue(maria)
+    expect(await liftOrderingAction({ venueId: VENUE, pauseId: PAUSE })).toEqual({
+      ok: false,
+      error: 'pin_required',
+    })
+    // A PIN typed for this very action keeps its own refusal: that person asked, and may not.
+    identifyAtSharedDevice.mockResolvedValue({
+      ok: true,
+      staffMemberId: 'sm_2',
+      name: 'Ivana',
+      deviceId: 'dv_1',
+    })
+    expect(await liftOrderingAction({ venueId: VENUE, pauseId: PAUSE, pin: '1234' })).toEqual({
+      ok: false,
+      error: 'permission_denied',
+    })
+  })
+
+  it('leaves the account acting where no device remembers anybody', async () => {
+    runTableCommand.mockResolvedValue({ ok: true, details: { changed: true } })
+    expect(await closeTableAction({ venueId: VENUE, tableId: TABLE })).toEqual({
+      ok: true,
+      details: { changed: true },
+    })
+    expect(runTableCommand.mock.calls[0]?.[0]).toMatchObject({
+      actor: { kind: 'user', userId: 'us_1', sessionId: 'sess-1' },
+    })
+  })
+
+  it('never asks the device about the Restro team own pause (D120)', async () => {
+    runTableCommand.mockResolvedValue({ ok: true, details: { changed: true } })
+    personAtSharedDevice.mockResolvedValue(maria)
+    await liftRestroPauseAction({ venueId: VENUE, pauseId: PAUSE })
+    expect(personAtSharedDevice).not.toHaveBeenCalled()
+    expect(runTableCommand.mock.calls[0]?.[0]).toMatchObject({ actor: { kind: 'operator' } })
+  })
 })

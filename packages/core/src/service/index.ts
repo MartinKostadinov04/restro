@@ -419,6 +419,20 @@ export {
   reservationDayOf,
 } from './reservations/read'
 export {
+  actionsBehindPin,
+  DEFAULT_PIN_FALL,
+  fallOf,
+  PIN_FALL_ACTIONS,
+  type PinActions,
+  PinActionsSchema,
+  type PinFall,
+  type PinFallAction,
+  type PinFallSettings,
+  pinFallActionOf,
+  readPinFallSettings,
+  storedPinActions,
+} from './reservations/pin-fall'
+export {
   nightWritable,
   RESERVATION_REFUSALS,
   type ReservationRefusal,
@@ -492,6 +506,11 @@ export {
   type SentOrderAnswer,
 } from './sent-order-answer'
 export { CLEARED_AT_DAY_CLOSE } from './service-day-close'
+export {
+  type DevicePerson,
+  devicePersonOf,
+  SHARED_DEVICE_IDLE_SECONDS,
+} from './shared-device'
 export { SITTING_END_REASONS, type SittingEndReason } from './sittings'
 export { MAX_REVEALED_PINS } from './staff'
 export {

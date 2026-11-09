@@ -39,6 +39,7 @@ export async function loadNightPayments(
       venueId: scope.venue.id,
       source: await sourceOf(scope, read.access),
       now: scope.now ?? new Date(),
+      remembered: scope.remembered === true,
     }),
     payments: paymentsView(read.payments, read.access.venue.timezone),
   }
@@ -62,6 +63,7 @@ export async function loadPaymentDetail(
       venueId: scope.venue.id,
       source: await sourceOf(scope, read.access),
       now: scope.now ?? new Date(),
+      remembered: scope.remembered === true,
     }),
     detail:
       read.detail === null ? null : paymentDetailView(read.detail, read.access.venue.timezone),

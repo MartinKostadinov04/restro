@@ -152,6 +152,13 @@ export interface Frame {
   readonly source: string
   readonly currency: string
   readonly device: boolean
+  /**
+   * Whether a write must name a person before it runs: true on a shared device nobody is on, false
+   * on a person's own session and on a shared device whose person is still on it (their PIN started
+   * their own short session, D141 12.11, #324). `device` stays true there: the controls a shared
+   * device shows and the tips it hides do not change because somebody typed a PIN.
+   */
+  readonly asks: boolean
   readonly can: Can
   /** `settings.connect_payments`: the end of night's "paying is still paused" row offers Reconnect. */
   readonly canConnect: boolean
@@ -167,7 +174,13 @@ export interface Frame {
 
 export function frameOf(
   access: NightAccess,
-  input: { readonly venueId: string; readonly source: string; readonly now: Date },
+  input: {
+    readonly venueId: string
+    readonly source: string
+    readonly now: Date
+    /** A person's own short session is on this shared device: no write asks for a PIN (#324). */
+    readonly remembered?: boolean
+  },
 ): Frame {
   const held = new Set<string>(access.permissions)
   return {
@@ -175,6 +188,7 @@ export function frameOf(
     source: input.source,
     currency: access.venue.currency,
     device: access.device,
+    asks: access.device && input.remembered !== true,
     can: {
       openClose: held.has('tables.open_close'),
       resume: held.has('tables.resume'),

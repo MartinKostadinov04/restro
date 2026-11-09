@@ -3,7 +3,8 @@
 // Tonight's table actions (#73; the screen is #85): thin wrappers. Each checks the input with Zod,
 // finds who is asking (`requireTenant`: the tenant is the person's organisation, never the
 // request's), that the venue is theirs, and on a shared device the person whose PIN came with the
-// action; then it calls tables.ts, whose service write path checks the permission. The mark of a
+// action — or, with no PIN, the person whose own short session is still on the device (D141 12.11,
+// #324); then it calls tables.ts, whose service write path checks the permission. The mark of a
 // payment table is a settings change: it takes no PIN, only the person's own sign-in.
 import { idSchema } from '@restro/core'
 import {
@@ -21,7 +22,7 @@ import { queuePaymentStep } from '../guest-api'
 import { enqueueJob } from '../jobs'
 import { logError, logWarn } from '../log'
 import { requireTenant } from '../session'
-import { identifyAtSharedDevice, ownActor } from '../staff/service'
+import { identifyAtSharedDevice, ownActor, personAtSharedDevice } from '../staff/service'
 import { getVenue } from '../venues'
 import { loadTableBill, type TableSheetBill } from './load'
 import {
@@ -71,6 +72,8 @@ async function perform(
     if (!venue) return NOT_FOUND
     let actor: ServiceActor = await ownActor(user, sessionId, options)
     let named: string | null = null
+    /** True when the person acting is the one the device remembers, not a PIN typed just now. */
+    let fromSession = false
     if (input.pin !== undefined) {
       const identity = await identifyAtSharedDevice({
         tenantId: organization.id,
@@ -86,6 +89,20 @@ async function perform(
       }
       actor = { kind: 'staff', staffMemberId: identity.staffMemberId, sessionId }
       named = identity.name
+    } else if (options.asOperator !== true) {
+      // No PIN with this action: on a shared device the person who typed one a moment ago is
+      // still on it, and their own short session acts (D141 12.11). Elsewhere there is no such
+      // person and the account acts, exactly as before.
+      const person = await personAtSharedDevice({
+        tenantId: organization.id,
+        venueId: venue.id,
+        sessionId,
+      })
+      if (person !== null) {
+        actor = { kind: 'staff', staffMemberId: person.staffMemberId, sessionId }
+        named = person.name
+        fromSession = true
+      }
     }
     const result = await act({
       pool: getPool(),
@@ -95,6 +112,12 @@ async function perform(
       signedInAt,
     })
     if (result.ok) revalidatePath(`/venues/${venue.id}`)
+    // The person the device remembers may not do this one: the sheet asks for a PIN, so whoever
+    // may (a manager's PIN lifts a pause) can type theirs, instead of the tablet saying no to
+    // somebody who never asked. A PIN typed for this very action keeps its own refusal.
+    if (!result.ok && fromSession && result.error === 'permission_denied') {
+      return { ok: false, error: 'pin_required' }
+    }
     // The toast names whom the PIN named (plan §5: "· {who}").
     return result.ok && named !== null
       ? { ...result, details: { ...result.details, who: named } }

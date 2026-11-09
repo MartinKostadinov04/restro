@@ -82,21 +82,41 @@ describe('the default roles (design §5)', () => {
     expect(isDefaultRoleKind(null)).toBe(false)
   })
 
-  it('give staff Tonight only, and keep settings to the owner', () => {
+  it("give staff the floor and tonight's reservations, and nothing from settings", () => {
     expect([...DEFAULT_ROLE_PERMISSIONS.staff].sort()).toEqual(
       [
         'alerts.answer',
         'night.view',
         'ordering.pause',
+        'reservations.tonight',
         'tables.open_close',
         'tables.resume',
       ].sort(),
     )
-    for (const kind of ['staff', 'manager'] as const) {
-      expect(
-        DEFAULT_ROLE_PERMISSIONS[kind].some((p) => p.startsWith('settings.')),
-        kind,
-      ).toBe(false)
+    expect(DEFAULT_ROLE_PERMISSIONS.staff.some((p) => p.startsWith('settings.'))).toBe(false)
+  })
+
+  // #324: a manager holds all eight reservation permissions, the two reservation settings among
+  // them, and no other setting. They are the only settings keys a default role below the owner
+  // holds, so a manager needs their own sign-in for them and a PIN never reaches them.
+  it('give the manager every reservation permission and no other setting', () => {
+    for (const permission of [
+      'reservations.tonight',
+      'reservations.manage',
+      'reservations.pay_rule',
+      'reservations.block',
+      'reservations.edit_past',
+      'reservations.end_night',
+      'settings.reservations',
+      'settings.guests',
+    ] as const) {
+      expect(DEFAULT_ROLE_PERMISSIONS.manager, permission).toContain(permission)
     }
+    expect(
+      DEFAULT_ROLE_PERMISSIONS.manager.filter((p) => p.startsWith('settings.')).sort(),
+    ).toEqual(['settings.guests', 'settings.reservations'])
+    expect(new Set(DEFAULT_ROLE_PERMISSIONS.manager).size).toBe(
+      DEFAULT_ROLE_PERMISSIONS.manager.length,
+    )
   })
 })

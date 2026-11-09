@@ -66,6 +66,19 @@ export const ServerEnvSchema = z.object({
       return trimmed === undefined || trimmed === '' ? undefined : trimmed
     }),
   /**
+   * How long a shared device keeps the person after their last write (D141 12.11, #324), in
+   * seconds. Unset means the three minutes core ships (`SHARED_DEVICE_IDLE_SECONDS`), which is
+   * what a venue runs; only the app's own tests set it, so a spec can watch a session end without
+   * waiting three minutes. Anything that is not a positive number counts as missing.
+   */
+  SHARED_DEVICE_IDLE_SECONDS: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const seconds = Number(value?.trim())
+      return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined
+    }),
+  /**
    * The key that seals the guests' location passes (#76, D121): HMAC-SHA256, web app only, 32
    * characters or more (checked where it is used). Without it no pass is issued, so a venue that
    * checks location takes no additions from phones. A new key ends every pass: phones locate

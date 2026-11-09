@@ -11,6 +11,7 @@ import { getLocale, getTranslations } from 'next-intl/server'
 
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
 import { webPushPublicKey } from '@/server/env'
+import { rememberedAtSharedDevice } from '@/server/staff/service'
 import { loadTonightView } from '@/server/tonight/load'
 import {
   loadLog,
@@ -50,10 +51,15 @@ export async function TonightTab({
   day?: string | undefined
 }) {
   const t = await getTranslations('tonight')
+  // On a shared device, whether the person who typed a PIN a moment ago is still on it: the
+  // screens then ask for no PIN before a write, because that PIN started their own short session
+  // (D141 12.11, #324). The device's account still reads the screens.
+  const remembered = await rememberedAtSharedDevice({ tenantId, venueId: venue.id, sessionId })
   const scope: NightScope = {
     tenantId,
     venue,
     actor: { kind: 'user', userId, sessionId },
+    remembered,
     // A venue with no POS still reads right where a sentence names its system.
     sourceNone: t('source_none'),
   }
@@ -80,7 +86,7 @@ export async function TonightTab({
 
   let content: React.ReactNode
   if (open === 'actions') {
-    const result = await loadTonightView({ tenantId, venue, userId, sessionId })
+    const result = await loadTonightView({ tenantId, venue, userId, sessionId, remembered })
     content = result.ok ? (
       <TonightPanel
         view={result.view}
