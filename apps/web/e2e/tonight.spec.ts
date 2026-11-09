@@ -125,7 +125,8 @@ test('a staff-only sign-in lands on the first screen its role allows (D141)', as
 test('a shared tablet has no composer or Tables & QR: an old link lands on Tonight (RR-83, RR-84)', async () => {
   const { page } = tablet
   await page.goto('/venues')
-  await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=tonight/)
+  // Where it opens follows the role, device or not: this one works tonight's reservations (D141).
+  await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=reservations/)
   const venue = new URL(page.url()).pathname
   await page.goto(`${venue}?tab=composer`)
   await expect(page).toHaveURL(new RegExp(`${venue}\\?tab=tonight`))

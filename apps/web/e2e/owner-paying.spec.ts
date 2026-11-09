@@ -116,8 +116,12 @@ test('connect leaves for the provider’s form, and coming back says it needs mo
   )
   await page.goto(paying())
   await expect(page.getByRole('heading', { name: 'Плащане', level: 2 })).toBeVisible()
-  // The section sits between Reservations (which follows Ordering) and Staff and roles.
-  const tabs = await page.getByRole('tab').allTextContents()
+  // The section sits between Reservations (which follows Ordering) and Staff and roles, asked of
+  // the sections' own list: the venue's tab bar has a Reservations tab of its own now (#326).
+  const tabs = await page
+    .getByRole('tablist', { name: 'Смяна на секцията' })
+    .getByRole('tab')
+    .allTextContents()
   expect(tabs.indexOf('Резервации')).toBe(tabs.indexOf('Поръчки') + 1)
   expect(tabs.indexOf('Плащане')).toBe(tabs.indexOf('Резервации') + 1)
   await expect(page.getByTestId('paying-missing-account')).toBeVisible()
