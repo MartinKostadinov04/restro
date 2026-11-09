@@ -178,7 +178,7 @@ Paying (spec #102) runs on the `payment` queue and the recovery job above, and t
 
 ## Data, tenancy and secrets
 
-One Postgres database holds everything; the database itself, not just the code, keeps venues apart. Inside it, separate schemas hold the core, auth, jobs, guest events, money and bookings. Events and money have no foreign keys into the core except by id, so they can move to their own instance without touching the menu engine (D103).
+One Postgres database holds everything; the database itself, not just the code, keeps venues apart. Inside it, separate schemas are to hold the core, auth, jobs, guest events, money and bookings (T85; not done, every table is in `restro` today, and only the queue has a schema of its own). Guest events have no foreign keys into the core except by id, so they can move to their own instance or an edge ingest without touching the menu engine; money keeps its foreign keys into the core and still gets its own schema (D103, corrected 11-09, after `0030_payment_tables.sql` turned out to have been built that way all along).
 
 - **Tenancy.** Every tenant-owned table carries `tenant_id`. Row-level security limits each query to the tenant set for its transaction (`set_config('app.tenant_id', …)`), so a forgotten filter in AI-written code returns nothing instead of another venue's data. The app connects with a role that cannot bypass row-level security; migrations run with a separate owner role.
 - **Guests.** Guests never read the database for the menu: they get snapshots from the CDN. The guest API (D121) looks the table code up by its hash and resolves it to venue and tenant; the code travels in a header, never in a query string.
