@@ -7,7 +7,9 @@
 //   row only says the latest reading failed. No sitting ends, no order clears, no pause lifts. It
 //   pauses that table until its next good reading (D111, D120).
 // - A complete reading overwrites the row in place with our ids and names (`bill.ts`) and marks
-//   the sitting as having had lines once any POS bill holds one.
+//   the sitting as having had lines once any POS bill holds one. A line's name is the one the
+//   guest's menu shows, from the published snapshot (#345), so a composer edit not yet published
+//   never reaches a bill or a Pay sheet; after a Publish the next reading carries the new name.
 // - A complete reading is also matched with the table's Unconfirmed sent orders (`late-landing.ts`,
 //   #135): one that shows up after all is written to the Log, never resent or set back to Added.
 // - The sitting ends (`bill_closed`) when a complete reading shows every POS bill gone or empty
@@ -26,18 +28,21 @@ import {
   nodes,
   pauses,
   payments,
+  publishPointers,
   sittings,
+  snapshots,
   sourceLinks,
 } from '@restro/db'
 import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
+import { resolveRoutesIn } from '../apply/menu-routes'
 import type { Layer, Scope, Source } from '../change-set'
 import { canonicalJson } from '../hash'
-import { idSchema, type NodeId, newId } from '../ids'
+import { idSchema, type NodeId, newId, type TableId } from '../ids'
 import { venueLanguages } from '../languages'
-import type { LocalizedText } from '../locales'
-import { combineField, readsLayer } from '../resolve/combine'
+import { type LocalizedText, LocalizedTextSchema } from '../locales'
+import { combineField } from '../resolve/combine'
 import { indexRows, isEmptyValue, pickLayers, type ValueRow } from '../resolve/layers'
 import { findField } from '../template'
 import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
@@ -66,13 +71,102 @@ function billIdKey(stx: ServiceTx): string {
 }
 
 /**
+ * The names the published snapshot of the table's menu (its route, else the live menu) gives
+ * these items: the file the guest's menu is drawn from (rule 4). An item that menu does not have
+ * is absent, as is every item when nothing is published for the table.
+ */
+async function publishedNames(
+  stx: ServiceTx,
+  tableId: string,
+  nodeIds: readonly string[],
+): Promise<Map<string, LocalizedText>> {
+  const names = new Map<string, LocalizedText>()
+  if (nodeIds.length === 0 || ITEM_NAME === undefined) return names
+  const routes = await resolveRoutesIn(stx.tx, stx.venueId)
+  const menuId = routes.tables.get(tableId as TableId) ?? routes.live
+  if (menuId === null) return names
+  const rows = await stx.tx.execute<{ id: string; name: unknown }>(sql`
+    select item.key as id, item.value -> 'name' as name
+    from ${publishPointers}
+    join ${snapshots} on ${snapshots.id} = ${publishPointers.currentSnapshotId}
+    cross join lateral jsonb_each(${snapshots.body} -> 'items') as item(key, value)
+    where ${publishPointers.menuId} = ${menuId}
+      and ${publishPointers.venueId} = ${stx.venueId}
+      and item.key in (${sql.join(
+        nodeIds.map((id) => sql`${id}`),
+        sql`, `,
+      )})`)
+  for (const row of rows.rows) {
+    const name = LocalizedTextSchema.safeParse(row.name)
+    if (name.success && !isEmptyValue(ITEM_NAME, name.data)) names.set(row.id, name.data)
+  }
+  return names
+}
+
+/**
+ * The POS's own names for these items: their till text, resolved for the venue (D75). What a line
+ * shows when the published menu does not have its item; never a value of ours (an override), since
+ * one may not be published.
+ */
+async function tillNames(
+  stx: ServiceTx,
+  nodeIds: readonly string[],
+): Promise<Map<string, LocalizedText>> {
+  const names = new Map<string, LocalizedText>()
+  if (nodeIds.length === 0 || ITEM_NAME === undefined) return names
+  const rows = await stx.tx
+    .select()
+    .from(fieldValues)
+    .where(
+      and(
+        inArray(fieldValues.nodeId, [...nodeIds]),
+        eq(fieldValues.fieldKey, 'name'),
+        eq(fieldValues.layer, 'till'),
+      ),
+    )
+  const values: ValueRow[] = rows.map((row) => ({
+    nodeId: row.nodeId as NodeId,
+    fieldKey: row.fieldKey,
+    layer: row.layer as Layer,
+    scope: row.scope as Scope,
+    value: row.value,
+    valueHash: row.valueHash,
+    source: row.source as Source,
+    observedAt: row.observedAt.toISOString(),
+    basis: row.basis ?? null,
+    valid: row.valid,
+  }))
+  const index = indexRows(values, `venue:${stx.venueId}`, () => false)
+  const locales = [...venueLanguages(stx.venue).all]
+  for (const nodeId of nodeIds) {
+    const picked = pickLayers(
+      ITEM_NAME,
+      index.get(nodeId as NodeId)?.get('name'),
+      (layer) => layer === 'till',
+      false,
+    )
+    const { value } = combineField({
+      definition: ITEM_NAME,
+      layers: picked.values,
+      linkedToTill: true,
+      locales,
+    }).field
+    if (value === null || value === undefined || isEmptyValue(ITEM_NAME, value)) continue
+    names.set(nodeId, value as LocalizedText)
+  }
+  return names
+}
+
+/**
  * Our items for these POS items, through the till links of the reading's instance whose node is
- * an item, with their names resolved for the venue as the menu resolves them (the override over
- * the till's text). The link's node type says it is an item's link, so no connector's link types
- * are needed here.
+ * an item, each named as the guest's menu names it (#345): its name in the published snapshot of
+ * the table's menu, else the POS's own name (`tillNames`). A composer edit that is not published
+ * never names a line. The link's node type says it is an item's link, so no connector's link
+ * types are needed here.
  */
 async function lineItems(
   stx: ServiceTx,
+  tableId: string,
   posItems: readonly string[],
 ): Promise<Map<string, LineItem>> {
   const found = new Map<string, LineItem>()
@@ -91,44 +185,17 @@ async function lineItems(
   if (links.length === 0) return found
 
   const nodeIds = [...new Set(links.map((link) => link.nodeId))]
-  const rows = await stx.tx
-    .select()
-    .from(fieldValues)
-    .where(and(inArray(fieldValues.nodeId, nodeIds), eq(fieldValues.fieldKey, 'name')))
-  const values: ValueRow[] = rows.map((row) => ({
-    nodeId: row.nodeId as NodeId,
-    fieldKey: row.fieldKey,
-    layer: row.layer as Layer,
-    scope: row.scope as Scope,
-    value: row.value,
-    valueHash: row.valueHash,
-    source: row.source as Source,
-    observedAt: row.observedAt.toISOString(),
-    basis: row.basis ?? null,
-    valid: row.valid,
-  }))
-  const index = indexRows(values, `venue:${stx.venueId}`, () => false)
-  const locales = [...venueLanguages(stx.venue).all]
-  const nameOf = (nodeId: NodeId): LocalizedText | null => {
-    if (ITEM_NAME === undefined) return null
-    const picked = pickLayers(
-      ITEM_NAME,
-      index.get(nodeId)?.get('name'),
-      (layer) => readsLayer(ITEM_NAME, true, layer),
-      false,
-    )
-    const { value } = combineField({
-      definition: ITEM_NAME,
-      layers: picked.values,
-      linkedToTill: true,
-      locales,
-    }).field
-    if (value === null || value === undefined || isEmptyValue(ITEM_NAME, value)) return null
-    return value as LocalizedText
-  }
+  const published = await publishedNames(stx, tableId, nodeIds)
+  const till = await tillNames(
+    stx,
+    nodeIds.filter((id) => !published.has(id)),
+  )
   for (const link of links) {
     const itemId = link.nodeId as NodeId
-    found.set(link.externalId, { itemId, name: nameOf(itemId) })
+    found.set(link.externalId, {
+      itemId,
+      name: published.get(itemId) ?? till.get(itemId) ?? null,
+    })
   }
   return found
 }
@@ -294,7 +361,7 @@ export function recordReading() {
       const posItems = reading.bills.flatMap((bill) =>
         bill.lines.flatMap((line) => (line.itemPos === null ? [] : [line.itemPos])),
       )
-      const items = await lineItems(stx, posItems)
+      const items = await lineItems(stx, command.tableId, posItems)
       const bills = storedBills({
         key,
         tenantId: stx.tenantId,
