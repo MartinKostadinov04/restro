@@ -140,13 +140,14 @@ describe('SettingsSections: the sections of the Settings tab in the URL (D97)', 
     versioning: <p>versioning section</p>,
   }
 
-  it('has General, Hours, Ordering, Publish and Versioning for a venue with a till; General by default', () => {
+  it('has General, Hours, Ordering, Reservations, Publish and Versioning for a venue with a till; General by default', () => {
     navigation.search = 'tab=settings'
     renderWithIntl(<SettingsSections hasTill contents={sections} />)
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'General',
       'Hours',
       'Ordering',
+      'Reservations',
       'Publish',
       'Versioning',
     ])
@@ -161,12 +162,15 @@ describe('SettingsSections: the sections of the Settings tab in the URL (D97)', 
       'General',
       'Hours',
       'Ordering',
+      'Reservations',
       'Versioning',
     ])
     expect(screen.getByRole('tab', { name: 'General' }).getAttribute('aria-selected')).toBe('true')
     expect(settingsSectionOf('publish', false)).toBe('general')
     expect(settingsSectionOf('publish', true)).toBe('publish')
     expect(settingsSectionOf('nonsense', true)).toBe('general')
+    // Reservations are Restro's own: every venue has the section, with or without a till or a right.
+    expect(settingsSectionOf('reservations', false)).toBe('reservations')
   })
 
   it('lists Staff and roles and Alerts only for a role holding their right, in the grouping’s order', () => {
@@ -178,6 +182,7 @@ describe('SettingsSections: the sections of the Settings tab in the URL (D97)', 
       'General',
       'Hours',
       'Ordering',
+      'Reservations',
       'Staff and roles',
       'Alerts',
       'Publish',
@@ -188,7 +193,7 @@ describe('SettingsSections: the sections of the Settings tab in the URL (D97)', 
     expect(settingsSectionOf('staff', true, { roles: false, alerts: true })).toBe('general')
   })
 
-  it('lists Paying between Ordering and Staff and roles, only where the POS can take card payments', () => {
+  it('lists Paying between Reservations and Staff and roles, only where the POS can take card payments', () => {
     navigation.search = 'tab=settings'
     renderWithIntl(
       <SettingsSections
@@ -201,6 +206,7 @@ describe('SettingsSections: the sections of the Settings tab in the URL (D97)', 
       'General',
       'Hours',
       'Ordering',
+      'Reservations',
       'Paying',
       'Staff and roles',
       'Publish',
