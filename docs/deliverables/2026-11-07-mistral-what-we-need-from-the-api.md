@@ -126,8 +126,6 @@ Everything here is read from the description. Where something exists and we have
 
 **What we did not find.** `GetMaterialAvailablity` returns only a number, and returned `0.0` for a drink that sells normally, so "out of stock" cannot be told apart from "not stock-tracked". `GetAllSelectableItems` has no description and returned an empty list. `MaterialDto` carries `flags` and `itemType`, neither explained.
 
-**Why we need it.** We can hide an item or mark it sold out, but we must never hide something the bar is pouring happily — that costs the venue money. A signal we cannot read forces us to ignore it.
-
 **How barsy does it.** [`Articles_getlist`](https://docs.lukanet.com/barsy.api/methods/articles/getlist.html) carries per-venue sale exceptions — a flag, not a quantity that needs interpreting.
 
 ---
@@ -151,7 +149,6 @@ These are not missing requests but behaviour we found described nowhere. Short a
 ## Questions outside the API
 
 - **Authorisation.** Наредба Н-18, чл. 52з, ал. 5: a venue may not attach an external module to registered sales management software without the producer's written authorisation, and Приложение 32, т. 17 requires the venue to declare its links to other systems. Will you authorise Restro at your clients' venues, on what terms and at what price, and what does the venue declare?
-- **Test installation.** Is `demorestaurant.zamboo.bg` a test installation we may write to? So far we have only read from it. Our development never touches a live venue's POS or a real fiscal device, training mode included. Does Zamboo have a training mode, and can the API tell us an installation is in it?
 - **Keys.** Today one key reads a venue's whole customer base by phone, email or card and can delete customers and cards, and it travels in the request URL, which means it lands in server logs on both sides. The description also has no `securitySchemes`, `security` or `servers` block. Are scoped keys possible, and can the key be sent in a header instead?
 
 ## Small things we ran into
@@ -160,5 +157,3 @@ These are not missing requests but behaviour we found described nowhere. Short a
 - The body of `ResError` is a double-encoded JSON string, so every client unwraps it twice. `404` and `409` on `SaveOrder` and `SaveOrderDefPrice` and `404` on `GetItemContent` declare a plain `string` schema while the text says a JSON-serialised `ResError`; every other error response points at `ResError` properly.
 - `GetMealPlans` has no date filter — `apiKey` is its only parameter — and returned 49.7 MB for the demo restaurant, so we would not call it on a schedule.
 - `GetDefaultMenu` returns categories whose `Name` and `AltName` are empty; the labels have to be joined from `GetTags` by `TagValueGuid`.
-
-One last thing you have got right: the `409` on an order that repeats an `ExtId` already used. The same protection on adding to an open bill and on taking a payment would solve most of an integration's reliability problems before they arise.
