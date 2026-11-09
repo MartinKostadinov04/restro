@@ -701,6 +701,12 @@ export const ATTACKS: readonly Attack[] = [
     },
   },
   {
+    action: 'setPinFallAction',
+    // Where the PIN falls at A's venue (#324): B may not move a line of it, and A's reservation
+    // settings must read exactly as they did.
+    call: (v) => staff.setPinFallAction({ venueId: v.venues[0].id, action: 'cancel', fall: 'tap' }),
+  },
+  {
     action: 'markSharedDeviceAction',
     call: (v) => staff.markSharedDeviceAction({ venueId: v.venues[0].id, name: 'attack' }),
   },
