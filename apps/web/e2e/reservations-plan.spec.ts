@@ -90,6 +90,11 @@ const roomTransform = (page: Page) =>
   page.getByTestId('rv-plan-room').evaluate((node) => node.style.transform)
 
 async function openSpot(page: Page, name: string): Promise<Locator> {
+  // A sheet left open stands over the plan and would swallow the tap, so it is closed first.
+  if ((await sheet(page).count()) > 0) {
+    await sheet(page).getByTestId('rv-spot-close').click()
+    await expect(sheet(page)).toHaveCount(0)
+  }
   await spotNamed(page, name).first().click()
   await expect(sheet(page)).toBeVisible()
   await expect(sheet(page)).toContainText(name)
@@ -225,8 +230,9 @@ test('blocking a spot needs a reason, and unblocking it is one tap', async () =>
   await expect(spotNamed(page, 'Маса 9').first()).toHaveAttribute('data-state', 'blocked')
   await expect(spotNamed(page, 'Маса 9').first()).toContainText('Blocked · repair')
 
-  // Unblocking is one tap on the spot's sheet, and the spot reads free again.
-  const blocked = await openSpot(page, 'Маса 9')
+  // The spot's own sheet stayed open behind the dialog and now reads the block, so unblocking is
+  // one tap from where the hostess already is.
+  const blocked = sheet(page)
   await expect(blocked).toContainText('until somebody lifts it')
   await blocked.getByTestId('rv-unblock').click()
   await expect(page.getByText('Маса 9 is free again.')).toBeVisible()
@@ -248,6 +254,9 @@ test('blocking a spot a party has booked is refused, and the refusal names the p
   await expect(refusal).toBeVisible()
   await expect(refusal).toContainText('Move them first')
   await expect(spotNamed(page, 'Маса 7').first()).toHaveAttribute('data-state', 'late')
+  // The sheet is where it was: a refusal changes nothing, not even the screen the hostess is on.
+  await expect(held.getByTestId('rv-block')).toBeVisible()
+  await held.getByTestId('rv-spot-close').click()
 })
 
 test('the plan moves and zooms by keyboard alone, and the buttons do the same', async () => {
