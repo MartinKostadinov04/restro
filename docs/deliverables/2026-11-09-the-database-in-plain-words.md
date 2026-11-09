@@ -9,18 +9,21 @@ artifact it mirrors). This file is the plain-words view of it, nothing more.
 
 ## How to read it
 
-One database. One container inside it, called `restro`. Fifty-nine tables, all in that one
-container today. A table is a list: one kind of thing, one row per thing, the same columns on
-every row.
+One database. Two containers inside it: `restro`, which holds all fifty-nine of our tables, and
+`pgboss`, which the job queue made for itself. A table is a list: one kind of thing, one row per
+thing, the same columns on every row.
 
 The tables fall into eight groups. The groups are a way of talking about them, not a wall in the
 database — D103 wants six real walls (separate schemas) and they do not exist yet.
 
 ## 1. Who owns what — 12 tables
 
-`tenants` is the **organisation**: the account that owns venues. Every other row in the database
-carries its `tenant_id`, and the database refuses to show one organisation another one's rows.
-That is the most important thing in here.
+`tenants` is the **organisation**: the account that owns venues. Nearly every table carries a
+`tenant_id`, and the database itself refuses to show one organisation another one's rows — not the
+code, the database. That is the most important thing in here. The few tables outside that rule are
+deliberate and written down: `provider_notices` belongs to the platform and has no tenant at all,
+`worker_heartbeats` is machine bookkeeping, `templates` may be a Restro-wide design with no owner,
+and the sign-in tables keep the organisation under their own column.
 
 `auth_user`, `auth_session`, `auth_account`, `auth_verification`, `auth_organization`,
 `auth_member` and `auth_invitation` are the sign-in tables. They are not ours — the Better Auth
@@ -36,7 +39,7 @@ rename.
 **area** holds tables, and a table has a **table code** behind its QR. `bars` are its **bars**.
 `menu_routes` is **menu routing**: which menu a given area or table shows. `service_days` is the
 **service day** (the night, which ends at 07:00). `pauses` holds the **table pause**, the **venue
-pause** and the **connection pause**.
+pause**, the **connection pause** and a pause of one bar.
 
 ## 3. The menu — 11 tables
 
@@ -49,7 +52,8 @@ our own note sit on the same item without either overwriting the other. `placeme
 an item is, on purpose.
 
 `menus` is the **menu** itself, `tags` are **tags**, `assets` are the pictures. `events` is the
-append-only record of every menu change ever applied — nothing ever deletes from it.
+append-only record of every menu change ever applied. Nothing in the app may delete from it; the
+one exception is the purge job, when a venue's data is erased for good.
 `source_records` and `source_links` remember what a POS sent and which of our items it became.
 `tombstones` and `item_first_published` remember what used to exist.
 
@@ -136,12 +140,15 @@ for payments to move out.
 
 Worth knowing, because it is easy to read D103 and assume otherwise:
 
-- **The six containers do not exist.** Core, auth, jobs, guest events, money and bookings are all
-  still in `restro`. The split is the rest of T85 and has not been done. The reservation tables
-  will land in `restro` as well (#323).
+- **The six containers do not exist.** D103 wants core, auth, jobs, guest events, money and
+  bookings each in their own. Only the queue has one (`pgboss`, which it made itself); all
+  fifty-nine of our tables are still in `restro`, and the reservation tables will land there too
+  (#323). The split is the rest of T85 and has not been done.
 - **Nothing checks the hard-link rule.** That is ticket #342, which your answer today unblocks.
-- **Nothing is deployed.** There is no staging database and no production database yet. Every
-  table above exists in the migrations and on test machines.
+- **Nothing is deployed.** There is no staging database and no production database: the Supabase
+  account holds no Restro project today, and `docs/guides/pilot-readiness.md`'s items O2 and O3
+  (the production accounts, and migrations reaching staging) are both still open. Every table
+  above exists in the migrations and on test machines.
 
 ## If you want to look
 
