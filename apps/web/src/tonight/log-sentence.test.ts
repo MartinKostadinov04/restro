@@ -55,6 +55,7 @@ const line = (kind: LogLineView['kind'], fields: Partial<LogLineView> = {}): Log
   guard: null,
   setting: 'setting',
   subject: null,
+  heldCount: null,
   amountMinor: null,
   paymentState: null,
   paymentAnswer: null,
