@@ -15,17 +15,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import {
   NO_SETTINGS_RIGHTS,
+  NO_WORKSPACE_RIGHTS,
   SETTINGS_SECTION_DEFS,
   type SettingsRights,
   type SettingsSectionValue,
-  SHARED_DEVICE_TAB_DEFS,
   settingsSectionOf,
   settingsSectionsOf,
   sharedDeviceTabOf,
+  sharedDeviceTabsOf,
   WORKSPACE_TAB_DEFS,
+  type WorkspaceRights,
   type WorkspaceTabDef,
   type WorkspaceTabValue,
   workspaceTabOf,
+  workspaceTabsOf,
 } from './workspace-tab-defs'
 
 /**
@@ -121,10 +124,12 @@ export function UrlTabs<V extends string>({
 }
 
 interface WorkspaceTabsProps {
-  /** The content of every tab, keyed by tab value (a missing tab is a type error). */
-  contents: Record<WorkspaceTabValue, ReactNode>
+  /** The content of every tab the person is offered (a tab nobody is offered needs none). */
+  contents: Partial<Record<WorkspaceTabValue, ReactNode>>
   /** A shared device: no composer tab (RR-83). */
   sharedDevice?: boolean
+  /** What the person holds: Reservations shows only with its key (#326). */
+  rights?: WorkspaceRights
 }
 
 const isWorkspaceTabValue = (value: string): value is WorkspaceTabValue =>
@@ -137,16 +142,25 @@ const isWorkspaceTabValue = (value: string): value is WorkspaceTabValue =>
  * select below it), and the current tab is *derived* from the URL instead of being set while
  * rendering.
  */
-export function WorkspaceTabs({ contents, sharedDevice = false }: WorkspaceTabsProps) {
+export function WorkspaceTabs({
+  contents,
+  sharedDevice = false,
+  rights = NO_WORKSPACE_RIGHTS,
+}: WorkspaceTabsProps) {
   const t = useTranslations('workspace')
+  const defs = (
+    sharedDevice ? sharedDeviceTabsOf(rights) : workspaceTabsOf(rights)
+  ) as readonly (WorkspaceTabDef & { readonly value: WorkspaceTabValue })[]
   const [current, select] = useUrlTab<WorkspaceTabValue>(
     'tab',
-    sharedDevice ? sharedDeviceTabOf : workspaceTabOf,
-    isWorkspaceTabValue,
+    (requested) =>
+      sharedDevice ? sharedDeviceTabOf(requested, rights) : workspaceTabOf(requested, rights),
+    (value): value is WorkspaceTabValue =>
+      isWorkspaceTabValue(value) && defs.some((tab) => tab.value === value),
   )
   return (
     <UrlTabs
-      defs={sharedDevice ? SHARED_DEVICE_TAB_DEFS : WORKSPACE_TAB_DEFS}
+      defs={defs}
       current={current}
       select={select}
       contents={contents}

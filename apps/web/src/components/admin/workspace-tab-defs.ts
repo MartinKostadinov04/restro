@@ -5,6 +5,7 @@
 // URL as `?tab=settings&section=…`.
 import {
   BellIcon,
+  CalendarDaysIcon,
   ClockIcon,
   CloudUploadIcon,
   ConciergeBellIcon,
@@ -37,6 +38,7 @@ export const WORKSPACE_TAB_DEFS = [
   { value: 'composer', labelKey: 'workspace.tabs.composer', icon: LayoutListIcon },
   { value: 'tables', labelKey: 'workspace.tabs.tables', icon: QrCodeIcon },
   { value: 'tonight', labelKey: 'workspace.tabs.tonight', icon: ConciergeBellIcon },
+  { value: 'reservations', labelKey: 'workspace.tabs.reservations', icon: CalendarDaysIcon },
   { value: 'settings', labelKey: 'workspace.tabs.settings', icon: SettingsIcon },
 ] as const satisfies readonly WorkspaceTabDef[]
 
@@ -51,15 +53,40 @@ export function isWorkspaceTab(value: unknown): value is WorkspaceTabValue {
 }
 
 /**
+ * Which permission-gated tabs the signed-in person's role holds the key for. Reservations is
+ * `reservations.tonight` (D141, #326): a role without it is not shown a tab it cannot open, on a
+ * shared device either.
+ */
+export interface WorkspaceRights {
+  readonly reservations: boolean
+}
+
+/** No keys: what the tab bar assumes until the page has read them. */
+export const NO_WORKSPACE_RIGHTS: WorkspaceRights = { reservations: false }
+
+/** The tabs a venue page offers this person. */
+export function workspaceTabsOf(
+  rights: WorkspaceRights = NO_WORKSPACE_RIGHTS,
+): readonly WorkspaceTabDef[] {
+  return WORKSPACE_TAB_DEFS.filter((tab) => tab.value !== 'reservations' || rights.reservations)
+}
+
+/**
  * The tab a `?tab=` value opens. Tabs that are gone open where their content went: the venue's
  * Integration tab (CF-09b, D73: the venue's part is the Menu source card) and the Publishing tab
  * (D97: Settings › Publish and › Versioning) open Settings; the Design tab (D92) opens the
  * composer, whose Design subtab the page then shows. Anything else unknown opens the default tab.
  */
-export function workspaceTabOf(requested: unknown): WorkspaceTabValue {
+export function workspaceTabOf(
+  requested: unknown,
+  rights: WorkspaceRights = NO_WORKSPACE_RIGHTS,
+): WorkspaceTabValue {
   if (requested === 'integration' || requested === 'publishing') return 'settings'
   if (requested === 'design') return 'composer'
-  return isWorkspaceTab(requested) ? requested : DEFAULT_WORKSPACE_TAB
+  const offered = workspaceTabsOf(rights)
+  return isWorkspaceTab(requested) && offered.some((tab) => tab.value === requested)
+    ? requested
+    : DEFAULT_WORKSPACE_TAB
 }
 
 /**
@@ -69,10 +96,25 @@ export function workspaceTabOf(requested: unknown): WorkspaceTabValue {
  */
 export const SHARED_DEVICE_TAB_DEFS = WORKSPACE_TAB_DEFS.filter((tab) => tab.value === 'tonight')
 
+/**
+ * The tabs a shared device offers: Tonight, and Reservations where the device's own account works
+ * them (D141, #326) — a tablet on the door is what the night's list is for.
+ */
+export function sharedDeviceTabsOf(
+  rights: WorkspaceRights = NO_WORKSPACE_RIGHTS,
+): readonly WorkspaceTabDef[] {
+  return workspaceTabsOf(rights).filter(
+    (tab) => tab.value === 'tonight' || tab.value === 'reservations',
+  )
+}
+
 /** The tab a `?tab=` value opens on a shared device. */
-export function sharedDeviceTabOf(requested: unknown): WorkspaceTabValue {
-  const tab = workspaceTabOf(requested)
-  return SHARED_DEVICE_TAB_DEFS.some((one) => one.value === tab) ? tab : 'tonight'
+export function sharedDeviceTabOf(
+  requested: unknown,
+  rights: WorkspaceRights = NO_WORKSPACE_RIGHTS,
+): WorkspaceTabValue {
+  const tab = workspaceTabOf(requested, rights)
+  return sharedDeviceTabsOf(rights).some((one) => one.value === tab) ? tab : 'tonight'
 }
 
 /**
