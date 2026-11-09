@@ -137,6 +137,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D142](decisions/D142.md) | The event model: the minimal key set of what a night can be measured by, with no personal data anywhere in it | firm; refines D122; serves #321 and #323 |
 | [D143](decisions/D143.md) | The database backup connects as its own read-only role with BYPASSRLS, the second approved exception to the never-list | firm; refines D83 and D103 |
 | [D144](decisions/D144.md) | What the analytics answer: the measurement is already complete, the night writes its own numbers down, and Restro is never a second answer to the till | firm; refines D142 |
+| [D145](decisions/D145.md) | The guest's card form offers no Link account and asks the guest to save nothing | firm; refines D127 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

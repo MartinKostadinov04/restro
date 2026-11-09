@@ -118,7 +118,8 @@ export function mountStripeCardForm(
     }
     // The guest's language for the form's own text; a card error stays in the provider's text.
     elements = stripe.elements({ clientSecret, locale: props.locale })
-    element = elements.create('payment', { layout: 'tabs' })
+    // D145: no Link account and no "save my information" on the guest's pay screen; do not tidy away.
+    element = elements.create('payment', { layout: 'tabs', wallets: { link: 'never' } })
     // The button works once the form is drawn (`ready`), not once it is mounted.
     element.on('ready', () => {
       if (alive) button.disabled = false
