@@ -561,8 +561,10 @@ describe.skipIf(!hasDatabase)('names on the table bill come from the published m
     await rename(gin, { bg_BG: 'Джин Бомбай' }, { bg_BG: 'Джин' })
 
     await record(tableId)
-    // The fact the change is safe because of: the published snapshot keys its items by the same
-    // id the till link resolves to, so the bill names the beer exactly as the guest's menu does.
+    // The fact the change is safe because of: a reading names a line only from the published
+    // snapshot of the table's menu (keyed by the same id the till link resolves to) or from the
+    // till's own text, never from a layer of ours that may not be published. The beer (on the
+    // menu) shows exactly the guest menu's name; the gin (on no menu) the till's, not its rename.
     expect(await publishedName(beer)).toEqual({ bg_BG: 'Каменица 500 мл' })
     expect(await names(tableId)).toEqual([await publishedName(beer), { bg_BG: 'Джин' }])
     const before = await state(tableId)

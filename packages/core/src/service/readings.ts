@@ -77,13 +77,13 @@ function billIdKey(stx: ServiceTx): string {
  */
 async function publishedNames(
   stx: ServiceTx,
-  tableId: string,
+  tableId: TableId,
   nodeIds: readonly string[],
 ): Promise<Map<string, LocalizedText>> {
   const names = new Map<string, LocalizedText>()
   if (nodeIds.length === 0 || ITEM_NAME === undefined) return names
   const routes = await resolveRoutesIn(stx.tx, stx.venueId)
-  const menuId = routes.tables.get(tableId as TableId) ?? routes.live
+  const menuId = routes.tables.get(tableId) ?? routes.live
   if (menuId === null) return names
   const rows = await stx.tx.execute<{ id: string; name: unknown }>(sql`
     select item.key as id, item.value -> 'name' as name
@@ -166,7 +166,7 @@ async function tillNames(
  */
 async function lineItems(
   stx: ServiceTx,
-  tableId: string,
+  tableId: TableId,
   posItems: readonly string[],
 ): Promise<Map<string, LineItem>> {
   const found = new Map<string, LineItem>()
