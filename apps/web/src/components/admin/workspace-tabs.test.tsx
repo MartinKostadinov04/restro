@@ -7,9 +7,11 @@ import { renderWithIntl } from '@/test-utils'
 
 import {
   settingsSectionOf,
+  sharedDeviceTabOf,
   WORKSPACE_TAB_DEFS,
   type WorkspaceTabValue,
   workspaceTabOf,
+  workspaceTabsOf,
 } from './workspace-tab-defs'
 import { SettingsSections, WorkspaceTabs } from './workspace-tabs'
 
@@ -51,9 +53,49 @@ describe('WorkspaceTabs: tabs and the URL', () => {
       'Tonight',
       'Settings',
     ])
-    // The select has one entry per declared tab, labelled from the same keys.
+    // The select has one entry per tab offered, labelled from the same keys. Reservations is
+    // declared beside them but needs its own key (#326), so it is not one of them here.
     expect(screen.getByRole('combobox', { name: 'Switch tab' })).toBeTruthy()
-    expect(tabs).toHaveLength(WORKSPACE_TAB_DEFS.length)
+    expect(tabs).toHaveLength(workspaceTabsOf().length)
+    expect(WORKSPACE_TAB_DEFS.length).toBe(tabs.length + 1)
+  })
+
+  it('lists Reservations after Tonight, only for a role that may work them (#326)', () => {
+    renderWithIntl(<WorkspaceTabs contents={contents} rights={{ reservations: true }} />)
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Composer',
+      'Tables & QR',
+      'Tonight',
+      'Reservations',
+      'Settings',
+    ])
+    expect(workspaceTabOf('reservations', { reservations: true })).toBe('reservations')
+  })
+
+  it('opens the composer on a link to Reservations without the key, rather than an empty tab', () => {
+    navigation.search = 'tab=reservations'
+    renderTabs()
+    expect(screen.queryByRole('tab', { name: 'Reservations' })).toBeNull()
+    expect(screen.getByRole('tab', { name: 'Composer' }).getAttribute('aria-selected')).toBe('true')
+    expect(workspaceTabOf('reservations')).toBe('composer')
+  })
+
+  it('gives a shared device that works reservations Tonight and Reservations, nothing else', () => {
+    navigation.search = 'tab=settings'
+    renderWithIntl(
+      <WorkspaceTabs contents={contents} sharedDevice rights={{ reservations: true }} />,
+    )
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Tonight',
+      'Reservations',
+    ])
+    expect(screen.getByText('content of tonight')).toBeTruthy()
+    // Two tabs fit the narrowest phone, so a device shows the row at every width and no chooser
+    // at all: at the door the tab a hostess needs is one tap (RR-85, #326).
+    expect(screen.queryByRole('combobox', { name: 'Switch tab' })).toBeNull()
+    expect(sharedDeviceTabOf('settings', { reservations: true })).toBe('tonight')
+    expect(sharedDeviceTabOf('reservations', { reservations: true })).toBe('reservations')
+    expect(sharedDeviceTabOf('reservations')).toBe('tonight')
   })
 
   it('opens the first tab when the URL has no ?tab=', () => {

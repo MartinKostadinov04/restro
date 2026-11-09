@@ -35,7 +35,8 @@ async function signIn(page: Page, email: string) {
     await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
     await page.getByRole('button', { name: 'Вход' }).click()
     try {
-      // A staff-only account (the viewer) lands on its venue's Tonight page, not on the list.
+      // A staff-only account (the viewer) lands on a screen of its venue, not on the list: the
+      // night's list, since its role works tonight's reservations (D141, #326).
       await expect(page).toHaveURL(/\/venues(\/vn_[^/?]+)?(\?.*)?$/, { timeout: 8_000 })
       return
     } catch {
@@ -86,9 +87,13 @@ test('asks for the hold time first, then opens the switches', async ({ browser }
   const { context, page } = await open(browser, OWNER)
   await page.goto(reservations())
   await expect(page.getByRole('heading', { name: 'Резервации', level: 2 })).toBeVisible()
-  // The section sits right after Ordering.
-  const tabs = await page.getByRole('tab').allTextContents()
-  expect(tabs.indexOf('Резервации')).toBe(tabs.indexOf('Поръчки') + 1)
+  // The section sits right after Ordering, asked of the sections' own list: the venue's tab bar
+  // has a Reservations tab of its own now (#326).
+  const sections = await page
+    .getByRole('tablist', { name: 'Смяна на секцията' })
+    .getByRole('tab')
+    .allTextContents()
+  expect(sections.indexOf('Резервации')).toBe(sections.indexOf('Поръчки') + 1)
   // One line links to Hours instead of repeating the working hours.
   await expect(page.getByTestId('rs-hours-link')).toHaveAttribute(
     'href',

@@ -20,6 +20,7 @@ import * as sheet from '@/server/item-sheet/actions'
 import * as menus from '@/server/menus-actions'
 import * as organization from '@/server/organization-actions'
 import * as publish from '@/server/publish/actions'
+import * as nightBook from '@/server/reservations/actions'
 import * as alerts from '@/server/settings/alerts-actions'
 import * as ordering from '@/server/settings/ordering-actions'
 import * as paying from '@/server/settings/paying-actions'
@@ -1067,6 +1068,19 @@ export const ATTACKS: readonly Attack[] = [
         paymentId: x.payment,
         pin: '1234',
       })
+    },
+  },
+
+  // Reservations (#326): the night's list and one reservation's sheet, both read-only.
+  {
+    action: 'reservationNightAction',
+    call: (v) => nightBook.reservationNightAction({ venueId: v.venues[0].id }),
+  },
+  {
+    action: 'reservationDetailAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.reservationDetailAction({ venueId: x.id, reservationId: x.reservation })
     },
   },
 

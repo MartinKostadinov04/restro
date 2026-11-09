@@ -119,6 +119,7 @@ test('Design is the composer’s subtab, and Settings no longer holds the Appear
     'Composer',
     'Tables & QR',
     'Tonight',
+    'Reservations',
     'Settings',
   ])
   await page.getByRole('tab', { name: 'Design' }).click()

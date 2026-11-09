@@ -8,6 +8,7 @@ import {
   type SettingsRights,
   settingsSectionOf,
   sharedDeviceTabOf,
+  type WorkspaceRights,
   workspaceTabOf,
 } from '@/components/admin/workspace-tab-defs'
 import { SettingsSections, WorkspaceTabs } from '@/components/admin/workspace-tabs'
@@ -19,8 +20,11 @@ import {
   VersioningSection,
 } from '@/publish/settings-sections'
 import { TonightPublish, VenueHeader } from '@/publish/venue-header'
+import { ReservationsSkeleton } from '@/reservations/reservations-skeleton'
+import { ReservationsTab } from '@/reservations/reservations-tab'
 import { getPool } from '@/server/db'
 import { guestPathOf } from '@/server/publish/summary'
+import { reservationsOffered } from '@/server/reservations/load'
 import { canPublishMenu } from '@/server/roles'
 import { requireTenant } from '@/server/session'
 import { loadSettingsAccess } from '@/server/settings/access'
@@ -70,14 +74,30 @@ export default async function VenueWorkspacePage({
   // A shared device works Tonight: no composer, no Tables & QR, no Settings and no Publish bar,
   // which need the person's own sign-in (D122 §7, RR-83, RR-84, RR-85). An old link lands on Tonight.
   const sharedDevice = await sessionIsSharedDevice({ tenantId: organization.id, sessionId })
-  if (sharedDevice && sharedDeviceTabOf(query.tab) !== workspaceTabOf(query.tab)) {
+  // Reservations is a tab of its own after Tonight (#326), for whoever works tonight's
+  // reservations (D141). Without the key there is no tab and no link to it.
+  const tabRights: WorkspaceRights = {
+    reservations: await reservationsOffered({
+      tenantId: organization.id,
+      venueId: venue.id,
+      userId: user.id,
+      sessionId,
+    }),
+  }
+  if (
+    sharedDevice &&
+    sharedDeviceTabOf(query.tab, tabRights) !== workspaceTabOf(query.tab, tabRights)
+  ) {
     redirect(`/venues/${venue.id}?tab=tonight`)
   }
-  const openTab = sharedDevice ? sharedDeviceTabOf(query.tab) : workspaceTabOf(query.tab)
+  const openTab = sharedDevice
+    ? sharedDeviceTabOf(query.tab, tabRights)
+    : workspaceTabOf(query.tab, tabRights)
   const composerOpen = openTab === 'composer'
   const settingsOpen = openTab === 'settings'
   const tablesOpen = openTab === 'tables'
   const tonightOpen = openTab === 'tonight'
+  const reservationsOpen = openTab === 'reservations'
   const [hasTill, guestPath] = await Promise.all([
     venueHasTill(organization.id, venue.id),
     guestPathOf(getPool(), organization.id, venue.slug),
@@ -140,6 +160,7 @@ export default async function VenueWorkspacePage({
         />
         <WorkspaceTabs
           sharedDevice={sharedDevice}
+          rights={tabRights}
           contents={{
             composer: composerOpen ? (
               <Suspense fallback={<ComposerSkeleton />}>
@@ -183,6 +204,24 @@ export default async function VenueWorkspacePage({
             ) : (
               <TonightSkeleton />
             ),
+            ...(tabRights.reservations
+              ? {
+                  reservations: reservationsOpen ? (
+                    <Suspense fallback={<ReservationsSkeleton />}>
+                      <ReservationsTab
+                        tenantId={organization.id}
+                        venue={venue}
+                        userId={user.id}
+                        sessionId={sessionId}
+                        view={typeof query.view === 'string' ? query.view : undefined}
+                        day={typeof query.day === 'string' ? query.day : undefined}
+                      />
+                    </Suspense>
+                  ) : (
+                    <ReservationsSkeleton />
+                  ),
+                }
+              : {}),
             settings: (
               <SettingsSections
                 hasTill={hasTill}

@@ -7,6 +7,9 @@
 //                     session a shared device), and two people with PINs (Maria, Staff, 1234;
 //                     Georgi, Manager, 4321). Idempotent; ends with a clean night (see `night`).
 //   night <name>      resets the night, then sets the scene (see NIGHTS below).
+//   book <scene>      resets the club's reservations and sets a night's book (#326): `book`, or
+//                     `book-past-open` with the owner's switch on for correcting a night that
+//                     has passed (scripts/e2e/reservations-night.ts).
 //   call <table>      a guest at the open table (its number) calls a waiter, as the phone's tap does.
 //   device <email>    marks the newest session of the account a shared device of the venue, as the
 //                     owner's "mark this device" would.
@@ -28,6 +31,11 @@ import pg from 'pg'
 import { createAuth } from '../src/server/auth'
 import { getAuthDb, getPool } from '../src/server/db'
 import { authModelId } from '../src/server/ids'
+import {
+  RESERVATION_SCENES,
+  type ReservationScene,
+  seedReservationsNight,
+} from './e2e/reservations-night'
 import { seedPayNight } from './e2e/tonight-pay-night'
 import { assertDevEnvironment, readAdminCredentials } from './lib/guard'
 
@@ -909,21 +917,62 @@ async function device(email: string): Promise<void> {
   }
 }
 
+/** The club's reservations, as a night's book (#326). */
+async function book(scene: string): Promise<void> {
+  if (!(RESERVATION_SCENES as readonly string[]).includes(scene)) {
+    throw new Error(`unknown book "${scene}" (${RESERVATION_SCENES.join(', ')})`)
+  }
+  const { tenantId, venueId } = await target()
+  const owner = ownerPool()
+  try {
+    const [venue] = await withTenant(getPool(), tenantId, (tx) =>
+      tx.select().from(venues).where(eq(venues.id, venueId)),
+    )
+    if (!venue) throw new Error('the venue went missing')
+    const staffId = (
+      await owner.query<{ id: string }>(
+        `select id from restro.staff_members where tenant_id = $1 and display_name = 'Maria'`,
+        [tenantId],
+      )
+    ).rows[0]?.id
+    if (staffId === undefined) throw new Error('Run the `seed` step first: Maria is not on staff.')
+    const nights = await seedReservationsNight(
+      {
+        owner,
+        tenantId,
+        venueId,
+        day: serviceDate(new Date(), venue.timezone, venue.serviceDayEndsAt),
+        timezone: venue.timezone,
+        staffId,
+      },
+      scene as ReservationScene,
+    )
+    // The spec asks for a night by name, so the fixture says which two it wrote.
+    console.log(JSON.stringify(nights))
+  } finally {
+    await owner.end()
+  }
+}
+
 const [step, argument] = process.argv.slice(2)
 const run =
   step === 'seed'
     ? seed()
     : step === 'night' && argument !== undefined
       ? night(argument)
-      : step === 'call' && argument !== undefined
-        ? call(argument)
-        : step === 'device' && argument !== undefined
-          ? device(argument)
-          : step === 'idle'
-            ? idle()
-            : Promise.reject(
-                new Error('seed | night <name> | call <table> | device <email> | idle'),
-              )
+      : step === 'book' && argument !== undefined
+        ? book(argument)
+        : step === 'call' && argument !== undefined
+          ? call(argument)
+          : step === 'device' && argument !== undefined
+            ? device(argument)
+            : step === 'idle'
+              ? idle()
+              : Promise.reject(
+                  new Error(
+                    'seed | night <name> | book <scene> | call <table> | device <email> | idle',
+                  ),
+                )
 run
   .then(async () => {
     await getPool().end()
