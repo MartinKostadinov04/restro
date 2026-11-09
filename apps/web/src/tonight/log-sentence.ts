@@ -157,7 +157,14 @@ export const SENTENCES = {
     c.say('lg_settings', {
       what: c.say(l.setting === 'pay_table' ? 'lg_w_pay_table' : 'lg_w_setting'),
     }),
-  'role.changed': (l, c) => c.say('lg_role', { role: l.subject ?? c.say('lg_someone') }),
+  // A role change names the role and how many abilities it holds now (#366): a default role the
+  // venue ticked is read in the Log like any other, and the keys themselves are in the entry.
+  'role.changed': (l, c) => {
+    const role = l.subject ?? c.say('lg_someone')
+    return l.heldCount === null
+      ? c.say('lg_role', { role })
+      : c.say('lg_role_holds', { role, n: l.heldCount })
+  },
   // A person getting or losing a role is a change of staff (no sentence of its own in the plan).
   'assignment.changed': (l, c) => c.say('lg_staff', { who: l.subject ?? c.say('lg_someone') }),
   'staff.changed': (l, c) => c.say('lg_staff', { who: l.subject ?? c.say('lg_someone') }),

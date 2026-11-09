@@ -142,6 +142,7 @@ import {
   RoleRefSchema,
   renameStaff,
   resetPin,
+  resetRole,
   revealPins,
   revokeSharedDevice,
   unassignStaff,
@@ -631,15 +632,19 @@ export const SERVICE_COMMANDS = {
     { fromRoleId: RoleRefSchema, name: RoleNameSchema },
     copyRole,
   ),
+  // A default role below the owner's is ticked and unticked here too (#366), named by its kind
+  // when the venue has no row for it yet; its name stays as Restro ships it.
   'role.update': rolesChange(
     'role.update',
     {
-      roleId: idSchema('rl'),
+      roleId: RoleRefSchema,
       name: RoleNameSchema.optional(),
       permissions: PermissionListSchema.optional(),
     },
     updateRole,
   ),
+  /** Puts a default role back as Restro ships it (#366). */
+  'role.reset': rolesChange('role.reset', { roleId: RoleRefSchema }, resetRole),
   'role.archive': rolesChange('role.archive', { roleId: idSchema('rl') }, archiveRole),
   // #72: staff members and their assignment at this venue.
   'staff.add': rolesChange(

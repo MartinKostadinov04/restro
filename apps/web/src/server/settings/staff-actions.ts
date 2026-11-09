@@ -54,10 +54,12 @@ const CopyRole = z.strictObject({
 })
 const UpdateRole = z.strictObject({
   venueId,
-  roleId,
+  // A default role too (#366), named by its kind while the venue has no row for it yet.
+  roleId: roleRef,
   name: z.string().trim().min(1).max(40).optional(),
   permissions: z.array(z.enum(PERMISSIONS)).max(PERMISSIONS.length).optional(),
 })
+const ResetRole = z.strictObject({ venueId, roleId: roleRef })
 const OnRole = z.strictObject({ venueId, roleId })
 /** One line of "Where the PIN falls" (D141, #324): one action, moved one way or the other. */
 const PinFall = z.strictObject({
@@ -224,12 +226,24 @@ export async function copyRoleAction(input: unknown): Promise<SettingsResult> {
   return change({ venueId: venue }, { type: 'role.copy', ...rest })
 }
 
-/** Renames a venue's own role or changes what it may do. */
+/**
+ * Changes what a role may do, and renames a venue's own role. The venue's Staff and Manager roles
+ * are ticked here in place (#366); the Owner role and the three default names are refused by the
+ * command itself (`role_read_only`).
+ */
 export async function updateRoleAction(input: unknown): Promise<SettingsResult> {
   const parsed = UpdateRole.safeParse(input)
   if (!parsed.success) return INVALID
   const { venueId: venue, ...rest } = parsed.data
   return change({ venueId: venue }, { type: 'role.update', ...rest })
+}
+
+/** Puts a default role back as Restro ships it (#366). */
+export async function resetRoleAction(input: unknown): Promise<SettingsResult> {
+  const parsed = ResetRole.safeParse(input)
+  if (!parsed.success) return INVALID
+  const { venueId: venue, roleId: role } = parsed.data
+  return change({ venueId: venue }, { type: 'role.reset', roleId: role })
 }
 
 /**

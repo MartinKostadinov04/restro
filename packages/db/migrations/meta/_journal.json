@@ -337,6 +337,13 @@
       "when": 1794221630862,
       "tag": "0047_shared_device_person",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1794228530910,
+      "tag": "0048_editable_default_roles",
+      "breakpoints": true
     }
   ]
 }
