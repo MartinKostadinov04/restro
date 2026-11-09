@@ -369,15 +369,19 @@ test('the tables grid has no sideways scroll from 1024 to 1366 px, with the long
       // The grid's own scrolling column and every tile: nothing wider than the box that holds it.
       const wider = await tiles.first().evaluate((first) => {
         const out: string[] = []
-        for (let el = first.closest('ul'); el !== null; el = el.parentElement) {
-          if (el.scrollWidth > el.clientWidth) out.push(`${el.tagName}.${el.className}`.slice(0, 60))
+        for (let el: HTMLElement | null = first.closest('ul'); el !== null; el = el.parentElement) {
+          if (el.scrollWidth > el.clientWidth)
+            out.push(`${el.tagName}.${el.className}`.slice(0, 60))
           if (el.dataset.testid === 'tonight') break
         }
         return out
       })
       expect(wider, `${width} px`).toEqual([])
-      const tight = await tiles.evaluateAll((els) =>
-        els.filter((el) => el.scrollWidth > el.clientWidth || el.getBoundingClientRect().height < 44).length,
+      const tight = await tiles.evaluateAll(
+        (els) =>
+          els.filter(
+            (el) => el.scrollWidth > el.clientWidth || el.getBoundingClientRect().height < 44,
+          ).length,
       )
       expect(tight, `${width} px tiles`).toBe(0)
     }
