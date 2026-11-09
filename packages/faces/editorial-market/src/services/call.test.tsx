@@ -215,6 +215,37 @@ describe('after sending: only what the host says', () => {
     expect(within(sheet).getAllByRole('radio')).toHaveLength(7)
   })
 
+  it('says the call was handled when staff answer it while the sheet is open, until the guest moves on (#344)', async () => {
+    const { host, page, sheet, call } = await sent()
+    await act(async () => call?.answer())
+    const id = call?.command.actionId ?? ''
+    page.update({ requests: [request('rq-1', id, 'waiter', 'sent')] })
+    expect(within(sheet).getByText('Waiter called')).toBeTruthy()
+    // Staff press Handled: the guest who followed this call is told, not left waiting.
+    page.update({ requests: [request('rq-1', id, 'waiter', 'done')] })
+    expect(within(sheet).getByText('Your call was handled')).toBeTruthy()
+    expect(within(sheet).getByText('The team has taken care of your request.')).toBeTruthy()
+    expect(sheet.textContent).not.toContain('waiting for the team')
+    expect(host.of('service.request')).toHaveLength(1)
+    // The way on is a fresh request, and the handled call has had its say.
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Send another request' }))
+    expect(within(sheet).getAllByRole('radio')).toHaveLength(7)
+  })
+
+  it('shows the picker again when the guest closes the sheet and opens it after the call was handled (#344)', async () => {
+    const { page, sheet, call } = await sent()
+    await act(async () => call?.answer())
+    const id = call?.command.actionId ?? ''
+    page.update({ requests: [request('rq-1', id, 'waiter', 'sent')] })
+    page.update({ requests: [request('rq-1', id, 'waiter', 'done')] })
+    expect(within(sheet).getByText('Your call was handled')).toBeTruthy()
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    const again = openCall()
+    expect(within(again).queryByText('Your call was handled')).toBeNull()
+    expect(within(again).getAllByRole('radio')).toHaveLength(7)
+  })
+
   it("says a rejected request was not taken, with the host's reason, and lets the guest ask again", async () => {
     const { sheet, call } = await sent()
     await act(async () => call?.answer({ status: 'rejected', message: text('The bar is closed.') }))

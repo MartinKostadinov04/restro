@@ -13,6 +13,10 @@
 // about it when the guest opens the sheet again (the host keeps it a few minutes), so a lapsed call
 // reads as "Ask your waiter" rather than as a sheet where nothing ever happened (DA-27).
 //
+// A call that staff mark handled while the guest watches it in the sheet reads "Your call was
+// handled" until the guest moves on (#344). One the sheet did not see open - a handled call met on
+// opening - is never drawn: the picker shows and a new call is possible.
+//
 // No local success (D72): an answer that was lost (`pending` with `answer_lost`, the host's own
 // answer when the request threw, timed out or came back unusable) is never "Request sent". It says
 // D120's lost-answer line, and "Try again" is safe here because the retry carries the same action
@@ -189,11 +193,29 @@ export function CallSheet() {
     }
   }, [])
 
+  // The calls this sheet has seen open, or sent itself: only a call the guest followed gets the
+  // handled panel when staff answer it (#344). An old handled call, met on opening, never does.
+  const [followed, setFollowed] = useState<ReadonlySet<string>>(new Set())
+  const seenOpen = callsOf(state.requests)
+    .filter((call) => OPEN.includes(call.status) && !followed.has(call.id))
+    .map((call) => call.id)
+  const seenOpenKey = seenOpen.join(' ')
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the key stands for the ids
+  useEffect(() => {
+    if (seenOpen.length > 0) setFollowed((now) => new Set([...now, ...seenOpen]))
+  }, [seenOpenKey])
+
   // The call this sheet is about: the table's latest one the guest has not moved on from, open or
-  // lapsed. The host lists only the table's latest call, and drops it a few minutes after it ended.
+  // lapsed, or handled while the guest watched it. The host lists only the table's latest call, and
+  // drops it a few minutes after it ended.
   const current = [...callsOf(state.requests)]
     .reverse()
-    .find((call) => SHOWN.includes(call.status) && !movedOn.has(call.id))
+    .find(
+      (call) =>
+        !movedOn.has(call.id) &&
+        (SHOWN.includes(call.status) ||
+          (call.status === 'done' && (followed.has(call.id) || asked?.actionId === call.id))),
+    )
   const openNow = current !== undefined && OPEN.includes(current.status)
 
   // With only `waiter` ticked there is nothing to choose (D127): the kinds are read as they stand,
