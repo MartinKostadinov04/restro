@@ -1,7 +1,7 @@
 // Two seeded organisations for the attack tests (the repair-review's A7). Each has an owner, an
 // admin and a plain member, two venues, and one row of nearly everything a command can name: menu,
 // section, item, tag, area, table with a code, person, role, device, sitting, sent order, payment,
-// refund, alert, call, pause, snapshots, asset, integration, bar. Every name carries a marker, so a
+// refund, alert, call, pause, snapshots, asset, integration, bar, reservation. Every name carries a marker, so a
 // leak in an answer shows; `fingerprint` hashes every tenant-bound row, so a write shows.
 import { randomUUID } from 'node:crypto'
 
@@ -41,6 +41,7 @@ export interface SeededVenue {
   readonly deviceSession: string
   readonly sitting: string
   readonly sentOrder: string
+  readonly reservation: string
   readonly payment: string
   readonly refund: string
   readonly alert: string
@@ -236,6 +237,22 @@ async function seedVenue(
      values ($1, $2, $3, $4, 'table', $5, 'staff', true, $6, $7, $8)`,
     [pause, tenantId, venue.id, day, table, ...SEED],
   )
+  // The reservations the night's list reads (#326): the venue's turn time, and one booking whose
+  // name is the marker's, so a leak of A's book into B's answer shows.
+  await owner.query(
+    `insert into restro.reservation_settings
+       (tenant_id, venue_id, turn_minutes, source, actor, job_id)
+     values ($1, $2, 120, $3, $4, $5)`,
+    [tenantId, venue.id, ...SEED],
+  )
+  const reservation = newId('rv')
+  await owner.query(
+    `insert into restro.reservations
+       (id, tenant_id, venue_id, service_date, starts_at, kind, status, party_size, party_label,
+        source, actor, job_id)
+     values ($1, $2, $3, $4, now(), 'booking', 'reserved', 2, $5, $6, $7, $8)`,
+    [reservation, tenantId, venue.id, day, `${marker} party`.slice(0, 80), ...SEED],
+  )
   const bar = newId('br')
   await owner.query(
     `insert into restro.bars (id, tenant_id, venue_id, name, source_key) values ($1, $2, $3, $4, $5)`,
@@ -267,6 +284,7 @@ async function seedVenue(
     deviceSession,
     sitting,
     sentOrder,
+    reservation,
     payment,
     refund,
     alert,
