@@ -294,8 +294,16 @@ async function deleteRows(tx: PurgeTx, table: string, where: SQL): Promise<reado
 /**
  * Every service row of a venue (#84, D83: a venue purge erases all of them), children before the
  * rows they name: the paying, the night's rows, the Log, the readings and locks, sent orders,
- * sittings, the closed days, the venue's roles, assignments and shared devices. The organisation's
- * staff members are not the venue's and stay (the staff step lets them go).
+ * sittings, the closed days, the venue's roles, assignments and shared devices, then the
+ * reservations side. The organisation's staff members are not the venue's and stay (the staff step
+ * lets them go).
+ *
+ * The reservations block (#361, D140): the holds a reservation has on a spot go first
+ * (`reservation_spots`, through its reservation: it names no venue of its own), then the private
+ * notes about a guest, the reservations and the walk-ins and blocks with them, the spots (they
+ * name their plan and a table), the plans and the kinds, the guest records, the venue's settings
+ * and its nights. Every one of them is before `tables`, which the venue purge erases after this
+ * step: a spot names a table.
  */
 const VENUE_SERVICE_TABLES = [
   'payment_refunds',
@@ -319,7 +327,25 @@ const VENUE_SERVICE_TABLES = [
   'staff_assignments',
   'venue_roles',
   'shared_devices',
+  // Reservations (#361): children before the rows they name.
+  'guest_private_notes',
+  'reservations',
+  'spots',
+  'floor_plans',
+  'venue_spot_kinds',
+  'guests',
+  'reservation_settings',
+  'reservation_nights',
 ] as const
+
+/**
+ * Service rows of a venue that carry no `venue_id` of their own: found through the parent they
+ * name (#361). Erased before `VENUE_SERVICE_TABLES`, whose rows are those parents.
+ */
+const VENUE_SERVICE_CHILD_TABLES = {
+  reservation_spots: (venueId: string) =>
+    sql`reservation_id in (select id from restro.reservations where venue_id = ${venueId})`,
+} as const satisfies Record<string, (venueId: string) => SQL>
 
 /**
  * A payment past its retention (#112): settled 18 months ago (`retain_until`), and neither waiting
@@ -371,6 +397,9 @@ async function deleteDuePayments(
 }
 
 async function deleteVenueService(tx: PurgeTx, venueId: string, counts: Counts): Promise<void> {
+  for (const [table, where] of Object.entries(VENUE_SERVICE_CHILD_TABLES)) {
+    count(counts, table, await deleteRows(tx, table, where(venueId)))
+  }
   for (const table of VENUE_SERVICE_TABLES) {
     count(counts, table, await deleteRows(tx, table, sql`venue_id = ${venueId}`))
   }
