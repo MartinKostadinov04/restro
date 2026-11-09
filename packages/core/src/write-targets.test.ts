@@ -150,6 +150,11 @@ function dbImports(text: string): string[] {
   return names
 }
 
+/** The text without `//` line comments and block comments (words in them name nothing). */
+function stripComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1')
+}
+
 const rel = (file: string) => relative(srcRoot, file).replaceAll('\\', '/')
 
 describe('the write-target guard', () => {
@@ -283,6 +288,49 @@ describe('the guest-events write path', () => {
       ].map((name) => `${rel(file)}: ${name}`)
     })
     expect(found).toEqual([])
+  })
+
+  // D103, corrected 11-09: the guest-events module "never joins core tables", so it can move to an
+  // edge ingest. This is a source check, and it is only as strong as its three patterns say: the
+  // module names no db export but the table (a Drizzle table is the only way a join reaches
+  // another table, and tables are the camelCase exports; PascalCase ones are types), uses no join
+  // method or keyword, and its raw SQL names no `restro.` table but its own. The database-side
+  // guarantee is the foreign-key test in packages/db/tests/table-areas.test.ts. Today the module
+  // only inserts, so this holds trivially; it fails the day a read of it reaches into the core.
+  it('core/events names no table but its own and joins nothing (D103)', () => {
+    const found = eventsFiles.flatMap((file) => {
+      const text = stripComments(readFileSync(file, 'utf8'))
+      const tables = dbImports(text).filter((name) => /^[a-z]/.test(name) && name !== 'guestEvents')
+      const joins = [...text.matchAll(/\b(?:inner|left|right|full|cross)?join\s*\(|\bjoin\b/gi)]
+      const sqlNames = [...text.matchAll(/\brestro\s*\.\s*"?([a-z_]+)"?/gi)]
+        .map((match) => (match[1] ?? '').toLowerCase())
+        .filter((name) => name !== 'guest_events')
+      return [
+        ...tables.map((name) => `${rel(file)}: imports ${name}`),
+        ...joins.map((match) => `${rel(file)}: ${match[0]}`),
+        ...sqlNames.map((name) => `${rel(file)}: names restro.${name}`),
+      ]
+    })
+    expect(found).toEqual([])
+  })
+
+  it('catches a core table, a join and a core table in raw SQL in the events module', () => {
+    const bad = stripComments(
+      [
+        "import { guestEvents, venues } from '@restro/db'",
+        'await tx.select().from(guestEvents).innerJoin(venues, eq(a, b))',
+        'await tx.execute(sql`select 1 from restro.tables`)',
+      ].join('\n'),
+    )
+    expect(dbImports(bad).filter((name) => /^[a-z]/.test(name) && name !== 'guestEvents')).toEqual([
+      'venues',
+    ])
+    expect(/\b(?:inner|left|right|full|cross)?join\s*\(|\bjoin\b/i.test(bad)).toBe(true)
+    expect(/\brestro\s*\.\s*"?(?!guest_events)[a-z_]+/i.test(bad)).toBe(true)
+    // Words in comments do not count.
+    expect(
+      stripComments('// never joins core tables\n/* join restro.venues */ const a = 1'),
+    ).not.toMatch(/join|restro/)
   })
 
   it('neither core/apply nor core/service names the table itself', () => {
