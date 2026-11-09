@@ -77,6 +77,7 @@ export function UrlTabs<V extends string>({
   contents,
   label,
   listClassName,
+  oneRow = false,
 }: {
   defs: readonly (WorkspaceTabDef & { readonly value: V })[]
   current: V
@@ -84,6 +85,12 @@ export function UrlTabs<V extends string>({
   contents: Partial<Record<V, ReactNode>>
   label: string
   listClassName?: string
+  /**
+   * A list short enough for the narrowest screen — a shared device's Tonight and Reservations
+   * (#326, D141). The row is then drawn at every width and there is no select at all, so the tab
+   * a hostess needs at the door is one tap, in portrait as in landscape.
+   */
+  oneRow?: boolean
 }) {
   const t = useTranslations()
   return (
@@ -91,7 +98,16 @@ export function UrlTabs<V extends string>({
       {/* One tab is no choice: a device whose role is off the door has Tonight alone (D141). */}
       {defs.length > 1 ? (
         <>
-          <TabsList className={listClassName ?? 'hidden lg:inline-flex'} aria-label={label}>
+          {/* Whatever the list, the row scrolls inside itself rather than pushing the page. */}
+          <TabsList
+            className={
+              listClassName ??
+              (oneRow
+                ? 'inline-flex max-w-full overflow-x-auto'
+                : 'hidden max-w-full overflow-x-auto lg:inline-flex')
+            }
+            aria-label={label}
+          >
             {defs.map(({ value, labelKey, icon: Icon }) => (
               <TabsTrigger key={value} value={value}>
                 <Icon aria-hidden />
@@ -99,19 +115,21 @@ export function UrlTabs<V extends string>({
               </TabsTrigger>
             ))}
           </TabsList>
-          <Select value={current} onValueChange={select}>
-            <SelectTrigger className="w-full lg:hidden" aria-label={label}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {defs.map(({ value, labelKey, icon: Icon }) => (
-                <SelectItem key={value} value={value}>
-                  <Icon aria-hidden />
-                  {t(labelKey)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {oneRow ? null : (
+            <Select value={current} onValueChange={select}>
+              <SelectTrigger className="w-full lg:hidden" aria-label={label}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {defs.map(({ value, labelKey, icon: Icon }) => (
+                  <SelectItem key={value} value={value}>
+                    <Icon aria-hidden />
+                    {t(labelKey)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </>
       ) : null}
       {defs.map(({ value }) => (
@@ -165,6 +183,9 @@ export function WorkspaceTabs({
       select={select}
       contents={contents}
       label={t('switchTab')}
+      // A shared device has Tonight and the night's list, two tabs that fit a 390 px phone: no
+      // chooser between them at any width (RR-85, #326).
+      oneRow={sharedDevice}
     />
   )
 }
@@ -199,7 +220,10 @@ export function SettingsSections({
       select={select}
       contents={contents}
       label={t('switchSection')}
-      listClassName="hidden lg:inline-flex"
+      // Nine sections on a venue with everything (Reservations made the ninth) do not fit one row
+      // beside their icons below 2xl: the icons go first, and the row scrolls inside itself
+      // rather than the page.
+      listClassName="hidden max-w-full overflow-x-auto lg:inline-flex [&_svg]:hidden 2xl:[&_svg]:block"
     />
   )
 }

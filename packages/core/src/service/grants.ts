@@ -3,9 +3,10 @@
 // would refuse anyway.
 // - An organisation's owner or admin (`auth_member.role`) holds every permission at every venue,
 //   implicitly, so nobody can lock the organisation out.
-// - Anyone else holds their venue role's permissions, through their one assignment at the venue. A
-//   default role holds what the code says it holds (`DEFAULT_ROLE_PERMISSIONS`), never its stored
-//   copy, so a permission shipped later reaches every venue's defaults at once.
+// - Anyone else holds their venue role's permissions, through their one assignment at the venue,
+//   as `roleGrants` reads them — the one authority, which the role editor reads too (#366): a
+//   default role the venue has never edited holds what the code's table says, an edited one holds
+//   its own ticks, and the owner's holds everything whatever its row says.
 // - On a shared device every staff write needs the person's own PIN, and that person's role
 //   decides, never the signed-in account's. A PIN never unlocks a settings permission. The one
 //   exception is a quick answer (`quickOnSharedDevice`) and the Tonight read: the device's own
@@ -27,12 +28,11 @@ import { and, eq, isNull } from 'drizzle-orm'
 import type { ServiceActor } from './context'
 import {
   DEFAULT_ROLE_PERMISSIONS,
-  grantedPermissions,
-  isDefaultRoleKind,
   isSettingsPermission,
   OPERATOR_PERMISSIONS,
   PERMISSIONS,
   type Permission,
+  roleGrants,
 } from './permissions'
 
 /** The read side of a transaction: the check never writes. */
@@ -99,7 +99,11 @@ async function assignedPermissions(
   staffMemberId: string,
 ): Promise<Permission[]> {
   const [role] = await tx
-    .select({ permissions: venueRoles.permissions, defaultKind: venueRoles.defaultKind })
+    .select({
+      permissions: venueRoles.permissions,
+      knownPermissions: venueRoles.knownPermissions,
+      defaultKind: venueRoles.defaultKind,
+    })
     .from(staffAssignments)
     .innerJoin(venueRoles, eq(venueRoles.id, staffAssignments.roleId))
     .where(
@@ -112,11 +116,8 @@ async function assignedPermissions(
       ),
     )
   if (role === undefined) return []
-  return grantedPermissions(
-    isDefaultRoleKind(role.defaultKind)
-      ? DEFAULT_ROLE_PERMISSIONS[role.defaultKind]
-      : role.permissions,
-  )
+  // `roleGrants` and nothing else: what a person may do here is what the role editor shows (#366).
+  return roleGrants(role)
 }
 
 /**

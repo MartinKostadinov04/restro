@@ -5,6 +5,7 @@
 // URL as `?tab=settings&section=…`.
 import {
   BellIcon,
+  CalendarCheckIcon,
   CalendarDaysIcon,
   ClockIcon,
   CloudUploadIcon,
@@ -115,7 +116,9 @@ export function sharedDeviceTabOf(
 /**
  * The sections of the Settings tab (D97, #87): General, Hours, Ordering, Staff and roles, Alerts,
  * Publish (only for a venue with a till) and Versioning, in the order of
- * docs/deliverables/2026-10-27-owner-settings-grouping.md. Paying (#116) goes between Ordering and
+ * docs/deliverables/2026-10-27-owner-settings-grouping.md. Reservations (#325) goes after Ordering,
+ * for every venue (reservations are Restro's own, never a POS's), read-only without
+ * `settings.reservations`. Paying (#116) goes between Reservations and
  * Staff and roles, only where the venue's POS can take card payments. Hours and Ordering are read-only for a role without `settings.guards`; Staff
  * and roles and Alerts are left out for a role without `settings.roles` or `settings.alerts`.
  */
@@ -123,6 +126,7 @@ export const SETTINGS_SECTION_DEFS = [
   { value: 'general', labelKey: 'workspace.settingsSections.general', icon: SlidersHorizontalIcon },
   { value: 'hours', labelKey: 'ownerSettings.st_hours', icon: ClockIcon },
   { value: 'ordering', labelKey: 'ownerSettings.st_ordering', icon: ListChecksIcon },
+  { value: 'reservations', labelKey: 'ownerSettings.rs_title', icon: CalendarCheckIcon },
   { value: 'paying', labelKey: 'ownerSettings.pa_title', icon: CreditCardIcon },
   { value: 'staff', labelKey: 'ownerSettings.sf_title', icon: UsersIcon },
   { value: 'alerts', labelKey: 'ownerSettings.al_title', icon: BellIcon },

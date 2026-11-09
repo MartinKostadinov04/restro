@@ -1,5 +1,6 @@
-// The people commands (D122 §7; ticket #72) on a real Postgres, as the restro_app role: default
-// roles are read-only and copied, nobody grants what they don't hold, a new person gets a PIN kept
+// The people commands (D122 §7; ticket #72) on a real Postgres, as the restro_app role: the
+// venue's Staff and Manager roles are ticked in place and reset while the Owner's stays fixed
+// (#366), nobody grants what they don't hold, a new person gets a PIN kept
 // only as its HMAC and a sealed copy, a reset draws another, a reveal is a `record` Log entry, a
 // settings change needs a sign-in of the last 15 minutes, Restro's admin team acts at any venue,
 // a shared device asks for a PIN and the fifth wrong one in five minutes trips the guard.
@@ -15,7 +16,9 @@ import { identifyStaffByPin } from './identify'
 import {
   applyService,
   DEFAULT_ROLE_PERMISSIONS,
+  PERMISSIONS,
   readStaffSettings,
+  readVenueAccess,
   type ServiceCommand,
 } from './index'
 import { pinHmac } from './pins'
@@ -144,19 +147,26 @@ describe.skipIf(!hasDatabase)('the people commands (as the restro_app role)', ()
     expect(reveals.at(-1)).toMatchObject({ retention: 'record' })
   })
 
-  it('keeps default roles read-only; a copy is the venue own role', async () => {
+  it('keeps the Owner role fixed; a copy is the venue own role', async () => {
     const settings = await readStaffSettings(world.app, {
       tenantId: world.tenantId,
       venueId: world.venueId,
       actor: owner(),
     })
     if (!settings.ok) throw new Error(settings.code)
-    const staffRole = settings.settings.roles.find((role) => role.defaultKind === 'staff')
-    expect(staffRole).toMatchObject({ readOnly: true })
-    expect(staffRole?.id).toMatch(/^rl_/)
+    const ownerRole = settings.settings.roles.find((role) => role.defaultKind === 'owner')
+    expect(ownerRole).toMatchObject({ readOnly: true })
+    expect(ownerRole?.id).toMatch(/^rl_/)
+    // An owner who could take `settings.roles` off their own role would lock the venue out (#366).
     expect(
-      await run({ type: 'role.update', roleId: rl(staffRole?.id), permissions: ['sold_out'] }),
+      await run({ type: 'role.update', roleId: rl(ownerRole?.id), permissions: ['sold_out'] }),
     ).toMatchObject({ code: 'role_read_only' })
+    expect(await run({ type: 'role.reset', roleId: 'owner' })).toMatchObject({
+      code: 'role_read_only',
+    })
+    expect(await run({ type: 'role.archive', roleId: rl(ownerRole?.id) })).toMatchObject({
+      code: 'role_read_only',
+    })
 
     const { roleId } = await accepted({ type: 'role.copy', fromRoleId: 'staff', name: 'Bar' })
     await accepted({
@@ -177,6 +187,120 @@ describe.skipIf(!hasDatabase)('the people commands (as the restro_app role)', ()
     })
     expect(await run({ type: 'role.copy', fromRoleId: 'staff', name: 'bar' })).toMatchObject({
       code: 'role_name_taken',
+    })
+  })
+
+  /** The venue's roles as the role editor reads them, by kind. */
+  const roleView = async (kind: string) => {
+    const settings = await readStaffSettings(world.app, {
+      tenantId: world.tenantId,
+      venueId: world.venueId,
+      actor: owner(),
+    })
+    if (!settings.ok) throw new Error(settings.code)
+    const role = settings.settings.roles.find((candidate) => candidate.defaultKind === kind)
+    if (role === undefined) throw new Error(`no ${kind} role`)
+    return role
+  }
+  /** What the permission check says an actor holds at the venue (`resolveGrants`). */
+  const holdsOf = async (actor: ServiceActor) => {
+    const access = await readVenueAccess(world.app, {
+      tenantId: world.tenantId,
+      venueId: world.venueId,
+      actor,
+    })
+    if (!access.ok) throw new Error(access.code)
+    return [...access.permissions].sort()
+  }
+  /** The `known_permissions` marker of a default role, straight from the row. */
+  const markerOf = async (kind: string) => {
+    const { rows } = await world.owner.query<{ known_permissions: string[] | null }>(
+      'select known_permissions from restro.venue_roles where venue_id = $1 and default_kind = $2',
+      [world.venueId, kind],
+    )
+    return rows[0]?.known_permissions ?? null
+  }
+
+  it('ticks the Staff role in place: the editor and the permission check answer the same (#366)', async () => {
+    const waiterId = await world.addUser('member')
+    const { staffMemberId } = await accepted({
+      type: 'staff.add',
+      displayName: 'Nina',
+      roleId: 'staff',
+    })
+    await world.owner.query('update restro.staff_members set user_id = $2 where id = $1', [
+      sm(staffMemberId),
+      waiterId,
+    ])
+    const waiter = (): ServiceActor => ({
+      kind: 'user',
+      userId: waiterId,
+      sessionId: `sess-${randomUUID()}`,
+    })
+    const shipped = [...DEFAULT_ROLE_PERMISSIONS.staff].sort()
+
+    // As Restro ships it: no marker, the code's table, and the same answer on both sides.
+    expect(await markerOf('staff')).toBeNull()
+    expect(await roleView('staff')).toMatchObject({ readOnly: false, edited: false })
+    expect([...(await roleView('staff')).permissions].sort()).toEqual(shipped)
+    expect(await holdsOf(waiter())).toEqual(shipped)
+
+    // The venue takes one ability off, in place: no copy, nobody moved.
+    const without = DEFAULT_ROLE_PERMISSIONS.staff.filter(
+      (permission) => permission !== 'alerts.answer',
+    )
+    await accepted({ type: 'role.update', roleId: 'staff', permissions: without })
+    const edited = await roleView('staff')
+    expect(edited).toMatchObject({ edited: true, readOnly: false, newPermissions: [] })
+    expect([...edited.permissions].sort()).toEqual([...without].sort())
+    expect(await holdsOf(waiter())).toEqual([...without].sort())
+    expect(await markerOf('staff')).toEqual([...PERMISSIONS])
+    // The Log names the role and what it holds now, in the entry's own details.
+    const entry = (await logOf('role.changed')).at(-1)
+    expect(entry).toMatchObject({ retention: 'record' })
+    expect(entry?.details).toMatchObject({ holdsCount: without.length, removed: 'alerts.answer' })
+    expect(String(entry?.details.holds)).toContain('tables.open_close')
+
+    // Reset puts back exactly what Restro ships, and the role follows the table again.
+    await accepted({ type: 'role.reset', roleId: 'staff' })
+    expect(await markerOf('staff')).toBeNull()
+    expect(await roleView('staff')).toMatchObject({ edited: false })
+    expect([...(await roleView('staff')).permissions].sort()).toEqual(shipped)
+    expect(await holdsOf(waiter())).toEqual(shipped)
+    expect((await logOf('role.changed')).at(-1)?.details).toMatchObject({
+      holdsCount: DEFAULT_ROLE_PERMISSIONS.staff.length,
+    })
+  })
+
+  it('leaves a permission Restro adds later unticked on an edited role, and marks it new (#366)', async () => {
+    // The venue edited its Manager role before this permission existed: its marker holds the keys
+    // the code knew then. Whatever permission is added next, this is what happens to it.
+    const added = PERMISSIONS.at(-1) ?? 'settings.guests'
+    const knownBefore = PERMISSIONS.filter((permission) => permission !== added)
+    await accepted({ type: 'role.update', roleId: 'manager', permissions: knownBefore })
+    await world.owner.query(
+      'update restro.venue_roles set known_permissions = $3::jsonb where venue_id = $1 and default_kind = $2',
+      [world.venueId, 'manager', JSON.stringify(knownBefore)],
+    )
+    const view = await roleView('manager')
+    expect(view.permissions).not.toContain(added)
+    expect(view.newPermissions).toEqual([added])
+
+    const staff = await roleView('staff')
+    // A role the venue never edited still gets it from the code, with nothing marked new.
+    expect(staff.newPermissions).toEqual([])
+    expect(staff.permissions.includes(added)).toBe(DEFAULT_ROLE_PERMISSIONS.staff.includes(added))
+    await accepted({ type: 'role.reset', roleId: 'manager' })
+  })
+
+  it('keeps the three default names as Restro ships them, and keeps all three (#366)', async () => {
+    expect(await run({ type: 'role.update', roleId: 'staff', name: 'Waiters' })).toMatchObject({
+      code: 'role_read_only',
+    })
+    const staffRole = await roleView('staff')
+    expect(staffRole.name).toBe('Staff')
+    expect(await run({ type: 'role.archive', roleId: rl(staffRole.id) })).toMatchObject({
+      code: 'role_read_only',
     })
   })
 

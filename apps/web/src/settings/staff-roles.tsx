@@ -1,11 +1,18 @@
 'use client'
 
 // Staff and roles › Roles and › Shared devices (#87, plan §3). A role is a row; its sheet shows the
-// name (own roles rename in place) and the permissions as ticks in three groups, each tick saving at
-// once with Undo. The three default roles are read-only and are copied to make a venue's own
-// (D122 §7). Nobody gives what they don't hold: such a tick is shown unticked and read-only. A shared
-// device is listed and stopped here; it is made on the bar tablet itself, by a staff-only account,
-// from Tonight (RR-O35).
+// name (own roles rename in place) and the permissions as ticks in four groups, each tick saving at
+// once with Undo.
+//
+// The venue's Staff and Manager roles are ticked here in place, like a role it made itself (Martin
+// 11-09, #366): what Restro ships is a preselection. Such a role gains one "Reset to what Restro
+// ships" once the venue has changed it, and an ability Restro adds later arrives unticked and
+// marked as new. The Owner role is the one that cannot change: an owner who could take
+// `settings.roles` off their own role would lock the venue out of this screen. The three default
+// names stay as Restro ships them, so a venue that wants its own name copies one, which is what
+// copying is still for. Nobody gives what they don't hold: such a tick is shown unticked and
+// read-only. A shared device is listed and stopped here; it is made on the bar tablet itself, by a
+// staff-only account, from Tonight (RR-O35).
 import { ChevronRightIcon } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
@@ -32,6 +39,7 @@ import {
 import {
   archiveRoleAction,
   copyRoleAction,
+  resetRoleAction,
   revokeSharedDeviceAction,
   updateRoleAction,
 } from '@/server/settings/staff-actions'
@@ -217,11 +225,16 @@ function RoleSheet({
   const t = useTranslations('ownerSettings')
   const { pending, run } = runner
   const [name, setName] = useState('')
-  useEffect(() => setName(role?.name ?? ''), [role])
+  const [resetting, setResetting] = useState(false)
+  useEffect(() => {
+    setName(role?.name ?? '')
+    setResetting(false)
+  }, [role])
   const held = new Set(view.held)
 
   function setPermissions(target: StaffRoleView, next: readonly string[]) {
-    if (target.defaultKind !== null) return
+    // Only the Owner role refuses a tick; a default role below it is the venue's to change (#366).
+    if (target.readOnly) return
     const previous = [...target.permissions]
     run(() => updateRoleAction({ venueId: view.venueId, roleId: target.ref, permissions: next }), {
       done: t('st_saved'),
@@ -252,7 +265,8 @@ function RoleSheet({
         {role === null ? null : (
           <>
             <SheetHeader>
-              {role.readOnly ? (
+              {/* A default role keeps the name Restro ships; a venue's own renames in place. */}
+              {role.defaultKind !== null ? (
                 <SheetTitle>{role.name}</SheetTitle>
               ) : (
                 <>
@@ -275,6 +289,11 @@ function RoleSheet({
                 {t('sf_role_people', { n: role.people })}
                 {role.defaultKind === null ? '' : ` · ${t('sf_default')}`}
               </SheetDescription>
+              {role.readOnly ? (
+                <p className="px-4 text-sm text-muted-foreground" data-testid="role-owner-fixed">
+                  {t('sf_owner_fixed')}
+                </p>
+              ) : null}
             </SheetHeader>
             <div className="grid grid-cols-1 gap-5 px-4">
               {PERMISSION_GROUPS.map((group) => (
@@ -287,6 +306,9 @@ function RoleSheet({
                     const ticked = role.permissions.includes(permission)
                     const cannotGive = !ticked && !view.operator && !held.has(permission)
                     const locked = role.readOnly || cannotGive
+                    // An ability Restro added after the venue ticked this role (#366): unticked,
+                    // in its own group like any other, and said to be new so it is not missed.
+                    const added = !cannotGive && role.newPermissions.includes(permission)
                     const id = `perm-${permission}`
                     return (
                       <div key={permission} className="flex items-start gap-2">
@@ -310,6 +332,14 @@ function RoleSheet({
                               {t('sf_cant_give')}
                             </span>
                           ) : null}
+                          {added ? (
+                            <span
+                              className="text-xs text-muted-foreground"
+                              data-testid={`perm-new-${permission}`}
+                            >
+                              {t('sf_perm_new')}
+                            </span>
+                          ) : null}
                         </Label>
                       </div>
                     )
@@ -317,7 +347,8 @@ function RoleSheet({
                 </fieldset>
               ))}
             </div>
-            {role.readOnly || role.people > 0 ? null : (
+            {/* A default role is never archived: every venue always has its three (#366). */}
+            {role.defaultKind === null && role.people === 0 ? (
               <SheetFooter>
                 <Button
                   variant="outline"
@@ -333,11 +364,84 @@ function RoleSheet({
                   {t('sf_archive_role')}
                 </Button>
               </SheetFooter>
-            )}
+            ) : null}
+            {role.edited ? (
+              <SheetFooter>
+                <Button variant="outline" disabled={pending} onClick={() => setResetting(true)}>
+                  {t('sf_reset')}
+                </Button>
+              </SheetFooter>
+            ) : null}
+            <ResetDialog
+              role={resetting ? role : null}
+              view={view}
+              runner={runner}
+              onClose={() => setResetting(false)}
+            />
           </>
         )}
       </SheetContent>
     </Sheet>
+  )
+}
+
+/**
+ * "Reset to what Restro ships", with the confirm naming what the role will hold afterwards (#366):
+ * without it a venue that ticks wrongly has no way back and we get the support call.
+ */
+function ResetDialog({
+  role,
+  view,
+  runner,
+  onClose,
+}: {
+  role: StaffRoleView | null
+  view: StaffView
+  runner: Runner
+  onClose: () => void
+}) {
+  const t = useTranslations('ownerSettings')
+  const { pending, run } = runner
+  const shipped = new Set<string>(role?.shipped ?? [])
+  const abilities = PERMISSION_GROUPS.flatMap((group) =>
+    group.permissions
+      .filter((permission) => shipped.has(permission))
+      .map((permission) => t(`perm.${permission}`)),
+  )
+  return (
+    <Dialog open={role !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        {role === null ? null : (
+          <>
+            <DialogHeader>
+              <DialogTitle>{t('sf_reset_q', { role: role.name })}</DialogTitle>
+              <DialogDescription data-testid="role-reset-body">
+                {t('sf_reset_body', {
+                  role: role.name,
+                  list: abilities.join(', '),
+                })}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={onClose}>
+                {t('sf_reset_keep')}
+              </Button>
+              <Button
+                disabled={pending}
+                onClick={() => {
+                  onClose()
+                  run(() => resetRoleAction({ venueId: view.venueId, roleId: role.ref }), {
+                    done: t('st_saved'),
+                  })
+                }}
+              >
+                {t('sf_reset_go')}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 

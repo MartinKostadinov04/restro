@@ -55,6 +55,7 @@ const line = (kind: LogLineView['kind'], fields: Partial<LogLineView> = {}): Log
   guard: null,
   setting: 'setting',
   subject: null,
+  heldCount: null,
   amountMinor: null,
   paymentState: null,
   paymentAnswer: null,
@@ -329,6 +330,22 @@ describe('the sentences of refunds, stornos and disputes (#222)', () => {
     )
     expect(bgText(line('payment.dispute', { disputeState: 'open' }))).toBe(
       'Спор по плащането: Оспорено',
+    )
+  })
+
+  it('words which reservation rule a settings change moved (#325), and a seats change', () => {
+    const settings = (code: string | null) =>
+      line('reservation_settings.changed', { reservationStatus: code })
+    expect(en(settings('phone_required'))).toBe('Phone requirement for bookings changed')
+    expect(en(settings('closed_date_added'))).toBe('Closed date added')
+    expect(en(settings('closed_date_removed'))).toBe('Closed date removed')
+    expect(bgText(settings('closed_date_added'))).toBe('Добавена затворена дата')
+    // A change that moved several rules, or only where the PIN falls, keeps the plain sentence.
+    expect(en(settings('changed'))).toBe('Reservation settings changed')
+    expect(en(settings(null))).toBe('Reservation settings changed')
+    expect(en(line('spot.changed', { reservationStatus: 'seats' }))).toBe('Seats of a spot changed')
+    expect(bgText(line('spot.changed', { reservationStatus: 'seats' }))).toBe(
+      'Променени места на маса',
     )
   })
 })

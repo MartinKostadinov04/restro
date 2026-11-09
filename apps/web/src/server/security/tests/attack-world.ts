@@ -38,6 +38,8 @@ export interface SeededVenue {
   readonly role: string
   readonly staff: string
   readonly device: string
+  /** A spot on the venue's floor plan, with its seats (#325). */
+  readonly spot: string
   readonly deviceSession: string
   readonly sitting: string
   readonly sentOrder: string
@@ -180,6 +182,30 @@ async function seedVenue(
      values ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [device, tenantId, venue.id, `${marker} tablet`.slice(0, 40), deviceSession, ...SEED],
   )
+  // The venue's reservation settings, floor plan and one spot with seats (#325): what an attack on
+  // Settings › Reservations must find unmoved.
+  const plan = newId('fp')
+  const spot = newId('sp')
+  await owner.query(
+    `insert into restro.floor_plans (id, tenant_id, venue_id, name, is_current, source, actor, job_id)
+     values ($1, $2, $3, 'Main floor', true, $4, $5, $6)`,
+    [plan, tenantId, venue.id, ...SEED],
+  )
+  await owner.query(
+    `insert into restro.venue_spot_kinds (tenant_id, venue_id, key, label, default_seats, source, actor, job_id)
+     values ($1, $2, 'table', 'Table', 4, $3, $4, $5)`,
+    [tenantId, venue.id, ...SEED],
+  )
+  await owner.query(
+    `insert into restro.spots (id, tenant_id, venue_id, plan_id, name, kind, x, y, width, height, seats, source, actor, job_id)
+     values ($1, $2, $3, $4, '12', 'table', 0, 0, 10, 10, 6, $5, $6, $7)`,
+    [spot, tenantId, venue.id, plan, ...SEED],
+  )
+  await owner.query(
+    `insert into restro.reservation_settings (tenant_id, venue_id, turn_minutes, source, actor, job_id)
+     values ($1, $2, 120, $3, $4, $5)`,
+    [tenantId, venue.id, ...SEED],
+  )
   const sitting = newId('st')
   await owner.query(
     `insert into restro.sittings (id, tenant_id, venue_id, table_id, service_date, opened_how, source, actor, job_id)
@@ -237,14 +263,8 @@ async function seedVenue(
      values ($1, $2, $3, $4, 'table', $5, 'staff', true, $6, $7, $8)`,
     [pause, tenantId, venue.id, day, table, ...SEED],
   )
-  // The reservations the night's list reads (#326): the venue's turn time, and one booking whose
-  // name is the marker's, so a leak of A's book into B's answer shows.
-  await owner.query(
-    `insert into restro.reservation_settings
-       (tenant_id, venue_id, turn_minutes, source, actor, job_id)
-     values ($1, $2, 120, $3, $4, $5)`,
-    [tenantId, venue.id, ...SEED],
-  )
+  // What the night's list reads (#326): one booking named after the organisation's marker, so a
+  // leak of A's book into B's answer shows. The venue's turn time is seeded above (#325).
   const reservation = newId('rv')
   await owner.query(
     `insert into restro.reservations
@@ -281,6 +301,7 @@ async function seedVenue(
     role,
     staff,
     device,
+    spot,
     deviceSession,
     sitting,
     sentOrder,

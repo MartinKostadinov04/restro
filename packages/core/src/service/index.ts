@@ -345,13 +345,19 @@ export {
   DEFAULT_ROLE_KINDS,
   DEFAULT_ROLE_PERMISSIONS,
   type DefaultRoleKind,
+  EDITABLE_DEFAULT_ROLE_KINDS,
   holdsStaffRightsOnly,
+  isEditableDefaultKind,
   isPermission,
   isSettingsPermission,
+  newPermissionsOf,
   OPERATOR_PERMISSIONS,
   PERMISSIONS,
   type Permission,
   PermissionSchema,
+  type RoleRow,
+  roleGrants,
+  roleIsEdited,
 } from './permissions'
 export { checkPinPepper, MIN_PIN_PEPPER_LENGTH } from './pins'
 export {
@@ -384,7 +390,14 @@ export {
   receiptsToBring,
 } from './receipt-rows'
 export { readReceiptsNotBrought, readReceiptsToBring } from './receipts'
+export { CLOSED_DATES_MAX } from './reservations/closed-dates'
 export { phoneKeyOf } from './reservations/guests'
+export {
+  DEFAULT_ONLINE_SETTINGS,
+  type OnlineSettings,
+  OnlineSettingsSchema,
+  readOnlineSettings,
+} from './reservations/online-settings'
 export {
   type ClaimedStretch,
   heldStretch,
@@ -437,6 +450,11 @@ export {
   RESERVATION_REFUSALS,
   type ReservationRefusal,
 } from './reservations/rows'
+export {
+  type ReservationSettingsView,
+  readReservationSettings,
+  type SettingsSpot,
+} from './reservations/settings-read'
 export {
   canMove,
   countsAsNoShow,

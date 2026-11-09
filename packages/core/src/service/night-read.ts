@@ -583,6 +583,12 @@ export interface LogLine {
   readonly cause: string | null
   /** The staff member, role or device a settings entry is about, by name. */
   readonly subject: string | null
+  /**
+   * How many permissions a role holds after a `role.changed` entry (#366), so the Log says what
+   * the role holds now and not only that it changed; the keys themselves are in the entry's
+   * details. Null for every other entry, and for role entries written before this was kept.
+   */
+  readonly heldCount: number | null
   /** A payment's amount in minor units: with the tip for `night.view_full`, else without it. */
   readonly amountMinor: number | null
   /** The provider a payment's refund or dispute entry names (its kind); null for any other entry. */
@@ -820,6 +826,7 @@ export async function readLog(
                     : { kind: 'venue', name: null },
             cause: row.kind === 'pause.started' ? row.reason : detailText(row.details, 'cause'),
             subject: subjectKey === null ? null : (subjectName.get(subjectKey) ?? null),
+            heldCount: typeof row.details.holdsCount === 'number' ? row.details.holdsCount : null,
             // A refund line names the refund's own amount, not the payment's (#222).
             amountMinor:
               row.kind === 'payment.refund_seen' && typeof row.details.amountMinor === 'number'

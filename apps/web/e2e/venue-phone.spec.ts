@@ -175,11 +175,12 @@ test('a tablet with an owner’s account is not offered what it would be refused
 
   await tablet.goto(`${venuePath}?tab=settings`)
   await expect(tablet).toHaveURL(/\?tab=tonight$/)
-  // Tonight and the night's list are all it has: the device's own role works reservations (D141).
+  // Tonight and the night's list are all it has (D141), a row of two even at 390 px: at the door
+  // the tab a hostess needs is one tap, never behind a chooser.
   await expect(onScreen(tablet, 'tonight')).toBeVisible({ timeout: 30_000 })
-  await tablet.getByRole('combobox', { name: 'Switch tab' }).click()
-  await expect(tablet.getByRole('option')).toHaveText(['Tonight', 'Reservations'])
-  await tablet.keyboard.press('Escape')
+  const deviceTabs = tablet.getByRole('tablist', { name: 'Switch tab' }).getByRole('tab')
+  await expect(deviceTabs).toHaveText(['Tonight', 'Reservations'])
+  await expect(tablet.getByRole('combobox', { name: 'Switch tab' })).toHaveCount(0)
   await expect(tablet.getByTestId('publish-button')).toHaveCount(0)
   await tablet.screenshot({ path: test.info().outputPath('rr-85-tablet-tonight.png') })
 

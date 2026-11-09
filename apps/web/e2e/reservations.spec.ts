@@ -220,6 +220,35 @@ test('on a phone the night is a list of its own, and the sheet is a drawer', asy
   }
 })
 
+test('five tabs are one row at the narrowest desktop, in Bulgarian, and nothing scrolls sideways', async ({
+  browser,
+}) => {
+  // The widest words (Bulgarian) at the width the row first appears at: a fifth tab must not push
+  // the page sideways, and the row itself must not need scrolling to reach Settings.
+  const context = await browser.newContext({ viewport: { width: 1024, height: 800 } })
+  const page = await context.newPage()
+  try {
+    await signIn(page, TONIGHT_OWNER_EMAIL)
+    await page.goto(`/venues/${venueId}?tab=reservations`)
+    await expect(screen(page)).toBeVisible()
+    const list = page.getByRole('tablist', { name: 'Смяна на раздела' })
+    await expect(list.getByRole('tab')).toHaveText([
+      'Композитор',
+      'Маси и QR',
+      'Тази вечер',
+      'Резервации',
+      'Настройки',
+    ])
+    expect(await list.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1)
+    const sideways = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(sideways).toBeLessThanOrEqual(1)
+  } finally {
+    await context.close()
+  }
+})
+
 test('a staff role that works tonight’s reservations lands on the night’s list', async ({
   browser,
 }) => {

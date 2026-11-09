@@ -10,6 +10,7 @@ import {
   assignRoleAction,
   newPinAction,
   removeFromVenueAction,
+  resetRoleAction,
   revealPinAction,
   setPinFallAction,
   updateRoleAction,
@@ -31,6 +32,7 @@ vi.mock('@/server/settings/staff-actions', () => ({
   revealPinAction: vi.fn(),
   copyRoleAction: vi.fn(),
   updateRoleAction: vi.fn(),
+  resetRoleAction: vi.fn(),
   archiveRoleAction: vi.fn(),
   revokeSharedDeviceAction: vi.fn(),
   setPinFallAction: vi.fn(),
@@ -75,16 +77,22 @@ function view(overrides: Partial<StaffView> = {}): StaffView {
         ref: 'staff',
         name: 'Staff',
         defaultKind: 'staff',
-        readOnly: true,
+        readOnly: false,
         permissions: STAFF_PERMISSIONS,
+        edited: false,
+        newPermissions: [],
+        shipped: STAFF_PERMISSIONS,
         people: 1,
       },
       {
         ref: 'manager',
         name: 'Manager',
         defaultKind: 'manager',
-        readOnly: true,
+        readOnly: false,
         permissions: [...STAFF_PERMISSIONS, 'ordering.lift', 'log.view'],
+        edited: false,
+        newPermissions: [],
+        shipped: [...STAFF_PERMISSIONS, 'ordering.lift', 'log.view'],
         people: 0,
       },
       {
@@ -93,6 +101,9 @@ function view(overrides: Partial<StaffView> = {}): StaffView {
         defaultKind: 'owner',
         readOnly: true,
         permissions: ALL_PERMISSIONS,
+        edited: false,
+        newPermissions: [],
+        shipped: ALL_PERMISSIONS,
         people: 1,
       },
       {
@@ -101,6 +112,9 @@ function view(overrides: Partial<StaffView> = {}): StaffView {
         defaultKind: null,
         readOnly: false,
         permissions: ['tables.open_close'],
+        edited: false,
+        newPermissions: [],
+        shipped: [],
         people: 0,
       },
     ],
@@ -283,19 +297,89 @@ describe('Settings › Staff and roles', () => {
     )
   })
 
-  it('lists roles with their people and the three defaults read-only', async () => {
+  it('lists roles with their people, and the Owner role alone is fixed (#366)', async () => {
     const user = userEvent.setup()
     renderWithIntl(<StaffPanel view={view()} />)
     const roles = screen.getByTestId('staff-roles')
     expect(within(roles).getAllByRole('listitem')).toHaveLength(4)
     expect(within(roles).getAllByText(/Default/)).toHaveLength(3)
-    await user.click(within(roles).getByText('Staff'))
+    await user.click(within(roles).getByText('Owner'))
     const sheet = await screen.findByRole('dialog')
+    expect(within(sheet).getByTestId('role-owner-fixed').textContent).toContain('every ability')
     for (const box of within(sheet).getAllByRole('checkbox')) {
       expect((box as HTMLInputElement).disabled || box.getAttribute('data-disabled') !== null).toBe(
         true,
       )
     }
+  })
+
+  it('unticks an ability on the Staff role in place, named by its kind (#366)', async () => {
+    vi.mocked(updateRoleAction).mockResolvedValue(OK)
+    const user = userEvent.setup()
+    renderWithIntl(<StaffPanel view={view({ held: ALL_PERMISSIONS })} />)
+    await user.click(within(screen.getByTestId('staff-roles')).getByText('Staff'))
+    const sheet = await screen.findByRole('dialog')
+    // No copy, no new screen: the tick on the role itself, saved at once.
+    await user.click(within(sheet).getByRole('checkbox', { name: /Resume a paused table/ }))
+    await waitFor(() =>
+      expect(updateRoleAction).toHaveBeenCalledWith({
+        venueId: VENUE,
+        roleId: 'staff',
+        permissions: ['tables.open_close', 'ordering.pause', 'alerts.answer', 'night.view'],
+      }),
+    )
+  })
+
+  it('offers one Reset on an edited default role, with the confirm naming what it will hold', async () => {
+    vi.mocked(resetRoleAction).mockResolvedValue(OK)
+    const user = userEvent.setup()
+    const edited = view()
+    const roles = edited.roles.map((role) =>
+      role.ref === 'staff'
+        ? { ...role, edited: true, permissions: ['tables.open_close'] as const }
+        : role,
+    )
+    renderWithIntl(<StaffPanel view={{ ...edited, roles, held: ALL_PERMISSIONS }} />)
+    await user.click(within(screen.getByTestId('staff-roles')).getByText('Staff'))
+    const sheet = await screen.findByRole('dialog')
+    await user.click(within(sheet).getByRole('button', { name: /Reset to what Restro ships/ }))
+    const confirm = await screen.findByTestId('role-reset-body')
+    expect(confirm.textContent).toContain('Open and close tables for phones')
+    expect(confirm.textContent).toContain('Resume a paused table')
+    await user.click(screen.getByRole('button', { name: 'Reset role' }))
+    await waitFor(() =>
+      expect(resetRoleAction).toHaveBeenCalledWith({ venueId: VENUE, roleId: 'staff' }),
+    )
+  })
+
+  it('shows a role the venue has never edited with no Reset and nothing marked new', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<StaffPanel view={view()} />)
+    await user.click(within(screen.getByTestId('staff-roles')).getByText('Staff'))
+    const sheet = await screen.findByRole('dialog')
+    expect(within(sheet).queryByRole('button', { name: /Reset/ })).toBeNull()
+    expect(within(sheet).queryByText(/Restro added a new ability/)).toBeNull()
+  })
+
+  it('marks an ability Restro added after the venue’s edit, unticked in its own group (#366)', async () => {
+    const user = userEvent.setup()
+    const base = view()
+    const roles = base.roles.map((role) =>
+      role.ref === 'staff'
+        ? { ...role, edited: true, newPermissions: ['sold_out'] as const }
+        : role,
+    )
+    renderWithIntl(<StaffPanel view={{ ...base, roles, held: ALL_PERMISSIONS }} />)
+    await user.click(within(screen.getByTestId('staff-roles')).getByText('Staff'))
+    const sheet = await screen.findByRole('dialog')
+    expect(within(sheet).getByTestId('perm-new-sold_out').textContent).toContain(
+      'Restro added a new ability',
+    )
+    expect(
+      within(sheet)
+        .getByRole('checkbox', { name: /Mark items sold out/ })
+        .getAttribute('aria-checked'),
+    ).toBe('false')
   })
 
   it('saves a tick on a venue’s own role at once and shows what the actor cannot give as read-only', async () => {

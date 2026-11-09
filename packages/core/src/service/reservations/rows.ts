@@ -79,6 +79,8 @@ export const RESERVATION_REFUSALS = [
   'private_notes_off',
   /** Only a person of the venue's own staff keeps a private note: it is his, by name (D140). */
   'not_a_staff_member',
+  /** The venue already keeps as many closed dates as it may (ticket #325). */
+  'closed_dates_full',
 ] as const
 
 /** One reservation refusal code. */
