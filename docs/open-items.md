@@ -82,7 +82,7 @@ Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a n
 - #311 Martin (triage): a staff-only account for the bar tablet.
 - #320 Claude (upkeep): hourly database dumps to R2, 30-day retention, alert on failure; #340 the dumps get their own storage key and EU endpoint; #339 Martin: switch the database backups on (bucket, role, client tools, a first dump).
 - #202 Claude (upkeep): security advisories (Next.js 16.4.1 and others) before the first deploy.
-- #117 Martin: the six sandbox checks before the pilot (waiting).
+- #117 Martin: the six sandbox checks before the pilot. 1–3 passed 10-29; 6 (3-D Secure in the card form) runs 11-09. 4 and 5 wait on a staging deploy, planned step by step in `docs/deliverables/2026-11-09-staging-chain-for-stripe-checks.md`: his part is the acceptance walk, the five `staging` secrets, the migration run, Railway, the variables, the deploy, and for 5 the domain and his own phone.
 - #349 Martin: walk-through of st/foundation, pick from the low points.
 - #281 Claude: the card form draws in the venue's font.
 - #190, #42 Claude: flaky tests (composer Design subtab touch-targets e2e; tables route-picker under the full vitest run).
@@ -132,7 +132,7 @@ Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a n
 - T59 Claude: verify on the demo `files_get` auth and multi-calls; photos done 10-10.
 - T40 Claude: architecture doc updates (Core rules, scope, polling, Supabase, Stage plan tab).
 - T39 Martin: send Lukanet the test-environment request (draft by Claude; Q41, Q60, Q71); before T9.
-- T25 Martin: platform accounts by stage (Railway, domain, Cloudflare, Sentry, Resend, Telegram, Supabase prod); guide from Claude.
+- T25 Martin: platform accounts by stage (Railway, domain, Cloudflare, Sentry, Resend, Telegram, Supabase prod); guide from Claude. For sandbox checks 4 and 5 only Railway and the domain are needed, in the order in `docs/deliverables/2026-11-09-staging-chain-for-stripe-checks.md`.
 - T9 Martin: send Lukanet the consolidated questions, after T39.
 - T13 Martin: ask a pilot owner for the "software resource" price (Q25, Q29, Q41).
 - T33 Martin: send the lawyer/accountant questions.
