@@ -290,6 +290,17 @@ export function offersPay(state: ServiceState): boolean {
   )
 }
 
+/**
+ * Whether paying is off at the venue (`paying.state` `off`: no payment account, readiness off) and
+ * this phone has no payment to show. Then the guest page draws no Pay button anywhere and says
+ * "Ask your waiter to pay." where the button would be (D127, D125, #346). The venue's Pay switch
+ * (R15) says the owner wants paying; this says the server cannot take it. A phone that already has
+ * a payment keeps its screen, so a payment in progress is never cut off. Not said yet: not off.
+ */
+export function payingOffHere(state: ServiceState): boolean {
+  return state.paying?.state === 'off' && state.payment == null
+}
+
 /* ---------------------------------------------------------------------------------------------
  * The payment's screens
  * ------------------------------------------------------------------------------------------- */

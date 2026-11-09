@@ -192,6 +192,7 @@ export {
   lineNameText,
   NO_TIP,
   offersPay,
+  payingOffHere,
   offersReceiptEmail,
   orderingClosedText,
   PAY_ENDS,

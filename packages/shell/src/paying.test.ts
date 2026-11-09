@@ -7,6 +7,7 @@ import {
   freeLines,
   NO_TIP,
   offersPay,
+  payingOffHere,
   offersReceiptEmail,
   PAY_ENDS,
   paidReceiptText,
@@ -274,6 +275,20 @@ describe('choosing what to pay (#45, D127)', () => {
     expect(offersPay({ ...base, tableBill: null })).toBe(false)
     expect(offersPay({ ...base, payment: payment({}) })).toBe(false)
     expect(offersPay(EMPTY_SERVICE_STATE)).toBe(false)
+  })
+})
+
+describe('payingOffHere: paying is off at the venue, so no Pay button (#346, D127)', () => {
+  const base = { ...EMPTY_SERVICE_STATE, tableBill: b, paying: PAYING }
+  it('is true only when the host says off and this phone has no payment', () => {
+    expect(payingOffHere({ ...base, paying: { ...PAYING, state: 'off' } })).toBe(true)
+    expect(payingOffHere(base)).toBe(false)
+    expect(payingOffHere({ ...base, paying: { ...PAYING, state: 'paused' } })).toBe(false)
+  })
+  it('is false while the host has not said, and while this phone has a payment to show', () => {
+    expect(payingOffHere(EMPTY_SERVICE_STATE)).toBe(false)
+    const off = { ...base, paying: { ...PAYING, state: 'off' as const } }
+    expect(payingOffHere({ ...off, payment: payment({}) })).toBe(false)
   })
 })
 
