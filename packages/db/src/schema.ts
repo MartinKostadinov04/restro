@@ -3793,8 +3793,8 @@ export const guestPrivateNotes = restro.table(
  * is refused until an owner sets it.
  *
  * `pin_actions` is D141's configurable list of which taps ask for four digits; ticket #324 reads
- * and writes it. `online` holds part 2's own values (D136), which ticket #325 gives their shape:
- * declared as one object here so part 1 invents no column for a setting nobody has decided.
+ * and writes it. `online` holds part 2's own values (D136), whose shape ticket #325 gave: declared
+ * as one object here so part 1 invents no column for a setting nobody has decided.
  */
 export const reservationSettings = restro.table(
   'reservation_settings',
@@ -3806,13 +3806,34 @@ export const reservationSettings = restro.table(
     turnMinutes: integer('turn_minutes').notNull(),
     /** Whether a night that has passed may still be written (D135). Off unless a venue asks. */
     editPastNights: boolean('edit_past_nights').notNull().default(false),
-    /** Whether managers keep private guest notes at all (D140). */
-    privateNotesOn: boolean('private_notes_on').notNull().default(false),
+    /**
+     * Whether the manager keeps a private guest list beside the venue's shared one (D140: "by
+     * default", so on until a venue says otherwise).
+     */
+    privateNotesOn: boolean('private_notes_on').notNull().default(true),
+    /** Whether a booking needs a phone number (D135: required by default, a switch makes it optional). */
+    phoneRequired: boolean('phone_required').notNull().default(true),
+    /**
+     * The venue's one-off closed dates (ticket #325; D136): service days as `YYYY-MM-DD`, oldest
+     * first, on top of the service hours the venue already has. Written only by the closed-date
+     * commands.
+     */
+    closedDates: jsonb('closed_dates').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     pinActions: jsonb('pin_actions')
       .$type<Record<string, unknown>>()
       .notNull()
       .default(sql`'{}'::jsonb`),
-    online: jsonb('online').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    /**
+     * Part 2's values (D136, ticket #325), declared and stored with their defaults and read by
+     * nothing in part 1. The shape is core's `OnlineSettingsSchema`; the default below is its own
+     * defaults as JSON, and a test in core keeps the two equal.
+     */
+    online: jsonb('online')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(
+        sql`'{"guestMay":"night","autoConfirm":false,"prepayment":false,"prepaymentMinor":null,"prepaymentWording":{},"refundWording":{}}'::jsonb`,
+      ),
     ...serviceProvenance(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -3823,6 +3844,7 @@ export const reservationSettings = restro.table(
     check('reservation_settings_turn_minutes', sql`${t.turnMinutes} between 1 and 1440`),
     check('reservation_settings_pin_actions_object', sql`jsonb_typeof(${t.pinActions}) = 'object'`),
     check('reservation_settings_online_object', sql`jsonb_typeof(${t.online}) = 'object'`),
+    check('reservation_settings_closed_dates_array', sql`jsonb_typeof(${t.closedDates}) = 'array'`),
     ...provenanceChecks('reservation_settings', t),
   ],
 )

@@ -23,6 +23,7 @@ import * as publish from '@/server/publish/actions'
 import * as alerts from '@/server/settings/alerts-actions'
 import * as ordering from '@/server/settings/ordering-actions'
 import * as paying from '@/server/settings/paying-actions'
+import * as reservations from '@/server/settings/reservations-actions'
 import * as staff from '@/server/settings/staff-actions'
 import * as tables from '@/server/tables/actions'
 import * as tonight from '@/server/tonight/actions'
@@ -587,6 +588,35 @@ export const ATTACKS: readonly Attack[] = [
     call: (v) =>
       ordering.saveOrderingAction({ venueId: v.venues[0].id, changes: { locationCheck: false } }),
   },
+  // Reservation settings (#325): B may not change a rule, a closed date or a spot's seats at A's
+  // venue, and A's settings and spot must read exactly as they did.
+  {
+    action: 'saveReservationRulesAction',
+    call: (v) =>
+      reservations.saveReservationRulesAction({
+        venueId: v.venues[0].id,
+        turnMinutes: 15,
+        phoneRequired: false,
+      }),
+  },
+  {
+    action: 'addClosedDateAction',
+    call: (v) => reservations.addClosedDateAction({ venueId: v.venues[0].id, date: '2030-12-24' }),
+  },
+  {
+    action: 'removeClosedDateAction',
+    call: (v) =>
+      reservations.removeClosedDateAction({ venueId: v.venues[0].id, date: '2030-12-24' }),
+  },
+  {
+    action: 'setSpotSeatsAction',
+    call: (v) =>
+      reservations.setSpotSeatsAction({
+        venueId: v.venues[0].id,
+        spotId: v.venues[0].spot,
+        seats: 99,
+      }),
+  },
   {
     action: 'startConnectionAction',
     call: (v) => paying.startConnectionAction({ venueId: v.venues[0].id }),
@@ -1093,6 +1123,16 @@ export const ATTACKS: readonly Attack[] = [
 
 /** The attacker's own venue and menu, the victim's child ids. */
 export const MIXED: readonly Attack[] = [
+  {
+    action: 'setSpotSeatsAction',
+    how: "victim's spot at my venue",
+    call: (v, a) =>
+      reservations.setSpotSeatsAction({
+        venueId: a.venues[0].id,
+        spotId: v.venues[0].spot,
+        seats: 99,
+      }),
+  },
   {
     action: 'revokePushAction',
     how: "the victim's device from my venue",

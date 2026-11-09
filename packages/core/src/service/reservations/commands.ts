@@ -45,11 +45,20 @@ import {
   editReservation,
   restoreReservation,
 } from './book'
+import { addClosedDate, ClosedDateSchema, removeClosedDate } from './closed-dates'
 import { eraseGuest, saveGuest, setGuestPrivateNote } from './guests'
 import { closeReservationNight, sweepReservationNight } from './night'
 import { TurnMinutesSchema } from './overlap'
 import { PinActionsSchema } from './pin-fall'
-import { removePlan, removeSpot, removeSpotKind, savePlan, saveSpot, saveSpotKind } from './plan'
+import {
+  removePlan,
+  removeSpot,
+  removeSpotKind,
+  savePlan,
+  saveSpot,
+  saveSpotKind,
+  setSpotSeats,
+} from './plan'
 import { setReservationSettings } from './settings'
 import {
   addToWaitingList,
@@ -162,6 +171,47 @@ export const RESERVATION_COMMANDS = {
     idempotency: 'by_nature',
     handle: removeSpot,
   }),
+  // A spot's seats alone (#325): the one thing the venue's own settings change on a spot, since
+  // part 1 ships no plan editor. Empty seats put the spot back on its kind's default.
+  'spot.set_seats': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('spot.set_seats'),
+      spotId,
+      seats: z.number().int().min(1).max(100).nullable(),
+    }),
+    origins: ['staff'],
+    permission: 'settings.reservations',
+    freshSignIn: true,
+    idempotency: 'by_nature',
+    handle: setSpotSeats,
+  }),
+  // The venue's one-off closed dates (#325; D136): the venue's own service hours are not copied
+  // here, only the nights it is shut on top of them. The list is one value of the settings row, so
+  // two changes queue on the venue's row instead of overwriting each other.
+  'reservation_closed_date.add': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('reservation_closed_date.add'),
+      date: ClosedDateSchema,
+    }),
+    origins: ['staff'],
+    permission: 'settings.reservations',
+    freshSignIn: true,
+    venueLock: 'update',
+    idempotency: 'by_nature',
+    handle: addClosedDate,
+  }),
+  'reservation_closed_date.remove': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('reservation_closed_date.remove'),
+      date: ClosedDateSchema,
+    }),
+    origins: ['staff'],
+    permission: 'settings.reservations',
+    freshSignIn: true,
+    venueLock: 'update',
+    idempotency: 'by_nature',
+    handle: removeClosedDate,
+  }),
   'spot_kind.save': defineCommand({
     schema: z.strictObject({
       type: z.literal('spot_kind.save'),
@@ -188,19 +238,22 @@ export const RESERVATION_COMMANDS = {
   }),
   // --- The venue's reservation settings --------------------------------------------------------
   // The turn time is one value (D135). `pin_actions` is where the PIN falls (#324, below);
-  // `online` (#325) is not written here: this command leaves it as it is.
+  // `online` (#325) gets its defaults when the row is made and is not written again from here.
   'reservation_settings.set': defineCommand({
     schema: z.strictObject({
       type: z.literal('reservation_settings.set'),
       turnMinutes: TurnMinutesSchema.max(1440).optional(),
       editPastNights: z.boolean().optional(),
       privateNotesOn: z.boolean().optional(),
+      phoneRequired: z.boolean().optional(),
       // Where the PIN falls (D141, #324): the actions this call moves. An action left out keeps
       // what the venue had, and one it never chose follows D141's default.
       pinActions: PinActionsSchema.optional(),
     }),
     origins: ['staff'],
     permission: 'settings.reservations',
+    // A settings-class change: the password is asked again after a stale sign-in (D122 §7, #325).
+    freshSignIn: true,
     idempotency: 'by_nature',
     handle: setReservationSettings,
   }),

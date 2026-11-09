@@ -175,6 +175,33 @@ export async function saveSpot(stx: ServiceTx, command: SpotSaveCommand): Promis
 }
 
 /**
+ * Sets a spot's seats and nothing else about it (ticket #325; D134, log 1.22): part 1 ships no plan
+ * editor, so the number of places is the one thing a venue's own settings change, and a command that
+ * carries the spot's whole geometry to say it would make every caller a plan editor. Empty seats put
+ * the spot back on its kind's default. The number is a warning's input only ("more guests than
+ * seats"): nothing here ever refuses a party for being larger.
+ */
+export async function setSpotSeats(
+  stx: ServiceTx,
+  command: { readonly spotId: string; readonly seats: number | null },
+): Promise<ServiceResult> {
+  const spot = await readSpot(stx, command.spotId)
+  if (spot === null) return refuse('spot_missing')
+  if (spot.seats === command.seats) return accepted(null, { details: { spotId: spot.id } })
+  await stx.tx
+    .update(spots)
+    .set({ seats: command.seats, ...stx.provenance, updatedAt: sql`now()` })
+    .where(eq(spots.id, spot.id))
+  await stx.log({
+    kind: 'spot.changed',
+    tableId: spot.tableId ?? undefined,
+    toState: 'seats',
+    details: { spotId: spot.id, planId: spot.planId, name: spot.name, seats: command.seats },
+  })
+  return accepted(null, { details: { spotId: spot.id } })
+}
+
+/**
  * Takes a spot off its plan. What held it stays held: the rows of `reservation_spots` are the
  * record of where a party sat, and a removed spot simply stops being offered (its name is free
  * again, because the venue's name index counts only the spots still there).
