@@ -193,17 +193,23 @@ export function CallSheet() {
     }
   }, [])
 
-  // The calls this sheet has seen open, or sent itself: only a call the guest followed gets the
-  // handled panel when staff answer it (#344). An old handled call, met on opening, never does.
+  // The calls this sheet has seen open: only a call the guest followed gets the handled panel when
+  // staff answer it (#344). An old handled call, met on opening, never does. This state lives and
+  // dies with the sheet (it is unmounted on close), which is what "until the guest closes it" rests on.
   const [followed, setFollowed] = useState<ReadonlySet<string>>(new Set())
-  const seenOpen = callsOf(state.requests)
-    .filter((call) => OPEN.includes(call.status) && !followed.has(call.id))
+  const openIds = callsOf(state.requests)
+    .filter((call) => OPEN.includes(call.status))
     .map((call) => call.id)
-  const seenOpenKey = seenOpen.join(' ')
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the key stands for the ids
+  const openKey = openIds.join(' ')
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `openKey` is `openIds` as one string, so the effect runs exactly when the open ids change
   useEffect(() => {
-    if (seenOpen.length > 0) setFollowed((now) => new Set([...now, ...seenOpen]))
-  }, [seenOpenKey])
+    setFollowed((now) => (openIds.every((id) => now.has(id)) ? now : new Set([...now, ...openIds])))
+  }, [openKey])
+
+  /** A call staff handled while the guest watched it: followed from open, or sent from this sheet
+   * (which covers one the host first lists already `done`, between two of its polls). */
+  const handledWhileWatched = (call: TableCall) =>
+    call.status === 'done' && (followed.has(call.id) || asked?.actionId === call.id)
 
   // The call this sheet is about: the table's latest one the guest has not moved on from, open or
   // lapsed, or handled while the guest watched it. The host lists only the table's latest call, and
@@ -211,10 +217,7 @@ export function CallSheet() {
   const current = [...callsOf(state.requests)]
     .reverse()
     .find(
-      (call) =>
-        !movedOn.has(call.id) &&
-        (SHOWN.includes(call.status) ||
-          (call.status === 'done' && (followed.has(call.id) || asked?.actionId === call.id))),
+      (call) => !movedOn.has(call.id) && (SHOWN.includes(call.status) || handledWhileWatched(call)),
     )
   const openNow = current !== undefined && OPEN.includes(current.status)
 
