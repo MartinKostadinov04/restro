@@ -356,6 +356,37 @@ test('the targets are 44 px or more on the tablet, in both themes', async () => 
   }
 })
 
+test('the tables grid has no sideways scroll from 1024 to 1366 px, with the longest Bulgarian status word (#348)', async () => {
+  const { page, context } = tablet
+  const origin = new URL(page.url()).origin
+  await context.addCookies([{ name: 'NEXT_LOCALE', value: 'bg', url: origin }])
+  try {
+    await openTonight(page, 'busy')
+    for (const width of [1024, 1180, 1366]) {
+      await page.setViewportSize({ width, height: 820 })
+      const tiles = page.getByTestId('table-tile')
+      await expect(tiles.first()).toBeVisible()
+      // The grid's own scrolling column and every tile: nothing wider than the box that holds it.
+      const wider = await tiles.first().evaluate((first) => {
+        const out: string[] = []
+        for (let el = first.closest('ul'); el !== null; el = el.parentElement) {
+          if (el.scrollWidth > el.clientWidth) out.push(`${el.tagName}.${el.className}`.slice(0, 60))
+          if (el.dataset.testid === 'tonight') break
+        }
+        return out
+      })
+      expect(wider, `${width} px`).toEqual([])
+      const tight = await tiles.evaluateAll((els) =>
+        els.filter((el) => el.scrollWidth > el.clientWidth || el.getBoundingClientRect().height < 44).length,
+      )
+      expect(tight, `${width} px tiles`).toBe(0)
+    }
+  } finally {
+    await context.addCookies([{ name: 'NEXT_LOCALE', value: 'en', url: origin }])
+    await page.setViewportSize(TABLET)
+  }
+})
+
 test('on a phone: one column, a switch between Needs you and Tables, no sideways scroll', async () => {
   const { page } = waiter
   await page.setViewportSize(PHONE)
