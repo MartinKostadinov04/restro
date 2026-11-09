@@ -149,7 +149,9 @@ describe('a table link on Editorial Market', () => {
   it('gets the add control, the bag, the bill, Pay and Call a waiter, and the table’s order from the server', async () => {
     const { snapshot, bodies } = published('features-on')
     const [, mojito = ''] = Object.keys(snapshot.items)
-    serve(bodies, tableState(mojito))
+    // Paying is on at the venue (D127, #346: with paying off the Pay entry is not drawn).
+    const state = tableState(mojito)
+    serve(bodies, { ...state, ordering: { ...state.ordering, paying: 'on' } } as GuestTableState)
     visit(`#t=${TOKEN}`)
     render(<GuestMenu venue={PARAM} />)
 
