@@ -90,15 +90,10 @@ export function workspaceTabOf(
 }
 
 /**
- * The tabs a shared device has (D122 §7, RR-83, RR-84, RR-85): it works Tonight, and the composer,
- * Tables & QR and Settings need the person's own sign-in, so they aren't there and Tonight is where
- * it opens.
- */
-export const SHARED_DEVICE_TAB_DEFS = WORKSPACE_TAB_DEFS.filter((tab) => tab.value === 'tonight')
-
-/**
- * The tabs a shared device offers: Tonight, and Reservations where the device's own account works
- * them (D141, #326) — a tablet on the door is what the night's list is for.
+ * The tabs a shared device offers (D122 §7, RR-83, RR-84, RR-85): Tonight, where it opens, and
+ * Reservations where the device's own account works them (D141, #326) — a tablet on the door is
+ * what the night's list is for. The composer, Tables & QR and Settings need the person's own
+ * sign-in, so they are not there at all.
  */
 export function sharedDeviceTabsOf(
   rights: WorkspaceRights = NO_WORKSPACE_RIGHTS,
