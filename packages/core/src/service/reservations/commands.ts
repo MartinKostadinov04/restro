@@ -45,10 +45,19 @@ import {
   editReservation,
   restoreReservation,
 } from './book'
+import { addClosedDate, ClosedDateSchema, removeClosedDate } from './closed-dates'
 import { eraseGuest, saveGuest, setGuestPrivateNote } from './guests'
 import { closeReservationNight, sweepReservationNight } from './night'
 import { TurnMinutesSchema } from './overlap'
-import { removePlan, removeSpot, removeSpotKind, savePlan, saveSpot, saveSpotKind } from './plan'
+import {
+  removePlan,
+  removeSpot,
+  removeSpotKind,
+  savePlan,
+  saveSpot,
+  saveSpotKind,
+  setSpotSeats,
+} from './plan'
 import { setReservationSettings } from './settings'
 import {
   addToWaitingList,
@@ -160,6 +169,47 @@ export const RESERVATION_COMMANDS = {
     permission: 'settings.reservations',
     idempotency: 'by_nature',
     handle: removeSpot,
+  }),
+  // A spot's seats alone (#325): the one thing the venue's own settings change on a spot, since
+  // part 1 ships no plan editor. Empty seats put the spot back on its kind's default.
+  'spot.set_seats': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('spot.set_seats'),
+      spotId,
+      seats: z.number().int().min(1).max(100).nullable(),
+    }),
+    origins: ['staff'],
+    permission: 'settings.reservations',
+    freshSignIn: true,
+    idempotency: 'by_nature',
+    handle: setSpotSeats,
+  }),
+  // The venue's one-off closed dates (#325; D136): the venue's own service hours are not copied
+  // here, only the nights it is shut on top of them. The list is one value of the settings row, so
+  // two changes queue on the venue's row instead of overwriting each other.
+  'reservation_closed_date.add': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('reservation_closed_date.add'),
+      date: ClosedDateSchema,
+    }),
+    origins: ['staff'],
+    permission: 'settings.reservations',
+    freshSignIn: true,
+    venueLock: 'update',
+    idempotency: 'by_nature',
+    handle: addClosedDate,
+  }),
+  'reservation_closed_date.remove': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('reservation_closed_date.remove'),
+      date: ClosedDateSchema,
+    }),
+    origins: ['staff'],
+    permission: 'settings.reservations',
+    freshSignIn: true,
+    venueLock: 'update',
+    idempotency: 'by_nature',
+    handle: removeClosedDate,
   }),
   'spot_kind.save': defineCommand({
     schema: z.strictObject({
