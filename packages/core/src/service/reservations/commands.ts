@@ -48,6 +48,7 @@ import {
 import { eraseGuest, saveGuest, setGuestPrivateNote } from './guests'
 import { closeReservationNight, sweepReservationNight } from './night'
 import { TurnMinutesSchema } from './overlap'
+import { PinActionsSchema } from './pin-fall'
 import { removePlan, removeSpot, removeSpotKind, savePlan, saveSpot, saveSpotKind } from './plan'
 import { setReservationSettings } from './settings'
 import {
@@ -186,14 +187,17 @@ export const RESERVATION_COMMANDS = {
     handle: removeSpotKind,
   }),
   // --- The venue's reservation settings --------------------------------------------------------
-  // The turn time is one value (D135). `pin_actions` (#324) and `online` (#325) are not written
-  // here: this command leaves them as they are.
+  // The turn time is one value (D135). `pin_actions` is where the PIN falls (#324, below);
+  // `online` (#325) is not written here: this command leaves it as it is.
   'reservation_settings.set': defineCommand({
     schema: z.strictObject({
       type: z.literal('reservation_settings.set'),
       turnMinutes: TurnMinutesSchema.max(1440).optional(),
       editPastNights: z.boolean().optional(),
       privateNotesOn: z.boolean().optional(),
+      // Where the PIN falls (D141, #324): the actions this call moves. An action left out keeps
+      // what the venue had, and one it never chose follows D141's default.
+      pinActions: PinActionsSchema.optional(),
     }),
     origins: ['staff'],
     permission: 'settings.reservations',

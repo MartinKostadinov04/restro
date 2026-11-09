@@ -41,10 +41,15 @@ import type { useSettingsRun } from './use-settings-run'
 
 type Runner = ReturnType<typeof useSettingsRun>
 
-/** The permissions in the three groups the sheet shows (plan §6), in the order a person reads them. */
+/**
+ * The permissions in the groups the sheet shows (plan §6), in the order a person reads them, each
+ * with the line under its name where there is one. Reservations are a group of their own (D141,
+ * #324): working the door is a permission, not a job title, so any role may hold some of it.
+ */
 export const PERMISSION_GROUPS = [
   {
     key: 'sf_g_tonight',
+    note: null,
     permissions: [
       'tables.open_close',
       'tables.resume',
@@ -56,10 +61,26 @@ export const PERMISSION_GROUPS = [
   },
   {
     key: 'sf_g_records',
+    note: null,
     permissions: ['log.view', 'night.view', 'night.view_full', 'money.follow_up'],
   },
   {
+    key: 'sf_g_reservations',
+    note: 'sf_reservations_signin',
+    permissions: [
+      'reservations.tonight',
+      'reservations.manage',
+      'reservations.pay_rule',
+      'reservations.block',
+      'reservations.edit_past',
+      'reservations.end_night',
+      'settings.reservations',
+      'settings.guests',
+    ],
+  },
+  {
     key: 'sf_g_settings',
+    note: 'sf_own_signin',
     permissions: [
       'settings.guards',
       'settings.codes',
@@ -259,9 +280,9 @@ function RoleSheet({
               {PERMISSION_GROUPS.map((group) => (
                 <fieldset key={group.key} className="grid grid-cols-1 gap-2">
                   <legend className="text-sm font-medium">{t(group.key)}</legend>
-                  {group.key === 'sf_g_settings' ? (
-                    <p className="text-xs text-muted-foreground">{t('sf_own_signin')}</p>
-                  ) : null}
+                  {group.note === null ? null : (
+                    <p className="text-xs text-muted-foreground">{t(group.note)}</p>
+                  )}
                   {group.permissions.map((permission) => {
                     const ticked = role.permissions.includes(permission)
                     const cannotGive = !ticked && !view.operator && !held.has(permission)

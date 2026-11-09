@@ -2514,6 +2514,30 @@
     "sf_g_tonight": "Tonight",
     "sf_g_records": "Records",
     "sf_g_settings": "Settings",
+    "sf_g_reservations": "Reservations",
+    "sf_reservations_signin": "The reservation settings and the guest records need the person's own sign-in; a PIN never opens them.",
+    "sf_pin_title": "Where the PIN falls",
+    "sf_pin_lede": "On a shared device: which reservation actions go through on one tap, and which ask for four digits first. A tap that only says who is sitting where tonight needs no PIN; a line in the reservations does.",
+    "sf_pin_tap": "One tap",
+    "sf_pin_pin": "A PIN",
+    "sf_pin_default_tap": "Default: one tap",
+    "sf_pin_default_pin": "Default: a PIN",
+    "sf_pin_needs_settings": "Set this venue's reservation settings first. Until then every action falls where the default puts it.",
+    "sf_pin_cant": "Only someone who may change the reservation settings can move these.",
+    "sf_pin_a_status": "Arrived, seated, a no-show",
+    "sf_pin_a_guest_count": "Change the number of guests",
+    "sf_pin_a_walk_in": "Seat a walk-in",
+    "sf_pin_a_waiting": "The waiting list and its order",
+    "sf_pin_a_spots": "Give, change and free spots",
+    "sf_pin_a_create": "Add a reservation",
+    "sf_pin_a_edit": "Change a reservation's details",
+    "sf_pin_a_cancel": "Cancel",
+    "sf_pin_a_delete": "Delete",
+    "sf_pin_a_restore": "Restore",
+    "sf_pin_a_put_back": "Put back after the night's end",
+    "sf_pin_a_copy": "Copy to another night",
+    "sf_pin_a_block": "Block and unblock a spot",
+    "sf_pin_a_end_night": "End the night",
     "perm": {
       "tables": {
         "open_close": "Open and close tables for phones",
@@ -2537,13 +2561,23 @@
       "money": {
         "follow_up": "Follow up payments: stornos and disputes"
       },
+      "reservations": {
+        "tonight": "Work tonight's reservations: arrivals, walk-ins, the waiting list",
+        "manage": "Manage reservations: add, change, cancel, delete, put back, copy",
+        "pay_rule": "Set a reservation's pay rule",
+        "block": "Block and unblock spots",
+        "edit_past": "Write a night that has passed",
+        "end_night": "End the night's reservations"
+      },
       "settings": {
         "guards": "Change hours and ordering rules",
         "codes": "Make new table codes",
         "payment_tables": "Mark payment tables",
         "alerts": "Choose who gets alerts; link Telegram",
         "connect_payments": "Connect, change and disconnect card payments",
-        "roles": "Manage staff, roles, PINs and devices"
+        "roles": "Manage staff, roles, PINs and devices",
+        "reservations": "Change the reservation settings",
+        "guests": "See and erase guest records"
       }
     },
     "sf_dev_line": "From then on this browser asks for a PIN for every action and can't open settings.",

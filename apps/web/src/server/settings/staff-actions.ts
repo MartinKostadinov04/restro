@@ -7,7 +7,12 @@
 // through `pin.reveal` (logged) and the worker's reveal endpoint: the add and new-PIN results
 // carry it once, for the screen to show for 30 seconds; nothing here stores or logs it.
 import { idSchema } from '@restro/core'
-import { DEFAULT_ROLE_KINDS, isFreshSignIn, PERMISSIONS } from '@restro/core/service'
+import {
+  DEFAULT_ROLE_KINDS,
+  isFreshSignIn,
+  PERMISSIONS,
+  PIN_FALL_ACTIONS,
+} from '@restro/core/service'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -54,6 +59,12 @@ const UpdateRole = z.strictObject({
   permissions: z.array(z.enum(PERMISSIONS)).max(PERMISSIONS.length).optional(),
 })
 const OnRole = z.strictObject({ venueId, roleId })
+/** One line of "Where the PIN falls" (D141, #324): one action, moved one way or the other. */
+const PinFall = z.strictObject({
+  venueId,
+  action: z.enum(PIN_FALL_ACTIONS),
+  fall: z.enum(['tap', 'pin']),
+})
 const MarkDevice = z.strictObject({ venueId, name: z.string().trim().min(1).max(40) })
 const OnDevice = z.strictObject({ venueId, deviceId })
 
@@ -219,6 +230,21 @@ export async function updateRoleAction(input: unknown): Promise<SettingsResult> 
   if (!parsed.success) return INVALID
   const { venueId: venue, ...rest } = parsed.data
   return change({ venueId: venue }, { type: 'role.update', ...rest })
+}
+
+/**
+ * Moves one reservation action to one tap or behind a PIN (D141, #324). `settings.reservations`,
+ * so it needs the person's own sign-in; a venue with no reservation settings yet is refused
+ * `settings_missing`, which the screen says in words rather than writing a turn time nobody chose.
+ */
+export async function setPinFallAction(input: unknown): Promise<SettingsResult> {
+  const parsed = PinFall.safeParse(input)
+  if (!parsed.success) return INVALID
+  const { venueId: venue, action, fall } = parsed.data
+  return change(
+    { venueId: venue },
+    { type: 'reservation_settings.set', pinActions: { [action]: fall } },
+  )
 }
 
 /** Retires a venue's own role nobody holds. */

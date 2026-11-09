@@ -330,6 +330,13 @@
       "when": 1794135366166,
       "tag": "0046_reservations",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1794221630862,
+      "tag": "0047_shared_device_person",
+      "breakpoints": true
     }
   ]
 }

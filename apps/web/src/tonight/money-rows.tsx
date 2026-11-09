@@ -177,6 +177,8 @@ export function useMoneyRowParts(
                   table: name,
                   source: view.source,
                 }),
+                // The money answer is confirmed on the sheet, remembered person or not.
+                confirm: true,
               },
             }
           : {}),
@@ -273,6 +275,8 @@ export function useMoneyRowParts(
                     level: ack.pin,
                     title: t(ack.label),
                     body: description,
+                    // A money alert's answer is confirmed on the sheet, remembered person or not.
+                    confirm: true,
                   },
                 }
               : {}),
