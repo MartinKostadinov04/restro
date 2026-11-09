@@ -152,7 +152,7 @@ export function BillSheet() {
           <span>{words.pay}</span>
           <b>{owed}</b>
         </button>
-      ) : o.askWaiterToPay && owed !== null ? (
+      ) : o.payOffAtVenue && owed !== null ? (
         // Paying is off at the venue: no Pay button, the words in its place (D127, #346).
         <p className="ro-notice" data-slot="bill.ask_waiter">
           {w.askWaiterToPay}

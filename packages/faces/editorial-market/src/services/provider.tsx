@@ -168,7 +168,7 @@ export interface Services {
   /** R15, narrowed by the server's paying state: `pay` is false while paying is off here (#346). */
   readonly features: ViewFeatures
   /** The venue wants Pay but paying is off here: the bill says "Ask your waiter to pay." (D127). */
-  readonly askWaiterToPay: boolean
+  readonly payOffAtVenue: boolean
   /** Sends a command; never throws. */
   readonly run: (command: GuestCommand) => Promise<Outcome>
   readonly items: ReadonlyMap<string, ViewItem>
@@ -355,11 +355,10 @@ function ActiveServices({
   // One place for the rule (#346, D127): the venue's Pay switch (R15) is not enough, the server must
   // be able to take payments too. Every entry to Pay (the header, the bill, the progress line, the
   // sheet's address) reads `features.pay` from here, so none shows a button that leads nowhere.
-  const payOff = payingOffHere(state)
-  const askWaiterToPay = view.features.pay && payOff
+  const payOffAtVenue = view.features.pay && payingOffHere(state)
   const features = useMemo(
-    () => (payOff && view.features.pay ? { ...view.features, pay: false } : view.features),
-    [view.features, payOff],
+    () => (payOffAtVenue ? { ...view.features, pay: false } : view.features),
+    [view.features, payOffAtVenue],
   )
   const strings = stringsFor(view.locale)
   const words = strings.services
@@ -742,7 +741,7 @@ function ActiveServices({
       guest: strings.guest,
       locale: view.locale,
       features,
-      askWaiterToPay,
+      payOffAtVenue,
       run,
       items,
       order,
@@ -787,7 +786,7 @@ function ActiveServices({
       words,
       strings,
       features,
-      askWaiterToPay,
+      payOffAtVenue,
       run,
       items,
       order,
