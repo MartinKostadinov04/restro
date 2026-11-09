@@ -4,7 +4,7 @@
 //   tonight's order and every row as it stands, the filters and their counts, the date moving to
 //   the night before and the screen opening on today again, a night that has passed read-only
 //   (and the one line that says whether the club allows corrections), one reservation's sheet with
-//   its history and its call link, and a role without the key not being shown the tab at all.
+//   its history and its call link, and a staff role landing on the list first of all (D141).
 //
 // The fixture is scripts/seed-tonight-e2e.ts `book` (scripts/e2e/reservations-night.ts), which
 // says which two nights it wrote. The admin is read in English.
@@ -100,10 +100,10 @@ test.afterAll(async () => {
 
 test('the tab sits after Tonight and opens on tonight, in arrival order', async () => {
   const { page } = owner
+  await openReservations(page)
   const tabs = page.getByRole('tablist', { name: 'Switch tab' }).getByRole('tab')
   await expect(tabs).toHaveText(['Composer', 'Tables & QR', 'Tonight', 'Reservations', 'Settings'])
 
-  await openReservations(page)
   await expect(rows(page)).toHaveCount(4)
   // The night's own order: who came first, then the late booking, then the party still to come.
   // The hour, the name, the party and the spot are all on the row, unopened.
@@ -220,14 +220,17 @@ test('on a phone the night is a list of its own, and the sheet is a drawer', asy
   }
 })
 
-test('a role without “working tonight’s reservations” is not shown the tab', async ({
+test('a staff role that works tonight’s reservations lands on the night’s list', async ({
   browser,
 }) => {
   const waiter = await person(browser, TONIGHT_WAITER_EMAIL, TABLET)
   try {
-    await waiter.page.goto(`/venues/${venueId}?tab=reservations`)
-    await expect(waiter.page.getByRole('tab', { name: 'Reservations' })).toHaveCount(0)
-    await expect(waiter.page.getByTestId('reservations-night')).toHaveCount(0)
+    // D141's order: the first screen this role may open is the night's list, not Tonight. (A role
+    // without the key is covered in the unit tests: every default role of this club holds it.)
+    await waiter.page.goto('/venues')
+    await expect(waiter.page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=reservations/)
+    await expect(screen(waiter.page)).toBeVisible()
+    await expect(rows(waiter.page)).toHaveCount(4)
   } finally {
     await waiter.context.close()
   }

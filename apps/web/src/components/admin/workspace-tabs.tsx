@@ -88,7 +88,7 @@ export function UrlTabs<V extends string>({
   const t = useTranslations()
   return (
     <Tabs value={current} onValueChange={select}>
-      {/* One tab is no choice: a shared device has Tonight alone. */}
+      {/* One tab is no choice: a device whose role is off the door has Tonight alone (D141). */}
       {defs.length > 1 ? (
         <>
           <TabsList className={listClassName ?? 'hidden lg:inline-flex'} aria-label={label}>

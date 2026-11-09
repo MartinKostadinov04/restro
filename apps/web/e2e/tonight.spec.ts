@@ -41,7 +41,7 @@ async function signIn(page: Page, email: string) {
     await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
     await page.getByRole('button', { name: 'Вход' }).click()
     try {
-      await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=tonight|\/venues$/, {
+      await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=\w+|\/venues$/, {
         timeout: 8_000,
       })
       return
@@ -109,13 +109,16 @@ test.afterAll(async () => {
   await tablet?.context.close()
 })
 
-test('a staff-only sign-in lands on Tonight, whose tab sits after Tables & QR', async () => {
+test('a staff-only sign-in lands on the first screen its role allows (D141)', async () => {
   const { page } = waiter
   await page.goto('/venues')
-  await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=tonight/)
+  // Its role works tonight's reservations, so the night's list is the first screen it may open;
+  // Tonight is one tab away, after Tables & QR.
+  await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=reservations/)
   // The venue's own tabs; Tonight has tabs of its own below them (#86).
   const tabs = page.getByRole('tablist', { name: 'Switch tab' }).getByRole('tab')
-  await expect(tabs).toHaveText(['Composer', 'Tables & QR', 'Tonight', 'Settings'])
+  await expect(tabs).toHaveText(['Composer', 'Tables & QR', 'Tonight', 'Reservations', 'Settings'])
+  await page.getByRole('tab', { name: 'Tonight' }).click()
   await expect(page.getByRole('tab', { name: 'Tonight' })).toHaveAttribute('aria-selected', 'true')
 })
 
@@ -128,10 +131,12 @@ test('a shared tablet has no composer or Tables & QR: an old link lands on Tonig
   await expect(page).toHaveURL(new RegExp(`${venue}\\?tab=tonight`))
   await page.goto(`${venue}?tab=tables`)
   await expect(page).toHaveURL(new RegExp(`${venue}\\?tab=tonight`))
-  // A PIN unlocks Tonight only (D122 §9, RR-85), so there is no tab to choose.
+  // A PIN unlocks Tonight and the night's list only (D122 §9, RR-85, D141): the composer,
+  // Tables & QR and Settings are not tabs it has at all.
   await page.goto(`${venue}?tab=settings`)
   await expect(page).toHaveURL(new RegExp(`${venue}\\?tab=tonight`))
-  await expect(page.getByRole('tablist', { name: 'Switch tab' })).toHaveCount(0)
+  const tabs = page.getByRole('tablist', { name: 'Switch tab' }).getByRole('tab')
+  await expect(tabs).toHaveText(['Tonight', 'Reservations'])
   await expect(page.getByRole('button', { name: 'Publish' })).toHaveCount(0)
 })
 
