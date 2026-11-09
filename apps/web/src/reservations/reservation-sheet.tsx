@@ -200,7 +200,13 @@ export function ReservationSheet({
           </a>
         </Button>
       ) : null}
-      <Button type="button" variant="outline" className="h-12" onClick={onClose}>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-12"
+        data-testid="rv-close"
+        onClick={onClose}
+      >
         {t('close')}
       </Button>
     </>

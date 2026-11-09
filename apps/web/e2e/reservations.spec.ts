@@ -196,7 +196,8 @@ test('one reservation’s sheet holds everything about it, with its history and 
   // No money section (#326): part 2 fills the record.
   await expect(sheet).not.toContainText('BGN')
 
-  await sheet.getByRole('button', { name: 'Close' }).click()
+  // The sheet's own Close, not the small x the sheet draws (both read "Close").
+  await sheet.getByTestId('rv-close').click()
   await expect(page.getByTestId('rv-sheet')).toHaveCount(0)
 })
 
