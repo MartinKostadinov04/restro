@@ -46,6 +46,26 @@ export const LOG_KIND_GROUP = {
   'device.changed': 'settings',
   'table_code.reissued': 'settings',
   'table_code.revealed': 'settings',
+  // Reservations (#323). The night's own moves sit with the orders, because that is what they are:
+  // work done at the venue tonight. What outlives the night — the plan, the spots, the settings and
+  // the guest records — sits with the settings, where every other settings change is. No fifth
+  // filter is added here: the Log screen is #86's, and a reservations filter of its own is that
+  // screen's ticket to add, not this one's.
+  'reservation.created': 'orders',
+  'reservation.changed': 'orders',
+  'reservation.status': 'orders',
+  'reservation.spots': 'orders',
+  'reservation.restored': 'orders',
+  'night.closed': 'orders',
+  'plan.changed': 'settings',
+  'spot.changed': 'settings',
+  'reservation_settings.changed': 'settings',
+  'guest.changed': 'settings',
+  'guest.erased': 'settings',
+  // The worker's sweep of the parties nobody seated. Shown: on a night nobody closed by hand it is
+  // the only line that says why the waiting list was closed off, and the hidden kinds are the
+  // engine's own bookkeeping (D120), which this is not.
+  'night.swept': 'orders',
   // A lease changing hands is the engine's bookkeeping, not something that happened at the venue.
   'lease.taken_over': null,
   // A hold read that said nothing: the route's own count of its tries. A manager's alert says what

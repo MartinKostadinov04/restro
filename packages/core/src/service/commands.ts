@@ -111,6 +111,7 @@ import {
 import { preOpeningAlert } from './pre-opening'
 import { recordReading } from './readings'
 import { receiptBrought, receiptUnbrought } from './receipt-brought'
+import { RESERVATION_COMMANDS } from './reservations/commands'
 import { sendOrder } from './send'
 import { SENT_ORDER_COMMANDS } from './sent-order'
 import { sentOrderAnswer } from './sent-order-answer'
@@ -820,6 +821,10 @@ export const SERVICE_COMMANDS = {
     idempotency: 'by_state',
     handle: markNightReportSent,
   }),
+  // #323: the reservations side — the plan and its spots, the venue's spot kinds and settings, the
+  // guest records and their erasure, the booking book, tonight's statuses and spots, the waiting
+  // list, the blocks, and the night's record with the sweep that marks who was never seated.
+  ...RESERVATION_COMMANDS,
 } as const satisfies Record<string, CommandDefinition>
 
 /** One command type. */

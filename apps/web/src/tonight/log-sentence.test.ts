@@ -65,6 +65,7 @@ const line = (kind: LogLineView['kind'], fields: Partial<LogLineView> = {}): Log
   refundSeenUndone: false,
   paymentId: null,
   sentOrdersOfDay: null,
+  reservationStatus: null,
   callKinds: [],
   callUndone: false,
   ...fields,
