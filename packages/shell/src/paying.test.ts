@@ -7,12 +7,12 @@ import {
   freeLines,
   NO_TIP,
   offersPay,
-  payingOffHere,
   offersReceiptEmail,
   PAY_ENDS,
   paidReceiptText,
   payBlock,
   payFormLocale,
+  payingOffHere,
   paymentIsFinal,
   payScreen,
   paySignedMoney,
@@ -279,7 +279,7 @@ describe('choosing what to pay (#45, D127)', () => {
 })
 
 describe('payingOffHere: paying is off at the venue, so no Pay button (#346, D127)', () => {
-  const base = { ...EMPTY_SERVICE_STATE, tableBill: b, paying: PAYING }
+  const base = { ...EMPTY_SERVICE_STATE, paying: PAYING }
   it('is true only when the host says off and this phone has no payment', () => {
     expect(payingOffHere({ ...base, paying: { ...PAYING, state: 'off' } })).toBe(true)
     expect(payingOffHere(base)).toBe(false)
