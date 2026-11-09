@@ -251,7 +251,8 @@
         "lapsesNote": "It is hidden from the guest menu. The mark ends by itself when the service day ends.",
         "offSaleTillNote": "{source} has taken this off sale. Put it back on sale in {source}: this page can only add to what {source} says.",
         "offSaleOtherNote": "Another setting has taken this off sale. This page cannot put it back on sale.",
-        "managersOnly": "Only an owner or admin can mark an item sold out."
+        "managersOnly": "Only an owner or admin can mark an item sold out.",
+        "tillStockNote": "Stock comes from {source}: mark it sold out there."
       },
       "conflict": "{source} and this venue disagree. Choose the right value.",
       "staleHint": "{source} changed this after you replaced it. {source} now says:",
