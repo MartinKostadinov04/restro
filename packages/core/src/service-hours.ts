@@ -15,7 +15,7 @@ import {
   WEEKDAYS,
   type Weekday,
 } from './ordering-settings'
-import { localInstant, serviceDate } from './service-day'
+import { addDaysToDay, localInstant, serviceDate } from './service-day'
 
 /** Phones are told "Last orders at …" this long before last orders (D122 §4). */
 export const LAST_ORDERS_NOTICE_MINUTES = 10
@@ -71,12 +71,6 @@ function weekdayOf(date: string): Weekday {
   return WEEKDAYS[(sundayFirst + 6) % 7] as Weekday
 }
 
-function addDaysTo(date: string, days: number): string {
-  const [year, month, day] = date.split('-').map(Number) as [number, number, number]
-  const moved = new Date(Date.UTC(year, month - 1, day + days))
-  return moved.toISOString().slice(0, 10)
-}
-
 function timesOf(date: string, hours: ServiceHoursOfDay, clock: ServiceClock) {
   const at = (time: string) => localInstant(date, time, clock.timeZone, clock.dayEndsAt)
   return {
@@ -98,7 +92,7 @@ export function nextOpening(
 ): { readonly serviceDate: string; readonly opensAt: Date } | null {
   const today = serviceDate(now, clock.timeZone, clock.dayEndsAt)
   for (let ahead = 0; ahead <= WEEKDAYS.length; ahead++) {
-    const date = addDaysTo(today, ahead)
+    const date = addDaysToDay(today, ahead)
     const hours = clock.hours[weekdayOf(date)]
     if (hours === null) continue
     const { opensAt } = timesOf(date, hours, clock)

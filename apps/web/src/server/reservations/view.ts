@@ -4,7 +4,10 @@
 //
 // The guest's phone is on the detail only, never on a row: the list of a busy night would otherwise
 // carry every guest's number into the browser, and only the sheet's Call button needs one.
+import type { SpotPlace, SpotSymbol } from '@restro/core'
 import type {
+  FloorPlanRead,
+  PlanExtent,
   ReservationAccess,
   ReservationDetail,
   ReservationKind,
@@ -12,8 +15,12 @@ import type {
   ReservationRefusal,
   ReservationRow,
   ReservationStatus,
+  SpotHistoryLine,
+  SpotHoldRead,
+  SpotState,
 } from '@restro/core/service'
 
+import type { RV_SPOT_STATES } from '@/reservations/spot-states'
 import type { RV_STATUSES } from '@/reservations/statuses'
 
 import { clockIn, type WhoView, whoView } from '../tonight/night-view'
@@ -31,6 +38,20 @@ type EveryStatus<T extends readonly ReservationStatus[]> = [
 
 /** One state, named as the browser's list names it. */
 export type RvStatus = EveryStatus<typeof RV_STATUSES>[number]
+
+/**
+ * The same hold for the plan's five spot states (`src/reservations/spot-states.ts`): a state core
+ * derives and the browser has no word for would make this type `never`, and the plan's views below
+ * stop compiling rather than a tile drawing a state nobody can read.
+ */
+type EverySpotState<T extends readonly SpotState[]> = [Exclude<SpotState, T[number]>] extends [
+  never,
+]
+  ? T
+  : never
+
+/** One spot state, named as the browser's list names it. */
+export type RvSpotState = EverySpotState<typeof RV_SPOT_STATES>[number]
 
 /** What the screens know about the actor: a control the server would refuse is not drawn. */
 export interface RvCan {
@@ -203,6 +224,176 @@ export function rvDetailView(detail: ReservationDetail, timezone: string): RvDet
       toState: line.toState,
       reason: line.reason,
       by: whoView(line.who, line.via),
+    })),
+  }
+}
+
+// ───────────────────────────────── the floor plan (#327) ─────────────────────────────────
+
+/**
+ * One of the venue's own spot kinds, as the legend and the filter read it (D134). The symbol is a
+ * name out of the shape folder's list, which the screen looks up in its own table of components:
+ * nothing a venue stores is ever drawn as markup.
+ */
+export interface RvKindView {
+  readonly key: string
+  readonly label: string
+  readonly symbol: SpotSymbol
+  readonly filters: boolean
+  readonly defaultSeats: number | null
+}
+
+/** One hold on a spot, as its sheet reads it. */
+export interface RvHoldView {
+  readonly reservationId: string
+  readonly kind: ReservationKind
+  readonly status: ReservationStatus
+  /** `HH:mm` in the venue's zone: the hour the party is expected, or the block begins. */
+  readonly time: string
+  /** When it ends; null for a block nobody has put an end to (D137). */
+  readonly until: string | null
+  readonly seatedAt: string | null
+  readonly name: string | null
+  readonly partySize: number | null
+  /** A block's reason, as its code; the screen words it. */
+  readonly reason: string | null
+  /** It covers the moment the plan was read: who is on the spot now, not later tonight. */
+  readonly now: boolean
+}
+
+/** The Table a spot's orders go onto; null for a spot that is not a table (D134, log 1.68). */
+export interface RvSpotTableView {
+  readonly id: string
+  readonly label: string
+  readonly numbered: boolean
+  /** It has a phone code. The code itself stays in the backend (rule 3). */
+  readonly hasCode: boolean
+}
+
+/** One spot on the plan: its place out of the folder, its state, and what holds it. */
+export interface RvSpotView {
+  readonly id: string
+  readonly name: string
+  readonly kind: string
+  /** The folder's checked name and whole numbers — never a path, a style or any other markup. */
+  readonly place: SpotPlace
+  readonly seats: number | null
+  readonly state: RvSpotState
+  readonly table: RvSpotTableView | null
+  readonly holds: readonly RvHoldView[]
+  readonly leading: RvHoldView | null
+}
+
+/** One plan, as the plan view draws it. */
+export interface RvPlanView {
+  readonly day: string
+  /** The plan shown is the venue's current service day. */
+  readonly today: boolean
+  readonly passed: boolean
+  /** Older than the month of plans (D141, 9.21): that night is a Log record only. */
+  readonly tooOld: boolean
+  readonly settingsMissing: boolean
+  /** The venue's plans, for the picker where it has more than one. */
+  readonly plans: readonly { readonly id: string; readonly name: string }[]
+  /** null when the venue has no plan drawn yet: the screen says who to ask. */
+  readonly planId: string | null
+  readonly planName: string | null
+  readonly kinds: readonly RvKindView[]
+  readonly spots: readonly RvSpotView[]
+  /** The box the spots take up, as the drawing's own view box. */
+  readonly extent: PlanExtent
+  /** Spots whose stored numbers the folder refused: drawn nowhere, counted here. */
+  readonly unreadable: number
+}
+
+/** One line of a spot's history (D141: the one Log). */
+export interface RvSpotHistoryView {
+  readonly seq: number
+  readonly day: string
+  readonly time: string
+  readonly kind: string
+  readonly fromState: string | null
+  readonly toState: string | null
+  readonly reason: string | null
+  readonly by: WhoView
+  readonly reservationId: string | null
+  readonly name: string | null
+}
+
+/** One spot's history, newest first, with the spot it is about. */
+export interface RvSpotHistoryList {
+  readonly spot: { readonly id: string; readonly name: string } | null
+  readonly lines: readonly RvSpotHistoryView[]
+}
+
+function rvHoldView(hold: SpotHoldRead, timezone: string): RvHoldView {
+  const clock = clockIn(timezone)
+  return {
+    reservationId: hold.reservationId,
+    kind: hold.kind,
+    status: hold.status,
+    time: clock(hold.startsAt) ?? '',
+    until: clock(hold.until),
+    seatedAt: clock(hold.seatedAt),
+    name: hold.name,
+    partySize: hold.partySize,
+    reason: hold.reason,
+    now: hold.now,
+  }
+}
+
+export function rvPlanView(plan: FloorPlanRead, timezone: string): RvPlanView {
+  return {
+    day: plan.day,
+    today: plan.day === plan.today,
+    passed: plan.passed,
+    tooOld: plan.tooOld,
+    settingsMissing: plan.settingsMissing,
+    plans: plan.plans.map((one) => ({ id: one.id, name: one.name })),
+    planId: plan.planId,
+    planName: plan.planName,
+    kinds: plan.kinds.map((kind) => ({
+      key: kind.key,
+      label: kind.label,
+      symbol: kind.symbol,
+      filters: kind.filters,
+      defaultSeats: kind.defaultSeats,
+    })),
+    spots: plan.spots.map((spot) => ({
+      id: spot.id,
+      name: spot.name,
+      kind: spot.kind,
+      place: spot.place,
+      seats: spot.seats,
+      state: spot.state,
+      table: spot.table,
+      holds: spot.holds.map((hold) => rvHoldView(hold, timezone)),
+      leading: spot.leading === null ? null : rvHoldView(spot.leading, timezone),
+    })),
+    extent: plan.extent,
+    unreadable: plan.unreadable,
+  }
+}
+
+export function rvSpotHistoryView(
+  spot: { readonly id: string; readonly name: string } | null,
+  history: readonly SpotHistoryLine[],
+  timezone: string,
+): RvSpotHistoryList {
+  const clock = clockIn(timezone)
+  return {
+    spot,
+    lines: history.map((line) => ({
+      seq: line.seq,
+      day: line.serviceDate,
+      time: clock(line.at) ?? '',
+      kind: line.kind,
+      fromState: line.fromState,
+      toState: line.toState,
+      reason: line.reason,
+      by: whoView(line.who, line.via),
+      reservationId: line.reservationId,
+      name: line.name,
     })),
   }
 }

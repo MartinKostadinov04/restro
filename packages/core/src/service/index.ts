@@ -429,8 +429,36 @@ export {
   storedPinActions,
 } from './reservations/pin-fall'
 export {
-  isLate,
+  daysBetween,
+  type FloorPlanRead,
+  MAX_SPOT_HISTORY,
+  nightBounds,
+  PLAN_MONTH_DAYS,
+  type PlanChoice,
+  type PlanExtent,
+  planDayOf,
+  planRowStretch,
+  readFloorPlan,
+  readSpotHistory,
+  type SpotHistoryLine,
+  type SpotHoldRead,
+  type SpotKindRead,
+  type SpotRead,
+  type SpotTableRead,
+} from './reservations/plan-read'
+export {
+  holdCoversAt,
+  isLateHold,
   LATE_AFTER_MINUTES,
+  leadingHold,
+  SPOT_STATES,
+  type SpotHoldFact,
+  type SpotState,
+  spotStateAt,
+  spotStateOfNight,
+} from './reservations/plan-state'
+export {
+  isLate,
   LISTED_NIGHTS,
   MAX_NIGHT_ROWS,
   type ReservationAccess,

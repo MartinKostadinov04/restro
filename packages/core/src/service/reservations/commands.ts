@@ -36,6 +36,7 @@
 import { z } from 'zod'
 
 import { idSchema } from '../../ids'
+import { SPOT_PLACE_FIELDS, SPOT_SYMBOLS, spotPlaceIssues } from '../../spot-shapes'
 import { type CommandDefinition, defineCommand } from '../definition'
 import {
   cancelReservation,
@@ -144,21 +145,21 @@ export const RESERVATION_COMMANDS = {
     handle: removePlan,
   }),
   'spot.save': defineCommand({
-    schema: z.strictObject({
-      type: z.literal('spot.save'),
-      spotId: spotId.optional(),
-      planId,
-      name: z.string().trim().min(1).max(40),
-      kind: code,
-      shape: z.enum(['rect', 'circle']).optional(),
-      x: z.number().int(),
-      y: z.number().int(),
-      width: z.number().int().positive(),
-      height: z.number().int().positive(),
-      rotation: z.number().int().min(0).max(359).optional(),
-      seats: z.number().int().min(1).max(100).nullable().optional(),
-      tableId: idSchema('tb').nullable().optional(),
-    }),
+    // The shape folder's own check (#327): a shape it does not hold, a spot off the plan's grid, a
+    // circle that is not round or a rotation on one it would not turn is refused here, by its own
+    // code, instead of reaching the column constraints.
+    schema: z
+      .strictObject({
+        type: z.literal('spot.save'),
+        spotId: spotId.optional(),
+        planId,
+        name: z.string().trim().min(1).max(40),
+        kind: code,
+        ...SPOT_PLACE_FIELDS,
+        seats: z.number().int().min(1).max(100).nullable().optional(),
+        tableId: idSchema('tb').nullable().optional(),
+      })
+      .superRefine(spotPlaceIssues),
     origins: ['staff'],
     permission: 'settings.reservations',
     idempotency: 'by_nature',
@@ -217,6 +218,10 @@ export const RESERVATION_COMMANDS = {
       type: z.literal('spot_kind.save'),
       key: code,
       label: z.string().trim().min(1).max(40),
+      /** Its legend symbol (#327): a name out of the folder's list, never a picture of its own. */
+      symbol: z.enum(SPOT_SYMBOLS).optional(),
+      /** Whether the plan offers this kind as a filter (D134). */
+      filters: z.boolean().optional(),
       defaultSeats: z.number().int().min(1).max(100).nullable().optional(),
       sortKey: z
         .string()

@@ -33,15 +33,27 @@ export function PinSheet({
   level,
   onLeave,
   onSubmit,
+  wording,
 }: {
   title: string
   body: string
   level: PinLevel
   onLeave: () => void
   onSubmit: (pin: string) => Promise<TonightResult>
+  /**
+   * How a refusal is worded, for a screen outside Tonight whose refusals have their own sentences
+   * (Reservations, #327). Left out, Tonight's own words are used: the pad, the dots and "Leave it"
+   * are about PINs, not about one screen, so they stay the same everywhere.
+   */
+  wording?: (
+    error: string,
+    retryAfterSeconds?: number,
+    details?: Readonly<Record<string, unknown>>,
+  ) => string
 }) {
   const t = useTranslations('tonight')
-  const failureText = useFailureText()
+  const tonightText = useFailureText()
+  const failureText = wording ?? tonightText
   const [digits, setDigits] = useState('')
   const [problem, setProblem] = useState<string | null>(null)
   const [waiting, setWaiting] = useState(false)

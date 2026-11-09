@@ -10,6 +10,7 @@ import { floorPlans, spots, venueSpotKinds } from '@restro/db'
 import { and, eq, isNull, ne, sql } from 'drizzle-orm'
 
 import { newId } from '../../ids'
+import type { SpotSymbol } from '../../spot-shapes'
 import type { ServiceTx } from '../definition'
 import { accepted, type ServiceResult } from '../results'
 import { hasSpotKind, readPlan, readSpot, refuse, spotsOfReservation } from './rows'
@@ -97,22 +98,18 @@ export async function removePlan(
   return accepted(null, { details: { planId: plan.id } })
 }
 
-/** Where a spot sits on its plan and how big it is drawn, in the plan's own grid units. */
-export interface SpotPlace {
+/** What a spot is saved with: its place out of the shape folder (#327), and what it is called. */
+export interface SpotSaveCommand {
+  readonly spotId?: string
+  readonly planId: string
+  readonly name: string
+  readonly kind: string
+  readonly shape: string
   readonly x: number
   readonly y: number
   readonly width: number
   readonly height: number
   readonly rotation?: number
-}
-
-/** What a spot is saved with. */
-export interface SpotSaveCommand extends SpotPlace {
-  readonly spotId?: string
-  readonly planId: string
-  readonly name: string
-  readonly kind: string
-  readonly shape?: 'rect' | 'circle'
   readonly seats?: number | null
   /** The Table orders at this spot go onto, as Restro's own `tb_` id (rule 3). */
   readonly tableId?: string | null
@@ -142,7 +139,7 @@ export async function saveSpot(stx: ServiceTx, command: SpotSaveCommand): Promis
     planId: plan.id,
     name: command.name,
     kind: command.kind,
-    shape: command.shape ?? existing?.shape ?? 'rect',
+    shape: command.shape,
     x: command.x,
     y: command.y,
     width: command.width,
@@ -229,6 +226,10 @@ export async function removeSpot(
 export interface SpotKindSaveCommand {
   readonly key: string
   readonly label: string
+  /** Its legend symbol, one of the folder's names (#327); left out keeps the plain mark. */
+  readonly symbol?: SpotSymbol
+  /** Whether the plan offers it as a filter (D134); left out keeps it offered. */
+  readonly filters?: boolean
   readonly defaultSeats?: number | null
   readonly sortKey?: string
 }
@@ -245,6 +246,8 @@ export async function saveSpotKind(
     label: command.label,
     defaultSeats: command.defaultSeats ?? null,
     removedAt: null,
+    ...(command.symbol === undefined ? {} : { symbol: command.symbol }),
+    ...(command.filters === undefined ? {} : { filters: command.filters }),
     ...(command.sortKey === undefined ? {} : { sortKey: command.sortKey }),
   }
   await stx.tx
@@ -254,6 +257,8 @@ export async function saveSpotKind(
       venueId: stx.venueId,
       key: command.key,
       sortKey: command.sortKey ?? 'a0',
+      symbol: command.symbol ?? 'dot',
+      filters: command.filters ?? true,
       ...values,
       ...stx.provenance,
     })

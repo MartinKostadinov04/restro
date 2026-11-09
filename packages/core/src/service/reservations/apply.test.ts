@@ -178,6 +178,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
         planId,
         name,
         kind: 'table',
+        shape: 'rect',
         x: index * 100,
         y: 0,
         width: 80,
