@@ -8,7 +8,7 @@
 // (or, on a shared device, as the person a PIN names). The service side checks the permission again:
 // `reservations.tonight` to read, `reservations.block` to write. A failure is a plain `{ ok: false }`
 // with the detail in the log, never on the screen.
-import { idSchema, localInstant, serviceDate } from '@restro/core'
+import { addDaysToDay, idSchema, localInstant, serviceDate } from '@restro/core'
 import { z } from 'zod'
 
 import { BLOCK_REASONS } from '@/reservations/block-reasons'
@@ -142,13 +142,6 @@ const Block = z.strictObject({
 })
 const Unblock = z.strictObject({ venueId, reservationId: idSchema('rv'), pin })
 
-/** The calendar date after a service day. */
-function nextDay(value: string): string {
-  const at = new Date(`${value}T00:00:00Z`)
-  at.setUTCDate(at.getUTCDate() + 1)
-  return at.toISOString().slice(0, 10)
-}
-
 /**
  * Takes one spot out of use (D137): a reservation of the block kind on that spot, with its reason.
  * With no dates it begins now and stays on until somebody lifts it; with dates it covers whole
@@ -177,7 +170,7 @@ export async function blockSpotAction(input: unknown): Promise<RvWriteResult> {
           until === undefined
             ? null
             : localInstant(
-                nextDay(until),
+                addDaysToDay(until, 1),
                 venue.serviceDayEndsAt,
                 venue.timezone,
                 venue.serviceDayEndsAt,

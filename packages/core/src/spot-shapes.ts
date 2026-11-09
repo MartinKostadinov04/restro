@@ -244,10 +244,9 @@ export function planExtent(
     right = Math.max(right, place.x + place.width)
     bottom = Math.max(bottom, place.y + place.height)
   }
-  return {
-    x: Math.max(0, left - margin),
-    y: Math.max(0, top - margin),
-    width: right - left + margin * 2,
-    height: bottom - top + margin * 2,
-  }
+  // The origin never goes negative, and the size is measured from the edges that were kept: a plan
+  // drawn tight to the origin keeps the same margin on both sides instead of hanging off to one.
+  const x = Math.max(0, left - margin)
+  const y = Math.max(0, top - margin)
+  return { x, y, width: right + margin - x, height: bottom + margin - y }
 }

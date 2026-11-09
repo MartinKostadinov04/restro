@@ -208,7 +208,21 @@ describe('the box a plan takes up', () => {
   })
 
   it("never starts before the plan's own origin", () => {
-    expect(planExtent([{ x: 0, y: 0, width: 10, height: 10 }], 20)).toMatchObject({ x: 0, y: 0 })
+    expect(planExtent([{ x: 0, y: 0, width: 10, height: 10 }], 20)).toEqual({
+      x: 0,
+      y: 0,
+      width: 30,
+      height: 30,
+    })
+  })
+
+  it('keeps the box tight where a spot sits inside the margin', () => {
+    // The origin cannot go below zero, so the left margin is cut short — but the box must not grow
+    // on the other side to make up for it, or the room hangs off to one side of the screen.
+    const box = planExtent([{ x: 5, y: 0, width: 10, height: 10 }], 20)
+    expect(box).toEqual({ x: 0, y: 0, width: 35, height: 30 })
+    expect(box.x + box.width - (5 + 10)).toBe(20)
+    expect(box.y + box.height - (0 + 10)).toBe(20)
   })
 
   it('holds every place it is given (property)', () => {
