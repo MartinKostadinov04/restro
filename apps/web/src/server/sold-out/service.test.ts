@@ -239,12 +239,14 @@ describe.skipIf(!hasDatabase)('sold out tonight (as the restro_app role)', () =>
         soldOutTonight: false,
         offSale: null,
         canMark: true,
+        tillStock: false,
       })
       await setItemsSoldOut(scope(), realClock, { itemIds: [other], soldOut: true })
       expect((await loadItemSheet(mayMark, mayMarkServices))?.sale).toEqual({
         soldOutTonight: true,
         offSale: null,
         canMark: true,
+        tillStock: false,
       })
       const [mayNot, mayNotServices] = sheet(other, false)
       expect((await loadItemSheet(mayNot, mayNotServices))?.sale.canMark).toBe(false)

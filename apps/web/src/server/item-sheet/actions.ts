@@ -93,14 +93,15 @@ async function session(
   if (await onSharedDevice({ tenantId: organization.id, sessionId })) return 'not_allowed'
   const ours = await itemsOfVenue(getPool(), organization.id, ids.venueId, [ids.itemId])
   if (!ours.has(ids.itemId)) return 'not_found'
+  const venueTill = await venueHasTill(organization.id, ids.venueId)
   return {
     scope: {
       pool: getPool(),
       tenantId: organization.id,
       ...ids,
       // On a POS venue the POS says what ran out: no sold-out switch (D124 §6, #80).
-      canMarkSoldOut:
-        canMarkSoldOut(organization.role) && !(await venueHasTill(organization.id, ids.venueId)),
+      canMarkSoldOut: canMarkSoldOut(organization.role) && !venueTill,
+      venueHasTill: venueTill,
     },
     services: {
       store: await getAssetStore(),

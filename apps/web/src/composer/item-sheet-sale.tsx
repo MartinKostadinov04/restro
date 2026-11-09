@@ -86,7 +86,9 @@ export function ItemSheetSale({ sale, busy, onChange }: ItemSheetSaleProps) {
               ? t('lapsesNote')
               : sale.canMark
                 ? t('markNote')
-                : t('managersOnly')}
+                : sale.tillStock
+                  ? t('tillStockNote', { source })
+                  : t('managersOnly')}
       </p>
     </section>
   )

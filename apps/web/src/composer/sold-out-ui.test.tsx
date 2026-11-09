@@ -242,6 +242,7 @@ describe('the sale card of the item sheet', () => {
     soldOutTonight: false,
     offSale: null,
     canMark: true,
+    tillStock: false,
     ...change,
   })
 
@@ -310,6 +311,21 @@ describe('the sale card of the item sheet', () => {
     renderWithIntl(<ItemSheetSale sale={sale({ canMark: false })} busy={false} onChange={noop} />)
     expect(screen.queryByRole('button')).toBeNull()
     expect(screen.getByTestId('sale-note').textContent).toMatch(/owner or admin/)
+  })
+
+  it('on a POS venue blames the stock, not the role, even for an owner', () => {
+    // An owner on a POS venue: canMark is false because the POS says what ran out (D124 §6).
+    const pos = sale({ canMark: false, tillStock: true })
+    const en = renderWithIntl(<ItemSheetSale sale={pos} busy={false} onChange={noop} />)
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.getByTestId('sale-note').textContent).toBe(
+      'Stock comes from barsy: mark it sold out there.',
+    )
+    en.unmount()
+    renderWithIntl(<ItemSheetSale sale={pos} busy={false} onChange={noop} />, { locale: 'bg' })
+    expect(screen.getByTestId('sale-note').textContent).toBe(
+      'Наличността идва от barsy: отбележете го като изчерпан там.',
+    )
   })
 
   it('disables nothing it should not: a save under way blocks the button', () => {
