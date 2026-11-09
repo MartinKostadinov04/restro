@@ -33,11 +33,13 @@ function fakeStripe(confirm: () => Promise<{ error?: { message?: string } }>) {
   >[0][] = []
   const options: { clientSecret: string; locale: string }[] = []
   const updates: { locale: string }[] = []
+  const elementOptions: (Record<string, unknown> | undefined)[] = []
   const elements: ElementsLike = {
     update: (given) => {
       updates.push(given)
     },
-    create: () => {
+    create: (_type, given) => {
+      elementOptions.push(given)
       const element = {
         mounted: null as HTMLElement | null,
         destroyed: false,
@@ -67,7 +69,7 @@ function fakeStripe(confirm: () => Promise<{ error?: { message?: string } }>) {
       return confirm()
     },
   }))
-  return { load, created, confirmations, options, updates }
+  return { load, created, confirmations, options, updates, elementOptions }
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -100,6 +102,13 @@ describe('mounting', () => {
     expect(stripe.load).toHaveBeenCalledWith('pk_test_123', { stripeAccount: 'acct_1A2b3C' })
     expect(stripe.options).toEqual([{ clientSecret: 'secret-placeholder', locale: 'bg' }])
     expect(stripe.created[0]?.mounted).toBe(target.querySelector('[data-slot="pay.form.element"]'))
+  })
+
+  it('asks the Payment Element for no Link account and no saved information (D145)', async () => {
+    const stripe = fakeStripe(async () => ({}))
+    mountStripeCardForm(document.createElement('div'), PROPS, context(), stripe.load)
+    await flush()
+    expect(stripe.elementOptions).toEqual([{ layout: 'tabs', wallets: { link: 'never' } }])
   })
 
   it("enables the button on Stripe's ready event, not when the element is mounted", async () => {
