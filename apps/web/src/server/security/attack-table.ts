@@ -1084,6 +1084,38 @@ export const ATTACKS: readonly Attack[] = [
     },
   },
 
+  // The floor plan (#327): two reads and two writes. The seeded plan and spot carry the
+  // organisation's marker, so A's floor reaching B's answer shows as a name, and the block pair
+  // must leave A's reservations untouched.
+  {
+    action: 'floorPlanAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.floorPlanAction({ venueId: x.id, planId: x.plan })
+    },
+  },
+  {
+    action: 'spotHistoryAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.spotHistoryAction({ venueId: x.id, spotId: x.spot })
+    },
+  },
+  {
+    action: 'blockSpotAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.blockSpotAction({ venueId: x.id, spotId: x.spot, reason: 'repair' })
+    },
+  },
+  {
+    action: 'unblockSpotAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.unblockSpotAction({ venueId: x.id, reservationId: x.block })
+    },
+  },
+
   // Venues.
   {
     action: 'createVenueAction',
@@ -1965,5 +1997,32 @@ export const MIXED: readonly Attack[] = [
     action: 'paymentDetailAction',
     call: (v, a) =>
       paymentsRead.paymentDetailAction({ venueId: a.venues[0].id, paymentId: v.venues[0].payment }),
+  },
+
+  // The floor plan (#327): my own venue, the victim's plan, spot and block — the way past a venue
+  // check, and the one that would draw somebody else's floor on my screen.
+  {
+    action: 'floorPlanAction',
+    call: (v, a) =>
+      nightBook.floorPlanAction({ venueId: a.venues[0].id, planId: v.venues[0].plan }),
+  },
+  {
+    action: 'spotHistoryAction',
+    call: (v, a) =>
+      nightBook.spotHistoryAction({ venueId: a.venues[0].id, spotId: v.venues[0].spot }),
+  },
+  {
+    action: 'blockSpotAction',
+    call: (v, a) =>
+      nightBook.blockSpotAction({
+        venueId: a.venues[0].id,
+        spotId: v.venues[0].spot,
+        reason: 'repair',
+      }),
+  },
+  {
+    action: 'unblockSpotAction',
+    call: (v, a) =>
+      nightBook.unblockSpotAction({ venueId: a.venues[0].id, reservationId: v.venues[0].block }),
   },
 ]

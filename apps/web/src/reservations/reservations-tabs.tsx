@@ -4,7 +4,7 @@
 // beside it later. The same bar as the venue's own tabs and Tonight's (UrlTabs: a tab bar from
 // 1024 px, a dropdown below), mirrored in the URL as `?view=` beside `?tab=reservations`. A view
 // the role may not open is not listed, so nobody meets a tab they cannot use.
-import { CalendarDaysIcon } from 'lucide-react'
+import { CalendarDaysIcon, LayoutGridIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import type { ReactNode } from 'react'
 
@@ -15,7 +15,10 @@ import { ReservationsSkeleton } from './reservations-skeleton'
 
 /** What each view's tab shows. */
 const TABS = {
-  list: { labelKey: 'reservations.tab_list', icon: CalendarDaysIcon },
+  // Beside a second view the night's list is "List": "Tonight" is what the night button says, and
+  // the plan shows tonight too (#327's own string list).
+  list: { labelKey: 'reservations.tab_view_list', icon: CalendarDaysIcon },
+  plan: { labelKey: 'reservations.tab_plan', icon: LayoutGridIcon },
 } as const satisfies Record<ReservationViewName, { labelKey: string; icon: unknown }>
 
 export function ReservationsTabs({
@@ -45,7 +48,9 @@ export function ReservationsTabs({
       select={select}
       contents={filled}
       label={t('tabs_label')}
-      listClassName="hidden lg:inline-flex"
+      // Two short words fit one row at 390 px, so the row stays a row at every width: a dropdown
+      // would make opening the plan two taps, and the ticket's budget for it is one.
+      oneRow
     />
   )
 }

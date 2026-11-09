@@ -57,11 +57,36 @@ export const BOOK = {
   passed: 'Тодорова',
   spot: 'Маса 7',
   booth: 'Сепаре 1',
+  /** The blocked spot of the plan, and the reason it carries (#327). */
+  blocked: 'Маса 8',
+  blockedReason: 'repair',
+  /** A name too long for a spot at 390 px: it clips there and reads whole in the sheet. */
+  longName: 'Бар 12 вляво',
+  /** A spot that is not a table, so it is never offered a phone code (D134, log 1.68). */
+  standing: 'Правостоящи до сцената',
+  /** A kind the plan does not offer as a filter, to prove `filters` is honoured. */
+  counter: 'Бар плот',
   phone: '+359888123456',
   /** The guest record's key: digits only, as the guests table keeps it (D140). */
   phoneKey: '359888123456',
   note: 'Торта в 01:00',
 } as const
+
+/** The club's two plans, so the spec can pick the one it means (D134, log 1.28). */
+export const PLANS = { main: 'Основна зала', terrace: 'Тераса' } as const
+
+/**
+ * The club's own spot kinds: key, the word staff read, its legend symbol, whether the plan offers
+ * it as a filter, its default seats and its place in the list. `Бар` does not filter, so a kind
+ * left out of the filter bar is covered too.
+ */
+export const PLAN_KINDS = [
+  ['table', 'Маси', 'table', true, 4, 'a0'],
+  ['booth', 'Сепарета', 'booth', true, 6, 'a1'],
+  ['stool', 'Бар столове', 'stool', true, 1, 'a2'],
+  ['standing', 'Правостоящи', 'standing', true, null, 'a3'],
+  ['counter', 'Бар', 'counter', false, null, 'a4'],
+] as const satisfies readonly (readonly [string, string, string, boolean, number | null, string])[]
 
 export async function seedReservationsNight(
   world: ReservationsWorld,
@@ -87,31 +112,169 @@ export async function seedReservationsNight(
     [tenantId, venueId, scene === 'book-past-open', ...SEED],
   )
 
-  // A plan with two spots, so a row can show what it holds (the plan itself is #327).
+  // The club's floor (#327): two plans, so the picker has something to pick, and the club's own
+  // spot kinds, each with its legend symbol, whether the plan filters by it and its default seats
+  // — D134 gives a kind those three and no rule beyond them.
   const planId = newId('fp')
-  await owner.query(
-    `insert into restro.floor_plans (id, tenant_id, venue_id, name, is_current, source, actor, job_id)
-     values ($1, $2, $3, 'Основна зала', true, $4, $5, $6)`,
-    [planId, tenantId, venueId, ...SEED],
-  )
-  await owner.query(
-    `insert into restro.venue_spot_kinds (tenant_id, venue_id, key, label, default_seats, source, actor, job_id)
-     values ($1, $2, 'table', 'Маса', 4, $3, $4, $5)`,
-    [tenantId, venueId, ...SEED],
-  )
-  const spot = async (name: string, x: number): Promise<string> => {
+  const otherPlanId = newId('fp')
+  for (const [id, name, current] of [
+    [planId, PLANS.main, true],
+    [otherPlanId, PLANS.terrace, false],
+  ] as const) {
+    await owner.query(
+      `insert into restro.floor_plans (id, tenant_id, venue_id, name, is_current, source, actor, job_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [id, tenantId, venueId, name, current, ...SEED],
+    )
+  }
+  for (const [key, label, symbol, filters, seats, sortKey] of PLAN_KINDS) {
+    await owner.query(
+      `insert into restro.venue_spot_kinds
+         (tenant_id, venue_id, key, label, symbol, filters, default_seats, sort_key,
+          source, actor, job_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [tenantId, venueId, key, label, symbol, filters, seats, sortKey, ...SEED],
+    )
+  }
+
+  // A Table for the first spot, so its sheet can say which Table orders go onto (rule 3: our own
+  // id, never a code). A club's bar stools have none, which is the point of the pair.
+  const firstTable = (
+    await owner.query<{ id: string }>(
+      `select id from restro.tables where tenant_id = $1 and archived_at is null
+       order by number limit 1`,
+      [tenantId],
+    )
+  ).rows[0]?.id
+
+  /** One spot of the plan: a shape out of the folder and whole numbers, as #327 checks them. */
+  const spot = async (one: {
+    name: string
+    kind: string
+    shape: string
+    x: number
+    y: number
+    width: number
+    height: number
+    rotation?: number
+    seats?: number | null
+    tableId?: string | null
+    planId?: string
+  }): Promise<string> => {
     const id = newId('sp')
     await owner.query(
       `insert into restro.spots
-         (id, tenant_id, venue_id, plan_id, name, kind, x, y, width, height, seats,
-          source, actor, job_id)
-       values ($1, $2, $3, $4, $5, 'table', $6, 40, 80, 80, 4, $7, $8, $9)`,
-      [id, tenantId, venueId, planId, name, x, ...SEED],
+         (id, tenant_id, venue_id, plan_id, name, kind, shape, x, y, width, height, rotation,
+          seats, table_id, source, actor, job_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+      [
+        id,
+        tenantId,
+        venueId,
+        one.planId ?? planId,
+        one.name,
+        one.kind,
+        one.shape,
+        one.x,
+        one.y,
+        one.width,
+        one.height,
+        one.rotation ?? 0,
+        one.seats ?? null,
+        one.tableId ?? null,
+        ...SEED,
+      ],
     )
     return id
   }
-  const table7 = await spot(BOOK.spot, 40)
-  const booth1 = await spot(BOOK.booth, 160)
+  const table7 = await spot({
+    name: BOOK.spot,
+    kind: 'table',
+    shape: 'rect',
+    x: 40,
+    y: 40,
+    width: 80,
+    height: 80,
+    seats: 4,
+    tableId: firstTable ?? null,
+  })
+  const booth1 = await spot({
+    name: BOOK.booth,
+    kind: 'booth',
+    shape: 'booth',
+    x: 160,
+    y: 40,
+    width: 120,
+    height: 80,
+    seats: 6,
+  })
+  const table8 = await spot({
+    name: BOOK.blocked,
+    kind: 'table',
+    shape: 'circle',
+    x: 320,
+    y: 40,
+    width: 80,
+    height: 80,
+    seats: 2,
+  })
+  await spot({
+    name: 'Маса 9',
+    kind: 'table',
+    shape: 'rect',
+    x: 440,
+    y: 40,
+    width: 80,
+    height: 80,
+    rotation: 15,
+  })
+  await spot({
+    name: BOOK.longName,
+    kind: 'stool',
+    shape: 'circle',
+    x: 40,
+    y: 180,
+    width: 40,
+    height: 40,
+  })
+  await spot({
+    name: 'Бар 13',
+    kind: 'stool',
+    shape: 'circle',
+    x: 100,
+    y: 180,
+    width: 40,
+    height: 40,
+  })
+  await spot({
+    name: BOOK.standing,
+    kind: 'standing',
+    shape: 'pill',
+    x: 180,
+    y: 170,
+    width: 220,
+    height: 60,
+  })
+  await spot({
+    name: BOOK.counter,
+    kind: 'counter',
+    shape: 'pill',
+    x: 440,
+    y: 180,
+    width: 80,
+    height: 240,
+  })
+  // The second plan has a spot of its own, so picking it changes what is drawn.
+  await spot({
+    name: 'Тераса 1',
+    kind: 'table',
+    shape: 'rect',
+    x: 40,
+    y: 40,
+    width: 100,
+    height: 70,
+    planId: otherPlanId,
+  })
 
   // One guest record, because a telephone number lives in exactly one place (D140).
   const guestId = newId('gu')
@@ -219,6 +382,24 @@ export async function seedReservationsNight(
     ended: `now() - interval '18 minutes'`,
   })
 
+  // One spot kept out of use (#327, D137): a block of the club's own, with its reason and no end
+  // — it stays on until somebody lifts it, which is what the plan's Unblock does.
+  const blockId = newId('rv')
+  await owner.query(
+    `insert into restro.reservations
+       (id, tenant_id, venue_id, service_date, starts_at, ends_at, kind, status, party_size,
+        reason, made_by, source, actor, job_id)
+     values ($1, $2, $3, $4, now() - interval '3 hours', null, 'block', 'reserved', null,
+             $5, $6, 'staff', $7, 'e2e-seed')`,
+    [blockId, tenantId, venueId, day, BOOK.blockedReason, staffId, `staff:${staffId}`],
+  )
+  await owner.query(
+    `insert into restro.reservation_spots
+       (tenant_id, reservation_id, spot_id, held_from, held_to, source, actor, job_id)
+     values ($1, $2, $3, now() - interval '3 hours', null, 'staff', $4, 'e2e-seed')`,
+    [tenantId, blockId, table8, `staff:${staffId}`],
+  )
+
   // The night before, so the day button has somewhere to go and it reads as a record.
   const before = (await owner.query<{ day: string }>(`select ($1::date - 1)::text as day`, [day]))
     .rows[0]?.day as string
@@ -240,13 +421,14 @@ export async function seedReservationsNight(
     fromState: string | null,
     toState: string | null,
     minutesAgo: number,
+    details: Record<string, string> = {},
   ) => {
     await owner.query(
       `insert into restro.log_entries
          (tenant_id, venue_id, at, service_date, kind, reservation_id, from_state, to_state,
-          retention, source, actor, job_id)
-       values ($1, $2, now() - make_interval(mins => $3), $4, $5, $6, $7, $8, 'record', 'staff',
-               $9, 'e2e-seed')`,
+          details, retention, source, actor, job_id)
+       values ($1, $2, now() - make_interval(mins => $3), $4, $5, $6, $7, $8, $9::jsonb, 'record',
+               'staff', $10, 'e2e-seed')`,
       [
         tenantId,
         venueId,
@@ -256,15 +438,22 @@ export async function seedReservationsNight(
         reservationId,
         fromState,
         toState,
+        JSON.stringify(details),
         `staff:${staffId}`,
       ],
     )
   }
   await line(late, 'reservation.created', null, 'reserved', 300)
-  await line(late, 'reservation.spots', null, 'held', 290)
+  await line(late, 'reservation.spots', null, 'held', 290, { spots: table7 })
   await line(late, 'reservation.changed', 'reserved', 'reserved', 120)
   await line(seated, 'reservation.created', null, 'seated', 95)
   await line(seated, 'reservation.status', 'waiting', 'seated', 85)
+  // The block's own two lines, so a spot's history (#327) has something to show.
+  await line(blockId, 'reservation.created', null, 'reserved', 180, {
+    spots: table8,
+    reason: BOOK.blockedReason,
+  })
+  await line(blockId, 'reservation.spots', null, 'held', 180, { spots: table8 })
 
   return { day, before }
 }

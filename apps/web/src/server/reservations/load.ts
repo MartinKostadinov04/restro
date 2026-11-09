@@ -4,9 +4,11 @@
 // not work never gets its data.
 import {
   type ReservationAccess,
+  readFloorPlan,
   readReservationAccess,
   readReservationDetail,
   readReservationNight,
+  readSpotHistory,
   type ServiceActor,
 } from '@restro/core/service'
 import type { Venue } from '@restro/db'
@@ -16,9 +18,13 @@ import {
   type RvDetailView,
   type RvFrame,
   type RvNightView,
+  type RvPlanView,
+  type RvSpotHistoryList,
   rvDetailView,
   rvFrameOf,
   rvNightView,
+  rvPlanView,
+  rvSpotHistoryView,
 } from './view'
 
 /** Who is asking, for which venue. */
@@ -93,5 +99,37 @@ export async function loadReservationDetail(
     ok: true,
     frame: rvFrameOf(read.access, scope.venue.id),
     detail: read.detail === null ? null : rvDetailView(read.detail, read.access.venue.timezone),
+  }
+}
+
+/**
+ * One plan of one night (#327): its spots with the state each reads as, the venue's own kinds for
+ * the legend and the filter, and what holds every spot. A night that has passed is readable a month
+ * back (D141, 9.21); an older one comes back as `tooOld` with nothing in it.
+ */
+export async function loadFloorPlan(
+  scope: RvScope,
+  query: { readonly day?: string; readonly planId?: string },
+): Promise<RvResult<{ plan: RvPlanView }>> {
+  const read = await readFloorPlan(getPool(), { ...inputOf(scope), ...query })
+  if (!read.ok) return read
+  return {
+    ok: true,
+    frame: rvFrameOf(read.access, scope.venue.id),
+    plan: rvPlanView(read.plan, read.access.venue.timezone),
+  }
+}
+
+/** One spot's history from the one Log (D141); `spot` is null when the venue has no such spot. */
+export async function loadSpotHistory(
+  scope: RvScope,
+  spotId: string,
+): Promise<RvResult<{ history: RvSpotHistoryList }>> {
+  const read = await readSpotHistory(getPool(), { ...inputOf(scope), spotId })
+  if (!read.ok) return read
+  return {
+    ok: true,
+    frame: rvFrameOf(read.access, scope.venue.id),
+    history: rvSpotHistoryView(read.spot, read.history, read.access.venue.timezone),
   }
 }

@@ -3344,10 +3344,23 @@ export const floorPlans = restro.table(
   ],
 )
 
-/** The shapes a spot can be drawn as (D134). */
-export const SPOT_SHAPES = ['rect', 'circle'] as const
+/**
+ * The shapes a spot can be drawn as: the shape folder's own names (D134, #327). The folder itself,
+ * with the numbers each shape allows, is `@restro/core`'s `spot-shapes.ts` — core cannot be
+ * imported here (it depends on this package), so `spot-shapes.test.ts` holds the two lists
+ * together and fails the build if they drift apart.
+ */
+export const SPOT_SHAPES = ['rect', 'circle', 'booth', 'pill'] as const
 
-const SPOT_SHAPE_VALUES = sql.raw(`('rect', 'circle')`)
+const SPOT_SHAPE_VALUES = sql.raw(`('rect', 'circle', 'booth', 'pill')`)
+
+/** The legend symbols a venue's own spot kinds are drawn with (D134, #327). */
+export const SPOT_SYMBOLS = ['table', 'booth', 'stool', 'standing', 'counter', 'dot'] as const
+
+const SPOT_SYMBOL_VALUES = sql.raw(`('table', 'booth', 'stool', 'standing', 'counter', 'dot')`)
+
+/** The plan's grid: the bound a spot's numbers may not leave (`PLAN_GRID` in the shape folder). */
+const PLAN_GRID = 10_000
 
 /**
  * A spot on a plan (`sp_`; D134): a thing a party can be seated at — a table, a booth, a sofa, a
@@ -3404,8 +3417,17 @@ export const spots = restro.table(
     check('spots_name', sql`length(btrim(${t.name})) between 1 and 40`),
     check('spots_kind', sql`${t.kind} ~ '^[a-z][a-z0-9_]{0,31}$'`),
     check('spots_shape', sql`${t.shape} in ${SPOT_SHAPE_VALUES}`),
-    check('spots_size', sql`${t.width} > 0 and ${t.height} > 0`),
+    check('spots_size', sql`${t.width} >= 2 and ${t.height} >= 2`),
     check('spots_rotation', sql`${t.rotation} between 0 and 359`),
+    // The shape folder's own bounds (#327), so no stored row can draw a plan nobody can read: the
+    // spot sits inside the grid, a circle is round, and a shape nothing is gained by turning is
+    // not turned.
+    check(
+      'spots_on_plan',
+      sql`${t.x} >= 0 and ${t.y} >= 0 and ${t.x} + ${t.width} <= ${sql.raw(String(PLAN_GRID))} and ${t.y} + ${t.height} <= ${sql.raw(String(PLAN_GRID))}`,
+    ),
+    check('spots_round', sql`${t.shape} <> 'circle' or ${t.width} = ${t.height}`),
+    check('spots_turned', sql`${t.shape} <> 'circle' or ${t.rotation} = 0`),
     check('spots_seats', sql`${t.seats} is null or ${t.seats} between 1 and 100`),
     ...provenanceChecks('spots', t),
   ],
@@ -3425,6 +3447,10 @@ export const venueSpotKinds = restro.table(
     venueId: text('venue_id').notNull(),
     key: text('key').notNull(),
     label: text('label').notNull(),
+    /** Its legend symbol, one of `SPOT_SYMBOLS`: a name our own components draw, never a picture. */
+    symbol: text('symbol').notNull().default('dot'),
+    /** Whether the plan offers it as a filter (D134: a kind filters when choosing spots). */
+    filters: boolean('filters').notNull().default(true),
     defaultSeats: integer('default_seats'),
     sortKey: byteOrderText('sort_key').notNull().default('a0'),
     removedAt: timestamp('removed_at', { withTimezone: true }),
@@ -3437,6 +3463,7 @@ export const venueSpotKinds = restro.table(
     venueFk('venue_spot_kinds', t),
     check('venue_spot_kinds_key', sql`${t.key} ~ '^[a-z][a-z0-9_]{0,31}$'`),
     check('venue_spot_kinds_label', sql`length(btrim(${t.label})) between 1 and 40`),
+    check('venue_spot_kinds_symbol', sql`${t.symbol} in ${SPOT_SYMBOL_VALUES}`),
     check(
       'venue_spot_kinds_default_seats',
       sql`${t.defaultSeats} is null or ${t.defaultSeats} between 1 and 100`,

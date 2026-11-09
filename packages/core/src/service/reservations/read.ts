@@ -32,6 +32,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { open, type Reader, type ReadInput, type Who, whoOf } from '../night-read'
 import type { Permission } from '../permissions'
 import type { TonightRefusal } from '../read'
+import { LATE_AFTER_MINUTES } from './plan-state'
 import { nightWritable, type ReservationRefusal } from './rows'
 import {
   RESERVATION_STATUSES,
@@ -44,12 +45,10 @@ import {
 export type ReservationReadRefusal = TonightRefusal
 
 /**
- * How long after its hour a party nobody marked present reads as late (D135: it is warned, and
- * nothing is freed by itself). Fifteen minutes is the grace the trade keeps — the window a
- * restaurant holds a table before it calls the booking late — so a hostess is not told at
- * 23:00:30 that the 23:00 party is late while they are still at the door.
+ * How long after its hour a party nobody marked present reads as late. One value for the list and
+ * for the plan, so the two never disagree: it lives in `plan-state.ts`, which is pure.
  */
-export const LATE_AFTER_MINUTES = 15
+export { LATE_AFTER_MINUTES } from './plan-state'
 
 /** How many nights of one venue one read returns at most. */
 export const MAX_NIGHT_ROWS = 500
@@ -176,7 +175,7 @@ export function isLate(
 }
 
 /** Opens the night's screens: the actor must hold "working tonight's reservations" (D141). */
-async function openReservations(
+export async function openReservations(
   tx: ReadTx,
   input: ReadInput,
 ): Promise<
@@ -199,7 +198,8 @@ async function openReservations(
   }
 }
 
-const accessOf = (reader: Reader, editPastNights: boolean): ReservationAccess => ({
+/** The actor's access, as both night reads and the plan read (#327) hand it to a screen. */
+export const accessOf = (reader: Reader, editPastNights: boolean): ReservationAccess => ({
   venue: reader.venue,
   permissions: [...reader.held],
   device: reader.device,
