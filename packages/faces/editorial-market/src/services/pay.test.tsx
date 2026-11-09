@@ -117,10 +117,11 @@ describe('choosing', () => {
     ).toBeTruthy()
   })
 
-  it('has no Pay while paying is off at the venue, and a calm line while it is paused', () => {
-    const off = openPay(fakeHost({ ...base(), paying: payingOf({ state: 'off' }) }))
-    expect(within(off.sheet).getByText('Ask your waiter to pay.')).toBeTruthy()
-    expect(off.sheet.querySelector('[data-slot="pay.start"]')).toBeNull()
+  it('has no Pay entry while paying is off at the venue (#346), and a calm line while it is paused', () => {
+    drawFace(fakeHost({ ...base(), paying: payingOf({ state: 'off' }) }))
+    // The header's card icon leads nowhere when paying is off, so it is not drawn.
+    expect(screen.queryByRole('button', { name: 'Pay' })).toBeNull()
+    expect(document.querySelector('[data-slot="menu.pay"]')).toBeNull()
     cleanup()
     const paused = openPay(fakeHost({ ...base(), paying: payingOf({ state: 'paused' }) }))
     expect(

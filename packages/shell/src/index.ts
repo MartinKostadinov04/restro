@@ -203,6 +203,7 @@ export {
   paidReceiptText,
   payBlock,
   payFormLocale,
+  payingOffHere,
   payMoney,
   paymentIsFinal,
   payScreen,

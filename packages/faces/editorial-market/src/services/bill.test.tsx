@@ -195,6 +195,29 @@ describe('the bill sheet', () => {
     expect(within(sheet).queryByRole('button', { name: /^Pay/ })).toBeNull()
   })
 
+  it('has no Pay and says "Ask your waiter to pay." while paying is off at the venue (#346, D127)', () => {
+    const host = fakeHost({ bill: billOf([staff], 1850), paying: payingOf({ state: 'off' }) })
+    drawFace(host)
+    // Not the pay entry in the header either: neither leads to a Pay screen.
+    expect(screen.queryByRole('button', { name: 'Pay' })).toBeNull()
+    const sheet = openBill()
+    expect(within(sheet).queryByRole('button', { name: /^Pay/ })).toBeNull()
+    expect(within(sheet).getByText('Ask your waiter to pay.')).toBeTruthy()
+  })
+
+  it('keeps Pay where paying is on, and says nothing about the waiter', () => {
+    drawFace(fakeHost({ bill: billOf([staff], 1850), paying: payingOf({ state: 'on' }) }))
+    const sheet = openBill()
+    expect(within(sheet).getByRole('button', { name: /^Pay/ })).toBeTruthy()
+    expect(within(sheet).queryByText('Ask your waiter to pay.')).toBeNull()
+  })
+
+  it('says nothing about paying at a venue with Pay switched off', () => {
+    const noPay = { ...view, features: { ...view.features, pay: false } }
+    drawFace(fakeHost({ bill: billOf([staff], 1850), paying: payingOf({ state: 'off' }) }), noPay)
+    expect(within(openBill()).queryByText('Ask your waiter to pay.')).toBeNull()
+  })
+
   it('draws the bill in Bulgarian, with the words of the language', () => {
     drawFace(fakeHost({ bill: billOf([staff, guest], 2550) }), orderingView('bg_BG'))
     fireEvent.click(screen.getByRole('button', { name: 'Сметката на масата' }))

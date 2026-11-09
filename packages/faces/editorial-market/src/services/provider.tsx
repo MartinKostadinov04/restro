@@ -29,6 +29,7 @@ import {
   type PayFirstPlan,
   type PayFirstState,
   payFirstStateOf,
+  payingOffHere,
   payMoney,
   planPayFirst,
   type ResolvedBag,
@@ -164,7 +165,10 @@ export interface Services {
   readonly words: ServiceStrings
   readonly guest: GuestStrings
   readonly locale: Locale
+  /** R15, narrowed by the server's paying state: `pay` is false while paying is off here (#346). */
   readonly features: ViewFeatures
+  /** The venue wants Pay but paying is off here: the bill says "Ask your waiter to pay." (D127). */
+  readonly payOffAtVenue: boolean
   /** Sends a command; never throws. */
   readonly run: (command: GuestCommand) => Promise<Outcome>
   readonly items: ReadonlyMap<string, ViewItem>
@@ -348,7 +352,14 @@ function ActiveServices({
   readonly children: ReactNode
 }) {
   const { state } = services
-  const { features } = view
+  // One place for the rule (#346, D127): the venue's Pay switch (R15) is not enough, the server must
+  // be able to take payments too. Every entry to Pay (the header, the bill, the progress line, the
+  // sheet's address) reads `features.pay` from here, so none shows a button that leads nowhere.
+  const payOffAtVenue = view.features.pay && payingOffHere(state)
+  const features = useMemo(
+    () => (payOffAtVenue ? { ...view.features, pay: false } : view.features),
+    [view.features, payOffAtVenue],
+  )
   const strings = stringsFor(view.locale)
   const words = strings.services
   const route = useHashRoute(SHEET_ROUTE)
@@ -730,6 +741,7 @@ function ActiveServices({
       guest: strings.guest,
       locale: view.locale,
       features,
+      payOffAtVenue,
       run,
       items,
       order,
@@ -774,6 +786,7 @@ function ActiveServices({
       words,
       strings,
       features,
+      payOffAtVenue,
       run,
       items,
       order,
