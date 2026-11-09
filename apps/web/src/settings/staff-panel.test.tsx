@@ -376,9 +376,10 @@ describe('Settings › Staff and roles', () => {
       'Restro added a new ability',
     )
     expect(
-      (within(sheet).getByRole('checkbox', { name: /Mark items sold out/ }) as HTMLInputElement)
-        .checked,
-    ).toBe(false)
+      within(sheet)
+        .getByRole('checkbox', { name: /Mark items sold out/ })
+        .getAttribute('aria-checked'),
+    ).toBe('false')
   })
 
   it('saves a tick on a venue’s own role at once and shows what the actor cannot give as read-only', async () => {
