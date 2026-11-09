@@ -30,6 +30,7 @@ import { getVenue, venueHasTill } from '@/server/venues'
 import { AlertsSection } from '@/settings/alerts-section'
 import { OrderingSection } from '@/settings/ordering-section'
 import { PayingSection } from '@/settings/paying-section'
+import { ReservationsSection } from '@/settings/reservations-section'
 import { StaffSection } from '@/settings/staff-section'
 import { TablesSkeleton } from '@/tables/tables-skeleton'
 import { TablesTab } from '@/tables/tables-tab'
@@ -223,6 +224,18 @@ export default async function VenueWorkspacePage({
                         hasPos={hasTill}
                         canChange={held.includes('settings.guards')}
                         canEditLegal={held.includes('settings.connect_payments')}
+                        email={user.email}
+                      />
+                    </Suspense>
+                  ) : (
+                    <SettingsSectionSkeleton />
+                  ),
+                  reservations: sectionOpen('reservations') ? (
+                    <Suspense fallback={<SettingsSectionSkeleton />}>
+                      <ReservationsSection
+                        tenantId={organization.id}
+                        venue={venue}
+                        canChange={held.includes('settings.reservations')}
                         email={user.email}
                       />
                     </Suspense>

@@ -238,19 +238,22 @@ export const RESERVATION_COMMANDS = {
   }),
   // --- The venue's reservation settings --------------------------------------------------------
   // The turn time is one value (D135). `pin_actions` is where the PIN falls (#324, below);
-  // `online` (#325) is not written here: this command leaves it as it is.
+  // `online` (#325) gets its defaults when the row is made and is not written again from here.
   'reservation_settings.set': defineCommand({
     schema: z.strictObject({
       type: z.literal('reservation_settings.set'),
       turnMinutes: TurnMinutesSchema.max(1440).optional(),
       editPastNights: z.boolean().optional(),
       privateNotesOn: z.boolean().optional(),
+      phoneRequired: z.boolean().optional(),
       // Where the PIN falls (D141, #324): the actions this call moves. An action left out keeps
       // what the venue had, and one it never chose follows D141's default.
       pinActions: PinActionsSchema.optional(),
     }),
     origins: ['staff'],
     permission: 'settings.reservations',
+    // A settings-class change: the password is asked again after a stale sign-in (D122 §7, #325).
+    freshSignIn: true,
     idempotency: 'by_nature',
     handle: setReservationSettings,
   }),

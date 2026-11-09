@@ -30,14 +30,18 @@ export const ClosedDateSchema = z
     const [year, month, day] = value.split('-').map(Number) as [number, number, number]
     const date = new Date(Date.UTC(year, month - 1, day))
     return (
-      date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+      date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day
     )
   })
 
 /** What a stored list means: only the days that are real, each once, oldest first. */
 export function closedDatesOf(stored: unknown): string[] {
-  const parsed = z.array(ClosedDateSchema).safeParse(stored)
-  return parsed.success ? [...new Set(parsed.data)].sort() : []
+  const days = (Array.isArray(stored) ? stored : []).filter(
+    (day): day is string => ClosedDateSchema.safeParse(day).success,
+  )
+  return [...new Set(days)].sort()
 }
 
 /** Writes the venue's list and the provenance that goes with it. */

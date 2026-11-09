@@ -106,6 +106,17 @@ const SPOT_SENTENCES: Readonly<Record<string, string>> = {
   removed: 'lg_spot_removed',
   kind_saved: 'lg_spot_kind',
   kind_removed: 'lg_spot_kind_removed',
+  seats: 'lg_spot_seats',
+}
+
+/** Which reservation rule a settings change moved, when it was one (#325). */
+const SETTINGS_SENTENCES: Readonly<Record<string, string>> = {
+  turn_time: 'lg_rv_set_turn_time',
+  phone_required: 'lg_rv_set_phone',
+  edit_past: 'lg_rv_set_past',
+  private_list: 'lg_rv_set_private',
+  closed_date_added: 'lg_rv_set_closed_added',
+  closed_date_removed: 'lg_rv_set_closed_removed',
 }
 
 /** What a change to a guest's record was; its details are never in the sentence (D140). */
@@ -216,7 +227,11 @@ export const SENTENCES = {
       (l.reservationStatus === null ? undefined : SPOT_SENTENCES[l.reservationStatus]) ??
         'lg_spot_changed',
     ),
-  'reservation_settings.changed': (_l, c) => c.say('lg_rv_settings'),
+  'reservation_settings.changed': (l, c) =>
+    c.say(
+      (l.reservationStatus === null ? undefined : SETTINGS_SENTENCES[l.reservationStatus]) ??
+        'lg_rv_settings',
+    ),
   'guest.changed': (l, c) =>
     c.say(
       (l.reservationStatus === null ? undefined : GUEST_SENTENCES[l.reservationStatus]) ??

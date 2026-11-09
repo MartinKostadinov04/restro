@@ -3800,10 +3800,7 @@ export const reservationSettings = restro.table(
      * first, on top of the service hours the venue already has. Written only by the closed-date
      * commands.
      */
-    closedDates: jsonb('closed_dates')
-      .$type<string[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
+    closedDates: jsonb('closed_dates').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     pinActions: jsonb('pin_actions')
       .$type<Record<string, unknown>>()
       .notNull()

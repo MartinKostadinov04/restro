@@ -384,19 +384,14 @@ export {
   receiptsToBring,
 } from './receipt-rows'
 export { readReceiptsNotBrought, readReceiptsToBring } from './receipts'
-export { phoneKeyOf } from './reservations/guests'
 export { CLOSED_DATES_MAX } from './reservations/closed-dates'
+export { phoneKeyOf } from './reservations/guests'
 export {
   DEFAULT_ONLINE_SETTINGS,
   type OnlineSettings,
   OnlineSettingsSchema,
   readOnlineSettings,
 } from './reservations/online-settings'
-export {
-  type ReservationSettingsView,
-  readReservationSettings,
-  type SettingsSpot,
-} from './reservations/settings-read'
 export {
   type ClaimedStretch,
   heldStretch,
@@ -432,6 +427,11 @@ export {
   RESERVATION_REFUSALS,
   type ReservationRefusal,
 } from './reservations/rows'
+export {
+  type ReservationSettingsView,
+  readReservationSettings,
+  type SettingsSpot,
+} from './reservations/settings-read'
 export {
   canMove,
   countsAsNoShow,

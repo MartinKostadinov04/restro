@@ -3,13 +3,7 @@
 // `applyService`. Part 2's values (`online`) are deliberately not here: no screen shows them, so
 // no read hands them out (spec #321, Implementation Decisions 9).
 
-import {
-  type DbPool,
-  reservationSettings,
-  spots,
-  venueSpotKinds,
-  withTenant,
-} from '@restro/db'
+import { type DbPool, reservationSettings, spots, venueSpotKinds, withTenant } from '@restro/db'
 import { and, eq, isNull } from 'drizzle-orm'
 
 import { closedDatesOf } from './closed-dates'
