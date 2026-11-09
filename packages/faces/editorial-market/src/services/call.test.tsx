@@ -215,6 +215,58 @@ describe('after sending: only what the host says', () => {
     expect(within(sheet).getAllByRole('radio')).toHaveLength(7)
   })
 
+  it('says the call was handled when staff answer it while the sheet is open, until the guest moves on (#344)', async () => {
+    const { host, page, sheet, call } = await sent()
+    await act(async () => call?.answer())
+    const id = call?.command.actionId ?? ''
+    page.update({ requests: [request('rq-1', id, 'waiter', 'sent')] })
+    expect(within(sheet).getByText('Waiter called')).toBeTruthy()
+    // Staff press Handled: the guest who followed this call is told, not left waiting.
+    page.update({ requests: [request('rq-1', id, 'waiter', 'done')] })
+    expect(within(sheet).getByText('Your call was handled')).toBeTruthy()
+    expect(within(sheet).getByText('The team has taken care of your request.')).toBeTruthy()
+    expect(sheet.textContent).not.toContain('waiting for the team')
+    expect(host.of('service.request')).toHaveLength(1)
+    // The way on is a fresh request, and the handled call has had its say.
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Send another request' }))
+    expect(within(sheet).getAllByRole('radio')).toHaveLength(7)
+  })
+
+  it('says a call the host listed open when the sheet opened was handled, with a second kind on it (#344)', () => {
+    const page = drawFace(
+      fakeHost({
+        requests: [
+          request('wc-5:waiter', 'wc-5', 'waiter', 'sent'),
+          request('wc-5:ice', 'wc-5', 'ice', 'sent'),
+        ],
+      }),
+    )
+    const sheet = openCall()
+    expect(within(sheet).getByText('Waiter called')).toBeTruthy()
+    page.update({
+      requests: [
+        request('wc-5:waiter', 'wc-5', 'waiter', 'done'),
+        request('wc-5:ice', 'wc-5', 'ice', 'done'),
+      ],
+    })
+    expect(within(sheet).getByText('Your call was handled')).toBeTruthy()
+    expect(within(sheet).getByText('Call the waiter, Ice')).toBeTruthy()
+  })
+
+  it('shows the picker again when the guest closes the sheet and opens it after the call was handled (#344)', async () => {
+    const { page, sheet, call } = await sent()
+    await act(async () => call?.answer())
+    const id = call?.command.actionId ?? ''
+    page.update({ requests: [request('rq-1', id, 'waiter', 'sent')] })
+    page.update({ requests: [request('rq-1', id, 'waiter', 'done')] })
+    expect(within(sheet).getByText('Your call was handled')).toBeTruthy()
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    const again = openCall()
+    expect(within(again).queryByText('Your call was handled')).toBeNull()
+    expect(within(again).getAllByRole('radio')).toHaveLength(7)
+  })
+
   it("says a rejected request was not taken, with the host's reason, and lets the guest ask again", async () => {
     const { sheet, call } = await sent()
     await act(async () => call?.answer({ status: 'rejected', message: text('The bar is closed.') }))
@@ -319,6 +371,19 @@ describe('only `waiter` ticked: the single step (D127)', () => {
     await act(async () => host.of('service.request')[0]?.answer())
     expect(within(sheet).getByText('Waiter called')).toBeTruthy()
     expect(host.of('service.request')).toHaveLength(1)
+  })
+
+  it('says the call was handled when the host first lists it already done (#344)', async () => {
+    const host = fakeHost()
+    const page = drawFace(host, single)
+    const sheet = openCall()
+    await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
+    const call = host.of('service.request')[0]
+    await act(async () => call?.answer())
+    // Sent and handled between two polls: the sheet never saw it open.
+    page.update({ requests: [request('wc-8', call?.command.actionId ?? '', 'waiter', 'done')] })
+    expect(within(sheet).getByText('Your call was handled')).toBeTruthy()
+    expect(sheet.textContent).not.toContain('waiting for the team')
   })
 
   it('reads the venue’s kinds as they stand: the waiter and one more is the picker again', () => {
