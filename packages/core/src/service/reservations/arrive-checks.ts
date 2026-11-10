@@ -149,7 +149,7 @@ async function tablesOfSpots(
  * of the open round, and whether a round was already sent in that sitting. `hadBillLines` carries
  * a reading the POS gave that sitting, so a bill opened at the POS counts too (#329).
  */
-async function openTables(
+export async function openTables(
   tx: ReadTx,
   venueId: string,
   tableIds: readonly string[],
