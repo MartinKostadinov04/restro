@@ -10,7 +10,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { hasDatabase } from '../apply/test-database'
-import type { Id } from '../ids'
+import { type Id, newId } from '../ids'
 import { DEFAULT_ORDERING_SETTINGS, type ServiceHours } from '../ordering-settings'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import { applyService } from './apply-service'
@@ -157,6 +157,16 @@ describe.skipIf(!hasDatabase)('the night’s end (as the restro_app role)', () =
       [withBill, paying],
     ])
     await holdCard(world.tables[1] as string, paying as string)
+    // The first of the tables that close carries a guard pause: ending its sitting lifts the pause,
+    // and the next table's bill reading must already be held by then (the lock order, #332).
+    const firstClosing = [world.tables[0], world.tables[2]].map(String).sort()[0] as string
+    await world.owner.query(
+      `insert into restro.pauses
+         (id, tenant_id, venue_id, service_date, scope, target_id, cause, restro_started, details,
+          source, actor, job_id)
+       values ($1, $2, $3, $4, 'table', $5, 'guard_tripped', true, '{}'::jsonb, 'restro', 'system', 'test-seed')`,
+      [newId('pa'), world.tenantId, world.venueId, NIGHT, firstClosing],
+    )
 
     // The preview, read before she confirms: what will change, and the bills still open.
     const preview = await readNightEndPreview(world.app, {
@@ -208,6 +218,15 @@ describe.skipIf(!hasDatabase)('the night’s end (as the restro_app role)', () =
     expect(await statusOf(waiting)).toBe('not_seated')
     expect(await sittingEnd(withBill as string)).toMatchObject({ end_reason: 'staff_closed' })
     expect(await sittingEnd(empty as string)).toMatchObject({ end_reason: 'staff_closed' })
+    // The closed table's pause is lifted with its sitting.
+    expect(
+      (
+        await world.owner.query<{ lifted_at: Date | null }>(
+          'select lifted_at from restro.pauses where target_id = $1',
+          [firstClosing],
+        )
+      ).rows[0]?.lifted_at,
+    ).not.toBeNull()
     // The held card keeps its table's code: nothing about a payment is touched.
     expect((await sittingEnd(paying as string))?.ended_at).toBeNull()
     const record = (

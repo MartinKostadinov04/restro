@@ -579,7 +579,13 @@ export async function closeOpenTables(
         )
       : new Set<string>()
   const ending = locked.filter((sitting) => !paying.has(sitting.id))
-  await stx.rows.tableOrders(ending.map((sitting) => sitting.tableId))
+  // Every table's order rows, then every bill reading, before the first sitting ends: ending one
+  // lifts its pauses last of all, so a second table's bill reading claimed after them would break
+  // the lock order (#332: a night with a paused table among several). `ending` is in table id
+  // order, so the pauses that follow are claimed in key order too (as `preClaimTableWork`, #329).
+  const endingTables = ending.map((sitting) => sitting.tableId)
+  await stx.rows.tableOrders(endingTables)
+  if (endingTables.length > 0) stx.rows.claim('bill_reading', endingTables)
   for (const sitting of ending) await endSitting(stx, sitting, reason)
   // How many a payment kept open, where the caller asked to keep them (the night's end says so).
   const details: Record<string, number> = { closed: ending.length }
