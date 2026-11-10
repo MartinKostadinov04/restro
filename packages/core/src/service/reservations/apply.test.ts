@@ -306,7 +306,10 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
     const row = await reservationOf(id)
     expect(row.status).toBe('seated')
     expect(row.ended_at).toBeNull()
-    expect((await heldSpotsOf(id)).every((held) => held.released_at === null)).toBe(true)
+    // Seating writes the party's own hold row and releases the one the booking carried: the
+    // seating's stretch runs from the hour the party sat, not the hour it was booked for (D135).
+    // So what says the party still holds its spot is the live row, not every row ever written.
+    expect((await heldSpotsOf(id)).filter((held) => held.released_at === null)).toHaveLength(1)
     // Letting go of the spots early is its own tap (D141), and it frees them without ending the party.
     await accept({ type: 'reservation.release_spots', reservationId: id })
     expect((await heldSpotsOf(id)).every((held) => held.released_at !== null)).toBe(true)

@@ -297,10 +297,13 @@ export async function tablesAtTheDoor(
   const refusals = await openability(stx, wanted)
   const open = await stx.rows.openSittings(wanted, 'update')
   return new Map(
-    wanted.map((id): [string, TableAtTheDoor] => [
-      id,
-      { refusal: refusals.get(id) ?? 'table_missing', open: open.get(id) ?? null },
-    ]),
+    wanted.map((id): [string, TableAtTheDoor] => {
+      // `openability` answers every id it is given, and its answer `null` is "nothing is wrong
+      // with this table". Only an id it did not answer at all is missing, so the two are told
+      // apart by `has` — `?? 'table_missing'` would swallow the null and refuse every table.
+      const refusal = refusals.has(id) ? (refusals.get(id) ?? null) : 'table_missing'
+      return [id, { refusal, open: open.get(id) ?? null }]
+    }),
   )
 }
 

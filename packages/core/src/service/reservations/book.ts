@@ -27,7 +27,9 @@ import { phoneKeyOf } from './guests'
 import {
   heldStretch,
   isSpotConflict,
+  type SeatClaim,
   type SpotClaim,
+  type SpotConflict,
   type Stretch,
   seatConflict,
   spotConflict,
@@ -169,6 +171,25 @@ export async function writeHeldSpots(
 }
 
 /**
+ * Who is **on** these spots at this moment, read without taking a lock (#329).
+ *
+ * `claimSpots` under the locks is still the authority; this is for the order of the questions. A
+ * seating path has to touch the spots' tables before it can lock the party (`lock-order.ts`), and
+ * a table somebody is sitting at is open, so without this the hostess would be asked "are these
+ * the same guests?" about a spot she cannot have at all. Asked first, she is told who is there.
+ */
+export async function peekSeatTaken(
+  stx: ServiceTx,
+  claim: SeatClaim,
+  serviceDate: string,
+  venueTurnMinutes: number,
+  at: Date,
+): Promise<SpotConflict | null> {
+  if (claim.spotIds.length === 0) return null
+  return seatConflict(claim, await heldSpotsOfNight(stx, serviceDate, venueTurnMinutes), at)
+}
+
+/**
  * Frees the spots a reservation holds — all of them, or the ones named. A release is `released_at`,
  * never a delete (CLAUDE.md's never-list): where a party sat stays readable.
  */
@@ -296,6 +317,12 @@ export interface ReservationCreateCommand extends PartyInput {
   readonly spotIds?: readonly string[]
   /** The queue key, for a walk-in put straight on the waiting list. */
   readonly queueKey?: string | null
+  /**
+   * The tables this creation opened the codes of, where it is a walk-in seated at the door
+   * (#329). It goes onto the created entry because for such a party that entry *is* its arrival:
+   * the undo reads the tables to close from there, and closes no other.
+   */
+  readonly openedTables?: readonly string[]
 }
 
 /**
@@ -386,6 +413,7 @@ export async function createReservation(
       partySize: command.partySize ?? null,
       spots: spotIds.join(','),
       startsAt: startsAt.toISOString(),
+      opened: (command.openedTables ?? []).join(','),
     },
   })
   return accepted(null, {

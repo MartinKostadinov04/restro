@@ -17,7 +17,7 @@
 // Skipped without a database.
 import { createHash, randomUUID } from 'node:crypto'
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { hasDatabase } from '../../apply/test-database'
 import { type Id, newId } from '../../ids'
@@ -87,15 +87,18 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
         ends_at: Date | null
         seated_at: Date | null
         ended_at: Date | null
-        end_reason: string | null
+        reason: string | null
       }>(
-        `select status, kind, party_size, ends_at, seated_at, ended_at, end_reason
+        `select status, kind, party_size, ends_at, seated_at, ended_at, reason
            from restro.reservations where id = $1`,
         [id],
       )
     ).rows[0]
 
-  /** The spots a reservation still holds, with the hour its hold runs to. */
+  /**
+   * Every hold row a reservation has, released ones included: where a party sat is kept, never
+   * deleted, so a party seated after it was booked has the booking's released row as well.
+   */
   const heldSpotsOf = async (reservationId: string) =>
     (
       await world.owner.query<{ spot_id: string; held_to: Date | null; released_at: Date | null }>(
@@ -104,6 +107,10 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
         [reservationId],
       )
     ).rows
+
+  /** The spots it holds *now*, with the hour each hold runs to: the rows nobody has released. */
+  const stillHeldBy = async (reservationId: string) =>
+    (await heldSpotsOf(reservationId)).filter((row) => row.released_at === null)
 
   /** A payment of the sitting that nobody has settled: what `payment_in_flight` is about. */
   const payingOn = async (tableId: string, sittingId: string) => {
@@ -191,6 +198,36 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
 
   afterAll(async () => {
     await world?.close()
+  })
+
+  /**
+   * The floor, cleared between tests. Every test below brings its own party and most leave it
+   * sitting where it sat — which is what a night looks like, but it would hand the next test a
+   * `spot_taken` from the party before it. Cleared as the owner, in SQL, on purpose: this is the
+   * file's own book-keeping, and sending it through the commands would test them with itself.
+   */
+  afterEach(async () => {
+    if (world === undefined) return
+    await world.owner.query(
+      `update restro.reservation_spots set released_at = now()
+        where released_at is null and tenant_id = $1`,
+      [world.tenantId],
+    )
+    await world.owner.query(
+      `update restro.reservations set status = 'finished', ended_at = now()
+        where venue_id = $1 and status in ('requested', 'reserved', 'waiting', 'seated')`,
+      [world.venueId],
+    )
+    await world.owner.query(
+      `update restro.payments set state = 'captured', captured_minor = 1200, settled_at = now()
+        where venue_id = $1 and settled_at is null`,
+      [world.venueId],
+    )
+    await world.owner.query(
+      `update restro.sittings set ended_at = now(), end_reason = 'staff_closed'
+        where venue_id = $1 and ended_at is null`,
+      [world.venueId],
+    )
   })
 
   it('opens the table for phones through the one open path, and Tonight closes that same sitting', async () => {
@@ -325,8 +362,9 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
     expect(row?.status).toBe('seated')
     expect(row?.ends_at?.getTime()).toBe(until.getTime())
     // The hold ends at her hour, not at the end of a turn counted from the booked one.
-    const [held] = await heldSpotsOf(id)
-    expect(held?.held_to?.getTime()).toBe(until.getTime())
+    const held = await stillHeldBy(id)
+    expect(held).toHaveLength(1)
+    expect(held[0]?.held_to?.getTime()).toBe(until.getTime())
     await accept({ type: 'reservation.release_spots', reservationId: id })
   })
 
@@ -428,7 +466,7 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
       // It was never on the waiting list, so there is nowhere to put it back to (D135).
       expect(await reservationOf(id)).toMatchObject({
         status: 'cancelled',
-        end_reason: 'arrival_undone',
+        reason: 'arrival_undone',
       })
       expect(await openSittingOf(tableOf('D3'))).toBeNull()
     })
@@ -483,7 +521,7 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
       { type: 'reservation.arrive', reservationId: id },
       staff(floorOnlyId),
     )
-    expect(details).toMatchObject({ status: 'seated', notAllowed: true, opened: '' })
+    expect(details).toMatchObject({ status: 'seated', tableClosed: true, opened: '' })
     expect(await openSittingOf(tableOf('D3'))).toBeNull()
     expect(await reservationOf(id)).toMatchObject({ status: 'seated' })
     await accept({ type: 'reservation.release_spots', reservationId: id })
@@ -536,25 +574,27 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
         tableId: tableOf('D2'),
         sittingId,
         actionId: randomUUID(),
-        reference: `R-${randomUUID().slice(0, 6)}`,
+        // The bar's own ticket number: the column takes three to six capitals or digits.
+        reference: randomUUID().slice(0, 6).toUpperCase(),
         serviceDate: today,
       })
       const open = await advice({ spotIds: [spotId('D2')] })
       if (!open.ok) throw new Error(open.code)
       expect(open.checks.tables).toMatchObject([{ tableId: tableOf('D2'), open: true, bill: true }])
 
-      // And after the bill's table closes, the round it carried is still what she is warned about:
-      // seating a new party here puts their first round on a bill somebody else ran up.
-      await accept({ type: 'table.close', tableId: tableOf('D2') })
+      // The warning never forbids it (D134): she may seat a party onto that very table, so long
+      // as she answers for what is on it — the same guests, so their round stands.
+      const id = await book(['D2'])
+      await accept({ type: 'reservation.arrive', reservationId: id, sameGuests: true })
+
+      // Freeing their table closes its codes, and the bill goes with the sitting: the next party's
+      // first round would start one of its own, so there is nothing left to warn her about.
+      await accept({ type: 'reservation.release_spots', reservationId: id })
       const closed = await advice({ spotIds: [spotId('D2')] })
       if (!closed.ok) throw new Error(closed.code)
       expect(closed.checks.tables).toMatchObject([
-        { tableId: tableOf('D2'), open: false, bill: true },
+        { tableId: tableOf('D2'), open: false, bill: false },
       ])
-      // The warning never forbids it (D134): the write that follows is accepted.
-      const id = await book(['D2'])
-      await accept({ type: 'reservation.arrive', reservationId: id })
-      await accept({ type: 'reservation.release_spots', reservationId: id })
     })
 
     it('names whoever is on the spot, and the party holding it later tonight', async () => {

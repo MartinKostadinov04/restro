@@ -38,8 +38,9 @@
 // therefore either seated with its codes open or left exactly as it was — never half-seated.
 
 import { logEntries, reservationNights, reservationSpots, reservations, spots } from '@restro/db'
-import { and, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 
+import type { Id } from '../../ids'
 import { STAFF_UNDO_WINDOW_MS } from '../../table-order'
 import type { ServiceTx } from '../definition'
 import { accepted, type ResultDetails, refused, type ServiceResult } from '../results'
@@ -54,6 +55,7 @@ import {
   claimSpots,
   createReservation,
   openReservation,
+  peekSeatTaken,
   releaseHeldSpots,
   writeHeldSpots,
 } from './book'
@@ -76,6 +78,12 @@ import {
 
 /** The answer the hostess gave to "are these the same guests?", where there was one to give. */
 export type SameGuests = boolean | undefined
+
+/**
+ * The claim of a walk-in that has no row yet: it is nobody, so every hold on the spot is somebody
+ * else's. The reservation the tap creates afterwards claims the spots itself, under the locks.
+ */
+const NO_PARTY_YET = 'rv_nobody' as Id<'rv'>
 
 /** What a peek found before anything of the party was locked. */
 interface Peek {
@@ -146,17 +154,32 @@ async function peekNight(
   return refusal === null ? { ok: true, settings } : { ok: false, code: refusal }
 }
 
-/** The tables of these spots, in id order; a spot that is not a table (a stool) has none. */
-async function tablesOfSpots(stx: ServiceTx, spotIds: readonly string[]): Promise<string[]> {
-  if (spotIds.length === 0) return []
+/**
+ * The tables of these spots, in id order; a spot that is not a table (a stool) has none.
+ *
+ * `allFound` is false when one of the spots asked for is not on this venue's floor at all. The
+ * difference matters: a party being *seated* on a spot nobody can find must be refused, because
+ * an empty table list reads as "this party has no table" and would seat it with the codes shut
+ * and nothing on the screen to say so. Closing is the other way round — a spot taken off the
+ * floor has no table left to close — so those paths read `tableIds` on its own.
+ */
+async function tablesOfSpots(
+  stx: ServiceTx,
+  spotIds: readonly string[],
+): Promise<{ readonly tableIds: string[]; readonly allFound: boolean }> {
+  if (spotIds.length === 0) return { tableIds: [], allFound: true }
   const rows = await stx.tx
     .select({ id: spots.id, tableId: spots.tableId })
     .from(spots)
     .where(and(eq(spots.venueId, stx.venueId), isNull(spots.removedAt)))
   const wanted = new Set(spotIds)
   const found = rows.filter((row) => wanted.has(row.id))
-  if (found.length !== wanted.size) return []
-  return [...new Set(found.flatMap((row) => (row.tableId === null ? [] : [row.tableId])))].sort()
+  return {
+    tableIds: [
+      ...new Set(found.flatMap((row) => (row.tableId === null ? [] : [row.tableId]))),
+    ].sort(),
+    allFound: found.length === wanted.size,
+  }
 }
 
 /** Peeks everything a seating handler needs: the party, its night, its spots and their tables. */
@@ -174,6 +197,10 @@ async function peekParty(
   // A party nobody gave a table is marked present all the same: the list's row has the tap too,
   // and with no spot there is no table to open and nothing to claim.
   const spotIds = asked === undefined || asked.length === 0 ? held : asked
+  // A spot that is not on this venue's floor is said out loud. Answering "this party has no
+  // table" instead would seat the party with its codes shut and nothing on the screen to say so.
+  const tables = await tablesOfSpots(stx, spotIds)
+  if (!tables.allFound) return { ok: false, code: 'spot_missing' }
   return {
     ok: true,
     peek: {
@@ -181,7 +208,7 @@ async function peekParty(
       settings: night.settings,
       spotIds,
       held,
-      tableIds: await tablesOfSpots(stx, spotIds),
+      tableIds: tables.tableIds,
     },
   }
 }
@@ -264,7 +291,10 @@ async function openPartyTables(
   // A table nothing can open: the party stays as it was and the screen says to open it from
   // Tonight. Named one at a time, because that is what the hostess has to go and do.
   for (const tableId of toOpen) {
-    const refusal = door.get(tableId)?.refusal ?? 'table_missing'
+    // `refusal` is null for a table there is nothing wrong with, so the entry is read first: a
+    // `??` here would read that null as "no answer" and refuse every table in the house.
+    const entry = door.get(tableId)
+    const refusal = entry === undefined ? 'table_missing' : entry.refusal
     if (refusal !== null) {
       return { ok: false, code: 'table_not_openable', details: { tableId, reason: refusal } }
     }
@@ -391,7 +421,7 @@ export async function closeTablesForEnding(
   const reservation = await peekReservation(stx, reservationId)
   if (reservation === null || (reservation.status as ReservationStatus) !== 'seated') return quiet
   const held = await peekHeldSpots(stx, reservation.id)
-  const work = await closePartyTables(stx, await tablesOfSpots(stx, held))
+  const work = await closePartyTables(stx, (await tablesOfSpots(stx, held)).tableIds)
   if (!work.ok) return work
   return { ok: true, close: { work: work.work, wasSeated: true } }
 }
@@ -477,6 +507,11 @@ export async function arriveReservation(
     { seatingAt: stx.now },
   )
   if (!grant.ok) return refused(null, grant.code, { ...grant.details })
+  // The booking's own hold ran from the hour it was booked for; the seating's runs from now. The
+  // old rows are released first, exactly as an edit does it, so the party holds each spot once —
+  // otherwise a party seated early would hold its table to the end of a turn counted from the
+  // booked hour as well as to the hour the hostess gave it.
+  await releaseHeldSpots(stx, reservation.id)
   await writeHeldSpots(stx, reservation.id, peek.spotIds, grant.stretch, endsAt !== null)
   await stx.tx
     .update(reservations)
@@ -541,10 +576,28 @@ export async function seatWalkIn(
   const night = await peekNight(stx, command.serviceDate)
   if (!night.ok) return refuse(night.code)
   if (command.spotIds.length === 0) return refuse('spot_missing')
-  const tableIds = await tablesOfSpots(stx, command.spotIds)
-  const work = await openPartyTables(stx, tableIds, command.sameGuests)
+  const tables = await tablesOfSpots(stx, command.spotIds)
+  if (!tables.allFound) return refuse('spot_missing')
+  // Who is sitting there comes before anything about the table. The spot of a party still at it
+  // is a spot nobody else can be put on, so the hostess is told whose it is rather than asked
+  // whether the people she is holding the door for are the same guests.
+  const taken = await peekSeatTaken(
+    stx,
+    { reservationId: NO_PARTY_YET, spotIds: command.spotIds as readonly Id<'sp'>[] },
+    command.serviceDate,
+    night.settings.turnMinutes,
+    stx.now,
+  )
+  if (taken !== null) {
+    return refused(null, 'spot_taken', {
+      spotId: taken.spotId,
+      reservationId: taken.reservationId,
+    })
+  }
+  const work = await openPartyTables(stx, tables.tableIds, command.sameGuests)
   if (!work.ok) return refused(null, work.code, work.details)
   const created = await createReservation(stx, {
+    openedTables: work.work.opened,
     serviceDate: command.serviceDate,
     // A walk-in's hour is the moment it was seated: it was never expected at another one.
     startsAt: stx.now.toISOString(),
@@ -639,7 +692,9 @@ async function lastArrival(stx: ServiceTx, reservationId: string): Promise<Arriv
       and(
         eq(logEntries.venueId, stx.venueId),
         eq(logEntries.reservationId, reservationId),
-        eq(logEntries.kind, 'reservation.status'),
+        // A walk-in the seat tap made has no status move: it was *created* Seated, and that
+        // entry is its arrival — the one the undo reads its hour and its tables from.
+        inArray(logEntries.kind, ['reservation.status', 'reservation.created']),
         eq(logEntries.toState, 'seated'),
       ),
     )
@@ -768,6 +823,9 @@ export async function holdReservationSpots(
     seated ? { seatingAt: stx.now } : {},
   )
   if (!grant.ok) return refused(null, grant.code, { ...grant.details })
+  // Only the spots being claimed: this command adds a spot to a party, so the ones it already
+  // holds elsewhere stay held. An older row for one of these is released, never doubled.
+  await releaseHeldSpots(stx, reservation.id, command.spotIds)
   await writeHeldSpots(
     stx,
     reservation.id,
@@ -817,7 +875,7 @@ export async function releaseReservationSpots(
     command.spotIds === undefined ? held : held.filter((id) => command.spotIds?.includes(id))
   // The codes close before the party is locked: a sitting's rank comes long before a
   // reservation's, so the other way round would throw `LockOrderError` (`lock-order.ts`).
-  const work = await closePartyTables(stx, await tablesOfSpots(stx, freeing))
+  const work = await closePartyTables(stx, (await tablesOfSpots(stx, freeing)).tableIds)
   if (!work.ok) return refused(null, work.code, work.details)
 
   const open = await openReservation(stx, reservation0.id)
