@@ -30,11 +30,17 @@ export interface SeededNights {
 }
 
 /**
- * The scenes: a night as it runs, the same with the owner's switch on for the past, and the same
+ * The scenes: a night as it runs, the same with the owner's switch on for the past, the same
  * with the club's pay-first settings set, so the pay rule a party carries has a table's own rule
- * above it (#334).
+ * above it (#334), and the night Change tables is tried on (#331): four spots with a Table each,
+ * two parties at their tables, one of them with a bill, and a bill on a table nobody holds.
  */
-export const RESERVATION_SCENES = ['book', 'book-past-open', 'book-pay-rule'] as const
+export const RESERVATION_SCENES = [
+  'book',
+  'book-past-open',
+  'book-pay-rule',
+  'book-change-tables',
+] as const
 export type ReservationScene = (typeof RESERVATION_SCENES)[number]
 
 /** The tables this fixture writes, cleared newest-dependency-first before each run. */
@@ -71,6 +77,8 @@ export const BOOK = {
   standing: 'Правостоящи до сцената',
   /** A kind the plan does not offer as a filter, to prove `filters` is honoured. */
   counter: 'Бар плот',
+  /** Change tables (#331): the party booked on a spot later tonight, in the way of Димитров. */
+  later: 'Колев',
   phone: '+359888123456',
   /** The guest record's key: digits only, as the guests table keeps it (D140). */
   phoneKey: '359888123456',
@@ -152,13 +160,17 @@ export async function seedReservationsNight(
 
   // A Table for the first spot, so its sheet can say which Table orders go onto (rule 3: our own
   // id, never a code). A club's bar stools have none, which is the point of the pair.
-  const firstTable = (
+  const clubTables = (
     await owner.query<{ id: string }>(
       `select id from restro.tables where tenant_id = $1 and archived_at is null
-       order by number limit 1`,
+       order by number limit 4`,
       [tenantId],
     )
-  ).rows[0]?.id
+  ).rows.map((row) => row.id)
+  const firstTable = clubTables[0]
+  // Change tables (#331) needs codes to follow: Маса 9, Сепаре 1 and Бар 13 get Tables 2–4 too.
+  const moving = scene === 'book-change-tables'
+  const tableOf = (index: number) => (moving ? (clubTables[index] ?? null) : null)
 
   // #334: the pay-rule scene gives the club the house rule a club runs on — everything on the
   // bill — and gives the one spot that has a Table a rule of its own, which is what beats the rule
@@ -242,6 +254,7 @@ export async function seedReservationsNight(
     width: 120,
     height: 80,
     seats: 6,
+    tableId: tableOf(2),
   })
   const table8 = await spot({
     name: BOOK.blocked,
@@ -262,8 +275,9 @@ export async function seedReservationsNight(
     width: 80,
     height: 80,
     rotation: 15,
+    tableId: tableOf(1),
   })
-  await spot({
+  const longStool = await spot({
     name: BOOK.longName,
     kind: 'stool',
     shape: 'circle',
@@ -280,6 +294,7 @@ export async function seedReservationsNight(
     y: 180,
     width: 40,
     height: 40,
+    tableId: tableOf(3),
   })
   await spot({
     name: BOOK.standing,
@@ -416,14 +431,16 @@ export async function seedReservationsNight(
     seated: `now() - interval '85 minutes'`,
     spots: [booth1],
   })
+  // On the Change tables night Иванова is already at her table, with a round on its bill.
   const late = await reservation({
     serviceDate: day,
     starts: `now() - interval '40 minutes'`,
     kind: 'booking',
-    status: 'reserved',
+    status: moving ? 'seated' : 'reserved',
     partySize: 4,
     guest: true,
     note: BOOK.note,
+    ...(moving ? { seated: `now() - interval '35 minutes'` } : {}),
     spots: [table7],
   })
   await reservation({
@@ -434,6 +451,34 @@ export async function seedReservationsNight(
     partySize: 6,
     label: BOOK.coming,
   })
+  if (moving) {
+    // Колев holds Бар 12 вляво from an hour on, which is in the way of Димитров's stretch.
+    await reservation({
+      serviceDate: day,
+      starts: `now() + interval '60 minutes'`,
+      kind: 'booking',
+      status: 'reserved',
+      partySize: 2,
+      label: BOOK.later,
+      spots: [longStool],
+    })
+    // The tables the night left open, as the door would have: Иванова's with a bill on it,
+    // Петров's with none, and Бар 13's with a bill and nobody holding the spot (a waiter opened
+    // it). `night empty` ran first, so no other sitting is open.
+    const open = async (tableId: string | undefined, bill: boolean) => {
+      if (tableId === undefined) throw new Error('the club has fewer than four tables')
+      await owner.query(
+        `insert into restro.sittings
+           (id, tenant_id, venue_id, table_id, service_date, opened_how, opened_at,
+            had_bill_lines, source, actor, job_id)
+         values ($1, $2, $3, $4, $5, 'one', now() - interval '35 minutes', $6, $7, $8, $9)`,
+        [newId('st'), tenantId, venueId, tableId, day, bill, ...SEED],
+      )
+    }
+    await open(clubTables[0], true)
+    await open(clubTables[2], false)
+    await open(clubTables[3], true)
+  }
   await reservation({
     serviceDate: day,
     starts: `now() - interval '20 minutes'`,

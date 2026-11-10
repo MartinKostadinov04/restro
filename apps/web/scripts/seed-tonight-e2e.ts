@@ -7,9 +7,10 @@
 //                     session a shared device), and two people with PINs (Maria, Staff, 1234;
 //                     Georgi, Manager, 4321). Idempotent; ends with a clean night (see `night`).
 //   night <name>      resets the night, then sets the scene (see NIGHTS below).
-//   book <scene>      resets the club's reservations and sets a night's book (#326): `book`, or
+//   book <scene>      resets the club's reservations and sets a night's book (#326): `book`,
 //                     `book-past-open` with the owner's switch on for correcting a night that
-//                     has passed (scripts/e2e/reservations-night.ts).
+//                     has passed, `book-pay-rule` or `book-change-tables` (#331), whose spots have
+//                     Tables and whose open tables are written too (scripts/e2e/reservations-night.ts).
 //   call <table>      a guest at the open table (its number) calls a waiter, as the phone's tap does.
 //   device <email>    marks the newest session of the account a shared device of the venue, as the
 //                     owner's "mark this device" would.
