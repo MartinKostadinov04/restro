@@ -165,7 +165,9 @@ test('the preview counts the open bills and warns before the closing hour; Keep 
 
   // In Bulgarian at 390 px the menu's „Приключи вечерта“ reads whole, and so does the confirm.
   await inBulgarianOnAPhone(page)
-  await openTonight(page)
+  await page.goto(`/venues/${venueId}?tab=tonight`)
+  // On a phone Tonight shows one part at a time: the tables menu sits on the Tables part.
+  await page.getByRole('button', { name: 'Маси', exact: true }).click()
   await page.getByRole('button', { name: 'Още действия' }).click()
   const item = page.getByTestId('night-end-open')
   await expect(item).toHaveText('Приключи вечерта')
