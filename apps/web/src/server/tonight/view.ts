@@ -10,7 +10,8 @@ import { holdsStaffRightsOnly, type Tonight } from '@restro/core/service'
  * question, a card not charged after the bill closed, items stuck on a payment table, then part 1's
  * sent order to check, approval, paused table and waiter call, and last a payment stopped before
  * closing (shown under "Later"). The to-dos come last of the rows that need a person now: a
- * receipt to bring (#200), the storno of a refund and an open card dispute (#222).
+ * receipt to bring (#200), the storno of a refund and an open card dispute (#222), and the bills
+ * the night's end found still open (#332).
  */
 export const ROW_RANK = {
   pay: 0,
@@ -24,6 +25,7 @@ export const ROW_RANK = {
   storno: 5,
   dispute: 5,
   refund_failed: 5,
+  night_end: 5,
   stopped: 6,
 } as const
 
@@ -102,6 +104,8 @@ export interface ActionRow {
   }
   /** A waiter call's requests (#180), in the venue's list order. */
   readonly callKinds?: readonly CallWaiterKind[]
+  /** The bills still open when the night ended, and when (`HH:mm`, #332): staff close them at the POS. */
+  readonly nightEnd?: { readonly openBills: number; readonly at: string }
 }
 
 /** What a money row asks: a payment question, or one of the alerts that only need acknowledging. */
@@ -204,6 +208,8 @@ export interface Can {
   readonly answer: boolean
   /** `money.follow_up`: answers the payment questions and the owners' money alerts (#115). */
   readonly followUp: boolean
+  /** `reservations.end_night`: ends the night before its closing hour (#332). */
+  readonly endNight: boolean
 }
 
 /** Everything the Tonight screen draws. */
@@ -231,6 +237,11 @@ export interface TonightView {
    */
   readonly barTablet: boolean
   readonly can: Can
+  /**
+   * Tonight's end, once it has run (#332): when (`HH:mm` in the venue's zone) and whether an admin
+   * ended it early. Null while the night is going on.
+   */
+  readonly nightEnd: { readonly at: string; readonly early: boolean } | null
   readonly banners: readonly PauseBanner[]
   /**
    * Why card payments in the app are stopped, for every role; null while they flow and while
@@ -392,6 +403,7 @@ export function buildTonightView(input: {
     lift: held.has('ordering.lift'),
     answer: held.has('alerts.answer'),
     followUp: held.has('money.follow_up'),
+    endNight: held.has('reservations.end_night'),
   }
   const labelOf = new Map(tonight.tables.map((table) => [table.id, table.label]))
   const numberedOf = new Set(
@@ -611,6 +623,20 @@ export function buildTonightView(input: {
       },
     })
   }
+  // The closing hour's warning (#332): the bills the night's end found still open, one row, the
+  // to-do pattern. It names no table: the codes are closed, the bills are the POS's to close.
+  const ended = tonight.nightEnd ?? null
+  if (ended !== null && (ended.openBills ?? 0) > 0) {
+    rows.push({
+      id: `night_end:${tonight.serviceDate}`,
+      kind: 'night_end',
+      tableId: '',
+      table: '',
+      numbered: false,
+      at: ended.at.toISOString(),
+      nightEnd: { openBills: ended.openBills ?? 0, at: clock(ended.at) ?? '' },
+    })
+  }
   rows.sort(
     (a, b) =>
       ROW_RANK[a.kind] - ROW_RANK[b.kind] ||
@@ -666,6 +692,7 @@ export function buildTonightView(input: {
       held.has('night.view') &&
       holdsStaffRightsOnly(held),
     can,
+    nightEnd: ended === null ? null : { at: clock(ended.at) ?? '', early: ended.early },
     banners,
     paying:
       restro.length > 0

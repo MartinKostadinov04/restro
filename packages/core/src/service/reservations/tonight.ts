@@ -14,8 +14,8 @@
 // itself — Arrived, a walk-in, more guests, the undo, holding and freeing spots — lives in
 // `arrive.ts`, which is where the open path ordering already uses is reached from.
 
-import { reservations } from '@restro/db'
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { logEntries, reservations } from '@restro/db'
+import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import { sortKeyBetween } from '../../sort-keys'
 import type { ServiceTx } from '../definition'
 import { accepted, refused, type ServiceResult } from '../results'
@@ -28,8 +28,18 @@ import {
   releaseHeldSpots,
   writeHeldSpots,
 } from './book'
-import { lockReservation, nextQueueKey, refuse, spotsOfReservation } from './rows'
-import { isEndStatus, moveStatus, putBack, type ReservationStatus } from './status'
+import { lockReservation, nextQueueKey, type Reservation, refuse, spotsOfReservation } from './rows'
+import {
+  endedByNightEnd,
+  isEndStatus,
+  moveStatus,
+  PUT_BACK_REASON,
+  PUT_BACK_UNDONE_REASON,
+  putBack,
+  type ReservationStatus,
+  type StatusEntry,
+  undoPutBack as undoPutBackMove,
+} from './status'
 
 /**
  * Moves a reservation to another status (D135's machine). The move itself is the rule module's
@@ -111,10 +121,74 @@ export async function setReservationStatus(
   })
 }
 
+/** A party's status lines in the Log, oldest first, with the spots each one freed. */
+async function statusLines(
+  stx: ServiceTx,
+  reservationId: string,
+): Promise<(StatusEntry & { readonly freed: readonly string[] })[]> {
+  const rows = await stx.tx
+    .select({
+      fromState: logEntries.fromState,
+      toState: logEntries.toState,
+      reason: logEntries.reason,
+      details: logEntries.details,
+    })
+    .from(logEntries)
+    .where(
+      and(
+        eq(logEntries.venueId, stx.venueId),
+        eq(logEntries.reservationId, reservationId),
+        eq(logEntries.kind, 'reservation.status'),
+      ),
+    )
+    .orderBy(asc(logEntries.seq))
+  return rows.map((row) => {
+    const freed = row.details.freed
+    return {
+      fromState: row.fromState,
+      toState: row.toState,
+      reason: row.reason,
+      freed: typeof freed === 'string' && freed !== '' ? freed.split(',') : [],
+    }
+  })
+}
+
+/** Claims again the spots a party had, where nobody has taken them since; the rest are lost. */
+async function reclaimSpots(
+  stx: ServiceTx,
+  reservation: Reservation,
+  spotIds: readonly string[],
+  turnMinutes: number,
+): Promise<{ readonly back: readonly string[]; readonly lost: boolean }> {
+  if (spotIds.length === 0) return { back: [], lost: false }
+  const grant = await claimSpots(
+    stx,
+    {
+      reservationId: reservation.id,
+      spotIds,
+      serviceDate: reservation.serviceDate,
+      startsAt: reservation.startsAt,
+      endsAt: reservation.endsAt,
+      turnMinutes: reservation.turnMinutes,
+    },
+    turnMinutes,
+  )
+  if (!grant.ok) return { back: [], lost: true }
+  await writeHeldSpots(stx, reservation.id, spotIds, grant.stretch, reservation.endsAt !== null)
+  return { back: spotIds, lost: false }
+}
+
 /**
- * Puts a party back where he was (D135): a no-show back to Reserved, a party nobody seated back
- * onto the waiting list. A party going back to the queue joins its end, because the place he had
- * is gone — the hostess moves him up if she means to.
+ * Puts one party back (D135, D138): a no-show back to Reserved, a party nobody seated back onto the
+ * waiting list. A party going back to the queue joins its end, because the place he had is gone —
+ * the hostess moves him up if she means to. The spots its end freed are claimed again where nobody
+ * has taken them since; where somebody has, the party comes back without them and the result says
+ * so (`spotsLost`), as a restore does.
+ *
+ * Who may put it back depends on who ended it, read from the Log (D141): a hostess's own No-show
+ * is her tap to undo, but a party **the night's end** marked is an admin's, one at a time (D138:
+ * "put back one at a time by an admin") — the booking book's key, `reservations.manage`. There is
+ * no bulk form of this command. It touches no table: a party still at its table keeps its code.
  */
 export async function putBackReservation(
   stx: ServiceTx,
@@ -122,10 +196,22 @@ export async function putBackReservation(
 ): Promise<ServiceResult> {
   const open = await openReservation(stx, command.reservationId)
   if (!open.ok) return refuse(open.code)
-  const { reservation } = open
-  const move = putBack(reservation.status as ReservationStatus)
+  const { reservation, night } = open
+  const from = reservation.status as ReservationStatus
+  const move = putBack(from)
   if (!move.ok) return refuse(move.code)
+  const lines = await statusLines(stx, reservation.id)
+  const byNightEnd = endedByNightEnd(lines, from)
+  if (byNightEnd && !stx.permissions.has('reservations.manage')) {
+    return refuse('permission_denied')
+  }
   const to = move.status
+  const spots = await reclaimSpots(
+    stx,
+    reservation,
+    lines.at(-1)?.freed ?? [],
+    night.settings.turnMinutes,
+  )
   await stx.tx
     .update(reservations)
     .set({
@@ -140,13 +226,60 @@ export async function putBackReservation(
     kind: 'reservation.status',
     reservationId: reservation.id,
     guestId: reservation.guestId ?? undefined,
-    fromState: reservation.status,
+    fromState: from,
     toState: to,
-    reason: 'put_back',
+    reason: PUT_BACK_REASON,
+    details: { spots: spots.back.join(','), spotsLost: spots.lost, nightEnd: byNightEnd },
   })
   return accepted(null, {
-    details: { reservationId: reservation.id, status: to },
+    details: {
+      reservationId: reservation.id,
+      status: to,
+      spots: spots.back.join(','),
+      spotsLost: spots.lost,
+    },
   })
+}
+
+/**
+ * The Undo of one "Put back" of a party the night's end marked (#332): the toast's button, never a
+ * bulk form. The party goes back to the status the night's end gave it, read from the Log
+ * (`undoPutBack`), and the spots the put back claimed are freed again. A hostess's own No-show put
+ * back is refused here: its undo is her own tap again.
+ */
+export async function undoPutBack(
+  stx: ServiceTx,
+  command: { readonly reservationId: string },
+): Promise<ServiceResult> {
+  const open = await openReservation(stx, command.reservationId)
+  if (!open.ok) return refuse(open.code)
+  const { reservation } = open
+  const from = reservation.status as ReservationStatus
+  const lines = await statusLines(stx, reservation.id)
+  const move = undoPutBackMove(from, lines)
+  if (!move.ok) return refuse(move.code)
+  const to = move.status
+  const freed = await releaseHeldSpots(stx, reservation.id)
+  await stx.tx
+    .update(reservations)
+    .set({
+      status: to,
+      queueKey: null,
+      endedAt: sql`now()`,
+      ...stx.provenance,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(reservations.id, reservation.id))
+  await stx.log({
+    kind: 'reservation.status',
+    reservationId: reservation.id,
+    guestId: reservation.guestId ?? undefined,
+    fromState: from,
+    toState: to,
+    reason: PUT_BACK_UNDONE_REASON,
+    details: { freed: freed.join(',') },
+  })
+  return accepted(null, { details: { reservationId: reservation.id, status: to } })
 }
 
 /**

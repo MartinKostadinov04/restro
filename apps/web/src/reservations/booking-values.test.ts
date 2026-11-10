@@ -39,6 +39,7 @@ const detail = (over: Partial<RvDetailView> = {}): RvDetailView => ({
   mine: false,
   payRule: { rule: null, beaten: [] },
   history: [],
+  endedByNightEnd: false,
   ...over,
 })
 

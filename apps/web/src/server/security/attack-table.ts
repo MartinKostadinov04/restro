@@ -893,6 +893,15 @@ export const ATTACKS: readonly Attack[] = [
     action: 'closeAllTablesAction',
     call: (v) => tonight.closeAllTablesAction({ venueId: v.venues[0].id }),
   },
+  // The night's end (#332): B may not read A's preview nor end A's night.
+  {
+    action: 'nightEndPreviewAction',
+    call: (v) => tonight.nightEndPreviewAction({ venueId: v.venues[0].id }),
+  },
+  {
+    action: 'endNightAction',
+    call: (v) => tonight.endNightAction({ venueId: v.venues[0].id }),
+  },
   {
     action: 'markPaymentTableAction',
     call: (v) => {
@@ -1198,6 +1207,13 @@ export const ATTACKS: readonly Attack[] = [
     call: (v) => {
       const x = v.venues[0]
       return nightBook.putBackAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+  {
+    action: 'undoPutBackAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.undoPutBackAction({ venueId: x.id, reservationId: x.reservation })
     },
   },
   // Guests and regulars (#333): B may not read A's list, a card or a suggestion, nor add, change,
@@ -2349,6 +2365,14 @@ export const MIXED: readonly Attack[] = [
     action: 'putBackAction',
     call: (v, a) =>
       nightBook.putBackAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'undoPutBackAction',
+    call: (v, a) =>
+      nightBook.undoPutBackAction({
         venueId: a.venues[0].id,
         reservationId: v.venues[0].reservation,
       }),

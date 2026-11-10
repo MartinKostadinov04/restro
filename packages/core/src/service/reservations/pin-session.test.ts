@@ -199,9 +199,9 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
     expect(
       await run({ type: 'block.remove', reservationId: party }, person(bookOnly)),
     ).toMatchObject({ code: 'permission_denied' })
-    expect(
-      await run({ type: 'reservation_night.close', serviceDate: NIGHT }, person(bookOnly)),
-    ).toMatchObject({ code: 'permission_denied' })
+    expect(await run({ type: 'night.end' }, person(bookOnly))).toMatchObject({
+      code: 'permission_denied',
+    })
     // A PIN never reaches the settings-class two, whoever's PIN it is (`isSettingsPermission`).
     expect(
       await run(
@@ -229,9 +229,7 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
         code: 'pin_required',
       },
     )
-    expect(
-      await run({ type: 'reservation_night.close', serviceDate: NIGHT }, tablet()),
-    ).toMatchObject({ code: 'pin_required' })
+    expect(await run({ type: 'night.end' }, tablet())).toMatchObject({ code: 'pin_required' })
     // Seating a walk-in is a tap in D141, and the hostess's key in the code (#328): the tablet's
     // own account holds it, so the tap goes through. Taking a booking is four digits.
     expect(

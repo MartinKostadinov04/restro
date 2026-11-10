@@ -15,6 +15,7 @@ import {
   type DbPool,
   guests,
   type ReadTx,
+  reservationNights,
   reservationSettings,
   reservations,
   spots,
@@ -88,6 +89,11 @@ export interface BookingChecks {
   readonly closedNight: boolean
   /** The hour is before the venue opens that night; the hours it keeps, as instants. */
   readonly beforeOpening: { readonly opensAt: Date; readonly closesAt: Date } | null
+  /**
+   * The night's end has already come for that night (D138): its closing hour, or an admin's early
+   * end. The booking is still taken; the form says it is for a closed night.
+   */
+  readonly nightEnded: boolean
   /** The hour is at or after the closing hour: the night's end will mark it no-show (D138). */
   readonly afterClosing: boolean
   readonly taken: TakenCheck | null
@@ -151,8 +157,19 @@ export async function readBookingChecks(
             { serviceDate: reader.today, permissions: reader.held },
             input.day,
             settings,
-            null,
           )
+    // The night's end has come for that night (D138): a booking added now is for a closed night.
+    // A warning, never a refusal — the night stays writable until it has passed.
+    const [record] = await tx
+      .select({ closedAt: reservationNights.closedAt })
+      .from(reservationNights)
+      .where(
+        and(
+          eq(reservationNights.venueId, reader.venue.id),
+          eq(reservationNights.serviceDate, input.day),
+        ),
+      )
+    const nightEnded = record?.closedAt != null
 
     // The guests against the seats.
     const seats = await seatsOf(tx, reader.venue.id, input.spotIds)
@@ -301,6 +318,7 @@ export async function readBookingChecks(
         sameContact,
         listed,
         closedNight,
+        nightEnded,
         beforeOpening,
         afterClosing,
         taken,

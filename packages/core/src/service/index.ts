@@ -212,6 +212,7 @@ export {
   logKindsOf,
   SHOWN_LOG_KINDS,
 } from './log-view'
+export { endsEarly, type NightEndPreview, readNightEndPreview } from './night-end'
 export {
   CSV_BOM,
   CSV_COLUMNS,
@@ -537,10 +538,15 @@ export {
   canMove,
   countsAsNoShow,
   END_STATUSES,
+  endedByNightEnd,
   HOLDING_STATUSES,
   holdsSpots,
   isEndStatus,
   moveStatus,
+  NIGHT_END_REASON,
+  nightEndStatus,
+  PUT_BACK_REASON,
+  PUT_BACK_UNDONE_REASON,
   putBack,
   putBackStatus,
   RESERVATION_KINDS,
@@ -552,9 +558,11 @@ export {
   type ReservationStatus,
   type ReservationStatusRefusal,
   ReservationStatusSchema,
+  type StatusEntry,
   type StatusMove,
   UNDONE_ARRIVAL_REASON,
   undoArrival,
+  undoPutBack,
 } from './reservations/status'
 export {
   MAX_WAITING_ROWS,

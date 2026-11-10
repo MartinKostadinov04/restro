@@ -37,7 +37,7 @@
 // `spots_changed` and the engine's savepoint takes the table work back with it. The party is
 // therefore either seated with its codes open or left exactly as it was — never half-seated.
 
-import { logEntries, reservationNights, reservationSpots, reservations, spots } from '@restro/db'
+import { logEntries, reservationSpots, reservations, spots } from '@restro/db'
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 
 import type { Id } from '../../ids'
@@ -130,10 +130,9 @@ export async function peekHeldSpots(stx: ServiceTx, reservationId: string): Prom
 }
 
 /**
- * Whether the night may be written at all, peeked: the settings and the night's record, read
- * without locking the record (its rank comes after the reservation's, so the lock cannot be taken
- * yet). `openReservation` makes the same check under its locks afterwards and is the authority;
- * this one keeps a handler from opening tables for a night it may not write.
+ * Whether the night may be written at all, peeked: the settings and the night's own writability,
+ * read before anything is locked. `openReservation` makes the same check under its locks afterwards
+ * and is the authority; this one keeps a handler from opening tables for a night it may not write.
  */
 export async function peekNight(
   stx: ServiceTx,
@@ -144,16 +143,7 @@ export async function peekNight(
 > {
   const settings = await readSettings(stx)
   if (settings === null) return { ok: false, code: 'settings_missing' }
-  const [night] = await stx.tx
-    .select({ closedAt: reservationNights.closedAt })
-    .from(reservationNights)
-    .where(
-      and(
-        eq(reservationNights.venueId, stx.venueId),
-        eq(reservationNights.serviceDate, serviceDate),
-      ),
-    )
-  const refusal = nightWritable(stx, serviceDate, settings, night ?? null)
+  const refusal = nightWritable(stx, serviceDate, settings)
   return refusal === null ? { ok: true, settings } : { ok: false, code: refusal }
 }
 

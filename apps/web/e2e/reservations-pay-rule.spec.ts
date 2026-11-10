@@ -86,6 +86,10 @@ async function openPayRule(page: Page, party: string) {
 const pick = (page: Page, label: string) =>
   page.getByTestId('rv-pay-rule-choices').getByText(label, { exact: true }).click()
 
+/** The toast that says what now holds; the sheet's history repeats the words in its Log line. */
+const toast = (page: Page, text: string) =>
+  page.locator('[data-sonner-toast]').filter({ hasText: text })
+
 test.beforeAll(async ({ browser }) => {
   seed('seed')
   seed('book', 'book-pay-rule')
@@ -115,12 +119,12 @@ test('the rule is picked on the sheet, said as this sitting only, and undone fro
 
   // One tap writes, with no Save of its own, and the toast says what now holds.
   await pick(page, 'Pay first')
-  await expect(page.getByText('Pay rule: Pay first')).toBeVisible()
+  await expect(toast(page, 'Pay rule: Pay first')).toBeVisible()
   await expect(page.getByTestId('rv-pay-rule-pay_first')).toBeChecked()
 
   // Undo on the toast is the opposite write: the club's rule again, and the sheet follows.
   await page.getByRole('button', { name: 'Undo' }).click()
-  await expect(page.getByText("Pay rule: The club's rule")).toBeVisible()
+  await expect(toast(page, "Pay rule: The club's rule")).toBeVisible()
   await expect(page.getByTestId('rv-pay-rule-venue')).toBeChecked()
 
   // It survives a read: the sheet draws what the server holds, not what was tapped.
@@ -138,7 +142,7 @@ test("a table's own rule wins, and the sheet says which rule applies and why", a
   )
   // And the choice is still theirs to make: the line is what is in force, not a refusal.
   await pick(page, 'Everything on the bill')
-  await expect(page.getByText('Pay rule: Everything on the bill')).toBeVisible()
+  await expect(toast(page, 'Pay rule: Everything on the bill')).toBeVisible()
   await expect(page.getByTestId('rv-pay-rule-on_bill')).toBeChecked()
   await expect(page.getByTestId('rv-pay-rule-beaten')).toHaveText(
     'Маса 7 has its own rule: Pay first. That one applies.',

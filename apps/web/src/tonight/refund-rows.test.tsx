@@ -53,16 +53,33 @@ const base = (over: Partial<ActionRowView>): ActionRowView => ({
     lift: true,
     answer: true,
     followUp: true,
+    endNight: true,
   },
   ...over,
 })
 const manager = base({})
 const tablet = base({
   device: true,
-  can: { openClose: true, resume: false, pause: true, lift: false, answer: true, followUp: false },
+  can: {
+    openClose: true,
+    resume: false,
+    pause: true,
+    lift: false,
+    answer: true,
+    followUp: false,
+    endNight: false,
+  },
 })
 const waiter = base({
-  can: { openClose: true, resume: false, pause: true, lift: false, answer: true, followUp: false },
+  can: {
+    openClose: true,
+    resume: false,
+    pause: true,
+    lift: false,
+    answer: true,
+    followUp: false,
+    endNight: false,
+  },
 })
 
 const storno: ActionRow = {

@@ -222,6 +222,8 @@ export interface RvDetailView {
   /** The Pay rule section (#334): the party's own rule, and where a table's own beats it. */
   readonly payRule: RvPayRuleView
   readonly history: readonly RvHistoryView[]
+  /** The night's end marked it and nobody moved it since (#332): "Put back" is an admin's. */
+  readonly endedByNightEnd: boolean
 }
 
 /**
@@ -296,6 +298,7 @@ export function rvDetailView(detail: ReservationDetail, timezone: string): RvDet
     version: detail.version,
     mine: detail.mine,
     payRule: { rule: detail.payRule.rule, beaten: detail.payRule.beaten },
+    endedByNightEnd: detail.endedByNightEnd,
     history: detail.history.map((line) => ({
       seq: line.seq,
       time: clock(line.at) ?? '',
@@ -499,6 +502,8 @@ export interface RvChecksView {
   /** The phone already belongs to a guest on the venue's list (#333). */
   readonly listed: { readonly guestId: string; readonly name: string | null } | null
   readonly closedNight: boolean
+  /** The night's end has run (#332): a booking is still taken, and the form says so. */
+  readonly nightEnded: boolean
   readonly beforeOpening: { readonly opens: string; readonly closes: string } | null
   readonly afterClosing: boolean
   readonly taken: {
@@ -522,6 +527,7 @@ export function rvChecksView(checks: BookingChecks, timezone: string): RvChecksV
         : { name: checks.sameContact.name, time: clock(checks.sameContact.startsAt) ?? '' },
     listed: checks.listed,
     closedNight: checks.closedNight,
+    nightEnded: checks.nightEnded,
     beforeOpening:
       checks.beforeOpening === null
         ? null

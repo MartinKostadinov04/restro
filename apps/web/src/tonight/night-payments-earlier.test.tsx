@@ -112,6 +112,7 @@ describe("an earlier night's question on today's end of night", () => {
         lift: false,
         answer: true,
         followUp: true,
+        endNight: false,
       },
     }
     renderWithIntl(

@@ -96,6 +96,8 @@ export const RESERVATION_STATUS_REFUSALS = [
   'put_back_not_allowed',
   /** An arrival was undone for a reservation that is not at a table, or for a block. */
   'undo_arrival_not_allowed',
+  /** The Undo of a put back found the party moved since, or nothing the night's end did. */
+  'undo_put_back_not_allowed',
 ] as const
 
 /** One status refusal code. */
@@ -118,11 +120,48 @@ export function moveStatus(from: ReservationStatus, to: ReservationStatus): Stat
     : { ok: false, code: 'status_move_not_allowed' }
 }
 
+/** The reason the night's end gives the status moves it makes (D138), in the Log. */
+export const NIGHT_END_REASON = 'night_ended'
+
+/** The reason "Put back" writes, in the Log. */
+export const PUT_BACK_REASON = 'put_back'
+
+/** The reason the Undo of a "Put back" writes: the night's end's status is back (#332). */
+export const PUT_BACK_UNDONE_REASON = 'put_back_undone'
+
 /**
- * Where "Put back" returns a party the night's end marked (D138): a no-show was booked, so it goes
- * back to Reserved; a party marked Not seated was in the queue, so it goes back to Waiting.
- * Nothing else is put back — a finished party is finished, and a cancelled one is re-made, not
- * restored.
+ * What the night's end does to one party (D138; spec #321, Implementation Decision 6): the seated
+ * become Finished, a booking nobody came for No-show, a party still waiting Not seated. A block is
+ * untouched, and so is everything already over. **Requested** is untouched too: none can exist in
+ * part 1 (#323), and declining one, releasing its hold and emailing the guest are part 2's.
+ *
+ * The same rule serves the closing hour, an admin's early end and the sweep once a night has
+ * passed, so a party is marked the same way whichever of them reaches it first, and a second run
+ * finds nothing left to move.
+ */
+export function nightEndStatus(
+  status: ReservationStatus,
+  kind: ReservationKind,
+): ReservationStatus | null {
+  if (kind === 'block') return null
+  switch (status) {
+    case 'seated':
+      return 'finished'
+    case 'reserved':
+      return 'no_show'
+    case 'waiting':
+      return 'not_seated'
+    default:
+      return null
+  }
+}
+
+/**
+ * Where "Put back" returns a party (D138): a no-show was booked, so it goes back to Reserved; a
+ * party marked Not seated was in the queue, so it goes back to Waiting. Nothing else is put back —
+ * a finished party is finished (its codes are closed), and a cancelled one is re-made, not
+ * restored. Whether the night's end or a hostess's tap ended it decides only **who** may put it
+ * back (`endedByNightEnd`), never where it goes.
  */
 export function putBackStatus(from: ReservationStatus): ReservationStatus | null {
   if (from === 'no_show') return 'reserved'
@@ -134,6 +173,45 @@ export function putBackStatus(from: ReservationStatus): ReservationStatus | null
 export function putBack(from: ReservationStatus): StatusMove {
   const status = putBackStatus(from)
   return status === null ? { ok: false, code: 'put_back_not_allowed' } : { ok: true, status }
+}
+
+/** One status line of a reservation's Log, as "Put back" reads it. */
+export interface StatusEntry {
+  readonly fromState: string | null
+  readonly toState: string | null
+  readonly reason: string | null
+}
+
+/**
+ * Whether the night's end put a party where it is now: its newest status line moved it there with
+ * the night's end's reason (or an Undo of a put back moved it back there). Read from the Log, never
+ * from a second copy on the row (D141). `entries` are the party's status lines, oldest first.
+ */
+export function endedByNightEnd(
+  entries: readonly StatusEntry[],
+  status: ReservationStatus,
+): boolean {
+  const last = entries.at(-1)
+  if (last === undefined || last.toState !== status) return false
+  return last.reason === NIGHT_END_REASON || last.reason === PUT_BACK_UNDONE_REASON
+}
+
+/**
+ * The Undo of one "Put back" (#332): the party goes back to the status the night's end had given
+ * it. The newest status line must be that put back, and the line before it the night's end's (or
+ * an earlier Undo's), so the status is read from the Log and never guessed at. Anything else — a
+ * party somebody has moved since, a put back of a hostess's own No-show, whose Undo is her own
+ * tap again — is refused. `entries` are the party's status lines, oldest first.
+ */
+export function undoPutBack(from: ReservationStatus, entries: readonly StatusEntry[]): StatusMove {
+  const refused = { ok: false, code: 'undo_put_back_not_allowed' } as const
+  const last = entries.at(-1)
+  if (last === undefined || last.reason !== PUT_BACK_REASON || last.toState !== from) return refused
+  const previous = ReservationStatusSchema.safeParse(last.fromState)
+  if (!previous.success || putBackStatus(previous.data) !== from) return refused
+  return endedByNightEnd(entries.slice(0, -1), previous.data)
+    ? { ok: true, status: previous.data }
+    : refused
 }
 
 /**

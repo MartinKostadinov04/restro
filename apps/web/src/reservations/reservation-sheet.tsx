@@ -314,6 +314,7 @@ export function ReservationSheet({
   onEdit,
   onCopy,
   onNoShow,
+  onPutBack,
   onCancel,
   onDelete,
   onArrive,
@@ -331,6 +332,8 @@ export function ReservationSheet({
   onEdit: (detail: RvDetailView) => void
   onCopy: (detail: RvDetailView) => void
   onNoShow: (reservationId: string) => void
+  /** Puts back one party the night's end closed (#332); the sheet reads it again when it worked. */
+  onPutBack: (reservationId: string, party: PartyName, done: () => void) => void
   /** Calls the booking off; the sheet reads it again when it worked. */
   onCancel: (reservationId: string, party: PartyName, done: () => void) => void
   /** Takes the booking out of the book; the sheet closes when it worked. */
@@ -431,6 +434,10 @@ export function ReservationSheet({
     (status === 'reserved' || status === 'requested' || status === 'seated') &&
     onChangeTables !== null
   const party: PartyName = detail?.row.name ?? t('no_name')
+  // A party the night's end closed (#332): "Put back" is an admin's, and on a shared device it is
+  // present and asks for the PIN. A person signed in whose role may not reads who may.
+  const nightClosedIt = detail != null && writable && detail.endedByNightEnd
+  const mayPutBack = nightClosedIt && mayManage
   const body = detail ? (
     <Body
       detail={detail}
@@ -450,6 +457,21 @@ export function ReservationSheet({
   ) : null
   const buttons = (
     <>
+      {mayPutBack && detail ? (
+        <Button
+          type="button"
+          className={WRAPS}
+          disabled={busy}
+          data-testid="rv-put-back"
+          onClick={() => onPutBack(detail.row.id, party, load)}
+        >
+          {t('pb_do')}
+        </Button>
+      ) : nightClosedIt ? (
+        <p className="text-sm text-muted-foreground" data-testid="rv-put-back-who">
+          {t('pb_who')}
+        </p>
+      ) : null}
       {mayArrive && detail && onArrive ? (
         <Button
           type="button"

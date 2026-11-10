@@ -11,6 +11,7 @@ import {
   endpointHashOf,
   PushSubscribeSchema,
   paymentWorkerJob,
+  readNightEndPreview,
   readTablesTonight,
   readVenueAccess,
   type ServiceActor,
@@ -190,6 +191,82 @@ export async function closeAllTablesAction(input: unknown): Promise<TonightResul
   const parsed = OnVenue.safeParse(input)
   if (!parsed.success) return INVALID
   return perform(parsed.data, (scope) => command(scope, { type: 'tables.close_all' }))
+}
+
+/** The early end's preview as the dialog draws it (#332): counts, and times in the venue's zone. */
+export interface NightEndPreviewView {
+  readonly ended: boolean
+  readonly finished: number
+  readonly noShow: number
+  readonly notSeated: number
+  readonly codesClose: number
+  readonly codesKept: number
+  readonly openBills: number
+  /** Before the club's closing hour: its hour and the hour now, `HH:mm`; null otherwise. */
+  readonly early: { readonly closes: string; readonly now: string } | null
+}
+
+const OnVenueRead = z.strictObject({ venueId })
+
+/**
+ * What ending the night now would change (#332; RS-48): the dialog's preview, read before she
+ * confirms. Read as the account itself: on a shared device the action is present and its write
+ * asks for the PIN (D141), so the device's own account reads the preview, whoever typed a PIN last.
+ * Nothing is written.
+ */
+export async function nightEndPreviewAction(
+  input: unknown,
+): Promise<
+  | { readonly ok: true; readonly preview: NightEndPreviewView }
+  | { readonly ok: false; readonly error: string }
+> {
+  const parsed = OnVenueRead.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'invalid' }
+  try {
+    const { organization, user, sessionId } = await requireTenant()
+    const venue = await getVenue(organization.id, parsed.data.venueId)
+    if (!venue) return { ok: false, error: 'venue_missing' }
+    const now = new Date()
+    const read = await readNightEndPreview(getPool(), {
+      tenantId: organization.id,
+      venueId: venue.id,
+      actor: { kind: 'user', userId: user.id, sessionId },
+      now,
+    })
+    if (!read.ok) return { ok: false, error: read.code }
+    const { preview } = read
+    const clock = clockIn(venue.timezone)
+    return {
+      ok: true,
+      preview: {
+        ended: preview.ended,
+        finished: preview.finished,
+        noShow: preview.noShow,
+        notSeated: preview.notSeated,
+        codesClose: preview.codesClose,
+        codesKept: preview.codesKept,
+        openBills: preview.openBills,
+        early:
+          preview.early && preview.closesAt !== null
+            ? { closes: clock(preview.closesAt) ?? '', now: clock(now) ?? '' }
+            : null,
+      },
+    }
+  } catch (error) {
+    if (error instanceof Error && 'digest' in error) throw error
+    logError('tonight_night_end_preview_failed', error)
+    return { ok: false, error: 'failed' }
+  }
+}
+
+/**
+ * Ends the night now (#332; D138): every table code closes but one a card keeps until its payment
+ * ends, and the night's parties are swept. Early when the club's closing hour has not come yet.
+ */
+export async function endNightAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnVenue.safeParse(input)
+  if (!parsed.success) return INVALID
+  return perform(parsed.data, (scope) => command(scope, { type: 'night.end' }))
 }
 
 /** Marks a table as a payment table, or takes the mark away (the person's own sign-in). */

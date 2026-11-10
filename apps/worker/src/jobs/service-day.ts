@@ -7,6 +7,11 @@
 //                     Then every recent closed day whose end-of-night message has not gone
 //                     (`report_sent_at` null) is sent, oldest first, and marked through
 //                     `service_day.report_sent` once Telegram accepts it (#179)
+//                     Before the days close, every night that has passed with a party the night's
+//                     end did not reach (seated after the hour, a night nobody ended) is swept once
+//                     more through `reservation_night.sweep` (#332; D138): Seated → Finished, a booking
+//                     → No-show, the still waiting → Not seated. A night with nothing left is not
+//                     asked, and a repeated run changes nothing.
 //
 // A venue's day ends at its own hour in its own time zone, so the tick runs hourly rather than
 // once at 07:00 Sofia. `service_day.close` changes nothing for a day already closed, so a run that
@@ -74,6 +79,74 @@ export async function dueServiceDays(pool: DbPool, now: Date): Promise<DueServic
     })
   }
   return due
+}
+
+/** The passed nights of every venue that still have a party the night's end would move. */
+export async function unsweptNights(pool: DbPool, now: Date): Promise<DueServiceDay[]> {
+  const organisations = await withSystem(pool, (tx) =>
+    tx.select({ id: authOrganization.id }).from(authOrganization),
+  )
+  const due: DueServiceDay[] = []
+  for (const organisation of organisations) {
+    await withTenant(pool, organisation.id, async (tx) => {
+      const venueRows = await tx
+        .select({
+          id: venues.id,
+          timezone: venues.timezone,
+          dayEndsAt: venues.serviceDayEndsAt,
+        })
+        .from(venues)
+      for (const venue of venueRows) {
+        const today = serviceDate(now, venue.timezone, venue.dayEndsAt)
+        // The statuses `nightEndStatus` moves; a block is never swept.
+        const nights = await tx.execute<{ service_date: string }>(sql`
+          select distinct service_date::text as service_date
+            from restro.reservations
+           where venue_id = ${venue.id}
+             and service_date < ${today}::date
+             and deleted_at is null
+             and kind <> 'block'
+             and status in ('seated', 'reserved', 'waiting')
+           order by service_date`)
+        for (const row of nights.rows) {
+          due.push({ tenantId: organisation.id, venueId: venue.id, serviceDate: row.service_date })
+        }
+      }
+    })
+  }
+  return due
+}
+
+/** Sweeps every passed night with a party left on it; answers how many nights were swept. */
+export async function sweepPassedNights(
+  pool: DbPool,
+  now: Date,
+  log: Pick<Logger, 'warn'>,
+): Promise<number> {
+  let swept = 0
+  for (const night of await unsweptNights(pool, now)) {
+    try {
+      const { result } = await applyService(
+        pool,
+        { type: 'reservation_night.sweep', serviceDate: night.serviceDate },
+        {
+          tenantId: night.tenantId,
+          venueId: night.venueId,
+          origin: 'worker',
+          actor: { kind: 'system' },
+          jobId: `night-sweep-${randomUUID()}`,
+          now,
+        },
+      )
+      if (result.status === 'accepted' && result.details.changed === true) swept += 1
+    } catch (error) {
+      log.warn(
+        { venueId: night.venueId, serviceDate: night.serviceDate, err: error },
+        'a passed night could not be swept',
+      )
+    }
+  }
+  return swept
 }
 
 /**
@@ -232,6 +305,8 @@ export function createServiceDayJob(options: {
     },
     async handler(_jobs, context) {
       const now = context.now()
+      const swept = await sweepPassedNights(context.pool, now, context.log)
+      if (swept > 0) context.log.info({ swept }, 'passed nights swept')
       const closed = await closeServiceDays(context.pool, now, context.log)
       if (closed > 0) context.log.info({ closed }, 'service days closed')
       const told = await sendDueNightReports(context.pool, now, options.telegram, context.log)

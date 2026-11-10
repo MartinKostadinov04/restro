@@ -39,6 +39,7 @@ import { type PayRuleBeaten, payRuleBeatenAt, storedPayRule } from './pay-rule'
 import { LATE_AFTER_MINUTES } from './plan-state'
 import { nightWritable, type ReservationRefusal } from './rows'
 import {
+  endedByNightEnd,
   RESERVATION_STATUSES,
   type ReservationKind,
   type ReservationStatus,
@@ -179,6 +180,11 @@ export interface ReservationDetail {
   readonly payRule: ReservationPayRuleRead
   /** Its own history, oldest first, from the Log: never a guest's contact details (D140). */
   readonly history: readonly ReservationHistoryLine[]
+  /**
+   * The night's end marked it (No-show, Not seated) and nobody has moved it since (#332): "Put
+   * back" is offered, an admin's action. A hostess's own No-show is not this.
+   */
+  readonly endedByNightEnd: boolean
 }
 
 /** What the sheet's Pay rule section reads (#334; D135, D122 §5). */
@@ -443,12 +449,7 @@ export async function readReservationNight(
     const writable =
       settings === undefined
         ? 'settings_missing'
-        : nightWritable(
-            { serviceDate: reader.today, permissions: reader.held },
-            day,
-            settings,
-            night ?? null,
-          )
+        : nightWritable({ serviceDate: reader.today, permissions: reader.held }, day, settings)
 
     const days = await tx
       .selectDistinct({ day: reservations.serviceDate })
@@ -647,6 +648,16 @@ export async function readReservationDetail(
         ),
         mine: row.madeBy !== null && row.madeBy === (await staffMemberFor(tx, input)),
         payRule: { rule: storedPayRule(row.payRule), beaten },
+        endedByNightEnd: endedByNightEnd(
+          entries
+            .filter((entry) => entry.kind === 'reservation.status')
+            .map((entry) => ({
+              fromState: entry.fromState as ReservationStatus | null,
+              toState: entry.toState as ReservationStatus,
+              reason: entry.reason,
+            })),
+          status,
+        ),
         history: entries.map((entry) => ({
           seq: entry.seq,
           at: entry.at,

@@ -22,6 +22,7 @@ import {
   paymentLines,
   payments,
   type ReadTx,
+  reservationNights,
   sentOrders,
   sharedDevices,
   sittings,
@@ -728,6 +729,16 @@ export interface Tonight {
       }[]
     | null
   readonly pauses: readonly TonightPause[]
+  /**
+   * Tonight's end, once it has run (#332; D138): when, whether an admin ended it before the
+   * closing hour, and the bills still open at that moment — the closing hour's warning, which the
+   * screen shows as one row. Null while the night is going on.
+   */
+  readonly nightEnd?: {
+    readonly at: Date
+    readonly early: boolean
+    readonly openBills: number | null
+  } | null
   /** Tonight's Log, newest first, for `log.view`; null otherwise. */
   readonly log:
     | readonly {
@@ -1148,6 +1159,21 @@ export async function readTonight(
         startedBy: pause.restroStarted ? null : (named.get(starter) ?? null),
       })),
       log,
+      nightEnd: await (async () => {
+        const [record] = await tx
+          .select({
+            at: reservationNights.closedAt,
+            early: reservationNights.closedEarly,
+            openBills: reservationNights.openBillsAtClose,
+          })
+          .from(reservationNights)
+          .where(
+            and(eq(reservationNights.venueId, venue.id), eq(reservationNights.serviceDate, day)),
+          )
+        return record?.at == null
+          ? null
+          : { at: record.at, early: record.early, openBills: record.openBills }
+      })(),
     }
     return { ok: true, tonight } as const
   })

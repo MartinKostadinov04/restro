@@ -8,7 +8,9 @@ import type { PayRule } from '@restro/core'
 //     machine has no way back, #323), so it asks once, in a dialog that says so;
 //   • Delete — a booking that should never have existed; the Log keeps who and when; a manager's
 //     Restore is offered on the toast and lives in the night's bin;
-//   • Restore — from the bin.
+//   • Restore — from the bin;
+//   • Put back — one party the night's end closed (#332), an admin's: no question, the toast's Undo
+//     is the safety net, and there is no way to put a whole night back.
 // Each is a command through `applyService` (rule 1); the PIN sheet is the run hook's, for a shared
 // device. Nothing here decides whether a person may: the service path does, inside its own
 // transaction, and a refusal comes back as the toast that stays.
@@ -23,6 +25,7 @@ import {
   putBackAction,
   restoreBookingAction,
   setPayRuleAction,
+  undoPutBackAction,
 } from '@/server/reservations/actions'
 import type { RvFrame } from '@/server/reservations/view'
 
@@ -179,5 +182,29 @@ export function useBookingActions({
     [onChanged, run, ruleWord, t, venueId],
   )
 
-  return { noShow, cancel, restore, remove, payRule }
+  /**
+   * "Put back" on a party the night's end closed (#332): one write, no dialog, the toast's Undo
+   * returns it to the status the night's end gave it. A shared device names the person first.
+   */
+  const putBack = useCallback(
+    (reservationId: string, party: PartyName, onDone: () => void) =>
+      run({
+        id: `rv-put-back:${reservationId}`,
+        done: t('pb_done', { party }),
+        pin: { title: t('pb_pin', { party }), body: t('bk_pin_b') },
+        act: (pin) =>
+          putBackAction({ venueId, reservationId, ...(pin === undefined ? {} : { pin }) }),
+        again: {
+          label: t('p_undo'),
+          done: t('pb_undone'),
+          act: (pin?: string) =>
+            undoPutBackAction({ venueId, reservationId, ...(pin === undefined ? {} : { pin }) }),
+        },
+        after: onChanged,
+        onDone,
+      }),
+    [onChanged, run, t, venueId],
+  )
+
+  return { noShow, cancel, restore, remove, payRule, putBack }
 }

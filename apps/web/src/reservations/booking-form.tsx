@@ -342,11 +342,9 @@ export function BookingForm({
       ? null
       : checks.night === 'night_passed'
         ? t('b_passed')
-        : checks.night === 'night_closed'
-          ? t('b_closed')
-          : checks.night === 'settings_missing'
-            ? t('b_settings')
-            : t('errors.past_night_denied')
+        : checks.night === 'settings_missing'
+          ? t('b_settings')
+          : t('errors.past_night_denied')
 
   const errorText: Record<FieldError, string> = {
     name: t('bk_e_name'),
@@ -794,6 +792,10 @@ export function BookingForm({
 /** The hours' advice, under the hour fields: one line, whichever it is. */
 export function HoursHints({ checks }: { checks: RvChecksView }) {
   const t = useTranslations('reservations')
+  // The night has ended (#332): the booking is taken, and she is told it lands on a closed night.
+  if (checks.nightEnded) {
+    return <Hint testId="rv-w-ended">{t('bk_w_ended')}</Hint>
+  }
   if (checks.closedNight) {
     return <Hint testId="rv-w-closed">{t('bk_w_closed')}</Hint>
   }
