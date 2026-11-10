@@ -50,6 +50,7 @@ import { useLiveFeed } from '@/tonight/live-feed'
 import { FailedBlock, NewLine, NothingHere, RowsSkeleton } from '@/tonight/tab-parts'
 import { useBookingActions } from './booking-actions'
 import { BookingForm, type BookingMode } from './booking-form'
+import { type ChangeTablesParty, ChangeTablesSheet } from './change-tables'
 import { CopyDialog } from './copy-dialog'
 import { useDoorActions } from './door-actions'
 import { GuestsDialog } from './door-dialogs'
@@ -207,6 +208,8 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
   const [form, setForm] = useState<BookingMode | null>(null)
   const [copying, setCopying] = useState<RvDetailView | null>(null)
   const [counting, setCounting] = useState<RvDetailView | null>(null)
+  /** The party whose tables are being changed (#331), over the list. */
+  const [moving, setMoving] = useState<ChangeTablesParty | null>(null)
   // The waiting party whose spot is being chosen (#330), by its reservation.
   const [giving, setGiving] = useState<string | null>(null)
   /** The waiting list's own form is open: a party is being written down (#330). */
@@ -460,7 +463,11 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
           onRestore={(row) => actions.restore(row.id, row.name ?? t('no_name'))}
         />
       ) : null}
-      {open === null || form !== null || copying !== null || counting !== null ? null : (
+      {open === null ||
+      form !== null ||
+      copying !== null ||
+      counting !== null ||
+      moving !== null ? null : (
         <ReservationSheet
           frame={frame}
           reservationId={open}
@@ -488,6 +495,11 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
           }
           onGuests={mayTake ? (detail) => setCounting(detail) : null}
           onPayRule={actions.payRule}
+          onChangeTables={
+            mayTake
+              ? (detail) => setMoving({ reservationId: detail.row.id, name: detail.row.name, day })
+              : null
+          }
           onFree={
             mayTake
               ? (detail) =>
@@ -527,6 +539,15 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
             setOpen(null)
             reload()
           }}
+        />
+      )}
+      {moving === null ? null : (
+        <ChangeTablesSheet
+          frame={frame}
+          party={moving}
+          run={run}
+          onClose={() => setMoving(null)}
+          onChanged={reload}
         />
       )}
       {counting === null ? null : (

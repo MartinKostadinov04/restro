@@ -56,6 +56,14 @@ const LOG_STATE_WORDS: Readonly<Record<string, string>> = {
 }
 
 /** The Log's word for each pay rule, by the code the entry stores (#334). */
+/** A spots line's state in the Log: held, freed, or moved by Change tables (#331). */
+const SPOTS_WORDS: Readonly<Record<string, string>> = {
+  held: 'lg_rv_held',
+  released: 'lg_rv_freed',
+  moved: 'lg_rv_moved',
+  moved_bill: 'lg_rv_moved_bill',
+}
+
 const PAY_RULE_LOG_WORDS: Readonly<Record<string, string>> = {
   venue: 'lg_rv_pr_venue',
   on_bill: 'lg_rv_pr_on_bill',
@@ -80,7 +88,7 @@ export function useHistoryText() {
       case 'reservation.restored':
         return t('lg_rv_restored', { state })
       case 'reservation.spots':
-        return t(line.toState === 'released' ? 'lg_rv_freed' : 'lg_rv_held')
+        return t(SPOTS_WORDS[line.toState ?? ''] ?? 'lg_rv_held')
       case 'reservation.pay_rule':
         return t('lg_rv_pay_rule', {
           rule: t(PAY_RULE_LOG_WORDS[line.toState ?? ''] ?? 'lg_rv_pr_venue'),

@@ -230,8 +230,17 @@ export const SENTENCES = {
   'reservation.changed': (l, c) => c.say('lg_rv_changed', { state: reservationStateText(l, c) }),
   'reservation.status': (l, c) => c.say('lg_rv_status', { state: reservationStateText(l, c) }),
   'reservation.restored': (l, c) => c.say('lg_rv_restored', { state: reservationStateText(l, c) }),
+  // Held, freed, or moved by Change tables (#331) — with a bill left behind on the table it left.
   'reservation.spots': (l, c) =>
-    c.say(l.reservationStatus === 'released' ? 'lg_rv_freed' : 'lg_rv_held'),
+    c.say(
+      l.reservationStatus === 'released'
+        ? 'lg_rv_freed'
+        : l.reservationStatus === 'moved'
+          ? 'lg_rv_moved'
+          : l.reservationStatus === 'moved_bill'
+            ? 'lg_rv_moved_bill'
+            : 'lg_rv_held',
+    ),
   // The pay rule a party carries (#334, D135): the rule it became, never an amount (D136).
   'reservation.pay_rule': (l, c) =>
     c.say('lg_rv_pay_rule', {

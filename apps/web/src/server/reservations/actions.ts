@@ -527,6 +527,22 @@ const Hold = z.strictObject({
   pin,
 })
 
+/** One party's side of a change of tables: the spots the screen saw, and the ones it saves. */
+const PartySpots = z.strictObject({
+  reservationId: idSchema('rv'),
+  from: spotList,
+  spotIds: spotList,
+})
+
+const ChangeTables = z.strictObject({
+  venueId,
+  ...PartySpots.shape,
+  /** The other party of a swap (#331): both change tables in the one save. */
+  swap: PartySpots.optional(),
+  sameGuests: z.boolean().optional(),
+  pin,
+})
+
 const DoorChecks = z.strictObject({
   venueId,
   day: day.optional(),
@@ -833,6 +849,30 @@ export async function holdSpotsAction(input: unknown): Promise<RvWriteResult> {
       type: 'reservation.hold_spots',
       reservationId,
       spotIds,
+      ...(sameGuests === undefined ? {} : { sameGuests }),
+    },
+  )
+}
+
+/**
+ * "Change tables" (#331, D137): the party's spots become the ones saved, and in a swap the other
+ * party's too, in one write; a sitting party's codes follow. A bill left on a table it leaves stays
+ * there (D110): the answer names those tables so the screen can say "move it at the till". Only a
+ * venue with a till ever has a bill (a round sent to it, or the till's own reading), so a
+ * hand-made venue never gets the line (#331's plan).
+ */
+export async function changeTablesAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = ChangeTables.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const { venueId: id, reservationId, from, spotIds, swap, sameGuests, pin: typed } = parsed.data
+  return performReservationWrite(
+    { venueId: id, ...withPin(typed) },
+    {
+      type: 'reservation.change_tables',
+      reservationId,
+      from,
+      spotIds,
+      ...(swap === undefined ? {} : { swap }),
       ...(sameGuests === undefined ? {} : { sameGuests }),
     },
   )

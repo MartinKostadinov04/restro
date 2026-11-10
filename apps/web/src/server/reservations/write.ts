@@ -150,6 +150,22 @@ export type RvCommand =
       readonly spotIds?: readonly string[]
     }
   | {
+      /**
+       * "Change tables" (#331): the party's spots become `spotIds`, and in a swap the other
+       * party's become its own `spotIds`, in one write; `from` is what the screen saw.
+       */
+      readonly type: 'reservation.change_tables'
+      readonly reservationId: string
+      readonly from: readonly string[]
+      readonly spotIds: readonly string[]
+      readonly swap?: {
+        readonly reservationId: string
+        readonly from: readonly string[]
+        readonly spotIds: readonly string[]
+      }
+      readonly sameGuests?: boolean
+    }
+  | {
       /** The Undo of "Free", and a party moved to other spots: both claim and open again (#329). */
       readonly type: 'reservation.hold_spots'
       readonly reservationId: string

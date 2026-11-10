@@ -175,6 +175,7 @@ export function pinFallActionOf(type: string, payload: unknown): PinFallAction |
       return 'waiting'
     case 'reservation.hold_spots':
     case 'reservation.release_spots':
+    case 'reservation.change_tables':
       return 'spots'
     case 'reservation.cancel':
       return 'cancel'

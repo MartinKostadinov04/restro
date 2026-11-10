@@ -58,6 +58,8 @@ const ACTION_OF: Readonly<Record<string, PinFallAction | null>> = {
   'reservation.set_pay_rule': 'pay_rule',
   'reservation.hold_spots': 'spots',
   'reservation.release_spots': 'spots',
+  // #331: changing a party's tables is the same tap as holding or freeing its spots.
+  'reservation.change_tables': 'spots',
   'waiting.add': 'waiting',
   'waiting.reorder': 'waiting',
   'block.save': 'block',

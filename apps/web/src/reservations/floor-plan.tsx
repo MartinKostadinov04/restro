@@ -36,6 +36,7 @@ import { FailedBlock, NothingHere } from '@/tonight/tab-parts'
 import type { BlockChoice } from './block-dialog'
 import { BlockDialog } from './block-dialog'
 import { BookingForm } from './booking-form'
+import { type ChangeTablesParty, ChangeTablesSheet } from './change-tables'
 import { useDoorActions } from './door-actions'
 import { KindSymbol, SpotTile, StateMark, stateTileClass } from './plan-shape'
 import { useSpotLine, useSpotStateWord } from './plan-words'
@@ -136,6 +137,8 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
   const [blocking, setBlocking] = useState<string | null>(null)
   // A booking begun from a spot ("Book this spot", #328): the form opens with the spot chosen.
   const [booking, setBooking] = useState<string | null>(null)
+  // A party whose tables are being changed from a spot's sheet (#331).
+  const [moving, setMoving] = useState<ChangeTablesParty | null>(null)
   const [failed, setFailed] = useState(false)
   const [loading, setLoading] = useState(false)
   const frameRef = useRef<HTMLDivElement | null>(null)
@@ -571,6 +574,14 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
                   })
               : null
           }
+          onChangeTables={
+            writable && frame.can.tonight
+              ? (reservationId, name) => {
+                  setOpenSpot(null)
+                  setMoving({ reservationId, name, day: plan.day })
+                }
+              : null
+          }
           onBook={
             mayBook
               ? () => {
@@ -612,6 +623,15 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
             setBooking(null)
             read(true)
           }}
+        />
+      )}
+      {moving === null ? null : (
+        <ChangeTablesSheet
+          frame={frame}
+          party={moving}
+          run={run}
+          onClose={() => setMoving(null)}
+          onChanged={() => read(true)}
         />
       )}
       {door.node}

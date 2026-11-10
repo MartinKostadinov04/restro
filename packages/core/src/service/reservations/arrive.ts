@@ -106,7 +106,10 @@ type PeekResult =
   | { readonly ok: false; readonly code: string }
 
 /** One reservation of this venue, read without locking it: the start of every handler here. */
-async function peekReservation(stx: ServiceTx, reservationId: string): Promise<Reservation | null> {
+export async function peekReservation(
+  stx: ServiceTx,
+  reservationId: string,
+): Promise<Reservation | null> {
   const [row] = await stx.tx
     .select()
     .from(reservations)
@@ -115,7 +118,7 @@ async function peekReservation(stx: ServiceTx, reservationId: string): Promise<R
 }
 
 /** The spots a reservation holds, read without locking anything. */
-async function peekHeldSpots(stx: ServiceTx, reservationId: string): Promise<string[]> {
+export async function peekHeldSpots(stx: ServiceTx, reservationId: string): Promise<string[]> {
   const rows = await stx.tx
     .select({ spotId: reservationSpots.spotId })
     .from(reservationSpots)
@@ -131,7 +134,7 @@ async function peekHeldSpots(stx: ServiceTx, reservationId: string): Promise<str
  * read before anything is locked. `openReservation` makes the same check under its locks afterwards
  * and is the authority; this one keeps a handler from opening tables for a night it may not write.
  */
-async function peekNight(
+export async function peekNight(
   stx: ServiceTx,
   serviceDate: string,
 ): Promise<
@@ -153,7 +156,7 @@ async function peekNight(
  * and nothing on the screen to say so. Closing is the other way round — a spot taken off the
  * floor has no table left to close — so those paths read `tableIds` on its own.
  */
-async function tablesOfSpots(
+export async function tablesOfSpots(
   stx: ServiceTx,
   spotIds: readonly string[],
 ): Promise<{ readonly tableIds: string[]; readonly allFound: boolean }> {
@@ -204,7 +207,7 @@ async function peekParty(
 }
 
 /** Two sets of spot ids, as the verify step compares them: order never matters. */
-function sameSpots(a: readonly string[], b: readonly string[]): boolean {
+export function sameSpots(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((one) => b.includes(one))
 }
 
@@ -215,7 +218,10 @@ function sameSpots(a: readonly string[], b: readonly string[]): boolean {
  * first table's pauses and `LockLedger` would throw. The loops that follow therefore walk the
  * tables in id order and claim nothing fresh below the pauses.
  */
-async function preClaimTableWork(stx: ServiceTx, tableIds: readonly string[]): Promise<void> {
+export async function preClaimTableWork(
+  stx: ServiceTx,
+  tableIds: readonly string[],
+): Promise<void> {
   if (tableIds.length === 0) return
   const sorted = [...tableIds].sort()
   await stx.rows.tableOrders(sorted)
@@ -223,7 +229,7 @@ async function preClaimTableWork(stx: ServiceTx, tableIds: readonly string[]): P
 }
 
 /** What the table work did, as the answer and the Log entry say it. */
-interface TableWork {
+export interface TableWork {
   /** Tables whose codes this command opened. */
   readonly opened: readonly string[]
   /** Tables whose sitting it ended and opened again ("New guests"). */
@@ -236,10 +242,16 @@ interface TableWork {
   readonly notAllowed: boolean
 }
 
-const noWork: TableWork = { opened: [], renewed: [], kept: [], closed: [], notAllowed: false }
+export const noWork: TableWork = {
+  opened: [],
+  renewed: [],
+  kept: [],
+  closed: [],
+  notAllowed: false,
+}
 
 /** The table work's facts as an answer's details, so every path words them the same way. */
-function workDetails(work: TableWork): ResultDetails {
+export function workDetails(work: TableWork): ResultDetails {
   return {
     opened: work.opened.join(','),
     renewed: work.renewed.join(','),
@@ -250,7 +262,7 @@ function workDetails(work: TableWork): ResultDetails {
 }
 
 /** The table work, or the refusal that stopped it before anything was written. */
-type TableWorkResult =
+export type TableWorkResult =
   | { readonly ok: true; readonly work: TableWork }
   | { readonly ok: false; readonly code: string; readonly details: ResultDetails }
 
@@ -268,7 +280,7 @@ type TableWorkResult =
  * people sit, and the table is somebody else's tap. Such a role cannot answer "new guests" with a
  * write it may not make, so that answer is refused.
  */
-async function openPartyTables(
+export async function openPartyTables(
   stx: ServiceTx,
   tableIds: readonly string[],
   sameGuests: SameGuests,
@@ -341,7 +353,7 @@ async function openPartyTables(
  * card form or lose the route of a held payment. A role without `tables.open_close` frees the
  * spots and leaves the codes open, which the screen says in the same line as the arrival's.
  */
-async function closePartyTables(
+export async function closePartyTables(
   stx: ServiceTx,
   tableIds: readonly string[],
 ): Promise<TableWorkResult> {

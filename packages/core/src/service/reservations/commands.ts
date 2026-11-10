@@ -20,11 +20,11 @@
 //
 // **Where the PIN falls is D141's own rule:** "if the tap only says where people are sitting
 // tonight, it is a tap; if it writes the booking book, touches money, touches a guest's details or
-// ends the night, it is four digits." So `quickOnSharedDevice` is set on the six taps — the status
-// moves and their Undo, the spots held and freed, the waiting list and its order — and on nothing
-// else: the booking book, the blocks and the night's end ask for the PIN on a shared device, and
-// the settings-class two for the person's own sign-in. Which commands are quick is pinned in
-// `commands.test.ts`.
+// ends the night, it is four digits." So `quickOnSharedDevice` is set on the taps — the status
+// moves and their Undo, the spots held, freed and changed, the waiting list and its order — and on
+// nothing else: the booking book, the blocks and the night's end ask for the PIN on a shared
+// device, and the settings-class two for the person's own sign-in. Which commands are quick is
+// pinned in `commands.test.ts`.
 //
 // **No guest event is recorded by any command here.** T84's event model (D142) is the guest
 // phone's: its nine kinds are the menu, the bag, Send, paying, a waiter call and the language, each
@@ -58,6 +58,7 @@ import {
   editReservation,
   restoreReservation,
 } from './book'
+import { changeTables } from './change-tables'
 import { addClosedDate, ClosedDateSchema, removeClosedDate } from './closed-dates'
 import { eraseGuest, saveGuest, setGuestPrivateNote } from './guests'
 import { sweepPassedNight } from './night'
@@ -570,6 +571,24 @@ export const RESERVATION_COMMANDS = {
     quickOnSharedDevice: true,
     idempotency: 'by_nature',
     handle: releaseReservationSpots,
+  }),
+  // "Change tables" (#331, D137): the party's spots become the ones the hostess saved, and in a
+  // swap the other party's too, in one write. The codes follow through the door's own paths; no
+  // bill moves (that is the till's, D110).
+  'reservation.change_tables': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('reservation.change_tables'),
+      reservationId,
+      from: spotIds,
+      spotIds,
+      swap: z.strictObject({ reservationId, from: spotIds, spotIds }).optional(),
+      sameGuests: sameGuests.optional(),
+    }),
+    origins: ['staff'],
+    permission: 'reservations.tonight',
+    quickOnSharedDevice: true,
+    idempotency: 'by_nature',
+    handle: changeTables,
   }),
   // The waiting list is a queue on `reservations`, not a table (D137): a walk-in with the Waiting
   // status and a fractional queue key.

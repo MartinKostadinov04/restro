@@ -1364,6 +1364,18 @@ export const ATTACKS: readonly Attack[] = [
       })
     },
   },
+  {
+    action: 'changeTablesAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.changeTablesAction({
+        venueId: x.id,
+        reservationId: x.reservation,
+        from: [],
+        spotIds: [x.spot],
+      })
+    },
+  },
 
   // Venues.
   {
@@ -2439,6 +2451,29 @@ export const MIXED: readonly Attack[] = [
         venueId: a.venues[0].id,
         reservationId: v.venues[0].reservation,
         spotIds: [v.venues[0].spot],
+      }),
+  },
+  {
+    action: 'changeTablesAction',
+    how: "my own venue, the victim's reservation and spot",
+    call: (v, a) =>
+      nightBook.changeTablesAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+        from: [],
+        spotIds: [v.venues[0].spot],
+      }),
+  },
+  {
+    action: 'changeTablesAction',
+    how: "my own reservation, swapped with the victim's",
+    call: (v, a) =>
+      nightBook.changeTablesAction({
+        venueId: a.venues[0].id,
+        reservationId: a.venues[0].reservation,
+        from: [],
+        spotIds: [],
+        swap: { reservationId: v.venues[0].reservation, from: [], spotIds: [a.venues[0].spot] },
       }),
   },
   // Guests (#333): my own venue, the victim's guest.
