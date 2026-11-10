@@ -8,6 +8,8 @@ import type { SpotPlace, SpotSymbol } from '@restro/core'
 import type {
   BookingChecks,
   FloorPlanRead,
+  GuestCard,
+  GuestListRead,
   PlanExtent,
   ReservationAccess,
   ReservationDetail,
@@ -66,6 +68,8 @@ export interface RvCan {
   readonly editPast: boolean
   /** `reservations.end_night`: close the night's book. */
   readonly endNight: boolean
+  /** `settings.guests`: the guest records, erasing a guest among them (#333; own sign-in only). */
+  readonly guests: boolean
 }
 
 /** What the screen needs beside the data: the venue, its clock, and what the actor holds. */
@@ -101,6 +105,7 @@ export function rvFrameOf(access: ReservationAccess, venueId: string): RvFrame {
       block: held.has('reservations.block'),
       editPast: held.has('reservations.edit_past'),
       endNight: held.has('reservations.end_night'),
+      guests: held.has('settings.guests'),
     },
   }
 }
@@ -179,6 +184,8 @@ export interface RvDetailView {
   /** Only for calling and writing: the sheet's own two buttons, nowhere else. */
   readonly phone: string | null
   readonly email: string | null
+  /** The guest record the booking is linked to, for the guest's card (#333); null without one. */
+  readonly guestId: string | null
   /** The spots it holds, as ids in the order of `row.spots`: what the edit form starts from. */
   readonly spotIds: readonly string[]
   /** The version the edit form is opened on; a save over another one is refused (#328). */
@@ -232,6 +239,7 @@ export function rvDetailView(detail: ReservationDetail, timezone: string): RvDet
     made: detail.madeBy === null ? null : whoView(detail.madeBy, null),
     phone: detail.row.phone,
     email: detail.email,
+    guestId: detail.row.guestId,
     spotIds: detail.spotIds,
     version: detail.version,
     mine: detail.mine,
@@ -429,6 +437,8 @@ export interface RvChecksView {
   readonly night: ReservationRefusal | null
   readonly seats: { readonly guests: number; readonly seats: number } | null
   readonly sameContact: { readonly name: string | null; readonly time: string } | null
+  /** The phone already belongs to a guest on the venue's list (#333). */
+  readonly listed: { readonly guestId: string; readonly name: string | null } | null
   readonly closedNight: boolean
   readonly beforeOpening: { readonly opens: string; readonly closes: string } | null
   readonly afterClosing: boolean
@@ -451,6 +461,7 @@ export function rvChecksView(checks: BookingChecks, timezone: string): RvChecksV
       checks.sameContact === null
         ? null
         : { name: checks.sameContact.name, time: clock(checks.sameContact.startsAt) ?? '' },
+    listed: checks.listed,
     closedNight: checks.closedNight,
     beforeOpening:
       checks.beforeOpening === null
@@ -471,5 +482,97 @@ export function rvChecksView(checks: BookingChecks, timezone: string): RvChecksV
             name: checks.taken.name,
             time: clock(checks.taken.from) ?? '',
           },
+  }
+}
+
+// ───────────────────────────────── guests and regulars (#333) ─────────────────────────────────
+
+/**
+ * One guest on the venue's list. The number is on the row here, unlike the night's list: this is
+ * the venue's own list of whom to call, every hostess may read it (D140), and the search narrows by
+ * it. The email stays on the card.
+ */
+export interface RvGuestRowView {
+  readonly id: string
+  readonly name: string | null
+  readonly phone: string | null
+  readonly regular: boolean
+  readonly archived: boolean
+  /** On the reader's own private list; false for anyone who keeps none. */
+  readonly mine: boolean
+}
+
+/** The venue's list, as one person reads it. */
+export interface RvGuestListView {
+  readonly rows: readonly RvGuestRowView[]
+  readonly hasMore: boolean
+  /** The reader keeps a private list here: the screen offers "My own list". */
+  readonly privateList: boolean
+}
+
+/** One booking on a guest's card. */
+export interface RvGuestBookingView {
+  readonly id: string
+  readonly status: ReservationStatus
+  /** The night (`YYYY-MM-DD`). */
+  readonly day: string
+  /** `HH:mm` in the venue's zone. */
+  readonly time: string
+  readonly partySize: number | null
+  readonly spots: readonly string[]
+}
+
+/** One guest's card. */
+export interface RvGuestCardView {
+  readonly id: string
+  readonly name: string | null
+  readonly phone: string | null
+  readonly email: string | null
+  readonly note: string | null
+  readonly regular: boolean
+  readonly archived: boolean
+  readonly came: number
+  readonly missed: number
+  readonly bookings: readonly RvGuestBookingView[]
+  /** The reader's own private list; null for anyone who keeps none here. */
+  readonly mine: { readonly onList: boolean; readonly note: string | null } | null
+}
+
+export function rvGuestListView(list: GuestListRead): RvGuestListView {
+  return {
+    rows: list.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      phone: row.phone,
+      regular: row.isRegular,
+      archived: row.archived,
+      mine: row.onMyList,
+    })),
+    hasMore: list.hasMore,
+    privateList: list.privateList,
+  }
+}
+
+export function rvGuestCardView(card: GuestCard, timezone: string): RvGuestCardView {
+  const clock = clockIn(timezone)
+  return {
+    id: card.id,
+    name: card.name,
+    phone: card.phone,
+    email: card.email,
+    note: card.note,
+    regular: card.isRegular,
+    archived: card.archived,
+    came: card.came,
+    missed: card.missed,
+    bookings: card.bookings.map((one) => ({
+      id: one.id,
+      status: one.status,
+      day: one.serviceDate,
+      time: clock(one.startsAt) ?? '',
+      partySize: one.partySize,
+      spots: one.spots,
+    })),
+    mine: card.mine,
   }
 }

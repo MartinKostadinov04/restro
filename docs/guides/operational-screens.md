@@ -93,6 +93,7 @@ The same job looks the same on every screen (D107): one pattern per job, chosen 
 | The state of many things at a glance (tables tonight) | A grid of status tiles, each an icon and one word (closed, open, needs you, money); a tap opens the thing. | none (new with Tonight) |
 | Who is acting on a shared device | The PIN sheet over the screen: the action as its title, its consequence in one sentence, "Enter your PIN" or "Enter a manager's PIN", a 3 × 4 pad, "Leave it"; it submits on the last digit; a wrong PIN clears and says what to do. | none (new with Tonight) |
 | A choice that is also the action (the scope of a pause) | A button that opens a menu of the options; the pick does it: two taps, no Select and no second button. | none (new with Tonight) |
+| Suggest an existing record while typing | A combobox over the field: three letters, the matches listed, the tap fills the rest, every filled field still editable, and a keyboard way through the list (2.1.1). | none (new with Guests, #333) |
 
 Checked by: the screen plan's Pattern line against this table before the ticket; the screenshot at review.
 

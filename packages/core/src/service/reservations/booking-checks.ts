@@ -28,7 +28,7 @@ import { readOrderingSettings } from '../../ordering-settings'
 import { serviceHoursOn } from '../../service-hours'
 import type { ReadInput } from '../night-read'
 import { closedDatesOf } from './closed-dates'
-import { phoneKeyOf } from './guests'
+import { phoneKeyOf, regionOfLocale } from './guests'
 import { coveredBy, heldStretch, overlaps } from './overlap'
 import { holdsOfNight } from './plan-read'
 import { openReservations, type ReservationReadRefusal } from './read'
@@ -79,6 +79,11 @@ export interface BookingChecks {
   readonly night: ReservationRefusal | null
   readonly seats: SeatsCheck | null
   readonly sameContact: SameContactCheck | null
+  /**
+   * A new booking's phone already belongs to a guest on the venue's list (#333): the booking
+   * will be his, and the form names him. Never for a changed booking, nor an erased guest.
+   */
+  readonly listed: { readonly guestId: string; readonly name: string | null } | null
   /** The venue is shut that night: its weekday is closed, or the date is a one-off closed one. */
   readonly closedNight: boolean
   /** The hour is before the venue opens that night; the hours it keeps, as instants. */
@@ -157,7 +162,8 @@ export async function readBookingChecks(
         : null
 
     // The same contact twice that night: by the phone's digits, or by the name as typed.
-    const phoneKey = input.phone === null ? null : phoneKeyOf(input.phone)
+    const phoneKey =
+      input.phone === null ? null : phoneKeyOf(input.phone, regionOfLocale(venue.defaultLocale))
     const typed = input.name?.trim().toLowerCase() ?? ''
     let sameContact: SameContactCheck | null = null
     if (phoneKey !== null || typed !== '') {
@@ -194,6 +200,23 @@ export async function readBookingChecks(
       if (hit !== undefined) {
         sameContact = { name: hit.label ?? hit.guestName, startsAt: hit.startsAt }
       }
+    }
+
+    // A phone already on the venue's list: the booking will join that guest's record.
+    let listed: BookingChecks['listed'] = null
+    if (phoneKey !== null && input.reservationId === undefined) {
+      const [known] = await tx
+        .select({ id: guests.id, name: guests.name })
+        .from(guests)
+        .where(
+          and(
+            eq(guests.venueId, reader.venue.id),
+            eq(guests.phoneKey, phoneKey),
+            isNull(guests.erasedAt),
+          ),
+        )
+        .limit(1)
+      if (known !== undefined) listed = { guestId: known.id, name: known.name }
     }
 
     // The hours: the venue's own, and its one-off closed dates.
@@ -276,6 +299,7 @@ export async function readBookingChecks(
         night,
         seats: seatsCheck,
         sameContact,
+        listed,
         closedNight,
         beforeOpening,
         afterClosing,

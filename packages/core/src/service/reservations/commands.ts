@@ -277,7 +277,10 @@ export const RESERVATION_COMMANDS = {
       archived: z.boolean().optional(),
     }),
     origins: ['staff'],
-    permission: 'settings.guests',
+    // The venue's list is everyone's who works the door (D140, #333): read, added to and edited
+    // with "working tonight's reservations". It touches a guest's details, so it is not quick on a
+    // shared device: the PIN names who changed the list (D141). Erasing stays `settings.guests`.
+    permission: 'reservations.tonight',
     idempotency: 'by_nature',
     handle: saveGuest,
   }),
@@ -320,6 +323,9 @@ export const RESERVATION_COMMANDS = {
       reason: code.nullable().optional(),
       spotIds: spotIds.optional(),
       ...party,
+      // The booking form's "Save to the regulars" tick (#333). Only on taking a booking, which asks
+      // for the PIN on a shared device: the waiting list's one tap never writes the regulars.
+      saveAsRegular: z.boolean().optional(),
     }),
     origins: ['staff'],
     // Taking a booking is the hostess's work (D141, #328): the same key as her floor.
