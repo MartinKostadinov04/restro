@@ -1,5 +1,11 @@
 # Designer audit, B3: migrations 0045, 0046, 0047
 
+> **The numbers in this record are the ones from before catch-up 8.** Merging or/foundation
+> into st/foundation renumbered the designer's three migrations to `0051_design_record`,
+> `0052_drop_menu_settings` and `0053_design_styles`; 0045-0047 now mean or/foundation's
+> guest events, reservations and shared devices. This file is left as it was written, as the
+> audit's own record. For the order to deploy in, read the audit plan's deploy section.
+
 **Who:** B3, the data and migrations agent, in the worktree `da-data` with the database `restro_da_data` (plus `restro_da_data_mess` and `restro_da_data_nobypass`, which I created) on localhost:54329.
 **Pin:** `7dccd3a4` (st/foundation). The base is `origin/or/foundation`, which ends at 0044.
 **Evidence:** the local branch `da/B3-tests` at `44bee87c`. It is never pushed.
