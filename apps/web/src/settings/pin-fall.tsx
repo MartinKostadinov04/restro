@@ -39,6 +39,7 @@ export const PIN_FALL_ROWS = [
   { action: 'put_back', fall: 'pin' },
   { action: 'copy', fall: 'pin' },
   { action: 'block', fall: 'pin' },
+  { action: 'pay_rule', fall: 'pin' },
   { action: 'end_night', fall: 'pin' },
 ] as const
 

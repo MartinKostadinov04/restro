@@ -53,6 +53,8 @@ const ACTION_OF: Readonly<Record<string, PinFallAction | null>> = {
   'reservation.seat_walk_in': 'walk_in',
   'reservation.set_guests': 'guest_count',
   'reservation.undo_arrival': 'status',
+  // #334: the pay rule a party carries is four digits of its own, D141's own line for money.
+  'reservation.set_pay_rule': 'pay_rule',
   'reservation.hold_spots': 'spots',
   'reservation.release_spots': 'spots',
   'waiting.add': 'waiting',
@@ -149,6 +151,7 @@ describe('where the PIN falls', () => {
       'put_back',
       'copy',
       'block',
+      'pay_rule',
       'end_night',
     ])
     expect(actionsBehindPin({ status: 'pin', create: 'tap', edit: 'tap' })).toEqual([
@@ -159,6 +162,7 @@ describe('where the PIN falls', () => {
       'put_back',
       'copy',
       'block',
+      'pay_rule',
       'end_night',
     ])
   })

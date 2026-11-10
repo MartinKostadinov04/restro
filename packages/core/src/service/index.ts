@@ -453,6 +453,16 @@ export {
   TurnMinutesSchema,
 } from './reservations/overlap'
 export {
+  type PayRuleBeaten,
+  PayRuleSchema,
+  payRuleAtTable,
+  payRuleBeatenAt,
+  payRuleCode,
+  payRuleInForce,
+  storedPayRule,
+  strictestPayRule,
+} from './reservations/pay-rule'
+export {
   actionsBehindPin,
   DEFAULT_PIN_FALL,
   fallOf,
@@ -505,6 +515,7 @@ export {
   type ReservationDetail,
   type ReservationHistoryLine,
   type ReservationNightRead,
+  type ReservationPayRuleRead,
   type ReservationReadRefusal,
   type ReservationRow,
   readReservationAccess,

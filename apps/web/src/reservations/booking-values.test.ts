@@ -37,6 +37,7 @@ const detail = (over: Partial<RvDetailView> = {}): RvDetailView => ({
   spotIds: ['sp_1', 'sp_2'],
   version: '2026-11-10T10:00:00.000Z',
   mine: false,
+  payRule: { rule: null, beaten: [] },
   history: [],
   ...over,
 })

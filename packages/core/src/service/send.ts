@@ -33,7 +33,7 @@ import { eq } from 'drizzle-orm'
 import { guestEventOutcome } from '../events'
 import { type AreaId, type BarId, newId, type TableId } from '../ids'
 import { readOrderingSettings } from '../ordering-settings'
-import { itemPaymentMode, payFirstApplies, readPayFirstSettings } from '../pay-first-settings'
+import { itemPaymentMode, payFirstRuleApplies, readPayFirstSettings } from '../pay-first-settings'
 import { guestNight, phonesMaySend } from '../service-hours'
 import { orderFromRow, type SendRequestLine, takeSentLines, tidyOrder } from '../table-order'
 import { readGuestFeatures } from '../theme'
@@ -47,6 +47,7 @@ import {
   type PayFirstSendPart,
   preparePayFirst,
 } from './pay-first'
+import { payRuleAtTable } from './reservations/pay-rule'
 import { accepted, refused, type ServiceResult } from './results'
 import {
   findDuplicate,
@@ -160,13 +161,22 @@ async function attemptSend(stx: ServiceTx, command: SendCommand): Promise<Servic
   // Pay-first items (#113): where pay-first applies at the table, an item paid first (its own
   // mode, else the venue's default) goes in the Send's pay-first part, never on the bill.
   const payFirstSettings = readPayFirstSettings(stx.venue.settings)
+  // The rule of the party sitting here, where one is in force on this sitting (#334, D135): a
+  // level between the table's own setting and its bar's, so a party told to pay first meets
+  // pay-first items even where the house puts everything on the bill — and a table with a setting
+  // of its own is untouched by it (`payFirstRuleAt`).
+  const partyRule = await payRuleAtTable(stx.tx, { tableId, sittingId: row.sittingId })
   const applies =
     table !== undefined &&
-    payFirstApplies(payFirstSettings, {
-      tableId: tableId as TableId,
-      barId: barId as BarId | null,
-      areaId: table.areaId as AreaId,
-    })
+    payFirstRuleApplies(
+      payFirstSettings,
+      {
+        tableId: tableId as TableId,
+        barId: barId as BarId | null,
+        areaId: table.areaId as AreaId,
+      },
+      partyRule,
+    )
   const isPayFirst = (line: { readonly itemId: string }) =>
     applies &&
     itemPaymentMode(menu.items.get(line.itemId)?.paymentMode, payFirstSettings) === 'pay_first'

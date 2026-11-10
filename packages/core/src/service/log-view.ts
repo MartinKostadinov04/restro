@@ -56,6 +56,7 @@ export const LOG_KIND_GROUP = {
   'reservation.status': 'orders',
   'reservation.spots': 'orders',
   'reservation.restored': 'orders',
+  'reservation.pay_rule': 'orders',
   'night.closed': 'orders',
   'plan.changed': 'settings',
   'spot.changed': 'settings',

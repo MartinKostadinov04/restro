@@ -20,6 +20,7 @@ import {
   type ReadTx,
   reservationSettings,
   reservationSpots,
+  reservations,
   sentOrders,
   sittings,
   spots,
@@ -29,8 +30,10 @@ import {
 } from '@restro/db'
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 
+import type { PayRule } from '../../pay-first-settings'
 import { open, type ReadInput } from '../night-read'
 import { holdsSpotNow } from './overlap'
+import { storedPayRule } from './pay-rule'
 import { holdsOfNight, nightBounds, planDayOf } from './plan-read'
 import { openReservations, type ReservationReadRefusal } from './read'
 import { nightWritable, type ReservationRefusal } from './rows'
@@ -108,6 +111,14 @@ export interface ArrivalChecks {
    * early seating sets a turn time long enough to swallow the gap.
    */
   readonly until: Date | null
+  /**
+   * The pay rule this party carries, or null where it carries none (#334, D135). Read so the
+   * same-guests question can say what happens to it: "yes" keeps the sitting and the rule follows
+   * them, "no" opens a new sitting and the table is back on the club's rule. Nothing is decided
+   * here — which level wins at the table is `payFirstRuleAt`'s, and whether the rule is in force on
+   * a sitting is `payRuleInForce`'s.
+   */
+  readonly payRule: PayRule | null
 }
 
 /** The tables of these spots, by spot id, with the names the screen shows. */
@@ -243,6 +254,19 @@ export async function readArrivalChecks(
               .orderBy(asc(reservationSpots.spotId))
           ).map((row) => row.spotId)
 
+    // The rule the party being seated carries, for the same-guests question's own words (#334).
+    const payRule =
+      input.reservationId === undefined
+        ? null
+        : storedPayRule(
+            (
+              await tx
+                .select({ payRule: reservations.payRule })
+                .from(reservations)
+                .where(eq(reservations.id, input.reservationId))
+            )[0]?.payRule ?? null,
+          )
+
     const bySpot = await tablesOfSpots(tx, reader.venue.id, spotIds)
     const wanted = [...new Set([...bySpot.values()].map((one) => one.tableId))].sort()
     const state = await openTables(tx, reader.venue.id, wanted)
@@ -312,6 +336,7 @@ export async function readArrivalChecks(
         onTheSpot,
         heldLater,
         until: fits && heldLater !== null ? heldLater.from : null,
+        payRule,
       },
     } as const
   })

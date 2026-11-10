@@ -198,7 +198,8 @@ test('“Add a party” writes a party onto the night’s list under “Waiting�
   await expect(row).toContainText('Waiting for')
   // A queue is a list of whom to ring next, so the number is on the row as a link (D137).
   await expect(row.getByTestId('rv-row-call')).toHaveAttribute('href', /^tel:/)
-  // A booking saved with no spot is a walk-in in the data: the tag would contradict the state.
+  // A party put on the list by hand is a walk-in in the data, but the row shows the state it is
+  // in: Waiting already says there is no spot, so a Walk-in tag would only repeat it.
   await expect(row).not.toContainText('Walk-in')
 })
 

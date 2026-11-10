@@ -1302,6 +1302,18 @@ export const ATTACKS: readonly Attack[] = [
     },
   },
   {
+    action: 'setPayRuleAction',
+    how: "how the victim's party pays",
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.setPayRuleAction({
+        venueId: x.id,
+        reservationId: x.reservation,
+        rule: 'pay_first',
+      })
+    },
+  },
+  {
     action: 'undoArrivalAction',
     call: (v) => {
       const x = v.venues[0]
@@ -2359,6 +2371,15 @@ export const MIXED: readonly Attack[] = [
         venueId: a.venues[0].id,
         reservationId: v.venues[0].reservation,
         partySize: 4,
+      }),
+  },
+  {
+    action: 'setPayRuleAction',
+    call: (v, a) =>
+      nightBook.setPayRuleAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+        rule: 'pay_first',
       }),
   },
   {

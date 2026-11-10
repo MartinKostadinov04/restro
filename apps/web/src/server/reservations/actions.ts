@@ -734,6 +734,41 @@ export async function freeSpotsAction(input: unknown): Promise<RvWriteResult> {
   )
 }
 
+// ───────────────────────────── the pay rule a party carries (#334) ─────────────────────────────
+
+const PayRule = z.strictObject({
+  venueId,
+  reservationId: idSchema('rv'),
+  /** On the bill, pay first, or null — the club's own rule (D122 §5, D135). */
+  rule: z.enum(['on_bill', 'pay_first']).nullable(),
+  /** The version the sheet was read on; a save over a newer one is refused `reservation_stale`. */
+  expectedVersion: z.iso.datetime().optional(),
+  pin,
+})
+
+/**
+ * Sets the pay rule this party carries, or takes it away so the club's own rule applies again
+ * (#334, D135). It is one level of D122 §5's resolution — under a table's own setting and over the
+ * bar's — and it holds for this sitting only. No amount and no payment: the reservation's money
+ * record stays empty in part 1 (D136). Its own permission, `reservations.pay_rule`, which a venue
+ * may give a hostess, is checked inside the transaction; on a shared device the PIN falls on it
+ * (D141), and the Log keeps who set it and what it was.
+ */
+export async function setPayRuleAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = PayRule.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const { venueId: id, reservationId, rule, expectedVersion, pin: typed } = parsed.data
+  return performReservationWrite(
+    { venueId: id, ...withPin(typed) },
+    {
+      type: 'reservation.set_pay_rule',
+      reservationId,
+      rule,
+      ...(expectedVersion === undefined ? {} : { expectedVersion }),
+    },
+  )
+}
+
 const SaveGuest = z.strictObject({
   venueId,
   /** Present when a guest already on the list is changed. */
