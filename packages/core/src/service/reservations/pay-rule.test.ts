@@ -6,7 +6,7 @@
 // the Log entry each change leaves, the refusals, and the sitting boundary end to end.
 import { randomUUID } from 'node:crypto'
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { hasDatabase } from '../../apply/test-database'
 import type { Id } from '../../ids'
@@ -246,7 +246,7 @@ describe.skipIf(!hasDatabase)('the pay rule a party carries (as the restro_app r
     planId = (await accept({ type: 'plan.save', name: 'Floor', makeCurrent: true }))
       .planId as string
     await accept({ type: 'spot_kind.save', key: 'table', label: 'Table', defaultSeats: 4 })
-    for (const [index, name] of ['D1', 'D2', 'D3', 'D4', 'D5'].entries()) {
+    for (const [index, name] of ['D1', 'D2', 'D3', 'D4'].entries()) {
       const details = await accept({
         type: 'spot.save',
         planId,
@@ -265,6 +265,31 @@ describe.skipIf(!hasDatabase)('the pay rule a party carries (as the restro_app r
 
   afterAll(async () => {
     await world?.close()
+  })
+
+  /**
+   * The floor, cleared between tests, exactly as `door.test.ts` clears it: every test brings its
+   * own party and leaves it sitting where it sat, which is what a night looks like but would hand
+   * the next test a `spot_taken`. In SQL as the owner on purpose — this is the file's own
+   * book-keeping, and sending it through the commands would test them with themselves.
+   */
+  afterEach(async () => {
+    if (world === undefined) return
+    await world.owner.query(
+      `update restro.reservation_spots set released_at = now()
+        where released_at is null and tenant_id = $1`,
+      [world.tenantId],
+    )
+    await world.owner.query(
+      `update restro.reservations set status = 'finished', ended_at = now()
+        where venue_id = $1 and status in ('requested', 'reserved', 'waiting', 'seated')`,
+      [world.venueId],
+    )
+    await world.owner.query(
+      `update restro.sittings set ended_at = now(), end_reason = 'staff_closed'
+        where venue_id = $1 and ended_at is null`,
+      [world.venueId],
+    )
   })
 
   it('keeps one Log entry for every change, with who and when, and none for a repeated tap', async () => {
@@ -294,7 +319,8 @@ describe.skipIf(!hasDatabase)('the pay rule a party carries (as the restro_app r
       ['on_bill', 'venue'],
     ])
     for (const line of log) {
-      expect(line.actor).toBe('user')
+      // Who: the person's own account, not the kind of actor.
+      expect(line.actor).toBe(`user:${ownerId}`)
       expect(line.at).toBeInstanceOf(Date)
       // Kept as long as the other levels' changes are (D122 §7): this is who decided a guest pays.
       expect(line.retention).toBe('record')
@@ -347,7 +373,7 @@ describe.skipIf(!hasDatabase)('the pay rule a party carries (as the restro_app r
       status: 'refused',
       code: 'kind_not_allowed',
     })
-    const gone = await book(['D4'])
+    const gone = await book([])
     await accept({ type: 'reservation.set_status', reservationId: gone, status: 'no_show' })
     expect(await setRule(gone, 'pay_first')).toMatchObject({
       status: 'refused',
@@ -357,15 +383,15 @@ describe.skipIf(!hasDatabase)('the pay rule a party carries (as the restro_app r
   })
 
   it('holds for the sitting the party was seated on, and stops at the next one', async () => {
-    const id = await book(['D5'])
+    const id = await book(['D1'])
     await accept({ type: 'reservation.set_pay_rule', reservationId: id, rule: 'pay_first' })
     // Closed: a rule is about a sitting, and a shut table has none.
-    expect(await tileOf(tableOf('D5'))).toBeNull()
+    expect(await tileOf(tableOf('D1'))).toBeNull()
     await accept({ type: 'reservation.arrive', reservationId: id })
-    expect(await tileOf(tableOf('D5'))).toEqual({ payFirst: true, level: 'reservation' })
+    expect(await tileOf(tableOf('D1'))).toEqual({ payFirst: true, level: 'reservation' })
     // "No, new guests" — ordering's own renewal (#329). The rule does not reach the new sitting.
-    await accept({ type: 'table.new_guests', tableId: tableOf('D5') })
-    expect(await tileOf(tableOf('D5'))).toEqual({ payFirst: false, level: 'venue' })
+    await accept({ type: 'table.new_guests', tableId: tableOf('D1') })
+    expect(await tileOf(tableOf('D1'))).toEqual({ payFirst: false, level: 'venue' })
     // And the party still carries it: what ended is this sitting, not the choice someone made.
     expect(await storedRuleOf(id)).toBe('pay_first')
   })
