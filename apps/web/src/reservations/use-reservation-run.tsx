@@ -62,7 +62,9 @@ export interface RvRunSpec {
   readonly refusal?: (
     error: string,
     details: Readonly<Record<string, unknown>> | undefined,
-  ) => string | null
+  ) => string | null | Promise<string | null>
+  /** It worked: the screen that asked closes its form, and reads again. */
+  readonly onDone?: (details: Extract<RvWriteResult, { ok: true }>['details']) => void
   /** Read the plan again, whatever the answer was: the screen never keeps a guess. */
   readonly after?: () => void
 }
@@ -88,9 +90,9 @@ export function useReservationRun({ device }: { device: boolean }): {
   const [busy, setBusy] = useState(false)
 
   const refuse = useCallback(
-    (spec: RvRunSpec, refused: RvRefused) => {
+    async (spec: RvRunSpec, refused: RvRefused) => {
       const text =
-        spec.refusal?.(refused.error, refused.details) ??
+        (await spec.refusal?.(refused.error, refused.details)) ??
         failureText(refused.error, refused.retryAfterSeconds)
       toast.error(text, { id: spec.id, duration: Number.POSITIVE_INFINITY, closeButton: true })
     },
@@ -135,7 +137,10 @@ export function useReservationRun({ device }: { device: boolean }): {
       const result = await attempt(() => spec.act(pin))
       setBusy(false)
       spec.after?.()
-      if (result.ok) accept(spec, result.who, pin)
+      if (result.ok) {
+        accept(spec, result.who, pin)
+        spec.onDone?.(result.details)
+      }
       return result
     },
     [accept],
@@ -156,7 +161,7 @@ export function useReservationRun({ device }: { device: boolean }): {
           setAsking(spec)
           return
         }
-        refuse(spec, result)
+        void refuse(spec, result)
       })
     },
     [device, go, refuse],
@@ -168,9 +173,12 @@ export function useReservationRun({ device }: { device: boolean }): {
         title={asking.pin.title}
         body={asking.pin.body}
         level="own"
-        wording={(error, retryAfterSeconds, details) =>
-          asking.refusal?.(error, details) ?? failureText(error, retryAfterSeconds)
-        }
+        wording={(error, retryAfterSeconds, details) => {
+          // A sentence that needs a read of its own comes later, as the toast; the sheet says the
+          // general one for it.
+          const own = asking.refusal?.(error, details)
+          return (typeof own === 'string' ? own : null) ?? failureText(error, retryAfterSeconds)
+        }}
         onLeave={() => setAsking(null)}
         onSubmit={async (pin) => {
           const result = await go(asking, pin)

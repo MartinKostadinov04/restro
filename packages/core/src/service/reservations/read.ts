@@ -71,6 +71,8 @@ export interface ReservationAccess {
   readonly today: string
   /** The venue switched on writing a night that has passed (D135); false with no settings yet. */
   readonly editPastNights: boolean
+  /** A booking taken by hand needs a phone (D135, the settings switch); true until it is turned off. */
+  readonly phoneRequired: boolean
 }
 
 /** One reservation as the night's list reads it. */
@@ -192,7 +194,12 @@ export async function openReservations(
   tx: ReadTx,
   input: ReadInput,
 ): Promise<
-  | { readonly ok: true; readonly reader: Reader; readonly editPastNights: boolean }
+  | {
+      readonly ok: true
+      readonly reader: Reader
+      readonly editPastNights: boolean
+      readonly phoneRequired: boolean
+    }
   | { readonly ok: false; readonly code: ReservationReadRefusal }
 > {
   const opened = await open(tx, input)
@@ -201,23 +208,32 @@ export async function openReservations(
     return { ok: false, code: 'permission_denied' }
   }
   const [settings] = await tx
-    .select({ editPastNights: reservationSettings.editPastNights })
+    .select({
+      editPastNights: reservationSettings.editPastNights,
+      phoneRequired: reservationSettings.phoneRequired,
+    })
     .from(reservationSettings)
     .where(eq(reservationSettings.venueId, opened.reader.venue.id))
   return {
     ok: true,
     reader: opened.reader,
     editPastNights: settings?.editPastNights ?? false,
+    phoneRequired: settings?.phoneRequired ?? true,
   }
 }
 
 /** The actor's access, as both night reads and the plan read (#327) hand it to a screen. */
-export const accessOf = (reader: Reader, editPastNights: boolean): ReservationAccess => ({
+export const accessOf = (
+  reader: Reader,
+  editPastNights: boolean,
+  phoneRequired = true,
+): ReservationAccess => ({
   venue: reader.venue,
   permissions: [...reader.held],
   device: reader.device,
   today: reader.today,
   editPastNights,
+  phoneRequired,
 })
 
 /** What the actor holds here, for the tab bar and the venue page. */
@@ -231,7 +247,10 @@ export async function readReservationAccess(
   return withTenant(pool, input.tenantId, async (tx) => {
     const opened = await openReservations(tx, input)
     return opened.ok
-      ? ({ ok: true, access: accessOf(opened.reader, opened.editPastNights) } as const)
+      ? ({
+          ok: true,
+          access: accessOf(opened.reader, opened.editPastNights, opened.phoneRequired),
+        } as const)
       : opened
   })
 }
@@ -304,7 +323,7 @@ export async function readReservationNight(
   return withTenant(pool, input.tenantId, async (tx) => {
     const opened = await openReservations(tx, input)
     if (!opened.ok) return opened
-    const { reader, editPastNights } = opened
+    const { reader, editPastNights, phoneRequired } = opened
     const now = input.now ?? new Date()
     const day = reservationDayOf(input.day, reader.today)
     const nightOf = and(
@@ -415,7 +434,7 @@ export async function readReservationNight(
 
     return {
       ok: true,
-      access: accessOf(reader, editPastNights),
+      access: accessOf(reader, editPastNights, phoneRequired),
       night: {
         day,
         today: reader.today,
@@ -482,8 +501,8 @@ export async function readReservationDetail(
   return withTenant(pool, input.tenantId, async (tx) => {
     const opened = await openReservations(tx, input)
     if (!opened.ok) return opened
-    const { reader, editPastNights } = opened
-    const access = accessOf(reader, editPastNights)
+    const { reader, editPastNights, phoneRequired } = opened
+    const access = accessOf(reader, editPastNights, phoneRequired)
     const now = input.now ?? new Date()
     const [row] = await tx
       .select({

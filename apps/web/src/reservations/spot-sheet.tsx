@@ -90,6 +90,7 @@ export function SpotSheet({
   day,
   busy,
   sayWhoBlocks,
+  onBook,
   onBlock,
   onUnblock,
   onClose,
@@ -106,6 +107,8 @@ export function SpotSheet({
    * A night that has passed says so in its own banner, so the line would only repeat it.
    */
   sayWhoBlocks: boolean
+  /** Opens the booking form with this spot chosen (#328); absent where this night cannot be booked. */
+  onBook: (() => void) | null
   /** Opens the Block dialog; absent where this role may not block. */
   onBlock: (() => void) | null
   /** Lifts the block that holds the spot now, by its reservation. */
@@ -222,6 +225,17 @@ export function SpotSheet({
 
   const buttons = (
     <>
+      {onBook !== null && spot.state !== 'blocked' ? (
+        <Button
+          type="button"
+          className={WRAPS}
+          disabled={busy}
+          data-testid="rv-book-spot"
+          onClick={onBook}
+        >
+          {t('bk_book_spot')}
+        </Button>
+      ) : null}
       {block !== null && onUnblock !== null ? (
         <Button
           type="button"

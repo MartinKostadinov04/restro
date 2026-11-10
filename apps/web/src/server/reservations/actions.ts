@@ -351,7 +351,8 @@ export async function saveBookingAction(input: unknown): Promise<RvWriteResult> 
     ...instantsOf(venue, body.day, body.time, body.until),
     partySize: body.partySize,
     note: body.note ?? null,
-    reason: body.reason ?? null,
+    // Left out, the reason stays as it was (a stored code the form does not offer is not wiped).
+    ...(body.reason === undefined ? {} : { reason: body.reason }),
     spotIds: body.spotIds,
     ...(changed.name ? { name: body.name } : {}),
     ...(changed.phone ? { phone } : {}),

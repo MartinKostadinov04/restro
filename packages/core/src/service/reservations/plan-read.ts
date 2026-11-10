@@ -393,8 +393,8 @@ export async function readFloorPlan(
   return withTenant(pool, input.tenantId, async (tx) => {
     const opened = await openReservations(tx, input)
     if (!opened.ok) return opened
-    const { reader, editPastNights } = opened
-    const access = accessOf(reader, editPastNights)
+    const { reader, editPastNights, phoneRequired } = opened
+    const access = accessOf(reader, editPastNights, phoneRequired)
     const now = input.now ?? new Date()
     const day = planDayOf(input.day, reader.today)
     const passed = day < reader.today
@@ -577,8 +577,8 @@ export async function readSpotHistory(
   return withTenant(pool, input.tenantId, async (tx) => {
     const opened = await openReservations(tx, input)
     if (!opened.ok) return opened
-    const { reader, editPastNights } = opened
-    const access = accessOf(reader, editPastNights)
+    const { reader, editPastNights, phoneRequired } = opened
+    const access = accessOf(reader, editPastNights, phoneRequired)
     const [spot] = await tx
       .select({ id: spots.id, name: spots.name })
       .from(spots)

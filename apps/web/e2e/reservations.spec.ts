@@ -155,8 +155,8 @@ test('the date moves to the night before, and the screen opens on today again', 
   await expect(rows(page).first()).toContainText('Тодорова')
   await expect(banner(page)).toHaveAttribute('data-kind', 'passed')
   await expect(banner(page)).toContainText('It can be read, not changed.')
-  // Nothing on a night that has passed offers to change it.
-  await expect(page.getByTestId('rv-new').first()).toBeDisabled()
+  // Nothing on a night that has passed offers to take or change a booking (#328).
+  await expect(page.getByTestId('rv-new')).toHaveCount(0)
 
   // Entering the tab again opens on today, whatever was chosen before (#326).
   await page.goto(`/venues/${venueId}?tab=tonight`)

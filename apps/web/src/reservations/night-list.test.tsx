@@ -44,6 +44,7 @@ const frame = (over: Partial<RvFrame> = {}): RvFrame => ({
   dayEndsAt: '07:00',
   device: false,
   editPastNights: false,
+  phoneRequired: true,
   can: can(),
   ...over,
 })
@@ -229,10 +230,23 @@ describe('what the role may do', () => {
     expect(screen.getAllByTestId('rv-new').length).toBeGreaterThan(0)
   })
 
-  it('offers it to nobody else, on an empty night either', () => {
+  it('offers it to a role that only works tonight (#328)', () => {
     draw(night(), { can: can({ manage: false }) })
+    expect(screen.getAllByTestId('rv-new').length).toBeGreaterThan(0)
+  })
+
+  it('offers it to a role that does not work tonight’s reservations to nobody, on an empty night either', () => {
+    draw(night(), { can: can({ tonight: false, manage: false }) })
     expect(screen.queryByTestId('rv-new')).toBeNull()
-    draw(night({ rows: [] }), { can: can({ manage: false }) })
+  })
+
+  it('offers no way to start one on an empty night to such a role', () => {
+    draw(night({ rows: [] }), { can: can({ tonight: false, manage: false }) })
+    expect(screen.queryByTestId('rv-new')).toBeNull()
+  })
+
+  it('does not offer it on a night that cannot be written', () => {
+    draw(night({ passed: true, today: false, refusal: 'night_passed' }))
     expect(screen.queryByTestId('rv-new')).toBeNull()
   })
 })

@@ -80,6 +80,8 @@ export interface RvFrame {
   readonly device: boolean
   /** The owner's switch: a night that has passed may be corrected. */
   readonly editPastNights: boolean
+  /** A booking taken by hand needs a phone (the owner's switch, on until turned off). */
+  readonly phoneRequired: boolean
   readonly can: RvCan
 }
 
@@ -92,6 +94,7 @@ export function rvFrameOf(access: ReservationAccess, venueId: string): RvFrame {
     dayEndsAt: access.venue.dayEndsAt,
     device: access.device,
     editPastNights: access.editPastNights,
+    phoneRequired: access.phoneRequired,
     can: {
       tonight: held.has('reservations.tonight'),
       manage: held.has('reservations.manage'),
