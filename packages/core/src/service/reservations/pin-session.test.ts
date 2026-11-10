@@ -115,6 +115,7 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
       status: 'reserved',
       partySize: 4,
       partyLabel: `Party ${hour}:${minute}`,
+      phone: '+359888765432',
     })
     return details.reservationId as Id<'rv'>
   }
@@ -165,11 +166,16 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
       status: 'reserved',
       partySize: 2,
       partyLabel: 'Another',
+      phone: '+359888765432',
     } as const
-    // Tonight's floor is not the booking book, and the booking book is not tonight's floor.
-    expect(await run(newBooking, person(tonightOnly))).toMatchObject({ code: 'permission_denied' })
+    // Taking a booking is the hostess's key (#328); changing one is the booking book's, and the
+    // book's key does not take one.
+    const edit = { type: 'reservation.edit', reservationId: party, partySize: 5 } as const
+    expect(await run(edit, person(tonightOnly))).toMatchObject({ code: 'permission_denied' })
     expect(await run(seat, person(tonightOnly))).toMatchObject({ status: 'accepted' })
-    expect(await run(newBooking, person(bookOnly))).toMatchObject({ status: 'accepted' })
+    expect(await run(newBooking, person(tonightOnly))).toMatchObject({ status: 'accepted' })
+    expect(await run(newBooking, person(bookOnly))).toMatchObject({ code: 'permission_denied' })
+    expect(await run(edit, person(bookOnly))).toMatchObject({ status: 'accepted' })
     // Blocking a spot and ending the night are keys of their own again.
     expect(
       await run({ type: 'block.remove', reservationId: party }, person(bookOnly)),
@@ -210,8 +216,8 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
     expect(
       await run({ type: 'reservation_night.close', serviceDate: NIGHT }, tablet()),
     ).toMatchObject({ code: 'pin_required' })
-    // Seating a walk-in is a tap in D141 but the booking book's permission in the code: a tablet
-    // with nobody on it is asked for the PIN, never told it may not (#324, the engine).
+    // Seating a walk-in is a tap in D141, and the hostess's key in the code (#328): the tablet's
+    // own account holds it, so the tap goes through. Taking a booking is four digits.
     expect(
       await run(
         {
@@ -222,6 +228,21 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
           status: 'seated',
           partySize: 2,
           partyLabel: 'Walk-in',
+        } as ServiceCommand,
+        tablet(),
+      ),
+    ).toMatchObject({ status: 'accepted' })
+    expect(
+      await run(
+        {
+          type: 'reservation.create',
+          serviceDate: NIGHT,
+          startsAt: at(23, 30),
+          kind: 'booking',
+          status: 'reserved',
+          partySize: 2,
+          partyLabel: 'By phone',
+          phone: '+359888765432',
         } as ServiceCommand,
         tablet(),
       ),

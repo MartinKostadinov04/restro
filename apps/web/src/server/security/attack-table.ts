@@ -1116,6 +1116,84 @@ export const ATTACKS: readonly Attack[] = [
     },
   },
 
+  // Taking and changing a booking (#328): the form's advice and the six writes of a booking's life,
+  // against the victim's venue, reservation and spot.
+  {
+    action: 'bookingChecksAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.bookingChecksAction({
+        venueId: x.id,
+        day: '2030-01-05',
+        time: '22:00',
+        spotIds: [x.spot],
+        reservationId: x.reservation,
+      })
+    },
+  },
+  {
+    action: 'saveBookingAction',
+    how: 'a new booking at the victim’s venue',
+    call: (v) =>
+      nightBook.saveBookingAction({
+        venueId: v.venues[0].id,
+        day: '2030-01-05',
+        time: '22:00',
+        name: 'Attacker',
+        phone: '+359888000111',
+        partySize: 2,
+        spotIds: [v.venues[0].spot],
+      }),
+  },
+  {
+    action: 'cancelBookingAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.cancelBookingAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+  {
+    action: 'deleteBookingAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.deleteBookingAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+  {
+    action: 'restoreBookingAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.restoreBookingAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+  {
+    action: 'copyBookingAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.copyBookingAction({
+        venueId: x.id,
+        reservationId: x.reservation,
+        day: '2030-01-05',
+        time: '22:00',
+        spotIds: [x.spot],
+      })
+    },
+  },
+  {
+    action: 'noShowAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.noShowAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+  {
+    action: 'putBackAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.putBackAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+
   // Venues.
   {
     action: 'createVenueAction',
@@ -2024,5 +2102,83 @@ export const MIXED: readonly Attack[] = [
     action: 'unblockSpotAction',
     call: (v, a) =>
       nightBook.unblockSpotAction({ venueId: a.venues[0].id, reservationId: v.venues[0].block }),
+  },
+
+  // Taking and changing a booking (#328): my own venue, the victim's reservation and spot.
+  {
+    action: 'bookingChecksAction',
+    call: (v, a) =>
+      nightBook.bookingChecksAction({
+        venueId: a.venues[0].id,
+        day: '2030-01-05',
+        time: '22:00',
+        spotIds: [v.venues[0].spot],
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'saveBookingAction',
+    call: (v, a) =>
+      nightBook.saveBookingAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+        day: '2030-01-05',
+        time: '22:00',
+        name: 'Attacker',
+        phone: '+359888000111',
+        partySize: 2,
+        spotIds: [v.venues[0].spot],
+      }),
+  },
+  {
+    action: 'cancelBookingAction',
+    call: (v, a) =>
+      nightBook.cancelBookingAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'deleteBookingAction',
+    call: (v, a) =>
+      nightBook.deleteBookingAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'restoreBookingAction',
+    call: (v, a) =>
+      nightBook.restoreBookingAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'copyBookingAction',
+    call: (v, a) =>
+      nightBook.copyBookingAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+        day: '2030-01-05',
+        time: '22:00',
+        spotIds: [v.venues[0].spot],
+      }),
+  },
+  {
+    action: 'noShowAction',
+    call: (v, a) =>
+      nightBook.noShowAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'putBackAction',
+    call: (v, a) =>
+      nightBook.putBackAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+      }),
   },
 ]

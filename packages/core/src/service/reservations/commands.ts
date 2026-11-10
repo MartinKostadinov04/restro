@@ -5,8 +5,10 @@
 // (`write-targets.test.ts`) fails the build if anything tries.
 //
 // The permissions are D141's eight, no more:
-// - `reservations.tonight` — the hostess's taps: arrivals, the waiting list, the plan's spots;
-// - `reservations.manage` — the booking book: create, edit, cancel, take out, restore, copy;
+// - `reservations.tonight` — the hostess's taps: arrivals, the waiting list, the plan's spots, and
+//   **taking** a booking (create, copy) and taking out one she made herself (#328);
+// - `reservations.manage` — the booking book: edit, cancel, take out another's, restore. Whoever holds
+//   it works any booking, whoever took it (D135);
 // - `reservations.block` — blocking and unblocking spots;
 // - `reservations.end_night` — ending the night (D138);
 // - `reservations.edit_past` — not a command's own key: the handler reads it when the night it is
@@ -315,11 +317,13 @@ export const RESERVATION_COMMANDS = {
       status: z.enum(['reserved', 'waiting', 'seated']),
       partySize,
       note: note.optional(),
+      reason: code.nullable().optional(),
       spotIds: spotIds.optional(),
       ...party,
     }),
     origins: ['staff'],
-    permission: 'reservations.manage',
+    // Taking a booking is the hostess's work (D141, #328): the same key as her floor.
+    permission: 'reservations.tonight',
     idempotency: 'by_nature',
     handle: createReservation,
   }),
@@ -327,12 +331,19 @@ export const RESERVATION_COMMANDS = {
     schema: z.strictObject({
       type: z.literal('reservation.edit'),
       reservationId,
+      // The version the form was opened on (`version.ts`): an edit over somebody's change is
+      // refused `reservation_stale`.
+      expectedVersion: instant.optional(),
       startsAt: instant.optional(),
       endsAt: instant.nullable().optional(),
       turnMinutes: TurnMinutesSchema.max(1440).nullable().optional(),
       partySize: partySize.optional(),
       note: note.optional(),
       partyLabel: z.string().trim().min(1).max(80).nullable().optional(),
+      name: z.string().trim().min(1).max(80).optional(),
+      phone: z.string().min(6).max(40).nullable().optional(),
+      reason: code.nullable().optional(),
+      spotIds: spotIds.optional(),
     }),
     origins: ['staff'],
     permission: 'reservations.manage',
@@ -359,7 +370,10 @@ export const RESERVATION_COMMANDS = {
       reason: code.nullable().optional(),
     }),
     origins: ['staff'],
-    permission: 'reservations.manage',
+    // The engine lets in whoever works tonight's reservations; the handler then asks for
+    // `reservations.manage` unless the line is the actor's own (D135: deleting another's stays the
+    // manager's). The check needs the row, so it is made inside the transaction.
+    permission: 'reservations.tonight',
     idempotency: 'by_nature',
     handle: deleteReservation,
   }),
@@ -376,9 +390,12 @@ export const RESERVATION_COMMANDS = {
       reservationId,
       serviceDate,
       startsAt: instant,
+      endsAt: instant.nullable().optional(),
+      spotIds: spotIds.optional(),
     }),
     origins: ['staff'],
-    permission: 'reservations.manage',
+    // A copy is a booking taken again on another night: the hostess's key, like taking one (#328).
+    permission: 'reservations.tonight',
     idempotency: 'by_nature',
     handle: copyReservation,
   }),

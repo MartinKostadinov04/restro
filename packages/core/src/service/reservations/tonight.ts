@@ -61,6 +61,16 @@ export async function setReservationStatus(
   const move = moveStatus(from, command.status)
   if (!move.ok) return refuse(move.code)
   const to = move.status
+  // Calling a booking off is "managing bookings" whichever door it comes through (D141, #328): the
+  // Cancel button and this status move are one act. A walk-in leaving the queue is not a booking
+  // and stays a tap of the floor.
+  if (
+    to === 'cancelled' &&
+    reservation.kind === 'booking' &&
+    !stx.permissions.has('reservations.manage')
+  ) {
+    return refuse('permission_denied')
+  }
   let freed: string[] = []
   if (to === 'seated') {
     const held = await spotsOfReservation(stx, reservation.id)
@@ -462,8 +472,9 @@ export async function removeBlock(
   const existing = await lockReservation(stx, command.reservationId)
   if (existing === null || existing.deletedAt !== null) return refuse('reservation_missing')
   if (existing.kind !== 'block') return refuse('kind_not_allowed')
-  return await cancelReservation(stx, {
-    reservationId: existing.id,
-    reason: command.reason ?? 'block_lifted',
-  })
+  return await cancelReservation(
+    stx,
+    { reservationId: existing.id, reason: command.reason ?? 'block_lifted' },
+    { block: true },
+  )
 }

@@ -1,4 +1,5 @@
-// The writes of Venue › Reservations (#327: blocking a spot and lifting a block), server side.
+// The writes of Venue › Reservations (#327: blocking a spot and lifting a block; #328: taking,
+// changing, calling off, taking out, bringing back and copying a booking, and a no-show), server side.
 // Every write is the service write path's (`applyService`, rule 1), which checks the permission
 // inside its own transaction (`reservations.block`) and appends the Log entry; this file only says
 // who is asking and shapes the answer. No POS is called: a reservation is Restro's own data (D134).
@@ -38,6 +39,53 @@ export type RvCommand =
       readonly reason?: string | null
     }
   | { readonly type: 'block.remove'; readonly reservationId: string; readonly reason?: string }
+  | {
+      readonly type: 'reservation.create'
+      readonly serviceDate: string
+      readonly startsAt: string
+      readonly endsAt?: string | null
+      readonly kind: 'booking'
+      readonly status: 'reserved'
+      readonly partySize: number
+      readonly note?: string | null
+      readonly reason?: string | null
+      readonly spotIds: readonly string[]
+      /** With a number the name is the guest's (the record holds it); without, the booking's. */
+      readonly phone?: string
+      readonly guestName?: string
+      readonly partyLabel?: string
+    }
+  | {
+      readonly type: 'reservation.edit'
+      readonly reservationId: string
+      /** The version the form was opened on: another one is refused `reservation_stale`. */
+      readonly expectedVersion?: string
+      readonly startsAt?: string
+      readonly endsAt?: string | null
+      readonly partySize?: number
+      readonly note?: string | null
+      readonly reason?: string | null
+      readonly name?: string
+      readonly phone?: string | null
+      readonly spotIds?: readonly string[]
+    }
+  | { readonly type: 'reservation.cancel'; readonly reservationId: string }
+  | { readonly type: 'reservation.delete'; readonly reservationId: string }
+  | { readonly type: 'reservation.restore'; readonly reservationId: string }
+  | {
+      readonly type: 'reservation.copy'
+      readonly reservationId: string
+      readonly serviceDate: string
+      readonly startsAt: string
+      readonly endsAt?: string | null
+      readonly spotIds?: readonly string[]
+    }
+  | {
+      readonly type: 'reservation.set_status'
+      readonly reservationId: string
+      readonly status: 'no_show'
+    }
+  | { readonly type: 'reservation.put_back'; readonly reservationId: string }
 
 /** Why a PIN did not name a person (`identifyStaffByPin`'s codes). */
 export type RvPinRefusal = 'not_shared_device' | 'pin_wrong' | 'device_waiting'

@@ -25,9 +25,10 @@ import {
   reservationSpots,
   reservations,
   spots,
+  staffMembers,
   withTenant,
 } from '@restro/db'
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 
 import { open, type Reader, type ReadInput, type Who, whoOf } from '../night-read'
 import type { Permission } from '../permissions'
@@ -40,6 +41,7 @@ import {
   type ReservationStatus,
   UNDONE_ARRIVAL_REASON,
 } from './status'
+import { reservationVersion } from './version'
 
 /** Why one of these reads was refused. */
 export type ReservationReadRefusal = TonightRefusal
@@ -49,6 +51,9 @@ export type ReservationReadRefusal = TonightRefusal
  * for the plan, so the two never disagree: it lives in `plan-state.ts`, which is pure.
  */
 export { LATE_AFTER_MINUTES } from './plan-state'
+
+/** How many deleted lines of one night the bin shows at most. */
+export const MAX_BIN_ROWS = 100
 
 /** How many nights of one venue one read returns at most. */
 export const MAX_NIGHT_ROWS = 500
@@ -66,6 +71,8 @@ export interface ReservationAccess {
   readonly today: string
   /** The venue switched on writing a night that has passed (D135); false with no settings yet. */
   readonly editPastNights: boolean
+  /** A booking taken by hand needs a phone (D135, the settings switch); true until it is turned off. */
+  readonly phoneRequired: boolean
 }
 
 /** One reservation as the night's list reads it. */
@@ -122,6 +129,8 @@ export interface ReservationNightRead {
   readonly settingsMissing: boolean
   /** The night's parties in arrival order (the earliest hour first), blocks left out. */
   readonly rows: readonly ReservationRow[]
+  /** The night's lines taken out of the book, for whoever may bring one back (D135). */
+  readonly deleted: readonly ReservationRow[]
   readonly counts: ReservationCounts
   /** More parties than were returned: a night of over `MAX_NIGHT_ROWS` lines. */
   readonly hasMore: boolean
@@ -149,6 +158,12 @@ export interface ReservationDetail {
   readonly madeBy: Who | null
   /** The guest's email, where the venue's record holds one (D140). */
   readonly email: string | null
+  /** The spots it holds, as ids in the same order as `row.spots`: what an edit form starts from. */
+  readonly spotIds: readonly string[]
+  /** The version an edit form is opened on (`version.ts`); a save over another one is refused. */
+  readonly version: string
+  /** The actor took this booking themselves, so may take it out without managing bookings. */
+  readonly mine: boolean
   /** Its own history, oldest first, from the Log: never a guest's contact details (D140). */
   readonly history: readonly ReservationHistoryLine[]
 }
@@ -179,7 +194,12 @@ export async function openReservations(
   tx: ReadTx,
   input: ReadInput,
 ): Promise<
-  | { readonly ok: true; readonly reader: Reader; readonly editPastNights: boolean }
+  | {
+      readonly ok: true
+      readonly reader: Reader
+      readonly editPastNights: boolean
+      readonly phoneRequired: boolean
+    }
   | { readonly ok: false; readonly code: ReservationReadRefusal }
 > {
   const opened = await open(tx, input)
@@ -188,23 +208,32 @@ export async function openReservations(
     return { ok: false, code: 'permission_denied' }
   }
   const [settings] = await tx
-    .select({ editPastNights: reservationSettings.editPastNights })
+    .select({
+      editPastNights: reservationSettings.editPastNights,
+      phoneRequired: reservationSettings.phoneRequired,
+    })
     .from(reservationSettings)
     .where(eq(reservationSettings.venueId, opened.reader.venue.id))
   return {
     ok: true,
     reader: opened.reader,
     editPastNights: settings?.editPastNights ?? false,
+    phoneRequired: settings?.phoneRequired ?? true,
   }
 }
 
 /** The actor's access, as both night reads and the plan read (#327) hand it to a screen. */
-export const accessOf = (reader: Reader, editPastNights: boolean): ReservationAccess => ({
+export const accessOf = (
+  reader: Reader,
+  editPastNights: boolean,
+  phoneRequired = true,
+): ReservationAccess => ({
   venue: reader.venue,
   permissions: [...reader.held],
   device: reader.device,
   today: reader.today,
   editPastNights,
+  phoneRequired,
 })
 
 /** What the actor holds here, for the tab bar and the venue page. */
@@ -218,7 +247,10 @@ export async function readReservationAccess(
   return withTenant(pool, input.tenantId, async (tx) => {
     const opened = await openReservations(tx, input)
     return opened.ok
-      ? ({ ok: true, access: accessOf(opened.reader, opened.editPastNights) } as const)
+      ? ({
+          ok: true,
+          access: accessOf(opened.reader, opened.editPastNights, opened.phoneRequired),
+        } as const)
       : opened
   })
 }
@@ -257,6 +289,25 @@ async function spotsOf(
   return held
 }
 
+/** The columns the night's list reads of every reservation. */
+const nightColumns = {
+  id: reservations.id,
+  kind: reservations.kind,
+  status: reservations.status,
+  startsAt: reservations.startsAt,
+  endsAt: reservations.endsAt,
+  partySize: reservations.partySize,
+  partyLabel: reservations.partyLabel,
+  guestId: reservations.guestId,
+  guestName: guests.name,
+  guestPhone: guests.phone,
+  note: reservations.note,
+  reason: reservations.reason,
+  seatedAt: reservations.seatedAt,
+  endedAt: reservations.endedAt,
+  updatedAt: reservations.updatedAt,
+} as const
+
 /** One night of a venue, with the nights around it that hold something. */
 export async function readReservationNight(
   pool: DbPool,
@@ -272,7 +323,7 @@ export async function readReservationNight(
   return withTenant(pool, input.tenantId, async (tx) => {
     const opened = await openReservations(tx, input)
     if (!opened.ok) return opened
-    const { reader, editPastNights } = opened
+    const { reader, editPastNights, phoneRequired } = opened
     const now = input.now ?? new Date()
     const day = reservationDayOf(input.day, reader.today)
     const nightOf = and(
@@ -283,23 +334,7 @@ export async function readReservationNight(
       sql`${reservations.kind} <> 'block'`,
     )
     const found = await tx
-      .select({
-        id: reservations.id,
-        kind: reservations.kind,
-        status: reservations.status,
-        startsAt: reservations.startsAt,
-        endsAt: reservations.endsAt,
-        partySize: reservations.partySize,
-        partyLabel: reservations.partyLabel,
-        guestId: reservations.guestId,
-        guestName: guests.name,
-        guestPhone: guests.phone,
-        note: reservations.note,
-        reason: reservations.reason,
-        seatedAt: reservations.seatedAt,
-        endedAt: reservations.endedAt,
-        updatedAt: reservations.updatedAt,
-      })
+      .select(nightColumns)
       .from(reservations)
       .leftJoin(guests, eq(guests.id, reservations.guestId))
       .where(nightOf)
@@ -311,7 +346,10 @@ export async function readReservationNight(
       tx,
       page.map((row) => row.id),
     )
-    const rows: ReservationRow[] = page.map((row) => {
+    const toRow = (
+      row: (typeof page)[number],
+      spotsHeld: Map<string, string[]> = held,
+    ): ReservationRow => {
       const status = row.status as ReservationStatus
       const party = {
         id: row.id,
@@ -320,19 +358,45 @@ export async function readReservationNight(
         startsAt: row.startsAt,
         endsAt: row.endsAt,
         partySize: row.partySize,
-        name: row.guestName ?? row.partyLabel,
+        name: row.partyLabel ?? row.guestName,
         phone: row.guestPhone,
         guestId: row.guestId,
         note: row.note,
         reason: row.reason,
-        spots: held.get(row.id) ?? [],
+        spots: spotsHeld.get(row.id) ?? [],
         seatedAt: row.seatedAt,
         endedAt: row.endedAt,
         cancelledByVenue: status === 'cancelled' && row.reason === UNDONE_ARRIVAL_REASON,
         updatedAt: row.updatedAt,
       }
       return { ...party, late: isLate(party, now) }
-    })
+    }
+    const rows: ReservationRow[] = page.map((row) => toRow(row))
+
+    // The bin (D135: Delete is a real button, and a manager brings a line back): the night's lines
+    // that were taken out of the book, for whoever can bring one back. A shared device is offered
+    // them too — the PIN names the person, and the write decides.
+    const binned =
+      reader.held.has('reservations.manage') || reader.device
+        ? await tx
+            .select(nightColumns)
+            .from(reservations)
+            .leftJoin(guests, eq(guests.id, reservations.guestId))
+            .where(
+              and(
+                eq(reservations.venueId, reader.venue.id),
+                eq(reservations.serviceDate, day),
+                isNotNull(reservations.deletedAt),
+                sql`${reservations.kind} <> 'block'`,
+              ),
+            )
+            .orderBy(asc(reservations.startsAt), asc(reservations.id))
+            .limit(MAX_BIN_ROWS)
+        : []
+    const binnedSpots = await spotsOf(
+      tx,
+      binned.map((row) => row.id),
+    )
 
     const byStatus = emptyByStatus()
     let late = 0
@@ -370,7 +434,7 @@ export async function readReservationNight(
 
     return {
       ok: true,
-      access: accessOf(reader, editPastNights),
+      access: accessOf(reader, editPastNights, phoneRequired),
       night: {
         day,
         today: reader.today,
@@ -379,12 +443,34 @@ export async function readReservationNight(
         writable,
         settingsMissing: settings === undefined,
         rows,
+        deleted: binned.map((row) => toRow(row, binnedSpots)),
         counts: { all: rows.length, late, byStatus },
         hasMore: found.length > page.length,
         days: days.map((row) => row.day),
       },
     } as const
   })
+}
+
+/**
+ * The staff member the reader is: a PIN on a shared device names one, a signed-in person is matched
+ * to their own staff record. Null for the device's own account and for Restro's team — their PIN or
+ * their permissions decide, not a booking being theirs (`staffMemberOf` is the write side's).
+ */
+async function staffMemberFor(tx: ReadTx, input: ReadInput): Promise<string | null> {
+  if (input.actor.kind === 'staff') return input.actor.staffMemberId
+  if (input.actor.kind !== 'user') return null
+  const [member] = await tx
+    .select({ id: staffMembers.id })
+    .from(staffMembers)
+    .where(
+      and(
+        eq(staffMembers.tenantId, input.tenantId),
+        eq(staffMembers.userId, input.actor.userId),
+        isNull(staffMembers.archivedAt),
+      ),
+    )
+  return member?.id ?? null
 }
 
 /** The Log kinds a reservation's own history is made of (#323). */
@@ -415,8 +501,8 @@ export async function readReservationDetail(
   return withTenant(pool, input.tenantId, async (tx) => {
     const opened = await openReservations(tx, input)
     if (!opened.ok) return opened
-    const { reader, editPastNights } = opened
-    const access = accessOf(reader, editPastNights)
+    const { reader, editPastNights, phoneRequired } = opened
+    const access = accessOf(reader, editPastNights, phoneRequired)
     const now = input.now ?? new Date()
     const [row] = await tx
       .select({
@@ -450,6 +536,16 @@ export async function readReservationDetail(
       )
     if (row === undefined) return { ok: true, access, detail: null } as const
     const held = await spotsOf(tx, [row.id])
+    const heldRows = await tx
+      .select({
+        spotId: reservationSpots.spotId,
+        updatedAt: reservationSpots.updatedAt,
+        released: reservationSpots.releasedAt,
+      })
+      .from(reservationSpots)
+      .innerJoin(spots, eq(spots.id, reservationSpots.spotId))
+      .where(eq(reservationSpots.reservationId, row.id))
+      .orderBy(asc(spots.name))
     const status = row.status as ReservationStatus
     const party = {
       id: row.id,
@@ -458,7 +554,7 @@ export async function readReservationDetail(
       startsAt: row.startsAt,
       endsAt: row.endsAt,
       partySize: row.partySize,
-      name: row.guestName ?? row.partyLabel,
+      name: row.partyLabel ?? row.guestName,
       phone: row.guestPhone,
       guestId: row.guestId,
       note: row.note,
@@ -503,6 +599,15 @@ export async function readReservationDetail(
         serviceDate: row.serviceDate,
         madeBy: row.madeBy === null ? null : (named.get(`staff:${row.madeBy}`) ?? null),
         email: row.guestEmail,
+        spotIds: heldRows.filter((one) => one.released === null).map((one) => one.spotId),
+        version: reservationVersion(
+          row.updatedAt,
+          heldRows.reduce<Date | null>(
+            (newest, one) => (newest === null || one.updatedAt > newest ? one.updatedAt : newest),
+            null,
+          ),
+        ),
+        mine: row.madeBy !== null && row.madeBy === (await staffMemberFor(tx, input)),
         history: entries.map((entry) => ({
           seq: entry.seq,
           at: entry.at,

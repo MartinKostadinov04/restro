@@ -3,7 +3,9 @@
 // data, D135). The service read side refuses what the actor does not hold, so a night a role may
 // not work never gets its data.
 import {
+  type BookingChecksInput,
   type ReservationAccess,
+  readBookingChecks,
   readFloorPlan,
   readReservationAccess,
   readReservationDetail,
@@ -15,11 +17,13 @@ import type { Venue } from '@restro/db'
 
 import { getPool } from '../db'
 import {
+  type RvChecksView,
   type RvDetailView,
   type RvFrame,
   type RvNightView,
   type RvPlanView,
   type RvSpotHistoryList,
+  rvChecksView,
   rvDetailView,
   rvFrameOf,
   rvNightView,
@@ -132,4 +136,17 @@ export async function loadSpotHistory(
     frame: rvFrameOf(read.access, scope.venue.id),
     history: rvSpotHistoryView(read.spot, read.history, read.access.venue.timezone),
   }
+}
+
+/** What the booking form is told about the booking as it stands (#328): warnings, and what would be refused. */
+export async function loadBookingChecks(
+  scope: RvScope,
+  query: Omit<BookingChecksInput, 'tenantId' | 'venueId' | 'actor' | 'now'>,
+): Promise<
+  | { readonly ok: true; readonly checks: RvChecksView }
+  | { readonly ok: false; readonly code: string }
+> {
+  const read = await readBookingChecks(getPool(), { ...inputOf(scope), ...query })
+  if (!read.ok) return read
+  return { ok: true, checks: rvChecksView(read.checks, scope.venue.timezone) }
 }

@@ -33,6 +33,7 @@ import { FailedBlock, NothingHere } from '@/tonight/tab-parts'
 
 import type { BlockChoice } from './block-dialog'
 import { BlockDialog } from './block-dialog'
+import { BookingForm } from './booking-form'
 import { KindSymbol, SpotTile, StateMark, stateTileClass } from './plan-shape'
 import { useSpotLine, useSpotStateWord } from './plan-words'
 import { usePlanView } from './plan-zoom'
@@ -130,6 +131,8 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
   const [kindKey, setKindKey] = useState<string>('all')
   const [openSpot, setOpenSpot] = useState<string | null>(null)
   const [blocking, setBlocking] = useState<string | null>(null)
+  // A booking begun from a spot ("Book this spot", #328): the form opens with the spot chosen.
+  const [booking, setBooking] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
   const [loading, setLoading] = useState(false)
   const frameRef = useRef<HTMLDivElement | null>(null)
@@ -213,6 +216,7 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
   /** Whether this night may be written at all (D135, D141), and whether this person blocks. */
   const writable = !plan.passed || (frame.editPastNights && frame.can.editPast)
   const mayBlock = writable && (frame.can.block || frame.device)
+  const mayBook = writable && frame.can.tonight && !plan.tooOld && plan.planId !== null
 
   /** The refusal that names the party in the way: the whole point of the sentence (#327). */
   const takenText = useCallback(
@@ -478,6 +482,14 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
           day={plan.day}
           busy={busy}
           sayWhoBlocks={writable && !mayBlock}
+          onBook={
+            mayBook
+              ? () => {
+                  setOpenSpot(null)
+                  setBooking(spot.id)
+                }
+              : null
+          }
           onBlock={blockNow}
           onUnblock={
             mayBlock
@@ -498,6 +510,19 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
           busy={busy}
           onLeave={() => setBlocking(null)}
           onBlock={(choice) => block(blocked, choice)}
+        />
+      )}
+      {booking === null ? null : (
+        <BookingForm
+          frame={frame}
+          mode={{ kind: 'new', day: plan.day, spotIds: [booking] }}
+          run={run}
+          busy={busy}
+          onClose={() => setBooking(null)}
+          onSaved={() => {
+            setBooking(null)
+            read(true)
+          }}
         />
       )}
       {pinSheet}

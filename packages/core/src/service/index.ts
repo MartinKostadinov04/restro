@@ -390,6 +390,14 @@ export {
   receiptsToBring,
 } from './receipt-rows'
 export { readReceiptsNotBrought, readReceiptsToBring } from './receipts'
+export {
+  type BookingChecks,
+  type BookingChecksInput,
+  readBookingChecks,
+  type SameContactCheck,
+  type SeatsCheck,
+  type TakenCheck,
+} from './reservations/booking-checks'
 export { CLOSED_DATES_MAX } from './reservations/closed-dates'
 export { phoneKeyOf } from './reservations/guests'
 export {

@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { hasDatabase } from '../../apply/test-database'
-import type { Id } from '../../ids'
+import { type Id, newId } from '../../ids'
 import { serviceDate as serviceDateOf } from '../../service-day'
 import { openServiceWorld, type ServiceWorld } from '../../testing/service-world'
 import { applyService } from '../apply-service'
@@ -147,6 +147,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
         status: 'reserved',
         partySize: 4,
         partyLabel: `Party ${randomUUID().slice(0, 6)}`,
+        phone: `+35988${Math.floor(1_000_000 + Math.random() * 8_999_999)}`,
         spotIds: spotNames.map(spotId),
         ...over,
       } as ServiceCommand)
@@ -194,18 +195,10 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
 
   it('refuses a role that does not hold the command, with its own code, and writes nothing', async () => {
     const night = '2026-11-10'
-    // The hostess works tonight's floor; the booking book is not hers.
+    // The hostess works tonight's floor and takes bookings; changing one is the booking book's.
     expect(
       await run(
-        {
-          type: 'reservation.create',
-          serviceDate: night,
-          startsAt: at(10, 21),
-          kind: 'booking',
-          status: 'reserved',
-          partySize: 2,
-          partyLabel: 'Ivan',
-        } as ServiceCommand,
+        { type: 'reservation.cancel', reservationId: newId('rv') } as ServiceCommand,
         staff(hostessId),
       ),
     ).toMatchObject({ status: 'refused', code: 'permission_denied' })
@@ -252,6 +245,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
       status: 'reserved',
       partySize: 2,
       partyLabel: 'Later party',
+      phone: '+359888765432',
       spotIds: [spotId('T1')],
     } as ServiceCommand)
     expect(clash).toMatchObject({
@@ -272,6 +266,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
         status: 'reserved',
         partySize: 2,
         partyLabel: 'Nowhere',
+        phone: '+359888765432',
         spotIds: ['sp_notaspotofthisvenue012'],
       } as ServiceCommand),
     ).toMatchObject({ status: 'refused', code: 'spot_missing' })
@@ -287,6 +282,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
       status: 'reserved',
       partySize: 2,
       partyLabel: 'Last week',
+      phone: '+359888765432',
     } as ServiceCommand
     expect(await run(booking)).toMatchObject({ status: 'refused', code: 'night_passed' })
     await setSettings({ editPastNights: true })
@@ -514,6 +510,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
             status: 'reserved',
             partySize: 2,
             partyLabel: 'Theirs',
+            phone: '+359888765432',
           } as ServiceCommand,
           otherContext,
         )

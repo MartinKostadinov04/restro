@@ -33,6 +33,7 @@ const accessWith = (permissions: readonly Permission[]): ReservationAccess => ({
   device: false,
   today: '2026-11-09',
   editPastNights: false,
+  phoneRequired: true,
 })
 
 const row = (over: Partial<ReservationRow> = {}): ReservationRow => ({
@@ -75,6 +76,7 @@ const night = (over: Partial<ReservationNightRead> = {}): ReservationNightRead =
   writable: null,
   settingsMissing: false,
   rows: [row()],
+  deleted: [],
   counts: counts(),
   hasMore: false,
   days: ['2026-11-09'],
@@ -146,6 +148,9 @@ describe('one reservation’s sheet', () => {
     serviceDate: '2026-11-09',
     madeBy: { kind: 'person', name: 'Mila' },
     email: 'guest@example.test',
+    spotIds: [],
+    version: '2026-11-09T16:00:00.000Z',
+    mine: false,
     history: [
       {
         seq: 1,
@@ -196,13 +201,25 @@ describe('one reservation’s sheet', () => {
 describe('what the actor holds', () => {
   it('draws a control only for the permission behind it (#324)', () => {
     const none = rvFrameOf(accessWith([]), 'vn_demo')
-    expect(none.can).toEqual({ manage: false, block: false, editPast: false, endNight: false })
+    expect(none.can).toEqual({
+      tonight: false,
+      manage: false,
+      block: false,
+      editPast: false,
+      endNight: false,
+    })
 
     const some = rvFrameOf(
       accessWith(['reservations.tonight', 'reservations.manage', 'reservations.edit_past']),
       'vn_demo',
     )
-    expect(some.can).toEqual({ manage: true, block: false, editPast: true, endNight: false })
+    expect(some.can).toEqual({
+      tonight: true,
+      manage: true,
+      block: false,
+      editPast: true,
+      endNight: false,
+    })
   })
 
   it('carries the venue’s clock and the owner’s switch, not the server’s', () => {

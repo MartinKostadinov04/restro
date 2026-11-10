@@ -14,9 +14,10 @@ import {
   reservationSpots,
   reservations,
   spots,
+  staffMembers,
   venueSpotKinds,
 } from '@restro/db'
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, lt, max, sql } from 'drizzle-orm'
 
 import type { Id } from '../../ids'
 import { sortKeyBetween } from '../../sort-keys'
@@ -25,6 +26,7 @@ import type { Permission } from '../permissions'
 import { refused, type ServiceResult } from '../results'
 import type { SpotHold, Stretch } from './overlap'
 import type { ReservationStatus } from './status'
+import { reservationVersion } from './version'
 
 /** A reservation row. */
 export type Reservation = typeof reservations.$inferSelect
@@ -81,6 +83,12 @@ export const RESERVATION_REFUSALS = [
   'not_a_staff_member',
   /** The venue already keeps as many closed dates as it may (ticket #325). */
   'closed_dates_full',
+  /** The venue requires a phone on a booking and none came (D135, switch in the settings). */
+  'phone_required',
+  /** The number is not a phone number at all. */
+  'invalid_phone',
+  /** Somebody changed the booking after the form was opened; nothing was written (#328). */
+  'reservation_stale',
 ] as const
 
 /** One reservation refusal code. */
@@ -249,37 +257,55 @@ export async function heldSpotsOfNight(
   serviceDate: string,
   turnMinutes: number,
 ): Promise<SpotHold[]> {
-  const rows = await stx.tx
-    .select({
-      reservationId: reservations.id,
-      spotId: reservationSpots.spotId,
-      status: reservations.status,
-      endsAt: reservations.endsAt,
-      turnMinutes: reservations.turnMinutes,
-      heldFrom: reservationSpots.heldFrom,
-      heldTo: reservationSpots.heldTo,
-    })
-    .from(reservationSpots)
-    .innerJoin(
-      reservations,
-      and(
-        eq(reservations.tenantId, reservationSpots.tenantId),
-        eq(reservations.id, reservationSpots.reservationId),
-      ),
-    )
-    .where(
-      and(
-        eq(reservations.venueId, stx.venueId),
-        eq(reservations.serviceDate, serviceDate),
-        isNull(reservationSpots.releasedAt),
-        isNull(reservations.deletedAt),
-      ),
-    )
-  return rows.map((row) => ({
+  const columns = {
+    reservationId: reservations.id,
+    spotId: reservationSpots.spotId,
+    kind: reservations.kind,
+    status: reservations.status,
+    endsAt: reservations.endsAt,
+    turnMinutes: reservations.turnMinutes,
+    heldFrom: reservationSpots.heldFrom,
+    heldTo: reservationSpots.heldTo,
+  } as const
+  const joined = () =>
+    stx.tx
+      .select(columns)
+      .from(reservationSpots)
+      .innerJoin(
+        reservations,
+        and(
+          eq(reservations.tenantId, reservationSpots.tenantId),
+          eq(reservations.id, reservationSpots.reservationId),
+        ),
+      )
+  const ofThisNight = await joined().where(
+    and(
+      eq(reservations.venueId, stx.venueId),
+      eq(reservations.serviceDate, serviceDate),
+      isNull(reservationSpots.releasedAt),
+      isNull(reservations.deletedAt),
+    ),
+  )
+  // A block with no end stays on until somebody lifts it (D137) and carries the night it was made
+  // on, so the open blocks of the nights before this one are in the way of a booking here as well.
+  const openBlocks = await joined().where(
+    and(
+      eq(reservations.venueId, stx.venueId),
+      lt(reservations.serviceDate, serviceDate),
+      eq(reservations.kind, 'block'),
+      eq(reservations.status, 'reserved'),
+      isNull(reservations.endsAt),
+      isNull(reservationSpots.heldTo),
+      isNull(reservationSpots.releasedAt),
+      isNull(reservations.deletedAt),
+    ),
+  )
+  return [...ofThisNight, ...openBlocks].map((row) => ({
     reservationId: row.reservationId as Id<'rv'>,
     spotId: row.spotId as Id<'sp'>,
     status: row.status as ReservationStatus,
     stretch: heldRowStretch(row, turnMinutes),
+    openEnded: row.kind === 'block' && row.endsAt === null && row.heldTo === null,
   }))
 }
 
@@ -376,4 +402,36 @@ export async function nextQueueKey(stx: ServiceTx, serviceDate: string): Promise
       ),
     )
   return sortKeyBetween(row?.last ?? null, null)
+}
+
+/**
+ * The staff member the actor is, or null: a PIN on a shared device names one, a signed-in person is
+ * matched to their own staff record, and Restro's own team and the worker are nobody's staff. A
+ * booking's maker and the person who may delete it without managing bookings (D135) are read
+ * through here, so a signed-in hostess and the same hostess at the tablet are one person.
+ */
+export async function staffMemberOf(stx: ServiceTx): Promise<string | null> {
+  if (stx.actor.kind === 'staff') return stx.actor.staffMemberId
+  if (stx.actor.kind !== 'user') return null
+  const [member] = await stx.tx
+    .select({ id: staffMembers.id })
+    .from(staffMembers)
+    .where(
+      and(
+        eq(staffMembers.tenantId, stx.tenantId),
+        eq(staffMembers.userId, stx.actor.userId),
+        isNull(staffMembers.archivedAt),
+      ),
+    )
+  return member?.id ?? null
+}
+
+/** The version of a reservation just locked (`version.ts`): its row's and its spots' newest write. */
+export async function versionOf(stx: ServiceTx, reservation: Reservation): Promise<string> {
+  const [spotsRow] = await stx.tx
+    .select({ newest: max(reservationSpots.updatedAt) })
+    .from(reservationSpots)
+    .where(eq(reservationSpots.reservationId, reservation.id))
+  const newest = spotsRow?.newest ?? null
+  return reservationVersion(reservation.updatedAt, newest === null ? null : new Date(newest))
 }

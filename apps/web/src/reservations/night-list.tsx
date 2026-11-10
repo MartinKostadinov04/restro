@@ -15,21 +15,26 @@
 // already on screen and says so in a notice that stays (RR-O47), because an empty list would read
 // as an empty night.
 //
-// It only reads. Taking, changing and seating a reservation are their own tickets, and each goes
-// through `applyService` (rule 1), never around it.
-import { CalendarPlusIcon, CircleAlertIcon, LockIcon } from 'lucide-react'
+// Taking and changing a booking is here (#328): the "New reservation" button opens the booking form,
+// a row's sheet changes, calls off, copies or takes out a booking, and the night's bin brings a
+// deleted one back. Seating and arrivals are #329's. Every write goes through `applyService`
+// (rule 1), never around it, and a refusal is the toast that stays.
+import { CalendarPlusIcon, ChevronDownIcon, CircleAlertIcon, LockIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { WRAPS } from '@/lib/wrapping'
 import { reservationNightAction } from '@/server/reservations/actions'
-import type { RvFrame, RvNightView } from '@/server/reservations/view'
+import type { RvDetailView, RvFrame, RvNightView, RvRowView } from '@/server/reservations/view'
 import { DayPicker, useDateText } from '@/tonight/day-picker'
 import { useLiveFeed } from '@/tonight/live-feed'
 import { FailedBlock, NewLine, NothingHere, RowsSkeleton } from '@/tonight/tab-parts'
-
+import { useBookingActions } from './booking-actions'
+import { BookingForm, type BookingMode } from './booking-form'
+import { CopyDialog } from './copy-dialog'
 import {
   filterCount,
   filterRows,
@@ -38,22 +43,75 @@ import {
 } from './night-filters'
 import { ReservationRow } from './reservation-row'
 import { ReservationSheet } from './reservation-sheet'
-import { useFilterWord } from './reservation-words'
+import { useFilterWord, useGuestsText } from './reservation-words'
+import { useReservationRun } from './use-reservation-run'
 
 /** How many nights the night button lists ahead; the date field reaches any other one. */
 const NIGHTS_AHEAD = 60
 
 /**
- * The one filled button on the screen. Its form is the booking screen's (#328), which wires this
- * button to it; until then it is plainly not ready rather than a button that does nothing.
+ * The one filled button on the screen: it opens the booking form (#328). Not drawn on a night that
+ * cannot be written, nor for a role that does not work tonight's reservations; on a shared device
+ * it is there and the PIN sheet comes with Save.
  */
-function NewButton() {
+function NewButton({ onClick }: { onClick: () => void }) {
   const t = useTranslations('reservations')
   return (
-    <Button type="button" className={WRAPS} disabled data-testid="rv-new">
+    <Button type="button" className={WRAPS} data-testid="rv-new" onClick={onClick}>
       <CalendarPlusIcon aria-hidden />
       {t('new')}
     </Button>
+  )
+}
+
+/** The night's bin: lines taken out of the book, which a manager brings back (D135). */
+function Bin({
+  rows,
+  onRestore,
+}: {
+  rows: readonly RvRowView[]
+  onRestore: (row: RvRowView) => void
+}) {
+  const t = useTranslations('reservations')
+  const guests = useGuestsText()
+  return (
+    <Collapsible className="rounded-lg border" data-testid="rv-bin">
+      <CollapsibleTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          className="min-h-11 w-full justify-between"
+          data-testid="rv-bin-open"
+        >
+          {t('bk_bin', { k: rows.length })}
+          <ChevronDownIcon aria-hidden />
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <ul className="divide-y border-t">
+          {rows.map((row) => (
+            <li key={row.id} className="flex items-center gap-3 p-3" data-testid="rv-bin-row">
+              <span className="w-11 shrink-0 text-sm tabular-nums text-muted-foreground">
+                {row.time}
+              </span>
+              <span className="min-w-0 flex-1 text-sm [overflow-wrap:anywhere]">
+                <span className="block font-medium">{row.name ?? t('no_name')}</span>
+                <span className="block text-muted-foreground">{guests(row.partySize)}</span>
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                className="shrink-0"
+                data-testid="rv-restore"
+                onClick={() => onRestore(row)}
+              >
+                {t('bk_restore')}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 
@@ -103,6 +161,9 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
   const [day, setDay] = useState(initial.day)
   const [filter, setFilter] = useState<ReservationFilter>('all')
   const [open, setOpen] = useState<string | null>(null)
+  const [form, setForm] = useState<BookingMode | null>(null)
+  const [copying, setCopying] = useState<RvDetailView | null>(null)
+  const { run, busy, pinSheet } = useReservationRun({ device: frame.device })
 
   const feed = useLiveFeed<RvNightView>({
     initial,
@@ -120,6 +181,11 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
     },
   })
   const night = feed.shown
+  const { reload } = feed
+  const actions = useBookingActions({ frame, run, onChanged: reload })
+  /** This night may be written, and by this role: the booking controls are drawn. */
+  const writable = night.refusal === null
+  const mayTake = frame.can.tonight && writable
   // The chosen night is still being read: the night on screen is another one, so it is not shown.
   const reading = night.day !== day
   const rows = useMemo(() => filterRows(night.rows, filter), [night.rows, filter])
@@ -143,13 +209,23 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
     if (reading || (night.rows.length === 0 && feed.loading)) return <RowsSkeleton />
     if (feed.failed && night.rows.length === 0) return <FailedBlock text={t('fail')} />
     if (night.rows.length === 0) {
-      return <NothingHere text={t('empty')} action={frame.can.manage ? <NewButton /> : undefined} />
+      return (
+        <NothingHere
+          text={t('empty')}
+          action={mayTake ? <NewButton onClick={() => setForm({ kind: 'new', day })} /> : undefined}
+        />
+      )
     }
     if (rows.length === 0) return <NothingHere text={t('empty_filter')} />
     return (
       <ul className="divide-y rounded-lg border" data-testid="rv-list">
         {rows.map((row) => (
-          <ReservationRow key={row.id} row={row} onOpen={() => setOpen(row.id)} />
+          <ReservationRow
+            key={row.id}
+            row={row}
+            onOpen={() => setOpen(row.id)}
+            onNoShow={writable && frame.can.tonight ? () => actions.noShow(row.id) : null}
+          />
         ))}
       </ul>
     )
@@ -164,7 +240,7 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
             {day === frame.today ? t('tab_list') : dateText(day)}
           </span>
         </h2>
-        {frame.can.manage ? <NewButton /> : null}
+        {mayTake ? <NewButton onClick={() => setForm({ kind: 'new', day })} /> : null}
       </div>
       {reading ? null : <Banner night={night} frame={frame} />}
       <DayPicker
@@ -210,9 +286,57 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
           </p>
         ) : null}
       </div>
-      {open === null ? null : (
-        <ReservationSheet frame={frame} reservationId={open} onClose={() => setOpen(null)} />
+      {night.deleted.length > 0 && !reading && (frame.can.manage || frame.device) ? (
+        <Bin
+          rows={night.deleted}
+          onRestore={(row) => actions.restore(row.id, row.name ?? t('no_name'))}
+        />
+      ) : null}
+      {open === null || form !== null || copying !== null ? null : (
+        <ReservationSheet
+          frame={frame}
+          reservationId={open}
+          writable={writable}
+          busy={busy}
+          onEdit={(detail) => {
+            setOpen(null)
+            setForm({ kind: 'edit', detail })
+          }}
+          onCopy={(detail) => setCopying(detail)}
+          onNoShow={actions.noShow}
+          onCancel={actions.cancel}
+          onDelete={actions.remove}
+          onClose={() => setOpen(null)}
+        />
       )}
+      {form === null ? null : (
+        <BookingForm
+          frame={frame}
+          mode={form}
+          run={run}
+          busy={busy}
+          onClose={() => setForm(null)}
+          onSaved={() => {
+            setForm(null)
+            reload()
+          }}
+        />
+      )}
+      {copying === null ? null : (
+        <CopyDialog
+          frame={frame}
+          detail={copying}
+          run={run}
+          busy={busy}
+          onClose={() => setCopying(null)}
+          onCopied={() => {
+            setCopying(null)
+            setOpen(null)
+            reload()
+          }}
+        />
+      )}
+      {pinSheet}
     </div>
   )
 }
