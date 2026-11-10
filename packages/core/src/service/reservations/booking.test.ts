@@ -164,7 +164,10 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
     otherHostessId = await world.addUser('member')
     await world.addStaff(['reservations.tonight'], otherHostessId)
     managerId = await world.addUser('member')
-    await world.addStaff(['reservations.manage', 'reservations.tonight'], managerId)
+    await world.addStaff(
+      ['reservations.manage', 'reservations.tonight', 'settings.guests'],
+      managerId,
+    )
     const venue = (
       await world.owner.query<{ timezone: string; ends_at: string }>(
         'select timezone, service_day_ends_at::text as ends_at from restro.venues where id = $1',
@@ -320,6 +323,20 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
       expect((await row(sameName)).party_label).toBeNull()
       expect((await detailOf(again)).row.name).toBe('Maria')
       expect((await detailOf(first)).row.name).toBe('Maria Ivanova')
+    })
+
+    it('takes the name a booking carried for a guest away with him when he is erased (D140)', async () => {
+      const day = night(4)
+      const number = phone()
+      await book(day, '19:00', [], { guestName: 'Maria Ivanova', phone: number })
+      const other = await book(day, '19:30', [], { guestName: 'Mimi', phone: number })
+      expect((await row(other)).party_label).toBe('Mimi')
+      const guestId = (await row(other)).guest_id as Id<'gu'>
+      await accept({ type: 'guest.erase', guestId }, staff(managerId))
+      const after = await row(other)
+      expect(after.party_label).toBeNull()
+      expect(after.party_size).toBe(4)
+      expect((await detailOf(other)).row.name).toBeNull()
     })
 
     it('carries its reason and its several spots into the Log without a name or a number', async () => {

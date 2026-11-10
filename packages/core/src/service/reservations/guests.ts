@@ -10,7 +10,7 @@
 // never his name, number, email or note, before or after the change (D140): the record itself is
 // where his details live, and once it is erased they are nowhere.
 
-import { guestPrivateNotes, guests } from '@restro/db'
+import { guestPrivateNotes, guests, reservations } from '@restro/db'
 import { and, eq, sql } from 'drizzle-orm'
 
 import { newId } from '../../ids'
@@ -101,8 +101,8 @@ export async function saveGuest(stx: ServiceTx, command: GuestSaveCommand): Prom
  * Erases a guest (D140, D83): an **update** that clears every detail of the person — the key
  * included, so a later booking from the same number starts a new record — takes him out of the
  * venue's list and empties every private note about him. His reservations keep their party size
- * and their spot and are not rewritten: the night's record stays true, and nobody can be read out
- * of it.
+ * and their spot, and the night's record stays true; nobody can be read out of it, so a name a
+ * booking carried for him (written when the hostess typed another than the record's, #328) goes.
  *
  * The Log keeps that it happened, when and by whom (the audit D140 asks for) and names the
  * record's own id, which from now on points at an empty row.
@@ -132,6 +132,12 @@ export async function eraseGuest(
     .update(guestPrivateNotes)
     .set({ note: null, erasedAt: sql`now()`, ...stx.provenance, updatedAt: sql`now()` })
     .where(and(eq(guestPrivateNotes.venueId, stx.venueId), eq(guestPrivateNotes.guestId, guest.id)))
+  // A booking made under a different name than the record's carries that name on the booking itself
+  // (`labelFor`): it is the guest's, so it goes with him. The party size and the spots stay.
+  await stx.tx
+    .update(reservations)
+    .set({ partyLabel: null, ...stx.provenance, updatedAt: sql`now()` })
+    .where(and(eq(reservations.venueId, stx.venueId), eq(reservations.guestId, guest.id)))
   await stx.log({ kind: 'guest.erased', guestId: guest.id, toState: 'erased' })
   return accepted(null, { details: { guestId: guest.id } })
 }
