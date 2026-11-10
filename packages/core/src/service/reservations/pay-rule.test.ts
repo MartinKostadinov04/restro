@@ -3,19 +3,24 @@
 // resolution over the levels is tested in `pay-first-settings.test.ts`, where it lives.
 //
 // The handler itself is at the bottom of this file, on a real Postgres and skipped without one:
-// the Log entry each change leaves, the refusals, and the sitting boundary end to end.
+// the Log entry each change leaves, the refusals, the sitting boundary end to end, and the guest's
+// own path - the phone's pay-first state and a Send's routing, which read the party's rule through
+// a second query of their own.
 import { randomUUID } from 'node:crypto'
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { hasDatabase } from '../../apply/test-database'
-import type { Id } from '../../ids'
+import { type Id, newId } from '../../ids'
+import { DEFAULT_ORDERING_SETTINGS } from '../../ordering-settings'
+import { hashTableCode } from '../../qr'
 import { serviceDate as serviceDateOf } from '../../service-day'
 import { openServiceWorld, type ServiceWorld } from '../../testing/service-world'
 import { applyService } from '../apply-service'
 import type { ServiceActor, ServiceContext } from '../context'
 import type { ServiceCommand } from '../index'
-import { readTonight } from '../read'
+import { readTableState, readTonight } from '../read'
+import type { SendMenu } from '../send-menu'
 import {
   PayRuleSchema,
   payRuleCode,
@@ -124,6 +129,26 @@ describe.skipIf(!hasDatabase)('the pay rule a party carries (as the restro_app r
   const spots = new Map<string, string>()
   const spotId = (name: string) => spots.get(name) as Id<'sp'>
   const tableOf = (name: string) => world.tables[Number(name.slice(1)) - 1] as Id<'tb'>
+  /** The code behind D1's QR, as a phone presents it on the guest's own path. */
+  let codeHash = ''
+  /** One item that pays first of itself (#113), which is what a Send routes by. */
+  const gin = newId('nd')
+  const MENU: SendMenu = {
+    currency: 'EUR',
+    items: new Map([
+      [
+        gin,
+        {
+          priceMinor: 700,
+          orderable: true,
+          soldOut: false,
+          name: 'Gin tonic',
+          options: new Map(),
+          paymentMode: 'pay_first',
+        },
+      ],
+    ]),
+  }
 
   const staff = (userId: string): ServiceContext => ({
     tenantId: world.tenantId,
@@ -222,6 +247,73 @@ describe.skipIf(!hasDatabase)('the pay rule a party carries (as the restro_app r
     return table.payRule
   }
 
+  /** The open sitting of a table, which a phone's own calls are made against. */
+  const openSittingOf = async (tableId: string) =>
+    (
+      await world.owner.query<{ id: string }>(
+        'select id from restro.sittings where table_id = $1 and ended_at is null',
+        [tableId],
+      )
+    ).rows[0]?.id ?? null
+
+  /** A phone at D1: its table's code and the sitting open there, as the guest API builds it. */
+  const phone = async (): Promise<ServiceContext> => ({
+    tenantId: world.tenantId,
+    venueId: world.venueId,
+    origin: 'guest',
+    actor: { kind: 'guest' },
+    jobId: `guest-${randomUUID()}`,
+    tableCodeHash: codeHash,
+    sittingId: (await openSittingOf(tableOf('D1'))) ?? undefined,
+    consentVersion: 'v1',
+  })
+
+  /** What the guest page reads for pay-first at D1 (`payRuleAtTable`, not Tonight's query). */
+  const phonePayFirst = async () => {
+    const read = await readTableState(world.app, {
+      tenantId: world.tenantId,
+      tableId: tableOf('D1'),
+      tableCodeHash: codeHash,
+    })
+    return read !== null && !read.unchanged ? read.payFirst.state : null
+  }
+
+  /** The gin in the bag, one tap of the phone. */
+  const addToBag = async () => {
+    const { result } = await applyService(
+      world.app,
+      {
+        type: 'order.add',
+        tableId: tableOf('D1'),
+        actionId: randomUUID(),
+        ageMs: 50,
+        itemId: gin,
+        optionIds: [],
+        qty: 1,
+        note: '',
+      } as ServiceCommand,
+      await phone(),
+    )
+    if (result.status !== 'accepted') throw new Error(`order.add refused: ${result.code}`)
+  }
+
+  /** A Send that names the gin on the bill, which only a table on the club's rule may do. */
+  const sendOnBill = async () =>
+    (
+      await applyService(
+        world.app,
+        {
+          type: 'order.send',
+          tableId: tableOf('D1'),
+          actionId: randomUUID(),
+          ageMs: 50,
+          lines: [{ itemId: gin, optionIds: [], qty: 1, note: '' }],
+        } as ServiceCommand,
+        await phone(),
+        { sendMenu: MENU },
+      )
+    ).result
+
   beforeAll(async () => {
     world = await openServiceWorld('reservation-pay-rule')
     ownerId = await world.addUser('owner')
@@ -261,6 +353,42 @@ describe.skipIf(!hasDatabase)('the pay rule a party carries (as the restro_app r
       } as ServiceCommand)
       spots.set(name, details.spotId as string)
     }
+    // What the guest's own path needs, and nothing the levels need: ordering with no location
+    // check, a venue that may take a card (paying's readiness, #198) with a payment table of its
+    // own, and a POS whose bill opens on the first items. Without all of it the phone's pay-first
+    // state reads `off` whatever rule is in force, and the test would pass on nothing.
+    await world.owner.query(
+      `update restro.venues set settings = jsonb_set(settings, '{ordering}', $2::jsonb) where id = $1`,
+      [
+        world.venueId,
+        JSON.stringify({
+          ...DEFAULT_ORDERING_SETTINGS,
+          locationCheck: false,
+          pacePer15Minutes: null,
+        }),
+      ],
+    )
+    await world.owner.query(
+      `update restro.venues set settings = settings || '{"legalDetails":{"name":"Club EOOD","eik":"123456789","address":"Sofia, 1 Vitosha Blvd","privacyUrl":"https://club.example/privacy"}}'::jsonb where id = $1`,
+      [world.venueId],
+    )
+    await world.owner.query(
+      `insert into restro.payment_accounts
+         (tenant_id, venue_id, provider_kind, account_ref, state, checks, connected_at, source, actor, job_id)
+       values ($1, $2, 'sim-pay', 'acct_payrule1', 'connected', '{"cardPayments":true,"ticks":{"cardTypeInTill":{"at":"2026-10-27T00:00:00Z","by":"system"},"receiptEmailsOff":{"at":"2026-10-27T00:00:00Z","by":"system"}}}'::jsonb, now(), 'restro', 'system', 'test-seed')`,
+      [world.tenantId, world.venueId],
+    )
+    // The last of the four is the venue's payment table: nobody sits at D4, the block holds it.
+    await world.owner.query('update restro.tables set is_payment_table = true where id = $1', [
+      world.tables[3],
+    ])
+    await world.declareCapabilities({ notesReachTicket: true, firstItemsOpenBill: true })
+    const code = `code${randomUUID().replaceAll('-', '')}`
+    codeHash = await hashTableCode(code)
+    await world.owner.query(
+      'update restro.tables set qr_token = $2, qr_code_hash = $3 where id = $1',
+      [world.tables[0], code, codeHash],
+    )
   }, 60_000)
 
   afterAll(async () => {
@@ -423,5 +551,31 @@ describe.skipIf(!hasDatabase)('the pay rule a party carries (as the restro_app r
       change: { table: tableOf('D1'), value: null },
     } as ServiceCommand)
     expect((await detailOf(id)).payRule.beaten).toEqual([])
+  })
+
+  /**
+   * The guest's own path (#334, the lead's review of PR 386). Two queries ask the same question —
+   * `payRulesAtTables` for Tonight's whole floor, and `payRuleAtTable` for one table — and the
+   * single-table one is the one a guest walks: `readTableState` draws the phone's pay-first state
+   * from it, and a Send routes a pay-first item by it. Drift between the two would show a guest one
+   * thing on the menu and charge them another, with every staff screen still looking right. So the
+   * party's rule is read here through the guest's own two calls, on each side of a sitting.
+   */
+  it("reaches the guest's own page and Send, and stops at the sitting boundary there too", async () => {
+    const id = await book(['D1'])
+    await accept({ type: 'reservation.set_pay_rule', reservationId: id, rule: 'pay_first' })
+    await accept({ type: 'reservation.arrive', reservationId: id })
+    // The phone reads pay-first in force, although the house puts everything on the bill.
+    expect(await phonePayFirst()).toBe('on')
+    // And a Send routes by the same rule: the gin named on the bill is not the order the phone was
+    // shown, so it is refused rather than quietly going on the bill (`order_changed`).
+    await addToBag()
+    expect(await sendOnBill()).toMatchObject({ status: 'refused', code: 'order_changed' })
+    // "No, new guests" — ordering's own renewal (#329). The next sitting is on the club's rule, and
+    // the guest's two calls say so as one.
+    await accept({ type: 'table.new_guests', tableId: tableOf('D1') })
+    expect(await phonePayFirst()).toBe('off')
+    await addToBag()
+    expect(await sendOnBill()).toMatchObject({ status: 'accepted' })
   })
 })
