@@ -1278,6 +1278,16 @@ export const ATTACKS: readonly Attack[] = [
     },
   },
   {
+    action: 'addWaitingAction',
+    how: "a party onto the victim's waiting list",
+    call: (v) =>
+      nightBook.addWaitingAction({
+        venueId: v.venues[0].id,
+        day: '2030-01-05',
+        partySize: 2,
+      }),
+  },
+  {
     action: 'seatWalkInAction',
     how: "a walk-in onto the victim's spot",
     call: (v) => {
