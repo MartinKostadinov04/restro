@@ -8,6 +8,7 @@
 // A spot somebody else holds that night is in the list with its state in words, never greyed out:
 // she may be moving a party onto it with the other booking's blessing, and the form says who holds
 // it before Save (`taken`), while the write path refuses it in the end (D134, log 3.20).
+import { MaximizeIcon, MinusIcon, PlusIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -22,6 +23,7 @@ import type { RvFrame, RvKindView, RvPlanView, RvSpotView } from '@/server/reser
 
 import { KindSymbol, SpotTile } from './plan-shape'
 import { useSpotLine, useSpotStateWord } from './plan-words'
+import { usePlanView } from './plan-zoom'
 
 /** More spots than this and the list is searchable by name. */
 const SEARCH_FROM = 12
@@ -189,56 +191,115 @@ export function SpotList({
 }
 
 /**
- * The plan, to tap spots on. It is the plan's own drawing at the width the sheet has, without the
- * pan and zoom of the plan screen: a long plan is what the list is for.
+ * The plan, to tap spots on, with the plan screen's own pan and zoom (#382): pinch or wheel, drag,
+ * the −, + and fit buttons, and the keys (`plan-zoom.ts`, shared, not copied). The frame is lower
+ * than the plan screen's so that the sheet around it still scrolls: a finger on the plan moves the
+ * plan, a finger anywhere else in the sheet moves the sheet.
+ *
+ * `onTap` replaces the plain toggle where a tap means more than "chosen or not" — Change tables
+ * (#331) asks to swap when the spot is another party's.
  */
 export function SpotPlan({
   plan,
   selected,
   onChange,
+  onTap,
 }: {
   plan: RvPlanView
   selected: readonly string[]
   onChange: (ids: string[]) => void
+  onTap?: (spot: RvSpotView) => void
 }) {
   const t = useTranslations('reservations')
   const stateWord = useSpotStateWord()
   const line = useSpotLine()
   const toggle = useToggle(selected, onChange)
   const [kindKey, setKindKey] = useState('all')
+  const frameRef = useRef<HTMLDivElement | null>(null)
+  const { view, zoomIn, zoomOut, fit, onKeyDown, dragged } = usePlanView(frameRef)
   const kindOf = (spot: RvSpotView) => plan.kinds.find((kind) => kind.key === spot.kind) ?? null
   const shown = kindKey === 'all' ? plan.spots : plan.spots.filter((spot) => spot.kind === kindKey)
   return (
-    <div className="space-y-2">
+    // The keys work from the zoom buttons and from the spots, as on the plan screen (2.1.1).
+    <section aria-label={t('p_view')} className="space-y-2" onKeyDown={onKeyDown}>
       <KindChips kinds={plan.kinds} value={kindKey} onPick={setKindKey} />
-      <div
-        className="relative w-full overflow-hidden rounded-lg border bg-muted/40"
-        style={{ aspectRatio: `${plan.extent.width} / ${plan.extent.height}`, minHeight: '16rem' }}
-        data-testid="rv-pick-plan"
-      >
-        {shown.map((spot) => {
-          const kind = kindOf(spot)
-          return (
-            <SpotTile
-              key={spot.id}
-              spot={spot}
-              box={plan.extent}
-              symbol={kind?.symbol ?? 'dot'}
-              kindLabel={kind?.label ?? ''}
-              line={line(spot)}
-              stateWord={stateWord(spot.state)}
-              selected={selected.includes(spot.id)}
-              label={t('p_spot', {
-                name: spot.name,
-                kind: kind?.label ?? '',
-                state: stateWord(spot.state),
-              })}
-              onOpen={() => toggle(spot.id)}
-            />
-          )
-        })}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="size-11"
+          aria-label={t('p_zoom_out')}
+          data-testid="rv-pick-zoom-out"
+          onClick={zoomOut}
+        >
+          <MinusIcon aria-hidden />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="size-11"
+          aria-label={t('p_zoom_in')}
+          data-testid="rv-pick-zoom-in"
+          onClick={zoomIn}
+        >
+          <PlusIcon aria-hidden />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11"
+          data-testid="rv-pick-zoom-fit"
+          onClick={fit}
+        >
+          <MaximizeIcon aria-hidden />
+          {t('p_zoom_reset')}
+        </Button>
       </div>
-    </div>
+      <div
+        ref={frameRef}
+        className="relative h-[45vh] min-h-64 w-full touch-none overflow-hidden rounded-lg border bg-muted/40 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring"
+        data-testid="rv-pick-plan"
+        // On a phone the sheet is a drawer: a drag on the plan pans the plan, never the drawer.
+        data-vaul-no-drag=""
+      >
+        <div
+          className="absolute left-0 top-0 w-full origin-top-left"
+          style={{
+            aspectRatio: `${plan.extent.width} / ${plan.extent.height}`,
+            transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
+          }}
+        >
+          {shown.map((spot) => {
+            const kind = kindOf(spot)
+            return (
+              <SpotTile
+                key={spot.id}
+                spot={spot}
+                box={plan.extent}
+                symbol={kind?.symbol ?? 'dot'}
+                kindLabel={kind?.label ?? ''}
+                line={line(spot)}
+                stateWord={stateWord(spot.state)}
+                selected={selected.includes(spot.id)}
+                label={t('p_spot', {
+                  name: spot.name,
+                  kind: kind?.label ?? '',
+                  state: stateWord(spot.state),
+                })}
+                onOpen={() => {
+                  // A drag that ended on a spot moved the plan; it did not pick the spot.
+                  if (dragged()) return
+                  if (onTap === undefined) toggle(spot.id)
+                  else onTap(spot)
+                }}
+              />
+            )
+          })}
+        </div>
+      </div>
+    </section>
   )
 }
 

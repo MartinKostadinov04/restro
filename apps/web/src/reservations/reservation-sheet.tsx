@@ -319,6 +319,7 @@ export function ReservationSheet({
   onArrive,
   onGuests,
   onFree,
+  onChangeTables,
   onPayRule,
   onClose,
 }: {
@@ -340,6 +341,8 @@ export function ReservationSheet({
   onGuests: ((detail: RvDetailView) => void) | null
   /** They have gone: the spots go back and the table codes close. */
   onFree: ((detail: RvDetailView) => void) | null
+  /** Change tables (#331): the party's spots on the plan, tapped on and off, and the swap. */
+  onChangeTables: ((detail: RvDetailView) => void) | null
   /** The pay rule this party carries (#334); the write's own permission decides, not the screen. */
   onPayRule: (change: PayRuleChange) => void
   onClose: () => void
@@ -419,6 +422,14 @@ export function ReservationSheet({
   const maySeated = detail != null && !isBlock && status === 'seated'
   const mayGuests = maySeated && onGuests !== null
   const mayFree = maySeated && onFree !== null
+  // A party still coming or already sitting changes tables; a block, a waiting line (it has no
+  // table yet: seating it is the door's) and an ended party do not (#331).
+  const mayChangeTables =
+    detail != null &&
+    !isBlock &&
+    writable &&
+    (status === 'reserved' || status === 'requested' || status === 'seated') &&
+    onChangeTables !== null
   const party: PartyName = detail?.row.name ?? t('no_name')
   const body = detail ? (
     <Body
@@ -471,6 +482,18 @@ export function ReservationSheet({
           onClick={() => onEdit(detail)}
         >
           {t('bk_edit')}
+        </Button>
+      ) : null}
+      {mayChangeTables && detail && onChangeTables ? (
+        <Button
+          type="button"
+          variant="outline"
+          className={WRAPS}
+          disabled={busy}
+          data-testid="rv-sheet-change-tables"
+          onClick={() => onChangeTables(detail)}
+        >
+          {t('ct_open')}
         </Button>
       ) : null}
       {detail?.phone ? (

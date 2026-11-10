@@ -126,6 +126,7 @@ export function SpotSheet({
   onSeatWaiting,
   onWalkIn,
   onFree,
+  onChangeTables,
   onClose,
 }: {
   spot: RvSpotView
@@ -164,6 +165,11 @@ export function SpotSheet({
   onWalkIn: ((until: string | null) => void) | null
   /** They have gone: the spots go back and the table codes close. */
   onFree: ((reservationId: string, name: string | null) => void) | null
+  /**
+   * Opens Change tables (#331) for the party on this spot now, seated or still to come; absent
+   * where this night or this role cannot work tonight's reservations.
+   */
+  onChangeTables: ((reservationId: string, name: string | null) => void) | null
   onClose: () => void
 }) {
   const t = useTranslations('reservations')
@@ -407,6 +413,21 @@ export function SpotSheet({
           onClick={() => onFree(seated.reservationId, seated.name)}
         >
           {t('d_free')}
+        </Button>
+      ) : null}
+      {onChangeTables !== null && (seated ?? expected) !== null ? (
+        <Button
+          type="button"
+          variant="outline"
+          className={WRAPS}
+          disabled={busy}
+          data-testid="rv-spot-change-tables"
+          onClick={() => {
+            const party = seated ?? expected
+            if (party !== null) onChangeTables(party.reservationId, party.name)
+          }}
+        >
+          {t('ct_open')}
         </Button>
       ) : null}
       {onBook !== null && spot.state !== 'blocked' ? (

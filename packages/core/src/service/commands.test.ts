@@ -55,6 +55,8 @@ describe('the service commands', () => {
       // #329: the door's own taps are the same kind of tap — a party is here, this many came, they
       // have gone, that was a mistake — so they are quick on the bar's shared device too.
       'reservation.arrive',
+      // #331: changing a party's tables says where people sit tonight, as holding a spot does.
+      'reservation.change_tables',
       'reservation.hold_spots',
       'reservation.release_spots',
       'reservation.seat_walk_in',
