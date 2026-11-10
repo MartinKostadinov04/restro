@@ -39,6 +39,7 @@ const OWNED = [
   'reservation_spots',
   'reservations',
   'reservation_nights',
+  'guest_private_notes',
   'guests',
   'spots',
   'floor_plans',
@@ -72,6 +73,13 @@ export const BOOK = {
   note: 'Торта в 01:00',
 } as const
 
+/** The club's one regular on the venue's list (#333): three letters of the name suggest him. */
+export const REGULAR = {
+  name: 'Стефан Редовен',
+  phone: '+359 888 777 100',
+  phoneKey: '359888777100',
+} as const
+
 /** The club's two plans, so the spec can pick the one it means (D134, log 1.28). */
 export const PLANS = { main: 'Основна зала', terrace: 'Тераса' } as const
 
@@ -96,7 +104,8 @@ export async function seedReservationsNight(
   for (const table of OWNED) {
     if (table === 'log_entries') {
       await owner.query(
-        `delete from restro.log_entries where tenant_id = $1 and reservation_id is not null`,
+        `delete from restro.log_entries
+         where tenant_id = $1 and (reservation_id is not null or guest_id is not null)`,
         [tenantId],
       )
     } else {
@@ -284,6 +293,34 @@ export async function seedReservationsNight(
      values ($1, $2, $3, $4, $5, $6, 'ivanova@example.test', $7, $8, $9)`,
     [guestId, tenantId, venueId, BOOK.phoneKey, BOOK.late, BOOK.phone, ...SEED],
   )
+  // One regular, for the booking form's suggestion and the guest's card (#333).
+  await owner.query(
+    `insert into restro.guests
+       (id, tenant_id, venue_id, phone_key, name, phone, is_regular, source, actor, job_id)
+     values ($1, $2, $3, $4, $5, $6, true, $7, $8, $9)`,
+    [newId('gu'), tenantId, venueId, REGULAR.phoneKey, REGULAR.name, REGULAR.phone, ...SEED],
+  )
+  // A private list is kept by a staff member signed in as themselves (D140): the owner gets a
+  // staff record of their own, with no role here (an owner holds everything anyway).
+  const ownerUser = (
+    await owner.query<{ id: string }>(
+      `select u.id from restro.auth_user u
+         join restro.auth_member m on m.user_id = u.id
+       where m.organization_id = $1 and m.role = 'owner'
+       limit 1`,
+      [tenantId],
+    )
+  ).rows[0]?.id
+  if (ownerUser !== undefined) {
+    await owner.query(
+      `insert into restro.staff_members (id, tenant_id, display_name, user_id, source, actor, job_id)
+       select $1, $2, 'Tonight Owner', $3, $4, $5, $6
+       where not exists (
+         select 1 from restro.staff_members where tenant_id = $2 and user_id = $3
+       )`,
+      [newId('sm'), tenantId, ownerUser, ...SEED],
+    )
+  }
 
   /** One line of the book. `at` is an interval from now, or an hour of the service day. */
   const reservation = async (one: {

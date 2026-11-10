@@ -237,7 +237,10 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
       { type: 'guest.save', guestId, name: 'Boris Kolev', note: 'likes T2' } as ServiceCommand,
       staff(hostessId),
     )
-    await accept({ type: 'guest.save', guestId, archived: true } as ServiceCommand, staff(hostessId))
+    await accept(
+      { type: 'guest.save', guestId, archived: true } as ServiceCommand,
+      staff(hostessId),
+    )
     expect((await guestRow(guestId))?.archived_at).not.toBeNull()
     // Archived is not erased: he is still on the list, under Archived, with his details.
     const listed = await readGuestList(world.app, reader(hostessId))
@@ -245,7 +248,10 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
       name: 'Boris Kolev',
       archived: true,
     })
-    await accept({ type: 'guest.save', guestId, archived: false } as ServiceCommand, staff(hostessId))
+    await accept(
+      { type: 'guest.save', guestId, archived: false } as ServiceCommand,
+      staff(hostessId),
+    )
     expect(await guestRow(guestId)).toMatchObject({ archived_at: null, name: 'Boris Kolev' })
     // Three letters suggest him; two do not.
     const three = await readGuestSuggestions(world.app, { ...reader(hostessId), query: 'bor' })
@@ -479,7 +485,11 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
       first,
     ])
     await accept(
-      { type: 'reservation.set_status', reservationId: second, status: 'no_show' } as ServiceCommand,
+      {
+        type: 'reservation.set_status',
+        reservationId: second,
+        status: 'no_show',
+      } as ServiceCommand,
       staff(managerId),
     )
     const guestId = (
