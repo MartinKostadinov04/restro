@@ -332,10 +332,10 @@ const withPin = (typed: string | undefined) => (typed === undefined ? {} : { pin
  * a booking is `reservations.tonight`; changing one is `reservations.manage` — both checked
  * inside the transaction, never here.
  *
- * A **new** booking with no spot chosen is not a booking with nowhere to sit: it is a party on the
- * night's waiting list (#330, D137), so it goes to `waiting.add` instead. An edit that takes the
- * last spot off an existing booking does not move it — taking a spot back is its own operation,
- * and the party keeps the state it is in.
+ * A booking with no spot chosen is a booking (#328): a real one the hostess gives a table later,
+ * and #329 marks such a party present on the spots she then picks. The waiting list has its own
+ * door (`waiting.add`, from the Waiting view) and is never reached from here — nor by an edit that
+ * takes the last spot off a booking, which only takes a spot back and leaves the state alone.
  */
 export async function saveBookingAction(input: unknown): Promise<RvWriteResult> {
   const parsed = Save.safeParse(input)
@@ -344,22 +344,6 @@ export async function saveBookingAction(input: unknown): Promise<RvWriteResult> 
   const phone =
     body.phone === undefined || body.phone === null || body.phone === '' ? null : body.phone
   if (body.reservationId === undefined) {
-    // No spot chosen: the party goes onto the night's waiting list instead of onto the plan (#330,
-    // D137), for the night it asked about. `waiting.add` is the one path that writes a waiting
-    // line with its place in the queue, so nothing here invents a status or a key.
-    if (body.spotIds.length === 0) {
-      return performReservationWrite(
-        { venueId: body.venueId, ...withPin(body.pin) },
-        {
-          type: 'waiting.add',
-          serviceDate: body.day,
-          partySize: body.partySize,
-          note: body.note ?? null,
-          reason: body.reason ?? null,
-          ...(phone === null ? { partyLabel: body.name } : { phone, guestName: body.name }),
-        },
-      )
-    }
     return performReservationWrite({ venueId: body.venueId, ...withPin(body.pin) }, (venue) => ({
       type: 'reservation.create',
       serviceDate: body.day,
@@ -487,6 +471,19 @@ const WalkIn = z.strictObject({
   phone: z.string().trim().max(40).nullable().optional(),
   note: z.string().trim().max(500).nullable().optional(),
   sameGuests: z.boolean().optional(),
+  pin,
+})
+
+const Waiting = z.strictObject({
+  venueId,
+  /** The night she is writing them down for: the list is one night's (#330). */
+  day,
+  partySize: partyCount,
+  /** A party at the door may have given neither a name nor a number (D137). */
+  name: z.string().trim().max(80).nullable().optional(),
+  phone: z.string().trim().max(40).nullable().optional(),
+  note: z.string().trim().max(500).nullable().optional(),
+  reason: z.enum(BOOKING_REASONS).nullable().optional(),
   pin,
 })
 
@@ -656,6 +653,37 @@ export async function seatWalkInAction(input: unknown): Promise<RvWriteResult> {
         : { partyLabel: name }
       : { phone, ...(name === null ? {} : { guestName: name }) }),
   }))
+}
+
+/**
+ * A party written down on the night's waiting list (#330, D137): the one door onto the list, from
+ * the Waiting view itself. No hour and no spot — a party on the list waits from the moment it is
+ * written down, and is seated by being given a spot (#329's arrival). A name is optional, and so is
+ * a number; where there is one the guest record holds both (D140). A booking with no spot yet is a
+ * booking and is taken on the booking form (#328), never here.
+ */
+export async function addWaitingAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = Waiting.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const body = parsed.data
+  const phone =
+    body.phone === undefined || body.phone === null || body.phone === '' ? null : body.phone
+  const name = body.name === undefined || body.name === null || body.name === '' ? null : body.name
+  return performReservationWrite(
+    { venueId: body.venueId, ...withPin(body.pin) },
+    {
+      type: 'waiting.add',
+      serviceDate: body.day,
+      partySize: body.partySize,
+      note: body.note ?? null,
+      reason: body.reason ?? null,
+      ...(phone === null
+        ? name === null
+          ? {}
+          : { partyLabel: name }
+        : { phone, ...(name === null ? {} : { guestName: name }) }),
+    },
+  )
 }
 
 /**

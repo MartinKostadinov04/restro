@@ -31,6 +31,7 @@ vi.mock('@/server/reservations/actions', () => ({
   reservationNightAction: vi.fn(async () => ({ ok: false, code: 'read_failed' })),
   reservationDetailAction: vi.fn(async () => ({ ok: false, code: 'read_failed' })),
   floorPlanAction: vi.fn(async () => ({ ok: false, code: 'read_failed' })),
+  addWaitingAction: vi.fn(async () => ({ ok: true, details: {} })),
 }))
 
 const TODAY = '2026-11-09'
@@ -336,6 +337,30 @@ describe('the waiting list, under its own filter (#330)', () => {
     await userEvent.click(screen.getByTestId('rv-filter-waiting'))
     expect(screen.queryByTestId('rv-list')).toBeNull()
     expect(screen.getByText('Parties with no spot yet appear here.')).toBeTruthy()
+  })
+
+  it('has a door of its own, which asks for no hour and no spot', async () => {
+    // The list is reached by its own control, never by the booking form: a booking with no spot
+    // yet is a booking (#328). What it asks for is what a party at the door has.
+    draw(waits([]))
+    await userEvent.click(screen.getByTestId('rv-filter-waiting'))
+    await userEvent.click(screen.getByTestId('rv-wl-add'))
+    const form = screen.getByTestId('rv-wl-form')
+    expect(form.textContent).toContain('Add a party')
+    expect(screen.getByTestId('rv-wl-guests')).toBeTruthy()
+    expect(screen.getByTestId('rv-wl-name')).toBeTruthy()
+    expect(screen.queryByTestId('rv-f-time')).toBeNull()
+    expect(screen.queryByTestId('rv-f-spots')).toBeNull()
+    expect(screen.queryByTestId('rv-form-sheet')).toBeNull()
+  })
+
+  it('is reachable before anybody waits, when its filter is not drawn yet', async () => {
+    // The chips are the night's own states, so there is no "Waiting" chip on a night where
+    // nobody waits — the door cannot live behind it, or the first party could never be written.
+    draw(night())
+    expect(screen.queryByTestId('rv-filter-waiting')).toBeNull()
+    await userEvent.click(screen.getByTestId('rv-wl-add'))
+    expect(screen.getByTestId('rv-wl-form')).toBeTruthy()
   })
 
   it('counts the wait on tonight only: another night’s row carries no wait', async () => {

@@ -195,10 +195,6 @@ test("a booking's guest is saved to the regulars with one tick", async () => {
   await page.getByTestId('rv-f-phone').fill(NEW_REGULAR.phone)
   await page.getByTestId('rv-f-guests').fill('2')
   await page.getByTestId('rv-f-time').fill('23:00')
-  // A spot, because the tick is a booking's (D141, "create a booking"): a save with no spot writes
-  // a party onto the waiting list instead (#330), and the regulars are never written by a walk-in.
-  await page.getByTestId('rv-f-pick-list').click()
-  await page.getByTestId('rv-pick-Маса 9').click()
   await page.getByTestId('rv-f-regular').click()
   await expect(page.getByTestId('rv-f-regular')).toBeChecked()
   await page.getByTestId('rv-f-save').click()

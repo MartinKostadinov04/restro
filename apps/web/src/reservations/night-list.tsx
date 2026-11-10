@@ -19,15 +19,22 @@
 // "Waiting" filter, in the queue's own order — oldest first, said in one line, because every other
 // filter reads the other way round — with how long each party has waited and its number to ring.
 // "Give a spot" on a waiting row opens the plan for one tap, and that tap seats the party through
-// the arrival path of #329. Cancelling and taking one out are the ordinary operations of its sheet:
-// the queue adds no workflow of its own.
+// the arrival path of #329. "Add a party" is the list's own door and the only way onto it by hand —
+// a booking with no spot yet is a booking (#328), never a waiting line. Cancelling and taking one
+// out are the ordinary operations of its sheet: the queue adds no workflow of its own.
 //
 // Taking and changing a booking is here (#328): the "New reservation" button opens the booking form,
 // a row's sheet changes, calls off, copies or takes out a booking, and the night's bin brings a
 // deleted one back. The door is here too (#329): "Arrived" on a row of a party that is coming, and
 // "Free" under its "…" once they are sitting. Every write goes through `applyService` (rule 1),
 // never around it, and a refusal is the toast that stays.
-import { CalendarPlusIcon, ChevronDownIcon, CircleAlertIcon, LockIcon } from 'lucide-react'
+import {
+  CalendarPlusIcon,
+  ChevronDownIcon,
+  CircleAlertIcon,
+  LockIcon,
+  UserPlusIcon,
+} from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -35,7 +42,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { WRAPS } from '@/lib/wrapping'
-import { reservationNightAction } from '@/server/reservations/actions'
+import { addWaitingAction, reservationNightAction } from '@/server/reservations/actions'
 import type { RvDetailView, RvFrame, RvNightView, RvRowView } from '@/server/reservations/view'
 import { useDuration } from '@/settings/use-duration'
 import { DayPicker, useDateText } from '@/tonight/day-picker'
@@ -58,6 +65,7 @@ import { ReservationRow } from './reservation-row'
 import { ReservationSheet } from './reservation-sheet'
 import { useFilterWord, useGuestsText } from './reservation-words'
 import { useReservationRun } from './use-reservation-run'
+import { type WaitingDraft, WaitingForm } from './waiting-form'
 
 /** How many nights the night button lists ahead; the date field reaches any other one. */
 const NIGHTS_AHEAD = 60
@@ -73,6 +81,27 @@ function NewButton({ onClick }: { onClick: () => void }) {
     <Button type="button" className={WRAPS} data-testid="rv-new" onClick={onClick}>
       <CalendarPlusIcon aria-hidden />
       {t('new')}
+    </Button>
+  )
+}
+
+/**
+ * The waiting list's own door (#330): it writes a party onto the queue, and it is the only way onto
+ * the list by hand. A booking is never taken here — a party with no spot is not a booking with
+ * nowhere to sit — so it is the outline button beside "New reservation", never a second filled one.
+ */
+function AddPartyButton({ onClick }: { onClick: () => void }) {
+  const t = useTranslations('reservations')
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      className={WRAPS}
+      data-testid="rv-wl-add"
+      onClick={onClick}
+    >
+      <UserPlusIcon aria-hidden />
+      {t('w_add')}
     </Button>
   )
 }
@@ -180,6 +209,8 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
   const [counting, setCounting] = useState<RvDetailView | null>(null)
   // The waiting party whose spot is being chosen (#330), by its reservation.
   const [giving, setGiving] = useState<string | null>(null)
+  /** The waiting list's own form is open: a party is being written down (#330). */
+  const [adding, setAdding] = useState(false)
   const { run, busy, pinSheet } = useReservationRun({ device: frame.device })
 
   const feed = useLiveFeed<RvNightView>({
@@ -220,6 +251,34 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
     const waited = waitedText(minutes)
     return waited === null ? null : t('w_for', { duration: waited })
   }
+  /**
+   * A party written down on the list: `waiting.add` for the night shown, the one path that writes a
+   * waiting line and its place in the queue. No hour and no spot — having neither is what the list
+   * is — and the toast names her, because that is what she wants read back.
+   */
+  const addParty = (draft: WaitingDraft) => {
+    const party = draft.name === '' ? t('no_name') : draft.name
+    setAdding(false)
+    run({
+      id: 'rv-waiting-add',
+      done: t('w_added', { party }),
+      pin: { title: t('w_add'), body: t('bk_pin_b') },
+      act: (pin) =>
+        addWaitingAction({
+          venueId: frame.venueId,
+          day,
+          partySize: draft.partySize,
+          name: draft.name === '' ? null : draft.name,
+          phone: draft.phone === '' ? null : draft.phone,
+          note: draft.note === '' ? null : draft.note,
+          reason: draft.reason,
+          ...(pin === undefined ? {} : { pin }),
+        }),
+      after: reload,
+      // She is looking at the queue she just joined, so the list she lands on is that one.
+      onDone: () => setFilter('waiting'),
+    })
+  }
   const givingLine = giving === null ? null : (queue.find((one) => one.row.id === giving) ?? null)
   /** The spot she tapped, for the party she opened: seated there, by #329's one path. */
   const give = (spot: { readonly id: string; readonly name: string }) => {
@@ -259,9 +318,7 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
         return (
           <NothingHere
             text={t('w_empty')}
-            action={
-              mayTake ? <NewButton onClick={() => setForm({ kind: 'new', day })} /> : undefined
-            }
+            action={mayTake ? <AddPartyButton onClick={() => setAdding(true)} /> : undefined}
           />
         )
       }
@@ -335,7 +392,18 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
             {day === frame.today ? t('tab_list') : dateText(day)}
           </span>
         </h2>
-        {mayTake ? <NewButton onClick={() => setForm({ kind: 'new', day })} /> : null}
+        {mayTake ? (
+          <div className="flex min-w-0 flex-wrap gap-2">
+            {/* The two ways a party enters the night: a booking, or a party with no spot. The
+                queue's own filter is only drawn once somebody waits, so the list's door cannot
+                live behind it — it is here, except on the empty queue, whose one line carries it
+                instead, so the screen never offers the same thing twice. */}
+            {filter === 'waiting' && queue.length === 0 ? null : (
+              <AddPartyButton onClick={() => setAdding(true)} />
+            )}
+            <NewButton onClick={() => setForm({ kind: 'new', day })} />
+          </div>
+        ) : null}
       </div>
       {reading ? null : <Banner night={night} frame={frame} />}
       <DayPicker
@@ -483,6 +551,9 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
           onClose={() => setGiving(null)}
         />
       )}
+      {adding ? (
+        <WaitingForm busy={busy} onSave={addParty} onClose={() => setAdding(false)} />
+      ) : null}
       {door.node}
       {pinSheet}
     </div>

@@ -1,10 +1,10 @@
 // Venue › Reservations, the waiting list (#330; D137), on a production build: the queue the hostess
 // runs by hand, on the book of the Tonight test club, worked by its owner on a tablet.
 //
-//   a booking saved with no spot lands on the night's own list under "Waiting", the queue is
-//   offered oldest first on the list and on a free spot's sheet, a freed table is given to the
-//   party that has waited longest in one move (its codes open with it), a spot given from the list
-//   is three taps, and leaving the queue is the ordinary Cancel.
+//   a booking with no spot yet stays a booking (#328) and never joins the queue, "Add a party" is
+//   the list's own door, the queue is offered oldest first on the list and on a free spot's sheet,
+//   a freed table is given to the party that has waited longest in one move (its codes open with
+//   it), a spot given from the list is three taps, and leaving the queue is the ordinary Cancel.
 //
 // The fixture is scripts/seed-tonight-e2e.ts `book` (scripts/e2e/reservations-night.ts). The admin
 // is read in English. Маса 7 is the fixture's only spot with a Table, so it is the one spot whose
@@ -33,6 +33,8 @@ const BOOKED = 'Иванова'
 const FIRST = { name: 'Първа Чакаща', phone: '+359 888 777 201' }
 const SECOND = { name: 'Втора Чакаща', phone: '+359 888 777 202' }
 const THIRD = { name: 'Трета Чакаща', phone: '+359 888 777 203' }
+/** A booking taken with no spot yet (#328): it must stay a booking, not become a waiting line. */
+const NO_SPOT = { name: 'Без Място', phone: '+359 888 777 204' }
 
 function seed(...args: string[]): string {
   return runScriptWith(
@@ -78,6 +80,7 @@ const spotSheet = (page: Page) => page.getByTestId('rv-spot-sheet')
 const rows = (page: Page) => page.getByTestId('rv-row')
 const rowOf = (page: Page, name: string) => rows(page).filter({ hasText: name }).first()
 const form = (page: Page) => page.getByTestId('rv-form-sheet')
+const waitingForm = (page: Page) => page.getByTestId('rv-wl-form')
 const give = (page: Page) => page.getByTestId('rv-give')
 const toast = (page: Page, text: string) =>
   page.locator('[data-sonner-toast]').filter({ hasText: text })
@@ -124,19 +127,21 @@ async function readTile(page: Page, name: string): Promise<string | null> {
 }
 
 /**
- * A party written down with no spot: the booking form, saved without choosing one. This is the one
- * way onto the list (#330) — there is no "add to the waiting list" screen of its own.
+ * A party written down on the list: "Add a party", which is the list's own door and the only way
+ * onto it by hand (#330). No hour and no spot are asked for — having neither is what the list is.
  */
 async function writeDown(page: Page, party: { name: string; phone: string }, guests: number) {
   await openList(page)
-  await page.getByTestId('rv-new').first().click()
-  await expect(form(page)).toBeVisible()
-  await page.getByTestId('rv-f-name').fill(party.name)
-  await page.getByTestId('rv-f-phone').fill(party.phone)
-  await page.getByTestId('rv-f-guests').fill(String(guests))
-  await page.getByTestId('rv-f-save').click()
-  await expect(toast(page, 'Reservation saved.')).toBeVisible()
-  await expect(form(page)).toHaveCount(0)
+  await page.getByTestId('rv-wl-add').click()
+  await expect(waitingForm(page)).toBeVisible()
+  await page.getByTestId('rv-wl-name').fill(party.name)
+  await page.getByTestId('rv-wl-phone').fill(party.phone)
+  await page.getByTestId('rv-wl-guests').fill(String(guests))
+  await page.getByTestId('rv-wl-save').click()
+  await expect(toast(page, `${party.name} is on the waiting list.`)).toBeVisible()
+  await expect(waitingForm(page)).toHaveCount(0)
+  // It writes the queue she is looking at, so the list she lands on is the queue itself.
+  await expect(page.getByTestId('rv-waiting-note')).toBeVisible()
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -155,7 +160,30 @@ test.afterAll(async () => {
   await owner?.context.close()
 })
 
-test('a booking saved with no spot waits, on the night’s own list under “Waiting”', async () => {
+test('a booking with no spot yet is a booking, and never joins the waiting list', async () => {
+  const { page } = owner
+  // #328's booking the hostess gives a table later: the form is saved with no spot chosen, and
+  // #329 marks such a party present on the spots she picks at the door. The waiting list has its
+  // own door, so nothing on this form can put a party on the queue.
+  await openList(page)
+  await page.getByTestId('rv-new').first().click()
+  await expect(form(page)).toBeVisible()
+  await page.getByTestId('rv-f-name').fill(NO_SPOT.name)
+  await page.getByTestId('rv-f-phone').fill(NO_SPOT.phone)
+  await page.getByTestId('rv-f-guests').fill('5')
+  await page.getByTestId('rv-f-time').fill('23:45')
+  await page.getByTestId('rv-f-save').click()
+  await expect(toast(page, 'Reservation saved.')).toBeVisible()
+  await expect(form(page)).toHaveCount(0)
+
+  await openList(page)
+  await expect(rowOf(page, NO_SPOT.name)).toHaveAttribute('data-status', 'reserved')
+  await expect(rowOf(page, NO_SPOT.name)).toContainText('5 guests')
+  // Nobody is waiting, so the queue's own filter is not even drawn yet.
+  await expect(page.getByTestId('rv-filter-waiting')).toHaveCount(0)
+})
+
+test('“Add a party” writes a party onto the night’s list under “Waiting”', async () => {
   const { page } = owner
   await writeDown(page, FIRST, 4)
 

@@ -93,8 +93,9 @@ export type RvCommand =
   | {
       /**
        * A party onto the night's waiting list (#330, D137): the one path that writes a waiting
-       * line and its queue key. A booking saved with no spot comes here, so the hour it was asked
-       * for is not kept — a party with no spot waits from the moment it is written down.
+       * line and its queue key, reached only from the Waiting view's own "Add a party". It keeps
+       * no hour — a party on the list waits from the moment it is written down. A booking with no
+       * spot yet is a booking (#328) and never comes here.
        */
       readonly type: 'waiting.add'
       readonly serviceDate: string

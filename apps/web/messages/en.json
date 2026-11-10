@@ -2763,7 +2763,10 @@
     "w_order": "Oldest first: the party that has waited longest is at the top.",
     "w_empty": "Parties with no spot yet appear here.",
     "w_seated": "{party} is seated on {spot}. The table is open for phones.",
-    "w_e_regular": "Choose a spot to save a regular, or add the guest on the Guests tab."
+    "w_add": "Add a party",
+    "w_add_b": "They wait from now. Give them a spot when one frees.",
+    "w_name_opt": "Name (optional)",
+    "w_added": "{party} is on the waiting list."
   },
   "ownerSettings": {
     "st_hours": "Hours",
