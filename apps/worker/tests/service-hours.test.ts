@@ -181,22 +181,25 @@ describe.skipIf(!hasDatabase)('the venue night jobs', () => {
     })
 
     it('ends the night at the closing hour even with no table open, once (#332)', async () => {
+      // A venue of its own with the same hours and no table open; the shared venue's three tables
+      // close in the same tick, so the record is read, not the tick's count.
+      const empty = await venueWithOpenTables('Empty Bar', HOURS, 0)
       // Saturday's night closes 05:30 Sunday 25 October, winter time again: 03:30Z.
       const record = () =>
         query<{ closed_early: boolean; open_bills_at_close: number | null }>(
           `select closed_early, open_bills_at_close from restro.reservation_nights
             where venue_id = $1 and service_date = '2026-10-24' and closed_at is not null`,
-          [venueId],
+          [empty.venueId],
         )
-      expect(await closeTablesAtClosingHour(pool, new Date('2026-10-25T03:29:00Z'), quiet)).toBe(0)
+      await closeTablesAtClosingHour(pool, new Date('2026-10-25T03:29:00Z'), quiet)
       expect(await record()).toEqual([])
-      expect(await closeTablesAtClosingHour(pool, new Date('2026-10-25T03:30:00Z'), quiet)).toBe(0)
+      await closeTablesAtClosingHour(pool, new Date('2026-10-25T03:30:00Z'), quiet)
       expect(await record()).toEqual([{ closed_early: false, open_bills_at_close: 0 }])
       await closeTablesAtClosingHour(pool, new Date('2026-10-25T03:31:00Z'), quiet)
       const ended = await query<{ n: string }>(
         `select count(*)::text as n from restro.log_entries
           where venue_id = $1 and kind = 'night.closed' and service_date = '2026-10-24'`,
-        [venueId],
+        [empty.venueId],
       )
       expect(ended).toEqual([{ n: '1' }])
     })
