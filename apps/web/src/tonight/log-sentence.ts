@@ -77,6 +77,62 @@ const PAYMENT_ANSWER_LOG_WORDS = {
   not_on_till: 'lg_pay_notill',
 } as const
 
+/**
+ * The word for what a reservation became (#323): the party's status, or "changed" for a code the
+ * screen has no word for, so a raw code is never drawn. "Not seated" is its own word and is never
+ * worded as a no-show (D140).
+ */
+const RESERVATION_STATE_WORDS: Readonly<Record<string, string>> = {
+  reserved: 'lg_rv_s_reserved',
+  waiting: 'lg_rv_s_waiting',
+  seated: 'lg_rv_s_seated',
+  finished: 'lg_rv_s_finished',
+  no_show: 'lg_rv_s_no_show',
+  cancelled: 'lg_rv_s_cancelled',
+  not_seated: 'lg_rv_s_not_seated',
+  requested: 'lg_rv_s_requested',
+  deleted: 'lg_rv_s_deleted',
+}
+
+function reservationStateText(line: LogLineView, c: SentenceContext): string {
+  const key =
+    line.reservationStatus === null ? undefined : RESERVATION_STATE_WORDS[line.reservationStatus]
+  return c.say(key ?? 'lg_rv_s_other')
+}
+
+/** What a change to the floor plan's spots was: a spot of the plan, or a kind of spot (#323). */
+const SPOT_SENTENCES: Readonly<Record<string, string>> = {
+  created: 'lg_spot_added',
+  removed: 'lg_spot_removed',
+  kind_saved: 'lg_spot_kind',
+  kind_removed: 'lg_spot_kind_removed',
+  seats: 'lg_spot_seats',
+}
+
+/** Which reservation rule a settings change moved, when it was one (#325). */
+const SETTINGS_SENTENCES: Readonly<Record<string, string>> = {
+  turn_time: 'lg_rv_set_turn_time',
+  phone_required: 'lg_rv_set_phone',
+  edit_past: 'lg_rv_set_past',
+  private_list: 'lg_rv_set_private',
+  closed_date_added: 'lg_rv_set_closed_added',
+  closed_date_removed: 'lg_rv_set_closed_removed',
+}
+
+/** The word for each pay rule a reservation can carry (#334); no rule reads as the club's own. */
+const PAY_RULE_SENTENCES: Readonly<Record<string, string>> = {
+  venue: 'lg_rv_pr_venue',
+  on_bill: 'lg_rv_pr_on_bill',
+  pay_first: 'lg_rv_pr_pay_first',
+}
+
+/** What a change to a guest's record was; its details are never in the sentence (D140). */
+const GUEST_SENTENCES: Readonly<Record<string, string>> = {
+  archived: 'lg_guest_archived',
+  note_kept: 'lg_guest_note',
+  note_cleared: 'lg_guest_note_cleared',
+}
+
 /** The sentence of each shown kind; `null` is a kind that never shows. */
 export const SENTENCES = {
   'sitting.opened': (l, c) => c.say('lg_opened', { table: c.table(l) }),
@@ -119,7 +175,14 @@ export const SENTENCES = {
     c.say('lg_settings', {
       what: c.say(l.setting === 'pay_table' ? 'lg_w_pay_table' : 'lg_w_setting'),
     }),
-  'role.changed': (l, c) => c.say('lg_role', { role: l.subject ?? c.say('lg_someone') }),
+  // A role change names the role and how many abilities it holds now (#366): a default role the
+  // venue ticked is read in the Log like any other, and the keys themselves are in the entry.
+  'role.changed': (l, c) => {
+    const role = l.subject ?? c.say('lg_someone')
+    return l.heldCount === null
+      ? c.say('lg_role', { role })
+      : c.say('lg_role_holds', { role, n: l.heldCount })
+  },
   // A person getting or losing a role is a change of staff (no sentence of its own in the plan).
   'assignment.changed': (l, c) => c.say('lg_staff', { who: l.subject ?? c.say('lg_someone') }),
   'staff.changed': (l, c) => c.say('lg_staff', { who: l.subject ?? c.say('lg_someone') }),
@@ -161,6 +224,57 @@ export const SENTENCES = {
             : 'd_won',
       ),
     }),
+  // Reservations (#323; D141: they write to the same Log as ordering). A line says what happened
+  // to the booking, never who the guest is: his name and number stay in his record (D140).
+  'reservation.created': (l, c) => c.say('lg_rv_created', { state: reservationStateText(l, c) }),
+  'reservation.changed': (l, c) => c.say('lg_rv_changed', { state: reservationStateText(l, c) }),
+  'reservation.status': (l, c) => c.say('lg_rv_status', { state: reservationStateText(l, c) }),
+  'reservation.restored': (l, c) => c.say('lg_rv_restored', { state: reservationStateText(l, c) }),
+  // Held, freed, or moved by Change tables (#331) — with a bill left behind on the table it left.
+  'reservation.spots': (l, c) =>
+    c.say(
+      l.reservationStatus === 'released'
+        ? 'lg_rv_freed'
+        : l.reservationStatus === 'moved'
+          ? 'lg_rv_moved'
+          : l.reservationStatus === 'moved_bill'
+            ? 'lg_rv_moved_bill'
+            : 'lg_rv_held',
+    ),
+  // The pay rule a party carries (#334, D135): the rule it became, never an amount (D136).
+  'reservation.pay_rule': (l, c) =>
+    c.say('lg_rv_pay_rule', {
+      rule: c.say(
+        (l.reservationStatus === null ? undefined : PAY_RULE_SENTENCES[l.reservationStatus]) ??
+          'lg_rv_pr_venue',
+      ),
+    }),
+  // The night's end (#332; D138): at the closing hour, or an admin's early end, with the bills it
+  // found still open — the closing hour's warning, counted and named here.
+  'night.closed': (l, c) =>
+    l.endedEarly
+      ? c.say('lg_night_ended_early', { who: c.who(l.by), n: l.openBills ?? 0 })
+      : c.say('lg_night_ended', { n: l.openBills ?? 0 }),
+  'plan.changed': (l, c) =>
+    c.say(l.reservationStatus === 'removed' ? 'lg_plan_removed' : 'lg_plan_changed'),
+  'spot.changed': (l, c) =>
+    c.say(
+      (l.reservationStatus === null ? undefined : SPOT_SENTENCES[l.reservationStatus]) ??
+        'lg_spot_changed',
+    ),
+  'reservation_settings.changed': (l, c) =>
+    c.say(
+      (l.reservationStatus === null ? undefined : SETTINGS_SENTENCES[l.reservationStatus]) ??
+        'lg_rv_settings',
+    ),
+  'guest.changed': (l, c) =>
+    c.say(
+      (l.reservationStatus === null ? undefined : GUEST_SENTENCES[l.reservationStatus]) ??
+        'lg_guest_changed',
+    ),
+  'guest.erased': (_l, c) => c.say('lg_guest_erased'),
+  // The sweep of the parties nobody seated, which the worker does when a night ends unclosed.
+  'night.swept': (_l, c) => c.say('lg_rv_night_swept'),
   'lease.taken_over': null,
   'payment.hold_unread': null,
 } as const satisfies Record<LogKind, Sentence | null>

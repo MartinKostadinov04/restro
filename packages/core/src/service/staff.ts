@@ -3,9 +3,13 @@
 // never unlocks; each change is a `record` Log entry, kept 18 months.
 //
 // - **Roles.** Every venue has the default roles Staff, Manager and Owner, created the first time a
-//   command needs them; they are read-only and hold what `DEFAULT_ROLE_PERMISSIONS` says. A venue
-//   copies one (or one of its own) to make its own role, then renames it or changes its
-//   permissions.
+//   command needs them. Staff and Manager are a preselection: the venue ticks and unticks them in
+//   place (`role.update`), and `role.reset` puts back what Restro ships (Martin 11-09, #366).
+//   Until the venue edits one it holds what `DEFAULT_ROLE_PERMISSIONS` says, so a permission
+//   shipped later reaches it; after the edit its own row holds, and a key added later arrives
+//   unticked. The Owner role is fixed, so nobody takes `settings.roles` off their own role and
+//   locks the venue out. The three names stay as Restro ships them, and no default role is
+//   archived: a venue that wants its own name or its own set copies one.
 // - **Staff members** belong to the organisation and need no account; one role per venue
 //   (an assignment). Restro generates each PIN (`pins.ts`): four digits, unique in the
 //   organisation, stored as its HMAC and a copy sealed for the worker. Seeing it again goes through
@@ -47,9 +51,11 @@ import {
   grantedPermissions,
   holdsStaffRightsOnly,
   isDefaultRoleKind,
+  isEditableDefaultKind,
   PERMISSIONS,
   type Permission,
   PermissionSchema,
+  roleGrants,
 } from './permissions'
 import { generatePin, pinHmac } from './pins'
 import { accepted, refused, type ServiceResult } from './results'
@@ -83,13 +89,11 @@ type Member = typeof staffMembers.$inferSelect
 
 // --- helpers ----------------------------------------------------------------------------------
 
-/** What a role holds: the code's list for a default role, its stored list otherwise. */
-function roleHolds(role: Pick<Role, 'defaultKind' | 'permissions'>): Permission[] {
-  return grantedPermissions(
-    isDefaultRoleKind(role.defaultKind)
-      ? DEFAULT_ROLE_PERMISSIONS[role.defaultKind]
-      : role.permissions,
-  )
+/** What a role holds, through the one authority every reader uses (`roleGrants`, #366). */
+function roleHolds(
+  role: Pick<Role, 'defaultKind' | 'permissions' | 'knownPermissions'>,
+): Permission[] {
+  return roleGrants(role)
 }
 
 /** True for Restro's admin team, which may grant what it doesn't hold itself (D122 §7). */
@@ -195,6 +199,7 @@ async function assignmentsOf(
       roleId: staffAssignments.roleId,
       defaultKind: venueRoles.defaultKind,
       permissions: venueRoles.permissions,
+      knownPermissions: venueRoles.knownPermissions,
     })
     .from(staffAssignments)
     .innerJoin(venueRoles, eq(venueRoles.id, staffAssignments.roleId))
@@ -384,7 +389,16 @@ export async function copyRole(
   return accepted(null, { details: { roleId: id } })
 }
 
-/** `role.update`: renames a venue's own role or changes its permissions. */
+/**
+ * `role.update`: changes what a role holds, and renames a venue's own role.
+ *
+ * The venue's Staff and Manager roles are ticked and unticked here like any role it made itself
+ * (Martin 11-09, #366): the first such change writes `known_permissions`, the keys the code knows
+ * now, and from then on the row holds — nothing puts a permission back, and one Restro adds later
+ * arrives unticked. `role.reset` undoes that. Two things this refuses: the Owner role, which is
+ * fixed, and renaming a default role, whose three names stay as Restro ships them (a venue that
+ * wants its own name copies one).
+ */
 export async function updateRole(
   stx: ServiceTx,
   command: {
@@ -393,10 +407,12 @@ export async function updateRole(
     readonly permissions?: readonly Permission[] | undefined
   },
 ): Promise<ServiceResult> {
-  const { roles } = await lockStaffRows(stx, [command.roleId])
-  const role = liveRoleHere(stx, roles.get(command.roleId))
+  const roleId = await roleIdOf(stx, command.roleId)
+  const { roles } = await lockStaffRows(stx, roleId === null ? [] : [roleId])
+  const role = liveRoleHere(stx, roleId === null ? undefined : roles.get(roleId))
   if (role === null) return refused(null, 'role_missing')
-  if (role.defaultKind !== null) return refused(null, 'role_read_only')
+  const editableDefault = isEditableDefaultKind(role.defaultKind)
+  if (role.defaultKind !== null && !editableDefault) return refused(null, 'role_read_only')
 
   const before = roleHolds(role)
   const after = command.permissions === undefined ? before : grantedPermissions(command.permissions)
@@ -404,9 +420,13 @@ export async function updateRole(
   const removed = before.filter((permission) => !after.includes(permission))
   if (notHeld(stx, added).length > 0) return refused(null, 'permission_not_held')
   const renamed = command.name !== undefined && command.name !== role.name
+  // The three default names stay as Restro ships them (#366).
+  if (renamed && editableDefault) return refused(null, 'role_read_only')
   if (renamed && (await roleNameTaken(stx, command.name ?? '', role.id))) {
     return refused(null, 'role_name_taken')
   }
+  // An unedited default role whose ticks don't change is left as it is: marking it edited would
+  // freeze it, and a permission Restro adds later would stop reaching it.
   if (!renamed && added.length === 0 && removed.length === 0) {
     return accepted(null, { details: { roleId: role.id } })
   }
@@ -416,6 +436,7 @@ export async function updateRole(
     .set({
       name: command.name ?? role.name,
       permissions: after,
+      ...(editableDefault ? { knownPermissions: [...PERMISSIONS] } : {}),
       ...stx.provenance,
     })
     .where(eq(venueRoles.id, role.id))
@@ -425,6 +446,49 @@ export async function updateRole(
     details: {
       roleId: role.id,
       renamed,
+      holdsCount: after.length,
+      ...listDetails('holds', after),
+      ...listDetails('added', added),
+      ...listDetails('removed', removed),
+    },
+  })
+  return accepted(null, { details: { roleId: role.id } })
+}
+
+/**
+ * `role.reset`: puts a default role back as Restro ships it (#366). `known_permissions` goes back
+ * to null, so the role follows the code's table again and a permission shipped later reaches it.
+ * The Owner role is never edited, so there is nothing to reset on it.
+ */
+export async function resetRole(
+  stx: ServiceTx,
+  command: { readonly roleId: string },
+): Promise<ServiceResult> {
+  const roleId = await roleIdOf(stx, command.roleId)
+  const { roles } = await lockStaffRows(stx, roleId === null ? [] : [roleId])
+  const role = liveRoleHere(stx, roleId === null ? undefined : roles.get(roleId))
+  if (role === null) return refused(null, 'role_missing')
+  if (!isEditableDefaultKind(role.defaultKind)) return refused(null, 'role_read_only')
+  const kind = role.defaultKind as 'staff' | 'manager'
+
+  const before = roleHolds(role)
+  const after = grantedPermissions(DEFAULT_ROLE_PERMISSIONS[kind])
+  const added = after.filter((permission) => !before.includes(permission))
+  const removed = before.filter((permission) => !after.includes(permission))
+  // Nobody hands out what they don't hold, a reset included.
+  if (notHeld(stx, added).length > 0) return refused(null, 'permission_not_held')
+
+  await stx.tx
+    .update(venueRoles)
+    .set({ permissions: after, knownPermissions: null, ...stx.provenance })
+    .where(eq(venueRoles.id, role.id))
+  await stx.log({
+    kind: 'role.changed',
+    toState: 'reset',
+    details: {
+      roleId: role.id,
+      holdsCount: after.length,
+      ...listDetails('holds', after),
       ...listDetails('added', added),
       ...listDetails('removed', removed),
     },

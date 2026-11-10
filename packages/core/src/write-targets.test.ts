@@ -45,7 +45,37 @@ const SERVICE_TABLES: Readonly<Record<string, string>> = {
   paymentRefunds: 'payment_refunds',
   paymentAccounts: 'payment_accounts',
   providerNotices: 'provider_notices',
+  // Reservations (#323): the plan and its spots, the venue's spot kinds, the reservations and the
+  // spots they hold, the guest records and the private notes about them, the venue's reservation
+  // settings and the record of each night. Service data (D122 §9), written by `applyService` and
+  // by nothing else.
+  floorPlans: 'floor_plans',
+  spots: 'spots',
+  venueSpotKinds: 'venue_spot_kinds',
+  reservations: 'reservations',
+  reservationSpots: 'reservation_spots',
+  guests: 'guests',
+  guestPrivateNotes: 'guest_private_notes',
+  reservationSettings: 'reservation_settings',
+  reservationNights: 'reservation_nights',
 }
+
+/**
+ * The reservation tables: written by core/service and nowhere else in the repo (#323). A
+ * reservation is service data with no layer (D122 §9), so the menu write path never names one, and
+ * no screen, worker job or connector writes one either.
+ */
+const RESERVATION_TABLES = [
+  'floorPlans',
+  'spots',
+  'venueSpotKinds',
+  'reservations',
+  'reservationSpots',
+  'guests',
+  'guestPrivateNotes',
+  'reservationSettings',
+  'reservationNights',
+] as const
 
 /** The paying tables: written by core/service and nowhere else in the repo (#104). */
 const PAYING_TABLES = [
@@ -104,6 +134,17 @@ const SERVICE_WRITE_TARGETS: readonly string[] = [
   'paymentAccounts',
   // #84: the end of a service day keeps its totals.
   'serviceDays',
+  // #323: the reservations side. Every one of them is written by a command of
+  // `reservations/commands.ts` and by nothing else in the repo.
+  'floorPlans',
+  'spots',
+  'venueSpotKinds',
+  'reservations',
+  'reservationSpots',
+  'guests',
+  'guestPrivateNotes',
+  'reservationSettings',
+  'reservationNights',
 ]
 
 function sourceFiles(dir: string): string[] {
@@ -232,6 +273,38 @@ describe('the write-target guard', () => {
           ...sqlWriteTargets(text).filter((name) => sqlNames.has(name)),
         ].map((name) => `${relative(repoRoot, file).replaceAll(sep, '/')}: ${name}`)
       })
+    expect(found).toEqual([])
+  })
+
+  it('nothing outside core/service writes a reservation table, anywhere in the repo', () => {
+    const drizzleNames = new Set<string>(RESERVATION_TABLES)
+    const sqlNames = new Set(RESERVATION_TABLES.map((name) => SERVICE_TABLES[name]))
+    const files = ['apps', 'packages'].flatMap((top) => sourceFiles(join(repoRoot, top)))
+    expect(files.length).toBeGreaterThan(100)
+    const outside = (dir: string) => (file: string) => !file.startsWith(dir + sep)
+    const found = files
+      .filter(outside(serviceRoot))
+      .filter(outside(join(repoRoot, 'packages', 'db')))
+      .flatMap((file) => {
+        const text = readFileSync(file, 'utf8')
+        return [
+          ...drizzleWriteTargets(text).filter((name) => drizzleNames.has(name)),
+          ...sqlWriteTargets(text).filter((name) => sqlNames.has(name)),
+        ].map((name) => `${relative(repoRoot, file).replaceAll(sep, '/')}: ${name}`)
+      })
+    expect(found).toEqual([])
+  })
+
+  it('no reservation module imports a connector or a payment provider (D134, rule 7)', () => {
+    const reservationFiles = sourceFiles(join(serviceRoot, 'reservations'))
+    expect(reservationFiles.length).toBeGreaterThan(5)
+    const found = reservationFiles
+      .filter((file) =>
+        /from\s+['"](?:@restro\/(?:barsy|stripe)|[^'"]*connectors)/.test(
+          readFileSync(file, 'utf8'),
+        ),
+      )
+      .map(rel)
     expect(found).toEqual([])
   })
 

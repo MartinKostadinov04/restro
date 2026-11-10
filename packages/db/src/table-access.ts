@@ -188,6 +188,24 @@ export const TABLE_ACCESS = {
   // one system table it may delete from.
   provider_notices: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
 
+  // Reservations (migration 0046; D134, D135, D137, D138, D140, D141; ticket #323): written only
+  // by `applyService`, never deleted by the app. Every one of them is an update where another
+  // system would delete: a spot is released by `released_at`, a plan and a spot are removed by
+  // `removed_at`, a guest is archived and erased by clearing his details (D83, D140). The purge
+  // role erases a venue's rows with the venue, and the night's rows when their retention ends.
+  floor_plans: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  spots: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  venue_spot_kinds: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  reservations: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  reservation_spots: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  reservation_settings: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  reservation_nights: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  // The venue's guest records and a manager's private notes about them (D140). Erasing a guest is
+  // an UPDATE that empties the row, so the app needs no DELETE here either; the purge erases the
+  // rows with the venue.
+  guests: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  guest_private_notes: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+
   // The guest events (migration 0045; D142; ticket #335): what a guest's phone did, append-only
   // and free of personal data. Written only by `recordEvents()` in `@restro/core/events`, so the
   // app role has no UPDATE and no DELETE; the purge erases a venue's rows when their retention

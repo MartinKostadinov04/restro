@@ -57,7 +57,7 @@ export function noticeKinds(): readonly string[] {
 /** The notice connector of a kind, or null for a kind with none or not offered here. */
 export function noticeConnectorFor(kind: string, env: PaymentsEnv): NoticeConnector | null {
   const connector = BY_KIND.get(kind)
-  return connector !== undefined && connector.offered(env) ? connector : null
+  return connector?.offered(env) === true ? connector : null
 }
 
 /** The provider's name for a sentence (`{provider}`), or null for a kind with none. */

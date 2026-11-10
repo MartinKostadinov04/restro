@@ -32,6 +32,7 @@ import {
   type DbPool,
   integrations,
   payments,
+  reservationNights,
   sittings,
   venues,
   withSystem,
@@ -111,6 +112,22 @@ export async function closeTablesAtClosingHour(
   for (const venue of await venuesWithHours(pool)) {
     const night = serviceNightAt(now, clockOf(venue))
     try {
+      // Past tonight's closing, a night not yet ended is due whether or not a table is open: the
+      // night's end also sweeps tonight's reservations and stores the night (#332).
+      const unended =
+        night.tablesClosed &&
+        (await withTenant(pool, venue.tenantId, async (tx) => {
+          const [record] = await tx
+            .select({ closedAt: reservationNights.closedAt })
+            .from(reservationNights)
+            .where(
+              and(
+                eq(reservationNights.venueId, venue.venueId),
+                eq(reservationNights.serviceDate, night.serviceDate),
+              ),
+            )
+          return record?.closedAt == null
+        }))
       // Outside the closing time, only a sitting with a payment of an earlier service day, and no
       // payment still going, can be due: the command decides, and it is not asked for nothing.
       const [open] = await withTenant(pool, venue.tenantId, (tx) =>
@@ -148,7 +165,7 @@ export async function closeTablesAtClosingHour(
           )
           .limit(1),
       )
-      if (open === undefined) continue
+      if (open === undefined && !unended) continue
       const { result } = await applyService(
         pool,
         { type: 'hours.close_tables' },

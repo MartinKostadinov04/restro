@@ -55,6 +55,7 @@ const line = (kind: LogLineView['kind'], fields: Partial<LogLineView> = {}): Log
   guard: null,
   setting: 'setting',
   subject: null,
+  heldCount: null,
   amountMinor: null,
   paymentState: null,
   paymentAnswer: null,
@@ -65,6 +66,9 @@ const line = (kind: LogLineView['kind'], fields: Partial<LogLineView> = {}): Log
   refundSeenUndone: false,
   paymentId: null,
   sentOrdersOfDay: null,
+  openBills: null,
+  endedEarly: false,
+  reservationStatus: null,
   callKinds: [],
   callUndone: false,
   ...fields,
@@ -172,6 +176,16 @@ describe("the Log's sentences", () => {
     )
     expect(logSentence(line('service_day.closed', { sentOrdersOfDay: 84 }), en)).toBe(
       'The night closed: 84 sent orders',
+    )
+    // The night's end (#332): the bills it found still open, counted and named.
+    expect(logSentence(line('night.closed', { openBills: 2 }), en)).toBe(
+      'The night ended at the closing hour · bills still open: 2',
+    )
+    expect(logSentence(line('night.closed', { openBills: 1, endedEarly: true }), en)).toBe(
+      'Maria ended the night early · bills still open: 1',
+    )
+    expect(logSentence(line('night.closed', { openBills: 0 }), en)).toBe(
+      'The night ended at the closing hour · bills still open: 0',
     )
     expect(logSentence(line('table_code.reissued'), en)).toBe('New code for Table 7')
     expect(logSentence(line('table_code.revealed'), en)).toBe('Code shown for Table 7')
@@ -328,6 +342,22 @@ describe('the sentences of refunds, stornos and disputes (#222)', () => {
     )
     expect(bgText(line('payment.dispute', { disputeState: 'open' }))).toBe(
       'Спор по плащането: Оспорено',
+    )
+  })
+
+  it('words which reservation rule a settings change moved (#325), and a seats change', () => {
+    const settings = (code: string | null) =>
+      line('reservation_settings.changed', { reservationStatus: code })
+    expect(en(settings('phone_required'))).toBe('Phone requirement for bookings changed')
+    expect(en(settings('closed_date_added'))).toBe('Closed date added')
+    expect(en(settings('closed_date_removed'))).toBe('Closed date removed')
+    expect(bgText(settings('closed_date_added'))).toBe('Добавена затворена дата')
+    // A change that moved several rules, or only where the PIN falls, keeps the plain sentence.
+    expect(en(settings('changed'))).toBe('Reservation settings changed')
+    expect(en(settings(null))).toBe('Reservation settings changed')
+    expect(en(line('spot.changed', { reservationStatus: 'seats' }))).toBe('Seats of a spot changed')
+    expect(bgText(line('spot.changed', { reservationStatus: 'seats' }))).toBe(
+      'Променени места на маса',
     )
   })
 })

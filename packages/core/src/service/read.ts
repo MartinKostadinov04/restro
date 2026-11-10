@@ -22,6 +22,7 @@ import {
   paymentLines,
   payments,
   type ReadTx,
+  reservationNights,
   sentOrders,
   sharedDevices,
   sittings,
@@ -37,7 +38,12 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle
 import type { AreaId, BarId, TableId } from '../ids'
 import type { LegalDetails } from '../legal-details'
 import { PAID_LINES_MAX } from '../paid-lines'
-import { payFirstApplies, readPayFirstSettings } from '../pay-first-settings'
+import {
+  type PayFirstLevel,
+  payFirstRuleApplies,
+  payFirstRuleAt,
+  readPayFirstSettings,
+} from '../pay-first-settings'
 import { CARD_FLOOR_MINOR, readPayingSettings, smallestCardMinor } from '../paying-settings'
 import type { PayingMissing } from '../payment-connection'
 import { serviceDate } from '../service-day'
@@ -69,6 +75,7 @@ import {
 } from './payment-todos'
 import type { Permission } from './permissions'
 import { type ReceiptToBring, receiptsToBring } from './receipt-rows'
+import { payRuleAtTable, payRulesAtTables } from './reservations/pay-rule'
 import { sentOrderLinesOf } from './send'
 import { withoutTipMinor } from './staff-amount'
 import { readTableCapabilities } from './table-capabilities'
@@ -496,11 +503,22 @@ export async function readTableState(
       .from(venues)
       .where(eq(venues.id, table.venueId))
     const payFirstSettings = readPayFirstSettings(venue?.settings ?? {})
-    const payFirst = payFirstApplies(payFirstSettings, {
-      tableId: table.id as TableId,
-      barId: table.barId as BarId | null,
-      areaId: table.areaId as AreaId,
-    })
+    // The pay rule of the party sitting here, where one is in force on this sitting (#334, D135):
+    // a level between the table's own setting and its bar's. A table with a setting of its own is
+    // untouched by it, which `payFirstRuleAt` decides and not this call.
+    const partyRule =
+      sitting === undefined
+        ? null
+        : await payRuleAtTable(tx, { tableId: table.id, sittingId: sitting.id })
+    const payFirst = payFirstRuleApplies(
+      payFirstSettings,
+      {
+        tableId: table.id as TableId,
+        barId: table.barId as BarId | null,
+        areaId: table.areaId as AreaId,
+      },
+      partyRule,
+    )
       ? {
           state: await payFirstState(tx, {
             venueId: table.venueId,
@@ -612,6 +630,13 @@ export interface TonightTable {
     readonly openedAt: Date
     readonly openedHow: string
   } | null
+  /**
+   * The pay rule that holds at this table while its sitting is open, and the level that decided it
+   * (#334; D122 §5, D135): the table's own setting, else the rule the party sitting there carries,
+   * else its bar's, its hall's or the house's. Null while the table is closed — a rule is about a
+   * sitting, and there is none.
+   */
+  readonly payRule: { readonly payFirst: boolean; readonly level: PayFirstLevel } | null
 }
 
 /** An active pause as Tonight lists it: where it applies and who started it. */
@@ -704,6 +729,16 @@ export interface Tonight {
       }[]
     | null
   readonly pauses: readonly TonightPause[]
+  /**
+   * Tonight's end, once it has run (#332; D138): when, whether an admin ended it before the
+   * closing hour, and the bills still open at that moment — the closing hour's warning, which the
+   * screen shows as one row. Null while the night is going on.
+   */
+  readonly nightEnd?: {
+    readonly at: Date
+    readonly early: boolean
+    readonly openBills: number | null
+  } | null
   /** Tonight's Log, newest first, for `log.view`; null otherwise. */
   readonly log:
     | readonly {
@@ -801,6 +836,7 @@ export async function readTonight(
         name: venueTables.name,
         number: venueTables.number,
         barId: venueTables.barId,
+        areaId: venueTables.areaId,
         isPaymentTable: venueTables.isPaymentTable,
         sittingId: sittings.id,
         openedAt: sittings.openedAt,
@@ -810,6 +846,12 @@ export async function readTonight(
       .leftJoin(sittings, and(eq(sittings.tableId, venueTables.id), isNull(sittings.endedAt)))
       .where(and(eq(venueTables.venueId, venue.id), isNull(venueTables.archivedAt)))
       .orderBy(venueTables.sortKey, venueTables.id)
+
+    // Which pay rule holds at each open table, so the sitting's own line can say it and why
+    // (#334): the venue's four levels plus the rule a party seated there carries, resolved by the
+    // one function that resolves them (`payFirstRuleAt`). One read for the whole floor.
+    const tonightPayFirst = readPayFirstSettings(venue.settings ?? {})
+    const tonightPartyRules = await payRulesAtTables(tx, { venueId: venue.id })
 
     const sent = await tx
       .select({
@@ -1056,6 +1098,21 @@ export async function readTonight(
           row.sittingId === null || row.openedAt === null || row.openedHow === null
             ? null
             : { id: row.sittingId, openedAt: row.openedAt, openedHow: row.openedHow },
+        payRule:
+          row.sittingId === null
+            ? null
+            : (() => {
+                const reading = payFirstRuleAt(
+                  tonightPayFirst,
+                  {
+                    tableId: row.id as TableId,
+                    barId: row.barId as BarId | null,
+                    areaId: row.areaId as AreaId,
+                  },
+                  tonightPartyRules.get(row.id) ?? null,
+                )
+                return { payFirst: reading.applies, level: reading.level }
+              })(),
       })),
       sentOrders: sent,
       alerts: openAlerts
@@ -1102,6 +1159,21 @@ export async function readTonight(
         startedBy: pause.restroStarted ? null : (named.get(starter) ?? null),
       })),
       log,
+      nightEnd: await (async () => {
+        const [record] = await tx
+          .select({
+            at: reservationNights.closedAt,
+            early: reservationNights.closedEarly,
+            openBills: reservationNights.openBillsAtClose,
+          })
+          .from(reservationNights)
+          .where(
+            and(eq(reservationNights.venueId, venue.id), eq(reservationNights.serviceDate, day)),
+          )
+        return record?.at == null
+          ? null
+          : { at: record.at, early: record.early, openBills: record.openBills }
+      })(),
     }
     return { ok: true, tonight } as const
   })

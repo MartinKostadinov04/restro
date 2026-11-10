@@ -37,7 +37,7 @@ async function signIn(browser: Browser, email: string): Promise<Page> {
     await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
     await page.getByRole('button', { name: 'Вход' }).click()
     try {
-      await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=tonight|\/venues$/, {
+      await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=\w+|\/venues$/, {
         timeout: 30_000,
       })
       await context.addCookies([
@@ -175,8 +175,11 @@ test('a tablet with an owner’s account is not offered what it would be refused
 
   await tablet.goto(`${venuePath}?tab=settings`)
   await expect(tablet).toHaveURL(/\?tab=tonight$/)
-  // Tonight is all it has, so there is no choosing a tab.
+  // Tonight and the night's list are all it has (D141), a row of two even at 390 px: at the door
+  // the tab a hostess needs is one tap, never behind a chooser.
   await expect(onScreen(tablet, 'tonight')).toBeVisible({ timeout: 30_000 })
+  const deviceTabs = tablet.getByRole('tablist', { name: 'Switch tab' }).getByRole('tab')
+  await expect(deviceTabs).toHaveText(['Tonight', 'Reservations'])
   await expect(tablet.getByRole('combobox', { name: 'Switch tab' })).toHaveCount(0)
   await expect(tablet.getByTestId('publish-button')).toHaveCount(0)
   await tablet.screenshot({ path: test.info().outputPath('rr-85-tablet-tonight.png') })

@@ -41,7 +41,7 @@ async function signIn(page: Page, email: string) {
     await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
     await page.getByRole('button', { name: 'Вход' }).click()
     try {
-      await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=tonight|\/venues$/, {
+      await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=\w+|\/venues$/, {
         timeout: 8_000,
       })
       return
@@ -109,29 +109,36 @@ test.afterAll(async () => {
   await tablet?.context.close()
 })
 
-test('a staff-only sign-in lands on Tonight, whose tab sits after Tables & QR', async () => {
+test('a staff-only sign-in lands on the first screen its role allows (D141)', async () => {
   const { page } = waiter
   await page.goto('/venues')
-  await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=tonight/)
+  // Its role works tonight's reservations, so the night's list is the first screen it may open;
+  // Tonight is one tab away, after Tables & QR.
+  await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=reservations/)
   // The venue's own tabs; Tonight has tabs of its own below them (#86).
   const tabs = page.getByRole('tablist', { name: 'Switch tab' }).getByRole('tab')
-  await expect(tabs).toHaveText(['Composer', 'Tables & QR', 'Tonight', 'Settings'])
+  await expect(tabs).toHaveText(['Composer', 'Tables & QR', 'Tonight', 'Reservations', 'Settings'])
+  await page.getByRole('tab', { name: 'Tonight' }).click()
   await expect(page.getByRole('tab', { name: 'Tonight' })).toHaveAttribute('aria-selected', 'true')
 })
 
 test('a shared tablet has no composer or Tables & QR: an old link lands on Tonight (RR-83, RR-84)', async () => {
   const { page } = tablet
   await page.goto('/venues')
+  // A tablet on a counter is Tonight's (D122 §7): it opens there whatever its role may also
+  // work, and reaches the night's list as a tab (#326).
   await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=tonight/)
   const venue = new URL(page.url()).pathname
   await page.goto(`${venue}?tab=composer`)
   await expect(page).toHaveURL(new RegExp(`${venue}\\?tab=tonight`))
   await page.goto(`${venue}?tab=tables`)
   await expect(page).toHaveURL(new RegExp(`${venue}\\?tab=tonight`))
-  // A PIN unlocks Tonight only (D122 §9, RR-85), so there is no tab to choose.
+  // A PIN unlocks Tonight and the night's list only (D122 §9, RR-85, D141): the composer,
+  // Tables & QR and Settings are not tabs it has at all.
   await page.goto(`${venue}?tab=settings`)
   await expect(page).toHaveURL(new RegExp(`${venue}\\?tab=tonight`))
-  await expect(page.getByRole('tablist', { name: 'Switch tab' })).toHaveCount(0)
+  const tabs = page.getByRole('tablist', { name: 'Switch tab' }).getByRole('tab')
+  await expect(tabs).toHaveText(['Tonight', 'Reservations'])
   await expect(page.getByRole('button', { name: 'Publish' })).toHaveCount(0)
 })
 
@@ -208,7 +215,7 @@ test('a table opens in one tap with Undo, and closes in two', async () => {
   expect(close.count).toBe(2)
 })
 
-test('on the shared tablet: Handled asks no PIN; Resume asks the person’s own', async () => {
+test('on the shared tablet: Handled asks no PIN; Resume asks the person’s own, and the next action is already hers', async () => {
   const { page } = tablet
   await openTonight(page, 'busy')
   const call = new Taps()
@@ -236,20 +243,42 @@ test('on the shared tablet: Handled asks no PIN; Resume asks the person’s own'
   await expect(rows(page).filter({ hasText: 'Table 3 is paused' })).toHaveCount(0)
   expect(resume.count).toBe(1)
 
-  // The unconfirmed order: one tap and the PIN, which names what will be recorded.
+  // The unconfirmed order, straight after: Maria's PIN started her own short session on the
+  // tablet, so this one is hers already and asks for nothing (D141 12.11, #324). The toast names
+  // her, which is how the tablet says whose work was recorded.
   const check = new Taps()
   await check.tap(
     rows(page)
       .filter({ hasText: 'Sent order not confirmed' })
       .getByRole('button', { name: 'Not on the bill' }),
   )
-  await expect(page.getByTestId('pin-sheet')).toContainText(
-    'The order counts as not sent and Table 1 can order again.',
-  )
+  await expect(toast(page, 'Saved: not on the bill · Maria')).toBeVisible()
+  await expect(page.getByTestId('pin-sheet')).toHaveCount(0)
+  await expect(rows(page).filter({ hasText: 'Sent order not confirmed' })).toHaveCount(0)
+  expect(check.count).toBe(1)
+})
+
+test('the tablet forgets her once it has been idle, and asks again (#324)', async () => {
+  const { page } = tablet
+  await openTonight(page, 'busy')
+  // One record action, typed once: her session is on the tablet from here.
+  await page.getByRole('button', { name: 'Resume table' }).first().click()
+  await typePin(page, '1234')
+  await expect(rows(page).filter({ hasText: 'Table 3 is paused' })).toHaveCount(0)
+
+  // The tablet is left alone for longer than it keeps anybody: the fixture ages her last action,
+  // which is what the server reads. The next record action asks for four digits again.
+  seed('idle')
+  await rows(page)
+    .filter({ hasText: 'Sent order not confirmed' })
+    .getByRole('button', { name: 'Not on the bill' })
+    .click()
+  const again = page.getByTestId('pin-sheet')
+  await expect(again).toContainText('Enter your PIN')
+  await expect(again).toContainText('The order counts as not sent and Table 1 can order again.')
   await typePin(page, '1234')
   await expect(toast(page, 'Saved: not on the bill')).toBeVisible()
   await expect(rows(page).filter({ hasText: 'Sent order not confirmed' })).toHaveCount(0)
-  expect(check.count).toBe(1)
 })
 
 test('pausing ordering is two taps; lifting it needs a manager’s PIN on the tablet', async () => {
@@ -263,7 +292,9 @@ test('pausing ordering is two taps; lifting it needs a manager’s PIN on the ta
   await pause.tap(page.getByRole('button', { name: 'Pause ordering' }))
   await pause.tap(page.getByRole('menuitem', { name: 'Main bar' }))
   const banner = page.getByTestId('pause-banner')
-  await expect(banner).toContainText('Ordering at Main bar was paused by the bar tablet')
+  // "Open all" was typed with Maria's PIN a moment ago, so her own short session is on the tablet
+  // and the pause is hers, not the tablet's (D141 12.11, #324).
+  await expect(banner).toContainText('Ordering at Main bar was paused by Maria')
   expect(pause.count).toBe(2)
   // The paused bar's heading and tiles read Paused; the other bar is as it was. The menu now
   // leaves out the bar already paused (all bars stays: it covers the rest).
@@ -274,6 +305,8 @@ test('pausing ordering is two taps; lifting it needs a manager’s PIN on the ta
   await expect(page.getByRole('menuitem')).toHaveText(['All bars', 'Second bar'])
   await page.keyboard.press('Escape')
 
+  // Lifting is not Maria's to do: the server sends the tap to a manager's PIN instead of refusing
+  // it, so whoever may types theirs (#324).
   const lift = new Taps()
   await lift.tap(banner.getByRole('button', { name: 'Resume ordering' }))
   const sheet = page.getByTestId('pin-sheet')

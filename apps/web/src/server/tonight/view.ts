@@ -2,7 +2,7 @@
 // made from core's `readTonight` by one pure function so the ordering of "Needs you", the tile of
 // each table and the pause banners can be tested without a database. Plain data, safe to send to
 // the browser: our ids and public fields only (rule 3), times as text in the venue's zone.
-import type { CallWaiterKind, PayingMissing } from '@restro/core'
+import type { CallWaiterKind, PayFirstLevel, PayingMissing } from '@restro/core'
 import { holdsStaffRightsOnly, type Tonight } from '@restro/core/service'
 
 /**
@@ -10,7 +10,8 @@ import { holdsStaffRightsOnly, type Tonight } from '@restro/core/service'
  * question, a card not charged after the bill closed, items stuck on a payment table, then part 1's
  * sent order to check, approval, paused table and waiter call, and last a payment stopped before
  * closing (shown under "Later"). The to-dos come last of the rows that need a person now: a
- * receipt to bring (#200), the storno of a refund and an open card dispute (#222).
+ * receipt to bring (#200), the storno of a refund and an open card dispute (#222), and the bills
+ * the night's end found still open (#332).
  */
 export const ROW_RANK = {
   pay: 0,
@@ -24,6 +25,7 @@ export const ROW_RANK = {
   storno: 5,
   dispute: 5,
   refund_failed: 5,
+  night_end: 5,
   stopped: 6,
 } as const
 
@@ -102,6 +104,8 @@ export interface ActionRow {
   }
   /** A waiter call's requests (#180), in the venue's list order. */
   readonly callKinds?: readonly CallWaiterKind[]
+  /** The bills still open when the night ended, and when (`HH:mm`, #332): staff close them at the POS. */
+  readonly nightEnd?: { readonly openBills: number; readonly at: string }
 }
 
 /** What a money row asks: a payment question, or one of the alerts that only need acknowledging. */
@@ -154,6 +158,25 @@ export interface TableTile {
   /** Sent orders of its open sitting. */
   readonly sentOrders: number
   readonly sittingId: string | null
+  /**
+   * The pay rule of the open sitting, where it is worth a line (#334): pay first, whichever level
+   * set it, or a rule the party itself carries. The ordinary case — everything on the bill, on the
+   * club's own rule — says nothing, because a line that is true of nearly every table is noise on
+   * a busy floor (D123 rule 2). Null is no line.
+   */
+  readonly payRule: { readonly payFirst: boolean; readonly level: PayFirstLevel } | null
+}
+
+/**
+ * The pay rule of an open sitting as its tile carries it: the line is kept only where it says
+ * something a waiter has to act on — pay first (whichever level set it), or a rule the party at the
+ * table carries. Everything else is the house's ordinary "everything on the bill" and draws nothing.
+ */
+function payRuleLine(
+  rule: { readonly payFirst: boolean; readonly level: PayFirstLevel } | null,
+): { readonly payFirst: boolean; readonly level: PayFirstLevel } | null {
+  if (rule === null) return null
+  return rule.payFirst || rule.level === 'reservation' ? rule : null
 }
 
 /** The tables of one bar (or of no bar). */
@@ -185,6 +208,8 @@ export interface Can {
   readonly answer: boolean
   /** `money.follow_up`: answers the payment questions and the owners' money alerts (#115). */
   readonly followUp: boolean
+  /** `reservations.end_night`: ends the night before its closing hour (#332). */
+  readonly endNight: boolean
 }
 
 /** Everything the Tonight screen draws. */
@@ -197,6 +222,13 @@ export interface TonightView {
   /** The payment provider's name for `{provider}`, or null when it is not known. */
   readonly provider: string | null
   readonly device: boolean
+  /**
+   * Whether a write must name a person before it runs: true on a shared device nobody is on, false
+   * on a person's own session and on a shared device whose person is still on it (their PIN started
+   * their own short session, D141 12.11, #324). `device` stays true there: the controls a shared
+   * device shows and the tips it hides do not change because somebody typed a PIN.
+   */
+  readonly asks: boolean
   /** Restro's admin team, on their own session: a Restro pause has their button (D120). */
   readonly operator: boolean
   /**
@@ -205,6 +237,11 @@ export interface TonightView {
    */
   readonly barTablet: boolean
   readonly can: Can
+  /**
+   * Tonight's end, once it has run (#332): when (`HH:mm` in the venue's zone) and whether an admin
+   * ended it early. Null while the night is going on.
+   */
+  readonly nightEnd: { readonly at: string; readonly early: boolean } | null
   readonly banners: readonly PauseBanner[]
   /**
    * Why card payments in the app are stopped, for every role; null while they flow and while
@@ -344,6 +381,8 @@ export function buildTonightView(input: {
   readonly currency: string
   readonly provider?: string | null
   readonly operator?: boolean
+  /** A person's own short session is on this shared device: no write asks for a PIN (#324). */
+  readonly remembered?: boolean
   readonly now: Date
 }): TonightView {
   const { tonight, timezone } = input
@@ -364,6 +403,7 @@ export function buildTonightView(input: {
     lift: held.has('ordering.lift'),
     answer: held.has('alerts.answer'),
     followUp: held.has('money.follow_up'),
+    endNight: held.has('reservations.end_night'),
   }
   const labelOf = new Map(tonight.tables.map((table) => [table.id, table.label]))
   const numberedOf = new Set(
@@ -583,6 +623,20 @@ export function buildTonightView(input: {
       },
     })
   }
+  // The closing hour's warning (#332): the bills the night's end found still open, one row, the
+  // to-do pattern. It names no table: the codes are closed, the bills are the POS's to close.
+  const ended = tonight.nightEnd ?? null
+  if (ended !== null && (ended.openBills ?? 0) > 0) {
+    rows.push({
+      id: `night_end:${tonight.serviceDate}`,
+      kind: 'night_end',
+      tableId: '',
+      table: '',
+      numbered: false,
+      at: ended.at.toISOString(),
+      nightEnd: { openBills: ended.openBills ?? 0, at: clock(ended.at) ?? '' },
+    })
+  }
   rows.sort(
     (a, b) =>
       ROW_RANK[a.kind] - ROW_RANK[b.kind] ||
@@ -609,6 +663,7 @@ export function buildTonightView(input: {
       since: clock(table.sitting?.openedAt ?? null),
       sentOrders: open ? (sentCount.get(table.id) ?? 0) : 0,
       sittingId: table.sitting?.id ?? null,
+      payRule: payRuleLine(table.payRule),
     }
   })
   const group = (barId: string | null, name: string | null): BarGroup => ({
@@ -629,6 +684,7 @@ export function buildTonightView(input: {
     currency: input.currency,
     provider: input.provider ?? null,
     device: tonight.device,
+    asks: tonight.device && input.remembered !== true,
     operator: input.operator === true && !tonight.device,
     barTablet:
       !tonight.device &&
@@ -636,6 +692,7 @@ export function buildTonightView(input: {
       held.has('night.view') &&
       holdsStaffRightsOnly(held),
     can,
+    nightEnd: ended === null ? null : { at: clock(ended.at) ?? '', early: ended.early },
     banners,
     paying:
       restro.length > 0

@@ -3,13 +3,16 @@
 // Tonight's table actions (#73; the screen is #85): thin wrappers. Each checks the input with Zod,
 // finds who is asking (`requireTenant`: the tenant is the person's organisation, never the
 // request's), that the venue is theirs, and on a shared device the person whose PIN came with the
-// action; then it calls tables.ts, whose service write path checks the permission. The mark of a
+// action — or, with no PIN, the person whose own short session is still on the device (D141 12.11,
+// #324); then it calls tables.ts, whose service write path checks the permission. The mark of a
 // payment table is a settings change: it takes no PIN, only the person's own sign-in.
 import { idSchema } from '@restro/core'
 import {
   endpointHashOf,
   PushSubscribeSchema,
   paymentWorkerJob,
+  readNightEndPreview,
+  readTablesTonight,
   readVenueAccess,
   type ServiceActor,
 } from '@restro/core/service'
@@ -21,9 +24,10 @@ import { queuePaymentStep } from '../guest-api'
 import { enqueueJob } from '../jobs'
 import { logError, logWarn } from '../log'
 import { requireTenant } from '../session'
-import { identifyAtSharedDevice, ownActor } from '../staff/service'
+import { identifyAtSharedDevice, ownActor, personAtSharedDevice } from '../staff/service'
 import { getVenue } from '../venues'
 import { loadTableBill, type TableSheetBill } from './load'
+import { clockIn } from './night-view'
 import {
   markPaymentTable,
   runTableCommand,
@@ -71,6 +75,8 @@ async function perform(
     if (!venue) return NOT_FOUND
     let actor: ServiceActor = await ownActor(user, sessionId, options)
     let named: string | null = null
+    /** True when the person acting is the one the device remembers, not a PIN typed just now. */
+    let fromSession = false
     if (input.pin !== undefined) {
       const identity = await identifyAtSharedDevice({
         tenantId: organization.id,
@@ -86,6 +92,20 @@ async function perform(
       }
       actor = { kind: 'staff', staffMemberId: identity.staffMemberId, sessionId }
       named = identity.name
+    } else if (options.asOperator !== true) {
+      // No PIN with this action: on a shared device the person who typed one a moment ago is
+      // still on it, and their own short session acts (D141 12.11). Elsewhere there is no such
+      // person and the account acts, exactly as before.
+      const person = await personAtSharedDevice({
+        tenantId: organization.id,
+        venueId: venue.id,
+        sessionId,
+      })
+      if (person !== null) {
+        actor = { kind: 'staff', staffMemberId: person.staffMemberId, sessionId }
+        named = person.name
+        fromSession = true
+      }
     }
     const result = await act({
       pool: getPool(),
@@ -95,6 +115,12 @@ async function perform(
       signedInAt,
     })
     if (result.ok) revalidatePath(`/venues/${venue.id}`)
+    // The person the device remembers may not do this one: the sheet asks for a PIN, so whoever
+    // may (a manager's PIN lifts a pause) can type theirs, instead of the tablet saying no to
+    // somebody who never asked. A PIN typed for this very action keeps its own refusal.
+    if (!result.ok && fromSession && result.error === 'permission_denied') {
+      return { ok: false, error: 'pin_required' }
+    }
     // The toast names whom the PIN named (plan §5: "· {who}").
     return result.ok && named !== null
       ? { ...result, details: { ...result.details, who: named } }
@@ -165,6 +191,82 @@ export async function closeAllTablesAction(input: unknown): Promise<TonightResul
   const parsed = OnVenue.safeParse(input)
   if (!parsed.success) return INVALID
   return perform(parsed.data, (scope) => command(scope, { type: 'tables.close_all' }))
+}
+
+/** The early end's preview as the dialog draws it (#332): counts, and times in the venue's zone. */
+export interface NightEndPreviewView {
+  readonly ended: boolean
+  readonly finished: number
+  readonly noShow: number
+  readonly notSeated: number
+  readonly codesClose: number
+  readonly codesKept: number
+  readonly openBills: number
+  /** Before the club's closing hour: its hour and the hour now, `HH:mm`; null otherwise. */
+  readonly early: { readonly closes: string; readonly now: string } | null
+}
+
+const OnVenueRead = z.strictObject({ venueId })
+
+/**
+ * What ending the night now would change (#332; RS-48): the dialog's preview, read before she
+ * confirms. Read as the account itself: on a shared device the action is present and its write
+ * asks for the PIN (D141), so the device's own account reads the preview, whoever typed a PIN last.
+ * Nothing is written.
+ */
+export async function nightEndPreviewAction(
+  input: unknown,
+): Promise<
+  | { readonly ok: true; readonly preview: NightEndPreviewView }
+  | { readonly ok: false; readonly error: string }
+> {
+  const parsed = OnVenueRead.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'invalid' }
+  try {
+    const { organization, user, sessionId } = await requireTenant()
+    const venue = await getVenue(organization.id, parsed.data.venueId)
+    if (!venue) return { ok: false, error: 'venue_missing' }
+    const now = new Date()
+    const read = await readNightEndPreview(getPool(), {
+      tenantId: organization.id,
+      venueId: venue.id,
+      actor: { kind: 'user', userId: user.id, sessionId },
+      now,
+    })
+    if (!read.ok) return { ok: false, error: read.code }
+    const { preview } = read
+    const clock = clockIn(venue.timezone)
+    return {
+      ok: true,
+      preview: {
+        ended: preview.ended,
+        finished: preview.finished,
+        noShow: preview.noShow,
+        notSeated: preview.notSeated,
+        codesClose: preview.codesClose,
+        codesKept: preview.codesKept,
+        openBills: preview.openBills,
+        early:
+          preview.early && preview.closesAt !== null
+            ? { closes: clock(preview.closesAt) ?? '', now: clock(now) ?? '' }
+            : null,
+      },
+    }
+  } catch (error) {
+    if (error instanceof Error && 'digest' in error) throw error
+    logError('tonight_night_end_preview_failed', error)
+    return { ok: false, error: 'failed' }
+  }
+}
+
+/**
+ * Ends the night now (#332; D138): every table code closes but one a card keeps until its payment
+ * ends, and the night's parties are swept. Early when the club's closing hour has not come yet.
+ */
+export async function endNightAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnVenue.safeParse(input)
+  if (!parsed.success) return INVALID
+  return perform(parsed.data, (scope) => command(scope, { type: 'night.end' }))
 }
 
 /** Marks a table as a payment table, or takes the mark away (the person's own sign-in). */
@@ -356,6 +458,55 @@ export async function tableBillAction(
   } catch (error) {
     if (error instanceof Error && 'digest' in error) throw error
     logError('tonight_table_bill_failed', error)
+    return { ok: false }
+  }
+}
+
+/** What the warning says before a waiter opens a table that is held later tonight (#329). */
+export interface TableBookedLater {
+  /** The party holding it; null for a block, which is nobody's booking. */
+  readonly name: string | null
+  /** Whether it is a block the venue put on, so the sentence says that instead of a name. */
+  readonly block: boolean
+  /** The hour they hold it from, on the venue's clock. */
+  readonly time: string
+}
+
+/**
+ * Whether this table is reserved later tonight, or blocked (#329): the one case where opening a
+ * table nobody was seated at is worth a question first. Every other table opens in silence, and a
+ * read that does not get through opens it in silence too — the warning is advice, never a gate.
+ */
+export async function tableBookedLaterAction(
+  input: unknown,
+): Promise<
+  { readonly ok: true; readonly booked: TableBookedLater | null } | { readonly ok: false }
+> {
+  const parsed = OnTableRead.safeParse(input)
+  if (!parsed.success) return { ok: false }
+  try {
+    const { organization, user, sessionId } = await requireTenant()
+    const venue = await getVenue(organization.id, parsed.data.venueId)
+    if (!venue) return { ok: false }
+    const read = await readTablesTonight(getPool(), {
+      tenantId: organization.id,
+      venueId: venue.id,
+      actor: { kind: 'user', userId: user.id, sessionId },
+      tableIds: [parsed.data.tableId],
+    })
+    if (!read.ok) return { ok: false }
+    const clock = clockIn(venue.timezone)
+    const [held] = read.tables
+    return {
+      ok: true,
+      booked:
+        held === undefined
+          ? null
+          : { name: held.name, block: held.kind === 'block', time: clock(held.from) ?? '' },
+    }
+  } catch (error) {
+    if (error instanceof Error && 'digest' in error) throw error
+    logError('tonight_table_booked_later_failed', error)
     return { ok: false }
   }
 }

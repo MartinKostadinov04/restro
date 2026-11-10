@@ -212,6 +212,7 @@ export {
   logKindsOf,
   SHOWN_LOG_KINDS,
 } from './log-view'
+export { endsEarly, type NightEndPreview, readNightEndPreview } from './night-end'
 export {
   CSV_BOM,
   CSV_COLUMNS,
@@ -345,13 +346,19 @@ export {
   DEFAULT_ROLE_KINDS,
   DEFAULT_ROLE_PERMISSIONS,
   type DefaultRoleKind,
+  EDITABLE_DEFAULT_ROLE_KINDS,
   holdsStaffRightsOnly,
+  isEditableDefaultKind,
   isPermission,
   isSettingsPermission,
+  newPermissionsOf,
   OPERATOR_PERMISSIONS,
   PERMISSIONS,
   type Permission,
   PermissionSchema,
+  type RoleRow,
+  roleGrants,
+  roleIsEdited,
 } from './permissions'
 export { checkPinPepper, MIN_PIN_PEPPER_LENGTH } from './pins'
 export {
@@ -384,6 +391,185 @@ export {
   receiptsToBring,
 } from './receipt-rows'
 export { readReceiptsNotBrought, readReceiptsToBring } from './receipts'
+export {
+  type ArrivalChecks,
+  type ArrivalChecksInput,
+  type DoorTable,
+  type HeldLater,
+  type OnTheSpot,
+  readArrivalChecks,
+  readTablesTonight,
+  type TableTonight,
+} from './reservations/arrive-checks'
+export {
+  type BookingChecks,
+  type BookingChecksInput,
+  readBookingChecks,
+  type SameContactCheck,
+  type SeatsCheck,
+  type TakenCheck,
+} from './reservations/booking-checks'
+export { CLOSED_DATES_MAX } from './reservations/closed-dates'
+export { phoneKeyOf, regionOfLocale } from './reservations/guests'
+export {
+  type GuestBooking,
+  type GuestCard,
+  type GuestListRead,
+  type GuestListRow,
+  type GuestSuggestion,
+  MAX_GUEST_ROWS,
+  MAX_GUEST_SUGGESTIONS,
+  type PrivateListRefusal,
+  privateListOwner,
+  RECENT_GUEST_BOOKINGS,
+  readGuestCard,
+  readGuestList,
+  readGuestSuggestions,
+  readPrivateList,
+  SUGGEST_AFTER,
+} from './reservations/guests-read'
+export {
+  DEFAULT_ONLINE_SETTINGS,
+  type OnlineSettings,
+  OnlineSettingsSchema,
+  readOnlineSettings,
+} from './reservations/online-settings'
+export {
+  type ClaimedStretch,
+  heldStretch,
+  holdsSpotAt,
+  holdsSpotNow,
+  isSpotConflict,
+  overlaps,
+  resolveTurnMinutes,
+  type SeatClaim,
+  SPOT_CLAIM_REFUSALS,
+  type SpotClaim,
+  type SpotClaimRefusal,
+  type SpotConflict,
+  type SpotHold,
+  type Stretch,
+  seatConflict,
+  spotConflict,
+  TurnMinutesSchema,
+} from './reservations/overlap'
+export {
+  type PayRuleBeaten,
+  PayRuleSchema,
+  payRuleAtTable,
+  payRuleBeatenAt,
+  payRuleCode,
+  payRuleInForce,
+  storedPayRule,
+  strictestPayRule,
+} from './reservations/pay-rule'
+export {
+  actionsBehindPin,
+  DEFAULT_PIN_FALL,
+  fallOf,
+  PIN_FALL_ACTIONS,
+  type PinActions,
+  PinActionsSchema,
+  type PinFall,
+  type PinFallAction,
+  type PinFallSettings,
+  pinFallActionOf,
+  readPinFallSettings,
+  storedPinActions,
+} from './reservations/pin-fall'
+export {
+  daysBetween,
+  type FloorPlanRead,
+  MAX_SPOT_HISTORY,
+  nightBounds,
+  PLAN_MONTH_DAYS,
+  type PlanChoice,
+  type PlanExtent,
+  planDayOf,
+  planRowStretch,
+  readFloorPlan,
+  readSpotHistory,
+  type SpotHistoryLine,
+  type SpotHoldRead,
+  type SpotKindRead,
+  type SpotRead,
+  type SpotTableRead,
+} from './reservations/plan-read'
+export {
+  holdCoversAt,
+  isLateHold,
+  LATE_AFTER_MINUTES,
+  leadingHold,
+  SPOT_STATES,
+  type SpotHoldFact,
+  type SpotState,
+  type SpotStateOptions,
+  spotStateAt,
+  spotStateOfNight,
+} from './reservations/plan-state'
+export {
+  isLate,
+  LISTED_NIGHTS,
+  MAX_NIGHT_ROWS,
+  type ReservationAccess,
+  type ReservationCounts,
+  type ReservationDetail,
+  type ReservationHistoryLine,
+  type ReservationNightRead,
+  type ReservationPayRuleRead,
+  type ReservationReadRefusal,
+  type ReservationRow,
+  readReservationAccess,
+  readReservationDetail,
+  readReservationNight,
+  reservationDayOf,
+} from './reservations/read'
+export {
+  nightWritable,
+  RESERVATION_REFUSALS,
+  type ReservationRefusal,
+} from './reservations/rows'
+export {
+  type ReservationSettingsView,
+  readReservationSettings,
+  type SettingsSpot,
+} from './reservations/settings-read'
+export {
+  canMove,
+  countsAsNoShow,
+  END_STATUSES,
+  endedByNightEnd,
+  HOLDING_STATUSES,
+  holdsSpots,
+  isEndStatus,
+  moveStatus,
+  NIGHT_END_REASON,
+  nightEndStatus,
+  PUT_BACK_REASON,
+  PUT_BACK_UNDONE_REASON,
+  putBack,
+  putBackStatus,
+  RESERVATION_KINDS,
+  RESERVATION_STATUS_MOVES,
+  RESERVATION_STATUS_REFUSALS,
+  RESERVATION_STATUSES,
+  type ReservationKind,
+  ReservationKindSchema,
+  type ReservationStatus,
+  type ReservationStatusRefusal,
+  ReservationStatusSchema,
+  type StatusEntry,
+  type StatusMove,
+  UNDONE_ARRIVAL_REASON,
+  undoArrival,
+  undoPutBack,
+} from './reservations/status'
+export {
+  MAX_WAITING_ROWS,
+  type WaitingPartyRead,
+  waitedMinutes,
+  waitingParties,
+} from './reservations/waiting-read'
 export {
   REFUSAL_CODES,
   type RefusalCode,
@@ -430,6 +616,11 @@ export {
   type SentOrderAnswer,
 } from './sent-order-answer'
 export { CLEARED_AT_DAY_CLOSE } from './service-day-close'
+export {
+  type DevicePerson,
+  devicePersonOf,
+  SHARED_DEVICE_IDLE_SECONDS,
+} from './shared-device'
 export { SITTING_END_REASONS, type SittingEndReason } from './sittings'
 export { MAX_REVEALED_PINS } from './staff'
 export {

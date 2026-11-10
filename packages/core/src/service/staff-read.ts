@@ -2,6 +2,9 @@
 // shared devices, for someone holding `settings.roles` there. Read-only on `withTenant`. A default
 // role the venue hasn't created yet is listed from the code, with no id: a command names it by
 // its kind. No PIN or HMAC is ever read here; whether a person has a PIN is all that shows.
+//
+// What each role holds comes from `roleGrants`, the same function `grants.ts` answers with (#366),
+// so the ticks the editor draws are the rights the role actually grants.
 
 import {
   type DbPool,
@@ -19,11 +22,12 @@ import { resolveGrants } from './grants'
 import {
   DEFAULT_ROLE_KINDS,
   DEFAULT_ROLE_NAMES,
-  DEFAULT_ROLE_PERMISSIONS,
   type DefaultRoleKind,
-  grantedPermissions,
   isDefaultRoleKind,
+  newPermissionsOf,
   type Permission,
+  roleGrants,
+  roleIsEdited,
 } from './permissions'
 
 /** One role as the settings show it. */
@@ -32,9 +36,20 @@ export interface RoleView {
   readonly id: string | null
   readonly name: string
   readonly defaultKind: DefaultRoleKind | null
-  /** A default role can't be changed, only copied (D122 §7). */
+  /**
+   * The owner role only: it holds every permission and nothing takes one off it, because an owner
+   * who could take `settings.roles` off their own role would lock the venue out (#366). Staff and
+   * Manager are ticked and unticked in place; a venue's own role always was.
+   */
   readonly readOnly: boolean
   readonly permissions: readonly Permission[]
+  /**
+   * A default role the venue has edited: it follows its own ticks, and Reset puts the shipped ones
+   * back. False on the owner's and on one the venue has never touched, which follow the code.
+   */
+  readonly edited: boolean
+  /** Permissions Restro added after the venue's edit: unticked, and marked as new (#366). */
+  readonly newPermissions: readonly Permission[]
 }
 
 /** One person working at the venue. */
@@ -103,13 +118,23 @@ export async function readStaffSettings(
       .where(and(eq(venueRoles.venueId, venue.id), isNull(venueRoles.archivedAt)))
       .orderBy(asc(venueRoles.createdAt), asc(venueRoles.id))
     const defaults: RoleView[] = DEFAULT_ROLE_KINDS.map((kind) => {
-      const row = stored.find((role) => role.defaultKind === kind)
-      return {
-        id: row?.id ?? null,
-        name: row?.name ?? DEFAULT_ROLE_NAMES[kind],
+      // A venue whose row for this kind doesn't exist yet reads exactly what it would hold once a
+      // command creates it: an unedited default role, straight from the code's table.
+      const row = stored.find((role) => role.defaultKind === kind) ?? {
+        id: null,
+        name: DEFAULT_ROLE_NAMES[kind],
         defaultKind: kind,
-        readOnly: true,
-        permissions: grantedPermissions(DEFAULT_ROLE_PERMISSIONS[kind]),
+        permissions: [],
+        knownPermissions: null,
+      }
+      return {
+        id: row.id,
+        name: row.name,
+        defaultKind: kind,
+        readOnly: kind === 'owner',
+        permissions: roleGrants(row),
+        edited: roleIsEdited(row),
+        newPermissions: newPermissionsOf(row),
       }
     })
     const own: RoleView[] = stored
@@ -119,7 +144,9 @@ export async function readStaffSettings(
         name: role.name,
         defaultKind: null,
         readOnly: false,
-        permissions: grantedPermissions(role.permissions),
+        permissions: roleGrants(role),
+        edited: false,
+        newPermissions: [],
       }))
 
     const people = await tx

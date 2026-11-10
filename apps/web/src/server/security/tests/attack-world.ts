@@ -1,7 +1,7 @@
 // Two seeded organisations for the attack tests (the repair-review's A7). Each has an owner, an
 // admin and a plain member, two venues, and one row of nearly everything a command can name: menu,
 // section, item, tag, area, table with a code, person, role, device, sitting, sent order, payment,
-// refund, alert, call, pause, snapshots, asset, integration, bar. Every name carries a marker, so a
+// refund, alert, call, pause, snapshots, asset, integration, bar, reservation. Every name carries a marker, so a
 // leak in an answer shows; `fingerprint` hashes every tenant-bound row, so a write shows.
 import { randomUUID } from 'node:crypto'
 
@@ -38,9 +38,19 @@ export interface SeededVenue {
   readonly role: string
   readonly staff: string
   readonly device: string
+  /** The venue's floor plan, named after the organisation's marker (#327). */
+  readonly plan: string
+  /** A spot on the venue's floor plan, with its seats (#325), named after the marker too. */
+  readonly spot: string
+  /** A spot of the same plan kept out of use, and the block that holds it (#327). */
+  readonly blockedSpot: string
+  readonly block: string
   readonly deviceSession: string
   readonly sitting: string
   readonly sentOrder: string
+  readonly reservation: string
+  /** The booking's guest, a regular named after the marker, with a private note (#333). */
+  readonly guest: string
   readonly payment: string
   readonly refund: string
   readonly alert: string
@@ -179,6 +189,33 @@ async function seedVenue(
      values ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [device, tenantId, venue.id, `${marker} tablet`.slice(0, 40), deviceSession, ...SEED],
   )
+  // The venue's reservation settings, floor plan and one spot with seats (#325): what an attack on
+  // Settings › Reservations must find unmoved. The plan and the spot are named after the
+  // organisation's marker (#327), so A's floor showing up in B's plan answer shows in the string
+  // rather than in an id nobody reads.
+  const plan = newId('fp')
+  const spot = newId('sp')
+  await owner.query(
+    `insert into restro.floor_plans (id, tenant_id, venue_id, name, is_current, source, actor, job_id)
+     values ($1, $2, $3, $4, true, $5, $6, $7)`,
+    [plan, tenantId, venue.id, `${marker} floor`.slice(0, 60), ...SEED],
+  )
+  await owner.query(
+    `insert into restro.venue_spot_kinds
+       (tenant_id, venue_id, key, label, symbol, default_seats, source, actor, job_id)
+     values ($1, $2, 'table', $3, 'table', 4, $4, $5, $6)`,
+    [tenantId, venue.id, `${marker} table`.slice(0, 40), ...SEED],
+  )
+  await owner.query(
+    `insert into restro.spots (id, tenant_id, venue_id, plan_id, name, kind, x, y, width, height, seats, source, actor, job_id)
+     values ($1, $2, $3, $4, $5, 'table', 0, 0, 10, 10, 6, $6, $7, $8)`,
+    [spot, tenantId, venue.id, plan, `${marker} 12`.slice(0, 40), ...SEED],
+  )
+  await owner.query(
+    `insert into restro.reservation_settings (tenant_id, venue_id, turn_minutes, source, actor, job_id)
+     values ($1, $2, 120, $3, $4, $5)`,
+    [tenantId, venue.id, ...SEED],
+  )
   const sitting = newId('st')
   await owner.query(
     `insert into restro.sittings (id, tenant_id, venue_id, table_id, service_date, opened_how, source, actor, job_id)
@@ -236,6 +273,70 @@ async function seedVenue(
      values ($1, $2, $3, $4, 'table', $5, 'staff', true, $6, $7, $8)`,
     [pause, tenantId, venue.id, day, table, ...SEED],
   )
+  // What the night's list reads (#326): one booking named after the organisation's marker, so a
+  // leak of A's book into B's answer shows. The venue's turn time is seeded above (#325).
+  const reservation = newId('rv')
+  await owner.query(
+    `insert into restro.reservations
+       (id, tenant_id, venue_id, service_date, starts_at, kind, status, party_size, party_label,
+        source, actor, job_id)
+     values ($1, $2, $3, $4, now(), 'booking', 'reserved', 2, $5, $6, $7, $8)`,
+    [reservation, tenantId, venue.id, day, `${marker} party`.slice(0, 80), ...SEED],
+  )
+  // The booking's guest (#333): a regular named after the marker, linked to the booking, with a
+  // private note kept by the venue's staff member — what the guest reads, edits and the erasure
+  // name, and what must never come back to another organisation.
+  const guest = newId('gu')
+  const digits = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')
+  await owner.query(
+    `insert into restro.guests
+       (id, tenant_id, venue_id, phone_key, name, phone, email, note, is_regular, source, actor, job_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10, $11)`,
+    [
+      guest,
+      tenantId,
+      venue.id,
+      `359888${digits}`,
+      `${marker} guest`.slice(0, 80),
+      `+359888${digits}`,
+      `${marker.toLowerCase()}@example.test`,
+      `${marker} note`,
+      ...SEED,
+    ],
+  )
+  await owner.query('update restro.reservations set guest_id = $1 where id = $2', [
+    guest,
+    reservation,
+  ])
+  await owner.query(
+    `insert into restro.guest_private_notes
+       (tenant_id, venue_id, guest_id, staff_member_id, note, source, actor, job_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [tenantId, venue.id, guest, staff, `${marker} private`, ...SEED],
+  )
+  // One spot kept out of use, and the block that holds it (#327): what an attack on Unblock names,
+  // and what the positive control lifts. It sits on a spot of its own, so blocking `spot` is still
+  // a write nothing refuses.
+  const blockedSpot = newId('sp')
+  await owner.query(
+    `insert into restro.spots (id, tenant_id, venue_id, plan_id, name, kind, x, y, width, height, seats, source, actor, job_id)
+     values ($1, $2, $3, $4, $5, 'table', 20, 0, 10, 10, 2, $6, $7, $8)`,
+    [blockedSpot, tenantId, venue.id, plan, `${marker} 13`.slice(0, 40), ...SEED],
+  )
+  const block = newId('rv')
+  await owner.query(
+    `insert into restro.reservations
+       (id, tenant_id, venue_id, service_date, starts_at, kind, status, reason,
+        source, actor, job_id)
+     values ($1, $2, $3, $4, now(), 'block', 'reserved', 'repair', $5, $6, $7)`,
+    [block, tenantId, venue.id, day, ...SEED],
+  )
+  await owner.query(
+    `insert into restro.reservation_spots
+       (tenant_id, reservation_id, spot_id, held_from, source, actor, job_id)
+     values ($1, $2, $3, now(), $4, $5, $6)`,
+    [tenantId, block, blockedSpot, ...SEED],
+  )
   const bar = newId('br')
   await owner.query(
     `insert into restro.bars (id, tenant_id, venue_id, name, source_key) values ($1, $2, $3, $4, $5)`,
@@ -264,9 +365,15 @@ async function seedVenue(
     role,
     staff,
     device,
+    plan,
+    spot,
+    blockedSpot,
+    block,
     deviceSession,
     sitting,
     sentOrder,
+    reservation,
+    guest,
     payment,
     refund,
     alert,

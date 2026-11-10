@@ -165,7 +165,7 @@ function Content({ initial, frame }: { initial: SentListView; frame: Frame }) {
 /** Tonight's sent orders for one venue. */
 export function SentOrdersTab({ initial, frame }: { initial: SentListView; frame: Frame }) {
   return (
-    <RunProvider>
+    <RunProvider asks={frame.asks}>
       <Content initial={initial} frame={frame} />
     </RunProvider>
   )

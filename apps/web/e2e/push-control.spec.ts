@@ -97,8 +97,9 @@ async function signIn(page: Page, email: string) {
     await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
     await page.getByRole('button', { name: 'Вход' }).click()
     try {
-      // A staff sign-in lands on Tonight; the tablet's plain account on the venues until it is a device.
-      await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=tonight|\/venues$/, {
+      // A staff sign-in lands on a screen of the venue (D141); the tablet's plain account on the
+      // venues, until it is a device.
+      await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=\w+|\/venues$/, {
         timeout: 8_000,
       })
       return
@@ -121,6 +122,10 @@ async function person(
   await signIn(page, email)
   await context.addCookies([{ name: 'NEXT_LOCALE', value: 'en', url: new URL(page.url()).origin }])
   await page.goto('/venues')
+  // The control is on Tonight, and a staff role that works reservations lands on the night's list
+  // instead (D141), so this asks for Tonight by name.
+  const landed = new URL(page.url())
+  if (landed.searchParams.has('tab')) await page.goto(`${landed.pathname}?tab=tonight`)
   return { context, page }
 }
 
@@ -209,6 +214,7 @@ test('on the shared tablet: subscribes the tablet’s account with no PIN, and h
   })
   seed('device', TONIGHT_TABLET_EMAIL)
   await page.goto('/venues')
+  // A shared device opens on Tonight, where this control is (D122 §7, #326).
   await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=tonight/)
   await inState(page, 'off')
   await expect(control(page)).toContainText('Alerts on this tablet: off')

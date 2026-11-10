@@ -144,6 +144,7 @@ test('open a venue from the sidebar, then swap to another on the same tab', asyn
     'Composer',
     'Tables & QR',
     'Tonight',
+    'Reservations',
     'Settings',
   ])
   await expect(page.getByTestId('publish-button')).toBeVisible()
