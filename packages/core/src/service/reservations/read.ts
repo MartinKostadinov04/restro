@@ -443,12 +443,7 @@ export async function readReservationNight(
     const writable =
       settings === undefined
         ? 'settings_missing'
-        : nightWritable(
-            { serviceDate: reader.today, permissions: reader.held },
-            day,
-            settings,
-            night ?? null,
-          )
+        : nightWritable({ serviceDate: reader.today, permissions: reader.held }, day, settings)
 
     const days = await tx
       .selectDistinct({ day: reservations.serviceDate })

@@ -183,6 +183,7 @@ export function pinFallActionOf(type: string, payload: unknown): PinFallAction |
     case 'reservation.restore':
       return 'restore'
     case 'reservation.put_back':
+    case 'reservation.undo_put_back':
       return 'put_back'
     case 'reservation.copy':
       return 'copy'
@@ -191,7 +192,7 @@ export function pinFallActionOf(type: string, payload: unknown): PinFallAction |
       return 'block'
     case 'reservation.set_pay_rule':
       return 'pay_rule'
-    case 'reservation_night.close':
+    case 'night.end':
       return 'end_night'
     default:
       return null

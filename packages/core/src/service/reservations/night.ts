@@ -1,147 +1,164 @@
-// The night's record (ticket #323; D138). Closing a night is what makes it a record: afterwards
-// every reservation command on it is refused `night_closed`, whatever the venue's "editing the
-// past" switch says, because the switch is about a night nobody closed.
+// The night's reservations at its end (ticket #332; D138). Three moments are kept apart, and this
+// module serves two of them without mixing them (D138, log 13.9):
 //
-// The sweep is the one reservation command the **worker** runs: it marks the parties still on the
-// waiting list when the night ended as Not seated (D138's own status), which no tap reaches, and
-// is decided under the night's and the reservations' own locks, so a repeated job changes nothing.
+// - **The night's end** is the venue's closing hour, or an admin's early end before it
+//   (`night-end.ts`, which owns the moment and its record). There the parties are swept: the seated
+//   become Finished, a booking nobody came for No-show, a party still waiting Not seated, a block
+//   untouched (`nightEndStatus`).
+// - **A night has passed** when its service day ended (D45). The worker then runs the same sweep
+//   once more (`sweepPassedNight`), for whatever the night's end left: a party seated after the
+//   hour, a booking made after it, a night whose end never ran.
+// - **Putting one reservation back** lives between the two and is not here: it is one admin's
+//   action on one reservation (`tonight.ts`). There is no bulk undo.
 //
-// A night's record is its own table rather than a column on `service_days`, because a service day
-// is closed only once it has really ended (`service-day-close.ts` refuses `day_not_ended` for
-// today) and D138's early end is exactly a night an admin closes while it is still going.
+// The sweep is idempotent by state: a party it has moved is over, so a second run — by either
+// moment — finds nothing to move and writes nothing, no Log entry included.
 
 import { reservationNights, reservations } from '@restro/db'
 import { eq, sql } from 'drizzle-orm'
 
 import type { ServiceTx } from '../definition'
 import { accepted, type ServiceResult } from '../results'
-import { lockNight, lockNightReservations, readSettings, refuse } from './rows'
-import { moveStatus, type ReservationStatus } from './status'
+import { releaseHeldSpots } from './book'
+import { lockNight, lockNightReservations, type Reservation } from './rows'
+import {
+  isEndStatus,
+  moveStatus,
+  NIGHT_END_REASON,
+  nightEndStatus,
+  type ReservationKind,
+  type ReservationStatus,
+} from './status'
 
-/**
- * Ends a night (D138): the record is written, the parties nobody seated are marked Not seated, and
- * the night stops being writable. An admin may end it before its closing hour (`early`), and the
- * count of bills still open then is kept as the warning showed it — the count is the caller's,
- * because the bills are the ordering side's and this module never reads one (D134).
- *
- * A repeat finds the night closed and changes nothing, which is what a second tap means.
- */
-export async function closeReservationNight(
-  stx: ServiceTx,
-  command: {
-    readonly serviceDate: string
-    readonly early?: boolean
-    readonly openBills?: number | null
-  },
-): Promise<ServiceResult> {
-  const settings = await readSettings(stx)
-  if (settings === null) return refuse('settings_missing')
-  // The night's lines first and its record after them, which is the order `LOCK_RANKS` fixes: a
-  // command given one line's id locks the line and reads its night from it, so the night's own
-  // commands take their locks the same way round and the two never cross.
-  const lines = await lockNightReservations(stx, command.serviceDate)
-  const night = await lockNight(stx, command.serviceDate)
-  if (night?.closedAt != null) {
-    return accepted(null, {
-      details: { serviceDate: command.serviceDate, closed: true, changed: false },
-    })
-  }
-  const swept = await sweepWaiting(stx, lines)
-  const values = {
-    closedAt: sql`now()`,
-    closedBy: stx.provenance.actor,
-    closedEarly: command.early ?? false,
-    openBillsAtClose: command.openBills ?? null,
-    sweptAt: sql`now()`,
-  }
-  await writeNight(stx, command.serviceDate, night !== null, values)
-  await stx.log({
-    kind: 'night.closed',
-    toState: 'closed',
-    reason: command.early === true ? 'ended_early' : undefined,
-    details: {
-      serviceDate: command.serviceDate,
-      notSeated: swept.length,
-      openBills: command.openBills ?? null,
-    },
-  })
-  return accepted(null, {
-    details: {
-      serviceDate: command.serviceDate,
-      closed: true,
-      changed: true,
-      notSeated: swept.length,
-    },
-  })
+/** What one sweep moved, by the status it gave. */
+export interface NightSweep {
+  readonly finished: number
+  readonly noShow: number
+  readonly notSeated: number
+}
+
+/** The sweep's counts as a result's or a Log entry's details. */
+export function sweepDetails(sweep: NightSweep): Record<string, number> {
+  return { finished: sweep.finished, noShow: sweep.noShow, notSeated: sweep.notSeated }
+}
+
+/** True when the sweep moved nobody. */
+export function sweptNobody(sweep: NightSweep): boolean {
+  return sweep.finished + sweep.noShow + sweep.notSeated === 0
+}
+
+/** One move the sweep makes: a party, and the status the night's end gives it. */
+export interface SweepMove {
+  readonly id: string
+  readonly from: ReservationStatus
+  readonly to: ReservationStatus
 }
 
 /**
- * The worker's sweep of one night: the parties still waiting when it ended become Not seated
- * (D138). Not seated is its own end state and is **not** counted as a no-show on a guest's card
- * (D140: the counts are a rough count for a hostess, and nobody failed to turn up here).
- *
- * The night's record keeps when it was swept, so a job that runs twice finds it done.
+ * The sweep as a plan, before anything is written: each line the night's end has a status for,
+ * where the status machine allows the move (D138). Pure, so its two promises are checked by a
+ * property test: a plan applied leaves nothing for a second plan, and no line moves twice.
  */
-export async function sweepReservationNight(
-  stx: ServiceTx,
-  command: { readonly serviceDate: string },
-): Promise<ServiceResult> {
-  const lines = await lockNightReservations(stx, command.serviceDate)
-  const night = await lockNight(stx, command.serviceDate)
-  if (night?.sweptAt != null) {
-    return accepted(null, { details: { serviceDate: command.serviceDate, changed: false } })
-  }
-  const swept = await sweepWaiting(stx, lines)
-  await writeNight(stx, command.serviceDate, night !== null, { sweptAt: sql`now()` })
-  await stx.log({
-    kind: 'night.swept',
-    toState: 'swept',
-    details: { serviceDate: command.serviceDate, notSeated: swept.length },
-  })
-  return accepted(null, {
-    details: { serviceDate: command.serviceDate, changed: true, notSeated: swept.length },
+export function planSweep(
+  lines: readonly {
+    readonly id: string
+    readonly status: string
+    readonly kind: string
+  }[],
+): SweepMove[] {
+  return lines.flatMap((line) => {
+    const from = line.status as ReservationStatus
+    const to = nightEndStatus(from, line.kind as ReservationKind)
+    return to !== null && moveStatus(from, to).ok ? [{ id: line.id, from, to }] : []
   })
 }
 
+/** What a plan moves, counted by the status it gives. */
+export function countSweep(moves: readonly SweepMove[]): NightSweep {
+  return {
+    finished: moves.filter((move) => move.to === 'finished').length,
+    noShow: moves.filter((move) => move.to === 'no_show').length,
+    notSeated: moves.filter((move) => move.to === 'not_seated').length,
+  }
+}
+
 /**
- * Marks every party still waiting on a night as Not seated, through the status machine, so the
- * move is the one `status.ts` allows and not a write around it. Returns the lines it moved. The
- * night's lines are locked by the caller, before the night's record (`LOCK_RANKS`).
+ * Sweeps a night's parties (D138): each line the night's end has a status for is moved to it
+ * through the status machine, its spots freed and its end stamped, with one Log line per party
+ * (reason `night_ended`). The night's lines are locked by the caller, before the night's record
+ * (`LOCK_RANKS`).
+ *
+ * **Nothing about a table is touched here.** A finished party's codes are closed by the night's
+ * end itself, which keeps a table whose card is still held (`closeOpenTables` with `keepPaying`);
+ * closing them from here would cancel a guest's card in the middle of a payment.
  */
-async function sweepWaiting(
+export async function sweepNightLines(
   stx: ServiceTx,
-  lines: Awaited<ReturnType<typeof lockNightReservations>>,
-): Promise<string[]> {
-  const moved: string[] = []
-  for (const line of lines) {
-    if (line.status !== 'waiting') continue
-    const move = moveStatus(line.status as ReservationStatus, 'not_seated')
-    if (!move.ok) continue
+  lines: readonly Reservation[],
+): Promise<NightSweep> {
+  const moves = planSweep(lines)
+  const byId = new Map(lines.map((line) => [line.id, line]))
+  for (const { id, from, to } of moves) {
+    const line = byId.get(id) as Reservation
+    const freed = isEndStatus(to) ? await releaseHeldSpots(stx, id) : []
     await stx.tx
       .update(reservations)
       .set({
-        status: 'not_seated',
+        status: to,
         queueKey: null,
         endedAt: sql`now()`,
         ...stx.provenance,
         updatedAt: sql`now()`,
       })
-      .where(eq(reservations.id, line.id))
+      .where(eq(reservations.id, id))
     await stx.log({
       kind: 'reservation.status',
-      reservationId: line.id,
+      reservationId: id,
       guestId: line.guestId ?? undefined,
-      fromState: 'waiting',
-      toState: 'not_seated',
-      reason: 'night_ended',
+      fromState: from,
+      toState: to,
+      reason: NIGHT_END_REASON,
+      details: { freed: freed.join(',') },
     })
-    moved.push(line.id)
   }
-  return moved
+  return countSweep(moves)
+}
+
+/**
+ * `reservation_night.sweep`, the worker's run once a night **has passed** (its service day ended):
+ * the same sweep as the night's end, for whatever that left. It changes nothing and writes nothing
+ * where nothing is left, so a repeated job — or one after the night's end already swept everyone —
+ * leaves no second Log entry. A night with something to sweep keeps when it was swept on its
+ * record, and the Log says how many were moved.
+ */
+export async function sweepPassedNight(
+  stx: ServiceTx,
+  command: { readonly serviceDate: string },
+): Promise<ServiceResult> {
+  // A night still going is the night's end's, never this sweep's: it would finish parties sitting
+  // at their tables before the venue's closing hour.
+  if (command.serviceDate >= stx.serviceDate) {
+    return accepted(null, { details: { serviceDate: command.serviceDate, changed: false } })
+  }
+  const lines = await lockNightReservations(stx, command.serviceDate)
+  const night = await lockNight(stx, command.serviceDate)
+  const sweep = await sweepNightLines(stx, lines)
+  if (sweptNobody(sweep)) {
+    return accepted(null, { details: { serviceDate: command.serviceDate, changed: false } })
+  }
+  await writeNightRecord(stx, command.serviceDate, night !== null, { sweptAt: sql`now()` })
+  await stx.log({
+    kind: 'night.swept',
+    toState: 'swept',
+    details: { serviceDate: command.serviceDate, ...sweepDetails(sweep) },
+  })
+  return accepted(null, {
+    details: { serviceDate: command.serviceDate, changed: true, ...sweepDetails(sweep) },
+  })
 }
 
 /** Writes the night's record: a new row, or the one already there. */
-async function writeNight(
+export async function writeNightRecord(
   stx: ServiceTx,
   serviceDate: string,
   exists: boolean,

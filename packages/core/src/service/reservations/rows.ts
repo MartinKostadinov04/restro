@@ -71,8 +71,6 @@ export const RESERVATION_REFUSALS = [
   'night_passed',
   /** The night has passed and the actor may not write one that has (D141). */
   'past_night_denied',
-  /** The night has been closed (D138): it is a record now. */
-  'night_closed',
   /** The reservation is not out of the book, so there is nothing to restore. */
   'reservation_not_deleted',
   /** A party of this kind cannot do this (a block is never seated, a booking never queues). */
@@ -371,10 +369,14 @@ export async function spotsOfReservation(
 
 /**
  * Whether a night may be written at all (D135, D138, D141). A night still to come or going on now
- * is open. A night that has passed needs the venue's "editing the past" switch **and** the actor's
- * own right to write one (two different things: the venue allows it, the person is trusted with
- * it). A night somebody has closed is a record: `night_closed` whatever that switch says, because
- * closing it is what makes it one (D138).
+ * is open. A night that has **passed** — its service day ended (D45) — needs the venue's "editing
+ * the past" switch **and** the actor's own right to write one (two different things: the venue
+ * allows it, the person is trusted with it).
+ *
+ * **The night's end is not a refusal** (D138, log 13.9): a night whose closing hour came, or that
+ * an admin ended early, stays writable until it has passed. A booking added to it is warned
+ * (`readBookingChecks`), a party put back lives there, and a party seated after the hour is
+ * finished by the sweep once the night has passed.
  */
 export function nightWritable(
   stx: {
@@ -383,9 +385,7 @@ export function nightWritable(
   },
   serviceDate: string,
   settings: Pick<ReservationSettings, 'editPastNights'>,
-  night: Pick<ReservationNight, 'closedAt'> | null,
 ): ReservationRefusal | null {
-  if (night?.closedAt != null) return 'night_closed'
   if (serviceDate >= stx.serviceDate) return null
   if (!settings.editPastNights) return 'night_passed'
   return stx.permissions.has('reservations.edit_past') ? null : 'past_night_denied'
@@ -410,7 +410,7 @@ export async function openNight(stx: ServiceTx, serviceDate: string): Promise<Op
   const settings = await readSettings(stx)
   if (settings === null) return { ok: false, code: 'settings_missing' }
   const night = await lockNight(stx, serviceDate)
-  const refusal = nightWritable(stx, serviceDate, settings, night)
+  const refusal = nightWritable(stx, serviceDate, settings)
   return refusal === null ? { ok: true, settings, night } : { ok: false, code: refusal }
 }
 

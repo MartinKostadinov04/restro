@@ -45,13 +45,6 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
     jobId: `req-${randomUUID()}`,
     signedInAt: new Date(),
   })
-  const worker = (): ServiceContext => ({
-    tenantId: world.tenantId,
-    venueId: world.venueId,
-    origin: 'worker',
-    actor: { kind: 'system' },
-    jobId: `job-${randomUUID()}`,
-  })
 
   const run = async (command: ServiceCommand, context: ServiceContext = staff(ownerId)) =>
     (await applyService(world.app, command, context)).result
@@ -339,7 +332,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
     expect((await heldSpotsOf(id)).every((held) => held.released_at !== null)).toBe(true)
   })
 
-  it('keeps the waiting list as a queue of reservations, and Not seated is no no-show (D137, D140)', async () => {
+  it('keeps the waiting list as a queue of reservations (D137)', async () => {
     const night = '2026-11-15'
     const first = (
       await accept({ type: 'waiting.add', serviceDate: night, partySize: 2, partyLabel: 'First' })
@@ -359,56 +352,8 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
     const keyOf = (id: string) => after.find((row) => row.id === id)?.queue_key as string
     expect(keyOf(second) < keyOf(first)).toBe(true)
 
-    // The worker's sweep is the only way to Not seated, and a second run changes nothing.
-    expect(
-      await accept({ type: 'reservation_night.sweep', serviceDate: night }, worker()),
-    ).toMatchObject({ changed: true, notSeated: 2 })
-    expect(
-      await accept({ type: 'reservation_night.sweep', serviceDate: night }, worker()),
-    ).toMatchObject({ changed: false })
-    const swept = await reservationRows(night)
-    expect(swept.map((row) => row.status)).toEqual(['not_seated', 'not_seated'])
-    expect(swept.every((row) => row.queue_key === null)).toBe(true)
-    const moves = (await logOf(['reservation.status'])).filter(
-      (entry) => entry.reason === 'night_ended',
-    )
-    expect(moves).toHaveLength(2)
-    expect(moves.every((entry) => entry.to_state === 'not_seated')).toBe(true)
-  })
-
-  it('closes a night once: afterwards every command on it is refused, whatever the past switch says', async () => {
-    const night = '2026-11-16'
-    const id = await book(night, at(16, 22), ['T1'])
-    expect(
-      await accept(
-        { type: 'reservation_night.close', serviceDate: night, early: true, openBills: 2 },
-        staff(managerId),
-      ),
-    ).toMatchObject({ closed: true, changed: true })
-    expect(
-      await accept({ type: 'reservation_night.close', serviceDate: night }, staff(managerId)),
-    ).toMatchObject({ closed: true, changed: false })
-    const record = await world.owner.query<{
-      closed_early: boolean
-      open_bills_at_close: number | null
-      swept_at: Date | null
-    }>(
-      `select closed_early, open_bills_at_close, swept_at from restro.reservation_nights
-        where venue_id = $1 and service_date = $2`,
-      [world.venueId, night],
-    )
-    expect(record.rows[0]).toMatchObject({ closed_early: true, open_bills_at_close: 2 })
-    expect(record.rows[0]?.swept_at).not.toBeNull()
-
-    expect(await run({ type: 'reservation.arrive', reservationId: id })).toMatchObject({
-      status: 'refused',
-      code: 'night_closed',
-    })
-    await setSettings({ editPastNights: true })
-    expect(
-      await run({ type: 'reservation.cancel', reservationId: id } as ServiceCommand),
-    ).toMatchObject({ status: 'refused', code: 'night_closed' })
-    await setSettings({ editPastNights: false })
+    // The night's end, or the sweep once the night has passed, is the only way to Not seated
+    // (D138): `night-end.test.ts` runs both on a night of their own.
   })
 
   it('deletes nothing: a cancelled, taken-out or restored booking is the same row throughout', async () => {

@@ -41,6 +41,7 @@ import { z } from 'zod'
 import { idSchema } from '../../ids'
 import { SPOT_PLACE_FIELDS, SPOT_SYMBOLS, spotPlaceIssues } from '../../spot-shapes'
 import { type CommandDefinition, defineCommand } from '../definition'
+import { endTheNightNow } from '../night-end'
 import {
   arriveReservation,
   holdReservationSpots,
@@ -59,7 +60,7 @@ import {
 } from './book'
 import { addClosedDate, ClosedDateSchema, removeClosedDate } from './closed-dates'
 import { eraseGuest, saveGuest, setGuestPrivateNote } from './guests'
-import { closeReservationNight, sweepReservationNight } from './night'
+import { sweepPassedNight } from './night'
 import { TurnMinutesSchema } from './overlap'
 import { SetPayRuleSchema, setReservationPayRule } from './pay-rule'
 import { PinActionsSchema } from './pin-fall'
@@ -80,6 +81,7 @@ import {
   reorderWaitingList,
   saveBlock,
   setReservationStatus,
+  undoPutBack,
 } from './tonight'
 
 const reservationId = idSchema('rv')
@@ -509,9 +511,22 @@ export const RESERVATION_COMMANDS = {
       reservationId,
     }),
     origins: ['staff'],
+    // The hostess's own No-show is hers to put back; one the night's end marked asks the handler
+    // for the booking book's key (`reservations.manage`), read from the Log (#332).
     permission: 'reservations.tonight',
     idempotency: 'by_nature',
     handle: putBackReservation,
+  }),
+  // The Undo of putting back a party the night's end marked: the toast's button (#332).
+  'reservation.undo_put_back': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('reservation.undo_put_back'),
+      reservationId,
+    }),
+    origins: ['staff'],
+    permission: 'reservations.manage',
+    idempotency: 'by_nature',
+    handle: undoPutBack,
   }),
   // The Undo of an arrival (D135): where the party came from is read from the Log, never from a
   // second copy on the row (D141), and so are the tables that arrival opened, which it closes
@@ -616,24 +631,21 @@ export const RESERVATION_COMMANDS = {
     idempotency: 'by_nature',
     handle: removeBlock,
   }),
-  // --- The night's record (D138) ---------------------------------------------------------------
-  // The count of bills still open at an early end is the caller's: the bills are the ordering
-  // side's, and no reservation module reads one (D134).
-  'reservation_night.close': defineCommand({
-    schema: z.strictObject({
-      type: z.literal('reservation_night.close'),
-      serviceDate,
-      early: z.boolean().optional(),
-      openBills: z.number().int().min(0).nullable().optional(),
-    }),
+  // --- The night's end and a night that has passed (D138; #332) -----------------------------
+  // The admin's early end: the night of her service day, closed now. It takes no date and no count
+  // from the caller — the night is the one going on, and the bills still open are counted under the
+  // locks of the write itself. The closing hour reaches the same write from `hours.close_tables`.
+  // A PIN action on a shared device (D141: it ends the night); no bulk undo exists for it.
+  'night.end': defineCommand({
+    schema: z.strictObject({ type: z.literal('night.end') }),
     origins: ['staff'],
     permission: 'reservations.end_night',
     idempotency: 'by_nature',
-    handle: closeReservationNight,
+    handle: endTheNightNow,
   }),
-  // The one reservation command the worker runs: Not seated is reachable no other way (D138). A
-  // worker actor holds no permission, so this command needs none — and holds none, which is why it
-  // can do nothing but mark the parties the night left waiting.
+  // The one reservation command the worker runs once a night **has passed** (its service day
+  // ended, D45): the night's end's sweep again, for whatever it left — a party seated after the
+  // hour, a night nobody ended. A worker actor holds no permission, so this command needs none.
   'reservation_night.sweep': defineCommand({
     schema: z.strictObject({
       type: z.literal('reservation_night.sweep'),
@@ -642,6 +654,6 @@ export const RESERVATION_COMMANDS = {
     origins: ['worker'],
     permission: null,
     idempotency: 'by_state',
-    handle: sweepReservationNight,
+    handle: sweepPassedNight,
   }),
 } as const satisfies Record<string, CommandDefinition>

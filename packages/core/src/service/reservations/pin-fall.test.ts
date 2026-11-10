@@ -46,6 +46,7 @@ const ACTION_OF: Readonly<Record<string, PinFallAction | null>> = {
   'reservation.copy': 'copy',
   'reservation.set_status': 'status',
   'reservation.put_back': 'put_back',
+  'reservation.undo_put_back': 'put_back',
   // The door (#329): marking a party present is the same action as finishing one, its Undo is
   // that action again, "how many came?" is the guest count and a walk-in is a walk-in — so the
   // three new commands need no action of their own.
@@ -61,7 +62,7 @@ const ACTION_OF: Readonly<Record<string, PinFallAction | null>> = {
   'waiting.reorder': 'waiting',
   'block.save': 'block',
   'block.remove': 'block',
-  'reservation_night.close': 'end_night',
+  'night.end': 'end_night',
   'reservation_night.sweep': null,
 }
 

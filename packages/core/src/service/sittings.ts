@@ -581,7 +581,10 @@ export async function closeOpenTables(
   const ending = locked.filter((sitting) => !paying.has(sitting.id))
   await stx.rows.tableOrders(ending.map((sitting) => sitting.tableId))
   for (const sitting of ending) await endSitting(stx, sitting, reason)
-  return accepted(null, { details: { closed: ending.length } })
+  // How many a payment kept open, where the caller asked to keep them (the night's end says so).
+  const details: Record<string, number> = { closed: ending.length }
+  if (options.keepPaying === true) details.kept = locked.length - ending.length
+  return accepted(null, { details })
 }
 
 /**

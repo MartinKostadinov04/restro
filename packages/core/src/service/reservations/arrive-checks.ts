@@ -229,12 +229,7 @@ export async function readArrivalChecks(
     const night =
       settings === undefined
         ? ('settings_missing' as const)
-        : nightWritable(
-            { serviceDate: reader.today, permissions: reader.held },
-            day,
-            settings,
-            null,
-          )
+        : nightWritable({ serviceDate: reader.today, permissions: reader.held }, day, settings)
 
     // The spots this advice is about: the ones tapped, else the party's own.
     const asked = input.spotIds ?? []
