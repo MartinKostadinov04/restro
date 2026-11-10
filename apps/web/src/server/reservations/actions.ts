@@ -25,6 +25,9 @@ import {
   loadArrivalChecks,
   loadBookingChecks,
   loadFloorPlan,
+  loadGuestCard,
+  loadGuestList,
+  loadGuestSuggestions,
   loadReservationDetail,
   loadReservationNight,
   loadSpotHistory,
@@ -35,6 +38,8 @@ import type {
   RvChecksView,
   RvDetailView,
   RvFrame,
+  RvGuestCardView,
+  RvGuestListView,
   RvNightView,
   RvPlanView,
   RvSpotHistoryList,
@@ -289,6 +294,8 @@ const Save = z.strictObject({
   reason: z.enum(BOOKING_REASONS).nullable().optional(),
   /** On an edit: which of name and phone the person actually changed. Left alone, they stay. */
   changed: z.strictObject({ name: z.boolean(), phone: z.boolean() }).optional(),
+  /** A new booking's "Save to the regulars" tick (#333); it needs a phone, the record's key. */
+  saveAsRegular: z.boolean().optional(),
   pin,
 })
 
@@ -343,6 +350,7 @@ export async function saveBookingAction(input: unknown): Promise<RvWriteResult> 
       reason: body.reason ?? null,
       spotIds: body.spotIds,
       ...(phone === null ? { partyLabel: body.name } : { phone, guestName: body.name }),
+      ...(body.saveAsRegular === true && phone !== null ? { saveAsRegular: true } : {}),
     }))
   }
   const reservationId = body.reservationId
@@ -520,6 +528,64 @@ export async function arrivalChecksAction(
   }
 }
 
+// ───────────────────────────── guests and regulars (#333) ─────────────────────────────
+
+const guestId = idSchema('gu')
+const OneGuest = z.strictObject({ venueId, guestId })
+const Suggest = z.strictObject({ venueId, query: z.string().max(80) })
+
+/** The venue's list of guests, as the person reads it (D140). */
+export async function guestListAction(
+  input: unknown,
+): Promise<RvAnswer<{ guests: RvGuestListView }>> {
+  const parsed = z.strictObject({ venueId }).safeParse(input)
+  if (!parsed.success) return FAILED
+  return answer('guest_list_failed', async () => {
+    const scope = await scopeOf(parsed.data.venueId)
+    if (scope === null) return FAILED
+    return loadGuestList(scope)
+  })
+}
+
+/** One guest's card: his details, his counts, his recent bookings, and the reader's own note. */
+export async function guestCardAction(
+  input: unknown,
+): Promise<RvAnswer<{ card: RvGuestCardView | null }>> {
+  const parsed = OneGuest.safeParse(input)
+  if (!parsed.success) return FAILED
+  return answer('guest_card_failed', async () => {
+    const scope = await scopeOf(parsed.data.venueId)
+    if (scope === null) return FAILED
+    return loadGuestCard(scope, parsed.data.guestId)
+  })
+}
+
+/** The regulars three typed letters suggest in the booking form (D140). */
+export async function guestSuggestAction(input: unknown): Promise<
+  | {
+      readonly ok: true
+      readonly suggestions: readonly {
+        readonly id: string
+        readonly name: string | null
+        readonly phone: string | null
+      }[]
+    }
+  | { readonly ok: false }
+> {
+  const parsed = Suggest.safeParse(input)
+  if (!parsed.success) return FAILED
+  try {
+    const scope = await scopeOf(parsed.data.venueId)
+    if (scope === null) return FAILED
+    const read = await loadGuestSuggestions(scope, parsed.data.query)
+    return read.ok ? { ok: true, suggestions: read.suggestions } : FAILED
+  } catch (error) {
+    if (error instanceof Error && 'digest' in error) throw error
+    logError('guest_suggest_failed', error)
+    return FAILED
+  }
+}
+
 /**
  * The guests are here: the party goes to Seated and their Tables open for phones (D137). One tap
  * on a floor device (D141), and the Undo is `undoArrivalAction`. `sameGuests` is left out where no
@@ -619,6 +685,38 @@ export async function freeSpotsAction(input: unknown): Promise<RvWriteResult> {
   )
 }
 
+const SaveGuest = z.strictObject({
+  venueId,
+  /** Present when a guest already on the list is changed. */
+  guestId: guestId.optional(),
+  name: z.string().trim().min(1).max(80).optional(),
+  phone: z.string().trim().min(6).max(40).optional(),
+  email: z.string().trim().max(200).nullable().optional(),
+  note: z.string().trim().max(500).nullable().optional(),
+  regular: z.boolean().optional(),
+  archived: z.boolean().optional(),
+  pin,
+})
+
+/**
+ * Adds a regular, changes a guest, archives or restores one: `guest.save`, "working tonight's
+ * reservations" (#333), with the PIN on a shared device because it touches a guest's details
+ * (D141). A number another guest already has is refused `guest_exists` with that guest's id.
+ */
+export async function saveGuestAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = SaveGuest.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const { venueId: id, pin: typed, regular, ...fields } = parsed.data
+  return performReservationWrite(
+    { venueId: id, ...withPin(typed) },
+    {
+      type: 'guest.save',
+      ...fields,
+      ...(regular === undefined ? {} : { isRegular: regular }),
+    },
+  )
+}
+
 /**
  * The Undo of "Free": the party takes the same spots again, and because it is still sitting the
  * codes of their Tables open again — a new sitting, since the one its guests left was ended when
@@ -636,5 +734,54 @@ export async function holdSpotsAction(input: unknown): Promise<RvWriteResult> {
       spotIds,
       ...(sameGuests === undefined ? {} : { sameGuests }),
     },
+  )
+}
+
+const PrivateNote = z.strictObject({
+  venueId,
+  guestId,
+  /** The note on the person's own list; null takes the guest off it. */
+  note: z.string().trim().min(1).max(500).nullable(),
+})
+
+/**
+ * Keeps a guest on the person's own private list with a note, or takes him off it (D140). Only
+ * the person's own sign-in reaches it (`settings.guests`): no PIN is ever taken here.
+ */
+export async function privateNoteAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = PrivateNote.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const { venueId: id, guestId: guest, note } = parsed.data
+  return ownSignInOnly(
+    await performReservationWrite(
+      { venueId: id },
+      { type: 'guest.private_note', guestId: guest, note },
+    ),
+  )
+}
+
+/**
+ * A settings-class write is never answered with the PIN pad (D141): where a shared device would ask
+ * for four digits, the answer is that it needs the person's own sign-in.
+ */
+function ownSignInOnly(result: RvWriteResult): RvWriteResult {
+  return !result.ok && result.error === 'pin_required'
+    ? { ok: false, error: 'own_sign_in_required' }
+    : result
+}
+
+/**
+ * Erases a guest's details (D140, D83): an update through the service write path, never a
+ * deletion. Settings-class and a fresh sign-in (D141): no PIN is ever taken here, and a shared
+ * device is answered `own_sign_in_required`.
+ */
+export async function eraseGuestAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = OneGuest.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  return ownSignInOnly(
+    await performReservationWrite(
+      { venueId: parsed.data.venueId },
+      { type: 'guest.erase', guestId: parsed.data.guestId },
+    ),
   )
 }

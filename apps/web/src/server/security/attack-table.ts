@@ -1200,6 +1200,56 @@ export const ATTACKS: readonly Attack[] = [
       return nightBook.putBackAction({ venueId: x.id, reservationId: x.reservation })
     },
   },
+  // Guests and regulars (#333): B may not read A's list, a card or a suggestion, nor add, change,
+  // note or erase a guest at A's venue.
+  {
+    action: 'guestListAction',
+    call: (v) => nightBook.guestListAction({ venueId: v.venues[0].id }),
+  },
+  {
+    action: 'guestCardAction',
+    call: (v) => nightBook.guestCardAction({ venueId: v.venues[0].id, guestId: v.venues[0].guest }),
+  },
+  {
+    action: 'guestSuggestAction',
+    call: (v) =>
+      nightBook.guestSuggestAction({ venueId: v.venues[0].id, query: v.marker.slice(0, 5) }),
+  },
+  {
+    action: 'saveGuestAction',
+    call: (v) =>
+      nightBook.saveGuestAction({
+        venueId: v.venues[0].id,
+        guestId: v.venues[0].guest,
+        name: 'Attacker',
+        regular: false,
+      }),
+  },
+  {
+    action: 'saveGuestAction',
+    how: 'a new guest at the victim venue',
+    call: (v) =>
+      nightBook.saveGuestAction({
+        venueId: v.venues[0].id,
+        name: 'Attacker',
+        phone: '+359888000111',
+        regular: true,
+      }),
+  },
+  {
+    action: 'privateNoteAction',
+    call: (v) =>
+      nightBook.privateNoteAction({
+        venueId: v.venues[0].id,
+        guestId: v.venues[0].guest,
+        note: 'Attacker',
+      }),
+  },
+  {
+    action: 'eraseGuestAction',
+    call: (v) =>
+      nightBook.eraseGuestAction({ venueId: v.venues[0].id, guestId: v.venues[0].guest }),
+  },
 
   // The door (#329): the advice it reads and the writes that seat, count, undo, free and hold
   // again — every one of them against the victim's venue, reservation and spot.
@@ -2335,5 +2385,35 @@ export const MIXED: readonly Attack[] = [
         reservationId: v.venues[0].reservation,
         spotIds: [v.venues[0].spot],
       }),
+  },
+  // Guests (#333): my own venue, the victim's guest.
+  {
+    action: 'guestCardAction',
+    call: (v, a) =>
+      nightBook.guestCardAction({ venueId: a.venues[0].id, guestId: v.venues[0].guest }),
+  },
+  {
+    action: 'saveGuestAction',
+    call: (v, a) =>
+      nightBook.saveGuestAction({
+        venueId: a.venues[0].id,
+        guestId: v.venues[0].guest,
+        name: 'Attacker',
+        archived: true,
+      }),
+  },
+  {
+    action: 'privateNoteAction',
+    call: (v, a) =>
+      nightBook.privateNoteAction({
+        venueId: a.venues[0].id,
+        guestId: v.venues[0].guest,
+        note: 'Attacker',
+      }),
+  },
+  {
+    action: 'eraseGuestAction',
+    call: (v, a) =>
+      nightBook.eraseGuestAction({ venueId: a.venues[0].id, guestId: v.venues[0].guest }),
   },
 ]

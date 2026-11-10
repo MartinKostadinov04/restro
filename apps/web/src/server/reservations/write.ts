@@ -56,6 +56,8 @@ export type RvCommand =
       readonly phone?: string
       readonly guestName?: string
       readonly partyLabel?: string
+      /** The form's "Save to the regulars" tick (#333). */
+      readonly saveAsRegular?: true
     }
   | {
       readonly type: 'reservation.edit'
@@ -136,6 +138,18 @@ export type RvCommand =
       readonly spotIds: readonly string[]
       readonly sameGuests?: boolean
     }
+  | {
+      readonly type: 'guest.save'
+      readonly guestId?: string
+      readonly name?: string
+      readonly phone?: string
+      readonly email?: string | null
+      readonly note?: string | null
+      readonly isRegular?: boolean
+      readonly archived?: boolean
+    }
+  | { readonly type: 'guest.private_note'; readonly guestId: string; readonly note: string | null }
+  | { readonly type: 'guest.erase'; readonly guestId: string }
 
 /** Why a PIN did not name a person (`identifyStaffByPin`'s codes). */
 export type RvPinRefusal = 'not_shared_device' | 'pin_wrong' | 'device_waiting'

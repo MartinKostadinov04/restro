@@ -207,6 +207,7 @@ describe('what the actor holds', () => {
       block: false,
       editPast: false,
       endNight: false,
+      guests: false,
     })
 
     const some = rvFrameOf(
@@ -219,6 +220,7 @@ describe('what the actor holds', () => {
       block: false,
       editPast: true,
       endNight: false,
+      guests: false,
     })
   })
 

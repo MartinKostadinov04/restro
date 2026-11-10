@@ -23,7 +23,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { type Id, newId } from '../../ids'
 import type { ServiceTx } from '../definition'
 import { accepted, refused, type ServiceResult } from '../results'
-import { phoneKeyOf } from './guests'
+import { venuePhoneKey } from './guests'
 import {
   heldStretch,
   isSpotConflict,
@@ -226,6 +226,11 @@ export interface PartyInput {
   readonly guestName?: string
   /** The name on a booking with no number ("Ivan"); never a phone or an email. */
   readonly partyLabel?: string
+  /**
+   * The form's "Save to the regulars" tick (#333): the guest the booking resolves to goes on the
+   * venue's list of regulars, and back on it if he was archived. Needs a guest record, so a number.
+   */
+  readonly saveAsRegular?: boolean
 }
 
 /** The party as it will be stored: a guest record, a label, or both. */
@@ -255,6 +260,35 @@ function labelFor(recordName: string | null, typed: string | undefined): string 
  * somebody — stays settings-class and so behind a person's own sign-in.
  */
 async function resolveParty(stx: ServiceTx, input: PartyInput): Promise<Party> {
+  const party = await findParty(stx, input)
+  if (party.ok && input.saveAsRegular === true) {
+    if (party.guestId === null) return { ok: false, code: 'phone_required' }
+    await makeRegular(stx, party.guestId)
+  }
+  return party
+}
+
+/**
+ * Puts a guest record on the venue's list of regulars (and back from the archived), where it is
+ * not there already. The Log names the record and that it became a regular, nothing of him.
+ */
+async function makeRegular(stx: ServiceTx, guestId: string): Promise<void> {
+  const guest = await lockGuest(stx, guestId)
+  if (guest === null || (guest.isRegular && guest.archivedAt === null)) return
+  await stx.tx
+    .update(guests)
+    .set({ isRegular: true, archivedAt: null, ...stx.provenance, updatedAt: sql`now()` })
+    .where(eq(guests.id, guest.id))
+  await stx.log({
+    kind: 'guest.changed',
+    guestId: guest.id,
+    toState: 'listed',
+    reason: 'from_booking',
+    details: { regular: true },
+  })
+}
+
+async function findParty(stx: ServiceTx, input: PartyInput): Promise<Party> {
   if (input.guestId !== undefined) {
     const guest = await lockGuest(stx, input.guestId)
     if (guest === null) return { ok: false, code: 'guest_missing' }
@@ -265,7 +299,7 @@ async function resolveParty(stx: ServiceTx, input: PartyInput): Promise<Party> {
     }
   }
   if (input.phone !== undefined) {
-    const phoneKey = phoneKeyOf(input.phone)
+    const phoneKey = venuePhoneKey(stx, input.phone)
     if (phoneKey === null) return { ok: false, code: 'invalid_phone' }
     const found = await lockGuestByPhone(stx, phoneKey)
     if (found !== null) {
@@ -345,6 +379,9 @@ export async function createReservation(
   if (block && command.status !== 'reserved') return refuse('kind_not_allowed')
   if (command.status === 'waiting' && command.kind !== 'walk_in') return refuse('kind_not_allowed')
   if (block === (command.partySize != null)) return refuse('invalid_command')
+  // The regulars are written by taking a booking, never by a walk-in's one tap at the door (D141).
+  if (command.saveAsRegular === true && command.kind !== 'booking')
+    return refuse('kind_not_allowed')
   if (
     command.kind === 'booking' &&
     night.settings.phoneRequired &&

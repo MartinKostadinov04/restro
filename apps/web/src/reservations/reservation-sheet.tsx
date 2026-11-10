@@ -19,7 +19,10 @@
 //
 // Calling the guest is one tap here and nowhere else: the number is read for this sheet alone and
 // never travels with the night's list. Closing loses nothing.
+//
+// A booking with a guest record links to his card on Guests (#333), under "…".
 import { EllipsisIcon, PhoneIcon } from 'lucide-react'
+import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -337,7 +340,7 @@ export function ReservationSheet({
           {t('bk_cancel')}
         </Button>
       ) : null}
-      {detail && (mayCopy || mayNoShow || mayDelete || mayFree) ? (
+      {detail && (mayCopy || mayNoShow || mayDelete || mayFree || detail.guestId !== null) ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -352,6 +355,13 @@ export function ReservationSheet({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            {detail.guestId === null ? null : (
+              <DropdownMenuItem asChild className="min-h-11" data-testid="rv-guest-card">
+                <Link href={`?tab=reservations&view=guests&guest=${detail.guestId}`}>
+                  {t('g_card')}
+                </Link>
+              </DropdownMenuItem>
+            )}
             {mayCopy ? (
               <DropdownMenuItem
                 className="min-h-11"

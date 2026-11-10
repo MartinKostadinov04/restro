@@ -124,7 +124,7 @@ test('the plan is one tap from the list, and its legend names all six states', a
 
   // One tap: the views are a row at every width, never a dropdown (the ticket's tap budget).
   const views = page.getByRole('tablist', { name: 'Views of Reservations' })
-  await expect(views.getByRole('tab')).toHaveText(['List', 'Plan'])
+  await expect(views.getByRole('tab')).toHaveText(['List', 'Plan', 'Guests'])
   await views.getByRole('tab', { name: 'Plan' }).click()
   await expect(plan(page)).toBeVisible()
   await expect(page).toHaveURL(/view=plan/)

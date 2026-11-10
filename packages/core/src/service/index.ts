@@ -409,7 +409,24 @@ export {
   type TakenCheck,
 } from './reservations/booking-checks'
 export { CLOSED_DATES_MAX } from './reservations/closed-dates'
-export { phoneKeyOf } from './reservations/guests'
+export { phoneKeyOf, regionOfLocale } from './reservations/guests'
+export {
+  type GuestBooking,
+  type GuestCard,
+  type GuestListRead,
+  type GuestListRow,
+  type GuestSuggestion,
+  MAX_GUEST_ROWS,
+  MAX_GUEST_SUGGESTIONS,
+  type PrivateListRefusal,
+  privateListOwner,
+  RECENT_GUEST_BOOKINGS,
+  readGuestCard,
+  readGuestList,
+  readGuestSuggestions,
+  readPrivateList,
+  SUGGEST_AFTER,
+} from './reservations/guests-read'
 export {
   DEFAULT_ONLINE_SETTINGS,
   type OnlineSettings,

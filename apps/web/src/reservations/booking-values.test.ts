@@ -33,6 +33,7 @@ const detail = (over: Partial<RvDetailView> = {}): RvDetailView => ({
   made: null,
   phone: '+359888123456',
   email: null,
+  guestId: null,
   spotIds: ['sp_1', 'sp_2'],
   version: '2026-11-10T10:00:00.000Z',
   mine: false,
