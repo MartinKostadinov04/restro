@@ -26,13 +26,16 @@ import {
   reservations,
   spots,
   staffMembers,
+  venues,
   withTenant,
 } from '@restro/db'
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
-
+import type { PayRule } from '../../pay-first-settings'
+import { readPayFirstSettings } from '../../pay-first-settings'
 import { open, type Reader, type ReadInput, type Who, whoOf } from '../night-read'
 import type { Permission } from '../permissions'
 import type { TonightRefusal } from '../read'
+import { type PayRuleBeaten, payRuleBeatenAt, storedPayRule } from './pay-rule'
 import { LATE_AFTER_MINUTES } from './plan-state'
 import { nightWritable, type ReservationRefusal } from './rows'
 import {
@@ -164,8 +167,22 @@ export interface ReservationDetail {
   readonly version: string
   /** The actor took this booking themselves, so may take it out without managing bookings. */
   readonly mine: boolean
+  /** The pay rule this party carries, and the spots a table's own setting beats it on (#334). */
+  readonly payRule: ReservationPayRuleRead
   /** Its own history, oldest first, from the Log: never a guest's contact details (D140). */
   readonly history: readonly ReservationHistoryLine[]
+}
+
+/** What the sheet's Pay rule section reads (#334; D135, D122 §5). */
+export interface ReservationPayRuleRead {
+  /** The rule the party carries; null is the club's own rule, which is the absence of one. */
+  readonly rule: PayRule | null
+  /**
+   * The party's spots whose **table** carries a pay-first setting of its own, which wins over the
+   * party's rule. The sheet says so in one line instead of drawing the party's rule as if it were
+   * in force, and says it whether or not a rule is set.
+   */
+  readonly beaten: readonly PayRuleBeaten[]
 }
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/
@@ -480,6 +497,7 @@ const HISTORY_KINDS = [
   'reservation.status',
   'reservation.spots',
   'reservation.restored',
+  'reservation.pay_rule',
 ] as const
 
 /**
@@ -524,6 +542,7 @@ export async function readReservationDetail(
         seatedAt: reservations.seatedAt,
         endedAt: reservations.endedAt,
         updatedAt: reservations.updatedAt,
+        payRule: reservations.payRule,
       })
       .from(reservations)
       .leftJoin(guests, eq(guests.id, reservations.guestId))
@@ -590,6 +609,16 @@ export async function readReservationDetail(
       ...entries.map((entry) => entry.actor),
       ...(row.madeBy === null ? [] : [`staff:${row.madeBy}`]),
     ])
+    // Where a table's own pay-first setting beats the party's rule (#334). The venue's settings are
+    // read here and nowhere else in this module: the resolution itself is `payFirstRuleAt`'s.
+    const [venue] = await tx
+      .select({ settings: venues.settings })
+      .from(venues)
+      .where(eq(venues.id, reader.venue.id))
+    const beaten = await payRuleBeatenAt(tx, {
+      reservationId: row.id,
+      settings: readPayFirstSettings(venue?.settings ?? {}),
+    })
 
     return {
       ok: true,
@@ -608,6 +637,7 @@ export async function readReservationDetail(
           ),
         ),
         mine: row.madeBy !== null && row.madeBy === (await staffMemberFor(tx, input)),
+        payRule: { rule: storedPayRule(row.payRule), beaten },
         history: entries.map((entry) => ({
           seq: entry.seq,
           at: entry.at,

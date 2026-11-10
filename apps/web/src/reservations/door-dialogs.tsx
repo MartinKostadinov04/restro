@@ -11,6 +11,7 @@
 //
 // **The count** is the ticket's "Add a thing": one field, then the write. It is asked after the
 // guests are already sitting, never at the door.
+import type { PayRule } from '@restro/core'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 
@@ -61,13 +62,20 @@ function Answer({
  * "Are these the same guests?" — asked whenever a party is seated onto a table whose codes are
  * already open. Yes keeps the sitting, its order and the phones that are on it; no sends the
  * "New guests" the floor already has, which ends the sitting and empties the order.
+ *
+ * Where the party carries a pay rule (#334), each answer says what becomes of it as well: a rule
+ * lasts one sitting, so keeping the sitting carries the rule with them and starting over puts the
+ * table back on the club's rule. One question, two consequences — never a second question.
  */
 export function SameGuestsDialog({
   busy,
+  payRule,
   onAnswer,
   onLeave,
 }: {
   busy: boolean
+  /** The rule the party carries, or null for none: then neither answer says anything about it. */
+  payRule: PayRule | null
   onAnswer: (sameGuests: boolean) => void
   onLeave: () => void
 }) {
@@ -84,14 +92,18 @@ export function SameGuestsDialog({
         <div className="space-y-3">
           <Answer
             label={t('d_same_keep')}
-            body={t('d_same_keep_b')}
+            body={
+              payRule === null ? t('d_same_keep_b') : `${t('d_same_keep_b')} ${t('pr_follows')}`
+            }
             testId="rv-same-keep"
             busy={busy}
             onPick={() => onAnswer(true)}
           />
           <Answer
             label={t('d_same_new')}
-            body={t('d_same_new_b')}
+            body={
+              payRule === null ? t('d_same_new_b') : `${t('d_same_new_b')} ${t('pr_new_guests')}`
+            }
             testId="rv-same-new"
             busy={busy}
             onPick={() => onAnswer(false)}

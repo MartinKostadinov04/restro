@@ -81,6 +81,10 @@ export const LOG_KINDS = {
   'reservation.status': 'night',
   'reservation.spots': 'night',
   'reservation.restored': 'night',
+  // The pay rule a party carries (#334; D135, D122 §7): a `record`, like every other level's
+  // change, because it is a guard over the money and the club must still be able to read who set
+  // it months later.
+  'reservation.pay_rule': 'record',
   'night.closed': 'night',
   'night.swept': 'night',
   'plan.changed': 'record',

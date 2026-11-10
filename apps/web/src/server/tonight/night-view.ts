@@ -424,6 +424,7 @@ const RESERVATION_KINDS = new Set<string>([
   'reservation.status',
   'reservation.spots',
   'reservation.restored',
+  'reservation.pay_rule',
   'night.closed',
   'plan.changed',
   'spot.changed',

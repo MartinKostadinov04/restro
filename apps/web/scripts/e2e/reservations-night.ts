@@ -29,8 +29,12 @@ export interface SeededNights {
   readonly before: string
 }
 
-/** The scenes: a night as it runs, and the same with the owner's switch on for the past. */
-export const RESERVATION_SCENES = ['book', 'book-past-open'] as const
+/**
+ * The scenes: a night as it runs, the same with the owner's switch on for the past, and the same
+ * with the club's pay-first settings set, so the pay rule a party carries has a table's own rule
+ * above it (#334).
+ */
+export const RESERVATION_SCENES = ['book', 'book-past-open', 'book-pay-rule'] as const
 export type ReservationScene = (typeof RESERVATION_SCENES)[number]
 
 /** The tables this fixture writes, cleared newest-dependency-first before each run. */
@@ -155,6 +159,28 @@ export async function seedReservationsNight(
       [tenantId],
     )
   ).rows[0]?.id
+
+  // #334: the pay-rule scene gives the club the house rule a club runs on — everything on the
+  // bill — and gives the one spot that has a Table a rule of its own, which is what beats the rule
+  // a party carries (D122 §5). Every other scene leaves the venue with no pay-first settings at
+  // all, which is how every other spec has always found it.
+  if (scene === 'book-pay-rule') {
+    await owner.query(`update restro.venues set settings = settings || $2::jsonb where id = $1`, [
+      venueId,
+      JSON.stringify({
+        payFirst: {
+          itemMode: 'on_bill',
+          applies: false,
+          groups: {},
+          tables: firstTable === undefined ? {} : { [firstTable]: true },
+        },
+      }),
+    ])
+  } else {
+    await owner.query(`update restro.venues set settings = settings - 'payFirst' where id = $1`, [
+      venueId,
+    ])
+  }
 
   /** One spot of the plan: a shape out of the folder and whole numbers, as #327 checks them. */
   const spot = async (one: {

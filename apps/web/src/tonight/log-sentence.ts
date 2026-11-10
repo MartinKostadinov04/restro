@@ -119,6 +119,13 @@ const SETTINGS_SENTENCES: Readonly<Record<string, string>> = {
   closed_date_removed: 'lg_rv_set_closed_removed',
 }
 
+/** The word for each pay rule a reservation can carry (#334); no rule reads as the club's own. */
+const PAY_RULE_SENTENCES: Readonly<Record<string, string>> = {
+  venue: 'lg_rv_pr_venue',
+  on_bill: 'lg_rv_pr_on_bill',
+  pay_first: 'lg_rv_pr_pay_first',
+}
+
 /** What a change to a guest's record was; its details are never in the sentence (D140). */
 const GUEST_SENTENCES: Readonly<Record<string, string>> = {
   archived: 'lg_guest_archived',
@@ -225,6 +232,14 @@ export const SENTENCES = {
   'reservation.restored': (l, c) => c.say('lg_rv_restored', { state: reservationStateText(l, c) }),
   'reservation.spots': (l, c) =>
     c.say(l.reservationStatus === 'released' ? 'lg_rv_freed' : 'lg_rv_held'),
+  // The pay rule a party carries (#334, D135): the rule it became, never an amount (D136).
+  'reservation.pay_rule': (l, c) =>
+    c.say('lg_rv_pay_rule', {
+      rule: c.say(
+        (l.reservationStatus === null ? undefined : PAY_RULE_SENTENCES[l.reservationStatus]) ??
+          'lg_rv_pr_venue',
+      ),
+    }),
   // The night's record, which an admin may write before the closing hour (D138).
   'night.closed': (_l, c) => c.say('lg_rv_night_closed'),
   'plan.changed': (l, c) =>

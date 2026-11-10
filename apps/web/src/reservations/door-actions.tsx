@@ -27,6 +27,7 @@
 // Nothing here decides whether a person may: the service path does, inside its own transaction.
 // A role that may not open and close tables still marks Arrived, and the answer says in one line
 // that the table stayed closed (`tableClosed` in the details) — never a refusal.
+import type { PayRule } from '@restro/core'
 import { useTranslations } from 'next-intl'
 import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
@@ -71,6 +72,8 @@ export interface DoorParty {
 interface Asking {
   readonly party: DoorParty
   readonly step: 'same_guests' | 'bill' | 'free_bill'
+  /** The pay rule the party carries, so the same-guests answers say what becomes of it (#334). */
+  readonly payRule: PayRule | null
   /** The tables that still carry something, by name: the open-bill sentence names them. */
   readonly billSpots: readonly string[]
   /** The spots the advice was about, for the Undo of a freeing; empty where it is not known. */
@@ -208,11 +211,23 @@ export function useDoorActions({
             .filter((table) => table.bill)
             .map((table) => table.tableName)
           if (read.checks.tables.some((table) => table.open)) {
-            setAsking({ party, step: 'same_guests', billSpots, spots: read.checks.spotIds })
+            setAsking({
+              party,
+              step: 'same_guests',
+              billSpots,
+              spots: read.checks.spotIds,
+              payRule: read.checks.payRule,
+            })
             return
           }
           if (billSpots.length > 0) {
-            setAsking({ party, step: 'bill', billSpots, spots: read.checks.spotIds })
+            setAsking({
+              party,
+              step: 'bill',
+              billSpots,
+              spots: read.checks.spotIds,
+              payRule: read.checks.payRule,
+            })
             return
           }
           seat(party, undefined)
@@ -316,7 +331,13 @@ export function useDoorActions({
             .map((table) => table.tableName)
           const spots = read.checks.spotIds
           if (billSpots.length > 0) {
-            setAsking({ party, step: 'free_bill', billSpots, spots })
+            setAsking({
+              party,
+              step: 'free_bill',
+              billSpots,
+              spots,
+              payRule: read.checks.payRule,
+            })
             return
           }
           letGo(party, spots)
@@ -329,6 +350,7 @@ export function useDoorActions({
     asking === null ? null : asking.step === 'same_guests' ? (
       <SameGuestsDialog
         busy={reading}
+        payRule={asking.payRule}
         onAnswer={(sameGuests) => seat(asking.party, sameGuests)}
         onLeave={() => setAsking(null)}
       />

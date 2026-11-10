@@ -1,5 +1,6 @@
 'use client'
 
+import type { PayRule } from '@restro/core'
 // The writes on a booking that are one decision each (#328), shared by the list's rows, the
 // booking's sheet and the bin, so the same act is worded and signed the same wherever it is made:
 //   • No-show — a floor tap (D141): one tap, and the toast's Undo puts the party back to Coming;
@@ -21,13 +22,29 @@ import {
   noShowAction,
   putBackAction,
   restoreBookingAction,
+  setPayRuleAction,
 } from '@/server/reservations/actions'
 import type { RvFrame } from '@/server/reservations/view'
 
+import { usePayRuleWord } from './reservation-words'
 import type { RvRunSpec } from './use-reservation-run'
 
 /** The party named in a sentence: its name, or "No name" for a walk-in nobody named. */
 export type PartyName = string
+
+/** What setting a party's pay rule needs of the sheet (#334). */
+export interface PayRuleChange {
+  readonly reservationId: string
+  readonly party: PartyName
+  /** The rule chosen; null takes it away and the club's own rule applies again. */
+  readonly rule: PayRule | null
+  /** What it was, which the toast's Undo writes back. */
+  readonly previous: PayRule | null
+  /** The version the sheet was read on: a save over a newer one is refused. */
+  readonly version: string
+  /** The write is over, whatever the answer: the sheet reads again and drops its guess. */
+  readonly settled: () => void
+}
 
 export function useBookingActions({
   frame,
@@ -40,6 +57,7 @@ export function useBookingActions({
   onChanged: () => void
 }) {
   const t = useTranslations('reservations')
+  const ruleWord = usePayRuleWord()
   const venueId = frame.venueId
 
   const noShow = useCallback(
@@ -121,5 +139,45 @@ export function useBookingActions({
     [frame.can.manage, frame.device, onChanged, run, t, venueId],
   )
 
-  return { noShow, cancel, restore, remove }
+  /**
+   * The pay rule this party carries (#334): the card is tapped and the write goes at once, with
+   * Undo on the toast — the rule is one word about one party and costs nothing to put back, so a
+   * dialog in front of it would be in the way (D123). The version the sheet was read on goes with
+   * it, so a choice made on a stale sheet is refused rather than saving over somebody else's; the
+   * Undo carries no version, because by then the version is this very write's.
+   */
+  const payRule = useCallback(
+    ({ reservationId, party, rule, previous, version, settled }: PayRuleChange) =>
+      run({
+        id: `rv-pay-rule:${reservationId}`,
+        done: t('pr_done', { rule: ruleWord(rule) }),
+        pin: { title: t('pr_pin', { party }), body: t('bk_pin_b') },
+        act: (pin) =>
+          setPayRuleAction({
+            venueId,
+            reservationId,
+            rule,
+            expectedVersion: version,
+            ...(pin === undefined ? {} : { pin }),
+          }),
+        again: {
+          label: t('p_undo'),
+          done: t('pr_done', { rule: ruleWord(previous) }),
+          act: (pin?: string) =>
+            setPayRuleAction({
+              venueId,
+              reservationId,
+              rule: previous,
+              ...(pin === undefined ? {} : { pin }),
+            }),
+        },
+        after: () => {
+          settled()
+          onChanged()
+        },
+      }),
+    [onChanged, run, ruleWord, t, venueId],
+  )
+
+  return { noShow, cancel, restore, remove, payRule }
 }

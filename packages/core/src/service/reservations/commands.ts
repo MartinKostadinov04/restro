@@ -13,7 +13,8 @@
 // - `reservations.end_night` — ending the night (D138);
 // - `reservations.edit_past` — not a command's own key: the handler reads it when the night it is
 //   asked to write has already passed (`nightWritable`), so the same command serves both cases;
-// - `reservations.pay_rule` — part 2's (ticket #334), on this list but on no command here;
+// - `reservations.pay_rule` — the pay rule a party carries (#334), and nothing else: a key of its
+//   own, so a venue may give a hostess the rule without giving her the booking book;
 // - `settings.reservations`, `settings.guests` — the plan, the spots, the settings and the guest
 //   records; settings-class, so a PIN on a shared device never reaches them (`isSettingsPermission`).
 //
@@ -60,6 +61,7 @@ import { addClosedDate, ClosedDateSchema, removeClosedDate } from './closed-date
 import { eraseGuest, saveGuest, setGuestPrivateNote } from './guests'
 import { closeReservationNight, sweepReservationNight } from './night'
 import { TurnMinutesSchema } from './overlap'
+import { SetPayRuleSchema, setReservationPayRule } from './pay-rule'
 import { PinActionsSchema } from './pin-fall'
 import {
   removePlan,
@@ -396,7 +398,10 @@ export const RESERVATION_COMMANDS = {
     handle: deleteReservation,
   }),
   'reservation.restore': defineCommand({
-    schema: z.strictObject({ type: z.literal('reservation.restore'), reservationId }),
+    schema: z.strictObject({
+      type: z.literal('reservation.restore'),
+      reservationId,
+    }),
     origins: ['staff'],
     permission: 'reservations.manage',
     idempotency: 'by_nature',
@@ -416,6 +421,21 @@ export const RESERVATION_COMMANDS = {
     permission: 'reservations.tonight',
     idempotency: 'by_nature',
     handle: copyReservation,
+  }),
+  // --- The pay rule a party carries (#334; D135, D122 §5) -------------------------------------
+  // Its own key, Manager-class, which a venue may give a hostess: the rule touches money, and a
+  // hostess who may seat a party need not be the one who decides how it pays. A table's own
+  // setting still beats it and the sheet says so; the rule lasts for that sitting (`pay-rule.ts`).
+  // Not quick on a shared device: money is D141's own line for four digits.
+  'reservation.set_pay_rule': defineCommand({
+    schema: z.strictObject({
+      ...SetPayRuleSchema.shape,
+      reservationId,
+    }),
+    origins: ['staff'],
+    permission: 'reservations.pay_rule',
+    idempotency: 'by_nature',
+    handle: setReservationPayRule,
   }),
   // --- Tonight's floor -------------------------------------------------------------------------
   'reservation.set_status': defineCommand({
@@ -484,7 +504,10 @@ export const RESERVATION_COMMANDS = {
     handle: setGuestCount,
   }),
   'reservation.put_back': defineCommand({
-    schema: z.strictObject({ type: z.literal('reservation.put_back'), reservationId }),
+    schema: z.strictObject({
+      type: z.literal('reservation.put_back'),
+      reservationId,
+    }),
     origins: ['staff'],
     permission: 'reservations.tonight',
     idempotency: 'by_nature',
@@ -494,7 +517,10 @@ export const RESERVATION_COMMANDS = {
   // second copy on the row (D141), and so are the tables that arrival opened, which it closes
   // again. Offered for thirty seconds and refused `undo_expired` after them (#329).
   'reservation.undo_arrival': defineCommand({
-    schema: z.strictObject({ type: z.literal('reservation.undo_arrival'), reservationId }),
+    schema: z.strictObject({
+      type: z.literal('reservation.undo_arrival'),
+      reservationId,
+    }),
     origins: ['staff'],
     permission: 'reservations.tonight',
     quickOnSharedDevice: true,
@@ -606,7 +632,10 @@ export const RESERVATION_COMMANDS = {
   // worker actor holds no permission, so this command needs none — and holds none, which is why it
   // can do nothing but mark the parties the night left waiting.
   'reservation_night.sweep': defineCommand({
-    schema: z.strictObject({ type: z.literal('reservation_night.sweep'), serviceDate }),
+    schema: z.strictObject({
+      type: z.literal('reservation_night.sweep'),
+      serviceDate,
+    }),
     origins: ['worker'],
     permission: null,
     idempotency: 'by_state',

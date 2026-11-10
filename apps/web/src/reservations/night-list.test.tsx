@@ -35,6 +35,7 @@ const can = (over: Partial<RvCan> = {}): RvCan => ({
   editPast: false,
   endNight: false,
   guests: false,
+  payRule: false,
   ...over,
 })
 

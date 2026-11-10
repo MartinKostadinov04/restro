@@ -5,6 +5,11 @@
 // and its bill as last read, and holds "Close for phones" (no dialog, the Undo toast) and "New
 // guests" (a dialog that names the consequence, rule 11). Reached by tapping an open tile, so
 // closing is two taps (plan §10 Q5).
+//
+// One line says the sitting's pay rule and which level set it, where that is worth saying (#334,
+// D122 §5): pay first, or a rule the party at the table carries. The rule is set on the
+// reservation's own sheet — never here, because this screen is the waiter's and the rule is the
+// hostess's (D141).
 import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -47,6 +52,20 @@ import { useMoney } from './money'
 import { readAttempt } from './read-attempt'
 import { useTonightRun, wroteSomething } from './run'
 import { useTableName } from './table-name'
+
+/**
+ * The one string for a sitting's pay rule: the rule and the level that set it, in one sentence
+ * each, because Bulgarian makes one word do one job and a sentence built out of parts would read
+ * wrong in it. Only the cases the tile keeps (`payRuleLine`) have one.
+ */
+function payRuleKey(rule: NonNullable<TableTile['payRule']>): string {
+  if (!rule.payFirst) return 'sh_pr_b_party'
+  return rule.level === 'table'
+    ? 'sh_pr_f_table'
+    : rule.level === 'reservation'
+      ? 'sh_pr_f_party'
+      : 'sh_pr_f_club'
+}
 
 export function TableSheet({
   tile,
@@ -91,6 +110,13 @@ export function TableSheet({
         <div className="flex justify-between gap-3">
           <dt className="text-muted-foreground">
             {t('sh_f2', { amt: money(bill.totalMinor, bill.currency) })}
+          </dt>
+        </div>
+      )}
+      {tile.payRule === null ? null : (
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted-foreground" data-testid="sh-pay-rule">
+            {t(payRuleKey(tile.payRule))}
           </dt>
         </div>
       )}

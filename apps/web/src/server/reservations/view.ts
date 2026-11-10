@@ -4,13 +4,14 @@
 //
 // The guest's phone is on the detail only, never on a row: the list of a busy night would otherwise
 // carry every guest's number into the browser, and only the sheet's Call button needs one.
-import type { SpotPlace, SpotSymbol } from '@restro/core'
+import type { PayRule, SpotPlace, SpotSymbol } from '@restro/core'
 import type {
   ArrivalChecks,
   BookingChecks,
   FloorPlanRead,
   GuestCard,
   GuestListRead,
+  PayRuleBeaten,
   PlanExtent,
   ReservationAccess,
   ReservationDetail,
@@ -71,6 +72,8 @@ export interface RvCan {
   readonly endNight: boolean
   /** `settings.guests`: the guest records, erasing a guest among them (#333; own sign-in only). */
   readonly guests: boolean
+  /** `reservations.pay_rule`: set or take away the pay rule a party carries (#334, D135). */
+  readonly payRule: boolean
 }
 
 /** What the screen needs beside the data: the venue, its clock, and what the actor holds. */
@@ -107,6 +110,7 @@ export function rvFrameOf(access: ReservationAccess, venueId: string): RvFrame {
       editPast: held.has('reservations.edit_past'),
       endNight: held.has('reservations.end_night'),
       guests: held.has('settings.guests'),
+      payRule: held.has('reservations.pay_rule'),
     },
   }
 }
@@ -193,7 +197,19 @@ export interface RvDetailView {
   readonly version: string
   /** The person reading took this booking themselves: they may take it out (D135). */
   readonly mine: boolean
+  /** The Pay rule section (#334): the party's own rule, and where a table's own beats it. */
+  readonly payRule: RvPayRuleView
   readonly history: readonly RvHistoryView[]
+}
+
+/**
+ * What the sheet's Pay rule section draws (#334, D135, D122 §5). `rule` empty is the club's own
+ * rule, read as "The club's rule" and never as a blank; `beaten` names the spots whose table has a
+ * pay-first setting of its own, which wins over the party's — the one line that says why.
+ */
+export interface RvPayRuleView {
+  readonly rule: PayRule | null
+  readonly beaten: readonly PayRuleBeaten[]
 }
 
 export function rvRowView(row: ReservationRow, timezone: string): RvRowView {
@@ -244,6 +260,7 @@ export function rvDetailView(detail: ReservationDetail, timezone: string): RvDet
     spotIds: detail.spotIds,
     version: detail.version,
     mine: detail.mine,
+    payRule: { rule: detail.payRule.rule, beaten: detail.payRule.beaten },
     history: detail.history.map((line) => ({
       seq: line.seq,
       time: clock(line.at) ?? '',
@@ -533,6 +550,8 @@ export interface RvArrivalChecksView {
   readonly onTheSpot: RvOnTheSpotView | null
   readonly heldLater: RvHeldLaterView | null
   readonly until: string | null
+  /** The pay rule the party carries, so the same-guests question says what becomes of it (#334). */
+  readonly payRule: PayRule | null
 }
 
 export function rvArrivalChecksView(checks: ArrivalChecks, timezone: string): RvArrivalChecksView {
@@ -540,6 +559,7 @@ export function rvArrivalChecksView(checks: ArrivalChecks, timezone: string): Rv
   return {
     night: checks.night,
     spotIds: checks.spotIds,
+    payRule: checks.payRule,
     tables: checks.tables.map((table) => ({
       tableId: table.tableId,
       tableName: table.tableName,

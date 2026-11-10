@@ -151,6 +151,7 @@ describe('one reservation’s sheet', () => {
     spotIds: [],
     version: '2026-11-09T16:00:00.000Z',
     mine: false,
+    payRule: { rule: null, beaten: [] },
     history: [
       {
         seq: 1,
@@ -204,6 +205,7 @@ describe('what the actor holds', () => {
     expect(none.can).toEqual({
       tonight: false,
       manage: false,
+      payRule: false,
       block: false,
       editPast: false,
       endNight: false,
@@ -214,13 +216,19 @@ describe('what the actor holds', () => {
       accessWith(['reservations.tonight', 'reservations.manage', 'reservations.edit_past']),
       'vn_demo',
     )
+    // The pay rule is its own key (#334): managing a booking is not deciding how it pays.
     expect(some.can).toEqual({
       tonight: true,
       manage: true,
+      payRule: false,
       block: false,
       editPast: true,
       endNight: false,
       guests: false,
+    })
+    expect(rvFrameOf(accessWith(['reservations.pay_rule']), 'vn_demo').can).toMatchObject({
+      payRule: true,
+      manage: false,
     })
   })
 

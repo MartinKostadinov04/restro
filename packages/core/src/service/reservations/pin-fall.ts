@@ -56,6 +56,8 @@ export const PIN_FALL_ACTIONS = [
   'copy',
   /** Block or unblock a table. */
   'block',
+  /** Set or take away the pay rule a party carries (#334). */
+  'pay_rule',
   /** End the night, with its preview. */
   'end_night',
 ] as const
@@ -85,6 +87,8 @@ export const DEFAULT_PIN_FALL: Readonly<Record<PinFallAction, PinFall>> = {
   put_back: 'pin',
   copy: 'pin',
   block: 'pin',
+  // The party's pay rule touches money, which is D141's own line for four digits (#334).
+  pay_rule: 'pin',
   end_night: 'pin',
 }
 
@@ -185,6 +189,8 @@ export function pinFallActionOf(type: string, payload: unknown): PinFallAction |
     case 'block.save':
     case 'block.remove':
       return 'block'
+    case 'reservation.set_pay_rule':
+      return 'pay_rule'
     case 'reservation_night.close':
       return 'end_night'
     default:
