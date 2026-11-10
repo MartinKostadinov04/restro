@@ -872,6 +872,13 @@ export const ATTACKS: readonly Attack[] = [
     },
   },
   {
+    action: 'tableBookedLaterAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return tonight.tableBookedLaterAction({ venueId: x.id, tableId: x.table2 })
+    },
+  },
+  {
     action: 'newGuestsAction',
     call: (v) => {
       const x = v.venues[0]
@@ -1191,6 +1198,82 @@ export const ATTACKS: readonly Attack[] = [
     call: (v) => {
       const x = v.venues[0]
       return nightBook.putBackAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+
+  // The door (#329): the advice it reads and the writes that seat, count, undo, free and hold
+  // again — every one of them against the victim's venue, reservation and spot.
+  {
+    action: 'arrivalChecksAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.arrivalChecksAction({
+        venueId: x.id,
+        day: '2030-01-05',
+        spotIds: [x.spot],
+        reservationId: x.reservation,
+      })
+    },
+  },
+  {
+    action: 'arriveAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.arriveAction({
+        venueId: x.id,
+        reservationId: x.reservation,
+        day: '2030-01-05',
+        spotIds: [x.spot],
+      })
+    },
+  },
+  {
+    action: 'seatWalkInAction',
+    how: "a walk-in onto the victim's spot",
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.seatWalkInAction({
+        venueId: x.id,
+        day: '2030-01-05',
+        spotIds: [x.spot],
+        partySize: 2,
+      })
+    },
+  },
+  {
+    action: 'setGuestsAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.setGuestsAction({
+        venueId: x.id,
+        reservationId: x.reservation,
+        partySize: 4,
+      })
+    },
+  },
+  {
+    action: 'undoArrivalAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.undoArrivalAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+  {
+    action: 'freeSpotsAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.freeSpotsAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+  {
+    action: 'holdSpotsAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.holdSpotsAction({
+        venueId: x.id,
+        reservationId: x.reservation,
+        spotIds: [x.spot],
+      })
     },
   },
 
@@ -1955,6 +2038,11 @@ export const MIXED: readonly Attack[] = [
       tonight.closeTableAction({ venueId: a.venues[0].id, tableId: v.venues[0].table }),
   },
   {
+    action: 'tableBookedLaterAction',
+    call: (v, a) =>
+      tonight.tableBookedLaterAction({ venueId: a.venues[0].id, tableId: v.venues[0].table2 }),
+  },
+  {
     action: 'newGuestsAction',
     how: "my table, the victim's sitting",
     call: (v, a) => {
@@ -2179,6 +2267,73 @@ export const MIXED: readonly Attack[] = [
       nightBook.putBackAction({
         venueId: a.venues[0].id,
         reservationId: v.venues[0].reservation,
+      }),
+  },
+
+  // The door (#329): my own venue, the victim's reservation and spot.
+  {
+    action: 'arrivalChecksAction',
+    call: (v, a) =>
+      nightBook.arrivalChecksAction({
+        venueId: a.venues[0].id,
+        day: '2030-01-05',
+        spotIds: [v.venues[0].spot],
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'arriveAction',
+    call: (v, a) =>
+      nightBook.arriveAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+        day: '2030-01-05',
+        spotIds: [v.venues[0].spot],
+      }),
+  },
+  {
+    action: 'seatWalkInAction',
+    how: "my venue, the victim's spot",
+    call: (v, a) =>
+      nightBook.seatWalkInAction({
+        venueId: a.venues[0].id,
+        day: '2030-01-05',
+        spotIds: [v.venues[0].spot],
+        partySize: 2,
+      }),
+  },
+  {
+    action: 'setGuestsAction',
+    call: (v, a) =>
+      nightBook.setGuestsAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+        partySize: 4,
+      }),
+  },
+  {
+    action: 'undoArrivalAction',
+    call: (v, a) =>
+      nightBook.undoArrivalAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'freeSpotsAction',
+    call: (v, a) =>
+      nightBook.freeSpotsAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'holdSpotsAction',
+    call: (v, a) =>
+      nightBook.holdSpotsAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+        spotIds: [v.venues[0].spot],
       }),
   },
 ]

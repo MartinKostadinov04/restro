@@ -4,7 +4,8 @@
 // current while the night is on, one reservation's sheet, the floor plan with one spot's history
 // (#327), the two writes the plan offers — block a spot and lift a block — and the booking's own
 // (#328): the form's advice, and taking, changing, calling off, taking out, bringing back and
-// copying a booking, and marking a no-show. Each one checks its
+// copying a booking, and marking a no-show, and the door's (#329): the advice before a seating, an
+// arrival, a walk-in, the guest count, undoing an arrival and freeing a party's tables. Each one checks its
 // input with Zod, finds who is asking (`requireTenant`: the tenant is the person's organisation,
 // never the request's) and that the venue is theirs, then reads or writes as that signed-in account
 // (or, on a shared device, as the person a PIN names). The service side checks the permission again:
@@ -21,6 +22,7 @@ import { logError } from '../log'
 import { requireTenant } from '../session'
 import { getVenue } from '../venues'
 import {
+  loadArrivalChecks,
   loadBookingChecks,
   loadFloorPlan,
   loadReservationDetail,
@@ -29,6 +31,7 @@ import {
   type RvScope,
 } from './load'
 import type {
+  RvArrivalChecksView,
   RvChecksView,
   RvDetailView,
   RvFrame,
@@ -425,5 +428,213 @@ export async function putBackAction(input: unknown): Promise<RvWriteResult> {
   return performReservationWrite(
     { venueId: id, ...withPin(typed) },
     { type: 'reservation.put_back', reservationId },
+  )
+}
+
+// ───────────────────────────────── the door (#329) ─────────────────────────────────
+
+const Arrive = z.strictObject({
+  venueId,
+  reservationId: idSchema('rv'),
+  /** The night the party's hours belong to: the row's own, so `until` lands on the right night. */
+  day,
+  /** The spots they are actually taking, where the hostess moved them at the door. */
+  spotIds: spotList.optional(),
+  /** "Seat until {time}", where she took the hour the door offered. */
+  until: hhmm.nullable().optional(),
+  partySize: partyCount.optional(),
+  /** Her answer where a table of theirs is already open; never defaulted (#329). */
+  sameGuests: z.boolean().optional(),
+  pin,
+})
+
+const WalkIn = z.strictObject({
+  venueId,
+  day,
+  spotIds: spotList.min(1),
+  partySize: partyCount,
+  until: hhmm.nullable().optional(),
+  name: z.string().trim().max(80).nullable().optional(),
+  phone: z.string().trim().max(40).nullable().optional(),
+  note: z.string().trim().max(500).nullable().optional(),
+  sameGuests: z.boolean().optional(),
+  pin,
+})
+
+const Guests = z.strictObject({
+  venueId,
+  reservationId: idSchema('rv'),
+  partySize: partyCount,
+  pin,
+})
+
+const Free = z.strictObject({
+  venueId,
+  reservationId: idSchema('rv'),
+  /** Left out, every spot the party holds is freed. */
+  spotIds: spotList.optional(),
+  pin,
+})
+
+const Hold = z.strictObject({
+  venueId,
+  reservationId: idSchema('rv'),
+  spotIds: spotList.min(1),
+  sameGuests: z.boolean().optional(),
+  pin,
+})
+
+const DoorChecks = z.strictObject({
+  venueId,
+  day: day.optional(),
+  /** Left out with a reservation, the party's own spots are read (#329). */
+  spotIds: spotList.optional(),
+  reservationId: idSchema('rv').optional(),
+})
+
+/**
+ * What the door is told before it seats anybody: the Tables the spots belong to with their codes
+ * and their bills, whoever is on a spot right now, the party holding one later tonight, and the
+ * hour to offer as "Seat until {time}". A read; the write asks its own questions again.
+ */
+export async function arrivalChecksAction(
+  input: unknown,
+): Promise<{ readonly ok: true; readonly checks: RvArrivalChecksView } | { readonly ok: false }> {
+  const parsed = DoorChecks.safeParse(input)
+  if (!parsed.success) return FAILED
+  const { venueId: id, day: night, spotIds, reservationId } = parsed.data
+  try {
+    const scope = await scopeOf(id)
+    if (scope === null) return FAILED
+    if (spotIds === undefined && reservationId === undefined) return FAILED
+    const result = await loadArrivalChecks(scope, {
+      ...(spotIds === undefined ? {} : { spotIds }),
+      ...(night === undefined ? {} : { day: night }),
+      ...(reservationId === undefined ? {} : { reservationId }),
+    })
+    return result.ok ? result : FAILED
+  } catch (error) {
+    if (error instanceof Error && 'digest' in error) throw error
+    logError('arrival_checks_failed', error)
+    return FAILED
+  }
+}
+
+/**
+ * The guests are here: the party goes to Seated and their Tables open for phones (D137). One tap
+ * on a floor device (D141), and the Undo is `undoArrivalAction`. `sameGuests` is left out where no
+ * table of theirs is open; where one is, leaving it out is refused rather than guessed (#329).
+ */
+export async function arriveAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = Arrive.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const body = parsed.data
+  return performReservationWrite({ venueId: body.venueId, ...withPin(body.pin) }, (venue) => ({
+    type: 'reservation.arrive',
+    reservationId: body.reservationId,
+    ...(body.spotIds === undefined ? {} : { spotIds: body.spotIds }),
+    ...(body.until === undefined
+      ? {}
+      : { endsAt: instantsOf(venue, body.day, '00:00', body.until).endsAt }),
+    ...(body.partySize === undefined ? {} : { partySize: body.partySize }),
+    ...(body.sameGuests === undefined ? {} : { sameGuests: body.sameGuests }),
+  }))
+}
+
+/**
+ * Somebody nobody booked, put straight on a spot: a walk-in line of the night, Seated from the
+ * start, with its Tables open. A name is optional (and where there is a number the guest record
+ * holds both, D140); at the door the hostess usually has neither.
+ */
+export async function seatWalkInAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = WalkIn.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const body = parsed.data
+  const phone =
+    body.phone === undefined || body.phone === null || body.phone === '' ? null : body.phone
+  const name = body.name === undefined || body.name === null || body.name === '' ? null : body.name
+  return performReservationWrite({ venueId: body.venueId, ...withPin(body.pin) }, (venue) => ({
+    type: 'reservation.seat_walk_in',
+    serviceDate: body.day,
+    spotIds: body.spotIds,
+    partySize: body.partySize,
+    ...(body.until === undefined
+      ? {}
+      : { endsAt: instantsOf(venue, body.day, '00:00', body.until).endsAt }),
+    note: body.note ?? null,
+    ...(body.sameGuests === undefined ? {} : { sameGuests: body.sameGuests }),
+    ...(phone === null
+      ? name === null
+        ? {}
+        : { partyLabel: name }
+      : { phone, ...(name === null ? {} : { guestName: name }) }),
+  }))
+}
+
+/**
+ * More guests joined, or fewer came: the count of a party already sitting. It is the count only —
+ * nothing about their table changes, and a round they have ordered is not touched (#329).
+ */
+export async function setGuestsAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = Guests.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const { venueId: id, reservationId, partySize, pin: typed } = parsed.data
+  return performReservationWrite(
+    { venueId: id, ...withPin(typed) },
+    { type: 'reservation.set_guests', reservationId, partySize },
+  )
+}
+
+/**
+ * The Undo of an arrival: the party goes back where it was, and the tables this very arrival opened
+ * close again. Only within the floor's own undo window, and never over a bill being paid (#329).
+ */
+export async function undoArrivalAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = Booked.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const { venueId: id, reservationId, pin: typed } = parsed.data
+  return performReservationWrite(
+    { venueId: id, ...withPin(typed) },
+    { type: 'reservation.undo_arrival', reservationId },
+  )
+}
+
+/**
+ * They have gone: the spots go back to the plan and the codes of their Tables close. A table whose
+ * payment is on the way is refused and names it, because ending that sitting would cut a card form
+ * off mid-payment (#329). The bill itself is never read to decide (D134): the screen warns about an
+ * open bill first, and the party keeps its status either way (D136).
+ */
+export async function freeSpotsAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = Free.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const { venueId: id, reservationId, spotIds, pin: typed } = parsed.data
+  return performReservationWrite(
+    { venueId: id, ...withPin(typed) },
+    {
+      type: 'reservation.release_spots',
+      reservationId,
+      ...(spotIds === undefined ? {} : { spotIds }),
+    },
+  )
+}
+
+/**
+ * The Undo of "Free": the party takes the same spots again, and because it is still sitting the
+ * codes of their Tables open again — a new sitting, since the one its guests left was ended when
+ * the table was freed (#329).
+ */
+export async function holdSpotsAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = Hold.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const { venueId: id, reservationId, spotIds, sameGuests, pin: typed } = parsed.data
+  return performReservationWrite(
+    { venueId: id, ...withPin(typed) },
+    {
+      type: 'reservation.hold_spots',
+      reservationId,
+      spotIds,
+      ...(sameGuests === undefined ? {} : { sameGuests }),
+    },
   )
 }

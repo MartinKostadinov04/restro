@@ -81,7 +81,10 @@ export type SameGuests = boolean | undefined
 interface Peek {
   readonly reservation: Reservation
   readonly settings: ReservationSettings
-  /** The spots the party will be seated on: the ones asked for, else the ones it holds. */
+  /**
+   * The spots the party will be seated on: the ones asked for, else the ones it holds. Empty where
+   * the party has no spot at all — a booking taken without a table, marked present from the list.
+   */
   readonly spotIds: readonly string[]
   /** The spots it holds right now, so the lock can tell whether somebody moved it meanwhile. */
   readonly held: readonly string[]
@@ -168,8 +171,9 @@ async function peekParty(
   const night = await peekNight(stx, reservation.serviceDate)
   if (!night.ok) return night
   const held = await peekHeldSpots(stx, reservation.id)
+  // A party nobody gave a table is marked present all the same: the list's row has the tap too,
+  // and with no spot there is no table to open and nothing to claim.
   const spotIds = asked === undefined || asked.length === 0 ? held : asked
-  if (spotIds.length === 0) return { ok: false, code: 'spot_missing' }
   return {
     ok: true,
     peek: {
@@ -792,17 +796,15 @@ export async function holdReservationSpots(
 }
 
 /**
- * Frees the spots a party held and closes their codes: one tap on the row or the spot when the
- * party leaves (#329, story RS-43).
+ * `reservation.release_spots`, the door's **"Free"**: the party has gone, so the spots it holds go
+ * back to the plan and the codes of their Tables close, because a phone at a freed table must not
+ * put another round on that bill (#329). A table whose payment is on the way is refused
+ * `payment_in_flight`, the same check the closing hour makes.
  *
- * The three things it does are the three the ticket asks for: the codes close, a payment on the
- * way is **waited for** (`payment_in_flight`) instead of being cut off, and a party that is left
- * holding nothing is finished — it has gone. Freeing only some of its spots leaves it sitting,
- * because it is still at the rest.
- *
- * A POS bill closing does none of this by itself (D134, log 1.44): the sitting ends the way
- * ordering already ends it, and the party stays Seated with its spots until staff free them or the
- * night's sweep does.
+ * **It does not end the party** (#327, D134, D136): the row keeps its status and its hours, and
+ * what ends a night is the night's close or a status move of its own. So the inverse the toast
+ * offers is `reservation.hold_spots` with the spots just freed, which claims them again and opens
+ * the codes again — a new sitting, since the one the guests left was ended here.
  */
 export async function releaseReservationSpots(
   stx: ServiceTx,
@@ -810,42 +812,27 @@ export async function releaseReservationSpots(
 ): Promise<ServiceResult> {
   const reservation0 = await peekReservation(stx, command.reservationId)
   if (reservation0 === null) return refuse('reservation_missing')
-  const night = await peekNight(stx, reservation0.serviceDate)
-  if (!night.ok) return refuse(night.code)
   const held = await peekHeldSpots(stx, reservation0.id)
   const freeing =
     command.spotIds === undefined ? held : held.filter((id) => command.spotIds?.includes(id))
+  // The codes close before the party is locked: a sitting's rank comes long before a
+  // reservation's, so the other way round would throw `LockOrderError` (`lock-order.ts`).
   const work = await closePartyTables(stx, await tablesOfSpots(stx, freeing))
   if (!work.ok) return refused(null, work.code, work.details)
 
   const open = await openReservation(stx, reservation0.id)
   if (!open.ok) return refuse(open.code)
   const { reservation } = open
+  // Somebody worked the party between the peek and the lock, so the tables just closed are not the
+  // ones this would be freeing. Nothing is written and the savepoint takes the closing back.
   if (!sameSpots(held, await peekHeldSpots(stx, reservation.id))) return refuse('spots_changed')
   const freed = await releaseHeldSpots(stx, reservation.id, command.spotIds)
-  const left = held.filter((spotId) => !freed.includes(spotId))
-  // A party holding nothing has left. Finishing it here is what makes "Free" one tap: the hostess
-  // is saying the table is hers again, not that the people are still somewhere in the club.
-  const finishing =
-    left.length === 0 && (reservation.status as ReservationStatus) === 'seated'
-      ? moveStatus('seated', 'finished')
-      : null
-  if (finishing?.ok === true) {
-    await stx.tx
-      .update(reservations)
-      .set({
-        status: 'finished',
-        endedAt: sql`now()`,
-        ...stx.provenance,
-        updatedAt: sql`now()`,
-      })
-      .where(eq(reservations.id, reservation.id))
-  } else {
-    await stx.tx
-      .update(reservations)
-      .set({ ...stx.provenance, updatedAt: sql`now()` })
-      .where(eq(reservations.id, reservation.id))
-  }
+  // The spots a party holds are part of its version (#328), so the row is touched too: a form open
+  // elsewhere cannot save over this.
+  await stx.tx
+    .update(reservations)
+    .set({ ...stx.provenance, updatedAt: sql`now()` })
+    .where(eq(reservations.id, reservation.id))
   const details: ResultDetails = {
     reservationId: reservation.id,
     spots: freed.join(','),
@@ -857,17 +844,5 @@ export async function releaseReservationSpots(
     toState: 'released',
     details,
   })
-  if (finishing?.ok === true) {
-    await stx.log({
-      kind: 'reservation.status',
-      reservationId: reservation.id,
-      guestId: reservation.guestId ?? undefined,
-      fromState: 'seated',
-      toState: 'finished',
-      details: { freed: freed.join(',') },
-    })
-  }
-  return accepted(null, {
-    details: { ...details, status: finishing?.ok === true ? 'finished' : reservation.status },
-  })
+  return accepted(null, { details })
 }

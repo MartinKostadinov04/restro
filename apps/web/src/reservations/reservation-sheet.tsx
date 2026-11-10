@@ -13,6 +13,10 @@
 // thing). A role that may not change the booking is told who may, in one line, never shown a
 // disabled control; on a shared device the controls are there and the PIN sheet names the person.
 //
+// The door is here as well (#329): "Arrived" for a party that is still coming, and, once it is
+// sitting, "Guests" for the count — the one place it is asked, after they are seated and never at
+// the door — with "Free" under "…" beside the rest.
+//
 // Calling the guest is one tap here and nowhere else: the number is read for this sheet alone and
 // never travels with the night's list. Closing loses nothing.
 import { EllipsisIcon, PhoneIcon } from 'lucide-react'
@@ -162,6 +166,9 @@ export function ReservationSheet({
   onNoShow,
   onCancel,
   onDelete,
+  onArrive,
+  onGuests,
+  onFree,
   onClose,
 }: {
   frame: RvFrame
@@ -176,6 +183,12 @@ export function ReservationSheet({
   onCancel: (reservationId: string, party: PartyName, done: () => void) => void
   /** Takes the booking out of the book; the sheet closes when it worked. */
   onDelete: (reservationId: string, party: PartyName, done: () => void) => void
+  /** The guests are here (#329); absent where this night or this role cannot seat them. */
+  onArrive: ((detail: RvDetailView) => void) | null
+  /** Asks the count of a party already sitting. */
+  onGuests: ((detail: RvDetailView) => void) | null
+  /** They have gone: the spots go back and the table codes close. */
+  onFree: ((detail: RvDetailView) => void) | null
   onClose: () => void
 }) {
   const t = useTranslations('reservations')
@@ -243,6 +256,16 @@ export function ReservationSheet({
     detail !== undefined && detail !== null && writable && !isBlock && (mayManage || detail.mine)
   const mayCopy = detail?.row.kind === 'booking' && frame.can.tonight
   const mayNoShow = writable && frame.can.tonight && status === 'reserved'
+  // The door: a party that is coming can be marked present; one that is sitting can be counted
+  // and freed. A block is neither (#329).
+  const mayArrive =
+    detail != null &&
+    !isBlock &&
+    (status === 'reserved' || status === 'waiting') &&
+    onArrive !== null
+  const maySeated = detail != null && !isBlock && status === 'seated'
+  const mayGuests = maySeated && onGuests !== null
+  const mayFree = maySeated && onFree !== null
   const party: PartyName = detail?.row.name ?? t('no_name')
   const body = detail ? (
     <Body detail={detail} changedBy={changedBy} sayWhoManages={writable && !mayManage && !ended} />
@@ -255,9 +278,32 @@ export function ReservationSheet({
   ) : null
   const buttons = (
     <>
+      {mayArrive && detail && onArrive ? (
+        <Button
+          type="button"
+          className={WRAPS}
+          disabled={busy}
+          data-testid="rv-sheet-arrive"
+          onClick={() => onArrive(detail)}
+        >
+          {t('d_arrived')}
+        </Button>
+      ) : null}
+      {mayGuests && detail && onGuests ? (
+        <Button
+          type="button"
+          className={WRAPS}
+          disabled={busy}
+          data-testid="rv-sheet-guests"
+          onClick={() => onGuests(detail)}
+        >
+          {t('d_guests')}
+        </Button>
+      ) : null}
       {mayEdit && detail ? (
         <Button
           type="button"
+          variant={mayArrive || mayGuests ? 'outline' : 'default'}
           className={WRAPS}
           disabled={busy}
           data-testid="rv-edit"
@@ -291,7 +337,7 @@ export function ReservationSheet({
           {t('bk_cancel')}
         </Button>
       ) : null}
-      {detail && (mayCopy || mayNoShow || mayDelete) ? (
+      {detail && (mayCopy || mayNoShow || mayDelete || mayFree) ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -322,6 +368,15 @@ export function ReservationSheet({
                 onSelect={() => onNoShow(detail.row.id)}
               >
                 {t('bk_noshow')}
+              </DropdownMenuItem>
+            ) : null}
+            {mayFree && onFree ? (
+              <DropdownMenuItem
+                className="min-h-11"
+                data-testid="rv-sheet-free"
+                onSelect={() => onFree(detail)}
+              >
+                {t('d_free')}
               </DropdownMenuItem>
             ) : null}
             {mayDelete ? (

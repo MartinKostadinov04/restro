@@ -11,6 +11,7 @@ import {
   endpointHashOf,
   PushSubscribeSchema,
   paymentWorkerJob,
+  readTablesTonight,
   readVenueAccess,
   type ServiceActor,
 } from '@restro/core/service'
@@ -25,6 +26,7 @@ import { requireTenant } from '../session'
 import { identifyAtSharedDevice, ownActor, personAtSharedDevice } from '../staff/service'
 import { getVenue } from '../venues'
 import { loadTableBill, type TableSheetBill } from './load'
+import { clockIn } from './night-view'
 import {
   markPaymentTable,
   runTableCommand,
@@ -379,6 +381,55 @@ export async function tableBillAction(
   } catch (error) {
     if (error instanceof Error && 'digest' in error) throw error
     logError('tonight_table_bill_failed', error)
+    return { ok: false }
+  }
+}
+
+/** What the warning says before a waiter opens a table that is held later tonight (#329). */
+export interface TableBookedLater {
+  /** The party holding it; null for a block, which is nobody's booking. */
+  readonly name: string | null
+  /** Whether it is a block the venue put on, so the sentence says that instead of a name. */
+  readonly block: boolean
+  /** The hour they hold it from, on the venue's clock. */
+  readonly time: string
+}
+
+/**
+ * Whether this table is reserved later tonight, or blocked (#329): the one case where opening a
+ * table nobody was seated at is worth a question first. Every other table opens in silence, and a
+ * read that does not get through opens it in silence too — the warning is advice, never a gate.
+ */
+export async function tableBookedLaterAction(
+  input: unknown,
+): Promise<
+  { readonly ok: true; readonly booked: TableBookedLater | null } | { readonly ok: false }
+> {
+  const parsed = OnTableRead.safeParse(input)
+  if (!parsed.success) return { ok: false }
+  try {
+    const { organization, user, sessionId } = await requireTenant()
+    const venue = await getVenue(organization.id, parsed.data.venueId)
+    if (!venue) return { ok: false }
+    const read = await readTablesTonight(getPool(), {
+      tenantId: organization.id,
+      venueId: venue.id,
+      actor: { kind: 'user', userId: user.id, sessionId },
+      tableIds: [parsed.data.tableId],
+    })
+    if (!read.ok) return { ok: false }
+    const clock = clockIn(venue.timezone)
+    const [held] = read.tables
+    return {
+      ok: true,
+      booked:
+        held === undefined
+          ? null
+          : { name: held.name, block: held.kind === 'block', time: clock(held.from) ?? '' },
+    }
+  } catch (error) {
+    if (error instanceof Error && 'digest' in error) throw error
+    logError('tonight_table_booked_later_failed', error)
     return { ok: false }
   }
 }

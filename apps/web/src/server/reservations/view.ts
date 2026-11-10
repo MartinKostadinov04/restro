@@ -6,6 +6,7 @@
 // carry every guest's number into the browser, and only the sheet's Call button needs one.
 import type { SpotPlace, SpotSymbol } from '@restro/core'
 import type {
+  ArrivalChecks,
   BookingChecks,
   FloorPlanRead,
   PlanExtent,
@@ -287,6 +288,9 @@ export interface RvSpotTableView {
   readonly numbered: boolean
   /** It has a phone code. The code itself stays in the backend (rule 3). */
   readonly hasCode: boolean
+  /** Its codes are open for phones right now: a party seated here is asked the same-guests
+   * question (#329). */
+  readonly open: boolean
 }
 
 /** One spot on the plan: its place out of the folder, its state, and what holds it. */
@@ -471,5 +475,87 @@ export function rvChecksView(checks: BookingChecks, timezone: string): RvChecksV
             name: checks.taken.name,
             time: clock(checks.taken.from) ?? '',
           },
+  }
+}
+
+// ───────────────────────────────── the door's advice (#329) ─────────────────────────────────
+
+/** One Table of the spots being seated: whether its codes are open, and whether it carries a bill. */
+export interface RvDoorTableView {
+  readonly tableId: string
+  readonly tableName: string
+  readonly open: boolean
+  readonly bill: boolean
+}
+
+/** Somebody already on one of the spots: the arrival would be refused and names them. */
+export interface RvOnTheSpotView {
+  readonly spotId: string
+  readonly spotName: string
+  readonly reservationId: string
+  readonly kind: ReservationKind
+  readonly name: string | null
+  /** `HH:mm` in the venue's zone. */
+  readonly time: string
+}
+
+/** The nearest booking holding one of the spots later tonight. */
+export interface RvHeldLaterView {
+  readonly spotId: string
+  readonly reservationId: string
+  readonly kind: ReservationKind
+  readonly name: string | null
+  readonly time: string
+}
+
+/**
+ * What the door is told before it seats anybody (#329): the night's own refusal, the Tables the
+ * spots belong to with their codes and their bills, whoever is on a spot right now, the party
+ * holding one later tonight, and the hour to offer as "Seat until {time}". Every entry but `night`
+ * and `onTheSpot` is a warning that never blocks a seating; those two are what the write refuses.
+ */
+export interface RvArrivalChecksView {
+  /** The spots the advice is about: what the Undo of "Free" holds again (#329). */
+  readonly spotIds: readonly string[]
+  readonly night: ReservationRefusal | null
+  readonly tables: readonly RvDoorTableView[]
+  readonly onTheSpot: RvOnTheSpotView | null
+  readonly heldLater: RvHeldLaterView | null
+  readonly until: string | null
+}
+
+export function rvArrivalChecksView(checks: ArrivalChecks, timezone: string): RvArrivalChecksView {
+  const clock = clockIn(timezone)
+  return {
+    night: checks.night,
+    spotIds: checks.spotIds,
+    tables: checks.tables.map((table) => ({
+      tableId: table.tableId,
+      tableName: table.tableName,
+      open: table.open,
+      bill: table.bill,
+    })),
+    onTheSpot:
+      checks.onTheSpot === null
+        ? null
+        : {
+            spotId: checks.onTheSpot.spotId,
+            spotName: checks.onTheSpot.spotName,
+            reservationId: checks.onTheSpot.reservationId,
+            kind: checks.onTheSpot.kind,
+            name: checks.onTheSpot.name,
+            time: clock(checks.onTheSpot.from) ?? '',
+          },
+    heldLater:
+      checks.heldLater === null
+        ? null
+        : {
+            spotId: checks.heldLater.spotId,
+            reservationId: checks.heldLater.reservationId,
+            kind: checks.heldLater.kind,
+            name: checks.heldLater.name,
+            time: clock(checks.heldLater.from) ?? '',
+          },
+    until: clock(checks.until),
   }
 }

@@ -4,6 +4,13 @@
 // each an icon and one word, by bar. A closed tile opens the table for phones with one tap; any
 // other opens its sheet. Colour marks only what needs a person (the info blue) and always comes
 // with the icon and the word; open is neutral, closed is quiet. A paused bar's heading says so.
+//
+// **One closed table asks before it opens** (#329): the one somebody has booked later tonight, or
+// kept back. The waiter at the tile cannot know that, and the hostess is about to put those guests
+// there, so the tap says who holds it and from when and he decides. He is never stopped — he may
+// open it anyway, and her plan then reads the table In use, which is what keeps her from seating a
+// second party on it. Every other table opens in one tap as it always did, and so does this one
+// when the read does not come back: the question is advice, never a gate.
 import {
   BellRingIcon,
   CircleCheckIcon,
@@ -14,10 +21,11 @@ import {
   SearchCheckIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import { cn } from '@/lib/utils'
-import { closeTableAction, openTableAction } from '@/server/tonight/actions'
+import { ConfirmDialog } from '@/reservations/confirm-dialog'
+import { closeTableAction, openTableAction, tableBookedLaterAction } from '@/server/tonight/actions'
 import type { BarGroup, TableTile, TileState, TonightView } from '@/server/tonight/view'
 
 import { useTonightRun, wroteSomething } from './run'
@@ -34,9 +42,20 @@ const TILE = {
   payment: { Icon: CreditCardIcon, word: 'w_pay' },
 } as const satisfies Record<TileState, unknown>
 
-function Tile({ tile, view, onOpen }: { tile: TableTile; view: TonightView; onOpen: () => void }) {
+function Tile({
+  tile,
+  view,
+  onOpen,
+  onLetIn,
+}: {
+  tile: TableTile
+  view: TonightView
+  onOpen: () => void
+  /** Open this table for phones, asking first where a reservation holds it later tonight (#329). */
+  onLetIn: (tile: TableTile, name: string) => void
+}) {
   const t = useTranslations('tonight')
-  const { run, busy } = useTonightRun()
+  const { busy } = useTonightRun()
   const tableName = useTableName()
   const name = tableName(tile.label, tile.numbered)
   const { Icon, word } = TILE[tile.state]
@@ -91,13 +110,7 @@ function Tile({ tile, view, onOpen }: { tile: TableTile; view: TonightView; onOp
           onOpen()
           return
         }
-        run({
-          id: `table:${tile.id}`,
-          act: () => openTableAction({ venueId: view.venueId, tableId: tile.id }),
-          done: t('t_open', { table: name }),
-          undo: (_, undo) => closeTableAction({ venueId: view.venueId, tableId: tile.id, undo }),
-          undoWhen: wroteSomething,
-        })
+        onLetIn(tile, name)
       }}
     >
       {content}
@@ -105,16 +118,26 @@ function Tile({ tile, view, onOpen }: { tile: TableTile; view: TonightView; onOp
   )
 }
 
+/** A closed table whose question is up: who holds it later tonight, and from when. */
+interface Asking {
+  readonly tile: TableTile
+  readonly name: string
+  /** The sentence of the question: a party and their hour, or the block and its hour. */
+  readonly title: string
+}
+
 function Group({
   group,
   view,
   named,
   onOpen,
+  onLetIn,
 }: {
   group: BarGroup
   view: TonightView
   named: boolean
   onOpen: (tile: TableTile, bar: string | null) => void
+  onLetIn: (tile: TableTile, name: string) => void
 }) {
   const t = useTranslations('tonight')
   return (
@@ -133,7 +156,12 @@ function Group({
       <ul className="grid grid-cols-3 gap-2 sm:grid-cols-5 xl:grid-cols-6">
         {group.tables.map((tile) => (
           <li key={tile.id} className="min-w-0">
-            <Tile tile={tile} view={view} onOpen={() => onOpen(tile, group.name)} />
+            <Tile
+              tile={tile}
+              view={view}
+              onOpen={() => onOpen(tile, group.name)}
+              onLetIn={onLetIn}
+            />
           </li>
         ))}
       </ul>
@@ -141,9 +169,55 @@ function Group({
   )
 }
 
-/** The grid of tables by bar, and the sheet of the one tapped. */
+/** The grid of tables by bar, the sheet of the one tapped, and the one question before an open. */
 export function TablesGrid({ view }: { view: TonightView }) {
+  const t = useTranslations('tonight')
+  const { run } = useTonightRun()
   const [chosen, setChosen] = useState<{ tile: TableTile; bar: string | null } | null>(null)
+  const [asking, setAsking] = useState<Asking | null>(null)
+
+  /** The open itself, with the Undo Tonight has always offered on it. */
+  const open = useCallback(
+    (tile: TableTile, name: string) => {
+      setAsking(null)
+      run({
+        id: `table:${tile.id}`,
+        act: () => openTableAction({ venueId: view.venueId, tableId: tile.id }),
+        done: t('t_open', { table: name }),
+        undo: (_, undo) => closeTableAction({ venueId: view.venueId, tableId: tile.id, undo }),
+        undoWhen: wroteSomething,
+      })
+    },
+    [run, t, view.venueId],
+  )
+
+  /**
+   * The tap on a closed tile: it asks the night's reservations whether anybody holds this table
+   * later, and opens it at once where nobody does — or where the read did not come back, because a
+   * table that will not open is worse than a question not asked.
+   */
+  const letIn = useCallback(
+    (tile: TableTile, name: string) => {
+      void tableBookedLaterAction({ venueId: view.venueId, tableId: tile.id })
+        .catch(() => ({ ok: false }) as const)
+        .then((read) => {
+          if (!read.ok || read.booked === null) {
+            open(tile, name)
+            return
+          }
+          const { block, name: party, time } = read.booked
+          setAsking({
+            tile,
+            name,
+            title: block
+              ? t('t_kept_t', { time })
+              : t('t_booked_t', { party: party ?? t('t_booked_party'), time }),
+          })
+        })
+    },
+    [open, t, view.venueId],
+  )
+
   // The sheet shows the live tile, so a call that arrives while it is open changes it in place.
   const live =
     chosen === null
@@ -160,11 +234,24 @@ export function TablesGrid({ view }: { view: TonightView }) {
             view={view}
             named={named}
             onOpen={(tile, bar) => setChosen({ tile, bar })}
+            onLetIn={letIn}
           />
         ))}
       </div>
       {chosen === null || live == null || live.state === 'closed' ? null : (
         <TableSheet tile={live} bar={chosen.bar} view={view} onClose={() => setChosen(null)} />
+      )}
+      {asking === null ? null : (
+        <ConfirmDialog
+          title={asking.title}
+          body={t('t_booked_b')}
+          doLabel={t('t_booked_do')}
+          keepLabel={t('t_booked_no')}
+          testId="tonight-booked"
+          busy={false}
+          onDo={() => open(asking.tile, asking.name)}
+          onKeep={() => setAsking(null)}
+        />
       )}
     </>
   )

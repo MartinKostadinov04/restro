@@ -52,8 +52,13 @@ describe('the service commands', () => {
       // (create, edit, cancel, delete, restore, copy, put back), the blocks and the night's end
       // are four digits, and the reservation settings and the guest records are settings-class, so
       // a PIN can never reach them at all.
+      // #329: the door's own taps are the same kind of tap — a party is here, this many came, they
+      // have gone, that was a mistake — so they are quick on the bar's shared device too.
+      'reservation.arrive',
       'reservation.hold_spots',
       'reservation.release_spots',
+      'reservation.seat_walk_in',
+      'reservation.set_guests',
       'reservation.set_status',
       'reservation.undo_arrival',
       'table.close',

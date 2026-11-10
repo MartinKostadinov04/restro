@@ -19,6 +19,7 @@ import {
   type DbPool,
   type ReadTx,
   reservationSettings,
+  reservationSpots,
   sentOrders,
   sittings,
   spots,
@@ -26,9 +27,9 @@ import {
   venueTables,
   withTenant,
 } from '@restro/db'
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 
-import type { ReadInput } from '../night-read'
+import { open, type ReadInput } from '../night-read'
 import { holdsSpotNow } from './overlap'
 import { holdsOfNight, nightBounds, planDayOf } from './plan-read'
 import { openReservations, type ReservationReadRefusal } from './read'
@@ -39,7 +40,12 @@ import type { ReservationKind } from './status'
 export interface ArrivalChecksInput extends ReadInput {
   /** The night (a service day); left out, tonight. */
   readonly day?: string
-  readonly spotIds: readonly string[]
+  /**
+   * The spots being tapped. Left out (or empty) with a `reservationId`, the party's own spots are
+   * read instead — the same thing the arrival itself does with no spots given, so the night's list
+   * can ask for the advice of a row it only knows by its reservation.
+   */
+  readonly spotIds?: readonly string[]
   /** The party arriving: it is never in its own way. Left out for a walk-in nobody booked. */
   readonly reservationId?: string
 }
@@ -82,6 +88,11 @@ export interface HeldLater {
 export interface ArrivalChecks {
   /** Why the night cannot be written at all; null when it can. */
   readonly night: ReservationRefusal | null
+  /**
+   * The spots this advice is about: the ones tapped, else the party's own. The screen keeps them,
+   * because the Undo of "Free" is the same party claiming the same spots again (#329).
+   */
+  readonly spotIds: readonly string[]
   readonly tables: readonly DoorTable[]
   /** Somebody is on one of the spots right now; the arrival would be refused. */
   readonly onTheSpot: OnTheSpot | null
@@ -214,7 +225,25 @@ export async function readArrivalChecks(
             null,
           )
 
-    const bySpot = await tablesOfSpots(tx, reader.venue.id, input.spotIds)
+    // The spots this advice is about: the ones tapped, else the party's own.
+    const asked = input.spotIds ?? []
+    const spotIds =
+      asked.length > 0 || input.reservationId === undefined
+        ? asked
+        : (
+            await tx
+              .select({ spotId: reservationSpots.spotId })
+              .from(reservationSpots)
+              .where(
+                and(
+                  eq(reservationSpots.reservationId, input.reservationId),
+                  isNull(reservationSpots.releasedAt),
+                ),
+              )
+              .orderBy(asc(reservationSpots.spotId))
+          ).map((row) => row.spotId)
+
+    const bySpot = await tablesOfSpots(tx, reader.venue.id, spotIds)
     const wanted = [...new Set([...bySpot.values()].map((one) => one.tableId))].sort()
     const state = await openTables(tx, reader.venue.id, wanted)
     const tables: DoorTable[] = wanted.map((tableId) => ({
@@ -225,7 +254,7 @@ export async function readArrivalChecks(
     }))
 
     const bounds = nightBounds(day, reader.venue.timezone, reader.venue.dayEndsAt)
-    const facts = await holdsOfNight(tx, reader.venue.id, input.spotIds, {
+    const facts = await holdsOfNight(tx, reader.venue.id, spotIds, {
       day,
       from: bounds.from,
       to: bounds.to,
@@ -233,17 +262,17 @@ export async function readArrivalChecks(
       turnMinutes: settings?.turnMinutes ?? null,
     })
     const names = new Map(
-      (input.spotIds.length === 0
+      (spotIds.length === 0
         ? []
         : await tx
             .select({ id: spots.id, name: spots.name })
             .from(spots)
-            .where(inArray(spots.id, [...input.spotIds]))
+            .where(inArray(spots.id, [...spotIds]))
       ).map((row) => [row.id, row.name]),
     )
     let onTheSpot: OnTheSpot | null = null
     let heldLater: HeldLater | null = null
-    for (const spotId of input.spotIds) {
+    for (const spotId of spotIds) {
       for (const fact of facts.get(spotId) ?? []) {
         if (fact.reservationId === input.reservationId) continue
         if (onTheSpot === null && holdsSpotNow(fact, now)) {
@@ -278,6 +307,7 @@ export async function readArrivalChecks(
       ok: true,
       checks: {
         night,
+        spotIds,
         tables,
         onTheSpot,
         heldLater,
@@ -303,6 +333,13 @@ export interface TableTonight {
  * a warning on a table nobody booked is noise, and the ticket says so.
  *
  * Nobody is stopped: the waiter opens the table and the hostess sees it In use on her plan.
+ *
+ * This one read answers whoever **may open a table** as well as whoever works tonight's
+ * reservations, and it is the only reservation read that does. The person being warned is the
+ * waiter at the tile, who does not keep the booking book: asking for `reservations.tonight` here
+ * would mean the warning never reached the one person it is written for. What it gives out is
+ * exactly what the warning says — the party's name, their hour, and nothing else (D140: never a
+ * phone number) — about a table that person is about to open anyway.
  */
 export async function readTablesTonight(
   pool: DbPool,
@@ -312,9 +349,12 @@ export async function readTablesTonight(
   | { readonly ok: false; readonly code: ReservationReadRefusal }
 > {
   return withTenant(pool, input.tenantId, async (tx) => {
-    const opened = await openReservations(tx, input)
+    const opened = await open(tx, input)
     if (!opened.ok) return opened
     const { reader } = opened
+    if (!reader.held.has('reservations.tonight') && !reader.held.has('tables.open_close')) {
+      return { ok: false, code: 'permission_denied' } as const
+    }
     const now = input.now ?? new Date()
     if (input.tableIds.length === 0) return { ok: true, tables: [] } as const
     const onTables = await tx

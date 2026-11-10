@@ -3,8 +3,10 @@
 // data, D135). The service read side refuses what the actor does not hold, so a night a role may
 // not work never gets its data.
 import {
+  type ArrivalChecksInput,
   type BookingChecksInput,
   type ReservationAccess,
+  readArrivalChecks,
   readBookingChecks,
   readFloorPlan,
   readReservationAccess,
@@ -17,12 +19,14 @@ import type { Venue } from '@restro/db'
 
 import { getPool } from '../db'
 import {
+  type RvArrivalChecksView,
   type RvChecksView,
   type RvDetailView,
   type RvFrame,
   type RvNightView,
   type RvPlanView,
   type RvSpotHistoryList,
+  rvArrivalChecksView,
   rvChecksView,
   rvDetailView,
   rvFrameOf,
@@ -149,4 +153,21 @@ export async function loadBookingChecks(
   const read = await readBookingChecks(getPool(), { ...inputOf(scope), ...query })
   if (!read.ok) return read
   return { ok: true, checks: rvChecksView(read.checks, scope.venue.timezone) }
+}
+
+/**
+ * What the door is told before it seats a party (#329): the Tables the spots belong to with their
+ * codes and their bills, whoever is on a spot right now, the party holding one later tonight, and
+ * the hour to offer as "Seat until {time}". A read: nothing here decides, and the write asks again.
+ */
+export async function loadArrivalChecks(
+  scope: RvScope,
+  query: Omit<ArrivalChecksInput, 'tenantId' | 'venueId' | 'actor' | 'now'>,
+): Promise<
+  | { readonly ok: true; readonly checks: RvArrivalChecksView }
+  | { readonly ok: false; readonly code: string }
+> {
+  const read = await readArrivalChecks(getPool(), { ...inputOf(scope), ...query })
+  if (!read.ok) return read
+  return { ok: true, checks: rvArrivalChecksView(read.checks, scope.venue.timezone) }
 }

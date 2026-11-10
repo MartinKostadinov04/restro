@@ -510,8 +510,8 @@ export const RESERVATION_COMMANDS = {
     idempotency: 'by_nature',
     handle: holdReservationSpots,
   }),
-  // "Free": the party has left, so its spots are let go and its tables' codes close. A bill
-  // closing never does this by itself (D134); a payment on the way is waited for (#329).
+  // "Free": the party has gone, so its spots go back and its tables' codes close (#329). A bill
+  // closing never does this by itself and this never ends the party (D134, D136).
   'reservation.release_spots': defineCommand({
     schema: z.strictObject({
       type: z.literal('reservation.release_spots'),

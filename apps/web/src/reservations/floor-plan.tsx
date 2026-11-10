@@ -5,9 +5,11 @@
 // and a legend that names all five states — a hostess must read this at a glance at 02:00, so the
 // state is never a colour alone and never behind a toggle.
 //
-// It only reads the plan. The two writes it offers — keep a spot back from booking, and lift that
-// block — go through the service write path like every other service write (rule 1), and each one
-// is a tap on the spot's own sheet, never a drag.
+// It only reads the plan. The writes it offers — keep a spot back from booking and lift that block
+// (#327), and the door's own: mark a party present, seat a walk-in, free a party (#329) — go
+// through the service write path like every other service write (rule 1), and each one is a tap on
+// the spot's own sheet, never a drag. The plan is where the two taps of a seating are spent: the
+// spot, then the one button on its sheet.
 //
 // Moving and zooming is `plan-zoom.ts`: pinch, wheel and drag, the −, + and "fit" buttons (which
 // is the alternative WCAG 2.2 AA asks of every dragging gesture, 2.5.7), and the keyboard on the
@@ -34,10 +36,11 @@ import { FailedBlock, NothingHere } from '@/tonight/tab-parts'
 import type { BlockChoice } from './block-dialog'
 import { BlockDialog } from './block-dialog'
 import { BookingForm } from './booking-form'
+import { useDoorActions } from './door-actions'
 import { KindSymbol, SpotTile, StateMark, stateTileClass } from './plan-shape'
 import { useSpotLine, useSpotStateWord } from './plan-words'
 import { usePlanView } from './plan-zoom'
-import { SpotSheet } from './spot-sheet'
+import { type ComingParty, SpotSheet } from './spot-sheet'
 import { RV_SPOT_STATES } from './spot-states'
 import { useReservationRun } from './use-reservation-run'
 
@@ -217,6 +220,31 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
   const writable = !plan.passed || (frame.editPastNights && frame.can.editPast)
   const mayBlock = writable && (frame.can.block || frame.device)
   const mayBook = writable && frame.can.tonight && !plan.tooOld && plan.planId !== null
+  /** The door is open on the night being worked, for a role that works tonight's reservations. */
+  const maySeat = writable && frame.can.tonight && !plan.tooOld
+
+  /**
+   * The parties still to come tonight, nearest hour first, read off the plan itself: every hold on
+   * every spot that has not been marked present. One line per party, however many spots it holds —
+   * seating it is one act.
+   */
+  const coming = useMemo((): ComingParty[] => {
+    const parties = new Map<string, ComingParty>()
+    for (const one of plan.spots) {
+      for (const hold of one.holds) {
+        if (hold.status !== 'reserved' && hold.status !== 'waiting') continue
+        if (parties.has(hold.reservationId)) continue
+        parties.set(hold.reservationId, {
+          reservationId: hold.reservationId,
+          name: hold.name,
+          time: hold.time,
+        })
+      }
+    }
+    return [...parties.values()].sort((a, b) => a.time.localeCompare(b.time))
+  }, [plan.spots])
+
+  const door = useDoorActions({ frame, run, onChanged: () => read(true) })
 
   /** The refusal that names the party in the way: the whole point of the sentence (#327). */
   const takenText = useCallback(
@@ -480,8 +508,51 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
           kind={kindOf(spot)}
           frame={frame}
           day={plan.day}
-          busy={busy}
+          busy={busy || door.reading}
           sayWhoBlocks={writable && !mayBlock}
+          coming={coming}
+          onArrive={
+            maySeat
+              ? (party) =>
+                  door.arrive({
+                    reservationId: party.reservationId,
+                    day: plan.day,
+                    name: party.name,
+                    // She tapped this spot: the party is marked present **here**, which is the one
+                    // gesture that also moves it off the spot it was booked on (#329).
+                    spotIds: [spot.id],
+                  })
+              : null
+          }
+          onWalkIn={
+            maySeat
+              ? (until) =>
+                  door.walkIn({
+                    reservationId: null,
+                    day: plan.day,
+                    name: null,
+                    spotIds: [spot.id],
+                    // Nobody counted them at the door, and a party that is not a block must have
+                    // a count: the spot's own seats are what the venue itself says sit there, and
+                    // one person is the floor where it has recorded none. Neither is a guess she
+                    // is stuck with — "Guests" on the sheet is one field (#329).
+                    partySize: spot.seats ?? 1,
+                    until,
+                  })
+              : null
+          }
+          onFree={
+            maySeat
+              ? (reservationId, name) =>
+                  door.free({
+                    reservationId,
+                    day: plan.day,
+                    name,
+                    // She freed **this** spot: a party sitting on two keeps the other one.
+                    spotIds: [spot.id],
+                  })
+              : null
+          }
           onBook={
             mayBook
               ? () => {
@@ -525,6 +596,7 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
           }}
         />
       )}
+      {door.node}
       {pinSheet}
     </div>
   )
