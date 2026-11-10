@@ -31,6 +31,7 @@ import {
   reservationSettings,
   reservationSpots,
   reservations,
+  sittings,
   spots,
   venueSpotKinds,
   venueTables,
@@ -111,6 +112,12 @@ export interface SpotTableRead {
   readonly numbered: boolean
   /** The table has a phone code. The code itself never leaves the backend (rule 3). */
   readonly hasCode: boolean
+  /**
+   * It is open for phones right now (ticket #329). The one thing the plan reads off the floor, and
+   * never a bill: a spot no reservation holds whose table is open reads `in_use`, so a hostess does
+   * not seat a party onto guests a waiter let in. False on a night that has passed.
+   */
+  readonly open: boolean
 }
 
 /** One spot on the plan. */
@@ -363,6 +370,31 @@ export async function holdsOfNight(
   return bySpot
 }
 
+/**
+ * Which of these tables are open for phones (ticket #329). The one thing the floor plan reads off
+ * the floor: not a bill, not a payment, not a line — only whether the table has a sitting with no
+ * end, which is exactly what "open for phones" means (`sittings.ts`). A night that has passed is
+ * never asked: it has no "now".
+ */
+export async function openTablesAmong(
+  tx: ReadTx,
+  venueId: string,
+  tableIds: readonly string[],
+): Promise<Set<string>> {
+  if (tableIds.length === 0) return new Set()
+  const rows = await tx
+    .select({ tableId: sittings.tableId })
+    .from(sittings)
+    .where(
+      and(
+        eq(sittings.venueId, venueId),
+        inArray(sittings.tableId, [...tableIds]),
+        isNull(sittings.endedAt),
+      ),
+    )
+  return new Set(rows.map((row) => row.tableId))
+}
+
 /** One hold as a sheet reads it. `now` says whether it covers the moment asked about. */
 function holdRead(hold: SpotHoldFact, now: boolean): SpotHoldRead {
   return {
@@ -469,6 +501,16 @@ export async function readFloorPlan(
       { day, from: night.from, to: night.to, passed, turnMinutes: settings?.turnMinutes ?? null },
     )
 
+    // The one read off the floor (ticket #329): which of the spots' tables are open for phones, so
+    // a spot nobody booked whose table a waiter opened reads In use instead of Free.
+    const openTables = passed
+      ? new Set<string>()
+      : await openTablesAmong(
+          tx,
+          reader.venue.id,
+          found.flatMap((row) => (row.tableId === null ? [] : [row.tableId])),
+        )
+
     let unreadable = 0
     const drawn: SpotRead[] = []
     for (const row of found) {
@@ -485,9 +527,10 @@ export async function readFloorPlan(
         continue
       }
       const own = holds.get(row.id) ?? []
+      const tableOpen = row.tableId !== null && openTables.has(row.tableId)
       // A night that has passed has no "now" to ask about: its state is what the spot was used
       // for, and nothing on it covers a moment.
-      const state = passed ? spotStateOfNight(own) : spotStateAt(own, now)
+      const state = passed ? spotStateOfNight(own) : spotStateAt(own, now, { tableOpen })
       const lead = passed ? null : leadingHold(own, state, now)
       drawn.push({
         id: row.id,
@@ -503,6 +546,7 @@ export async function readFloorPlan(
                 label: row.tableName ?? row.tableNumber ?? row.name,
                 numbered: row.tableName === null && row.tableNumber !== null,
                 hasCode: row.tableCode !== null,
+                open: tableOpen,
               },
         state,
         holds: own.map((hold) => holdRead(hold, !passed && holdCoversAt(hold, now))),

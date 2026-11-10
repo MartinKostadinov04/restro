@@ -2486,6 +2486,7 @@
     "p_free": "Free",
     "p_held": "Held",
     "p_sitting": "Sitting",
+    "p_in_use": "In use",
     "p_late": "Late",
     "p_blocked": "Blocked",
     "p_kinds": "Kinds",

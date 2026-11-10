@@ -11,8 +11,8 @@
 //
 // The list is an **action**, not a command type, because one command covers two different taps:
 // `reservation.edit` changes the guest count at the door (a tap) and edits a booking's details (a
-// PIN), and `reservation.create` seats a walk-in (a tap) and writes a booking (a PIN). The action
-// is read off the payload, so the venue's choice lands on what the person is actually doing.
+// PIN), and `reservation.create` writes a booking (a PIN) or puts a walk-in down (a tap). The
+// action is read off the payload, so the venue's choice lands on what the person is actually doing.
 //
 // Pure data and one read; no I/O beyond the select.
 
@@ -30,11 +30,11 @@ type ReadOnly = Pick<WriteTx, 'select'>
  * freeing a party's tables is the same action as giving them.
  */
 export const PIN_FALL_ACTIONS = [
-  /** Arrived, seated, finished, a no-show, and undoing one. */
+  /** Arrived, finished, a no-show, and undoing an arrival. */
   'status',
-  /** Change the guest count of a party that is already there. */
+  /** Change the guest count of a party that is already there (`reservation.set_guests`, #329). */
   'guest_count',
-  /** Seat a walk-in. */
+  /** Seat a walk-in (`reservation.seat_walk_in`, #329). */
   'walk_in',
   /** Add to the waiting list, and its order. */
   'waiting',
@@ -154,9 +154,14 @@ export function pinFallActionOf(type: string, payload: unknown): PinFallAction |
     unknown
   >
   switch (type) {
+    case 'reservation.arrive':
     case 'reservation.set_status':
     case 'reservation.undo_arrival':
       return 'status'
+    case 'reservation.seat_walk_in':
+      return 'walk_in'
+    case 'reservation.set_guests':
+      return 'guest_count'
     case 'reservation.create':
       return fields.kind === 'walk_in' ? 'walk_in' : 'create'
     case 'reservation.edit':

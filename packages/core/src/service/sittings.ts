@@ -66,7 +66,7 @@ export type SittingEndReason = (typeof SITTING_END_REASONS)[number]
 type OpenedHow = 'one' | 'all'
 
 /** Why a table can't be opened for phones. */
-type OpenRefusal = 'table_missing' | 'payment_table' | 'table_hidden' | 'table_vanished'
+export type OpenRefusal = 'table_missing' | 'payment_table' | 'table_hidden' | 'table_vanished'
 
 /**
  * Locks these tables of the venue `FOR SHARE`, in id order, and says for each whether phones may
@@ -271,19 +271,83 @@ async function lastEnd(stx: ServiceTx, tableId: string): Promise<ResultDetails> 
   }
 }
 
+/** What the door learns about one table before it decides anything (ticket #329). */
+export interface TableAtTheDoor {
+  /** Why it could not be opened for phones, or null. A table already open is open all the same. */
+  readonly refusal: OpenRefusal | null
+  /** Its open sitting, locked `update`, or null when it is closed for phones. */
+  readonly open: Sitting | null
+}
+
+/**
+ * The facts a party's arrival needs about its tables, with their rows locked once and in order
+ * (ticket #329): whether each may be opened for phones, and the sitting it already has.
+ *
+ * Seating a party asks the hostess a question that depends on both answers — a table already open
+ * means "are these the same guests?" — so the door cannot simply call the opener per table and
+ * find out as it goes. The two reads are therefore made here, for every table at once, in the
+ * order `table.open` itself takes them (the table rows `FOR SHARE`, then the sittings `update`),
+ * so an arrival and a waiter's tap queue instead of crossing.
+ */
+export async function tablesAtTheDoor(
+  stx: ServiceTx,
+  tableIds: readonly string[],
+): Promise<Map<string, TableAtTheDoor>> {
+  const wanted = [...new Set(tableIds)].sort()
+  const refusals = await openability(stx, wanted)
+  const open = await stx.rows.openSittings(wanted, 'update')
+  return new Map(
+    wanted.map((id): [string, TableAtTheDoor] => [
+      id,
+      { refusal: refusals.get(id) ?? 'table_missing', open: open.get(id) ?? null },
+    ]),
+  )
+}
+
+/** A table's sitting after a tap that meant to open it, or why it could not be opened. */
+export type TableOpening =
+  | {
+      readonly ok: true
+      readonly sitting: Sitting
+      /** False when it was already open: the sitting is the one that was there. */
+      readonly opened: boolean
+    }
+  | { readonly ok: false; readonly code: OpenRefusal }
+
+/**
+ * **The one way a table is opened for phones.** `table.open` is this plus its answer, and so is
+ * seating a party on the hostess's screen (ticket #329): there is one opener, so a table opened at
+ * the door is a table opened by a waiter in every respect — same sitting, same order row, same
+ * `sitting.opened` Log entry, same version bump that tells the phones at the table.
+ *
+ * A table already open is answered with its sitting and `opened: false`, whatever `openability`
+ * says of it: a table that is open stays open, and this is not the place that closes one.
+ *
+ * The caller must be able to lock the sitting `update` (nothing else of the table may be locked
+ * yet) and, where it is a reservation path, must not hold the reservation yet (`lock-order.ts`).
+ */
+export async function openTableFor(
+  stx: ServiceTx,
+  tableId: string,
+  how: OpenedHow = 'one',
+): Promise<TableOpening> {
+  const refusal = (await openability(stx, [tableId])).get(tableId) ?? null
+  const open = await stx.rows.openSitting(tableId, 'update')
+  if (open !== null) return { ok: true, sitting: open, opened: false }
+  if (refusal !== null) return { ok: false, code: refusal }
+  return { ok: true, ...(await startSitting(stx, tableId, how)) }
+}
+
 /** `table.open`: opens the table for phones, or says who already did. */
 export async function openTable(
   stx: ServiceTx,
   command: { readonly tableId: string },
 ): Promise<ServiceResult> {
-  const refusal = (await openability(stx, [command.tableId])).get(command.tableId) ?? null
-  const open = await stx.rows.openSitting(command.tableId, 'update')
-  if (open !== null) {
-    return accepted(null, { details: { opened: false, ...(await openedBy(stx, open)) } })
-  }
-  if (refusal !== null) return refused(null, refusal)
-  const { sitting, opened } = await startSitting(stx, command.tableId, 'one')
-  return accepted(null, { details: { opened, ...(await openedBy(stx, sitting)) } })
+  const opening = await openTableFor(stx, command.tableId)
+  if (!opening.ok) return refused(null, opening.code)
+  return accepted(null, {
+    details: { opened: opening.opened, ...(await openedBy(stx, opening.sitting)) },
+  })
 }
 
 /** `table.close`: ends the table's sitting, or says how its last one ended. */
@@ -517,8 +581,12 @@ export async function closeOpenTables(
   return accepted(null, { details: { closed: ending.length } })
 }
 
-/** Which of these sittings have a payment that has not reached a final state. */
-async function sittingsWithOpenPayment(
+/**
+ * Which of these sittings have a payment that has not reached a final state. The closing hour
+ * waits for them, and so does a hostess freeing a party's spots (ticket #329): the same question,
+ * asked in one place, so the one answer cannot drift into two.
+ */
+export async function sittingsWithOpenPayment(
   stx: ServiceTx,
   sittingIds: readonly string[],
 ): Promise<Set<string>> {

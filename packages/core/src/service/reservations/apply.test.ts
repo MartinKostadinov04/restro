@@ -299,7 +299,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
   it('leaves a party seated with its spots when the table closes: the bill is not the booking (D134)', async () => {
     const tableId = world.tables[0] as Id<'tb'>
     const id = await book(today, new Date().toISOString(), ['T2'])
-    await accept({ type: 'reservation.set_status', reservationId: id, status: 'seated' })
+    await accept({ type: 'reservation.arrive', reservationId: id })
     await accept({ type: 'table.open', tableId })
     await accept({ type: 'table.close', tableId })
     // Closing the bill is the ordering side's; nothing of it reaches the reservation.
@@ -316,13 +316,15 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
   it('moves a party through the statuses and gives its spots back only at an end (D136)', async () => {
     const night = '2026-11-14'
     const id = await book(night, at(14, 22), ['T3'])
-    expect(
-      await accept({ type: 'reservation.set_status', reservationId: id, status: 'seated' }),
-    ).toMatchObject({ status: 'seated', changed: true })
-    // The same status again changes nothing, which is what a second tap means.
-    expect(
-      await accept({ type: 'reservation.set_status', reservationId: id, status: 'seated' }),
-    ).toMatchObject({ status: 'seated', changed: false })
+    expect(await accept({ type: 'reservation.arrive', reservationId: id })).toMatchObject({
+      status: 'seated',
+      changed: true,
+    })
+    // The same tap again changes nothing, which is what a second tap means.
+    expect(await accept({ type: 'reservation.arrive', reservationId: id })).toMatchObject({
+      status: 'seated',
+      changed: false,
+    })
     // Reserved is not reachable from Seated: the machine refuses, it is not written around.
     expect(
       await run({ type: 'reservation.set_status', reservationId: id, status: 'reserved' }),
@@ -395,9 +397,10 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
     expect(record.rows[0]).toMatchObject({ closed_early: true, open_bills_at_close: 2 })
     expect(record.rows[0]?.swept_at).not.toBeNull()
 
-    expect(
-      await run({ type: 'reservation.set_status', reservationId: id, status: 'seated' }),
-    ).toMatchObject({ status: 'refused', code: 'night_closed' })
+    expect(await run({ type: 'reservation.arrive', reservationId: id })).toMatchObject({
+      status: 'refused',
+      code: 'night_closed',
+    })
     await setSettings({ editPastNights: true })
     expect(
       await run({ type: 'reservation.cancel', reservationId: id } as ServiceCommand),
@@ -522,7 +525,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
       for (const command of [
         { type: 'reservation.cancel', reservationId: theirId },
         { type: 'reservation.delete', reservationId: theirId },
-        { type: 'reservation.set_status', reservationId: theirId, status: 'seated' },
+        { type: 'reservation.arrive', reservationId: theirId },
       ] as ServiceCommand[]) {
         expect(await run(command), command.type).toMatchObject({
           status: 'refused',

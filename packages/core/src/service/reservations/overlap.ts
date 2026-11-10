@@ -44,6 +44,11 @@ export interface SpotHold {
    * must not end it. Left out, the hold ends where its stretch does.
    */
   readonly openEnded?: boolean
+  /**
+   * The reservation carries an end time of its own, so a **seated** party's hold ends at it rather
+   * than running to the end of the night (`holdsSpotAt`). Left out, it has none.
+   */
+  readonly ownEnd?: boolean
 }
 
 /** A reservation asking for spots: the one being created, edited or moved. */
@@ -169,4 +174,70 @@ export function holdsSpotAt(
   if (!holdsSpots(hold.status)) return false
   if (hold.status === 'seated') return !hold.ownEnd || now.getTime() < hold.stretch.to.getTime()
   return hold.stretch.from.getTime() <= now.getTime() && now.getTime() < hold.stretch.to.getTime()
+}
+
+/**
+ * Whether a hold has somebody **on** the spot at `now`: `holdsSpotAt`, with the one hold that has
+ * no end of any kind taken account of — a block nobody put a date on stays on until it is lifted
+ * (D137), so the turn time must not quietly clear it at the end of its first two hours.
+ *
+ * This is the question the floor plan asks (`plan-state.ts`) and the question seating asks
+ * (`seatConflict`); it is never the question a booking asks (`spotConflict`). The two screens read
+ * it through this one function on purpose: a spot that reads Sitting on the plan is exactly a spot
+ * a walk-in cannot be seated on.
+ */
+export function holdsSpotNow(
+  hold: {
+    readonly status: ReservationStatus
+    readonly stretch: Stretch
+    readonly ownEnd?: boolean
+    readonly openEnded?: boolean
+  },
+  now: Date,
+): boolean {
+  if (hold.openEnded === true) {
+    return holdsSpots(hold.status) && hold.stretch.from.getTime() <= now.getTime()
+  }
+  return holdsSpotAt(
+    { status: hold.status, stretch: hold.stretch, ownEnd: hold.ownEnd ?? false },
+    now,
+  )
+}
+
+/** What a party being seated wants: the spots, and the line itself so it never blocks itself. */
+export interface SeatClaim {
+  readonly reservationId: Id<'rv'>
+  readonly spotIds: readonly Id<'sp'>[]
+}
+
+/**
+ * The first spot a party cannot be seated on, because somebody is **on** it at this moment, or
+ * null when every spot is free to sit at (ticket #329).
+ *
+ * This is deliberately not `spotConflict`, and the two disagree on purpose: a party still at its
+ * table an hour past the turn time holds its spots here, while a *booking* for that same hour is
+ * allowed, because the turn time is a planning assumption and not a clock that clears tables. So
+ * every seating path — "Arrived", a walk-in off the plan, a party given another table at the door —
+ * asks this one, at the moment of seating, and the booking paths ask the other.
+ *
+ * The spots are checked in the caller's own order, so the refusal names the spot the hostess
+ * tapped first.
+ */
+export function seatConflict(
+  claim: SeatClaim,
+  held: readonly SpotHold[],
+  now: Date,
+): SpotConflict | null {
+  const wanted = new Set<string>(claim.spotIds)
+  const inTheWay = held.filter(
+    (hold) =>
+      hold.reservationId !== claim.reservationId &&
+      wanted.has(hold.spotId) &&
+      holdsSpotNow(hold, now),
+  )
+  for (const spotId of claim.spotIds) {
+    const hold = inTheWay.find((candidate) => candidate.spotId === spotId)
+    if (hold !== undefined) return { spotId, reservationId: hold.reservationId }
+  }
+  return null
 }

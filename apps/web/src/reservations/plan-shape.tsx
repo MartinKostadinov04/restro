@@ -26,6 +26,7 @@ import {
   CircleIcon,
   ClockIcon,
   type LucideIcon,
+  SmartphoneIcon,
   SofaIcon,
   TableIcon,
   TriangleAlertIcon,
@@ -66,6 +67,9 @@ const STATE_LOOK: Record<RvSpotState, { readonly icon: LucideIcon; readonly tile
   free: { icon: CircleIcon, tile: 'border-border bg-card text-foreground' },
   held: { icon: ClockIcon, tile: 'border-foreground/25 bg-muted/50 text-foreground' },
   sitting: { icon: UsersIcon, tile: 'border-foreground/50 bg-muted text-foreground' },
+  // In use: a waiter opened this table for guests nobody put on the book (#329). Full like
+  // Sitting, quiet like a spot the hostess has no line for — it is not hers to seat.
+  in_use: { icon: SmartphoneIcon, tile: 'border-foreground/35 bg-muted/70 text-muted-foreground' },
   late: { icon: TriangleAlertIcon, tile: 'border-warning bg-warning/20 text-foreground' },
   blocked: {
     icon: BanIcon,

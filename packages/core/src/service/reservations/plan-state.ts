@@ -5,16 +5,24 @@
 // it and from nothing else: there is no column on `spots` saying free or taken, and a screen that
 // wanted one would have two answers to the same question the first time a write went half way.
 //
-// **The bill is not in it** (D134, log 1.44). Nothing here reads a sitting, a bill or a sent order:
+// **The bill is not in it** (D134, log 1.44). Nothing here reads a bill, a payment or a sent order:
 // a POS bill closing changes nothing, a party whose bill closed still reads Sitting, and its spots
 // stay held until the night's end or until staff free them. A spot never reads free because a bill
-// went away.
+// went away, and a spot never reads taken because one is open — see `in_use` below for the one
+// thing the floor does say, which is only ever read where no reservation holds the spot.
 //
-// The holds themselves are the overlap rule's (`overlap.ts`): `holdsSpotAt` answers whether anyone
+// The holds themselves are the overlap rule's (`overlap.ts`): `holdsSpotNow` answers whether anyone
 // is **on** a spot at a moment, which is the plan's question — not `spotConflict`, which answers
-// whether a stretch may still be booked.
+// whether a stretch may still be booked. It is the same function seating asks (ticket #329), so a
+// spot the plan calls Sitting is exactly a spot nobody else can be seated on.
+//
+// **One thing here does read the floor, and only one** (ticket #329): a table a waiter opened for
+// walk-up guests, with no reservation of any kind on it. Without it the plan would call that spot
+// Free and a hostess would seat a party onto people already drinking there. It is a single
+// boolean the caller passes per spot — the table is open for phones — and it never overrides a
+// hold: it is the lowest of the states, read only where nothing holds the spot at all.
 
-import { holdsSpotAt, type Stretch } from './overlap'
+import { holdsSpotNow, type Stretch } from './overlap'
 import type { ReservationKind, ReservationStatus } from './status'
 
 /**
@@ -33,6 +41,12 @@ export const SPOT_STATES = [
   'late',
   /** Kept out of use by a block (D137): a reservation of the block kind, with a reason. */
   'blocked',
+  /**
+   * No reservation holds it, but its table is open for phones: a waiter opened it for guests who
+   * walked up to it and were never put on the book (ticket #329). The hostess seats nobody there
+   * until it closes; she can still see who they are on Tonight.
+   */
+  'in_use',
 ] as const
 
 /** One spot state. */
@@ -65,15 +79,12 @@ export interface SpotHoldFact {
 }
 
 /**
- * Whether a hold covers a moment. A block with no until date is the one hold with no end: D137
- * has it "staying on until removed when none are set", so the turn time must not quietly lift it
- * at the end of its first two hours. Every other hold is the overlap rule's own `holdsSpotAt`.
+ * Whether a hold covers a moment: the overlap rule's `holdsSpotNow`, which is the same question
+ * seating asks (ticket #329), so the plan and the seat tap can never disagree about who is on a
+ * spot. Kept as a name of its own because the plan reads it in three places below.
  */
 export function holdCoversAt(hold: SpotHoldFact, now: Date): boolean {
-  if (hold.kind === 'block' && hold.openEnded) {
-    return hold.status === 'reserved' && hold.stretch.from.getTime() <= now.getTime()
-  }
-  return holdsSpotAt(hold, now)
+  return holdsSpotNow(hold, now)
 }
 
 /**
@@ -91,22 +102,38 @@ export function isLateHold(hold: SpotHoldFact, now: Date, afterMinutes = LATE_AF
   return hold.startsAt.getTime() + afterMinutes * 60_000 <= now.getTime()
 }
 
+/** What else the plan knows about a spot, beside the reservations holding it. */
+export interface SpotStateOptions {
+  /**
+   * The spot's table is open for phones and no reservation accounts for it: a waiter opened it for
+   * guests who walked up (ticket #329). Read only where nothing holds the spot, so it can never
+   * hide a party or a block.
+   */
+  readonly tableOpen?: boolean
+  readonly afterMinutes?: number
+}
+
 /**
  * What a spot reads as at a moment, out of the holds on it. A block cannot sit on top of a party —
  * the overlap rule refuses one where a party already holds the spot — so the order below never has
  * to choose between a block and the people at the table; it is written down all the same, because
  * a reader of the screen must be able to say why a spot shows the word it shows.
+ *
+ * `tableOpen` is last on purpose: a spot with any hold on it reads that hold, and only a spot no
+ * reservation covers can read In use.
  */
 export function spotStateAt(
   holds: readonly SpotHoldFact[],
   now: Date,
-  afterMinutes = LATE_AFTER_MINUTES,
+  options: SpotStateOptions = {},
 ): SpotState {
+  const afterMinutes = options.afterMinutes ?? LATE_AFTER_MINUTES
   const covering = holds.filter((hold) => holdCoversAt(hold, now))
   if (covering.some((hold) => hold.kind === 'block')) return 'blocked'
   if (covering.some((hold) => hold.status === 'seated')) return 'sitting'
   if (covering.some((hold) => isLateHold(hold, now, afterMinutes))) return 'late'
-  return covering.length > 0 ? 'held' : 'free'
+  if (covering.length > 0) return 'held'
+  return options.tableOpen === true ? 'in_use' : 'free'
 }
 
 /**
@@ -115,7 +142,8 @@ export function spotStateAt(
  * that night: a spot a party sat at reads Sitting, one only ever booked reads Held, one a block
  * kept out reads Blocked, and one nothing touched reads Free. Late is a state of the night in
  * progress and never appears here — by the morning, a party that never came is a no-show on the
- * list, and the spot was simply held.
+ * list, and the spot was simply held. Nor does In use: a table a waiter had open is a fact of a
+ * moment, and the record of it belongs to the Log, not to a plan of a night that is over.
  */
 export function spotStateOfNight(holds: readonly SpotHoldFact[]): SpotState {
   // A line called off held nothing: a booking the guest cancelled, and a block somebody lifted,

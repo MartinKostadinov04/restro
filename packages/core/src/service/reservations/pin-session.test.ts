@@ -47,6 +47,8 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
   /** Someone else with a PIN, to take the device over. */
   let barmanStaffId: string
   let barmanPin: string
+  /** A spot of the venue's plan: the walk-in's table. */
+  let spotT1: Id<'sp'>
 
   beforeAll(async () => {
     world = await openServiceWorld('reservations-pin')
@@ -63,6 +65,23 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
     hostessPin = await givePin(hostessStaffId)
     barmanPin = await givePin(barmanStaffId)
     await accept({ type: 'reservation_settings.set', turnMinutes: TURN })
+    // One spot, so seating a walk-in has somewhere to go (#329).
+    const planId = (await accept({ type: 'plan.save', name: 'Hall', makeCurrent: true }))
+      .planId as string
+    await accept({ type: 'spot_kind.save', key: 'table', label: 'Table', defaultSeats: 4 })
+    spotT1 = (
+      await accept({
+        type: 'spot.save',
+        planId,
+        name: 'T1',
+        kind: 'table',
+        shape: 'rect',
+        x: 0,
+        y: 0,
+        width: 80,
+        height: 80,
+      } as ServiceCommand)
+    ).spotId as Id<'sp'>
   })
 
   afterAll(async () => {
@@ -157,7 +176,7 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
     const tonightOnly = await world.addStaff(['reservations.tonight'])
     const bookOnly = await world.addStaff(['reservations.manage'])
     const party = await book(21)
-    const seat = { type: 'reservation.set_status', reservationId: party, status: 'seated' } as const
+    const seat = { type: 'reservation.arrive', reservationId: party } as const
     const newBooking = {
       type: 'reservation.create',
       serviceDate: NIGHT,
@@ -195,12 +214,9 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
   it('lets D141s taps through on the tablet and asks for four digits on the booking book', async () => {
     const party = await book(22)
     // "If the tap only says where people are sitting tonight, it is a tap."
-    expect(
-      await run(
-        { type: 'reservation.set_status', reservationId: party, status: 'seated' },
-        tablet(),
-      ),
-    ).toMatchObject({ status: 'accepted' })
+    expect(await run({ type: 'reservation.arrive', reservationId: party }, tablet())).toMatchObject(
+      { status: 'accepted' },
+    )
     expect(
       await run(
         { type: 'waiting.add', serviceDate: NIGHT, partySize: 3 } as ServiceCommand,
@@ -221,11 +237,9 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
     expect(
       await run(
         {
-          type: 'reservation.create',
+          type: 'reservation.seat_walk_in',
           serviceDate: NIGHT,
-          startsAt: at(22, 30),
-          kind: 'walk_in',
-          status: 'seated',
+          spotIds: [spotT1],
           partySize: 2,
           partyLabel: 'Walk-in',
         } as ServiceCommand,
@@ -251,19 +265,16 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
 
   it('obeys the venues own choice, in both directions', async () => {
     const party = await book(23)
-    const seat = { type: 'reservation.set_status', reservationId: party, status: 'seated' } as const
+    const seat = { type: 'reservation.arrive', reservationId: party } as const
     await move('status', 'pin')
     expect(await run(seat, tablet())).toMatchObject({ code: 'pin_required' })
     // The person's PIN still does it, and their own role decides as always.
     expect(await run(seat, person(hostessStaffId))).toMatchObject({ status: 'accepted' })
     await move('status', 'tap')
     const next = await book(23, 30)
-    expect(
-      await run(
-        { type: 'reservation.set_status', reservationId: next, status: 'seated' },
-        tablet(),
-      ),
-    ).toMatchObject({ status: 'accepted' })
+    expect(await run({ type: 'reservation.arrive', reservationId: next }, tablet())).toMatchObject({
+      status: 'accepted',
+    })
     // A line moved the other way: this venue wants a name on the waiting list.
     await move('waiting', 'pin')
     expect(

@@ -3,16 +3,23 @@
 // `reservations.block` for a block — a tap, never a settings change, so a PIN on a shared device
 // reaches them (D141).
 //
-// **The bill is not here** (D134, log 1.44): nothing in this module reads a sitting, a bill or a
-// sent order, and a POS bill closing changes nothing. A party whose bill closed stays Seated and
-// keeps its spots held until the night ends, unless its own end time says otherwise or staff free
-// them — which is why `holdsSpotAt` and not a sitting is what ticket #327 will read.
+// **The bill is still not here** (D134, log 1.44): nothing in this module reads a bill, a payment
+// or a sent order, and a POS bill closing changes nothing. A party whose bill closed stays Seated
+// and keeps its spots held until the night ends, unless its own end time says otherwise or staff
+// free them — which is why `holdsSpotNow` and not a sitting is what the floor plan reads.
+//
+// What the module does now touch, through `arrive.ts` and nothing else, is the table **code**: a
+// party marked finished, a no-show or called off while it sits has its tables closed, because the
+// phones at a table whose party has gone must not keep ordering onto its bill (#329). The door
+// itself — Arrived, a walk-in, more guests, the undo, holding and freeing spots — lives in
+// `arrive.ts`, which is where the open path ordering already uses is reached from.
 
-import { logEntries, reservations } from '@restro/db'
+import { reservations } from '@restro/db'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { sortKeyBetween } from '../../sort-keys'
 import type { ServiceTx } from '../definition'
 import { accepted, refused, type ServiceResult } from '../results'
+import { closeTablesForEnding, tableWorkDetails } from './arrive'
 import {
   cancelReservation,
   claimSpots,
@@ -22,24 +29,17 @@ import {
   writeHeldSpots,
 } from './book'
 import { lockReservation, nextQueueKey, refuse, spotsOfReservation } from './rows'
-import {
-  isEndStatus,
-  moveStatus,
-  putBack,
-  type ReservationKind,
-  type ReservationStatus,
-  UNDONE_ARRIVAL_REASON,
-  undoArrival,
-} from './status'
+import { isEndStatus, moveStatus, putBack, type ReservationStatus } from './status'
 
 /**
  * Moves a reservation to another status (D135's machine). The move itself is the rule module's
  * (`moveStatus`), so a move the machine does not allow is refused `status_move_not_allowed` and
  * never written halfway.
  *
- * Seating claims the spots again at the moment of seating, so a party cannot be sat on a table
- * somebody else is on; an end status frees them and stamps the end; leaving the waiting list drops
- * the queue key.
+ * **Seating is not one of its moves**: marking a party present opens its table's codes, so it is
+ * `reservation.arrive`'s own command (`arrive.ts`) and asking for Seated here is refused. An end
+ * status frees the party's spots, closes the codes of the tables it was at, and stamps the end;
+ * leaving the waiting list drops the queue key.
  */
 export async function setReservationStatus(
   stx: ServiceTx,
@@ -49,10 +49,19 @@ export async function setReservationStatus(
     readonly reason?: string | null
   },
 ): Promise<ServiceResult> {
+  // Seating has a command of its own because it opens a table; there is no second seat path here.
+  if (command.status === 'seated') return refuse('invalid_command')
+  // The codes close before the party is locked: a sitting's rank comes long before a
+  // reservation's, so the other way round would throw `LockOrderError` (`lock-order.ts`).
+  const closing = await closeTablesForEnding(stx, command.reservationId, command.status)
+  if (!closing.ok) return refused(null, closing.code, closing.details)
   const open = await openReservation(stx, command.reservationId)
   if (!open.ok) return refuse(open.code)
-  const { reservation, night } = open
+  const { reservation } = open
   const from = reservation.status as ReservationStatus
+  // Somebody moved the party between the peek and the lock, so what was closed is not what this
+  // move would be ending. Nothing is written and the savepoint takes the closing back with it.
+  if (closing.close.wasSeated && from !== 'seated') return refuse('spots_changed')
   if (from === command.status) {
     return accepted(null, {
       details: { reservationId: reservation.id, status: from, changed: false },
@@ -71,35 +80,12 @@ export async function setReservationStatus(
   ) {
     return refuse('permission_denied')
   }
-  let freed: string[] = []
-  if (to === 'seated') {
-    const held = await spotsOfReservation(stx, reservation.id)
-    const spotIds = held.map((row) => row.spotId)
-    if (spotIds.length > 0) {
-      const grant = await claimSpots(
-        stx,
-        {
-          reservationId: reservation.id,
-          spotIds,
-          serviceDate: reservation.serviceDate,
-          startsAt: stx.now,
-          endsAt: reservation.endsAt,
-          turnMinutes: reservation.turnMinutes,
-        },
-        night.settings.turnMinutes,
-      )
-      if (!grant.ok) return refused(null, grant.code, { ...grant.details })
-      await writeHeldSpots(stx, reservation.id, spotIds, grant.stretch, reservation.endsAt !== null)
-    }
-  } else if (isEndStatus(to)) {
-    freed = await releaseHeldSpots(stx, reservation.id)
-  }
+  const freed = isEndStatus(to) ? await releaseHeldSpots(stx, reservation.id) : []
   await stx.tx
     .update(reservations)
     .set({
       status: to,
       queueKey: to === 'waiting' ? reservation.queueKey : null,
-      seatedAt: to === 'seated' ? (reservation.seatedAt ?? stx.now) : reservation.seatedAt,
       endedAt: isEndStatus(to) ? sql`now()` : null,
       reason: command.reason ?? reservation.reason,
       ...stx.provenance,
@@ -113,10 +99,15 @@ export async function setReservationStatus(
     fromState: from,
     toState: to,
     reason: command.reason ?? undefined,
-    details: { freed: freed.join(',') },
+    details: { freed: freed.join(','), ...tableWorkDetails(closing.close.work) },
   })
   return accepted(null, {
-    details: { reservationId: reservation.id, status: to, changed: true },
+    details: {
+      reservationId: reservation.id,
+      status: to,
+      changed: true,
+      ...tableWorkDetails(closing.close.work),
+    },
   })
 }
 
@@ -155,142 +146,6 @@ export async function putBackReservation(
   })
   return accepted(null, {
     details: { reservationId: reservation.id, status: to },
-  })
-}
-
-/**
- * Undoes an arrival: a party marked Seated by mistake goes back where he came from (D135). Where
- * he came from is read from the **Log** — every status move writes an entry naming its reservation
- * (D141) — and not from a second copy on the row that could disagree with it. A walk-in nobody had
- * queued came from nowhere, so undoing his arrival cancels the line the tap had made.
- */
-export async function undoReservationArrival(
-  stx: ServiceTx,
-  command: { readonly reservationId: string },
-): Promise<ServiceResult> {
-  const open = await openReservation(stx, command.reservationId)
-  if (!open.ok) return refuse(open.code)
-  const { reservation } = open
-  const previous = await previousStatus(stx, reservation.id)
-  const move = undoArrival(
-    reservation.status as ReservationStatus,
-    reservation.kind as ReservationKind,
-    previous,
-  )
-  if (!move.ok) return refuse(move.code)
-  const to = move.status
-  const freed = await releaseHeldSpots(stx, reservation.id)
-  await stx.tx
-    .update(reservations)
-    .set({
-      status: to,
-      seatedAt: null,
-      endedAt: isEndStatus(to) ? sql`now()` : null,
-      queueKey: to === 'waiting' ? await nextQueueKey(stx, reservation.serviceDate) : null,
-      reason: UNDONE_ARRIVAL_REASON,
-      ...stx.provenance,
-      updatedAt: sql`now()`,
-    })
-    .where(eq(reservations.id, reservation.id))
-  await stx.log({
-    kind: 'reservation.status',
-    reservationId: reservation.id,
-    guestId: reservation.guestId ?? undefined,
-    fromState: reservation.status,
-    toState: to,
-    reason: UNDONE_ARRIVAL_REASON,
-    details: { freed: freed.join(','), cameFrom: previous },
-  })
-  return accepted(null, {
-    details: { reservationId: reservation.id, status: to },
-  })
-}
-
-/**
- * Where a reservation stood before it was last seated, from the Log: the `from_state` of the newest
- * entry that moved it to Seated. Null when nothing ever did, which is a walk-in seated straight
- * off the floor.
- */
-async function previousStatus(
-  stx: ServiceTx,
-  reservationId: string,
-): Promise<ReservationStatus | null> {
-  const [entry] = await stx.tx
-    .select({ fromState: logEntries.fromState })
-    .from(logEntries)
-    .where(
-      and(
-        eq(logEntries.venueId, stx.venueId),
-        eq(logEntries.reservationId, reservationId),
-        eq(logEntries.kind, 'reservation.status'),
-        eq(logEntries.toState, 'seated'),
-      ),
-    )
-    .orderBy(sql`${logEntries.seq} desc`)
-    .limit(1)
-  return (entry?.fromState as ReservationStatus | undefined) ?? null
-}
-
-/** Gives a reservation spots to hold, beside the ones it already holds. */
-export async function holdReservationSpots(
-  stx: ServiceTx,
-  command: { readonly reservationId: string; readonly spotIds: readonly string[] },
-): Promise<ServiceResult> {
-  const open = await openReservation(stx, command.reservationId)
-  if (!open.ok) return refuse(open.code)
-  const { reservation, night } = open
-  if (isEndStatus(reservation.status as ReservationStatus)) return refuse('status_move_not_allowed')
-  const grant = await claimSpots(
-    stx,
-    {
-      reservationId: reservation.id,
-      spotIds: command.spotIds,
-      serviceDate: reservation.serviceDate,
-      startsAt: reservation.seatedAt ?? reservation.startsAt,
-      endsAt: reservation.endsAt,
-      turnMinutes: reservation.turnMinutes,
-    },
-    night.settings.turnMinutes,
-  )
-  if (!grant.ok) return refused(null, grant.code, { ...grant.details })
-  await writeHeldSpots(
-    stx,
-    reservation.id,
-    command.spotIds,
-    grant.stretch,
-    reservation.endsAt !== null,
-  )
-  await stx.log({
-    kind: 'reservation.spots',
-    reservationId: reservation.id,
-    toState: 'held',
-    details: { spots: command.spotIds.join(',') },
-  })
-  return accepted(null, {
-    details: { reservationId: reservation.id, spots: command.spotIds.join(',') },
-  })
-}
-
-/**
- * Frees spots a reservation holds — the ones named, or all of them. This is how a party whose bill
- * closed is let go of early: nothing about the bill does it by itself (D134).
- */
-export async function releaseReservationSpots(
-  stx: ServiceTx,
-  command: { readonly reservationId: string; readonly spotIds?: readonly string[] },
-): Promise<ServiceResult> {
-  const open = await openReservation(stx, command.reservationId)
-  if (!open.ok) return refuse(open.code)
-  const { reservation } = open
-  const freed = await releaseHeldSpots(stx, reservation.id, command.spotIds)
-  await stx.log({
-    kind: 'reservation.spots',
-    reservationId: reservation.id,
-    toState: 'released',
-    details: { spots: freed.join(',') },
-  })
-  return accepted(null, {
-    details: { reservationId: reservation.id, spots: freed.join(',') },
   })
 }
 

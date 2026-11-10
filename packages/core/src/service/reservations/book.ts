@@ -24,7 +24,14 @@ import { type Id, newId } from '../../ids'
 import type { ServiceTx } from '../definition'
 import { accepted, refused, type ServiceResult } from '../results'
 import { phoneKeyOf } from './guests'
-import { heldStretch, isSpotConflict, type SpotClaim, type Stretch, spotConflict } from './overlap'
+import {
+  heldStretch,
+  isSpotConflict,
+  type SpotClaim,
+  type Stretch,
+  seatConflict,
+  spotConflict,
+} from './overlap'
 import {
   heldSpotsOfNight,
   lockGuest,
@@ -61,20 +68,34 @@ export type SpotGrant =
       readonly details: Readonly<Record<string, string | number | boolean | null>>
     }
 
+/** How a claim is judged: by the booking rule, or by who is on the spot at a moment. */
+export interface ClaimOptions {
+  /**
+   * The party is being **seated** now, at this moment. The claim is then judged by `seatConflict`
+   * — is anyone on the spot right now — and not by the booking overlap rule (ticket #329): a party
+   * an hour past its turn time is still at its table, so nobody else may be put there, while a
+   * *booking* for that same hour is allowed because the turn time is a planning assumption. Left
+   * out, the booking rule applies, which is what every path of #328 wants.
+   */
+  readonly seatingAt?: Date
+}
+
 /**
  * The one check that keeps the overlap rule: the spots must be the venue's own and still on the
- * plan, and no other reservation of that night may hold one of them for an overlapping stretch.
+ * plan, and no other reservation of that night may hold one of them — for an overlapping stretch
+ * when a stretch is being booked, or at this moment when a party is being seated (`seatingAt`).
  * The refusal names the spot and the reservation in the way, so the screen can say which booking
  * it is rather than "taken".
  *
- * Every path that gives a reservation a spot goes through here — create, edit, restore, copy, hold
- * — so the rule is written once and cannot drift between them. A block with no end counts as
- * holding the spot for ever (D137), whichever night it was made on.
+ * Every path that gives a reservation a spot goes through here — create, edit, restore, copy, hold,
+ * arrive, seat a walk-in — so the two rules are chosen in one place and cannot drift between them.
+ * A block with no end counts as holding the spot for ever (D137), whichever night it was made on.
  */
 export async function claimSpots(
   stx: ServiceTx,
   wish: SpotWish,
   venueTurnMinutes: number,
+  options: ClaimOptions = {},
 ): Promise<SpotGrant> {
   const found = await readSpots(stx, wish.spotIds)
   for (const spotId of wish.spotIds) {
@@ -93,7 +114,10 @@ export async function claimSpots(
   if (!stretch.ok) return { ok: false, code: stretch.code, details: {} }
   if (wish.spotIds.length === 0) return { ok: true, stretch: stretch.stretch }
   const held = await heldSpotsOfNight(stx, wish.serviceDate, venueTurnMinutes)
-  const clash = spotConflict(claim, held, venueTurnMinutes)
+  const clash =
+    options.seatingAt === undefined
+      ? spotConflict(claim, held, venueTurnMinutes)
+      : seatConflict(claim, held, options.seatingAt)
   if (isSpotConflict(clash)) {
     return {
       ok: false,
@@ -324,6 +348,10 @@ export async function createReservation(
       turnMinutes: command.turnMinutes ?? null,
     },
     night.settings.turnMinutes,
+    // A party created already sitting is being **seated** on these spots, so the claim is judged by
+    // who is on them now and not by the booking rule (#329): a walk-in seated onto a spot whose
+    // party has overstayed is refused, while one seated onto a spot booked later tonight is not.
+    command.status === 'seated' ? { seatingAt: stx.now } : {},
   )
   if (!grant.ok) return spotRefusal(grant)
   await stx.tx.insert(reservations).values({
