@@ -1,5 +1,6 @@
 'use client'
 
+import type { PayRule } from '@restro/core'
 // One reservation, everything about it (#326; Patterns: "Everything about one thing"): a side
 // sheet on the tablet, a bottom drawer on a phone. The party and its hours, the spots it holds,
 // the note, who took it, and its whole history in the Log's own words — the Log and this sheet
@@ -21,6 +22,13 @@
 // never travels with the night's list. Closing loses nothing.
 //
 // A booking with a guest record links to his card on Guests (#333), under "…".
+//
+// The Pay rule section is here as well (#334, D135): three cards — the club's rule, everything on
+// the bill, pay first — one of which is always the one in force, so an empty rule reads "The club's
+// rule" and never as a blank. A tap writes at once with Undo on the toast; where a table of theirs
+// carries a pay-first setting of its own, one line says so, because that setting wins over the
+// party's (D122 §5). A role without `reservations.pay_rule` reads the rule as text and one line
+// saying who may; on a shared device the cards are there and the PIN sheet names the person (D141).
 import { EllipsisIcon, PhoneIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
@@ -61,9 +69,15 @@ import { READ_FAILED, readAttempt } from '@/tonight/read-attempt'
 import { ReadFailed } from '@/tonight/tab-parts'
 import { useWho } from '@/tonight/who'
 
-import type { PartyName } from './booking-actions'
+import type { PartyName, PayRuleChange } from './booking-actions'
 import { ConfirmDialog } from './confirm-dialog'
-import { useByClubWord, useGuestsText, useHistoryText, useStatusWord } from './reservation-words'
+import {
+  useByClubWord,
+  useGuestsText,
+  useHistoryText,
+  usePayRuleWord,
+  useStatusWord,
+} from './reservation-words'
 
 /** One labelled line of the sheet; nothing is drawn where there is nothing to say. */
 function Line({ label, value }: { label: string; value: string | null }) {
@@ -75,15 +89,139 @@ function Line({ label, value }: { label: string; value: string | null }) {
   )
 }
 
-function Body({
+/**
+ * The three rules a party can be on, widest first: the club's own rule (no rule of its own), then
+ * the two it can carry. One of them is always in force, so the section can never read as blank.
+ */
+const PAY_RULE_CHOICES: readonly { readonly key: string; readonly rule: PayRule | null }[] = [
+  { key: 'venue', rule: null },
+  { key: 'on_bill', rule: 'on_bill' },
+  { key: 'pay_first', rule: 'pay_first' },
+]
+
+/**
+ * The Pay rule section (#334): which rule this party carries, for this sitting. The card shows the
+ * choice at once and the sheet reads again when the write settles, so a refusal snaps the choice
+ * back to what the server holds rather than leaving a guess on screen.
+ */
+function PayRuleSection({
   detail,
-  changedBy,
-  sayWhoManages,
+  frame,
+  busy,
+  onPayRule,
+  onSettled,
 }: {
   detail: RvDetailView
+  frame: RvFrame
+  busy: boolean
+  onPayRule: (change: PayRuleChange) => void
+  onSettled: () => void
+}) {
+  const t = useTranslations('reservations')
+  const word = usePayRuleWord()
+  // On a shared device the cards are drawn and the PIN sheet names the person: a hostess is never
+  // shown a dead control (D141, #324).
+  const may = frame.can.payRule || frame.device
+  const saved = detail.payRule.rule
+  // The choice the person just made, until the write settles and the sheet has the server's own.
+  // It remembers what was saved when it was made, so a rule that changes under the sheet — this
+  // write landing, an Undo, somebody else's change arriving with the next read — drops the guess
+  // without an effect having to reset it.
+  const [picked, setPicked] = useState<{
+    readonly against: PayRule | null
+    readonly rule: PayRule | null
+  } | null>(null)
+  const shown = picked !== null && picked.against === saved ? picked.rule : saved
+  const party: PartyName = detail.row.name ?? t('no_name')
+
+  return (
+    <section className="space-y-2" data-testid="rv-pay-rule">
+      <h3 className="font-medium">{t('pr_title')}</h3>
+      {may ? (
+        <div
+          role="radiogroup"
+          aria-label={t('pr_title')}
+          className="grid gap-2"
+          data-testid="rv-pay-rule-choices"
+        >
+          {PAY_RULE_CHOICES.map((choice) => {
+            const chosen = shown === choice.rule
+            return (
+              <label
+                key={choice.key}
+                className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-md border px-3 py-2 ${
+                  chosen ? 'border-primary bg-primary/5' : ''
+                } ${busy ? 'cursor-default opacity-70' : ''}`}
+              >
+                <input
+                  type="radio"
+                  className="sr-only"
+                  name={`rv-pay-rule-${detail.row.id}`}
+                  value={choice.key}
+                  checked={chosen}
+                  disabled={busy}
+                  data-testid={`rv-pay-rule-${choice.key}`}
+                  onChange={() => {
+                    if (choice.rule === saved) return
+                    setPicked({ against: saved, rule: choice.rule })
+                    onPayRule({
+                      reservationId: detail.row.id,
+                      party,
+                      rule: choice.rule,
+                      previous: saved,
+                      version: detail.version,
+                      settled: () => {
+                        setPicked(null)
+                        onSettled()
+                      },
+                    })
+                  }}
+                />
+                <span className="[overflow-wrap:anywhere]">{word(choice.rule)}</span>
+              </label>
+            )
+          })}
+        </div>
+      ) : (
+        <p data-testid="rv-pay-rule-value">{word(saved)}</p>
+      )}
+      <p className="text-muted-foreground">{t('pr_scope')}</p>
+      {detail.payRule.beaten.map((one) => (
+        <p
+          key={one.spot}
+          className="text-muted-foreground [overflow-wrap:anywhere]"
+          data-testid="rv-pay-rule-beaten"
+        >
+          {t('pr_beaten', { spot: one.spot, rule: word(one.rule) })}
+        </p>
+      ))}
+      {may ? null : (
+        <p className="text-muted-foreground" data-testid="rv-pay-rule-cant">
+          {t('pr_cant')}
+        </p>
+      )}
+    </section>
+  )
+}
+
+function Body({
+  detail,
+  frame,
+  changedBy,
+  sayWhoManages,
+  busy,
+  onPayRule,
+  onSettled,
+}: {
+  detail: RvDetailView
+  frame: RvFrame
   changedBy: WhoView | null
   /** This role may take a booking but not change one: one line says who may. */
   sayWhoManages: boolean
+  busy: boolean
+  onPayRule: (change: PayRuleChange) => void
+  /** The pay rule's write settled: the sheet reads again. */
+  onSettled: () => void
 }) {
   const t = useTranslations('reservations')
   const word = useStatusWord()
@@ -136,6 +274,15 @@ function Body({
           {t('bk_only_managers')}
         </p>
       ) : null}
+      {row.kind === 'block' ? null : (
+        <PayRuleSection
+          detail={detail}
+          frame={frame}
+          busy={busy}
+          onPayRule={onPayRule}
+          onSettled={onSettled}
+        />
+      )}
       {history.length === 0 ? null : (
         <section className="space-y-1">
           <h3 className="font-medium">{t('sh_history')}</h3>
@@ -172,6 +319,7 @@ export function ReservationSheet({
   onArrive,
   onGuests,
   onFree,
+  onPayRule,
   onClose,
 }: {
   frame: RvFrame
@@ -192,6 +340,8 @@ export function ReservationSheet({
   onGuests: ((detail: RvDetailView) => void) | null
   /** They have gone: the spots go back and the table codes close. */
   onFree: ((detail: RvDetailView) => void) | null
+  /** The pay rule this party carries (#334); the write's own permission decides, not the screen. */
+  onPayRule: (change: PayRuleChange) => void
   onClose: () => void
 }) {
   const t = useTranslations('reservations')
@@ -271,7 +421,15 @@ export function ReservationSheet({
   const mayFree = maySeated && onFree !== null
   const party: PartyName = detail?.row.name ?? t('no_name')
   const body = detail ? (
-    <Body detail={detail} changedBy={changedBy} sayWhoManages={writable && !mayManage && !ended} />
+    <Body
+      detail={detail}
+      frame={frame}
+      changedBy={changedBy}
+      sayWhoManages={writable && !mayManage && !ended}
+      busy={busy}
+      onPayRule={onPayRule}
+      onSettled={load}
+    />
   ) : failed ? (
     <ReadFailed onRetry={load} />
   ) : detail === null ? (

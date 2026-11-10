@@ -2,7 +2,7 @@
 // made from core's `readTonight` by one pure function so the ordering of "Needs you", the tile of
 // each table and the pause banners can be tested without a database. Plain data, safe to send to
 // the browser: our ids and public fields only (rule 3), times as text in the venue's zone.
-import type { CallWaiterKind, PayingMissing } from '@restro/core'
+import type { CallWaiterKind, PayFirstLevel, PayingMissing } from '@restro/core'
 import { holdsStaffRightsOnly, type Tonight } from '@restro/core/service'
 
 /**
@@ -154,6 +154,25 @@ export interface TableTile {
   /** Sent orders of its open sitting. */
   readonly sentOrders: number
   readonly sittingId: string | null
+  /**
+   * The pay rule of the open sitting, where it is worth a line (#334): pay first, whichever level
+   * set it, or a rule the party itself carries. The ordinary case — everything on the bill, on the
+   * club's own rule — says nothing, because a line that is true of nearly every table is noise on
+   * a busy floor (D123 rule 2). Null is no line.
+   */
+  readonly payRule: { readonly payFirst: boolean; readonly level: PayFirstLevel } | null
+}
+
+/**
+ * The pay rule of an open sitting as its tile carries it: the line is kept only where it says
+ * something a waiter has to act on — pay first (whichever level set it), or a rule the party at the
+ * table carries. Everything else is the house's ordinary "everything on the bill" and draws nothing.
+ */
+function payRuleLine(
+  rule: { readonly payFirst: boolean; readonly level: PayFirstLevel } | null,
+): { readonly payFirst: boolean; readonly level: PayFirstLevel } | null {
+  if (rule === null) return null
+  return rule.payFirst || rule.level === 'reservation' ? rule : null
 }
 
 /** The tables of one bar (or of no bar). */
@@ -618,6 +637,7 @@ export function buildTonightView(input: {
       since: clock(table.sitting?.openedAt ?? null),
       sentOrders: open ? (sentCount.get(table.id) ?? 0) : 0,
       sittingId: table.sitting?.id ?? null,
+      payRule: payRuleLine(table.payRule),
     }
   })
   const group = (barId: string | null, name: string | null): BarGroup => ({

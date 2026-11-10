@@ -2426,7 +2426,15 @@
     "lg_rv_set_past": "Editing nights that have passed changed",
     "lg_rv_set_private": "Manager's private guest list changed",
     "lg_rv_set_closed_added": "Closed date added",
-    "lg_rv_set_closed_removed": "Closed date removed"
+    "lg_rv_set_closed_removed": "Closed date removed",
+    "lg_rv_pay_rule": "Pay rule: {rule}",
+    "lg_rv_pr_venue": "the club's rule",
+    "lg_rv_pr_on_bill": "everything on the bill",
+    "lg_rv_pr_pay_first": "pay first",
+    "sh_pr_f_table": "Pay first · the table's own rule",
+    "sh_pr_f_party": "Pay first · this party's rule",
+    "sh_pr_f_club": "Pay first · the club's rule",
+    "sh_pr_b_party": "Everything on the bill · this party's rule"
   },
   "reservations": {
     "title": "Reservations",
@@ -2754,7 +2762,18 @@
     "g_empty_filter": "No guest matches.",
     "g_search": "Search by name or phone",
     "g_more": "Showing the first {k} guests, by name.",
-    "g_card": "Guest's card"
+    "g_card": "Guest's card",
+    "pr_title": "Pay rule",
+    "pr_venue": "The club's rule",
+    "pr_on_bill": "Everything on the bill",
+    "pr_pay_first": "Pay first",
+    "pr_scope": "This party, this sitting only.",
+    "pr_beaten": "{spot} has its own rule: {rule}. That one applies.",
+    "pr_cant": "Only someone who sets the pay rule changes it.",
+    "pr_done": "Pay rule: {rule}",
+    "pr_pin": "Set {party}’s pay rule",
+    "pr_follows": "The rule follows them.",
+    "pr_new_guests": "New guests — the club’s rule."
   },
   "ownerSettings": {
     "st_hours": "Hours",
@@ -3156,6 +3175,7 @@
     "rs_seats_d": "A warning only — a party larger than this is never refused.",
     "rs_seats_empty": "Spots appear here once your floor plan is set up.",
     "rs_seats_saved": "Seats saved",
-    "rs_seats_bad": "Enter a whole number of seats, from {min} to {max}."
+    "rs_seats_bad": "Enter a whole number of seats, from {min} to {max}.",
+    "sf_pin_a_pay_rule": "The pay rule a party carries"
   }
 }

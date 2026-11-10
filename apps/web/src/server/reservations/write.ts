@@ -139,6 +139,18 @@ export type RvCommand =
       readonly sameGuests?: boolean
     }
   | {
+      /**
+       * The pay rule this party carries, for this sitting (#334, D135): on the bill, pay first, or
+       * null — the club's own rule, which is the absence of a rule. Its own permission
+       * (`reservations.pay_rule`), checked inside the transaction like every other.
+       */
+      readonly type: 'reservation.set_pay_rule'
+      readonly reservationId: string
+      readonly rule: 'on_bill' | 'pay_first' | null
+      /** The version the sheet was read on: a save over another one is refused. */
+      readonly expectedVersion?: string
+    }
+  | {
       readonly type: 'guest.save'
       readonly guestId?: string
       readonly name?: string

@@ -23,6 +23,8 @@ const table = (n: number, barId: string | null, open: boolean) => ({
         openedHow: 'one',
       }
     : null,
+  // An open table on the house's ordinary rule: everything on the bill, so its tile keeps no line.
+  payRule: open ? ({ payFirst: false, level: 'venue' } as const) : null,
 })
 
 function tonight(overrides: Partial<Tonight> = {}): Tonight {

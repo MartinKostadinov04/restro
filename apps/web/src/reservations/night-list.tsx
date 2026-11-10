@@ -341,6 +341,7 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
               : null
           }
           onGuests={mayTake ? (detail) => setCounting(detail) : null}
+          onPayRule={actions.payRule}
           onFree={
             mayTake
               ? (detail) =>
