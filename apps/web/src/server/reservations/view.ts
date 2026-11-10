@@ -184,6 +184,8 @@ export interface RvDetailView {
   /** Only for calling and writing: the sheet's own two buttons, nowhere else. */
   readonly phone: string | null
   readonly email: string | null
+  /** The guest record the booking is linked to, for the guest's card (#333); null without one. */
+  readonly guestId: string | null
   /** The spots it holds, as ids in the order of `row.spots`: what the edit form starts from. */
   readonly spotIds: readonly string[]
   /** The version the edit form is opened on; a save over another one is refused (#328). */
@@ -237,6 +239,7 @@ export function rvDetailView(detail: ReservationDetail, timezone: string): RvDet
     made: detail.madeBy === null ? null : whoView(detail.madeBy, null),
     phone: detail.row.phone,
     email: detail.email,
+    guestId: detail.row.guestId,
     spotIds: detail.spotIds,
     version: detail.version,
     mine: detail.mine,
@@ -434,6 +437,8 @@ export interface RvChecksView {
   readonly night: ReservationRefusal | null
   readonly seats: { readonly guests: number; readonly seats: number } | null
   readonly sameContact: { readonly name: string | null; readonly time: string } | null
+  /** The phone already belongs to a guest on the venue's list (#333). */
+  readonly listed: { readonly guestId: string; readonly name: string | null } | null
   readonly closedNight: boolean
   readonly beforeOpening: { readonly opens: string; readonly closes: string } | null
   readonly afterClosing: boolean
@@ -456,6 +461,7 @@ export function rvChecksView(checks: BookingChecks, timezone: string): RvChecksV
       checks.sameContact === null
         ? null
         : { name: checks.sameContact.name, time: clock(checks.sameContact.startsAt) ?? '' },
+    listed: checks.listed,
     closedNight: checks.closedNight,
     beforeOpening:
       checks.beforeOpening === null

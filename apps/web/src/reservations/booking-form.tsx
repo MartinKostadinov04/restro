@@ -20,12 +20,17 @@
 // A booking changed over somebody else's change is refused and says whose: the form is opened on
 // a version and watches for another while it is open; Save sends the version home, and the write
 // path refuses a stale one (`reservation_stale`) before it writes anything.
+//
+// Guests (#333): on a new booking three letters of the name suggest the venue's regulars and a
+// tap fills the phone; a phone already on the list names the guest it belongs to (the booking
+// becomes his, and nothing stops her); and "Save to the regulars" puts the guest on the list.
 import { InfoIcon, XIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -72,6 +77,7 @@ import {
   nextQuarter,
   valuesOf,
 } from './booking-values'
+import { GuestNameField } from './guest-suggest'
 import { PickWait, SpotList, SpotPlan, usePickPlan } from './spot-picker'
 import { useBookingChecks } from './use-booking-checks'
 import type { RvRunSpec } from './use-reservation-run'
@@ -83,6 +89,8 @@ export type BookingMode =
       readonly day: string
       /** A spot chosen on the plan before the form opened ("Book this spot"). */
       readonly spotIds?: readonly string[]
+      /** The guest a card's "Book a table" opened the form for (#333). */
+      readonly guest?: { readonly name: string; readonly phone: string }
     }
   | { readonly kind: 'edit'; readonly detail: RvDetailView }
 
@@ -151,6 +159,7 @@ export function BookingForm({
           day: mode.day,
           time: mode.day === frame.today ? nextQuarter(new Date(), frame.timezone) : EVENING_HOUR,
           ...(mode.spotIds === undefined ? {} : { spotIds: mode.spotIds }),
+          ...(mode.guest === undefined ? {} : mode.guest),
         }),
   )
   const [baseline, setBaseline] = useState(start)
@@ -162,6 +171,11 @@ export function BookingForm({
   // Who changed the booking while the form was open, once somebody has.
   const [staleBy, setStaleBy] = useState<string | null>(null)
   const fresh = useRef<RvDetailView | null>(null)
+  // "Save to the regulars" (#333): a new booking only, and it needs a phone, the record's key.
+  const [regular, setRegular] = useState(false)
+  // The regular a suggestion filled in, while the phone is still the one it filled.
+  const [picked, setPicked] = useState<{ id: string; phone: string } | null>(null)
+  const pickedNow = picked !== null && picked.phone === values.phone ? picked.id : null
 
   const set = <K extends keyof BookingValues>(key: K, value: BookingValues[K]) =>
     setValues((before) => ({ ...before, [key]: value }))
@@ -269,10 +283,15 @@ export function BookingForm({
     [editing, frame.venueId, noticeOf, pick.plan, t, who],
   )
 
+  const regularWithoutPhone = regular && editing === null && values.phone.trim() === ''
   const save = () => {
     setTried(true)
     if (Object.keys(errors).length > 0) {
       document.getElementById(`${ids}-${Object.keys(errors)[0]}`)?.focus()
+      return
+    }
+    if (regularWithoutPhone) {
+      document.getElementById(`${ids}-phone`)?.focus()
       return
     }
     const name = values.name.trim()
@@ -295,7 +314,7 @@ export function BookingForm({
           spotIds: values.spotIds,
           note: values.note.trim() === '' ? null : values.note.trim(),
           ...(editing === null
-            ? { reason: values.reason }
+            ? { reason: values.reason, ...(regular ? { saveAsRegular: true } : {}) }
             : {
                 reservationId: editing.row.id,
                 ...(version === undefined ? {} : { version }),
@@ -368,15 +387,19 @@ export function BookingForm({
 
       <div className="space-y-1.5">
         <Label htmlFor={`${ids}-name`}>{t('bk_name')}</Label>
-        <Input
+        <GuestNameField
           id={`${ids}-name`}
+          venueId={frame.venueId}
           value={values.name}
-          autoComplete="off"
-          maxLength={80}
-          aria-invalid={problem('name', errorText) !== null}
-          aria-describedby={`${ids}-name-e`}
-          data-testid="rv-f-name"
-          onChange={(event) => set('name', event.target.value)}
+          suggest={editing === null}
+          invalid={problem('name', errorText) !== null}
+          describedBy={`${ids}-name-e`}
+          onChange={(name) => set('name', name)}
+          onPick={(guest) => {
+            const phone = guest.phone ?? ''
+            setValues((before) => ({ ...before, name: guest.name ?? before.name, phone }))
+            setPicked({ id: guest.id, phone })
+          }}
         />
         {problem('name', errorText) === null ? null : (
           <FieldProblem id={`${ids}-name-e`}>{problem('name', errorText)}</FieldProblem>
@@ -402,6 +425,14 @@ export function BookingForm({
         {problem('phone', errorText) === null ? null : (
           <FieldProblem id={`${ids}-phone-e`}>{problem('phone', errorText)}</FieldProblem>
         )}
+        {tried && regularWithoutPhone && problem('phone', errorText) === null ? (
+          <FieldProblem id={`${ids}-phone-e`}>{t('g_e_regular_phone')}</FieldProblem>
+        ) : null}
+        {checks?.listed == null || checks.listed.guestId === pickedNow ? null : (
+          <Hint testId="rv-w-listed">
+            {t('g_listed', { name: checks.listed.name ?? t('no_name') })}
+          </Hint>
+        )}
         {checks?.sameContact == null ? null : (
           <Hint testId="rv-w-same">
             {t(values.day === frame.today ? 'bk_w_same' : 'bk_w_same_other', {
@@ -411,6 +442,20 @@ export function BookingForm({
           </Hint>
         )}
       </div>
+
+      {editing === null && pickedNow === null ? (
+        <div className="flex min-h-11 items-center gap-3">
+          <Checkbox
+            id={`${ids}-regular`}
+            checked={regular}
+            data-testid="rv-f-regular"
+            onCheckedChange={(checked) => setRegular(checked === true)}
+          />
+          <Label htmlFor={`${ids}-regular`} className="font-normal">
+            {t('g_save_regular')}
+          </Label>
+        </div>
+      ) : null}
 
       <div className="space-y-1.5">
         <Label htmlFor={`${ids}-partySize`}>{t('bk_guests')}</Label>

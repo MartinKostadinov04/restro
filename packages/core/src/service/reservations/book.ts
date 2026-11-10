@@ -329,7 +329,8 @@ export async function createReservation(
   if (command.status === 'waiting' && command.kind !== 'walk_in') return refuse('kind_not_allowed')
   if (block === (command.partySize != null)) return refuse('invalid_command')
   // The regulars are written by taking a booking, never by a walk-in's one tap at the door (D141).
-  if (command.saveAsRegular === true && command.kind !== 'booking') return refuse('kind_not_allowed')
+  if (command.saveAsRegular === true && command.kind !== 'booking')
+    return refuse('kind_not_allowed')
   if (
     command.kind === 'booking' &&
     night.settings.phoneRequired &&

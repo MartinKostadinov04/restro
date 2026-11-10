@@ -32,7 +32,12 @@ import {
 import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
 
 import type { Reader, ReadInput } from '../night-read'
-import { accessOf, openReservations, type ReservationAccess, type ReservationReadRefusal } from './read'
+import {
+  accessOf,
+  openReservations,
+  type ReservationAccess,
+  type ReservationReadRefusal,
+} from './read'
 import type { ReservationKind, ReservationStatus } from './status'
 
 /** How many guests one read of the list returns at most: well above an MVP hostess's 2000. */
@@ -264,7 +269,9 @@ export async function readGuestSuggestions(
           isNull(guests.archivedAt),
           or(
             ilike(guests.name, `%${likeText(typed)}%`),
-            digits.length >= SUGGEST_AFTER ? sql`${guests.phoneKey} like ${`%${digits}%`}` : undefined,
+            digits.length >= SUGGEST_AFTER
+              ? sql`${guests.phoneKey} like ${`%${digits}%`}`
+              : undefined,
           ),
         ),
       )
@@ -326,13 +333,21 @@ export async function readGuestCard(
         .selectDistinct({ reservationId: reservationSpots.reservationId, name: spots.name })
         .from(reservationSpots)
         .innerJoin(spots, eq(spots.id, reservationSpots.spotId))
-        .where(inArray(reservationSpots.reservationId, recent.map((one) => one.id)))
+        .where(
+          inArray(
+            reservationSpots.reservationId,
+            recent.map((one) => one.id),
+          ),
+        )
         .orderBy(asc(spots.name))
-      for (const row of rows) held.set(row.reservationId, [...(held.get(row.reservationId) ?? []), row.name])
+      for (const row of rows)
+        held.set(row.reservationId, [...(held.get(row.reservationId) ?? []), row.name])
     }
 
     const owner = await privateListOwner(tx, reader, input)
-    const mine = owner.ok ? await ownNotes(tx, reader.venue.id, owner.staffMemberId, [guest.id]) : null
+    const mine = owner.ok
+      ? await ownNotes(tx, reader.venue.id, owner.staffMemberId, [guest.id])
+      : null
 
     return {
       ok: true,
@@ -357,9 +372,7 @@ export async function readGuestCard(
           spots: held.get(one.id) ?? [],
         })),
         mine:
-          mine === null
-            ? null
-            : { onList: mine.has(guest.id), note: mine.get(guest.id) ?? null },
+          mine === null ? null : { onList: mine.has(guest.id), note: mine.get(guest.id) ?? null },
       },
     } as const
   })
@@ -374,7 +387,10 @@ export async function readPrivateList(
   pool: DbPool,
   input: ReadInput,
 ): Promise<
-  | { readonly ok: true; readonly entries: readonly { readonly guestId: string; readonly note: string }[] }
+  | {
+      readonly ok: true
+      readonly entries: readonly { readonly guestId: string; readonly note: string }[]
+    }
   | { readonly ok: false; readonly code: PrivateListRefusal }
 > {
   return withTenant(pool, input.tenantId, async (tx) => {

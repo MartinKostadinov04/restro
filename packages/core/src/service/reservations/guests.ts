@@ -180,7 +180,8 @@ export async function eraseGuest(
  * row is keyed by the staff member, so the privacy is the **read's** — only the person whose note
  * it is reads it back — and no second Postgres role is needed for it.
  *
- * Refused `private_notes_off` while the venue has not switched them on, and `not_a_staff_member`
+ * Refused `private_notes_off` once the owner has switched them off (on by default, so a venue with
+ * no settings saved yet keeps them, as the read does: #333), and `not_a_staff_member`
  * for an actor who is nobody's staff member: an operator of Restro's own team keeps no private
  * notes about a venue's guests, and neither does an account with no staff record of its own.
  */
@@ -189,8 +190,7 @@ export async function setGuestPrivateNote(
   command: { readonly guestId: string; readonly note: string | null },
 ): Promise<ServiceResult> {
   const settings = await readSettings(stx)
-  if (settings === null) return refuse('settings_missing')
-  if (!settings.privateNotesOn) return refuse('private_notes_off')
+  if (settings !== null && !settings.privateNotesOn) return refuse('private_notes_off')
   const staffMemberId = await staffMemberOf(stx)
   if (staffMemberId === null) return refuse('not_a_staff_member')
   const guest = await lockGuest(stx, command.guestId)

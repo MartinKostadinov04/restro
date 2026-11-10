@@ -79,6 +79,11 @@ export interface BookingChecks {
   readonly night: ReservationRefusal | null
   readonly seats: SeatsCheck | null
   readonly sameContact: SameContactCheck | null
+  /**
+   * A new booking's phone already belongs to a guest on the venue's list (#333): the booking
+   * will be his, and the form names him. Never for a changed booking, nor an erased guest.
+   */
+  readonly listed: { readonly guestId: string; readonly name: string | null } | null
   /** The venue is shut that night: its weekday is closed, or the date is a one-off closed one. */
   readonly closedNight: boolean
   /** The hour is before the venue opens that night; the hours it keeps, as instants. */
@@ -197,6 +202,23 @@ export async function readBookingChecks(
       }
     }
 
+    // A phone already on the venue's list: the booking will join that guest's record.
+    let listed: BookingChecks['listed'] = null
+    if (phoneKey !== null && input.reservationId === undefined) {
+      const [known] = await tx
+        .select({ id: guests.id, name: guests.name })
+        .from(guests)
+        .where(
+          and(
+            eq(guests.venueId, reader.venue.id),
+            eq(guests.phoneKey, phoneKey),
+            isNull(guests.erasedAt),
+          ),
+        )
+        .limit(1)
+      if (known !== undefined) listed = { guestId: known.id, name: known.name }
+    }
+
     // The hours: the venue's own, and its one-off closed dates.
     const ordering = readOrderingSettings(venue.settings)
     const clock = {
@@ -277,6 +299,7 @@ export async function readBookingChecks(
         night,
         seats: seatsCheck,
         sameContact,
+        listed,
         closedNight,
         beforeOpening,
         afterClosing,

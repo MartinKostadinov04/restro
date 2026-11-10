@@ -1,10 +1,9 @@
 'use client'
 
-// The tabs of Reservations (#326): the night's list today, the floor plan (#327) and Guests (#333)
-// beside it later. The same bar as the venue's own tabs and Tonight's (UrlTabs: a tab bar from
+// The tabs of Reservations (#326): the night's list, the floor plan (#327) and Guests (#333). The same bar as the venue's own tabs and Tonight's (UrlTabs: a tab bar from
 // 1024 px, a dropdown below), mirrored in the URL as `?view=` beside `?tab=reservations`. A view
 // the role may not open is not listed, so nobody meets a tab they cannot use.
-import { CalendarDaysIcon, LayoutGridIcon } from 'lucide-react'
+import { CalendarDaysIcon, LayoutGridIcon, UsersIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import type { ReactNode } from 'react'
 
@@ -19,6 +18,7 @@ const TABS = {
   // the plan shows tonight too (#327's own string list).
   list: { labelKey: 'reservations.tab_view_list', icon: CalendarDaysIcon },
   plan: { labelKey: 'reservations.tab_plan', icon: LayoutGridIcon },
+  guests: { labelKey: 'reservations.tab_guests', icon: UsersIcon },
 } as const satisfies Record<ReservationViewName, { labelKey: string; icon: unknown }>
 
 export function ReservationsTabs({
@@ -48,8 +48,8 @@ export function ReservationsTabs({
       select={select}
       contents={filled}
       label={t('tabs_label')}
-      // Two short words fit one row at 390 px, so the row stays a row at every width: a dropdown
-      // would make opening the plan two taps, and the ticket's budget for it is one.
+      // Three short words fit one row at 390 px, so the row stays a row at every width: a
+      // dropdown would make opening the plan two taps, and the ticket's budget for it is one.
       oneRow
     />
   )

@@ -3,16 +3,22 @@
 // what their role holds) and hands the screen plain data. Nothing here writes; the writes are
 // their own tickets' server actions, which `applyService` checks again.
 //
-// The views: the night's list (#326) and the floor plan (#327). Only the view that is open is
-// read, so opening Reservations on the plan does not read the night's list as well. Guests (#333)
-// adds a name to `reservation-views.ts`, a tab to `reservations-tabs.tsx` and a branch here.
+// The views: the night's list (#326), the floor plan (#327) and the venue's guests (#333). Only
+// the view that is open is read, so opening Reservations on the plan does not read the night's
+// list as well.
 import type { Venue } from '@restro/db'
 import { getTranslations } from 'next-intl/server'
 
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
-import { loadFloorPlan, loadReservationNight, type RvScope } from '@/server/reservations/load'
+import {
+  loadFloorPlan,
+  loadGuestList,
+  loadReservationNight,
+  type RvScope,
+} from '@/server/reservations/load'
 
 import { FloorPlan } from './floor-plan'
+import { GuestsView } from './guests-view'
 import { NightList } from './night-list'
 import {
   isReservationView,
@@ -25,18 +31,24 @@ export async function ReservationsTab({
   tenantId,
   venue,
   userId,
+  email,
   sessionId,
   view,
   day,
+  guest,
 }: {
   tenantId: string
   venue: Venue
   userId: string
+  /** The signed-in person's: an erasure asks for the password again (D122 §7). */
+  email: string
   sessionId: string
   /** `?view=`: which of the Reservations screens is open. */
   view?: string | undefined
   /** `?day=`: the night shown; absent is always the venue's own tonight. */
   day?: string | undefined
+  /** `?guest=`: the guest's card to open on Guests (a reservation's sheet links to it). */
+  guest?: string | undefined
 }) {
   const t = await getTranslations('reservations')
   const scope: RvScope = {
@@ -62,6 +74,20 @@ export async function ReservationsTab({
         views={views}
         contents={{
           plan: <FloorPlan key={read.plan.day} initial={read.plan} frame={read.frame} />,
+        }}
+      />
+    )
+  }
+  if (open === 'guests') {
+    const read = await loadGuestList(scope)
+    if (!read.ok) return noAccess
+    return (
+      <ReservationsTabs
+        views={views}
+        contents={{
+          guests: (
+            <GuestsView initial={read.guests} frame={read.frame} email={email} openGuest={guest} />
+          ),
         }}
       />
     )

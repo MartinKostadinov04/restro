@@ -161,7 +161,9 @@ export async function loadBookingChecks(
 // ───────────────────────────────── guests and regulars (#333) ─────────────────────────────────
 
 /** The venue's list of guests, as the actor reads it (their own private list marked, nobody else's). */
-export async function loadGuestList(scope: RvScope): Promise<RvResult<{ guests: RvGuestListView }>> {
+export async function loadGuestList(
+  scope: RvScope,
+): Promise<RvResult<{ guests: RvGuestListView }>> {
   const read = await readGuestList(getPool(), inputOf(scope))
   if (!read.ok) return read
   return {

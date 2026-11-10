@@ -26,15 +26,20 @@ export interface BookingValues {
   readonly spotIds: readonly string[]
 }
 
-/** A blank form for a night, optionally with a spot already chosen (the plan's "Book this spot"). */
+/**
+ * A blank form for a night, optionally with a spot already chosen (the plan's "Book this spot"),
+ * or a guest's name and phone (a guest's card's "Book a table", #333).
+ */
 export function blankValues(input: {
   readonly day: string
   readonly time: string
   readonly spotIds?: readonly string[]
+  readonly name?: string
+  readonly phone?: string
 }): BookingValues {
   return {
-    name: '',
-    phone: '',
+    name: input.name ?? '',
+    phone: input.phone ?? '',
     partySize: '',
     day: input.day,
     time: input.time,
