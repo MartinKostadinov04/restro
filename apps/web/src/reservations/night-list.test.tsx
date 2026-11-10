@@ -29,6 +29,7 @@ vi.mock('@/server/reservations/actions', () => ({
 const TODAY = '2026-11-09'
 
 const can = (over: Partial<RvCan> = {}): RvCan => ({
+  tonight: true,
   manage: true,
   block: false,
   editPast: false,
@@ -79,6 +80,7 @@ const night = (over: Partial<RvNightView> = {}): RvNightView => {
     settingsMissing: false,
     hasMore: false,
     days: [TODAY],
+    deleted: [],
     ...over,
     rows,
     counts: over.counts ?? {

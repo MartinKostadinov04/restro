@@ -28,7 +28,7 @@ import {
   staffMembers,
   withTenant,
 } from '@restro/db'
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 
 import { open, type Reader, type ReadInput, type Who, whoOf } from '../night-read'
 import type { Permission } from '../permissions'
@@ -51,6 +51,9 @@ export type ReservationReadRefusal = TonightRefusal
  * for the plan, so the two never disagree: it lives in `plan-state.ts`, which is pure.
  */
 export { LATE_AFTER_MINUTES } from './plan-state'
+
+/** How many deleted lines of one night the bin shows at most. */
+export const MAX_BIN_ROWS = 100
 
 /** How many nights of one venue one read returns at most. */
 export const MAX_NIGHT_ROWS = 500
@@ -124,6 +127,8 @@ export interface ReservationNightRead {
   readonly settingsMissing: boolean
   /** The night's parties in arrival order (the earliest hour first), blocks left out. */
   readonly rows: readonly ReservationRow[]
+  /** The night's lines taken out of the book, for whoever may bring one back (D135). */
+  readonly deleted: readonly ReservationRow[]
   readonly counts: ReservationCounts
   /** More parties than were returned: a night of over `MAX_NIGHT_ROWS` lines. */
   readonly hasMore: boolean
@@ -265,6 +270,25 @@ async function spotsOf(
   return held
 }
 
+/** The columns the night's list reads of every reservation. */
+const nightColumns = {
+  id: reservations.id,
+  kind: reservations.kind,
+  status: reservations.status,
+  startsAt: reservations.startsAt,
+  endsAt: reservations.endsAt,
+  partySize: reservations.partySize,
+  partyLabel: reservations.partyLabel,
+  guestId: reservations.guestId,
+  guestName: guests.name,
+  guestPhone: guests.phone,
+  note: reservations.note,
+  reason: reservations.reason,
+  seatedAt: reservations.seatedAt,
+  endedAt: reservations.endedAt,
+  updatedAt: reservations.updatedAt,
+} as const
+
 /** One night of a venue, with the nights around it that hold something. */
 export async function readReservationNight(
   pool: DbPool,
@@ -291,23 +315,7 @@ export async function readReservationNight(
       sql`${reservations.kind} <> 'block'`,
     )
     const found = await tx
-      .select({
-        id: reservations.id,
-        kind: reservations.kind,
-        status: reservations.status,
-        startsAt: reservations.startsAt,
-        endsAt: reservations.endsAt,
-        partySize: reservations.partySize,
-        partyLabel: reservations.partyLabel,
-        guestId: reservations.guestId,
-        guestName: guests.name,
-        guestPhone: guests.phone,
-        note: reservations.note,
-        reason: reservations.reason,
-        seatedAt: reservations.seatedAt,
-        endedAt: reservations.endedAt,
-        updatedAt: reservations.updatedAt,
-      })
+      .select(nightColumns)
       .from(reservations)
       .leftJoin(guests, eq(guests.id, reservations.guestId))
       .where(nightOf)
@@ -319,7 +327,10 @@ export async function readReservationNight(
       tx,
       page.map((row) => row.id),
     )
-    const rows: ReservationRow[] = page.map((row) => {
+    const toRow = (
+      row: (typeof page)[number],
+      spotsHeld: Map<string, string[]> = held,
+    ): ReservationRow => {
       const status = row.status as ReservationStatus
       const party = {
         id: row.id,
@@ -333,14 +344,40 @@ export async function readReservationNight(
         guestId: row.guestId,
         note: row.note,
         reason: row.reason,
-        spots: held.get(row.id) ?? [],
+        spots: spotsHeld.get(row.id) ?? [],
         seatedAt: row.seatedAt,
         endedAt: row.endedAt,
         cancelledByVenue: status === 'cancelled' && row.reason === UNDONE_ARRIVAL_REASON,
         updatedAt: row.updatedAt,
       }
       return { ...party, late: isLate(party, now) }
-    })
+    }
+    const rows: ReservationRow[] = page.map((row) => toRow(row))
+
+    // The bin (D135: Delete is a real button, and a manager brings a line back): the night's lines
+    // that were taken out of the book, for whoever can bring one back. A shared device is offered
+    // them too — the PIN names the person, and the write decides.
+    const binned =
+      reader.held.has('reservations.manage') || reader.device
+        ? await tx
+            .select(nightColumns)
+            .from(reservations)
+            .leftJoin(guests, eq(guests.id, reservations.guestId))
+            .where(
+              and(
+                eq(reservations.venueId, reader.venue.id),
+                eq(reservations.serviceDate, day),
+                isNotNull(reservations.deletedAt),
+                sql`${reservations.kind} <> 'block'`,
+              ),
+            )
+            .orderBy(asc(reservations.startsAt), asc(reservations.id))
+            .limit(MAX_BIN_ROWS)
+        : []
+    const binnedSpots = await spotsOf(
+      tx,
+      binned.map((row) => row.id),
+    )
 
     const byStatus = emptyByStatus()
     let late = 0
@@ -387,6 +424,7 @@ export async function readReservationNight(
         writable,
         settingsMissing: settings === undefined,
         rows,
+        deleted: binned.map((row) => toRow(row, binnedSpots)),
         counts: { all: rows.length, late, byStatus },
         hasMore: found.length > page.length,
         days: days.map((row) => row.day),

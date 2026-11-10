@@ -2,28 +2,40 @@
 
 // The actions of Venue › Reservations that the browser calls: the night's list, which keeps itself
 // current while the night is on, one reservation's sheet, the floor plan with one spot's history
-// (#327), and the two writes the plan offers — block a spot and lift a block. Each one checks its
+// (#327), the two writes the plan offers — block a spot and lift a block — and the booking's own
+// (#328): the form's advice, and taking, changing, calling off, taking out, bringing back and
+// copying a booking, and marking a no-show. Each one checks its
 // input with Zod, finds who is asking (`requireTenant`: the tenant is the person's organisation,
 // never the request's) and that the venue is theirs, then reads or writes as that signed-in account
 // (or, on a shared device, as the person a PIN names). The service side checks the permission again:
 // `reservations.tonight` to read, `reservations.block` to write. A failure is a plain `{ ok: false }`
 // with the detail in the log, never on the screen.
 import { addDaysToDay, idSchema, localInstant, serviceDate } from '@restro/core'
+import type { Venue } from '@restro/db'
 import { z } from 'zod'
 
 import { BLOCK_REASONS } from '@/reservations/block-reasons'
+import { BOOKING_REASONS } from '@/reservations/booking-reasons'
 
 import { logError } from '../log'
 import { requireTenant } from '../session'
 import { getVenue } from '../venues'
 import {
+  loadBookingChecks,
   loadFloorPlan,
   loadReservationDetail,
   loadReservationNight,
   loadSpotHistory,
   type RvScope,
 } from './load'
-import type { RvDetailView, RvFrame, RvNightView, RvPlanView, RvSpotHistoryList } from './view'
+import type {
+  RvChecksView,
+  RvDetailView,
+  RvFrame,
+  RvNightView,
+  RvPlanView,
+  RvSpotHistoryList,
+} from './view'
 import { invalidWrite, performReservationWrite, type RvWriteResult } from './write'
 
 const venueId = idSchema('vn')
@@ -40,7 +52,7 @@ export type RvAnswer<T> =
 const FAILED = { ok: false } as const
 
 /** The scope of the signed-in account for one of its venues, or null. */
-async function scopeOf(id: string): Promise<RvScope | null> {
+async function scopeOf(id: string): Promise<(RvScope & { readonly venue: Venue }) | null> {
   const { organization, user, sessionId } = await requireTenant()
   const venue = await getVenue(organization.id, id)
   if (!venue) return null
@@ -190,5 +202,227 @@ export async function unblockSpotAction(input: unknown): Promise<RvWriteResult> 
   return performReservationWrite(
     { venueId: id, ...(typed === undefined ? {} : { pin: typed }) },
     { type: 'block.remove', reservationId: block, reason: 'block_lifted' },
+  )
+}
+
+// ───────────────────────────── taking and changing a booking (#328) ─────────────────────────────
+
+/** An hour on the venue's clock, `HH:mm`: the night it belongs to is the form's own. */
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+const spotList = z.array(idSchema('sp')).max(40)
+const partyCount = z.number().int().min(1).max(500)
+
+const Checks = z.strictObject({
+  venueId,
+  day,
+  time: hhmm,
+  until: hhmm.nullable().optional(),
+  partySize: partyCount.nullable().optional(),
+  name: z.string().max(80).nullable().optional(),
+  phone: z.string().max(40).nullable().optional(),
+  spotIds: spotList,
+  reservationId: idSchema('rv').optional(),
+})
+
+/**
+ * What the booking form is told while it is typed: the warnings that never block a save (more
+ * guests than seats, the same name or phone twice that night, an hour outside the venue's hours),
+ * and the two things the write would refuse — a spot somebody holds, a night that cannot be
+ * written — so she sees them before Save rather than after.
+ */
+export async function bookingChecksAction(
+  input: unknown,
+): Promise<{ readonly ok: true; readonly checks: RvChecksView } | { readonly ok: false }> {
+  const parsed = Checks.safeParse(input)
+  if (!parsed.success) return FAILED
+  const {
+    venueId: id,
+    day: night,
+    time,
+    until,
+    partySize,
+    name,
+    phone,
+    spotIds,
+    reservationId,
+  } = parsed.data
+  try {
+    const scope = await scopeOf(id)
+    if (scope === null) return FAILED
+    const clock = (at: string) =>
+      localInstant(night, at, scope.venue.timezone, scope.venue.serviceDayEndsAt)
+    const result = await loadBookingChecks(scope, {
+      day: night,
+      startsAt: clock(time),
+      endsAt: until == null ? null : clock(until),
+      partySize: partySize ?? null,
+      name: name ?? null,
+      phone: phone ?? null,
+      spotIds,
+      ...(reservationId === undefined ? {} : { reservationId }),
+    })
+    return result.ok ? result : FAILED
+  } catch (error) {
+    if (error instanceof Error && 'digest' in error) throw error
+    logError('reservation_checks_failed', error)
+    return FAILED
+  }
+}
+
+const Save = z.strictObject({
+  venueId,
+  /** Present when an existing booking is being changed. */
+  reservationId: idSchema('rv').optional(),
+  /** The version the form was opened on, for an existing booking. */
+  version: z.iso.datetime().optional(),
+  day,
+  time: hhmm,
+  until: hhmm.nullable().optional(),
+  name: z.string().trim().min(1).max(80),
+  phone: z.string().trim().max(40).nullable().optional(),
+  partySize: partyCount,
+  spotIds: spotList,
+  note: z.string().trim().max(500).nullable().optional(),
+  reason: z.enum(BOOKING_REASONS).nullable().optional(),
+  /** On an edit: which of name and phone the person actually changed. Left alone, they stay. */
+  changed: z.strictObject({ name: z.boolean(), phone: z.boolean() }).optional(),
+  pin,
+})
+
+const Booked = z.strictObject({ venueId, reservationId: idSchema('rv'), pin })
+
+const Copy = z.strictObject({
+  venueId,
+  reservationId: idSchema('rv'),
+  day,
+  time: hhmm,
+  until: hhmm.nullable().optional(),
+  spotIds: spotList,
+  pin,
+})
+
+/** The hours of a night as instants, on the venue's own clock and service day (D45). */
+function instantsOf(
+  venue: { readonly timezone: string; readonly serviceDayEndsAt: string },
+  night: string,
+  time: string,
+  until: string | null | undefined,
+) {
+  const at = (hour: string) =>
+    localInstant(night, hour, venue.timezone, venue.serviceDayEndsAt).toISOString()
+  return { startsAt: at(time), endsAt: until == null ? null : at(until) }
+}
+
+const withPin = (typed: string | undefined) => (typed === undefined ? {} : { pin: typed })
+
+/**
+ * Takes a booking, or changes one the form was opened on. The phone and the name are the guest's
+ * when there is a number (the record holds them, D140) and the booking's own when there is none;
+ * the service path decides which, and refuses a missing phone where the venue requires one. Taking
+ * a booking is `reservations.tonight`; changing one is `reservations.manage` — both checked
+ * inside the transaction, never here.
+ */
+export async function saveBookingAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = Save.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const body = parsed.data
+  const phone =
+    body.phone === undefined || body.phone === null || body.phone === '' ? null : body.phone
+  if (body.reservationId === undefined) {
+    return performReservationWrite({ venueId: body.venueId, ...withPin(body.pin) }, (venue) => ({
+      type: 'reservation.create',
+      serviceDate: body.day,
+      ...instantsOf(venue, body.day, body.time, body.until),
+      kind: 'booking',
+      status: 'reserved',
+      partySize: body.partySize,
+      note: body.note ?? null,
+      reason: body.reason ?? null,
+      spotIds: body.spotIds,
+      ...(phone === null ? { partyLabel: body.name } : { phone, guestName: body.name }),
+    }))
+  }
+  const reservationId = body.reservationId
+  const changed = body.changed ?? { name: true, phone: true }
+  return performReservationWrite({ venueId: body.venueId, ...withPin(body.pin) }, (venue) => ({
+    type: 'reservation.edit',
+    reservationId,
+    ...(body.version === undefined ? {} : { expectedVersion: body.version }),
+    ...instantsOf(venue, body.day, body.time, body.until),
+    partySize: body.partySize,
+    note: body.note ?? null,
+    reason: body.reason ?? null,
+    spotIds: body.spotIds,
+    ...(changed.name ? { name: body.name } : {}),
+    ...(changed.phone ? { phone } : {}),
+  }))
+}
+
+/** Calls a booking off: the guest's doing, so it stays on the night as Cancelled (D135). */
+export async function cancelBookingAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = Booked.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const { venueId: id, reservationId, pin: typed } = parsed.data
+  return performReservationWrite(
+    { venueId: id, ...withPin(typed) },
+    { type: 'reservation.cancel', reservationId },
+  )
+}
+
+/** Takes a booking out of the book: one that should never have existed. The Log keeps who. */
+export async function deleteBookingAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = Booked.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const { venueId: id, reservationId, pin: typed } = parsed.data
+  return performReservationWrite(
+    { venueId: id, ...withPin(typed) },
+    { type: 'reservation.delete', reservationId },
+  )
+}
+
+/** Brings a deleted booking back; it comes back without a spot somebody took meanwhile. */
+export async function restoreBookingAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = Booked.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const { venueId: id, reservationId, pin: typed } = parsed.data
+  return performReservationWrite(
+    { venueId: id, ...withPin(typed) },
+    { type: 'reservation.restore', reservationId },
+  )
+}
+
+/** Copies a booking to another night, with the spots chosen for that night. */
+export async function copyBookingAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = Copy.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const { venueId: id, reservationId, day: night, time, until, spotIds, pin: typed } = parsed.data
+  return performReservationWrite({ venueId: id, ...withPin(typed) }, (venue) => ({
+    type: 'reservation.copy',
+    reservationId,
+    serviceDate: night,
+    ...instantsOf(venue, night, time, until),
+    spotIds,
+  }))
+}
+
+/** Marks a party that never came: one tap, a floor tap (D141), and the Undo is putting it back. */
+export async function noShowAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = Booked.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const { venueId: id, reservationId, pin: typed } = parsed.data
+  return performReservationWrite(
+    { venueId: id, ...withPin(typed) },
+    { type: 'reservation.set_status', reservationId, status: 'no_show' },
+  )
+}
+
+/** The Undo of a no-show: the party goes back to Coming. */
+export async function putBackAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = Booked.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const { venueId: id, reservationId, pin: typed } = parsed.data
+  return performReservationWrite(
+    { venueId: id, ...withPin(typed) },
+    { type: 'reservation.put_back', reservationId },
   )
 }

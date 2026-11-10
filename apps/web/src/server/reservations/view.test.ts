@@ -75,6 +75,7 @@ const night = (over: Partial<ReservationNightRead> = {}): ReservationNightRead =
   writable: null,
   settingsMissing: false,
   rows: [row()],
+  deleted: [],
   counts: counts(),
   hasMore: false,
   days: ['2026-11-09'],
@@ -146,6 +147,9 @@ describe('one reservation’s sheet', () => {
     serviceDate: '2026-11-09',
     madeBy: { kind: 'person', name: 'Mila' },
     email: 'guest@example.test',
+    spotIds: [],
+    version: '2026-11-09T16:00:00.000Z',
+    mine: false,
     history: [
       {
         seq: 1,

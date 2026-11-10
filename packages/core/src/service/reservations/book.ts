@@ -437,13 +437,15 @@ export async function editReservation(
   // has one); a number moves it to that guest's record; no number takes it off the record.
   let guestId = reservation.guestId
   let partyLabel = command.partyLabel === undefined ? reservation.partyLabel : command.partyLabel
-  if (command.phone === null) {
+  if (command.phone === null && reservation.guestId !== null) {
     if (night.settings.phoneRequired) return refuse('phone_required')
-    const label = command.name ?? partyLabel
+    // The booking keeps the name it was shown under when its number is taken off.
+    const known = await lockGuest(stx, reservation.guestId)
+    const label = command.name ?? partyLabel ?? known?.name ?? null
     if (label === null) return refuse('invalid_command')
     guestId = null
     partyLabel = label
-  } else if (command.phone !== undefined) {
+  } else if (command.phone !== undefined && command.phone !== null) {
     const party = await resolveParty(stx, {
       phone: command.phone,
       ...(command.name === undefined ? {} : { guestName: command.name }),

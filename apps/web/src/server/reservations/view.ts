@@ -6,6 +6,7 @@
 // carry every guest's number into the browser, and only the sheet's Call button needs one.
 import type { SpotPlace, SpotSymbol } from '@restro/core'
 import type {
+  BookingChecks,
   FloorPlanRead,
   PlanExtent,
   ReservationAccess,
@@ -55,7 +56,9 @@ export type RvSpotState = EverySpotState<typeof RV_SPOT_STATES>[number]
 
 /** What the screens know about the actor: a control the server would refuse is not drawn. */
 export interface RvCan {
-  /** `reservations.manage`: take, change, move and cancel a reservation. */
+  /** `reservations.tonight`: work the night, and take a booking (#328). */
+  readonly tonight: boolean
+  /** `reservations.manage`: change, cancel and bring back a booking, whoever took it. */
   readonly manage: boolean
   /** `reservations.block`: keep a spot back from booking (#327). */
   readonly block: boolean
@@ -90,6 +93,7 @@ export function rvFrameOf(access: ReservationAccess, venueId: string): RvFrame {
     device: access.device,
     editPastNights: access.editPastNights,
     can: {
+      tonight: held.has('reservations.tonight'),
       manage: held.has('reservations.manage'),
       block: held.has('reservations.block'),
       editPast: held.has('reservations.edit_past'),
@@ -143,6 +147,8 @@ export interface RvNightView {
   /** The venue has no turn time yet, so nothing can be booked (D135). */
   readonly settingsMissing: boolean
   readonly rows: readonly RvRowView[]
+  /** The night's lines taken out of the book: the bin a manager brings one back from (D135). */
+  readonly deleted: readonly RvRowView[]
   readonly counts: RvCountsView
   /** More rows than one screenful holds: the night is longer than the list shows. */
   readonly hasMore: boolean
@@ -170,6 +176,12 @@ export interface RvDetailView {
   /** Only for calling and writing: the sheet's own two buttons, nowhere else. */
   readonly phone: string | null
   readonly email: string | null
+  /** The spots it holds, as ids in the order of `row.spots`: what the edit form starts from. */
+  readonly spotIds: readonly string[]
+  /** The version the edit form is opened on; a save over another one is refused (#328). */
+  readonly version: string
+  /** The person reading took this booking themselves: they may take it out (D135). */
+  readonly mine: boolean
   readonly history: readonly RvHistoryView[]
 }
 
@@ -202,6 +214,7 @@ export function rvNightView(night: ReservationNightRead, timezone: string): RvNi
     refusal: night.writable,
     settingsMissing: night.settingsMissing,
     rows: night.rows.map((row) => rvRowView(row, timezone)),
+    deleted: night.deleted.map((row) => rvRowView(row, timezone)),
     counts: night.counts,
     hasMore: night.hasMore,
     days: night.days,
@@ -216,6 +229,9 @@ export function rvDetailView(detail: ReservationDetail, timezone: string): RvDet
     made: detail.madeBy === null ? null : whoView(detail.madeBy, null),
     phone: detail.row.phone,
     email: detail.email,
+    spotIds: detail.spotIds,
+    version: detail.version,
+    mine: detail.mine,
     history: detail.history.map((line) => ({
       seq: line.seq,
       time: clock(line.at) ?? '',
@@ -395,5 +411,62 @@ export function rvSpotHistoryView(
       reservationId: line.reservationId,
       name: line.name,
     })),
+  }
+}
+
+// ───────────────────────────── the booking form's advice (#328) ─────────────────────────────
+
+/**
+ * What the booking form is told while it is typed (D134, D135, D137). Every entry but `taken` and
+ * `night` is a warning that never blocks a save; those two are what the write path will refuse,
+ * shown early so nobody finds out on Save. Times as text in the venue's zone, never a phone number.
+ */
+export interface RvChecksView {
+  /** Why this night cannot be written at all; null when it can. */
+  readonly night: ReservationRefusal | null
+  readonly seats: { readonly guests: number; readonly seats: number } | null
+  readonly sameContact: { readonly name: string | null; readonly time: string } | null
+  readonly closedNight: boolean
+  readonly beforeOpening: { readonly opens: string; readonly closes: string } | null
+  readonly afterClosing: boolean
+  readonly taken: {
+    readonly spotId: string
+    readonly spotName: string
+    readonly reservationId: string
+    readonly kind: ReservationKind
+    readonly name: string | null
+    readonly time: string
+  } | null
+}
+
+export function rvChecksView(checks: BookingChecks, timezone: string): RvChecksView {
+  const clock = clockIn(timezone)
+  return {
+    night: checks.night,
+    seats: checks.seats,
+    sameContact:
+      checks.sameContact === null
+        ? null
+        : { name: checks.sameContact.name, time: clock(checks.sameContact.startsAt) ?? '' },
+    closedNight: checks.closedNight,
+    beforeOpening:
+      checks.beforeOpening === null
+        ? null
+        : {
+            opens: clock(checks.beforeOpening.opensAt) ?? '',
+            closes: clock(checks.beforeOpening.closesAt) ?? '',
+          },
+    afterClosing: checks.afterClosing,
+    taken:
+      checks.taken === null
+        ? null
+        : {
+            spotId: checks.taken.spotId,
+            spotName: checks.taken.spotName,
+            reservationId: checks.taken.reservationId,
+            kind: checks.taken.kind,
+            name: checks.taken.name,
+            time: clock(checks.taken.from) ?? '',
+          },
   }
 }
