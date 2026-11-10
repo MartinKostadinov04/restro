@@ -233,7 +233,7 @@ test('five tabs are one row at the narrowest desktop, in Bulgarian, and nothing 
     await expect(screen(page)).toBeVisible()
     const list = page.getByRole('tablist', { name: 'Смяна на раздела' })
     await expect(list.getByRole('tab')).toHaveText([
-      'Композитор',
+      'Студио',
       'Маси и QR',
       'Тази вечер',
       'Резервации',

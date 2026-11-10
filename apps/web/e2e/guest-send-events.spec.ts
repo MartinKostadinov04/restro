@@ -17,6 +17,7 @@
 import { devices, expect, test } from '@playwright/test'
 
 import { runScript } from './global-setup'
+import { faceRoot, showOrder } from './guest-faces'
 
 test.use({ ...devices['Pixel 7'] })
 
@@ -74,23 +75,27 @@ test('a night at a table is measured, and nothing about the phone is kept', asyn
 
   // The scan.
   await page.goto(`${path}?lang=bg#t=${code}`)
-  await expect(page.locator('[data-face="qr-phone"]').first()).toBeVisible()
+  await expect(faceRoot(page)).toBeVisible()
 
-  // Two taps of the same item: one line of two.
-  await page.locator('[data-slot="item.add"]').first().click()
-  const line = page.locator('[data-order-line]')
-  await expect(line).toHaveCount(1, { timeout: 20_000 })
-  await page.locator('[data-slot="item.add"]').first().click()
-  await expect(line).toHaveAttribute('data-qty', '2', { timeout: 20_000 })
-
-  // One off again: the first control of a line is its minus.
-  await page.locator('[data-order-line] button').first().click()
-  await expect(line).toHaveAttribute('data-qty', '1', { timeout: 20_000 })
-
-  // The language the guest chose.
+  // The language the guest chose. It comes first only so the order's controls below read in
+  // English; the events are read back by kind, not in the order they were sent.
   const english = page.locator('[data-slot="menu.language"] button[lang="en-US"]')
   await english.click()
   await expect(english).toHaveAttribute('aria-pressed', 'true')
+
+  // One line of two. The renderer keeps the table's order in the bag sheet (D128), so the dish
+  // card adds the line and the line's own stepper raises it; the event is the quantity that
+  // moved, not which control moved it (packages/core/src/service/order.ts).
+  await page.locator('[data-slot="item.add"]').first().click()
+  await showOrder(page)
+  const line = page.locator('[data-order-line]')
+  await expect(line).toHaveCount(1, { timeout: 20_000 })
+  await line.getByRole('button', { name: 'One more' }).click()
+  await expect(line).toHaveAttribute('data-qty', '2', { timeout: 20_000 })
+
+  // One off again.
+  await line.getByRole('button', { name: 'One less' }).click()
+  await expect(line).toHaveAttribute('data-qty', '1', { timeout: 20_000 })
 
   // The page sends what it saw on a wait of its own; hiding the page flushes it at once.
   await page.evaluate(() => {
