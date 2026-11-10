@@ -47,6 +47,9 @@ env:
   DATABASE_APP_PASSWORD: ci-only-not-a-secret
   # The purge role (D83), created by `pnpm db:roles` and used by the purge-role tests.
   DATABASE_PURGE_PASSWORD: ci-only-purge-not-a-secret
+  # The backup role (D143), created by `pnpm db:roles` and used by the backup-role tests and the
+  # worker's backup test.
+  DATABASE_BACKUP_PASSWORD: ci-only-backup-not-a-secret
   # The purge role's own connection, for the worker the e2e run starts: without it the worker
   # registers no purge job and a "Delete permanently" is never queued (D83).
   DATABASE_URL_PURGE: postgres://restro_purge:ci-only-purge-not-a-secret@localhost:5432/restro
@@ -145,8 +148,99 @@ jobs:
       - name: Database migrations and app role
         run: pnpm db:migrate && pnpm db:roles
 
+      # The worker's backup test runs the real pg_dump and pg_restore (ticket #320), which must be the
+      # server's major version (17) or newer; the runner's own are older. The repository is the
+      # PostgreSQL project's official one, set up by the script postgresql-common ships.
+      - name: PostgreSQL 17 client tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17
+          /usr/lib/postgresql/17/bin/pg_dump --version
+          echo "PG_DUMP_PATH=/usr/lib/postgresql/17/bin/pg_dump" >> "$GITHUB_ENV"
+          echo "PG_RESTORE_PATH=/usr/lib/postgresql/17/bin/pg_restore" >> "$GITHUB_ENV"
+
       - name: Test
         run: pnpm test
+
+  # Migrations under an owner shaped like the hosted one (RR-O9, RR-43). The other jobs migrate as
+  # the service container's superuser, so a migration that works only for a superuser would pass
+  # them and fail on the hosted database (RR-44, RR-45). Here the database is owned by
+  # `restro_owner`, which has what staging's `postgres` has (query 7 of
+  # docs/runbooks/supabase-setup.md, run on staging by Martin 11-07: rolsuper false,
+  # rolbypassrls true): LOGIN, CREATEROLE, CREATEDB and BYPASSRLS, no SUPERUSER. Every migration
+  # and `db:roles` run as that owner; the catalog tests then read what it built, using the
+  # superuser for their own set-up (tests/database.ts requires one). Tests that insert rows are
+  # not run here (they run in `unit`).
+  migrations-hosted-owner:
+    name: Migrations as a hosted-style owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17.10
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The service's superuser creates the owner and its database; the migrations and roles never use it.
+      - name: Create the hosted-style owner
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "create role restro_owner login password 'ci-only-owner-not-a-secret' nosuperuser bypassrls createrole createdb" \
+            -c "create database restro owner restro_owner"
+
+      # Fails the job if the owner is not what this job says it is, so it cannot pass vacuously.
+      - name: Owner is not a superuser and has BYPASSRLS, like staging
+        env:
+          PGPASSWORD: ci-only-owner-not-a-secret
+        run: |
+          result=$(psql -h localhost -U restro_owner -d restro -At \
+            -c "select rolsuper::text || ',' || rolbypassrls::text from pg_roles where rolname = current_user")
+          echo "superuser,bypassrls: $result"
+          [ "$result" = "false,true" ]
+
+      - name: Replay the migrations and create the roles as that owner
+        env:
+          DATABASE_URL_OWNER: postgres://restro_owner:ci-only-owner-not-a-secret@localhost:5432/restro
+        run: pnpm db:migrate && pnpm db:roles
+
+      # Includes the backup role (D143): BYPASSRLS can be given only by an owner that holds it, as
+      # this one does, so this is the check that the role can be created on the hosted database.
+      - name: Row-security guard and role tests
+        # The tests need a superuser for their own set-up (tests/database.ts refuses any other), so
+        # they use the top-level owner URL; what they check was built by restro_owner above.
+        run: pnpm vitest run --project packages/db packages/db/tests/rls-guard.test.ts packages/db/tests/app-role.test.ts packages/db/tests/purge-role.test.ts packages/db/tests/backup-role.test.ts
 
   e2e:
     name: End-to-end tests (shard ${{ matrix.shard }} of 4)
@@ -265,7 +359,7 @@ jobs:
   # above passed (a skipped or cancelled one counts as red).
   checks:
     name: Lint, types, import rules, secrets, tests, build, e2e
-    needs: [static, unit, e2e]
+    needs: [static, unit, migrations-hosted-owner, e2e]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -273,9 +367,9 @@ jobs:
     steps:
       - name: Every job passed
         env:
-          RESULTS: ${{ needs.static.result }} ${{ needs.unit.result }} ${{ needs.e2e.result }}
+          RESULTS: ${{ needs.static.result }} ${{ needs.unit.result }} ${{ needs.migrations-hosted-owner.result }} ${{ needs.e2e.result }}
         run: |
-          echo "static, unit, e2e: $RESULTS"
+          echo "static, unit, migrations-hosted-owner, e2e: $RESULTS"
           for result in $RESULTS; do
             [ "$result" = "success" ] || exit 1
           done

@@ -111,6 +111,11 @@ export interface TestDatabase {
    * DATABASE_PURGE_PASSWORD (or DATABASE_URL_PURGE) is not set: the purge tests then skip.
    */
   readonly purgeUrl: string | null
+  /**
+   * Connection string of the backup role `restro_backup` (D143) for the new database, or null
+   * when DATABASE_BACKUP_PASSWORD (or DATABASE_URL_BACKUP) is not set.
+   */
+  readonly backupUrl: string | null
   /** Connection string of the migration owner for the new database (set-up and inspection). */
   readonly ownerUrl: string
   /** Drops the database, closing whatever is still connected to it. */
@@ -207,6 +212,19 @@ export async function createTestDatabase(
     purgeUrl = parsed.toString()
   }
 
+  const explicitBackupUrl = process.env.DATABASE_URL_BACKUP
+  const backupPassword = process.env.DATABASE_BACKUP_PASSWORD
+  let backupUrl: string | null = null
+  if (explicitBackupUrl) {
+    assertLocal(explicitBackupUrl, 'DATABASE_URL_BACKUP')
+    backupUrl = withDatabase(explicitBackupUrl, name)
+  } else if (backupPassword) {
+    const parsed = new URL(newOwnerUrl)
+    parsed.username = 'restro_backup'
+    parsed.password = encodeURIComponent(backupPassword)
+    backupUrl = parsed.toString()
+  }
+
   const drop = async () => {
     await withOwnerClient(ownerUrl, (client) =>
       client.query(`drop database if exists ${client.escapeIdentifier(name)} with (force)`),
@@ -244,5 +262,5 @@ export async function createTestDatabase(
     await drop().catch(() => undefined)
     throw error
   }
-  return { name, appUrl, purgeUrl, ownerUrl: newOwnerUrl, drop }
+  return { name, appUrl, purgeUrl, backupUrl, ownerUrl: newOwnerUrl, drop }
 }

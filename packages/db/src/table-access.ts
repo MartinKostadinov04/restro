@@ -36,6 +36,14 @@ export const APP_ROLE = 'restro_app'
  */
 export const PURGE_ROLE = 'restro_purge'
 
+/**
+ * The login role the worker's database backup connects as (ticket #320, D143): SELECT on every
+ * table and sequence of `restro` and `drizzle`, nothing else, and BYPASSRLS, because a dump that
+ * is held to row-level security is structurally valid and empty. The only role with BYPASSRLS;
+ * nothing but the backup job may use it.
+ */
+export const BACKUP_ROLE = 'restro_backup'
+
 /** The schema that holds every Restro table. */
 export const APP_SCHEMA = 'restro'
 
@@ -186,6 +194,30 @@ export const TABLE_ACCESS = {
   // one system table it may delete from.
   provider_notices: { tenancy: 'system', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
 
+  // Reservations (migration 0046; D134, D135, D137, D138, D140, D141; ticket #323): written only
+  // by `applyService`, never deleted by the app. Every one of them is an update where another
+  // system would delete: a spot is released by `released_at`, a plan and a spot are removed by
+  // `removed_at`, a guest is archived and erased by clearing his details (D83, D140). The purge
+  // role erases a venue's rows with the venue, and the night's rows when their retention ends.
+  floor_plans: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  spots: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  venue_spot_kinds: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  reservations: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  reservation_spots: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  reservation_settings: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  reservation_nights: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  // The venue's guest records and a manager's private notes about them (D140). Erasing a guest is
+  // an UPDATE that empties the row, so the app needs no DELETE here either; the purge erases the
+  // rows with the venue.
+  guests: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+  guest_private_notes: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
+
+  // The guest events (migration 0045; D142; ticket #335): what a guest's phone did, append-only
+  // and free of personal data. Written only by `recordEvents()` in `@restro/core/events`, so the
+  // app role has no UPDATE and no DELETE; the purge erases a venue's rows when their retention
+  // class runs out (31 days or 18 months, as the Log's), or with the venue.
+  guest_events: { tenancy: 'tenant', app: ['SELECT', 'INSERT'], purge: PURGED },
+
   // Better Auth (apps/web talks to these through its own pool on the app role). They are not
   // tenant-scoped: a person signs in before any tenant is known, and the organisation id is the
   // tenant id (see schema.ts). The app role can read every row of them, password hashes
@@ -241,4 +273,14 @@ export const APP_SCHEMA_PRIVILEGES = {
 /** Schema privileges of the purge role: it only uses `restro`, and never the queue schema. */
 export const PURGE_SCHEMA_PRIVILEGES = {
   [APP_SCHEMA]: ['USAGE'],
+} as const satisfies Record<string, readonly ('USAGE' | 'CREATE')[]>
+
+/**
+ * Schema privileges of the backup role: it reads `restro` and the migration journal in `drizzle`
+ * (without which a restored database would apply every migration again). Never the queue schema:
+ * pg-boss creates tables there at run time, which no grant made beforehand could cover.
+ */
+export const BACKUP_SCHEMA_PRIVILEGES = {
+  [APP_SCHEMA]: ['USAGE'],
+  drizzle: ['USAGE'],
 } as const satisfies Record<string, readonly ('USAGE' | 'CREATE')[]>

@@ -76,6 +76,9 @@ const KNOWN = new Set([
   'no_group',
   'privacy_missing',
   'staff_account_required',
+  'settings_missing',
+  'closed_dates_full',
+  'spot_missing',
 ])
 
 /**

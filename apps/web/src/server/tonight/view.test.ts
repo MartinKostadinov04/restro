@@ -23,6 +23,8 @@ const table = (n: number, barId: string | null, open: boolean) => ({
         openedHow: 'one',
       }
     : null,
+  // An open table on the house's ordinary rule: everything on the bill, so its tile keeps no line.
+  payRule: open ? ({ payFirst: false, level: 'venue' } as const) : null,
 })
 
 function tonight(overrides: Partial<Tonight> = {}): Tonight {
@@ -505,7 +507,48 @@ describe('what the actor may do', () => {
       lift: false,
       answer: true,
       followUp: false,
+      endNight: false,
     })
+  })
+})
+
+describe('the night’s end (#332)', () => {
+  it('says nothing while the night is going on', () => {
+    const v = view(tonight({ permissions: ['reservations.end_night'] }))
+    expect(v.can.endNight).toBe(true)
+    expect(v.nightEnd).toBeNull()
+    expect(v.rows.filter((row) => row.kind === 'night_end')).toEqual([])
+  })
+
+  it('shows the closed night, and the bills it found open as one row with no table', () => {
+    const v = view(
+      tonight({
+        nightEnd: { at: new Date('2026-10-27T23:00:00Z'), early: true, openBills: 3 },
+        waiterCalls: [
+          {
+            id: 'wc_1',
+            tableId: 'tb_1',
+            calledAt: new Date('2026-10-27T21:00:00Z'),
+            kinds: ['waiter'],
+          },
+        ],
+      }),
+    )
+    // 01:00 in Sofia, the venue's own clock.
+    expect(v.nightEnd).toEqual({ at: '01:00', early: true })
+    const rows = v.rows.filter((row) => row.kind === 'night_end')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ tableId: '', nightEnd: { openBills: 3, at: '01:00' } })
+    // A to-do: after the waiter's call (rank 4), at rank 5.
+    expect(v.rows.map((row) => row.kind)).toEqual(['call', 'night_end'])
+  })
+
+  it('has no row when every bill was closed', () => {
+    const v = view(
+      tonight({ nightEnd: { at: new Date('2026-10-27T23:00:00Z'), early: false, openBills: 0 } }),
+    )
+    expect(v.nightEnd).toEqual({ at: '01:00', early: false })
+    expect(v.rows).toEqual([])
   })
 })
 

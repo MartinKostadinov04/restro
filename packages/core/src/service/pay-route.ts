@@ -82,6 +82,7 @@ import {
   PAYMENT_QUEUE_MS,
   type PaymentRow,
   quantityKey,
+  recordPayFinished,
   signedSumMinor,
 } from './pay'
 import { settlePayFirstSentOrder } from './pay-first-sent-order'
@@ -251,6 +252,14 @@ export async function move(
     .where(eq(payments.id, payment.id))
   if (tableOpen) stx.rows.touch(payment.tableId)
   await logPayment(stx, payment, state, set.reason ?? payment.reason ?? null, details)
+  // Paying ended (D142), recorded by the write that settles the payment and no other.
+  if (settles) {
+    await recordPayFinished(
+      stx,
+      { ...payment, capturedMinor: set.capturedMinor ?? payment.capturedMinor },
+      state,
+    )
+  }
 }
 
 /**

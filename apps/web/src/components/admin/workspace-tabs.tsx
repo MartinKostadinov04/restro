@@ -15,17 +15,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import {
   NO_SETTINGS_RIGHTS,
+  NO_WORKSPACE_RIGHTS,
   SETTINGS_SECTION_DEFS,
   type SettingsRights,
   type SettingsSectionValue,
-  SHARED_DEVICE_TAB_DEFS,
   settingsSectionOf,
   settingsSectionsOf,
   sharedDeviceTabOf,
+  sharedDeviceTabsOf,
   WORKSPACE_TAB_DEFS,
+  type WorkspaceRights,
   type WorkspaceTabDef,
   type WorkspaceTabValue,
   workspaceTabOf,
+  workspaceTabsOf,
 } from './workspace-tab-defs'
 
 /**
@@ -74,6 +77,7 @@ export function UrlTabs<V extends string>({
   contents,
   label,
   listClassName,
+  oneRow = false,
 }: {
   defs: readonly (WorkspaceTabDef & { readonly value: V })[]
   current: V
@@ -81,14 +85,29 @@ export function UrlTabs<V extends string>({
   contents: Partial<Record<V, ReactNode>>
   label: string
   listClassName?: string
+  /**
+   * A list short enough for the narrowest screen — a shared device's Tonight and Reservations
+   * (#326, D141). The row is then drawn at every width and there is no select at all, so the tab
+   * a hostess needs at the door is one tap, in portrait as in landscape.
+   */
+  oneRow?: boolean
 }) {
   const t = useTranslations()
   return (
     <Tabs value={current} onValueChange={select}>
-      {/* One tab is no choice: a shared device has Tonight alone. */}
+      {/* One tab is no choice: a device whose role is off the door has Tonight alone (D141). */}
       {defs.length > 1 ? (
         <>
-          <TabsList className={listClassName ?? 'hidden lg:inline-flex'} aria-label={label}>
+          {/* Whatever the list, the row scrolls inside itself rather than pushing the page. */}
+          <TabsList
+            className={
+              listClassName ??
+              (oneRow
+                ? 'inline-flex max-w-full overflow-x-auto'
+                : 'hidden max-w-full overflow-x-auto lg:inline-flex')
+            }
+            aria-label={label}
+          >
             {defs.map(({ value, labelKey, icon: Icon }) => (
               <TabsTrigger key={value} value={value}>
                 <Icon aria-hidden />
@@ -96,19 +115,21 @@ export function UrlTabs<V extends string>({
               </TabsTrigger>
             ))}
           </TabsList>
-          <Select value={current} onValueChange={select}>
-            <SelectTrigger className="w-full lg:hidden" aria-label={label}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {defs.map(({ value, labelKey, icon: Icon }) => (
-                <SelectItem key={value} value={value}>
-                  <Icon aria-hidden />
-                  {t(labelKey)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {oneRow ? null : (
+            <Select value={current} onValueChange={select}>
+              <SelectTrigger className="w-full lg:hidden" aria-label={label}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {defs.map(({ value, labelKey, icon: Icon }) => (
+                  <SelectItem key={value} value={value}>
+                    <Icon aria-hidden />
+                    {t(labelKey)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </>
       ) : null}
       {defs.map(({ value }) => (
@@ -121,10 +142,12 @@ export function UrlTabs<V extends string>({
 }
 
 interface WorkspaceTabsProps {
-  /** The content of every tab, keyed by tab value (a missing tab is a type error). */
-  contents: Record<WorkspaceTabValue, ReactNode>
+  /** The content of every tab the person is offered (a tab nobody is offered needs none). */
+  contents: Partial<Record<WorkspaceTabValue, ReactNode>>
   /** A shared device: no composer tab (RR-83). */
   sharedDevice?: boolean
+  /** What the person holds: Reservations shows only with its key (#326). */
+  rights?: WorkspaceRights
 }
 
 const isWorkspaceTabValue = (value: string): value is WorkspaceTabValue =>
@@ -137,20 +160,32 @@ const isWorkspaceTabValue = (value: string): value is WorkspaceTabValue =>
  * select below it), and the current tab is *derived* from the URL instead of being set while
  * rendering.
  */
-export function WorkspaceTabs({ contents, sharedDevice = false }: WorkspaceTabsProps) {
+export function WorkspaceTabs({
+  contents,
+  sharedDevice = false,
+  rights = NO_WORKSPACE_RIGHTS,
+}: WorkspaceTabsProps) {
   const t = useTranslations('workspace')
+  const defs = (
+    sharedDevice ? sharedDeviceTabsOf(rights) : workspaceTabsOf(rights)
+  ) as readonly (WorkspaceTabDef & { readonly value: WorkspaceTabValue })[]
   const [current, select] = useUrlTab<WorkspaceTabValue>(
     'tab',
-    sharedDevice ? sharedDeviceTabOf : workspaceTabOf,
-    isWorkspaceTabValue,
+    (requested) =>
+      sharedDevice ? sharedDeviceTabOf(requested, rights) : workspaceTabOf(requested, rights),
+    (value): value is WorkspaceTabValue =>
+      isWorkspaceTabValue(value) && defs.some((tab) => tab.value === value),
   )
   return (
     <UrlTabs
-      defs={sharedDevice ? SHARED_DEVICE_TAB_DEFS : WORKSPACE_TAB_DEFS}
+      defs={defs}
       current={current}
       select={select}
       contents={contents}
       label={t('switchTab')}
+      // A shared device has Tonight and the night's list, two tabs that fit a 390 px phone: no
+      // chooser between them at any width (RR-85, #326).
+      oneRow={sharedDevice}
     />
   )
 }
@@ -185,7 +220,10 @@ export function SettingsSections({
       select={select}
       contents={contents}
       label={t('switchSection')}
-      listClassName="hidden lg:inline-flex"
+      // Nine sections on a venue with everything (Reservations made the ninth) do not fit one row
+      // beside their icons below 2xl: the icons go first, and the row scrolls inside itself
+      // rather than the page.
+      listClassName="hidden max-w-full overflow-x-auto lg:inline-flex [&_svg]:hidden 2xl:[&_svg]:block"
     />
   )
 }

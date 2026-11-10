@@ -188,6 +188,7 @@ describe('rule 2: only core/apply and core/service import the db write side', ()
         ...base,
         'packages/core/src/apply/apply.ts': "import '@restro/db/write'",
         'packages/core/src/service/apply-service.ts': "import '@restro/db/write'",
+        'packages/core/src/events/record.ts': "import '@restro/db/write'",
         'packages/core/src/other.ts': "import '@restro/db/write'",
         'packages/core/src/relative.ts': "import '../../db/src/write/index'",
         'apps/web/app/action.ts': "import '@restro/db/write'",
@@ -198,6 +199,7 @@ describe('rule 2: only core/apply and core/service import the db write side', ()
     expect(lines).toHaveLength(4)
     expect(lines.some((line) => line.includes('packages/core/src/apply/'))).toBe(false)
     expect(lines.some((line) => line.includes('packages/core/src/service/'))).toBe(false)
+    expect(lines.some((line) => line.includes('packages/core/src/events/'))).toBe(false)
   })
 })
 
@@ -239,6 +241,50 @@ describe('the service write path is called from server code only (D122 §9)', ()
         'apps/web/src/server/tonight/actions.ts':
           "import '../../../../../packages/core/src/service/index'",
         'packages/core/src/service/sitting.ts': "import './index'",
+      },
+      [],
+    )
+  })
+})
+
+describe('the guest-events write path is called from server code only (D142)', () => {
+  const events: Files = {
+    ...base,
+    'packages/core/src/events/index.ts': 'export const recordEvents = 1',
+  }
+
+  it('rejects @restro/core/events from the shell, a face, a guest page, core/apply and the admin screens', async () => {
+    const lines = await expectRules(
+      {
+        ...events,
+        'packages/shell/src/a.ts': "import '@restro/core/events'",
+        'packages/faces/qr-phone/src/b.ts': "import '@restro/core/events'",
+        'apps/web/app/m/page.ts': "import '@restro/core/events'",
+        'apps/web/src/guest/view.ts': "import '../../../../packages/core/src/events/index'",
+        'packages/core/src/apply/apply.ts': "import '../events/index'",
+        'apps/web/src/composer/panel.ts': "import '@restro/core/events'",
+      },
+      [
+        'core-events-only-from-event-callers',
+        'faces-only-react-and-shell',
+        'guest-page-reads-published-files-only',
+        'pure-layers-no-data-or-apps',
+      ],
+    )
+    expect(
+      lines.filter((line) => line.startsWith('core-events-only-from-event-callers')),
+    ).toHaveLength(6)
+  })
+
+  it('allows the worker, the route handlers, the server code, core/service and core/events itself', async () => {
+    await expectRules(
+      {
+        ...events,
+        'apps/worker/src/jobs/purge.ts': "import '@restro/core/events'",
+        'apps/web/app/api/guest/events/route.ts': "import '@restro/core/events'",
+        'apps/web/src/server/guest-api.ts': "import '../../../../packages/core/src/events/index'",
+        'packages/core/src/service/order.ts': "import '../events/index'",
+        'packages/core/src/events/kinds.ts': "import './index'",
       },
       [],
     )

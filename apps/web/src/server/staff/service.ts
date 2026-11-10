@@ -5,17 +5,22 @@
 //   `operator` actor (adds roles, changes rights, sees and resets PINs). The row is read as the
 //   app role, which may only SELECT that system table; nothing here bypasses row-level security.
 // - On a shared device every staff write asks for a PIN first (`identifyAtSharedDevice`); the
-//   wrong-PIN counters live in this process's memory (design §8).
+//   wrong-PIN counters live in this process's memory (design §8). The PIN starts that person's
+//   own short session on the device (D141 12.11), which `personAtSharedDevice` reads for the
+//   writes after it, so a run of record work is typed once.
 // Nothing here logs a PIN, its HMAC or the pepper.
 import { newId } from '@restro/core'
 import {
+  type DevicePerson,
+  devicePersonOf,
   identifyStaffByPin,
   PinGuard,
   type PinIdentity,
   type ServiceActor,
   type ServiceOptions,
+  SHARED_DEVICE_IDLE_SECONDS,
 } from '@restro/core/service'
-import { operators } from '@restro/db'
+import { operators, withTenant } from '@restro/db'
 import { and, eq, isNull } from 'drizzle-orm'
 
 import { getAuthDb, getPool } from '../db'
@@ -57,6 +62,49 @@ export function pinGuard(): PinGuard {
 /** The PIN pepper, or undefined when it is not set (then no PIN is made or checked). */
 export function pinPepper(): string | undefined {
   return serverEnv().STAFF_PIN_PEPPER
+}
+
+/**
+ * How long a shared device keeps the person after their last write: the three minutes core ships,
+ * unless the environment shortens it (the app's own tests do, so a spec can watch a session end).
+ */
+export function sharedDeviceIdleSeconds(): number {
+  return serverEnv().SHARED_DEVICE_IDLE_SECONDS ?? SHARED_DEVICE_IDLE_SECONDS
+}
+
+/**
+ * The person whose own short session is on the shared device signed in with this session, or null
+ * (D141 12.11): nobody typed a PIN, the device has been idle too long, it is no shared device of
+ * this venue, or the person has left. A write then acts as that person and asks for nothing — a
+ * run of record work is typed once.
+ */
+export async function personAtSharedDevice(input: {
+  readonly tenantId: string
+  readonly venueId: string
+  readonly sessionId: string
+  readonly now?: Date
+}): Promise<DevicePerson | null> {
+  return withTenant(getPool(), input.tenantId, (tx) =>
+    devicePersonOf(tx, {
+      venueId: input.venueId,
+      sessionId: input.sessionId,
+      now: input.now ?? new Date(),
+      idleSeconds: sharedDeviceIdleSeconds(),
+    }),
+  )
+}
+
+/**
+ * Whether a person's own short session is on the shared device this browser signed in with: the
+ * screens then draw no PIN sheet before a write, because that PIN already named them (#324). The
+ * device's account still reads the screens, so what a shared device shows does not change.
+ */
+export async function rememberedAtSharedDevice(input: {
+  readonly tenantId: string
+  readonly venueId: string
+  readonly sessionId: string
+}): Promise<boolean> {
+  return (await personAtSharedDevice(input)) !== null
 }
 
 /** What the staff commands need from the environment: the seal key and the pepper a new PIN uses. */

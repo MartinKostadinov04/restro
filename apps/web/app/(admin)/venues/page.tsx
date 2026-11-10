@@ -17,7 +17,7 @@ import { getPool } from '@/server/db'
 import { canManageIntegration } from '@/server/roles'
 import { requireTenant } from '@/server/session'
 import { onSharedDevice } from '@/server/staff/shared-device'
-import { staffLandingVenue } from '@/server/tonight/landing'
+import { staffLanding } from '@/server/tonight/landing'
 import { listVenueCards } from '@/server/venues'
 
 export async function generateMetadata() {
@@ -28,14 +28,21 @@ export async function generateMetadata() {
 export default async function VenuesPage() {
   // The query runs inside withTenant: row-level security shows only this organisation's venues.
   const { organization, user, sessionId } = await requireTenant()
-  // A staff-only sign-in lands on Tonight of the venue it works at (plan §2).
-  const landing = await staffLandingVenue({
+  // A staff-only sign-in lands on the first screen its role allows (D141, Martin 11-08):
+  // Reservations at the door, else Tonight behind the bar, else the venue's own page.
+  const landing = await staffLanding({
     tenantId: organization.id,
     role: organization.role,
     userId: user.id,
     sessionId,
   })
-  if (landing !== null) redirect(`/venues/${landing}?tab=tonight`)
+  if (landing !== null) {
+    redirect(
+      landing.tab === null
+        ? `/venues/${landing.venueId}`
+        : `/venues/${landing.venueId}?tab=${landing.tab}`,
+    )
+  }
   const venues = await listVenueCards(getPool(), organization.id)
   const t = await getTranslations('venues')
   // Owners and admins add and unpublish venues (the actions check the role again), on their own

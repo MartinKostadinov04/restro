@@ -1,5 +1,7 @@
 # Martin's actions for Stage 1
 
+> **Historic.** Martin's Stage 1 steps from 10-09: 1 and 2 are done (T37, T38). 3, the Lukanet request, is still open as T39 and tracked in `docs/open-items.md`, which lists every current task for Martin. Kept because the Supabase runbook and the barsy hosts file link here.
+
 Three short tasks. None needs technical knowledge; each takes 5–15 minutes. Tell the lead agent in chat when each is done.
 
 ## 1. Supabase: create the Restro database (T37)

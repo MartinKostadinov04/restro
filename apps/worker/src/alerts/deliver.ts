@@ -19,7 +19,6 @@ import {
   applyService,
   CLEARED_AT_DAY_CLOSE,
   clearedLine,
-  DEFAULT_ROLE_PERMISSIONS,
   type DeliveryStep,
   digestMessage,
   doneButtonText,
@@ -31,6 +30,7 @@ import {
   planDelivery,
   readDelivery,
   reminderMessage,
+  roleGrants,
   ruleOf,
   serviceHoursWindow,
   tableLabel,
@@ -244,6 +244,7 @@ async function deliverForVenue(
           userId: staffMembers.userId,
           defaultKind: venueRoles.defaultKind,
           permissions: venueRoles.permissions,
+          knownPermissions: venueRoles.knownPermissions,
         })
         .from(staffMembers)
         .innerJoin(staffAssignments, eq(staffAssignments.staffMemberId, staffMembers.id))
@@ -258,14 +259,9 @@ async function deliverForVenue(
         )
       for (const row of staff) {
         if (row.userId === null) continue
-        const list =
-          row.defaultKind === 'staff' ||
-          row.defaultKind === 'manager' ||
-          row.defaultKind === 'owner'
-            ? DEFAULT_ROLE_PERMISSIONS[row.defaultKind]
-            : Array.isArray(row.permissions)
-              ? (row.permissions as string[])
-              : []
+        // `roleGrants`, the same reader as the permission check and the role editor (#366): an
+        // alert reaches whoever the venue's roles say holds it, edits included.
+        const list = roleGrants(row)
         holds.set(row.userId, new Set([...(holds.get(row.userId) ?? []), ...list]))
         if (row.defaultKind === 'owner') organisationOwners.add(row.userId)
       }

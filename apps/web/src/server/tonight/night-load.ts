@@ -34,6 +34,12 @@ export interface NightScope {
   readonly tenantId: string
   readonly venue: Pick<Venue, 'id' | 'timezone'>
   readonly actor: ServiceActor
+  /**
+   * A person's own short session is on this shared device (D141 12.11, #324): the screens' writes
+   * then ask for no PIN, because the PIN that started the session already named them. The actor
+   * stays the account: what the shared device shows, and the tips it hides, do not change.
+   */
+  readonly remembered?: boolean
   readonly now?: Date
   /** What `{source}` reads for a venue with no POS ("the POS"), in the admin's language. */
   readonly sourceNone: string
@@ -66,6 +72,7 @@ export async function loadNightAccess(
       venueId: scope.venue.id,
       source: await sourceOf(scope, read.access),
       now,
+      remembered: scope.remembered === true,
     }),
   }
 }
@@ -98,6 +105,7 @@ export async function loadSentOrders(
       venueId: scope.venue.id,
       source: await sourceOf(scope, read.access),
       now,
+      remembered: scope.remembered === true,
     }),
     list: sentListView(read.page, read.access.venue.timezone),
   }
@@ -122,6 +130,7 @@ export async function loadSentOrderDetail(
       venueId: scope.venue.id,
       source: await sourceOf(scope, read.access),
       now,
+      remembered: scope.remembered === true,
     }),
     detail: read.detail === null ? null : sentDetailView(read.detail, read.access.venue.timezone),
   }
@@ -151,7 +160,12 @@ export async function loadLog(
   const source = await sourceOf(scope, read.access)
   return {
     ok: true,
-    frame: frameOf(read.access, { venueId: scope.venue.id, source, now }),
+    frame: frameOf(read.access, {
+      venueId: scope.venue.id,
+      source,
+      now,
+      remembered: scope.remembered === true,
+    }),
     log: logView(read.page, {
       timezone: read.access.venue.timezone,
       locale,
@@ -184,6 +198,7 @@ export async function loadNight(
       venueId: scope.venue.id,
       source: await sourceOf(scope, read.access),
       now,
+      remembered: scope.remembered === true,
     }),
     night: nightView(read.night, read.access.venue.timezone),
   }

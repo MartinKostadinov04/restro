@@ -191,6 +191,17 @@ export function isoInTimeZone(at: Date, timeZone: string): string {
 }
 
 /**
+ * The calendar date `days` after a service date (`YYYY-MM-DD`), as a date-only string. A service
+ * day is named by its own calendar date (D45), so stepping one is calendar arithmetic and nothing
+ * more: the venue's clock is applied afterwards by `localInstant`, which is where a daylight-saving
+ * change is accounted for. Negative `days` steps back.
+ */
+export function addDaysToDay(day: string, days: number): string {
+  const [year, month, date] = day.split('-').map(Number) as [number, number, number]
+  return new Date(Date.UTC(year, month - 1, date + days)).toISOString().slice(0, 10)
+}
+
+/**
  * The instant the service day of `at` began (to the second): the end of the day before. What a
  * connector compares a bill's opening with, so a bill left open from last night is never joined
  * (#77). Found by halving the 26 hours before `at`, so a daylight-saving change needs no rule.

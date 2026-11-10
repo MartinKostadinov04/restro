@@ -21,6 +21,8 @@ export async function loadTonightView(input: {
   readonly venue: Venue
   readonly userId: string
   readonly sessionId: string
+  /** A person's own short session is on this shared device: no write asks for a PIN (#324). */
+  readonly remembered?: boolean
   readonly now?: Date
 }): Promise<
   | { readonly ok: true; readonly view: TonightView }
@@ -50,6 +52,7 @@ export async function loadTonightView(input: {
       currency: input.venue.currency,
       provider: providerDisplayName(read.tonight.payingProvider),
       operator,
+      remembered: input.remembered === true,
       now,
     }),
   }

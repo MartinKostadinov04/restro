@@ -152,6 +152,13 @@ export interface Frame {
   readonly source: string
   readonly currency: string
   readonly device: boolean
+  /**
+   * Whether a write must name a person before it runs: true on a shared device nobody is on, false
+   * on a person's own session and on a shared device whose person is still on it (their PIN started
+   * their own short session, D141 12.11, #324). `device` stays true there: the controls a shared
+   * device shows and the tips it hides do not change because somebody typed a PIN.
+   */
+  readonly asks: boolean
   readonly can: Can
   /** `settings.connect_payments`: the end of night's "paying is still paused" row offers Reconnect. */
   readonly canConnect: boolean
@@ -167,7 +174,13 @@ export interface Frame {
 
 export function frameOf(
   access: NightAccess,
-  input: { readonly venueId: string; readonly source: string; readonly now: Date },
+  input: {
+    readonly venueId: string
+    readonly source: string
+    readonly now: Date
+    /** A person's own short session is on this shared device: no write asks for a PIN (#324). */
+    readonly remembered?: boolean
+  },
 ): Frame {
   const held = new Set<string>(access.permissions)
   return {
@@ -175,6 +188,7 @@ export function frameOf(
     source: input.source,
     currency: access.venue.currency,
     device: access.device,
+    asks: access.device && input.remembered !== true,
     can: {
       openClose: held.has('tables.open_close'),
       resume: held.has('tables.resume'),
@@ -182,6 +196,7 @@ export function frameOf(
       lift: held.has('ordering.lift'),
       answer: held.has('alerts.answer'),
       followUp: held.has('money.follow_up'),
+      endNight: held.has('reservations.end_night'),
     },
     canConnect: held.has('settings.connect_payments'),
     canExport: held.has('log.view') && held.has('night.view_full'),
@@ -354,6 +369,8 @@ export interface LogLineView {
   readonly guard: GuardWord | null
   readonly setting: 'pay_table' | 'setting'
   readonly subject: string | null
+  /** What a role holds now, as a count (#366): the Log line says it in words. */
+  readonly heldCount: number | null
   readonly amountMinor: number | null
   /** Part 2's payment state word key (empty until #115 fills `PAYMENT_STATE_WORDS`). */
   readonly paymentState: string | null
@@ -371,6 +388,15 @@ export interface LogLineView {
   /** A "Got it" line taken back by Undo (#234). */
   readonly refundSeenUndone: boolean
   readonly sentOrdersOfDay: number | null
+  /** The bills still open when the night ended (#332); null for any other entry. */
+  readonly openBills: number | null
+  /** A `night.closed` an admin wrote before the closing hour (#332). */
+  readonly endedEarly: boolean
+  /**
+   * A reservation entry's own code (#323): what the thing became — the party's status, the spots
+   * held or freed, a plan or a guest record kept, removed or erased. Null for every other kind.
+   */
+  readonly reservationStatus: string | null
   /** A waiter call entry's kinds (#180): the one asked for, or all of a call that ended. */
   readonly callKinds: readonly string[]
   /** The Undo of "Handled" (RR-58): a `waiter_call.done` line that opens the call again. */
@@ -390,6 +416,27 @@ export interface LogView {
   readonly hasMore: boolean
   readonly days: readonly string[]
 }
+
+/**
+ * The reservations' kinds (#323). Each of their entries says in its `to_state` what the thing
+ * became — the party's status, the spots held or freed, a plan kept or removed, a guest's record
+ * listed, archived or erased — and the Log's sentence picks the word for it. Nothing else of the
+ * entry reaches the screen: a guest's name and number are never in the Log (D140).
+ */
+const RESERVATION_KINDS = new Set<string>([
+  'reservation.created',
+  'reservation.changed',
+  'reservation.status',
+  'reservation.spots',
+  'reservation.restored',
+  'reservation.pay_rule',
+  'night.closed',
+  'plan.changed',
+  'spot.changed',
+  'reservation_settings.changed',
+  'guest.changed',
+  'guest.erased',
+])
 
 export function logLineView(
   line: LogLine,
@@ -451,6 +498,7 @@ export function logLineView(
     guard: line.kind === 'guard.tripped' ? (GUARD_WORDS[line.reason ?? ''] ?? 'other') : null,
     setting: line.reason === 'payment_table' ? 'pay_table' : 'setting',
     subject: line.subject,
+    heldCount: line.heldCount,
     amountMinor: line.amountMinor,
     paymentState: line.kind === 'payment.state' ? line.toState : null,
     paymentAnswer: line.kind === 'payment.answered' ? answerCodeOf(line.toState) : null,
@@ -466,6 +514,9 @@ export function logLineView(
     stornoUndone: line.kind === 'payment.storno' && line.toState === 'open',
     refundSeenUndone: line.kind === 'payment.refund_failed_seen' && line.toState === 'open',
     sentOrdersOfDay: line.sentOrdersOfDay,
+    openBills: line.openBills,
+    endedEarly: line.kind === 'night.closed' && line.reason === 'ended_early',
+    reservationStatus: RESERVATION_KINDS.has(line.kind) ? line.toState : null,
     callKinds: line.callKinds,
     callUndone: line.kind === 'waiter_call.done' && line.toState === 'open',
     ...(line.kind === 'receipt.brought'

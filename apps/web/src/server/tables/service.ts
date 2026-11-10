@@ -307,8 +307,7 @@ export async function loadTablesView(
     tables.map((table) => {
       const bar = board?.barOfTable.get(table.id) ?? null
       const payFirst =
-        payFirstBoard !== null &&
-        payFirstBoard.possible &&
+        payFirstBoard?.possible === true &&
         !table.isPaymentTable &&
         payFirstBoard.capable.has(table.id)
           ? payFirstOfTable(payFirstBoard.settings, table, payFirstBoard.barOfTable.get(table.id))

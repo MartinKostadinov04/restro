@@ -147,6 +147,7 @@ test('the Studio’s Design subtab opens a page of its own; Settings holds no Ap
     'Studio',
     'Tables & QR',
     'Tonight',
+    'Reservations',
     'Settings',
   ])
   await page.getByRole('tab', { name: 'Design' }).click()

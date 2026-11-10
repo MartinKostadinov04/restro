@@ -375,9 +375,11 @@ describe('buildJobs', () => {
       JOB_NAMES.providerNotices,
       JOB_NAMES.walletDomain,
     ])
-    // One warning per missing setting: the sealing keys, the purge connection (D83), the
-    // bill-id key of the table readings (#74) and the receipt email's from-address (#186).
-    expect(warnings).toHaveLength(4)
+    // One warning per missing setting: the sealing keys, the purge connection (D83), the backup
+    // connection (#320), the bill-id key of the table readings (#74) and the receipt email's
+    // from-address (#186).
+    expect(warnings).toHaveLength(5)
+    expect(warnings.some((warning) => warning.includes('DATABASE_URL_BACKUP'))).toBe(true)
     expect(warnings.some((warning) => warning.includes('SEAL_PUBLIC_KEY'))).toBe(true)
     expect(warnings.some((warning) => warning.includes('DATABASE_URL_PURGE'))).toBe(true)
     expect(warnings.some((warning) => warning.includes('BILL_ID_KEY'))).toBe(true)

@@ -111,6 +111,7 @@ import {
 import { preOpeningAlert } from './pre-opening'
 import { recordReading } from './readings'
 import { receiptBrought, receiptUnbrought } from './receipt-brought'
+import { RESERVATION_COMMANDS } from './reservations/commands'
 import { sendOrder } from './send'
 import { SENT_ORDER_COMMANDS } from './sent-order'
 import { sentOrderAnswer } from './sent-order-answer'
@@ -141,6 +142,7 @@ import {
   RoleRefSchema,
   renameStaff,
   resetPin,
+  resetRole,
   revealPins,
   revokeSharedDevice,
   unassignStaff,
@@ -630,15 +632,19 @@ export const SERVICE_COMMANDS = {
     { fromRoleId: RoleRefSchema, name: RoleNameSchema },
     copyRole,
   ),
+  // A default role below the owner's is ticked and unticked here too (#366), named by its kind
+  // when the venue has no row for it yet; its name stays as Restro ships it.
   'role.update': rolesChange(
     'role.update',
     {
-      roleId: idSchema('rl'),
+      roleId: RoleRefSchema,
       name: RoleNameSchema.optional(),
       permissions: PermissionListSchema.optional(),
     },
     updateRole,
   ),
+  /** Puts a default role back as Restro ships it (#366). */
+  'role.reset': rolesChange('role.reset', { roleId: RoleRefSchema }, resetRole),
   'role.archive': rolesChange('role.archive', { roleId: idSchema('rl') }, archiveRole),
   // #72: staff members and their assignment at this venue.
   'staff.add': rolesChange(
@@ -820,6 +826,10 @@ export const SERVICE_COMMANDS = {
     idempotency: 'by_state',
     handle: markNightReportSent,
   }),
+  // #323: the reservations side — the plan and its spots, the venue's spot kinds and settings, the
+  // guest records and their erasure, the booking book, tonight's statuses and spots, the waiting
+  // list, the blocks, and the night's record with the sweep that marks who was never seated.
+  ...RESERVATION_COMMANDS,
 } as const satisfies Record<string, CommandDefinition>
 
 /** One command type. */

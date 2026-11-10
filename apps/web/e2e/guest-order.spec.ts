@@ -119,19 +119,25 @@ for (const style of ORDER_STYLES) {
         await expect(lines(second.page)).toHaveCount(0, SEEN)
 
         // Every call carried the table's code in its header, and no address carried it or the
-        // position; every command carried the phone's value, and the last calls the pass.
+        // position; every command carried the phone's value, and the last calls the pass. What the
+        // night is measured by is not a command: its own endpoint is asked for no phone and carries
+        // none (D142), and this proves that too.
         const all = [...first.calls, ...second.calls]
         expect(all.length).toBeGreaterThan(2)
         for (const call of all) {
           expect(call.url()).not.toContain(seed.code)
           expect(call.url()).not.toContain(String(ORDER_SPOT.lat))
           expect(await call.headerValue('authorization')).toBe(`Table ${seed.code}`)
-          if (call.method() === 'POST') {
+          if (call.method() !== 'POST') continue
+          if (call.url().includes('/api/guest/events')) {
+            expect(await call.headerValue('x-restro-phone')).toBeNull()
+          } else {
             expect(await call.headerValue('x-restro-phone')).toMatch(/^[A-Za-z0-9_-]{22}$/)
           }
         }
         for (const calls of [first.calls, second.calls]) {
-          expect(await calls.at(-1)?.headerValue('x-restro-pass')).toBeTruthy()
+          const commands = calls.filter((call) => !call.url().includes('/api/guest/events'))
+          expect(await commands.at(-1)?.headerValue('x-restro-pass')).toBeTruthy()
         }
       } finally {
         await first.context.close()

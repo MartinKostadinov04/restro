@@ -320,22 +320,64 @@
     {
       "idx": 45,
       "version": "7",
-      "when": 1793354960000,
-      "tag": "0045_design_record",
+      "when": 1794093961706,
+      "tag": "0045_guest_events",
       "breakpoints": true
     },
     {
       "idx": 46,
       "version": "7",
-      "when": 1793388616345,
-      "tag": "0046_drop_menu_settings",
+      "when": 1794135366166,
+      "tag": "0046_reservations",
       "breakpoints": true
     },
     {
       "idx": 47,
       "version": "7",
-      "when": 1793482653237,
-      "tag": "0047_design_styles",
+      "when": 1794221630862,
+      "tag": "0047_shared_device_person",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1794228530910,
+      "tag": "0048_editable_default_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1794232371549,
+      "tag": "0049_reservation_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1794238414079,
+      "tag": "0050_floor_plan_shapes",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1794336599552,
+      "tag": "0051_design_record",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1794336600552,
+      "tag": "0052_drop_menu_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1794336601552,
+      "tag": "0053_design_styles",
       "breakpoints": true
     }
   ]

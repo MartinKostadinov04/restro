@@ -6,6 +6,10 @@
 // kept for a payment of a service day whose closing has passed closes once its payment ended, not
 // at the next open night (D122). Each table's sitting ends through `endSitting` with the reason
 // `closing_hour`, which writes the table's Log entry.
+//
+// The first tick past tonight's closing is **the night's end** (#332, `night-end.ts`): the same
+// keep-paying close, the reservation sweep and the night's stored record, in one write. Every later
+// tick finds the record and only closes what a payment kept, once that payment has ended.
 
 import { payments, sittings } from '@restro/db'
 import { and, eq, isNull, lt } from 'drizzle-orm'
@@ -13,6 +17,7 @@ import { and, eq, isNull, lt } from 'drizzle-orm'
 import { readOrderingSettings } from '../ordering-settings'
 import { closingHourPassed, type ServiceClock, serviceNightAt } from '../service-hours'
 import type { ServiceTx } from './definition'
+import { endTheNight, nightEnded } from './night-end'
 import { accepted, type ServiceResult } from './results'
 import { closeOpenTables } from './sittings'
 
@@ -52,8 +57,14 @@ export async function closeAtClosingHour(stx: ServiceTx): Promise<ServiceResult>
     hours: settings.serviceHours,
   }
   const night = serviceNightAt(stx.now, clock)
-  // A table with a payment in progress waits for a later tick (D122: end after close and capture).
-  if (night.tablesClosed) return closeOpenTables(stx, 'closing_hour', { keepPaying: true })
+  if (night.tablesClosed) {
+    // Tonight's first tick past the closing is the night's end; it stores the night as ended.
+    if (!(await nightEnded(stx, night.serviceDate))) {
+      return endTheNight(stx, { serviceDate: night.serviceDate, early: false })
+    }
+    // A table with a payment in progress waits for a later tick (D122: end after close and capture).
+    return closeOpenTables(stx, 'closing_hour', { keepPaying: true })
+  }
   const kept = await sittingsKeptPastClosing(stx, night.serviceDate, clock)
   if (kept.size === 0) return accepted(null, { details: { closed: 0 } })
   return closeOpenTables(stx, 'closing_hour', { keepPaying: true, only: kept })

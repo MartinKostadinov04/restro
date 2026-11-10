@@ -8,6 +8,7 @@
 import { tableOrders } from '@restro/db'
 import { eq, sql } from 'drizzle-orm'
 
+import { GUEST_EVENT_BATCH_MAX, type GuestEventInput } from '../events'
 import { newId } from '../ids'
 import {
   applyOrderEdit,
@@ -39,6 +40,44 @@ export async function writeOrder(
   stx.rows.touch(row.tableId)
 }
 
+/** What is live on the order, dish by dish: the quantity of every line not removed. */
+function liveByItem(order: TableOrderDraft): ReadonlyMap<string, number> {
+  const live = new Map<string, number>()
+  for (const line of order.lines) {
+    if (line.removedAt !== null) continue
+    live.set(line.itemId, (live.get(line.itemId) ?? 0) + line.qty)
+  }
+  return live
+}
+
+/**
+ * The guest's own side of one edit (D142): an event per dish whose live quantity moved, with the
+ * dish on it, so a night shows which drinks were thought better of and which were kept. An edit
+ * that left the live lines as they were records none; an Undo puts its line back, so it reads as
+ * an add. A restore brings a whole order back, so it can move several dishes at once.
+ */
+function orderEvents(
+  before: TableOrderDraft,
+  after: TableOrderDraft,
+  sittingId: string,
+): readonly GuestEventInput[] {
+  const was = liveByItem(before)
+  const now = liveByItem(after)
+  const events: GuestEventInput[] = []
+  for (const itemId of new Set([...was.keys(), ...now.keys()])) {
+    const moved = (now.get(itemId) ?? 0) - (was.get(itemId) ?? 0)
+    if (moved === 0) continue
+    events.push({
+      kind: moved > 0 ? 'order.line_added' : 'order.line_removed',
+      itemId,
+      sittingId,
+    })
+  }
+  // An event is never worth failing the write it measures (D142), so a restore of more dishes
+  // than one batch takes records the batch rather than throwing.
+  return events.length > GUEST_EVENT_BATCH_MAX ? events.slice(0, GUEST_EVENT_BATCH_MAX) : events
+}
+
 /** An edit's command: the edit with the table and the action id around it. */
 export type OrderEditCommand = OrderEdit & { readonly tableId: string; readonly actionId: string }
 
@@ -65,6 +104,8 @@ export async function editOrder(stx: ServiceTx, command: OrderEditCommand): Prom
   })
   if (!outcome.ok) return refused(command.actionId, outcome.code)
   await writeOrder(stx, row, outcome.order)
+  const events = orderEvents(current, outcome.order, row.sittingId)
+  if (events.length > 0) await stx.recordEvents(command.tableId, events)
   return accepted(command.actionId, {
     details: outcome.lineId === null ? {} : { lineId: outcome.lineId },
   })

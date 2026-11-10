@@ -47,11 +47,29 @@ describe('the service commands', () => {
       // D122 §7: "Handled" and "Brought" are the two quick answers that name no person (#200).
       'receipt.brought',
       'receipt.unbrought',
+      // D141, ticket #323: of the reservation commands only the taps on tonight's floor are quick
+      // — "if the tap only says where people are sitting tonight, it is a tap". The booking book
+      // (create, edit, cancel, delete, restore, copy, put back), the blocks and the night's end
+      // are four digits, and the reservation settings and the guest records are settings-class, so
+      // a PIN can never reach them at all.
+      // #329: the door's own taps are the same kind of tap — a party is here, this many came, they
+      // have gone, that was a mistake — so they are quick on the bar's shared device too.
+      'reservation.arrive',
+      // #331: changing a party's tables says where people sit tonight, as holding a spot does.
+      'reservation.change_tables',
+      'reservation.hold_spots',
+      'reservation.release_spots',
+      'reservation.seat_walk_in',
+      'reservation.set_guests',
+      'reservation.set_status',
+      'reservation.undo_arrival',
       'table.close',
       'table.new_guests',
       'table.open',
       'waiter_call.done',
       'waiter_call.undone',
+      'waiting.add',
+      'waiting.reorder',
     ])
     expect(quick).not.toContain('push.revoke')
     for (const type of quick) {

@@ -1,5 +1,5 @@
 {
-  "id": "ea0f0cba-6df2-44e8-acbe-954d4f53e43d",
+  "id": "4a88179d-14a3-427e-9f81-99cd7975749b",
   "prevId": "d15d90cd-0122-4278-9bac-ad3754d95701",
   "version": "7",
   "dialect": "postgresql",
@@ -1620,7 +1620,7 @@
           "name": "node_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "op": {
           "name": "op",
@@ -1742,15 +1742,7 @@
       "checkConstraints": {
         "events_op": {
           "name": "events_op",
-          "value": "\"restro\".\"events\".\"op\" in ('setField', 'clearField', 'createNode', 'setPlacement', 'removePlacement', 'moveNode', 'setNodeStatus', 'linkSource', 'unlinkSource', 'setLinkState', 'setDesign')"
-        },
-        "events_node_only_for_document_ops": {
-          "name": "events_node_only_for_document_ops",
-          "value": "(\"restro\".\"events\".\"op\" = 'setDesign') = (\"restro\".\"events\".\"node_id\" is null)"
-        },
-        "events_design_scope": {
-          "name": "events_design_scope",
-          "value": "\"restro\".\"events\".\"op\" <> 'setDesign' or (\"restro\".\"events\".\"scope\" ~ '^venue:vn_[0-9A-Za-z]+$' and \"restro\".\"events\".\"field_key\" = 'design' and \"restro\".\"events\".\"layer\" = 'manual')"
+          "value": "\"restro\".\"events\".\"op\" in ('setField', 'clearField', 'createNode', 'setPlacement', 'removePlacement', 'moveNode', 'setNodeStatus', 'linkSource', 'unlinkSource', 'setLinkState')"
         },
         "events_field_key": {
           "name": "events_field_key",
@@ -1989,6 +1981,262 @@
         "field_values_reject_reason": {
           "name": "field_values_reject_reason",
           "value": "\"restro\".\"field_values\".\"valid\" = (\"restro\".\"field_values\".\"reject_reason\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "restro.guest_events": {
+      "name": "guest_events",
+      "schema": "restro",
+      "columns": {
+        "seq": {
+          "name": "seq",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "guest_events_seq_seq",
+            "schema": "restro",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "venue_id": {
+          "name": "venue_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "service_date": {
+          "name": "service_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "table_id": {
+          "name": "table_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sitting_id": {
+          "name": "sitting_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "node_id": {
+          "name": "node_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "amount_minor": {
+          "name": "amount_minor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "locale": {
+          "name": "locale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retention": {
+          "name": "retention",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor": {
+          "name": "actor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "guest_events_venue_service_date_kind_idx": {
+          "name": "guest_events_venue_service_date_kind_idx",
+          "columns": [
+            {
+              "expression": "venue_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "service_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "guest_events_venue_table_at_idx": {
+          "name": "guest_events_venue_table_at_idx",
+          "columns": [
+            {
+              "expression": "venue_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "table_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "guest_events_retention_service_date_idx": {
+          "name": "guest_events_retention_service_date_idx",
+          "columns": [
+            {
+              "expression": "retention",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "service_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "guest_events_tenant_id_format": {
+          "name": "guest_events_tenant_id_format",
+          "value": "\"restro\".\"guest_events\".\"tenant_id\" ~ '^tn_[0-9A-Za-z]+$'"
+        },
+        "guest_events_venue_id_format": {
+          "name": "guest_events_venue_id_format",
+          "value": "\"restro\".\"guest_events\".\"venue_id\" ~ '^vn_[0-9A-Za-z]+$'"
+        },
+        "guest_events_kind": {
+          "name": "guest_events_kind",
+          "value": "\"restro\".\"guest_events\".\"kind\" ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'"
+        },
+        "guest_events_ids": {
+          "name": "guest_events_ids",
+          "value": "\"restro\".\"guest_events\".\"table_id\" ~ '^tb_[0-9A-Za-z]+$' and (\"restro\".\"guest_events\".\"sitting_id\" is null or \"restro\".\"guest_events\".\"sitting_id\" ~ '^st_[0-9A-Za-z]+$') and (\"restro\".\"guest_events\".\"node_id\" is null or \"restro\".\"guest_events\".\"node_id\" ~ '^nd_[0-9A-Za-z]+$')"
+        },
+        "guest_events_amount_minor": {
+          "name": "guest_events_amount_minor",
+          "value": "\"restro\".\"guest_events\".\"amount_minor\" is null or \"restro\".\"guest_events\".\"amount_minor\" >= 0"
+        },
+        "guest_events_amount_currency_pair": {
+          "name": "guest_events_amount_currency_pair",
+          "value": "(\"restro\".\"guest_events\".\"amount_minor\" is null) = (\"restro\".\"guest_events\".\"currency\" is null)"
+        },
+        "guest_events_currency": {
+          "name": "guest_events_currency",
+          "value": "\"restro\".\"guest_events\".\"currency\" is null or \"restro\".\"guest_events\".\"currency\" ~ '^[A-Z]{3}$'"
+        },
+        "guest_events_locale": {
+          "name": "guest_events_locale",
+          "value": "\"restro\".\"guest_events\".\"locale\" is null or \"restro\".\"guest_events\".\"locale\" ~ '^[a-z]{2}_[A-Z]{2}$'"
+        },
+        "guest_events_outcome": {
+          "name": "guest_events_outcome",
+          "value": "\"restro\".\"guest_events\".\"outcome\" is null or \"restro\".\"guest_events\".\"outcome\" ~ '^[a-z][a-z0-9_]{0,63}$'"
+        },
+        "guest_events_retention": {
+          "name": "guest_events_retention",
+          "value": "\"restro\".\"guest_events\".\"retention\" in ('night', 'record')"
+        },
+        "guest_events_source": {
+          "name": "guest_events_source",
+          "value": "\"restro\".\"guest_events\".\"source\" in ('guest', 'staff', 'worker', 'provider', 'restro', 'pos')"
+        },
+        "guest_events_actor": {
+          "name": "guest_events_actor",
+          "value": "\"restro\".\"guest_events\".\"actor\" ~ '^(system|guest|(user|staff|integration|operator):[A-Za-z0-9][A-Za-z0-9_.:-]{0,127})$'"
+        },
+        "guest_events_job_id": {
+          "name": "guest_events_job_id",
+          "value": "\"restro\".\"guest_events\".\"job_id\" ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'"
         }
       },
       "isRLSEnabled": false

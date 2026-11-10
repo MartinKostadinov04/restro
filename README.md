@@ -83,6 +83,10 @@ The worker's `dev` script loads the root `.env.local` and then `.env.worker.loca
 | `PUBLISH_STORE` | `local` or `r2`: where published menus and photo variants go (the worker writes; the web app serves `local` at `/cdn/…`) | `local` in development; an error in production when unset |
 | `LOCAL_PUBLISH_DIR` | Folder of the `local` publish store. Used only with `PUBLISH_STORE=local` | `.local/cdn` in the repository |
 | `R2_PUBLIC_BUCKET` | Name of the public R2 bucket behind the CDN. Required with `PUBLISH_STORE=r2` (with the `R2_*` account settings above) | none |
+| `R2_BACKUP_BUCKET` | Name of the private R2 bucket of the database dumps; never the asset or the public one. Required with `BACKUP_STORE=r2` (with `R2_ACCOUNT_ID`) | none |
+| `R2_BACKUP_ACCESS_KEY_ID` | Access key of an R2 API token scoped to the backup bucket only. Not the asset store's `R2_ACCESS_KEY_ID`, with no fallback to it. Required with `BACKUP_STORE=r2` | none |
+| `R2_BACKUP_SECRET_ACCESS_KEY` | Secret of that R2 API token. Required with `BACKUP_STORE=r2` | none |
+| `R2_BACKUP_ENDPOINT` | S3 endpoint of the backup bucket; carries the `eu.` jurisdiction because that is where the bucket is created. Used only with `BACKUP_STORE=r2` | `https://<R2_ACCOUNT_ID>.eu.r2.cloudflarestorage.com` |
 
 `GET /health` answers `200 {"status":"ok","lastBeatAt":"…","pgboss":"started"}` while pg-boss is started and the last heartbeat is under three minutes old, and `503` with a `reason` otherwise (starting, stopping, no heartbeat yet, stale heartbeat). The answer comes from memory; a probe never touches the database. Run one worker replica for now: each heartbeat job is taken by one replica, so with two the other would look stale.
 
