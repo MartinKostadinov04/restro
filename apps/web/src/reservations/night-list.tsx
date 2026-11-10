@@ -215,6 +215,11 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
    * carries the hour it was taken instead of a number that would read as a very long wait.
    */
   const waitedText = (minutes: number) => (night.today ? duration(minutes) : null)
+  /** The same wait as the row says it: "Waiting for 20 min", or nothing on another night. */
+  const waitedLine = (minutes: number) => {
+    const waited = waitedText(minutes)
+    return waited === null ? null : t('w_for', { duration: waited })
+  }
   const givingLine = giving === null ? null : (queue.find((one) => one.row.id === giving) ?? null)
   /** The spot she tapped, for the party she opened: seated there, by #329's one path. */
   const give = (spot: { readonly id: string; readonly name: string }) => {
@@ -267,7 +272,7 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
               key={row.id}
               row={row}
               busy={busy || door.reading}
-              waited={waitedText(party.waitedMinutes)}
+              waited={waitedLine(party.waitedMinutes)}
               phone={party.phone}
               onOpen={() => setOpen(row.id)}
               onNoShow={null}
