@@ -159,7 +159,7 @@ async function holdsStyle(pool: DbPool, tenantId: string, styleId: string): Prom
  * An id is the server's to make (DA-31): null means a new Style, under a fresh `newId('ds')`, and
  * an id from the caller only ever means "replace this Style of mine". An id this organisation does
  * not hold is `not_found`, as `setStyleStatus` answers it — never a row under an id the caller
- * chose, and never the global primary key of `design_styles` (0047) refusing the insert, which
+ * chose, and never the global primary key of `design_styles` (0053) refusing the insert, which
  * would come back as a bare `failed` and tell the caller the id exists somewhere.
  */
 export async function saveStyle(

@@ -35,6 +35,7 @@ import { withTenantWrite } from '@restro/db/write'
 import { and, eq, isNull, ne, sql } from 'drizzle-orm'
 
 import { lockLiveVenue } from '../apply/venue-lock'
+import { recordEvents as recordGuestEvents } from '../events'
 import { serviceDate } from '../service-day'
 import { ORDER_CHANGES_PER_MINUTE } from '../table-order'
 import { actionsSince, findInRing, pushToRing } from './action-ring'
@@ -51,9 +52,11 @@ import { appendLogEntry } from './log'
 import { tripOrderRate } from './order-rate'
 import { watchPayingState } from './paying-phones'
 import { isSettingsPermission } from './permissions'
+import { fallOf, pinFallActionOf, readPinActions } from './reservations/pin-fall'
 import { accepted, refused, type ServiceResult } from './results'
 import { RowLocks } from './rows'
 import type { SendMenu } from './send-menu'
+import { keepDevicePerson } from './shared-device'
 import { UNDO_AT_KEY, UNDO_ENTRY_KEY, undoExpired } from './undo'
 
 /** How long a service write waits for a row lock before it answers `busy` (design §2.3). */
@@ -212,15 +215,46 @@ export async function executeCommand(
         }
       }
 
-      const grants = await resolveGrants(tx, context.tenantId, venue.id, context.actor, {
-        quick: definition.quickOnSharedDevice === true,
-      })
+      // Where the PIN falls on a shared device. Outside reservations the command says it itself
+      // (`quickOnSharedDevice`). For a reservation action the venue's own list decides (D141,
+      // #324): its stored choice, else D141's default, which is what the flags below say. Read
+      // only for a shared device's own account, the one actor whose answer it can change, and
+      // only for a reservation action — one primary-key lookup, in this same transaction.
+      const reservationAction = pinFallActionOf(type, parsed.data)
+      const quick =
+        reservationAction !== null && context.actor.kind === 'user'
+          ? fallOf(await readPinActions(tx, venue.id), reservationAction) === 'tap'
+          : definition.quickOnSharedDevice === true
+      const grants = await resolveGrants(tx, context.tenantId, venue.id, context.actor, { quick })
       if (!grants.ok) throw new Refusal(refused(actionId, grants.code))
       if (needed !== null && !grants.permissions.has(needed)) {
-        throw new Refusal(refused(actionId, 'permission_denied'))
+        // A reservation action the venue put on one tap, from a device with nobody on it: the
+        // device's own account holds only what Staff hold, and two of D141's taps (seating a
+        // walk-in, changing the guest count) are the booking book's permission. So the door is
+        // asked for the four digits rather than told no, and the person's own session carries the
+        // rest of the run (D141 12.11, #324). With someone on the device this never fires.
+        const code =
+          reservationAction !== null && grants.device === true
+            ? 'pin_required'
+            : 'permission_denied'
+        throw new Refusal(refused(actionId, code))
       }
 
       if (definition.handle === null) throw new Refusal(refused(actionId, 'not_built'))
+
+      // The person's own session on a shared device keeps going while they work (D141 12.11,
+      // #324): their write pushes the device's clock forward, so a run of record work is typed
+      // once and nobody is cut off mid-task. Outside the handler's savepoint, so a refusal the
+      // handler gives still counts as the person being there.
+      if (context.actor.kind === 'staff') {
+        await keepDevicePerson(tx, {
+          venueId: venue.id,
+          sessionId: context.actor.sessionId,
+          staffMemberId: context.actor.staffMemberId,
+          at: now,
+          provenance,
+        })
+      }
 
       const rows = new RowLocks(tx, context.tenantId, venue.id, provenance)
       const day = serviceDate(now, venue.timezone, venue.serviceDayEndsAt)
@@ -259,6 +293,19 @@ export async function executeCommand(
             entry,
           )
           logged.push({ ...written, kind: entry.kind })
+        },
+        recordEvents: async (tableId, events) => {
+          await recordGuestEvents(
+            tx,
+            {
+              tenantId: context.tenantId,
+              venueId: venue.id,
+              tableId,
+              serviceDate: day,
+              ...provenance,
+            },
+            events,
+          )
         },
         lastLogged: (kinds) =>
           logged.findLast((entry) => kinds.includes(entry.kind as never)) ?? null,

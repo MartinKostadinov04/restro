@@ -64,7 +64,7 @@ module.exports = {
       name: 'pure-layers-no-data-or-apps',
       severity: 'error',
       comment:
-        'packages/shell and packages/faces/* must not import @restro/db, a connector, @restro/core/service, @restro/assets or anything under apps/.',
+        'packages/shell and packages/faces/* must not import @restro/db, a connector, @restro/core/service, @restro/core/events, @restro/assets or anything under apps/.',
       from: { path: ['^packages/shell/', '^packages/faces/'] },
       to: {
         path: [
@@ -73,6 +73,8 @@ module.exports = {
           ...CONNECTOR_PACKAGES,
           '^packages/core/src/service/',
           '^@restro/core/service(/|$)',
+          '^packages/core/src/events/',
+          '^@restro/core/events(/|$)',
           '^packages/assets/',
           '^@restro/assets(/|$)',
           '^apps/',
@@ -123,16 +125,16 @@ module.exports = {
       },
     },
 
-    // 2. One write path per side (rule 1 as D122 §9 puts it): only apply() (the menu side) and
-    //    applyService() (the service side) may use the write side of the db package, and the
-    //    package has exactly two doors. Which tables each one writes is pinned by
-    //    packages/core/src/write-targets.test.ts.
+    // 2. One write path per kind of data (rule 1 as D122 §9 puts it): only apply() (the menu
+    //    side), applyService() (the service side) and recordEvents() (the guest events, D142) may
+    //    use the write side of the db package, and the package has exactly two doors. Which tables
+    //    each one writes is pinned by packages/core/src/write-targets.test.ts.
     {
       name: 'db-write-only-from-core-write-paths',
       severity: 'error',
       comment:
-        'Only files under packages/core/src/apply/ and packages/core/src/service/ may import @restro/db/write.',
-      from: { pathNot: ['^packages/core/src/(apply|service)/', '^packages/db/'] },
+        'Only files under packages/core/src/apply/, packages/core/src/service/ and packages/core/src/events/ may import @restro/db/write.',
+      from: { pathNot: ['^packages/core/src/(apply|events|service)/', '^packages/db/'] },
       to: { path: ['^packages/db/src/write(/|\\.|$)', '^@restro/db/write(/|$)'] },
     },
     {
@@ -181,6 +183,27 @@ module.exports = {
         ],
       },
       to: { path: ['^packages/core/src/service/', '^@restro/core/service(/|$)'] },
+    },
+
+    // The guest events' write path (D142) is server code too: the service write path records what
+    // it decided, the worker records a payment's end, and the guest API's route handlers record
+    // what a phone reported. The shell, a face or a guest page never do (rule 4: a guest page
+    // never reads or writes the database; it posts to the guest API).
+    {
+      name: 'core-events-only-from-event-callers',
+      severity: 'error',
+      comment:
+        "Only apps/worker, the web app's route handlers (apps/web/app/api/), its server code (apps/web/src/server/) and the service write path (packages/core/src/service/) may import @restro/core/events (packages/core/src/events/).",
+      from: {
+        pathNot: [
+          '^apps/worker/',
+          '^apps/web/app/api/',
+          '^apps/web/src/server/',
+          '^packages/core/src/service/',
+          '^packages/core/src/events/',
+        ],
+      },
+      to: { path: ['^packages/core/src/events/', '^@restro/core/events(/|$)'] },
     },
 
     // 3 and 4. Connectors are called by the worker only (CLAUDE.md "Never": the web never calls a
@@ -343,7 +366,7 @@ module.exports = {
       name: 'guest-page-reads-published-files-only',
       severity: 'error',
       comment:
-        'apps/web/app/m and apps/web/src/guest (the guest phone page) must not import @restro/db, @restro/core/apply, @restro/core/service, @restro/assets, pg or apps/web/src/server: guest pages never read the database (rule 4).',
+        'apps/web/app/m and apps/web/src/guest (the guest phone page) must not import @restro/db, @restro/core/apply, @restro/core/service, @restro/core/events, @restro/assets, pg or apps/web/src/server: guest pages never read the database (rule 4).',
       from: { path: ['^apps/web/app/m/', '^apps/web/src/guest/'] },
       to: {
         path: [
@@ -353,6 +376,8 @@ module.exports = {
           '^@restro/core/apply(/|$)',
           '^packages/core/src/service/',
           '^@restro/core/service(/|$)',
+          '^packages/core/src/events/',
+          '^@restro/core/events(/|$)',
           '^packages/assets/',
           '^@restro/assets(/|$)',
           '^apps/web/src/server/',

@@ -12,6 +12,7 @@ import { z } from 'zod'
 
 import { logError } from '../log'
 import { requireTenant } from '../session'
+import { rememberedAtSharedDevice } from '../staff/service'
 import { getVenue } from '../venues'
 import { loadLog, loadSentOrderDetail, loadSentOrders, type NightScope } from './night-load'
 import type { Frame, LogView, SentDetailView, SentListView } from './night-view'
@@ -53,6 +54,11 @@ async function scopeOf(id: string): Promise<NightScope | null> {
     tenantId: organization.id,
     venue,
     actor: { kind: 'user', userId: user.id, sessionId },
+    remembered: await rememberedAtSharedDevice({
+      tenantId: organization.id,
+      venueId: venue.id,
+      sessionId,
+    }),
     sourceNone: (await getTranslations('tonight'))('source_none'),
   }
 }

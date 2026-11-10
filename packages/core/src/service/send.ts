@@ -34,9 +34,10 @@ import { randomInt } from 'node:crypto'
 import { sentOrderNotes, sentOrders, venueTables } from '@restro/db'
 import { eq } from 'drizzle-orm'
 
+import { guestEventOutcome } from '../events'
 import { type AreaId, type BarId, newId, type TableId } from '../ids'
 import { readOrderingSettings } from '../ordering-settings'
-import { itemPaymentMode, payFirstApplies, readPayFirstSettings } from '../pay-first-settings'
+import { itemPaymentMode, payFirstRuleApplies, readPayFirstSettings } from '../pay-first-settings'
 import { guestNight, phonesMaySend } from '../service-hours'
 import { orderFromRow, type SendRequestLine, takeSentLines, tidyOrder } from '../table-order'
 import { readGuestFeatures } from '../theme'
@@ -50,6 +51,7 @@ import {
   type PayFirstSendPart,
   preparePayFirst,
 } from './pay-first'
+import { payRuleAtTable } from './reservations/pay-rule'
 import { accepted, type ResultDetails, refused, type ServiceResult } from './results'
 import {
   findDuplicate,
@@ -120,8 +122,29 @@ export interface SendCommand {
 
 export { orderingPaused } from './pause-scope'
 
-/** Sends the table's order (the engine holds the order row). */
+/**
+ * Sends the table's order (the engine holds the order row), and records the attempt (D142): one
+ * `order.send_attempted` per Send, `ok` or the code it was refused with, so a night shows the
+ * scan-to-send conversion and the time from the scan to the first Send. A refused Send's event is
+ * kept (`keepOnRefusal`), since the refusal rolls the handler's own writes back; a repeat the
+ * engine answers from the sent order never reaches here, so it records nothing twice.
+ */
 export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<ServiceResult> {
+  const sittingId = stx.rows.heldOrder(command.tableId)?.sittingId
+  const result = await attemptSend(stx, command)
+  const event = {
+    kind: 'order.send_attempted',
+    outcome: result.status === 'accepted' ? 'ok' : guestEventOutcome(result.code),
+    ...(sittingId === undefined || sittingId === null ? {} : { sittingId }),
+  } as const
+  const record = () => stx.recordEvents(command.tableId, [event])
+  if (result.status === 'accepted') await record()
+  else stx.keepOnRefusal(record)
+  return result
+}
+
+/** Decides and writes one Send; `sendOrder` records the attempt around it. */
+async function attemptSend(stx: ServiceTx, command: SendCommand): Promise<ServiceResult> {
   const { actionId, tableId } = command
   const row = stx.rows.heldOrder(tableId)
   if (row === null) return refused(actionId, 'table_not_open')
@@ -149,13 +172,22 @@ export async function sendOrder(stx: ServiceTx, command: SendCommand): Promise<S
   // Pay-first items (#113): where pay-first applies at the table, an item paid first (its own
   // mode, else the venue's default) goes in the Send's pay-first part, never on the bill.
   const payFirstSettings = readPayFirstSettings(stx.venue.settings)
+  // The rule of the party sitting here, where one is in force on this sitting (#334, D135): a
+  // level between the table's own setting and its bar's, so a party told to pay first meets
+  // pay-first items even where the house puts everything on the bill — and a table with a setting
+  // of its own is untouched by it (`payFirstRuleAt`).
+  const partyRule = await payRuleAtTable(stx.tx, { tableId, sittingId: row.sittingId })
   const applies =
     table !== undefined &&
-    payFirstApplies(payFirstSettings, {
-      tableId: tableId as TableId,
-      barId: barId as BarId | null,
-      areaId: table.areaId as AreaId,
-    })
+    payFirstRuleApplies(
+      payFirstSettings,
+      {
+        tableId: tableId as TableId,
+        barId: barId as BarId | null,
+        areaId: table.areaId as AreaId,
+      },
+      partyRule,
+    )
   const isPayFirst = (line: { readonly itemId: string }) =>
     applies &&
     itemPaymentMode(menu.items.get(line.itemId)?.paymentMode, payFirstSettings) === 'pay_first'

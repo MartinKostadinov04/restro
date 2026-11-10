@@ -3,7 +3,11 @@
 // R2AssetStore and R2PublishStore are not re-exported: the create functions load them lazily, so
 // a local run never loads the AWS SDK. test-images.ts is for tests only and is imported by
 // relative path.
+export * from './backup-config'
+export * from './backup-paths'
+export * from './backup-store'
 export * from './config'
+export * from './create-backup-store'
 export * from './create-publish-store'
 export * from './create-store'
 export * from './guest-files'

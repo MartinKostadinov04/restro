@@ -1,13 +1,17 @@
-// `pnpm db:roles`: creates or updates the two login roles the apps connect as, `restro_app`
-// (the web app and the worker) and `restro_purge` (the worker's purge job only, D83), and makes
-// their privileges exactly what src/table-access.ts lists. Run it after every `pnpm db:migrate`;
+// `pnpm db:roles`: creates or updates the login roles the apps connect as, `restro_app` (the web
+// app and the worker), `restro_purge` (the worker's purge job only, D83) and, where its password
+// is set, `restro_backup` (the worker's database backup only, D143), and makes their privileges
+// exactly what src/table-access.ts lists. Run it after every `pnpm db:migrate`;
 // it is idempotent. Connects as the migration owner (DATABASE_URL_OWNER); the passwords come
-// from DATABASE_APP_PASSWORD and DATABASE_PURGE_PASSWORD and are sent to Postgres only as SCRAM
+// from DATABASE_APP_PASSWORD, DATABASE_PURGE_PASSWORD and DATABASE_BACKUP_PASSWORD (the last is
+// optional: without it a missing restro_backup is not created, an existing one is only checked)
+// and are sent to Postgres only as SCRAM
 // verifiers. Owner-only code: never imported by the package's entry points.
 //
 // What it guarantees for each role (and checks before committing, all in one transaction):
 // - the role can log in and is not superuser, BYPASSRLS, CREATEROLE, CREATEDB or REPLICATION,
-//   inherits nothing and is a member of no other role;
+//   inherits nothing and is a member of no other role (restro_backup alone has BYPASSRLS, and
+//   only SELECT: its sessions are read-only too);
 // - it owns no table in `restro` and cannot CREATE there; it may CONNECT to the database and use
 //   `restro`; restro_app may also use and create in `pgboss` (pg-boss's own tables);
 // - on every table in `restro` it holds exactly the privileges in TABLE_ACCESS (`app`, or
@@ -27,6 +31,8 @@ import {
   APP_ROLE,
   APP_SCHEMA,
   APP_SCHEMA_PRIVILEGES,
+  BACKUP_ROLE,
+  BACKUP_SCHEMA_PRIVILEGES,
   PURGE_ROLE,
   PURGE_SCHEMA_PRIVILEGES,
   ROUTINE_ACCESS,
@@ -66,6 +72,10 @@ interface RoleSpec {
    * ended. Values are stored, and compared, exactly as written here.
    */
   readonly settings: Readonly<Record<string, string>>
+  /** True for the one role that must read every tenant's rows (D143). Every other role has none. */
+  readonly bypassRls?: boolean
+  /** True: without its password the role is not created, and an existing one keeps its password. */
+  readonly optional?: boolean
 }
 
 const ROLES: readonly RoleSpec[] = [
@@ -85,6 +95,22 @@ const ROLES: readonly RoleSpec[] = [
     schemaPrivileges: PURGE_SCHEMA_PRIVILEGES,
     // A purge deletes a whole venue's rows in one transaction: longer statements, same idle rule.
     settings: { statement_timeout: '5min', idle_in_transaction_session_timeout: '60s' },
+  },
+  {
+    // The backup (D143): reads everything, changes nothing. `pg_dump` runs long statements and
+    // sits idle between tables, and its sessions are read-only whatever the client asks for.
+    name: BACKUP_ROLE,
+    passwordEnv: 'DATABASE_BACKUP_PASSWORD',
+    rotateEnv: 'DATABASE_BACKUP_PASSWORD_ROTATE',
+    privilegesOf: () => ['SELECT'],
+    schemaPrivileges: BACKUP_SCHEMA_PRIVILEGES,
+    settings: {
+      statement_timeout: '30min',
+      idle_in_transaction_session_timeout: '30min',
+      default_transaction_read_only: 'on',
+    },
+    bypassRls: true,
+    optional: true,
   },
 ]
 
@@ -119,11 +145,12 @@ function id(client: Client, name: string): string {
 async function upsertRole(
   client: Client,
   spec: RoleSpec,
-  password: string,
+  password: string | undefined,
   rotatePassword: boolean,
 ): Promise<'created' | 'updated'> {
   const role = id(client, spec.name)
-  const verifier = client.escapeLiteral(scramSha256Verifier(password))
+  const verifier =
+    password === undefined ? null : client.escapeLiteral(scramSha256Verifier(password))
   const { rows } = await client.query<RoleRow>(
     `select rolsuper, rolcreaterole, rolcreatedb, rolreplication, rolbypassrls, rolinherit,
             rolcanlogin
@@ -132,8 +159,11 @@ async function upsertRole(
   )
   const current = rows[0]
   if (!current) {
+    if (verifier === null) throw new Error(`${spec.passwordEnv} is needed to create ${spec.name}.`)
+    // BYPASSRLS can be given only by an owner that holds it (the hosted owner does).
+    const bypass = spec.bypassRls ? 'bypassrls' : 'nobypassrls'
     await client.query(
-      `create role ${role} with login noinherit nocreatedb nocreaterole password ${verifier}`,
+      `create role ${role} with login noinherit nocreatedb nocreaterole ${bypass} password ${verifier}`,
     )
     return 'created'
   }
@@ -142,12 +172,13 @@ async function upsertRole(
   const fixes: string[] = []
   if (current.rolsuper) fixes.push('nosuperuser')
   if (current.rolreplication) fixes.push('noreplication')
-  if (current.rolbypassrls) fixes.push('nobypassrls')
+  if (current.rolbypassrls && !spec.bypassRls) fixes.push('nobypassrls')
+  if (!current.rolbypassrls && spec.bypassRls) fixes.push('bypassrls')
   if (current.rolcreaterole) fixes.push('nocreaterole')
   if (current.rolcreatedb) fixes.push('nocreatedb')
   if (current.rolinherit) fixes.push('noinherit')
   if (!current.rolcanlogin) fixes.push('login')
-  const changes = rotatePassword ? [...fixes, `password ${verifier}`] : fixes
+  const changes = rotatePassword && verifier !== null ? [...fixes, `password ${verifier}`] : fixes
   if (changes.length > 0) await client.query(`alter role ${role} with ${changes.join(' ')}`)
   return 'updated'
 }
@@ -211,7 +242,7 @@ function granteeSql(client: Client, grantee: string): string {
 /** Every schema any of our roles may use. */
 const ALL_SCHEMAS = [...new Set(ROLES.flatMap((role) => Object.keys(role.schemaPrivileges)))]
 
-async function grantSchemas(client: Client): Promise<void> {
+async function grantSchemas(client: Client, roles: readonly RoleSpec[]): Promise<void> {
   const { rows } = await client.query<{ nspname: string }>(
     'select nspname from pg_catalog.pg_namespace where nspname = any($1::text[])',
     [ALL_SCHEMAS],
@@ -220,7 +251,7 @@ async function grantSchemas(client: Client): Promise<void> {
   if (missing.length > 0) {
     throw new Error(`Schema(s) ${missing.join(', ')} missing: run pnpm db:migrate first.`)
   }
-  for (const spec of ROLES) {
+  for (const spec of roles) {
     const role = id(client, spec.name)
     for (const schema of ALL_SCHEMAS) {
       await client.query(`revoke all on schema ${id(client, schema)} from ${role}`)
@@ -240,7 +271,7 @@ async function grantSchemas(client: Client): Promise<void> {
   }
 }
 
-async function grantTables(client: Client): Promise<void> {
+async function grantTables(client: Client, roles: readonly RoleSpec[]): Promise<void> {
   const { rows } = await client.query<{ relname: string }>(
     `select relname from pg_catalog.pg_class
      where relnamespace = $1::regnamespace and relkind = any($2::"char"[]) order by relname`,
@@ -258,7 +289,7 @@ async function grantTables(client: Client): Promise<void> {
   if (missing.length > 0) {
     throw new Error(`Table(s) ${missing.join(', ')} do not exist yet: run pnpm db:migrate first.`)
   }
-  for (const spec of ROLES) {
+  for (const spec of roles) {
     const role = id(client, spec.name)
     for (const [name, access] of Object.entries(tableAccess)) {
       const table = `${id(client, APP_SCHEMA)}.${id(client, name)}`
@@ -280,7 +311,7 @@ async function grantTables(client: Client): Promise<void> {
   // (trigger functions need no EXECUTE).
   const schema = id(client, APP_SCHEMA)
   await client.query(`revoke all on all routines in schema ${schema} from public`)
-  for (const spec of ROLES) {
+  for (const spec of roles) {
     const role = id(client, spec.name)
     await client.query(`revoke all on all sequences in schema ${schema} from ${role}`)
     await client.query(`revoke all on all routines in schema ${schema} from ${role}`)
@@ -288,6 +319,21 @@ async function grantTables(client: Client): Promise<void> {
   const otherRoutineGrantees = await otherGrantees(client, OTHER_ROUTINE_GRANTEES, [APP_SCHEMA])
   for (const { object, grantee } of otherRoutineGrantees) {
     await client.query(`revoke all on function ${object} from ${granteeSql(client, grantee)}`)
+  }
+  // The backup role reads the sequences too (`pg_dump` carries their position), and every table
+  // of the schemas it uses besides `restro`, whose tables are TABLE_ACCESS's.
+  const backup = roles.find((spec) => spec.name === BACKUP_ROLE)
+  if (backup !== undefined) {
+    const role = id(client, backup.name)
+    for (const name of Object.keys(backup.schemaPrivileges)) {
+      const inSchema = id(client, name)
+      if (name !== APP_SCHEMA) {
+        await client.query(`revoke all on all tables in schema ${inSchema} from ${role}`)
+        await client.query(`grant select on all tables in schema ${inSchema} to ${role}`)
+      }
+      await client.query(`revoke all on all sequences in schema ${inSchema} from ${role}`)
+      await client.query(`grant select on all sequences in schema ${inSchema} to ${role}`)
+    }
   }
   // Then the few routines a role may call (ROUTINE_ACCESS), each to its listed roles only.
   for (const [signature, grantees] of Object.entries(routineAccess)) {
@@ -300,10 +346,10 @@ async function grantTables(client: Client): Promise<void> {
 }
 
 /** Re-reads the catalog and throws if anything differs from what this script promises. */
-async function verify(client: Client): Promise<void> {
+async function verify(client: Client, roles: readonly RoleSpec[]): Promise<void> {
   const problems: string[] = []
 
-  for (const spec of ROLES) {
+  for (const spec of roles) {
     const role = await client.query<RoleRow>(
       `select rolsuper, rolcreaterole, rolcreatedb, rolreplication, rolbypassrls, rolinherit,
               rolcanlogin
@@ -315,7 +361,8 @@ async function verify(client: Client): Promise<void> {
       problems.push(`role ${spec.name} does not exist`)
     } else {
       for (const [name, value] of Object.entries(attributes)) {
-        const wanted = name === 'rolcanlogin'
+        const wanted =
+          name === 'rolcanlogin' || (name === 'rolbypassrls' && spec.bypassRls === true)
         if (value !== wanted) problems.push(`${spec.name}.${name} is ${value}, expected ${wanted}`)
       }
     }
@@ -419,6 +466,26 @@ async function verify(client: Client): Promise<void> {
         problems.push(`${spec.name}: EXECUTE on ${APP_SCHEMA}.${signature}: ${granted}`)
       }
     }
+    if (spec.name === BACKUP_ROLE) {
+      // Reads every table and sequence of its schemas, writes none (restro's tables are above).
+      const extra = await client.query<{ object: string; ok: boolean }>(
+        `select n.nspname || '.' || c.relname as object,
+                case when c.relkind = 'S'
+                  then has_sequence_privilege($1, c.oid, 'SELECT')
+                  else has_table_privilege($1, c.oid, 'SELECT')
+                    and not has_table_privilege($1, c.oid, 'INSERT')
+                    and not has_table_privilege($1, c.oid, 'UPDATE')
+                    and not has_table_privilege($1, c.oid, 'DELETE')
+                end as ok
+         from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+         where n.nspname = any($2::text[]) and c.relkind = any($3::"char"[])
+           and (n.nspname <> $4 or c.relkind = 'S')`,
+        [spec.name, Object.keys(spec.schemaPrivileges), [...RELATION_KINDS, 'S'], APP_SCHEMA],
+      )
+      for (const { object, ok } of extra.rows) {
+        if (!ok) problems.push(`${spec.name} cannot read ${object}, or can write it`)
+      }
+    }
     for (const [signature, grantees] of Object.entries(routineAccess)) {
       if (
         grantees.includes(spec.name) &&
@@ -449,6 +516,8 @@ async function main(): Promise<void> {
   )
   const passwords = new Map<string, string>()
   for (const spec of ROLES) {
+    // An optional role's password may be left out (see RoleSpec.optional).
+    if (spec.optional && !process.env[spec.passwordEnv]?.trim()) continue
     const password = requireEnv(
       spec.passwordEnv,
       `It is the password ${spec.name} gets; the matching connection string must carry the same one.`,
@@ -471,11 +540,25 @@ async function main(): Promise<void> {
       throw new Error(`DATABASE_URL_OWNER logs in as ${owner}; it must be the migration owner.`)
     }
 
-    const outcomes: string[] = []
+    // Every role with a password, and an optional one without a password that already exists
+    // (checked, its password kept). An optional role that is neither is left out.
+    const roles: RoleSpec[] = []
     for (const spec of ROLES) {
+      if (passwords.has(spec.name)) {
+        roles.push(spec)
+        continue
+      }
+      const exists = await client.query('select 1 from pg_catalog.pg_roles where rolname = $1', [
+        spec.name,
+      ])
+      if (exists.rowCount) roles.push(spec)
+    }
+
+    const outcomes: string[] = []
+    for (const spec of roles) {
       // Explicit opt-in: only then does an existing role get its password re-set (see upsertRole).
       const rotatePassword = process.env[spec.rotateEnv] === '1'
-      const outcome = await upsertRole(client, spec, passwords.get(spec.name) ?? '', rotatePassword)
+      const outcome = await upsertRole(client, spec, passwords.get(spec.name), rotatePassword)
       await applyRoleSettings(client, spec)
       await client.query(
         `revoke all on database ${id(client, database)} from ${id(client, spec.name)}`,
@@ -491,9 +574,9 @@ async function main(): Promise<void> {
             .join(', ')}]`,
       )
     }
-    await grantSchemas(client)
-    await grantTables(client)
-    await verify(client)
+    await grantSchemas(client, roles)
+    await grantTables(client, roles)
+    await verify(client, roles)
     await client.query('commit')
     console.log(
       `db:roles: ${outcomes.join('; ')} on ${describeTarget(url)}; privileges match ` +

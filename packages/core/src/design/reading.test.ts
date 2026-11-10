@@ -4,7 +4,7 @@
 // reads as a whole, drawable design — while everything written still goes through the strict
 // `DesignValuesSchema`.
 //
-// The records built here are the ones migration 0045 wrote (its `overrides` is carried over
+// The records built here are the ones migration 0051 wrote (its `overrides` is carried over
 // whenever it is a JSON object, junk inside and all): the cases are B3's `overrides*` rows of the
 // audit's `apps/web/src/da-b3/migration-0045.test.ts`.
 import * as fc from 'fast-check'
@@ -32,7 +32,7 @@ const CHOSEN: DesignValues = {
 }
 
 /**
- * The record migration 0045 writes: it carries `overrides` over exactly when the stored theme held
+ * The record migration 0051 writes: it carries `overrides` over exactly when the stored theme held
  * a JSON object there (`jsonb_typeof(...) = 'object'`), whatever is inside it, and drops anything
  * else. Everything else of the record is Basic's, with the venue's colours and logo.
  */
@@ -49,7 +49,7 @@ function record(overrides: unknown, values: DesignValues = CHOSEN): Record<strin
       layer: 'manual',
       source: 'manual',
       actor: 'system',
-      job_id: 'migration:0045_design_record',
+      job_id: 'migration:0051_design_record',
       change_set_id: null,
     },
   }
@@ -218,7 +218,7 @@ describe('readDesignToShow: a stored record that does not parse (DA-33, DA-28)',
     expect(DesignValuesSchema.safeParse(shown.design.values).success).toBe(true)
   })
 
-  // B3's `overrides*` cases: what migration 0045 carried over from a hand-edited theme.
+  // B3's `overrides*` cases: what migration 0051 carried over from a hand-edited theme.
   const CARRIED: Record<string, unknown> = {
     overridesSchemeString: { light: 'red' },
     overridesBadHex: { light: { accent: 'not-a-colour' } },
@@ -233,7 +233,7 @@ describe('readDesignToShow: a stored record that does not parse (DA-33, DA-28)',
       expect(readDesignRecord(settings), name).toBeNull()
       expect(hasInvalidDesign(settings), name).toBe(true)
     }
-    // The two shapes 0045 did not carry (not objects) leave a record that reads.
+    // The two shapes 0051 did not carry (not objects) leave a record that reads.
     for (const overrides of ['x', [{ light: {} }]]) {
       expect(readDesignRecord(settingsWith(record(overrides)))).not.toBeNull()
     }

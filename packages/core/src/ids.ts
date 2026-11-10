@@ -15,6 +15,9 @@ import { z } from 'zod'
  * role, `sm` staff member, `dv` shared device. Paying (D127): `py` payment. Readings (#74): `rd`
  * one POS bill of a table's reading, `bn` one line of it. Refunds (#222): `rf` one refund the venue made in its provider's dashboard.
  * My styles (D129): `ds` one saved Style of an organisation.
+ * Reservations (D134, D140; ticket #323): `fp` one floor plan of a venue, `sp` one spot on it (a
+ * spot may link to a `tb` table and is never one), `rv` one reservation (a booking, a walk-in, a
+ * waiting party or a block), `gu` one guest record of a venue.
  */
 export const ID_KINDS = [
   'nd',
@@ -48,6 +51,10 @@ export const ID_KINDS = [
   'bn',
   'rf',
   'ds',
+  'fp',
+  'sp',
+  'rv',
+  'gu',
 ] as const
 
 /** One of the id kind prefixes. */

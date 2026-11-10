@@ -72,6 +72,28 @@ export const LOG_KINDS = {
   // A refund that did not go through, seen by a manager or owner, or put back (#234).
   'payment.refund_failed_seen': 'record',
   'payment.dispute': 'record',
+  // Reservations (#323; D141: one Log for the night, readable by night and by reservation, and
+  // never a guest's contact details). Tonight's own moves are the night's; what outlives the
+  // night — the plan, the spots, the settings and the guest records — is a record, as every other
+  // settings change here is.
+  'reservation.created': 'night',
+  'reservation.changed': 'night',
+  'reservation.status': 'night',
+  'reservation.spots': 'night',
+  'reservation.restored': 'night',
+  // The pay rule a party carries (#334; D135, D122 §7): a `record`, like every other level's
+  // change, because it is a guard over the money and the club must still be able to read who set
+  // it months later.
+  'reservation.pay_rule': 'record',
+  'night.closed': 'night',
+  'night.swept': 'night',
+  'plan.changed': 'record',
+  'spot.changed': 'record',
+  'reservation_settings.changed': 'record',
+  'guest.changed': 'record',
+  // What was erased and when, for the audit D140 asks for; never what was erased (the name, the
+  // number). The entry names the guest's own id, which points at an emptied record.
+  'guest.erased': 'record',
 } as const satisfies Record<string, LogRetention>
 
 /** One kind of Log entry. */
@@ -101,6 +123,10 @@ export const LogEntryInputSchema = z.strictObject({
   paymentId: idSchema('py').optional(),
   tableId: idSchema('tb').optional(),
   sittingId: idSchema('st').optional(),
+  /** The reservation this entry is about (D141): every reservation entry names it. */
+  reservationId: idSchema('rv').optional(),
+  /** The guest record this entry is about (D140): the id alone, never what it held. */
+  guestId: idSchema('gu').optional(),
   fromState: CodeSchema.optional(),
   toState: CodeSchema.optional(),
   reason: CodeSchema.optional(),
@@ -150,6 +176,8 @@ export async function appendLogEntry(
       paymentId: entry.paymentId ?? null,
       tableId: entry.tableId ?? null,
       sittingId: entry.sittingId ?? null,
+      reservationId: entry.reservationId ?? null,
+      guestId: entry.guestId ?? null,
       fromState: entry.fromState ?? null,
       toState: entry.toState ?? null,
       reason: entry.reason ?? null,

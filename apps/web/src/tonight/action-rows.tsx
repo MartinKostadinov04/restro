@@ -9,6 +9,7 @@ import {
   BellRingIcon,
   CirclePauseIcon,
   HourglassIcon,
+  MoonIcon,
   PackageXIcon,
   ReceiptTextIcon,
   RotateCcwIcon,
@@ -71,6 +72,7 @@ const ICONS = {
   storno: RotateCcwIcon,
   dispute: ShieldAlertIcon,
   refund_failed: TriangleAlertIcon,
+  night_end: MoonIcon,
   pay: MONEY_ICONS.pay.Icon,
   failed: MONEY_ICONS.failed.Icon,
   stuck: MONEY_ICONS.stuck.Icon,
@@ -249,6 +251,8 @@ export function ActionRowItem({
                         rcptTime: storno.receiptTime ?? dash,
                         fm: storno.fiscalMemoryNumber ?? dash,
                       })} ${t('st_b', { source: view.source })}`,
+                      // The money the storno names is confirmed on the sheet, remembered or not.
+                      confirm: true,
                     },
                   }
                 : {}),
@@ -351,7 +355,16 @@ export function ActionRowItem({
             run({
               id: `refund_failed:${refundFailed.refundId}`,
               ...(view.device
-                ? { pin: { level: 'manager' as const, title: t('rf_ok'), body: title } }
+                ? {
+                    // A refund that failed at the provider: the sheet states the money and the
+                    // follow-up, so it opens even when the device remembers the person.
+                    pin: {
+                      level: 'manager' as const,
+                      title: t('rf_ok'),
+                      body: title,
+                      confirm: true,
+                    },
+                  }
                 : {}),
               act: (pin) =>
                 refundFailedSeenAction({
@@ -408,6 +421,15 @@ export function ActionRowItem({
         </Button>
       )
     }
+  } else if (row.kind === 'night_end') {
+    // The closing hour's warning (#332): the bills the night's end found still open. Staff close
+    // them at the POS; Restro never touches a bill or a payment here, so the row has no answer.
+    title = t('ne_bills', { n: row.nightEnd?.openBills ?? 0 })
+    body = (
+      <p className="text-sm text-muted-foreground">
+        {t('nb_d', { time: row.nightEnd?.at ?? '', source: view.source })}
+      </p>
+    )
   } else if (row.kind === 'approval') {
     // Approval lives in the POS (D116): the row is read-only, no Approve or Decline (plan §10 Q4).
     title = t('a_t')

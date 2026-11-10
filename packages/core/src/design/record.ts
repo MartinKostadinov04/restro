@@ -2,7 +2,7 @@
 // choice option of the contract (D130), the venue's three colours and the Advanced roles (D70), the
 // logo, the Style it came from, a revision and the provenance of the write that stored it. It
 // replaced `venues.settings.theme` and `presentation` and absorbed the menus' layout and guest
-// switch (migration 0045); a section's own layout stays a field on the section.
+// switch (migration 0051); a section's own layout stays a field on the section.
 //
 // Only `apply()`'s `setDesign` operation writes it (rules 1 and 2), with the revision it expects
 // (a stale one is refused); scripts/design-writers.test.ts holds that. Nothing is derived into
@@ -65,7 +65,7 @@ export type DesignContent = z.output<typeof DesignContentSchema>
 
 /**
  * Who stored the record (rule 2): the manual layer and source (a design is the venue's own, never a
- * till's), the actor (the member who saved it, or `system` for migration 0045) and the job. The
+ * till's), the actor (the member who saved it, or `system` for migration 0051) and the job. The
  * actor's pattern is change-set.ts's, narrowed to the two actors a design has; it is written out
  * here because the change set imports this file.
  */
@@ -76,7 +76,7 @@ export const DesignProvenanceSchema = z.strictObject({
     .string()
     .regex(/^(?:system|user:[A-Za-z0-9][A-Za-z0-9_.:-]{0,127})$/, 'expected an actor'),
   job_id: z.string().min(1).max(128),
-  /** The change set that saved it; null for the record migration 0045 wrote. */
+  /** The change set that saved it; null for the record migration 0051 wrote. */
   change_set_id: idSchema('cs').nullable(),
 })
 
@@ -185,7 +185,7 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 /**
  * The Advanced roles that can be read out of a stored `overrides`: every `#rrggbb` set for a role
- * of a scheme the theme knows, and nothing else. A hand-edited row (or one migration 0045 carried
+ * of a scheme the theme knows, and nothing else. A hand-edited row (or one migration 0051 carried
  * over, DA-28) can hold an unknown scheme, an unknown role or a value that is not a colour: those
  * go, the rest stays, and `undefined` means there is nothing left to show.
  */
@@ -296,12 +296,12 @@ function nearestWord<W extends string>(table: { readonly [K in W]: number }, amo
   return best[0]
 }
 
-/** The Corners word nearest to a radius in px (how migration 0045 mapped the old slider). */
+/** The Corners word nearest to a radius in px (how migration 0051 mapped the old slider). */
 export function cornersOfRadius(radius: number): DesignValues['general']['corners'] {
   return nearestWord(CORNER_RADIUS, radius)
 }
 
-/** The Depth word nearest to a shadow strength (how migration 0045 mapped the old slider). */
+/** The Depth word nearest to a shadow strength (how migration 0051 mapped the old slider). */
 export function depthOfShadow(shadow: number): DesignValues['general']['depth'] {
   return nearestWord(DEPTH_SHADOW, shadow)
 }

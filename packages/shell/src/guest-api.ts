@@ -12,7 +12,13 @@
 // `X-Restro-Payment`, never in an address or a body; `GET /api/guest/payment` answers that phone
 // alone, with its payment and, while the card is being collected, the provider's form values.
 
-import { GuestPositionSchema, idSchema, LocalizedTextSchema, PAID_LINES_MAX } from '@restro/core'
+import {
+  GuestPositionSchema,
+  idSchema,
+  LocaleSchema,
+  LocalizedTextSchema,
+  PAID_LINES_MAX,
+} from '@restro/core'
 import { z } from 'zod'
 import { SERVICE_KINDS } from './features'
 import { GUEST_REFUSAL_CODES, PAYMENT_STATES } from './service-vocabulary'
@@ -339,6 +345,51 @@ export const GuestActionRequestSchema = z.strictObject({
 
 /** The body of `POST /api/guest/actions`. */
 export type GuestActionRequest = z.input<typeof GuestActionRequestSchema>
+
+/**
+ * The guest events a phone reports itself (D142): the three things that happen wholly on the phone
+ * and leave no service row of ours. Everything else a night is measured by — a Send, a payment, a
+ * waiter call — is recorded by the write that decided it, so a tampered phone can invent none of
+ * them. The venue, the table, the sitting and the service day come from the table's code, never
+ * from the body, and nothing here can carry personal data.
+ *
+ * Restated here because the shell may not import `@restro/core/events` (it is pure); core checks
+ * every batch again against its own closed union before it writes.
+ */
+export const GuestEventReportSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('menu.opened'), ageMs: z.int().nonnegative().max(MAX_AGE_MS) }),
+  z.strictObject({
+    kind: z.literal('item.opened'),
+    /** Our own node id of the item a guest opened: never a POS id and never a name (rule 3). */
+    itemId: idSchema('nd'),
+    ageMs: z.int().nonnegative().max(MAX_AGE_MS),
+  }),
+  z.strictObject({
+    kind: z.literal('language.chosen'),
+    locale: LocaleSchema,
+    ageMs: z.int().nonnegative().max(MAX_AGE_MS),
+  }),
+])
+
+/** One event a phone reports. */
+export type GuestEventReport = z.input<typeof GuestEventReportSchema>
+
+/** The most events one request may report; the body cap (8 KB) bites first. */
+export const GUEST_EVENT_REPORT_MAX = 20
+
+/** The body of `POST /api/guest/events`. */
+export const GuestEventsRequestSchema = z.strictObject({
+  events: z.array(GuestEventReportSchema).min(1).max(GUEST_EVENT_REPORT_MAX),
+})
+
+/** The body of `POST /api/guest/events`. */
+export type GuestEventsRequest = z.input<typeof GuestEventsRequestSchema>
+
+/** What `POST /api/guest/events` answers: how many of the batch were recorded. */
+export const GuestEventsAnswerSchema = z.strictObject({ recorded: z.int().nonnegative() })
+
+/** What `POST /api/guest/events` answers. */
+export type GuestEventsAnswer = z.output<typeof GuestEventsAnswerSchema>
 
 /** A command's answer. */
 export const GuestCommandResultSchema = z.strictObject({

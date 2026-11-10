@@ -306,7 +306,7 @@ function Content({ view, frame, slots }: { view: NightView; frame: Frame; slots:
 /** The end of one night for a venue. */
 export function NightPage(props: { view: NightView; frame: Frame; slots: NightSlots }) {
   return (
-    <RunProvider>
+    <RunProvider asks={props.frame.asks}>
       <Content {...props} />
     </RunProvider>
   )

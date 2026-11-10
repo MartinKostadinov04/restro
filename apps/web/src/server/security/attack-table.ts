@@ -20,9 +20,11 @@ import * as sheet from '@/server/item-sheet/actions'
 import * as menus from '@/server/menus-actions'
 import * as organization from '@/server/organization-actions'
 import * as publish from '@/server/publish/actions'
+import * as nightBook from '@/server/reservations/actions'
 import * as alerts from '@/server/settings/alerts-actions'
 import * as ordering from '@/server/settings/ordering-actions'
 import * as paying from '@/server/settings/paying-actions'
+import * as reservations from '@/server/settings/reservations-actions'
 import * as staff from '@/server/settings/staff-actions'
 import * as tables from '@/server/tables/actions'
 import * as tonight from '@/server/tonight/actions'
@@ -578,6 +580,35 @@ export const ATTACKS: readonly Attack[] = [
     call: (v) =>
       ordering.saveOrderingAction({ venueId: v.venues[0].id, changes: { locationCheck: false } }),
   },
+  // Reservation settings (#325): B may not change a rule, a closed date or a spot's seats at A's
+  // venue, and A's settings and spot must read exactly as they did.
+  {
+    action: 'saveReservationRulesAction',
+    call: (v) =>
+      reservations.saveReservationRulesAction({
+        venueId: v.venues[0].id,
+        turnMinutes: 15,
+        phoneRequired: false,
+      }),
+  },
+  {
+    action: 'addClosedDateAction',
+    call: (v) => reservations.addClosedDateAction({ venueId: v.venues[0].id, date: '2030-12-24' }),
+  },
+  {
+    action: 'removeClosedDateAction',
+    call: (v) =>
+      reservations.removeClosedDateAction({ venueId: v.venues[0].id, date: '2030-12-24' }),
+  },
+  {
+    action: 'setSpotSeatsAction',
+    call: (v) =>
+      reservations.setSpotSeatsAction({
+        venueId: v.venues[0].id,
+        spotId: v.venues[0].spot,
+        seats: 99,
+      }),
+  },
   {
     action: 'startConnectionAction',
     call: (v) => paying.startConnectionAction({ venueId: v.venues[0].id }),
@@ -685,11 +716,21 @@ export const ATTACKS: readonly Attack[] = [
     },
   },
   {
+    action: 'resetRoleAction',
+    call: (v) => staff.resetRoleAction({ venueId: v.venues[0].id, roleId: 'staff' }),
+  },
+  {
     action: 'archiveRoleAction',
     call: (v) => {
       const x = v.venues[0]
       return staff.archiveRoleAction({ venueId: x.id, roleId: x.role })
     },
+  },
+  {
+    action: 'setPinFallAction',
+    // Where the PIN falls at A's venue (#324): B may not move a line of it, and A's reservation
+    // settings must read exactly as they did.
+    call: (v) => staff.setPinFallAction({ venueId: v.venues[0].id, action: 'cancel', fall: 'tap' }),
   },
   {
     action: 'markSharedDeviceAction',
@@ -822,6 +863,13 @@ export const ATTACKS: readonly Attack[] = [
     },
   },
   {
+    action: 'tableBookedLaterAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return tonight.tableBookedLaterAction({ venueId: x.id, tableId: x.table2 })
+    },
+  },
+  {
     action: 'newGuestsAction',
     call: (v) => {
       const x = v.venues[0]
@@ -835,6 +883,15 @@ export const ATTACKS: readonly Attack[] = [
   {
     action: 'closeAllTablesAction',
     call: (v) => tonight.closeAllTablesAction({ venueId: v.venues[0].id }),
+  },
+  // The night's end (#332): B may not read A's preview nor end A's night.
+  {
+    action: 'nightEndPreviewAction',
+    call: (v) => tonight.nightEndPreviewAction({ venueId: v.venues[0].id }),
+  },
+  {
+    action: 'endNightAction',
+    call: (v) => tonight.endNightAction({ venueId: v.venues[0].id }),
   },
   {
     action: 'markPaymentTableAction',
@@ -1021,6 +1078,296 @@ export const ATTACKS: readonly Attack[] = [
     },
   },
 
+  // Reservations (#326): the night's list and one reservation's sheet, both read-only.
+  {
+    action: 'reservationNightAction',
+    call: (v) => nightBook.reservationNightAction({ venueId: v.venues[0].id }),
+  },
+  {
+    action: 'reservationDetailAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.reservationDetailAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+
+  // The floor plan (#327): two reads and two writes. The seeded plan and spot carry the
+  // organisation's marker, so A's floor reaching B's answer shows as a name, and the block pair
+  // must leave A's reservations untouched.
+  {
+    action: 'floorPlanAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.floorPlanAction({ venueId: x.id, planId: x.plan })
+    },
+  },
+  {
+    action: 'spotHistoryAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.spotHistoryAction({ venueId: x.id, spotId: x.spot })
+    },
+  },
+  {
+    action: 'blockSpotAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.blockSpotAction({ venueId: x.id, spotId: x.spot, reason: 'repair' })
+    },
+  },
+  {
+    action: 'unblockSpotAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.unblockSpotAction({ venueId: x.id, reservationId: x.block })
+    },
+  },
+
+  // Taking and changing a booking (#328): the form's advice and the six writes of a booking's life,
+  // against the victim's venue, reservation and spot.
+  {
+    action: 'bookingChecksAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.bookingChecksAction({
+        venueId: x.id,
+        day: '2030-01-05',
+        time: '22:00',
+        spotIds: [x.spot],
+        reservationId: x.reservation,
+      })
+    },
+  },
+  {
+    action: 'saveBookingAction',
+    how: 'a new booking at the victim’s venue',
+    call: (v) =>
+      nightBook.saveBookingAction({
+        venueId: v.venues[0].id,
+        day: '2030-01-05',
+        time: '22:00',
+        name: 'Attacker',
+        phone: '+359888000111',
+        partySize: 2,
+        spotIds: [v.venues[0].spot],
+      }),
+  },
+  {
+    action: 'cancelBookingAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.cancelBookingAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+  {
+    action: 'deleteBookingAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.deleteBookingAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+  {
+    action: 'restoreBookingAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.restoreBookingAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+  {
+    action: 'copyBookingAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.copyBookingAction({
+        venueId: x.id,
+        reservationId: x.reservation,
+        day: '2030-01-05',
+        time: '22:00',
+        spotIds: [x.spot],
+      })
+    },
+  },
+  {
+    action: 'noShowAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.noShowAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+  {
+    action: 'putBackAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.putBackAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+  {
+    action: 'undoPutBackAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.undoPutBackAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+  // Guests and regulars (#333): B may not read A's list, a card or a suggestion, nor add, change,
+  // note or erase a guest at A's venue.
+  {
+    action: 'guestListAction',
+    call: (v) => nightBook.guestListAction({ venueId: v.venues[0].id }),
+  },
+  {
+    action: 'guestCardAction',
+    call: (v) => nightBook.guestCardAction({ venueId: v.venues[0].id, guestId: v.venues[0].guest }),
+  },
+  {
+    action: 'guestSuggestAction',
+    call: (v) =>
+      nightBook.guestSuggestAction({ venueId: v.venues[0].id, query: v.marker.slice(0, 5) }),
+  },
+  {
+    action: 'saveGuestAction',
+    call: (v) =>
+      nightBook.saveGuestAction({
+        venueId: v.venues[0].id,
+        guestId: v.venues[0].guest,
+        name: 'Attacker',
+        regular: false,
+      }),
+  },
+  {
+    action: 'saveGuestAction',
+    how: 'a new guest at the victim venue',
+    call: (v) =>
+      nightBook.saveGuestAction({
+        venueId: v.venues[0].id,
+        name: 'Attacker',
+        phone: '+359888000111',
+        regular: true,
+      }),
+  },
+  {
+    action: 'privateNoteAction',
+    call: (v) =>
+      nightBook.privateNoteAction({
+        venueId: v.venues[0].id,
+        guestId: v.venues[0].guest,
+        note: 'Attacker',
+      }),
+  },
+  {
+    action: 'eraseGuestAction',
+    call: (v) =>
+      nightBook.eraseGuestAction({ venueId: v.venues[0].id, guestId: v.venues[0].guest }),
+  },
+
+  // The door (#329): the advice it reads and the writes that seat, count, undo, free and hold
+  // again — every one of them against the victim's venue, reservation and spot.
+  {
+    action: 'arrivalChecksAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.arrivalChecksAction({
+        venueId: x.id,
+        day: '2030-01-05',
+        spotIds: [x.spot],
+        reservationId: x.reservation,
+      })
+    },
+  },
+  {
+    action: 'arriveAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.arriveAction({
+        venueId: x.id,
+        reservationId: x.reservation,
+        day: '2030-01-05',
+        spotIds: [x.spot],
+      })
+    },
+  },
+  {
+    action: 'addWaitingAction',
+    how: "a party onto the victim's waiting list",
+    call: (v) =>
+      nightBook.addWaitingAction({
+        venueId: v.venues[0].id,
+        day: '2030-01-05',
+        partySize: 2,
+      }),
+  },
+  {
+    action: 'seatWalkInAction',
+    how: "a walk-in onto the victim's spot",
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.seatWalkInAction({
+        venueId: x.id,
+        day: '2030-01-05',
+        spotIds: [x.spot],
+        partySize: 2,
+      })
+    },
+  },
+  {
+    action: 'setGuestsAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.setGuestsAction({
+        venueId: x.id,
+        reservationId: x.reservation,
+        partySize: 4,
+      })
+    },
+  },
+  {
+    action: 'setPayRuleAction',
+    how: "how the victim's party pays",
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.setPayRuleAction({
+        venueId: x.id,
+        reservationId: x.reservation,
+        rule: 'pay_first',
+      })
+    },
+  },
+  {
+    action: 'undoArrivalAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.undoArrivalAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+  {
+    action: 'freeSpotsAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.freeSpotsAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+  {
+    action: 'holdSpotsAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.holdSpotsAction({
+        venueId: x.id,
+        reservationId: x.reservation,
+        spotIds: [x.spot],
+      })
+    },
+  },
+  {
+    action: 'changeTablesAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.changeTablesAction({
+        venueId: x.id,
+        reservationId: x.reservation,
+        from: [],
+        spotIds: [x.spot],
+      })
+    },
+  },
+
   // Venues.
   {
     action: 'createVenueAction',
@@ -1074,6 +1421,16 @@ export const ATTACKS: readonly Attack[] = [
 
 /** The attacker's own venue and menu, the victim's child ids. */
 export const MIXED: readonly Attack[] = [
+  {
+    action: 'setSpotSeatsAction',
+    how: "victim's spot at my venue",
+    call: (v, a) =>
+      reservations.setSpotSeatsAction({
+        venueId: a.venues[0].id,
+        spotId: v.venues[0].spot,
+        seats: 99,
+      }),
+  },
   {
     action: 'revokePushAction',
     how: "the victim's device from my venue",
@@ -1599,6 +1956,10 @@ export const MIXED: readonly Attack[] = [
       staff.updateRoleAction({ venueId: a.venues[0].id, roleId: v.venues[0].role, name: 'attack' }),
   },
   {
+    action: 'resetRoleAction',
+    call: (v, a) => staff.resetRoleAction({ venueId: a.venues[0].id, roleId: v.venues[0].role }),
+  },
+  {
     action: 'archiveRoleAction',
     call: (v, a) => staff.archiveRoleAction({ venueId: a.venues[0].id, roleId: v.venues[0].role }),
   },
@@ -1759,6 +2120,11 @@ export const MIXED: readonly Attack[] = [
       tonight.closeTableAction({ venueId: a.venues[0].id, tableId: v.venues[0].table }),
   },
   {
+    action: 'tableBookedLaterAction',
+    call: (v, a) =>
+      tonight.tableBookedLaterAction({ venueId: a.venues[0].id, tableId: v.venues[0].table2 }),
+  },
+  {
     action: 'newGuestsAction',
     how: "my table, the victim's sitting",
     call: (v, a) => {
@@ -1879,5 +2245,247 @@ export const MIXED: readonly Attack[] = [
     action: 'paymentDetailAction',
     call: (v, a) =>
       paymentsRead.paymentDetailAction({ venueId: a.venues[0].id, paymentId: v.venues[0].payment }),
+  },
+
+  // The floor plan (#327): my own venue, the victim's plan, spot and block — the way past a venue
+  // check, and the one that would draw somebody else's floor on my screen.
+  {
+    action: 'floorPlanAction',
+    call: (v, a) =>
+      nightBook.floorPlanAction({ venueId: a.venues[0].id, planId: v.venues[0].plan }),
+  },
+  {
+    action: 'spotHistoryAction',
+    call: (v, a) =>
+      nightBook.spotHistoryAction({ venueId: a.venues[0].id, spotId: v.venues[0].spot }),
+  },
+  {
+    action: 'blockSpotAction',
+    call: (v, a) =>
+      nightBook.blockSpotAction({
+        venueId: a.venues[0].id,
+        spotId: v.venues[0].spot,
+        reason: 'repair',
+      }),
+  },
+  {
+    action: 'unblockSpotAction',
+    call: (v, a) =>
+      nightBook.unblockSpotAction({ venueId: a.venues[0].id, reservationId: v.venues[0].block }),
+  },
+
+  // Taking and changing a booking (#328): my own venue, the victim's reservation and spot.
+  {
+    action: 'bookingChecksAction',
+    call: (v, a) =>
+      nightBook.bookingChecksAction({
+        venueId: a.venues[0].id,
+        day: '2030-01-05',
+        time: '22:00',
+        spotIds: [v.venues[0].spot],
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'saveBookingAction',
+    call: (v, a) =>
+      nightBook.saveBookingAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+        day: '2030-01-05',
+        time: '22:00',
+        name: 'Attacker',
+        phone: '+359888000111',
+        partySize: 2,
+        spotIds: [v.venues[0].spot],
+      }),
+  },
+  {
+    action: 'cancelBookingAction',
+    call: (v, a) =>
+      nightBook.cancelBookingAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'deleteBookingAction',
+    call: (v, a) =>
+      nightBook.deleteBookingAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'restoreBookingAction',
+    call: (v, a) =>
+      nightBook.restoreBookingAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'copyBookingAction',
+    call: (v, a) =>
+      nightBook.copyBookingAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+        day: '2030-01-05',
+        time: '22:00',
+        spotIds: [v.venues[0].spot],
+      }),
+  },
+  {
+    action: 'noShowAction',
+    call: (v, a) =>
+      nightBook.noShowAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'putBackAction',
+    call: (v, a) =>
+      nightBook.putBackAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'undoPutBackAction',
+    call: (v, a) =>
+      nightBook.undoPutBackAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+
+  // The door (#329): my own venue, the victim's reservation and spot.
+  {
+    action: 'arrivalChecksAction',
+    call: (v, a) =>
+      nightBook.arrivalChecksAction({
+        venueId: a.venues[0].id,
+        day: '2030-01-05',
+        spotIds: [v.venues[0].spot],
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'arriveAction',
+    call: (v, a) =>
+      nightBook.arriveAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+        day: '2030-01-05',
+        spotIds: [v.venues[0].spot],
+      }),
+  },
+  {
+    action: 'seatWalkInAction',
+    how: "my venue, the victim's spot",
+    call: (v, a) =>
+      nightBook.seatWalkInAction({
+        venueId: a.venues[0].id,
+        day: '2030-01-05',
+        spotIds: [v.venues[0].spot],
+        partySize: 2,
+      }),
+  },
+  {
+    action: 'setGuestsAction',
+    call: (v, a) =>
+      nightBook.setGuestsAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+        partySize: 4,
+      }),
+  },
+  {
+    action: 'setPayRuleAction',
+    call: (v, a) =>
+      nightBook.setPayRuleAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+        rule: 'pay_first',
+      }),
+  },
+  {
+    action: 'undoArrivalAction',
+    call: (v, a) =>
+      nightBook.undoArrivalAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'freeSpotsAction',
+    call: (v, a) =>
+      nightBook.freeSpotsAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'holdSpotsAction',
+    call: (v, a) =>
+      nightBook.holdSpotsAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+        spotIds: [v.venues[0].spot],
+      }),
+  },
+  {
+    action: 'changeTablesAction',
+    how: "my own venue, the victim's reservation and spot",
+    call: (v, a) =>
+      nightBook.changeTablesAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+        from: [],
+        spotIds: [v.venues[0].spot],
+      }),
+  },
+  {
+    action: 'changeTablesAction',
+    how: "my own reservation, swapped with the victim's",
+    call: (v, a) =>
+      nightBook.changeTablesAction({
+        venueId: a.venues[0].id,
+        reservationId: a.venues[0].reservation,
+        from: [],
+        spotIds: [],
+        swap: { reservationId: v.venues[0].reservation, from: [], spotIds: [a.venues[0].spot] },
+      }),
+  },
+  // Guests (#333): my own venue, the victim's guest.
+  {
+    action: 'guestCardAction',
+    call: (v, a) =>
+      nightBook.guestCardAction({ venueId: a.venues[0].id, guestId: v.venues[0].guest }),
+  },
+  {
+    action: 'saveGuestAction',
+    call: (v, a) =>
+      nightBook.saveGuestAction({
+        venueId: a.venues[0].id,
+        guestId: v.venues[0].guest,
+        name: 'Attacker',
+        archived: true,
+      }),
+  },
+  {
+    action: 'privateNoteAction',
+    call: (v, a) =>
+      nightBook.privateNoteAction({
+        venueId: a.venues[0].id,
+        guestId: v.venues[0].guest,
+        note: 'Attacker',
+      }),
+  },
+  {
+    action: 'eraseGuestAction',
+    call: (v, a) =>
+      nightBook.eraseGuestAction({ venueId: a.venues[0].id, guestId: v.venues[0].guest }),
   },
 ]

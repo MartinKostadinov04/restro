@@ -178,6 +178,7 @@ test('the Studio holds Structure and the guest features; Design is a page of its
     'Студио',
     'Маси и QR',
     'Тази вечер',
+    'Резервации',
     'Настройки',
   ])
   // The venue's address, kept: the Design page's own address is longer.

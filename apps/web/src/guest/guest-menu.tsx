@@ -60,6 +60,7 @@ import {
   refetchLiveForSnapshot,
 } from './load'
 import { PAY_RETURNED_KEY } from './services-client'
+import { useGuestEvents } from './use-guest-events'
 import { SHARED_ORDER_FACES, useTableServices } from './use-table-services'
 
 type Phase =
@@ -308,6 +309,43 @@ export function GuestMenu(props: GuestMenuProps) {
     tableToken !== null &&
     SHARED_ORDER_FACES.has(RENDERER.id) &&
     hasTableService(snapshot?.features)
+
+  // --- what the night is measured by (D142) -----------------------------------------------
+  // Only the guest's own side of the phone, and only at a table: the menu opened, a dish page
+  // opened, a language chosen. The adds, the Sends and the payments are the service write path's
+  // own events, recorded where they happen.
+  const report = useGuestEvents(tableToken)
+  const openedFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (!ready || tableToken === null || openedFor.current === tableToken) return
+    openedFor.current = tableToken
+    report({ kind: 'menu.opened' })
+  }, [ready, tableToken, report])
+  // A dish page lives in the address (`#item-<id>`), so the page sees it open without a template
+  // telling it. A template with no dish page reports none. The item is our own node id; a crafted
+  // address is dropped by the client's own check, not by the server.
+  useEffect(() => {
+    if (!ready || tableToken === null) return
+    let last: string | null = null
+    const look = () => {
+      const match = /^#item-(.+)$/.exec(window.location.hash)
+      let itemId: string | null = null
+      try {
+        itemId = match === null ? null : decodeURIComponent(match[1] ?? '')
+      } catch {
+        itemId = null
+      }
+      if (itemId === null || itemId === last) {
+        last = itemId
+        return
+      }
+      last = itemId
+      report({ kind: 'item.opened', itemId })
+    }
+    look()
+    window.addEventListener('hashchange', look)
+    return () => window.removeEventListener('hashchange', look)
+  }, [ready, tableToken, report])
   const view = useMemo(
     () =>
       snapshot === null
@@ -327,12 +365,16 @@ export function GuestMenu(props: GuestMenuProps) {
   )
   const services = useTableServices(sharedOrder ? tableToken : null, cardLook)
 
-  const switchLanguage = useCallback((next: Locale) => {
-    const url = new URL(window.location.href)
-    url.searchParams.set('lang', langParam(next))
-    window.history.replaceState(null, '', url)
-    setSearch(url.search)
-  }, [])
+  const switchLanguage = useCallback(
+    (next: Locale) => {
+      const url = new URL(window.location.href)
+      url.searchParams.set('lang', langParam(next))
+      window.history.replaceState(null, '', url)
+      setSearch(url.search)
+      report({ kind: 'language.chosen', locale: next })
+    },
+    [report],
+  )
 
   // The page around the template is ours (globals.css, `html[data-guest-page]`): templates never
   // style html or body themselves, so the admin's previews of them stay untouched.

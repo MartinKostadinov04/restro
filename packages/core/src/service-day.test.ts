@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  addDaysToDay,
   isoInTimeZone,
   liveEditions,
   localInstant,
@@ -108,5 +109,25 @@ describe('localInstant (a wall-clock time of a service day, as an instant)', () 
     expect(localInstant('2026-10-25', '23:00', SOFIA, '07:00').toISOString()).toBe(
       '2026-10-25T21:00:00.000Z',
     )
+  })
+})
+
+describe('addDaysToDay (a service day is named by its calendar date, D45)', () => {
+  it.each([
+    ['2026-11-09', 1, '2026-11-10'],
+    ['2026-11-30', 1, '2026-12-01'], // over the end of a month
+    ['2026-12-31', 1, '2027-01-01'], // over the end of a year
+    ['2028-02-28', 1, '2028-02-29'], // a leap year
+    ['2027-02-28', 1, '2027-03-01'],
+    ['2026-03-28', 1, '2026-03-29'], // the night the clocks go forward: still one date on
+    ['2026-10-25', 1, '2026-10-26'], // and the night they go back
+    ['2026-01-01', -1, '2025-12-31'], // and back over a year
+    ['2026-11-09', 0, '2026-11-09'],
+  ])('%s + %i days is %s', (day, days, expected) => {
+    expect(addDaysToDay(day, days)).toBe(expected)
+  })
+
+  it('steps a month back, which is as far as the floor plan reads (#327)', () => {
+    expect(addDaysToDay('2026-11-09', -30)).toBe('2026-10-10')
   })
 })

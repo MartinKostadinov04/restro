@@ -3,7 +3,10 @@
 // for the browser: our ids and public fields only (rule 3). No PIN, HMAC or seal is ever read.
 import {
   DEFAULT_ROLE_KINDS,
+  DEFAULT_ROLE_PERMISSIONS,
   type Permission,
+  type PinFallSettings,
+  readPinFallSettings,
   readStaffSettings,
   type StaffSettings,
 } from '@restro/core/service'
@@ -19,8 +22,15 @@ export interface StaffRoleView {
   readonly ref: string
   readonly name: string
   readonly defaultKind: (typeof DEFAULT_ROLE_KINDS)[number] | null
+  /** The Owner role only: it holds every ability and nothing comes off it (#366). */
   readonly readOnly: boolean
   readonly permissions: readonly Permission[]
+  /** A default role the venue has ticked itself: Reset puts back what Restro ships (#366). */
+  readonly edited: boolean
+  /** Abilities Restro added after the venue's edit: unticked, and marked as new (#366). */
+  readonly newPermissions: readonly Permission[]
+  /** What this default role holds as Restro ships it, for the Reset confirm; empty on own roles. */
+  readonly shipped: readonly Permission[]
   readonly people: number
 }
 
@@ -68,6 +78,11 @@ export interface StaffView {
   readonly held: readonly Permission[]
   /** True for Restro's admin team: it may give any right and never shares a device. */
   readonly operator: boolean
+  /**
+   * Where the PIN falls on a shared device (D141, #324): where each reservation action falls at
+   * this venue, and whether the venue has reservation settings to write at all.
+   */
+  readonly pinFall: PinFallSettings
   /** The signed-in person's email, for the password again. */
   readonly email: string
 }
@@ -107,6 +122,7 @@ export async function buildStaffView(input: {
   readonly held: readonly Permission[]
   readonly operator: boolean
   readonly email: string
+  readonly pinFall: PinFallSettings
 }): Promise<StaffView> {
   const { settings } = input
   const count = new Map<string, number>()
@@ -119,6 +135,9 @@ export async function buildStaffView(input: {
     defaultKind: role.defaultKind,
     readOnly: role.readOnly,
     permissions: role.permissions,
+    edited: role.edited,
+    newPermissions: role.newPermissions,
+    shipped: role.defaultKind === null ? [] : [...DEFAULT_ROLE_PERMISSIONS[role.defaultKind]],
     people: role.id === null ? 0 : (count.get(role.id) ?? 0),
   }))
   const accounts = await organizationAccounts(input.tenantId)
@@ -158,6 +177,7 @@ export async function buildStaffView(input: {
     })),
     held: input.held,
     operator: input.operator,
+    pinFall: input.pinFall,
     email: input.email,
   }
 }
@@ -181,6 +201,10 @@ export async function loadStaffView(input: {
       : { kind: 'user', userId: input.userId, sessionId: input.sessionId },
   }).catch(() => null)
   if (read === null || !read.ok) return null
+  const pinFall = await readPinFallSettings(getPool(), {
+    tenantId: input.tenantId,
+    venueId: input.venueId,
+  })
   return buildStaffView({
     tenantId: input.tenantId,
     venueId: input.venueId,
@@ -188,6 +212,7 @@ export async function loadStaffView(input: {
     settings: read.settings,
     held: input.held,
     operator,
+    pinFall,
     email: input.email,
   })
 }

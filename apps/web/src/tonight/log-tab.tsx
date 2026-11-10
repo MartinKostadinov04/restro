@@ -241,7 +241,7 @@ function Content({ initial, frame }: { initial: LogView; frame: Frame }) {
 /** The Log of one night, for a venue. Keyed by the day at the call site, so a new day starts clean. */
 export function LogTab({ initial, frame }: { initial: LogView; frame: Frame }) {
   return (
-    <RunProvider>
+    <RunProvider asks={frame.asks}>
       <Content initial={initial} frame={frame} />
     </RunProvider>
   )

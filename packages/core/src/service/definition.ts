@@ -8,6 +8,7 @@ import type { Venue } from '@restro/db'
 import type { z } from 'zod'
 
 import type { VenueLockStrength } from '../apply/venue-lock'
+import type { GuestEventInput } from '../events'
 import type { ServiceActor, ServiceOrigin, Via } from './context'
 import type { LeaseTx } from './leases'
 import type { LogEntryInput, LogKind } from './log'
@@ -74,6 +75,14 @@ export interface ServiceTx extends LeaseTx {
    * accepts.
    */
   keepOnRefusal(write: () => Promise<void>): void
+  /**
+   * Records guest events for the table (D142, the minimal key set of what a night can be measured
+   * by), in this command's own transaction: the event goes in with the write it measures, so the
+   * two can never disagree. The kinds are a closed union with no field for personal data, and
+   * `recordEvents()` in core/events is the only writer of the table (rule 1). An event of a
+   * refused handler is rolled back with the rest of it, unless `keepOnRefusal` carries it.
+   */
+  recordEvents(tableId: string, events: readonly GuestEventInput[]): Promise<void>
 }
 
 /**

@@ -2,7 +2,9 @@
 
 // How every write of Tonight runs (plan §3, §5): a quick one saves at once and answers with the
 // 8-second toast; one that must name a person on a shared device first opens the PIN sheet, which
-// is its confirmation; only an answer that moves money gets no Undo (part 2's). The Undo sends the
+// is its confirmation — unless that person is already on the device, their own short session still
+// live (D141 12.11, #324), in which case the write runs and the sheet opens only if the server asks
+// for a PIN after all; only an answer that moves money gets no Undo (part 2's). The Undo sends the
 // write's token back, and core refuses it after 30 seconds or when the thing changed (#219). A write
 // that fails is the error toast that stays, with a close button, and the row stays where it was. A
 // write that never reached the server (no connection, RR-78) is such a failure too.
@@ -45,8 +47,18 @@ const attempt = (write: () => Promise<TonightResult>): Promise<TonightResult> =>
 export interface RunSpec {
   /** A stable id built from the thing changed, so a second tap updates the toast. */
   readonly id: string
-  /** Present when a PIN must be entered first (a shared device, a write that names a person). */
-  readonly pin?: { readonly level: PinLevel; readonly title: string; readonly body: string }
+  /**
+   * Present when a PIN must be entered first (a shared device, a write that names a person). With
+   * `confirm`, the sheet is the confirmation of a money answer as well as the person's name, so it
+   * opens even when the device remembers the person: nobody charges or releases a card by one tap
+   * on a tablet (#324 keeps D141 12.11's "typed once" to the sheets that only name a person).
+   */
+  readonly pin?: {
+    readonly level: PinLevel
+    readonly title: string
+    readonly body: string
+    readonly confirm?: boolean
+  }
   readonly act: (pin?: string) => Promise<TonightResult>
   /** The toast after it worked. */
   readonly done: string
@@ -78,7 +90,19 @@ export function useTonightRun() {
   return context
 }
 
-export function RunProvider({ children }: { children: ReactNode }) {
+export function RunProvider({
+  children,
+  asks = true,
+}: {
+  children: ReactNode
+  /**
+   * Whether a write that names a person opens the PIN sheet before it runs. False on a shared
+   * device whose person is still on it (their PIN started their own short session, D141 12.11,
+   * #324): the write runs as that person and the sheet comes only if the server asks for a PIN —
+   * the session ran out, or this one needs someone with more rights.
+   */
+  asks?: boolean
+}) {
   const t = useTranslations('tonight')
   const failureText = useFailureText()
   const [asking, setAsking] = useState<RunSpec | null>(null)
@@ -133,12 +157,18 @@ export function RunProvider({ children }: { children: ReactNode }) {
 
   const run = useCallback<Run>(
     (spec) => {
-      if (spec.pin !== undefined) {
+      if (spec.pin !== undefined && (asks || spec.pin.confirm === true)) {
         setAsking(spec)
         return
       }
       void execute(spec).then((result) => {
         if (!result.ok) {
+          // The person the device remembered may not do this one, or their session ran out: the
+          // sheet opens now, so whoever may types theirs, instead of a dead end (#324).
+          if (result.error === 'pin_required' && spec.pin !== undefined) {
+            setAsking(spec)
+            return
+          }
           toast.error(failureText(result.error, result.retryAfterSeconds, result.details), {
             id: spec.id,
             duration: Number.POSITIVE_INFINITY,
@@ -147,7 +177,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
         }
       })
     },
-    [execute, failureText],
+    [asks, execute, failureText],
   )
 
   const value = useMemo(() => ({ run, busy }), [run, busy])
