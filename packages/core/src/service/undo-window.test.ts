@@ -280,6 +280,33 @@ describe.skipIf(!hasDatabase)('the Undo window of Tonight (as the restro_app rol
       )
     })
 
+    // #393: ending a sitting lifts its pauses last of all, so the bill reading of every table that
+    // follows must already be claimed. Before the fix the ledger refused the second table's claim
+    // and the whole Undo threw, closing nothing.
+    it('ends them all when one of them carries a pause that lifts (#393)', async () => {
+      const opened = await accepted({ type: 'tables.open_all' })
+      // The first to close, in the table id order the Undo keeps: its pause lifts before the rest.
+      const first = [0, 1, 2, 3].map((index) => table(index)).sort()[0] as string
+      await world.owner.query(
+        `insert into restro.pauses
+           (id, tenant_id, venue_id, service_date, scope, target_id, cause, restro_started, details,
+            source, actor, job_id)
+         values ($1, $2, $3, $4, 'table', $5, 'staff', true, '{}'::jsonb, 'restro', 'system', 'test-seed')`,
+        [newId('pa'), world.tenantId, world.venueId, day, first],
+      )
+      expect(await accepted({ type: 'tables.undo_open_all', undo: tokenOf(opened) })).toMatchObject({
+        closed: 4,
+        skipped: 0,
+      })
+      for (const index of [0, 1, 2, 3]) expect(await isOpen(table(index))).toBe(false)
+      const { rows } = await world.owner.query<{ lifted: string | null }>(
+        'select lifted_at::text as lifted from restro.pauses where target_id = $1',
+        [first],
+      )
+      expect(rows[0]?.lifted).not.toBeNull()
+      await world.owner.query('delete from restro.pauses where target_id = $1', [first])
+    })
+
     it("refuses a token that is not Open all's, or names no entry, and closes nothing", async () => {
       const one = await accepted({ type: 'table.open', tableId: table(0) })
       const opened = await accepted({ type: 'tables.open_all' })
