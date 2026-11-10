@@ -7,6 +7,9 @@ import {
   type ReservationAccess,
   readBookingChecks,
   readFloorPlan,
+  readGuestCard,
+  readGuestList,
+  readGuestSuggestions,
   readReservationAccess,
   readReservationDetail,
   readReservationNight,
@@ -20,12 +23,16 @@ import {
   type RvChecksView,
   type RvDetailView,
   type RvFrame,
+  type RvGuestCardView,
+  type RvGuestListView,
   type RvNightView,
   type RvPlanView,
   type RvSpotHistoryList,
   rvChecksView,
   rvDetailView,
   rvFrameOf,
+  rvGuestCardView,
+  rvGuestListView,
   rvNightView,
   rvPlanView,
   rvSpotHistoryView,
@@ -149,4 +156,49 @@ export async function loadBookingChecks(
   const read = await readBookingChecks(getPool(), { ...inputOf(scope), ...query })
   if (!read.ok) return read
   return { ok: true, checks: rvChecksView(read.checks, scope.venue.timezone) }
+}
+
+// ───────────────────────────────── guests and regulars (#333) ─────────────────────────────────
+
+/** The venue's list of guests, as the actor reads it (their own private list marked, nobody else's). */
+export async function loadGuestList(scope: RvScope): Promise<RvResult<{ guests: RvGuestListView }>> {
+  const read = await readGuestList(getPool(), inputOf(scope))
+  if (!read.ok) return read
+  return {
+    ok: true,
+    frame: rvFrameOf(read.access, scope.venue.id),
+    guests: rvGuestListView(read.list),
+  }
+}
+
+/** One guest's card; null `card` when the venue has no such guest, or he was erased. */
+export async function loadGuestCard(
+  scope: RvScope,
+  guestId: string,
+): Promise<RvResult<{ card: RvGuestCardView | null }>> {
+  const read = await readGuestCard(getPool(), { ...inputOf(scope), guestId })
+  if (!read.ok) return read
+  return {
+    ok: true,
+    frame: rvFrameOf(read.access, scope.venue.id),
+    card: read.card === null ? null : rvGuestCardView(read.card, read.access.venue.timezone),
+  }
+}
+
+/** The regulars a typed name suggests in the booking form (D140: three letters). */
+export async function loadGuestSuggestions(
+  scope: RvScope,
+  query: string,
+): Promise<
+  | {
+      readonly ok: true
+      readonly suggestions: readonly {
+        readonly id: string
+        readonly name: string | null
+        readonly phone: string | null
+      }[]
+    }
+  | { readonly ok: false; readonly code: string }
+> {
+  return readGuestSuggestions(getPool(), { ...inputOf(scope), query })
 }

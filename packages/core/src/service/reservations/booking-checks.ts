@@ -28,7 +28,7 @@ import { readOrderingSettings } from '../../ordering-settings'
 import { serviceHoursOn } from '../../service-hours'
 import type { ReadInput } from '../night-read'
 import { closedDatesOf } from './closed-dates'
-import { phoneKeyOf } from './guests'
+import { phoneKeyOf, regionOfLocale } from './guests'
 import { coveredBy, heldStretch, overlaps } from './overlap'
 import { holdsOfNight } from './plan-read'
 import { openReservations, type ReservationReadRefusal } from './read'
@@ -157,7 +157,8 @@ export async function readBookingChecks(
         : null
 
     // The same contact twice that night: by the phone's digits, or by the name as typed.
-    const phoneKey = input.phone === null ? null : phoneKeyOf(input.phone)
+    const phoneKey =
+      input.phone === null ? null : phoneKeyOf(input.phone, regionOfLocale(venue.defaultLocale))
     const typed = input.name?.trim().toLowerCase() ?? ''
     let sameContact: SameContactCheck | null = null
     if (phoneKey !== null || typed !== '') {

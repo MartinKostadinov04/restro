@@ -15,17 +15,43 @@ import { and, eq, sql } from 'drizzle-orm'
 
 import { newId } from '../../ids'
 import type { ServiceTx } from '../definition'
-import { accepted, type ServiceResult } from '../results'
+import { accepted, refused, type ServiceResult } from '../results'
 import { lockGuest, lockGuestByPhone, readSettings, refuse, staffMemberOf } from './rows'
 
 /**
- * A phone number as the key: its digits, with a leading `00` read as the `+` it stands for. Null
- * for anything that is not a number at all, which the command refuses rather than storing.
+ * The country calling code of the region a venue's own locale names, for a number typed in its
+ * national form ("0888 123 456"). Only the regions Restro's venues are in: a venue elsewhere keeps
+ * a national number's digits as typed, which still makes one key per way of writing it. A full
+ * numbering plan would be a dependency (libphonenumber), which this ticket does not name (#333).
  */
-export function phoneKeyOf(phone: string): string | null {
+const CALLING_CODES: Readonly<Record<string, string>> = { BG: '359' }
+
+/** The region of a locale such as `bg_BG` or `en-US`, upper-case, or null. */
+export function regionOfLocale(locale: string | null | undefined): string | null {
+  const region = locale?.split(/[_-]/)[1]
+  return region === undefined ? null : region.toUpperCase()
+}
+
+/**
+ * A phone number as the key: its digits, with a leading `00` read as the `+` it stands for, and a
+ * national number (one leading `0`) read in the venue's own country where we know its code — so
+ * "0888 123 456", "+359 888 123 456" and "00359888123456" are one guest at a Bulgarian club.
+ * Null for anything that is not a number at all, which the command refuses rather than storing.
+ */
+export function phoneKeyOf(phone: string, region: string | null = null): string | null {
   const digits = phone.replace(/[^0-9]/g, '')
-  const key = digits.startsWith('00') ? digits.slice(2) : digits
+  const code = region === null ? undefined : CALLING_CODES[region]
+  const key = digits.startsWith('00')
+    ? digits.slice(2)
+    : code !== undefined && digits.startsWith('0') && !phone.trim().startsWith('+')
+      ? `${code}${digits.slice(1)}`
+      : digits
   return key.length >= 6 && key.length <= 20 ? key : null
+}
+
+/** The key of a number typed at this venue (`phoneKeyOf` in the venue's own country). */
+export function venuePhoneKey(stx: ServiceTx, phone: string): string | null {
+  return phoneKeyOf(phone, regionOfLocale(stx.venue.defaultLocale))
 }
 
 /** What a guest record is saved with; a value left out keeps what the record had. */
@@ -50,12 +76,14 @@ export async function saveGuest(stx: ServiceTx, command: GuestSaveCommand): Prom
   if (command.guestId !== undefined && existing === null) return refuse('guest_missing')
   let phoneKey = existing?.phoneKey ?? null
   if (command.phone !== undefined) {
-    const key = phoneKeyOf(command.phone)
-    if (key === null) return refuse('invalid_command')
+    const key = venuePhoneKey(stx, command.phone)
+    if (key === null) return refuse('invalid_phone')
     if (key !== existing?.phoneKey) {
       const other = await lockGuestByPhone(stx, key)
       if (other !== null && other.id !== existing?.id) {
-        return refuse('guest_exists')
+        // The one already there, by id: the screen names him from its own read, and offers him
+        // instead of a second record (D140). His details never travel in a refusal.
+        return refused(null, 'guest_exists', { guestId: other.id })
       }
     }
     phoneKey = key
@@ -100,9 +128,12 @@ export async function saveGuest(stx: ServiceTx, command: GuestSaveCommand): Prom
 /**
  * Erases a guest (D140, D83): an **update** that clears every detail of the person — the key
  * included, so a later booking from the same number starts a new record — takes him out of the
- * venue's list and empties every private note about him. His reservations keep their party size
- * and their spot, and the night's record stays true; nobody can be read out of it, so a name a
- * booking carried for him (written when the hostess typed another than the record's, #328) goes.
+ * venue's list and empties every private note about him, so he leaves every manager's private list
+ * too. His reservations keep their party size and their spot, and the night's record stays true;
+ * nobody can be read out of it, so a name a booking carried for him (written when the hostess typed
+ * another than the record's, #328) goes, and so does the note typed on his bookings ("his wife's
+ * birthday"): D140 leaves them "only the party and the table" (#333). Their night, hour, status,
+ * spots and party size stay, and so does the code of a reason, which is never free text.
  *
  * The Log keeps that it happened, when and by whom (the audit D140 asks for) and names the
  * record's own id, which from now on points at an empty row.
@@ -133,10 +164,12 @@ export async function eraseGuest(
     .set({ note: null, erasedAt: sql`now()`, ...stx.provenance, updatedAt: sql`now()` })
     .where(and(eq(guestPrivateNotes.venueId, stx.venueId), eq(guestPrivateNotes.guestId, guest.id)))
   // A booking made under a different name than the record's carries that name on the booking itself
-  // (`labelFor`): it is the guest's, so it goes with him. The party size and the spots stay.
+  // (`labelFor`), and a booking's note is typed about him: both are his, so both go with him. The
+  // party size and the spots stay. `updated_at` moves, so a form opened on one of his bookings
+  // before the erasure is refused rather than writing his name back (`version.ts`).
   await stx.tx
     .update(reservations)
-    .set({ partyLabel: null, ...stx.provenance, updatedAt: sql`now()` })
+    .set({ partyLabel: null, note: null, ...stx.provenance, updatedAt: sql`now()` })
     .where(and(eq(reservations.venueId, stx.venueId), eq(reservations.guestId, guest.id)))
   await stx.log({ kind: 'guest.erased', guestId: guest.id, toState: 'erased' })
   return accepted(null, { details: { guestId: guest.id } })
