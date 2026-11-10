@@ -20,8 +20,9 @@ Do the ordering guide first ([2026-10-30-ordering-acceptance-walk](2026-10-30-or
 4. **The demo data:** `pnpm db:seed:dev` (with the demo menu, so without `SEED_DEMO_MENU=0`). It makes **Demo Bar**, a venue on the simulated POS, with ordering, Call a waiter, the bill and paying switched on for guests, drawn by the plain test template (the real guest template comes with the menu designer). Its bars and tables come from the simulator, read by the worker.
 5. **Run, each in its own terminal:** `pnpm sim:serve` (the simulated POS), `pnpm dev` (the web app and the worker). Open http://localhost:3000 and sign in as the owner (`owner@demo-club.test`).
 6. **Publish Demo Bar once:** Demo Bar › Composer › Publish, so the guest page takes the test template and the guest services.
-7. **The paying lines in `.env.local`,** then restart `pnpm dev`:
+7. **The paying lines in `.env.local`,** then restart `pnpm dev` — **the worker too**, not only the web app: it reads these at start, and without a restart paying stays off with no sign of why.
    - `PAYMENTS_ENV=development` and `PAYMENTS_PROVIDER=sim-pay` (the simulated provider; Section G switches to Stripe);
+   - `WORKER_PAYMENTS_SIM=on` — without it the worker builds no simulated provider at all, its `/internal/payments/connection` answers 404, and Settings › Paying reports a connection that could not be opened. It is refused in production by `createSimPayProvider`.
    - the Turnstile test keys stay as `.env.example` has them (local only);
    - `SIM_PAY_NOTICE_SECRET` as `.env.example` shows.
 8. **A phone for the guest:** set `PUBLIC_BASE_URL` to this PC's network address (for example http://192.168.1.20:3000) to scan from your phone on the same Wi-Fi, or open the table's guest address in a narrow browser window. Two phones (or two browser windows) for Section C.

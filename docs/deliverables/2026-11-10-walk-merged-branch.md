@@ -14,11 +14,12 @@ of the rules in `CLAUDE.md` broken. **Before the pilot** = it works, but it is c
 many taps, or the wrong word. **Polish** = a small ugliness. Where a point is my opinion about
 design rather than a fault, it says so.
 
-**Counts: 3 blocking, 16 before the pilot, 8 polish.**
+**Counts: 5 blocking, 25 before the pilot, 10 polish.**
 
-The three worst: a real venue's guests cannot order at all (B1); reservations cannot be used at all,
-because no venue can get a floor plan (B2); and the door tells the hostess a table was opened for
-phones when none was (B3).
+The three worst: a real venue's guests cannot order at all (B1); paying cannot be connected at all, so
+nothing about paying has ever been walked by a person (B4); and reservations ship no way for a venue to
+get a floor plan (B2) — I had to write a script against the service write path to walk them, which is
+itself a finding (P18).
 
 Two things I could not reach, and why, are at the end.
 
@@ -105,6 +106,74 @@ sends guests to scan a code that will not work.
 **Repro.** Резервации › Списък › a booking with no spot › Настани.
 
 ---
+
+### B4. Paying cannot be set up at all, so nothing about paying has ever been walked by a person
+
+**Screen:** Demo Bar › Настройки › Плащане.
+
+**What happens.** The section itself is well made: *"Гостите плащат сметката си с карта от телефона.
+Парите отиват направо в сметката на заведението в Test card payments."*, the checklist *"Преди да
+започне плащането с карта"*, the smallest card payment, the tips line and the venue's legal details.
+Press **"Свържи Test card payments"**, confirm the password, and the browser leaves for
+`https://connect.sim-pay.test/onboard/<ref>` — a host that does not exist. The owner lands on the
+browser's own error page. Coming back by hand to the address the provider is supposed to return to,
+the section says *"Свързването още не е завършено в Test card payments."* and offers *"Продължи в
+Test card payments"*, which leaves for the same dead address. There is no way out of the loop.
+
+**Why.** The simulated provider always answers with that address
+(`packages/payments/sim-pay/src/engine.ts:384`) and nothing rewrites it
+(`apps/worker/src/payments/connection.ts:154`). The only code that ever had a connected simulated
+account is the end-to-end harness, which builds the account inside its own process and never goes
+near the owner's screen (`apps/worker/src/e2e/pay-harness.ts`, its own opening comment). The one
+step a real owner must take has no working stand-in outside CI.
+
+**What I expected.** The paying acceptance guide promises exactly that: *"**Connect:** with the
+simulated provider it connects at once ("Connected: …")"* (`2026-10-30-paying-acceptance-walk.md`,
+section A). It does not.
+
+**What it costs.** Everything downstream is unreachable by hand: the guest's pay screen, the tip, the
+card form, the receipt, the payment lines on Tonight, the night's end with a table still paying, and
+every refusal in the guide's section F. The guest's phone shows the honest end of it — the bill is
+drawn, and under it *"За да платите, попитайте сервитьора."*, because the venue has no provider
+connected. Nobody, Martin included, can accept paying until this is fixed.
+
+**Repro.** Demo Bar › Настройки › Плащане › "Свържи Test card payments" › password.
+
+**Recommendation.** Give the simulated provider a form inside the app — a plain page on the dev
+server that says it stands for the provider's form, with a "Done" button that returns to
+`?connection=return` — or let `pnpm` mark the simulated account onboarded the way the harness does.
+Either way, fix the guide's section A, which today states the opposite of what the build does.
+
+**Judgement call on severity:** in production Stripe returns a real address, so this blocks accepting
+the work rather than the pilot itself. I am filing it as blocking because nothing about paying can be
+believed until a person has walked it once.
+
+### B5. A tab opened by its own address shows an empty page — including the address the card provider returns the owner to
+
+**Screen:** any `/venues/<id>?tab=…` address typed, bookmarked, or arrived at from outside.
+
+**What happens.** Clicking the tabs inside the app works. Arriving at the same address directly does
+not: the right tab is selected (`aria-selected="true"` on both Настройки and Плащане) and its panel is
+on screen, but the panel's content never arrives — zero characters, still zero after twenty seconds
+and after a reload. The page shows the venue header and the tab strip over a blank area.
+`?tab=tonight` and `?tab=reservations` do the same, stuck on their skeletons; the content is in the
+HTML the server sent, stranded in a hidden `<div>` the client never swaps in.
+
+**Why this is worse than an awkward bookmark.** The address the card provider returns the owner to is
+exactly this kind of address — `/venues/<id>?tab=settings&section=paying&connection=return`, built in
+`apps/web/src/server/settings/paying-actions.ts`. The owner who finishes at the provider comes back to
+a blank page, with no toast and no sign that anything was recorded. The same is true of a bar tablet
+that opens Tonight as its home page: the tab strip and nothing else, all night.
+
+**What I expected.** An address the app itself hands to an outside service brings the owner back to
+the screen it names.
+
+**Repro.** Open `http://localhost:3200/venues/<id>?tab=tonight` in a fresh tab.
+
+**Caveat, and it matters.** I only had the development server (Turbopack), and Suspense that never
+resolves can be a development-only fault. **Check this on a production build before ranking it.** If
+it reproduces there, it is the worst thing on this list for staff; if it does not, it is a developer
+annoyance and belongs in polish.
 
 ## Before the pilot
 
@@ -297,6 +366,146 @@ The button sits beside "Нова резервация" and reads as "add a party
 
 ---
 
+### P17. The switch that turns paying on in a developer's environment lives in one file, and that file is a test config
+
+**Screen:** none — the environment.
+
+**What happens.** `WORKER_PAYMENTS_SIM` appears exactly once in the repository outside the code that
+reads it: `apps/web/playwright.config.ts:96`. It is in no `.env.example`, in no guide, in no script.
+Without it the worker never builds the simulated provider, its `/internal/payments/connection`
+answers 404, and the owner's screen says *"Test card payments не се отвори. Проверете връзката и
+натиснете отново."* — sending them to check a connection that cannot help, because the switch is in
+the environment, not in Restro.
+
+**What it means.** Paying works in CI and has never worked for a person following the guide. That is
+how B4 stayed invisible.
+
+**Fixed in this pull request:** `.env.example` now carries the line, commented out, in the payments
+block, and the paying guide's step 7 names it and says the worker must be restarted.
+
+**Still recommended:** when the provider is simply not switched on in this environment, say that,
+instead of blaming the connection.
+
+### P18. A venue's floor plan can only be made by someone writing a script
+
+**Screen:** Резервации › План (B2 is what the hostess sees).
+
+**What happens.** Part 1 ships the commands but no screen: `plan.save`, `spot_kind.save`, `spot.save`
+and `spot.set_seats` all exist in `packages/core/src/service/reservations/`, and the service write
+path accepts them. Nothing in the product calls them. To walk reservations at all I wrote a throwaway
+script against `applyService`. It worked first time — sixteen commands, no refusals — which is the
+point: the engine is finished and the way in is missing.
+
+**What I expected.** A supported way for Restro's own team to give a venue its plan, the way
+`pnpm sim-pos` is the supported way to play the till.
+
+**Recommendation.** A `pnpm` command beside `sim-pos` that takes a venue and a small file of spots and
+sends the same three commands. The exact sequence I used is in the appendix at the end of this file,
+so it does not have to be worked out again.
+
+### P19. `pnpm sim-pos` quietly talks to whichever simulator answers first
+
+**Screen:** none — the terminal.
+
+**What happens.** `pnpm sim-pos` defaults to `http://127.0.0.1:4010`
+(`packages/connectors/sim-pos/src/cli.ts:29`) and reads no `.env.local`. With two walk environments on
+one machine — which is how this walk and the menu designer's walk run side by side — a waiter command
+meant for the second environment lands in the first one's simulator, silently and successfully.
+Nothing says which simulator answered.
+
+**What I expected.** The command reads its environment's own `SIM_POS_URL`, or at least prints the
+address it is about to use.
+
+**Repro.** Start two simulators; run `pnpm sim-pos ops` with no `SIM_POS_URL` set.
+
+### P20. Tonight does not say who is sitting at the table
+
+**Screen:** Тази вечер › Действия и маси › a table.
+
+**What happens.** I seated "Elena Dimitrova · 6 гости" on Маса 1 from the door, and the toast said so.
+The table's own sheet in Tonight then reads *"Маса 1 — Main bar · отворена от 21:53 — 2 изпратени
+поръчки — Сметка: 40,00 € — Плащане преди поръчка · правилото на клуба"*. No name, no number of
+guests, no booking. The list behind it says only *"Отворена"*.
+
+**What I expected.** The waiter looking at a table sees whose booking it is, as the hostess does — the
+two screens are about the same table on the same night.
+
+**Repro.** Seat a booking on a table, then open that table in Тази вечер.
+
+### P21. "Смени масите" calls the whole room "Заето", then lets you take any of it anyway
+
+**Screen:** Резервации › a seated booking › Смени масите.
+
+**What happens.** Every spot but one reads *"Заето"* — Маса 2 to Маса 8 and Сепаре 1 to Сепаре 4 — on a
+night with two parties in the room. The only *"Свободно"* is the bar. A spot is "Заето" because its
+table is open for phones, which after "Отвори всички" is every table in the building. Tapping a "Заето"
+spot selects it with no warning at all, and Запази goes through.
+
+**What I expected.** "Заето" to mean a party is there. A table merely open for phones is not occupied;
+if the word is kept, taking one should at least say what is being taken.
+
+**Repro.** Тази вечер › "Отвори всички", then Резервации › a seated booking › Смени масите.
+
+### P22. The guest's bill disappears the moment staff move the party
+
+**Screen:** the guest's phone, at the table the party left.
+
+**What happens.** The phone showed *"Сметката на масата"* with four lines and *"За плащане: 40,00 €"*.
+The hostess moved the party to Маса 2 — correctly, and with the right warning to staff (see "What held
+up well") — and the phone's bill section vanished entirely. What is left is *"Тази маса не приема
+поръчки от телефон в момента."* The guest is not told where their 40,00 € went, that it is still on
+Маса 1, or that their new table has its own code to scan.
+
+**What I expected.** One line on the phone: the bill stayed with the old table, ask the waiter, or scan
+the code on the new one.
+
+**Repro.** Open a table's guest page, send a round, then move that booking to another table.
+
+### P23. "Добави" stays live on a table that takes no orders
+
+**Screen:** the guest's phone, at a table closed for phones.
+
+**What happens.** After the table was closed, every *"Добави"* button stays enabled. Tapping one adds
+nothing and says nothing of its own; the only feedback is a sentence further down the page, *"Тази маса
+не приема поръчки от телефон в момента."*, which was already there before the tap. A guest taps,
+nothing moves, and they tap again.
+
+**What I expected.** The buttons go quiet, or the tap itself says why.
+
+**Repro.** Close a table for phones in Тази вечер, then tap "Добави" on its guest page.
+
+### P24. "Същите гости ли са?" is about the table, and reads as if it were about the guests
+
+**Screen:** the door, and Смени масите.
+
+**What happens.** Seating a party on a table that is open for phones, and moving a party onto one, both
+stop on *"Същите гости ли са? — Масата вече е отворена за телефони."* with *"Същите гости — запази
+поръчката"* and *"Нови гости — започни отначало"*. The question is about whoever was on that table's
+phones before; the staff member reading it has just named the party standing in front of them, so it
+reads as a question about those people. On a night where "Отвори всички" opened every table, it appears
+on every single seating.
+
+**What I expected.** The question names the other side — "На тази маса вече има поръчка от телефон.
+Същата компания ли е?" — and does not appear at all for a table whose phones have ordered nothing.
+
+**Repro.** Тази вечер › "Отвори всички", then seat any booking.
+
+### P25. The guest's phone asks the server every two seconds, all night
+
+**Screen:** none — the guest page's own traffic.
+
+**What happens.** The phone polls `/api/guest/state?view=bill` and the server answers `"next": 2000`
+every time, changed or not: 150 requests in five minutes from one idle phone at a quiet table. The
+answer is small (`{"unchanged":true,…}`), but the cadence never backs off while the guest is only
+reading the menu.
+
+**What I expected.** The gap grows while nothing is happening and shrinks when it is — which the code
+already does for orders in flight (`cadence(view, inFlight)`), just not for a quiet table.
+
+**Judgement call,** and a number worth measuring rather than guessing: three hundred phones in a club
+is a hundred and fifty requests a second at the web app, each one reaching Postgres. Worth measuring
+before the pilot, not after.
+
 ## Polish
 
 ### S1. Two words for the same thing, one under the other
@@ -343,27 +552,104 @@ Scrolling the guest menu up again leaves "Шотове и уиски" underlined
 
 ---
 
+### S9. The night's end counts more opened tables than the venue has
+
+**Screen:** Тази вечер › Край на вечерта.
+
+*"Отворени маси за телефони — 25"* at a venue with sixteen tables. It is counting openings, not
+tables, but the words say tables. Either count tables, or say *"отваряния"*.
+
+### S10. "Тази маса не приема поръчки" is printed twice, one line under the other
+
+**Screen:** the guest's phone, at a table closed for phones.
+
+The same sentence sits in the notice line and again in the bag area, directly beneath itself. It does
+not multiply with taps; it is simply there twice.
+
+## What held up well
+
+Worth saying, because it is the seam #387 was most worried about: **moving a seated party between
+tables is handled carefully.** The move closed the old table for phones, opened the new one, asked
+about the phones already on the destination, wrote *"Резервация смени масите при отворена сметка"* into
+the Log with the person's name, offered *"Върни"*, and told the staff the one thing only they can act
+on — *"Сметката остава на Маса 1. Премести я на касата."* That is the right division of work with the
+till, and it says so in plain words.
+
+Also sound: the ordering seam itself. A round sent from the phone was on the table's bill within
+seconds (*"Добавено към сметката ви"*, and the bill above it went from 29,50 € to 40,00 €), Tonight
+counted it (*"2 изпратени поръчки · Сметка: 40,00 €"*), and the night's end counted it again. The
+payment settings screen, the booking sheet with its payment rule and its history, and the end-of-night
+totals are all clear and in good Bulgarian.
+
+---
+
 ## What I could not reach, and why
 
-1. **Paying.** The shared app's worker runs without `WORKER_PAYMENTS_SIM=on`, so the simulated
-   provider is never registered and the worker's `/internal/payments/connection` answers 404. In the
-   app this shows as *"Test card payments не се отвори. Проверете връзката и натиснете отново."* —
-   which sends the owner to check a connection that cannot help, because the switch is in the
-   environment, not in Restro. The paying acceptance guide's "Before you start" lists the paying
-   `.env.local` lines but not this one. I could not set it myself: I must not touch that folder.
-   **Recommendation:** add `WORKER_PAYMENTS_SIM=on` to the paying guide's step 7, and make the error
-   say when the provider is simply not switched on in this environment.
+1. **Everything about paying past the owner's settings screen** — the guest's pay screen, the card
+   form, the tip, the receipt, the payment lines on Tonight, the night's end with a table still paying.
+   Not the environment's fault this time: the provider cannot be connected at all (B4). The guest's
+   phone is honest about it — *"За да платите, попитайте сервитьора."*
 
-2. **Anything that needs a floor plan** — seating a party on a spot, moving a party between tables,
-   a table that has both a booking and an open bill, a party moved while a round is unsent, the
-   night ending with a table still paying. Those are exactly the seams #387 asks about, and B2
-   closes all of them. **Recommendation:** before the next walk, seed the walk environment with a
-   floor plan the way `apps/web/e2e/reservations-state.ts` does for the e2e venue, or build the
-   smallest plan editor.
+2. **A party moved while a round is still unsent.** I moved a party whose round was already sent and on
+   the bill. Moving one mid-bag needs two hands at once; it is the one seam left unwalked and the next
+   thing to try.
 
-**One thing I changed and could not change back.** To see the guest flow on a real template I
-switched Demo Bar (the shared walk app on port 3200, database `restro_walk_all`) from the hidden
-test template to "Редакционен пазар" and published it. The composer offers no way back, because the
-test template is hidden from venues. Re-running `pnpm db:seed:dev` on that database puts it back.
-Nothing else in the walk changed data beyond ordinary use: two bookings, one walk-in, a few rounds,
-and opening and closing the tables.
+3. **The night's end itself.** I read Край на вечерта but did not run it, and did not use "Затвори
+   всички": this walk's database may be shared with the walk Martin is using on port 3100, and ending a
+   night is not something to do to someone else's screen. It should be run on a database of its own.
+
+**What I changed, and how to put it back.** On the shared walk app (port 3200, database
+`restro_walk_all`): Demo Bar now has a floor plan ("Основна зала", thirteen spots) and three spot kinds,
+made through the service write path; it is back on the hidden test template `qr-phone` and published,
+because the template a venue can actually choose draws no services at all (B1); one booking was seated,
+moved to Маса 2 and left there; a few rounds were sent; and a connection to the simulated card provider
+was started and is stuck half-done (B4). `pnpm db:seed:dev` on that database puts all of it back.
+
+---
+
+## Appendix: how Demo Bar got its floor plan
+
+Kept here so it need not be worked out again, and as the shape of the `pnpm` command P18 asks for.
+Every write goes through the service write path — no raw SQL, no owner role — so the rows carry their
+provenance and the Log shows the work.
+
+The script ran from the walk environment's own folder, so that it had that environment's `.env.local`,
+its `node_modules` and Node 24:
+
+```
+pnpm exec node --experimental-transform-types \
+  --env-file=<walk folder>/.env.local \
+  --import file:///<walk folder>/apps/web/scripts/register-ts.mjs <script>.ts
+```
+
+The script builds one context and sends sixteen commands through `applyService`:
+
+```ts
+const context = () => ({
+  tenantId: TENANT,
+  venueId: VENUE,
+  origin: 'staff',
+  actor: { kind: 'user', userId: OWNER, sessionId: 'walk-plan-script' },
+  jobId: newId('jb'),
+  signedInAt: new Date(),
+})
+const send = async (command) => {
+  const { result } = await applyService(pool, command, context())
+  if (result.status !== 'accepted') throw new Error(result.code)
+}
+```
+
+in this order, because each step needs the one before it:
+
+1. `{ type: 'spot_kind.save', key, label, symbol, defaultSeats, sortKey }` — once per kind (`table`,
+   `booth`, `counter`). A spot of a kind the venue has not defined is refused `spot_kind_missing`.
+2. `{ type: 'plan.save', name: 'Основна зала', makeCurrent: true }` — answers the `planId`;
+   `makeCurrent` takes the flag off the venue's other plan.
+3. `{ type: 'spot.save', planId, name, kind, shape, x, y, width, height, seats?, tableId? }` — once per
+   spot. Whole numbers inside the 10 000 grid; `circle` must be square and `booth` cannot be turned, or
+   the shape checks refuse it. `tableId` is what ties a spot to an orderable table; the bar counter has
+   none.
+
+Two things worth knowing before writing it again: the actor must be `kind: 'user'` (a staff PIN is
+refused `own_sign_in_required` for `settings.*`), and `sessionId` only has to be a string that is not a
+live `shared_devices` row.
