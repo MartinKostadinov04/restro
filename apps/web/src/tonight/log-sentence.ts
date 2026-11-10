@@ -240,8 +240,12 @@ export const SENTENCES = {
           'lg_rv_pr_venue',
       ),
     }),
-  // The night's record, which an admin may write before the closing hour (D138).
-  'night.closed': (_l, c) => c.say('lg_rv_night_closed'),
+  // The night's end (#332; D138): at the closing hour, or an admin's early end, with the bills it
+  // found still open — the closing hour's warning, counted and named here.
+  'night.closed': (l, c) =>
+    l.endedEarly
+      ? c.say('lg_night_ended_early', { who: c.who(l.by), n: l.openBills ?? 0 })
+      : c.say('lg_night_ended', { n: l.openBills ?? 0 }),
   'plan.changed': (l, c) =>
     c.say(l.reservationStatus === 'removed' ? 'lg_plan_removed' : 'lg_plan_changed'),
   'spot.changed': (l, c) =>

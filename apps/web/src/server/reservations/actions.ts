@@ -433,7 +433,10 @@ export async function noShowAction(input: unknown): Promise<RvWriteResult> {
   )
 }
 
-/** The Undo of a no-show: the party goes back to Coming. */
+/**
+ * The Undo of a no-show: the party goes back to Coming. Also "Put back" on a party the night's end
+ * closed (#332), one at a time: an admin's, read from the Log by the service path.
+ */
 export async function putBackAction(input: unknown): Promise<RvWriteResult> {
   const parsed = Booked.safeParse(input)
   if (!parsed.success) return invalidWrite()
@@ -441,6 +444,20 @@ export async function putBackAction(input: unknown): Promise<RvWriteResult> {
   return performReservationWrite(
     { venueId: id, ...withPin(typed) },
     { type: 'reservation.put_back', reservationId },
+  )
+}
+
+/**
+ * The Undo of putting back a party the night's end closed (#332): it returns to the status the
+ * night's end gave it, and is refused once the party has moved since.
+ */
+export async function undoPutBackAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = Booked.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const { venueId: id, reservationId, pin: typed } = parsed.data
+  return performReservationWrite(
+    { venueId: id, ...withPin(typed) },
+    { type: 'reservation.undo_put_back', reservationId },
   )
 }
 

@@ -153,6 +153,7 @@ describe('one reservation’s sheet', () => {
     version: '2026-11-09T16:00:00.000Z',
     mine: false,
     payRule: { rule: null, beaten: [] },
+    endedByNightEnd: false,
     history: [
       {
         seq: 1,

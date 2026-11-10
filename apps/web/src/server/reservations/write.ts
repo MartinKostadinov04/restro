@@ -90,6 +90,8 @@ export type RvCommand =
       readonly status: 'no_show'
     }
   | { readonly type: 'reservation.put_back'; readonly reservationId: string }
+  /** The Undo of putting back a party the night's end closed (#332): back to that status. */
+  | { readonly type: 'reservation.undo_put_back'; readonly reservationId: string }
   | {
       /**
        * A party onto the night's waiting list (#330, D137): the one path that writes a waiting

@@ -23,6 +23,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
@@ -43,6 +45,7 @@ import { callKindsText } from './call-kinds'
 import { MakeTablet } from './make-tablet'
 import { useMoney } from './money'
 import { moneyTitleKey } from './money-rows'
+import { NightEndDialog, NightEndedBanner } from './night-end'
 import { OfflineLine } from './offline-line'
 import { PauseBanners } from './pause-banners'
 import { PushControl } from './push-control'
@@ -164,6 +167,8 @@ function Content({
   const [muted, setMuted] = useState(false)
   const [announcement, setAnnouncement] = useState('')
   const [closeAll, setCloseAll] = useState(false)
+  const [endNight, setEndNight] = useState(false)
+  const closeEndNight = useCallback(() => setEndNight(false), [])
   const seen = useRef<Set<string> | null>(null)
 
   useEffect(() => setMuted(readMuted()), [])
@@ -197,11 +202,13 @@ function Content({
                           amt: money(row.refundFailed?.amountMinor ?? 0, view.currency),
                           provider: view.provider ?? t('pb_provider_none'),
                         })
-                      : row.kind === 'paused'
-                        ? t('g_t', { table: tableName(row.table, row.numbered) })
-                        : row.kind === 'approval'
-                          ? t('a_t')
-                          : t('s_t'),
+                      : row.kind === 'night_end'
+                        ? t('ne_bills', { n: row.nightEnd?.openBills ?? 0 })
+                        : row.kind === 'paused'
+                          ? t('g_t', { table: tableName(row.table, row.numbered) })
+                          : row.kind === 'approval'
+                            ? t('a_t')
+                            : t('s_t'),
         )
         .join('. '),
     )
@@ -233,6 +240,12 @@ function Content({
   const nowRows = view.rows.filter((row) => row.kind !== 'stopped')
   const laterRows = view.rows.filter((row) => row.kind === 'stopped')
   const emptyNight = emptyShown && nothingOpen && view.tableCount > 0
+  // Ending the night (#332): whoever may, and on a shared device for everyone (its confirm asks a
+  // manager's PIN, D141); a person whose role may not reads who may, never a disabled control.
+  const nightGoing = view.nightEnd === null
+  const mayEndNight = nightGoing && (view.can.endNight || view.device)
+  const sayWhoEnds = nightGoing && !view.can.endNight && !view.device
+  const mayCloseAll = view.can.openClose && view.openCount > 0
 
   function openAll() {
     run({
@@ -365,7 +378,7 @@ function Content({
         </div>
         <div className="flex items-center gap-2">
           {emptyNight ? null : openAllButton}
-          {view.can.openClose && view.openCount > 0 ? (
+          {mayCloseAll || mayEndNight || sayWhoEnds ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -378,10 +391,29 @@ function Content({
                   <EllipsisIcon aria-hidden />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem className="min-h-11" onSelect={() => setCloseAll(true)}>
-                  {t('closeall')}
-                </DropdownMenuItem>
+              <DropdownMenuContent align="end" className="max-w-[min(20rem,calc(100vw-2rem))]">
+                {mayCloseAll ? (
+                  <DropdownMenuItem className="min-h-11" onSelect={() => setCloseAll(true)}>
+                    {t('closeall')}
+                  </DropdownMenuItem>
+                ) : null}
+                {mayCloseAll && (mayEndNight || sayWhoEnds) ? <DropdownMenuSeparator /> : null}
+                {mayEndNight ? (
+                  <DropdownMenuItem
+                    className="min-h-11 [overflow-wrap:anywhere]"
+                    data-testid="night-end-open"
+                    onSelect={() => setEndNight(true)}
+                  >
+                    {t('ne_open')}
+                  </DropdownMenuItem>
+                ) : sayWhoEnds ? (
+                  <DropdownMenuLabel
+                    className="font-normal text-muted-foreground [overflow-wrap:anywhere]"
+                    data-testid="night-end-who"
+                  >
+                    {t('ne_who')}
+                  </DropdownMenuLabel>
+                ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
@@ -418,6 +450,7 @@ function Content({
         </div>
       </div>
       <OfflineLine offline={offline} stoodAt={view.now} timezone={view.timezone} />
+      <NightEndedBanner view={view} />
       <PauseBanners view={view} />
       {pushKey === undefined ? null : (
         <PushControl venueId={view.venueId} pushKey={pushKey} sharedDevice={view.device} />
@@ -466,6 +499,7 @@ function Content({
           {tables}
         </div>
       </div>
+      <NightEndDialog view={view} open={endNight} onClose={closeEndNight} />
       <Dialog open={closeAll} onOpenChange={setCloseAll}>
         <DialogContent>
           <DialogHeader>

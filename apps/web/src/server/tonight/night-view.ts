@@ -196,6 +196,7 @@ export function frameOf(
       lift: held.has('ordering.lift'),
       answer: held.has('alerts.answer'),
       followUp: held.has('money.follow_up'),
+      endNight: held.has('reservations.end_night'),
     },
     canConnect: held.has('settings.connect_payments'),
     canExport: held.has('log.view') && held.has('night.view_full'),
@@ -387,6 +388,10 @@ export interface LogLineView {
   /** A "Got it" line taken back by Undo (#234). */
   readonly refundSeenUndone: boolean
   readonly sentOrdersOfDay: number | null
+  /** The bills still open when the night ended (#332); null for any other entry. */
+  readonly openBills: number | null
+  /** A `night.closed` an admin wrote before the closing hour (#332). */
+  readonly endedEarly: boolean
   /**
    * A reservation entry's own code (#323): what the thing became — the party's status, the spots
    * held or freed, a plan or a guest record kept, removed or erased. Null for every other kind.
@@ -509,6 +514,8 @@ export function logLineView(
     stornoUndone: line.kind === 'payment.storno' && line.toState === 'open',
     refundSeenUndone: line.kind === 'payment.refund_failed_seen' && line.toState === 'open',
     sentOrdersOfDay: line.sentOrdersOfDay,
+    openBills: line.openBills,
+    endedEarly: line.kind === 'night.closed' && line.reason === 'ended_early',
     reservationStatus: RESERVATION_KINDS.has(line.kind) ? line.toState : null,
     callKinds: line.callKinds,
     callUndone: line.kind === 'waiter_call.done' && line.toState === 'open',

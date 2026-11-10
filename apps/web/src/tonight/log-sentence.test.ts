@@ -66,6 +66,8 @@ const line = (kind: LogLineView['kind'], fields: Partial<LogLineView> = {}): Log
   refundSeenUndone: false,
   paymentId: null,
   sentOrdersOfDay: null,
+  openBills: null,
+  endedEarly: false,
   reservationStatus: null,
   callKinds: [],
   callUndone: false,
@@ -174,6 +176,16 @@ describe("the Log's sentences", () => {
     )
     expect(logSentence(line('service_day.closed', { sentOrdersOfDay: 84 }), en)).toBe(
       'The night closed: 84 sent orders',
+    )
+    // The night's end (#332): the bills it found still open, counted and named.
+    expect(logSentence(line('night.closed', { openBills: 2 }), en)).toBe(
+      'The night ended at the closing hour · bills still open: 2',
+    )
+    expect(logSentence(line('night.closed', { openBills: 1, endedEarly: true }), en)).toBe(
+      'Maria ended the night early · bills still open: 1',
+    )
+    expect(logSentence(line('night.closed', { openBills: 0 }), en)).toBe(
+      'The night ended at the closing hour · bills still open: 0',
     )
     expect(logSentence(line('table_code.reissued'), en)).toBe('New code for Table 7')
     expect(logSentence(line('table_code.revealed'), en)).toBe('Code shown for Table 7')

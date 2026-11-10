@@ -43,6 +43,8 @@ export type TableCommand =
   | { readonly type: 'tables.open_all' }
   | { readonly type: 'tables.undo_open_all'; readonly undo: UndoToken }
   | { readonly type: 'tables.close_all' }
+  /** Ends the night (#332): an admin before the closing hour; the hour's own tick is the worker's. */
+  | { readonly type: 'night.end' }
   | { readonly type: 'table.resume'; readonly tableId: string }
   | {
       readonly type: 'sent_order.answer'

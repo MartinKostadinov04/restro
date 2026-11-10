@@ -595,6 +595,8 @@ export interface LogLine {
   readonly providerKind: string | null
   /** The sent orders a closed night held. */
   readonly sentOrdersOfDay: number | null
+  /** The bills still open when the night ended (`night.closed`, #332); null for any other entry. */
+  readonly openBills: number | null
   /**
    * A waiter call entry's kinds (#180): the one a `waiter_call.called` entry added, or every kind
    * of the call in a Handled or lapsed entry; empty for any other entry.
@@ -836,6 +838,10 @@ export async function readLog(
                   : withoutTipMinor(row.amountMinor ?? null, row.tipMinor ?? 0),
             providerKind: detailText(row.details, 'providerKind'),
             sentOrdersOfDay: typeof sentOrdersOfDay === 'number' ? sentOrdersOfDay : null,
+            openBills:
+              row.kind === 'night.closed' && typeof row.details.openBills === 'number'
+                ? row.details.openBills
+                : null,
             callKinds: callKindsOf(row.kind, row.details),
           }
         }),

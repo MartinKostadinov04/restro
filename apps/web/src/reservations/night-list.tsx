@@ -472,6 +472,7 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
           }}
           onCopy={(detail) => setCopying(detail)}
           onNoShow={actions.noShow}
+          onPutBack={actions.putBack}
           onCancel={actions.cancel}
           onDelete={actions.remove}
           onArrive={
