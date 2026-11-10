@@ -479,6 +479,12 @@ export async function undoOpenAll(
   if (used.length > 0) {
     return refused(null, 'undo_stale', { count: used.length, tables: idsThatFit(used) })
   }
+  // Every bill reading before the first sitting ends, as `closeOpenTables` does: ending one lifts
+  // its pauses last of all, so a second table's bill reading claimed after them would break the
+  // lock order (#393, the same fault as #332 in the other multi-table loop). `mine` follows the
+  // sorted `tableIds`, so the pauses that follow are claimed in key order too.
+  const endingTables = mine.map((sitting) => sitting.tableId)
+  if (endingTables.length > 0) stx.rows.claim('bill_reading', endingTables)
   for (const sitting of mine) await endSitting(stx, sitting, 'staff_closed')
   return accepted(null, {
     details: { closed: mine.length, skipped: tableIds.length - mine.length },
