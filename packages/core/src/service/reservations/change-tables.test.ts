@@ -245,7 +245,9 @@ describe.skipIf(!hasDatabase)('changing tables (as the restro_app role)', () => 
         swap: { reservationId: b, from: ids('C2'), spotIds: ids('C1') },
       }),
     )
-    expect(details).toMatchObject({ swapWith: b, closed: `${tableOf('C1')},${tableOf('C2')}` })
+    expect(details).toMatchObject({ swapWith: b })
+    // The answer lists tables in the lock order (by id), so it is read as a set.
+    expect(String(details.closed).split(',').sort()).toEqual([tableOf('C1'), tableOf('C2')].sort())
     expect(await heldBy(a)).toEqual(ids('C2'))
     expect(await heldBy(b)).toEqual(ids('C1'))
     // Each table was closed for the party that left and opened afresh for the one that came.
