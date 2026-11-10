@@ -14,6 +14,7 @@ import { z } from 'zod'
  * order, `ol` order line, `so` sent order, `wc` waiter call, `al` alert, `pa` pause, `rl` venue
  * role, `sm` staff member, `dv` shared device. Paying (D127): `py` payment. Readings (#74): `rd`
  * one POS bill of a table's reading, `bn` one line of it. Refunds (#222): `rf` one refund the venue made in its provider's dashboard.
+ * My styles (D129): `ds` one saved Style of an organisation.
  * Reservations (D134, D140; ticket #323): `fp` one floor plan of a venue, `sp` one spot on it (a
  * spot may link to a `tb` table and is never one), `rv` one reservation (a booking, a walk-in, a
  * waiting party or a block), `gu` one guest record of a venue.
@@ -49,6 +50,7 @@ export const ID_KINDS = [
   'rd',
   'bn',
   'rf',
+  'ds',
   'fp',
   'sp',
   'rv',
@@ -119,6 +121,8 @@ export type PaymentId = Id<'py'>
 export type BillId = Id<'rd'>
 /** Id of one line of a POS bill of a table's reading (#74), stable across readings. */
 export type BillLineId = Id<'bn'>
+/** Id of an organisation's saved Style (D129, My styles). */
+export type SavedStyleId = Id<'ds'>
 
 const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 const RANDOM_BYTES = 16

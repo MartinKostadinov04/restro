@@ -1,7 +1,9 @@
 // RR-26 on Postgres, as restro_app, with a published menu and D122's real Send limits: a refused
 // Send never spends the phone's Send (out of stock, a duplicate, first-time consent, a failed human
 // check, a Send the POS sent back), two Sends that go out within 15 s still get the 429, and repeated
-// failed human checks stop at their own limit, each one reaching nothing.
+// failed human checks stop at their own limit, each one reaching nothing. With #293's DA-1: a
+// "Send and pay" whose pay part the phone's own limits drop still sends its bill lines, and the
+// Pay's wait is neither taken twice nor freed.
 import { randomUUID } from 'node:crypto'
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -87,6 +89,33 @@ describe.skipIf(!hasDatabase)('the Send limits count Sends that go out (RR-26)',
 
   const add = (itemId: string, qty = 1) => act({ type: 'order.add', ...line(itemId, qty) })
   const sendOf = (...lines: ReturnType<typeof line>[]) => ({ type: 'order.send', lines })
+
+  /** The phone's key for the limits, as `guestAct` builds it. */
+  const subjectOf = async () => `${await hashTableCode(code)}:${PHONE}`
+
+  /**
+   * A payment of the table that has not ended, seeded as the owner: what the phone holds while it
+   * is paying. A Send's pay-first part is dropped while one is open (#293, DA-1), and `guestAct`
+   * only drops it for a payment that is really still there.
+   */
+  async function openPayment(): Promise<string> {
+    const { rows } = await world.owner.query<{ id: string }>(
+      'select id from restro.sittings where table_id = $1 and ended_at is null',
+      [tableId],
+    )
+    const sittingId = rows[0]?.id
+    if (sittingId === undefined) throw new Error('expected the table’s open sitting')
+    const paymentId = newId('py')
+    await world.owner.query(
+      `insert into restro.payments
+         (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
+          currency, provider_kind, source, actor, job_id)
+       values ($1, $2, $3, $4, $5, current_date, 'on_bill', 'requested', $6, 'EUR', 'sim-pay',
+          'restro', 'system', 'test-seed')`,
+      [paymentId, world.tenantId, world.venueId, tableId, sittingId, sha256Hex(paymentId)],
+    )
+    return paymentId
+  }
 
   async function sentOrderCount(): Promise<number> {
     const { rows } = await world.owner.query<{ n: number }>(
@@ -327,6 +356,31 @@ describe.skipIf(!hasDatabase)('the Send limits count Sends that go out (RR-26)',
     expect(failed.result.code).toBe('human_check')
     const subject = `${await hashTableCode(code)}:${PHONE}`
     expect(limiter.take(subject, ['sendGap', 'sends', 'payGap', 'pays'], Date.now()).ok).toBe(true)
+  })
+
+  it('sends the bill lines while the phone has a payment open, keeping the pay part back (DA-1)', async () => {
+    await add(beer)
+    await add(gin)
+    // The phone is paying for something else and has not finished: its Pay is closed, its Send
+    // is not. The pay-first part is dropped before the engine, and must not go with the command.
+    limiter.setOpenPayment(await subjectOf(), await openPayment())
+    const sent = await act({ ...sendOf(line(beer)), payFirst: { lines: [line(gin)], tipMinor: 0 } })
+    expect(sent.result).toMatchObject({ status: 'accepted', payFirstRefused: 'rate_limited' })
+    expect(await sentOrderCount()).toBe(1)
+  })
+
+  it('sends the bill lines when the phone just paid, and keeps the Pay’s own 15 s (DA-1)', async () => {
+    await add(beer)
+    await add(gin)
+    const subject = await subjectOf()
+    // A payment a second ago: `payGap` is full, the Send's own limits are free.
+    const paidAt = Date.now() - 1000
+    expect(limiter.take(subject, ['payGap', 'pays'], paidAt).ok).toBe(true)
+    const sent = await act({ ...sendOf(line(beer)), payFirst: { lines: [line(gin)], tipMinor: 0 } })
+    expect(sent.result).toMatchObject({ status: 'accepted', payFirstRefused: 'rate_limited' })
+    expect(await sentOrderCount()).toBe(1)
+    // The earlier payment's hits are still spent: the Send neither took them again nor freed them.
+    expect(limiter.take(subject, ['payGap'], Date.now()).ok).toBe(false)
   })
 
   it('never lets refused Sends use up the 10 in 10 minutes', async () => {

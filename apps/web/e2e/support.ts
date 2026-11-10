@@ -29,16 +29,11 @@ export const GUEST_TABLE_TOKEN = 'tb_e2eGuestTable000001'
 export const GUEST_TABLE_LABEL = '12'
 export const TAG_SLUG = 'tag-fixture'
 export const TAG_PUBLIC_ID = 'tagfixture01'
-// A third published menu, for the template registry (SH-04): the tagged fixture again, but its venue
-// chose the reference template (`qr-phone`), forces the dark scheme and asks for Playfair Display.
-// Like the tagged menu it has no venue row, so its public code is a fixed one.
+// A third published menu, for the look a snapshot names (SH-04): the tagged fixture again, drawn in
+// Editorial with a forced dark scheme and Playfair Display. Like the tagged menu it has no venue
+// row, so its public code is a fixed one.
 export const LOOK_SLUG = 'look-fixture'
 export const LOOK_PUBLIC_ID = 'lookfixture1'
-// The shared order (#75): two phones on one table of a venue of its own. The menu is the shell's
-// `features-on` fixture drawn by the reference template, under a fixed code like the look's; the
-// table, its code and its sitting are real rows (scripts/seed-order-e2e.ts prints the code).
-export const ORDER_SLUG = 'order-fixture'
-export const ORDER_PUBLIC_ID = 'orderfixture'
 // The order venue's spot for the location check (#76): the phones stand on it, or across town.
 export const ORDER_SPOT = { lat: 42.6977, lng: 23.3219 }
 

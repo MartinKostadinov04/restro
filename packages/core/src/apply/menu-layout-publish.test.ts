@@ -1,14 +1,14 @@
-// The menu's layout and the sections' layout reach the snapshot (D92; brief S6): `publishMenu`
-// reads the menu's settings (`setMenuSettings`) and the sections' `layout` field, and writes
+// The menu's layout and the sections' layout reach the snapshot (D92, D129; brief S6): `publishMenu`
+// reads the design record's layout and guest switch and the sections' `layout` field, and writes
 // `layout` and `hints.layout`. Postgres as restro_app.
 import { createPool, type DbPool } from '@restro/db'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import type { ChangeSet } from '../change-set'
+import { BASIC_DESIGN_VALUES, DEFAULT_DESIGN } from '../design/record'
 import { type NodeId, newId } from '../ids'
 import { apply } from './apply'
-import { setMenuSettings } from './menus'
 import { type ProvisionedMenu, provisionMenu, provisionTenant, provisionVenue } from './provision'
 import { publishMenu } from './publish'
 import { appDatabaseUrl, cleanUp, hasDatabase, openOwnerPool, testSlug } from './test-database'
@@ -38,6 +38,21 @@ describe.skipIf(!hasDatabase)('the menu and section layouts in a publish', () =>
       observedAt: new Date().toISOString(),
       ops,
     } as ChangeSet).then((result) => expect(result.rejected).toEqual([]))
+  const saveLayout = (expectedRevision: number, layout: string, guest_switch: string) =>
+    change([
+      {
+        op: 'setDesign',
+        venueId,
+        expectedRevision,
+        design: {
+          ...DEFAULT_DESIGN,
+          values: {
+            ...BASIC_DESIGN_VALUES,
+            items: { ...BASIC_DESIGN_VALUES.items, layout, guest_switch },
+          },
+        },
+      },
+    ])
   const manual = (node: string, fieldKey: string, value: unknown) => ({
     op: 'setField',
     node: { id: node },
@@ -84,21 +99,16 @@ describe.skipIf(!hasDatabase)('the menu and section layouts in a publish', () =>
     await app?.end()
   })
 
-  it('publishes two columns with the guest switch (the look before D92) and vertical sections while nothing is set', async () => {
+  it('publishes Basic’s list with the guest switch and vertical sections while nothing is set', async () => {
     const first = await publish(0)
     expect(first.status).toBe('published')
-    expect(first.snapshot.body?.layout).toEqual({ default: 'two', guest_switch: true })
+    expect(first.snapshot.body?.layout).toEqual({ default: 'list', guest_switch: true })
     expect(first.snapshot.body?.sections[picks]?.hints.layout).toBe('vertical')
     expect(first.snapshot.body?.sections[drinks]?.hints.layout).toBe('vertical')
   })
 
-  it('publishes the menu’s settings and a section marked horizontal', async () => {
-    const saved = await setMenuSettings(app, tenant, {
-      venueId,
-      menuId: menu.id,
-      settings: { layout: 'list', layout_switch: false },
-    })
-    expect(saved.ok).toBe(true)
+  it('publishes the design’s layout and a section marked horizontal', async () => {
+    await saveLayout(0, 'list', 'off')
     await change([manual(drinks, 'layout', 'horizontal')])
 
     const second = await publish(10)
@@ -110,12 +120,8 @@ describe.skipIf(!hasDatabase)('the menu and section layouts in a publish', () =>
     expect((await publish(11)).status).toBe('unchanged')
   })
 
-  it('a changed menu setting alone is a new version', async () => {
-    await setMenuSettings(app, tenant, {
-      venueId,
-      menuId: menu.id,
-      settings: { layout: 'one_column', layout_switch: false },
-    })
+  it('a changed layout alone is a new version', async () => {
+    await saveLayout(1, 'one', 'off')
     const third = await publish(20)
     expect(third.status).toBe('published')
     expect(third.snapshot.body?.layout).toEqual({ default: 'one', guest_switch: false })

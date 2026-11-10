@@ -72,7 +72,8 @@ The same job looks the same on every screen (D107): one pattern per job, chosen 
 
 | Job | The pattern | Divergences today |
 |---|---|---|
-| A single reversible write (hide or show, sold out, a layout or look option, a guest feature) | The control saves at once; the undo toast is the feedback (Undo, above). No Save button. | Guest features: switches plus Save. |
+| A single reversible write (hide or show, sold out) | The control saves at once; the undo toast is the feedback (Undo, above). No Save button. | Guest features: switches plus Save. |
+| The Design page (the Style, colours, fonts, layout, every Advanced option; D129) | A draft on its own page: Undo steps back, **Done** saves the whole design, **Cancel** throws the draft away. My styles (save, update, delete) are the organisation's and save at once. | none |
 | Rename | A pencil opens the name in place; Enter saves, Escape cancels. | Menus: an inline form with Save; areas and tables: an always-open field saved on blur; the venue name and the header name: a field plus Save. |
 | Reorder | A drag handle with the keyboard alternative, plus "…" → Move up / Move down for one hand on a phone (WCAG 2.5.7). | Menus: up and down arrows; sections and tags: the handle alone. |
 | Move a thing elsewhere | Drag onto its new place, or "…" → "Move to…" with the places listed. | Tables: flat "…" items. |

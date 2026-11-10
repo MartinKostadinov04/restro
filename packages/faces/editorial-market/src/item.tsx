@@ -5,6 +5,7 @@
 // phone, a "+" sits beside the price (services/quick-add.tsx); otherwise nothing is added.
 
 import type { ViewItem } from '@restro/shell'
+import { Fragment } from 'react'
 
 import { badgeKey, langOf, localeLang, photoSizes } from './model'
 import { type PageContext, Photo, Slot, Text } from './parts'
@@ -13,7 +14,7 @@ import { QuickAdd } from './services/quick-add'
 /** All the badges of an item, in one `item.badges` slot: over the photo's corner, or above a text row. */
 function Badges({ item, ctx }: { readonly item: ViewItem; readonly ctx: PageContext }) {
   return (
-    <Slot name="item.badges" className="rm-badges">
+    <Slot name="item.badges" className="rm-badges" part="item.marks">
       {item.badges.map((badge) => (
         <span key={badgeKey(badge)} className="rm-badge" lang={langOf(badge.label, ctx.locale)}>
           {badge.label.text}
@@ -56,16 +57,17 @@ export function Item({
     <article
       data-item={item.id}
       data-state={item.state.code}
+      data-design-part="item"
       className={className}
       hidden={!ctx.isVisible(item)}
     >
       {image !== null ? (
-        <Slot name="item.image" className="rm-photo">
+        <Slot name="item.image" className="rm-photo" part="item.photo">
           <Photo
             image={image}
             assetBase={assetBase}
             page={locale}
-            sizes={photoSizes(ctx.layout, strip)}
+            sizes={photoSizes(ctx.layout, strip, ctx.bleedPhotos)}
             loading={priority ? 'eager' : 'lazy'}
           />
           {hasBadges ? <Badges item={item} ctx={ctx} /> : null}
@@ -76,7 +78,7 @@ export function Item({
         {/* The name is the item's heading, and the button inside it opens the dish page: a button may
             not hold a heading, a heading may hold a button. The arrow after the name is the
             button's ::after. */}
-        <Slot name="item.name">
+        <Slot name="item.name" part="item.name">
           <Name lang={langOf(item.name, locale)}>
             <button
               type="button"
@@ -90,7 +92,7 @@ export function Item({
           </Name>
         </Slot>
         {item.price !== null ? (
-          <Slot name="item.price" className="rm-price">
+          <Slot name="item.price" className="rm-price" part="item.price">
             {item.price.text}
           </Slot>
         ) : null}
@@ -99,7 +101,7 @@ export function Item({
           {item.state.label !== null ? <Text value={item.state.label} page={locale} /> : null}
         </Slot>
         {item.description !== null ? (
-          <Slot name="item.description" className="rm-description">
+          <Slot name="item.description" className="rm-description" part="item.description">
             <p
               lang={langOf(item.description, locale)}
               data-clamped={item.description.truncatable ? 'true' : 'false'}
@@ -114,7 +116,7 @@ export function Item({
           </Slot>
         ) : null}
         {item.dietary.length > 0 ? (
-          <Slot name="item.dietary" className="rm-labels">
+          <Slot name="item.dietary" className="rm-labels" part="item.labels">
             {item.dietary.map((label) => (
               <span key={label.code} lang={langOf(label.label, locale)}>
                 {label.label.text}
@@ -123,7 +125,7 @@ export function Item({
           </Slot>
         ) : null}
         {item.tags.length > 0 ? (
-          <Slot name="item.tags" className="rm-labels">
+          <Slot name="item.tags" className="rm-labels" part="item.labels">
             {item.tags.map((tag) => (
               <span key={tag.id} lang={langOf(tag.label, locale)}>
                 {tag.label.text}
@@ -132,17 +134,26 @@ export function Item({
           </Slot>
         ) : null}
         {item.allergens.length > 0 ? (
-          <Slot name="item.allergens" className="rm-allergens">
+          <Slot name="item.allergens" className="rm-allergens" part="item.allergens">
             <button
               type="button"
               onClick={(event) => ctx.openAllergens(item.id, event.currentTarget)}
               aria-label={`${strings.allergens}: ${item.allergens.map((a) => a.label.text).join(', ')}`}
             >
-              {item.allergens.map((allergen) => (
-                <b key={allergen.code} data-allergen={allergen.code}>
-                  {allergen.number}
-                </b>
-              ))}
+              {ctx.allergenNames
+                ? item.allergens.map((allergen, index) => (
+                    <Fragment key={allergen.code}>
+                      {index > 0 ? ' · ' : null}
+                      <span data-allergen={allergen.code} lang={langOf(allergen.label, locale)}>
+                        {allergen.label.text}
+                      </span>
+                    </Fragment>
+                  ))
+                : item.allergens.map((allergen) => (
+                    <b key={allergen.code} data-allergen={allergen.code}>
+                      {allergen.number}
+                    </b>
+                  ))}
             </button>
           </Slot>
         ) : null}
@@ -157,7 +168,7 @@ export function Item({
           </Slot>
         ) : null}
         {item.modifierGroups.length > 0 ? (
-          <Slot name="item.modifiers" className="rm-modifiers">
+          <Slot name="item.modifiers" className="rm-modifiers" part="item.choices">
             {item.modifierGroups.map((group) => (
               <p key={group.id}>
                 <b lang={langOf(group.name, locale)}>{group.name.text}</b>

@@ -44,6 +44,13 @@ function unitOf(op: ChangeSetOp, idToLink: Map<string, string>): string {
     case 'linkSource':
     case 'setLinkState':
       return `${op.link.externalType}:${op.link.externalId}`
+    case 'setDesign':
+      // A till set never saves a design (the change set's own check).
+      return `design:${op.venueId}`
+    case 'setStyle':
+    case 'setStyleStatus':
+      // A till set never saves one of the organisation's Styles either.
+      return `style:${op.styleId}`
     default:
       return keyOfRef(op.node, idToLink)
   }

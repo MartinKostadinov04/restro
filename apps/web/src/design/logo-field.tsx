@@ -1,6 +1,6 @@
 'use client'
 
-// The venue's logo in the Design tab: ported from the old Appearance card unchanged in behaviour.
+// The venue's logo on the Design page: ported from the old Appearance card unchanged in behaviour.
 // The picture goes up through the same route as the item photos, with the same checks first
 // (`precheckImage`, `uploadImage`); what comes back is an asset id that is attached to the look when
 // "Save look" is pressed. A saved logo is shown from its signed link, a new one from the file just

@@ -14,6 +14,10 @@ export interface PageContext {
   readonly assetBase: string
   /** How the items of a section are laid out now (the photos' `sizes` follow it). */
   readonly layout: Layout
+  /** Whether a photo fills its box (the Photos page's frame), which widens it by its margin. */
+  readonly bleedPhotos: boolean
+  /** Allergens by name on the row, the footer and the sheet (the Labels page), not by number. */
+  readonly allergenNames: boolean
   /** Whether an item passes the guest's filters; one that does not stays in the markup, hidden. */
   readonly isVisible: (item: ViewItem) => boolean
   /** Opens the dish page for an item (the element that asked gets the focus back). */
@@ -29,15 +33,18 @@ export function Text({
   as: Tag = 'span',
   className,
   id,
+  part,
 }: {
   readonly value: ViewText
   readonly page: Locale
   readonly as?: 'span' | 'p' | 'h1' | 'h2' | 'h3' | 'h4'
   readonly className?: string
   readonly id?: string
+  /** The part of the design this is (`data-design-part`, D130). */
+  readonly part?: string
 }) {
   return (
-    <Tag id={id} className={className} lang={langOf(value, page)}>
+    <Tag id={id} className={className} lang={langOf(value, page)} data-design-part={part}>
       {value.text}
     </Tag>
   )
@@ -48,15 +55,18 @@ export function Slot({
   name,
   className,
   state,
+  part,
   children,
 }: {
   readonly name: string
   readonly className?: string
   readonly state?: string
+  /** The part of the design this is (`data-design-part`, D130). */
+  readonly part?: string
   readonly children?: ReactNode
 }) {
   return (
-    <div data-slot={name} data-state={state} className={className}>
+    <div data-slot={name} data-state={state} data-design-part={part} className={className}>
       {children}
     </div>
   )
@@ -73,6 +83,7 @@ export function Photo({
   sizes,
   className,
   loading = 'lazy',
+  part,
 }: {
   readonly image: ViewImage
   readonly assetBase: string
@@ -81,6 +92,8 @@ export function Photo({
   readonly className?: string
   /** `eager` loads now (the logo, the first photos, the dish page); `lazy` when it comes near the screen. */
   readonly loading?: 'eager' | 'lazy'
+  /** The part of the design this is (`data-design-part`, D130). */
+  readonly part?: string
 }) {
   const { objectPosition, ...attributes } = imageAttributes(image, assetBase, sizes)
   return (
@@ -88,6 +101,7 @@ export function Photo({
     <img
       {...attributes}
       className={className}
+      data-design-part={part}
       alt={image.alt === null ? '' : image.alt.text}
       lang={image.alt === null ? undefined : langOf(image.alt, page)}
       style={{ objectPosition }}

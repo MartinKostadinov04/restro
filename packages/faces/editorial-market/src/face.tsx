@@ -29,6 +29,8 @@ import {
   allItems,
   bcp47,
   countVisible,
+  designAttributes,
+  designVariables,
   type Filters,
   hasVisibleItems,
   isFiltering,
@@ -41,7 +43,7 @@ import {
 } from './model'
 import type { PageContext } from './parts'
 import { SectionBlock } from './section'
-import { ServiceBar } from './services/bag-bar'
+import { ConnectionLine, PaymentProgress, ServiceBar } from './services/bag-bar'
 import { HeaderTools } from './services/header-tools'
 import { ServicesProvider, serviceBarShown, servicesShown } from './services/provider'
 import { SERVICES_CSS } from './services/services-css'
@@ -152,17 +154,30 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
     return () => window.removeEventListener('keydown', onKey)
   }, [allergens, dish.isOpen, dish.close, filtersOpen, closeAllergens, closeFilters])
 
+  const allergenNames = view.design.labels?.allergens === 'names'
   const ctx = useMemo<PageContext>(
     () => ({
       locale,
       strings,
       assetBase,
       layout,
+      bleedPhotos: view.design.photos?.frame !== 'inset',
+      allergenNames,
       isVisible: (item: ViewItem) => matchesFilters(item, filters),
       openDish: dish.open,
       openAllergens,
     }),
-    [locale, strings, assetBase, layout, filters, dish.open, openAllergens],
+    [
+      locale,
+      strings,
+      assetBase,
+      layout,
+      view.design,
+      allergenNames,
+      filters,
+      dish.open,
+      openAllergens,
+    ],
   )
 
   // A section the composer marks horizontal is a photo-led strip (D92). The layout switch, when
@@ -187,18 +202,26 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
       data-layout={layout}
       data-scheme={scheme}
       data-services={serviceBarShown(view, services) ? 'bar' : undefined}
+      {...designAttributes(view.design)}
       lang={bcp47(locale)}
-      style={themeVariables(view.theme, fontStacks) as CSSProperties}
+      style={
+        {
+          ...themeVariables(view.theme, fontStacks),
+          ...designVariables(view.design, fontStacks),
+        } as CSSProperties
+      }
     >
       {/* biome-ignore lint/security/noDangerouslySetInnerHtml: constant stylesheets from css.ts and services/services-css.ts, no user input; React would escape `>` and quotes in them */}
       <style dangerouslySetInnerHTML={{ __html: css }} />
       <ServicesProvider
         view={view}
+        assetBase={assetBase}
         services={services}
         tableLabel={tableLabel}
         openDish={dish.open}
-        dishOpen={dish.isOpen}
       >
+        <ConnectionLine />
+        <PaymentProgress />
         <Header
           view={view}
           ctx={ctx}
@@ -242,13 +265,13 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
           ) : null}
         </main>
         {view.allergenLegend.length > 0 ? (
-          <footer className="rm-footer">
+          <footer className="rm-footer" data-design-part="footer">
             <h2>{strings.footerTitle}</h2>
-            <p>{strings.footerText}</p>
+            <p>{allergenNames ? strings.footerTextNames : strings.footerText}</p>
             <div className="rm-legend" data-slot="menu.allergen_legend">
               {view.allergenLegend.map((allergen) => (
                 <span key={allergen.code} lang={langOf(allergen.label, locale)}>
-                  <b>{allergen.number}</b>
+                  {allergenNames ? null : <b>{allergen.number}</b>}
                   {allergen.label.text}
                 </span>
               ))}
@@ -268,12 +291,19 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
           />
         ) : null}
         {dishItem !== undefined ? (
-          <DishPage item={dishItem} ctx={ctx} leaving={dish.leaving} onClose={dish.close} />
+          <DishPage
+            item={dishItem}
+            ctx={ctx}
+            kind={view.design.dish?.kind === 'page' ? 'page' : 'sheet'}
+            leaving={dish.leaving}
+            onClose={dish.close}
+          />
         ) : null}
         {allergenItem !== undefined ? (
           <AllergenSheet
             item={allergenItem}
             legend={view.allergenLegend}
+            names={allergenNames}
             strings={strings}
             page={locale}
             onClose={closeAllergens}

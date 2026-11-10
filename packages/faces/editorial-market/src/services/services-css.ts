@@ -53,7 +53,7 @@ export const SERVICES_CSS = `
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--rm-bg);
+  color: var(--rm-on-button);
   line-height: 1;
   touch-action: manipulation;
   transition:
@@ -66,7 +66,7 @@ export const SERVICES_CSS = `
   inset: calc((44px - var(--ro-circle)) / 2);
   z-index: -1;
   border-radius: var(--rm-pill);
-  background: var(--rm-text);
+  background: var(--rm-button);
   transition:
     background 0.18s ease,
     box-shadow 0.18s ease;
@@ -85,10 +85,10 @@ export const SERVICES_CSS = `
   right: calc((44px - var(--ro-circle)) / 2 - 4px);
   min-width: 18px;
   height: 18px;
-  border-radius: 999px;
-  background: var(--rm-accent);
-  color: var(--rm-on-accent);
-  font-size: 10px;
+  border-radius: var(--rm-full);
+  background: var(--rm-button-mark);
+  color: var(--rm-on-button-mark);
+  font-size: calc(12px * var(--rm-type));
   font-weight: 850;
   line-height: 18px;
   text-align: center;
@@ -100,7 +100,7 @@ export const SERVICES_CSS = `
   }
   .rm .ro-plus:hover::before {
     background: var(--rm-accent);
-    box-shadow: 0 6px 16px color-mix(in srgb, var(--rm-text) 22%, transparent);
+    box-shadow: var(--rm-depth);
   }
   .rm .ro-stepper button:hover {
     background: var(--rm-accent);
@@ -124,14 +124,50 @@ export const SERVICES_CSS = `
   z-index: 3;
   margin: 0;
 }
+/* Where the copy is a wrapping row (D130: the price at the end, a portion beside it) the "+" is one
+   of its parts, right after the price and the portion. */
+.rm[data-layout][data-items-price-place="end"] .rm-item-copy > .ro-quick,
+.rm[data-layout][data-items-portion-place="beside"] .rm-item-copy > .ro-quick {
+  flex: 0 0 auto;
+  order: 4;
+  align-self: center;
+  margin: 0 0 0 auto;
+}
+.rm[data-layout="two"][data-items-portion-place="beside"]
+  .rm-section:not(.is-feature)
+  .rm-item.has-photo
+  .rm-item-copy
+  > .ro-quick {
+  margin-left: auto;
+}
+/* On a card the list's thumbnail sits 14 px in, and the "+" stays on its corner. */
+.rm[data-layout="list"][data-items-frame="cards"]
+  .rm-section:not(.is-feature)
+  .rm-item.has-photo
+  .ro-quick {
+  top: calc(14px + 96px - 42px);
+  right: 18px;
+}
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .ro-quick .ro-plus {
   --ro-circle: 36px;
 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .ro-quick .ro-plus::before {
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--rm-text) 20%, transparent);
+  box-shadow: var(--rm-depth);
 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.is-text .ro-quick {
   margin-top: -40px;
+}
+.rm[data-layout="list"][data-items-price-place="end"]
+  .rm-section:not(.is-feature)
+  .rm-item.is-text
+  .rm-item-copy
+  > .ro-quick,
+.rm[data-layout="list"][data-items-portion-place="beside"]
+  .rm-section:not(.is-feature)
+  .rm-item.is-text
+  .rm-item-copy
+  > .ro-quick {
+  margin-top: 0;
 }
 
 /* The quantity stepper: 44 px buttons, compact on a dish card (with a 44 px tap area). */
@@ -153,7 +189,7 @@ export const SERVICES_CSS = `
   border: 0;
   border-radius: 0;
   background: transparent;
-  font-size: 20px;
+  font-size: calc(20px * var(--rm-type));
   touch-action: manipulation;
 }
 .rm .ro-stepper button:disabled {
@@ -163,7 +199,7 @@ export const SERVICES_CSS = `
 .rm .ro-stepper output {
   min-width: 22px;
   text-align: center;
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
   font-weight: 850;
   animation: ro-pop 0.2s ease;
 }
@@ -181,7 +217,7 @@ export const SERVICES_CSS = `
   min-width: 44px;
   min-height: 44px;
   margin: calc((var(--ro-btn) - 44px) / 2);
-  font-size: 16px;
+  font-size: calc(16px * var(--rm-type));
 }
 .rm .ro-quick .ro-stepper button::before {
   content: "";
@@ -208,7 +244,7 @@ export const SERVICES_CSS = `
   border-radius: var(--rm-pill);
   background: transparent;
   color: var(--rm-bg);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--rm-type));
   font-weight: 800;
   white-space: nowrap;
   transition:
@@ -242,7 +278,7 @@ export const SERVICES_CSS = `
   .rm .ro-pill {
     gap: 4px;
     padding: 0 9px;
-    font-size: 11px;
+    font-size: calc(12px * var(--rm-type));
   }
   .rm-headtools {
     gap: 4px;
@@ -275,11 +311,11 @@ export const SERVICES_CSS = `
   padding: 0 16px 0 6px;
   border: 0;
   border-radius: var(--rm-pill);
-  background: var(--rm-text);
-  color: var(--rm-bg);
-  font-size: 14px;
+  background: var(--rm-button);
+  color: var(--rm-on-button);
+  font-size: calc(14px * var(--rm-type));
   font-weight: 850;
-  box-shadow: 0 14px 34px color-mix(in srgb, var(--rm-text) 30%, transparent);
+  box-shadow: var(--rm-depth);
   touch-action: manipulation;
   transition: transform 0.12s;
   animation: ro-up 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -335,10 +371,10 @@ export const SERVICES_CSS = `
   place-items: center;
   width: calc(var(--ro-bar) - 14px);
   height: calc(var(--ro-bar) - 14px);
-  border-radius: 999px;
-  background: var(--rm-accent);
-  color: var(--rm-on-accent);
-  font-size: 13px;
+  border-radius: var(--rm-full);
+  background: var(--rm-button-mark);
+  color: var(--rm-on-button-mark);
+  font-size: calc(13px * var(--rm-type));
   animation: ro-pop 0.22s ease;
 }
 
@@ -361,12 +397,12 @@ export const SERVICES_CSS = `
   margin-bottom: 14px;
 }
 .rm .ro-group legend > span {
-  font-size: 19px;
+  font-size: calc(19px * var(--rm-type));
   font-weight: 850;
 }
 .rm .ro-group legend small {
   color: var(--rm-muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--rm-type));
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -396,7 +432,7 @@ export const SERVICES_CSS = `
   border-radius: var(--rm-radius);
   background: transparent;
   text-align: left;
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
   font-weight: 700;
   touch-action: manipulation;
   transition:
@@ -412,13 +448,13 @@ export const SERVICES_CSS = `
 }
 .rm .ro-options b {
   color: var(--rm-muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--rm-type));
 }
 .rm .ro-note {
   display: grid;
   gap: 8px;
   margin-top: 26px;
-  font-size: 13px;
+  font-size: calc(13px * var(--rm-type));
   font-weight: 800;
 }
 .rm .ro-note textarea,
@@ -432,7 +468,7 @@ export const SERVICES_CSS = `
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 15px;
+  font-size: calc(16px * var(--rm-type));
   resize: vertical;
 }
 .rm .ro-sheet .ro-note textarea,
@@ -456,7 +492,7 @@ export const SERVICES_CSS = `
 }
 .rm .ro-dish-bar .ro-primary {
   padding: 0 16px;
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
 }
 
 /* Buttons. */
@@ -470,9 +506,9 @@ export const SERVICES_CSS = `
   padding: 0 20px;
   border: 0;
   border-radius: var(--rm-pill);
-  background: var(--rm-accent);
-  color: var(--rm-on-accent);
-  font-size: 15px;
+  background: var(--rm-button);
+  color: var(--rm-on-button);
+  font-size: calc(15px * var(--rm-type));
   font-weight: 850;
   touch-action: manipulation;
   transition:
@@ -503,7 +539,7 @@ export const SERVICES_CSS = `
   margin-top: 10px;
   padding: 0 18px;
   border: 1px solid color-mix(in srgb, currentColor 26%, transparent);
-  border-radius: 999px;
+  border-radius: var(--rm-full);
   background: transparent;
   font-weight: 800;
   touch-action: manipulation;
@@ -512,14 +548,17 @@ export const SERVICES_CSS = `
   opacity: 0.45;
 }
 
-/* Sheets: the bag, the bill. */
+/* Sheets: the bag, the bill. The "Preview" marker's own look is fixed (D130's never-list, D105 §10.4):
+   it is the admin's furniture, not the venue's, so its dashed pill keeps one shape at every Corners
+   value. It read 999px at every Corners value but Square, where it went square with the rest of the
+   page (found by the Classic Style, #178); the radius is written out so no design reshapes it. */
 .rm .ro-preview {
   display: inline-block;
   margin: 14px 0 0;
   padding: 3px 10px;
   border: 1px dashed currentColor;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: calc(12px * var(--rm-type));
   font-weight: 850;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -554,7 +593,7 @@ export const SERVICES_CSS = `
 }
 .rm .ro-confirm-note {
   color: var(--rm-muted);
-  font-size: 0.9em;
+  font-size: calc(14.4px * var(--rm-type));
 }
 .rm .ro-confirm {
   /* The Payment confirmation (D127 1.4): a plain card, nothing of a receipt's look. */
@@ -562,11 +601,18 @@ export const SERVICES_CSS = `
   gap: 10px;
   padding: 18px;
   border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-  border-radius: 12px;
+  border-radius: calc(var(--rm-radius) * 1.5);
   text-align: left;
 }
 .rm .ro-confirm p {
   margin: 0;
+}
+/* The note under the confirmation reads on any sheet: the sheet's own writing, a little quieter. The
+   muted colour is the page's and the panel's pair, and on top of the status panel's 75 % it came to
+   about 2.9:1 (measured in the design specs of #173). */
+.rm .ro-confirm .ro-confirm-note {
+  opacity: 1;
+  color: color-mix(in srgb, currentColor 82%, transparent);
 }
 .rm .ro-lines label {
   display: flex;
@@ -582,7 +628,7 @@ export const SERVICES_CSS = `
   height: 24px;
   margin: 0;
   border: 2px solid color-mix(in srgb, currentColor 54%, transparent);
-  border-radius: 6px;
+  border-radius: calc(var(--rm-radius) * 0.75);
   background: transparent;
 }
 .rm .ro-lines input[type="checkbox"]:checked {
@@ -596,7 +642,7 @@ export const SERVICES_CSS = `
   min-width: 0;
 }
 .rm .ro-line-main strong {
-  font-size: 16px;
+  font-size: calc(16px * var(--rm-type));
   overflow-wrap: anywhere;
 }
 .rm .ro-line-main small {
@@ -605,10 +651,10 @@ export const SERVICES_CSS = `
 .rm .ro-line-main .ro-flag {
   justify-self: start;
   padding: 3px 9px;
-  border-radius: 999px;
+  border-radius: var(--rm-full);
   background: var(--rm-accent);
   color: var(--rm-on-accent);
-  font-size: 11px;
+  font-size: calc(12px * var(--rm-type));
   font-weight: 850;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -623,7 +669,7 @@ export const SERVICES_CSS = `
   padding: 0;
   border: 0;
   background: transparent;
-  font-size: 13px;
+  font-size: calc(13px * var(--rm-type));
   font-weight: 800;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -646,14 +692,14 @@ export const SERVICES_CSS = `
 }
 .rm .ro-sum.is-small {
   padding-top: 8px;
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
   font-weight: 600;
   opacity: 0.8;
 }
 .rm .ro-sum.is-big {
   margin-top: 18px;
   border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-  font-size: 20px;
+  font-size: calc(20px * var(--rm-type));
 }
 .rm .ro-notice {
   display: grid;
@@ -662,7 +708,7 @@ export const SERVICES_CSS = `
   padding: 12px 14px;
   border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
   border-radius: var(--rm-radius);
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
 }
 .rm .ro-notice.is-bad {
   border-color: currentColor;
@@ -671,6 +717,123 @@ export const SERVICES_CSS = `
   justify-self: start;
   width: auto;
   margin: 4px 0 0;
+}
+.rm .ro-notice ul {
+  margin: 0;
+  padding-left: 18px;
+}
+/* The slim line at the top of the menu while a payment has not settled and its sheet is closed
+   (#293, DA-24): the full width of the page, the accent's fill so it is seen at a glance, and a
+   44 px target because it is a button. */
+.rm .ro-payline {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 16px;
+  border: 0;
+  background: var(--rm-accent);
+  color: var(--rm-on-accent);
+  font-family: var(--rm-font);
+  font-size: calc(14px * var(--rm-type));
+  text-align: center;
+  touch-action: manipulation;
+}
+/* The weak-connection line at the top of the menu (RR-51, DA-23). Not a control: it is read, never
+   tapped, so it carries the page's own colours and no 44 px target. */
+.rm .ro-topline {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  background: var(--rm-bg);
+  color: var(--rm-text);
+  font-size: calc(14px * var(--rm-type));
+  text-align: center;
+}
+/* The last refusal of an order command, over the bar when no sheet is open; a tap dismisses it. */
+.rm .ro-barnote {
+  position: fixed;
+  z-index: 41;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: calc(max(44px, var(--ro-bar)) + 28px + env(safe-area-inset-bottom));
+  left: max(14px, env(safe-area-inset-left));
+  box-sizing: border-box;
+  max-width: 560px;
+  min-height: 44px;
+  margin-inline: auto;
+  padding: 10px 14px;
+  border: 1px solid currentColor;
+  border-radius: var(--rm-radius);
+  background: var(--rm-bg);
+  color: var(--rm-text);
+  font-size: calc(14px * var(--rm-type));
+  text-align: left;
+  touch-action: manipulation;
+}
+/* The same place for a notice that carries its own controls, so the box itself is not a tap (DA-22).
+   Its own rule, not a second selector on the one above: that one's look is stored and must not move. */
+.rm .ro-barbox {
+  position: fixed;
+  z-index: 41;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: calc(max(44px, var(--ro-bar)) + 28px + env(safe-area-inset-bottom));
+  left: max(14px, env(safe-area-inset-left));
+  box-sizing: border-box;
+  max-width: 560px;
+  margin-inline: auto;
+  padding: 10px 14px;
+  border: 1px solid currentColor;
+  border-radius: var(--rm-radius);
+  background: var(--rm-bg);
+  color: var(--rm-text);
+  font-size: calc(14px * var(--rm-type));
+  text-align: left;
+}
+/* The notice inside the box is the box: no second border and no margin of its own. */
+.rm .ro-barbox .ro-notice {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+/* "Order this from your waiter" on a card, where the POS's ticket takes no choices (#78). */
+.rm .ro-quick-note {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: var(--rm-radius);
+  background: var(--rm-bg);
+  color: var(--rm-text);
+  font-size: calc(12px * var(--rm-type));
+  font-weight: 700;
+}
+/* "Show this to your waiter" (D120): the reference in large type, dark on light whatever the theme. */
+.rm .ro-waiter-card {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 18px;
+  border-radius: var(--rm-radius);
+  color-scheme: light;
+  background: Canvas;
+  color: CanvasText;
+}
+.rm .ro-waiter-card p {
+  margin: 0;
+}
+.rm .ro-waiter-card ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.rm .ro-waiter-ref {
+  font-size: calc(48px * var(--rm-type));
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+}
+.rm .ro-sent {
+  margin-top: 8px;
 }
 .rm .ro-round {
   margin-top: 22px;
@@ -682,7 +845,7 @@ export const SERVICES_CSS = `
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  font-size: 12px;
+  font-size: calc(12px * var(--rm-type));
   font-weight: 850;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -690,7 +853,7 @@ export const SERVICES_CSS = `
 .rm .ro-round em {
   padding: 3px 9px;
   border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-  border-radius: 999px;
+  border-radius: var(--rm-full);
   font-style: normal;
 }
 .rm .ro-round[data-source="guest"] em {
@@ -709,7 +872,7 @@ export const SERVICES_CSS = `
   gap: 10px;
   align-items: center;
   padding: 10px 0;
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
 }
 .rm .ro-round li[data-status="cancelled"] .ro-tabname {
   text-decoration: line-through;
@@ -719,6 +882,8 @@ export const SERVICES_CSS = `
   overflow-wrap: anywhere;
 }
 .rm .ro-tabname small {
+  /* The options of a line stay at the 12 px floor: the browser's "smaller" would be 11.7 px here. */
+  font-size: calc(12px * var(--rm-type));
   opacity: 0.65;
 }
 .rm .ro-qty {
@@ -726,9 +891,9 @@ export const SERVICES_CSS = `
 }
 .rm .ro-status {
   padding: 4px 8px;
-  border-radius: 999px;
+  border-radius: var(--rm-full);
   background: color-mix(in srgb, currentColor 12%, transparent);
-  font-size: 11px;
+  font-size: calc(12px * var(--rm-type));
   font-weight: 850;
 }
 .rm .ro-status[data-status="preparing"] {
@@ -789,12 +954,23 @@ export const SERVICES_CSS = `
 }
 .rm .ro-state h3 {
   margin: 12px 0 0;
-  font-size: 22px;
+  font-size: calc(22px * var(--rm-type));
 }
 .rm .ro-state p {
   max-width: 32ch;
   margin: 0;
   opacity: 0.75;
+}
+/* The payment number (D127, the guide's Paid: "the number in large type", at least 40 px at 7:1):
+   the guest turns the phone round and a waiter reads it across a bar, so it takes the waiter
+   reference's 48 px and the sheet's full writing colour, not the status panel's 75 % (#293, DA-11). */
+.rm .ro-state p.ro-pay-number,
+.rm .ro-pay-number {
+  font-size: calc(48px * var(--rm-type));
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  opacity: 1;
 }
 .rm .ro-state .ro-kind {
   font-weight: 800;
@@ -809,7 +985,7 @@ export const SERVICES_CSS = `
   height: 54px;
   border: 3px solid color-mix(in srgb, currentColor 18%, transparent);
   border-top-color: var(--rm-accent);
-  border-radius: 999px;
+  border-radius: var(--rm-full);
   animation: ro-spin 0.8s linear infinite;
 }
 .rm .ro-check {
@@ -817,10 +993,10 @@ export const SERVICES_CSS = `
   place-items: center;
   width: 64px;
   height: 64px;
-  border-radius: 999px;
+  border-radius: var(--rm-full);
   background: var(--rm-accent);
   color: var(--rm-on-accent);
-  font-size: 30px;
+  font-size: calc(30px * var(--rm-type));
   font-weight: 900;
   animation: ro-pop 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -832,7 +1008,7 @@ export const SERVICES_CSS = `
 .rm .ro-pulse {
   width: 20px;
   height: 20px;
-  border-radius: 999px;
+  border-radius: var(--rm-full);
   background: var(--rm-accent);
   animation: ro-pulse 1.4s ease-out infinite;
 }
@@ -851,12 +1027,13 @@ export const SERVICES_CSS = `
   min-height: 48px;
   padding: 0 4px;
   text-align: center;
-  font-size: 13px;
+  font-size: calc(13px * var(--rm-type));
 }
 .rm .ro-h {
   margin: 26px 0 10px;
-  font-size: 15px;
-  font-weight: 850;
+  font-size: calc(15px * var(--rm-type));
+  font-family: var(--rm-font-heading);
+  font-weight: var(--rm-subheading-weight);
 }
 .rm .ro-row {
   display: flex;
@@ -896,7 +1073,7 @@ export const SERVICES_CSS = `
   margin: 0;
 }
 .rm .ro-allergy {
-  font-size: 13px;
+  font-size: calc(13px * var(--rm-type));
   opacity: 0.75;
 }
 /* The legal block's two controls (ticket 198): the Privacy link and the "About the venue" disclosure keep
@@ -905,6 +1082,19 @@ export const SERVICES_CSS = `
   display: inline-flex;
   align-items: center;
   min-height: 44px;
+}
+/* The Privacy link at the end of the location consent (D121) is a link to look at: the sheet's own
+   writing, underlined, and 44 px to tap. Left to the browser it was a blue that does not read on an
+   ink sheet. */
+.rm [data-slot="location.consent"] a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
 }
 .rm .ro-allergy summary {
   box-sizing: border-box;
@@ -941,8 +1131,9 @@ export const SERVICES_CSS = `
 }
 .rm .ro-page > h2 {
   margin: 0 0 6px;
-  font-size: 30px;
-  font-weight: 880;
+  font-size: calc(30px * var(--rm-type));
+  font-family: var(--rm-font-heading);
+  font-weight: var(--rm-heading-weight);
   letter-spacing: -0.01em;
   text-transform: uppercase;
 }
@@ -955,7 +1146,7 @@ export const SERVICES_CSS = `
   border-radius: var(--rm-radius);
   background: var(--rm-bg);
   color: var(--rm-text);
-  font-size: 14px;
+  font-size: calc(14px * var(--rm-type));
 }
 .rm .ro-page .ro-receipt {
   background: var(--rm-surface);
@@ -966,22 +1157,22 @@ export const SERVICES_CSS = `
   gap: 3px;
   justify-items: center;
   padding-bottom: 16px;
-  border-bottom: 1px dashed var(--rm-border);
+  border-bottom: 1px solid var(--rm-border);
   text-align: center;
 }
 .rm .ro-receipt header strong {
-  font-size: 18px;
+  font-size: calc(18px * var(--rm-type));
   letter-spacing: 0.12em;
   overflow-wrap: anywhere;
 }
 .rm .ro-receipt header span {
   color: var(--rm-muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--rm-type));
 }
 .rm .ro-receipt ul {
   margin: 0;
   padding: 12px 0;
-  border-bottom: 1px dashed var(--rm-border);
+  border-bottom: 1px solid var(--rm-border);
   list-style: none;
 }
 .rm .ro-receipt li,
@@ -1003,13 +1194,13 @@ export const SERVICES_CSS = `
   padding: 10px 0;
   border-top: 1px solid var(--rm-border);
   border-bottom: 1px solid var(--rm-border);
-  font-size: 18px;
+  font-size: calc(18px * var(--rm-type));
   font-weight: 900;
 }
 .rm .ro-ref {
   margin: 12px 0 0;
   color: var(--rm-muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--rm-type));
   text-align: center;
 }
 .rm .ro-toast {
@@ -1017,6 +1208,197 @@ export const SERVICES_CSS = `
   text-align: center;
   font-weight: 800;
   animation: ro-fade 0.2s;
+}
+
+/* The five guest-feature screens' options (D130). The first value of each is what the sheets above
+   draw (Editorial's own values are those, Basic's differ only where its first value is a new look),
+   so every rule here is keyed on a value that draws something else. What D72 and D122 fix (the
+   words, the states, the amounts, the lines, the waiter reference, the consent text) is in none of
+   them. The five inherit General (colours, fonts, corners, depth, buttons, text size) from the
+   variables above, the sheet colour from css.ts, and the labels look for their chips and inputs. */
+
+/* Call a waiter, Kinds: tiles. The kinds as a grid of icon-over-word tiles; the list is the rule
+   above (the icon beside the word, two to a row). */
+.rm[data-call-kinds="tiles"] .ro-choicegrid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 96px), 1fr));
+}
+.rm[data-call-kinds="tiles"] .ro-choicegrid button {
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  min-height: 84px;
+  padding: 10px 6px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* Bill, Rows: zebra. The Order's lines, the pay summary, the sent orders and the confirmation
+   follow, for they are the same lines. */
+.rm[data-bill-rows="zebra"] .ro-lines li {
+  padding-inline: 12px;
+  border-bottom: 0;
+  border-radius: calc(var(--rm-radius) * 0.5);
+}
+.rm[data-bill-rows="zebra"] .ro-lines li:nth-child(odd) {
+  background: color-mix(in srgb, currentColor 5%, transparent);
+}
+.rm[data-bill-rows="zebra"] .ro-round li {
+  padding-inline: 8px;
+  border-radius: calc(var(--rm-radius) * 0.5);
+}
+.rm[data-bill-rows="zebra"] .ro-round li:nth-child(even) {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+/* Bill, Lines: compact. One row to a line: the options and the note run on after the name in
+   smaller type (never under 12 px), and the status word and the amount keep their places. */
+.rm[data-bill-lines="compact"] .ro-lines li {
+  padding-block: 10px;
+}
+.rm[data-bill-lines="compact"] .ro-line-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+}
+.rm[data-bill-lines="compact"] .ro-line-main small,
+.rm[data-bill-lines="compact"] .ro-tabname small {
+  font-size: calc(12px * var(--rm-type));
+}
+.rm[data-bill-lines="compact"] .ro-line-main .ro-flag {
+  font-size: calc(12px * var(--rm-type));
+}
+.rm[data-bill-lines="compact"] .ro-tabname {
+  display: block;
+}
+.rm[data-bill-lines="compact"] .ro-tabname small {
+  display: inline;
+  margin-left: 6px;
+}
+.rm[data-bill-lines="compact"] .ro-round li {
+  padding-block: 6px;
+}
+
+/* Order, Add control: add. The same 44 px button, drawn as a pill with the shell's word. The fill is
+   the button's own (the "+" draws its round fill on a ::before, which a reader of the page's colours
+   cannot see behind a word). */
+.rm[data-order-add-control="add"] .ro-plus.is-word {
+  width: auto;
+  min-width: 44px;
+  margin-inline: 0;
+  padding: 0 14px;
+  border-radius: var(--rm-pill);
+  background: var(--rm-button);
+  box-shadow: var(--rm-depth);
+  font-size: calc(13px * var(--rm-type));
+  font-weight: 800;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+}
+.rm[data-order-add-control="add"] .ro-plus.is-word::before {
+  display: none;
+}
+.rm[data-order-add-control="add"] .ro-plus.is-word .ro-plus-count {
+  top: -4px;
+  right: -4px;
+}
+@media (hover: hover) {
+  .rm[data-order-add-control="add"] .ro-plus.is-word:hover {
+    background: var(--rm-accent);
+  }
+}
+
+/* Order, Order bar: docked. The bar runs the width of the screen and sits on its bottom edge (the
+   safe area inside it); the waiter and the bag share it, the waiter first. */
+.rm[data-order-order-bar="docked"] .ro-bagbar {
+  gap: 0;
+  padding: 0;
+  justify-content: stretch;
+}
+.rm[data-order-order-bar="docked"] .ro-bagbar button {
+  width: 100%;
+  min-height: calc(max(44px, var(--ro-bar)) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  border-radius: 0;
+  box-shadow: var(--rm-depth-up);
+}
+.rm[data-order-order-bar="docked"] .ro-bagbar .ro-bagbtn {
+  padding-left: max(6px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+.rm[data-order-order-bar="docked"] .ro-bagslot {
+  max-width: none;
+}
+.rm[data-order-order-bar="docked"] .ro-bagbar[data-bag="false"] .ro-waiter {
+  flex: 1 1 auto;
+  width: 100%;
+}
+.rm[data-order-order-bar="docked"] .ro-bagbar[data-bag="true"] .ro-waiter {
+  border-right: 1px solid color-mix(in srgb, var(--rm-on-button) 30%, transparent);
+}
+
+/* Order, Line photos: shown. A small photo ahead of each line of the Order. */
+.rm[data-order-line-photos="shown"] .ro-lines li.has-line-photo {
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: start;
+}
+.rm[data-order-line-photos="shown"] .ro-line-photo {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: calc(var(--rm-radius) * 0.6);
+}
+
+/* Pay, Tip: rows. Each percent on a row of its own with what it comes to. */
+.rm[data-pay-tip="rows"] .ro-tips {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.rm[data-pay-tip="rows"] .ro-tips button {
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 52px;
+  margin-top: 0;
+  padding: 0 14px;
+  text-align: left;
+}
+.rm[data-pay-tip="rows"] .ro-tip-amount {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Receipt, Venue block: logo. The venue's logo, with the name small under it. */
+.rm[data-receipt-venue-block="logo"] .ro-confirm-logo {
+  justify-self: start;
+  width: auto;
+  max-width: 144px;
+  max-height: 64px;
+  object-fit: contain;
+}
+.rm[data-receipt-venue-block="logo"] .ro-confirm p.is-under-logo {
+  margin-top: -6px;
+  font-size: calc(12px * var(--rm-type));
+  letter-spacing: 0.04em;
+}
+
+/* The labels look for the chips and the inputs of the five (the options spec: outline is the boxed
+   look above, soft fills, text underlines). The edge of a control keeps its 3:1 in all three. */
+.rm[data-labels-labels="soft"] .ro-choicegrid button:not([aria-checked="true"]),
+.rm[data-labels-labels="soft"] .ro-tips button:not([aria-pressed="true"]),
+.rm[data-labels-labels="soft"] .ro-scope button:not([aria-checked="true"]),
+.rm[data-labels-labels="soft"] .ro-note textarea,
+.rm[data-labels-labels="soft"] .ro-input input,
+.rm[data-labels-labels="soft"] .ro-promo input {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.rm[data-labels-labels="text"] .ro-choicegrid button:not([aria-checked="true"]),
+.rm[data-labels-labels="text"] .ro-tips button:not([aria-pressed="true"]),
+.rm[data-labels-labels="text"] .ro-scope button:not([aria-checked="true"]),
+.rm[data-labels-labels="text"] .ro-note textarea,
+.rm[data-labels-labels="text"] .ro-input input,
+.rm[data-labels-labels="text"] .ro-promo input {
+  border-width: 0 0 2px;
+  border-radius: 0;
 }
 
 /* Wider screens match the dish page's wider padding. */

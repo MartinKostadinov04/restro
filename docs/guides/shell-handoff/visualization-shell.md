@@ -6,7 +6,7 @@ v2, written 2026-10-11 against the Restro code of that date. v1 was written on 2
 
 | What changed | Where to read it |
 |---|---|
-| A face is now a **template** in a gallery; Editorial Market is the default and the first one (D69) | §0 |
+| A face is a **template**; Editorial Market is the one renderer, and a venue picks a **Style** of it, not a template (D69, D128) | §0 |
 | The venue sets three colours; the eight colour roles for light and dark are derived, with presets, overrides and six fonts (D70) | §5.4 |
 | New rule **R15 Features**: the guest controls a face may draw, fail-closed (D71) | §5.5 |
 | The manifest gained `features` and `options`; faces get `options` and `services` as host props | §7.1, §7.6 |
@@ -21,7 +21,7 @@ v2, written 2026-10-11 against the Restro code of that date. v1 was written on 2
 
 **Restro** is a QR-to-phone menu for nightclubs and bars. A guest scans a code at the table and sees the venue's menu on their phone. The menu data comes from the venue's point-of-sale system (barsy), plus whatever the venue adds by hand (photos, descriptions, tags).
 
-**The gallery (D69).** A venue chooses how its menu looks from a gallery of **templates** in the Design tab of its admin. In code a template is called a **face**; this guide uses both words for the same thing. The first template is **Editorial Market** (`packages/faces/editorial-market`), Martin's first Lovable delivery. It is the default for every venue. `qr-phone` is the plain reference face from the first stages: venues are never offered it, and the tests keep it to prove the host works with more than one face.
+**One renderer (D69, D128).** A venue does not choose among templates. Every guest menu is drawn by one renderer, **Editorial Market** (`packages/faces/editorial-market`, Martin's first Lovable delivery), from one list of design settings, and what a venue picks in the Design page of its Studio is a **Style**: a preset of that list (the premade Basic, Editorial, Soft, Classic and Club, and the organisation's own saved ones). In code the renderer is a **face** and a face is also called a template in the file names; this guide uses both words for the same code. `qr-phone`, the plain reference face of the first stages, retired with #171.
 
 **Your job:** design and build new **templates**. A template is the visual design of the guest menu: layout, typography, spacing, icons, motion, and the screens for the guest's services (the bag, the table bill, calling a waiter, paying, the receipt). You do not build the data side. Everything the guest sees has already been decided before your code runs. Your component receives a finished object (the **view model**), the host's state for the services, and a few host props, and draws them.
 
@@ -41,7 +41,7 @@ The one real difference: in your DPP viewers the view engine decided *and* drew.
 
 | Word | Meaning |
 |---|---|
-| Face, template | The code package that draws the menu. "Template" is the venue-facing name in the gallery. |
+| Face, template | The code package that draws the menu. The venue-facing word is **Style** (D128); "template" survives in code and file names. |
 | Shell | The pure rules (R1 to R15) that turn the published data into a view model. |
 | Host | The page that runs the face: the guest page, or the admin's preview. It loads the files, builds the view model, passes the host props and (later) binds the services. |
 | View model | The finished, plain-JSON description of what to draw. |
@@ -260,7 +260,7 @@ The **context** is built by the host page:
 | `channel` | `qr`, `kiosk`, `print` or `tv`. **Only `qr` is built right now.** |
 | `tableToken` | Opaque token from the table's QR code, or null. The host passes it only after the table is confirmed. |
 | `orderingEnabled` | Whether ordering is switched on for the venue. **False on the guest page for now.** |
-| `soldOutDisplay` | Menu setting `show` or `hide` for sold-out items. |
+| `soldOutDisplay` | Always `hide` (D131): a sold-out item is not drawn at all. The `show` value is gone and the designer has no option for it. |
 | `capabilities` | Which services the platform supports for this page: `callWaiter`, `bill`, `ordering`, `pay`. **Every flag is false until a service exists** (Stage 4: waiter, bill, ordering; Stage 5: pay). |
 | `images` | The face's declared image slots: for `item`, `section` and `logo`, a variant (`thumb`, `card`, `full`) and the screen's pixel density. |
 
@@ -272,7 +272,7 @@ The **context** is built by the host page:
 | **R2 Order** | Sections, items, groups and options appear in snapshot array order. A face may flow them into columns but may never reorder or regroup. | Arrays are already in final order. Draw them in that order. |
 | **R3 Language** | Each text: requested language, then the menu default, then any available one. Never empty; a node with no readable name in any language is dropped. A fallback text says which language it is really in. | Every text is `{ text, lang }`. Set the HTML `lang` attribute when `lang` differs from `view.locale`. |
 | **R4 Money** | Prices are formatted from minor units for the language and currency. "From" prices read "from 12,50 €". Option deltas read "+3,00 €". A zero delta shows nothing. | `price.text`, `price.from`, `option.delta.text`. Print these strings; never compute with `minor`. |
-| **R5 State** | Each item is `available`, `sold_out` (snapshot or overlay), `scheduled` or `unavailable`. Precedence, most cautious first: unavailable, sold out, scheduled, available. The menu setting `show` or `hide` for sold-out items is applied by the shell. | `state.code` and a ready-made `state.label` (null when available). |
+| **R5 State** | Each item is `available`, `sold_out` (snapshot or overlay), `scheduled` or `unavailable`. Precedence, most cautious first: unavailable, sold out, scheduled, available. The shell never hands a face a sold-out or unavailable item: it is hidden (D131), so a face meets `sold_out` only on an order or bill line that went sold out after it was added. | `state.code` and a ready-made `state.label` (null when available). |
 | **R6 Allergens** | Every food item's allergens must be reachable on every face, in a way the face declares (see `allergen_mode`). No face may omit them; EU food law requires it. Allergen information is not a feature: no venue setting switches it off. | `item.allergens[]` with legend numbers and labels, and `allergenLegend` for the menu. |
 | **R7 Required slots** | Name, price (when priced), allergen access and state must be drawn. A face that cannot render one cannot be installed. | `item.name`, `item.price`, `item.allergens`, `item.state`. |
 | **R8 Empty optional slots** | An empty optional slot collapses. No placeholder text such as "No value set". | `null` or an empty array means "draw nothing". |
@@ -545,7 +545,7 @@ interface SemanticColours {
 - **`image.variants` lets the browser choose.** Use `srcset` with width descriptors (`${base}${file.src} ${file.width}w`) and a `sizes` that matches your layout; keep `src` as the fallback. Use `sourceWidth` and `sourceHeight` (or your own aspect ratio) to reserve space, and `objectPosition` when you crop with `object-fit: cover`.
 - **Colour names differ between the view model and the manifest.** The view model says `onAccent`, `accentText`; the manifest token list says `color.on_accent`, `color.accent_text`; the snapshot says `on_accent`, `accent_text`.
 - **`theme.colors` and `theme.colorsDark` are complete sets.** To follow the guest's screen, define both as CSS variables and switch on `prefers-color-scheme`. The host passes the venue's policy as the `scheme` prop (`auto | light | dark`); `auto` follows the phone, the others force one set.
-- **`state` is the whole truth about availability.** `sold_out` and `unavailable` are visibly muted (not hidden; the shell already hid what should be hidden). `scheduled` shows `state.label` ("from 18:00"). `available` has no label.
+- **`state` is the whole truth about availability.** A sold-out or unavailable item is not on the menu (D131), so a face draws `sold_out` or `unavailable` only for a line already on the order or the bill, visibly muted. `scheduled` shows `state.label` ("from 18:00"). `available` has no label.
 - **An empty `allergens` list means the item lists none.** Do not print "no allergens", "allergen-free" or any claim of your own.
 - **`view.features` is the only switch for a guest control** (§5.5). Do not read `order.controls` or `ordering.enabled` to decide whether to show the bag; they are inputs to the shell's R15, not to you. (`order.controls` still tells you whether one item can be added to the bag.)
 - **Filters.** `view.filters` lists only tags and dietary labels that occur on this menu. Filtering is UI state inside the face, and it must never reorder (R2). Keep the reference face's semantics: dietary chips combine with AND (an item must carry every chosen label), tag chips with OR (any chosen tag), a section emptied by filtering is hidden, and a "clear filters" action is always reachable. A chosen chip must not stay switched on once the filter control is gone.
@@ -827,7 +827,7 @@ interface FaceHostProps {
 
 ### 7.7 Tests a template must pass
 
-A template is listed in the gallery only when all of these pass. The first three come from one call, `faceContractSuite`, in `@restro/shell/testing`:
+A face is wired in only when all of these pass. The first three come from one call, `faceContractSuite`, in `@restro/shell/testing`:
 
 | Test | What it proves | Where |
 |---|---|---|
@@ -843,7 +843,7 @@ Run only your own: `pnpm vitest run --project packages/faces/<id> --reporter=dot
 
 ## 8. The reference templates
 
-Two faces exist in the code. **Editorial Market** is the first gallery template and the example of a complete one, with the service screens. **`qr-phone`** is the smallest face that satisfies the contract, kept hidden for tests. **Both are examples of how to satisfy the contract, not designs to copy.** Your template should look different.
+One face exists in the code. **Editorial Market** is the renderer (D128) and the example of a complete face, with the service screens. **It is an example of how to satisfy the contract, not a design to copy.** Your template should look different.
 
 ### 8.1 Editorial Market: `packages/faces/editorial-market`
 
@@ -875,17 +875,11 @@ Files:
 
 **How it follows the contract:** the stylesheet contains no colours of its own, only variables. `themeVariables(view.theme, fontStacks)` writes the light and dark colours, the font, the radius and the shadow onto the face's root element as CSS variables; the CSS picks one set by `prefers-color-scheme` or by the `scheme` prop. Every motion sits behind `prefers-reduced-motion`. The root element carries `lang`, `data-face`, `data-layout` and `data-scheme`. It styles nothing outside itself.
 
-### 8.2 The smallest face: `packages/faces/qr-phone`
+### 8.2 The smallest face
 
-| File | What it does |
-|---|---|
-| `src/manifest.ts` | Its manifest (`qr-phone` 1.0.0, `inline_codes`, `ordering: false`, the `filters` feature only, no options), validated at load. |
-| `src/face.tsx`, `item-card.tsx`, `allergen-sheet.tsx` | A single scrolling page: header, sticky jump bar, filter chips, sections, item cards, an allergen sheet and a footer legend. |
-| `src/css.ts` | `FACE_CSS`: the entire stylesheet as one string. |
-| `src/model.ts` | `bcp47()`, `langOf()`, `assetUrl()`, filter functions, `themeVariables()`. |
-| `src/notices.tsx` | A loading skeleton and a notice (unknown venue, not published, load failed). The host page uses them while the chosen template loads or when the menu cannot. |
+`qr-phone`, the smallest face, retired with #171; its notices became the host's (`apps/web/src/faces/notices.tsx`: a loading skeleton and a notice for an unknown venue, a menu not published, a failed load).
 
-Take from both: the structure of a root component that only reads `view`, the `data-*` markers, the `Text` helper that applies `lang` only when it differs, `srcset` from `image.variants`, the dark/light variable pattern, the dialog behaviour. Do not take: the visual design.
+Take from it: the structure of a root component that only reads `view`, the `data-*` markers, the `Text` helper that applies `lang` only when it differs, `srcset` from `image.variants`, the dark/light variable pattern, the dialog behaviour. Do not take: the visual design.
 
 **What was taken from the DPP-style view engine:** sections in order, content in definition order, empty things skipped. **What changed:** no per-field-type `switch` (the shell formats every field before the face sees it), no hard-coded colours, and order and empty-slot rules come from the shell instead of being redone in the component.
 
@@ -897,7 +891,7 @@ Take from both: the structure of a root component that only reads `view`, the `d
 
 - **React 19 function components.** The root takes the view model and the host props of §7.6 (`assetBase`, `languages`, `onLanguageChange`, `tableLabel`, `fontStacks`, `scheme`, `options`, `services`). Export it as a named component, and export the manifest as a constant and the stylesheet as a string.
 - **Dependencies: React and nothing else.** The host does not provide Tailwind, shadcn/ui, icon packs, animation libraries or fonts. Use plain CSS and inline SVG. If you truly need something more, list it as a request in your notes; do not add it. (In Restro the dependency rules allow a face to import only its own files, `react`, `react-dom` and `@restro/shell`.)
-- **CSS from variables.** Ship the stylesheet as one string exported from `css.ts` (as both reference faces do) or a single plain `.css` file. Every colour, font, radius and shadow is a CSS variable derived from `view.theme`; write a small `themeVariables(theme)` function like the references' and apply it on the root element. Prefix your variables and classes with a short face-specific prefix, to avoid collisions with other faces (Editorial Market uses `rm-` for the menu and `ro-` for the services, `qr-phone` uses `rq-`). Never style `html`, `body` or `:root`.
+- **CSS from variables.** Ship the stylesheet as one string exported from `css.ts` (as the reference face does) or a single plain `.css` file. Every colour, font, radius and shadow is a CSS variable derived from `view.theme`; write a small `themeVariables(theme)` function like the references' and apply it on the root element. Prefix your variables and classes with a short face-specific prefix, to avoid collisions with other faces (Editorial Market uses `rm-` for the menu and `ro-` for the services, `qr-phone` uses `rq-`). Never style `html`, `body` or `:root`.
 - **No data fetching.** No `fetch`, no database, no URLs of your own, no reading of the snapshot, overlay or barsy.
 - **No state beyond UI state.** Open sheets, active filters, expanded descriptions, active section in the jump bar, the guest's layout choice, and the guest's bag (a draft, §10.2); nothing else.
 - **No date, money, language or colour logic.** Section 5.3 is the full list. If you find yourself writing `new Date`, `Intl`, `toFixed`, a sort, a translation table (other than for interface strings below), a colour function, or arithmetic on an amount, stop. The one sum you show comes from the shell (§10.5).
@@ -1222,7 +1216,7 @@ Martin sends updates to a template as a new delivery, the way the first one came
 | 9 | **The words.** An enum option's values need their words in both `apps/web/messages/bg.json` and `en.json`, under `design.lookOptions.values.<value>` (a test fails if the two files differ). A boolean option needs none. | Reviewer | The Design tab shows the option in both languages. |
 | 10 | **Screenshots.** Run `FACES_VISUAL=1 FACES_VISUAL_FACE=<id> pnpm --filter @restro/web run test:e2e e2e/faces-visual.spec.ts` and review `apps/web/test-results/faces-visual/<id>/` against §7.5; fix what the audit finds in the template's CSS and markup. | Design session; the reviewer and the lead check | The lead has no open findings, and Martin has accepted the template on a local preview (`template.md` step 3). |
 | 11 | **Gate.** `pnpm lint && pnpm typecheck && pnpm deps:check && pnpm test && pnpm build`, and the Playwright specs of the Design tab and the guest page. | Reviewer | All green. |
-| 12 | **It is in the gallery.** The Design tab lists every template that is not hidden; a venue that picks it keeps its colours, font, corners and the options it saves. Nothing else to switch on. | Lead | A venue can choose it on staging. |
+| 12 | **It is wired in.** Since D128 there is one renderer and a venue picks a Style of it, so a new face is not offered to venues; this row stays for the lead's wiring. Nothing else to switch on. | Lead | The registry test passes with it listed. |
 | 13 | **Record it.** The tracker (full text) and `docs/decisions.md` (one line) in the same commit; Appendix C of this guide if the code differs from the plan. | Lead | Committed. |
 
 A template that must not be offered yet is added with `hidden: true`: venues are not offered it, and tests still run it.
@@ -1244,7 +1238,7 @@ Fill in the angle brackets. Keep it to one page; follow `docs/agent-briefs/_temp
 1. `CLAUDE.md`, then `docs/decisions.md`. Look up `T<n>.` in `docs/tracker.md` by number; do not read the tracker whole.
 2. The designer guide `docs/guides/shell-handoff/visualization-shell.md`: §5 (rules R1–R15), §7 (the contract and its tests), §10 (services), §11 and §12 (this checklist).
 3. The delivery `docs/design/faces/<id>/<date>/`: `README.md`, `handover.md` sections <list>, and `source/` (reference only: read it, never import it, never edit it).
-4. The references: `packages/faces/editorial-market/` (a complete template) and `packages/faces/qr-phone/` (the smallest). Copy their patterns: the manifest validated at load, the CSS as one string, `themeVariables`, the `Text` helper that sets `lang` only when it differs, `srcset` from `image.variants`, `faceContractSuite` in the face's test.
+4. The reference: `packages/faces/editorial-market/` (a complete template). Copy its patterns: the manifest validated at load, the CSS as one string, `themeVariables`, the `Text` helper that sets `lang` only when it differs, `srcset` from `image.variants`, `faceContractSuite` in the face's test.
 5. `apps/web/src/faces/manifests.ts` and `registry.ts`, and `.dependency-cruiser.cjs` (the rules `faces-only-react-and-shell`, `guest-never-imports-face-preview`, `faces-money-math-only-in-preview`).
 
 ## Why
@@ -1331,8 +1325,8 @@ A face may use any navigation pattern that keeps every item in the markup, in or
 **What if the sample data cannot show a case I need?**
 Edit a copy in your preview harness (section 9.2), and never ship edited data. If a case is genuinely unreachable from real data, tell Martin.
 
-**How does my template get into the gallery?**
-Through the checklist in §12.1. Once it is wired in and not hidden, every venue sees it in the Design tab with the venue's own colours, font and options.
+**How does my template get wired in?**
+Through the checklist in §12.1. There is no gallery (D128): venues pick a Style of the one renderer in the Design page, so a new face reaches venues only if the lead decides it replaces or joins the renderer.
 
 ---
 
@@ -1407,7 +1401,7 @@ Words that belong to the menu itself ("Sold out", "Ask your waiter", "New", "fro
 
 This guide was checked against both the architecture document and the code, and it describes the code. Differences you may notice if you ever read the architecture document, the designer's own handover or older notes:
 
-1. **Manifest example.** The architecture document's old example was illustrative (`qr-mobile` 1.3.0, `inline_icons`, `palette.*` tokens, ordering true, no `features` or `options`). The real manifests are `editorial-market` 1.0.0 and `qr-phone` 1.0.0 (`inline_codes`, `color.*` tokens). The code accepts four slots the old example omitted (`item.portion`, `item.dietary`, `item.tags`, `item.modifiers`) and the allergen modes `inline_codes`, `info_link` and `info_qr`. The updated document shows the Editorial Market manifest.
+1. **Manifest example.** The architecture document's old example was illustrative (`qr-mobile` 1.3.0, `inline_icons`, `palette.*` tokens, ordering true, no `features` or `options`). The real manifests are `editorial-market` 1.0.0 (`inline_codes`, `color.*` tokens). The code accepts four slots the old example omitted (`item.portion`, `item.dietary`, `item.tags`, `item.modifiers`) and the allergen modes `inline_codes`, `info_link` and `info_qr`. The updated document shows the Editorial Market manifest.
 2. **Image variant paths.** The document says `/a/<asset_id>/<variant>.webp`. The code uses `/a/<as_ id>/w<width>.webp` and requires all three variants `thumb`, `card` and `full` on every asset.
 3. **Contract tests and screenshots.** The old document says the tests also compare screenshots. The harness checks markup only (seventeen fixtures, including the feature slots and the two CSS checks). The screenshot matrix (`FACES_VISUAL=1`) saves pictures for people to review; it compares nothing. It accepts `nd_`, `as_` and `tg_` ids (the document says only `nd_`).
 4. **R9 preview warning.** The document says text that does not fit is "a preview warning". The shell produces no warnings; nothing like that is in the view model.
@@ -1423,7 +1417,7 @@ This guide was checked against both the architecture document and the code, and 
 14. **Layers.** Older documents list an `import` layer. D65 dropped it: the layers are `till`, `manual`, `override` and `edition:<id>`. This guide's diagram uses the real ones.
 15. **Tag colour.** A snapshot tag may carry an optional `color`; the view model does not pass it to faces yet.
 16. **The samples.** `barsy-demo-view-model.*.json` predate R15 and the scheme policy (§6.2). `barsy-demo-snapshot.json` is also the frozen corpus that proves an older snapshot still parses, so it stays as it is.
-17. **Who writes the look.** The venue's colours, font, corners, shadow, logo, scheme, template and guest features are venue settings written by their own writers in `core/apply` and published by the publisher; they are not menu-document fields and have no layers.
+17. **Who writes the look.** Since D129 a venue has one design, saved whole by Done on the Design page through `core/apply` and published by the publisher (the Style and every option in it, the three colours, the fonts, the logo, the layout); the guest features are their own card. They are not menu-document fields and have no layers.
 18. **The visual audit.** The spec `apps/web/e2e/faces-visual.spec.ts` is planned in brief SH-07, which ran at the same time as this rewrite. §7.7 describes what the brief asks of it; check the spec itself for the exact matrix.
-19. **Layout and the feature strip.** §5.5, §7.1 and §8.1 describe the layout (`layout`), the guests' layout switch (`layoutSwitch`) and the photo-led first section (`featureFirstSection`) as manifest options. Since D92 they are menu settings in the composer: `view.layout` (`default`, `guestSwitch`) and a section's `hints.layout` (`horizontal` or `vertical`), and Editorial Market's manifest declares no options. A template draws them from the view model; the functionality file lists them.
-20. **The reference faces predate D109.** Editorial Market and qr-phone break rules this guide and the template skills now set: loops (`packages/faces/editorial-market/src/services/services-css.ts` `ro-spin` and `ro-pulse`, `packages/faces/qr-phone/src/css.ts` `rq-skel`), an image fade on load and an ease-in exit (`editorial-market/src/css.ts`, `.rm img` and `.rm-overlay.is-leaving .rm-overlay-panel`), a dish-page exit ended by a timer (`EXIT_MS` in `use-dish-route.ts`), `min-height: 100vh` on the root, `:hover` rules with no gate in `editorial-market/src/css.ts` and gated by `(hover: hover)` alone in `services-css.ts`, no `:active` rule in qr-phone, and text at 9 to 11 px in Editorial Market (badges, labels, the table code). A new template copies their contract wiring, not these (`template-design` override row 13).
+19. **Layout and the feature strip.** §5.5, §7.1 and §8.1 describe the layout (`layout`), the guests' layout switch (`layoutSwitch`) and the photo-led first section (`featureFirstSection`) as manifest options. Since D129 they are part of the venue's one design, set on the Design page (the section's own `hints.layout` stays a Structure setting): `view.layout` (`default`, `guestSwitch`) and a section's `hints.layout` (`horizontal` or `vertical`), and Editorial Market's manifest declares no options. A template draws them from the view model; the functionality file lists them.
+20. **The reference faces predate D109.** Editorial Market breaks rules this guide and the template skills now set: loops (`packages/faces/editorial-market/src/services/services-css.ts` `ro-spin` and `ro-pulse`), an image fade on load and an ease-in exit (`editorial-market/src/css.ts`, `.rm img` and `.rm-overlay.is-leaving .rm-overlay-panel`), a dish-page exit ended by a timer (`EXIT_MS` in `use-dish-route.ts`), `min-height: 100vh` on the root, `:hover` rules with no gate in `editorial-market/src/css.ts` and gated by `(hover: hover)` alone in `services-css.ts`. A new template copies their contract wiring, not these (`template-design` override row 13).

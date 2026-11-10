@@ -1,34 +1,51 @@
-// The services layer of the face: the guest's bag, the service sheets that live in the address
-// (`#bag`, `#tab`, `#call`, `#pay`) and the way a command goes to the host. It is a
+// The services layer of the face: the table's shared order, the service sheets that live in the
+// address (`#bag`, `#tab`, `#call`, `#pay`) and the way a command goes to the host. It is a
 // provider around the whole face, so a quick-add button in a card, the buttons in the header, the
-// bar at the bottom and the sheets all share one bag.
+// bar at the bottom and the sheets all share one order.
 //
-// The face never succeeds on its own (D72). The bag is a draft the guest keeps until the host says
-// "accepted"; a bill is only what `state.bill` holds; a waiter is "on the way" only when a request
-// of the host's says so; a payment is "paid" only after the host accepted it and issued a receipt.
-// Without `services`, or for a service the view model has switched off (R15), nothing here draws.
+// The face never succeeds on its own (D72). The order is the table's (D117, D121): every phone at
+// the table sees and edits the same lines, and the face draws `state.order` and sends `order.add`,
+// `order.change`, `order.remove`, `order.undo`, `order.restore` and `order.send`; it keeps no bag
+// of its own. A bill is only what `state.tableBill` holds; a waiter is "on the way" only when a
+// request of the host's says so; a payment is "paid" only after the host accepted it and issued a
+// receipt. Without `services`, or for a service the view model has switched off (R15), nothing
+// here draws.
 
 import {
   ANSWER_LOST_CODE,
-  type BagAction,
   type BagLine,
-  bagReducer,
+  type CommandResult,
+  DUPLICATE_ASK_SECONDS,
   type GuestCommand,
   type GuestStrings,
+  isOutOfStock,
+  itemsById,
   LOST_SEND_HOLD_MS,
   type Locale,
-  OFFLINE_CODE,
-  orderLines,
+  minutesSinceSent,
+  NO_TIP,
+  type OrderLineView,
+  type PayFirstLine,
+  type PayFirstPlan,
+  type PayFirstState,
+  payFirstStateOf,
+  payingOffHere,
+  payMoney,
+  planPayFirst,
   type ResolvedBag,
+  refusalText,
+  refusedOutOfStock,
   resolveBag,
+  type SentOrderView,
   type ServiceBinding,
   type ServiceState,
   type ServiceStrings,
   stringsFor,
+  type TableOrderView,
+  type TipChoice,
   type ViewFeatures,
   type ViewItem,
   type ViewModel,
-  type ViewText,
 } from '@restro/shell'
 import {
   createContext,
@@ -37,13 +54,12 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
 } from 'react'
 
 import { type HashRoute, useHashRoute } from '../use-dish-route'
-import { newActionId, type Outcome, runCommand, SERVICE_TIMEOUT_MS } from './command'
+import { newActionId, type Outcome, runCommand } from './command'
 
 /* ---------------------------------------------------------------------------------------------
  * Sheets
@@ -93,31 +109,54 @@ export function serviceBarShown(view: ViewModel, services: ServiceBinding | unde
 }
 
 /* ---------------------------------------------------------------------------------------------
- * Sending the bag
+ * The table's order
  * ------------------------------------------------------------------------------------------- */
 
-/** Where sending the bag stands. */
-export type SendState =
-  /** Nothing is being sent. */
-  | { readonly status: 'idle' }
-  /** Waiting for the host. `received`: the host has the order and has not said yes or no. */
-  | { readonly status: 'pending'; readonly received: boolean }
-  /**
-   * No usable answer (an error, a timeout, a lost answer): the order may already be in the POS, so
-   * the sheet says D120's line (call a waiter) and offers no re-send until the hold is over, the
-   * bag changes or the host's bill shows the order. Never "Try again".
-   */
-  | { readonly status: 'failed' }
-  /** The host said no. The bag is kept. */
-  | { readonly status: 'rejected'; readonly message: ViewText | null; readonly ref: string | null }
-  /** The host said yes and the venue shows no bill to open: tell the guest so. */
-  | { readonly status: 'sent'; readonly ref: string | null }
+/** A command before its action id is made (one per kind, as the union says). */
+export type CommandDraft = GuestCommand extends infer C
+  ? C extends GuestCommand
+    ? Omit<C, 'actionId'>
+    : never
+  : never
 
-const IDLE: SendState = { status: 'idle' }
+/** The duplicate check that is open: the sent order it names and how long ago it went. */
+export interface DuplicateAsk {
+  readonly of: string
+  readonly minutes: number | null
+}
+
+/** The order as the face draws it: the host's lines with names and estimates from the view. */
+export interface OrderDraw {
+  /** The host's lines (empty before the host has an order, or while the phone has no pass). */
+  readonly lines: readonly OrderLineView[]
+  readonly removed: NonNullable<TableOrderView['removed']>
+  readonly earlier: TableOrderView['earlier']
+  /** The host has an order (its lines may be none); false while the phone has no pass. */
+  readonly known: boolean
+  /** The lines looked up in the view (key = the line's id) with the estimate. */
+  readonly resolved: ResolvedBag
+  /** Out of stock now: sold out on the menu, or named by the POS when it refused the last Send. */
+  readonly soldOut: (itemId: string) => boolean
+  /** A line a Send leaves out: held, still saving, pay-first, sold out or gone from the view. */
+  readonly sendable: (entry: ResolvedBag['lines'][number]) => boolean
+  /**
+   * The pay-first lines no payment holds that can still be ordered (#258, D113), with the view's
+   * estimate of each. A Send pays for them only where pay-first is `on` (`Services.payFirst`).
+   */
+  readonly payFirstLines: readonly PayFirstLine[]
+  /** How many things the next Send carries (the quantities of the sendable lines). */
+  readonly sendCount: number
+  /** Some on-the-bill line stays back (sold out), so the button says "Send the other N". */
+  readonly keptBack: boolean
+  /** How many things are on the order (the quantities of all its lines). */
+  readonly count: number
+}
 
 /** What the screens get from the provider. */
 export interface Services {
   readonly view: ViewModel
+  /** Where the published files live, for the few pictures a sheet draws (a line's photo, the logo). */
+  readonly assetBase: string
   readonly state: ServiceState
   /** The confirmed table's label ("12"), or null. */
   readonly tableLabel: string | null
@@ -126,26 +165,92 @@ export interface Services {
   readonly words: ServiceStrings
   readonly guest: GuestStrings
   readonly locale: Locale
+  /** R15, narrowed by the server's paying state: `pay` is false while paying is off here (#346). */
   readonly features: ViewFeatures
+  /** The venue wants Pay but paying is off here: the bill says "Ask your waiter to pay." (D127). */
+  readonly payOffAtVenue: boolean
   /** Sends a command; never throws. */
   readonly run: (command: GuestCommand) => Promise<Outcome>
-  readonly bag: readonly BagLine[]
-  readonly resolved: ResolvedBag
-  readonly editBag: (action: BagAction) => void
+  readonly items: ReadonlyMap<string, ViewItem>
+  readonly order: OrderDraw
+  /** Notes and options reach the POS's ticket (#78); otherwise the face draws no note field. */
+  readonly notesAndOptions: boolean
+  /** The last refusal's words, or null. */
+  readonly notice: string | null
+  readonly dismissNotice: () => void
+  /**
+   * A tap the host refused for the location check while it draws no prompt of its own (DA-22):
+   * after "Not now" or "Stop location check" the check asks no more that day (D119), so a "+" on
+   * the menu would do nothing and say nothing. The page then says why the order is hidden and
+   * offers the consent screen again on the guest's own tap, never by itself.
+   */
+  readonly locationBlocked: boolean
+  /** Puts an item on the table's order. */
+  readonly add: (
+    item: ViewItem,
+    pick?: {
+      readonly optionIds?: OrderLineView['optionIds']
+      readonly qty?: number
+      readonly note?: string
+    },
+  ) => Promise<CommandResult | null>
+  readonly change: (lineId: string, delta: number) => Promise<CommandResult | null>
+  readonly remove: (lineId: string) => Promise<CommandResult | null>
+  readonly undo: (lineId: string) => Promise<CommandResult | null>
+  readonly restore: (setAsideAt: number) => Promise<CommandResult | null>
   /** Ordering controls for this item: the service is on (R15) and the item has controls (R11). */
   readonly canOrder: (item: ViewItem) => boolean
-  /** The bag line being edited on the dish page, or null. */
-  readonly editing: BagLine | null
-  readonly edit: (line: BagLine, opener: HTMLElement) => void
-  readonly stopEditing: () => void
   readonly openDish: (itemId: string, opener: HTMLElement) => void
-  readonly send: SendState
-  readonly sendBag: () => void
+  /** Pay-first at this table (`ordering.payFirst`; absent is off): says what a pay-first line carries. */
+  readonly payFirstState: PayFirstState
+  /**
+   * The pay-first part of the next Send (#258): set only where pay-first is `on` and the order has
+   * free pay-first lines. It makes the Send "Send and pay" (or "Pay" when nothing else goes).
+   */
+  readonly payFirst: PayFirstPlan | null
+  /**
+   * Why the pay-first part cannot go with this Send (#293, DA-1; Martin 11-01): `below_minimum`
+   * where it and its tip are under the venue's smallest card payment. The part is drawn greyed, the
+   * Send carries the bill lines alone, and the guest is offered "Pay cash" (a waiter with the bill).
+   */
+  readonly payFirstBlock: 'below_minimum' | null
+  /**
+   * The pay-first part of the last Send was refused on its own while the bill lines went (DA-1):
+   * the server's code, for the face to word. The next Send clears it.
+   */
+  readonly payFirstRefused: string | null
+  /** The tip chosen for the pay-first part, and the text typed in "Other amount" (none to start). */
+  readonly tip: { readonly choice: TipChoice; readonly other: string }
+  readonly setTip: (choice: TipChoice) => void
+  readonly setTipOther: (text: string) => void
+  /** A Send is with the host. */
+  readonly sending: boolean
+  /** The duplicate check, while it is open. */
+  readonly asked: DuplicateAsk | null
+  readonly cancelAsk: () => void
+  /** Sends the order's sendable lines; `confirmDuplicateOf` is the sent order "Send another" names. */
+  readonly sendOrder: (confirmDuplicateOf?: string) => Promise<void>
+  /** The last Send's answer was lost: the host's word, or this face's until the host's state says it (D120). */
+  readonly sendLost: { readonly ref: string | null } | null
+  /**
+   * The lost Send has landed: the host lists a new order as Added with the lines this phone sent, so
+   * the lost-Send line is no longer true and goes (RR-O43). The hold on a second Send runs on.
+   */
+  readonly sendLanded: boolean
+  readonly sentOrders: readonly SentOrderView[]
   /** The sheet that is drawn (it stays drawn while it slides out), or null. */
   readonly sheet: Sheet | null
   readonly leaving: boolean
   readonly openSheet: (sheet: Sheet, opener?: HTMLElement | null) => void
   readonly closeSheet: () => void
+  /**
+   * The single-step Call a waiter (D127: only `waiter` ticked): the guest's tap on the waiter button
+   * arms the call and opens the sheet, which sends it once when it opens. Armed by a tap alone, so
+   * a reloaded `#call` address never calls.
+   */
+  readonly armCall: () => void
+  /** Takes the armed call (true once), as the sheet opens. */
+  readonly takeCall: () => boolean
 }
 
 const ServicesContext = createContext<Services | null>(null)
@@ -162,78 +267,106 @@ export function useServicesRequired(): Services {
   return services
 }
 
+/** The lines of an order as one string, the same for the same items, choices and quantities in any order. */
+function linesSignature(
+  lines: readonly {
+    readonly itemId: string
+    readonly optionIds: readonly string[]
+    readonly qty: number
+  }[],
+): string {
+  return lines
+    .map((line) => `${line.itemId}|${[...line.optionIds].sort().join(',')}|${line.qty}`)
+    .sort()
+    .join(';')
+}
+
+/** Whether the bag's place in the bar has something to open: the order, a sent order, or why it is hidden. */
+export function orderBusy(
+  o: Pick<Services, 'order' | 'sentOrders' | 'state' | 'sendLost'>,
+): boolean {
+  return (
+    o.order.lines.length > 0 ||
+    o.order.removed.length > 0 ||
+    o.order.earlier !== null ||
+    o.sentOrders.length > 0 ||
+    o.sendLost !== null ||
+    o.state.location?.state === 'needed'
+  )
+}
+
 /* ---------------------------------------------------------------------------------------------
  * The provider
  * ------------------------------------------------------------------------------------------- */
 
 export function ServicesProvider({
   view,
+  assetBase,
   services,
   tableLabel,
   openDish,
-  dishOpen,
   children,
 }: {
   readonly view: ViewModel
+  readonly assetBase: string
   /** The confirmed table's label, or null. */
   readonly tableLabel: string | null
   /** The host's binding, or undefined: the face then draws no service at all. */
   readonly services: ServiceBinding | undefined
   /** Opens the dish page (the element that asked gets the focus back). */
   readonly openDish: (itemId: string, opener: HTMLElement) => void
-  /** The dish page is open. */
-  readonly dishOpen: boolean
   readonly children: ReactNode
 }) {
   if (!servicesShown(view, services) || services === undefined) return <>{children}</>
   return (
     <ActiveServices
       view={view}
+      assetBase={assetBase}
       services={services}
       tableLabel={tableLabel}
       openDish={openDish}
-      dishOpen={dishOpen}
     >
       {children}
     </ActiveServices>
   )
 }
 
+const LOST_WITHOUT_REF = { ref: null }
+const NO_LINES: readonly OrderLineView[] = []
+const NO_SENT: readonly SentOrderView[] = []
+const NO_REMOVED: NonNullable<TableOrderView['removed']> = []
+
 function ActiveServices({
   view,
+  assetBase,
   services,
   tableLabel,
   openDish,
-  dishOpen,
   children,
 }: {
   readonly view: ViewModel
+  readonly assetBase: string
   readonly tableLabel: string | null
   readonly services: ServiceBinding
   readonly openDish: (itemId: string, opener: HTMLElement) => void
-  readonly dishOpen: boolean
   readonly children: ReactNode
 }) {
   const { state } = services
-  const { features } = view
+  // One place for the rule (#346, D127): the venue's Pay switch (R15) is not enough, the server must
+  // be able to take payments too. Every entry to Pay (the header, the bill, the progress line, the
+  // sheet's address) reads `features.pay` from here, so none shows a button that leads nowhere.
+  const payOffAtVenue = view.features.pay && payingOffHere(state)
+  const features = useMemo(
+    () => (payOffAtVenue ? { ...view.features, pay: false } : view.features),
+    [view.features, payOffAtVenue],
+  )
   const strings = stringsFor(view.locale)
-
-  const [bag, editBag] = useReducer(bagReducer, [])
-  const resolved = useMemo(() => resolveBag(view, bag), [view, bag])
-  const [editing, setEditing] = useState<BagLine | null>(null)
-  const [send, setSend] = useState<SendState>(IDLE)
+  const words = strings.services
   const route = useHashRoute(SHEET_ROUTE)
 
   // The latest of everything an async handler reads when it finishes.
-  const latest = useRef({ services, view, bag, features, sheet: null as Sheet | null })
+  const latest = useRef({ services, view, features, sheet: null as Sheet | null })
   const alive = useRef(true)
-  // The send in hand: the bag it was made from, the action it is, and the lines it carried.
-  const attempt = useRef<{
-    readonly fingerprint: string
-    readonly actionId: string
-    readonly sent: readonly BagLine[]
-  } | null>(null)
-  const sending = useRef(false)
   useEffect(() => {
     alive.current = true
     return () => {
@@ -243,7 +376,7 @@ function ActiveServices({
 
   const shown = sheetOf(route.shownId)
   const sheet = shown !== null && sheetAllowed(features, shown) ? shown : null
-  latest.current = { services, view, bag, features, sheet }
+  latest.current = { services, view, features, sheet }
 
   // The screen the face has open, for the host's polls (RR-52, D121): the bag asks every 2 seconds,
   // the bill (and paying from it) reads the bill fresh, anything else is the menu.
@@ -256,136 +389,317 @@ function ActiveServices({
     [],
   )
 
-  const { open: openRoute, close: closeSheet, hide: hideSheet } = route
+  const { open: openRoute, close: closeSheet } = route
   const openSheet = useCallback(
     (name: Sheet, opener: HTMLElement | null = null) => openRoute(name, opener),
     [openRoute],
   )
 
-  /**
-   * The host accepted the order (or its bill shows it): the lines it carried leave the bag (what the
-   * guest added meanwhile stays), and the bill opens.
-   */
-  const accepted = useCallback(
-    (sent: readonly BagLine[], ref: string | null) => {
-      attempt.current = null
-      editBag({ type: 'spend', lines: sent })
-      const { features: now, sheet: open } = latest.current
-      if (now.bill) {
-        setSend(IDLE)
-        // Only if the guest is still on the bag: a bill that jumps up over the menu later would be a surprise.
-        if (open === 'bag') openRoute('tab', null)
-      } else {
-        setSend({ status: 'sent', ref })
+  /* --- the order, as the host has it ---------------------------------------------------- */
+  const items = useMemo(() => itemsById(view), [view])
+  const refused = useMemo(() => refusedOutOfStock(state.sentOrders), [state.sentOrders])
+  const order = useMemo<OrderDraw>(() => {
+    const lines = state.order?.lines ?? NO_LINES
+    const bag: readonly BagLine[] = lines.map((line) => ({
+      key: line.id,
+      itemId: line.itemId,
+      qty: line.qty,
+      optionIds: line.optionIds,
+      note: line.note,
+    }))
+    const resolved = resolveBag(view, bag)
+    const soldOut = (itemId: string) => isOutOfStock(itemId, view.hiddenItems, refused)
+    const sendable = (entry: ResolvedBag['lines'][number]) => {
+      const line = lines.find((candidate) => candidate.id === entry.line.key)
+      return (
+        line !== undefined &&
+        line.mode === 'on_bill' &&
+        !line.held &&
+        !line.pending &&
+        entry.available &&
+        !soldOut(line.itemId)
+      )
+    }
+    // A line the next Send takes is on the bill and free; the ones that stay back are held, saving,
+    // pay-first (ordered from the waiter) or out of stock. Only the last kind changes the button.
+    const live = resolved.lines.filter((entry) => {
+      const line = lines.find((candidate) => candidate.id === entry.line.key)
+      return line !== undefined && line.mode === 'on_bill' && !line.held && !line.pending
+    })
+    const taking = live.filter(sendable)
+    // The pay-first lines a "Send and pay" names (#258, D113): free, and still orderable. A sold-out
+    // one stays on the order, marked, and is not named (the host counts only the orderable ones).
+    const payFirstLines = resolved.lines.flatMap((entry): PayFirstLine[] => {
+      const line = lines.find((candidate) => candidate.id === entry.line.key)
+      if (
+        line === undefined ||
+        line.mode !== 'pay_first' ||
+        line.held ||
+        line.pending ||
+        !entry.available ||
+        entry.total === null ||
+        soldOut(line.itemId)
+      ) {
+        return []
+      }
+      return [
+        {
+          itemId: line.itemId,
+          optionIds: line.optionIds,
+          qty: line.qty,
+          note: line.note,
+          amountMinor: entry.total.minor,
+        },
+      ]
+    })
+    return {
+      lines,
+      removed: state.order?.removed ?? NO_REMOVED,
+      earlier: state.order?.earlier ?? null,
+      known: state.order != null,
+      resolved,
+      soldOut,
+      sendable,
+      payFirstLines,
+      sendCount: taking.reduce((sum, entry) => sum + entry.line.qty, 0),
+      keptBack: live.length > taking.length,
+      count: resolved.count,
+    }
+  }, [state.order, view, refused])
+
+  /* --- pay first at Send (#258) ----------------------------------------------------------- */
+  const payFirstState = payFirstStateOf(state.ordering)
+  const tipsOffered = state.ordering?.tips === true
+  const [tipChoice, setTipChoice] = useState<TipChoice>(NO_TIP)
+  const [tipOther, setTipOther] = useState('')
+  const payFirst = useMemo(
+    () =>
+      payFirstState === 'on' ? planPayFirst(order.payFirstLines, tipChoice, tipsOffered) : null,
+    [payFirstState, order.payFirstLines, tipChoice, tipsOffered],
+  )
+  const tip = useMemo(() => ({ choice: tipChoice, other: tipOther }), [tipChoice, tipOther])
+  // The smallest card payment, for the words of a refusal that names it (`below_minimum`) and for
+  // greying the pay-first part before the Send (#293, DA-1).
+  const minCardMinor = state.paying?.minCardMinor ?? null
+  // D117 "Pay unlocks at the minimum": under the venue's smallest card payment the pay-first part
+  // cannot be paid by card, so the Send takes the bill lines alone and the part is drawn greyed.
+  const payFirstBlock: Services['payFirstBlock'] =
+    payFirst !== null && minCardMinor !== null && payFirst.totals.totalMinor < minCardMinor
+      ? 'below_minimum'
+      : null
+  // The last Send's pay-first refusal, where its bill lines went without it.
+  const [payFirstRefused, setPayFirstRefused] = useState<string | null>(null)
+
+  /* --- commands on the order ------------------------------------------------------------ */
+  const [notice, setNotice] = useState<string | null>(null)
+  const dismissNotice = useCallback(() => setNotice(null), [])
+  // A tap the check refused while the host asks nothing (DA-22). It goes the moment the host does
+  // ask, or the phone holds a pass: then the sheet or the order itself answers.
+  const [locationBlocked, setLocationBlocked] = useState(false)
+  const locationAsks = (state.location?.prompt ?? 'none') !== 'none'
+  const locationHeld = state.location?.state === 'held'
+  useEffect(() => {
+    if (locationAsks || locationHeld) setLocationBlocked(false)
+  }, [locationAsks, locationHeld])
+  // The last Send's answer was lost, before the host's state says so (it draws the line from then).
+  // It is no notice: the line is `state.sendLost`'s, and this only bridges the moment before it.
+  const [answerLost, setAnswerLost] = useState(false)
+  const hostLost = state.sendLost != null
+  const hostSaid = useRef(false)
+  useEffect(() => {
+    if (hostLost) hostSaid.current = true
+    else if (hostSaid.current) {
+      hostSaid.current = false
+      setAnswerLost(false)
+    }
+  }, [hostLost])
+  // A host that never says it still lets the guest send again after the hold (D120).
+  useEffect(() => {
+    if (!answerLost) return
+    const timer = setTimeout(() => setAnswerLost(false), LOST_SEND_HOLD_MS)
+    return () => clearTimeout(timer)
+  }, [answerLost])
+  const sendLost = state.sendLost ?? (answerLost ? LOST_WITHOUT_REF : null)
+  // What this phone's last Send carried and which sent orders were listed when it went. A new order
+  // that the host lists as Added with the same lines is that Send landing; one that was already
+  // listed, one of other lines or one still sending is not (sent orders carry no action id).
+  const [lastSend, setLastSend] = useState<{
+    readonly before: ReadonlySet<string>
+    readonly signature: string
+  } | null>(null)
+  const sendLanded =
+    sendLost !== null &&
+    lastSend !== null &&
+    (state.sentOrders ?? NO_SENT).some(
+      (sent) =>
+        sent.state === 'added' &&
+        !lastSend.before.has(sent.id) &&
+        linesSignature(sent.lines) === lastSend.signature,
+    )
+
+  const [sending, setSending] = useState(false)
+  const sendingNow = useRef(false)
+  const [asked, setAsked] = useState<DuplicateAsk | null>(null)
+  // The duplicate check closes itself (D117).
+  useEffect(() => {
+    if (asked === null) return
+    const timer = setTimeout(() => setAsked(null), DUPLICATE_ASK_SECONDS * 1000)
+    return () => clearTimeout(timer)
+  }, [asked])
+  const cancelAsk = useCallback(() => setAsked(null), [])
+
+  /** Sends one order command; a refusal is worded here (the location panel answers its own codes). */
+  const act = useCallback(
+    async (draft: CommandDraft): Promise<CommandResult | null> => {
+      setNotice(null)
+      const command = { ...draft, actionId: newActionId() } as GuestCommand
+      const isSend = command.kind === 'order.send'
+      if (isSend) setAnswerLost(false)
+      const outcome = await run(command)
+      if (!alive.current) return null
+      if (!outcome.ok) {
+        // A Send with no usable answer: the order may already be in the POS, so D120's line speaks
+        // and the guest is never offered "Try again".
+        if (isSend) setAnswerLost(true)
+        else setNotice(words.refusedOther)
+        return null
+      }
+      const { result } = outcome
+      if (result.status === 'pending' && result.code === ANSWER_LOST_CODE) {
+        // A Send may already be in the POS, so D120's line speaks and no re-send is offered. An
+        // edit is taken back by the host, and the weak-connection line says so rather than the
+        // counter sliding back with nothing said (DA-23).
+        if (isSend) setAnswerLost(true)
+        else setNotice(words.offline)
+        return result
+      }
+      if (result.status === 'rejected') {
+        const code = result.code ?? null
+        // The location sheet answers these itself (the consent screen, the failed check), and the
+        // order sheet the duplicate check.
+        if (code === 'location_failed' || code === 'duplicate_order') return result
+        if (code === 'location_needed') {
+          // While the host asks, its sheet answers. After "Not now" or "Stop location check" it
+          // asks no more (D119), so the tap would do nothing: the page says why instead (DA-22).
+          if ((latest.current.services.state.location?.prompt ?? 'none') === 'none') {
+            setLocationBlocked(true)
+          }
+          return result
+        }
+        const named =
+          code === 'item_unavailable' && result.subjectId != null
+            ? items.get(result.subjectId)?.name.text
+            : undefined
+        setNotice(
+          named !== undefined
+            ? words.itemUnavailableNamed(named)
+            : refusalText(words, code, {
+                command: command.kind,
+                minCard:
+                  minCardMinor === null ? null : payMoney(minCardMinor, view.currency, view.locale),
+              }),
+        )
+      }
+      return result
+    },
+    [run, words, items, minCardMinor, view.currency, view.locale],
+  )
+
+  const add = useCallback<Services['add']>(
+    (item, pick = {}) =>
+      act({
+        kind: 'order.add',
+        itemId: item.id,
+        optionIds: [...(pick.optionIds ?? [])],
+        qty: pick.qty ?? 1,
+        note: pick.note ?? '',
+      }),
+    [act],
+  )
+  const change = useCallback(
+    (lineId: string, delta: number) => act({ kind: 'order.change', lineId, delta }),
+    [act],
+  )
+  const remove = useCallback((lineId: string) => act({ kind: 'order.remove', lineId }), [act])
+  const undo = useCallback((lineId: string) => act({ kind: 'order.undo', lineId }), [act])
+  const restore = useCallback(
+    (setAsideAt: number) => act({ kind: 'order.restore', setAsideAt }),
+    [act],
+  )
+
+  const sendOrder = useCallback(
+    async (confirmDuplicateOf?: string) => {
+      if (sendingNow.current) return // two quick taps are one send
+      const taking = order.resolved.lines.filter(order.sendable)
+      // Under the venue's smallest card payment the pay-first part stays behind (#293, DA-1): the
+      // Send is the bill lines alone, or nothing at all when there are none.
+      const paying = payFirstBlock === null ? payFirst : null
+      // The Send may be pay-first lines alone (#258): "Pay", which is such a Send with no bill lines.
+      if (taking.length === 0 && paying === null) return
+      // A tip over the lines is refused by the host: the sheet greys the button, and so is this.
+      if (paying !== null && !paying.totals.tipValid) return
+      // Send is blocked while the phone is offline, never queued (D121); the sheet greys the button.
+      if (latest.current.services.state.offline === true) return
+      // Nor while ordering is paused (D120): the sheet greys Send, and the bag stays as it is.
+      if (latest.current.services.state.ordering?.state === 'paused') return
+      sendingNow.current = true
+      setAsked(null)
+      setSending(true)
+      setPayFirstRefused(null)
+      setLastSend({
+        before: new Set(
+          (latest.current.services.state.sentOrders ?? NO_SENT).map((sent) => sent.id),
+        ),
+        signature: linesSignature(
+          taking.map((entry) => ({
+            itemId: entry.line.itemId,
+            optionIds: entry.line.optionIds,
+            qty: entry.line.qty,
+          })),
+        ),
+      })
+      try {
+        const result = await act({
+          kind: 'order.send',
+          lines: taking.map((entry) => ({
+            itemId: entry.line.itemId,
+            optionIds: [...entry.line.optionIds],
+            qty: entry.line.qty,
+            note: entry.line.note,
+          })),
+          ...(confirmDuplicateOf === undefined ? {} : { confirmDuplicateOf }),
+          // One tap, one Send: the pay-first lines go with it and open their payment (D113).
+          ...(paying === null ? {} : { payFirst: paying.part }),
+        })
+        if (alive.current && result?.status === 'accepted') {
+          // The pay part may have been refused on its own while the bill lines went (DA-1): its
+          // code is drawn in the bag.
+          const refusedPay = paying === null ? null : (result.payFirstRefused ?? null)
+          setPayFirstRefused(refusedPay)
+          // A payment that did start takes the tip with it, so the next one opens with nothing
+          // selected (D127, DA-6).
+          if (paying !== null && refusedPay === null) {
+            setTipChoice(NO_TIP)
+            setTipOther('')
+          }
+        }
+        if (result?.code === 'duplicate_order' && result.subjectId != null && alive.current) {
+          setAsked({
+            of: result.subjectId,
+            minutes: minutesSinceSent(
+              latest.current.services.state.sentOrders ?? [],
+              result.subjectId,
+              Date.now(),
+            ),
+          })
+        }
+      } finally {
+        sendingNow.current = false
+        if (alive.current) setSending(false)
       }
     },
-    [openRoute],
+    [act, order, payFirst, payFirstBlock],
   )
-
-  const sendBag = useCallback(async () => {
-    if (sending.current) return // two quick taps are one send
-    const { view: nowView, bag: nowBag } = latest.current
-    if (!resolveBag(nowView, nowBag).canSend) return
-    const lines = orderLines(nowBag)
-    const fingerprint = JSON.stringify(lines)
-    // The same bag again is the same action; a changed bag is a new one.
-    const actionId =
-      attempt.current?.fingerprint === fingerprint ? attempt.current.actionId : newActionId()
-    attempt.current = { fingerprint, actionId, sent: nowBag }
-    // Send is blocked while the phone is offline, never queued (D121); the sheet greys the button.
-    if (latest.current.services.state.offline === true) return
-    sending.current = true
-    setSend({ status: 'pending', received: false })
-    let outcome: Outcome
-    try {
-      outcome = await run({ kind: 'order.send', actionId, lines })
-    } finally {
-      sending.current = false
-    }
-    // The guest changed the bag meanwhile, or left: this answer is about another bag.
-    if (!alive.current || attempt.current?.actionId !== actionId) return
-    if (!outcome.ok) {
-      setSend({ status: 'failed' })
-      return
-    }
-    const { result } = outcome
-    if (result.status === 'pending' && result.code === ANSWER_LOST_CODE) {
-      // The host's own client says the answer was lost (or the Send was not made: see its state).
-      setSend({ status: 'failed' })
-      return
-    }
-    if (result.status === 'rejected' && result.code === OFFLINE_CODE) {
-      // The host did not make the Send (offline): nothing was sent, the weak-connection line speaks.
-      attempt.current = null
-      setSend(IDLE)
-      return
-    }
-    if (result.status === 'accepted') {
-      accepted(nowBag, result.ref)
-    } else if (result.status === 'rejected') {
-      attempt.current = null // a definite no: whatever is sent next is a new action
-      setSend({ status: 'rejected', message: result.message, ref: result.ref })
-    } else {
-      setSend({ status: 'pending', received: true })
-    }
-  }, [run, accepted])
-
-  // The host has the order but has not decided: after a while the guest may try again (same `actionId`).
-  useEffect(() => {
-    if (send.status !== 'pending' || !send.received) return
-    const timer = window.setTimeout(
-      () =>
-        setSend((now) => (now.status === 'pending' && now.received ? { status: 'failed' } : now)),
-      SERVICE_TIMEOUT_MS,
-    )
-    return () => window.clearTimeout(timer)
-  }, [send])
-
-  // A lost Send holds the bag for a few minutes (D120), then the guest may send again.
-  useEffect(() => {
-    if (send.status !== 'failed') return
-    const timer = window.setTimeout(
-      () => setSend((now) => (now.status === 'failed' ? IDLE : now)),
-      LOST_SEND_HOLD_MS,
-    )
-    return () => window.clearTimeout(timer)
-  }, [send])
-
-  // The host's own bill shows the order (matched by its `actionId`): that is an acceptance as good
-  // as the answer, and it settles a send whose answer never came.
-  useEffect(() => {
-    const current = attempt.current
-    if (current === null || (send.status !== 'pending' && send.status !== 'failed')) return
-    if (state.bill?.rounds.some((round) => round.actionId === current.actionId) === true) {
-      accepted(current.sent, null)
-    }
-  }, [state.bill, send.status, accepted])
-
-  // A message about a bag that has since changed is stale.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the bag changes; it does not read it
-  useEffect(() => {
-    setSend((now) => (now.status === 'rejected' || now.status === 'failed' ? IDLE : now))
-  }, [bag])
-
-  // "Sent to the kitchen" is for the guest who is looking at the bag when the host says yes; it is
-  // gone once they leave the bag or start another one.
-  useEffect(() => {
-    if (send.status === 'sent' && (bag.length > 0 || sheet !== 'bag')) setSend(IDLE)
-  }, [send, bag, sheet])
-
-  const edit = useCallback(
-    (line: BagLine, opener: HTMLElement) => {
-      setEditing(line)
-      hideSheet() // the dish page opens over the bag; going back to the bag's address brings it back
-      openDish(line.itemId, opener)
-    },
-    [hideSheet, openDish],
-  )
-  const stopEditing = useCallback(() => setEditing(null), [])
-  // An edit that was abandoned (the dish page closed) must not come back the next time the dish opens.
-  useEffect(() => {
-    if (!dishOpen) setEditing(null)
-  }, [dishOpen])
 
   // Escape closes the sheet, unless the location sheet is over it: that one is the top and takes the key.
   const locationUp =
@@ -399,6 +713,18 @@ function ActiveServices({
     return () => window.removeEventListener('keydown', onKey)
   }, [sheet, closeSheet, locationUp])
 
+  // The single-step Call a waiter (D127): the waiter button arms one call and opens the sheet.
+  const armed = useRef(false)
+  const armCall = useCallback(() => {
+    armed.current = true
+  }, [])
+  const takeCall = useCallback(() => {
+    const was = armed.current
+    armed.current = false
+    return was
+  }, [])
+  const setTip = useCallback((choice: TipChoice) => setTipChoice(choice), [])
+
   const canOrder = useCallback(
     (item: ViewItem) => features.ordering && item.order.controls,
     [features.ordering],
@@ -407,50 +733,91 @@ function ActiveServices({
   const value = useMemo<Services>(
     () => ({
       view,
+      assetBase,
       state,
       tableLabel,
       binding: services,
-      words: strings.services,
+      words,
       guest: strings.guest,
       locale: view.locale,
       features,
+      payOffAtVenue,
       run,
-      bag,
-      resolved,
-      editBag,
+      items,
+      order,
+      notesAndOptions: state.ordering?.notesAndOptions === true,
+      notice,
+      dismissNotice,
+      locationBlocked,
+      add,
+      change,
+      remove,
+      undo,
+      restore,
       canOrder,
-      editing,
-      edit,
-      stopEditing,
       openDish,
-      send,
-      sendBag,
+      payFirstState,
+      payFirst,
+      payFirstBlock,
+      payFirstRefused,
+      tip,
+      setTip,
+      setTipOther,
+      sending,
+      asked,
+      cancelAsk,
+      sendOrder,
+      sendLost,
+      sendLanded,
+      sentOrders: state.sentOrders ?? NO_SENT,
       sheet,
       leaving: route.leaving,
       openSheet,
       closeSheet,
+      armCall,
+      takeCall,
     }),
     [
       view,
+      assetBase,
       state,
       tableLabel,
       services,
+      words,
       strings,
       features,
+      payOffAtVenue,
       run,
-      bag,
-      resolved,
+      items,
+      order,
+      notice,
+      dismissNotice,
+      locationBlocked,
+      add,
+      change,
+      remove,
+      undo,
+      restore,
       canOrder,
-      editing,
-      edit,
-      stopEditing,
       openDish,
-      send,
-      sendBag,
+      payFirstState,
+      payFirst,
+      payFirstBlock,
+      payFirstRefused,
+      tip,
+      setTip,
+      sending,
+      asked,
+      cancelAsk,
+      sendOrder,
+      sendLost,
+      sendLanded,
       sheet,
       route.leaving,
       openSheet,
       closeSheet,
+      armCall,
+      takeCall,
     ],
   )
 

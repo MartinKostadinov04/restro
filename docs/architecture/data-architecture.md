@@ -697,10 +697,10 @@ Normalised by id, with ordering carried by the id arrays:
   },
   "modifier_groups": { "nd_g1": { "name": { "en_US": "Gin" }, "min": 0, "max": 1, "options": ["nd_o1"] } },
   "options": { "nd_o1": { "name": { "en_US": "Premium gin" }, "price_delta": { "amount_minor": 300, "currency": "EUR" } } },
-  "presentation": { "face": "editorial-market", "options": {} },
+  "design": { "general": { "corners": "soft", "...": "..." }, "items": { "layout": "list", "guest_switch": "on", "...": "..." }, "...": {} },
   "features": { "filters": true, "call_waiter": { "enabled": false, "kinds": [] },
                 "bill": false, "ordering": false, "pay": false },
-  "layout": { "default": "two", "guest_switch": true }
+  "layout": { "default": "list", "guest_switch": true }
 }
 ```
 
@@ -708,15 +708,16 @@ Each item also carries `order_mode` (`orderable` or `ask_waiter`); `hidden` item
 
 #### The look, the template, the layout and the guest services (D69–D71, D92, D93)
 
-Six fields were added to `menu-snapshot/1` after it first shipped. All are optional. The look, the template and the guest services come from venue settings; the layout comes from the menu's own settings and from a field of each section (D92). The schema stays `menu-snapshot/1`; the additions are additive.
+Six fields were added to `menu-snapshot/1` after it first shipped. All are optional. The look and the guest services come from venue settings; the layout comes from the venue's design record (D129) and from a field of each section (D92). The schema stays `menu-snapshot/1`; the additions are additive.
 
 | Field | Holds |
 | --- | --- |
 | `theme.roles` | The eight colour roles (`background`, `surface`, `accent`, `on_accent`, `text`, `muted`, `accent_text`, `border`), each a lower-case `#rrggbb`, for a `light` and a `dark` screen, and, when the roles are derived from the venue's three colours, the ten roles of D93 (see The theme, R13), each optional. The publisher always writes it |
 | `theme.scheme` | The venue's light/dark policy: `auto` (follow the guest's phone), `light` or `dark`. Always written |
-| `presentation` | `{face, options}`: the template the venue chose and its options (short lower-case tokens or switches, never id-shaped). Written only when the venue chose a template; without it the default template applies. The Editorial Market declares no options since D92 |
+| `design` | Every option of the venue's design record (D129, D130), page by page: short lower-case tokens the contract schema checks, and the leak guard allows only the contract's words. Written whenever the publisher publishes; a snapshot without it (one published before it) reads as before |
+| `presentation` | `{face, options}`: the template the venue chose. **New snapshots no longer write it (D129)**: the schema keeps it optional so a snapshot published before still parses and draws its template |
 | `features` | The guest services the venue switched on: `filters`, `call_waiter` (`enabled` and the request `kinds`), `bill`, `ordering`, `pay`. Always written; a venue that has set nothing gets filters on and every service off |
-| `layout` | `{default, guest_switch}`: how the menu starts (`list`, `one` column or `two` columns) and whether guests may switch it. From the menu's `settings` (`layout`: `list`, `one_column` or `two_columns`; `layout_switch`). The publisher always writes it; a menu that set neither publishes `two` with the switch on, as before D92. Replaces the face options `layout` and `layoutSwitch` |
+| `layout` | `{default, guest_switch}`: how the menu starts (`list`, `one` column or `two` columns) and whether guests may switch it. From the design record's Layout and Guest switch (D129; before it, the menu's `settings`). The publisher always writes it; a venue with no record publishes Basic's `list` with the switch on. Replaces the face options `layout` and `layoutSwitch` |
 | `sections.<id>.hints.layout` | `vertical` or `horizontal` (drawn as a row, the face's photo strip). Set per section in the composer; the publisher always writes it, and a snapshot without it reads as `vertical`. Replaces the face option `featureFirstSection` |
 
 The menu's header name (`menus.name`, D92) is not in the snapshot yet; `menu.title` still comes from the menu node (a T79 follow-up).
@@ -795,6 +796,10 @@ Text pairs read at 4.5:1 and controls at 3:1 (WCAG 1.4.11); a scheme is checked 
 - **Fonts, corners, shadow.** Six families with Cyrillic letters (Inter, Manrope, Montserrat, Playfair Display, Lora, Unbounded), served by the web app itself so a guest's phone never calls a font host; corner radius 0–32 px; shadow 0–5.
 - **Older venues.** A venue that only set a brand colour, or nothing, publishes as before: its roles come from its palette.
 
+### The design record (D128–D130)
+
+From 10-27 the venue's look is one **design record** per venue (D129): a value for every option of D130's list, a revision number, and the name of the Style it came from. It replaces `venues.settings.theme` and `presentation` (the template choice and per-face options) and absorbs the menu's `layout` and `layout_switch`; the three colours, the Advanced roles and the logo stay as this section describes, and the Styles (D128: Basic, Editorial, Soft, Classic, Club, plus an organisation's saved Styles) are presets of the same record. It is stored at `venues.settings.design` (migration 0051 gave every venue a Basic record with what it had set: colours, roles, logo, screen and font as they were; radius and shadow as the nearest Corners and Depth word, at square 0, soft 8, round 16, extra 24 px and none 0, low 1; the live menu's layout and switch). A venue without a record reads as Basic at revision 0. A stored value that is not a valid record (a value or option later removed from the contract, a hand-edited row) reads as Basic for the editor, whose next save replaces it, but a publish is refused (`invalid_design`). Writes go through `core.apply`'s one op `setDesign` with provenance and one event (rule 1), the only writer, held by `scripts/design-writers.test.ts`; a stale revision is refused and answers with the stored record. The snapshot publishes the record's values as the `design` block beside `theme`, every value a short lower-case token checked by the contract schema; the renderer draws from it, and the leak guard allows only the contract's words. Nothing in the record can hide an item, a price, allergens or a part of an item's row (D130's never-list; D131 hides sold-out items in the shell, not in the design). The option list itself lives in D130 and in the contract file the spec issue names; the two are kept equal by a test.
+
 ### The face contract
 
 Each face ships a manifest. Installing a face validates the manifest against R6, R7, R9 and R15, and the contract tests run against it. The example is the manifest of the Editorial Market, the default template:
@@ -843,12 +848,12 @@ Each face ships a manifest. Installing a face validates the manifest against R6,
 
 ### The template registry (D69)
 
-A venue's template is the `presentation.face` of its snapshot. Templates are code packages (`packages/faces/*`), listed in the web app in two files:
+A venue's template is the `presentation.face` of its snapshot; a snapshot published since D129 names none and draws the default. Templates are code packages (`packages/faces/*`), listed in the web app in two files:
 
 - `faces/manifests.ts` holds what is known without loading a template: its manifest, its names in Bulgarian and English, its picture and whether it is hidden. Server code reads this one (the Design tab's actions check that a template is real and visible, and what its options are).
 - `faces/registry.ts` is built from it and adds `load()`, a lazy import of the template's components. Only client code imports it: a server module that imports the registry makes the build follow `load()` into the components and fail.
 
-The default is `editorial-market`. A hidden template (`qr-phone`, kept for tests) is never offered, but a venue that already uses it keeps its menu; a name the registry does not know falls back to the default and is logged once. A guest downloads only the template its venue chose, as a separate chunk. A template can be listed only if it passes the face contract on every fixture: the registry test runs the shell's `faceContractSuite` for every entry. The venue picks its template in the composer's Design subtab (D92), which previews the unsaved look on a phone frame; the guest functions (the service switches) are their own card there. A template's own options, if it declares any, are `look` or `feature` options as above; the layout is not one of them.
+The registry holds one face, `editorial-market`, the renderer (D128); the guest page no longer reads a face from the snapshot, so an old snapshot's `presentation` draws the renderer too. A template can be listed only if it passes the face contract on every fixture: the registry test runs the shell's `faceContractSuite` for every entry. The venue picks its template in the composer's Design subtab (D92), which previews the unsaved look on a phone frame; the guest functions (the service switches) are their own card there. A template's own options, if it declares any, are `look` or `feature` options as above; the layout is not one of them.
 
 ### Guest services: the face side of Stage 4 (D71, D72)
 
@@ -866,7 +871,7 @@ The faces draw the bag, the table bill, call a waiter, pay and the receipt befor
 
 | Face | Channel | Paging | Ordering | Allergen mode |
 | --- | --- | --- | --- | --- |
-| QR phone: Editorial Market (built, the default template) and `qr-phone` (built, hidden, the test reference) | `qr` | Scroll | Yes | Inline codes |
+| QR phone: the renderer (`editorial-market`, built, D128) | `qr` | Scroll | Yes | Inline codes |
 
 Decided 2026-10-08 (D38): QR → phone is the only channel. Kiosk, A4 print, TV board and delivery-feed faces are dropped from scope; further faces are alternative phone designs that pass the same contract.
 
@@ -990,7 +995,7 @@ Two endpoints on the web app, `GET /api/guest/state` and `POST /api/guest/action
 - **Commands** change the order, Send it, or call a waiter. Every command carries an action id, so a repeat is a no-op, and its age, so a stale one is refused. Part 2 adds `pay.start`, `pay.returned` and `pay.cancel`, and a Send with pay-first lines carries its tip (D127).
 - **Polling, not push:** the order and bill every few seconds, the menu less often, none while the page is hidden, the server's `next` hint wins. Order edits are optimistic and rolled back on refusal; Send never is. One version per table is bumped by every writer that changes the state.
 - **The location pass** is a signed note over the venue, the code's generation, the sitting and an expiry; Restro keeps no copy and never stores a position (D118, D119, D121).
-- **The shell's services contract** (`@restro/shell`) carries every new shape and refusal code, and faces word the codes through shell strings (D72). The guest template is designed last, by its own agent (D122), so build tickets drive end-to-end tests through the hidden `qr-phone` test face.
+- **The shell's services contract** (`@restro/shell`) carries every new shape and refusal code, and faces word the codes through shell strings (D72). The guest template is designed last, by its own agent (D122), so build tickets drive end-to-end tests through the renderer, on Basic and Editorial.
 
 ### The simulated POS: `sim-pos` (D122, spec #64 §2)
 

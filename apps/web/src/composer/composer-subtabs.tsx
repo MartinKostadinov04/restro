@@ -1,40 +1,39 @@
 'use client'
 
-// The composer's subtabs, Structure and Design (D92, brief S6), mirrored in the URL as `?sub=`
-// beside `?tab=composer`: the same tab bar (large screens) and select (small screens) as the
-// workspace tabs and the Settings sections.
+// The Studio's subtabs, Structure and Design (D92, D129), with the same tab bar (large screens) and
+// select (small screens) as the workspace tabs and the Settings sections. Structure is what the tab
+// shows; Design is a page of its own, and choosing it leaves for that page. A whole page load, on
+// purpose: from then on the browser's Back leaves a document, so the page's warning about unsaved
+// edits fires for it too.
+import { useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import type { ReactNode } from 'react'
 
-import { UrlTabs, useUrlTab } from '@/components/admin/workspace-tabs'
+import { UrlTabs } from '@/components/admin/workspace-tabs'
 
-import {
-  COMPOSER_SUBTAB_DEFS,
-  type ComposerSubtab,
-  composerSubtabOf,
-  isComposerSubtab,
-  SUBTAB_PARAM,
-} from './subtabs'
+import { designPagePath } from './design-path'
+import { MENU_PARAM } from './menu-bar'
+import { COMPOSER_SUBTAB_DEFS } from './subtabs'
 
 export function ComposerSubtabs({
-  contents,
+  venueId,
+  structure,
 }: {
-  /** The content of each subtab (the page renders only the open one's data). */
-  contents: Record<ComposerSubtab, ReactNode>
+  venueId: string
+  /** The content of Structure; Design has none here. */
+  structure: ReactNode
 }) {
   const t = useTranslations('composer.subtabs')
-  const [current, select] = useUrlTab<ComposerSubtab>(
-    SUBTAB_PARAM,
-    composerSubtabOf,
-    isComposerSubtab,
-  )
+  const menu = useSearchParams().get(MENU_PARAM)
   return (
     <div data-testid="composer-subtabs">
       <UrlTabs
         defs={COMPOSER_SUBTAB_DEFS}
-        current={current}
-        select={select}
-        contents={contents}
+        current="structure"
+        select={(value) => {
+          if (value === 'design') window.location.assign(designPagePath(venueId, menu))
+        }}
+        contents={{ structure }}
         label={t('label')}
       />
     </div>

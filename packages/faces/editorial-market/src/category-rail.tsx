@@ -83,7 +83,7 @@ export function CategoryRail({
   }, [active])
 
   return (
-    <nav ref={rail} className="rm-sections" aria-label={label}>
+    <nav ref={rail} className="rm-sections" aria-label={label} data-design-part="nav">
       {sections.map((section) => (
         <a
           key={section.id}

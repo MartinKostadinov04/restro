@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import { WRAPS_FORM } from '@/lib/wrapping'
 
 import { HexField } from './hex-field'
 import {
@@ -119,7 +120,7 @@ export function ColourPanel({
             type="button"
             variant="link"
             size="sm"
-            className="h-auto w-fit p-0"
+            className={cn(WRAPS_FORM, 'w-fit px-0 text-left')}
             data-testid="design-follow-brand"
             onClick={() => onChange(followBrand(state))}
           >

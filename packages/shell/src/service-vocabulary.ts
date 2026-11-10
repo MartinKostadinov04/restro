@@ -43,6 +43,10 @@ export const GUEST_REFUSAL_CODES = [
   'rate_limited',
   /** The table is not open for phones. */
   'table_not_open',
+  /** Call a waiter: the venue has not switched the service on. */
+  'calls_off',
+  /** Call a waiter: the venue's list does not hold the kind asked for. */
+  'kind_not_offered',
   /** The table's code is no longer its code: scan the table's code again. */
   'code_retired',
   /** The phone must be located first (#76): the face shows the consent screen. */

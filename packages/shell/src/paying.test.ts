@@ -12,8 +12,10 @@ import {
   paidReceiptText,
   payBlock,
   payFormLocale,
+  payingOffHere,
   paymentIsFinal,
   payScreen,
+  paySignedMoney,
   payStartCommand,
   pickWhole,
   receiptEmailOf,
@@ -189,6 +191,19 @@ describe('choosing what to pay (#45, D127)', () => {
     expect(payBlock(PAYING, b, picks, NO_TIP, true, '', false)).toBe(null)
   })
 
+  it('greys Pay while ordering is paused (D120), after offline and before every other reason', () => {
+    const picks = pickWhole(new Map(), b)
+    expect(payBlock(PAYING, b, picks, NO_TIP, true, '', false, true)).toBe('ordering_paused')
+    // Whatever else holds: paying paused too, a bill not up to date, nothing ticked.
+    expect(payBlock({ ...PAYING, state: 'paused' }, b, picks, NO_TIP, true, '', false, true)).toBe(
+      'ordering_paused',
+    )
+    expect(payBlock(PAYING, b, new Map(), NO_TIP, true, '', false, true)).toBe('ordering_paused')
+    expect(payBlock(PAYING, b, picks, NO_TIP, true, '', true, true)).toBe('offline')
+    // Not paused, nothing changes.
+    expect(payBlock(PAYING, b, picks, NO_TIP, true, '', false, false)).toBe(null)
+  })
+
   it('words the client’s own refusals: offline is the weak-connection line, a lost answer is D120’s', () => {
     for (const lang of ['en_US', 'bg_BG'] as const) {
       const words = stringsFor(lang).services
@@ -196,6 +211,20 @@ describe('choosing what to pay (#45, D127)', () => {
       expect(refusalText(words, 'answer_lost', { command: 'order.send' })).toBe(words.sendLost)
       // Never an invitation to try again: the order may already be in the POS (D120).
       expect(words.sendLost).not.toMatch(/try again|опитай/i)
+    }
+  })
+
+  it('words a lost call with its own line, and the call refusals with real words', () => {
+    for (const lang of ['en_US', 'bg_BG'] as const) {
+      const words = stringsFor(lang).services
+      expect(refusalText(words, 'answer_lost', { command: 'service.request' })).toBe(words.callLost)
+      expect(words.callLost).not.toBe(words.sendLost)
+      expect(words.callLost).not.toMatch(/try again|опитай|order|поръчка/i)
+      for (const code of ['calls_off', 'kind_not_offered']) {
+        const said = refusalText(words, code, { command: 'service.request' })
+        expect(said).toBe(words.refusals[code as 'calls_off' | 'kind_not_offered'])
+        expect(said).not.toBe(words.refusedOther)
+      }
     }
   })
 
@@ -246,6 +275,79 @@ describe('choosing what to pay (#45, D127)', () => {
     expect(offersPay({ ...base, tableBill: null })).toBe(false)
     expect(offersPay({ ...base, payment: payment({}) })).toBe(false)
     expect(offersPay(EMPTY_SERVICE_STATE)).toBe(false)
+  })
+})
+
+describe('payingOffHere: paying is off at the venue, so no Pay button (#346, D127)', () => {
+  const base = { ...EMPTY_SERVICE_STATE, paying: PAYING }
+  it('is true only when the host says off and this phone has no payment', () => {
+    expect(payingOffHere({ ...base, paying: { ...PAYING, state: 'off' } })).toBe(true)
+    expect(payingOffHere(base)).toBe(false)
+    expect(payingOffHere({ ...base, paying: { ...PAYING, state: 'paused' } })).toBe(false)
+  })
+  it('is false while the host has not said, and while this phone has a payment to show', () => {
+    expect(payingOffHere(EMPTY_SERVICE_STATE)).toBe(false)
+    const off = { ...base, paying: { ...PAYING, state: 'off' as const } }
+    expect(payingOffHere({ ...off, payment: payment({}) })).toBe(false)
+  })
+})
+
+describe('a bill with the POS’s own negative lines (#293, DA-8; rule 8)', () => {
+  // A waiter puts a discount on the table's bill, so a line comes to Restro negative. Nothing here
+  // may throw (the face's only error boundary wraps the whole menu), and no card may be offered an
+  // amount of zero or less, which no provider takes.
+  const amounts = fc.array(fc.integer({ min: -50_000, max: 50_000 }), {
+    minLength: 1,
+    maxLength: 8,
+  })
+
+  it('shows every signed amount, and reads back to the minor units it came from', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: -9_999_999, max: 9_999_999 }), (minor) => {
+        const shown = paySignedMoney(minor, 'EUR', 'en_US')
+        const digits = Number(shown.replace(/[^\d]/g, ''))
+        expect(digits).toBe(Math.abs(minor))
+        // A locale may write the minus as U+2212 rather than a hyphen.
+        expect(/[-\u2212]/.test(shown)).toBe(minor < 0)
+      }),
+      { numRuns: 400 },
+    )
+  })
+
+  it('never offers a payable set at or below zero, and words the greyed Pay', () => {
+    fc.assert(
+      fc.property(amounts, fc.boolean(), (values, tipped) => {
+        const b = bill(values.map((amountMinor, index) => ({ id: index + 1, amountMinor })))
+        const picks = pickWhole(new Map(), b)
+        const tip = tipped ? ({ kind: 'percent', percent: 10 } as const) : NO_TIP
+        // Every amount of the choice can be shown: a signed format never throws.
+        const totals = choosePay(picks, tip, tipped)
+        expect(() => paySignedMoney(totals.itemsMinor, 'EUR', 'bg_BG')).not.toThrow()
+        expect(() => paySignedMoney(totals.totalMinor, 'EUR', 'bg_BG')).not.toThrow()
+        const block = payBlock(PAYING, b, picks, tip, tipped)
+        if (totals.itemsMinor <= 0) {
+          expect(block).toBe('nothing_owed')
+        } else {
+          expect(block).not.toBe('nothing_owed')
+          // What the server would be asked for is always above zero.
+          expect(totals.totalMinor).toBeGreaterThan(0)
+        }
+      }),
+      { numRuns: 300 },
+    )
+  })
+
+  it('tells the guest to ask the waiter where a discount takes the lines to zero or less', () => {
+    const words = stringsFor('en_US').services.paying
+    const b = bill([
+      { id: 1, amountMinor: 1000 },
+      { id: 2, amountMinor: -1000 },
+    ])
+    expect(payBlock(PAYING, b, pickWhole(new Map(), b), NO_TIP, false)).toBe('nothing_owed')
+    expect(words.nothingOwed).toBe('There is nothing to pay on these lines. Ask your waiter.')
+    // One line only: the discount alone is also nothing to pay.
+    const only = bill([{ id: 1, amountMinor: -400 }])
+    expect(payBlock(PAYING, only, pickWhole(new Map(), only), NO_TIP, false)).toBe('nothing_owed')
   })
 })
 

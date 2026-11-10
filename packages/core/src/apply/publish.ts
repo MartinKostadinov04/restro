@@ -34,11 +34,12 @@ import { and, desc, eq, getTableColumns, inArray, isNotNull, isNull, lt, sql } f
 import { z } from 'zod'
 
 import { parseAssetVariants } from '../asset-variants'
+import type { DesignValues } from '../design/contract'
+import { designThemeOf, hasInvalidDesign, readDesign } from '../design/record'
 import { FIELD_VALUE_SCHEMAS } from '../field-types/catalog'
 import { type AssetId, idSchema, type NodeId, newId, type SnapshotId, type VenueId } from '../ids'
 import { venueLanguages } from '../languages'
 import { isLocale, type Locale, type LocalizedText, LocalizedTextSchema } from '../locales'
-import { menuSettingsOf } from '../menus'
 import { CURRENCIES, type Currency } from '../money'
 import { compareVisibility, V11_MAX_HIDDEN_SHARE } from '../resolve/compare-visibility'
 import { resolve } from '../resolve/resolve'
@@ -48,7 +49,6 @@ import {
   type AssetVariantWidths,
   buildSnapshot,
   DEFAULT_THEME,
-  menuLayoutOf,
   type SnapshotAssetInput,
 } from '../snapshot/build'
 import { parseSnapshot, SnapshotError, type SnapshotProblem } from '../snapshot/errors'
@@ -58,16 +58,13 @@ import {
   lookPublicStrings,
 } from '../snapshot/leak-guard'
 import { buildLiveOverlay } from '../snapshot/overlay'
-import type { LiveOverlay, MenuSnapshot, SnapshotLayout, SnapshotTheme } from '../snapshot/schema'
+import type { LiveOverlay, MenuSnapshot, SnapshotTheme } from '../snapshot/schema'
 import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
 import {
   fontFamilyOf,
   type GuestFeatures,
-  type Presentation,
   paletteList,
   readGuestFeatures,
-  readPresentation,
-  readVenueTheme,
   themePaletteOf,
   themeRolesOf,
   type VenueTheme,
@@ -149,6 +146,8 @@ export type PublishErrorCode =
   | 'venue_archived'
   /** The menu cannot be resolved for this venue (missing root, template, locales …). */
   | 'menu_blocked'
+  /** The venue's stored design is not a valid record (D129): saving the design again repairs it. */
+  | 'invalid_design'
   /** V10: no item would be visible. */
   | 'no_visible_items'
   /** The snapshot failed the strict schema or the leak guard (rule 3). */
@@ -292,6 +291,24 @@ async function refuseArchivedVenue(tx: WriteTx, venueId: string): Promise<void> 
   }
 }
 
+/**
+ * Refuses to publish a venue whose stored design is not a valid record: guests would get Basic
+ * without anyone having chosen it. Only a publish: the draft and the live overlay read on, and the
+ * editor's next save replaces the value.
+ */
+async function refuseInvalidDesign(tx: WriteTx, venueId: string): Promise<void> {
+  const [venue] = await tx
+    .select({ settings: venues.settings })
+    .from(venues)
+    .where(eq(venues.id, venueId))
+  if (venue !== undefined && hasInvalidDesign(venue.settings)) {
+    throw new PublishError(
+      'invalid_design',
+      `the design stored for ${venueId} is not valid; save the design again, then publish`,
+    )
+  }
+}
+
 const inScope = (menuId: string, venueId: string) =>
   and(eq(snapshots.menuId, menuId), eq(snapshots.venueId, venueId))
 
@@ -387,19 +404,18 @@ async function supersedeHeld(tx: WriteTx, menuId: string, venueId: string, at: D
 }
 
 /**
- * The snapshot's theme (R13): the default until the venue sets a theme; then the palette of its
- * colours (`themePaletteOf`: the tertiary, else the brand colour), the eight roles per scheme
- * (`themeRolesOf`, SH-01), its font family, corners, shadow and light/dark policy (each the
- * default when unset), and the venue's logo. A v1 theme (`{brand, logo_asset_id}`) keeps exactly
- * its palette and the default tokens, and gets the roles the shell derives from that palette.
- * A logo that is not stored yet, or has no variant files yet (the `asset-variants` job is still
- * to run), is left out rather than shown broken; the next publish picks it up.
+ * The snapshot's theme (R13), from the look of the venue's design (`designThemeOf`, D129): the
+ * palette of its colours (`themePaletteOf`: the tertiary, else the brand colour, else the default
+ * palette), the eight roles per scheme (`themeRolesOf`, SH-01), its body font's family, the px
+ * of its Corners and Depth words, its Screen, and the venue's logo. A design on Basic with no
+ * colours publishes exactly `DEFAULT_THEME`. A logo that is not stored yet, or has no variant
+ * files yet (the `asset-variants` job is still to run), is left out rather than shown broken; the
+ * next publish picks it up.
  */
 function snapshotThemeOf(
-  theme: VenueTheme | null,
+  theme: VenueTheme,
   snapshotAssets: Readonly<Record<AssetId, SnapshotAssetInput>>,
 ): SnapshotTheme {
-  if (theme === null) return DEFAULT_THEME
   const logo = theme.logo_asset_id
   return {
     palette: paletteList(themePaletteOf(theme)),
@@ -438,14 +454,12 @@ interface Resolution {
   readonly currency: Currency
   readonly day: string
   readonly nowIso: string
-  /** The look the venue chose (`venues.settings.theme`), or null: the default theme applies. */
-  readonly theme: VenueTheme | null
-  /** The template the venue chose (`venues.settings.presentation`), or null: none is written. */
-  readonly presentation: Presentation | null
+  /** The look of the venue's design (`venues.settings.design`, D129; Basic when it has none). */
+  readonly theme: VenueTheme
+  /** The design's values (D129, D130), with the Layout and Guest switch of every menu. */
+  readonly design: DesignValues
   /** The guest services (`venues.settings.guest_features`); the defaults when unset. */
   readonly features: GuestFeatures
-  /** The menu's layout and guest switch (`menus.settings`, D92); the defaults when unset. */
-  readonly layout: SnapshotLayout
   /** The menu's header name (`menus.name`, D92); null = none set. */
   readonly menuName: string | null
   /** The venue's display name (`venues.name`): the heading of a menu without one (D92). */
@@ -477,6 +491,8 @@ async function resolveForVenue(
     throw new PublishError('venue_archived', venueRefusalText(venueId, 'venue_archived'))
   }
   const doc = await readMenuDocument(tx, menuId)
+  // The venue's look (D129): one design for every menu of the venue, Basic until it saves one.
+  const { design } = readDesign(venue.settings)
 
   // Context: the venue's languages (the one source every workflow uses, D77: its main language
   // first), its service day and time zone.
@@ -517,10 +533,9 @@ async function resolveForVenue(
     currency,
     day,
     nowIso,
-    theme: readVenueTheme(venue.settings),
-    presentation: readPresentation(venue.settings),
+    theme: designThemeOf(design),
+    design: design.values,
     features: readGuestFeatures(venue.settings),
-    layout: menuLayoutOf(menuSettingsOf(menu.settings)),
     menuName: menu.name,
     venueName: venue.name,
   }
@@ -549,9 +564,8 @@ async function prepareSnapshot(
     currency,
     nowIso,
     theme: venueTheme,
-    presentation,
+    design,
     features,
-    layout,
     menuName,
     venueName,
   } = await resolveForVenue(tx, scope, now)
@@ -586,7 +600,7 @@ async function prepareSnapshot(
     if (image.success) assetIds.add(image.data.asset_id)
   }
   // The venue's logo is an asset like any other: stored, with its variant files, or left out.
-  if (venueTheme?.logo_asset_id) assetIds.add(venueTheme.logo_asset_id)
+  if (venueTheme.logo_asset_id) assetIds.add(venueTheme.logo_asset_id)
   const assetRows =
     assetIds.size === 0
       ? []
@@ -640,9 +654,8 @@ async function prepareSnapshot(
     theme,
     assets: snapshotAssets,
     tagVocabulary,
-    presentation,
     features,
-    layout,
+    design,
     menuName,
     venueName,
   })
@@ -651,7 +664,7 @@ async function prepareSnapshot(
     doc,
     externalIds,
     backendOnly,
-    publicStrings: lookPublicStrings(theme, presentation),
+    publicStrings: lookPublicStrings(theme),
   })
   let snapshot: MenuSnapshot
   try {
@@ -675,7 +688,8 @@ async function prepareSnapshot(
 
 /**
  * Publishes one menu for one venue (see the file header). Returns what happened; throws a
- * `PublishError` (nothing written) when the input, the menu, V10 or the leak guard refuses.
+ * `PublishError` (nothing written) when the input, the menu, the stored design, V10 or the leak
+ * guard refuses.
  *
  * With `approveHold` (manual only), the held snapshot is approved: if the document still gives
  * exactly its content, it moves from `held` to `published` and becomes current; if the document
@@ -692,6 +706,7 @@ export async function publishMenu(
   return withTenantWrite(pool, tenantId, async (tx) => {
     await lockPublish(tx, tenantId, menuId, venueId)
     await refuseArchivedVenue(tx, venueId)
+    await refuseInvalidDesign(tx, venueId)
     const version = await nextVersion(tx, menuId, venueId)
     const { snapshot } = await prepareSnapshot(
       tx,
@@ -1008,7 +1023,8 @@ export interface Draft {
  * The draft of a menu + venue: the document resolved and built exactly as `publishMenu` would,
  * without writing anything (the Publish tab's preview and its "changes waiting"). Throws the same
  * `PublishError`s a publish would (`menu_not_found`, `menu_blocked`, `no_visible_items`,
- * `unsafe_snapshot`); V11 is not checked, it only concerns automatic publishes.
+ * `unsafe_snapshot`), except `invalid_design`: it draws an invalid stored design as Basic. V11 is
+ * not checked, it only concerns automatic publishes.
  */
 export async function loadDraft(
   pool: DbPool,

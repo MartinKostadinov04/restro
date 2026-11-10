@@ -3,10 +3,34 @@
 // shared file names a provider (the vendor-word wall). The page asks the registry by the provider's
 // kind, which the server sends as a public word.
 
-import type { PayFormHandle, PayFormProps } from '@restro/shell'
+import type { PayFormHandle, PayFormProps, SemanticColours, ViewTheme } from '@restro/shell'
+
+/**
+ * The venue's General look as a provider's form needs it (D130, "the provider's card form"): the
+ * colours of both screens, the body font as a plain stack (no CSS variables: the provider's frame
+ * cannot read the page's), the corners in pixels, the density, the text size and the sheet colour.
+ * The page makes it from the published snapshot's view (rule 4), never from the database; each
+ * provider maps it to its own options (`<kind>/appearance.ts`).
+ */
+export interface CardFormLook {
+  readonly colors: SemanticColours
+  readonly colorsDark: SemanticColours
+  /** The venue's light/dark policy: `auto` follows the phone at the moment the form opens. */
+  readonly scheme: ViewTheme['scheme']
+  readonly fontFamily: string
+  readonly radius: number
+  readonly density: 'compact' | 'comfortable' | 'spacious'
+  readonly textSize: 'standard' | 'large'
+  readonly sheet: 'ink' | 'panel' | 'page'
+}
 
 /** What the page gives a card form besides the element. */
 export interface CardFormContext {
+  /**
+   * The venue's General look, or null/absent where the page has none (a demo, a test): the form
+   * then draws with the provider's own default.
+   */
+  readonly look?: CardFormLook | null
   /** The provider's form values from `GET /api/guest/payment`. */
   readonly values: Readonly<Record<string, string>>
   /** Where the provider sends the guest back after a redirect (this page, with no query). */

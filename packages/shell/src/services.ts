@@ -347,6 +347,12 @@ export interface CommandResult {
    * made, the item an `item_unavailable` names), or null.
    */
   readonly subjectId?: string | null
+  /**
+   * An accepted Send whose pay-first part alone was refused (#293, DA-1): the on-the-bill lines
+   * went, the pay-first lines stayed in the bag, and this code says why they did ("below_minimum",
+   * "rate_limited"). Null or absent for every other answer.
+   */
+  readonly payFirstRefused?: string | null
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -784,6 +790,13 @@ export const ANSWER_LOST_CODE = 'answer_lost'
  * guest may send again (the host's duplicate check, D117, still asks if the first one did land).
  */
 export const LOST_SEND_HOLD_MS = 180_000
+
+/**
+ * How long a host waits for the server before it gives up on one command and answers `pending`
+ * with `ANSWER_LOST_CODE`. A face that waits for the host as well must wait longer than this, so
+ * the host's own answer always arrives first and the face never has to guess for it (DA-2).
+ */
+export const HOST_ANSWER_TIMEOUT_MS = 10_000
 
 /**
  * The code of a Send or Pay the host did not make because the phone is offline (D121: "Send and Pay

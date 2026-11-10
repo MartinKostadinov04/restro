@@ -120,6 +120,9 @@ describe('the guest API wire shapes (#75)', () => {
       code: 'line_held',
       subjectId: null,
       ref: null,
+      // An accepted Send whose pay-first part alone was refused names it here (#293, DA-1); every
+      // other answer carries null, and an answer that leaves it out is read as null.
+      payFirstRefused: null,
     }
     const answer = { result, state: null, pass: null, handle: null }
     expect(GuestActionAnswerSchema.parse(answer)).toEqual(answer)
@@ -127,6 +130,14 @@ describe('the guest API wire shapes (#75)', () => {
     expect(GuestActionAnswerSchema.safeParse({ result, state: null }).success).toBe(false)
     const handle = 'A'.repeat(22)
     expect(GuestActionAnswerSchema.parse({ ...answer, handle }).handle).toBe(handle)
+    const { payFirstRefused: _left, ...older } = result
+    expect(GuestActionAnswerSchema.parse({ ...answer, result: older }).result).toEqual(result)
+    expect(
+      GuestActionAnswerSchema.parse({
+        ...answer,
+        result: { ...result, status: 'accepted', code: null, payFirstRefused: 'rate_limited' },
+      }).result.payFirstRefused,
+    ).toBe('rate_limited')
   })
 
   it('carries the sitting’s paid lines by name per language, with no payer and at most PAID_LINES_MAX (#197)', () => {

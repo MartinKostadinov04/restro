@@ -230,6 +230,7 @@ describe('POST /api/guest/actions', () => {
       code: null,
       subjectId: newId('ol'),
       ref: null,
+      payFirstRefused: null,
     }
     core.guestAct.mockResolvedValue({
       ok: true,
@@ -271,6 +272,7 @@ describe('POST /api/guest/actions', () => {
       code: null,
       subjectId: newId('so'),
       ref: 'K7Q',
+      payFirstRefused: null,
     }
     core.guestAct.mockImplementation(async (_pool: unknown, input: GuestActInput) => {
       await input.queueSend?.(target)
