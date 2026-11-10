@@ -294,17 +294,21 @@ describe.skipIf(!hasDatabase)('the Undo window of Tonight (as the restro_app rol
          values ($1, $2, $3, $4, 'table', $5, 'staff', true, '{}'::jsonb, 'restro', 'system', 'test-seed')`,
         [newId('pa'), world.tenantId, world.venueId, day, first],
       )
-      expect(await accepted({ type: 'tables.undo_open_all', undo: tokenOf(opened) })).toMatchObject({
-        closed: 4,
-        skipped: 0,
-      })
-      for (const index of [0, 1, 2, 3]) expect(await isOpen(table(index))).toBe(false)
-      const { rows } = await world.owner.query<{ lifted: string | null }>(
-        'select lifted_at::text as lifted from restro.pauses where target_id = $1',
-        [first],
-      )
-      expect(rows[0]?.lifted).not.toBeNull()
-      await world.owner.query('delete from restro.pauses where target_id = $1', [first])
+      // The pause goes whatever happens here: a throw would otherwise leave it active and the
+      // pause tests further down the file would read it as theirs.
+      try {
+        expect(
+          await accepted({ type: 'tables.undo_open_all', undo: tokenOf(opened) }),
+        ).toMatchObject({ closed: 4, skipped: 0 })
+        for (const index of [0, 1, 2, 3]) expect(await isOpen(table(index))).toBe(false)
+        const { rows } = await world.owner.query<{ lifted: string | null }>(
+          'select lifted_at::text as lifted from restro.pauses where target_id = $1',
+          [first],
+        )
+        expect(rows[0]?.lifted).not.toBeNull()
+      } finally {
+        await world.owner.query('delete from restro.pauses where target_id = $1', [first])
+      }
     })
 
     it("refuses a token that is not Open all's, or names no entry, and closes nothing", async () => {
