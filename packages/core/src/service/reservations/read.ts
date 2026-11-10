@@ -45,6 +45,7 @@ import {
   UNDONE_ARRIVAL_REASON,
 } from './status'
 import { reservationVersion } from './version'
+import { type WaitingPartyRead, waitingParties } from './waiting-read'
 
 /** Why one of these reads was refused. */
 export type ReservationReadRefusal = TonightRefusal
@@ -132,6 +133,13 @@ export interface ReservationNightRead {
   readonly settingsMissing: boolean
   /** The night's parties in arrival order (the earliest hour first), blocks left out. */
   readonly rows: readonly ReservationRow[]
+  /**
+   * The parties with no spot, oldest first (#330): the same rows as the Waiting ones above, in the
+   * queue's own order and with the three things a queue needs — its order, how long each has
+   * waited, and the number to ring. The night's "Waiting" filter draws them; there is no second
+   * list (D137).
+   */
+  readonly waiting: readonly WaitingPartyRead[]
   /** The night's lines taken out of the book, for whoever may bring one back (D135). */
   readonly deleted: readonly ReservationRow[]
   readonly counts: ReservationCounts
@@ -460,6 +468,7 @@ export async function readReservationNight(
         writable,
         settingsMissing: settings === undefined,
         rows,
+        waiting: await waitingParties(tx, reader.venue.id, day, now),
         deleted: binned.map((row) => toRow(row, binnedSpots)),
         counts: { all: rows.length, late, byStatus },
         hasMore: found.length > page.length,

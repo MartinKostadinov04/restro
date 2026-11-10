@@ -21,6 +21,10 @@
 //     tonight and a whole turn time still fits before their hour — with their name and hour read
 //     out above the button, so she sees who she is seating in front of;
 //   • they have gone → "Free", under the others, because freeing ends a night.
+// A spot nobody is on also carries the queue (#330; D137): "From the waiting list" lists the
+// parties with no spot, oldest first, and the tap on a party seats it **here** — two taps from the
+// plan, no Select and no second button. The list is the night's own queue, read with the plan, so
+// the plan and the night's list can never offer it in two different orders.
 // The hour, and whether early seating is offered at all, are the venue's own turn time (D135): the
 // door's advice works it out, and the sheet reads it when it opens.
 import { useTranslations } from 'next-intl'
@@ -45,6 +49,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { cn } from '@/lib/utils'
 import { WRAPS } from '@/lib/wrapping'
 import { arrivalChecksAction, spotHistoryAction } from '@/server/reservations/actions'
 import type {
@@ -54,7 +59,9 @@ import type {
   RvKindView,
   RvSpotHistoryList,
   RvSpotView,
+  RvWaitingView,
 } from '@/server/reservations/view'
+import { useDuration } from '@/settings/use-duration'
 import { READ_FAILED, readAttempt } from '@/tonight/read-attempt'
 import { ReadFailed } from '@/tonight/tab-parts'
 import { useWho } from '@/tonight/who'
@@ -111,10 +118,12 @@ export function SpotSheet({
   busy,
   sayWhoBlocks,
   coming,
+  waiting,
   onBook,
   onBlock,
   onUnblock,
   onArrive,
+  onSeatWaiting,
   onWalkIn,
   onFree,
   onClose,
@@ -142,8 +151,15 @@ export function SpotSheet({
    * offers, so seating somebody on a spot other than the one they booked is one gesture (#329).
    */
   coming: readonly ComingParty[]
+  /**
+   * The night's waiting list, oldest first (#330): what "From the waiting list" offers on a spot
+   * nobody is on. Empty on a night that has passed, where nothing is offered a spot.
+   */
+  waiting: readonly RvWaitingView[]
   /** Marks a party present on **this** spot; absent where this night or this role cannot seat. */
   onArrive: ((party: ComingParty) => void) | null
+  /** Gives a waiting party **this** spot, which seats it in the same move; same role as seating. */
+  onSeatWaiting: ((party: RvWaitingView) => void) | null
   /** Seats people who walked in, with the end hour where she took the one offered. */
   onWalkIn: ((until: string | null) => void) | null
   /** They have gone: the spots go back and the table codes close. */
@@ -152,6 +168,7 @@ export function SpotSheet({
 }) {
   const t = useTranslations('reservations')
   const stateWord = useSpotStateWord()
+  const duration = useDuration()
   const sentence = useSpotHistoryText()
   const who = useWho()
   // undefined before History is tapped, null when the read never got through.
@@ -271,6 +288,36 @@ export function SpotSheet({
                 >
                   <span className="tabular-nums">{party.time}</span>
                   {party.name ?? t('no_name')}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {onSeatWaiting === null ||
+      waiting.length === 0 ||
+      seated !== null ||
+      expected !== null ||
+      block !== null ? null : (
+        <section className="space-y-1">
+          <h3 className="font-medium">{t('w_from')}</h3>
+          <p className="text-muted-foreground">{t('w_order')}</p>
+          <ul className="flex min-w-0 flex-wrap gap-2" data-testid="rv-from-waiting">
+            {waiting.map((party) => (
+              <li key={party.reservationId}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={cn('min-h-11', WRAPS)}
+                  disabled={busy}
+                  data-testid="rv-seat-waiting"
+                  onClick={() => onSeatWaiting(party)}
+                >
+                  {party.name ?? t('no_name')}
+                  <span className="text-muted-foreground">
+                    {t('w_for', { duration: duration(party.waitedMinutes) })}
+                  </span>
                 </Button>
               </li>
             ))}

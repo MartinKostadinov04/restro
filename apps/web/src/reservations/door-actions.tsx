@@ -66,6 +66,11 @@ export interface DoorParty {
   readonly partySize?: number
   /** The hour "Seat until {time}" offered, where she took it. */
   readonly until?: string | null
+  /**
+   * The spot the party was given, by name (#330): where she chose the spot herself, the toast says
+   * which one they are sitting on, since that is the thing she wants read back to her.
+   */
+  readonly onSpot?: string
 }
 
 /** A write waiting on the hostess's answer. */
@@ -112,7 +117,11 @@ export function useDoorActions({
             ? `rv-walk-in:${party.spotIds.join(',')}`
             : `rv-arrive:${reservationId}`,
         done:
-          reservationId === null ? t('d_seated_walk_in') : t('d_seated', { party: named(party) }),
+          reservationId === null
+            ? t('d_seated_walk_in')
+            : party.onSpot === undefined
+              ? t('d_seated', { party: named(party) })
+              : t('w_seated', { party: named(party), spot: party.onSpot }),
         pin: {
           title:
             reservationId === null

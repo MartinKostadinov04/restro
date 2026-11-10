@@ -3,9 +3,9 @@
 // night's own count, not the number of rows the screen happens to hold.
 
 import { describe, expect, it } from 'vitest'
-import type { RvCountsView, RvRowView } from '@/server/reservations/view'
+import type { RvCountsView, RvRowView, RvWaitingView } from '@/server/reservations/view'
 
-import { filterCount, filterRows, RESERVATION_FILTERS } from './night-filters'
+import { filterCount, filterRows, RESERVATION_FILTERS, waitingQueue } from './night-filters'
 import { RV_STATUSES } from './statuses'
 
 const row = (over: Partial<RvRowView> = {}): RvRowView => ({
@@ -79,5 +79,48 @@ describe('the number on a chip', () => {
 
   it('is 0 for a state the night holds nothing of, so its chip is not drawn', () => {
     expect(filterCount(counts({ all: 3 }), 'no_show')).toBe(0)
+  })
+})
+
+const party = (over: Partial<RvWaitingView> = {}): RvWaitingView => ({
+  reservationId: 'rv_one',
+  name: 'Ivanova',
+  phone: '+359881234567',
+  partySize: 2,
+  note: null,
+  since: '23:10',
+  waitedMinutes: 25,
+  ...over,
+})
+
+describe('the queue under the "Waiting" filter (#330)', () => {
+  const rows = [
+    row({ id: 'rv_a', status: 'waiting', kind: 'walk_in', time: '23:10' }),
+    row({ id: 'rv_b', status: 'reserved' }),
+    row({ id: 'rv_c', status: 'waiting', kind: 'walk_in', time: '22:40' }),
+  ]
+
+  it('is in core’s order, not the hour’s: a party moved up the queue stays where she put it', () => {
+    // `rv_c` was written down earlier, and the hostess moved `rv_a` to the front of the queue.
+    const queue = waitingQueue(rows, [
+      party({ reservationId: 'rv_a', waitedMinutes: 10 }),
+      party({ reservationId: 'rv_c', waitedMinutes: 40 }),
+    ])
+    expect(queue.map((one) => one.row.id)).toEqual(['rv_a', 'rv_c'])
+    expect(queue.map((one) => one.party.waitedMinutes)).toEqual([10, 40])
+  })
+
+  it('carries what the queue adds to a row: the wait and the number to ring', () => {
+    const [first] = waitingQueue(rows, [party({ reservationId: 'rv_c', phone: '+359870000111' })])
+    expect(first?.row.id).toBe('rv_c')
+    expect(first?.party.phone).toBe('+359870000111')
+  })
+
+  it('leaves out a party the night’s rows do not carry, rather than drawing half a row', () => {
+    expect(waitingQueue(rows, [party({ reservationId: 'rv_gone' })])).toEqual([])
+  })
+
+  it('is empty where nobody is waiting, which is the empty-state block’s case', () => {
+    expect(waitingQueue(rows, [])).toEqual([])
   })
 })

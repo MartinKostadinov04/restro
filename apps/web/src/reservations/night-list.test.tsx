@@ -7,7 +7,13 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { RvCan, RvFrame, RvNightView, RvRowView } from '@/server/reservations/view'
+import type {
+  RvCan,
+  RvFrame,
+  RvNightView,
+  RvRowView,
+  RvWaitingView,
+} from '@/server/reservations/view'
 import { renderWithIntl } from '@/test-utils'
 
 import { NightList } from './night-list'
@@ -24,6 +30,8 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/server/reservations/actions', () => ({
   reservationNightAction: vi.fn(async () => ({ ok: false, code: 'read_failed' })),
   reservationDetailAction: vi.fn(async () => ({ ok: false, code: 'read_failed' })),
+  floorPlanAction: vi.fn(async () => ({ ok: false, code: 'read_failed' })),
+  addWaitingAction: vi.fn(async () => ({ ok: true, details: {} })),
 }))
 
 const TODAY = '2026-11-09'
@@ -84,6 +92,7 @@ const night = (over: Partial<RvNightView> = {}): RvNightView => {
     hasMore: false,
     days: [TODAY],
     deleted: [],
+    waiting: [],
     ...over,
     rows,
     counts: over.counts ?? {
@@ -261,5 +270,105 @@ describe('in Bulgarian', () => {
     expect(screen.getByTestId('rv-filter-all').textContent).toContain('Всички')
     expect(screen.getByTestId('rv-row').textContent).toContain('гости')
     expect(screen.getByTestId('rv-late-note').textContent).toContain('не се освобождава само')
+  })
+})
+
+describe('the waiting list, under its own filter (#330)', () => {
+  const party = (over: Partial<RvWaitingView> = {}): RvWaitingView => ({
+    reservationId: 'rv_w1',
+    name: 'Dimitrov',
+    phone: '+359881234567',
+    partySize: 2,
+    note: null,
+    since: '23:10',
+    waitedMinutes: 20,
+    ...over,
+  })
+  const waits = (waiting: readonly RvWaitingView[]) =>
+    night({
+      rows: [
+        row({ id: 'rv_w1', status: 'waiting', kind: 'walk_in', name: 'Dimitrov', spots: [] }),
+        row({ id: 'rv_w2', status: 'waiting', kind: 'walk_in', name: 'Petrov', spots: [] }),
+        row({ id: 'rv_r', status: 'reserved', name: 'Ivanova' }),
+      ],
+      waiting,
+    })
+  const queue = [
+    party(),
+    party({ reservationId: 'rv_w2', name: 'Petrov', phone: null, waitedMinutes: 50 }),
+  ]
+
+  it('draws the queue in core’s order, each row with its wait and its number to ring', async () => {
+    draw(waits(queue))
+    await userEvent.click(screen.getByTestId('rv-filter-waiting'))
+    const rows = screen.getAllByTestId('rv-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]?.textContent).toContain('Dimitrov')
+    expect(rows[0]?.textContent).toContain('Waiting for 20 min')
+    expect(rows[1]?.textContent).toContain('Petrov')
+    expect(rows[1]?.textContent).toContain('Waiting for 50 min')
+    // One line says the order, because every other filter reads the other way round.
+    expect(screen.getByTestId('rv-waiting-note')).toBeTruthy()
+    // The number is a link to ring, and only a party that left one has it.
+    const calls = screen.getAllByTestId('rv-row-call')
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.getAttribute('href')).toBe('tel:+359881234567')
+  })
+
+  it('offers "Give a spot" on a waiting row and no "Arrived" to tap afterwards', async () => {
+    draw(waits(queue))
+    await userEvent.click(screen.getByTestId('rv-filter-waiting'))
+    expect(screen.getAllByTestId('rv-row-give')).toHaveLength(2)
+    expect(screen.queryByTestId('rv-row-arrive')).toBeNull()
+  })
+
+  it('opens the plan for the one tap that seats them', async () => {
+    draw(waits(queue))
+    await userEvent.click(screen.getByTestId('rv-filter-waiting'))
+    const give = screen.getAllByTestId('rv-row-give')[0]
+    if (give === undefined) throw new Error('no "Give a spot" on the queue')
+    await userEvent.click(give)
+    expect(screen.getByTestId('rv-give').textContent).toContain('Dimitrov')
+  })
+
+  it('says where waiting parties appear when nobody is in the queue', async () => {
+    // The filter draws the queue, not the rows in the Waiting state: a row the queue read did not
+    // return is not drawn half-way.
+    draw(waits([]))
+    await userEvent.click(screen.getByTestId('rv-filter-waiting'))
+    expect(screen.queryByTestId('rv-list')).toBeNull()
+    expect(screen.getByText('Parties with no spot yet appear here.')).toBeTruthy()
+  })
+
+  it('has a door of its own, which asks for no hour and no spot', async () => {
+    // The list is reached by its own control, never by the booking form: a booking with no spot
+    // yet is a booking (#328). What it asks for is what a party at the door has.
+    draw(waits([]))
+    await userEvent.click(screen.getByTestId('rv-filter-waiting'))
+    await userEvent.click(screen.getByTestId('rv-wl-add'))
+    const form = screen.getByTestId('rv-wl-form')
+    expect(form.textContent).toContain('Add a party')
+    expect(screen.getByTestId('rv-wl-guests')).toBeTruthy()
+    expect(screen.getByTestId('rv-wl-name')).toBeTruthy()
+    expect(screen.queryByTestId('rv-f-time')).toBeNull()
+    expect(screen.queryByTestId('rv-f-spots')).toBeNull()
+    expect(screen.queryByTestId('rv-form-sheet')).toBeNull()
+  })
+
+  it('is reachable before anybody waits, when its filter is not drawn yet', async () => {
+    // The chips are the night's own states, so there is no "Waiting" chip on a night where
+    // nobody waits — the door cannot live behind it, or the first party could never be written.
+    draw(night())
+    expect(screen.queryByTestId('rv-filter-waiting')).toBeNull()
+    await userEvent.click(screen.getByTestId('rv-wl-add'))
+    expect(screen.getByTestId('rv-wl-form')).toBeTruthy()
+  })
+
+  it('counts the wait on tonight only: another night’s row carries no wait', async () => {
+    draw({ ...waits(queue), day: '2026-11-11', today: false })
+    await userEvent.click(screen.getByTestId('rv-filter-waiting'))
+    const rows = screen.getAllByTestId('rv-row')
+    expect(rows[0]?.textContent).toContain('Dimitrov')
+    expect(rows[0]?.textContent).not.toContain('Waiting for')
   })
 })

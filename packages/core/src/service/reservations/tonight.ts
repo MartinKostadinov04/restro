@@ -164,6 +164,7 @@ export async function addToWaitingList(
     readonly guestName?: string
     readonly guestId?: string
     readonly note?: string | null
+    readonly reason?: string | null
   },
 ): Promise<ServiceResult> {
   return await createReservation(stx, {
@@ -178,6 +179,9 @@ export async function addToWaitingList(
     guestName: command.guestName,
     guestId: command.guestId,
     note: command.note ?? null,
+    // The occasion, where the booking form it came from asked for one (#330): a party put on the
+    // list instead of onto a spot keeps what she typed.
+    reason: command.reason ?? null,
     queueKey: await nextQueueKey(stx, command.serviceDate),
   })
 }

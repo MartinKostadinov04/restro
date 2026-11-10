@@ -557,6 +557,12 @@ export {
   undoArrival,
 } from './reservations/status'
 export {
+  MAX_WAITING_ROWS,
+  type WaitingPartyRead,
+  waitedMinutes,
+  waitingParties,
+} from './reservations/waiting-read'
+export {
   REFUSAL_CODES,
   type RefusalCode,
   type ServiceResult,

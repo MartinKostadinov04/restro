@@ -76,6 +76,7 @@ const night = (over: Partial<ReservationNightRead> = {}): ReservationNightRead =
   writable: null,
   settingsMissing: false,
   rows: [row()],
+  waiting: [],
   deleted: [],
   counts: counts(),
   hasMore: false,
