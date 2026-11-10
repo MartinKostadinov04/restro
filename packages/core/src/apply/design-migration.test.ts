@@ -1,4 +1,4 @@
-// Migration 0045 (the design record, D129, D130), on a scratch database of its own: migrated to the
+// Migration 0051 (the design record, D129, D130), on a scratch database of its own: migrated to the
 // one before, seeded with venues as they stood, then migrated through it. Every venue must get a
 // Basic record that core's schema reads, with what it set before carried over and drawn as before.
 // It lives in core so the record is checked against the contract the app reads it with: the

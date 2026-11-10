@@ -1,4 +1,4 @@
-// What migration 0047 left behind (D129, My styles; ticket #177), read from the live catalog of the
+// What migration 0053 left behind (D129, My styles; ticket #177), read from the live catalog of the
 // migrated test database: the table's own rules and the ones that keep a Style to its organisation.
 // The policies themselves and the app role's grants are checked for every table by rls-guard and
 // app-role; this file holds what is particular to `design_styles`:
@@ -17,7 +17,7 @@ import { databaseError, hasDatabase, openOwnerPool, testId } from './database'
 
 const VALUES = `'{"general": {"screen": "auto"}}'::jsonb`
 
-describe.skipIf(!hasDatabase)('the organisation’s saved Styles (migration 0047)', () => {
+describe.skipIf(!hasDatabase)('the organisation’s saved Styles (migration 0053)', () => {
   let owner: pg.Pool
   const tenants: string[] = []
 

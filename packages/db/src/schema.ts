@@ -83,7 +83,7 @@ export const venues = restro.table(
      * Venue settings that are not columns of their own (S3-03). `design` is the venue's design
      * record (D129, core's `DesignRecordSchema`): the look of the guest menu, written only by
      * core's `apply()` (`setDesign`); the publisher turns it into the snapshot's theme and
-     * `design` block. It replaced `theme` and `presentation` (migration 0045).
+     * `design` block. It replaced `theme` and `presentation` (migration 0051).
      */
     settings: jsonb('settings')
       .$type<Record<string, unknown>>()
@@ -942,7 +942,7 @@ export const EVENT_OPS = [
  * change (`source` is `till:<integration>`), the status text for a status change. `node_id` is
  * the node that changed (the item, for a placement).
  *
- * `setDesign` (D129, migration 0045) is about a venue, not a node: `node_id` is null (and only
+ * `setDesign` (D129, migration 0051) is about a venue, not a node: `node_id` is null (and only
  * there, `events_node_only_for_document_ops`), `field_key` is `design`, the layer `manual`, the
  * scope the venue's (`venue:<vn_ id>`, which is how the purge finds it), and the old and new
  * values are the design record before (null for the first) and after.
@@ -1674,7 +1674,7 @@ export const tags = restro.table(
 )
 
 /**
- * An organisation's saved Styles (D129, My styles; migration 0047): a named set of design choices
+ * An organisation's saved Styles (D129, My styles; migration 0053): a named set of design choices
  * the owner keeps and applies at any venue of the organisation. The row is the organisation's, not
  * a venue's, and row-level security keeps it to the organisation like every other tenant table.
  *
