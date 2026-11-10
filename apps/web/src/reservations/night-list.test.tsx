@@ -83,6 +83,7 @@ const night = (over: Partial<RvNightView> = {}): RvNightView => {
     hasMore: false,
     days: [TODAY],
     deleted: [],
+    waiting: [],
     ...over,
     rows,
     counts: over.counts ?? {

@@ -331,6 +331,11 @@ const withPin = (typed: string | undefined) => (typed === undefined ? {} : { pin
  * the service path decides which, and refuses a missing phone where the venue requires one. Taking
  * a booking is `reservations.tonight`; changing one is `reservations.manage` — both checked
  * inside the transaction, never here.
+ *
+ * A **new** booking with no spot chosen is not a booking with nowhere to sit: it is a party on the
+ * night's waiting list (#330, D137), so it goes to `waiting.add` instead. An edit that takes the
+ * last spot off an existing booking does not move it — taking a spot back is its own operation,
+ * and the party keeps the state it is in.
  */
 export async function saveBookingAction(input: unknown): Promise<RvWriteResult> {
   const parsed = Save.safeParse(input)
@@ -339,6 +344,22 @@ export async function saveBookingAction(input: unknown): Promise<RvWriteResult> 
   const phone =
     body.phone === undefined || body.phone === null || body.phone === '' ? null : body.phone
   if (body.reservationId === undefined) {
+    // No spot chosen: the party goes onto the night's waiting list instead of onto the plan (#330,
+    // D137), for the night it asked about. `waiting.add` is the one path that writes a waiting
+    // line with its place in the queue, so nothing here invents a status or a key.
+    if (body.spotIds.length === 0) {
+      return performReservationWrite(
+        { venueId: body.venueId, ...withPin(body.pin) },
+        {
+          type: 'waiting.add',
+          serviceDate: body.day,
+          partySize: body.partySize,
+          note: body.note ?? null,
+          reason: body.reason ?? null,
+          ...(phone === null ? { partyLabel: body.name } : { phone, guestName: body.name }),
+        },
+      )
+    }
     return performReservationWrite({ venueId: body.venueId, ...withPin(body.pin) }, (venue) => ({
       type: 'reservation.create',
       serviceDate: body.day,

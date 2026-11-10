@@ -538,6 +538,9 @@ export const RESERVATION_COMMANDS = {
       serviceDate,
       partySize,
       note: note.optional(),
+      // The occasion, as the booking form's own field offers it (#330): a booking saved with no
+      // spot lands here, and what she typed is not dropped on the way.
+      reason: code.nullable().optional(),
       ...party,
     }),
     origins: ['staff'],

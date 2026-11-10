@@ -4,7 +4,12 @@
 //
 // The order is the order a night runs in, not the order of the status list: who is still to come,
 // who is waiting, who is in, then how the evening ended for them.
-import type { RvCountsView, RvRowView, RvStatus } from '@/server/reservations/view'
+//
+// The "Waiting" filter is the one that reads the other way round (#330): it is the queue, and the
+// queue's order is its meaning, so `waitingQueue` puts the party that has waited longest at the
+// top. It is the same rows under the same filter, in the order core read the queue in — never a
+// second list.
+import type { RvCountsView, RvRowView, RvStatus, RvWaitingView } from '@/server/reservations/view'
 
 import { RV_STATUSES } from './statuses'
 
@@ -32,4 +37,31 @@ export function filterCount(counts: RvCountsView, filter: ReservationFilter): nu
   if (filter === 'all') return counts.all
   if (filter === 'late') return counts.late
   return counts.byStatus[filter] ?? 0
+}
+
+/** One waiting party as its row is drawn: the night's row, with what the queue adds to it. */
+export interface WaitingLine {
+  readonly row: RvRowView
+  readonly party: RvWaitingView
+}
+
+/**
+ * The waiting parties in the queue's own order, oldest first, each with its row of the night.
+ *
+ * The order is core's (the queue key, not the hour), so a party the hostess moved up the queue
+ * stays where she put it. A party the night's rows do not carry is left out rather than drawn
+ * without its row: the night's list is capped, and half a row would read as a missing one.
+ */
+export function waitingQueue(
+  rows: readonly RvRowView[],
+  waiting: readonly RvWaitingView[],
+): readonly WaitingLine[] {
+  const byId = new Map(rows.map((row) => [row.id, row]))
+  const lines: WaitingLine[] = []
+  for (const party of waiting) {
+    const row = byId.get(party.reservationId)
+    if (row === undefined) continue
+    lines.push({ row, party })
+  }
+  return lines
 }

@@ -511,6 +511,10 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
           busy={busy || door.reading}
           sayWhoBlocks={writable && !mayBlock}
           coming={coming}
+          // The queue is offered on tonight's plan only (#330): a party is written down when it
+          // walks in, so on another night the wait would count from nothing that night knows, and
+          // nobody is seated in advance anyway.
+          waiting={plan.today ? plan.waiting : []}
           onArrive={
             maySeat
               ? (party) =>
@@ -521,6 +525,20 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
                     // She tapped this spot: the party is marked present **here**, which is the one
                     // gesture that also moves it off the spot it was booked on (#329).
                     spotIds: [spot.id],
+                  })
+              : null
+          }
+          onSeatWaiting={
+            maySeat
+              ? (party) =>
+                  door.arrive({
+                    reservationId: party.reservationId,
+                    day: plan.day,
+                    name: party.name,
+                    // She tapped this spot and then the party: giving the spot seats them on it,
+                    // in the one move and through the one arrival path (#329, #330).
+                    spotIds: [spot.id],
+                    onSpot: spot.name,
                   })
               : null
           }

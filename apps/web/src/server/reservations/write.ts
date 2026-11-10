@@ -91,6 +91,21 @@ export type RvCommand =
     }
   | { readonly type: 'reservation.put_back'; readonly reservationId: string }
   | {
+      /**
+       * A party onto the night's waiting list (#330, D137): the one path that writes a waiting
+       * line and its queue key. A booking saved with no spot comes here, so the hour it was asked
+       * for is not kept — a party with no spot waits from the moment it is written down.
+       */
+      readonly type: 'waiting.add'
+      readonly serviceDate: string
+      readonly partySize: number
+      readonly note?: string | null
+      readonly reason?: string | null
+      readonly phone?: string
+      readonly guestName?: string
+      readonly partyLabel?: string
+    }
+  | {
       readonly type: 'reservation.arrive'
       readonly reservationId: string
       readonly spotIds?: readonly string[]

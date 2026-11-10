@@ -284,6 +284,12 @@ export function BookingForm({
   )
 
   const regularWithoutPhone = regular && editing === null && values.phone.trim() === ''
+  /**
+   * A booking with no spot goes onto the waiting list (#330), and the list's one tap never writes
+   * the regulars (D141): rather than dropping her tick quietly, Save says so in one line and she
+   * either chooses a spot or adds the guest on the Guests tab.
+   */
+  const regularWithoutSpot = regular && editing === null && values.spotIds.length === 0
   const save = () => {
     setTried(true)
     if (Object.keys(errors).length > 0) {
@@ -292,6 +298,10 @@ export function BookingForm({
     }
     if (regularWithoutPhone) {
       document.getElementById(`${ids}-phone`)?.focus()
+      return
+    }
+    if (regularWithoutSpot) {
+      document.getElementById(`${ids}-regular`)?.focus()
       return
     }
     const name = values.name.trim()
@@ -444,16 +454,21 @@ export function BookingForm({
       </div>
 
       {editing === null && pickedNow === null ? (
-        <div className="flex min-h-11 items-center gap-3">
-          <Checkbox
-            id={`${ids}-regular`}
-            checked={regular}
-            data-testid="rv-f-regular"
-            onCheckedChange={(checked) => setRegular(checked === true)}
-          />
-          <Label htmlFor={`${ids}-regular`} className="font-normal">
-            {t('g_save_regular')}
-          </Label>
+        <div className="space-y-1.5">
+          <div className="flex min-h-11 items-center gap-3">
+            <Checkbox
+              id={`${ids}-regular`}
+              checked={regular}
+              data-testid="rv-f-regular"
+              onCheckedChange={(checked) => setRegular(checked === true)}
+            />
+            <Label htmlFor={`${ids}-regular`} className="font-normal">
+              {t('g_save_regular')}
+            </Label>
+          </div>
+          {tried && regularWithoutSpot ? (
+            <FieldProblem id={`${ids}-regular-e`}>{t('w_e_regular')}</FieldProblem>
+          ) : null}
         </div>
       ) : null}
 

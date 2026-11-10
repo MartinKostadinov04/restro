@@ -15,6 +15,13 @@
 // already on screen and says so in a notice that stays (RR-O47), because an empty list would read
 // as an empty night.
 //
+// The waiting list is here too and nowhere else (#330; D137): it is this same list under its
+// "Waiting" filter, in the queue's own order — oldest first, said in one line, because every other
+// filter reads the other way round — with how long each party has waited and its number to ring.
+// "Give a spot" on a waiting row opens the plan for one tap, and that tap seats the party through
+// the arrival path of #329. Cancelling and taking one out are the ordinary operations of its sheet:
+// the queue adds no workflow of its own.
+//
 // Taking and changing a booking is here (#328): the "New reservation" button opens the booking form,
 // a row's sheet changes, calls off, copies or takes out a booking, and the night's bin brings a
 // deleted one back. The door is here too (#329): "Arrived" on a row of a party that is coming, and
@@ -30,6 +37,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { WRAPS } from '@/lib/wrapping'
 import { reservationNightAction } from '@/server/reservations/actions'
 import type { RvDetailView, RvFrame, RvNightView, RvRowView } from '@/server/reservations/view'
+import { useDuration } from '@/settings/use-duration'
 import { DayPicker, useDateText } from '@/tonight/day-picker'
 import { useLiveFeed } from '@/tonight/live-feed'
 import { FailedBlock, NewLine, NothingHere, RowsSkeleton } from '@/tonight/tab-parts'
@@ -38,11 +46,13 @@ import { BookingForm, type BookingMode } from './booking-form'
 import { CopyDialog } from './copy-dialog'
 import { useDoorActions } from './door-actions'
 import { GuestsDialog } from './door-dialogs'
+import { GiveSpotDialog } from './give-spot'
 import {
   filterCount,
   filterRows,
   RESERVATION_FILTERS,
   type ReservationFilter,
+  waitingQueue,
 } from './night-filters'
 import { ReservationRow } from './reservation-row'
 import { ReservationSheet } from './reservation-sheet'
@@ -160,6 +170,7 @@ function Banner({ night, frame }: { night: RvNightView; frame: RvFrame }) {
 export function NightList({ initial, frame }: { initial: RvNightView; frame: RvFrame }) {
   const t = useTranslations('reservations')
   const word = useFilterWord()
+  const duration = useDuration()
   const dateText = useDateText()
   const [day, setDay] = useState(initial.day)
   const [filter, setFilter] = useState<ReservationFilter>('all')
@@ -167,6 +178,8 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
   const [form, setForm] = useState<BookingMode | null>(null)
   const [copying, setCopying] = useState<RvDetailView | null>(null)
   const [counting, setCounting] = useState<RvDetailView | null>(null)
+  // The waiting party whose spot is being chosen (#330), by its reservation.
+  const [giving, setGiving] = useState<string | null>(null)
   const { run, busy, pinSheet } = useReservationRun({ device: frame.device })
 
   const feed = useLiveFeed<RvNightView>({
@@ -194,6 +207,27 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
   // The chosen night is still being read: the night on screen is another one, so it is not shown.
   const reading = night.day !== day
   const rows = useMemo(() => filterRows(night.rows, filter), [night.rows, filter])
+  /** The queue of this night, oldest first: what the "Waiting" filter draws (#330). */
+  const queue = useMemo(() => waitingQueue(night.rows, night.waiting), [night.rows, night.waiting])
+  /**
+   * How long a party has waited, in words — on tonight only. A party written down for a night still
+   * to come has waited since she wrote it down, which says nothing about that night, so its row
+   * carries the hour it was taken instead of a number that would read as a very long wait.
+   */
+  const waitedText = (minutes: number) => (night.today ? duration(minutes) : null)
+  const givingLine = giving === null ? null : (queue.find((one) => one.row.id === giving) ?? null)
+  /** The spot she tapped, for the party she opened: seated there, by #329's one path. */
+  const give = (spot: { readonly id: string; readonly name: string }) => {
+    if (givingLine === null) return
+    setGiving(null)
+    door.arrive({
+      reservationId: givingLine.row.id,
+      day,
+      name: givingLine.row.name,
+      spotIds: [spot.id],
+      onSpot: spot.name,
+    })
+  }
   // A filter with nothing behind it does no job, so it is not drawn (D123 rule 2).
   const chips = RESERVATION_FILTERS.filter(
     (value) => value === 'all' || filterCount(night.counts, value) > 0,
@@ -213,6 +247,38 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
   const body = (() => {
     if (reading || (night.rows.length === 0 && feed.loading)) return <RowsSkeleton />
     if (feed.failed && night.rows.length === 0) return <FailedBlock text={t('fail')} />
+    // The queue is this list under its own filter, in its own order: the same rows, never a second
+    // list (#330, D137). Nobody waiting is the empty-state block, which invites the first.
+    if (filter === 'waiting') {
+      if (queue.length === 0) {
+        return (
+          <NothingHere
+            text={t('w_empty')}
+            action={
+              mayTake ? <NewButton onClick={() => setForm({ kind: 'new', day })} /> : undefined
+            }
+          />
+        )
+      }
+      return (
+        <ul className="divide-y rounded-lg border" data-testid="rv-list">
+          {queue.map(({ row, party }) => (
+            <ReservationRow
+              key={row.id}
+              row={row}
+              busy={busy || door.reading}
+              waited={waitedText(party.waitedMinutes)}
+              phone={party.phone}
+              onOpen={() => setOpen(row.id)}
+              onNoShow={null}
+              onArrive={null}
+              onGive={mayTake ? () => setGiving(row.id) : null}
+              onFree={null}
+            />
+          ))}
+        </ul>
+      )
+    }
     if (night.rows.length === 0) {
       return (
         <NothingHere
@@ -243,6 +309,7 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
                     })
                 : null
             }
+            onGive={mayTake ? () => setGiving(row.id) : null}
             onFree={
               mayTake
                 ? () => door.free({ reservationId: row.id, day, name: row.name, spotIds: [] })
@@ -295,6 +362,11 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
           ))}
         </fieldset>
       )}
+      {!reading && filter === 'waiting' && queue.length > 0 ? (
+        <p className="text-sm text-muted-foreground" data-testid="rv-waiting-note">
+          {t('w_order')}
+        </p>
+      ) : null}
       {!reading && night.counts.late > 0 ? (
         <p className="text-sm text-muted-foreground" data-testid="rv-late-note">
           {t('late_note')}
@@ -393,6 +465,17 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
               setCounting(null),
             )
           }
+        />
+      )}
+      {givingLine === null ? null : (
+        <GiveSpotDialog
+          frame={frame}
+          day={day}
+          party={givingLine.party}
+          waited={waitedText(givingLine.party.waitedMinutes)}
+          busy={busy || door.reading}
+          onGive={give}
+          onClose={() => setGiving(null)}
         />
       )}
       {door.node}

@@ -3,7 +3,9 @@
 // the browser: our prefixed ids and public fields only (rule 3), times as text in the venue's zone.
 //
 // The guest's phone is on the detail only, never on a row: the list of a busy night would otherwise
-// carry every guest's number into the browser, and only the sheet's Call button needs one.
+// carry every guest's number into the browser, and only the sheet's Call button needs one. The one
+// exception is a waiting party (`RvWaitingView`, #330): ringing the next one is the whole of what a
+// queue is for, and core keeps that read short whatever the night does.
 import type { SpotPlace, SpotSymbol } from '@restro/core'
 import type {
   ArrivalChecks,
@@ -22,6 +24,7 @@ import type {
   SpotHistoryLine,
   SpotHoldRead,
   SpotState,
+  WaitingPartyRead,
 } from '@restro/core/service'
 
 import type { RV_SPOT_STATES } from '@/reservations/spot-states'
@@ -142,6 +145,23 @@ export interface RvCountsView {
   readonly byStatus: Readonly<Record<ReservationStatus, number>>
 }
 
+/**
+ * One party on the night's waiting list (#330): its place in the queue is the order of the array it
+ * comes in, never a number on the row. Its telephone number is here, unlike a row of the night's
+ * list, because calling the next party is what a queue is for.
+ */
+export interface RvWaitingView {
+  readonly reservationId: string
+  readonly name: string | null
+  readonly phone: string | null
+  readonly partySize: number | null
+  readonly note: string | null
+  /** `HH:mm` in the venue's zone: when the party was written down. */
+  readonly since: string
+  /** Whole minutes waited when the night was read; the row words it. */
+  readonly waitedMinutes: number
+}
+
 /** One night's list. */
 export interface RvNightView {
   readonly day: string
@@ -156,6 +176,8 @@ export interface RvNightView {
   /** The venue has no turn time yet, so nothing can be booked (D135). */
   readonly settingsMissing: boolean
   readonly rows: readonly RvRowView[]
+  /** The parties with no spot, oldest first: the "Waiting" filter's own order (#330). */
+  readonly waiting: readonly RvWaitingView[]
   /** The night's lines taken out of the book: the bin a manager brings one back from (D135). */
   readonly deleted: readonly RvRowView[]
   readonly counts: RvCountsView
@@ -216,6 +238,18 @@ export function rvRowView(row: ReservationRow, timezone: string): RvRowView {
   }
 }
 
+export function rvWaitingView(party: WaitingPartyRead, timezone: string): RvWaitingView {
+  return {
+    reservationId: party.reservationId,
+    name: party.name,
+    phone: party.phone,
+    partySize: party.partySize,
+    note: party.note,
+    since: clockIn(timezone)(party.since) ?? '',
+    waitedMinutes: party.waitedMinutes,
+  }
+}
+
 export function rvNightView(night: ReservationNightRead, timezone: string): RvNightView {
   return {
     day: night.day,
@@ -225,6 +259,7 @@ export function rvNightView(night: ReservationNightRead, timezone: string): RvNi
     refusal: night.writable,
     settingsMissing: night.settingsMissing,
     rows: night.rows.map((row) => rvRowView(row, timezone)),
+    waiting: night.waiting.map((party) => rvWaitingView(party, timezone)),
     deleted: night.deleted.map((row) => rvRowView(row, timezone)),
     counts: night.counts,
     hasMore: night.hasMore,
@@ -335,6 +370,8 @@ export interface RvPlanView {
   readonly extent: PlanExtent
   /** Spots whose stored numbers the folder refused: drawn nowhere, counted here. */
   readonly unreadable: number
+  /** The night's waiting list, oldest first: what a free spot's sheet offers (#330). */
+  readonly waiting: readonly RvWaitingView[]
 }
 
 /** One line of a spot's history (D141: the one Log). */
@@ -403,6 +440,7 @@ export function rvPlanView(plan: FloorPlanRead, timezone: string): RvPlanView {
     })),
     extent: plan.extent,
     unreadable: plan.unreadable,
+    waiting: plan.waiting.map((party) => rvWaitingView(party, timezone)),
   }
 }
 

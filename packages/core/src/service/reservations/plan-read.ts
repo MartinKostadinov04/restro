@@ -63,6 +63,7 @@ import {
   type ReservationReadRefusal,
 } from './read'
 import type { ReservationKind, ReservationStatus } from './status'
+import { type WaitingPartyRead, waitingParties } from './waiting-read'
 
 /** How far back a plan is readable (D141, 9.21: a month of plans; older nights are Log only). */
 export const PLAN_MONTH_DAYS = 31
@@ -169,6 +170,11 @@ export interface FloorPlanRead {
   readonly extent: PlanExtent
   /** Spots the shape folder refused: drawn nowhere, counted so they are not simply missing. */
   readonly unreadable: number
+  /**
+   * The night's waiting list, oldest first (#330): what a free spot's sheet offers under "From the
+   * waiting list". The same read the night's list uses, so the queue is never in two orders.
+   */
+  readonly waiting: readonly WaitingPartyRead[]
 }
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/
@@ -453,6 +459,7 @@ export async function readFloorPlan(
       spots: [],
       extent: planExtent([]),
       unreadable: 0,
+      waiting: [],
     }
     // A night older than the month of plans is a record in the Log, not a plan (D141, 9.21): the
     // screen says so, and nothing of that night is read.
@@ -562,6 +569,9 @@ export async function readFloorPlan(
         spots: drawn,
         extent: planExtent(drawn.map((spot) => spot.place)),
         unreadable,
+        // The queue of this night, for the free spots' sheets (#330). A night that has passed is
+        // read-only, so nothing there is offered a spot and the read is skipped.
+        waiting: passed ? [] : await waitingParties(tx, reader.venue.id, day, now),
       },
     } as const
   })
