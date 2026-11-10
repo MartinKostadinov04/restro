@@ -404,7 +404,16 @@ export function GuestCard({
         <EditFields fields={editing} set={setEditing} />
       )}
       {editing === null ? (
-        <MyList venueId={frame.venueId} card={card} email={email} onChanged={load} />
+        <MyList
+          venueId={frame.venueId}
+          card={card}
+          email={email}
+          // The card and the list behind it: the list's "On my list" badge and filter follow.
+          onChanged={() => {
+            load()
+            onChanged()
+          }}
+        />
       ) : null}
       {editing === null && frame.can.guests && frame.device ? (
         <p className="text-muted-foreground" data-testid="rv-g-erase-signin">
