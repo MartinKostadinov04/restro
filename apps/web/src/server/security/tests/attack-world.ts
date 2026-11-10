@@ -49,6 +49,8 @@ export interface SeededVenue {
   readonly sitting: string
   readonly sentOrder: string
   readonly reservation: string
+  /** The booking's guest, a regular named after the marker, with a private note (#333). */
+  readonly guest: string
   readonly payment: string
   readonly refund: string
   readonly alert: string
@@ -281,6 +283,37 @@ async function seedVenue(
      values ($1, $2, $3, $4, now(), 'booking', 'reserved', 2, $5, $6, $7, $8)`,
     [reservation, tenantId, venue.id, day, `${marker} party`.slice(0, 80), ...SEED],
   )
+  // The booking's guest (#333): a regular named after the marker, linked to the booking, with a
+  // private note kept by the venue's staff member — what the guest reads, edits and the erasure
+  // name, and what must never come back to another organisation.
+  const guest = newId('gu')
+  const digits = String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')
+  await owner.query(
+    `insert into restro.guests
+       (id, tenant_id, venue_id, phone_key, name, phone, email, note, is_regular, source, actor, job_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10, $11)`,
+    [
+      guest,
+      tenantId,
+      venue.id,
+      `359888${digits}`,
+      `${marker} guest`.slice(0, 80),
+      `+359888${digits}`,
+      `${marker.toLowerCase()}@example.test`,
+      `${marker} note`,
+      ...SEED,
+    ],
+  )
+  await owner.query('update restro.reservations set guest_id = $1 where id = $2', [
+    guest,
+    reservation,
+  ])
+  await owner.query(
+    `insert into restro.guest_private_notes
+       (tenant_id, venue_id, guest_id, staff_member_id, note, source, actor, job_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [tenantId, venue.id, guest, staff, `${marker} private`, ...SEED],
+  )
   // One spot kept out of use, and the block that holds it (#327): what an attack on Unblock names,
   // and what the positive control lifts. It sits on a spot of its own, so blocking `spot` is still
   // a write nothing refuses.
@@ -340,6 +373,7 @@ async function seedVenue(
     sitting,
     sentOrder,
     reservation,
+    guest,
     payment,
     refund,
     alert,

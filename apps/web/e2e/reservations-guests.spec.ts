@@ -178,6 +178,10 @@ test('a phone already on the list warns and names its guest, in the form and in 
   // She can proceed with the guest who has it: Иванова goes on the regulars, nobody is doubled.
   await dialog.getByTestId('rv-g-add-use').click()
   await expect(dialog).toHaveCount(0)
+  // The guest it saved opens on their card.
+  await expect(card(page)).toContainText(BOOK.late)
+  await card(page).getByTestId('rv-g-close').click()
+  await expect(card(page)).toHaveCount(0)
   await page.getByTestId('rv-g-filter-regulars').click()
   await expect(guestRow(page, BOOK.late)).toHaveCount(1)
   await expect(guestRow(page, 'Още Някой')).toHaveCount(0)
