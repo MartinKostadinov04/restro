@@ -84,6 +84,8 @@ const spots = (page: Page) => page.getByTestId('rv-spot')
 const spotNamed = (page: Page, name: string) => spots(page).filter({ hasText: name })
 const sheet = (page: Page) => page.getByTestId('rv-spot-sheet')
 const rows = (page: Page) => page.getByTestId('rv-row')
+const toast = (page: Page, text: string) =>
+  page.locator('[data-sonner-toast]').filter({ hasText: text })
 const tile = (page: Page, name: string) =>
   page.locator(`[data-testid="table-tile"][aria-label^="${name}"]`)
 
@@ -145,7 +147,7 @@ test('a table nobody holds later opens in one tap, as Tonight always did', async
   // Иванова is booked on this table but her hour has passed, so there is nothing to warn about:
   // the tap opens it, with no question in the way.
   await tile(page, TABLE).click()
-  await expect(page.getByText(`${TABLE} is open for phones.`)).toBeVisible()
+  await expect(toast(page, `${TABLE} is open for phones`)).toBeVisible()
   await expect(tile(page, TABLE)).toHaveAttribute('data-state', 'open')
   await expect(page.getByTestId('tonight-booked')).toHaveCount(0)
 })
