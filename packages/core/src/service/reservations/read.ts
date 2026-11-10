@@ -25,6 +25,7 @@ import {
   reservationSpots,
   reservations,
   spots,
+  staffMembers,
   withTenant,
 } from '@restro/db'
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
@@ -40,6 +41,7 @@ import {
   type ReservationStatus,
   UNDONE_ARRIVAL_REASON,
 } from './status'
+import { reservationVersion } from './version'
 
 /** Why one of these reads was refused. */
 export type ReservationReadRefusal = TonightRefusal
@@ -149,6 +151,12 @@ export interface ReservationDetail {
   readonly madeBy: Who | null
   /** The guest's email, where the venue's record holds one (D140). */
   readonly email: string | null
+  /** The spots it holds, as ids in the same order as `row.spots`: what an edit form starts from. */
+  readonly spotIds: readonly string[]
+  /** The version an edit form is opened on (`version.ts`); a save over another one is refused. */
+  readonly version: string
+  /** The actor took this booking themselves, so may take it out without managing bookings. */
+  readonly mine: boolean
   /** Its own history, oldest first, from the Log: never a guest's contact details (D140). */
   readonly history: readonly ReservationHistoryLine[]
 }
@@ -320,7 +328,7 @@ export async function readReservationNight(
         startsAt: row.startsAt,
         endsAt: row.endsAt,
         partySize: row.partySize,
-        name: row.guestName ?? row.partyLabel,
+        name: row.partyLabel ?? row.guestName,
         phone: row.guestPhone,
         guestId: row.guestId,
         note: row.note,
@@ -387,6 +395,27 @@ export async function readReservationNight(
   })
 }
 
+/**
+ * The staff member the reader is: a PIN on a shared device names one, a signed-in person is matched
+ * to their own staff record. Null for the device's own account and for Restro's team — their PIN or
+ * their permissions decide, not a booking being theirs (`staffMemberOf` is the write side's).
+ */
+async function staffMemberFor(tx: ReadTx, input: ReadInput): Promise<string | null> {
+  if (input.actor.kind === 'staff') return input.actor.staffMemberId
+  if (input.actor.kind !== 'user') return null
+  const [member] = await tx
+    .select({ id: staffMembers.id })
+    .from(staffMembers)
+    .where(
+      and(
+        eq(staffMembers.tenantId, input.tenantId),
+        eq(staffMembers.userId, input.actor.userId),
+        isNull(staffMembers.archivedAt),
+      ),
+    )
+  return member?.id ?? null
+}
+
 /** The Log kinds a reservation's own history is made of (#323). */
 const HISTORY_KINDS = [
   'reservation.created',
@@ -450,6 +479,16 @@ export async function readReservationDetail(
       )
     if (row === undefined) return { ok: true, access, detail: null } as const
     const held = await spotsOf(tx, [row.id])
+    const heldRows = await tx
+      .select({
+        spotId: reservationSpots.spotId,
+        updatedAt: reservationSpots.updatedAt,
+        released: reservationSpots.releasedAt,
+      })
+      .from(reservationSpots)
+      .innerJoin(spots, eq(spots.id, reservationSpots.spotId))
+      .where(eq(reservationSpots.reservationId, row.id))
+      .orderBy(asc(spots.name))
     const status = row.status as ReservationStatus
     const party = {
       id: row.id,
@@ -458,7 +497,7 @@ export async function readReservationDetail(
       startsAt: row.startsAt,
       endsAt: row.endsAt,
       partySize: row.partySize,
-      name: row.guestName ?? row.partyLabel,
+      name: row.partyLabel ?? row.guestName,
       phone: row.guestPhone,
       guestId: row.guestId,
       note: row.note,
@@ -503,6 +542,15 @@ export async function readReservationDetail(
         serviceDate: row.serviceDate,
         madeBy: row.madeBy === null ? null : (named.get(`staff:${row.madeBy}`) ?? null),
         email: row.guestEmail,
+        spotIds: heldRows.filter((one) => one.released === null).map((one) => one.spotId),
+        version: reservationVersion(
+          row.updatedAt,
+          heldRows.reduce<Date | null>(
+            (newest, one) => (newest === null || one.updatedAt > newest ? one.updatedAt : newest),
+            null,
+          ),
+        ),
+        mine: row.madeBy !== null && row.madeBy === (await staffMemberFor(tx, input)),
         history: entries.map((entry) => ({
           seq: entry.seq,
           at: entry.at,

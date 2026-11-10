@@ -294,7 +294,7 @@ function holdsFrom(tx: ReadTx) {
  * instead. Nothing else crosses a night: a party's hold ends with the turn time, with its own end
  * time, or with the night's sweep.
  */
-async function holdsOfNight(
+export async function holdsOfNight(
   tx: ReadTx,
   venueId: string,
   spotIds: readonly string[],
@@ -347,7 +347,7 @@ async function holdsOfNight(
       ownEnd: row.endsAt !== null || row.heldTo !== null,
       startsAt: row.startsAt,
       seatedAt: row.seatedAt,
-      name: row.guestName ?? row.partyLabel,
+      name: row.partyLabel ?? row.guestName,
       partySize: row.partySize,
       reason: row.reason,
       // A block with no end of any kind is the one hold the turn time must not lift (D137).
@@ -660,7 +660,7 @@ export async function readSpotHistory(
         .where(
           and(eq(reservations.venueId, reader.venue.id), inArray(reservations.id, reservationIds)),
         )
-      for (const row of rows) parties.set(row.id, row.guestName ?? row.partyLabel)
+      for (const row of rows) parties.set(row.id, row.partyLabel ?? row.guestName)
     }
     return {
       ok: true,

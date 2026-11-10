@@ -39,6 +39,11 @@ export interface SpotHold {
   readonly spotId: Id<'sp'>
   readonly status: ReservationStatus
   readonly stretch: Stretch
+  /**
+   * A block with no end of any kind (D137): it stays on until somebody lifts it, so the turn time
+   * must not end it. Left out, the hold ends where its stretch does.
+   */
+  readonly openEnded?: boolean
 }
 
 /** A reservation asking for spots: the one being created, edited or moved. */
@@ -103,6 +108,14 @@ export function overlaps(a: Stretch, b: Stretch): boolean {
   return a.from.getTime() < b.to.getTime() && b.from.getTime() < a.to.getTime()
 }
 
+/** The far end of an open-ended block: no booking of any night reaches past it. */
+const FOREVER = new Date(8_640_000_000_000_000)
+
+/** The stretch a hold covers for the overlap rule: an open-ended block never ends (D137). */
+export function coveredBy(hold: SpotHold): Stretch {
+  return hold.openEnded === true ? { from: hold.stretch.from, to: FOREVER } : hold.stretch
+}
+
 /**
  * The first spot of the claim another reservation already holds for an overlapping stretch, or
  * null when every spot is free. Holds of the claim's own reservation and of a status that holds no
@@ -122,7 +135,7 @@ export function spotConflict(
       hold.reservationId !== claim.reservationId &&
       wanted.has(hold.spotId) &&
       holdsSpots(hold.status) &&
-      overlaps(claimed.stretch, hold.stretch),
+      overlaps(claimed.stretch, coveredBy(hold)),
   )
   for (const spotId of claim.spotIds) {
     const hold = inTheWay.find((candidate) => candidate.spotId === spotId)

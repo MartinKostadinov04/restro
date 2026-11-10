@@ -10,13 +10,13 @@
 // never his name, number, email or note, before or after the change (D140): the record itself is
 // where his details live, and once it is erased they are nowhere.
 
-import { guestPrivateNotes, guests, staffMembers } from '@restro/db'
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { guestPrivateNotes, guests } from '@restro/db'
+import { and, eq, sql } from 'drizzle-orm'
 
 import { newId } from '../../ids'
 import type { ServiceTx } from '../definition'
 import { accepted, type ServiceResult } from '../results'
-import { lockGuest, lockGuestByPhone, readSettings, refuse } from './rows'
+import { lockGuest, lockGuestByPhone, readSettings, refuse, staffMemberOf } from './rows'
 
 /**
  * A phone number as the key: its digits, with a leading `00` read as the `+` it stands for. Null
@@ -137,28 +137,6 @@ export async function eraseGuest(
 }
 
 /**
- * Whose note this is: the staff member the actor is. A signed-in person is matched to their own
- * staff record, because the note is keyed by the person and not by the account; a PIN on a shared
- * device names the staff member itself (though `settings.guests` is settings-class, so a PIN never
- * gets this far). Restro's own team and the worker are nobody's staff and get null.
- */
-async function authorOf(stx: ServiceTx): Promise<string | null> {
-  if (stx.actor.kind === 'staff') return stx.actor.staffMemberId
-  if (stx.actor.kind !== 'user') return null
-  const [member] = await stx.tx
-    .select({ id: staffMembers.id })
-    .from(staffMembers)
-    .where(
-      and(
-        eq(staffMembers.tenantId, stx.tenantId),
-        eq(staffMembers.userId, stx.actor.userId),
-        isNull(staffMembers.archivedAt),
-      ),
-    )
-  return member?.id ?? null
-}
-
-/**
  * A manager's own private note about a guest (D140): his list, which other staff never read. The
  * row is keyed by the staff member, so the privacy is the **read's** — only the person whose note
  * it is reads it back — and no second Postgres role is needed for it.
@@ -174,7 +152,7 @@ export async function setGuestPrivateNote(
   const settings = await readSettings(stx)
   if (settings === null) return refuse('settings_missing')
   if (!settings.privateNotesOn) return refuse('private_notes_off')
-  const staffMemberId = await authorOf(stx)
+  const staffMemberId = await staffMemberOf(stx)
   if (staffMemberId === null) return refuse('not_a_staff_member')
   const guest = await lockGuest(stx, command.guestId)
   if (guest === null) return refuse('guest_missing')
