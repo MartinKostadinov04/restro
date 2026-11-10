@@ -117,7 +117,7 @@ test.afterAll(async () => {
   await owner?.context.close()
 })
 
-test('the plan is one tap from the list, and its legend names all five states', async () => {
+test('the plan is one tap from the list, and its legend names all six states', async () => {
   const { page } = owner
   await page.goto(`/venues/${venueId}?tab=reservations`)
   await expect(page.getByTestId('reservations-night')).toBeVisible()
@@ -131,8 +131,9 @@ test('the plan is one tap from the list, and its legend names all five states', 
 
   // The legend is on the screen, not behind anything, and every state is a word beside a symbol.
   const legend = page.getByTestId('rv-legend').getByRole('listitem')
-  await expect(legend).toHaveText(['Free', 'Held', 'Sitting', 'Late', 'Blocked'])
-  for (const state of ['free', 'held', 'sitting', 'late', 'blocked']) {
+  // "In use" is the sixth (#329): a table a waiter opened for phones with nobody booked on it.
+  await expect(legend).toHaveText(['Free', 'Held', 'Sitting', 'In use', 'Late', 'Blocked'])
+  for (const state of ['free', 'held', 'sitting', 'in_use', 'late', 'blocked']) {
     await expect(page.getByTestId('rv-legend').locator(`[data-state="${state}"] svg`)).toHaveCount(
       1,
     )

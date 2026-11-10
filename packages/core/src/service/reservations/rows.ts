@@ -89,6 +89,28 @@ export const RESERVATION_REFUSALS = [
   'invalid_phone',
   /** Somebody changed the booking after the form was opened; nothing was written (#328). */
   'reservation_stale',
+  /**
+   * The hostess was not asked, or did not answer, whether the people arriving are the ones already
+   * at the table (#329). Never defaulted: the two answers do different things to the bill, so the
+   * command refuses rather than choose one.
+   */
+  'same_guests_unanswered',
+  /**
+   * Somebody took one of the spots, or let it go, between the moment the arrival read the night and
+   * the moment it locked the party (#329). Nothing was written: the party stays as it was, and the
+   * screen reads the night again.
+   */
+  'spots_changed',
+  /**
+   * A table of the party has a payment on the way, so its sitting cannot be ended yet (#329, D125):
+   * the guest is paying on his phone. Freeing the spots waits until it settles.
+   */
+  'payment_in_flight',
+  /**
+   * The table cannot be opened for phones at all (it is hidden, gone from the POS, or a payment
+   * table), so there is no sitting to seat the party into (#329). The reason is in the details.
+   */
+  'table_not_openable',
 ] as const
 
 /** One reservation refusal code. */
@@ -306,6 +328,10 @@ export async function heldSpotsOfNight(
     status: row.status as ReservationStatus,
     stretch: heldRowStretch(row, turnMinutes),
     openEnded: row.kind === 'block' && row.endsAt === null && row.heldTo === null,
+    // Whether the stretch's end is one somebody set, or merely the turn time's guess. A seated
+    // party with an end of its own leaves its spot when that hour comes; one without keeps it
+    // until it is finished or the night ends (`holdsSpotAt`), so the two must be told apart.
+    ownEnd: row.heldTo !== null || row.endsAt !== null,
   }))
 }
 

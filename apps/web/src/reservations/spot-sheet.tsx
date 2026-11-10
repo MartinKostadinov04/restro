@@ -12,8 +12,19 @@
 // tap, and History reads the spot's lines out of the one Log (D141) — the second tap of the budget,
 // not a screen of its own. A role that may not block is told who may, in one line; on the venue's
 // shared device the button is there and the PIN sheet asks for a name (D141 12.11).
+//
+// The door is the sheet's own work now (#329), and it is where the plan's two taps are spent:
+//   • the party holding this spot is here → "Arrived", one gesture, on **this** spot, which is also
+//     how a party is seated somewhere other than where it was booked: she taps the spot she wants
+//     and the party under "Seat a party that is coming";
+//   • nobody booked it → "Seat a walk-in", or "Seat until {time}" where somebody holds it later
+//     tonight and a whole turn time still fits before their hour — with their name and hour read
+//     out above the button, so she sees who she is seating in front of;
+//   • they have gone → "Free", under the others, because freeing ends a night.
+// The hour, and whether early seating is offered at all, are the venue's own turn time (D135): the
+// door's advice works it out, and the sheet reads it when it opens.
 import { useTranslations } from 'next-intl'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -35,8 +46,9 @@ import {
 } from '@/components/ui/sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { WRAPS } from '@/lib/wrapping'
-import { spotHistoryAction } from '@/server/reservations/actions'
+import { arrivalChecksAction, spotHistoryAction } from '@/server/reservations/actions'
 import type {
+  RvArrivalChecksView,
   RvFrame,
   RvHoldView,
   RvKindView,
@@ -49,6 +61,14 @@ import { useWho } from '@/tonight/who'
 import { KindSymbol, StateMark } from './plan-shape'
 import { useHoldText, useSpotHistoryText, useSpotStateWord } from './plan-words'
 import { useGuestsText } from './reservation-words'
+
+/** One party still to come tonight, as the door offers it. */
+export interface ComingParty {
+  readonly reservationId: string
+  readonly name: string | null
+  /** `HH:mm` in the venue's zone: the hour they are expected. */
+  readonly time: string
+}
 
 /** One labelled line; nothing is drawn where there is nothing to say. */
 function Line({ label, value }: { label: string; value: string | null }) {
@@ -90,9 +110,13 @@ export function SpotSheet({
   day,
   busy,
   sayWhoBlocks,
+  coming,
   onBook,
   onBlock,
   onUnblock,
+  onArrive,
+  onWalkIn,
+  onFree,
   onClose,
 }: {
   spot: RvSpotView
@@ -113,6 +137,17 @@ export function SpotSheet({
   onBlock: (() => void) | null
   /** Lifts the block that holds the spot now, by its reservation. */
   onUnblock: ((reservationId: string) => void) | null
+  /**
+   * The parties still to come tonight, nearest hour first: what "Seat a party that is coming"
+   * offers, so seating somebody on a spot other than the one they booked is one gesture (#329).
+   */
+  coming: readonly ComingParty[]
+  /** Marks a party present on **this** spot; absent where this night or this role cannot seat. */
+  onArrive: ((party: ComingParty) => void) | null
+  /** Seats people who walked in, with the end hour where she took the one offered. */
+  onWalkIn: ((until: string | null) => void) | null
+  /** They have gone: the spots go back and the table codes close. */
+  onFree: ((reservationId: string, name: string | null) => void) | null
   onClose: () => void
 }) {
   const t = useTranslations('reservations')
@@ -122,6 +157,24 @@ export function SpotSheet({
   // undefined before History is tapped, null when the read never got through.
   const [history, setHistory] = useState<RvSpotHistoryList | null | undefined>(undefined)
   const [reading, setReading] = useState(false)
+  // The door's advice for this spot: the hour to offer, and who holds it later tonight. Null while
+  // it is being read and where it did not get through — the sheet then offers no end hour, which
+  // is what a venue with no turn time to spare would get anyway.
+  const [door, setDoor] = useState<RvArrivalChecksView | null>(null)
+  const maySeat = onArrive !== null || onWalkIn !== null
+
+  useEffect(() => {
+    if (!maySeat) return
+    let gone = false
+    void arrivalChecksAction({ venueId: frame.venueId, day, spotIds: [spot.id] })
+      .catch(() => ({ ok: false }) as const)
+      .then((read) => {
+        if (!gone) setDoor(read.ok ? read.checks : null)
+      })
+    return () => {
+      gone = true
+    }
+  }, [day, frame.venueId, maySeat, spot.id])
 
   const read = useCallback(() => {
     setReading(true)
@@ -135,6 +188,18 @@ export function SpotSheet({
 
   /** The block holding the spot now: what Unblock lifts. */
   const block = spot.holds.find((hold) => hold.kind === 'block' && hold.now) ?? null
+  /** The party holding this spot now and still to come: "Arrived" is about them. */
+  const expected =
+    spot.holds.find(
+      (hold) => hold.now && (hold.status === 'reserved' || hold.status === 'waiting'),
+    ) ?? null
+  /** The party sitting here: what "Free" frees. */
+  const seated = spot.holds.find((hold) => hold.now && hold.status === 'seated') ?? null
+  /** Somebody holds it later tonight: her two taps become "Seat until {time}". */
+  const until = door?.until ?? null
+  const later = door?.heldLater ?? null
+  /** Parties coming tonight that are not already on this spot. */
+  const elsewhere = coming.filter((party) => party.reservationId !== expected?.reservationId)
   const lines = (history?.lines ?? [])
     .map((line) => ({ line, words: sentence(line) }))
     .filter((one): one is { line: typeof one.line; words: string } => one.words !== null)
@@ -180,6 +245,38 @@ export function SpotSheet({
           </ul>
         )}
       </section>
+      {later === null || seated !== null ? null : (
+        <p className="text-muted-foreground" data-testid="rv-held-later">
+          {t('d_holds', {
+            party: later.name ?? t('no_name'),
+            spot: spot.name,
+            time: later.time,
+          })}
+        </p>
+      )}
+      {onArrive === null || elsewhere.length === 0 || seated !== null || block !== null ? null : (
+        <section className="space-y-1">
+          <h3 className="font-medium">{t('d_seat_who')}</h3>
+          <ul className="flex min-w-0 flex-wrap gap-2" data-testid="rv-coming">
+            {elsewhere.map((party) => (
+              <li key={party.reservationId}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="min-h-11"
+                  disabled={busy}
+                  data-testid="rv-seat-coming"
+                  onClick={() => onArrive(party)}
+                >
+                  <span className="tabular-nums">{party.time}</span>
+                  {party.name ?? t('no_name')}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {sayWhoBlocks ? (
         <p className="text-muted-foreground" data-testid="rv-no-block">
           {t('p_no_block')}
@@ -225,9 +322,52 @@ export function SpotSheet({
 
   const buttons = (
     <>
+      {expected !== null && onArrive !== null ? (
+        <Button
+          type="button"
+          className={WRAPS}
+          disabled={busy}
+          data-testid="rv-spot-arrive"
+          onClick={() =>
+            onArrive({
+              reservationId: expected.reservationId,
+              name: expected.name,
+              time: expected.time,
+            })
+          }
+        >
+          {t('d_arrived')}
+        </Button>
+      ) : null}
+      {expected === null && seated === null && block === null && onWalkIn !== null ? (
+        <Button
+          type="button"
+          className={WRAPS}
+          disabled={busy}
+          data-testid="rv-walk-in"
+          onClick={() => onWalkIn(until)}
+        >
+          {until === null ? t('d_walk_in') : t('d_seat_until', { time: until })}
+        </Button>
+      ) : null}
+      {seated !== null && onFree !== null ? (
+        <Button
+          type="button"
+          variant="outline"
+          className={WRAPS}
+          disabled={busy}
+          data-testid="rv-spot-free"
+          onClick={() => onFree(seated.reservationId, seated.name)}
+        >
+          {t('d_free')}
+        </Button>
+      ) : null}
       {onBook !== null && spot.state !== 'blocked' ? (
         <Button
           type="button"
+          variant={
+            expected !== null || seated !== null || onWalkIn !== null ? 'outline' : 'default'
+          }
           className={WRAPS}
           disabled={busy}
           data-testid="rv-book-spot"

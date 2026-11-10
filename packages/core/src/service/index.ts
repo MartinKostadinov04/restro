@@ -391,6 +391,16 @@ export {
 } from './receipt-rows'
 export { readReceiptsNotBrought, readReceiptsToBring } from './receipts'
 export {
+  type ArrivalChecks,
+  type ArrivalChecksInput,
+  type DoorTable,
+  type HeldLater,
+  type OnTheSpot,
+  readArrivalChecks,
+  readTablesTonight,
+  type TableTonight,
+} from './reservations/arrive-checks'
+export {
   type BookingChecks,
   type BookingChecksInput,
   readBookingChecks,
@@ -427,15 +437,18 @@ export {
   type ClaimedStretch,
   heldStretch,
   holdsSpotAt,
+  holdsSpotNow,
   isSpotConflict,
   overlaps,
   resolveTurnMinutes,
+  type SeatClaim,
   SPOT_CLAIM_REFUSALS,
   type SpotClaim,
   type SpotClaimRefusal,
   type SpotConflict,
   type SpotHold,
   type Stretch,
+  seatConflict,
   spotConflict,
   TurnMinutesSchema,
 } from './reservations/overlap'
@@ -479,6 +492,7 @@ export {
   SPOT_STATES,
   type SpotHoldFact,
   type SpotState,
+  type SpotStateOptions,
   spotStateAt,
   spotStateOfNight,
 } from './reservations/plan-state'

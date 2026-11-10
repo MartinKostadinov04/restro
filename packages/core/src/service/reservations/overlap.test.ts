@@ -5,16 +5,19 @@ import type { Id } from '../../ids'
 import {
   heldStretch,
   holdsSpotAt,
+  holdsSpotNow,
   isSpotConflict,
   overlaps,
   resolveTurnMinutes,
+  type SeatClaim,
   type SpotClaim,
   type SpotHold,
   type Stretch,
+  seatConflict,
   spotConflict,
   TurnMinutesSchema,
 } from './overlap'
-import { RESERVATION_STATUSES, type ReservationStatus } from './status'
+import { holdsSpots, RESERVATION_STATUSES, type ReservationStatus } from './status'
 
 /** The venue's turn time in these tests: ninety minutes, as a club's would be. */
 const TURN = 90
@@ -286,5 +289,112 @@ describe('holdsSpotAt: what the floor plan reads', () => {
     const seated = { status: 'seated' as ReservationStatus, stretch, ownEnd: false }
     expect(Object.keys(seated).sort()).toEqual(['ownEnd', 'status', 'stretch'])
     expect(holdsSpotAt(seated, at(3))).toBe(true)
+  })
+})
+
+// ── Seating asks a different question from booking (ticket #329) ────────────────────────────────
+//
+// The review point of #329 in one place: every seat path asks `holdsSpotNow` at the moment of
+// seating, and the booking paths ask `spotConflict`. A seat path that reached for the booking rule
+// would pass the tests above and be wrong here, so the disagreement itself is pinned.
+
+describe('holdsSpotNow: who is on the spot at this moment', () => {
+  const stretch: Stretch = { from: at(22), to: at(23, 30) }
+
+  it('keeps a block nobody dated on until it is lifted, where the turn time would clear it', () => {
+    const block = { status: 'reserved' as ReservationStatus, stretch, openEnded: true }
+    expect(holdsSpotNow(block, at(5))).toBe(true)
+    // Without the open end the same hold is long over: this is the one thing the two differ by.
+    expect(holdsSpotAt({ status: 'reserved', stretch, ownEnd: false }, at(5))).toBe(false)
+  })
+
+  it('does not put an open-ended hold on the spot before it starts', () => {
+    expect(holdsSpotNow({ status: 'reserved', stretch, openEnded: true }, at(21))).toBe(false)
+  })
+
+  it('agrees with the floor plan everywhere else, so one spot reads one way', () => {
+    for (const status of RESERVATION_STATUSES) {
+      for (const hour of [21, 22, 23, 1, 5]) {
+        const hold = { status, stretch, ownEnd: false }
+        expect(holdsSpotNow(hold, at(hour)), `${status} at ${hour}`).toBe(
+          holdsSpotAt(hold, at(hour)),
+        )
+      }
+    }
+  })
+})
+
+describe('seatConflict: who cannot be seated here, now', () => {
+  const seat = (over: Partial<SeatClaim> = {}): SeatClaim => ({
+    reservationId: 'rv_candidate',
+    spotIds: ['sp_a'],
+    ...over,
+  })
+
+  it('refuses the spot a party is on, and names the party in the way', () => {
+    expect(seatConflict(seat(), [hold({ status: 'seated' })], at(22, 30))).toEqual({
+      spotId: 'sp_a',
+      reservationId: 'rv_sitting',
+    })
+  })
+
+  it('lets a walk-in sit where somebody is booked later tonight', () => {
+    // The spot is kept for the booking, which is the overlap rule; nobody is on it at nine.
+    expect(seatConflict(seat(), [hold({ status: 'reserved' })], at(21))).toBeNull()
+  })
+
+  it('refuses a spot a party is still on past the turn time, where a booking is allowed', () => {
+    // The disagreement, in one test. A party seated at ten with no end time of its own:
+    const sitting = hold({ status: 'seated', ownEnd: false })
+    // at two in the morning nobody may be seated there —
+    expect(seatConflict(seat(), [sitting], at(2))).toEqual({
+      spotId: 'sp_a',
+      reservationId: 'rv_sitting',
+    })
+    // — and a booking for that same hour is taken, because the turn time is a planning
+    // assumption and not a clock that clears tables.
+    expect(spotConflict(claim({ startsAt: at(2) }), [sitting], TURN)).toBeNull()
+  })
+
+  it('names the spot the hostess tapped first', () => {
+    const held = [
+      hold({ spotId: 'sp_b', reservationId: 'rv_one', status: 'seated' }),
+      hold({ spotId: 'sp_c', reservationId: 'rv_two', status: 'seated' }),
+    ]
+    expect(seatConflict(seat({ spotIds: ['sp_c', 'sp_b'] }), held, at(22, 30))).toMatchObject({
+      spotId: 'sp_c',
+    })
+    expect(seatConflict(seat({ spotIds: ['sp_b', 'sp_c'] }), held, at(22, 30))).toMatchObject({
+      spotId: 'sp_b',
+    })
+  })
+
+  it('never blocks a party with its own hold: a party moved to its own spot is no conflict', () => {
+    const own = hold({ reservationId: 'rv_candidate', status: 'seated' })
+    expect(seatConflict(seat(), [own], at(22, 30))).toBeNull()
+  })
+
+  it('holds nothing against a spot with no hold on it at all', () => {
+    expect(seatConflict(seat(), [], at(22, 30))).toBeNull()
+  })
+
+  it('is exactly who is on the spot, for every status and every hour (rule: one question)', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom(...RESERVATION_STATUSES),
+        fc.integer({ min: 0, max: 23 }),
+        fc.boolean(),
+        fc.boolean(),
+        (status, hour, ownEnd, openEnded) => {
+          const one = hold({ status, ownEnd, openEnded })
+          const now = at(hour)
+          const refused = seatConflict(seat(), [one], now) !== null
+          // Seating asks `holdsSpotNow` and nothing else: no status, no hour and no end time can
+          // make it ask the booking rule instead.
+          expect(refused).toBe(holdsSpotNow(one, now))
+          if (refused) expect(holdsSpots(status)).toBe(true)
+        },
+      ),
+    )
   })
 })

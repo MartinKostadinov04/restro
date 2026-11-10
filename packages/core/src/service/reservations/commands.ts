@@ -41,6 +41,14 @@ import { idSchema } from '../../ids'
 import { SPOT_PLACE_FIELDS, SPOT_SYMBOLS, spotPlaceIssues } from '../../spot-shapes'
 import { type CommandDefinition, defineCommand } from '../definition'
 import {
+  arriveReservation,
+  holdReservationSpots,
+  releaseReservationSpots,
+  seatWalkIn,
+  setGuestCount,
+  undoReservationArrival,
+} from './arrive'
+import {
   cancelReservation,
   copyReservation,
   createReservation,
@@ -65,14 +73,11 @@ import {
 import { setReservationSettings } from './settings'
 import {
   addToWaitingList,
-  holdReservationSpots,
   putBackReservation,
-  releaseReservationSpots,
   removeBlock,
   reorderWaitingList,
   saveBlock,
   setReservationStatus,
-  undoReservationArrival,
 } from './tonight'
 
 const reservationId = idSchema('rv')
@@ -111,18 +116,23 @@ const partySize = z.number().int().min(1).max(500)
 
 /**
  * The status a command may move a reservation to: every one of the eight **except** Requested,
- * which exists in the data and in the machine for part 2 and which nothing in part 1 creates
- * (D136). Listed rather than filtered, so the type a handler gets is the union itself.
+ * which part 2 owns and nothing in part 1 creates (D136), and **except Seated**, because marking a
+ * party present opens its table's codes and so has a command of its own (`reservation.arrive`,
+ * #329). Leaving Seated out of the schema is what makes a second seat path impossible rather than
+ * merely unlikely: a caller asking for it is refused before any handler runs. Listed rather than
+ * filtered, so the type a handler gets is the union itself.
  */
 const StatusSchema = z.enum([
   'reserved',
   'waiting',
-  'seated',
   'finished',
   'no_show',
   'cancelled',
   'not_seated',
 ])
+
+/** The hostess's answer to "are these the same guests?"; never defaulted (#329). */
+const sameGuests = z.boolean()
 
 /** The reservation commands, by type. */
 export const RESERVATION_COMMANDS = {
@@ -317,7 +327,9 @@ export const RESERVATION_COMMANDS = {
       endsAt: instant.nullable().optional(),
       turnMinutes: TurnMinutesSchema.max(1440).nullable().optional(),
       kind: z.enum(['booking', 'walk_in']),
-      status: z.enum(['reserved', 'waiting', 'seated']),
+      // No Seated here either: a party created already sitting is a walk-in being seated, which
+      // opens a table, so `reservation.seat_walk_in` is the only way to make one (#329).
+      status: z.enum(['reserved', 'waiting']),
       partySize,
       note: note.optional(),
       reason: code.nullable().optional(),
@@ -420,6 +432,57 @@ export const RESERVATION_COMMANDS = {
     undoable: { kinds: ['reservation.status'] },
     handle: setReservationStatus,
   }),
+  // Arrived: the one tap that marks a party present and opens its table's codes, through the open
+  // path ordering uses (#329). `sameGuests` is the hostess's answer where a table is already open;
+  // with none the command is refused `same_guests_unanswered` rather than guessing for her.
+  'reservation.arrive': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('reservation.arrive'),
+      reservationId,
+      spotIds: spotIds.min(1).optional(),
+      endsAt: instant.nullable().optional(),
+      partySize: partySize.optional(),
+      sameGuests: sameGuests.optional(),
+    }),
+    origins: ['staff'],
+    permission: 'reservations.tonight',
+    quickOnSharedDevice: true,
+    idempotency: 'by_nature',
+    undoable: { kinds: ['reservation.status'] },
+    handle: arriveReservation,
+  }),
+  // People who walked up to a free spot: two taps on the plan, no name and no hour to fill in.
+  'reservation.seat_walk_in': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('reservation.seat_walk_in'),
+      serviceDate,
+      spotIds: spotIds.min(1),
+      partySize,
+      endsAt: instant.nullable().optional(),
+      note: note.optional(),
+      sameGuests: sameGuests.optional(),
+      ...party,
+    }),
+    origins: ['staff'],
+    permission: 'reservations.tonight',
+    quickOnSharedDevice: true,
+    idempotency: 'by_nature',
+    handle: seatWalkIn,
+  }),
+  // More people joining a party already sitting: the number changes and nothing of the table does
+  // — this is never "New guests" (#329).
+  'reservation.set_guests': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('reservation.set_guests'),
+      reservationId,
+      partySize,
+    }),
+    origins: ['staff'],
+    permission: 'reservations.tonight',
+    quickOnSharedDevice: true,
+    idempotency: 'by_nature',
+    handle: setGuestCount,
+  }),
   'reservation.put_back': defineCommand({
     schema: z.strictObject({ type: z.literal('reservation.put_back'), reservationId }),
     origins: ['staff'],
@@ -428,7 +491,8 @@ export const RESERVATION_COMMANDS = {
     handle: putBackReservation,
   }),
   // The Undo of an arrival (D135): where the party came from is read from the Log, never from a
-  // second copy on the row (D141).
+  // second copy on the row (D141), and so are the tables that arrival opened, which it closes
+  // again. Offered for thirty seconds and refused `undo_expired` after them (#329).
   'reservation.undo_arrival': defineCommand({
     schema: z.strictObject({ type: z.literal('reservation.undo_arrival'), reservationId }),
     origins: ['staff'],
@@ -442,6 +506,9 @@ export const RESERVATION_COMMANDS = {
       type: z.literal('reservation.hold_spots'),
       reservationId,
       spotIds: spotIds.min(1),
+      // Moving a party that is already sitting opens its new table, so the same question is asked
+      // where that table is already open (#329).
+      sameGuests: sameGuests.optional(),
     }),
     origins: ['staff'],
     permission: 'reservations.tonight',
@@ -449,7 +516,8 @@ export const RESERVATION_COMMANDS = {
     idempotency: 'by_nature',
     handle: holdReservationSpots,
   }),
-  // How a party whose bill closed is let go of early: nothing about the bill does it (D134).
+  // "Free": the party has gone, so its spots go back and its tables' codes close (#329). A bill
+  // closing never does this by itself and this never ends the party (D134, D136).
   'reservation.release_spots': defineCommand({
     schema: z.strictObject({
       type: z.literal('reservation.release_spots'),

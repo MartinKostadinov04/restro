@@ -17,8 +17,9 @@
 //
 // Taking and changing a booking is here (#328): the "New reservation" button opens the booking form,
 // a row's sheet changes, calls off, copies or takes out a booking, and the night's bin brings a
-// deleted one back. Seating and arrivals are #329's. Every write goes through `applyService`
-// (rule 1), never around it, and a refusal is the toast that stays.
+// deleted one back. The door is here too (#329): "Arrived" on a row of a party that is coming, and
+// "Free" under its "…" once they are sitting. Every write goes through `applyService` (rule 1),
+// never around it, and a refusal is the toast that stays.
 import { CalendarPlusIcon, ChevronDownIcon, CircleAlertIcon, LockIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useEffect, useMemo, useState } from 'react'
@@ -35,6 +36,8 @@ import { FailedBlock, NewLine, NothingHere, RowsSkeleton } from '@/tonight/tab-p
 import { useBookingActions } from './booking-actions'
 import { BookingForm, type BookingMode } from './booking-form'
 import { CopyDialog } from './copy-dialog'
+import { useDoorActions } from './door-actions'
+import { GuestsDialog } from './door-dialogs'
 import {
   filterCount,
   filterRows,
@@ -163,6 +166,7 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
   const [open, setOpen] = useState<string | null>(null)
   const [form, setForm] = useState<BookingMode | null>(null)
   const [copying, setCopying] = useState<RvDetailView | null>(null)
+  const [counting, setCounting] = useState<RvDetailView | null>(null)
   const { run, busy, pinSheet } = useReservationRun({ device: frame.device })
 
   const feed = useLiveFeed<RvNightView>({
@@ -183,6 +187,7 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
   const night = feed.shown
   const { reload } = feed
   const actions = useBookingActions({ frame, run, onChanged: reload })
+  const door = useDoorActions({ frame, run, onChanged: reload })
   /** This night may be written, and by this role: the booking controls are drawn. */
   const writable = night.refusal === null
   const mayTake = frame.can.tonight && writable
@@ -223,8 +228,26 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
           <ReservationRow
             key={row.id}
             row={row}
+            busy={busy || door.reading}
             onOpen={() => setOpen(row.id)}
             onNoShow={writable && frame.can.tonight ? () => actions.noShow(row.id) : null}
+            onArrive={
+              mayTake
+                ? () =>
+                    door.arrive({
+                      reservationId: row.id,
+                      day,
+                      name: row.name,
+                      // No spots of its own: the party is marked present on the ones it holds.
+                      spotIds: [],
+                    })
+                : null
+            }
+            onFree={
+              mayTake
+                ? () => door.free({ reservationId: row.id, day, name: row.name, spotIds: [] })
+                : null
+            }
           />
         ))}
       </ul>
@@ -292,7 +315,7 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
           onRestore={(row) => actions.restore(row.id, row.name ?? t('no_name'))}
         />
       ) : null}
-      {open === null || form !== null || copying !== null ? null : (
+      {open === null || form !== null || copying !== null || counting !== null ? null : (
         <ReservationSheet
           frame={frame}
           reservationId={open}
@@ -306,6 +329,29 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
           onNoShow={actions.noShow}
           onCancel={actions.cancel}
           onDelete={actions.remove}
+          onArrive={
+            mayTake
+              ? (detail) =>
+                  door.arrive({
+                    reservationId: detail.row.id,
+                    day,
+                    name: detail.row.name,
+                    spotIds: detail.spotIds,
+                  })
+              : null
+          }
+          onGuests={mayTake ? (detail) => setCounting(detail) : null}
+          onFree={
+            mayTake
+              ? (detail) =>
+                  door.free({
+                    reservationId: detail.row.id,
+                    day,
+                    name: detail.row.name,
+                    spotIds: [],
+                  })
+              : null
+          }
           onClose={() => setOpen(null)}
         />
       )}
@@ -336,6 +382,20 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
           }}
         />
       )}
+      {counting === null ? null : (
+        <GuestsDialog
+          party={counting.row.name ?? t('no_name')}
+          partySize={counting.row.partySize}
+          busy={busy}
+          onLeave={() => setCounting(null)}
+          onSave={(guests) =>
+            door.setGuests(counting.row.id, counting.row.name ?? t('no_name'), guests, () =>
+              setCounting(null),
+            )
+          }
+        />
+      )}
+      {door.node}
       {pinSheet}
     </div>
   )

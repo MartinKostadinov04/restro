@@ -1,5 +1,7 @@
 // The writes of Venue › Reservations (#327: blocking a spot and lifting a block; #328: taking,
-// changing, calling off, taking out, bringing back and copying a booking, and a no-show), server side.
+// changing, calling off, taking out, bringing back and copying a booking, and a no-show; #329: the
+// door — an arrival, a walk-in, the guest count, undoing an arrival and freeing a table), server
+// side.
 // Every write is the service write path's (`applyService`, rule 1), which checks the permission
 // inside its own transaction (`reservations.block`) and appends the Log entry; this file only says
 // who is asking and shapes the answer. No POS is called: a reservation is Restro's own data (D134).
@@ -88,6 +90,54 @@ export type RvCommand =
       readonly status: 'no_show'
     }
   | { readonly type: 'reservation.put_back'; readonly reservationId: string }
+  | {
+      readonly type: 'reservation.arrive'
+      readonly reservationId: string
+      readonly spotIds?: readonly string[]
+      readonly endsAt?: string | null
+      readonly partySize?: number
+      /**
+       * The hostess's answer where a table of theirs is already open (#329): true keeps the order
+       * on it, false starts the table over. Left out only where no table of theirs is open — the
+       * write refuses `same_guests_unanswered` rather than choosing for her.
+       */
+      readonly sameGuests?: boolean
+    }
+  | {
+      readonly type: 'reservation.seat_walk_in'
+      readonly serviceDate: string
+      readonly spotIds: readonly string[]
+      readonly partySize: number
+      readonly endsAt?: string | null
+      readonly note?: string | null
+      readonly sameGuests?: boolean
+      readonly phone?: string
+      readonly guestName?: string
+      readonly partyLabel?: string
+    }
+  | {
+      readonly type: 'reservation.set_guests'
+      readonly reservationId: string
+      readonly partySize: number
+    }
+  | { readonly type: 'reservation.undo_arrival'; readonly reservationId: string }
+  | {
+      /**
+       * "Free": the spots go back to the plan and the codes of their Tables close. It never ends
+       * the party (D136), so the toast's Undo is `reservation.hold_spots` with the same spots.
+       */
+      readonly type: 'reservation.release_spots'
+      readonly reservationId: string
+      /** The spots to free; left out frees every one the party holds. */
+      readonly spotIds?: readonly string[]
+    }
+  | {
+      /** The Undo of "Free", and a party moved to other spots: both claim and open again (#329). */
+      readonly type: 'reservation.hold_spots'
+      readonly reservationId: string
+      readonly spotIds: readonly string[]
+      readonly sameGuests?: boolean
+    }
   | {
       readonly type: 'guest.save'
       readonly guestId?: string

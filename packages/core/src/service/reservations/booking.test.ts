@@ -597,7 +597,7 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
         reason: 'birthday',
         partySize: 5,
       })
-      await accept({ type: 'reservation.set_status', reservationId: id, status: 'seated' })
+      await accept({ type: 'reservation.arrive', reservationId: id })
       const target = night(12)
       const copied = await accept({
         type: 'reservation.copy',
