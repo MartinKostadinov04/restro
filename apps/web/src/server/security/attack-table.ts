@@ -25,6 +25,7 @@ import * as nightBook from '@/server/reservations/actions'
 import * as alerts from '@/server/settings/alerts-actions'
 import * as ordering from '@/server/settings/ordering-actions'
 import * as paying from '@/server/settings/paying-actions'
+import { payingInstallation, payingReturnAddress } from '@/server/settings/paying-addresses'
 import * as reservations from '@/server/settings/reservations-actions'
 import * as staff from '@/server/settings/staff-actions'
 import * as tables from '@/server/tables/actions'
@@ -623,24 +624,29 @@ export const ATTACKS: readonly Attack[] = [
     action: 'startConnectionAction',
     call: (v) => paying.startConnectionAction({ venueId: v.venues[0].id }),
   },
-  // The simulated provider's stand-in form (#398): another organisation's venue gets a refusal
-  // whatever the environment, since an environment that does not offer the page refuses too.
+  // The simulated provider's stand-in form (#398). The page exists only where PAYMENTS_ENV is not
+  // production, so the call names one for its duration: without it the action refuses at once and
+  // the attack would prove nothing about the venue.
   {
     action: 'finishSimPayFormAction',
-    call: (v) => {
-      const form = new FormData()
+    call: async (v) => {
       const venueId = v.venues[0].id
+      const where = payingInstallation()
+      const form = new FormData()
       form.set('ref', 'simacct_attack_1')
       form.set('venue', venueId)
-      form.set(
-        'return',
-        `http://localhost:3000/venues/${venueId}?tab=settings&section=paying&connection=return`,
-      )
-      form.set(
-        'refresh',
-        `http://localhost:3000/venues/${venueId}?tab=settings&section=paying&connection=refresh`,
-      )
-      return simPay.finishSimPayFormAction(null, form)
+      if (where !== null) {
+        form.set('return', payingReturnAddress(where.base, venueId, 'return'))
+        form.set('refresh', payingReturnAddress(where.base, venueId, 'refresh'))
+      }
+      const before = process.env.PAYMENTS_ENV
+      process.env.PAYMENTS_ENV = 'test'
+      try {
+        return await simPay.finishSimPayFormAction(null, form)
+      } finally {
+        if (before === undefined) delete process.env.PAYMENTS_ENV
+        else process.env.PAYMENTS_ENV = before
+      }
     },
   },
   {
