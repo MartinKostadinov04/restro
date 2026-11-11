@@ -45,9 +45,7 @@ function simEngine(env: NodeJS.ProcessEnv): SimPayEngine {
     // nothing outside this process can play the guest at the simulator's form and a walk-through
     // would otherwise stop there for ever. Only the demo club's walk sets it; the end-to-end tests
     // play the guest themselves. It is read once, when the engine is made, like the run.
-    ...(env.WORKER_PAYMENTS_SIM_CARD === 'accept'
-      ? { switches: { guestCardAccepted: true } }
-      : {}),
+    ...(env.WORKER_PAYMENTS_SIM_CARD === 'accept' ? { switches: { guestCardAccepted: true } } : {}),
   })
   // The engine keeps its accounts in memory, so a worker start forgets the account a database
   // already records and refuses every call about it (`access_lost`): the demo club's paying would

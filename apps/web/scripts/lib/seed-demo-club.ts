@@ -263,7 +263,6 @@ async function linkedNodes(
 async function enrich(
   pool: DbPool,
   tenantId: string,
-  venueId: VenueId,
   items: ReadonlyMap<string, NodeId>,
 ): Promise<number> {
   const ops: ChangeSetOp[] = []
@@ -584,7 +583,7 @@ export async function seedDemoClub(
   if (!mapped.ok) throw new Error(`the club could not be linked to its till venue: ${mapped.error}`)
   await seedFloor(pool, tenantId, venueId, integrationId)
   const menuCounts = await seedMenu(pool, tenantId, venueId, integrationId, menu.id)
-  await enrich(pool, tenantId, venueId, menuCounts.itemsByArticle)
+  await enrich(pool, tenantId, menuCounts.itemsByArticle)
 
   // A code for every Table that takes orders, and the files the guest page reads them from.
   const issued = await issueAllTableTokens(pool, tenantId, venueId, sealKey)
