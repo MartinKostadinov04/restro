@@ -250,9 +250,18 @@ export const noWork: TableWork = {
   notAllowed: false,
 }
 
-/** The table work's facts as an answer's details, so every path words them the same way. */
+/**
+ * The table work's facts as an answer's details, so every path words them the same way.
+ *
+ * `tablesOpen` is how many Tables are open for phones now because of this command: the ones it
+ * opened, opened again ("New guests") or found open and kept ("the same guests"). It is zero for a
+ * party that holds no spot, so the screen can say "the table is open for phones" only when it is
+ * true (#396) — an empty `spots` is not that fact, since an arrival onto spots the party already
+ * holds names none either.
+ */
 export function workDetails(work: TableWork): ResultDetails {
   return {
+    tablesOpen: work.opened.length + work.renewed.length + work.kept.length,
     opened: work.opened.join(','),
     renewed: work.renewed.join(','),
     kept: work.kept.join(','),
