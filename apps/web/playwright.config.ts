@@ -61,6 +61,9 @@ const serverEnvironment = (origin: string) => ({
   // The PIN pepper (#72) for the Tonight screen's PIN sheet (#85), for the test servers only.
   STAFF_PIN_PEPPER: process.env.STAFF_PIN_PEPPER ?? TONIGHT_PIN_PEPPER,
   PAYMENTS_PROVIDER: 'sim-pay',
+  // Not production: the simulated provider's stand-in onboarding page (#398) is offered only where
+  // the environment is named and is not production, as the worker's simulator is.
+  PAYMENTS_ENV: 'test',
   // Tonight's "Turn on" (RR-86) needs the public key; the spec stubs the browser's push APIs. In the
   // key's shape, no key at all: nothing is ever pushed in a test.
   VAPID_PUBLIC_KEY: `B${'p'.repeat(86)}`,

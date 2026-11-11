@@ -145,6 +145,22 @@
       "pay_first": "Pay first"
     }
   },
+  "simPayOnboarding": {
+    "badge": "Simulated provider: for testing only",
+    "heading": "Connect your {provider} account",
+    "standsIn": "This page stands in for {provider}'s own sign-up form, which does not exist for the simulated provider. A real provider asks here for the business, bank and ID details. This one asks for nothing, and no money ever moves.",
+    "what": "Press Done to finish connecting, as if you had filled in the form. You go back to Restro’s Paying settings, which read the account back exactly as they do after a real provider’s form.",
+    "done": "Done",
+    "leave": "Leave without finishing",
+    "leaveHint": "Back to the Paying settings with the account left unfinished, as if you had closed a real form.",
+    "problems": {
+      "not_connecting": "This connection is not waiting for the form any more. Go back to the Paying settings and press Connect again.",
+      "account_mismatch": "This link belongs to an older connection. Go back to the Paying settings and press Connect again.",
+      "not_simulated": "This venue’s account is not a simulated one, so this page cannot finish it.",
+      "payments_off": "Simulated payments are not switched on in the worker (WORKER_PAYMENTS_SIM=on), so there is nothing to finish.",
+      "failed": "The connection could not be finished. Try again."
+    }
+  },
   "devFields": {
     "title": "Field preview (development only)",
     "description": "Every field of an item in the default template, with a sample value. Press a pencil to open its editor; what you save stays on this page only.",

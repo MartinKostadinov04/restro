@@ -12,31 +12,23 @@ import { PayFirstChangeSchema, readPayingConnection } from '@restro/core/service
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
+import { paymentsEnv } from '../../connectors/notices'
+import { onboardingAddress } from '../../connectors/onboarding'
 import { providerOf } from '../../connectors/providers'
-import { defaultQrBaseUrl } from '../env'
 import { askConnection, type ConnectionAsk } from '../payments-connection'
 import { revealConfig } from '../reveal'
-import { codeBaseUrl } from '../tables/address'
 import { getVenue } from '../venues'
+import { payingInstallation, payingReturnAddress } from './paying-addresses'
 import { INVALID, inSettingsScope, runSettingsCommand, type SettingsResult } from './scope'
 
 const venueId = idSchema('vn')
 const OnVenue = z.strictObject({ venueId })
 const Tick = z.strictObject({ venueId, check: z.enum(OWNER_TICKS), done: z.boolean() })
 
-/** The Paying section of a venue, as the provider's form sends the owner back to it. */
-const SECTION = 'tab=settings&section=paying'
-
 /** The onboarding address to open, or a refusal. */
 export type ConnectLinkResult =
   | { readonly ok: true; readonly url: string }
   | { readonly ok: false; readonly error: string }
-
-/** Where this installation lives: the address the guest pages and the admin share, or null. */
-function installation(): { readonly base: string; readonly guestHost: string } | null {
-  const base = codeBaseUrl(defaultQrBaseUrl())
-  return base === null ? null : { base, guestHost: new URL(base).hostname }
-}
 
 /** Asks the worker something about the venue's account, as the signed-in person. */
 async function ask(
@@ -44,7 +36,7 @@ async function ask(
   build: (where: { base: string; guestHost: string }, venueId: string) => ConnectionAsk,
 ): Promise<SettingsResult<{ url?: string; state?: string }>> {
   return inSettingsScope(venue, async (scope) => {
-    const where = installation()
+    const where = payingInstallation()
     if (where === null) return { ok: false, error: 'no_address' } as const
     const reply = await askConnection(
       revealConfig(),
@@ -80,14 +72,31 @@ export async function startConnectionAction(input: unknown): Promise<ConnectLink
   if (!parsed.success) return { ok: false, error: 'invalid' }
   const result = await ask(parsed.data.venueId, (where, id) => ({
     action: 'start',
-    returnUrl: `${where.base}/venues/${id}?${SECTION}&connection=return`,
-    refreshUrl: `${where.base}/venues/${id}?${SECTION}&connection=refresh`,
+    returnUrl: payingReturnAddress(where.base, id, 'return'),
+    refreshUrl: payingReturnAddress(where.base, id, 'refresh'),
     guestHost: where.guestHost,
   }))
   if (!result.ok) return { ok: false, error: result.error }
-  return result.url === undefined
-    ? { ok: false, error: 'connection_failed' }
-    : { ok: true, url: result.url }
+  if (result.url === undefined) return { ok: false, error: 'connection_failed' }
+  // A provider whose hosted form is a page of this app (the simulated one, #398) gets that page;
+  // every other provider's address goes through untouched.
+  const where = payingInstallation()
+  const venueId = parsed.data.venueId
+  return {
+    ok: true,
+    url:
+      where === null
+        ? result.url
+        : onboardingAddress(
+            result.url,
+            {
+              venueId,
+              returnUrl: payingReturnAddress(where.base, venueId, 'return'),
+              refreshUrl: payingReturnAddress(where.base, venueId, 'refresh'),
+            },
+            paymentsEnv(),
+          ),
+  }
 }
 
 /**

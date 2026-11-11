@@ -10,10 +10,13 @@
 // itself; the provider calls are these two:
 //   - `start`:  connect, refresh and "Reconnect": the hosted onboarding link;
 //   - `return`: the owner came back; the account is read back and recorded.
+// A third exists for the simulated provider only (#398): `finish_simulated`, the owner pressing
+// "Done" on the page that stands in for the provider's hosted form. It needs the same right as
+// `return` and a simulator that was switched on; any other provider answers `not_simulated`.
 
 import { randomUUID } from 'node:crypto'
 
-import { idSchema } from '@restro/core'
+import { idSchema, type ProviderRef, providerRef } from '@restro/core'
 import { applyService, type ServiceContext } from '@restro/core/service'
 import { type DbPool, paymentAccounts, withTenant } from '@restro/db'
 import { eq } from 'drizzle-orm'
@@ -22,6 +25,7 @@ import { z } from 'zod'
 import type { Logger } from '../logger'
 import { sessionIsLive } from '../session-check'
 import {
+  accountOf,
   type ConnectionFailure,
   type ConnectionProvider,
   readAccount,
@@ -50,7 +54,9 @@ export const ConnectionRequestSchema = z
     venueId: idSchema('vn'),
     actor: Actor,
     signedInAt: z.iso.datetime({ offset: true }).optional(),
-    action: z.enum(['start', 'return']),
+    action: z.enum(['start', 'return', 'finish_simulated']),
+    /** `finish_simulated` only: the account the page was opened for, which must be the venue's. */
+    accountRef: z.string().min(1).max(128).optional(),
     /** Where the provider's form sends the owner back to, or when its link ran out. */
     returnUrl: z.url({ protocol: /^https?$/ }).optional(),
     refreshUrl: z.url({ protocol: /^https?$/ }).optional(),
@@ -77,6 +83,8 @@ export interface ConnectionApiDeps {
   readonly pool: DbPool
   readonly log: Logger
   readonly providers: ReadonlyMap<string, ConnectionProvider>
+  /** The simulated provider's way to finish its hosted form (#398), by kind; none in production. */
+  readonly simulatedForms?: ReadonlyMap<string, (accountRef: ProviderRef) => void>
 }
 
 function failureCode(failure: ConnectionFailure): string {
@@ -137,6 +145,27 @@ export function createConnectionApi(
         status: 'refused',
         code: outcome.kind === 'unreadable' ? 'provider_unavailable' : 'not_connecting',
       }
+    }
+
+    if (request.action === 'finish_simulated') {
+      // The right to connect, without a new sign-in, as for `return`: it also says the venue is
+      // connecting. Then only a simulated account of this venue, named by the page, is finished.
+      const { result } = await applyService(deps.pool, { type: 'payment_account.return' }, context)
+      if (result.status === 'refused') return { status: 'refused', code: result.code }
+      const account = await accountOf(env, {
+        tenantId: request.tenantId,
+        venueId: request.venueId,
+      })
+      if (account === null || account.accountRef === null) {
+        return { status: 'refused', code: 'not_connecting' }
+      }
+      const finish = deps.simulatedForms?.get(account.providerKind)
+      if (finish === undefined) return { status: 'refused', code: 'not_simulated' }
+      if (request.accountRef !== account.accountRef) {
+        return { status: 'refused', code: 'account_mismatch' }
+      }
+      finish(providerRef(account.accountRef))
+      return { status: 'accepted' }
     }
 
     const provider = await providerFor(request.tenantId, request.venueId)

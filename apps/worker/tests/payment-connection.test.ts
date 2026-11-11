@@ -340,6 +340,70 @@ describe.skipIf(!hasDatabase)('connecting a venue’s payment account (simulated
     expect(engine.domainsOf(lastAccount())).toEqual([])
   })
 
+  /** "Done" on the page that stands in for the simulated provider's form (#398). */
+  const finishForm = (
+    accountRef: string | undefined,
+    options: { userId?: string } = {},
+    forms: ReadonlyMap<string, (ref: ReturnType<typeof providerRef>) => void> | null = new Map([
+      [SIM_PAY_KIND, (ref) => engine.finishConnecting(ref)],
+    ]),
+  ): Promise<ConnectionApiAnswer> =>
+    createConnectionApi({
+      pool,
+      log,
+      providers,
+      ...(forms === null ? {} : { simulatedForms: forms }),
+    })({
+      ...request('return', options),
+      action: 'finish_simulated',
+      ...(accountRef === undefined ? {} : { accountRef }),
+    })
+
+  it('finishes the simulated form on Done, and the owner’s return then reads the account connected and taking cards (#398)', async () => {
+    await connecting()
+    expect(engine.readConnection(lastAccount())).toMatchObject({
+      value: { canTakePayments: false },
+    })
+    expect(await finishForm(accountRefNow ?? undefined)).toEqual({ status: 'accepted' })
+    expect(engine.readConnection(lastAccount())).toMatchObject({
+      value: { canTakePayments: true, missing: [] },
+    })
+    // The same return a real owner makes after a real form.
+    expect(await ask('return')).toMatchObject({ status: 'accepted', state: 'connected' })
+    expect(readAccountChecks((await account())?.checks).cardPayments).toBe(true)
+  })
+
+  it('finishes nothing for the wrong account, the wrong venue state, a real provider or a person without the right (#398)', async () => {
+    // No account yet.
+    expect(await finishForm('simacct_whatever')).toEqual({
+      status: 'refused',
+      code: 'not_connecting',
+    })
+    await connecting()
+    const unfinished = () => engine.readConnection(lastAccount())
+    // A link of an older connection.
+    expect(await finishForm('simacct_older')).toEqual({
+      status: 'refused',
+      code: 'account_mismatch',
+    })
+    expect(await finishForm(undefined)).toEqual({ status: 'refused', code: 'account_mismatch' })
+    // A worker with the simulator not switched on (no way to finish a form), or a venue of another kind.
+    expect(await finishForm(accountRefNow ?? undefined, {}, null)).toEqual({
+      status: 'refused',
+      code: 'not_simulated',
+    })
+    expect(await finishForm(accountRefNow ?? undefined, {}, new Map())).toEqual({
+      status: 'refused',
+      code: 'not_simulated',
+    })
+    // Someone without the right to connect payments.
+    expect(await finishForm(accountRefNow ?? undefined, { userId: plainId })).toEqual({
+      status: 'refused',
+      code: 'permission_denied',
+    })
+    expect(unfinished()).toMatchObject({ value: { canTakePayments: false } })
+  })
+
   it('turns card payments on from the provider’s notice, and registers the guest domain for wallets', async () => {
     await connectedUnfinished()
     engine.finishConnecting(lastAccount())

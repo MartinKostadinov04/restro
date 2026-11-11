@@ -9,10 +9,11 @@ import { ADMIN_EMAIL, ADMIN_PASSWORD, VENUE_NAME } from './support'
 // The owner's Settings › Paying (#116; plan `docs/deliverables/2026-10-29-settings-paying-plan.md`)
 // on a production build, in Bulgarian (the longest words), against the worker's SIMULATED card
 // provider (WORKER_PAYMENTS_SIM, playwright.config.ts): no real provider is ever called. The
-// provider's hosted form is a stub, as it is another site.
+// provider's hosted form is the app's own stand-in page (#398), which a real owner walks too.
 //
-//   Connect leaves for the provider's form; coming back (`connection=return`) reads the account
-//   back and says it still needs details; the missing list holds the provider's one line, the
+//   Connect leaves for the provider's form (the stand-in page, which says it stands in for it);
+//   leaving it unfinished comes back (`connection=return`) and reads the account back saying it
+//   still needs details; "Done" on that page finishes the account and comes back connected; the missing list holds the provider's one line, the
 //   two ticks (with Undo), Tables & QR and the venue's details; the details are saved from their
 //   card (a malformed ЕИК is refused under its field); the smallest card payment is changed in
 //   place and refused below the provider's minimum; Disconnect asks first.
@@ -110,10 +111,6 @@ test('connect leaves for the provider’s form, and coming back says it needs mo
   browser,
 }) => {
   const { context, page } = await open(browser, OWNER)
-  // The provider's hosted form is another site: stub it.
-  await page.route('https://connect.sim-pay.test/**', (route) =>
-    route.fulfill({ status: 200, contentType: 'text/html', body: '<p>form</p>' }),
-  )
   await page.goto(paying())
   await expect(page.getByRole('heading', { name: 'Плащане', level: 2 })).toBeVisible()
   // The section sits between Reservations (which follows Ordering) and Staff and roles, asked of
@@ -128,12 +125,16 @@ test('connect leaves for the provider’s form, and coming back says it needs mo
   await page.waitForLoadState('networkidle')
   await snapshot(page, 'paying-never-connected.png')
 
-  const form = page.waitForRequest(/connect\.sim-pay\.test\/onboard\//)
   await page.getByRole('button', { name: `Свържи ${PROVIDER}` }).click()
-  await form
 
-  // Back from the form: the account is read back once, and the query goes.
-  await page.goto(paying('&connection=return'))
+  // The simulated provider's form is a page of the app that says what it is (#398).
+  await expect(page).toHaveURL(/\/sim-pay\/onboard\/simacct_/)
+  await expect(page.getByTestId('sim-pay-badge')).toBeVisible()
+  await expect(page.getByTestId('sim-pay-stands-in')).toContainText('замества')
+
+  // Leaving it unfinished is a way back, as closing a real form is: the account is read back
+  // once, and the query goes.
+  await page.getByTestId('sim-pay-leave').click()
   await expect(
     page.getByText(`${PROVIDER} чака още малко данни. Продължете, когато сте готови.`),
   ).toBeVisible()
@@ -224,6 +225,22 @@ test('Disconnect asks first, then the venue is as never connected', async ({ bro
   await page.getByTestId('paying-disconnect-confirm').click()
   await expect(page.getByText(`${PROVIDER} е прекъснат`)).toBeVisible()
   await expect(page.getByTestId('paying-connect')).toBeVisible()
+  await context.close()
+})
+
+test('Done on the simulated provider’s form connects the account, the owner’s whole route (#398)', async ({
+  browser,
+}) => {
+  runScript('./e2e/paying-account.ts', 'none')
+  const { context, page } = await open(browser, OWNER)
+  await page.goto(paying())
+  await page.getByRole('button', { name: `Свържи ${PROVIDER}` }).click()
+  await expect(page).toHaveURL(/\/sim-pay\/onboard\/simacct_/)
+  await page.getByTestId('sim-pay-done').click()
+  // Back at the Paying settings with the account read back: connected, the query gone.
+  await expect(page).toHaveURL(/section=paying$/)
+  await expect(page.getByTestId('paying-account')).toContainText('Свързано')
+  await expect(page.getByTestId('paying-missing-card')).toHaveCount(0)
   await context.close()
 })
 
