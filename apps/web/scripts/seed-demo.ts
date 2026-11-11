@@ -147,6 +147,23 @@ async function main(): Promise<void> {
   if (night.skipped.length > 0 || people.skipped.length > 0) {
     console.log(`${SCRIPT}: ${[...night.skipped, ...people.skipped].join('; ')}`)
   }
+
+  // The same addresses again, in plain lines: the walk-through is read by the product owner, not
+  // by a log reader, and the venue's public code is different on every database (D68).
+  const base = process.env.PUBLIC_BASE_URL ?? 'http://localhost:3400'
+  console.log(
+    [
+      '',
+      'The demo club is ready.',
+      `  Staff screens   ${base}/venues`,
+      `  This venue      ${base}/venues/${club.venueId}`,
+      `  Guest menu      ${base}${club.path}`,
+      `  QR sheet        ${base}/venues/${club.venueId}/tables/print`,
+      '  Sign in as      ' + DEMO_PEOPLE.map((person) => person.email).join(', '),
+      '  Password        the one in your .env.local (DEV_ADMIN_PASSWORD)',
+      '',
+    ].join('\n'),
+  )
 }
 
 main()
