@@ -12,8 +12,8 @@ import { ADMIN_PASSWORD } from './support'
 //   The section sits right after Ordering. With no turn time saved it asks for one first and shows
 //   no switch; once the hold time is saved the three switches open.
 //   A switch saves at once and Undo puts it back; the hold time is saved in place; a closed date is
-//   added through its dialog and removed in one tap (Undo adds it back); a spot's seats are changed
-//   and kept after a reload.
+//   added through its dialog and removed in one tap (Undo adds it back); the plan editor (#397)
+//   lists the floor's spots, and a spot's seats are changed in its sheet and kept after a reload.
 //   A role without `settings.reservations` sees it all as text, with no control.
 //   No sideways scroll at 390 px.
 //
@@ -171,22 +171,28 @@ test('adds a closed date through its dialog and removes it in one tap', async ({
   await context.close()
 })
 
-test('changes a spot’s seats and keeps them after a reload', async ({ browser }) => {
+test('changes a spot’s seats in the plan editor and keeps them after a reload', async ({
+  browser,
+}) => {
   const { context, page } = await open(browser, OWNER)
   await page.goto(reservations())
-  await expect(page.getByTestId('rs-spot-row')).toHaveCount(3)
-  // "12" has its own seats; "Sofa" takes its kind's.
-  await expect(page.getByLabel(/^12/)).toHaveValue('6')
-  await expect(page.getByLabel(/^Sofa/)).toHaveValue('')
-  await expect(page.getByLabel(/^Sofa/)).toHaveAttribute('placeholder', '8')
-  await page.getByLabel(/^Sofa/).fill('10')
-  await page.getByLabel(/^Sofa/).press('Enter')
-  await expect(page.getByText('Местата са запазени').first()).toBeVisible()
+  const rows = page.getByTestId('pe-spot-row')
+  await expect(rows).toHaveCount(3)
+  await expect(page.getByTestId('pe-canvas').getByTestId('pe-spot')).toHaveCount(3)
+  // "12" has its own seats; "Sofa" takes its kind's, shown as the field's hint.
+  await rows.filter({ hasText: '12' }).click()
+  await expect(page.getByTestId('pe-spot-seats')).toHaveValue('6')
+  await page.getByTestId('pe-spot-done').click()
+  await rows.filter({ hasText: 'Sofa' }).click()
+  const seats = page.getByTestId('pe-spot-seats')
+  await expect(seats).toHaveValue('')
+  await expect(seats).toHaveAttribute('placeholder', '8')
+  await seats.fill('10')
+  await seats.press('Enter')
+  await expect(page.getByText('Запазено').first()).toBeVisible()
   await page.reload()
-  await expect(page.getByLabel(/^Sofa/)).toHaveValue('10')
-  await expect(
-    page.getByText('Само предупреждение — по-голяма компания никога не се отказва.'),
-  ).toBeVisible()
+  await page.getByTestId('pe-spot-row').filter({ hasText: 'Sofa' }).click()
+  await expect(page.getByTestId('pe-spot-seats')).toHaveValue('10')
   await context.close()
 })
 
