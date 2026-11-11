@@ -172,10 +172,9 @@ export async function saveSpot(stx: ServiceTx, command: SpotSaveCommand): Promis
 }
 
 /**
- * Sets a spot's seats and nothing else about it (ticket #325; D134, log 1.22): part 1 ships no plan
- * editor, so the number of places is the one thing a venue's own settings change, and a command that
- * carries the spot's whole geometry to say it would make every caller a plan editor. Empty seats put
- * the spot back on its kind's default. The number is a warning's input only ("more guests than
+ * Sets a spot's seats and nothing else about it (ticket #325; D134, log 1.22), for a caller that
+ * changes the number alone without carrying the spot's whole geometry. The plan editor (#397) sends
+ * the whole spot through `spot.save` instead. Empty seats put the spot back on its kind's default. The number is a warning's input only ("more guests than
  * seats"): nothing here ever refuses a party for being larger.
  */
 export async function setSpotSeats(
