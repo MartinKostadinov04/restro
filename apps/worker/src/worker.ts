@@ -32,7 +32,7 @@ import { createTelegramApi } from './alerts/telegram-link-api'
 import { type Poller, startTelegramPoller } from './alerts/telegram-poller'
 import type { WorkerConfig } from './config'
 import { APP_POOL_MAX, QUEUE_POOL_MAX, QUEUE_SCHEMA } from './connection'
-import { paymentProviders } from './connectors'
+import { paymentProviders, simulatedForms } from './connectors'
 import { WorkerStatus } from './health'
 import { type HealthServer, startHealthServer } from './health-server'
 import { buildJobs } from './jobs'
@@ -180,7 +180,7 @@ export async function startWorker(
     // a bearer. The provider's keys never leave this process.
     const providers = paymentProviders()
     if (config.revealToken !== null && providers.size > 0) {
-      const api = createConnectionApi({ pool, log, providers })
+      const api = createConnectionApi({ pool, log, providers, simulatedForms: simulatedForms() })
       health.setConnectionHandler({
         token: config.revealToken,
         handle: api,

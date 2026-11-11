@@ -24,6 +24,12 @@ export type ConnectionAsk =
       readonly guestHost: string
     }
   | { readonly action: 'return'; readonly guestHost: string }
+  /** The simulated provider's stand-in form (#398): the owner pressed "Done". Never a real provider. */
+  | {
+      readonly action: 'finish_simulated'
+      readonly accountRef: string
+      readonly guestHost: string
+    }
 
 /** What it gets back. */
 export type ConnectionReply =
