@@ -19,6 +19,8 @@ const OWNER = 'plan-editor-owner@demo-club.test'
 const PARTY = { name: 'План Тестов', phone: '+359 888 397 001' }
 
 let venueId = ''
+/** The first spot's name, as the "New spot" dialog gave it in the layout test. */
+let firstSpot = ''
 let owner: { context: BrowserContext; page: Page }
 
 async function signIn(page: Page, email: string) {
@@ -109,6 +111,7 @@ test('lays a plan out from nothing, and keeps it after a reload', async () => {
   }
   expect(new Set(names).size).toBe(2)
   const [first = ''] = names
+  firstSpot = first
 
   // Moved with the keys: three steps right, saved once the keys stop.
   const tile = spots(page).filter({ hasText: first })
@@ -137,8 +140,7 @@ test('lays a plan out from nothing, and keeps it after a reload', async () => {
 
 test('a booking is put on a spot picked from the plan, and the editor says it holds one', async () => {
   const { page } = owner
-  await page.goto(settings())
-  const first = (await rows(page).first().textContent())?.match(/Маса \d+/)?.[0] ?? ''
+  const first = firstSpot
   expect(first).not.toBe('')
 
   await page.goto(night())
