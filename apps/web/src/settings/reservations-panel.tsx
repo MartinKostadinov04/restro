@@ -1,8 +1,8 @@
 'use client'
 
-// Settings › Reservations (#325; D135, D136, D140, D141): the venue's own reservation rules, one-off
-// closed dates and the seats of each spot. Every control saves at once with Undo ("a single
-// reversible write"): nothing here is a form saved as a whole. Writes go through the reservation
+// Settings › Reservations (#325, #397; D135, D136, D140, D141): the venue's own reservation rules,
+// one-off closed dates and its floor plan (spots, their seats and their kinds). Every control saves
+// at once with Undo ("a single reversible write"): nothing here is a form saved as a whole. Writes go through the reservation
 // commands, which need `settings.reservations` and the person's own sign-in; a role without it sees
 // the same values as text. The venue's service hours are not repeated here: one line links to Hours.
 // Part 2's settings (what guests may do online, the prepayment and its wording) are stored with
@@ -13,11 +13,11 @@ import { useEffect, useState } from 'react'
 
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { PlanCard } from '@/reservations/plan-editor/plan-card'
 import { saveReservationRulesAction } from '@/server/settings/reservations-actions'
 import type { ReservationsView } from '@/server/settings/reservations-view'
 
 import { ClosedDatesCard } from './reservations-closed-dates'
-import { SpotSeatsCard } from './reservations-seats'
 import { ReadOnlyLine } from './section-notices'
 import { SettingRow, SettingValue } from './settings-row'
 import { useSettingsRun } from './use-settings-run'
@@ -220,7 +220,7 @@ export function ReservationsPanel({ view }: { view: ReservationsView }) {
       </div>
 
       <ClosedDatesCard view={view} runner={runner} enabled={rulesOpen} />
-      <SpotSeatsCard view={view} runner={runner} />
+      <PlanCard view={view} runner={runner} />
       {runner.dialog}
     </div>
   )

@@ -18,7 +18,13 @@
 //      made from stored data: the icons are lucide components picked by name.
 //   3. A row whose geometry the folder refused never reaches here: the read side leaves it off the
 //      plan and counts it, and the plan says how many it could not draw.
-import { SPOT_SHAPE_FOLDER, type SpotCorner, type SpotPlace, type SpotSymbol } from '@restro/core'
+import {
+  SPOT_SHAPE_FOLDER,
+  type SpotCorner,
+  type SpotPlace,
+  type SpotShape,
+  type SpotSymbol,
+} from '@restro/core'
 import {
   ArmchairIcon,
   BanIcon,
@@ -75,6 +81,11 @@ const STATE_LOOK: Record<RvSpotState, { readonly icon: LucideIcon; readonly tile
     icon: BanIcon,
     tile: 'border-dashed border-foreground/40 bg-muted/40 text-muted-foreground',
   },
+}
+
+/** How a shape out of the folder is rounded, as our own class (the editor draws with it too). */
+export function cornerClassOf(shape: SpotShape): string {
+  return CORNER_CLASS[SPOT_SHAPE_FOLDER[shape].corner]
 }
 
 /** One kind's symbol, by name. */
@@ -136,7 +147,7 @@ export function SpotTile({
   /** What a screen reader hears: the spot, its kind and its state, in full. */
   label: string
 }) {
-  const corner = CORNER_CLASS[SPOT_SHAPE_FOLDER[spot.place.shape].corner]
+  const corner = cornerClassOf(spot.place.shape)
   return (
     <button
       type="button"

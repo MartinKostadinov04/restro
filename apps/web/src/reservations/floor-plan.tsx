@@ -31,13 +31,14 @@ import { blockSpotAction, floorPlanAction, unblockSpotAction } from '@/server/re
 import type { RvFrame, RvPlanView, RvSpotView } from '@/server/reservations/view'
 import { DayPicker } from '@/tonight/day-picker'
 import { FEED_POLL_MS } from '@/tonight/live-feed'
-import { FailedBlock, NothingHere } from '@/tonight/tab-parts'
+import { FailedBlock } from '@/tonight/tab-parts'
 
 import type { BlockChoice } from './block-dialog'
 import { BlockDialog } from './block-dialog'
 import { BookingForm } from './booking-form'
 import { type ChangeTablesParty, ChangeTablesSheet } from './change-tables'
 import { useDoorActions } from './door-actions'
+import { NoPlanYet } from './no-plan'
 import { KindSymbol, SpotTile, StateMark, stateTileClass } from './plan-shape'
 import { useSpotLine, useSpotStateWord } from './plan-words'
 import { usePlanView } from './plan-zoom'
@@ -333,7 +334,8 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
     }
     if (failed && plan.spots.length === 0) return <FailedBlock text={t('p_fail')} />
     if (plan.tooOld) return null
-    if (plan.planId === null) return <NothingHere text={t('p_empty')} />
+    if (plan.planId === null) return <NoPlanYet frame={frame} />
+    if (plan.spots.length === 0) return <NoPlanYet frame={frame} noSpots />
     return (
       // The region holds the keys as well as the buttons: a keyboard reaches the plan by tabbing to
       // its own zoom buttons or to a spot, and the arrows, + - and 0 work from there (2.1.1). The

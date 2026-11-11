@@ -47,6 +47,7 @@ import type { RvFrame, RvHoldView, RvPlanView, RvSpotView } from '@/server/reser
 
 import { ConfirmDialog } from './confirm-dialog'
 import { SameGuestsDialog } from './door-dialogs'
+import { NoPlanYet } from './no-plan'
 import { useBlockReasonWord } from './plan-words'
 import { PickWait, SpotPlan, usePickPlan } from './spot-picker'
 import type { RvRunSpec } from './use-reservation-run'
@@ -113,6 +114,8 @@ export function ChangeTablesSheet({
   const reasonWord = useBlockReasonWord()
   const pick = usePickPlan(frame, party.day)
   const plan = pick.plan
+  /** No plan, or nothing on it: nothing to change to, and the sheet says why (#397). */
+  const noPlan = plan !== null && (plan.planId === null || plan.spots.length === 0)
   const venueId = frame.venueId
   /** Null until she taps something: then the plan's own reading of the party is the choice. */
   const [picked, setPicked] = useState<readonly string[] | null>(null)
@@ -324,6 +327,8 @@ export function ChangeTablesSheet({
     <div className="space-y-4 overflow-y-auto px-4 pb-2 text-sm" data-testid="rv-ct">
       {plan === null ? (
         <PickWait />
+      ) : noPlan ? (
+        <NoPlanYet frame={frame} noSpots={plan.planId !== null} testId="rv-ct-no-plan" />
       ) : (
         <>
           <SpotPlan plan={plan} selected={chosen} onChange={(ids) => setPicked(ids)} onTap={tap} />
@@ -426,7 +431,7 @@ export function ChangeTablesSheet({
           <DrawerContent data-testid="rv-ct-sheet">
             <DrawerHeader>
               <DrawerTitle className="[overflow-wrap:anywhere]">{title}</DrawerTitle>
-              <DrawerDescription>{t('ct_lead')}</DrawerDescription>
+              <DrawerDescription>{noPlan ? t('ct_lead_none') : t('ct_lead')}</DrawerDescription>
             </DrawerHeader>
             {body}
             <DrawerFooter>{buttons}</DrawerFooter>
@@ -437,7 +442,7 @@ export function ChangeTablesSheet({
           <SheetContent className="sm:max-w-md" data-testid="rv-ct-sheet">
             <SheetHeader>
               <SheetTitle className="[overflow-wrap:anywhere]">{title}</SheetTitle>
-              <SheetDescription>{t('ct_lead')}</SheetDescription>
+              <SheetDescription>{noPlan ? t('ct_lead_none') : t('ct_lead')}</SheetDescription>
             </SheetHeader>
             {body}
             <SheetFooter>{buttons}</SheetFooter>

@@ -77,6 +77,12 @@ export interface RvCan {
   readonly guests: boolean
   /** `reservations.pay_rule`: set or take away the pay rule a party carries (#334, D135). */
   readonly payRule: boolean
+  /**
+   * `settings.reservations`, on the person's own sign-in: draw the floor plan in Settings ›
+   * Reservations (#397). A screen with no plan to offer leads there; a shared device never does,
+   * because a PIN never reaches settings (D141).
+   */
+  readonly plan: boolean
 }
 
 /** What the screen needs beside the data: the venue, its clock, and what the actor holds. */
@@ -114,6 +120,7 @@ export function rvFrameOf(access: ReservationAccess, venueId: string): RvFrame {
       endNight: held.has('reservations.end_night'),
       guests: held.has('settings.guests'),
       payRule: held.has('reservations.pay_rule'),
+      plan: held.has('settings.reservations') && !access.device,
     },
   }
 }

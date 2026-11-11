@@ -24,12 +24,6 @@ const Rules = z.strictObject({
 })
 
 const OnDate = z.strictObject({ venueId, date })
-const Seats = z.strictObject({
-  venueId,
-  spotId: idSchema('sp'),
-  /** The spot's own seats, or null for its kind's default. */
-  seats: z.number().int().min(1).max(100).nullable(),
-})
 
 /** Runs one command at the venue and refreshes the page on success. */
 async function runAt(venue: string, command: Record<string, unknown>): Promise<SettingsResult> {
@@ -65,16 +59,5 @@ export async function removeClosedDateAction(input: unknown): Promise<SettingsRe
   return runAt(parsed.data.venueId, {
     type: 'reservation_closed_date.remove',
     date: parsed.data.date,
-  })
-}
-
-/** Sets a spot's seats. */
-export async function setSpotSeatsAction(input: unknown): Promise<SettingsResult> {
-  const parsed = Seats.safeParse(input)
-  if (!parsed.success) return INVALID
-  return runAt(parsed.data.venueId, {
-    type: 'spot.set_seats',
-    spotId: parsed.data.spotId,
-    seats: parsed.data.seats,
   })
 }

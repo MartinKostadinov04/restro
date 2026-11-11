@@ -212,6 +212,7 @@ describe('what the actor holds', () => {
       editPast: false,
       endNight: false,
       guests: false,
+      plan: false,
     })
 
     const some = rvFrameOf(
@@ -227,11 +228,18 @@ describe('what the actor holds', () => {
       editPast: true,
       endNight: false,
       guests: false,
+      plan: false,
     })
     expect(rvFrameOf(accessWith(['reservations.pay_rule']), 'vn_demo').can).toMatchObject({
       payRule: true,
       manage: false,
     })
+    // Drawing the plan is a setting (#397): the owner's own sign-in leads there, a shared device
+    // never does (D141).
+    expect(rvFrameOf(accessWith(['settings.reservations']), 'vn_demo').can.plan).toBe(true)
+    expect(
+      rvFrameOf({ ...accessWith(['settings.reservations']), device: true }, 'vn_demo').can.plan,
+    ).toBe(false)
   })
 
   it('carries the venue’s clock and the owner’s switch, not the server’s', () => {

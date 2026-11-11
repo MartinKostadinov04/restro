@@ -26,6 +26,7 @@ import type { RvDetailView, RvFrame } from '@/server/reservations/view'
 import { useDateText } from '@/tonight/day-picker'
 import { HoursHints } from './booking-form'
 import { nextDay } from './booking-values'
+import { NoPlanYet } from './no-plan'
 import { PickWait, SpotList, usePickPlan } from './spot-picker'
 import { useBookingChecks } from './use-booking-checks'
 import type { RvRunSpec } from './use-reservation-run'
@@ -153,8 +154,8 @@ export function CopyDialog({
             ) : (
               <PickWait />
             )
-          ) : pick.plan.planId === null ? (
-            <p className="text-sm text-muted-foreground">{t('p_empty')}</p>
+          ) : pick.plan.planId === null || pick.plan.spots.length === 0 ? (
+            <NoPlanYet frame={frame} noSpots={pick.plan.planId !== null} />
           ) : (
             <SpotList plan={pick.plan} selected={spotIds} onChange={setSpotIds} />
           )}
