@@ -8,7 +8,6 @@ import {
   addClosedDateAction,
   removeClosedDateAction,
   saveReservationRulesAction,
-  setSpotSeatsAction,
 } from '@/server/settings/reservations-actions'
 import type { ReservationsView } from '@/server/settings/reservations-view'
 import { renderWithIntl } from '@/test-utils'
@@ -19,7 +18,14 @@ vi.mock('@/server/settings/reservations-actions', () => ({
   saveReservationRulesAction: vi.fn(),
   addClosedDateAction: vi.fn(),
   removeClosedDateAction: vi.fn(),
-  setSpotSeatsAction: vi.fn(),
+}))
+vi.mock('@/server/settings/plan-actions', () => ({
+  startPlanAction: vi.fn(),
+  savePlanAction: vi.fn(),
+  saveSpotAction: vi.fn(),
+  removeSpotAction: vi.fn(),
+  saveSpotKindAction: vi.fn(),
+  removeSpotKindAction: vi.fn(),
 }))
 vi.mock('@/lib/auth-client', () => ({ authClient: { signIn: { email: vi.fn() } } }))
 vi.mock('sonner', () => ({
@@ -27,7 +33,6 @@ vi.mock('sonner', () => ({
 }))
 
 const VENUE = 'vn_0000000000000000000001'
-const SPOT = 'sp_0000000000000000000001'
 
 function view(
   settings: Partial<ReservationsView['settings']> = {},
@@ -47,6 +52,7 @@ function view(
       spots: [],
       ...settings,
     },
+    plan: { plans: [], spots: [], kinds: [], tables: [], unreadable: 0 },
     ...more,
   }
 }
@@ -54,12 +60,7 @@ function view(
 const OK = { ok: true, details: {} } as const
 
 beforeEach(() => {
-  for (const action of [
-    saveReservationRulesAction,
-    addClosedDateAction,
-    removeClosedDateAction,
-    setSpotSeatsAction,
-  ]) {
+  for (const action of [saveReservationRulesAction, addClosedDateAction, removeClosedDateAction]) {
     vi.mocked(action).mockReset()
     vi.mocked(action).mockResolvedValue(OK)
   }
@@ -227,86 +228,14 @@ describe('closed dates', () => {
   })
 })
 
-describe('seats', () => {
-  const spots = [
-    { id: SPOT, name: 'Table 12', kindLabel: 'Table', seats: 6, kindSeats: 4 },
-    {
-      id: 'sp_0000000000000000000002',
-      name: 'Sofa',
-      kindLabel: 'Booth',
-      seats: null,
-      kindSeats: 8,
-    },
-  ]
-
-  it('says it is a warning only and lists every spot with its seats', () => {
-    renderWithIntl(<ReservationsPanel view={view({ spots })} />)
-    expect(
-      screen.getByText('A warning only — a party larger than this is never refused.'),
-    ).toBeTruthy()
-    const rows = screen.getAllByTestId('rs-spot-row')
-    expect(rows).toHaveLength(2)
-    expect((within(rows[0] as HTMLElement).getByRole('textbox') as HTMLInputElement).value).toBe(
-      '6',
-    )
-    const second = within(rows[1] as HTMLElement).getByRole('textbox') as HTMLInputElement
-    expect(second.value).toBe('')
-    expect(second.placeholder).toBe('8')
-  })
-
-  it('saves one spot at once and offers Undo with the number it had', async () => {
-    const user = userEvent.setup()
-    renderWithIntl(<ReservationsPanel view={view({ spots })} />)
-    const field = screen.getByLabelText(/Table 12/)
-    await user.clear(field)
-    await user.type(field, '10')
-    await user.tab()
-    await waitFor(() =>
-      expect(setSpotSeatsAction).toHaveBeenCalledWith({ venueId: VENUE, spotId: SPOT, seats: 10 }),
-    )
-    const options = vi.mocked(toast.success).mock.calls[0]?.[1] as unknown as {
-      action: { onClick: () => void }
-    }
-    options.action.onClick()
-    await waitFor(() =>
-      expect(setSpotSeatsAction).toHaveBeenLastCalledWith({
-        venueId: VENUE,
-        spotId: SPOT,
-        seats: 6,
-      }),
-    )
-  })
-
-  it('rejects a number of seats outside 1 to 100 and saves nothing', async () => {
-    const user = userEvent.setup()
-    renderWithIntl(<ReservationsPanel view={view({ spots })} />)
-    const field = screen.getByLabelText(/Table 12/)
-    await user.clear(field)
-    await user.type(field, '101')
-    await user.tab()
-    expect((await screen.findByRole('alert')).textContent).toBe(
-      'Enter a whole number of seats, from 1 to 100.',
-    )
-    expect(setSpotSeatsAction).not.toHaveBeenCalled()
-  })
-
-  it('says spots appear once the plan is set up when there are none', () => {
+describe('the floor plan', () => {
+  // The editor's own behaviour is `plan-editor/plan-card.test.tsx`'s; here, only that it is the
+  // section's last card and the old seats list is gone (#397).
+  it('shows the plan card in place of the seats list', () => {
     renderWithIntl(<ReservationsPanel view={view()} />)
-    expect(screen.getByTestId('rs-seats-empty').textContent).toBe(
-      'Spots appear here once your floor plan is set up.',
-    )
-  })
-
-  it('scrolls a hundred and eighteen spots in one list', () => {
-    const many = Array.from({ length: 118 }, (_, i) => ({
-      id: `sp_${String(i + 1).padStart(22, '0')}`,
-      name: `Table ${i + 1}`,
-      kindLabel: 'Table',
-      seats: 4,
-      kindSeats: null,
-    }))
-    renderWithIntl(<ReservationsPanel view={view({ spots: many })} />)
-    expect(screen.getAllByTestId('rs-spot-row')).toHaveLength(118)
+    expect(screen.getByTestId('pe-card')).toBeTruthy()
+    expect(screen.getByTestId('pe-start')).toBeTruthy()
+    expect(screen.queryByTestId('rs-seats')).toBeNull()
   })
 })
 
@@ -318,7 +247,6 @@ describe('a role without the right', () => {
           {
             editPastNights: true,
             closedDates: ['2026-12-24'],
-            spots: [{ id: SPOT, name: 'Table 12', kindLabel: 'Table', seats: 6, kindSeats: 4 }],
           },
           { canChange: false },
         )}
@@ -333,6 +261,9 @@ describe('a role without the right', () => {
     expect(screen.queryByTestId('rs-closed-remove')).toBeNull()
     expect(screen.getByTestId('rs-hold-value').textContent).toBe('120 min')
     expect(screen.getByTestId('rs-past-value').textContent).toBe('On')
-    expect(screen.getByTestId('rs-spot-seats-value').textContent).toBe('6')
+    expect(screen.queryByTestId('pe-start')).toBeNull()
+    expect(screen.getByTestId('pe-empty').textContent).toContain(
+      'Someone who may change the reservation settings draws it here.',
+    )
   })
 })

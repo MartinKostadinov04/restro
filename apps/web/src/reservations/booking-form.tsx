@@ -78,6 +78,7 @@ import {
   valuesOf,
 } from './booking-values'
 import { GuestNameField } from './guest-suggest'
+import { NoPlanYet } from './no-plan'
 import { PickWait, SpotList, SpotPlan, usePickPlan } from './spot-picker'
 import { useBookingChecks } from './use-booking-checks'
 import type { RvRunSpec } from './use-reservation-run'
@@ -207,6 +208,9 @@ export function BookingForm({
   })
 
   const pick = usePickPlan(frame, values.day)
+  // No plan, or one with nothing on it: the two ways to pick a spot give way to one honest block
+  // (#397). A booking is still taken; it simply holds no spot yet.
+  const noPlan = pick.plan !== null && (pick.plan.planId === null || pick.plan.spots.length === 0)
   const spotNames = useMemo(() => {
     const names = new Map<string, string>()
     editing?.spotIds.forEach((id, index) => {
@@ -580,29 +584,33 @@ export function BookingForm({
                 })}
           </Hint>
         )}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant={picker === 'list' ? 'default' : 'outline'}
-            aria-pressed={picker === 'list'}
-            className={WRAPS}
-            data-testid="rv-f-pick-list"
-            onClick={() => setPicker(picker === 'list' ? 'closed' : 'list')}
-          >
-            {t('bk_spots_pick')}
-          </Button>
-          <Button
-            type="button"
-            variant={picker === 'plan' ? 'default' : 'outline'}
-            aria-pressed={picker === 'plan'}
-            className={WRAPS}
-            data-testid="rv-f-pick-plan"
-            onClick={() => setPicker(picker === 'plan' ? 'closed' : 'plan')}
-          >
-            {t('bk_spots_plan')}
-          </Button>
-        </div>
-        {picker === 'closed' ? null : pick.plan === null ? (
+        {noPlan ? (
+          <NoPlanYet frame={frame} noSpots={pick.plan?.planId != null} testId="rv-f-no-plan" />
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant={picker === 'list' ? 'default' : 'outline'}
+              aria-pressed={picker === 'list'}
+              className={WRAPS}
+              data-testid="rv-f-pick-list"
+              onClick={() => setPicker(picker === 'list' ? 'closed' : 'list')}
+            >
+              {t('bk_spots_pick')}
+            </Button>
+            <Button
+              type="button"
+              variant={picker === 'plan' ? 'default' : 'outline'}
+              aria-pressed={picker === 'plan'}
+              className={WRAPS}
+              data-testid="rv-f-pick-plan"
+              onClick={() => setPicker(picker === 'plan' ? 'closed' : 'plan')}
+            >
+              {t('bk_spots_plan')}
+            </Button>
+          </div>
+        )}
+        {picker === 'closed' || noPlan ? null : pick.plan === null ? (
           pick.failed ? (
             <p className="text-muted-foreground" role="alert">
               {t('p_fail')}
@@ -610,9 +618,7 @@ export function BookingForm({
           ) : (
             <PickWait />
           )
-        ) : pick.plan.planId === null ? (
-          <p className="text-muted-foreground">{t('p_empty')}</p>
-        ) : (
+        ) : pick.plan.planId === null ? null : (
           <div className="space-y-2">
             {pick.plan.plans.length < 2 ? null : (
               <fieldset className="flex min-w-0 flex-wrap gap-2">

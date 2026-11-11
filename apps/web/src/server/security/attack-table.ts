@@ -26,6 +26,7 @@ import * as alerts from '@/server/settings/alerts-actions'
 import * as ordering from '@/server/settings/ordering-actions'
 import * as paying from '@/server/settings/paying-actions'
 import { payingInstallation, payingReturnAddress } from '@/server/settings/paying-addresses'
+import * as planEditor from '@/server/settings/plan-actions'
 import * as reservations from '@/server/settings/reservations-actions'
 import * as staff from '@/server/settings/staff-actions'
 import * as tables from '@/server/tables/actions'
@@ -603,13 +604,60 @@ export const ATTACKS: readonly Attack[] = [
       reservations.removeClosedDateAction({ venueId: v.venues[0].id, date: '2030-12-24' }),
   },
   {
-    action: 'setSpotSeatsAction',
+    action: 'startPlanAction',
     call: (v) =>
-      reservations.setSpotSeatsAction({
+      planEditor.startPlanAction({
+        venueId: v.venues[0].id,
+        name: 'Taken over',
+        kinds: [{ key: 'stool', label: 'Taken over', symbol: 'stool', defaultSeats: 1 }],
+      }),
+  },
+  {
+    action: 'savePlanAction',
+    call: (v) =>
+      planEditor.savePlanAction({
+        venueId: v.venues[0].id,
+        planId: v.venues[0].plan,
+        name: 'Taken over',
+      }),
+  },
+  {
+    action: 'saveSpotAction',
+    call: (v) =>
+      planEditor.saveSpotAction({
         venueId: v.venues[0].id,
         spotId: v.venues[0].spot,
-        seats: 99,
+        planId: v.venues[0].plan,
+        name: 'Taken over',
+        kind: 'table',
+        shape: 'rect',
+        x: 40,
+        y: 40,
+        width: 10,
+        height: 10,
+        rotation: 0,
+        seats: null,
+        tableId: null,
       }),
+  },
+  {
+    action: 'removeSpotAction',
+    call: (v) => planEditor.removeSpotAction({ venueId: v.venues[0].id, spotId: v.venues[0].spot }),
+  },
+  {
+    action: 'saveSpotKindAction',
+    call: (v) =>
+      planEditor.saveSpotKindAction({
+        venueId: v.venues[0].id,
+        key: 'table',
+        label: 'Taken over',
+        symbol: 'dot',
+        defaultSeats: 99,
+      }),
+  },
+  {
+    action: 'removeSpotKindAction',
+    call: (v) => planEditor.removeSpotKindAction({ venueId: v.venues[0].id, key: 'table' }),
   },
   {
     action: 'startConnectionAction',
@@ -1449,13 +1497,39 @@ export const ATTACKS: readonly Attack[] = [
 /** The attacker's own venue and menu, the victim's child ids. */
 export const MIXED: readonly Attack[] = [
   {
-    action: 'setSpotSeatsAction',
-    how: "victim's spot at my venue",
+    action: 'saveSpotAction',
+    how: "victim's spot and plan at my venue",
     call: (v, a) =>
-      reservations.setSpotSeatsAction({
+      planEditor.saveSpotAction({
         venueId: a.venues[0].id,
         spotId: v.venues[0].spot,
-        seats: 99,
+        planId: v.venues[0].plan,
+        name: 'Taken over',
+        kind: 'table',
+        shape: 'rect',
+        x: 40,
+        y: 40,
+        width: 10,
+        height: 10,
+        rotation: 0,
+        seats: null,
+        tableId: null,
+      }),
+  },
+  {
+    action: 'removeSpotAction',
+    how: "victim's spot at my venue",
+    call: (v, a) =>
+      planEditor.removeSpotAction({ venueId: a.venues[0].id, spotId: v.venues[0].spot }),
+  },
+  {
+    action: 'savePlanAction',
+    how: "victim's plan at my venue",
+    call: (v, a) =>
+      planEditor.savePlanAction({
+        venueId: a.venues[0].id,
+        planId: v.venues[0].plan,
+        name: 'Taken over',
       }),
   },
   {

@@ -26,6 +26,7 @@ import {
 import { WRAPS } from '@/lib/wrapping'
 import type { RvFrame, RvWaitingView } from '@/server/reservations/view'
 
+import { NoPlanYet } from './no-plan'
 import { PickWait, SpotList, SpotPlan, usePickPlan } from './spot-picker'
 
 export function GiveSpotDialog({
@@ -104,8 +105,8 @@ export function GiveSpotDialog({
             ) : (
               <PickWait />
             )
-          ) : pick.plan.planId === null ? (
-            <p className="text-sm text-muted-foreground">{t('p_empty')}</p>
+          ) : pick.plan.planId === null || pick.plan.spots.length === 0 ? (
+            <NoPlanYet frame={frame} noSpots={pick.plan.planId !== null} />
           ) : picker === 'list' ? (
             <SpotList plan={pick.plan} selected={[]} onChange={tapped} />
           ) : (

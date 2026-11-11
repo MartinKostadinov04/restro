@@ -130,7 +130,12 @@ export {
   disputeEvidenceText,
   type EvidenceWho,
 } from './dispute-evidence'
-export { SERVICE_LOCK_TIMEOUT, SERVICE_STATEMENT_TIMEOUT, type ServiceOptions } from './engine'
+export {
+  postgresCode,
+  SERVICE_LOCK_TIMEOUT,
+  SERVICE_STATEMENT_TIMEOUT,
+  type ServiceOptions,
+} from './engine'
 export {
   ForbiddenValueError,
   forgetGuestCodes,
@@ -477,6 +482,14 @@ export {
   readPinFallSettings,
   storedPinActions,
 } from './reservations/pin-fall'
+export {
+  type EditorKind,
+  type EditorPlan,
+  type EditorSpot,
+  type EditorTable,
+  type PlanEditorRead,
+  readPlanEditor,
+} from './reservations/plan-editor-read'
 export {
   daysBetween,
   type FloorPlanRead,

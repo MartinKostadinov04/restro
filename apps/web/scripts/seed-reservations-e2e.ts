@@ -1,8 +1,13 @@
 // Fixtures for the owner's Settings › Reservations end-to-end test (#325). Run by the test itself:
 //
-//   seed   an organisation "Reservations Club" of its own with one venue made by hand (reservations
-//          are Restro's own, so no POS is needed), an owner (who holds every permission) and a
-//          viewer whose role may only work tonight's reservations (the read-only view). Idempotent.
+//   seed         an organisation "Reservations Club" of its own with one venue made by hand
+//                (reservations are Restro's own, so no POS is needed), an owner (who holds every
+//                permission) and a viewer whose role may only work tonight's reservations (the
+//                read-only view). Idempotent.
+//   plan-editor  the plan editor's test (#397): an organisation "Plan Editor Club" with its owner,
+//                and a venue made by hand that is new on every run, so it starts with no plan, no
+//                spot kind and no reservation settings at all. Everything after that is laid out
+//                through the screens. Prints `{"venueId": …}` as its last line.
 //
 // The venue's settings, plan and spots are set by `e2e/reservations-state.ts`: the reservation
 // tables are written by core/service alone (write-targets.test.ts), and fixtures in an `e2e` folder
@@ -28,6 +33,10 @@ const EMAILS = {
   viewer: 'reservations-viewer@demo-club.test',
 } as const
 const SEED = ['restro', 'system', 'e2e-seed'] as const
+const PLAN_EDITOR = {
+  organization: { name: 'Plan Editor Club', slug: 'plan-editor-club' },
+  owner: 'plan-editor-owner@demo-club.test',
+} as const
 
 async function ensureUser(
   auth: ReturnType<typeof createAuth>,
@@ -55,6 +64,43 @@ async function ensureUser(
   return user.id
 }
 
+/** The organisation by its slug, made if missing, with each member holding the role given. */
+async function ensureOrganization(
+  auth: ReturnType<typeof createAuth>,
+  organization: { readonly name: string; readonly slug: string },
+  creatorId: string,
+  members: readonly (readonly [string, string])[],
+): Promise<string> {
+  const db = getAuthDb()
+  const [found] = await db
+    .select({ id: authOrganization.id })
+    .from(authOrganization)
+    .where(eq(authOrganization.slug, organization.slug))
+    .limit(1)
+  const tenantId =
+    found?.id ??
+    (
+      await auth.api.createOrganization({
+        body: { name: organization.name, slug: organization.slug, userId: creatorId },
+      })
+    ).id
+  for (const [userId, role] of members) {
+    const [membership] = await db
+      .select({ id: authMember.id })
+      .from(authMember)
+      .where(and(eq(authMember.organizationId, tenantId), eq(authMember.userId, userId)))
+      .limit(1)
+    if (!membership) {
+      await db
+        .insert(authMember)
+        .values({ id: authModelId('member'), organizationId: tenantId, userId, role })
+    } else {
+      await db.update(authMember).set({ role }).where(eq(authMember.id, membership.id))
+    }
+  }
+  return tenantId
+}
+
 function ownerPool(): pg.Pool {
   const url = process.env.DATABASE_URL_OWNER
   if (!url) throw new Error('seed-reservations-e2e needs DATABASE_URL_OWNER (see .env.example).')
@@ -66,39 +112,13 @@ async function seed(): Promise<void> {
   const owner = ownerPool()
   const { password } = readAdminCredentials(process.env)
   const auth = createAuth({ scripts: true })
-  const db = getAuthDb()
   try {
     const ownerId = await ensureUser(auth, EMAILS.owner, 'Reservations Owner', password)
     const viewerId = await ensureUser(auth, EMAILS.viewer, 'Reservations Viewer', password)
-    const [found] = await db
-      .select({ id: authOrganization.id })
-      .from(authOrganization)
-      .where(eq(authOrganization.slug, ORGANIZATION.slug))
-      .limit(1)
-    const tenantId =
-      found?.id ??
-      (
-        await auth.api.createOrganization({
-          body: { name: ORGANIZATION.name, slug: ORGANIZATION.slug, userId: ownerId },
-        })
-      ).id
-    for (const [userId, role] of [
+    const tenantId = await ensureOrganization(auth, ORGANIZATION, ownerId, [
       [ownerId, 'owner'],
       [viewerId, 'member'],
-    ] as const) {
-      const [membership] = await db
-        .select({ id: authMember.id })
-        .from(authMember)
-        .where(and(eq(authMember.organizationId, tenantId), eq(authMember.userId, userId)))
-        .limit(1)
-      if (!membership) {
-        await db
-          .insert(authMember)
-          .values({ id: authModelId('member'), organizationId: tenantId, userId, role })
-      } else {
-        await db.update(authMember).set({ role }).where(eq(authMember.id, membership.id))
-      }
-    }
+    ])
 
     const pool = getPool()
     const findVenue = () =>
@@ -145,8 +165,36 @@ async function seed(): Promise<void> {
   }
 }
 
+/**
+ * The plan editor's venue: new on every run, made the way a venue is made (`provisionVenue`), with
+ * nothing of reservations written. The owner lays the plan out through the screens themselves.
+ */
+async function seedPlanEditor(): Promise<void> {
+  // The same guard as `seed`: development only, on this machine.
+  assertDevEnvironment(process.env)
+  const { password } = readAdminCredentials(process.env)
+  const auth = createAuth({ scripts: true })
+  const ownerId = await ensureUser(auth, PLAN_EDITOR.owner, 'Plan Editor Owner', password)
+  const tenantId = await ensureOrganization(auth, PLAN_EDITOR.organization, ownerId, [
+    [ownerId, 'owner'],
+  ])
+  const suffix = newId('vn').slice(-6).toLowerCase()
+  const slug = `plan-editor-${suffix}`
+  await provisionVenue(getPool(), tenantId, { name: `Plan Editor ${suffix}`, slug })
+  const [venue] = await withTenant(getPool(), tenantId, (tx) =>
+    tx.select({ id: venues.id }).from(venues).where(eq(venues.slug, slug)).limit(1),
+  )
+  if (!venue) throw new Error('the venue was not made')
+  console.log(JSON.stringify({ venueId: venue.id }))
+}
+
 const [step] = process.argv.slice(2)
-const run = step === 'seed' ? seed() : Promise.reject(new Error('seed'))
+const run =
+  step === 'seed'
+    ? seed()
+    : step === 'plan-editor'
+      ? seedPlanEditor()
+      : Promise.reject(new Error('seed | plan-editor'))
 run
   .then(async () => {
     await getPool().end()

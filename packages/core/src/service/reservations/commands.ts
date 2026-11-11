@@ -189,8 +189,9 @@ export const RESERVATION_COMMANDS = {
     idempotency: 'by_nature',
     handle: removeSpot,
   }),
-  // A spot's seats alone (#325): the one thing the venue's own settings change on a spot, since
-  // part 1 ships no plan editor. Empty seats put the spot back on its kind's default.
+  // A spot's seats alone (#325). The plan editor (#397) saves seats with the rest of the spot
+  // through `spot.save`; this stays for a caller that changes the number alone. Empty seats put the
+  // spot back on its kind's default.
   'spot.set_seats': defineCommand({
     schema: z.strictObject({
       type: z.literal('spot.set_seats'),
