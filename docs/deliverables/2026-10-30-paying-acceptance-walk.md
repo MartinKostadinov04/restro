@@ -23,6 +23,8 @@ Do the ordering guide first ([2026-10-30-ordering-acceptance-walk](2026-10-30-or
 7. **The paying lines in `.env.local`,** then restart `pnpm dev` — **the worker too**, not only the web app: it reads these at start, and without a restart paying stays off with no sign of why.
    - `PAYMENTS_ENV=development` and `PAYMENTS_PROVIDER=sim-pay` (the simulated provider; Section G switches to Stripe);
    - `WORKER_PAYMENTS_SIM=on` — without it the worker builds no simulated provider at all, its `/internal/payments/connection` answers 404, and Settings › Paying reports a connection that could not be opened. It is refused in production by `createSimPayProvider`.
+   - `PAYMENTS_ENV` must be one of `development`, `test` or `staging`: the simulated provider's onboarding page (Section A) answers 404 in production and for an unset or unknown value.
+   - The simulated provider lives in the worker's memory. If you restart the worker, a venue you had connected is unknown to it and paying stops: in Settings › Paying choose Disconnect, then Connect again.
    - the Turnstile test keys stay as `.env.example` has them (local only);
    - `SIM_PAY_NOTICE_SECRET` as `.env.example` shows.
 8. **A phone for the guest:** set `PUBLIC_BASE_URL` to this PC's network address (for example http://192.168.1.20:3000) to scan from your phone on the same Wi-Fi, or open the table's guest address in a narrow browser window. Two phones (or two browser windows) for Section C.
@@ -32,7 +34,10 @@ Do the ordering guide first ([2026-10-30-ordering-acceptance-walk](2026-10-30-or
 
 - **Paying is listed** between "Ordering and availability" and Staff and roles, for Demo Bar. It is never listed at a hand-made venue.
 - **Before connecting:** "Connect {provider}" is the one filled button, with the line saying the provider asks for the business, bank and ID details and Restro never sees a password or key.
-- **Connect:** with the simulated provider it connects at once ("Connected: …"). With Stripe it opens Stripe's own form (Section G).
+- **Connect:** with the simulated provider it does not connect at once: it takes you through a form page, as a real provider does. Press "Connect Test card payments" (it may ask for your password) and you land on a plain page inside the app, `/sim-pay/onboard/…`, headed "Connect your Test card payments account", with a dashed badge "Simulated provider: for testing only" and a line saying it stands in for the provider's own sign-up form and asks for nothing. With Stripe it opens Stripe's own form instead (Section G); the stand-in page exists only for the simulated provider and answers 404 in production.
+  - **Done:** back in Settings › Paying the account reads "Connected", the line "Test card payments still needs details from you." is gone, and a toast says "Connected to Test card payments". Nothing is typed anywhere.
+  - **Leave without finishing:** the link under the button goes back to Settings › Paying with the account unfinished, as closing a real form would: a toast says "Test card payments still needs a few details. Continue when you're ready.", the line "Test card payments still needs details from you." stays, and "Continue in Test card payments" brings you to the same page again.
+  - Walk both once. The rest of this guide (Sections B to F) needs the account finished with Done.
 - **"Before card payments can start"** lists what is still missing, in this order: the provider's own details, "I chose the card payment type in {source}", "Mark a payment table for each bar" (with "Go to Tables & QR"), "I turned off {provider}'s emails to guests about successful payments", "Fill in the venue's details below". Card payments turn on by themselves once every line is done ("Card payments are on."). There is no separate on/off switch (your 10-29 answer).
 - **Smallest card payment:** starts at the provider's minimum; you can raise it, not lower it below the minimum; "Use {provider}'s minimum" puts it back.
 - **Tips:** one line, no switch. Where the till can put the tip on the same receipt, "Guests can add a tip…"; otherwise "Tips aren't offered…". Which one you see depends on the simulator's scenario; both are correct.

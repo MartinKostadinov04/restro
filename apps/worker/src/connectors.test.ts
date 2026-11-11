@@ -2,7 +2,7 @@ import { providerRef } from '@restro/core'
 import { StripeConfigError } from '@restro/stripe'
 import { describe, expect, it } from 'vitest'
 
-import { paymentProviders } from './connectors'
+import { paymentProviders, seededSimAccount, simulatedForms } from './connectors'
 
 // Made-up keys of the right shape: no real key is ever in a test.
 const TEST_KEY = `sk_test_${'A1b2C3d4'.repeat(4)}`
@@ -71,14 +71,63 @@ describe('the simulated provider (#116)', () => {
     })
   })
 
-  it('leaves the simulator with no account when the setting is blank', async () => {
-    const providers = paymentProviders({
-      PAYMENTS_ENV: 'development',
-      WORKER_PAYMENTS_SIM: 'on',
-      WORKER_PAYMENTS_SIM_ACCOUNT: '   ',
+  // The engine is one for the whole process (#398), so what a blank setting does cannot be read
+  // off a later `paymentProviders` call: the decision itself is the thing to pin down.
+  it('names no account when the setting is unset or blank, and trims what it does name', () => {
+    expect(seededSimAccount({})).toBeNull()
+    expect(seededSimAccount({ WORKER_PAYMENTS_SIM_ACCOUNT: '   ' })).toBeNull()
+    expect(
+      seededSimAccount({
+        WORKER_PAYMENTS_SIM_ACCOUNT: ' simpay_club_biad ',
+        WORKER_PAYMENTS_SIM_ACCOUNT_NAME: '  ',
+      }),
+    ).toEqual({ ref: 'simpay_club_biad', displayName: null })
+    expect(
+      seededSimAccount({
+        WORKER_PAYMENTS_SIM_ACCOUNT: 'simpay_club_biad',
+        WORKER_PAYMENTS_SIM_ACCOUNT_NAME: 'Клуб Биад ЕООД',
+      }),
+    ).toEqual({ ref: 'simpay_club_biad', displayName: 'Клуб Биад ЕООД' })
+  })
+})
+
+describe('finishing the simulated provider’s form (#398)', () => {
+  const sim = { PAYMENTS_ENV: 'test', WORKER_PAYMENTS_SIM: 'on' }
+  const request = {
+    venueId: 'vn_0000000000000000000000',
+    accountRef: null,
+    returnUrl: 'https://restro.test/venues/vn_1?tab=settings&section=paying&connection=return',
+    refreshUrl: 'https://restro.test/venues/vn_1?tab=settings&section=paying&connection=refresh',
+    idempotencyKey: 'connect:test:1',
+  } as const
+
+  it('offers nothing without the simulator switched on, and refuses production on its own', () => {
+    expect(simulatedForms({ PAYMENTS_ENV: 'test' }).size).toBe(0)
+    expect(() =>
+      simulatedForms({ PAYMENTS_ENV: 'production', WORKER_PAYMENTS_SIM: 'on' }),
+    ).toThrow()
+    expect([...simulatedForms(sim).keys()]).toEqual(['sim-pay'])
+  })
+
+  it('finishes the account that the provider handed out, on the engine every caller shares', async () => {
+    // The connection endpoint and the payment jobs each ask `paymentProviders()` for their
+    // provider: both must reach the one engine, or a connected account would be unknown to the
+    // payment that follows it.
+    const forConnection = paymentProviders(sim).get('sim-pay')
+    const forPayments = paymentProviders(sim).get('sim-pay')
+    if (forConnection === undefined || forPayments === undefined) throw new Error('no provider')
+
+    const started = await forConnection.startConnection(request)
+    if (started.kind !== 'done') throw new Error('the connection did not start')
+    const { accountRef } = started.result
+    expect(await forPayments.readConnection(accountRef)).toMatchObject({
+      value: { canTakePayments: false },
     })
-    await expect(
-      providers.get('sim-pay')?.readConnection(providerRef('simpay_club_biad')),
-    ).resolves.toMatchObject({ value: { canTakePayments: false, missing: ['account'] } })
+
+    simulatedForms(sim).get('sim-pay')?.(accountRef)
+
+    expect(await forPayments.readConnection(accountRef)).toMatchObject({
+      value: { canTakePayments: true, missing: [] },
+    })
   })
 })

@@ -145,6 +145,22 @@
       "pay_first": "Pay first"
     }
   },
+  "simPayOnboarding": {
+    "badge": "Simulated provider: for testing only",
+    "heading": "Connect your {provider} account",
+    "standsIn": "This page stands in for {provider}'s own sign-up form, which does not exist for the simulated provider. A real provider asks here for the business, bank and ID details. This one asks for nothing, and no money ever moves.",
+    "what": "Press Done to finish connecting, as if you had filled in the form. You go back to Restro’s Paying settings, which read the account back exactly as they do after a real provider’s form.",
+    "done": "Done",
+    "leave": "Leave without finishing",
+    "leaveHint": "Back to the Paying settings with the account left unfinished, as if you had closed a real form.",
+    "problems": {
+      "not_connecting": "This connection is not waiting for the form any more. Go back to the Paying settings and press Connect again.",
+      "account_mismatch": "This link belongs to an older connection. Go back to the Paying settings and press Connect again.",
+      "not_simulated": "This venue’s account is not a simulated one, so this page cannot finish it.",
+      "payments_off": "Simulated payments are not switched on in the worker (WORKER_PAYMENTS_SIM=on), so there is nothing to finish.",
+      "failed": "The connection could not be finished. Try again."
+    }
+  },
   "devFields": {
     "title": "Field preview (development only)",
     "description": "Every field of an item in the default template, with a sample value. Press a pencil to open its editor; what you save stays on this page only.",
@@ -793,8 +809,8 @@
       "bill": "Show the table's bill",
       "ordering": "Order from the phone",
       "pay": "Pay from the phone",
-      "stage4": "Guests see this once ordering is connected (Stage 4)",
-      "stage5": "Guests see this once payment is connected (Stage 5)",
+      "needsPos": "Guests see this once the venue's POS is connected",
+      "needsCard": "Guests see this once card payments are connected for the venue",
       "save": "Save",
       "saved": "Saved. Guests see it after the next publish",
       "readOnly": "Only owners and admins can change these.",
@@ -2668,8 +2684,9 @@
     "d_free": "Free",
     "d_guests": "Guests",
     "d_guests_t": "How many came?",
-    "d_seated": "{party} is seated. The table is open for phones.",
-    "d_seated_walk_in": "Seated. The table is open for phones.",
+    "d_seated": "{party} is seated.",
+    "d_seated_walk_in": "Seated.",
+    "d_open": "The table is open for phones.",
     "d_closed": "The table stayed closed for phones. Ask someone who may open it.",
     "d_undone": "The arrival is undone and the table is closed again.",
     "d_taken": "{party} is on {spot} from {time}. Move them first.",
@@ -2808,7 +2825,7 @@
     "w_waited": "{party} has waited {duration}.",
     "w_order": "Oldest first: the party that has waited longest is at the top.",
     "w_empty": "Parties with no spot yet appear here.",
-    "w_seated": "{party} is seated on {spot}. The table is open for phones.",
+    "w_seated": "{party} is seated on {spot}.",
     "w_add": "Add a party",
     "w_add_b": "They wait from now. Give them a spot when one frees.",
     "w_name_opt": "Name (optional)",

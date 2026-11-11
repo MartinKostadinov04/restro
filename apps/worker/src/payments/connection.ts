@@ -45,7 +45,7 @@ interface AccountRow {
   readonly checks: unknown
 }
 
-async function accountOf(
+export async function accountOf(
   env: ConnectionEnv,
   target: { readonly tenantId: string; readonly venueId: string },
 ): Promise<AccountRow | null> {
