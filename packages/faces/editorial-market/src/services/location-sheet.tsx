@@ -7,17 +7,69 @@
 //   and Not now. Closing the sheet is not an answer: it only goes back (`dismiss`).
 // - `checking`: "Checking your location…".
 // - `failed`: Call a waiter where the venue takes calls (else the still card "Please order from
-//   your waiter"), "Stop location check" and Cancel.
+//   your waiter"), "Stop location check" and Cancel. The call's own outcome shows here and the
+//   sheet goes only once the host took it (D72): a refusal or a lost answer is no success (DA-5).
 //
-// "Stop location check" is also on the bill (bill-sheet.tsx). The face shows no position, pass or
-// token: it only calls the host's controls (`binding.location`).
+// "Stop location check" is also on every service sheet while the phone holds a pass (sheets.tsx):
+// Martin 11-06, DA-9 — it must stay reachable whatever the venue's Bill switch is, because the
+// consent text promises "You can stop anytime". The face shows no position, pass or token: it only
+// calls the host's controls (`binding.location`).
 
 import { useEffect, useRef } from 'react'
 
 import { Overlay } from '../overlay'
-import { newActionId } from './command'
+import { useWaiterCall } from './call-sheet'
 import { PreviewMarker, StatePanel } from './parts'
-import { useServices } from './provider'
+import { useServices, useServicesRequired } from './provider'
+
+/**
+ * The way on from a failed check where the venue takes calls: Call a waiter. The sheet goes only
+ * once the host has taken the call (D72, DA-5); a refusal or an answer that was lost keeps the card
+ * up with its word, so the guest is never left believing a waiter is coming.
+ */
+function CallWaiterFromFailed({ dismiss }: { readonly dismiss: () => void }) {
+  const o = useServicesRequired()
+  const { busy, notice, call } = useWaiterCall()
+  return (
+    <>
+      <button
+        type="button"
+        className="ro-primary"
+        data-design-part="button"
+        data-slot="location.call"
+        disabled={busy}
+        onClick={() => {
+          void call().then((taken) => {
+            if (taken) dismiss()
+          })
+        }}
+      >
+        {o.words.locationCallWaiter}
+      </button>
+      {notice}
+    </>
+  )
+}
+
+/**
+ * Why the order and the bill are hidden while the phone has no pass, with the guest's own "Allow
+ * location", which brings the consent screen back (`location.reopen`). D119: after "Not now" or
+ * "Stop location check" the check never asks again that day by itself, so this tap is the way back.
+ * It is in the bag, and on the menu itself once a tap was refused for it (DA-22).
+ */
+export function LocationNeeded() {
+  const o = useServices()
+  const reopen = o?.binding.location?.reopen
+  if (o === null || reopen === undefined) return null
+  return (
+    <div className="ro-notice" data-slot="location.needed" data-location-prompt="none">
+      <span>{o.words.locationNeeded}</span>
+      <button type="button" className="ro-ghost" onClick={() => reopen()}>
+        {o.words.locationAllowAgain}
+      </button>
+    </div>
+  )
+}
 
 /** The stop control: one small button, only where the host can stop the check. */
 export function StopLocationCheck() {
@@ -72,7 +124,7 @@ export function LocationSheet() {
     <Overlay key="location" title={title} closeLabel={guest.close} onClose={controls.dismiss}>
       <PreviewMarker show={state.preview} words={words} />
       {prompt === 'consent' ? (
-        <div className="ro-sheet" data-slot="location.consent">
+        <div className="ro-sheet" data-slot="location.consent" data-location-prompt="consent">
           <p>
             {words.locationConsent(location.venueName)}
             {privacyUrl === null ? null : (
@@ -87,6 +139,7 @@ export function LocationSheet() {
           <button
             type="button"
             className="ro-primary is-wide"
+            data-design-part="button"
             onClick={() => void controls.allow()}
           >
             <span>{words.locationAllow}</span>
@@ -96,28 +149,18 @@ export function LocationSheet() {
           </button>
         </div>
       ) : null}
-      {prompt === 'checking' ? <StatePanel tone="wait" title={words.locationChecking} /> : null}
+      {prompt === 'checking' ? (
+        <div data-location-prompt="checking">
+          <StatePanel tone="wait" title={words.locationChecking} />
+        </div>
+      ) : null}
       {prompt === 'failed' ? (
-        <div className="ro-sheet" data-slot="location.failed">
+        <div className="ro-sheet" data-slot="location.failed" data-location-prompt="failed">
           <StatePanel tone="bad" title={words.locationFailed} hint={words.locationWhy}>
             {o.features.callWaiter !== null ? (
-              <button
-                type="button"
-                className="ro-primary"
-                onClick={() => {
-                  void o.run({
-                    kind: 'service.request',
-                    actionId: newActionId(),
-                    request: 'waiter',
-                    note: '',
-                  })
-                  controls.dismiss()
-                }}
-              >
-                {words.locationCallWaiter}
-              </button>
+              <CallWaiterFromFailed dismiss={controls.dismiss} />
             ) : (
-              <p className="ro-notice" data-slot="location.still-card">
+              <p className="ro-notice" data-slot="location.still-card" data-location-still-card="">
                 {words.locationOrderFromWaiter}
               </p>
             )}

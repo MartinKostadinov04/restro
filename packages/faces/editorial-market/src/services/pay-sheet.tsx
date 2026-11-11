@@ -22,6 +22,7 @@ import {
   NO_TIP,
   offersPay,
   offersReceiptEmail,
+  type PayBlock,
   type PayFormSlot,
   type PayingStrings,
   type PayingView,
@@ -30,29 +31,30 @@ import {
   type Picks,
   type PreparedConfirmation,
   paidReceiptText,
-  parseMinor,
   payBlock,
   payFormLocale,
-  payMoney,
   payScreen,
+  paySignedMoney,
   payStartCommand,
   pickWhole,
   prepareConfirmation,
   reconcilePicks,
   refusalText,
+  type ServiceStrings,
   sameAmountAgo,
   saveConfirmation,
   type TableBillLineView,
   type TableBillView,
-  TIP_PERCENTS,
   type TipChoice,
   togglePick,
 } from '@restro/shell'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
-
+import { Photo } from '../parts'
+import { useWaiterCall } from './call-sheet'
 import { newActionId } from './command'
 import { StatePanel } from './parts'
 import { useServicesRequired } from './provider'
+import { TipRow } from './tip-row'
 
 /** Puts the page's card form into the slot; the face loads no provider library. */
 function FormSlot({
@@ -89,7 +91,7 @@ function FormSlot({
   useEffect(() => {
     handle.current?.update(latest.current)
   }, [label, failedText])
-  return <div data-slot="pay.form" ref={holder} />
+  return <div data-slot="pay.form" data-design-part="pay.methods" ref={holder} />
 }
 
 /** The Payment confirmation's id: the button that opens it names it in `aria-controls`. */
@@ -97,6 +99,42 @@ const CONFIRMATION_ID = 'ro-pay-confirmation'
 
 /** "×2" for a line of more than one. */
 const mark = (quantity: string) => (quantity === '1' ? '' : ` ×${quantity}`)
+
+/** Why Pay is greyed, in the guest's words; `bad_email` says it at the field itself. */
+function payBlockText(
+  block: PayBlock | null,
+  said: {
+    readonly words: ServiceStrings
+    readonly w: PayingStrings
+    /** The venue's smallest card payment as text, for `below_minimum`. */
+    readonly minCard: string
+  },
+): string | null {
+  const { words, w } = said
+  switch (block) {
+    case null:
+      return null
+    case 'offline':
+      return words.offline
+    case 'ordering_paused':
+      return words.orderingPaused
+    case 'cards_paused':
+      return w.cardsPaused
+    case 'not_up_to_date':
+      return w.notUpToDate
+    case 'nothing_picked':
+      return w.nothingPicked
+    // The POS's discount is as big as the ticked lines: there is nothing a card can be charged.
+    case 'nothing_owed':
+      return w.nothingOwed
+    case 'below_minimum':
+      return w.belowMinimum(said.minCard)
+    case 'tip_too_big':
+      return w.tipTooBig
+    case 'bad_email':
+      return w.emailInvalid
+  }
+}
 
 /**
  * Who processes the payment and for which legal entity, with the links to the legal details and
@@ -176,6 +214,10 @@ function Confirmation({
   readonly failedText: string
   readonly onClose: () => void
 }) {
+  const { assetBase, locale, view: menu } = useServicesRequired()
+  // The Receipt page's Venue block (D130): the venue's logo with the name small under it. A venue
+  // without a logo keeps the name.
+  const logo = menu.design.receipt?.venue_block === 'logo' ? menu.theme.logo : null
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
   // The image is drawn as the page opens, so the Save tap has it ready (a share sheet needs the tap).
@@ -201,7 +243,7 @@ function Confirmation({
     if (alive.current) setSaving(false)
   }
   return (
-    <article className="ro-confirm" id={id} data-slot="pay.confirmation">
+    <article className="ro-confirm" id={id} data-slot="pay.confirmation" data-design-part="receipt">
       <button
         type="button"
         className="ro-ghost"
@@ -213,7 +255,27 @@ function Confirmation({
       <h3 className="ro-h" tabIndex={-1} ref={heading}>
         {view.title}
       </h3>
-      {view.venue === null ? null : <p data-slot="pay.confirmation.venue">{view.venue}</p>}
+      {view.venue === null ? null : (
+        <>
+          {logo === null ? null : (
+            <Photo
+              image={logo}
+              assetBase={assetBase}
+              page={locale}
+              sizes="144px"
+              className="ro-confirm-logo"
+              loading="eager"
+            />
+          )}
+          <p
+            data-slot="pay.confirmation.venue"
+            data-design-part="receipt.venue"
+            className={logo === null ? undefined : 'is-under-logo'}
+          >
+            {view.venue}
+          </p>
+        </>
+      )}
       {view.when === null ? null : <p data-slot="pay.confirmation.when">{view.when}</p>}
       <ul className="ro-lines">
         {view.lines.map((line, index) => (
@@ -243,6 +305,7 @@ function Confirmation({
       <button
         type="button"
         className="ro-primary is-wide"
+        data-design-part="button"
         data-slot="pay.confirmation.save"
         disabled={saving}
         onClick={() => void save()}
@@ -267,8 +330,11 @@ export function PaySheet() {
   const payment = state.payment ?? null
   const tipsOffered = state.ordering?.tips === true
   const receiptEmailOffered = offersReceiptEmail(paying)
+  // Every amount here is the POS's or the server's, and a line of the POS's may be negative (a
+  // waiter's discount, #293 DA-8): one signed format, so a discount shows as "-4,00 EUR" and the
+  // whole menu is never replaced by the load-failure notice.
   const money = useMemo(
-    () => (minor: number) => payMoney(minor, bill?.currency ?? 'EUR', locale),
+    () => (minor: number) => paySignedMoney(minor, bill?.currency ?? 'EUR', locale),
     [bill?.currency, locale],
   )
 
@@ -340,6 +406,7 @@ export function PaySheet() {
           <button
             type="button"
             className="ro-primary is-wide"
+            data-design-part="button"
             onClick={() => binding.location?.reopen()}
           >
             <span>{w.allowLocation}</span>
@@ -360,39 +427,23 @@ export function PaySheet() {
     tipsOffered,
     receiptEmail,
     state.offline === true,
+    // D120: while ordering is paused Pay is greyed, with the pause's own line.
+    state.ordering?.state === 'paused',
   )
-  const blockWords =
-    block === 'offline'
-      ? words.offline
-      : block === 'cards_paused'
-        ? w.cardsPaused
-        : block === 'not_up_to_date'
-          ? w.notUpToDate
-          : block === 'nothing_picked'
-            ? w.nothingPicked
-            : block === 'below_minimum'
-              ? w.belowMinimum(money(paying.minCardMinor))
-              : block === 'tip_too_big'
-                ? w.tipTooBig
-                : block === 'bad_email'
-                  ? w.emailInvalid
-                  : null
+  const blockWords = payBlockText(block, {
+    words,
+    w,
+    minCard: money(paying.minCardMinor),
+  })
   const free = freeLines(bill)
   // Everything is paid: nothing is free to pay and the sitting has paid lines, so the choosing, the
   // totals and Pay go, and the bill shows what was paid (D127 1.2).
   const settled = free.length === 0 && bill.paidLines.length > 0
   const hasLines = bill.parts.some((part) => part.lines.length > 0)
   const everything = free.length > 0 && free.every((line) => picks.has(line.id))
-  const pickTip = (next: TipChoice) =>
-    setTip((current) =>
-      current.kind === next.kind &&
-      (next.kind !== 'percent' || (current.kind === 'percent' && current.percent === next.percent))
-        ? NO_TIP
-        : next,
-    )
 
   return (
-    <div className="ro-sheet" data-slot="pay.choose">
+    <div className="ro-sheet" data-slot="pay.choose" data-design-part="pay">
       {settled ? null : <h3 className="ro-h">{w.pickTitle}</h3>}
       {paying.state === 'off' && !settled ? <p className="ro-notice">{w.askWaiterToPay}</p> : null}
       {offersPay(state) && !settled ? (
@@ -400,6 +451,7 @@ export function PaySheet() {
           type="button"
           className="ro-ghost"
           data-slot="pay.whole"
+          data-design-part="pay.scope"
           aria-pressed={everything}
           onClick={() => setPicks(pickWhole(picks, bill))}
         >
@@ -445,35 +497,14 @@ export function PaySheet() {
       {paying.state === 'off' || settled ? null : (
         <>
           {tipsOffered ? (
-            <fieldset className="ro-tips" data-slot="pay.tip.row">
-              <legend>{w.tipLabel}</legend>
-              {TIP_PERCENTS.map((percent) => (
-                <button
-                  key={percent}
-                  type="button"
-                  className="ro-ghost"
-                  data-slot="pay.tip.preset"
-                  aria-pressed={tip.kind === 'percent' && tip.percent === percent}
-                  onClick={() => pickTip({ kind: 'percent', percent })}
-                >
-                  {percent} %
-                </button>
-              ))}
-              <label className="ro-input">
-                <span>{w.tipOther}</span>
-                <input
-                  inputMode="decimal"
-                  value={other}
-                  data-slot="pay.tip.other"
-                  aria-invalid={other.trim() !== '' && parseMinor(other) === null}
-                  onChange={(event) => {
-                    setOther(event.target.value)
-                    const minor = parseMinor(event.target.value)
-                    setTip(minor === null ? NO_TIP : { kind: 'other', minor })
-                  }}
-                />
-              </label>
-            </fieldset>
+            <TipRow
+              tip={tip}
+              other={other}
+              totals={totals}
+              money={money}
+              onTip={setTip}
+              onOther={setOther}
+            />
           ) : null}
           {receiptEmailOffered ? (
             <label className="ro-input">
@@ -511,6 +542,7 @@ export function PaySheet() {
             <button
               type="button"
               className="ro-primary is-wide"
+              data-design-part="button"
               data-slot="pay.start"
               disabled={block !== null || busy}
               onClick={() => {
@@ -524,7 +556,12 @@ export function PaySheet() {
           ) : (
             <div className="ro-notice" role="alertdialog" data-slot="pay.same">
               <span>{w.sameQuestion(asking)}</span>
-              <button type="button" className="ro-primary" onClick={() => void start()}>
+              <button
+                type="button"
+                className="ro-primary"
+                data-design-part="button"
+                onClick={() => void start()}
+              >
                 {w.sameYes}
               </button>
               <button type="button" className="ro-ghost" onClick={() => setAsking(null)}>
@@ -586,31 +623,34 @@ function Screen({
   )
 }
 
-/** Call a waiter: the way on from every failure screen of paying (D127), where the venue takes calls. */
-function CallWaiter() {
+/**
+ * Call a waiter: the way on from every failure screen of paying (D127), where the venue takes
+ * calls. It shows what became of its own call (D72, DA-5): pending, then the host's word, and an
+ * answer that was lost is never success (D120). The button stays out of reach once the call may be
+ * with the staff; a refusal leaves it as it was, so the guest can ask again.
+ */
+export function CallWaiter() {
   const o = useServicesRequired()
+  const { busy, notice, call } = useWaiterCall()
   if (o.features.callWaiter === null) return null
   return (
-    <button
-      type="button"
-      className="ro-ghost"
-      data-slot="pay.call"
-      onClick={() =>
-        void o.run({
-          kind: 'service.request',
-          actionId: newActionId(),
-          request: 'waiter',
-          note: '',
-        })
-      }
-    >
-      {o.words.paying.callWaiter}
-    </button>
+    <>
+      <button
+        type="button"
+        className="ro-ghost"
+        data-slot="pay.call"
+        disabled={busy}
+        onClick={() => void call()}
+      >
+        {o.words.paying.callWaiter}
+      </button>
+      {notice}
+    </>
   )
 }
 
 /** This phone's payment, from "Preparing your bill…" to its end. */
-function PaymentScreen({
+export function PaymentScreen({
   payment,
   money,
 }: {
@@ -786,6 +826,7 @@ function PaymentScreen({
               <button
                 type="button"
                 className="ro-primary is-wide"
+                data-design-part="button"
                 data-slot="pay.again"
                 onClick={dismiss}
               >

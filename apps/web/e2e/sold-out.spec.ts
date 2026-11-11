@@ -14,7 +14,7 @@ import { ADMIN_PASSWORD } from './support'
 // Bulgarian, the admin's default. Steps:
 //
 //   a manager marks a drink in the row menu -> badge and the "Изчерпани (1)" chip; within 20 s the
-//   guest page shows it sold out, with no new menu version (the pointer file is the same)
+//   drink leaves the guest page (D131), with no new menu version (the pointer file is the same)
 //   the chip's list puts it back on sale -> the guest page is back to normal
 //   the Campari barsy has off sale: its own badge and NO control anywhere, in the row or the sheet
 //   the item sheet marks and unmarks too
@@ -35,7 +35,6 @@ const MEMBER_EMAIL = 'sold-out-member@demo-club.test'
 const SLUG = 'sold-out-club'
 /** What the guest page waits for: the brief says 20 s; the worker needs one to three. */
 const GUEST_WAIT = { timeout: 20_000, intervals: [1_000, 1_000, 2_000] }
-const SOLD_OUT_WORD = 'Изчерпано'
 /** The fixed node ids of scripts/seed-sold-out-e2e.ts. */
 const NEGRONI = `nd_${'E2eSoNegroni'.padEnd(22, '0')}`
 const CAMPARI = `nd_${'E2eSoCampari'.padEnd(22, '0')}`
@@ -83,21 +82,24 @@ async function markFromRowMenu(target: Page, name: string) {
   await target.getByTestId('item-mark-sold-out').click()
 }
 
-/** What a guest sees of one drink, on a fresh browser (no cached `live.json`). */
-async function guestState(browser: Browser, name: string) {
+/**
+ * What a guest sees of one drink, on a fresh browser (no cached `live.json`): on the menu, or gone
+ * (D131: a sold-out item leaves the page). Waits for the page's overlay to arrive first.
+ */
+async function guestState(browser: Browser, name: string): Promise<'available' | 'gone'> {
   const context = await browser.newContext()
   try {
     const guest = await context.newPage()
+    const overlay = guest.waitForResponse((response) => response.url().includes('/live.json'))
     await guest.goto(`${guestPath}?lang=bg`)
     await expect(guest.getByRole('heading', { level: 1 })).toBeVisible()
+    await overlay
+    await expect(guest.locator('[data-item]').first()).toBeVisible()
+    await guest.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)))
     const card = guest
       .locator('[data-item]')
       .filter({ has: guest.getByRole('heading', { name, exact: true }) })
-      .first()
-    return {
-      state: await card.getAttribute('data-state'),
-      soldOutWord: ((await card.textContent()) ?? '').includes(SOLD_OUT_WORD),
-    }
+    return (await card.count()) === 0 ? 'gone' : 'available'
   } finally {
     await context.close()
   }
@@ -206,10 +208,10 @@ test('a manager marks a drink: badge and chip at once, guests within 20 s, no ne
   await openComposer()
   expect(await snapshotRows()).toMatchObject([{ version: 1, status: 'published' }])
   const pointer = await cdnJson(page, currentFile())
-  expect(await guestState(browser, 'Негрони')).toEqual({ state: 'available', soldOutWord: false })
+  expect(await guestState(browser, 'Негрони')).toBe('available')
   await expect(page.getByTestId('sold-out-chip')).toHaveCount(0)
 
-  // A guest who already has the menu open (the Editorial Market, the registry's default, SH-04):
+  // A guest who already has the menu open:
   // the page asks for the overlay itself every 15 seconds, so the mark must reach it without a
   // reload. `window.openGuestPage` is the page's own marker: it is gone if the page reloads.
   const watcherContext = await browser.newContext()
@@ -236,16 +238,12 @@ test('a manager marks a drink: badge and chip at once, guests within 20 s, no ne
   await expect(page.getByTestId('sold-out-chip')).toHaveText('Изчерпани (1)')
   await page.screenshot({ path: shotPath('bg-light-desktop-marked') })
 
-  // Within 20 s the guest page says sold out: the worker rewrote live.json, nothing else.
-  await expect
-    .poll(async () => (await guestState(browser, 'Негрони')).state, GUEST_WAIT)
-    .toBe('sold_out')
-  expect(await guestState(browser, 'Негрони')).toEqual({ state: 'sold_out', soldOutWord: true })
-  expect(await guestState(browser, 'Мохито')).toEqual({ state: 'available', soldOutWord: false })
-  // The page that was already open shows it too, within its own 15-second refresh (the worker has
-  // rewritten live.json by now), and was not reloaded to do it.
-  await expect(watched).toHaveAttribute('data-state', 'sold_out', { timeout: 30_000 })
-  await expect(watched).toContainText(SOLD_OUT_WORD)
+  // Within 20 s the drink is off the guest page (D131): the worker rewrote live.json, nothing else.
+  await expect.poll(() => guestState(browser, 'Негрони'), GUEST_WAIT).toBe('gone')
+  expect(await guestState(browser, 'Мохито')).toBe('available')
+  // It leaves the page that was already open too, within its own 15-second refresh (the worker has
+  // rewritten live.json by now), and that page was not reloaded to do it.
+  await expect(watched).toHaveCount(0, { timeout: 30_000 })
   expect(
     await watcher.evaluate(
       () => (window as unknown as { openGuestPage?: boolean }).openGuestPage === true,
@@ -292,9 +290,7 @@ test('the chip opens the list, and "Върни в продажба" puts the dri
   // The list empties and closes with its last entry; the row loses its badge.
   await expect(page.getByTestId('sold-out-chip')).toHaveCount(0)
   await expect(rowOf(page, 'Негрони').getByTestId('sold-out-badge')).toHaveCount(0)
-  await expect
-    .poll(async () => (await guestState(browser, 'Негрони')).state, GUEST_WAIT)
-    .toBe('available')
+  await expect.poll(() => guestState(browser, 'Негрони'), GUEST_WAIT).toBe('available')
   expect(Object.keys(((await cdnJson(page, liveFile())) as { items: object }).items)).toHaveLength(
     1,
   )
@@ -314,8 +310,8 @@ test('an item barsy has off sale says so and has no control, in the row and in t
   await expect(page.getByTestId('item-unmark-sold-out')).toHaveCount(0)
   await page.keyboard.press('Escape')
 
-  // The guests see it sold out all the time: it is in the snapshot, whatever the managers do.
-  expect(await guestState(browser, 'Кампари')).toEqual({ state: 'sold_out', soldOutWord: true })
+  // It is off the guests' menu all the time: it is in the snapshot, whatever the managers do.
+  expect(await guestState(browser, 'Кампари')).toBe('gone')
 
   await campari.getByTestId('item-open').click()
   const card = page.getByTestId('item-sheet-sale')
@@ -341,15 +337,11 @@ test('the item sheet marks and unmarks too', async ({ browser }) => {
   await expect(card.getByTestId('sale-mark')).toHaveCount(0)
   await page.waitForTimeout(600)
   await page.screenshot({ path: shotPath('bg-light-desktop-sheet-marked') })
-  await expect
-    .poll(async () => (await guestState(browser, 'Мохито')).state, GUEST_WAIT)
-    .toBe('sold_out')
+  await expect.poll(() => guestState(browser, 'Мохито'), GUEST_WAIT).toBe('gone')
 
   await card.getByTestId('sale-unmark').click()
   await expect(card).toHaveAttribute('data-state', 'on')
-  await expect
-    .poll(async () => (await guestState(browser, 'Мохито')).state, GUEST_WAIT)
-    .toBe('available')
+  await expect.poll(() => guestState(browser, 'Мохито'), GUEST_WAIT).toBe('available')
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('item-sheet')).toHaveCount(0)
   await expect(rowOf(page, 'Мохито').getByTestId('sold-out-badge')).toHaveCount(0)
@@ -429,9 +421,7 @@ test("the mark lapses with the service day: the real worker's tick remakes live.
 
   await openComposer()
   await markFromRowMenu(page, 'Негрони')
-  await expect
-    .poll(async () => (await guestState(browser, 'Негрони')).state, GUEST_WAIT)
-    .toBe('sold_out')
+  await expect.poll(() => guestState(browser, 'Негрони'), GUEST_WAIT).toBe('gone')
 
   runScript('./scripts/seed-sold-out-e2e.ts', 'day-ends', '23:59')
   // The worker's tick runs every minute: within about 90 s live.json no longer lists the drink.
@@ -442,9 +432,7 @@ test("the mark lapses with the service day: the real worker's tick remakes live.
       { timeout: 100_000, intervals: [3_000] },
     )
     .toBe(1) // only the Campari, which barsy has off sale
-  await expect
-    .poll(async () => (await guestState(browser, 'Негрони')).state, GUEST_WAIT)
-    .toBe('available')
+  await expect.poll(() => guestState(browser, 'Негрони'), GUEST_WAIT).toBe('available')
   // The composer reads the same clock: yesterday's mark is out of context, the drink is on sale.
   await page.reload()
   await expect(rowOf(page, 'Негрони').getByTestId('sold-out-badge')).toHaveCount(0)

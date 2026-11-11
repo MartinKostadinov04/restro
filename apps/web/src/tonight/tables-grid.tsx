@@ -64,7 +64,9 @@ function Tile({
   // A closed table opens in one tap; a person without the right opens nothing and sees no sheet.
   const tapOpens = closed && view.can.openClose
   const className = cn(
-    'flex min-h-20 min-w-0 flex-col items-start justify-between gap-1 rounded-lg border p-2.5 text-left',
+    // w-full: a button is as wide as its content unless told otherwise, and a long status word
+    // (Bulgarian "Затворена") then pushed the tile past its grid column and made the panel scroll sideways.
+    'flex min-h-20 w-full min-w-0 flex-col items-start justify-between gap-1 rounded-lg border px-2 py-2.5 text-left',
     needs && tile.state !== 'payment' && 'border-info/40 bg-info/10 text-info',
     // Red is only for money held on a guest's card (paying plan; screen 1).
     tile.state === 'payment' && 'border-destructive/40 bg-destructive/10 text-destructive',
@@ -74,9 +76,9 @@ function Tile({
   const content = (
     <>
       <span className="w-full text-base font-semibold [overflow-wrap:anywhere]">{name}</span>
-      <span className="flex items-center gap-1 text-[13px] leading-tight">
+      <span className="flex w-full items-start gap-1 text-[13px] leading-tight">
         <Icon aria-hidden className="size-4 shrink-0" />
-        <span>{t(word)}</span>
+        <span className="min-w-0 [overflow-wrap:anywhere]">{t(word)}</span>
       </span>
     </>
   )
@@ -153,7 +155,9 @@ function Group({
           ) : null}
         </h3>
       ) : null}
-      <ul className="grid grid-cols-3 gap-2 sm:grid-cols-5 xl:grid-cols-6">
+      {/* As many columns as fit at 7rem a tile (room for the longest Bulgarian status word, "Одобрение",
+          on one line), so a narrow panel has fewer columns, never a cut-off one. */}
+      <ul className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2">
         {group.tables.map((tile) => (
           <li key={tile.id} className="min-w-0">
             <Tile

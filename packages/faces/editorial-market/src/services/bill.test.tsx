@@ -2,7 +2,8 @@
 
 // The table bill (brief SH-06 test 4): the face draws the host's `state.bill` and nothing else.
 
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { type ServiceState, stringsFor } from '@restro/shell'
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { distinctRounds, keyed } from './bill'
@@ -13,8 +14,14 @@ import {
   drawFace,
   eur,
   fakeHost,
+  itemNamed,
   orderingView,
+  orderLine,
+  orderOf,
+  payingOf,
   resetPage,
+  tableBillOf,
+  tableLine,
   text,
 } from './test-kit'
 
@@ -37,8 +44,8 @@ const staff = billRound('s1', 'staff', [
 const guest = billRound('g1', 'guest', [billLine('g1-1', 'Hummus', 1, 700, 'received')], A, '20:15')
 
 const openBill = () => {
-  fireEvent.click(screen.getByRole('button', { name: 'Table order' }))
-  return screen.getByRole('dialog', { name: 'Table order' })
+  fireEvent.click(screen.getByRole('button', { name: 'Your table’s bill' }))
+  return screen.getByRole('dialog', { name: 'Your table’s bill' })
 }
 
 describe('distinctRounds', () => {
@@ -99,11 +106,13 @@ describe('the bill sheet', () => {
   it("shows the bill button with the host's total only once the bill has a round", () => {
     const host = fakeHost()
     const page = drawFace(host)
-    expect(screen.getByRole('button', { name: 'Table order' }).textContent).toBe('Bill')
+    expect(screen.getByRole('button', { name: 'Your table’s bill' }).textContent).toBe('Bill')
     page.update({ bill: billOf([staff], 1850) })
-    expect(screen.getByRole('button', { name: 'Table order' }).textContent).toBe('Bill · €18.50')
+    expect(screen.getByRole('button', { name: 'Your table’s bill' }).textContent).toBe(
+      'Bill · €18.50',
+    )
     page.update({ bill: billOf([], 0) })
-    expect(screen.getByRole('button', { name: 'Table order' }).textContent).toBe('Bill')
+    expect(screen.getByRole('button', { name: 'Your table’s bill' }).textContent).toBe('Bill')
   })
 
   it('draws a guest round once even when the state lists it twice', () => {
@@ -121,16 +130,20 @@ describe('the bill sheet', () => {
   })
 
   it('never adds a round of its own: a bill that is empty stays empty after the host accepted an order', async () => {
-    const host = fakeHost()
+    const host = fakeHost({ order: orderOf([orderLine(itemNamed(orderingView(), 'Hummus'))]) })
     drawFace(host)
-    fireEvent.click(screen.getByRole('button', { name: 'Add Hummus' }))
     fireEvent.click(screen.getByRole('button', { name: /View bag/ }))
     fireEvent.click(
-      within(screen.getByRole('dialog')).getByRole('button', { name: /Send to kitchen/ }),
+      within(screen.getByRole('dialog')).getByRole('button', { name: /^Send 1 item/ }),
     )
     await waitFor(() => expect(host.of('order.send')).toHaveLength(1))
-    host.of('order.send')[0]?.answer()
-    const sheet = await screen.findByRole('dialog', { name: 'Table order' })
+    await act(async () => host.of('order.send')[0]?.answer())
+    // The face opens nothing and draws no round: the bill is the host's.
+    expect(screen.queryByRole('dialog', { name: 'Your table’s bill' })).toBeNull()
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: 'Your table’s bill' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Your table’s bill' })
     expect(within(sheet).getByText('Nothing has been ordered yet.')).toBeTruthy()
     expect(sheet.querySelector('.ro-round')).toBeNull()
     expect(within(sheet).queryByRole('button', { name: /^Pay/ })).toBeNull()
@@ -182,10 +195,33 @@ describe('the bill sheet', () => {
     expect(within(sheet).queryByRole('button', { name: /^Pay/ })).toBeNull()
   })
 
+  it('has no Pay and says "Ask your waiter to pay." while paying is off at the venue (#346, D127)', () => {
+    const host = fakeHost({ bill: billOf([staff], 1850), paying: payingOf({ state: 'off' }) })
+    drawFace(host)
+    // Not the pay entry in the header either: neither leads to a Pay screen.
+    expect(screen.queryByRole('button', { name: 'Pay' })).toBeNull()
+    const sheet = openBill()
+    expect(within(sheet).queryByRole('button', { name: /^Pay/ })).toBeNull()
+    expect(within(sheet).getByText('Ask your waiter to pay.')).toBeTruthy()
+  })
+
+  it('keeps Pay where paying is on, and says nothing about the waiter', () => {
+    drawFace(fakeHost({ bill: billOf([staff], 1850), paying: payingOf({ state: 'on' }) }))
+    const sheet = openBill()
+    expect(within(sheet).getByRole('button', { name: /^Pay/ })).toBeTruthy()
+    expect(within(sheet).queryByText('Ask your waiter to pay.')).toBeNull()
+  })
+
+  it('says nothing about paying at a venue with Pay switched off', () => {
+    const noPay = { ...view, features: { ...view.features, pay: false } }
+    drawFace(fakeHost({ bill: billOf([staff], 1850), paying: payingOf({ state: 'off' }) }), noPay)
+    expect(within(openBill()).queryByText('Ask your waiter to pay.')).toBeNull()
+  })
+
   it('draws the bill in Bulgarian, with the words of the language', () => {
     drawFace(fakeHost({ bill: billOf([staff, guest], 2550) }), orderingView('bg_BG'))
-    fireEvent.click(screen.getByRole('button', { name: 'Поръчка на масата' }))
-    const sheet = screen.getByRole('dialog', { name: 'Поръчка на масата' })
+    fireEvent.click(screen.getByRole('button', { name: 'Сметката на масата' }))
+    const sheet = screen.getByRole('dialog', { name: 'Сметката на масата' })
     expect(sheet.textContent).toContain('От сервитьора')
     expect(sheet.textContent).toContain('От приложението')
     expect(sheet.textContent).toContain('Сервирана')
@@ -206,5 +242,145 @@ describe('the bill sheet', () => {
     drawFace(fakeHost({ bill: billOf([billRound('s1', 'staff', [line])], 1250) }))
     expect(openBill().textContent).toContain('Large · Avocado')
     expect(eur(1250).text).toBe('€12.50')
+  })
+})
+
+describe("the table's bill as the POS reads it (state.tableBill, D127)", () => {
+  const w = stringsFor('en_US').services
+  const own = (changes: Partial<ServiceState> = {}) =>
+    fakeHost({ tableBill: tableBillOf(), paying: payingOf(), ...changes })
+
+  it('draws the POS’s own lines and amounts, how old the reading is, and what is left to pay', () => {
+    drawFace(own())
+    const sheet = openBill()
+    const lines = [...sheet.querySelectorAll('[data-slot="bill.lines"] li')].map(
+      (line) => line.textContent,
+    )
+    expect(lines).toEqual(['House wine · €12.50', 'Mojito · €10.00'])
+    expect(sheet.querySelector('[data-slot="bill.updated"]')?.textContent).toBe(w.paying.updated(4))
+    expect(sheet.querySelector('[data-slot="bill.owed"]')?.textContent).toBe(
+      `${w.paying.leftToPay}€22.50`,
+    )
+    expect(within(sheet).queryByText(w.emptyTab)).toBeNull()
+  })
+
+  it('says the reading is not up to date when the host’s last reading failed', () => {
+    drawFace(own({ tableBill: tableBillOf(undefined, { complete: false, readAgoSeconds: 40 }) }))
+    expect(openBill().querySelector('[data-slot="bill.updated"]')?.textContent).toBe(
+      w.paying.stale(40),
+    )
+  })
+
+  it('greys a line in a payment that is not final with "Being paid"', () => {
+    drawFace(
+      own({
+        tableBill: tableBillOf([
+          tableLine(1, 'House wine', 1250, { beingPaid: true }),
+          tableLine(2, 'Mojito', 1000),
+        ]),
+      }),
+    )
+    const [wine, mojito] = [...openBill().querySelectorAll('[data-slot="bill.lines"] li')]
+    expect(wine?.getAttribute('data-being-paid')).toBe('')
+    expect(wine?.textContent).toContain(w.paying.beingPaid)
+    expect(mojito?.hasAttribute('data-being-paid')).toBe(false)
+  })
+
+  it('offers Pay with the amount left, and shows the same amount on the bill button in the bar', () => {
+    drawFace(own())
+    expect(screen.getByRole('button', { name: 'Your table’s bill' }).textContent).toContain(
+      '€22.50',
+    )
+    const sheet = openBill()
+    expect(within(sheet).getByRole('button', { name: /^Pay/ }).textContent).toContain('€22.50')
+  })
+
+  it('says the bill is empty when the POS has no line and nothing was paid in the app', () => {
+    drawFace(own({ tableBill: tableBillOf([]) }))
+    const sheet = openBill()
+    expect(within(sheet).getByText(w.paying.emptyBill)).toBeTruthy()
+    expect(within(sheet).queryByRole('button', { name: /^Pay/ })).toBeNull()
+  })
+
+  it('keeps the lines paid in the app on the bill, greyed, and offers no Pay once everything is paid', () => {
+    drawFace(
+      own({
+        tableBill: tableBillOf([], {
+          owedMinor: 0,
+          paidLines: [{ name: { en_US: 'House wine' }, quantity: '1', amountMinor: 1250 }],
+        }),
+      }),
+    )
+    const sheet = openBill()
+    expect(sheet.querySelector('[data-paid-in-app]')?.textContent).toContain('House wine')
+    expect(within(sheet).queryByText(w.paying.emptyBill)).toBeNull()
+    expect(within(sheet).queryByRole('button', { name: /^Pay/ })).toBeNull()
+  })
+})
+
+describe("a waiter's discount on the POS's bill (#293, DA-8)", () => {
+  const w = stringsFor('en_US').services
+  // The POS sends its own signed amount, so a discount line is negative and a free line is 0. It
+  // used to throw in render and the whole menu was replaced by the load-failure notice.
+  const discounted = () =>
+    fakeHost({
+      tableBill: tableBillOf(
+        [
+          tableLine(1, 'House wine', 1250),
+          tableLine(2, 'Discount', -400),
+          tableLine(3, 'Tap water', 0, { quantity: '0.5' }),
+        ],
+        { totalMinor: 850, owedMinor: 850 },
+      ),
+      paying: payingOf(),
+    })
+
+  it('draws the discount as its own minus line, with the decimal quantity and the free line', () => {
+    drawFace(discounted())
+    const sheet = openBill()
+    const lines = [...sheet.querySelectorAll('[data-slot="bill.lines"] li')]
+    expect(lines.map((line) => line.textContent)).toEqual([
+      'House wine · €12.50',
+      'Discount · -€4.00',
+      'Tap water ×0.5 · €0.00',
+    ])
+    // The minus line is marked, so a Style can set it apart from a line that was ordered.
+    expect(lines.map((line) => line.hasAttribute('data-discount'))).toEqual([false, true, false])
+    expect(sheet.querySelector('[data-slot="bill.owed"]')?.textContent).toBe(
+      `${w.paying.leftToPay}€8.50`,
+    )
+  })
+
+  it('opens Pay with the discount ticked and nothing throws', () => {
+    drawFace(discounted())
+    const bill = openBill()
+    fireEvent.click(within(bill).getByRole('button', { name: /^Pay/ }))
+    const sheet = screen.getByRole('dialog', { name: 'Pay' })
+    expect(
+      [...sheet.querySelectorAll('.ro-lines li')].map((line) => line.textContent?.trim()),
+    ).toEqual(['House wine · €12.50', 'Discount · -€4.00', 'Tap water ×0.5 · €0.00'])
+    fireEvent.click(sheet.querySelector('[data-slot="pay.whole"]') as Element)
+    expect(sheet.querySelector('[data-slot="pay.start"]')?.textContent).toContain('€8.50')
+  })
+
+  it('offers no Pay for a ticked set the discount takes to zero or less: ask the waiter', () => {
+    drawFace(
+      fakeHost({
+        tableBill: tableBillOf(
+          [tableLine(1, 'House wine', 1000), tableLine(2, 'Discount', -1000)],
+          { totalMinor: 0, owedMinor: 0 },
+        ),
+        paying: payingOf(),
+      }),
+    )
+    const sheet = openBill()
+    // Nothing is left to pay, so the bill offers no Pay at all; the pay sheet, reached from the
+    // card in the bar, greys Pay with the line that says to ask the waiter.
+    expect(within(sheet).queryByRole('button', { name: /^Pay/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Pay' }))
+    const pay = screen.getByRole('dialog', { name: 'Pay' })
+    fireEvent.click(pay.querySelector('[data-slot="pay.whole"]') as Element)
+    expect((pay.querySelector('[data-slot="pay.start"]') as HTMLButtonElement).disabled).toBe(true)
+    expect(pay.querySelector('[data-slot="pay.blocked"]')?.textContent).toBe(w.paying.nothingOwed)
   })
 })

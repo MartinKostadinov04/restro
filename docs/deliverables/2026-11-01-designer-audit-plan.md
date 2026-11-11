@@ -30,10 +30,10 @@ This comes first because it is cheap and likely to find real gaps. Most of the r
 
 ### 3. Old data meeting new code (Opus)
 This has to be right before staging, and staging migrations can't easily be undone.
-- **0045 on messy old data:** junk colours, half-set themes, missing menus. Every venue's record must then parse with the schema, and a guest must see the same look before and after the first real save.
+- **0051 on messy old data:** junk colours, half-set themes, missing menus. Every venue's record must then parse with the schema, and a guest must see the same look before and after the first real save.
 - **The same migration with an owner that can't bypass row security,** the class of RR-44. CI still can't catch this (RR-O9).
 - **A venue whose published snapshot still names `qr-phone`.** I found no remaining reference to it in the app's code, so what does its guest page show after a deploy and before a republish? Old snapshots with the new renderer in general.
-- **Deploy order:** 0045, 0046 and 0047 in the order of the journal on `st/foundation`, because the merges renumbered them. 0046 drops `menus.settings` while the old web app may still be running.
+- **Deploy order:** 0051, 0052 and 0053 in the order of the journal on `st/foundation`, because the merges renumbered them (catch-up 8 moved them up from 0045-0047, which now mean or/foundation's guest events, reservations and shared devices). 0052 drops `menus.settings` while the old web app may still be running.
 - **Events with no node:** every reader of `events` (the item sheet, exports, the purge) now meets rows with no node.
 
 ### 4. Attack (Opus)

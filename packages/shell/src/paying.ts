@@ -21,7 +21,7 @@ import {
   sumSignedMinor,
 } from '@restro/core'
 
-import { viewMinor } from './money'
+import { viewMinor, viewSignedMinor } from './money'
 import { PAY_ENDS, type PayEnd } from './service-vocabulary'
 import { ANSWER_LOST_CODE, OFFLINE_CODE } from './services'
 import type { PayingStrings, ServiceStrings } from './strings'
@@ -126,8 +126,20 @@ export interface PayTotals {
  * before the flag changed.
  */
 export function choosePay(picks: Picks, chosen: TipChoice, tipsOffered: boolean): PayTotals {
-  const tip = tipsOffered ? chosen : NO_TIP
   const itemsMinor = sumSignedMinor([...picks.values()].map((line) => line.amountMinor))
+  return payTotalsOf(itemsMinor, chosen, tipsOffered)
+}
+
+/**
+ * The same sum for lines already added up (`itemsMinor`): the tip presets of those lines and the
+ * total. `choosePay` and the pay-first Send (#258) share it, so a tip is worked out in one place.
+ */
+export function payTotalsOf(
+  itemsMinor: number,
+  chosen: TipChoice,
+  tipsOffered: boolean,
+): PayTotals {
+  const tip = tipsOffered ? chosen : NO_TIP
   const base = Math.max(itemsMinor, 0)
   const presets = TIP_PERCENTS.map((percent) => ({
     percent,
@@ -176,9 +188,20 @@ export function offersReceiptEmail(paying: PayingView | null | undefined): boole
 export type PayBlock =
   /** The phone has not reached Restro for about 10 s (D121): Pay is blocked, never queued. */
   | 'offline'
+  /**
+   * Ordering is paused (D120: a venue pause or a table pause): Pay is greyed whatever else holds, and
+   * the guest reads the pause's own line, "Ordering is paused right now, please order from a waiter".
+   */
+  | 'ordering_paused'
   | 'cards_paused'
   | 'not_up_to_date'
   | 'nothing_picked'
+  /**
+   * What was ticked comes to nothing or less: the POS's discount is as big as the lines (#293,
+   * DA-8). A card payment of zero or a negative amount does not exist, so the guest is told to ask
+   * the waiter instead of being offered a Pay that the server would refuse.
+   */
+  | 'nothing_owed'
   | 'below_minimum'
   | 'tip_too_big'
   /** An address was typed in the receipt field and is not a valid one (no words: the field says). */
@@ -197,12 +220,17 @@ export function payBlock(
   receiptEmail = '',
   /** `state.offline`: the phone is offline, so Pay is greyed whatever else holds (D121). */
   offline = false,
+  /** `state.ordering.state` is `paused` (D120): Pay is greyed with the pause, never queued. */
+  orderingPaused = false,
 ): PayBlock | null {
   if (offline) return 'offline'
+  if (orderingPaused) return 'ordering_paused'
   if (paying.state === 'paused') return 'cards_paused'
   if (!bill.complete) return 'not_up_to_date'
   if (picks.size === 0) return 'nothing_picked'
   const totals = choosePay(picks, tip, tipsOffered)
+  // A ticked set the POS's own discount brings to zero or below: there is nothing to charge a card.
+  if (totals.itemsMinor <= 0) return 'nothing_owed'
   if (!totals.tipValid) return 'tip_too_big'
   // The smallest card payment is measured on what is held: the lines plus the tip (D127).
   if (totals.totalMinor < paying.minCardMinor) return 'below_minimum'
@@ -260,6 +288,17 @@ export function offersPay(state: ServiceState): boolean {
   return (
     paying != null && paying.state !== 'off' && state.tableBill != null && state.payment == null
   )
+}
+
+/**
+ * Whether paying is off at the venue (`paying.state` `off`: no payment account, readiness off) and
+ * this phone has no payment to show. Then the guest page draws no Pay button anywhere and says
+ * "Ask your waiter to pay." where the button would be (D127, D125, #346). The venue's Pay switch
+ * (R15) says the owner wants paying; this says the server cannot take it. A phone that already has
+ * a payment keeps its screen, so a payment in progress is never cut off. Not said yet: not off.
+ */
+export function payingOffHere(state: ServiceState): boolean {
+  return state.paying?.state === 'off' && state.payment == null
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -381,6 +420,15 @@ export function payMoney(minor: number, currency: Currency, locale: Locale): str
   return viewMinor(minor, currency, locale).text
 }
 
+/**
+ * The same for an amount that comes from the POS signed, so a waiter's discount line reads
+ * "-4,00 €" (#293, DA-8): the bill's and a payment's lines, their sums and what is left to pay. A
+ * face uses `payMoney` for its own estimates, which are never negative (rule 8).
+ */
+export function paySignedMoney(minor: number, currency: Currency, locale: Locale): string {
+  return viewSignedMinor(minor, currency, locale).text
+}
+
 /** The language code a card form is shown in ("bg", "en"): the shell's locale without its region. */
 export function payFormLocale(locale: Locale): string {
   return localeToBcp47(locale).split('-')[0] ?? 'en'
@@ -404,7 +452,10 @@ export function refusalText(
   // The client's own answers (no server code): a Send or Pay it did not make while offline, and a
   // Send whose answer was lost (D120, D121).
   if (code === OFFLINE_CODE) return words.offline
-  if (code === ANSWER_LOST_CODE) return words.sendLost
+  // A call (Call a waiter, Pay cash) has its own lost-answer line: "if your order isn't on your
+  // bill" makes no sense for it.
+  if (code === ANSWER_LOST_CODE)
+    return context.command === 'service.request' ? words.callLost : words.sendLost
   if (code === 'rate_limited' && context.command?.startsWith('pay.'))
     return words.paying.rateLimited
   return Object.hasOwn(words.refusals, code)

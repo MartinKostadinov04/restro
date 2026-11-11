@@ -79,6 +79,8 @@ export interface SheetScope {
   readonly menuId?: string
   /** The person may mark the item sold out tonight (owner or admin, D46); default: no. */
   readonly canMarkSoldOut?: boolean
+  /** The venue has a POS, so its stock decides what ran out (D124 §6); default: no. */
+  readonly venueHasTill?: boolean
 }
 
 /** What the sheet needs besides the database. */
@@ -357,7 +359,11 @@ export async function loadItemSheet(
     currency: state.venue.currency,
     timezone: state.venue.timezone,
     visible: state.item.visible,
-    sale: { ...saleStateOf(state.item.fields.for_sale), canMark: scope.canMarkSoldOut === true },
+    sale: {
+      ...saleStateOf(state.item.fields.for_sale),
+      canMark: scope.canMarkSoldOut === true,
+      stockFromTill: scope.venueHasTill === true,
+    },
     nameFromTill: state.nameFromTill,
     payFirstDefault,
     fields,

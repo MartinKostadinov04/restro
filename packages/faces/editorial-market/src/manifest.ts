@@ -5,10 +5,10 @@
 // paying and the receipt. It declares `ordering: true` and the five guest features it has controls
 // for; a control is still drawn only when the venue switched the feature on, the platform supports
 // it and the host bound its services (R15, D72).
-// The face declares no options of its own any more (brief S6, D92): the menu's layout, whether
-// guests may switch it and which sections are drawn as the photo-led strip are menu settings in the
-// composer, published in the snapshot and read from the view model (`view.layout`, a section's
-// `hints.layout`). They were the options `layout`, `layoutSwitch` and `featureFirstSection`.
+// The face declares no options of its own any more (brief S6, D92): the menu's layout and whether
+// guests may switch it come from the design (D129), which sections are drawn as the photo-led strip
+// from Structure; all are published in the snapshot and read from the view model (`view.layout`, a
+// section's `hints.layout`). They were the options `layout`, `layoutSwitch` and `featureFirstSection`.
 
 import { type FaceManifest, validateManifest } from '@restro/shell'
 

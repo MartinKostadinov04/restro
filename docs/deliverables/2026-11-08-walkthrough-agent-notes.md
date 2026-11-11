@@ -1,5 +1,7 @@
 # Walk-through notes, st/foundation at 70e88983 (agent, for Martin)
 
+**Status 2026-11-09:** the five bugs this walk found are fixed and merged into `st/foundation`: B1 (#344, #353), B2 (#345, #352), B23 (#346, #351), B3 (#347, #354), B4 (#348, #355). The low-priority items and the review follow-ups are in #349.
+
 Walked on 2026-11-08 at http://localhost:3100 (database `restro_walk_st`), signed in as the owner, following `docs/deliverables/2026-11-07-walkthrough-st-foundation.md`, sections 2 to 5. The admin was in Bulgarian. The guest phone was 390 px wide; Tonight was 1180 px.
 
 ## Summary

@@ -1,10 +1,8 @@
-// The template registry (SH-04). Every entry is checked, the hidden ones too: a template that is
-// not offered can still be the one a venue's snapshot names, so it has to keep working. The shell's
+// The template registry (SH-04, D128): one face, the renderer. The shell's
 // `faceContractSuite` runs for every registered face, so a face cannot be listed without passing.
 
 import { readFileSync } from 'node:fs'
 import { EDITORIAL_CSS, SERVICES_CSS } from '@restro/editorial-market'
-import { FACE_CSS } from '@restro/qr-phone'
 import { faceContractSuite, stubServices } from '@restro/shell/testing'
 
 import { createElement } from 'react'
@@ -21,9 +19,8 @@ afterEach(() => {
 })
 
 describe('the registry', () => {
-  it('has the Editorial Market and the reference face, and no id twice', () => {
-    expect(FACES.map((entry) => entry.id)).toEqual(['editorial-market', 'qr-phone'])
-    expect(new Set(FACES.map((entry) => entry.id)).size).toBe(FACES.length)
+  it('has one face, the renderer (D128)', () => {
+    expect(FACES.map((entry) => entry.id)).toEqual(['editorial-market'])
   })
 
   it('has a default that is offered to venues', () => {
@@ -37,7 +34,6 @@ describe('the registry', () => {
   it('offers the venues the visible templates only', () => {
     expect(visibleFaces().map((entry) => entry.id)).toEqual(['editorial-market'])
     expect(visibleFaces().every((entry) => !entry.hidden)).toBe(true)
-    expect(FACES.find((entry) => entry.id === 'qr-phone')?.hidden).toBe(true)
   })
 
   it('names every template in both languages and says where its picture is', () => {
@@ -66,7 +62,6 @@ describe('the registry', () => {
 describe('faceEntry', () => {
   it('finds a template by id', () => {
     expect(faceEntry('editorial-market').id).toBe('editorial-market')
-    expect(faceEntry('qr-phone').id).toBe('qr-phone')
   })
 
   it('gives the default to a venue that chose none, without a word', () => {
@@ -103,7 +98,6 @@ describe('faceEntry', () => {
  */
 const STYLESHEETS: Readonly<Record<string, string>> = {
   'editorial-market': EDITORIAL_CSS + SERVICES_CSS,
-  'qr-phone': FACE_CSS,
 }
 
 describe('the stylesheets', () => {

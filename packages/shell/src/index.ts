@@ -3,7 +3,9 @@
 // React, no database, no clock. Faces (packages/faces/*) draw the view model and nothing else.
 // The contract-test harness is in `@restro/shell/testing`.
 
-export type { Locale } from '@restro/core'
+export type { Locale, ThemeFont } from '@restro/core'
+// The six fonts and their families, so a face can draw the heading font beside the body font (D130).
+export { fontFamilyOf, THEME_FONTS } from '@restro/core'
 export {
   type BagAction,
   type BagDraft,
@@ -62,6 +64,32 @@ export {
   ShellContextSchema,
   SOLD_OUT_DISPLAYS,
 } from './context'
+export {
+  DESIGN_MARKER,
+  DESIGN_MARKER_PAGES,
+  DESIGN_OPTIONS,
+  DESIGN_PAGES,
+  DESIGN_TOKEN,
+  DESIGN_TOKEN_MAX,
+  type DesignChoiceOption,
+  type DesignColoursOption,
+  type DesignLabel,
+  type DesignOption,
+  type DesignPage,
+  type DesignPageEntry,
+  type DesignPageId,
+  type DesignStyleOption,
+  type DesignValue,
+  type DesignValues,
+  DesignValuesSchema,
+  PREMADE_STYLES,
+  type PremadeStyleId,
+  PremadeStyleIdSchema,
+  type StyleFile,
+  StyleFileSchema,
+  type StyleValues,
+  StyleValuesSchema,
+} from './design'
 export type { FaceHostProps } from './face-props'
 export { SERVICE_KINDS, type ServiceKind } from './features'
 export {
@@ -155,6 +183,16 @@ export {
   semanticColoursDark,
 } from './palette'
 export {
+  callIsSingleStep,
+  type PayFirstLine,
+  type PayFirstPart,
+  type PayFirstPlan,
+  type PayFirstState,
+  payFirstStateOf,
+  payFirstWords,
+  planPayFirst,
+} from './pay-first'
+export {
   choosePay,
   endText,
   freeLines,
@@ -172,10 +210,13 @@ export {
   paidReceiptText,
   payBlock,
   payFormLocale,
+  payingOffHere,
   payMoney,
   paymentIsFinal,
   payScreen,
+  paySignedMoney,
   payStartCommand,
+  payTotalsOf,
   pickWhole,
   receiptEmailOf,
   reconcilePicks,
@@ -202,6 +243,7 @@ export {
   GuestCommandSchema,
   type GuestRefusalCode,
   type GuestScreen,
+  HOST_ANSWER_TIMEOUT_MS,
   LOST_SEND_HOLD_MS,
   type LocationControls,
   type LocationView,
@@ -240,8 +282,15 @@ export {
   type Strings,
   stringsFor,
 } from './strings'
+export {
+  DUPLICATE_ASK_SECONDS,
+  itemsById,
+  minutesSinceSent,
+  sentWords,
+} from './table-order'
 export { fallbackChain, pickText } from './text'
 export {
+  type HiddenItem,
   ITEM_STATES,
   type ItemState,
   type ViewAllergen,

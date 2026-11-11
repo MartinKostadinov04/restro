@@ -1,4 +1,4 @@
-// What is known about every template WITHOUT loading it (D69): its manifest, its names, its picture
+// What is known about the template WITHOUT loading it (D69, D128): its manifest, its names, its picture
 // and whether venues are offered it. The one list of templates that server code may read. The
 // registry (registry.ts) is built from it and adds the one thing that is not safe everywhere,
 // `load()`, which imports the face's components.
@@ -14,7 +14,6 @@
 // This file imports only each face's `./manifest` entry, which pulls in the manifest and nothing
 // else, and types.
 import { EDITORIAL_MARKET_MANIFEST } from '@restro/editorial-market/manifest'
-import { QR_PHONE_MANIFEST } from '@restro/qr-phone/manifest'
 import type { FaceManifest } from '@restro/shell'
 
 /** A text in the two languages of the interface. */
@@ -25,7 +24,7 @@ export interface FaceText {
 
 /** What is known about one template without drawing it. */
 export interface ManifestEntry {
-  /** The template's name in a snapshot's `presentation.face`; equals `manifest.face`. */
+  /** The template's name; equals `manifest.face`. */
   readonly id: string
   readonly manifest: FaceManifest
   /** A hidden template is never offered to a venue (D69); one that already uses it still gets it. */
@@ -50,20 +49,6 @@ export const MANIFESTS: readonly ManifestEntry[] = [
       en: 'A photo-led, editorial menu with a category rail and three layouts.',
     },
     thumbnail: `/faces/${EDITORIAL_MARKET_MANIFEST.face}.png`,
-  },
-  {
-    // The reference face of the first stages. It stays in the registry so that the contract test
-    // keeps proving the host works with more than one face, and so a venue that already uses it
-    // keeps its menu; no venue is offered it.
-    id: QR_PHONE_MANIFEST.face,
-    manifest: QR_PHONE_MANIFEST,
-    hidden: true,
-    name: { bg: 'Просто (тестов еталон)', en: 'Simple (test reference)' },
-    description: {
-      bg: 'Тестовият еталон: един екран с превъртане, без украса.',
-      en: 'The test reference: one scrolling page, no frills.',
-    },
-    thumbnail: `/faces/${QR_PHONE_MANIFEST.face}.png`,
   },
 ]
 

@@ -110,9 +110,9 @@ describe('R1 visibility', () => {
         },
       ],
     })
-    const context = { locale: 'en_US', now: WEDNESDAY, soldOutDisplay: 'show' } as const
+    const context = { locale: 'en_US', now: WEDNESDAY } as const
     const qr = buildViewModel(snapshot, null, { ...context, channel: 'qr' })
-    expect(items(qr).map((item) => item.state.code)).toEqual(['sold_out', 'available'])
+    expect(items(qr).map((item) => item.name.text)).toEqual(['Water'])
     const print = buildViewModel(snapshot, null, { ...context, channel: 'print' })
     expect(items(print).map((item) => item.name.text)).toEqual(['Water'])
   })
@@ -142,9 +142,12 @@ describe('R2 order', () => {
   it('keeps 300 items in order', () => {
     const f = fixture('big-menu')
     const view = buildViewModel(f.snapshot, null, f.context)
-    const expected = f.snapshot.menu.sections.flatMap((id) => f.snapshot.sections[id]?.items ?? [])
+    const placed = f.snapshot.menu.sections.flatMap((id) => f.snapshot.sections[id]?.items ?? [])
+    const expected = placed.filter(
+      (id) => f.snapshot.items[id]?.availability.state !== 'sold_out', // D131: hidden
+    )
     expect(items(view).map((item) => item.id)).toEqual(expected)
-    expect(expected).toHaveLength(300)
+    expect(placed).toHaveLength(300)
   })
 })
 
@@ -249,11 +252,12 @@ describe('R4 money', () => {
 })
 
 describe('R5 state', () => {
-  it('shows sold out by snapshot or overlay, with the words', () => {
+  it('hides what is sold out by snapshot or overlay, and keeps its name for an order (D131)', () => {
     const view = build('sold-out')
-    expect(items(view).map((item) => item.state.code)).toEqual(['sold_out', 'sold_out', 'sold_out'])
-    expect(items(view)[0]?.state.label).toEqual({ text: 'Sold out', lang: 'en_US' })
-    expect(items(build('sold-out', { locale: 'bg_BG' }))[0]?.state.label?.text).toBe('Изчерпано')
+    expect(items(view).map((item) => item.state.code)).toEqual(['available'])
+    const names = Object.values(view.hiddenItems)
+    expect(names.map((item) => item.code)).toEqual(['sold_out', 'sold_out', 'sold_out'])
+    expect(names.map((item) => item.name.lang)).toEqual(['en_US', 'en_US', 'en_US'])
   })
 
   it('lets the overlay make an item less available, never more', () => {
@@ -262,13 +266,8 @@ describe('R5 state', () => {
     expect(f.snapshot.items[negroni ?? '']?.availability.state).toBe('sold_out')
     // An empty overlay does not put the sold-out item back on sale.
     const view = buildViewModel(f.snapshot, { version: 1, items: {} }, f.context)
-    expect(items(view)[1]?.state.code).toBe('sold_out')
-    const none = buildViewModel(f.snapshot, null, f.context)
-    expect(items(none).map((item) => item.state.code)).toEqual([
-      'available',
-      'sold_out',
-      'available',
-    ])
+    expect(items(view).map((item) => item.name.text)).toEqual(['Mojito', 'Daiquiri', 'Water'])
+    expect(view.hiddenItems[negroni ?? '']?.code).toBe('sold_out')
   })
 
   it('still applies an overlay made for another snapshot version: it can only add caution (S3-10)', () => {
@@ -279,14 +278,8 @@ describe('R5 state', () => {
       const overlay = { ...(f.overlay ?? { items: {} }), version: other }
       // Sold-out marks belong to the service day, not to a version: the same marks apply.
       const view = buildViewModel(f.snapshot, overlay, f.context)
-      expect(items(view).map((item) => item.state.code)).toEqual(
-        items(matched).map((item) => item.state.code),
-      )
-      expect(items(view).map((item) => item.state.code)).toEqual([
-        'sold_out',
-        'sold_out',
-        'sold_out',
-      ])
+      expect(items(view).map((item) => item.id)).toEqual(items(matched).map((item) => item.id))
+      expect(items(view).map((item) => item.name.text)).toEqual(['Water'])
     }
 
     // A mismatched overlay that has no marks does not put the snapshot's sold-out item back on
@@ -296,36 +289,42 @@ describe('R5 state', () => {
       items: { [fixtureId('nd', 9999)]: { sold_out: true as const } },
     }
     const view = buildViewModel(f.snapshot, unrelated, f.context)
-    expect(items(view).map((item) => item.state.code)).toEqual([
-      'available',
-      'sold_out',
-      'available',
-    ])
-    expect(items(view)).toHaveLength(items(buildViewModel(f.snapshot, null, f.context)).length)
+    expect(items(view).map((item) => item.name.text)).toEqual(['Mojito', 'Daiquiri', 'Water'])
   })
 
   it('ignores overlay entries for items that are not in the snapshot', () => {
     const f = fixture('sold-out')
     const overlay = { version: 1, items: { [fixtureId('nd', 9999)]: { sold_out: true as const } } }
     const view = buildViewModel(f.snapshot, overlay, f.context)
-    expect(items(view).map((item) => item.state.code)).toEqual([
-      'available',
-      'sold_out',
-      'available',
-    ])
+    expect(items(view).map((item) => item.name.text)).toEqual(['Mojito', 'Daiquiri', 'Water'])
+    expect(view.hiddenItems[fixtureId('nd', 9999)]).toBeUndefined()
   })
 
-  it('applies the menu setting: hide leaves sold-out items out, show keeps them', () => {
-    const shown = build('sold-out', { soldOutDisplay: 'show' })
-    expect(items(shown)).toHaveLength(3)
-    const hidden = build('sold-out', { soldOutDisplay: 'hide' })
-    expect(items(hidden)).toHaveLength(0)
-    expect(hidden.sections).toHaveLength(0)
+  it('leaves sold-out items out of the menu by default, and has no way to show them (D131)', () => {
+    const view = build('sold-out')
+    expect(items(view).map((item) => item.name.text)).toEqual(['Water'])
+    expect(
+      Object.values(view.hiddenItems)
+        .map((item) => item.name.text)
+        .sort(),
+    ).toEqual(['Daiquiri', 'Mojito', 'Negroni'])
+    expect(() => build('sold-out', { soldOutDisplay: 'show' as 'hide' })).toThrow()
 
     const f = fixture('big-menu')
-    const partly = buildViewModel(f.snapshot, null, { ...f.context, soldOutDisplay: 'hide' })
+    const partly = buildViewModel(f.snapshot, null, f.context)
     expect(items(partly).every((item) => item.state.code !== 'sold_out')).toBe(true)
     expect(items(partly).length).toBeLessThan(300)
+  })
+
+  it('drops a section all of whose items cannot be had', () => {
+    const snapshot = tiny({
+      sections: [
+        { title: bgen('Няма', 'Gone'), items: [{ name: bgen('Мохито', 'Mojito'), soldOut: true }] },
+        { title: bgen('Има', 'Here'), items: [{ name: bgen('Вода', 'Water') }] },
+      ],
+    })
+    const view = buildViewModel(snapshot, null, { locale: 'en_US', now: WEDNESDAY })
+    expect(view.sections.map((section) => section.title.text)).toEqual(['Here'])
   })
 
   it('treats a state it does not know as unavailable, never as available', () => {
@@ -334,9 +333,8 @@ describe('R5 state', () => {
     const item = id === undefined ? undefined : snapshot.items[id]
     if (item !== undefined) (item.availability as { state: string }).state = 'archived'
     const view = buildViewModel(snapshot, null, { locale: 'en_US', now: WEDNESDAY })
-    expect(items(view)[0]?.state.code).toBe('unavailable')
-    expect(items(view)[0]?.state.label?.text).toBe('Unavailable')
-    expect(items(view)[0]?.order.controls).toBe(false)
+    expect(items(view).map((entry) => entry.id)).not.toContain(id)
+    expect(view.hiddenItems[id ?? '']?.code).toBe('unavailable')
   })
 
   it('ranks sold out above scheduled for the same item', () => {
@@ -358,7 +356,8 @@ describe('R5 state', () => {
       ],
     })
     const view = buildViewModel(snapshot, null, { locale: 'en_US', now: WEDNESDAY })
-    expect(items(view)[0]?.state.code).toBe('sold_out')
+    expect(items(view)).toEqual([])
+    expect(Object.values(view.hiddenItems).map((item) => item.code)).toEqual(['sold_out'])
   })
 })
 
@@ -388,9 +387,7 @@ describe('R6 allergens', () => {
   })
 
   it('leaves an allergen out of the legend when its only items are not shown', () => {
-    const shown = build('sold-out', { soldOutDisplay: 'show' })
-    expect(shown.allergenLegend.map((entry) => entry.code)).toEqual(['eggs', 'sulphites'])
-    expect(build('sold-out', { soldOutDisplay: 'hide' }).allergenLegend).toEqual([])
+    expect(build('sold-out').allergenLegend).toEqual([])
   })
 })
 
@@ -507,7 +504,7 @@ describe('R11 ordering', () => {
     expect(build('ask-waiter', { ...ordering, channel: 'print' }).ordering.enabled).toBe(false)
     expect(build('ask-waiter', { ...ordering, channel: 'kiosk' }).ordering.enabled).toBe(true)
     const sold = build('sold-out', ordering)
-    expect(items(sold).every((item) => !item.order.controls)).toBe(true)
+    expect(items(sold).map((item) => item.name.text)).toEqual(['Water'])
   })
 
   it('shows "Ask your waiter" for an ask_waiter item, with its price', () => {

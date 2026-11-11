@@ -14,8 +14,9 @@
 //      (`pay_harness_bills`). Closing stdin stops everything.
 //
 // With `PAY_HARNESS_PAGE=1` (apps/web/e2e/guest-pay-card.spec.ts, #114) the run also publishes a
-// qr-phone menu and prints the guest page's path with the ready line (`path`), so a browser can be
-// the guest. With `PAY_HARNESS_PROVIDER=stripe` the venue is connected to the Stripe sandbox account
+// menu, in the design the spec names (`PAY_HARNESS_DESIGN`, a design record as JSON: this process
+// has no Styles of its own), and prints the guest page's path with the ready line (`path`), so a
+// browser can be the guest. With `PAY_HARNESS_PROVIDER=stripe` the venue is connected to the Stripe sandbox account
 // named by `STRIPE_E2E_ACCOUNT` and the worker pays through the real provider (`STRIPE_SECRET_KEY`,
 // `PAYMENTS_ENV=test`): nothing on the card side is played by this process then, the page's own card
 // form is the guest. Sandbox keys only; the provider refuses a live key outside production.
@@ -30,8 +31,10 @@
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
 
+import { createPublishStore, publishStoreConfig, writeTableTokenFile } from '@restro/assets'
 import {
   DEFAULT_ORDERING_SETTINGS,
+  DesignContentSchema,
   hashTableCode,
   type IntegrationId,
   menuPath,
@@ -51,7 +54,6 @@ import {
   publishMenu,
   setFloorSource,
   setGuestFeatures,
-  setVenuePresentation,
   updateIntegration,
   upsertBarsyVenues,
 } from '@restro/core/apply'
@@ -67,6 +69,8 @@ import { InstanceBudgets, readFloorOf } from '../jobs/floor'
 import { createPaymentJobs } from '../jobs/payments'
 import { createReadingJobs, ReadingBudgets, readTableOf } from '../jobs/readings'
 import { createLogger } from '../logger'
+import { writeLiveOverlay, writePublishFiles } from '../publish/files'
+import { writeOrganizationIndex } from '../publish/organization-index'
 import { startWorker } from '../worker'
 
 /** Demo Bar's table 1 on the simulator. */
@@ -79,6 +83,11 @@ const SCENARIO = PAY_FIRST ? 'pay-first' : 'demo-bar'
 const PAY_FIRST_ARTICLE = { id: '2002', name: 'Aperol Spritz', priceMinor: 1_100 }
 /** The run that publishes a menu and prints the guest page's path (#114). */
 const PAGE = process.env.PAY_HARNESS_PAGE === '1'
+/** The design that run draws; with none, the venue draws the default one. */
+const PAGE_DESIGN =
+  PAGE && process.env.PAY_HARNESS_DESIGN
+    ? DesignContentSchema.parse(JSON.parse(process.env.PAY_HARNESS_DESIGN))
+    : null
 /** The run through the real provider's sandbox (#114): its connected account comes from the env. */
 const STRIPE = process.env.PAY_HARNESS_PROVIDER === 'stripe'
 /** This run's key for the bill's line ids (the e2e worker reads no bill). */
@@ -136,10 +145,11 @@ async function main(): Promise<void> {
   // 1. The organisation, its venue on the POS, the floor, table 1 and the account.
   const tenantId = newId('tn')
   await provisionTenant(pool, { tenantId, name: 'Pay Club' })
+  const organizationSlug = `pay-club-${tenantId.slice(3, 13).toLowerCase()}`
   await query('insert into restro.auth_organization (id, name, slug) values ($1, $2, $3)', [
     tenantId,
     'Pay Club',
-    `pay-club-${tenantId.slice(3, 13).toLowerCase()}`,
+    organizationSlug,
   ])
   const integrationId = (await createIntegration(pool, tenantId, { kind: 'sim', host }))
     .id as IntegrationId
@@ -265,6 +275,16 @@ async function main(): Promise<void> {
     process.exit(exitCode)
   }
 
+  // A page resolves the table's code through the file the table's QR makes (#258).
+  if (PAGE) {
+    await writeTableTokenFile(await publishStoreOfRun(), await hashTableCode(code), {
+      venue_public_id: venue.publicId,
+      venue_slug: venue.slug,
+      organization_slug: organizationSlug,
+      table_label: '1',
+    })
+  }
+
   // 4. Ready, then the test's commands.
   print({
     event: 'pay_harness_ready',
@@ -388,10 +408,19 @@ async function publishPayFirstMenu(
       throw new Error(`the pay-first menu was refused: ${JSON.stringify(applied.rejected)}`)
     }
   }
-  await setVenuePresentation(pool, tenantId, {
-    venueId,
-    presentation: { face: 'qr-phone', options: {} },
-  })
+  if (PAGE_DESIGN !== null) {
+    // The harness made this venue a moment ago, so it has no design record yet: revision 0.
+    const applied = await apply(
+      pool,
+      tenantId,
+      changeSet('manual', 'system', [
+        { op: 'setDesign', venueId, expectedRevision: 0, design: PAGE_DESIGN },
+      ]),
+    )
+    if (applied.rejected.length > 0) {
+      throw new Error(`the design was refused: ${JSON.stringify(applied.rejected)}`)
+    }
+  }
   await setGuestFeatures(pool, tenantId, {
     venueId,
     features: {
@@ -409,7 +438,21 @@ async function publishPayFirstMenu(
     actor: 'system',
   })
   if (published.status === 'held') throw new Error('the pay-first menu was held, not published')
+  // A page needs the files the publish job writes from the pointer (no job runs here): the
+  // snapshot and its pointer, the live overlay and the organisation's index (#258).
+  if (PAGE) {
+    const deps = { pool, store: await publishStoreOfRun(), now: () => new Date() }
+    const scope = { tenantId, menuId: menu.id, venueId }
+    await writePublishFiles(deps, scope)
+    await writeLiveOverlay(deps, scope)
+    await writeOrganizationIndex(deps, tenantId)
+  }
   return item
+}
+
+/** The publish store the e2e servers read (`PUBLISH_STORE=local`, set by the e2e run's config). */
+function publishStoreOfRun() {
+  return createPublishStore(publishStoreConfig(process.env))
 }
 
 main().catch((error: unknown) => {

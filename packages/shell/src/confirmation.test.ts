@@ -13,7 +13,7 @@ import {
   type SaveShare,
   saveConfirmation,
 } from './confirmation'
-import { payMoney } from './paying'
+import { payMoney, paySignedMoney } from './paying'
 import type { PaymentView } from './services'
 import { stringsFor } from './strings'
 
@@ -82,6 +82,36 @@ describe('confirmationOf', () => {
       saveLabel: 'Save',
     })
     expect(view?.when).not.toBeNull()
+  })
+
+  it("draws a payment whose lines carry the POS's discount, as its own minus line (#293, DA-8)", () => {
+    // A payment of lines the waiter discounted: the signed amount used to throw here as well, which
+    // broke the Paid screen and the Payment confirmation after the card was charged.
+    const words = stringsFor('en_US').services.paying
+    const view = confirmationOf({
+      payment: {
+        ...captured,
+        amountMinor: 1100,
+        tipMinor: 0,
+        lines: [
+          { name: { en_US: 'House wine' }, quantity: '1', amountMinor: 1250 },
+          { name: { en_US: 'Discount' }, quantity: '1', amountMinor: -400 },
+          { name: { en_US: 'Tap water' }, quantity: '0.5', amountMinor: 0 },
+        ],
+      },
+      venueName: 'Club X',
+      otherItem: 'Other item',
+      locale: 'en_US',
+      words,
+    })
+    expect(view?.lines).toEqual([
+      { text: 'House wine', amount: paySignedMoney(1250, 'EUR', 'en_US') },
+      { text: 'Discount', amount: paySignedMoney(-400, 'EUR', 'en_US') },
+      { text: 'Tap water ×0.5', amount: paySignedMoney(0, 'EUR', 'en_US') },
+    ])
+    expect(view?.lines[1]?.amount).toMatch(/[-\u2212]/)
+    // The total is Restro's own hold and is never negative, so it keeps the strict format.
+    expect(view?.total.amount).toBe(payMoney(1100, 'EUR', 'en_US'))
   })
 
   it('leaves out the tip when there was none and marks a line of more than one', () => {

@@ -1,6 +1,6 @@
 // What Tonight is told about stock (#80, D122 §4 Stock): when a stock pass marks items run out in
-// the POS, the worker records the notice "Out of stock in {source}: Mojito. Greyed out on the
-// menu." as an alert, one open alert per item; when a later complete reading clears the mark (or
+// the POS, the worker records the notice "Out of stock in {source}: Mojito. Hidden from the
+// guest menu." as an alert, one open alert per item; when a later complete reading clears the mark (or
 // the service day ends), the item's alert is done. The mark itself is apply()'s
 // (`apply/stock.ts`): this writes only the alert and its Log entries.
 

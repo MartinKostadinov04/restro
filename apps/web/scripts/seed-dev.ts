@@ -9,12 +9,7 @@
 // barsy integration and pull: see lib/demo-menu.ts). It connects as the app role (DATABASE_URL),
 // like the web app.
 import { CALL_WAITER_KINDS, menuPath, type VenueId } from '@restro/core'
-import {
-  provisionTenant,
-  provisionVenue,
-  setGuestFeatures,
-  setVenuePresentation,
-} from '@restro/core/apply'
+import { provisionTenant, provisionVenue, setGuestFeatures } from '@restro/core/apply'
 import { authMember, authOrganization, venues, withTenant } from '@restro/db'
 import { and, eq } from 'drizzle-orm'
 
@@ -117,15 +112,10 @@ async function main(): Promise<void> {
   // from the simulator through the worker's floor reading (start `pnpm sim:serve` and the worker).
   const demoBar = seedsDemoBar(process.env) ? await seedDemoBar(pool, organizationId) : null
 
-  // 7. Demo Bar's guest page draws the reference template, the one template that orders, calls a
-  // waiter, shows the bill and pays so far, with those services on, so the ordering and paying
-  // walks can use it from a phone. The change reaches guests with the next publish.
+  // 7. Demo Bar's guest services on, for the ordering and paying walks from a phone. The change
+  // reaches guests with the next publish. Its page draws Basic, the default design.
   if (demoBar !== null) {
     const demoBarId = demoBar.venueId as VenueId
-    await setVenuePresentation(pool, organizationId, {
-      venueId: demoBarId,
-      presentation: { face: 'qr-phone', options: {} },
-    })
     // Its legal details first: ordering from the phone turns on only once the venue has a privacy
     // notice link (RR-O44), and paying needs them too (#198). Made-up values, saved the way the
     // owner's Paying settings save them.

@@ -80,9 +80,10 @@ export const venues = restro.table(
     defaultLocale: text('default_locale').notNull().default('bg_BG'),
     enabledLocales: text('enabled_locales').array().notNull().default(sql`'{bg_BG,en_US}'::text[]`),
     /**
-     * Venue settings that are not columns of their own (S3-03). `theme` is the look of the guest
-     * menu: `{brand: '#rrggbb', logo_asset_id: 'as_…' | null}`. core/apply validates and writes
-     * it (`setVenueTheme`); the publisher turns it into the snapshot's theme.
+     * Venue settings that are not columns of their own (S3-03). `design` is the venue's design
+     * record (D129, core's `DesignRecordSchema`): the look of the guest menu, written only by
+     * core's `apply()` (`setDesign`); the publisher turns it into the snapshot's theme and
+     * `design` block. It replaced `theme` and `presentation` (migration 0051).
      */
     settings: jsonb('settings')
       .$type<Record<string, unknown>>()
@@ -677,14 +678,6 @@ export const menus = restro.table(
     /** Order among the venue's menus (Settings › Menus): a fractional key compared by byte order. */
     sortKey: byteOrderText('sort_key').notNull().default('a0'),
     /**
-     * Menu settings that are not columns of their own (D92): the layout default (`layout`) and
-     * whether guests may switch it (`layout_switch`). core/apply validates and writes it.
-     */
-    settings: jsonb('settings')
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    /**
      * When the owner moved the menu to the venue's bin (D91); null = in use. A binned menu is
      * never the live one, is left out of every list and is purged after 30 days (D83).
      */
@@ -716,7 +709,6 @@ export const menus = restro.table(
       sql`${t.name} is null or (char_length(${t.name}) between 1 and 120 and ${t.name} = btrim(${t.name}))`,
     ),
     check('menus_sort_key_format', sql`${t.sortKey} ~ '^[A-Za-z][0-9A-Za-z]*$'`),
-    check('menus_settings_object', sql`jsonb_typeof(${t.settings}) = 'object'`),
   ],
 )
 
@@ -928,6 +920,9 @@ export const EVENT_OPS = [
   'linkSource',
   'unlinkSource',
   'setLinkState',
+  'setDesign',
+  'setStyle',
+  'setStyleStatus',
 ] as const
 
 /**
@@ -946,6 +941,11 @@ export const EVENT_OPS = [
  * `{source, external_type}` for a link, `{source, external_type, state}` for a link-state
  * change (`source` is `till:<integration>`), the status text for a status change. `node_id` is
  * the node that changed (the item, for a placement).
+ *
+ * `setDesign` (D129, migration 0051) is about a venue, not a node: `node_id` is null (and only
+ * there, `events_node_only_for_document_ops`), `field_key` is `design`, the layer `manual`, the
+ * scope the venue's (`venue:<vn_ id>`, which is how the purge finds it), and the old and new
+ * values are the design record before (null for the first) and after.
  */
 export const events = restro.table(
   'events',
@@ -954,7 +954,11 @@ export const events = restro.table(
     tenantId: text('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'restrict' }),
-    nodeId: text('node_id').notNull(),
+    /**
+     * The node that changed; null for the rows that are not about the document: `setDesign` (a
+     * venue's design) and `setStyle` / `setStyleStatus` (one of the organisation's saved Styles).
+     */
+    nodeId: text('node_id'),
     /** What kind of change this row records; rows from before the column count as `setField`. */
     op: text('op').notNull().default('setField'),
     fieldKey: text('field_key').notNull(),
@@ -977,7 +981,20 @@ export const events = restro.table(
     index('events_node_id_seq_idx').on(t.nodeId, t.seq),
     check(
       'events_op',
-      sql`${t.op} in ('setField', 'clearField', 'createNode', 'setPlacement', 'removePlacement', 'moveNode', 'setNodeStatus', 'linkSource', 'unlinkSource', 'setLinkState')`,
+      sql`${t.op} in ('setField', 'clearField', 'createNode', 'setPlacement', 'removePlacement', 'moveNode', 'setNodeStatus', 'linkSource', 'unlinkSource', 'setLinkState', 'setDesign', 'setStyle', 'setStyleStatus')`,
+    ),
+    check(
+      'events_node_only_for_document_ops',
+      sql`(${t.op} in ('setDesign', 'setStyle', 'setStyleStatus')) = (${t.nodeId} is null)`,
+    ),
+    // A saved Style is the organisation's, so its row carries the master scope and the manual layer.
+    check(
+      'events_style_scope',
+      sql`${t.op} not in ('setStyle', 'setStyleStatus') or (${t.scope} = 'master' and ${t.fieldKey} in ('style', 'style_status') and ${t.layer} = 'manual')`,
+    ),
+    check(
+      'events_design_scope',
+      sql`${t.op} <> 'setDesign' or (${t.scope} ~ ${VENUE_SCOPE_PATTERN} and ${t.fieldKey} = 'design' and ${t.layer} = 'manual')`,
     ),
     check('events_field_key', sql`${t.fieldKey} ~ '^[a-z][a-z0-9_]{0,63}$'`),
     check(
@@ -1653,6 +1670,68 @@ export const tags = restro.table(
     ),
     check('tags_color_format', sql`${t.color} ~ '^[a-z][a-z0-9_]{0,31}$'`),
     check('tags_sort_key_format', sql`${t.sortKey} ~ '^[A-Za-z][0-9A-Za-z]*$'`),
+  ],
+)
+
+/**
+ * An organisation's saved Styles (D129, My styles; migration 0053): a named set of design choices
+ * the owner keeps and applies at any venue of the organisation. The row is the organisation's, not
+ * a venue's, and row-level security keeps it to the organisation like every other tenant table.
+ *
+ * `style_values` holds core's `StyleValues`: a value for every choice option but the body font. The
+ * colours, the Advanced roles and the logo are never here — they are the venue's brand (D128) — so
+ * applying a saved Style, or copying another venue's design, can never carry a venue's brand away.
+ * `style` is the premade Style the values came from, kept for the record; nothing links back.
+ *
+ * Every row carries its provenance, NOT NULL (rule 2): the manual layer and source (a Style is
+ * never a till's), the member who wrote it, the job and the change set. Only `apply()`'s `setStyle`
+ * and `setStyleStatus` write it. Deleting is a soft removal (`removed_at`), which the owner's Undo
+ * clears: nothing here is ever deleted by app code, only by the purge (D83). A name is unique among
+ * the organisation's Styles that are not removed; `apply()` compares names without case under the
+ * tenant's document lock, and the partial index below is the backstop.
+ */
+export const designStyles = restro.table(
+  'design_styles',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    /** The owner's name for the Style. Trimmed, 1–60 characters. */
+    name: text('name').notNull(),
+    /** The premade Style the values came from (core's `PremadeStyleId`). */
+    style: text('style').notNull(),
+    /** Core's `StyleValues`: every choice option but the body font. */
+    styleValues: jsonb('style_values').$type<Record<string, unknown>>().notNull(),
+    /** Set while the Style is removed and the toast's Undo can bring it back. */
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+    layer: text('layer').notNull(),
+    source: text('source').notNull(),
+    actor: text('actor').notNull(),
+    jobId: text('job_id').notNull(),
+    changeSetId: text('change_set_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Kept current by the `design_styles_touch_updated_at` trigger. */
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('design_styles_tenant_id_id_unique').on(t.tenantId, t.id),
+    index('design_styles_tenant_id_name_idx').on(t.tenantId, t.name),
+    uniqueIndex('design_styles_live_name_unique')
+      .on(t.tenantId, t.name)
+      .where(sql`${t.removedAt} is null`),
+    check('design_styles_id_format', sql`${t.id} ~ '^ds_[0-9A-Za-z]+$'`),
+    check(
+      'design_styles_name_length',
+      sql`char_length(${t.name}) between 1 and 60 and ${t.name} = btrim(${t.name})`,
+    ),
+    check('design_styles_style_format', sql`${t.style} ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`),
+    check('design_styles_values_object', sql`jsonb_typeof(${t.styleValues}) = 'object'`),
+    check('design_styles_layer', sql`${t.layer} = 'manual'`),
+    check('design_styles_source', sql`${t.source} = 'manual'`),
+    check('design_styles_actor', sql`${t.actor} ~ ${ACTOR_PATTERN}`),
+    check('design_styles_job_id', sql`length(${t.jobId}) between 1 and 128`),
+    check('design_styles_change_set_id', sql`${t.changeSetId} ~ '^cs_[0-9A-Za-z]+$'`),
   ],
 )
 

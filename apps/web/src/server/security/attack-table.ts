@@ -5,7 +5,7 @@
 // - `MIXED`: the attacker's own venue with the victim's child ids (the way past a venue check).
 //
 // `pin` is left out: the caller is a signed-in person on their own phone.
-import { newId, THEME_PRESETS } from '@restro/core'
+import { DEFAULT_DESIGN, newId, styleValuesOf } from '@restro/core'
 
 import * as composer from '@/composer/actions'
 import * as paymentMode from '@/composer/payment-mode-actions'
@@ -47,18 +47,6 @@ export interface Attack {
   readonly ownOrganisation?: boolean
 }
 
-const midnight = THEME_PRESETS.find((preset) => preset.id === 'midnight')
-if (midnight === undefined) throw new Error('the Midnight preset is missing')
-const WHOLE_THEME = {
-  logo_asset_id: null,
-  preset: 'midnight',
-  colors: midnight.colours,
-  overrides: midnight.overrides,
-  font: 'lora',
-  radius: midnight.radius,
-  shadow: 3,
-  scheme: 'dark',
-}
 const KEYS = (id: string) => [{ id, key: 'a1' }]
 
 /** All the victim's ids. */
@@ -285,21 +273,31 @@ export const ATTACKS: readonly Attack[] = [
       }),
   },
   {
-    action: 'saveFeatureOptionsAction',
+    action: 'saveDesignAction',
     call: (v) =>
-      guestFeatures.saveFeatureOptionsAction({
+      design.saveDesignAction({
         venueId: v.venues[0].id,
-        options: { attack: true },
+        expectedRevision: 0,
+        design: DEFAULT_DESIGN,
+      }),
+  },
+  // My styles (D129): a Style is the organisation's, so there is no venue to aim at. The attack
+  // writes into its own organisation (which must stay allowed) and, with an id, at the victim's
+  // Style, which it must not be able to name.
+  {
+    action: 'saveStyleAction',
+    ownOrganisation: true,
+    call: () =>
+      design.saveStyleAction({
+        styleId: null,
+        name: 'Attack',
+        style: 'basic',
+        values: styleValuesOf(DEFAULT_DESIGN.values),
       }),
   },
   {
-    action: 'saveLookAction',
-    call: (v) => design.saveLookAction({ venueId: v.venues[0].id, theme: WHOLE_THEME }),
-  },
-  {
-    action: 'chooseTemplateAction',
-    call: (v) =>
-      design.chooseTemplateAction({ venueId: v.venues[0].id, face: 'basic', lookOptions: {} }),
+    action: 'setStyleStatusAction',
+    call: (v) => design.setStyleStatusAction({ styleId: v.styleId, status: 'removed' }),
   },
 
   // Integrations.
@@ -447,13 +445,6 @@ export const ATTACKS: readonly Attack[] = [
     call: (v) => {
       const x = v.venues[0]
       return menus.moveMenuAction({ venueId: x.id, menuId: x.menu, position: 'end' })
-    },
-  },
-  {
-    action: 'setMenuSettingsAction',
-    call: (v) => {
-      const x = v.venues[0]
-      return menus.setMenuSettingsAction({ venueId: x.id, menuId: x.menu, settings: {} })
     },
   },
   {
@@ -1799,15 +1790,6 @@ export const MIXED: readonly Attack[] = [
         position: { before: v.venues[0].menu },
       })
     },
-  },
-  {
-    action: 'setMenuSettingsAction',
-    call: (v, a) =>
-      menus.setMenuSettingsAction({
-        venueId: a.venues[0].id,
-        menuId: v.venues[0].menu,
-        settings: {},
-      }),
   },
   {
     action: 'deleteMenuAction',

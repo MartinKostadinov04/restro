@@ -9,7 +9,18 @@
 //   overflow()        the sideways overflow of the page, and of one element
 //
 // Not a general accessibility checker: it measures what the brief names, on the rendered page.
-import { expect, type Locator, type Page } from '@playwright/test'
+import { expect, type Frame, type Locator, type Page } from '@playwright/test'
+
+/** Where the renderer is drawn: the guest's page, or the frame of the Design page's preview. */
+export type Surface = Page | Frame
+
+/** The two are the same to a measurement; TypeScript cannot call a union of overloads. */
+const scope = (surface: Surface): Pick<Frame, 'evaluate' | 'locator' | 'getByRole'> =>
+  surface as Frame
+
+/** The keyboard: it goes to whatever frame holds the focus. */
+export const keyboardOf = (surface: Surface) =>
+  'keyboard' in surface ? surface.keyboard : surface.page().keyboard
 
 /** A control smaller than the touch target. */
 export interface SmallTarget {
@@ -267,31 +278,52 @@ export function installAudit(): void {
 /**
  * Waits until every animation that ends has ended (a sheet fades and slides in), so a measurement
  * sees the colours the guest ends up with. Endless ones (a spinner) are left running.
+ *
+ * The animations are looked for again after every frame, until a frame goes by with none left to
+ * end: a sheet is put in the page by an effect, after the tap that opened it has been handled, and
+ * its fade only starts on the frame after that. Looking once, the way this did, a tap away from a
+ * sheet that is on its way in finds nothing of it and lets a measurement read the colours it is
+ * fading from.
  */
-export async function settled(page: Page): Promise<void> {
-  await page.evaluate(() =>
-    Promise.race([
-      Promise.all(
-        document
-          .getAnimations()
-          .filter(
-            (animation) =>
-              animation.effect?.getComputedTiming().iterations !== Number.POSITIVE_INFINITY,
-          )
-          .map((animation) => animation.finished.catch(() => undefined)),
-      ),
-      // Never wait for ever on one that does not end.
-      new Promise((resolve) => setTimeout(resolve, 3000)),
-    ]),
-  )
+export async function settled(page: Surface): Promise<void> {
+  await scope(page).evaluate(async () => {
+    const deadline = performance.now() + 3000
+    // A frame, and never a wait for ever if frames stop coming (a page the browser throttles).
+    const frame = () =>
+      new Promise((resolve) => {
+        requestAnimationFrame(() => resolve(undefined))
+        setTimeout(resolve, 100)
+      })
+    // The ones still to end: a finished animation stays listed while it fills, a paused one never ends.
+    const running = () =>
+      document
+        .getAnimations()
+        .filter(
+          (animation) =>
+            animation.playState === 'running' &&
+            animation.effect?.getComputedTiming().iterations !== Number.POSITIVE_INFINITY,
+        )
+    while (performance.now() < deadline) {
+      // An animation a render has just put in the page starts on the next frame: look after it.
+      await frame()
+      await frame()
+      const now = running()
+      if (now.length === 0) return
+      await Promise.race([
+        Promise.all(now.map((animation) => animation.finished.catch(() => undefined))),
+        // Never wait for ever on one that does not end.
+        new Promise((resolve) => setTimeout(resolve, Math.max(0, deadline - performance.now()))),
+      ])
+    }
+  })
 }
 
 /**
  * The things of the venue bar that draw over one another: the logo, the table label and every
  * control in it. Returns a description of each pair that overlaps by more than a pixel.
  */
-export async function overlapsInHeader(page: Page, root: string): Promise<string[]> {
-  return page.evaluate((root) => {
+export async function overlapsInHeader(page: Surface, root: string): Promise<string[]> {
+  return scope(page).evaluate((root) => {
     const header = document.querySelector(`${root} .rm-header .rm-brandline`)
     if (header === null) return ['no venue bar']
     const parts = [
@@ -320,11 +352,11 @@ export async function overlapsInHeader(page: Page, root: string): Promise<string
 }
 
 /** Every dialog on the page. */
-export const dialogs = (page: Page): Locator => page.locator('[role="dialog"]')
+export const dialogs = (page: Surface): Locator => scope(page).locator('[role="dialog"]')
 
 /** The topmost dialog holds the focus. */
-export const focusInDialog = (page: Page): Promise<boolean> =>
-  page.evaluate(() => {
+export const focusInDialog = (page: Surface): Promise<boolean> =>
+  scope(page).evaluate(() => {
     const all = [...document.querySelectorAll('[role="dialog"]')]
     const top = all.at(-1)
     return top?.contains(document.activeElement) === true
@@ -337,7 +369,7 @@ export const focusInDialog = (page: Page): Promise<boolean> =>
  * (a sheet that leads on to another one), before the keys are tried on whatever is then showing.
  */
 export async function exerciseDialog(
-  page: Page,
+  page: Surface,
   opener: Locator,
   name: string | RegExp,
   within?: () => Promise<void>,
@@ -345,7 +377,7 @@ export async function exerciseDialog(
   await opener.evaluate((element) => element.setAttribute('data-rm-opener', ''))
   const before = await dialogs(page).count()
   await opener.click()
-  await expect(page.getByRole('dialog', { name })).toBeVisible()
+  await expect(scope(page).getByRole('dialog', { name })).toBeVisible()
   await expect(dialogs(page)).toHaveCount(before + 1)
   await expect.poll(() => focusInDialog(page), { message: `focus inside "${name}"` }).toBe(true)
   if (within !== undefined) {
@@ -366,16 +398,17 @@ export async function exerciseDialog(
     )
   for (const key of ['Tab', 'Shift+Tab']) {
     for (let press = 0; press < focusable + 2; press += 1) {
-      await page.keyboard.press(key)
+      await keyboardOf(page).press(key)
       expect(await focusInDialog(page), `${key} ${press + 1} stays inside "${name}"`).toBe(true)
     }
   }
 
-  await page.keyboard.press('Escape')
+  await keyboardOf(page).press('Escape')
   await expect(dialogs(page)).toHaveCount(before)
   await expect
     .poll(
-      () => page.evaluate(() => document.activeElement?.hasAttribute('data-rm-opener') === true),
+      () =>
+        scope(page).evaluate(() => document.activeElement?.hasAttribute('data-rm-opener') === true),
       { message: `focus returns to the opener of "${name}"` },
     )
     .toBe(true)

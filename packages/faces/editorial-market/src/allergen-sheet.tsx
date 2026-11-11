@@ -10,12 +10,15 @@ import { Overlay } from './overlay'
 export function AllergenSheet({
   item,
   legend,
+  names,
   strings,
   page,
   onClose,
 }: {
   readonly item: ViewItem
   readonly legend: readonly ViewAllergen[]
+  /** The Labels page asks for names: the list holds the names alone, the item's own marked. */
+  readonly names: boolean
   readonly strings: GuestStrings
   readonly page: Locale
   readonly onClose: () => void
@@ -23,7 +26,9 @@ export function AllergenSheet({
   const own = new Set<string>(item.allergens.map((allergen) => allergen.code))
   return (
     <Overlay title={strings.allergensTitle} closeLabel={strings.close} onClose={onClose}>
-      <p className="rm-overlay-intro">{strings.allergensHint}</p>
+      <p className="rm-overlay-intro">
+        {names ? strings.allergensHintNames : strings.allergensHint}
+      </p>
       {/* A list; the dish's own allergens carry aria-current, so a screen reader hears which ones
           they are, and the look marks them by a filled number as well as by weight and shade. */}
       <ul className="rm-allergen-sheet">
@@ -36,7 +41,7 @@ export function AllergenSheet({
               aria-current={present ? 'true' : undefined}
               lang={langOf(allergen.label, page)}
             >
-              <b>{allergen.number}</b>
+              {names ? null : <b>{allergen.number}</b>}
               {allergen.label.text}
             </li>
           )

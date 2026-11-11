@@ -260,7 +260,7 @@ describe('the wall zone "published": one new hit fails', () => {
 
   const published = ZONES.find((zone) => zone.name === 'published')?.include ?? []
   it.each(published)('fails a hit in %s', (folder) => {
-    const dir = folder.replace('*', 'qr-phone')
+    const dir = folder.replace('*', 'some-face')
     const violations = violationsFor({ [`${dir}/view.ts`]: barsyConst })
     expect(violations.map((violation) => violation.zone)).toEqual(['published'])
   })

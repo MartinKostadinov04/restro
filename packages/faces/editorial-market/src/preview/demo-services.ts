@@ -24,14 +24,18 @@ import {
   type BillView,
   type CommandResult,
   type GuestCommand,
+  itemsById,
+  type OrderLineView,
   type PayFormSlot,
   type PaymentView,
   type RequestView,
   resolveBag,
+  type SentOrderView,
   type ServiceBinding,
   type ServiceState,
   type TableBillLineView,
   type TableBillView,
+  type TableOrderView,
   type ViewModel,
   type ViewMoney,
   type ViewText,
@@ -73,11 +77,19 @@ interface Round {
   readonly lines: readonly Line[]
 }
 
+/** The table's shared order the demo keeps (D117): what the face draws from `state.order`. */
+interface DemoOrder {
+  readonly lines: readonly OrderLineView[]
+  readonly removed: NonNullable<TableOrderView['removed']>
+}
+
 interface Store {
   readonly revision: number
   readonly rounds: readonly Round[]
   readonly requests: readonly RequestView[]
   readonly payment: PaymentView | null
+  readonly order: DemoOrder
+  readonly sent: readonly SentOrderView[]
 }
 
 const clock = (locale: string) =>
@@ -126,8 +138,27 @@ function startingStore(view: ViewModel): Store {
       },
     ],
   }
-  return { revision: 1, rounds: [staff], requests: [], payment: null }
+  return {
+    revision: 1,
+    rounds: [staff],
+    requests: [],
+    payment: null,
+    order: { lines: [], removed: [] },
+    sent: [],
+  }
 }
+
+/** The same line again: the same item with the same choices and note. */
+const sameLine = (
+  a: Pick<OrderLineView, 'itemId' | 'optionIds' | 'note'>,
+  b: Pick<OrderLineView, 'itemId' | 'optionIds' | 'note'>,
+) =>
+  a.itemId === b.itemId &&
+  a.note === b.note &&
+  [...a.optionIds].sort().join(',') === [...b.optionIds].sort().join(',')
+
+/** How long a removed line keeps its Undo in the demo, in seconds. */
+const DEMO_UNDO_SECONDS = 10
 
 const lineTotal = (line: Line) => (line.status === 'cancelled' ? 0 : line.totalMinor)
 const sum = (amounts: readonly number[]) =>
@@ -168,7 +199,9 @@ function stateOf(store: Store, view: ViewModel): ServiceState {
     preview: true,
     bill,
     requests: store.requests,
-    ordering: { state: 'on', tips: true },
+    order: { lines: store.order.lines, removed: store.order.removed, earlier: null },
+    sentOrders: store.sent,
+    ordering: { state: 'on', tips: true, notesAndOptions: true },
     paying: {
       state: 'on',
       minCardMinor: 50,
@@ -297,6 +330,27 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
         text: bulgarian ? bg : en,
         lang: now.locale,
       })
+      // A line leaves the order and keeps its Undo for a few seconds.
+      const takeOff = (asked: GuestCommand, line: OrderLineView): CommandResult => {
+        const { held: _held, pending: _pending, ...kept } = line
+        commit((current) => ({
+          ...current,
+          order: {
+            lines: current.order.lines.filter((candidate) => candidate.id !== line.id),
+            removed: [...current.order.removed, { ...kept, undoSeconds: DEMO_UNDO_SECONDS }],
+          },
+        }))
+        later(DEMO_UNDO_SECONDS * 1000, () =>
+          commit((current) => ({
+            ...current,
+            order: {
+              ...current.order,
+              removed: current.order.removed.filter((candidate) => candidate.id !== line.id),
+            },
+          })),
+        )
+        return answer(asked, 'accepted')
+      }
 
       switch (command.kind) {
         case 'order.send': {
@@ -324,6 +378,7 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
             totalMinor: entry.total?.minor ?? 0,
             status: 'received',
           }))
+          const sentId = nextId('so-demo')
           commit((current) => ({
             ...current,
             rounds: [
@@ -336,46 +391,158 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
                 lines,
               },
             ],
+            // What went leaves the table's order (a line's quantity goes down by what was sent).
+            order: {
+              ...current.order,
+              lines: current.order.lines.flatMap((orderLine) => {
+                const sent = command.lines.find((line) => sameLine(line, orderLine))
+                if (sent === undefined) return [orderLine]
+                const qty = orderLine.qty - sent.qty
+                return qty > 0 ? [{ ...orderLine, qty }] : []
+              }),
+            },
+            sent: [
+              {
+                id: sentId,
+                state: 'sending',
+                reason: null,
+                ref: nextId('ref').toUpperCase(),
+                lines: command.lines.map((line) => ({
+                  itemId: line.itemId,
+                  optionIds: line.optionIds,
+                  qty: line.qty,
+                })),
+                sentAt: Date.now(),
+                sentClock: '19:42',
+                mine: true,
+              },
+              ...current.sent,
+            ],
           }))
+          later(DEMO_DELAYS.pay, () =>
+            commit((current) => ({
+              ...current,
+              sent: current.sent.map((sent) =>
+                sent.id === sentId ? { ...sent, state: 'added' } : sent,
+              ),
+            })),
+          )
           later(DEMO_DELAYS.preparing, () => setLineStatus(roundId, 'preparing'))
           later(DEMO_DELAYS.served, () => setLineStatus(roundId, 'served'))
           return answer(command, 'accepted')
         }
 
+        // The table's shared order (D117): the demo keeps the lines and answers like a host.
+        case 'order.add': {
+          const item = itemsById(now).get(command.itemId)
+          if (item === undefined || !item.order.controls) {
+            return answer(command, 'rejected', say('Demo: not for sale.', 'Демо: не се продава.'))
+          }
+          commit((current) => {
+            const draft = { itemId: item.id, optionIds: command.optionIds, note: command.note }
+            const same = current.order.lines.find((line) => sameLine(line, draft))
+            return {
+              ...current,
+              order: {
+                ...current.order,
+                lines:
+                  same === undefined
+                    ? [
+                        ...current.order.lines,
+                        {
+                          id: nextId('ol_demo'),
+                          itemId: item.id,
+                          optionIds: command.optionIds,
+                          qty: command.qty,
+                          note: command.note,
+                          mode: 'on_bill',
+                          held: false,
+                          pending: false,
+                        },
+                      ]
+                    : current.order.lines.map((line) =>
+                        line.id === same.id ? { ...line, qty: line.qty + command.qty } : line,
+                      ),
+              },
+            }
+          })
+          return answer(command, 'accepted')
+        }
+
+        case 'order.change': {
+          const line = storeRef.current.order.lines.find(
+            (candidate) => candidate.id === command.lineId,
+          )
+          if (line === undefined) return answer(command, 'rejected')
+          if (line.qty + command.delta <= 0) return takeOff(command, line)
+          commit((current) => ({
+            ...current,
+            order: {
+              ...current.order,
+              lines: current.order.lines.map((candidate) =>
+                candidate.id === line.id
+                  ? { ...candidate, qty: candidate.qty + command.delta }
+                  : candidate,
+              ),
+            },
+          }))
+          return answer(command, 'accepted')
+        }
+
+        case 'order.remove': {
+          const line = storeRef.current.order.lines.find(
+            (candidate) => candidate.id === command.lineId,
+          )
+          return line === undefined ? answer(command, 'rejected') : takeOff(command, line)
+        }
+
+        case 'order.undo': {
+          const back = storeRef.current.order.removed.find((line) => line.id === command.lineId)
+          if (back === undefined) return answer(command, 'rejected')
+          const { undoSeconds: _seconds, ...restored } = back
+          commit((current) => ({
+            ...current,
+            order: {
+              lines: [...current.order.lines, { ...restored, held: false, pending: false }],
+              removed: current.order.removed.filter((line) => line.id !== back.id),
+            },
+          }))
+          return answer(command, 'accepted')
+        }
+
+        // One open call per table, as the platform keeps it (D127): a later kind joins the open
+        // call, every request of it carries the call's own id, and a repeat of a kind changes
+        // nothing. There is no `service.cancel`: withdrawing a call is not built.
         case 'service.request': {
           await wait(DEMO_DELAYS.request)
-          const id = nextId('demo-request')
+          const OPEN: readonly RequestView['status'][] = ['sent', 'accepted', 'on_the_way']
+          const open = storeRef.current.requests.filter((r) => OPEN.includes(r.status))
+          const callId = open[0]?.actionId ?? nextId('demo-call')
+          if (open.some((r) => r.kind === command.request)) return answer(command, 'accepted')
           const request: RequestView = {
-            id,
-            actionId: command.actionId,
+            id: `${callId}:${command.request}`,
+            actionId: callId,
             kind: command.request,
-            status: 'sent',
-            note: command.note,
+            status: open[0]?.status ?? 'sent',
+            note: '',
           }
           commit((current) => ({ ...current, requests: [...current.requests, request] }))
           later(DEMO_DELAYS.onTheWay, () =>
             commit((current) => ({
               ...current,
               requests: current.requests.map((r) =>
-                r.id === id && r.status === 'sent' ? { ...r, status: 'on_the_way' } : r,
+                r.actionId === callId && r.status === 'sent' ? { ...r, status: 'on_the_way' } : r,
               ),
             })),
           )
           return answer(command, 'accepted')
         }
 
-        case 'service.cancel': {
+        // Withdrawing a call is not built (D127), so nothing sends this and the demo refuses it
+        // exactly as the platform does.
+        case 'service.cancel':
           await wait(DEMO_DELAYS.request)
-          commit((current) => ({
-            ...current,
-            requests: current.requests.map((r) =>
-              r.id === command.requestId && ['sent', 'accepted', 'on_the_way'].includes(r.status)
-                ? { ...r, status: 'cancelled' }
-                : r,
-            ),
-          }))
-          return answer(command, 'accepted')
-        }
+          return answer(command, 'rejected', say('This is not available yet.', 'Още не е налично.'))
 
         case 'pay.start': {
           await wait(DEMO_DELAYS.pay)
@@ -434,11 +601,7 @@ export function useDemoServices(view: ViewModel): ServiceBinding {
           return answer(command, 'accepted')
         }
 
-        // The table's shared order (#75): this template keeps its own bag, so the demo has none.
-        case 'order.add':
-        case 'order.change':
-        case 'order.remove':
-        case 'order.undo':
+        // The demo's order is never set aside, so there is no earlier order to restore.
         case 'order.restore':
         // The location check (#76) runs only on a real table, never in the preview.
         case 'location.check':

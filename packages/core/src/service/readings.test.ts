@@ -1,6 +1,7 @@
 // Recording a reading of a table's POS bills and the sitting's end by a reading (#74) on a real
 // Postgres, as the restro_app role: a complete reading is stored with our ids and names (our
-// item's name through its till link, else "Other item"), discount and free lines as the POS gives
+// item's name through its till link: the published menu's, else the POS's own; else "Other
+// item"), discount and free lines as the POS gives
 // them; the ids stay the same at every reading and an identical reading leaves the table's version
 // alone; a partial reading keeps the bill shown and concludes nothing (rule 6); a table opened
 // before its first item is not ended by its empty bill; the sitting ends when its bill closes
@@ -13,6 +14,8 @@ import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { apply } from '../apply/apply'
+import { provisionMenu } from '../apply/provision'
+import { loadCurrentSnapshot, publishMenu } from '../apply/publish'
 import { hasDatabase } from '../apply/test-database'
 import type { ChangeSet } from '../change-set'
 import { sha256Hex } from '../hash'
@@ -45,8 +48,8 @@ describe.skipIf(!hasDatabase)('readings of the table bill (as the restro_app rol
         values (${record}, ${world.tenantId}, ${integrationId}, 'article', '501', 'master',
                 ${sha256Hex(record)}, '{}', '{}'::jsonb)`),
     )
-    // Item 501 is linked to our "Beer" (the till's text with an English override over it); POS
-    // item 999 is linked to nothing.
+    // Item 501 is linked to our "Beer" (the till's text with an English override over it, never
+    // published); POS item 999 is linked to nothing.
     const link = { integration: integrationId, externalType: 'article', externalId: '501' }
     const till: ChangeSet = {
       id: newId('cs'),
@@ -210,11 +213,12 @@ describe.skipIf(!hasDatabase)('readings of the table bill (as the restro_app rol
     expect(bill).toMatchObject({ complete: true, currency: 'EUR', totalMinor: 900, owedMinor: 900 })
     const [part] = bill.bills
     expect(isId('rd', part?.id)).toBe(true)
+    // Nothing is published here: the linked item takes the POS's own name, never the override (#345).
     expect(part?.lines.map((line) => [line.name, line.quantity, line.amountMinor])).toEqual([
-      [{ bg_BG: 'Бира Каменица', en_US: 'Beer' }, '2', 1000],
+      [{ bg_BG: 'Бира Каменица' }, '2', 1000],
       [null, '0.5', 300],
       [null, '1', -400],
-      [{ bg_BG: 'Бира Каменица', en_US: 'Beer' }, '1', 0],
+      [{ bg_BG: 'Бира Каменица' }, '1', 0],
     ])
     expect(part?.lines.every((line) => isId('bn', line.id))).toBe(true)
 
@@ -359,5 +363,217 @@ describe.skipIf(!hasDatabase)('readings of the table bill (as the restro_app rol
     )
     expect(await record(tableId, complete())).toMatchObject({ ended: false })
     expect(await sitting(sittingId)).toMatchObject({ ended_at: null })
+  })
+})
+
+// #345: a bill line is named as the guest's menu names its item, from the published snapshot of
+// the table's menu, never by a composer edit that is not published yet. An item the published
+// menu does not have is named by the POS's own name (its till text, D75).
+describe.skipIf(!hasDatabase)('names on the table bill come from the published menu (#345)', () => {
+  let world: ServiceWorld
+  let menuId: string
+  const integrationId = newId('in')
+  const beer = newId('nd')
+  const gin = newId('nd')
+  const MANAGER = 'user:us_readings_names'
+
+  const changeSet = (source: string, actor: string, ops: unknown[]) =>
+    ({
+      id: newId('cs'),
+      source,
+      jobId: newId('jb'),
+      actor,
+      observedAt: new Date().toISOString(),
+      ops,
+    }) as unknown as ChangeSet
+  const run = async (changes: ChangeSet) => {
+    expect((await apply(world.app, world.tenantId, changes)).rejected).toEqual([])
+  }
+  const rename = (id: string, value: Record<string, string>, basis: Record<string, string>) =>
+    run(
+      changeSet('manual', MANAGER, [
+        {
+          op: 'setField',
+          node: { id },
+          fieldKey: 'name',
+          layer: 'override',
+          scope: 'master',
+          value,
+          basis,
+        },
+      ]),
+    )
+  const publish = async () => {
+    const published = await publishMenu(world.app, world.tenantId, {
+      menuId,
+      venueId: world.venueId,
+      reason: 'manual',
+      actor: MANAGER,
+    })
+    expect(published.status).toBe('published')
+  }
+
+  beforeAll(async () => {
+    world = await openServiceWorld('readings-names')
+    await world.owner.query(
+      `insert into restro.integrations (id, tenant_id, kind, host) values ($1, $2, 'sim', '127.0.0.1:9')`,
+      [integrationId, world.tenantId],
+    )
+    const menu = await provisionMenu(world.app, world.tenantId, world.venueId)
+    menuId = menu.id
+    const section = newId('nd')
+    await run(
+      changeSet('manual', MANAGER, [
+        {
+          op: 'createNode',
+          id: section,
+          nodeType: 'section',
+          parent: { id: menu.id },
+          status: 'active',
+          sortKey: 'end',
+        },
+        {
+          op: 'setField',
+          node: { id: section },
+          fieldKey: 'title',
+          layer: 'manual',
+          scope: 'master',
+          value: { bg_BG: 'Бар', en_US: 'Bar' },
+        },
+      ]),
+    )
+    // POS item 501 is our beer, on the menu; POS item 502 is our gin, linked but on no menu.
+    for (const [id, external, name] of [
+      [beer, '501', 'Каменица'],
+      [gin, '502', 'Джин'],
+    ] as const) {
+      const record = newId('sr')
+      await world.owner.query(
+        `insert into restro.source_records
+           (id, tenant_id, integration_id, external_type, external_id, scope, content_hash, raw, payload)
+         values ($1, $2, $3, 'article', $4, 'master', $5, '{}', '{}'::jsonb)`,
+        [record, world.tenantId, integrationId, external, sha256Hex(record)],
+      )
+      const link = { integration: integrationId, externalType: 'article', externalId: external }
+      const till = (fieldKey: string, value: unknown, scope = 'master') => ({
+        op: 'setField',
+        node: { link },
+        fieldKey,
+        layer: 'till',
+        scope,
+        value,
+        sourceRecordId: record,
+        mappingVersion: 1,
+      })
+      const here = `venue:${world.venueId}`
+      await run(
+        changeSet(`till:${integrationId}`, `integration:${integrationId}`, [
+          { op: 'createNode', id, nodeType: 'item', parent: null, status: 'active' },
+          { op: 'linkSource', node: { id }, link },
+          till('name', { bg_BG: name }),
+          till('price', { amount_minor: 500, currency: 'EUR' }, here),
+          till('for_sale', true, here),
+          till('visible', true),
+          till('allergens', []),
+        ]),
+      )
+    }
+    await run(
+      changeSet('manual', MANAGER, [
+        { op: 'setPlacement', item: { id: beer }, section: { id: section }, sortKey: 'end' },
+      ]),
+    )
+    // The owner's name for the beer, published: what the guest's menu shows.
+    await rename(beer, { bg_BG: 'Каменица 500 мл' }, { bg_BG: 'Каменица' })
+    await publish()
+    await world.owner.query('update restro.venues set live_menu_id = $2 where id = $1', [
+      world.venueId,
+      menu.id,
+    ])
+  })
+
+  afterAll(async () => {
+    await world?.close()
+  })
+
+  const reading = {
+    complete: true as const,
+    currency: 'EUR',
+    bills: [
+      {
+        pos: 'B1',
+        totalMinor: 1000,
+        paidMinor: 0,
+        openedAt: '2026-11-08T20:00:00.000Z',
+        openedByRestro: false,
+        paymentInFlight: false,
+        lines: [
+          ['11', '501', 'Каменица'],
+          ['12', '502', 'Джин'],
+        ].map(([pos, itemPos, posName]) => ({
+          pos,
+          itemPos,
+          posName,
+          quantity: '1',
+          amountMinor: 500,
+          enteredBy: 'staff',
+          enteredAt: null,
+          restroRef: null,
+        })),
+      },
+    ],
+  }
+  const record = async (tableId: string) => {
+    const { result } = await applyService(
+      world.app,
+      { type: 'reading.record', tableId, reading } as never,
+      {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        origin: 'worker',
+        actor: { kind: 'integration', integrationId },
+        jobId: `table-read-${randomUUID()}`,
+      },
+      { billIdKey: KEY },
+    )
+    expect(result.status).toBe('accepted')
+  }
+  const state = async (tableId: string) => {
+    const read = await readTableState(world.app, { tenantId: world.tenantId, tableId })
+    if (read === null || read.unchanged) throw new Error('no table state')
+    return read
+  }
+  const names = async (tableId: string) =>
+    (await state(tableId)).bill?.bills[0]?.lines.map((line) => line.name)
+  const publishedName = async (id: string) => {
+    const snapshot = await loadCurrentSnapshot(world.app, world.tenantId, {
+      menuId,
+      venueId: world.venueId,
+    })
+    return snapshot?.body?.items[id]?.name
+  }
+
+  it('shows the published name, not an unpublished rename, and the new one after Publish', async () => {
+    const tableId = world.tables[0] as string
+    await world.openSitting(tableId)
+    // Renamed in the composer and not published (the gin is on no menu at all).
+    await rename(beer, { bg_BG: 'Каменица 0,5 л' }, { bg_BG: 'Каменица' })
+    await rename(gin, { bg_BG: 'Джин Бомбай' }, { bg_BG: 'Джин' })
+
+    await record(tableId)
+    // The fact the change is safe because of: a reading names a line only from the published
+    // snapshot of the table's menu (keyed by the same id the till link resolves to) or from the
+    // till's own text, never from a layer of ours that may not be published. The beer (on the
+    // menu) shows exactly the guest menu's name; the gin (on no menu) the till's, not its rename.
+    expect(await publishedName(beer)).toEqual({ bg_BG: 'Каменица 500 мл' })
+    expect(await names(tableId)).toEqual([await publishedName(beer), { bg_BG: 'Джин' }])
+    const before = await state(tableId)
+
+    await publish()
+    await record(tableId)
+    expect(await publishedName(beer)).toEqual({ bg_BG: 'Каменица 0,5 л' })
+    expect(await names(tableId)).toEqual([{ bg_BG: 'Каменица 0,5 л' }, { bg_BG: 'Джин' }])
+    // The next reading after a Publish touches the table, so open phones see the new name.
+    expect((await state(tableId)).version).toBeGreaterThan(before.version)
   })
 })
