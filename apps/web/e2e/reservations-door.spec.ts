@@ -269,7 +269,8 @@ test('a walk-in off a free spot is two taps, with the hour the door offered', as
   await expect(walkIn).toHaveText('Seat a walk-in')
   await walkIn.click()
   await expect(page.getByText('Seated.', { exact: true })).toBeVisible()
-  await expect(page.getByText('The table is open for phones.')).toBeVisible()
+  // Маса 9 has no Table, so no code opened and the toast must not say one did (#396).
+  await expect(page.getByText('The table is open for phones.')).toHaveCount(0)
   await openPlan(page)
   await expect(spotNamed(page, 'Маса 9').first()).toHaveAttribute('data-state', 'sitting')
 })
