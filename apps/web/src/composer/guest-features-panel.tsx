@@ -189,7 +189,6 @@ function FeaturesForm({ venueId, features, canEdit, privacy }: GuestFeaturesCard
                   </div>
                 ))}
               </fieldset>
-              <Note>{t('stage4')}</Note>
             </SwitchRow>
             <SwitchRow
               id={`${ids}-bill`}
@@ -199,7 +198,7 @@ function FeaturesForm({ venueId, features, canEdit, privacy }: GuestFeaturesCard
               testId="feature-bill"
               onChange={(on) => setFeature((current) => ({ ...current, bill: on }))}
             >
-              <Note>{t('stage4')}</Note>
+              <Note>{t('needsPos')}</Note>
             </SwitchRow>
             <SwitchRow
               id={`${ids}-ordering`}
@@ -211,7 +210,7 @@ function FeaturesForm({ venueId, features, canEdit, privacy }: GuestFeaturesCard
               testId="feature-ordering"
               onChange={(on) => setFeature((current) => ({ ...current, ordering: on }))}
             >
-              <Note>{t('stage4')}</Note>
+              <Note>{t('needsPos')}</Note>
               {privacy.onFile ? null : (
                 <PrivacyLine
                   state={saved.ordering ? 'missing' : 'need'}
@@ -228,7 +227,7 @@ function FeaturesForm({ venueId, features, canEdit, privacy }: GuestFeaturesCard
               testId="feature-pay"
               onChange={(on) => setFeature((current) => ({ ...current, pay: on }))}
             >
-              <Note>{t('stage5')}</Note>
+              <Note>{t('needsCard')}</Note>
             </SwitchRow>
           </section>
         </div>
@@ -261,7 +260,7 @@ function SwitchRow({
   children?: ReactNode
 }) {
   return (
-    <div className="grid gap-1.5">
+    <div className="grid min-w-0 gap-1.5">
       <div className="flex items-center justify-between gap-3">
         <Label htmlFor={id} className="font-medium">
           {label}

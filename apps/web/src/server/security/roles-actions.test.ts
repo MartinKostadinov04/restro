@@ -60,6 +60,7 @@ const ASKS_THE_WORKER: ReadonlySet<string> = new Set([
   'testTelegramAction',
   'startConnectionAction',
   'finishConnectionAction',
+  'finishSimPayFormAction',
   'revealPinAction',
 ])
 

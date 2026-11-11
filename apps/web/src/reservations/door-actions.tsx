@@ -73,6 +73,15 @@ export interface DoorParty {
   readonly onSpot?: string
 }
 
+/**
+ * How many tables the write left open for phones, as the service answered it (`tablesOpen`). A
+ * missing or odd value reads as none: the screen says a table is open only when the write said so.
+ */
+export function tablesOpenFor(details: Readonly<Record<string, unknown>>): number {
+  const count = details.tablesOpen
+  return typeof count === 'number' && count > 0 ? count : 0
+}
+
 /** A write waiting on the hostess's answer. */
 interface Asking {
   readonly party: DoorParty
@@ -116,6 +125,8 @@ export function useDoorActions({
           reservationId === null
             ? `rv-walk-in:${party.spotIds.join(',')}`
             : `rv-arrive:${reservationId}`,
+        // Only what the write is certain of: the party is seated. Whether a table opened for phones
+        // is told after the answer, from what the write reports (#396).
         done:
           reservationId === null
             ? t('d_seated_walk_in')
@@ -187,9 +198,13 @@ export function useDoorActions({
         },
         after: onChanged,
         onDone: (details) => {
+          const id = reservationId ?? 'walk-in'
           // The role may not open tables: the party is seated and the table stayed closed (#329).
           if (details.tableClosed === true) {
-            toast.message(t('d_closed'), { id: `rv-closed:${reservationId ?? 'walk-in'}` })
+            toast.message(t('d_closed'), { id: `rv-closed:${id}` })
+          } else if (tablesOpenFor(details) > 0) {
+            // A code really is open for phones: said here, never guessed before the write (#396).
+            toast.message(t('d_open'), { id: `rv-open:${id}` })
           }
           setAsking(null)
         },

@@ -235,7 +235,12 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
     expect(await openSittingOf(tableOf('D1'))).toBeNull()
     const details = await accept({ type: 'reservation.arrive', reservationId: id })
     // The arrival says which tables it opened, and that list is what its undo closes again.
-    expect(details).toMatchObject({ status: 'seated', changed: true, opened: tableOf('D1') })
+    expect(details).toMatchObject({
+      status: 'seated',
+      changed: true,
+      opened: tableOf('D1'),
+      tablesOpen: 1,
+    })
     const sittingId = await openSittingOf(tableOf('D1'))
     expect(sittingId).not.toBeNull()
     // The same row Tonight writes and ends: one opener, one closer, no second path to drift.
@@ -521,7 +526,12 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
       { type: 'reservation.arrive', reservationId: id },
       staff(floorOnlyId),
     )
-    expect(details).toMatchObject({ status: 'seated', tableClosed: true, opened: '' })
+    expect(details).toMatchObject({
+      status: 'seated',
+      tableClosed: true,
+      opened: '',
+      tablesOpen: 0,
+    })
     expect(await openSittingOf(tableOf('D3'))).toBeNull()
     expect(await reservationOf(id)).toMatchObject({ status: 'seated' })
     await accept({ type: 'reservation.release_spots', reservationId: id })
@@ -662,6 +672,8 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
     expect(await accept({ type: 'reservation.arrive', reservationId: id })).toMatchObject({
       status: 'seated',
       opened: '',
+      // The screen says "the table is open for phones" only from this count (#396): none opened.
+      tablesOpen: 0,
     })
     expect(await reservationOf(id)).toMatchObject({ status: 'seated' })
     expect(await heldSpotsOf(id)).toEqual([])
