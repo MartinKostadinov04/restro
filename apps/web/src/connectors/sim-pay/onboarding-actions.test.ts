@@ -30,15 +30,15 @@ vi.mock('../../server/settings/paying-addresses', async (importActual) => ({
   payingInstallation: () => ({ base: 'https://restro.test', guestHost: 'restro.test' }),
 }))
 vi.mock('next/navigation', () => ({
-  notFound: () => {
-    throw new Error('NOT_FOUND')
-  },
   redirect: (to: string) => {
     throw new Error(`REDIRECT ${to}`)
   },
 }))
 
-import { finishSimPayFormAction, problemOf } from './onboarding-actions'
+import { finishSimPayFormAction } from './onboarding-actions'
+
+const INVALID = { ok: false, error: 'invalid' }
+const done = (data: FormData) => finishSimPayFormAction(null, data)
 
 const VENUE = 'vn_abcdefghij0123456789AB'
 const RETURN = `https://restro.test/venues/${VENUE}?tab=settings&section=paying&connection=return`
@@ -67,7 +67,7 @@ describe('Done on the simulated provider’s form', () => {
   afterEach(() => vi.unstubAllEnvs())
 
   it('tells the worker, then goes back to the Paying settings at ?connection=return', async () => {
-    await expect(finishSimPayFormAction(form())).rejects.toThrow(`REDIRECT ${RETURN}`)
+    await expect(done(form())).rejects.toThrow(`REDIRECT ${RETURN}`)
     expect(ask).toHaveBeenCalledTimes(1)
     expect(ask.mock.calls[0]?.[2]).toEqual({
       action: 'finish_simulated',
@@ -80,7 +80,7 @@ describe('Done on the simulated provider’s form', () => {
   it('does not exist in production, nor with no known environment, and never asks the worker', async () => {
     for (const env of ['production', '', 'somewhere']) {
       vi.stubEnv('PAYMENTS_ENV', env)
-      await expect(finishSimPayFormAction(form())).rejects.toThrow('NOT_FOUND')
+      expect(await done(form())).toEqual(INVALID)
     }
     expect(ask).not.toHaveBeenCalled()
   })
@@ -94,20 +94,13 @@ describe('Done on the simulated provider’s form', () => {
       { venue: 'not-a-venue' },
     ]
     for (const bad of bads) {
-      await expect(finishSimPayFormAction(form(bad))).rejects.toThrow('NOT_FOUND')
+      expect(await done(form(bad))).toEqual(INVALID)
     }
     expect(ask).not.toHaveBeenCalled()
   })
 
-  it('comes back to the page, saying what went wrong, when the worker refuses', async () => {
+  it('answers with the worker’s refusal for the form to word, and does not leave the page', async () => {
     ask.mockResolvedValue({ ok: false, error: 'not_connecting' })
-    await expect(finishSimPayFormAction(form())).rejects.toThrow(
-      /^REDIRECT \/sim-pay\/onboard\/simacct_abc_1\?.*problem=not_connecting/,
-    )
-  })
-
-  it('words an unknown refusal as a plain failure', () => {
-    expect(problemOf('account_mismatch')).toBe('account_mismatch')
-    expect(problemOf('something_new')).toBe('failed')
+    expect(await done(form())).toEqual({ ok: false, error: 'not_connecting' })
   })
 })

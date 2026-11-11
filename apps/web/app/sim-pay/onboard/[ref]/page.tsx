@@ -1,17 +1,14 @@
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
-import { Button } from '@/components/ui/button'
 import { paymentsEnv } from '@/connectors/notices'
 import { providerOf } from '@/connectors/providers'
 import { SimAccountRefSchema, simPayOnboardingOffered } from '@/connectors/sim-pay/onboarding'
-import { finishSimPayFormAction } from '@/connectors/sim-pay/onboarding-actions'
+import { SimPayOnboardingForm } from '@/connectors/sim-pay/onboarding-form'
 import { requireTenant } from '@/server/session'
 import { payingInstallation, payingReturnAddress } from '@/server/settings/paying-addresses'
 import { getVenue } from '@/server/venues'
 
 export const metadata = { robots: { index: false } }
-
-const PROBLEMS = ['not_connecting', 'not_simulated', 'account_mismatch', 'payments_off', 'failed']
 
 /**
  * The page that stands in for the simulated card provider's own onboarding form (#398), where the
@@ -43,8 +40,6 @@ export default async function SimPayOnboardingPage({
 
   const t = await getTranslations('simPayOnboarding')
   const provider = providerOf('sim-pay')?.label ?? 'Test card payments'
-  const problem =
-    typeof query.problem === 'string' && PROBLEMS.includes(query.problem) ? query.problem : null
 
   return (
     <main className="mx-auto flex min-h-svh w-full max-w-xl flex-col justify-center gap-6 px-4 py-10">
@@ -59,24 +54,12 @@ export default async function SimPayOnboardingPage({
         {t('standsIn', { provider })}
       </p>
       <p className="text-sm text-muted-foreground">{t('what')}</p>
-      {problem !== null && (
-        <p
-          role="alert"
-          data-testid="sim-pay-problem"
-          className="rounded-md border border-destructive/40 p-3 text-sm text-destructive"
-        >
-          {t(`problems.${problem}`)}
-        </p>
-      )}
-      <form action={finishSimPayFormAction} className="flex flex-col gap-3">
-        <input type="hidden" name="ref" value={ref.data} />
-        <input type="hidden" name="venue" value={venue.id} />
-        <input type="hidden" name="return" value={back} />
-        <input type="hidden" name="refresh" value={refresh} />
-        <Button type="submit" data-testid="sim-pay-done" className="w-fit">
-          {t('done')}
-        </Button>
-      </form>
+      <SimPayOnboardingForm
+        accountRef={ref.data}
+        venueId={venue.id}
+        returnUrl={back}
+        refreshUrl={refresh}
+      />
       <div className="flex flex-col gap-1 text-sm">
         <a data-testid="sim-pay-leave" href={back} className="w-fit underline underline-offset-4">
           {t('leave')}

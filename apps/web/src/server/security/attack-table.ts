@@ -11,6 +11,7 @@ import * as composer from '@/composer/actions'
 import * as paymentMode from '@/composer/payment-mode-actions'
 import * as soldOut from '@/composer/sold-out-actions'
 import * as tags from '@/composer/tag-actions'
+import * as simPay from '@/connectors/sim-pay/onboarding-actions'
 import * as i18n from '@/i18n/actions'
 import * as switching from '@/server/actions'
 import * as guestFeatures from '@/server/composer/guest-features-actions'
@@ -621,6 +622,26 @@ export const ATTACKS: readonly Attack[] = [
   {
     action: 'startConnectionAction',
     call: (v) => paying.startConnectionAction({ venueId: v.venues[0].id }),
+  },
+  // The simulated provider's stand-in form (#398): another organisation's venue gets a refusal
+  // whatever the environment, since an environment that does not offer the page refuses too.
+  {
+    action: 'finishSimPayFormAction',
+    call: (v) => {
+      const form = new FormData()
+      const venueId = v.venues[0].id
+      form.set('ref', 'simacct_attack_1')
+      form.set('venue', venueId)
+      form.set(
+        'return',
+        `http://localhost:3000/venues/${venueId}?tab=settings&section=paying&connection=return`,
+      )
+      form.set(
+        'refresh',
+        `http://localhost:3000/venues/${venueId}?tab=settings&section=paying&connection=refresh`,
+      )
+      return simPay.finishSimPayFormAction(null, form)
+    },
   },
   {
     action: 'finishConnectionAction',

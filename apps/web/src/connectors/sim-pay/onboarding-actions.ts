@@ -11,7 +11,7 @@
 // two return addresses must be exactly what the settings would have sent for this venue, so a made-up
 // link can send the owner nowhere else.
 import { idSchema } from '@restro/core'
-import { notFound, redirect } from 'next/navigation'
+import { redirect } from 'next/navigation'
 import { z } from 'zod'
 
 import { askConnection } from '../../server/payments-connection'
@@ -19,7 +19,7 @@ import { revealConfig } from '../../server/reveal'
 import { payingInstallation, payingReturnAddress } from '../../server/settings/paying-addresses'
 import { inSettingsScope } from '../../server/settings/scope'
 import { paymentsEnv } from '../notices'
-import { SIM_PAY_ONBOARDING_PATH, SimAccountRefSchema, simPayOnboardingOffered } from './onboarding'
+import { SimAccountRefSchema, simPayOnboardingOffered } from './onboarding'
 
 const Form = z.object({
   ref: SimAccountRefSchema,
@@ -28,39 +28,31 @@ const Form = z.object({
   refresh: z.string(),
 })
 
-/** What the page says went wrong, by the worker's code; anything else is `failed`. */
-export type SimPayFormProblem =
-  | 'not_connecting'
-  | 'not_simulated'
-  | 'account_mismatch'
-  | 'payments_off'
-  | 'failed'
+/** What the page is told when it could not finish: a code the form words, never a throw. */
+export type SimPayFormAnswer = { readonly ok: false; readonly error: string } | null
 
-const KNOWN: readonly string[] = [
-  'not_connecting',
-  'not_simulated',
-  'account_mismatch',
-  'payments_off',
-]
+const INVALID = { ok: false, error: 'invalid' } as const
 
-/** The problem to show for a worker's code. */
-export function problemOf(code: string): SimPayFormProblem {
-  return KNOWN.includes(code) ? (code as SimPayFormProblem) : 'failed'
-}
-
-/** Finishes the simulated form for the account and venue the page was opened for, then goes back. */
-export async function finishSimPayFormAction(formData: FormData): Promise<void> {
-  if (!simPayOnboardingOffered(paymentsEnv())) notFound()
+/**
+ * Finishes the simulated form for the account and venue the page was opened for, then goes back to
+ * the Paying settings. Every failure is an answer for the form to word, not a throw (the page
+ * itself answers 404 to a link that is not this person's; a made-up call gets `invalid`).
+ */
+export async function finishSimPayFormAction(
+  _previous: SimPayFormAnswer,
+  formData: FormData,
+): Promise<SimPayFormAnswer> {
+  if (!simPayOnboardingOffered(paymentsEnv())) return INVALID
   const parsed = Form.safeParse(Object.fromEntries(formData))
   const where = payingInstallation()
-  if (!parsed.success || where === null) notFound()
+  if (!parsed.success || where === null) return INVALID
   const { ref, venue } = parsed.data
   const back = payingReturnAddress(where.base, venue, 'return')
   if (
     parsed.data.return !== back ||
     parsed.data.refresh !== payingReturnAddress(where.base, venue, 'refresh')
   ) {
-    notFound()
+    return INVALID
   }
 
   const answer = await inSettingsScope(venue, async (scope) => {
@@ -82,12 +74,7 @@ export async function finishSimPayFormAction(formData: FormData): Promise<void> 
       ? ({ ok: true, details: {} } as const)
       : ({ ok: false, error: reply.error } as const)
   })
+  // The owner is back at the Paying settings, which read the account back as after a real form.
   if (answer.ok) redirect(back)
-  const retry = new URLSearchParams({
-    venue,
-    return: back,
-    refresh: parsed.data.refresh,
-    problem: problemOf(answer.error),
-  })
-  redirect(`${SIM_PAY_ONBOARDING_PATH}/${ref}?${retry.toString()}`)
+  return { ok: false, error: answer.error }
 }
