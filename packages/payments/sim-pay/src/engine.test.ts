@@ -20,6 +20,78 @@ const urls = {
   refreshUrl: 'https://pay.sim-pay.test/admin/settings/paying?retry=1',
 }
 
+describe('an account named by the caller', () => {
+  it('can take payments at once, and is the same account on a second start', () => {
+    const { engine, provider } = simPay()
+    const ref = engine.addNamedAccount('simpay_club_biad', 'Клуб Биад ЕООД')
+    expect(ref.provider).toBe('simpay_club_biad')
+    expect(engine.readConnection(ref)).toMatchObject({
+      complete: true,
+      value: { canTakePayments: true, displayName: 'Клуб Биад ЕООД', missing: [] },
+    })
+    // A restart names the same reference again: one account, still able to take payments.
+    expect(engine.addNamedAccount('simpay_club_biad').provider).toBe('simpay_club_biad')
+    expect(engine.readConnection(ref)).toMatchObject({ value: { canTakePayments: true } })
+    expect(provider.kind).toBe('sim-pay')
+  })
+
+  it('is not the account an engine that was never told about it knows', () => {
+    const { engine } = simPay()
+    expect(engine.readConnection(providerRef('simpay_club_biad'))).toMatchObject({
+      value: { canTakePayments: false, missing: ['account'] },
+    })
+  })
+})
+
+describe('a card the bank accepts at the hold (guestCardAccepted)', () => {
+  it('holds without anyone playing the guest, and still captures as always', () => {
+    const engine = new SimPayEngine({
+      clock: new ManualClock(),
+      switches: { guestCardAccepted: true },
+    })
+    const account = engine.addNamedAccount('simpay_club_biad')
+    const paymentId = newId('py') as `py_${string}`
+    const made = engine.createHold({
+      accountRef: account,
+      paymentId,
+      currency: 'EUR',
+      amountMinor: 3450,
+      idempotencyKey: `${paymentId}:hold`,
+      description: 'Club Biad, table 45',
+    })
+    expect(made.kind).toBe('done')
+    if (made.kind !== 'done') return
+    const read = engine.findByPaymentId(account, paymentId)
+    expect(read).toMatchObject({ value: { status: 'held', heldMinor: 3450 } })
+    expect(
+      engine.capture({
+        accountRef: account,
+        paymentRef: made.result.paymentRef,
+        amountMinor: 3450,
+        idempotencyKey: `${paymentId}:capture`,
+      }).kind,
+    ).toBe('done')
+    expect(engine.movedMinor(account)).toBe(3450)
+  })
+
+  it('is off by default: the hold waits for the guest at the form', () => {
+    const { engine } = simPay()
+    const account = engine.addNamedAccount('simpay_club_biad')
+    const paymentId = newId('py') as `py_${string}`
+    engine.createHold({
+      accountRef: account,
+      paymentId,
+      currency: 'EUR',
+      amountMinor: 3450,
+      idempotencyKey: `${paymentId}:hold`,
+      description: 'Club Biad, table 45',
+    })
+    expect(engine.findByPaymentId(account, paymentId)).toMatchObject({
+      value: { status: 'awaiting_guest' },
+    })
+  })
+})
+
 describe('a run', () => {
   it('goes inside every ref, and is letters and digits only', () => {
     const clock = new ManualClock()

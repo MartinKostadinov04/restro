@@ -1,7 +1,8 @@
+import { providerRef } from '@restro/core'
 import { StripeConfigError } from '@restro/stripe'
 import { describe, expect, it } from 'vitest'
 
-import { paymentProviders, simulatedForms } from './connectors'
+import { paymentProviders, seededSimAccount, simulatedForms } from './connectors'
 
 // Made-up keys of the right shape: no real key is ever in a test.
 const TEST_KEY = `sk_test_${'A1b2C3d4'.repeat(4)}`
@@ -53,6 +54,40 @@ describe('the simulated provider (#116)', () => {
     expect(() =>
       paymentProviders({ PAYMENTS_ENV: 'production', WORKER_PAYMENTS_SIM: 'on' }),
     ).toThrow()
+  })
+
+  it('knows the account WORKER_PAYMENTS_SIM_ACCOUNT names, so a restart keeps the demo paying', async () => {
+    const providers = paymentProviders({
+      PAYMENTS_ENV: 'development',
+      WORKER_PAYMENTS_SIM: 'on',
+      WORKER_PAYMENTS_SIM_ACCOUNT: 'simpay_club_biad',
+      WORKER_PAYMENTS_SIM_ACCOUNT_NAME: 'Клуб Биад ЕООД',
+    })
+    const provider = providers.get('sim-pay')
+    expect(provider).toBeDefined()
+    await expect(provider?.readConnection(providerRef('simpay_club_biad'))).resolves.toMatchObject({
+      complete: true,
+      value: { canTakePayments: true, displayName: 'Клуб Биад ЕООД' },
+    })
+  })
+
+  // The engine is one for the whole process (#398), so what a blank setting does cannot be read
+  // off a later `paymentProviders` call: the decision itself is the thing to pin down.
+  it('names no account when the setting is unset or blank, and trims what it does name', () => {
+    expect(seededSimAccount({})).toBeNull()
+    expect(seededSimAccount({ WORKER_PAYMENTS_SIM_ACCOUNT: '   ' })).toBeNull()
+    expect(
+      seededSimAccount({
+        WORKER_PAYMENTS_SIM_ACCOUNT: ' simpay_club_biad ',
+        WORKER_PAYMENTS_SIM_ACCOUNT_NAME: '  ',
+      }),
+    ).toEqual({ ref: 'simpay_club_biad', displayName: null })
+    expect(
+      seededSimAccount({
+        WORKER_PAYMENTS_SIM_ACCOUNT: 'simpay_club_biad',
+        WORKER_PAYMENTS_SIM_ACCOUNT_NAME: 'Клуб Биад ЕООД',
+      }),
+    ).toEqual({ ref: 'simpay_club_biad', displayName: 'Клуб Биад ЕООД' })
   })
 })
 
