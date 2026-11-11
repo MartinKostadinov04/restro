@@ -64,6 +64,14 @@ export interface SimPaySwitches {
   readonly refundNotices: boolean
   /** The smallest amount, in minor units, per currency. */
   readonly minimumMinor: { readonly [C in Currency]: number }
+  /**
+   * A card the bank accepts the moment the hold is made, as if the guest had already entered one.
+   * Off everywhere a test plays the guest itself (`engine.guest`); the demo club's walk-through
+   * turns it on, because nothing outside this process can reach `engine.guest` and a demo would
+   * otherwise stop at the form for ever. It changes only who presses the card, never what a hold,
+   * a capture or a release then does.
+   */
+  readonly guestCardAccepted: boolean
 }
 
 export const CAUTIOUS_SWITCHES: SimPaySwitches = Object.freeze({
@@ -72,6 +80,7 @@ export const CAUTIOUS_SWITCHES: SimPaySwitches = Object.freeze({
   wallets: [],
   refundNotices: false,
   minimumMinor: Object.freeze({ EUR: 50 }),
+  guestCardAccepted: false,
 })
 
 /** The writes a fault can hit. */
@@ -183,6 +192,31 @@ export class SimPayEngine {
     const account = this.#newAccount()
     account.canTakePayments = true
     account.missing = []
+    return account.ref
+  }
+
+  /**
+   * An account that has finished connecting under a reference the caller names, rather than one
+   * this engine mints: the demo club's account (`apps/web/scripts/seed-demo.ts`). The engine keeps
+   * its accounts in memory, so a worker restarted under a database that already records an account
+   * would otherwise refuse every call about it (`access_lost`) and the demo's paying would read as
+   * paused. Naming the same reference at every start keeps the two in step. Only a development
+   * environment reaches this: the simulator is refused in production.
+   */
+  addNamedAccount(ref: string, displayName: string | null = null): ProviderRef {
+    const existing = this.#accounts.get(ref)
+    const account: SimAccount = existing ?? {
+      ref: providerRef(ref),
+      canTakePayments: true,
+      displayName,
+      missing: [],
+      domains: new Set(),
+      movedMinor: 0,
+    }
+    account.canTakePayments = true
+    account.displayName = displayName
+    account.missing = []
+    this.#accounts.set(ref, account)
     return account.ref
   }
 
@@ -432,6 +466,12 @@ export class SimPayEngine {
         threeDs: null,
         authorisationCode: null,
       })
+      // `guestCardAccepted`: nobody outside this process can play the guest at the form, so the
+      // bank accepts a card at once. The payment goes on through the same `held` state as always.
+      if (this.switches.guestCardAccepted) {
+        const made = this.#payments.get(ref.provider)
+        if (made !== undefined && !made.needsStep) this.#hold(made, 'authenticated')
+      }
       return done({ paymentRef: ref, form: formValues(account.ref, ref) })
     })
   }

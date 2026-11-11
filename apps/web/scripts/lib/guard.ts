@@ -3,26 +3,30 @@
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 
-/** Throws unless NODE_ENV is `development` and DATABASE_URL points at this machine. */
-export function assertDevEnvironment(env: Record<string, string | undefined>): void {
+/**
+ * Throws unless NODE_ENV is `development` and DATABASE_URL points at this machine. `script` names
+ * the command in the refusal, so the person reading it knows which one stopped.
+ */
+export function assertDevEnvironment(
+  env: Record<string, string | undefined>,
+  script = 'db:seed:dev',
+): void {
   if (env.NODE_ENV !== 'development') {
     throw new Error(
-      `db:seed:dev refuses to run: NODE_ENV is "${env.NODE_ENV ?? ''}", it must be "development".`,
+      `${script} refuses to run: NODE_ENV is "${env.NODE_ENV ?? ''}", it must be "development".`,
     )
   }
   const url = env.DATABASE_URL
-  if (!url) throw new Error('db:seed:dev refuses to run: DATABASE_URL is not set.')
+  if (!url) throw new Error(`${script} refuses to run: DATABASE_URL is not set.`)
   let host: string
   try {
     const parsed = new URL(url)
     host = parsed.searchParams.get('host') ?? parsed.hostname
   } catch {
-    throw new Error('db:seed:dev refuses to run: DATABASE_URL is not a valid URL.')
+    throw new Error(`${script} refuses to run: DATABASE_URL is not a valid URL.`)
   }
   if (!LOCAL_HOSTS.has(host)) {
-    throw new Error(
-      `db:seed:dev refuses to run: the database host "${host}" is not on this machine.`,
-    )
+    throw new Error(`${script} refuses to run: the database host "${host}" is not on this machine.`)
   }
 }
 

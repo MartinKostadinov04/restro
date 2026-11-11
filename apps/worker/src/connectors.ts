@@ -55,7 +55,21 @@ export function paymentProviders(env: NodeJS.ProcessEnv = process.env): PaymentP
     const engine = new SimPayEngine({
       clock: { now: () => new Date() },
       run: randomUUID().replaceAll('-', ''),
+      // `WORKER_PAYMENTS_SIM_CARD=accept`: the bank accepts the card as the hold is made. Only the
+      // demo club's walk-through sets it; the tests play the guest at the form themselves.
+      ...(env.WORKER_PAYMENTS_SIM_CARD === 'accept'
+        ? { switches: { guestCardAccepted: true } }
+        : {}),
     })
+    // The engine keeps its accounts in memory, so a worker start forgets the account a database
+    // already records and every call about it is refused (`access_lost`): the demo club's paying
+    // would read as paused. `WORKER_PAYMENTS_SIM_ACCOUNT` names the reference the demo seed
+    // records, so each start knows it again. Development only: the simulator is refused in
+    // production, and a real provider has no such setting.
+    const seeded = env.WORKER_PAYMENTS_SIM_ACCOUNT?.trim()
+    if (seeded !== undefined && seeded !== '') {
+      engine.addNamedAccount(seeded, env.WORKER_PAYMENTS_SIM_ACCOUNT_NAME?.trim() || null)
+    }
     providers.set(SIM_PAY_KIND, createSimPayProvider({ env: env.PAYMENTS_ENV ?? '', engine }))
   }
   return providers

@@ -1,3 +1,4 @@
+import { providerRef } from '@restro/core'
 import { StripeConfigError } from '@restro/stripe'
 import { describe, expect, it } from 'vitest'
 
@@ -53,5 +54,31 @@ describe('the simulated provider (#116)', () => {
     expect(() =>
       paymentProviders({ PAYMENTS_ENV: 'production', WORKER_PAYMENTS_SIM: 'on' }),
     ).toThrow()
+  })
+
+  it('knows the account WORKER_PAYMENTS_SIM_ACCOUNT names, so a restart keeps the demo paying', async () => {
+    const providers = paymentProviders({
+      PAYMENTS_ENV: 'development',
+      WORKER_PAYMENTS_SIM: 'on',
+      WORKER_PAYMENTS_SIM_ACCOUNT: 'simpay_club_biad',
+      WORKER_PAYMENTS_SIM_ACCOUNT_NAME: 'Клуб Биад ЕООД',
+    })
+    const provider = providers.get('sim-pay')
+    expect(provider).toBeDefined()
+    await expect(provider?.readConnection(providerRef('simpay_club_biad'))).resolves.toMatchObject({
+      complete: true,
+      value: { canTakePayments: true, displayName: 'Клуб Биад ЕООД' },
+    })
+  })
+
+  it('leaves the simulator with no account when the setting is blank', async () => {
+    const providers = paymentProviders({
+      PAYMENTS_ENV: 'development',
+      WORKER_PAYMENTS_SIM: 'on',
+      WORKER_PAYMENTS_SIM_ACCOUNT: '   ',
+    })
+    await expect(
+      providers.get('sim-pay')?.readConnection(providerRef('simpay_club_biad')),
+    ).resolves.toMatchObject({ value: { canTakePayments: false, missing: ['account'] } })
   })
 })

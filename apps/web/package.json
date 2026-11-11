@@ -9,6 +9,7 @@
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
     "test:e2e": "next build && playwright test",
+    "db:seed:demo": "node --disable-warning=ExperimentalWarning --experimental-transform-types --env-file-if-exists=../../.env.local --env-file=./scripts/dev.env --import ./scripts/register-ts.mjs ./scripts/seed-demo.ts",
     "db:seed:dev": "node --disable-warning=ExperimentalWarning --experimental-transform-types --env-file-if-exists=../../.env.local --env-file=./scripts/dev.env --import ./scripts/register-ts.mjs ./scripts/seed-dev.ts"
   },
   "dependencies": {
