@@ -226,6 +226,7 @@ describe.skipIf(!hasDatabase)('the guest API module (as the restro_app role)', (
       code: null,
       subjectId: orderLineIdFor(actionId),
       ref: null,
+      payFirstRefused: null,
     })
     // The same tap again (a retry): the first answer, and no second line or quantity.
     const repeat = await act(add)

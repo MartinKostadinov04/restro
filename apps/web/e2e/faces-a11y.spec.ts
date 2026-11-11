@@ -12,10 +12,11 @@ import {
   visualPath,
 } from './visual-fixtures'
 
-// The accessibility audit of the Editorial Market's guest page (brief SH-07, T74), on a production
-// build. The menus are the five themes of scripts/seed-visual-e2e.ts (the designer's four presets
-// and one made from three colours), all with the same content: photo cards in the strip and in
-// every layout, a sold-out and a scheduled item, 60-character Cyrillic names, a dish with all
+// The accessibility audit of the renderer's guest page in Editorial (brief SH-07, T74), on a
+// production build; faces-design.spec.ts holds Basic and every General value to the same floors. The
+// menus are the five themes of scripts/seed-visual-e2e.ts (the designer's four presets and one made
+// from three colours), all with the same content: photo cards in the strip and in every layout, a
+// scheduled item, 60-character Cyrillic names, a dish with all
 // fourteen allergens, a sub-section, filters. The service screens (the bag, the bill, the waiter,
 // paying, the receipt) are audited in faces-a11y-services.spec.ts, in the Design preview.
 //
@@ -207,6 +208,33 @@ test.describe('the screen width', () => {
         () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
       ),
     ).toBe(true)
+  })
+
+  test('the section rail marks the section the guest scrolls to, not only the one tapped', async ({
+    page,
+  }) => {
+    // DA-37: the rail's highlight follows an IntersectionObserver, which jsdom does not have, so no
+    // unit test sees it. Here the guest only scrolls; no link is tapped.
+    await openMenu(page)
+    const links = page.locator(`${FACE} .rm-sections a`)
+    const marked = page.locator(`${FACE} .rm-sections a[aria-current="true"]`)
+    const hrefOf = async (index: number) => (await links.nth(index).getAttribute('href')) ?? ''
+    await expect(marked).toHaveCount(1)
+    await expect(marked).toHaveAttribute('href', await hrefOf(0))
+    for (const index of [1, 2]) {
+      const href = await hrefOf(index)
+      // Put the top of that section 100 px below the top of the screen: inside the reading band.
+      await page.evaluate((id) => {
+        const section = document.getElementById(id)
+        if (section === null) throw new Error(`no section ${id}`)
+        window.scrollBy({ top: section.getBoundingClientRect().top - 100, behavior: 'instant' })
+      }, href.slice(1))
+      await expect(marked).toHaveCount(1)
+      await expect(marked).toHaveAttribute('href', href)
+    }
+    // And back up: the mark follows the scroll in both directions.
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }))
+    await expect(marked).toHaveAttribute('href', await hrefOf(0))
   })
 })
 

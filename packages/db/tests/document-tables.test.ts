@@ -509,7 +509,7 @@ describe.skipIf(!hasDatabase)('document tables', () => {
     ).toMatch(PERMISSION_DENIED)
   })
 
-  it('pins a menu’s venue, template and root node once; its name, order and settings may change', async () => {
+  it('pins a menu’s venue, template and root node once; its name and order may change', async () => {
     for (const statement of [
       "update restro.menus set template_key = 'other'",
       'update restro.menus set template_version = 2',
@@ -523,11 +523,11 @@ describe.skipIf(!hasDatabase)('document tables', () => {
     const renamed = await withTenantWrite(app, a.tenant, (tx) =>
       tx
         .update(menus)
-        .set({ name: 'Night menu', sortKey: 'a1', settings: { layout: 'list' } })
+        .set({ name: 'Night menu', sortKey: 'a1' })
         .where(eq(menus.id, a.menu))
-        .returning({ name: menus.name, sortKey: menus.sortKey, settings: menus.settings }),
+        .returning({ name: menus.name, sortKey: menus.sortKey }),
     )
-    expect(renamed).toEqual([{ name: 'Night menu', sortKey: 'a1', settings: { layout: 'list' } }])
+    expect(renamed).toEqual([{ name: 'Night menu', sortKey: 'a1' }])
   })
 
   it('inserts events without any privilege on their sequence, in ascending order', async () => {

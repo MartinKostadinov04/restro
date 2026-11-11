@@ -51,7 +51,7 @@ async function open(browser: Browser, width = 1280, height = 900) {
   return { context, page }
 }
 
-const composer = () => `/venues/${venueId}?tab=composer`
+const composer = () => `/venues/${venueId}?tab=studio`
 const itemRow = (page: Page, name: string) =>
   page.getByTestId('item-row').filter({ has: page.getByRole('button', { name, exact: true }) })
 

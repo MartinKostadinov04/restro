@@ -102,7 +102,7 @@ test('the tab sits after Tonight and opens on tonight, in arrival order', async 
   const { page } = owner
   await openReservations(page)
   const tabs = page.getByRole('tablist', { name: 'Switch tab' }).getByRole('tab')
-  await expect(tabs).toHaveText(['Composer', 'Tables & QR', 'Tonight', 'Reservations', 'Settings'])
+  await expect(tabs).toHaveText(['Studio', 'Tables & QR', 'Tonight', 'Reservations', 'Settings'])
 
   await expect(rows(page)).toHaveCount(4)
   // The night's own order: who came first, then the late booking, then the party still to come.
@@ -233,7 +233,7 @@ test('five tabs are one row at the narrowest desktop, in Bulgarian, and nothing 
     await expect(screen(page)).toBeVisible()
     const list = page.getByRole('tablist', { name: 'Смяна на раздела' })
     await expect(list.getByRole('tab')).toHaveText([
-      'Композитор',
+      'Студио',
       'Маси и QR',
       'Тази вечер',
       'Резервации',

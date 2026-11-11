@@ -2,7 +2,6 @@
 // A7, audit step 5). A POS name, a hand-made text and a tag are all whatever someone typed: the
 // markup must come out as text. Pure rendering; no database.
 import { EDITORIAL_MARKET_MANIFEST, EditorialMarketFace } from '@restro/editorial-market'
-import { QR_PHONE_MANIFEST, QrPhoneFace } from '@restro/qr-phone'
 import { buildViewModel, imageSlotsFor } from '@restro/shell'
 import {
   type Fixture,
@@ -76,17 +75,6 @@ function hostileMenu(payload: string): Fixture {
 }
 
 const FACES = [
-  {
-    name: 'qr-phone',
-    render: (payload: string) => {
-      const f = hostileMenu(payload)
-      const view = buildViewModel(f.snapshot, f.overlay, {
-        ...f.context,
-        images: imageSlotsFor(QR_PHONE_MANIFEST, 1),
-      })
-      return renderToStaticMarkup(<QrPhoneFace view={view} />)
-    },
-  },
   {
     name: 'editorial-market',
     render: (payload: string) => {

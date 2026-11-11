@@ -1,27 +1,7 @@
-// Menus as data (D88, D92; adjustments M1, C1): what a menu's own settings may hold and how its
-// header name is checked. The writers are in ./apply/menus.ts; this is what the composer, the
-// settings lists and the publisher share. Pure: no I/O.
-
-import { z } from 'zod'
-
-/** How a face lays a menu out (D92): a list, one column of cards, or two columns. */
-export const MENU_LAYOUTS = ['list', 'one_column', 'two_columns'] as const
-
-export type MenuLayout = (typeof MENU_LAYOUTS)[number]
-
-/**
- * A menu's settings (`menus.settings`, stored snake_case): the layout guests see first and
- * whether they may switch it (D92). A key left out means the template's default.
- */
-export const MenuSettingsSchema = z.strictObject({
-  layout: z.enum(MENU_LAYOUTS).optional(),
-  layout_switch: z.boolean().optional(),
-})
-
-export type MenuSettings = z.output<typeof MenuSettingsSchema>
-
-/** The keys `MenuSettingsSchema` knows; anything else in a stored object is ignored on read. */
-const MENU_SETTING_KEYS = Object.keys(MenuSettingsSchema.shape)
+// Menus as data (D88, D92; adjustments M1, C1): how a menu's header name is checked. The writers
+// are in ./apply/menus.ts; this is what the composer, the settings lists and the publisher share.
+// A menu's layout and guest switch moved to the venue's design record (D129,
+// ./design/record.ts): one look for every menu of the venue. Pure: no I/O.
 
 /** Most characters in a menu's header name (`menus.name`; the venue name's rule). */
 export const MAX_MENU_NAME_LENGTH = 120
@@ -47,25 +27,4 @@ export function checkMenuName(value: unknown): MenuNameCheck {
     }
   }
   return { ok: true, name }
-}
-
-/**
- * The settings of a stored menu, forgivingly: unknown keys are dropped and a bad value means the
- * default for that key (an old or hand-edited row never breaks a screen).
- */
-export function menuSettingsOf(stored: unknown): MenuSettings {
-  if (typeof stored !== 'object' || stored === null) return {}
-  const known: Record<string, unknown> = {}
-  for (const key of MENU_SETTING_KEYS) {
-    const value = (stored as Record<string, unknown>)[key]
-    if (value !== undefined) known[key] = value
-  }
-  const parsed = MenuSettingsSchema.safeParse(known)
-  if (parsed.success) return parsed.data
-  const settings: Record<string, unknown> = {}
-  for (const key of MENU_SETTING_KEYS) {
-    const one = MenuSettingsSchema.safeParse({ [key]: known[key] })
-    if (one.success && known[key] !== undefined) settings[key] = known[key]
-  }
-  return settings as MenuSettings
 }

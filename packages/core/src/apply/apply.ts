@@ -28,9 +28,21 @@
 // The changelog (`events`) records every applied change, not only field values: a new node, a
 // status change, a placement, a removal, a move and a link each append one row whose `op` says
 // what kind of change it is (see the `events` table in @restro/db).
+//
+// One op is about a venue rather than the document: `setDesign` saves the venue's design record
+// (D129, `venues.settings.design`) over the revision the editor started from. Its event has no
+// node, the field key `design`, the manual layer and the venue's scope; the record carries the
+// same provenance. It is the record's only writer (scripts/design-writers.test.ts).
+//
+// Three ops are about the organisation rather than one venue: `setStyle` saves one of its own
+// Styles (D129, My styles) and `setStyleStatus` removes one or puts it back. Their rows live in
+// `design_styles`, carry the same provenance, and their events have no node, the master scope, the
+// manual layer and the field key `style` or `style_status`. They are those rows' only writers.
 
 import {
+  assets,
   type DbPool,
+  designStyles,
   events,
   fieldValues,
   integrations,
@@ -43,7 +55,7 @@ import {
   venues,
 } from '@restro/db'
 import { type WriteTx, withTenantWrite } from '@restro/db/write'
-import { asc, type SQL, sql } from 'drizzle-orm'
+import { asc, eq, type SQL, sql } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
 import {
@@ -59,7 +71,10 @@ import {
   nodeRefsOf,
   parseChangeSet,
   type Scope,
+  type SetDesign,
   type SetLinkState,
+  type SetStyle,
+  type SetStyleStatus,
   type SourceLink,
   tillIntegrationOf,
   tillSource,
@@ -70,6 +85,19 @@ import {
   type TillLinkTypes,
   tillLinkTypeProblem,
 } from '../connectors'
+import {
+  type DesignContent,
+  type DesignRecord,
+  type DesignToShow,
+  designContentOf,
+  designThemeOf,
+  readDesign,
+  readDesignRecord,
+  readDesignToShow,
+  type StoredDesign,
+  sameDesign,
+} from '../design/record'
+import { styleNameKey } from '../design/saved-style'
 import { FIELD_TYPES, type FieldTypeSpec } from '../field-types/specs'
 import { canonicalJson, sha256Hex } from '../hash'
 import type { NodeId } from '../ids'
@@ -78,6 +106,8 @@ import type { RejectionCode } from '../result'
 import { sortKeyBetween } from '../sort-keys'
 import { findField, type Template } from '../template'
 import { VENUE_MENU_TEMPLATE } from '../templates/venue-menu'
+import { type PairIssue, validateRoles } from '../theme/roles'
+import { themeRolesOf } from '../theme/settings'
 import { validateWrite } from '../validate-write'
 import { lockTenantDocument } from './lock'
 import { unlinkCopy } from './unlink'
@@ -133,6 +163,23 @@ export type ApplyRejectionCode =
    * its assignments back); only an id the write adds is checked.
    */
   | 'unknown_tag'
+  /**
+   * setDesign: the revision the editor started from is not the stored one (someone saved in
+   * between). The rejection carries the stored design as the editor can show it (`storedDesign`,
+   * `readDesignToShow`) for it to reload.
+   */
+  | 'stale_revision'
+  /**
+   * setDesign: a text-on-colour pair of the design would not read (an Advanced override). The
+   * rejection carries the pairs (`issues`) for the editor to show.
+   */
+  | 'unreadable'
+  /** setDesign: a new logo that is not a stored image of this tenant. */
+  | 'logo_not_usable'
+  /** setStyle, setStyleStatus: this organisation has no saved Style with that id, or it is removed. */
+  | 'unknown_style'
+  /** setStyle, setStyleStatus: another saved Style of the organisation already has that name. */
+  | 'style_name_taken'
 
 /** One refused op: its index in `changeSet.ops`, a code and a reason for people. */
 export interface ApplyRejection {
@@ -146,6 +193,14 @@ export interface ApplyRejection {
   readonly nodeRef?: string
   /** The field the op was about (`setField`, `clearField`). */
   readonly fieldKey?: string
+  /**
+   * `stale_revision` only: the design as stored, with its revision, for the editor to reload —
+   * read the way the editor opens it (`readDesignToShow`), so the venue that lost the race sees
+   * its own design and not Basic, and `repair` says whether the row has to be replaced.
+   */
+  readonly storedDesign?: DesignToShow
+  /** `unreadable` only: the text-on-colour pairs that do not read. */
+  readonly issues?: readonly PairIssue[]
 }
 
 /**
@@ -246,6 +301,19 @@ interface LinkState {
   readonly lastHash: string | null
 }
 
+/**
+ * One saved Style of the organisation (D129), as this change set leaves it. The values are held as
+ * stored: a row whose values no longer fit the contract (an option removed since) still blocks its
+ * name, can be renamed over and can be removed or put back.
+ */
+interface StyleState {
+  readonly id: string
+  readonly name: string
+  readonly style: string
+  readonly values: unknown
+  readonly removed: boolean
+}
+
 interface ValueRow {
   readonly nodeId: NodeId
   readonly fieldKey: string
@@ -266,7 +334,8 @@ interface ValueRow {
 
 interface EventRow {
   readonly op: ChangeSetOpName
-  readonly nodeId: NodeId
+  /** Null for the ops that are not about the document: `setDesign` and the saved-Style ops. */
+  readonly nodeId: NodeId | null
   readonly fieldKey: string
   readonly layer: Layer
   readonly scope: Scope
@@ -276,11 +345,22 @@ interface EventRow {
 
 type Outcome =
   | { readonly kind: 'applied' | 'unchanged' | 'skipped' }
-  | { readonly kind: 'rejected'; readonly code: ApplyRejectionCode; readonly reason: string }
+  | {
+      readonly kind: 'rejected'
+      readonly code: ApplyRejectionCode
+      readonly reason: string
+      readonly storedDesign?: DesignToShow
+      readonly issues?: readonly PairIssue[]
+    }
 
 const APPLIED: Outcome = { kind: 'applied' }
 const UNCHANGED: Outcome = { kind: 'unchanged' }
 const SKIPPED: Outcome = { kind: 'skipped' }
+
+/** A saved Style as the changelog records it: its name, where its values came from, and them. */
+function styleValue(style: StyleState): { name: string; style: string; values: unknown } {
+  return { name: style.name, style: style.style, values: style.values }
+}
 
 function refused(code: ApplyRejectionCode, reason: string): Outcome {
   return { kind: 'rejected', code, reason }
@@ -340,6 +420,29 @@ class DocumentState {
   readonly tagRows = new Map<string, { venueId: string; archived: boolean }>()
   /** For each item such a write targets: the venues of the menus it is placed in (maybe none). */
   readonly itemVenues = new Map<NodeId, Set<string>>()
+  /**
+   * The design of each venue a setDesign names, read under a row lock, then as this change set
+   * leaves it: the record (null while the venue has none, or the stored value does not parse), the
+   * design it reads as, and the design as the editor shows it (`shown`, whose `repair` marks a
+   * stored value that is not a valid record: the next save has to replace it however much it
+   * looks like what the editor showed, DA-33, and a stale save hands it back, DA-13's class).
+   */
+  readonly designs = new Map<
+    string,
+    { record: DesignRecord | null; stored: StoredDesign; shown: DesignToShow }
+  >()
+  /** Whether each logo a setDesign names is a stored image of this tenant. */
+  readonly usableLogos = new Map<string, boolean>()
+  /** The venues whose design record this change set rewrites, with the record to write. */
+  readonly dirtyDesigns = new Map<string, DesignRecord>()
+  /**
+   * Every saved Style of the organisation (D129), read when the change set has a style op, then as
+   * this change set leaves it. The tenant's document lock serialises two writers, so the name check
+   * below sees every Style this organisation has.
+   */
+  readonly styles = new Map<string, StyleState>()
+  /** The saved Styles this change set writes, each with whether its row is new. */
+  readonly dirtyStyles = new Map<string, { state: StyleState; isNew: boolean }>()
 
   readonly createdNodes: NodeState[] = []
   /** Where each moved node stood before this change set (the first move records it). */
@@ -463,6 +566,30 @@ async function loadState(tx: WriteTx, set: ChangeSet, template: Template): Promi
     .from(integrations)) {
     state.integrations.set(row.id, { kind: row.kind })
   }
+  // The design records a setDesign names, locked `for no key update` in id order, BEFORE the
+  // share locks below and so before this transaction holds any lock on them (D130, DA-32): this
+  // writer updates those rows, and a lock it took shared and then had to upgrade would deadlock
+  // (40P01) against a publish that brings an Unpublished venue back to Live, which share-locks the
+  // venue and then upgrades the same way (`publish.ts`, `serveVenueAgain`). The tenant's document
+  // lock is already held, so no second change set is in here with us, and the share pass below
+  // asks for nothing more than this on these rows. `venue-publish-rules.ts` takes the same care.
+  const designVenues = [
+    ...new Set(set.ops.flatMap((op) => (op.op === 'setDesign' ? [op.venueId] : []))),
+  ].sort()
+  if (designVenues.length > 0) {
+    for (const row of await tx
+      .select({ id: venues.id, settings: venues.settings })
+      .from(venues)
+      .where(anyOf(venues.id, designVenues))
+      .orderBy(asc(venues.id))
+      .for('no key update')) {
+      state.designs.set(row.id, {
+        record: readDesignRecord(row.settings),
+        stored: readDesign(row.settings),
+        shown: readDesignToShow(row.settings),
+      })
+    }
+  }
   // The tenant's venues, locked shared (in id order, so two writers cannot wait for each other):
   // a deletion (`archiveVenue`, FOR UPDATE) waits for this change set to commit, and one that
   // committed first is read here, so nothing is written into a venue that was deleted (D76).
@@ -473,6 +600,48 @@ async function loadState(tx: WriteTx, set: ChangeSet, template: Template): Promi
     .for('share')) {
     state.venues.add(row.id)
     if (row.archivedAt !== null) state.archivedVenues.add(row.id)
+  }
+  if (designVenues.length > 0) {
+    const logos = [
+      ...new Set(
+        set.ops.flatMap((op) =>
+          op.op === 'setDesign' && op.design.logo_asset_id !== null
+            ? [op.design.logo_asset_id]
+            : [],
+        ),
+      ),
+    ]
+    if (logos.length > 0) {
+      // Row-level security hides other tenants' assets: a foreign id reads as not usable.
+      for (const row of await tx
+        .select({ id: assets.id, status: assets.status, width: assets.width })
+        .from(assets)
+        .where(anyOf(assets.id, logos))) {
+        state.usableLogos.set(row.id, row.status === 'stored' && row.width !== null)
+      }
+    }
+  }
+  // The organisation's saved Styles (D129): all of them, because a save's name must be unique
+  // among the ones that are not removed. The tenant's document lock keeps two writers apart.
+  if (set.ops.some((op) => op.op === 'setStyle' || op.op === 'setStyleStatus')) {
+    for (const row of await tx
+      .select({
+        id: designStyles.id,
+        name: designStyles.name,
+        style: designStyles.style,
+        styleValues: designStyles.styleValues,
+        removedAt: designStyles.removedAt,
+      })
+      .from(designStyles)
+      .orderBy(asc(designStyles.id))) {
+      state.styles.set(row.id, {
+        id: row.id,
+        name: row.name,
+        style: row.style,
+        values: row.styleValues,
+        removed: row.removedAt !== null,
+      })
+    }
   }
   if (state.archivedVenues.size > 0) {
     const archivedMenus = await tx
@@ -842,6 +1011,15 @@ class Run {
         case 'setLinkState':
           outcome = this.setLinkState(op)
           break
+        case 'setDesign':
+          outcome = this.setDesign(op)
+          break
+        case 'setStyle':
+          outcome = this.setStyle(op)
+          break
+        case 'setStyleStatus':
+          outcome = this.setStyleStatus(op)
+          break
       }
       if (outcome.kind === 'rejected') {
         this.rejected.push({
@@ -849,6 +1027,8 @@ class Run {
           code: outcome.code,
           reason: outcome.reason,
           ...this.rejectionTarget(op),
+          ...(outcome.storedDesign === undefined ? {} : { storedDesign: outcome.storedDesign }),
+          ...(outcome.issues === undefined ? {} : { issues: outcome.issues }),
         })
       } else if (outcome.kind === 'applied') {
         this.applied += 1
@@ -1464,6 +1644,195 @@ class Run {
   }
 
   /**
+   * Saves a venue's whole design record (D129). Refused for a till source, an unknown or deleted
+   * venue, a stale revision (with the stored design), colours that do not read and a new logo
+   * that is not a stored image; unchanged when the design equals the stored RECORD (a stored value
+   * that is not a valid record is always replaced, DA-33). Otherwise the record is written with
+   * the next revision and the change set's provenance, and one event (no node, the venue's scope)
+   * holds the record before and after.
+   */
+  private setDesign(op: SetDesign): Outcome {
+    if (this.set.source !== 'manual') {
+      return refused('source_not_allowed', `a ${this.set.source} change set cannot save a design`)
+    }
+    const current = this.state.designs.get(op.venueId)
+    if (current === undefined || !this.state.venues.has(op.venueId)) {
+      return refused('unknown_venue', `this tenant has no venue ${op.venueId}`)
+    }
+    if (this.state.archivedVenues.has(op.venueId)) {
+      return refused('venue_archived', `${op.venueId} is a deleted venue`)
+    }
+    if (op.expectedRevision !== current.stored.revision) {
+      return {
+        kind: 'rejected',
+        code: 'stale_revision',
+        reason: `the design was saved in between: revision ${current.stored.revision}, not ${op.expectedRevision}`,
+        // What the editor can show of the stored row, not the plain read: the venue that lost the
+        // race gets its own design back, not Basic.
+        storedDesign: current.shown,
+      }
+    }
+    const design: DesignContent = designContentOf(op.design)
+    const issues = validateRoles(themeRolesOf(designThemeOf(design)))
+    if (issues.length > 0) {
+      const pairs = issues.map(
+        (issue) =>
+          `${issue.mode} ${issue.fg} on ${issue.bg} ${issue.ratio}:1 (needs ${issue.min}:1)`,
+      )
+      return {
+        kind: 'rejected',
+        code: 'unreadable',
+        reason: `these colours do not read: ${pairs.join('; ')}`,
+        issues,
+      }
+    }
+    // A logo already stored is kept even if its file has gone since; only a new one is checked.
+    const logo = design.logo_asset_id
+    if (
+      logo !== null &&
+      logo !== current.stored.design.logo_asset_id &&
+      this.state.usableLogos.get(logo) !== true
+    ) {
+      return refused('logo_not_usable', `${logo} is not a stored image of this tenant`)
+    }
+    // Unchanged only when there is nothing to replace: a venue with no record saving Basic has
+    // Basic already, but a venue whose stored value is not a valid record (a row the contract has
+    // moved past, a hand-edited one) does NOT hold what the editor showed, so that save has to go
+    // through. Otherwise the venue would be stuck — the publisher refuses it (`invalid_design`)
+    // and tells the owner to save the design again, and that save would be a no-op for ever
+    // (DA-33).
+    if (!current.shown.repair && sameDesign(design, current.stored.design)) return UNCHANGED
+
+    const record: DesignRecord = {
+      ...design,
+      revision: current.stored.revision + 1,
+      provenance: {
+        layer: 'manual',
+        source: 'manual',
+        actor: this.set.actor,
+        job_id: this.set.jobId,
+        change_set_id: this.set.id,
+      },
+    }
+    this.event(
+      {
+        op: 'setDesign',
+        nodeId: null,
+        fieldKey: 'design',
+        layer: 'manual',
+        scope: `venue:${op.venueId}`,
+      },
+      current.record,
+      record,
+    )
+    this.state.designs.set(op.venueId, {
+      record,
+      stored: { revision: record.revision, design },
+      shown: { revision: record.revision, design, repair: false },
+    })
+    this.state.dirtyDesigns.set(op.venueId, record)
+    return APPLIED
+  }
+
+  /** The event of a saved Style: no node, the master scope, the manual layer (D129). */
+  private styleEvent(
+    op: 'setStyle' | 'setStyleStatus',
+    fieldKey: 'style' | 'style_status',
+    oldValue: unknown,
+    newValue: unknown,
+  ) {
+    this.event({ op, nodeId: null, fieldKey, layer: 'manual', scope: 'master' }, oldValue, newValue)
+  }
+
+  /** The saved Style, not removed, whose name is `name` and whose id is not `exceptId`. */
+  private styleNamed(name: string, exceptId: string): StyleState | undefined {
+    const key = styleNameKey(name)
+    for (const style of this.state.styles.values()) {
+      if (style.id !== exceptId && !style.removed && styleNameKey(style.name) === key) return style
+    }
+    return undefined
+  }
+
+  private rememberStyle(next: StyleState, isNew: boolean): void {
+    this.state.styles.set(next.id, next)
+    const already = this.state.dirtyStyles.get(next.id)
+    this.state.dirtyStyles.set(next.id, { state: next, isNew: already?.isNew ?? isNew })
+  }
+
+  /**
+   * Saves one of the organisation's own Styles (D129): a new row for an id it does not have, else
+   * the name and values of the one it names. A name another live Style holds is refused, whatever
+   * the case; a removed Style is unknown until Undo puts it back.
+   */
+  private setStyle(op: SetStyle): Outcome {
+    if (this.set.source !== 'manual') {
+      return refused('source_not_allowed', `a ${this.set.source} change set cannot save a style`)
+    }
+    const current = this.state.styles.get(op.styleId)
+    if (current !== undefined && current.removed) {
+      return refused('unknown_style', `the style ${op.styleId} is removed`)
+    }
+    const taken = this.styleNamed(op.content.name, op.styleId)
+    if (taken !== undefined) {
+      return refused(
+        'style_name_taken',
+        `the style ${taken.id} already has the name ${op.content.name}`,
+      )
+    }
+    const next: StyleState = {
+      id: op.styleId,
+      name: op.content.name,
+      style: op.content.style,
+      values: op.content.values,
+      removed: false,
+    }
+    if (
+      current !== undefined &&
+      current.name === next.name &&
+      canonicalJson({ style: current.style, values: current.values }) ===
+        canonicalJson({ style: next.style, values: next.values })
+    ) {
+      return UNCHANGED
+    }
+    this.styleEvent('setStyle', 'style', current === undefined ? null : styleValue(current), {
+      ...styleValue(next),
+      id: next.id,
+    })
+    this.rememberStyle(next, current === undefined)
+    return APPLIED
+  }
+
+  /**
+   * Removes a saved Style or puts it back (D129): a soft removal, so the toast's Undo is this op
+   * with `active` again. A venue's design that came from the Style is never touched.
+   */
+  private setStyleStatus(op: SetStyleStatus): Outcome {
+    if (this.set.source !== 'manual') {
+      return refused('source_not_allowed', `a ${this.set.source} change set cannot save a style`)
+    }
+    const current = this.state.styles.get(op.styleId)
+    if (current === undefined) {
+      return refused('unknown_style', `this organisation has no style ${op.styleId}`)
+    }
+    const removed = op.status === 'removed'
+    if (current.removed === removed) return UNCHANGED
+    if (!removed) {
+      const taken = this.styleNamed(current.name, current.id)
+      if (taken !== undefined) {
+        return refused('style_name_taken', `the style ${taken.id} now has the name ${current.name}`)
+      }
+    }
+    this.styleEvent(
+      'setStyleStatus',
+      'style_status',
+      { id: current.id, status: current.removed ? 'removed' : 'active' },
+      { id: current.id, status: op.status },
+    )
+    this.rememberStyle({ ...current, removed }, false)
+    return APPLIED
+  }
+
+  /**
    * Moves a link through the Link lifecycle, and records when its source last saw the object.
    * Only the link's own source may do this. The state follows `LINK_TRANSITIONS`; the same state
    * again is a no-op without an event; every move writes one structural event and stamps
@@ -1788,6 +2157,46 @@ async function flush(
           rejectReason: sql`excluded.reject_reason`,
         },
       })
+  }
+
+  // Design records (setDesign): that key alone, so the venue's other settings stay as they are.
+  for (const [venueId, record] of state.dirtyDesigns) {
+    await tx.execute(
+      sql`update restro.venues set settings = jsonb_set(settings, '{design}', ${JSON.stringify(record)}::jsonb) where id = ${venueId}`,
+    )
+  }
+
+  // The organisation's saved Styles (setStyle, setStyleStatus): the row, with its provenance.
+  for (const [styleId, { state: style, isNew }] of state.dirtyStyles) {
+    const row = {
+      tenantId,
+      id: styleId,
+      name: style.name,
+      style: style.style,
+      styleValues: style.values as Record<string, unknown>,
+      removedAt: style.removed ? new Date() : null,
+      layer: 'manual',
+      source: set.source,
+      actor: set.actor,
+      jobId: set.jobId,
+      changeSetId: set.id,
+    }
+    if (isNew) await tx.insert(designStyles).values(row)
+    else {
+      await tx
+        .update(designStyles)
+        .set({
+          name: row.name,
+          style: row.style,
+          styleValues: row.styleValues,
+          removedAt: row.removedAt,
+          source: row.source,
+          actor: row.actor,
+          jobId: row.jobId,
+          changeSetId: row.changeSetId,
+        })
+        .where(eq(designStyles.id, styleId))
+    }
   }
 
   // The changelog, in op order, then one revision step per touched node that existed before.

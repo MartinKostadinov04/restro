@@ -358,6 +358,27 @@
       "when": 1794238414079,
       "tag": "0050_floor_plan_shapes",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1794336599552,
+      "tag": "0051_design_record",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1794336600552,
+      "tag": "0052_drop_menu_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1794336601552,
+      "tag": "0053_design_styles",
+      "breakpoints": true
     }
   ]
 }

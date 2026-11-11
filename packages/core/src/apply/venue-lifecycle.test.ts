@@ -542,18 +542,6 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
         'venue_missing',
       ],
       [
-        'setVenueTheme',
-        (venueId) => applyEntry.setVenueTheme(app, tenant, { venueId, theme: null }),
-        'venue_archived',
-        'venue_not_found',
-      ],
-      [
-        'setVenuePresentation',
-        (venueId) => applyEntry.setVenuePresentation(app, tenant, { venueId, presentation: null }),
-        'venue_archived',
-        'venue_not_found',
-      ],
-      [
         'setGuestFeatures',
         (venueId) => applyEntry.setGuestFeatures(app, tenant, { venueId, features: null }),
         'venue_archived',
@@ -874,14 +862,14 @@ describe.skipIf(!hasDatabase)('the life of a venue (as the restro_app role)', ()
       await deleting.query('select id from restro.venues where id = $1 for update', [venueId])
       await deleting.query('update restro.venues set archived_at = now() where id = $1', [venueId])
 
-      const save = applyEntry.setVenueTheme(app, tenant, { venueId, theme: null })
+      const save = applyEntry.setGuestFeatures(app, tenant, { venueId, features: null })
       const savePromise = save.catch((error) => error)
       expect(await pending(savePromise)).toBe(true)
 
       await deleting.query('commit')
       deleting.release()
       const error = await savePromise
-      expect(error).toMatchObject({ name: 'VenueThemeError', code: 'venue_archived' })
+      expect(error).toMatchObject({ name: 'GuestFeaturesError', code: 'venue_archived' })
     })
 
     it('makes a delete that comes while a save is running wait for the save', async () => {

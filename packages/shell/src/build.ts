@@ -5,6 +5,7 @@
 import {
   ALLERGENS,
   type Allergen,
+  BASIC_DESIGN_VALUES,
   DIETARY_LABELS,
   type DietaryLabel,
   type LiveOverlay,
@@ -37,6 +38,7 @@ import { type Strings, stringsFor } from './strings'
 import { fallbackChain, pickText, type ViewText } from './text'
 import { themeColours } from './theme'
 import type {
+  HiddenItem,
   ItemState,
   ViewAllergen,
   ViewBadge,
@@ -133,10 +135,25 @@ function itemState(env: Env, id: string, item: MenuSnapshot['items'][string]): V
   return { code: 'available', label: null, schedule: null }
 }
 
-/** R1/R5: does this state appear on this channel and setting? */
-function shown(env: Env, code: ItemState): boolean {
-  if (code === 'sold_out') return env.context.soldOutDisplay === 'show'
-  return true
+/** R5 (D131): an item that cannot be had is not on the menu at all. */
+function shown(code: ItemState): boolean {
+  return code !== 'sold_out' && code !== 'unavailable'
+}
+
+/**
+ * R5 (D131): what an order still needs of the items the menu no longer draws, by id: a line already
+ * on the table's order stays there, named and marked, and is not sent (D116, D117).
+ */
+function hiddenItems(env: Env): Readonly<Record<string, HiddenItem>> {
+  const hidden: Record<string, HiddenItem> = {}
+  for (const [id, item] of Object.entries(env.snapshot.items)) {
+    const { code } = itemState(env, id, item)
+    const name = pickText(item.name, env.chain)
+    if (name !== null && (code === 'sold_out' || code === 'unavailable')) {
+      hidden[id] = { name, code }
+    }
+  }
+  return hidden
 }
 
 function viewOption(env: Env, id: string): ViewOption | null {
@@ -254,7 +271,7 @@ function viewItem(env: Env, id: string): ViewItem | null {
   // R1 first: outside its schedule an item is left out on print and tv whatever its state.
   if (!env.interactive && closedUntil(env, item) !== null) return null
   const state = itemState(env, id, item)
-  if (!shown(env, state.code)) return null
+  if (!shown(state.code)) return null
 
   const description = pickText(item.description, env.chain)
   const image = viewImage(item.image, snapshot.assets, context.images.item, env.chain, name)
@@ -434,6 +451,7 @@ export function buildViewModel(
       schedule: menuSchedule,
     },
     sections,
+    hiddenItems: hiddenItems(env),
     allergenLegend: ALLERGENS.filter((code) => onMenu.allergens.has(code)).map((code) =>
       viewAllergen(env, code),
     ),
@@ -453,5 +471,7 @@ export function buildViewModel(
       guestSwitch: (snapshot.layout?.guest_switch ?? true) && env.interactive,
     },
     theme: viewTheme(env, title),
+    // A snapshot published before the design record draws as a venue on Basic does (D128).
+    design: snapshot.design ?? BASIC_DESIGN_VALUES,
   }
 }

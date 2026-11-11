@@ -1,8 +1,8 @@
-// The "Guest features" actions against a real Postgres, as the restro_app role (brief SH-05b): what
-// saveGuestFeaturesAction and saveFeatureOptionsAction write, who may call them, and what they
-// drop. The session is the only fake: it says which organisation and role is asking.
+// The "Guest features" action against a real Postgres, as the restro_app role (brief SH-05b): what
+// saveGuestFeaturesAction writes, who may call it, and what it drops. The session is the only fake:
+// it says which organisation and role is asking.
 import { newId } from '@restro/core'
-import { provisionTenant, provisionVenue, setVenuePresentation } from '@restro/core/apply'
+import { provisionTenant, provisionVenue } from '@restro/core/apply'
 import type pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -14,7 +14,7 @@ import {
   useTestServerEnvironment,
 } from '@/server/test-database'
 
-import { saveFeatureOptionsAction, saveGuestFeaturesAction } from './guest-features-actions'
+import { saveGuestFeaturesAction } from './guest-features-actions'
 
 const asked = vi.hoisted(() => ({ tenantId: '', role: 'owner' }))
 const revalidated = vi.hoisted(() => [] as string[])
@@ -27,18 +27,6 @@ vi.mock('@/server/session', () => ({
   }),
 }))
 vi.mock('next/cache', () => ({ revalidatePath: (path: string) => revalidated.push(path) }))
-
-// The Editorial Market declares no option since D92 (brief S6: its layouts are the menu's settings).
-// These tests are about how a template's options are saved and kept apart, so the template gets
-// back the three it had.
-vi.mock('@restro/editorial-market/manifest', async (importOriginal) => {
-  const real = await importOriginal<typeof import('@restro/editorial-market/manifest')>()
-  const { OPTIONS_BEFORE_D92 } = await import('@/faces/test-options')
-  return {
-    ...real,
-    EDITORIAL_MARKET_MANIFEST: { ...real.EDITORIAL_MARKET_MANIFEST, options: OPTIONS_BEFORE_D92 },
-  }
-})
 
 const ALL_OFF = {
   filters: true,
@@ -53,7 +41,6 @@ describe.skipIf(!hasDatabase)('the Guest features actions (as the restro_app rol
   const otherTenant = newId('tn')
   let owner: pg.Pool
   let venueId: string
-  let freshVenueId: string
   let foreignVenueId: string
 
   /** The venue's settings as stored, read with the owner connection. */
@@ -73,8 +60,6 @@ describe.skipIf(!hasDatabase)('the Guest features actions (as the restro_app rol
     await provisionTenant(pool, { tenantId: otherTenant, name: 'Another club' })
     asked.tenantId = tenant
     venueId = (await provisionVenue(pool, tenant, { name: 'Main', slug: testSlug('features') })).id
-    freshVenueId = (await provisionVenue(pool, tenant, { name: 'Fresh', slug: testSlug('fresh') }))
-      .id
     foreignVenueId = (
       await provisionVenue(pool, otherTenant, { name: 'Else', slug: testSlug('else') })
     ).id
@@ -155,68 +140,5 @@ describe.skipIf(!hasDatabase)('the Guest features actions (as the restro_app rol
     const elsewhere = await saveGuestFeaturesAction({ venueId: foreignVenueId, features: ALL_OFF })
     expect(elsewhere).toEqual({ ok: false, error: 'invalid' })
     expect((await settingsOf(foreignVenueId)).guest_features).toBeUndefined()
-  })
-
-  it('saves the template feature option and keeps the look options the Design tab owns', async () => {
-    await setVenuePresentation(getPool(), tenant, {
-      venueId,
-      presentation: {
-        face: 'editorial-market',
-        options: { layout: 'list', featureFirstSection: false, layoutSwitch: true },
-      },
-    })
-    expect(await saveFeatureOptionsAction({ venueId, options: { layoutSwitch: false } })).toEqual({
-      ok: true,
-    })
-    expect((await settingsOf(venueId)).presentation).toEqual({
-      face: 'editorial-market',
-      options: { layout: 'list', featureFirstSection: false, layoutSwitch: false },
-    })
-  })
-
-  it('drops a key the face does not declare, a look key and a value of the wrong type', async () => {
-    await setVenuePresentation(getPool(), tenant, {
-      venueId,
-      presentation: {
-        face: 'editorial-market',
-        options: { layout: 'list', featureFirstSection: false, layoutSwitch: false },
-      },
-    })
-    const result = await saveFeatureOptionsAction({
-      venueId,
-      options: {
-        layout: 'one',
-        featureFirstSection: true,
-        notAKey: true,
-        layoutSwitch: 'yes',
-      },
-    })
-    expect(result).toEqual({ ok: true })
-    // Nothing of that input was stored: the look keys and the invented key are as they were, and
-    // a value of the wrong type leaves the switch as it was.
-    expect((await settingsOf(venueId)).presentation).toEqual({
-      face: 'editorial-market',
-      options: { layout: 'list', featureFirstSection: false, layoutSwitch: false },
-    })
-  })
-
-  it('gives a venue with no template the registry default face, with the switch', async () => {
-    expect(
-      await saveFeatureOptionsAction({ venueId: freshVenueId, options: { layoutSwitch: false } }),
-    ).toEqual({ ok: true })
-    expect((await settingsOf(freshVenueId)).presentation).toEqual({
-      face: 'editorial-market',
-      options: { layoutSwitch: false },
-    })
-  })
-
-  it('refuses a plain member for the template options and writes nothing', async () => {
-    const before = (await settingsOf(venueId)).presentation
-    asked.role = 'member'
-    expect(await saveFeatureOptionsAction({ venueId, options: { layoutSwitch: true } })).toEqual({
-      ok: false,
-      error: 'forbidden',
-    })
-    expect((await settingsOf(venueId)).presentation).toEqual(before)
   })
 })

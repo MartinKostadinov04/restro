@@ -7,6 +7,8 @@
 //   - the same, while a waiter puts the very same round on: reading back cannot tell the two
 //     apart, so the Send ends Unconfirmed and the phone says to show its reference to a waiter.
 //
+// Both run on the renderer in both Styles (guest-faces.ts).
+//
 // Table 1 is open with a waiter's Mojito in both (on the pilot's profile only a waiter opens a POS
 // bill). The fixture is scripts/seed-send-e2e.ts (run here before each test: a new code, a fresh
 // sitting, no pause). Cloudflare's Turnstile script is stubbed in the page; the server checks its
@@ -18,6 +20,7 @@
 import { devices, expect, type Page, test } from '@playwright/test'
 
 import { runScript } from './global-setup'
+import { faceRoot, ORDER_STYLES, type OrderStyle, showOrder } from './guest-faces'
 
 test.use({ ...devices['Pixel 7'] })
 
@@ -50,8 +53,8 @@ async function articlesOnTable(): Promise<string[]> {
   return (table?.bills ?? []).flatMap((bill) => bill.rows.map((row) => row.article))
 }
 
-function seed(): { path: string; code: string } {
-  const output = runScript('./scripts/seed-send-e2e.ts', 'seed', SIM)
+function seed(style: OrderStyle): { path: string; code: string } {
+  const output = runScript('./scripts/seed-send-e2e.ts', 'seed', SIM, style)
   const line = output
     .split('\n')
     .reverse()
@@ -68,14 +71,15 @@ const TURNSTILE_STUB = `window.turnstile = {
 }`
 
 /** A phone on table 1 with a Negroni in the table's order, ready to Send. */
-async function phoneWithANegroni(page: Page): Promise<void> {
+async function phoneWithANegroni(page: Page, style: OrderStyle): Promise<void> {
   await page.route('https://challenges.cloudflare.com/turnstile/**', (route) =>
     route.fulfill({ contentType: 'text/javascript', body: TURNSTILE_STUB }),
   )
-  const { path, code } = seed()
+  const { path, code } = seed(style)
   await page.goto(`${path}?lang=en#t=${code}`)
-  await expect(page.locator('[data-face="qr-phone"]').first()).toBeVisible()
+  await expect(faceRoot(page)).toBeVisible()
   await page.locator('[data-slot="item.add"]').first().click()
+  await showOrder(page)
   const line = page.locator('[data-order-line]')
   await expect(line).toHaveCount(1, { timeout: 20_000 })
   await expect(line.first()).not.toHaveAttribute('data-pending', '', { timeout: 20_000 })
@@ -83,36 +87,46 @@ async function phoneWithANegroni(page: Page): Promise<void> {
 
 const sentOrder = (page: Page) => page.locator('[data-sent-order]')
 
-test('a round that lands but whose answer never comes is found on the bill: Added', async ({
-  page,
-}) => {
-  test.setTimeout(120_000)
-  await loadScenario('send-lands-then-hangs')
-  await phoneWithANegroni(page)
+for (const style of ORDER_STYLES) {
+  test.describe(`in ${style}`, () => {
+    test('a round that lands but whose answer never comes is found on the bill: Added', async ({
+      page,
+    }) => {
+      test.setTimeout(120_000)
+      await loadScenario('send-lands-then-hangs')
+      await phoneWithANegroni(page, style)
 
-  await page.locator('[data-send]').click()
-  await expect(sentOrder(page)).toHaveCount(1)
-  await expect(page.locator('[data-order-line]')).toHaveCount(0)
-  await expect(sentOrder(page)).toHaveAttribute('data-sent-state', 'added', SETTLED)
-  await expect(sentOrder(page)).toContainText('Added to your bill')
+      await page.locator('[data-send]').click()
+      await expect(sentOrder(page)).toHaveCount(1)
+      await expect(page.locator('[data-order-line]')).toHaveCount(0)
+      await expect(sentOrder(page)).toHaveAttribute('data-sent-state', 'added', SETTLED)
+      await expect(sentOrder(page)).toContainText('Added to your bill')
 
-  // On the POS bill once, after the waiter's Mojito: never sent twice.
-  expect(await articlesOnTable()).toEqual(['2003', NEGRONI])
-})
+      // On the POS bill once, after the waiter's Mojito: never sent twice.
+      expect(await articlesOnTable()).toEqual(['2003', NEGRONI])
+    })
 
-test('a round a waiter doubles while the answer never comes ends Unconfirmed', async ({ page }) => {
-  test.setTimeout(120_000)
-  await loadScenario('send-unconfirmed')
-  await phoneWithANegroni(page)
+    test('a round a waiter doubles while the answer never comes ends Unconfirmed', async ({
+      page,
+    }) => {
+      test.setTimeout(120_000)
+      await loadScenario('send-unconfirmed')
+      await phoneWithANegroni(page, style)
 
-  await page.locator('[data-send]').click()
-  await expect(sentOrder(page)).toHaveAttribute('data-sent-state', 'unconfirmed', SETTLED)
-  await expect(sentOrder(page)).toContainText(/Not confirmed: show [A-Z0-9]{3,4} to your waiter/)
+      await page.locator('[data-send]').click()
+      await expect(sentOrder(page)).toHaveAttribute('data-sent-state', 'unconfirmed', SETTLED)
+      await expect(sentOrder(page)).toContainText(
+        /Not confirmed: show [A-Z0-9]{3,4} to your waiter/,
+      )
 
-  // "Show this to your waiter": the reference in large type.
-  await sentOrder(page).getByRole('button', { name: 'Show this to your waiter' }).click()
-  await expect(page.locator('[data-show-waiter] .rq-waiter-ref')).toHaveText(/^[A-Z0-9]{3,4}$/)
+      // "Show this to your waiter": the reference in large type.
+      await sentOrder(page).getByRole('button', { name: 'Show this to your waiter' }).click()
+      await expect(page.locator('[data-show-waiter] [class*="waiter-ref"]')).toHaveText(
+        /^[A-Z0-9]{3,4}$/,
+      )
 
-  // The POS bill holds both Negronis, the waiter's and Restro's, with nothing to tell them apart.
-  expect((await articlesOnTable()).sort()).toEqual([NEGRONI, NEGRONI, '2003'])
-})
+      // The POS bill holds both Negronis, the waiter's and Restro's, with nothing to tell them apart.
+      expect((await articlesOnTable()).sort()).toEqual([NEGRONI, NEGRONI, '2003'])
+    })
+  })
+}

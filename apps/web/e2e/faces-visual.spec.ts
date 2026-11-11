@@ -50,7 +50,7 @@ import {
 //   presets  the designer's four and a custom one from three colours
 //   schemes  light, dark;  languages  bg, en;  widths  320, 360, 390, 430, 820
 //   screens  top (the first screen), layout-list, layout-one and layout-two (a section of photo
-//            cards), soldout and scheduled (a photo card each), longname-photo and longname-text
+//            cards), scheduled (a photo card), longname-photo and longname-text
 //            (at 320 only: 60 characters of Cyrillic or Latin), dish (the dish page), filters (the
 //            filter sheet), allergens (the allergen sheet)
 // worst cases of D109, one test per theme that walks the schemes and languages it names:
@@ -104,7 +104,6 @@ const file = (
 const WORDS = {
   bg: {
     negroni: 'Негрони',
-    soldOut: 'Пшенична бира',
     scheduled: 'Нощен шот',
     platter: 'Плато за компания',
     longName: LONG_NAME_BG,
@@ -112,7 +111,6 @@ const WORDS = {
   },
   en: {
     negroni: 'Negroni',
-    soldOut: 'Wheat beer',
     scheduled: 'Late-night shot',
     platter: 'Sharing platter',
     longName: LONG_NAME_EN,
@@ -218,7 +216,7 @@ async function openMenu(
 let seeded = false
 function seedOnce() {
   if (seeded) return
-  runScript('./scripts/seed-visual-e2e.ts', FACE_ID)
+  runScript('./scripts/seed-visual-e2e.ts')
   seeded = true
 }
 
@@ -237,7 +235,7 @@ test.describe('the guest menu', () => {
 
             // A section of photo cards in each layout. The menu's own layout (two columns) comes
             // first, for the "top" and the long names; one column comes last, for what follows.
-            const beer = () => sectionOf(card(page, words.soldOut))
+            const beer = () => sectionOf(card(page, words.scheduled))
             for (const layout of ['two', 'list', 'one'] as const) {
               await openMenu(page, theme, lang, layout)
               if (layout === 'two') await shoot(page, path('top'))
@@ -250,8 +248,7 @@ test.describe('the guest menu', () => {
               }
             }
 
-            // Sold-out and scheduled items, as one column of big cards (the layout opened last).
-            await shoot(page, path('soldout'), card(page, words.soldOut))
+            // A scheduled item, as one column of big cards (the layout opened last).
             await shoot(page, path('scheduled'), card(page, words.scheduled))
 
             // The dish page, the filter sheet and the allergen sheet.
@@ -419,7 +416,7 @@ test.describe('the worst cases of D109', () => {
           await openMenu(page, theme, lang, 'two')
           await zoomText(page, 2)
           await shoot(page, path('top'))
-          const beer = sectionOf(card(page, words.soldOut))
+          const beer = sectionOf(card(page, words.scheduled))
           await beer.scrollIntoViewIfNeeded()
           await shoot(page, path('layout-two'), beer)
           await shoot(page, path('longname-photo'), card(page, words.longName))
@@ -481,25 +478,25 @@ test.describe('the service screens, in the Design preview', () => {
         for (const scheme of SCHEMES) {
           for (const lang of LANGS) {
             // A fresh preview each time: the demo table starts again (a paid bill would change them all).
-            await openPreview(owner, width, scheme, { servicesOptional: true })
+            const view = await openPreview(owner, width, scheme, { servicesOptional: true })
             await chooseTheme(page, theme)
-            if (!(await chooseLanguage(page, lang))) {
+            if (!(await chooseLanguage(view, lang))) {
               skip(
                 `services: the preview of ${FACE_ID} draws no menu.language; the pictures keep the menu's default language`,
               )
             }
-            await tryFillBag(page)
+            await tryFillBag(view)
             for (const screen of SCREENS) {
-              const why = await whyNoScreen(page, screen)
+              const why = await whyNoScreen(view, screen)
               if (why !== null) {
                 skip(`services/${screen}: ${why}`)
                 continue
               }
-              await onScreen(page, screen, async () => {
+              await onScreen(view, screen, async () => {
                 await shoot(
                   page,
                   file(theme, scheme, lang, width, screen),
-                  page.getByTestId('phone-frame'),
+                  page.getByTestId('design-preview-frame'),
                 )
               })
             }

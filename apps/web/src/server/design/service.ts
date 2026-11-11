@@ -1,46 +1,36 @@
-// The Design tab's server side (brief SH-05a): what the tab shows of the venue's look and template,
-// and saving them. The writing is `setVenueTheme` and `setVenuePresentation` in core/apply (rule
-// 1); this file decides what may be asked of them and shapes the answer. Who may ask (owners and
-// admins, like the Integration tab) is the action's check.
+// The Design page's server side (D129): what the page shows of the venue's design, and saving it.
+// The one writer is `setDesign` in core/apply (rule 1), with the revision the page loaded. Who may
+// ask (owners and admins, like the Integration tab) is the action's check.
 //
 // Two things that matter here:
-//   - A look is always saved WHOLE. The old Appearance card wrote only `{brand, logo_asset_id}`,
-//     which would have dropped every v2 field. `FullThemeSchema` refuses a theme without its font,
-//     corners, shadow and light/dark policy, so a partial theme cannot reach the database.
-//   - A template is checked against the list of manifests before it is saved (core only checks the shape):
-//     it must be a VISIBLE entry, and its options go through `resolveOptions` with its manifest.
-//     The look options are the form's; the guest-feature options belong to the composer's panel
-//     (SH-05b) and are kept as they are.
+//   - Done saves the WHOLE design, as the page holds it: there is no partial save.
+//   - A save is checked against the revision: another person's save in between is refused, and the
+//     answer carries the stored design for the page to reload.
 //
-// The logo's picture in the tab is a signed link to the stored original, like the photos of the
+// The logo's picture on the page is a signed link to the stored original, like the photos of the
 // item sheet; guests never see it, they get the webp variants through the snapshot.
 import type { AssetStore } from '@restro/assets'
 import {
+  type Actor,
+  type ChangeSet,
+  type DesignContent,
+  designContentOf,
+  designThemeOf,
+  newId,
   type PairIssue,
-  type Presentation,
-  PresentationSchema,
-  readPresentation,
-  readVenueTheme,
+  readDesignToShow,
+  type StoredDesign,
   type VenueTheme,
-  VenueThemeSchema,
 } from '@restro/core'
-import {
-  setVenuePresentation,
-  setVenueTheme,
-  VenuePresentationError,
-  VenueThemeError,
-} from '@restro/core/apply'
+import { apply } from '@restro/core/apply'
 import { assets, type DbPool, type Venue, withTenant } from '@restro/db'
 
 import { eq } from 'drizzle-orm'
 
-import { chooseableFace, mergeOptions } from '@/design/template-options'
-import { DEFAULT_FACE_ID } from '@/faces/manifests'
-
 import { logError } from '../log'
 import { canManageIntegration } from '../roles'
 
-/** A saved logo as the tab shows it. */
+/** A saved logo as the page shows it. */
 export interface DesignLogo {
   readonly assetId: string
   /** A signed link to the stored original, or null when it cannot be made. */
@@ -49,18 +39,26 @@ export interface DesignLogo {
   readonly height: number
 }
 
-/** What the Design tab shows. */
+/** What the Design page shows. */
 export interface DesignView {
-  /** The saved look, or null when the venue has not set one (the default look). */
-  readonly theme: VenueTheme | null
-  /** The saved template and its options; the registry's default template when none is saved. */
-  readonly presentation: Presentation
+  /** The revision of the record: 0 while the venue has none. A save names it. */
+  readonly revision: number
+  /** The saved design as a whole (Basic while the venue has no record). */
+  readonly design: DesignContent
+  /** The saved look, in the theme's terms: what the colour controls start from. */
+  readonly theme: VenueTheme
   readonly logo: DesignLogo | null
   /** Owners and admins edit; everyone else reads. */
   readonly canEdit: boolean
+  /**
+   * True when the stored value is not a valid record: the page shows what could be read of it and
+   * opens already changed, so Done saves and replaces the row (DA-33). The publisher refuses such
+   * a venue (`invalid_design`) and says to save the design again, so Done has to be able to.
+   */
+  readonly repair?: boolean
 }
 
-/** The link lifetime for the tab (the admin page is open for minutes, not hours). */
+/** The link lifetime for the page (the admin page is open for minutes, not hours). */
 const LINK_SECONDS = 60 * 60
 
 /**
@@ -73,8 +71,16 @@ export async function loadVenueLogo(
   venue: Pick<Venue, 'settings'>,
   store: () => Promise<Pick<AssetStore, 'getUrl'>>,
 ): Promise<DesignLogo | null> {
-  const theme = readVenueTheme(venue.settings)
-  const logoId = theme?.logo_asset_id ?? null
+  return logoOf(pool, tenantId, readDesignToShow(venue.settings).design.logo_asset_id, store)
+}
+
+/** A logo with a signed link to it: null when there is none, or the asset is not stored. */
+async function logoOf(
+  pool: DbPool,
+  tenantId: string,
+  logoId: string | null,
+  store: () => Promise<Pick<AssetStore, 'getUrl'>>,
+): Promise<DesignLogo | null> {
   if (logoId === null) return null
   const [row] = await withTenant(pool, tenantId, (tx) =>
     tx.select().from(assets).where(eq(assets.id, logoId)),
@@ -89,7 +95,7 @@ export async function loadVenueLogo(
   return { assetId: row.id, url, width: row.width ?? 0, height: row.height ?? 0 }
 }
 
-/** Reads the venue's saved look and template and the link of its logo. */
+/** Reads the venue's saved design and the link of its logo. */
 export async function loadDesign(
   pool: DbPool,
   tenantId: string,
@@ -97,108 +103,97 @@ export async function loadDesign(
   store: () => Promise<Pick<AssetStore, 'getUrl'>>,
   role: string | null | undefined,
 ): Promise<DesignView> {
+  return designView(pool, tenantId, readDesignToShow(venue.settings), store, role)
+}
+
+/** A stored design as the page shows it. */
+async function designView(
+  pool: DbPool,
+  tenantId: string,
+  { revision, design, repair = false }: StoredDesign & { readonly repair?: boolean },
+  store: () => Promise<Pick<AssetStore, 'getUrl'>>,
+  role: string | null | undefined,
+): Promise<DesignView> {
   return {
-    theme: readVenueTheme(venue.settings),
-    presentation: readPresentation(venue.settings) ?? { face: DEFAULT_FACE_ID, options: {} },
-    logo: await loadVenueLogo(pool, tenantId, venue, store),
+    revision,
+    design: designContentOf(design),
+    theme: designThemeOf(design),
+    logo: await logoOf(pool, tenantId, design.logo_asset_id, store),
     canEdit: canManageIntegration(role),
+    ...(repair ? { repair: true } : {}),
   }
 }
 
-// --- The look ------------------------------------------------------------------------------------
-
-/**
- * A complete look: the core schema, with the v2 fields the form always sends made required. A
- * look with the three colours also says which preset it started from (or null for custom), and a
- * look is built either from the three colours or from one brand colour, never both.
- */
-export const FullThemeSchema = VenueThemeSchema.required({
-  font: true,
-  radius: true,
-  shadow: true,
-  scheme: true,
-})
-  .refine((theme) => theme.colors === undefined || theme.preset !== undefined, {
-    message: 'a look with three colours names its preset, or null',
-    path: ['preset'],
-  })
-  .refine((theme) => theme.colors === undefined || theme.brand === undefined, {
-    message: 'a look is built from three colours or from a brand colour, not both',
-    path: ['brand'],
-  })
-
-export type LookError =
+export type DesignSaveError =
   | 'invalid'
   | 'forbidden'
   | 'not_found'
   | 'logo_not_usable'
   | 'unreadable'
+  | 'stale'
   | 'failed'
 
-/** What saving a look answers. `unreadable` names the pairs that do not read. */
-export type LookResult =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly error: Exclude<LookError, 'unreadable'> }
+/**
+ * What saving a design answers. `unreadable` names the pairs that do not read; `stale` carries the
+ * design as stored, for the page to reload.
+ */
+export type DesignSaveResult =
+  | { readonly ok: true; readonly revision: number }
+  | { readonly ok: false; readonly error: Exclude<DesignSaveError, 'unreadable' | 'stale'> }
   | { readonly ok: false; readonly error: 'unreadable'; readonly issues: readonly PairIssue[] }
-
-/** Saves the look of a venue. The caller has checked the venue is the person's and their role. */
-export async function saveLook(
-  pool: DbPool,
-  tenantId: string,
-  input: { readonly venueId: string; readonly theme: unknown },
-): Promise<LookResult> {
-  const theme = FullThemeSchema.safeParse(input.theme)
-  if (!theme.success) return { ok: false, error: 'invalid' }
-  try {
-    await setVenueTheme(pool, tenantId, { venueId: input.venueId as never, theme: theme.data })
-    return { ok: true }
-  } catch (error) {
-    if (error instanceof VenueThemeError) {
-      if (error.code === 'unreadable') {
-        return { ok: false, error: 'unreadable', issues: error.issues }
-      }
-      if (error.code === 'logo_not_usable') return { ok: false, error: 'logo_not_usable' }
-      if (error.code === 'venue_not_found') return { ok: false, error: 'not_found' }
-      return { ok: false, error: 'invalid' }
-    }
-    throw error
-  }
-}
-
-// --- The template --------------------------------------------------------------------------------
-
-export type TemplateError = 'invalid' | 'forbidden' | 'not_found' | 'unknown_face' | 'failed'
-
-/** What choosing a template (or one of its look options) answers. */
-export type TemplateResult =
-  | { readonly ok: true; readonly presentation: Presentation }
-  | { readonly ok: false; readonly error: TemplateError }
+  | { readonly ok: false; readonly error: 'stale'; readonly view: DesignView }
 
 /**
- * Saves the template a venue chose and its look options. The caller has checked the venue is the
- * person's and their role; `venue.settings` is the saved presentation the options merge into.
+ * Saves a whole design through `apply` (rule 1), from the revision the page loaded. The caller has
+ * checked the venue is the person's and their role; `view` is what a stale answer's stored design
+ * is shown with.
  */
-export async function chooseTemplate(
+export async function saveDesign(
   pool: DbPool,
   tenantId: string,
-  venue: Pick<Venue, 'id' | 'settings'>,
-  input: { readonly face: string; readonly lookOptions: unknown },
-): Promise<TemplateResult> {
-  const entry = chooseableFace(input.face)
-  if (entry === undefined) return { ok: false, error: 'unknown_face' }
-  const options = mergeOptions(entry.manifest, readPresentation(venue.settings), input.lookOptions)
-  const presentation = PresentationSchema.safeParse({ face: entry.id, options })
-  if (!presentation.success) return { ok: false, error: 'invalid' }
-  try {
-    const stored = await setVenuePresentation(pool, tenantId, {
-      venueId: venue.id as never,
-      presentation: presentation.data,
-    })
-    return { ok: true, presentation: stored ?? presentation.data }
-  } catch (error) {
-    if (error instanceof VenuePresentationError) {
-      return { ok: false, error: error.code === 'venue_not_found' ? 'not_found' : 'invalid' }
-    }
-    throw error
+  input: {
+    readonly venueId: string
+    readonly expectedRevision: number
+    readonly design: DesignContent
+    readonly actor: Actor
+  },
+  view: {
+    readonly store: () => Promise<Pick<AssetStore, 'getUrl'>>
+    readonly role: string | null | undefined
+  },
+): Promise<DesignSaveResult> {
+  const changeSet: ChangeSet = {
+    id: newId('cs'),
+    source: 'manual',
+    jobId: newId('jb'),
+    actor: input.actor,
+    observedAt: new Date().toISOString(),
+    ops: [
+      {
+        op: 'setDesign',
+        venueId: input.venueId as never,
+        expectedRevision: input.expectedRevision,
+        design: input.design,
+      },
+    ],
   }
+  const result = await apply(pool, tenantId, changeSet)
+  const rejected = result.rejected[0]
+  if (rejected === undefined) {
+    // A save that changes nothing keeps the revision it named.
+    return { ok: true, revision: input.expectedRevision + (result.applied > 0 ? 1 : 0) }
+  }
+  if (rejected.code === 'stale_revision' && rejected.storedDesign !== undefined) {
+    return {
+      ok: false,
+      error: 'stale',
+      view: await designView(pool, tenantId, rejected.storedDesign, view.store, view.role),
+    }
+  }
+  if (rejected.code === 'unreadable' && rejected.issues !== undefined) {
+    return { ok: false, error: 'unreadable', issues: rejected.issues }
+  }
+  if (rejected.code === 'unknown_venue') return { ok: false, error: 'not_found' }
+  if (rejected.code === 'logo_not_usable') return { ok: false, error: 'logo_not_usable' }
+  return { ok: false, error: 'invalid' }
 }

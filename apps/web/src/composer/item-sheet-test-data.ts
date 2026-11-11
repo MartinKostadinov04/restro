@@ -47,7 +47,7 @@ export function sheetData(
     currency: 'EUR',
     timezone: 'Europe/Sofia',
     visible: true,
-    sale: { soldOutTonight: false, offSale: null, canMark: true },
+    sale: { soldOutTonight: false, offSale: null, canMark: true, stockFromTill: false },
     nameFromTill: false,
     payFirstDefault: null,
     issues: [],

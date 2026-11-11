@@ -163,12 +163,8 @@ describe('the audit of the stylesheet (SH-07)', () => {
     expect(EDITORIAL_CSS).not.toContain('.rm-chevron')
   })
 
-  it('fades the photo of a sold-out item and keeps its words at full strength', () => {
-    expect(EDITORIAL_CSS).not.toMatch(/\.rm-item\[data-state="(sold_out|unavailable)"\]\s*(,|\{)/)
-    expect(declarationsFor('.rm-item[data-state="sold_out"] .rm-photo')).toContain('opacity')
-    expect(declarationsFor('.rm-item[data-state="sold_out"] .rm-item-open')).toContain(
-      'color: var(--rm-muted)',
-    )
+  it('has no look for a sold-out or unavailable item, which is not on the menu (D131)', () => {
+    expect(EDITORIAL_CSS).not.toMatch(/data-state="(sold_out|unavailable)"/)
   })
 
   it('keeps the section titles and the items apart, the items being h3 or h4', () => {

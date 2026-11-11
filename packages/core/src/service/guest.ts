@@ -287,6 +287,11 @@ export interface GuestCommandResult {
   /** What the command made or acted on (the line an add made). */
   readonly subjectId: string | null
   readonly ref: string | null
+  /**
+   * An accepted "Send and pay" whose pay-first part alone was refused (#293, DA-1): the code the
+   * face words ("below_minimum", "rate_limited"). Null for every other answer.
+   */
+  readonly payFirstRefused: string | null
 }
 
 /** Why a guest is answered with no state at all. */
@@ -786,7 +791,11 @@ function guestContext(
 }
 
 /** The answer a phone gets for a service result. */
-export function guestResult(result: ServiceResult): GuestCommandResult {
+export function guestResult(
+  result: ServiceResult,
+  /** The pay-first part's own refusal where the bill lines went without it (#293, DA-1). */
+  payFirstRefused: string | null = null,
+): GuestCommandResult {
   // The line an add made, the sent order a Send made or repeats (#78), the item a refused Send
   // names, or the payment a Pay made.
   const subject =
@@ -801,6 +810,14 @@ export function guestResult(result: ServiceResult): GuestCommandResult {
     code: result.status === 'refused' ? result.code : null,
     subjectId: typeof subject === 'string' ? subject : null,
     ref: result.status === 'accepted' ? result.ref : null,
+    // Only an accepted Send carries it: a refused command's own code says everything.
+    payFirstRefused:
+      result.status !== 'accepted'
+        ? null
+        : (payFirstRefused ??
+          (typeof result.details.payFirstRefused === 'string'
+            ? result.details.payFirstRefused
+            : null)),
   }
 }
 
@@ -994,6 +1011,14 @@ function phoneLimits(command: GuestActInput['command'], withPosition: boolean): 
 /** The limits a Send spends only when it goes out (RR-26): the others count every try. */
 const SEND_SPENDS: ReadonlySet<GuestLimitName> = new Set(['sendGap', 'sends', 'payGap', 'pays'])
 
+/** The limits that belong to the Pay inside a Send, not to the Send itself (#293, DA-1). */
+const PAY_LIMITS: ReadonlySet<GuestLimitName> = new Set(['payGap', 'pays'])
+
+/** Whether a Send also carries on-the-bill lines, which can go without its pay-first part. */
+function sendsOnBill(command: GuestActInput['command']): boolean {
+  return Array.isArray(command.lines) && command.lines.length > 0
+}
+
 /**
  * Lets go of the phone's last Send when it came back Not sent (the POS said an item ran out, or
  * ordering paused): nothing of it reached the bill, so "Send the other 4" goes at once. Read only
@@ -1042,7 +1067,14 @@ export async function guestAct(
   const type = input.command.type === 'service.request' ? 'waiter.call' : input.command.type
   const reject = (code: string): GuestActed => ({
     ok: true,
-    result: { actionId, status: 'rejected', code, subjectId: null, ref: null },
+    result: {
+      actionId,
+      status: 'rejected',
+      code,
+      subjectId: null,
+      ref: null,
+      payFirstRefused: null,
+    },
     state: null,
     pass: null,
     retryAfter: null,
@@ -1070,34 +1102,79 @@ export async function guestAct(
 
   const limits = input.limiter ?? limiter
   const subject = `${target.hash}:${input.phone}`
-  const guarded = (): Promise<GuestActed | GuestStateless> =>
-    guardedAct(pool, input, { target, type, reject, count, limits, subject, payFirst, repeatSend })
-  if (repeatSend) return guarded()
+  const guarded = (
+    part: ReturnType<typeof payFirstOf>,
+    payRefused: string | null,
+  ): Promise<GuestActed | GuestStateless> =>
+    guardedAct(pool, input, {
+      target,
+      type,
+      reject,
+      count,
+      limits,
+      subject,
+      payFirst: part,
+      payRefused,
+      repeatSend,
+    })
+  if (repeatSend) return guarded(payFirst, null)
+
+  // A "Send and pay" whose on-the-bill lines can go on their own (#293, DA-1; Martin 11-01): the
+  // Pay's limits are taken apart from the Send's, so a phone that already has a payment open, or
+  // that paid in the last 15 s, still sends the bill lines and keeps its pay-first lines in the bag.
+  let part = payFirst
+  let payRefused: string | null = null
+  const mayDropPay = type === 'order.send' && payFirst !== null && sendsOnBill(input.command)
+  // One open payment per phone, as at Pay (D127 §Limits).
+  if (part !== null) {
+    const open = limits.openPayment(subject)
+    if (open !== null && !(await paymentEnded(pool, target, open))) {
+      if (!mayDropPay) return reject('rate_limited')
+      part = null
+      payRefused = 'rate_limited'
+    }
+  }
 
   // A Send's limits are taken here, before anything waits, so two Sends at once can't both pass;
   // they stay spent only if the Send goes out (RR-26, D122 §4). A request that throws keeps them:
   // whether it went out is unknown.
-  const names = phoneLimits(input.command, input.check?.location !== undefined)
+  const names = phoneLimits(input.command, input.check?.location !== undefined).filter(
+    (name) => part !== null || !PAY_LIMITS.has(name),
+  )
+  const payNames = mayDropPay ? names.filter((name) => PAY_LIMITS.has(name)) : []
+  const sendNames = mayDropPay ? names.filter((name) => !PAY_LIMITS.has(name)) : names
   let takenAt = Date.now()
-  let phoneLimit = limits.take(subject, names, takenAt)
+  let phoneLimit = limits.take(subject, sendNames, takenAt)
   if (!phoneLimit.ok && type === 'order.send') {
     await freeCameBackSend(pool, target, limits, subject)
     takenAt = Date.now()
-    phoneLimit = limits.take(subject, names, takenAt)
+    phoneLimit = limits.take(subject, sendNames, takenAt)
   }
   if (!phoneLimit.ok) {
     count('phone_limited')
     return limited(phoneLimit)
   }
-  const answer = await guarded()
+  let spent = sendNames
+  if (payNames.length > 0) {
+    const payLimit = limits.take(subject, payNames, takenAt)
+    if (payLimit.ok) spent = [...sendNames, ...payNames]
+    else {
+      part = null
+      payRefused = 'rate_limited'
+    }
+  }
+  const answer = await guarded(part, payRefused)
   if (type !== 'order.send') return answer
   if (answer.ok && answer.result.status === 'accepted') {
     const sentOrderId = answer.result.subjectId
     if (sentOrderId !== null) limits.setLastSend(subject, { sentOrderId, at: takenAt })
+    // The bill lines went and the pay part did not (#293, DA-1): no payment was made, so the Pay's
+    // own hits go back and the guest can pay at the Pay screen without waiting out the gap.
+    if (answer.result.payFirstRefused !== null) limits.giveBack(subject, payNames, takenAt)
   } else {
     limits.giveBack(
       subject,
-      names.filter((name) => SEND_SPENDS.has(name)),
+      spent.filter((name) => SEND_SPENDS.has(name)),
       takenAt,
     )
   }
@@ -1113,6 +1190,8 @@ interface GuardedCommand {
   readonly limits: GuestLimiter
   readonly subject: string
   readonly payFirst: ReturnType<typeof payFirstOf>
+  /** The pay-first part's refusal where `guestAct` dropped it and the bill lines go on (DA-1). */
+  readonly payRefused: string | null
   readonly repeatSend: boolean
 }
 
@@ -1120,16 +1199,20 @@ interface GuardedCommand {
 async function guardedAct(
   pool: DbPool,
   input: GuestActInput,
-  { target, type, reject, count, limits, subject, payFirst, repeatSend }: GuardedCommand,
+  {
+    target,
+    type,
+    reject,
+    count,
+    limits,
+    subject,
+    payFirst,
+    payRefused,
+    repeatSend,
+  }: GuardedCommand,
 ): Promise<GuestActed | GuestStateless> {
   const { actionId } = input.command
   const position = input.check?.location
-  if (payFirst !== null && !repeatSend) {
-    // One open payment per phone, as at Pay (D127 §Limits).
-    const open = limits.openPayment(subject)
-    if (open !== null && !(await paymentEnded(pool, target, open))) return reject('rate_limited')
-  }
-
   const guard = await readGuard(pool, target)
   if (guard === null) return { ok: false, code: 'code_retired' }
   const now = Date.now()
@@ -1196,7 +1279,14 @@ async function guardedAct(
     if (!checks) {
       return {
         ok: true,
-        result: { actionId, status: 'accepted', code: null, subjectId: null, ref: null },
+        result: {
+          actionId,
+          status: 'accepted',
+          code: null,
+          subjectId: null,
+          ref: null,
+          payFirstRefused: null,
+        },
         state: null,
         pass: null,
         retryAfter: null,
@@ -1214,8 +1304,22 @@ async function guardedAct(
     return {
       ok: true,
       result: holds
-        ? { actionId, status: 'accepted', code: null, subjectId: null, ref: null }
-        : { actionId, status: 'rejected', code: 'location_needed', subjectId: null, ref: null },
+        ? {
+            actionId,
+            status: 'accepted',
+            code: null,
+            subjectId: null,
+            ref: null,
+            payFirstRefused: null,
+          }
+        : {
+            actionId,
+            status: 'rejected',
+            code: 'location_needed',
+            subjectId: null,
+            ref: null,
+            payFirstRefused: null,
+          },
       state: state.unchanged
         ? null
         : walked(
@@ -1236,6 +1340,10 @@ async function guardedAct(
 
   // A Send that pays gets a fresh handle, a repeat too: the engine stores its hash (#113).
   const handle = payFirst === null ? null : randomBytes(16).toString('base64url')
+  // The phone's own pay-first part (its lines and tip, no handle hash) never reaches the engine:
+  // the one below is built here. Where `guestAct` dropped the part (#293, DA-1) the Send goes
+  // without it, rather than carrying a part the Send's schema refuses as `invalid_command`.
+  const { payFirst: _phonePayFirst, ...sent } = input.command
   const command =
     type === 'waiter.call'
       ? {
@@ -1246,7 +1354,7 @@ async function guardedAct(
           ageMs: input.ageMs,
         }
       : {
-          ...input.command,
+          ...sent,
           tableId: target.tableId,
           ageMs: input.ageMs,
           ...(payFirst === null || handle === null
@@ -1321,7 +1429,7 @@ async function guardedAct(
         )
   return {
     ok: true,
-    result: guestResult(result),
+    result: guestResult(result, payRefused),
     state: projected,
     pass: holds ? pass : null,
     retryAfter: result.status === 'refused' && result.code === 'rate_limited' ? 10 : null,
@@ -1387,7 +1495,14 @@ async function payAct(
   const { type, actionId } = input.command
   const reject = (code: string): GuestActed => ({
     ok: true,
-    result: { actionId, status: 'rejected', code, subjectId: null, ref: null },
+    result: {
+      actionId,
+      status: 'rejected',
+      code,
+      subjectId: null,
+      ref: null,
+      payFirstRefused: null,
+    },
     state: null,
     pass: null,
     retryAfter: null,

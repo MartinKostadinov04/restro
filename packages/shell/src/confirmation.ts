@@ -14,7 +14,7 @@
 
 import { type Locale, localeToBcp47 } from '@restro/core'
 
-import { lineNameText, payMoney } from './paying'
+import { lineNameText, payMoney, paySignedMoney } from './paying'
 import type { PaymentView } from './services'
 import type { PayingStrings } from './strings'
 
@@ -83,6 +83,9 @@ export function confirmationOf(input: ConfirmationInput): ConfirmationView | nul
   const { payment, words, locale } = input
   if (payment.state !== 'captured' || payment.amountMinor === null) return null
   const money = (minor: number) => payMoney(minor, payment.currency, locale)
+  // A line of the POS's own may be negative (a waiter's discount, #293 DA-8); the tip and the total
+  // Restro holds never are.
+  const lineMoney = (minor: number) => paySignedMoney(minor, payment.currency, locale)
   const venue = input.venueName?.trim() ?? ''
   return {
     title: words.confirmTitle,
@@ -90,7 +93,7 @@ export function confirmationOf(input: ConfirmationInput): ConfirmationView | nul
     when: formatPaidAt(payment.paidAt, payment.timeZone, locale),
     lines: payment.lines.map((line) => ({
       text: `${lineNameText(line.name, locale, input.otherItem)}${mark(line.quantity)}`,
-      amount: money(line.amountMinor),
+      amount: lineMoney(line.amountMinor),
     })),
     tip: payment.tipMinor > 0 ? { label: words.tip, amount: money(payment.tipMinor) } : null,
     total: { label: words.total, amount: money(payment.amountMinor) },

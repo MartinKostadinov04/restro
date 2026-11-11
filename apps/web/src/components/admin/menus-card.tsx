@@ -73,7 +73,7 @@ type ActionError = Extract<MenuActionResult, { ok: false }>['error']
 
 /** Where a menu opens in the composer (S6 reads `menu`). */
 export const composerMenuHref = (venueId: string, menuId: string) =>
-  `/venues/${venueId}?tab=composer&menu=${menuId}`
+  `/venues/${venueId}?tab=studio&menu=${menuId}`
 
 const DAY_MS = 24 * 60 * 60 * 1000
 

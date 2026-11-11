@@ -31,12 +31,13 @@ export interface WorkspaceTabDef {
 }
 
 /**
- * The venue page's tabs (D97, #85): Composer, Tables & QR, Tonight, Settings. Design is the composer's second
- * subtab (D92, brief S6). The Publishing tab is gone: the Publish button is in the header on
- * every tab, and its settings are Settings › Publish and › Versioning.
+ * The venue page's tabs (D97, #85): Studio, Tables & QR, Tonight, Reservations, Settings. Structure
+ * and Design are the Studio's subtabs (D129); Reservations is its own tab (D141, #326), offered
+ * only to a role that holds `reservations.tonight`. The Publishing tab is gone: the Publish button
+ * is in the header on every tab, and its settings are Settings › Publish and › Versioning.
  */
 export const WORKSPACE_TAB_DEFS = [
-  { value: 'composer', labelKey: 'workspace.tabs.composer', icon: LayoutListIcon },
+  { value: 'studio', labelKey: 'workspace.tabs.studio', icon: LayoutListIcon },
   { value: 'tables', labelKey: 'workspace.tabs.tables', icon: QrCodeIcon },
   { value: 'tonight', labelKey: 'workspace.tabs.tonight', icon: ConciergeBellIcon },
   { value: 'reservations', labelKey: 'workspace.tabs.reservations', icon: CalendarDaysIcon },
@@ -47,7 +48,7 @@ export const WORKSPACE_TAB_DEFS = [
 export type WorkspaceTabValue = (typeof WORKSPACE_TAB_DEFS)[number]['value']
 
 /** The tab shown when `?tab=` is absent or unknown. */
-export const DEFAULT_WORKSPACE_TAB: WorkspaceTabValue = 'composer'
+export const DEFAULT_WORKSPACE_TAB: WorkspaceTabValue = 'studio'
 
 export function isWorkspaceTab(value: unknown): value is WorkspaceTabValue {
   return WORKSPACE_TAB_DEFS.some((tab) => tab.value === value)
@@ -75,15 +76,16 @@ export function workspaceTabsOf(
 /**
  * The tab a `?tab=` value opens. Tabs that are gone open where their content went: the venue's
  * Integration tab (CF-09b, D73: the venue's part is the Menu source card) and the Publishing tab
- * (D97: Settings › Publish and › Versioning) open Settings; the Design tab (D92) opens the
- * composer, whose Design subtab the page then shows. Anything else unknown opens the default tab.
+ * (D97: Settings › Publish and › Versioning) open Settings; the composer and the Design tab open
+ * the Studio (D129; the page sends an old link on to its new address). A tab the person's rights do
+ * not offer, and anything else unknown, open the default tab.
  */
 export function workspaceTabOf(
   requested: unknown,
   rights: WorkspaceRights = NO_WORKSPACE_RIGHTS,
 ): WorkspaceTabValue {
   if (requested === 'integration' || requested === 'publishing') return 'settings'
-  if (requested === 'design') return 'composer'
+  if (requested === 'composer' || requested === 'design') return 'studio'
   const offered = workspaceTabsOf(rights)
   return isWorkspaceTab(requested) && offered.some((tab) => tab.value === requested)
     ? requested
@@ -93,7 +95,7 @@ export function workspaceTabOf(
 /**
  * The tabs a shared device offers (D122 §7, RR-83, RR-84, RR-85): Tonight, where it opens, and
  * Reservations where the device's own account works them (D141, #326) — a tablet on the door is
- * what the night's list is for. The composer, Tables & QR and Settings need the person's own
+ * what the night's list is for. The Studio, Tables & QR and Settings need the person's own
  * sign-in, so they are not there at all.
  */
 export function sharedDeviceTabsOf(

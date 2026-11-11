@@ -23,6 +23,7 @@ import {
   type FakeHost,
   fakeHost,
   orderingView,
+  orderOf,
   payingOf,
   paymentOf,
   resetPage,
@@ -116,16 +117,45 @@ describe('choosing', () => {
     ).toBeTruthy()
   })
 
-  it('has no Pay while paying is off at the venue, and a calm line while it is paused', () => {
-    const off = openPay(fakeHost({ ...base(), paying: payingOf({ state: 'off' }) }))
-    expect(within(off.sheet).getByText('Ask your waiter to pay.')).toBeTruthy()
-    expect(off.sheet.querySelector('[data-slot="pay.start"]')).toBeNull()
+  it('has no Pay entry while paying is off at the venue (#346), and a calm line while it is paused', () => {
+    drawFace(fakeHost({ ...base(), paying: payingOf({ state: 'off' }) }))
+    // The header's card icon leads nowhere when paying is off, so it is not drawn.
+    expect(screen.queryByRole('button', { name: 'Pay' })).toBeNull()
+    expect(document.querySelector('[data-slot="menu.pay"]')).toBeNull()
     cleanup()
     const paused = openPay(fakeHost({ ...base(), paying: payingOf({ state: 'paused' }) }))
     expect(
       within(paused.sheet).getByText('Card payments are paused right now. Ask your waiter.'),
     ).toBeTruthy()
     expect(payButton(paused.sheet, /^Pay /).hasAttribute('disabled')).toBe(true)
+  })
+
+  it('greys Pay while ordering is paused, whatever paying says, with the pause’s own line (D120)', async () => {
+    // The server pauses paying with ordering (a venue or table pause) but the face does not lean
+    // on it: `ordering.state` alone greys Pay, so a host that says only that is held to it too.
+    const host = fakeHost({
+      ...base(),
+      ordering: { state: 'paused', tips: true },
+    })
+    const { sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'The whole bill' }))
+    expect(payButton(sheet, /^Pay /).hasAttribute('disabled')).toBe(true)
+    expect(within(sheet).getByText(stringsFor('en_US').services.orderingPaused)).toBeTruthy()
+    fireEvent.click(payButton(sheet, /^Pay /))
+    await act(async () => {})
+    expect(host.of('pay.start')).toHaveLength(0)
+    // The bill and the choices stay: the table can pay once ordering is back.
+    expect(within(sheet).getAllByRole('checkbox').length).toBeGreaterThan(0)
+  })
+
+  it('lets Pay go again when ordering is back (D120)', () => {
+    const host = fakeHost({ ...base(), ordering: { state: 'paused', tips: true } })
+    const { page, sheet } = openPay(host)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'The whole bill' }))
+    expect(payButton(sheet, /^Pay /).hasAttribute('disabled')).toBe(true)
+    page.update({ ordering: { state: 'on', tips: true } })
+    expect(payButton(sheet, /^Pay /).hasAttribute('disabled')).toBe(false)
+    expect(sheet.querySelector('[data-slot="pay.blocked"]')).toBeNull()
   })
 
   it('names who processes the payment, and the law lines', () => {
@@ -660,8 +690,8 @@ describe('paid in the app (#197, D127 1.2)', () => {
       ordering: { state: 'on' as const, tips: true },
     })
     drawFace(host)
-    fireEvent.click(screen.getByRole('button', { name: 'Table order' }))
-    const bill = screen.getByRole('dialog', { name: 'Table order' })
+    fireEvent.click(screen.getByRole('button', { name: 'Your table’s bill' }))
+    const bill = screen.getByRole('dialog', { name: 'Your table’s bill' })
     expect(bill.querySelector('[data-slot="bill.paid"]')?.textContent).toContain('Nachos · €9.00')
   })
 
@@ -713,8 +743,8 @@ describe('paid in the app (#197, D127 1.2)', () => {
       ordering: { state: 'on' as const, tips: true },
     })
     drawFace(host)
-    fireEvent.click(screen.getByRole('button', { name: 'Table order' }))
-    const bill = screen.getByRole('dialog', { name: 'Table order' })
+    fireEvent.click(screen.getByRole('button', { name: 'Your table’s bill' }))
+    const bill = screen.getByRole('dialog', { name: 'Your table’s bill' })
     expect(bill.querySelector('.ro-empty')).toBeNull()
     expect(bill.querySelector('[data-slot="bill.paid"]')).not.toBeNull()
   })
@@ -956,5 +986,53 @@ describe('the venue’s electronic receipt (#186, D127)', () => {
       for (const pattern of RECEIPT_LOOK) expect(note).not.toMatch(pattern)
       cleanup()
     }
+  })
+})
+
+describe('a payment that has not settled while its sheet is closed (#293, DA-24)', () => {
+  const w = stringsFor('en_US').services
+  const line = () => document.querySelector('[data-slot="menu.pay_progress"]')
+
+  it('says so in a slim line at the top of the menu, and a tap opens the payment', () => {
+    const host = fakeHost({
+      tableBill: tableBillOf(),
+      paying: payingOf(),
+      payment: paymentOf({ state: 'held', form: null }),
+    })
+    drawFace(host)
+    // The guest closed the browser or came back from a redirect: no sheet is open, and the menu
+    // alone used to show nothing of the payment.
+    expect(line()?.textContent).toBe(w.paying.inProgress)
+    fireEvent.click(line() as Element)
+    expect(screen.getByRole('dialog', { name: 'Pay' })).toBeTruthy()
+    // While the sheet is open the line goes: the payment's own screen speaks there.
+    expect(line()).toBeNull()
+  })
+
+  it('opens the bag for a pay-first round, where that payment’s screens live', () => {
+    const host = fakeHost({
+      order: orderOf(),
+      ordering: { state: 'on', notesAndOptions: true, payFirst: 'on' },
+      paying: payingOf(),
+      payment: paymentOf({ mode: 'pay_first', state: 'queued', form: null }),
+    })
+    drawFace(host)
+    fireEvent.click(line() as Element)
+    expect(screen.getByRole('dialog', { name: 'Your bag' })).toBeTruthy()
+  })
+
+  it('goes once the payment has settled, and is never there without one', () => {
+    const page = drawFace(
+      fakeHost({
+        tableBill: tableBillOf(),
+        paying: payingOf(),
+        payment: paymentOf({ state: 'held', form: null }),
+      }),
+    )
+    expect(line()).not.toBeNull()
+    page.update({ payment: paymentOf({ state: 'captured', form: null, amountMinor: 2250 }) })
+    expect(line()).toBeNull()
+    page.update({ payment: null })
+    expect(line()).toBeNull()
   })
 })

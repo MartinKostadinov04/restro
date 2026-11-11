@@ -244,6 +244,37 @@ describe('the edges of inputs and choices (brief SH-07): 3:1 against what is aro
   })
 })
 
+describe('the payment number on the Paid screen (D127, #293 DA-11)', () => {
+  const paid = '.rm .ro-state p.ro-pay-number'
+  it('is at least 40 px, as large as the reference a waiter reads across a room', () => {
+    // The guide asks for at least 40 px; the waiter reference's own rule is 48 px, and the number
+    // is read the same way, so it takes the same size.
+    const size = services
+      .filter((rule) => rule.media === null && rule.selectors.includes(paid))
+      .map((rule) => rule.declarations.get('font-size'))
+      .filter((value) => value !== undefined)
+      .at(-1)
+    expect(size).toBe('calc(48px * var(--rm-type))')
+    expect(Number(/(\d+)px/.exec(size ?? '')?.[1] ?? 0)).toBeGreaterThanOrEqual(40)
+  })
+
+  it('is drawn in the sheet’s full writing colour, not the status panel’s 75 %', () => {
+    // `.ro-state p` fades every paragraph to .75, which took the number to about 5:1; the guide
+    // asks for 7:1, so the number's own rule puts the opacity back.
+    const faded = services.find(
+      (rule) => rule.media === null && rule.selectors.includes('.rm .ro-state p'),
+    )
+    expect(faded?.declarations.get('opacity')).toBe('0.75')
+    const own = services.filter((rule) => rule.media === null && rule.selectors.includes(paid))
+    expect(
+      own
+        .map((rule) => rule.declarations.get('opacity'))
+        .filter(Boolean)
+        .at(-1),
+    ).toBe('1')
+  })
+})
+
 describe('touch targets (brief SH-06 test 8): 44 px on every control of a sheet', () => {
   const tall = [
     '.rm .ro-stepper button',
@@ -263,6 +294,7 @@ describe('touch targets (brief SH-06 test 8): 44 px on every control of a sheet'
     '.rm .ro-note textarea',
     '.rm .ro-input input',
     '.rm .ro-promo input',
+    '.rm .ro-payline',
   ]
   it.each(tall)('%s is at least 44 px high', (selector) => {
     const height = Math.max(

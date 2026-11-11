@@ -145,7 +145,7 @@ describe('the Details tab', () => {
         },
       }),
     )
-    expect(within(row('visible')).getByTestId('read-only-note').textContent).toMatch(/composer/)
+    expect(within(row('visible')).getByTestId('read-only-note').textContent).toMatch(/Structure/)
     expect(within(row('for_sale')).getByTestId('read-only-note').textContent).toMatch(
       /sold out tonight/i,
     )

@@ -395,6 +395,7 @@ function soldOut(): Fixture {
           { name: bgen('Мохито', 'Mojito'), allergens: [] },
           { name: bgen('Негрони', 'Negroni'), soldOut: true, allergens: ['sulphites'] },
           { name: bgen('Дайкири', 'Daiquiri'), allergens: ['eggs'] },
+          { name: bgen('Вода', 'Water'), allergens: [] },
         ],
       },
     ],
@@ -402,7 +403,7 @@ function soldOut(): Fixture {
   const [mojito, , daiquiri] = Object.keys(snapshot.items)
   return {
     name: 'sold-out',
-    note: 'One item sold out in the snapshot, two more sold out by the live overlay.',
+    note: 'One item sold out in the snapshot, two more by the live overlay; the menu draws only the fourth (D131).',
     snapshot,
     overlay: {
       version: snapshot.snapshot.version,
