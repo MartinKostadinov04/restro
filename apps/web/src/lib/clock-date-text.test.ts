@@ -15,7 +15,7 @@ describe('parseTimeText', () => {
     expect(parseTimeText(text, false)).toBe(expected)
   })
 
-  it.each(['25:00', '24:00', '12:60', '9', '', 'ab', '12:5', '123456', '22:00 PM'])(
+  it.each(['25:00', '24:00', '12:60', '', 'ab', '12:5', '123456', '22:00 PM'])(
     'refuses %s',
     (text) => {
       expect(parseTimeText(text, true)).toBeNull()

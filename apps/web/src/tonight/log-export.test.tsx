@@ -14,8 +14,8 @@ describe('Tonight › Log › Export (#87)', () => {
     const user = userEvent.setup()
     renderWithIntl(<LogExport venueId={VENUE} today="2026-10-27" />)
     await user.click(screen.getByTestId('log-export'))
-    expect((screen.getByLabelText('From') as HTMLInputElement).value).toBe('2026-10-21')
-    expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe('2026-10-27')
+    expect((screen.getByLabelText('From') as HTMLInputElement).value).toBe('21.10.2026')
+    expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe('27.10.2026')
     expect(screen.getByTestId('export-sent').getAttribute('href')).toBe(
       `/api/venues/${VENUE}/export?kind=sent&from=2026-10-21&to=2026-10-27`,
     )
