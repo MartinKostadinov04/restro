@@ -139,6 +139,8 @@ export interface TablesView {
   readonly payFirst: PayFirstTabView | null
   readonly halls: readonly HallView[]
   readonly total: number
+  /** The tables guests can sit at: `total` without the payment tables (walk P1); the summary line says this one. */
+  readonly guestTotal: number
   /** Tables with a code that leads somewhere (a hidden table's paused code is not counted). */
   readonly coded: number
   /**

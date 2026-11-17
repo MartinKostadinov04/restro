@@ -111,6 +111,11 @@ beforeEach(() => {
 })
 
 describe('the Tables & QR tab', () => {
+  it('counts the tables guests sit at, not the payment tables (walk P1)', () => {
+    renderWithIntl(<TablesPanel view={view({ guestTotal: 3 })} />)
+    expect(screen.getByTestId('tables-summary').textContent).toBe('3 tables, 1 with a code')
+  })
+
   it('lists the tables by area, in the areas’ order, with the counts', () => {
     renderWithIntl(<TablesPanel view={view()} />)
     expect(hallNames()).toEqual(['Main hall', 'Terrace', 'Tables'])
@@ -667,6 +672,7 @@ describe('a venue made by hand', () => {
         view={hand({
           halls: base.halls.map((h) => (h.id === AREA_TABLES ? { ...h, tables: [] } : h)),
           total: 4,
+          guestTotal: 4,
         })}
       />,
     )
