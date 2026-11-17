@@ -379,7 +379,8 @@ export async function loadTablesView(
       ? { canSet: scope.person?.canMarkPaymentTables === true, email: scope.person?.email ?? '' }
       : null,
     halls,
-    total: rows.length,
+    // Payment tables are the venue's tools for paying, not tables with a guest page (walk P1).
+    total: rows.filter((row) => !row.isPaymentTable).length,
     coded: withCode.length,
     sample:
       firstShown === undefined || firstCode === undefined

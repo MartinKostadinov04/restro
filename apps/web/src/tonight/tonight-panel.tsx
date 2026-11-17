@@ -247,6 +247,8 @@ function Content({
   const sayWhoEnds = nightGoing && !view.can.endNight && !view.device
   const mayCloseAll = view.can.openClose && view.openCount > 0
 
+  const countOf = (value: unknown): number => (typeof value === 'number' ? value : 0)
+
   function openAll() {
     run({
       id: 'open-all',
@@ -260,7 +262,13 @@ function Content({
           }
         : {}),
       act: (pin) => openAllTablesAction({ venueId: view.venueId, pin }),
-      done: t('oa_toast', { k: closedIds.length }),
+      // What the command opened, not every tile on the screen (walk P2): a table that was open
+      // already, or one phones may not use, is not counted.
+      done: (done) => t('oa_toast', { k: countOf(done.details.opened) }),
+      note: (done) => {
+        const skipped = countOf(done.details.skipped)
+        return skipped > 0 ? t('oa_skipped', { k: skipped }) : undefined
+      },
       // On a shared device the Undo names the same person, with the PIN of the write.
       undo: (_, undo, pin) => undoOpenAllAction({ venueId: view.venueId, undo, pin }),
       undoWhen: wroteSomething,

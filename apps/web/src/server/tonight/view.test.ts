@@ -410,6 +410,25 @@ describe('the tiles', () => {
     ])
   })
 
+  it('leaves payment tables out of the counts and the grid, and lists them on their own (walk P1)', () => {
+    const t = tonight({
+      tables: [
+        table(1, BAR1, true),
+        table(2, BAR1, false),
+        { ...table(3, BAR1, false), isPaymentTable: true },
+        { ...table(4, null, true), isPaymentTable: true },
+      ],
+    })
+    const v = view(t)
+    expect(v.openCount).toBe(1)
+    expect(v.tableCount).toBe(2)
+    expect(v.groups.flatMap((g) => g.tables.map((x) => x.label))).toEqual(['Table 1', 'Table 2'])
+    expect(v.paymentTables.map((x) => [x.label, x.state])).toEqual([
+      ['Table 3', 'closed'],
+      ['Table 4', 'open'],
+    ])
+  })
+
   it('reads a table whose bar is gone as having none', () => {
     const t = tonight({ bars: [], tables: [table(1, BAR1, true)] })
     expect(view(t).groups.map((g) => g.name)).toEqual([null])

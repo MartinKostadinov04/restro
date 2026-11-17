@@ -226,7 +226,9 @@ export function TablesGrid({ view }: { view: TonightView }) {
   const live =
     chosen === null
       ? null
-      : view.groups.flatMap((g) => g.tables).find((x) => x.id === chosen.tile.id)
+      : [...view.groups.flatMap((g) => g.tables), ...view.paymentTables].find(
+          (x) => x.id === chosen.tile.id,
+        )
   const named = view.groups.some((group) => group.name !== null)
   return (
     <>
@@ -242,6 +244,25 @@ export function TablesGrid({ view }: { view: TonightView }) {
           />
         ))}
       </div>
+      {view.paymentTables.length === 0 ? null : (
+        <section className="mt-5 space-y-2" aria-labelledby="payment-tables-title">
+          <h3 id="payment-tables-title" className="text-sm font-medium">
+            {t('pay_tables')}
+          </h3>
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2">
+            {view.paymentTables.map((tile) => (
+              <li key={tile.id} className="min-w-0">
+                <Tile
+                  tile={tile}
+                  view={view}
+                  onOpen={() => setChosen({ tile, bar: null })}
+                  onLetIn={letIn}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {chosen === null || live == null || live.state === 'closed' ? null : (
         <TableSheet tile={live} bar={chosen.bar} view={view} onClose={() => setChosen(null)} />
       )}

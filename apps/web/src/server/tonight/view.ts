@@ -258,6 +258,8 @@ export interface TonightView {
   /** Items the POS says ran out, in the order they ran out; empty for none (plan §12 A). */
   readonly outOfStock: readonly string[]
   readonly groups: readonly BarGroup[]
+  /** The payment tables (D122 §8), in neither count below and drawn in a group of their own. */
+  readonly paymentTables: readonly TableTile[]
   readonly openCount: number
   readonly tableCount: number
   /** The bars a new pause can name (those not already paused), by name. */
@@ -666,11 +668,16 @@ export function buildTonightView(input: {
       payRule: payRuleLine(table.payRule),
     }
   })
+  // Payment tables are the venue's own tools for paying, not places guests sit (D122 §8): they are
+  // left out of the counts and the grid and drawn in a small group of their own (walk P1).
+  const paymentIds = new Set(tonight.tables.filter((t) => t.isPaymentTable).map((t) => t.id))
+  const guestTiles = tiles.filter((tile) => !paymentIds.has(tile.id))
+  const paymentTables = tiles.filter((tile) => paymentIds.has(tile.id))
   const group = (barId: string | null, name: string | null): BarGroup => ({
     barId,
     name,
     paused: allBars || (barId !== null && pausedBars.has(barId)),
-    tables: tiles.filter((tile) =>
+    tables: guestTiles.filter((tile) =>
       barId === null ? !barName.has(tile.barId ?? '') : tile.barId === barId,
     ),
   })
@@ -707,8 +714,9 @@ export function buildTonightView(input: {
     rows,
     outOfStock: out.sort((a, b) => a.at.getTime() - b.at.getTime()).map((entry) => entry.name),
     groups,
-    openCount: tiles.filter((tile) => tile.state !== 'closed').length,
-    tableCount: tiles.length,
+    paymentTables,
+    openCount: guestTiles.filter((tile) => tile.state !== 'closed').length,
+    tableCount: guestTiles.length,
     // Restro's own pause hides the button: a second pause adds nothing (plan §5).
     pausableBars:
       allBars || restro.length > 0 ? [] : tonight.bars.filter((bar) => !pausedBars.has(bar.id)),

@@ -1111,7 +1111,15 @@ export async function readTonight(
                   },
                   tonightPartyRules.get(row.id) ?? null,
                 )
-                return { payFirst: reading.applies, level: reading.level }
+                // `applies` alone only says pay-first is allowed here, which is the default everywhere.
+                // Something is really pay-first when a setting below the house's says so (a table,
+                // a bar, a hall, the party), or when the venue's own item mode is pay-first.
+                return {
+                  payFirst:
+                    reading.applies &&
+                    (reading.level !== 'venue' || tonightPayFirst.itemMode === 'pay_first'),
+                  level: reading.level,
+                }
               })(),
       })),
       sentOrders: sent,
