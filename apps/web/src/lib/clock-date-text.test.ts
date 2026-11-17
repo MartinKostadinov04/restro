@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  formatDateText,
-  parseDateText,
-  parseTimeText,
-  stepDate,
-  stepTime,
-} from './clock-date-text'
+import { formatDateText, parseDateText, parseTimeText, stepDate, stepTime } from './clock-date-text'
 
 describe('parseTimeText', () => {
   it.each([

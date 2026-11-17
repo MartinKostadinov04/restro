@@ -8,13 +8,13 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
+import { DateField } from '@/components/ui/date-field'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { DateField } from '@/components/ui/date-field'
 
 /** The nights listed even when they hold nothing (they are greyed): a month back from today. */
 const LISTED_NIGHTS = 31

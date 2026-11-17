@@ -10,6 +10,7 @@ import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { DateField } from '@/components/ui/date-field'
 import {
   Dialog,
   DialogContent,
@@ -19,6 +20,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { TimeField } from '@/components/ui/time-field'
 import { WRAPS } from '@/lib/wrapping'
 import { copyBookingAction } from '@/server/reservations/actions'
 import type { RvDetailView, RvFrame } from '@/server/reservations/view'
@@ -29,8 +31,6 @@ import { NoPlanYet } from './no-plan'
 import { PickWait, SpotList, usePickPlan } from './spot-picker'
 import { useBookingChecks } from './use-booking-checks'
 import type { RvRunSpec } from './use-reservation-run'
-import { DateField } from '@/components/ui/date-field'
-import { TimeField } from '@/components/ui/time-field'
 
 export function CopyDialog({
   frame,

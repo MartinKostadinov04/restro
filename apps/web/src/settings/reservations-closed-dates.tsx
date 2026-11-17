@@ -9,6 +9,7 @@ import { useFormatter, useTranslations } from 'next-intl'
 import { type FormEvent, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { DateField } from '@/components/ui/date-field'
 import {
   Dialog,
   DialogContent,
@@ -21,9 +22,7 @@ import { Empty, EmptyDescription, EmptyHeader } from '@/components/ui/empty'
 import { Label } from '@/components/ui/label'
 import { addClosedDateAction, removeClosedDateAction } from '@/server/settings/reservations-actions'
 import type { ReservationsView } from '@/server/settings/reservations-view'
-
 import type { useSettingsRun } from './use-settings-run'
-import { DateField } from '@/components/ui/date-field'
 
 /** `YYYY-MM-DD` as a date to read: "Fri, 14 Nov 2026" in the language of the screen. */
 function useDateWords() {

@@ -32,10 +32,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { TimeField } from '@/components/ui/time-field'
 import { saveAutomationAction } from '@/server/publish/actions'
 import type { PublishActionError } from '@/server/publish/service'
 import type { AutomationView } from '@/server/publish/view'
-import { TimeField } from '@/components/ui/time-field'
 
 /** One choice of a radio group, with a line of help. */
 function Choice<T extends string>({

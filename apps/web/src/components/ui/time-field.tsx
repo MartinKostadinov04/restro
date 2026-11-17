@@ -73,7 +73,9 @@ export function TimeField({
         placeholder={t('timeHint')}
         value={shown}
         aria-invalid={invalid ? true : undefined}
-        aria-describedby={[blurredInvalid ? errorId : null, describedBy].filter(Boolean).join(' ') || undefined}
+        aria-describedby={
+          [blurredInvalid ? errorId : null, describedBy].filter(Boolean).join(' ') || undefined
+        }
         onChange={(event) => {
           const text = event.target.value
           setDraft(text)

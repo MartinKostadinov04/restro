@@ -10,6 +10,7 @@ import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { DateField } from '@/components/ui/date-field'
 import {
   Dialog,
   DialogContent,
@@ -20,7 +21,6 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import { DateField } from '@/components/ui/date-field'
 
 /** How many nights the dialog starts with, today included. */
 const DEFAULT_NIGHTS = 7
@@ -56,21 +56,11 @@ export function LogExport({ venueId, today }: { venueId: string; today: string }
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid gap-2">
             <Label htmlFor="export-from">{t('lg_from')}</Label>
-            <DateField
-              id="export-from"
-              value={from}
-              max={today}
-              onChange={setFrom}
-            />
+            <DateField id="export-from" value={from} max={today} onChange={setFrom} />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="export-to">{t('lg_to')}</Label>
-            <DateField
-              id="export-to"
-              value={to}
-              max={today}
-              onChange={setTo}
-            />
+            <DateField id="export-to" value={to} max={today} onChange={setTo} />
           </div>
         </div>
         {valid ? null : (

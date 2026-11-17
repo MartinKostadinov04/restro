@@ -31,6 +31,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { DateField } from '@/components/ui/date-field'
 import {
   Dialog,
   DialogContent,
@@ -58,6 +59,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
+import { TimeField } from '@/components/ui/time-field'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { WRAPS } from '@/lib/wrapping'
@@ -82,8 +84,6 @@ import { NoPlanYet } from './no-plan'
 import { PickWait, SpotList, SpotPlan, usePickPlan } from './spot-picker'
 import { useBookingChecks } from './use-booking-checks'
 import type { RvRunSpec } from './use-reservation-run'
-import { DateField } from '@/components/ui/date-field'
-import { TimeField } from '@/components/ui/time-field'
 
 /** What the form is opened for. */
 export type BookingMode =

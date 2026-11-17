@@ -111,7 +111,11 @@ export function DateField({
             event.preventDefault()
             const base = parseDateText(shown) ?? (value === '' ? (min ?? max ?? '') : value)
             if (base === '') return
-            emit(parseDateText(shown) === null && value === '' ? base : stepDate(base, event.key === 'ArrowUp' ? 1 : -1))
+            emit(
+              parseDateText(shown) === null && value === ''
+                ? base
+                : stepDate(base, event.key === 'ArrowUp' ? 1 : -1),
+            )
             setDraft(null)
             setBlurredInvalid(false)
           }}

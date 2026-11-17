@@ -30,10 +30,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { TimeField as TimeInput } from '@/components/ui/time-field'
 import { useTillLabel } from '@/fields/till-label'
 import { saveOrderingAction } from '@/server/settings/ordering-actions'
 import type { OrderingView } from '@/server/settings/ordering-view'
-
 import {
   CHOICES,
   dayEndText,
@@ -47,7 +47,6 @@ import {
 import { ReadOnlyLine } from './section-notices'
 import { useDuration } from './use-duration'
 import { useSettingsRun } from './use-settings-run'
-import { TimeField } from '@/components/ui/time-field'
 
 export function HoursPanel({ view }: { view: OrderingView }) {
   const t = useTranslations('ownerSettings')
@@ -299,7 +298,7 @@ function TimeField({
   return (
     <div className="grid grid-cols-1 content-start gap-2">
       <Label htmlFor={id}>{label}</Label>
-      <TimeField
+      <TimeInput
         id={id}
         value={value}
         onChange={onChange}
