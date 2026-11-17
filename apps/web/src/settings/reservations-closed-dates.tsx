@@ -18,7 +18,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Empty, EmptyDescription, EmptyHeader } from '@/components/ui/empty'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { addClosedDateAction, removeClosedDateAction } from '@/server/settings/reservations-actions'
 import type { ReservationsView } from '@/server/settings/reservations-view'
