@@ -24,6 +24,7 @@ import { addClosedDateAction, removeClosedDateAction } from '@/server/settings/r
 import type { ReservationsView } from '@/server/settings/reservations-view'
 
 import type { useSettingsRun } from './use-settings-run'
+import { DateField } from '@/components/ui/date-field'
 
 /** `YYYY-MM-DD` as a date to read: "Fri, 14 Nov 2026" in the language of the screen. */
 function useDateWords() {
@@ -171,16 +172,15 @@ function AddClosedDate({
         </DialogHeader>
         <div className="grid grid-cols-1 gap-2">
           <Label htmlFor="rs-closed-date">{t('rs_closed_date')}</Label>
-          <Input
+          <DateField
             id="rs-closed-date"
-            type="date"
             value={date}
             autoFocus
             aria-invalid={problem === null ? undefined : true}
             aria-describedby={problem === null ? undefined : 'rs-closed-problem'}
             data-testid="rs-closed-date"
-            onChange={(event) => {
-              setDate(event.target.value)
+            onChange={(next) => {
+              setDate(next)
               setProblem(null)
             }}
           />

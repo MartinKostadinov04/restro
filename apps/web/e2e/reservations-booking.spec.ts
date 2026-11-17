@@ -76,6 +76,11 @@ function nextNight(day: string): string {
   return date.toISOString().slice(0, 10)
 }
 
+/** A `yyyy-MM-dd` night as the date field shows and takes it: "10.11.2026". */
+function bgDate(day: string): string {
+  return day.split('-').reverse().join('.')
+}
+
 const FIRST = { name: 'Мария Тестова', phone: '+359 888 777 001' }
 const SECOND = { name: 'Друга Група', phone: '+359 888 777 001' }
 const THIRD = { name: 'Нов Гост', phone: '+359 888 777 003' }
@@ -227,13 +232,13 @@ test('a booking is copied to another night, with its details', async () => {
   await page.getByTestId('rv-more').click()
   await page.getByTestId('rv-copy-open').click()
   const dialog = page.getByTestId('rv-copy')
-  await dialog.getByTestId('rv-copy-day').fill(target)
+  await dialog.getByTestId('rv-copy-day').fill(bgDate(target))
   await dialog.getByTestId('rv-copy-time').fill('22:00')
   await dialog.getByTestId('rv-copy-do').click()
   await expect(page.getByText(/^Copied to /)).toBeVisible()
 
   // The other night has it, Reserved, with the same guests and the table it asked for.
-  await page.getByTestId('day-any').fill(target)
+  await page.getByTestId('day-any').fill(bgDate(target))
   await expect(rowOf(page, FIRST.name)).toHaveCount(1)
   await expect(rowOf(page, FIRST.name)).toContainText('6 guests')
   await expect(rowOf(page, FIRST.name)).toHaveAttribute('data-status', 'reserved')

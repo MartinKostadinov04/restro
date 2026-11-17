@@ -48,6 +48,7 @@ import {
 import { ReadOnlyLine } from './section-notices'
 import { useDuration } from './use-duration'
 import { useSettingsRun } from './use-settings-run'
+import { TimeField } from '@/components/ui/time-field'
 
 export function HoursPanel({ view }: { view: OrderingView }) {
   const t = useTranslations('ownerSettings')
@@ -299,11 +300,10 @@ function TimeField({
   return (
     <div className="grid grid-cols-1 content-start gap-2">
       <Label htmlFor={id}>{label}</Label>
-      <Input
+      <TimeField
         id={id}
-        type="time"
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={onChange}
         aria-invalid={problem === null ? undefined : true}
         aria-describedby={problem === null ? undefined : `${id}-problem`}
       />

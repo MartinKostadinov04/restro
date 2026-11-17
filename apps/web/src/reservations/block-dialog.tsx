@@ -29,6 +29,7 @@ import { WRAPS } from '@/lib/wrapping'
 
 import { BLOCK_REASONS, type BlockReason } from './block-reasons'
 import { useBlockReasonWord } from './plan-words'
+import { DateField } from '@/components/ui/date-field'
 
 /** What the dialog asks for: the reason, and the nights where somebody set them. */
 export interface BlockChoice {
@@ -91,24 +92,20 @@ export function BlockDialog({
           <div className="flex flex-wrap items-end gap-3">
             <span className="space-y-1">
               <Label htmlFor="rv-block-from">{t('p_from')}</Label>
-              <input
+              <DateField
                 id="rv-block-from"
-                type="date"
-                className="h-11 min-w-0 rounded-md border bg-background px-3 text-base"
                 value={from}
                 data-testid="rv-block-from"
-                onChange={(event) => setFrom(event.target.value)}
+                onChange={setFrom}
               />
             </span>
             <span className="space-y-1">
               <Label htmlFor="rv-block-until">{t('p_until_day')}</Label>
-              <input
+              <DateField
                 id="rv-block-until"
-                type="date"
-                className="h-11 min-w-0 rounded-md border bg-background px-3 text-base"
                 value={until}
                 data-testid="rv-block-until"
-                onChange={(event) => setUntil(event.target.value)}
+                onChange={setUntil}
               />
             </span>
           </div>

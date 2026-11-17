@@ -365,7 +365,12 @@
     "close": "Close",
     "sidebar": "Sidebar",
     "sidebarDescription": "The main navigation of the admin.",
-    "toggleSidebar": "Toggle sidebar"
+    "toggleSidebar": "Toggle sidebar",
+    "timeHint": "HH:MM",
+    "timeInvalid": "Enter a 24-hour time, for example 22:00.",
+    "dateHint": "DD.MM.YYYY",
+    "dateInvalid": "Enter a date as day.month.year, for example 10.11.2026.",
+    "pickDate": "Pick a date"
   },
   "auth": {
     "title": "Sign in",

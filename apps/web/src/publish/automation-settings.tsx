@@ -36,6 +36,7 @@ import {
 import { saveAutomationAction } from '@/server/publish/actions'
 import type { PublishActionError } from '@/server/publish/service'
 import type { AutomationView } from '@/server/publish/view'
+import { TimeField } from '@/components/ui/time-field'
 
 /** One choice of a radio group, with a line of help. */
 function Choice<T extends string>({
@@ -172,13 +173,11 @@ export function AutomationSettings({
               <div className="grid gap-1.5">
                 <Label htmlFor={`${formId}-time`}>{t('sync.fullRead')}</Label>
                 <div className="flex items-center gap-2">
-                  <Input
+                  <TimeField
                     id={`${formId}-time`}
-                    type="time"
-                    step={60}
                     className="w-32"
                     value={time}
-                    onChange={(event) => edit(setTime)(event.target.value)}
+                    onChange={edit(setTime)}
                     aria-invalid={!timeValid}
                     disabled={!canManage}
                     data-testid="automation-time"

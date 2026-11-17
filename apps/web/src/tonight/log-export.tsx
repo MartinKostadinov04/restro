@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { DateField } from '@/components/ui/date-field'
 
 /** How many nights the dialog starts with, today included. */
 const DEFAULT_NIGHTS = 7
@@ -56,22 +57,20 @@ export function LogExport({ venueId, today }: { venueId: string; today: string }
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid gap-2">
             <Label htmlFor="export-from">{t('lg_from')}</Label>
-            <Input
+            <DateField
               id="export-from"
-              type="date"
               value={from}
               max={today}
-              onChange={(event) => setFrom(event.target.value)}
+              onChange={setFrom}
             />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="export-to">{t('lg_to')}</Label>
-            <Input
+            <DateField
               id="export-to"
-              type="date"
               value={to}
               max={today}
-              onChange={(event) => setTo(event.target.value)}
+              onChange={setTo}
             />
           </div>
         </div>

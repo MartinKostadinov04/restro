@@ -14,6 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { DateField } from '@/components/ui/date-field'
 
 /** The nights listed even when they hold nothing (they are greyed): a month back from today. */
 const LISTED_NIGHTS = 31
@@ -156,14 +157,12 @@ export function DayPicker({
   return (
     <div className="flex flex-wrap items-center gap-2">
       {button}
-      <input
-        type="date"
-        className="h-11 min-w-0 rounded-md border bg-background px-3 text-base"
+      <DateField
         value={day}
         aria-label={t('day_any')}
         data-testid="day-any"
-        onChange={(event) => {
-          if (event.target.value !== '') pick(event.target.value)
+        onChange={(next) => {
+          if (next !== '') pick(next)
         }}
       />
     </div>

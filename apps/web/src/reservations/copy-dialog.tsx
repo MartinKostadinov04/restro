@@ -30,6 +30,8 @@ import { NoPlanYet } from './no-plan'
 import { PickWait, SpotList, usePickPlan } from './spot-picker'
 import { useBookingChecks } from './use-booking-checks'
 import type { RvRunSpec } from './use-reservation-run'
+import { DateField } from '@/components/ui/date-field'
+import { TimeField } from '@/components/ui/time-field'
 
 export function CopyDialog({
   frame,
@@ -104,23 +106,21 @@ export function CopyDialog({
         <div className="grid grid-cols-2 gap-3">
           <div className="min-w-0 space-y-1.5">
             <Label htmlFor="rv-copy-day">{t('bk_night')}</Label>
-            <Input
+            <DateField
               id="rv-copy-day"
-              type="date"
               value={day}
               min={frame.editPastNights ? undefined : frame.today}
               data-testid="rv-copy-day"
-              onChange={(event) => event.target.value !== '' && setDay(event.target.value)}
+              onChange={(next) => next !== '' && setDay(next)}
             />
           </div>
           <div className="min-w-0 space-y-1.5">
             <Label htmlFor="rv-copy-time">{t('bk_from')}</Label>
-            <Input
+            <TimeField
               id="rv-copy-time"
-              type="time"
               value={time}
               data-testid="rv-copy-time"
-              onChange={(event) => event.target.value !== '' && setTime(event.target.value)}
+              onChange={(next) => next !== '' && setTime(next)}
             />
           </div>
         </div>
