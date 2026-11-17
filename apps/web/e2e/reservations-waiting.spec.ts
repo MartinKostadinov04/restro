@@ -228,7 +228,7 @@ test('a freed table is given to the party that waited longest, and its codes ope
   await openPlan(page)
   const booked = await openSpot(page, TABLE_SPOT)
   await booked.getByTestId('rv-spot-arrive').click()
-  await expect(toast(page, `${BOOKED} is seated.`)).toBeVisible()
+  await expect(toast(page, `Seated ${BOOKED}.`)).toBeVisible()
   expect(await readTile(page, TABLE)).toBe('open')
   await openPlan(page)
   const sitting = await openSpot(page, TABLE_SPOT)
@@ -241,7 +241,7 @@ test('a freed table is given to the party that waited longest, and its codes ope
   await openPlan(page)
   const freed = await openSpot(page, TABLE_SPOT)
   await freed.getByTestId('rv-seat-waiting').first().click()
-  await expect(toast(page, `${FIRST.name} is seated on ${TABLE_SPOT}.`)).toBeVisible()
+  await expect(toast(page, `Seated ${FIRST.name} on ${TABLE_SPOT}.`)).toBeVisible()
   expect(await readTile(page, TABLE)).toBe('open')
 
   await openList(page)
@@ -263,7 +263,7 @@ test('a spot given from the list is three taps, and seats the party in the same 
 
   // Tap three: the spot. The tap is the choice and the act — no Select, no second button.
   await give(page).getByTestId('rv-spot').filter({ hasText: FREE_SPOT }).first().click()
-  await expect(toast(page, `${SECOND.name} is seated on ${FREE_SPOT}.`)).toBeVisible()
+  await expect(toast(page, `Seated ${SECOND.name} on ${FREE_SPOT}.`)).toBeVisible()
   await expect(give(page)).toHaveCount(0)
 
   await openList(page)

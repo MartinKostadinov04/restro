@@ -1047,7 +1047,7 @@
         "areas": "Outside the items"
       },
       "areas": {
-        "look": "The look of the menu (colours, logo)",
+        "look": "The look of the menu (template, colours, logo)",
         "sections": "Sections and their order",
         "menu": "The menu's title or introduction",
         "languages": "Languages or currency",
@@ -1677,7 +1677,8 @@
       "domainLater": "A domain of your own for the codes comes later.",
       "testLink": "Open test link",
       "testLinkHint": "Opens the address of a table in a new browser tab. If the menu opens there, the link works.",
-      "testLinkNone": "Create a code for a table first, then test the link."
+      "testLinkNone": "Create a code for a table first, then test the link.",
+      "testLinkLoading": "Loading the codes…"
     },
     "errors": {
       "invalid": "That did not work: check what you typed.",
@@ -2216,6 +2217,7 @@
     "lg_device": "Device changed: {device}",
     "lg_code_new": "New code for {table}",
     "lg_code_seen": "Code shown for {table}",
+    "lg_code_seen_many": "Codes shown for {count} tables",
     "lg_pay_state": "Payment for {table}, {amount}: {state}",
     "lg_pay_answer": "Payment for {table}: {answer}",
     "lg_rv_created": "Reservation added: {state}",
@@ -2689,7 +2691,7 @@
     "d_free": "Free",
     "d_guests": "Guests",
     "d_guests_t": "How many came?",
-    "d_seated": "{party} is seated.",
+    "d_seated": "Seated {party}.",
     "d_seated_walk_in": "Seated.",
     "d_open": "The table is open for phones.",
     "d_closed": "The table stayed closed for phones. Ask someone who may open it.",
@@ -2798,7 +2800,7 @@
     "g_mine_removed": "Taken off your own list.",
     "g_note": "Note",
     "g_email_opt": "Email (optional)",
-    "g_counts": "Came {n} times, did not come {m} times, at your club.",
+    "g_counts": "Came {n, plural, =0 {never} one {once} other {# times}}, {m, plural, =0 {never missed} one {missed once} other {missed # times}}, at your club.",
     "g_counts_note": "A rough count for the hostess, not a record of money.",
     "g_bookings": "Recent bookings",
     "g_no_bookings": "No bookings yet.",
@@ -2830,8 +2832,8 @@
     "w_waited": "{party} has waited {duration}.",
     "w_order": "Oldest first: the party that has waited longest is at the top.",
     "w_empty": "Parties with no spot yet appear here.",
-    "w_seated": "{party} is seated on {spot}.",
-    "w_add": "Add a party",
+    "w_seated": "Seated {party} on {spot}.",
+    "w_add": "Add to the waiting list",
     "w_add_b": "They wait from now. Give them a spot when one frees.",
     "w_name_opt": "Name (optional)",
     "w_added": "{party} is on the waiting list.",
@@ -3111,6 +3113,7 @@
     "pa_dc_toast": "{provider} disconnected",
     "pa_err_inflight": "A guest is paying right now. Disconnect once the payment ends, in a few minutes.",
     "pa_err_connect": "Couldn't open {provider}. Check the connection and press it again.",
+    "pa_err_off": "Card payments are not switched on in this environment.",
     "pa_min": "Smallest card payment",
     "pa_min_default": "{amt} ({provider}'s minimum)",
     "pa_min_d": "Below it, guests can't pay by card and are asked to add an item or ask a waiter.",

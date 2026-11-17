@@ -56,6 +56,7 @@ const line = (kind: LogLineView['kind'], fields: Partial<LogLineView> = {}): Log
   setting: 'setting',
   subject: null,
   heldCount: null,
+  codeCount: null,
   amountMinor: null,
   paymentState: null,
   paymentAnswer: null,
@@ -189,6 +190,9 @@ describe("the Log's sentences", () => {
     )
     expect(logSentence(line('table_code.reissued'), en)).toBe('New code for Table 7')
     expect(logSentence(line('table_code.revealed'), en)).toBe('Code shown for Table 7')
+    expect(logSentence(line('table_code.revealed', { codeCount: 3 }), en)).toBe(
+      'Codes shown for 3 tables',
+    )
     expect(logSentence(line('alert.raised', { alertTitle: 'Sent order not confirmed' }), en)).toBe(
       'Alert: Sent order not confirmed',
     )

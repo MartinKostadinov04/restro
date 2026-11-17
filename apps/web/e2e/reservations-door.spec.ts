@@ -180,7 +180,7 @@ test('“Same guests” seats them and leaves their order where it was', async (
   const question = page.getByTestId('rv-same-guests')
   await expect(question).toBeVisible()
   await question.getByTestId('rv-same-keep').click()
-  await expect(page.getByText('Иванова is seated.')).toBeVisible()
+  await expect(page.getByText('Seated Иванова.')).toBeVisible()
   await expect(page.getByText('The table is open for phones.')).toBeVisible()
   await expect(rowOf(page, 'Иванова')).toHaveAttribute('data-status', 'seated')
   // The same table, still open: nothing of the order was cleared by seating them.

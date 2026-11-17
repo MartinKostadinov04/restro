@@ -190,7 +190,10 @@ export const SENTENCES = {
   'pin.revealed': (l, c) => c.say('lg_pin_seen', { who: l.subject ?? c.say('lg_someone') }),
   'device.changed': (l, c) => c.say('lg_device', { device: l.subject ?? c.say('lg_someone') }),
   'table_code.reissued': (l, c) => c.say('lg_code_new', { table: c.table(l) }),
-  'table_code.revealed': (l, c) => c.say('lg_code_seen', { table: c.table(l) }),
+  'table_code.revealed': (l, c) =>
+    l.codeCount !== null && l.codeCount > 1
+      ? c.say('lg_code_seen_many', { count: l.codeCount })
+      : c.say('lg_code_seen', { table: c.table(l) }),
   'payment.state': (l, c) => {
     const word = l.paymentState === null ? undefined : c.paymentStates[l.paymentState]
     return word === undefined || l.amountMinor === null

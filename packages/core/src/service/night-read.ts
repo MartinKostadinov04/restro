@@ -589,6 +589,8 @@ export interface LogLine {
    * details. Null for every other entry, and for role entries written before this was kept.
    */
   readonly heldCount: number | null
+  /** How many codes a `table_code.revealed` entry showed at once; null for any other entry. */
+  readonly codeCount: number | null
   /** A payment's amount in minor units: with the tip for `night.view_full`, else without it. */
   readonly amountMinor: number | null
   /** The provider a payment's refund or dispute entry names (its kind); null for any other entry. */
@@ -829,6 +831,10 @@ export async function readLog(
             cause: row.kind === 'pause.started' ? row.reason : detailText(row.details, 'cause'),
             subject: subjectKey === null ? null : (subjectName.get(subjectKey) ?? null),
             heldCount: typeof row.details.holdsCount === 'number' ? row.details.holdsCount : null,
+            codeCount:
+              row.kind === 'table_code.revealed' && typeof row.details.count === 'number'
+                ? row.details.count
+                : null,
             // A refund line names the refund's own amount, not the payment's (#222).
             amountMinor:
               row.kind === 'payment.refund_seen' && typeof row.details.amountMinor === 'number'

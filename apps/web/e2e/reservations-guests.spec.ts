@@ -180,7 +180,7 @@ test('a phone already on the list warns and names its guest, in the form and in 
   await expect(dialog).toHaveCount(0)
   // The guest it saved opens on their card.
   await expect(card(page)).toContainText(BOOK.late)
-  await card(page).getByTestId('rv-g-close').click()
+  await card(page).locator('[data-slot="sheet-close"]').click()
   await expect(card(page)).toHaveCount(0)
   await page.getByTestId('rv-g-filter-regulars').click()
   await expect(guestRow(page, BOOK.late)).toHaveCount(1)
@@ -219,7 +219,7 @@ test("the owner's private list is theirs: a colleague sees neither the list nor 
   await mine.getByTestId('rv-g-mine-save').click()
   await passwordIfAsked(page)
   await expect(page.getByText('Saved on your own list.')).toBeVisible()
-  await card(page).getByTestId('rv-g-close').click()
+  await card(page).locator('[data-slot="sheet-close"]').click()
   await page.getByTestId('rv-g-filter-mine').click()
   await expect(guestRow(page, REGULAR.name)).toHaveCount(1)
 
