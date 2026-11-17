@@ -1,7 +1,8 @@
 // The end of a service day (#84; D111, design §4).
 //
 //   service-day-tick  every hour: for each venue, each ended service day that has sittings, sent
-//                     orders or payments and no `service_days` row yet is closed through
+//                     orders, payments or reservations (a night of bookings only writes the door's
+//                     counts, D144) and no `service_days` row yet is closed through
 //                     `applyService` (`service_day.close`), oldest first: its sittings and sent
 //                     orders get their 18 months, its action ids are cleared and its totals kept.
 //                     Then every recent closed day whose end-of-night message has not gone
@@ -66,6 +67,8 @@ export async function dueServiceDays(pool: DbPool, now: Date): Promise<DueServic
               select service_date from restro.sittings where venue_id = ${venue.id}
               union select service_date from restro.sent_orders where venue_id = ${venue.id}
               union select service_date from restro.payments where venue_id = ${venue.id}
+              union select service_date from restro.reservations
+                where venue_id = ${venue.id} and kind <> 'block' and deleted_at is null
             ) day
            where day.service_date < ${today}::date
              and not exists (

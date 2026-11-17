@@ -367,6 +367,7 @@ const night = (fields: Partial<NightRead> = {}): NightRead => ({
     alerts: 4,
     pauses: 1,
   },
+  reservations: null,
   money: null,
   ...fields,
 })

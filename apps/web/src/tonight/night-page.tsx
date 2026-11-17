@@ -112,6 +112,7 @@ function Content({ view, frame, slots }: { view: NightView; frame: Frame; slots:
     { id: 'night-fix', label: t('nt_fix') },
     { id: 'night-sent', label: t('nt_sent') },
     ...sections.map((section) => ({ id: `night-${section.id}`, label: section.label })),
+    ...(view.reservations === null ? [] : [{ id: 'night-reservations', label: t('nt_res') }]),
     { id: 'night-totals', label: t('nt_totals') },
   ]
 
@@ -126,6 +127,22 @@ function Content({ view, frame, slots }: { view: NightView; frame: Frame; slots:
     [t('nt_t_pauses'), String(view.totals.pauses)],
     [t('nt_t_alerts'), String(view.totals.alerts)],
   ]
+
+  const door = view.reservations
+  const reservationRows: [string, string][] =
+    door === null
+      ? []
+      : [
+          [t('nt_r_bookings'), String(door.resBookings)],
+          [t('nt_r_walkins'), String(door.resWalkIns)],
+          [t('nt_r_arrived'), String(door.resArrived)],
+          [t('nt_r_noshows'), String(door.resNoShows)],
+          [t('nt_r_cancelled'), String(door.resCancelled)],
+          [t('nt_r_notseated'), String(door.resNotSeated)],
+          [t('nt_r_covers_booked'), String(door.resCoversBooked)],
+          [t('nt_r_covers_seated'), String(door.resCoversSeated)],
+          [t('nt_r_noshow_rate'), door.noShowRate === null ? '—' : `${door.noShowRate}%`],
+        ]
 
   return (
     <div className="mx-auto w-full max-w-[840px] space-y-6" data-testid="tonight-night">
@@ -277,6 +294,22 @@ function Content({ view, frame, slots }: { view: NightView; frame: Frame; slots:
               {section.node}
             </div>
           ))}
+
+          {reservationRows.length === 0 ? null : (
+            <Section id="night-reservations" title={t('nt_res')}>
+              <dl className="divide-y rounded-lg border" data-testid="night-reservations-list">
+                {reservationRows.map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="flex items-baseline justify-between gap-4 p-3 text-sm"
+                  >
+                    <dt className="min-w-0 [overflow-wrap:anywhere]">{label}</dt>
+                    <dd className="shrink-0 font-medium tabular-nums">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </Section>
+          )}
 
           <Section id="night-totals" title={t('nt_totals')}>
             <dl className="divide-y rounded-lg border" data-testid="night-totals-list">

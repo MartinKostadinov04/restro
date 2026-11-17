@@ -34,6 +34,7 @@ import { ruleOf } from './alert-rules'
 import type { ServiceTx } from './definition'
 import { appendLogEntry, recordRetainUntil, tableOfAlert } from './log'
 import { PAYMENT_UNCONFIRMED_REASONS } from './pay-route'
+import { reservationCounts } from './reservation-counts'
 import { accepted, refused, type ServiceResult } from './results'
 import { SETTLED_STATES } from './sent-order'
 
@@ -312,13 +313,15 @@ export async function closeServiceDay(
     .returning({ id: payments.id })
 
   const totals = await serviceDayTotals(stx.tx, stx.venueId, day)
+  // The door's counts (D144 §3, #408): written with the rest, once, from rows that never expire.
+  const door = await reservationCounts(stx.tx, stx.venueId, day)
   const closed = await stx.tx
     .insert(serviceDays)
     .values({
       tenantId: stx.tenantId,
       venueId: stx.venueId,
       serviceDate: day,
-      totals: { ...totals },
+      totals: { ...totals, ...door },
       ...stx.provenance,
     })
     .onConflictDoNothing()
