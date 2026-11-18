@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import type { Floor, LocalizedText, ServiceCapabilities, ServiceHours } from '@restro/core'
-import { NO_SERVICE_CAPABILITIES, posRef } from '@restro/core'
+import { connectorLabel, NO_SERVICE_CAPABILITIES, posRef } from '@restro/core'
 import { z } from 'zod'
 
 import { type CLUB_BIAD_KINDS, type ClubBiadSpot, clubBiadFloor } from './club-biad-plan'
@@ -31,7 +31,7 @@ export const DEMO_ORGANIZATION = { name: 'Club Biad', slug: 'club-biad' } as con
 export const DEMO_VENUE = { name: 'Club Biad Sofia', slug: 'club-biad' } as const
 
 /** The simulated instance and the scenario it runs. */
-export const DEMO_INSTANCE_NAME = 'Симулиран POS'
+export const DEMO_INSTANCE_NAME = connectorLabel('sim')
 /**
  * The simulated payment provider's kind (`@restro/sim-pay`), and the account reference the demo
  * records for it. The worker builds that provider only with `WORKER_PAYMENTS_SIM=on`, and it

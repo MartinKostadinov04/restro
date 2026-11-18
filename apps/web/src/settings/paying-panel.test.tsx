@@ -131,7 +131,7 @@ describe('Settings › Paying', () => {
     await user.click(screen.getByRole('button', { name: 'Connect Testpay' }))
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
-        "Couldn't open Testpay. Check the connection and press it again.",
+        'Card payments are not switched on in this environment.',
         expect.anything(),
       ),
     )

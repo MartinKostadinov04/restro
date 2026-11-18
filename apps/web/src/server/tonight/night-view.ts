@@ -371,6 +371,8 @@ export interface LogLineView {
   readonly subject: string | null
   /** What a role holds now, as a count (#366): the Log line says it in words. */
   readonly heldCount: number | null
+  /** How many codes one `table_code.revealed` entry showed (several tables at once). */
+  readonly codeCount: number | null
   readonly amountMinor: number | null
   /** Part 2's payment state word key (empty until #115 fills `PAYMENT_STATE_WORDS`). */
   readonly paymentState: string | null
@@ -499,6 +501,7 @@ export function logLineView(
     setting: line.reason === 'payment_table' ? 'pay_table' : 'setting',
     subject: line.subject,
     heldCount: line.heldCount,
+    codeCount: line.codeCount,
     amountMinor: line.amountMinor,
     paymentState: line.kind === 'payment.state' ? line.toState : null,
     paymentAnswer: line.kind === 'payment.answered' ? answerCodeOf(line.toState) : null,

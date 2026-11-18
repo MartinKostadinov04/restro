@@ -14,6 +14,7 @@ import { authMember, authUser } from '@restro/db'
 import { eq } from 'drizzle-orm'
 
 import { getAuthDb, getPool } from '../db'
+import { canDeleteVenue } from '../roles'
 import { isOperator } from '../staff/service'
 
 /** One role as the screen draws it. */
@@ -90,9 +91,14 @@ export interface StaffView {
 /** The accounts of the organisation, by name. */
 async function organizationAccounts(
   tenantId: string,
-): Promise<{ userId: string; name: string; email: string }[]> {
+): Promise<{ userId: string; name: string; email: string; role: string }[]> {
   const rows = await getAuthDb()
-    .select({ userId: authUser.id, name: authUser.name, email: authUser.email })
+    .select({
+      userId: authUser.id,
+      name: authUser.name,
+      email: authUser.email,
+      role: authMember.role,
+    })
     .from(authMember)
     .innerJoin(authUser, eq(authUser.id, authMember.userId))
     .where(eq(authMember.organizationId, tenantId))
@@ -129,6 +135,8 @@ export async function buildStaffView(input: {
   for (const person of settings.staff) {
     count.set(person.roleId, (count.get(person.roleId) ?? 0) + 1)
   }
+  const accounts = await organizationAccounts(input.tenantId)
+  const owners = accounts.filter((account) => canDeleteVenue(account.role)).length
   const roles: StaffRoleView[] = settings.roles.map((role) => ({
     ref: role.id ?? role.defaultKind ?? '',
     name: role.name,
@@ -138,9 +146,10 @@ export async function buildStaffView(input: {
     edited: role.edited,
     newPermissions: role.newPermissions,
     shipped: role.defaultKind === null ? [] : [...DEFAULT_ROLE_PERMISSIONS[role.defaultKind]],
-    people: role.id === null ? 0 : (count.get(role.id) ?? 0),
+    // The owners are the organisation's own accounts, not staff rows, so the Owner role counts them.
+    people:
+      role.defaultKind === 'owner' ? owners : role.id === null ? 0 : (count.get(role.id) ?? 0),
   }))
-  const accounts = await organizationAccounts(input.tenantId)
   const linkedTo = new Map<string, string>()
   for (const person of settings.staff) {
     if (person.accountUserId !== null) linkedTo.set(person.accountUserId, person.displayName)
@@ -165,7 +174,7 @@ export async function buildStaffView(input: {
     venueName: input.venueName,
     roles,
     people,
-    accounts: accounts.map((account) => ({
+    accounts: accounts.map(({ role: _role, ...account }) => ({
       ...account,
       linkedTo: linkedTo.get(account.userId) ?? null,
     })),
