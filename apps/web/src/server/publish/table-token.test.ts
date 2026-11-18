@@ -126,6 +126,47 @@ describe('/t/<code> (no database)', () => {
     expect((await tableTokenResponse(TOKEN, failing)).status).toBe(503)
   })
 
+  it('tells a good code apart from a dead one: 503 and 429 say the menu cannot open, never "not active" (#442)', async () => {
+    const failing = {
+      get: async () => {
+        throw new Error('disk on fire')
+      },
+    }
+    const limiter = new BadCodeLimiter(undefined, () => 0)
+    const guard = { limiter, network: '203.0.113.7' }
+    for (let wrong = 0; wrong < 50; wrong += 1) limiter.recordWrong(guard.network)
+    const unavailable = [
+      await tableTokenResponse(TOKEN, null),
+      await tableTokenResponse(TOKEN, failing),
+      await tableTokenResponse(TOKEN, failing, guard),
+    ]
+    expect(unavailable.map((response) => response.status)).toEqual([503, 503, 429])
+    for (const response of unavailable) {
+      const html = (await response.text()).replaceAll('&#39;', "'")
+      expect(html).toContain("The menu can't open right now.")
+      expect(html).toContain('Try again in a minute.')
+      expect(html).toContain('Менюто не може да се отвори в момента.')
+      expect(html).toContain('Опитайте пак след минута.')
+      expect(html).not.toContain('not active')
+      expect(html).not.toContain('не е активен')
+      // The page's other properties are the 404's.
+      expect(html).toContain('lang="bg"')
+      expect(html).toContain('lang="en"')
+      expect(html).toContain('noindex')
+      expect(html).toContain('color-scheme: light dark')
+      expect(html).not.toMatch(/\/m\/|venue|demo-club/)
+      expect(response.headers.get('content-type')).toContain('text/html')
+      expect(response.headers.get('cache-control')).toBe('no-store')
+      expect(response.headers.get('referrer-policy')).toBe('no-referrer')
+    }
+    expect(unavailable[2]?.headers.get('retry-after')).toBe(String(15 * 60))
+    // The 404 keeps its words.
+    const dead = await (await tableTokenResponse('tb_ZZZZZZZZZZZZZZZZZZZZZZ', store)).text()
+    expect(dead).toBe(inactivePageHtml())
+    expect(dead).toContain('This table code is not active.')
+    expect(dead).not.toContain("can't open")
+  })
+
   it('reads the token file from the CDN when there is no local store', async () => {
     const calls: string[] = []
     const fetchFile = (async (url: string) => {
