@@ -127,8 +127,7 @@ export async function saveSpotAction(input: unknown): Promise<SettingsResult> {
         type: 'spot.save',
         ...spot,
         ...place.data,
-        // Left out, a spot names no Table: the engine looks up any `tableId` it is handed.
-        ...(tableId === null ? {} : { tableId }),
+        tableId,
       })
       if (result.ok) revalidatePath(`/venues/${scope.venueId}`)
       return result

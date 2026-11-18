@@ -20,9 +20,31 @@ import type { ServiceCommand } from '../index'
 /** The venue's turn time in these tests: ninety minutes, as a club's would be. */
 const TURN = 90
 
-/** An hour of the night as an instant; the service day is the night's own (D45). */
+const DAY_MS = 86_400_000
+
+/**
+ * The nights these tests book, counted from a day a month ahead of the run, so a night is never
+ * in the past whenever the suite runs (fixed dates started failing as `night_passed` once the
+ * calendar passed them). `day` 10 is that day; 11 the next, and so on.
+ */
+const BASE_MS = (() => {
+  const ahead = new Date(Date.now() + 30 * DAY_MS)
+  return Date.UTC(ahead.getUTCFullYear(), ahead.getUTCMonth(), ahead.getUTCDate())
+})()
+
+/** A night of these tests as its service date (`yyyy-MM-dd`). */
+const nightOf = (day: number) => new Date(BASE_MS + (day - 10) * DAY_MS).toISOString().slice(0, 10)
+
+/** An hour of that night as an instant; the service day is the night's own (D45). */
 const at = (day: number, hour: number, minute = 0) =>
-  new Date(Date.UTC(2026, 10, day, hour, minute, 0)).toISOString()
+  new Date(BASE_MS + (day - 10) * DAY_MS + (hour * 60 + minute) * 60_000).toISOString()
+
+/** A night well before the run, and an hour of it: a night that has passed. */
+const PAST_MS =
+  Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()) -
+  9 * DAY_MS
+const pastNight = new Date(PAST_MS).toISOString().slice(0, 10)
+const pastAt = (hour: number) => new Date(PAST_MS + hour * 3_600_000).toISOString()
 
 describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () => {
   let world: ServiceWorld
@@ -187,7 +209,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
   })
 
   it('refuses a role that does not hold the command, with its own code, and writes nothing', async () => {
-    const night = '2026-11-10'
+    const night = nightOf(10)
     // The hostess works tonight's floor and takes bookings; changing one is the booking book's.
     expect(
       await run(
@@ -203,7 +225,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
   })
 
   it('takes a booking in through applyService, with its spots, its provenance and one Log entry', async () => {
-    const night = '2026-11-11'
+    const night = nightOf(11)
     const id = await book(night, at(11, 21, 30), ['T1'])
     const row = await reservationOf(id)
     expect(row).toMatchObject({ status: 'reserved', kind: 'booking', party_size: 4 })
@@ -228,7 +250,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
   })
 
   it('keeps the overlap rule: one spot, one party at a time, and the refusal names the booking', async () => {
-    const night = '2026-11-12'
+    const night = nightOf(12)
     const first = await book(night, at(12, 22), ['T1'])
     const clash = await run({
       type: 'reservation.create',
@@ -266,11 +288,11 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
   })
 
   it('refuses a night that has passed until the venue switches it on, then asks for the right to', async () => {
-    const past = '2026-11-01'
+    const past = pastNight
     const booking = {
       type: 'reservation.create',
       serviceDate: past,
-      startsAt: at(1, 22),
+      startsAt: pastAt(22),
       kind: 'booking',
       status: 'reserved',
       partySize: 2,
@@ -310,7 +332,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
   })
 
   it('moves a party through the statuses and gives its spots back only at an end (D136)', async () => {
-    const night = '2026-11-14'
+    const night = nightOf(14)
     const id = await book(night, at(14, 22), ['T3'])
     expect(await accept({ type: 'reservation.arrive', reservationId: id })).toMatchObject({
       status: 'seated',
@@ -333,7 +355,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
   })
 
   it('keeps the waiting list as a queue of reservations (D137)', async () => {
-    const night = '2026-11-15'
+    const night = nightOf(15)
     const first = (
       await accept({ type: 'waiting.add', serviceDate: night, partySize: 2, partyLabel: 'First' })
     ).reservationId as Id<'rv'>
@@ -357,7 +379,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
   })
 
   it('deletes nothing: a cancelled, taken-out or restored booking is the same row throughout', async () => {
-    const night = '2026-11-17'
+    const night = nightOf(17)
     const id = await book(night, at(17, 22), ['T2'])
     const before = (await reservationRows()).length
     await accept({ type: 'reservation.cancel', reservationId: id, reason: 'guest_called' })
@@ -373,7 +395,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
   })
 
   it('erases a guest as an update: his details go, his reservations and the night stay (D140, D83)', async () => {
-    const night = '2026-11-18'
+    const night = nightOf(18)
     const phone = '+359888123456'
     const guestId = (
       await accept(
@@ -449,7 +471,7 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
         otherContext,
       )
       expect(result.result.status).toBe('accepted')
-      const night = '2026-11-19'
+      const night = nightOf(19)
       const theirs = (
         await applyService(
           other.app,
