@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { hasDatabase } from '../apply/test-database'
+import { newId } from '../ids'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import type { ServiceContext } from './context'
 import { applyService } from './index'
@@ -49,7 +50,7 @@ async function seedReservation(
   size: number | null,
   deleted = false,
 ): Promise<string> {
-  const id = `rv_${randomUUID().replaceAll('-', '')}`
+  const id = newId('rv')
   await world.owner.query(
     `insert into restro.reservations
        (id, tenant_id, venue_id, service_date, starts_at, kind, status, party_size, party_label,
