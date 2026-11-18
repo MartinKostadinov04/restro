@@ -31,7 +31,7 @@ describe.skipIf(!hasDatabase)('menusWithPayFirstItem (as the restro_app role)', 
 
   beforeAll(async () => {
     world = await openServiceWorld('pay-first-menus')
-    menuId = (await provisionMenu(world.app, world.tenantId, world.venueId)).menu.id
+    menuId = (await provisionMenu(world.app, world.tenantId, world.venueId)).id
     snapshotId = newId('sn')
     await world.owner.query(
       `insert into restro.snapshots
