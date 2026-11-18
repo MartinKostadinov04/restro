@@ -102,13 +102,7 @@ export function AutomationSettings({
 
   const inherited = view.syncInherited || view.afterSyncInherited
   const timeValid = CLOCK_TIME_PATTERN.test(time)
-  // Saving also makes inherited values the venue's own, so an unchanged form is worth saving then.
-  const dirty =
-    mode !== view.sync.mode ||
-    minutes !== view.sync.incremental_minutes ||
-    time !== view.sync.full_pull_time ||
-    afterSync !== view.afterSync ||
-    inherited
+  // `inherited`: saving makes the connection's values the venue's own.
   const edit =
     <T,>(set: (value: T) => void) =>
     (value: T) => {
@@ -118,13 +112,21 @@ export function AutomationSettings({
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    if (validity.blocked() || !timeValid) return
-    setError(null)
+    // A refused Save must not keep saying the last one went through.
     setSaved(false)
+    if (validity.blocked()) return
+    // Save stays pressable while the time is empty: say so by moving to the field. A hidden
+    // schedule (manual mode) keeps the time it had.
+    if (!timeValid && mode === 'auto') {
+      document.getElementById(`${formId}-time`)?.focus()
+      return
+    }
+    const fullPullTime = timeValid ? time : view.sync.full_pull_time
+    setError(null)
     startTransition(async () => {
       const result = await saveAutomationAction({
         venueId,
-        sync: { mode, incremental_minutes: minutes, full_pull_time: time },
+        sync: { mode, incremental_minutes: minutes, full_pull_time: fullPullTime },
         afterSync,
       })
       if (result.ok) setSaved(true)
@@ -232,11 +234,7 @@ export function AutomationSettings({
         ) : null}
         {canManage ? (
           <div className="flex justify-end">
-            <Button
-              type="submit"
-              disabled={pending || !dirty || !timeValid}
-              data-testid="automation-save"
-            >
+            <Button type="submit" disabled={pending} data-testid="automation-save">
               {pending ? t('saving') : t('save')}
             </Button>
           </div>

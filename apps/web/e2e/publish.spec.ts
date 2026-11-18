@@ -523,6 +523,43 @@ test('Settings › Publish: the Automation settings save the sync mode and "publ
   expect(await settings()).toMatchObject({ sync: { mode: 'auto' }, after: 'auto' })
 })
 
+test('Settings › Publish: Save is pressable while the time is still being typed (#428)', async () => {
+  await open(page, AUTOMATION)
+  const time = page.getByTestId('automation-time')
+  const stored = async () =>
+    (
+      await db.query<{ time: string }>(
+        `select settings #>> '{sync,full_pull_time}' as time from restro.venues where id = $1`,
+        [venueId],
+      )
+    ).rows[0]?.time
+  const before = await time.inputValue()
+  const typed = before === '06:30' ? '07:45' : '06:30'
+
+  // Typed, never left: the field has not committed, and Save is there to press all the same.
+  await time.fill(typed)
+  await expect(page.getByTestId('automation-save')).toBeEnabled()
+  await page.getByTestId('automation-save').click()
+  await expect(page.getByTestId('automation-saved')).toBeVisible()
+  expect(await stored()).toBe(typed)
+
+  // A value that is not a time blocks the save and takes the focus.
+  await time.fill('99:99')
+  // Leaving the field shows its error line, which moves Save down: let that settle first.
+  await time.blur()
+  await expect(time).toHaveAttribute('aria-invalid', 'true')
+  await page.getByTestId('automation-save').click()
+  await expect(time).toBeFocused()
+  await expect(page.getByTestId('automation-saved')).toHaveCount(0)
+  expect(await stored()).toBe(typed)
+
+  // Back as it was, for the steps below and the next run.
+  await time.fill(before)
+  await page.getByTestId('automation-save').click()
+  await expect(page.getByTestId('automation-saved')).toBeVisible()
+  expect(await stored()).toBe(before)
+})
+
 test('a held publish (V11) under the header: it names what it would hide, and Reject turns it down', async ({
   browser,
 }) => {

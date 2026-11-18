@@ -311,3 +311,38 @@ test('the form holds at 390 px, and leaving it asks before anything typed is los
     await phone.context.close()
   }
 })
+
+test('Save is pressable while a time is still being typed: the typed change is saved, a bad one is refused (#428)', async () => {
+  const { page } = owner
+  await openList(page)
+  await rowOf(page, FIRST.name).click()
+  await page.getByTestId('rv-edit').click()
+  await expect(form(page)).toBeVisible()
+
+  // Typed, never left: the field has not committed, and Save is there to press all the same.
+  const time = page.getByTestId('rv-f-time')
+  await time.fill('21:30')
+  await expect(page.getByTestId('rv-f-save')).toBeEnabled()
+  await page.getByTestId('rv-f-save').click()
+  await expect(page.getByText('Reservation saved.')).toBeVisible()
+  await expect(form(page)).toHaveCount(0)
+
+  // It was saved: the form opened again holds it.
+  await rowOf(page, FIRST.name).click()
+  await page.getByTestId('rv-edit').click()
+  await expect(time).toHaveValue('21:30')
+
+  // A value that is not a time blocks the save and takes the focus.
+  await time.fill('25:99')
+  // Leaving the field shows its error line, which can move Save: let that settle first.
+  await time.blur()
+  await expect(time).toHaveAttribute('aria-invalid', 'true')
+  await page.getByTestId('rv-f-save').click()
+  await expect(time).toBeFocused()
+  await expect(form(page)).toBeVisible()
+
+  // Nothing changed: Save leaves the form as Close does, and writes nothing.
+  await time.fill('21:30')
+  await page.getByTestId('rv-f-save').click()
+  await expect(form(page)).toHaveCount(0)
+})
