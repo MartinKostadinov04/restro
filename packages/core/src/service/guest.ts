@@ -65,6 +65,7 @@ import {
   locationVerdict,
 } from '../location-check'
 import { type OrderingSettings, readOrderingSettings } from '../ordering-settings'
+import { FAST_POLL_MS } from '../poll-cadence'
 import { hashTableCode } from '../qr'
 import { serviceDate, wallClock } from '../service-day'
 import { type GuestNight, guestNight } from '../service-hours'
@@ -94,7 +95,7 @@ export const GUEST_VIEWS = ['menu', 'order', 'bill'] as const
 export type GuestView = (typeof GUEST_VIEWS)[number]
 
 /** The poll cadence (D121, design §6): 2 s on the order and the bill or while a Send is in flight. */
-export const GUEST_POLL_MS = { fast: 2_000, menu: 10_000 } as const
+export const GUEST_POLL_MS = { fast: FAST_POLL_MS, menu: 10_000 } as const
 
 /**
  * How long a sent order that ended stays in the state (D122 §2: 15 minutes). One waiting for the

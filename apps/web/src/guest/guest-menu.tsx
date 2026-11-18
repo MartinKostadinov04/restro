@@ -40,6 +40,8 @@ import {
   confirmedTable,
   hasTableService,
   langParam,
+  languageCookie,
+  readLanguageCookie,
   readTableToken,
   rememberedTable,
   rememberTable,
@@ -295,9 +297,18 @@ export function GuestMenu(props: GuestMenuProps) {
   // --- what the guest sees ----------------------------------------------------------------
   const snapshot = phase.kind === 'ready' ? phase.menu.snapshot : null
   const live = phase.kind === 'ready' ? phase.menu.live : null
+  // The guest's pick at this venue, from its cookie (only once the venue is known: no flash).
+  const remembered = useMemo(
+    () =>
+      loadedPublicId === null || typeof document === 'undefined'
+        ? null
+        : readLanguageCookie(document.cookie, loadedPublicId),
+    [loadedPublicId],
+  )
   const locale: Locale = chooseLocale({
     search,
     browser,
+    remembered,
     available: snapshot?.locales.available ?? [],
     menuDefault: snapshot?.locales.default ?? null,
   })
@@ -371,9 +382,15 @@ export function GuestMenu(props: GuestMenuProps) {
       url.searchParams.set('lang', langParam(next))
       window.history.replaceState(null, '', url)
       setSearch(url.search)
+      if (loadedPublicId !== null)
+        document.cookie = languageCookie(
+          loadedPublicId,
+          next,
+          window.location.protocol === 'https:',
+        )
       report({ kind: 'language.chosen', locale: next })
     },
-    [report],
+    [report, loadedPublicId],
   )
 
   // The page around the template is ours (globals.css, `html[data-guest-page]`): templates never

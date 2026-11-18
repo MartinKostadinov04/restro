@@ -58,6 +58,7 @@ export function DraftFace({
     chooseLocale({
       search: '',
       browser: [adminLocale],
+      remembered: adminLocale,
       available: snapshot.locales.available,
       menuDefault: snapshot.locales.default,
     })
