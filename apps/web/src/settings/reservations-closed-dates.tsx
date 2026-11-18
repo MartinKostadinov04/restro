@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { Empty, EmptyDescription, EmptyHeader } from '@/components/ui/empty'
 import { Label } from '@/components/ui/label'
+import { useFieldValidity } from '@/lib/use-field-validity'
 import { addClosedDateAction, removeClosedDateAction } from '@/server/settings/reservations-actions'
 import type { ReservationsView } from '@/server/settings/reservations-view'
 import type { useSettingsRun } from './use-settings-run'
@@ -151,10 +152,12 @@ function AddClosedDate({
 }) {
   const t = useTranslations('ownerSettings')
   const [date, setDate] = useState('')
+  const validity = useFieldValidity()
   const [problem, setProblem] = useState<'empty' | 'listed' | null>(null)
 
   function submit(event: FormEvent) {
     event.preventDefault()
+    if (validity.blocked()) return
     if (date === '') return setProblem('empty')
     // Adding a night that is already closed would offer an Undo that opens it again: say so instead.
     if (dates.includes(date)) return setProblem('listed')
@@ -174,6 +177,7 @@ function AddClosedDate({
             id="rs-closed-date"
             value={date}
             autoFocus
+            onValidityChange={validity.onValidityChange}
             aria-invalid={problem === null ? undefined : true}
             aria-describedby={problem === null ? undefined : 'rs-closed-problem'}
             data-testid="rs-closed-date"

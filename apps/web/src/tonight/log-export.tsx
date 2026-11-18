@@ -36,7 +36,17 @@ export function LogExport({ venueId, today }: { venueId: string; today: string }
   const t = useTranslations('tonight')
   const [from, setFrom] = useState(() => shift(today, DEFAULT_NIGHTS - 1))
   const [to, setTo] = useState(today)
-  const valid = from !== '' && to !== '' && from <= to
+  // A date field holding text that is not a date: its value is stale, so no download is offered.
+  const [invalidIds, setInvalidIds] = useState<ReadonlySet<string>>(new Set())
+  const track = (isInvalid: boolean, id: string) =>
+    setInvalidIds((current) => {
+      if (current.has(id) === isInvalid) return current
+      const next = new Set(current)
+      if (isInvalid) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  const valid = from !== '' && to !== '' && from <= to && invalidIds.size === 0
   const href = (kind: 'sent' | 'log') =>
     `/api/venues/${venueId}/export?kind=${kind}&from=${from}&to=${to}`
 
@@ -56,11 +66,23 @@ export function LogExport({ venueId, today }: { venueId: string; today: string }
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid gap-2">
             <Label htmlFor="export-from">{t('lg_from')}</Label>
-            <DateField id="export-from" value={from} max={today} onChange={setFrom} />
+            <DateField
+              id="export-from"
+              value={from}
+              max={today}
+              onChange={setFrom}
+              onValidityChange={track}
+            />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="export-to">{t('lg_to')}</Label>
-            <DateField id="export-to" value={to} max={today} onChange={setTo} />
+            <DateField
+              id="export-to"
+              value={to}
+              max={today}
+              onChange={setTo}
+              onValidityChange={track}
+            />
           </div>
         </div>
         {valid ? null : (

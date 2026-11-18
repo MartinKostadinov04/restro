@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { useFieldValidity } from '@/lib/use-field-validity'
 import { WRAPS } from '@/lib/wrapping'
 import { BLOCK_REASONS, type BlockReason } from './block-reasons'
 import { useBlockReasonWord } from './plan-words'
@@ -59,6 +60,7 @@ export function BlockDialog({
   const [reason, setReason] = useState<BlockReason | null>(null)
   const [from, setFrom] = useState(day === today ? '' : day)
   const [until, setUntil] = useState('')
+  const validity = useFieldValidity()
 
   return (
     <Dialog open onOpenChange={(open) => !open && onLeave()}>
@@ -96,6 +98,7 @@ export function BlockDialog({
                 value={from}
                 data-testid="rv-block-from"
                 onChange={setFrom}
+                onValidityChange={validity.onValidityChange}
               />
             </span>
             <span className="space-y-1">
@@ -105,6 +108,7 @@ export function BlockDialog({
                 value={until}
                 data-testid="rv-block-until"
                 onChange={setUntil}
+                onValidityChange={validity.onValidityChange}
               />
             </span>
           </div>
@@ -117,7 +121,7 @@ export function BlockDialog({
             disabled={reason === null || busy}
             data-testid="rv-block-do"
             onClick={() => {
-              if (reason === null) return
+              if (reason === null || validity.blocked()) return
               onBlock({
                 reason,
                 ...(from === '' ? {} : { from }),

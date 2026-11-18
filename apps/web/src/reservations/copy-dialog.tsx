@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { TimeField } from '@/components/ui/time-field'
+import { useFieldValidity } from '@/lib/use-field-validity'
 import { WRAPS } from '@/lib/wrapping'
 import { copyBookingAction } from '@/server/reservations/actions'
 import type { RvDetailView, RvFrame } from '@/server/reservations/view'
@@ -52,6 +53,7 @@ export function CopyDialog({
   const first = nextDay(detail.day < frame.today ? frame.today : detail.day)
   const [day, setDay] = useState(first)
   const [time, setTime] = useState(detail.row.time)
+  const validity = useFieldValidity()
   const [spotIds, setSpotIds] = useState<readonly string[]>(detail.spotIds)
   const pick = usePickPlan(frame, day)
   const checks = useBookingChecks({
@@ -67,6 +69,7 @@ export function CopyDialog({
   })
 
   const copy = () => {
+    if (validity.blocked()) return
     run({
       id: `rv-copy:${detail.row.id}`,
       done: t('bk_copied', { day: dateText(day) }),
@@ -111,6 +114,7 @@ export function CopyDialog({
               min={frame.editPastNights ? undefined : frame.today}
               data-testid="rv-copy-day"
               onChange={(next) => next !== '' && setDay(next)}
+              onValidityChange={validity.onValidityChange}
             />
           </div>
           <div className="min-w-0 space-y-1.5">
@@ -120,6 +124,7 @@ export function CopyDialog({
               value={time}
               data-testid="rv-copy-time"
               onChange={(next) => next !== '' && setTime(next)}
+              onValidityChange={validity.onValidityChange}
             />
           </div>
         </div>

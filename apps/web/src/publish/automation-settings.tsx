@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { TimeField } from '@/components/ui/time-field'
+import { useFieldValidity } from '@/lib/use-field-validity'
 import { saveAutomationAction } from '@/server/publish/actions'
 import type { PublishActionError } from '@/server/publish/service'
 import type { AutomationView } from '@/server/publish/view'
@@ -89,6 +90,7 @@ export function AutomationSettings({
   const t = useTranslations('publish.automation')
   const errors = useTranslations('publish.errors')
   const formId = useId()
+  const validity = useFieldValidity()
   const source = view.source
   const [mode, setMode] = useState<SyncMode>(view.sync.mode)
   const [minutes, setMinutes] = useState<IncrementalMinutes>(view.sync.incremental_minutes)
@@ -116,7 +118,7 @@ export function AutomationSettings({
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    if (!timeValid) return
+    if (validity.blocked() || !timeValid) return
     setError(null)
     setSaved(false)
     startTransition(async () => {
@@ -177,6 +179,7 @@ export function AutomationSettings({
                     className="w-32"
                     value={time}
                     onChange={edit(setTime)}
+                    onValidityChange={validity.onValidityChange}
                     aria-invalid={!timeValid}
                     disabled={!canManage}
                     data-testid="automation-time"

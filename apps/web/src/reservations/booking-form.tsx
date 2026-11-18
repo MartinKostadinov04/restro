@@ -61,6 +61,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { TimeField } from '@/components/ui/time-field'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useFieldValidity } from '@/lib/use-field-validity'
 import { cn } from '@/lib/utils'
 import { WRAPS } from '@/lib/wrapping'
 import { reservationDetailAction, saveBookingAction } from '@/server/reservations/actions'
@@ -289,8 +290,10 @@ export function BookingForm({
     [editing, frame.venueId, noticeOf, pick.plan, t, who],
   )
 
+  const validity = useFieldValidity()
   const regularWithoutPhone = regular && editing === null && values.phone.trim() === ''
   const save = () => {
+    if (validity.blocked()) return
     setTried(true)
     if (Object.keys(errors).length > 0) {
       document.getElementById(`${ids}-${Object.keys(errors)[0]}`)?.focus()
@@ -494,6 +497,7 @@ export function BookingForm({
             min={frame.editPastNights ? undefined : frame.today}
             data-testid="rv-f-day"
             onChange={(next) => next !== '' && set('day', next)}
+            onValidityChange={validity.onValidityChange}
           />
         </div>
       ) : null}
@@ -506,6 +510,7 @@ export function BookingForm({
             value={values.time}
             data-testid="rv-f-time"
             onChange={(next) => next !== '' && set('time', next)}
+            onValidityChange={validity.onValidityChange}
           />
         </div>
         <div className="min-w-0 space-y-1.5">
@@ -519,6 +524,7 @@ export function BookingForm({
               aria-describedby={`${ids}-until-e`}
               data-testid="rv-f-until"
               onChange={(next) => set('until', next)}
+              onValidityChange={validity.onValidityChange}
             />
             {values.until === '' ? null : (
               <Button

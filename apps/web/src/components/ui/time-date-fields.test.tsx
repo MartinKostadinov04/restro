@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { useFieldValidity } from '@/lib/use-field-validity'
 import { renderWithIntl } from '@/test-utils'
 import { DateField } from './date-field'
 import { TimeField } from './time-field'
@@ -51,9 +52,80 @@ describe('TimeField', () => {
     renderWithIntl(<Time onValue={seen} />)
     const field = screen.getByLabelText('Time') as HTMLInputElement
     await user.type(field, '0530')
-    expect(seen).toHaveBeenLastCalledWith('05:30')
     await user.tab()
+    expect(seen).toHaveBeenLastCalledWith('05:30')
     expect(field.value).toBe('05:30')
+  })
+
+  it('commits typed text only on blur or Enter, never a half-typed value', async () => {
+    const user = userEvent.setup()
+    const seen = vi.fn()
+    renderWithIntl(<Time onValue={seen} />)
+    const field = screen.getByLabelText('Time')
+    await user.type(field, '223')
+    expect(seen).not.toHaveBeenCalled()
+    await user.type(field, '0')
+    expect(seen).not.toHaveBeenCalled()
+    await user.tab()
+    expect(seen).toHaveBeenCalledTimes(1)
+    expect(seen).toHaveBeenCalledWith('22:30')
+    await user.clear(field)
+    await user.type(field, '0615{Enter}')
+    expect(seen).toHaveBeenLastCalledWith('06:15')
+  })
+
+  it('reports invalid text through onValidityChange and clears it when valid', async () => {
+    const user = userEvent.setup()
+    const validity = vi.fn()
+    renderWithIntl(
+      <TimeField id="t" value="22:00" onChange={() => {}} onValidityChange={validity} />,
+    )
+    const field = screen.getByRole('textbox')
+    await user.clear(field)
+    await user.type(field, '25:00')
+    expect(validity).toHaveBeenLastCalledWith(true, 't')
+    await user.tab()
+    expect(validity).toHaveBeenLastCalledWith(true, 't')
+    await user.clear(field)
+    await user.type(field, '23:00')
+    expect(validity).toHaveBeenLastCalledWith(false, 't')
+  })
+
+  it('blocks a form submit while invalid and focuses the field', async () => {
+    const user = userEvent.setup()
+    const saved = vi.fn()
+    function Form() {
+      const [value, setValue] = useState('22:00')
+      const validity = useFieldValidity()
+      return (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (validity.blocked()) return
+            saved(value)
+          }}
+        >
+          <TimeField
+            id="t"
+            value={value}
+            onChange={setValue}
+            onValidityChange={validity.onValidityChange}
+          />
+          <button type="submit">Save</button>
+        </form>
+      )
+    }
+    renderWithIntl(<Form />)
+    const field = screen.getByRole('textbox')
+    await user.clear(field)
+    await user.type(field, '25:00')
+    await user.click(screen.getByText('Save'))
+    expect(saved).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(field)
+    await user.clear(field)
+    await user.type(field, '23:15')
+    await user.click(screen.getByText('Save'))
+    expect(saved).toHaveBeenCalledWith('23:15')
   })
 
   it('steps with the arrow keys and wraps past midnight', async () => {
@@ -101,7 +173,30 @@ describe('DateField', () => {
     const seen = vi.fn()
     renderWithIntl(<DateOnly onValue={seen} />)
     await user.type(screen.getByLabelText('Night'), '24.12.2030')
+    await user.tab()
     expect(seen).toHaveBeenLastCalledWith('2030-12-24')
+  })
+
+  it('does not commit a half-typed ISO date', async () => {
+    const user = userEvent.setup()
+    const seen = vi.fn()
+    const validity = vi.fn()
+    renderWithIntl(<DateField id="d" value="" onChange={seen} onValidityChange={validity} />)
+    const field = screen.getByRole('textbox')
+    await user.type(field, '2026-11-1')
+    expect(seen).not.toHaveBeenCalled()
+    await user.type(field, '4{Enter}')
+    expect(seen).toHaveBeenCalledTimes(1)
+    expect(seen).toHaveBeenCalledWith('2026-11-14')
+  })
+
+  it('reports an impossible date as invalid', async () => {
+    const user = userEvent.setup()
+    const validity = vi.fn()
+    renderWithIntl(<DateField id="d" value="" onChange={() => {}} onValidityChange={validity} />)
+    await user.type(screen.getByRole('textbox'), '31.02.2026')
+    await user.tab()
+    expect(validity).toHaveBeenLastCalledWith(true, 'd')
   })
 
   it('moves a day with the arrow keys', async () => {

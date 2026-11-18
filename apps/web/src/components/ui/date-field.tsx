@@ -17,6 +17,12 @@ type DateFieldProps = Omit<
   value: string
   /** Called with `yyyy-MM-dd` when the text is a real date, and with '' when it is cleared. */
   onChange: (value: string) => void
+  /**
+   * Called whenever the field starts or stops holding text that is not a real date, with the
+   * field's id. While it is invalid `onChange` is not called, so the parent still holds the last
+   * valid value: a form must refuse to submit (see `useFieldValidity`).
+   */
+  onValidityChange?: (invalid: boolean, id: string) => void
   /** Earliest / latest day the calendar button offers (`yyyy-MM-dd`). */
   min?: string
   max?: string
@@ -24,12 +30,14 @@ type DateFieldProps = Omit<
 
 /**
  * The one date field: shows "10.11.2026" whatever the machine's locale. Type "10.11.2026" or
- * "10112026"; the arrow keys move by a day; the calendar button opens the browser's own picker.
+ * "10112026" (committed when the field is left or Enter is
+ * pressed); the arrow keys move by a day; the calendar button opens the browser's own picker.
  * `className` goes on the wrapper.
  */
 export function DateField({
   value,
   onChange,
+  onValidityChange,
   min,
   max,
   className,
@@ -55,12 +63,39 @@ export function DateField({
       lastValue.current = value
       setDraft(null)
       setBlurredInvalid(false)
+      validityRef.current(false)
     }
   }, [value])
 
   const emit = (next: string) => {
     lastValue.current = next
     onChange(next)
+  }
+  const reportValidity = (isInvalid: boolean) => onValidityChange?.(isInvalid, fieldId)
+  const validityRef = React.useRef(reportValidity)
+  validityRef.current = reportValidity
+
+  // A field that goes away stops blocking its form.
+  React.useEffect(() => () => validityRef.current(false), [])
+
+  /** Commits the typed text: a valid value goes to the parent, anything else marks the field. */
+  const commit = () => {
+    if (draft === null) return
+    if (draft.trim() === '') {
+      if (value !== '') emit('')
+      setDraft(null)
+      reportValidity(false)
+      return
+    }
+    const parsed = parseDateText(draft)
+    if (parsed === null) {
+      setBlurredInvalid(true)
+      reportValidity(true)
+    } else {
+      if (parsed !== value) emit(parsed)
+      setDraft(null)
+      reportValidity(false)
+    }
   }
 
   const shown = draft ?? formatDateText(value)
@@ -87,26 +122,19 @@ export function DateField({
             const text = event.target.value
             setDraft(text)
             setBlurredInvalid(false)
-            if (text.trim() === '') emit('')
-            else {
-              const parsed = parseDateText(text)
-              if (parsed !== null && parsed !== value) emit(parsed)
-            }
+            reportValidity(text.trim() !== '' && parseDateText(text) === null)
           }}
           onBlur={(event) => {
-            if (draft !== null && draft.trim() !== '') {
-              const parsed = parseDateText(draft)
-              if (parsed === null) setBlurredInvalid(true)
-              else {
-                if (parsed !== value) emit(parsed)
-                setDraft(null)
-              }
-            } else setDraft(null)
+            commit()
             onBlur?.(event)
           }}
           onKeyDown={(event) => {
             onKeyDown?.(event)
             if (event.defaultPrevented) return
+            if (event.key === 'Enter') {
+              commit()
+              return
+            }
             if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
             event.preventDefault()
             const base = parseDateText(shown) ?? (value === '' ? (min ?? max ?? '') : value)
@@ -118,6 +146,7 @@ export function DateField({
             )
             setDraft(null)
             setBlurredInvalid(false)
+            reportValidity(false)
           }}
         />
         <Button
@@ -145,6 +174,7 @@ export function DateField({
           if (event.target.value !== '') {
             setDraft(null)
             setBlurredInvalid(false)
+            reportValidity(false)
             emit(event.target.value)
           }
         }}
