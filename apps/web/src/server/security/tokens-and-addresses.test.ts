@@ -87,7 +87,9 @@ describe('a table code', () => {
       const slot = Number(quotient % 62n)
       held[slot] = (held[slot] ?? 0n) + (rest < unit ? rest : unit)
     }
-    return new Map(ALPHABET.split('').map((char, i) => [char, Number(held[i] ?? 0n) / Number(total)]))
+    return new Map(
+      ALPHABET.split('').map((char, i) => [char, Number(held[i] ?? 0n) / Number(total)]),
+    )
   }
 
   // All 62 characters at a position against their exact weight. Each count is binomial; the
@@ -119,7 +121,7 @@ describe('a table code', () => {
   it('the first character takes only the values 0 to 7, each at its exact weight (7 the lightest)', () => {
     const counts = expectPositionToMatchEncoding(0)
     expect([...counts.keys()].sort().join('')).toBe('01234567')
-    const seven = weights(0).get('7')!
+    const seven = weights(0).get('7') ?? 0
     expect(seven).toBeGreaterThan(0)
     expect(seven).toBeLessThan(1 / 8) // the last quotient is held in part: lighter than the others
   })
