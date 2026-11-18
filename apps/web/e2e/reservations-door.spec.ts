@@ -221,6 +221,8 @@ test('freeing the table closes its codes, and its Undo gives them back', async (
   const seven = await openSpot(page, 'Маса 7')
   await expect(seven.getByTestId('rv-spot-state')).toContainText('Sitting')
   await seven.getByTestId('rv-spot-free').click()
+  // Their round is on the table, so the door says so before it frees it (the open-bill warning).
+  await page.getByTestId('rv-free-bill-do').click()
   await expect(page.getByText('The table is free again.')).toBeVisible()
 
   // The toast's Undo is the same party claiming the same spots again, which opens the codes again.
