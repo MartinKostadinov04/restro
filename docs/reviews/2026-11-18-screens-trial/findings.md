@@ -11,13 +11,13 @@ Explorer pass (step 2, Sonnet). Worktree `or/screen-review-flow`, dev server on 
 - Check: walk (bug); ux-copy: error messages
 - Evidence: S1-before.jpg; console `{"level":"error","event":"table_code_reveal_failed","error":"Error","message":"TypeError"}`
 - Proposal: when codes exist but cannot be opened, show "Кодовете не могат да се покажат сега. Опитайте пак след малко." / "The codes cannot be shown right now. Try again in a moment." Keep the empty text for "no code exists".
-- Status: confirmed
+- Status: ticket (#441)
 - Verdict: confirmed for the wording only. The empty reveal came from the worker being down (with the worker up, the lead saw 76 codes on 13 pages). But `print/page.tsx` shows `print.empty` ("create the codes first") whenever nothing was revealed, even when `view.coded > 0`, which is wrong whenever the worker really is down. Checked from code
 - Severity: Before the pilot
 - Effort: S
 - Decision: none
 - Needs Martin's yes: no
-- Fix: A
+- Fix: A (#441)
 
 ### S2. "Кодовете се зареждат…" never ends and the test link stays disabled
 - Kind: bug
@@ -28,13 +28,13 @@ Explorer pass (step 2, Sonnet). Worktree `or/screen-review-flow`, dev server on 
 - Check: operational-screens → feedback 2 (what failed); ux-copy: loading states
 - Evidence: S2-before.jpg; `apps/web/src/tables/use-revealed-codes.ts` (failure swallowed)
 - Proposal: once the reveal answers with none or fails, replace the line with "Кодовете не се показват. Опитайте пак." / "The codes are not showing. Try again." and add a retry button.
-- Status: confirmed
+- Status: ticket (#441)
 - Verdict: confirmed for the failure state only. `use-revealed-codes.ts` drops a failed or empty reveal silently, and `qr-address-card.tsx` keeps `testLinkLoading` while `coded > 0` and there is no sample. With the worker up the line resolves (the lead saw the test link live)
 - Severity: Before the pilot
 - Effort: S
 - Decision: none
 - Needs Martin's yes: no (operational-screens, feedback 2)
-- Fix: A
+- Fix: A (#441)
 
 ### S3. Three paragraphs of explanation come before the first table on a phone
 - Kind: simplification
@@ -307,13 +307,13 @@ Explorer pass (step 2, Sonnet). Worktree `or/screen-review-flow`, dev server on 
 - Check: copy-rules rule 4; ux-copy: error messages
 - Evidence: `apps/web/src/server/publish/table-token.ts:90-142` (`inactivePage(status)` uses one body for every status; the 429 check runs before the code is looked up); `/t/abc123wrong` seen on screen
 - Proposal: a second body for 503 and 429: "Менюто не може да се отвори в момента. Опитайте пак след минута." / "The menu can't open right now. Try again in a minute."
-- Status: confirmed
+- Status: ticket (#442)
 - Verdict: confirmed, from code
 - Severity: Before the pilot
 - Effort: S
 - Decision: none (D122 sets the limits, not the words)
 - Needs Martin's yes: no
-- Fix: B
+- Fix: B (#442)
 
 ### S20. The allergen sheet tells the guest to "tap a code" while it already lists every code with its meaning (reviewer)
 - Kind: simplification
@@ -381,13 +381,13 @@ Explorer pass (step 2, Sonnet). Worktree `or/screen-review-flow`, dev server on 
 
 ## Fix plan
 
-**A. bug: Tables & QR says "no codes" or "loading" forever when the codes cannot be shown (S1, S2), through `bug.md`.**
+**A (#441). bug: Tables & QR says "no codes" or "loading" forever when the codes cannot be shown (S1, S2), through `bug.md`.**
 - When the reveal fails or returns nothing while `coded > 0`, the tab replaces "Кодовете се зареждат…" with "Кодовете не се показват в момента." / "The codes can't be shown right now.", plus "Опитай пак" / "Try again", which asks once more. The print page shows the same sentence instead of `print.empty`.
 - Regression tests (D67): `src/tables/tables-panel.test.tsx` (the reveal answers `failed` → the failure line and Retry); a print-page test (`coded > 0`, nothing revealed → the new text, not `print.empty`).
 - Restro block: Sonnet; agent session; branch `or/tables-codes-unavailable` from `or/foundation`; read `operational-screens.md` (Wayfinding, screen read and feedback), `copy-rules.md`, the header of `src/server/reveal.ts` (#70); stop and ask if a retry would write more reveal Log entries than #70 intends; menu functionality: none.
 - Screen plan: as an owner I want to see my codes or be told why I can't. Pattern: what happened after a write (a failure names the fix). Primary action unchanged. States: failed added; loading ends in a result or the failure. Strings as above.
 
-**B. bug: the table-code page calls a good code "not active" on a 503 or 429 (S19), through `bug.md`.**
+**B (#442). bug: the table-code page calls a good code "not active" on a 503 or 429 (S19), through `bug.md`.**
 - Regression test: `src/server/publish/table-token.test.ts`; the 503 and 429 bodies carry the new text, the 404 body is unchanged.
 - Restro block: Sonnet; agent session; branch `or/table-code-unavailable` from `or/foundation`; read D61, D122 §9, `table-token.ts`; stop and ask whether the 429 text should say nothing that helps someone guessing codes (recommendation: the same "try again in a minute" for both); menu functionality: none; screen: none (a wording change on a guest system page).
 
