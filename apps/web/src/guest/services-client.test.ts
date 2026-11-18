@@ -1765,16 +1765,16 @@ describe('the idle back-off (P25)', () => {
     let changed = false
     const h = harness(() => {
       n += 1
-      if (n === 1) return json(200, tableState(4, [line('l1', 1)]))
+      if (n === 1) return json(200, tableState(4))
       if (changed) {
         changed = false
-        return json(200, tableState(5, [line('l1', 2)]))
+        return json(200, tableState(5))
       }
       return json(200, quiet(4))
     })
     h.client.start()
     await h.tick()
-    expect(h.nextWait()).toBe(2_000)
+    expect(h.nextWait()).toBe(10_000)
     const gaps: (number | undefined)[] = []
     for (let i = 0; i < 5; i++) {
       await h.tick()
@@ -1782,6 +1782,9 @@ describe('the idle back-off (P25)', () => {
     }
     expect(gaps).toEqual([2_000, 4_000, 8_000, 15_000, 15_000])
     changed = true
+    await h.tick()
+    // The server's own pace again, and the next quiet answer starts the doubling over.
+    expect(h.nextWait()).toBe(10_000)
     await h.tick()
     expect(h.nextWait()).toBe(2_000)
   })
@@ -1802,15 +1805,16 @@ describe('the idle back-off (P25)', () => {
       n += 1
       if (n === 1) {
         return json(200, {
-          ...tableState(4, [line('l1', 1)]),
+          ...tableState(4),
           sentOrders: [
             {
-              id: 'so_1',
+              id: newId('so'),
               state: 'sending',
-              lines: [],
-              totalMinor: 0,
-              sentAgoSeconds: 1,
               reason: null,
+              ref: 'K7Q',
+              lines: [{ itemId: ITEM, optionIds: [], qty: 1 }],
+              sentAgoSeconds: 1,
+              sentClock: '19:42',
             },
           ],
         })

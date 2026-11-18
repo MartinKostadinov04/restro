@@ -65,6 +65,7 @@ import {
   locationVerdict,
 } from '../location-check'
 import { type OrderingSettings, readOrderingSettings } from '../ordering-settings'
+import { FAST_POLL_MS } from '../poll-cadence'
 import { hashTableCode } from '../qr'
 import { serviceDate, wallClock } from '../service-day'
 import { type GuestNight, guestNight } from '../service-hours'
@@ -94,17 +95,7 @@ export const GUEST_VIEWS = ['menu', 'order', 'bill'] as const
 export type GuestView = (typeof GUEST_VIEWS)[number]
 
 /** The poll cadence (D121, design §6): 2 s on the order and the bill or while a Send is in flight. */
-export const GUEST_POLL_MS = { fast: 2_000, menu: 10_000, idleMax: 15_000 } as const
-
-/**
- * The gap before the next poll while the answers keep coming back `unchanged` and nothing is in
- * flight (P25): the gap doubles each time, from what the server asked for, up to 15 s. The caller
- * starts again from 0 on any change, any tap of the guest, and while a round or a payment is in
- * flight (where the server's own 2 s stands).
- */
-export function idleGap(previousMs: number, servedMs: number): number {
-  return Math.min(GUEST_POLL_MS.idleMax, Math.max(servedMs, previousMs * 2))
-}
+export const GUEST_POLL_MS = { fast: FAST_POLL_MS, menu: 10_000 } as const
 
 /**
  * How long a sent order that ended stays in the state (D122 §2: 15 minutes). One waiting for the

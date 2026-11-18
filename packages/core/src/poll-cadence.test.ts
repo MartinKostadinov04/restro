@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { idleGap } from './guest'
+import { idleGap } from './poll-cadence'
 
 describe('idleGap (P25)', () => {
   it('doubles from the served gap up to 15 s', () => {

@@ -23,7 +23,6 @@ import {
   localeToBcp47,
   menuPath,
   parseMenuParam,
-  readLanguageCookie,
 } from '@restro/core'
 import { buildViewModel, stringsFor } from '@restro/shell'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -383,7 +382,8 @@ export function GuestMenu(props: GuestMenuProps) {
       url.searchParams.set('lang', langParam(next))
       window.history.replaceState(null, '', url)
       setSearch(url.search)
-      if (loadedPublicId !== null) document.cookie = languageCookie(
+      if (loadedPublicId !== null)
+        document.cookie = languageCookie(
           loadedPublicId,
           next,
           window.location.protocol === 'https:',

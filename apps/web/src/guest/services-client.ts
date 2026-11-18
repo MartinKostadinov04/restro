@@ -48,7 +48,7 @@
 
 import {
   applyOrderEdit,
-  GUEST_POLL_MS,
+  FAST_POLL_MS,
   type GuestPosition,
   idleGap,
   LOCATE_TIMEOUT_MS,
@@ -801,7 +801,10 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
   function busy(): boolean {
     if (pending.length > 0) return true
     if (payment !== null && !paymentIsFinal(paymentViewOf(payment, receiptEmail))) return true
-    return server?.sentOrders.some((o) => o.state === 'sending' || o.state === 'awaiting_approval') === true
+    return (
+      server?.sentOrders.some((o) => o.state === 'sending' || o.state === 'awaiting_approval') ===
+      true
+    )
   }
 
   function schedule(ms: number): void {
@@ -1064,7 +1067,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     const tappedAt = deps.now()
     // Any tap of the guest brings the fast gap back (P25).
     idleMs = 0
-    if (running && !polling && !retired) schedule(GUEST_POLL_MS.fast)
+    if (running && !polling && !retired) schedule(FAST_POLL_MS)
     const result = await send(command, tappedAt, null)
     if (result.code !== 'location_needed' || !LOCATED.has(command.kind)) return result
     // The server needs the phone's location for this one (D122 §4).

@@ -8,11 +8,11 @@ import { cdnBase } from './cdn'
 import {
   buildContext,
   chooseLocale,
+  confirmedTable,
+  langParam,
   languageCookie,
   languageCookieName,
   readLanguageCookie,
-  confirmedTable,
-  langParam,
   readTableToken,
   rememberedTable,
   rememberTable,
