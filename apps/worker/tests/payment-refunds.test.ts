@@ -12,6 +12,7 @@ import {
   type PaymentProvider,
   type PaymentWriteOutcome,
   type ProviderPayment,
+  type ProviderRef,
   type ProviderRefund,
   providerRef,
   type RefundLineRequest,
@@ -64,11 +65,11 @@ describe.skipIf(!hasDatabase)('the refund job', () => {
         lineRefund,
         minimumMinor: () => 50,
       },
-      async readPayment(_account, paymentRef) {
+      async readPayment(_account: ProviderRef, paymentRef: ProviderRef) {
         const row = payments.get(paymentRef.provider)
         return { complete: true, value: row as ProviderPayment }
       },
-      async readRefunds(_account, paymentRef) {
+      async readRefunds(_account: ProviderRef, paymentRef: ProviderRef) {
         return { complete: true, value: listed.get(paymentRef.provider) ?? [] }
       },
       async refundLine(request: RefundLineRequest) {
@@ -298,7 +299,7 @@ describe.skipIf(!hasDatabase)('the refund job', () => {
     const target = await asked()
     answers = [made(target.refundId)]
     await query(
-      `update restro.payment_accounts set refund_route_off_at = now(), refund_route_off_reason = 'night'
+      `update restro.payment_accounts set refund_route_off_at = now(), refund_route_off_reason = 'stray'
         where venue_id = $1`,
       [venueId],
     )

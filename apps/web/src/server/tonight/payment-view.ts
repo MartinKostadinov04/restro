@@ -76,6 +76,8 @@ export interface MoneySectionsView {
   readonly alerts: readonly MoneyAlertView[]
   /** The day's refunds, then the earlier ones still waiting for a storno (#222). */
   readonly refunds: readonly RefundRowView[]
+  /** The night's refunds Restro sent passed the alarm (148); it blocks nothing. */
+  readonly refundAlarm?: boolean
   /** The disputes opened on the day (#222). */
   readonly disputes: readonly {
     readonly paymentId: string
@@ -253,6 +255,7 @@ export function paymentsView(read: NightPayments, timezone: string): PaymentsVie
                 },
               ]
             }),
+            refundAlarm: read.money.refundAlarm,
             refunds: read.money.refunds.map(
               (refund): RefundRowView => ({
                 refundId: refund.refundId,

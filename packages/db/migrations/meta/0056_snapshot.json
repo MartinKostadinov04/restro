@@ -1,5 +1,5 @@
 {
-  "id": "34e02111-43d3-4b18-9e78-28c235186f3e",
+  "id": "c5051d62-ee40-4f13-9724-a7610b6fcc89",
   "prevId": "009271b3-5a2c-45e6-8501-a0c8fd047103",
   "version": "7",
   "dialect": "postgresql",
@@ -4834,7 +4834,7 @@
         },
         "payment_accounts_refund_route": {
           "name": "payment_accounts_refund_route",
-          "value": "(\"restro\".\"payment_accounts\".\"refund_route_off_at\" is null) = (\"restro\".\"payment_accounts\".\"refund_route_off_reason\" is null) and (\"restro\".\"payment_accounts\".\"refund_route_off_reason\" is null or \"restro\".\"payment_accounts\".\"refund_route_off_reason\" in ('night', 'stray'))"
+          "value": "(\"restro\".\"payment_accounts\".\"refund_route_off_at\" is null) = (\"restro\".\"payment_accounts\".\"refund_route_off_reason\" is null) and (\"restro\".\"payment_accounts\".\"refund_route_off_reason\" is null or \"restro\".\"payment_accounts\".\"refund_route_off_reason\" in ('stray'))"
         },
         "payment_accounts_source": {
           "name": "payment_accounts_source",

@@ -40,6 +40,7 @@ import {
   PAYMENT_CHECK_FAILED_KIND,
   PAYMENT_HOLD_EXPIRED_KIND,
   PAYMENT_LINES_NOT_BACK_KIND,
+  PAYMENT_REFUND_ALARM_KIND,
   PAYMENT_RELEASE_REFUSED_KIND,
   PAYMENT_STRANDED_KIND,
   PAYMENT_UNCONFIRMED_KIND,
@@ -159,6 +160,11 @@ export interface NightMoneySections {
    * (#222; decision log 5.17), as `payment.observe` recorded them.
    */
   readonly refunds: readonly NightRefund[]
+  /**
+   * The night's refunds Restro sent passed the alarm (148; `REFUND_ALARM`): the page says so above
+   * its refunds. It blocks nothing.
+   */
+  readonly refundAlarm: boolean
   readonly disputes: {
     /** The disputes opened on the day. */
     readonly rows: readonly NightDispute[]
@@ -792,8 +798,20 @@ async function moneySections(
     .select({ n: sql<string>`count(*)` })
     .from(payments)
     .where(and(eq(payments.venueId, venue.id), eq(payments.dispute, 'open')))
+  const [alarm] = await tx
+    .select({ id: alerts.id })
+    .from(alerts)
+    .where(
+      and(
+        eq(alerts.venueId, venue.id),
+        eq(alerts.kind, PAYMENT_REFUND_ALARM_KIND),
+        eq(alerts.serviceDate, day),
+      ),
+    )
+    .limit(1)
   return {
     alerts: alertRows,
+    refundAlarm: alarm !== undefined,
     refunds: refundRows.map(
       (row): NightRefund => ({
         refundId: row.refundId,

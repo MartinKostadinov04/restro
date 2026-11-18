@@ -103,9 +103,9 @@ interface Strings {
   /** The night's refunds Restro sent passed the alarm (148): no amount in the text. */
   readonly refundAlarm: (venue: string) => string
   readonly refundAlarmBody: string
-  /** Restro's own refunds were switched off at the venue (148), and why. */
+  /** Restro's own refunds were stopped at the venue (148): a refund with no row of ours was made. */
   readonly refundRouteOff: (venue: string) => string
-  readonly refundRouteOffBody: (reason: 'night' | 'stray') => string
+  readonly refundRouteOffBody: string
   /** A refund made in the provider's dashboard (#222): the group is told, with no amount. */
   readonly paymentRefunded: (table: string, provider: string, source: string) => string
   /** A card dispute (#222): the table and the payment's day, with no amount. */
@@ -177,10 +177,8 @@ const EN: Strings = {
   refundAlarmBody:
     'Refunds for lines marked Not served passed what an ordinary night holds. Open Tonight, Money, and check each one. Nothing is blocked.',
   refundRouteOff: (venue) => `${venue}: refunds from Restro are switched off`,
-  refundRouteOffBody: (reason) =>
-    reason === 'stray'
-      ? 'A refund was made with Restro’s refund key that Restro did not send. Check the provider’s dashboard. Settings, Paying, switches Restro’s refunds back on.'
-      : 'Tonight’s refunds passed the limit that switches them off. Refunds already confirmed still go. Settings, Paying, switches them back on; the provider’s dashboard still works.',
+  refundRouteOffBody:
+    'A refund was made with Restro’s refund key that Restro did not send. Check the provider’s dashboard. Settings, Paying, switches Restro’s refunds back on.',
   paymentAccountLost: (venue) => `${venue}: card payments are paused`,
   paymentAccountLostBody: (reason) =>
     reason === 'access_removed'
@@ -262,10 +260,8 @@ const BG: Strings = {
   refundAlarmBody:
     'Възстановяванията за редове, отбелязани като Не е сервирано, надхвърлиха обичайното за вечер. Отворете Тази вечер, Пари, и проверете всяко. Нищо не е блокирано.',
   refundRouteOff: (venue) => `${venue}: възстановяванията от Restro са спрени`,
-  refundRouteOffBody: (reason) =>
-    reason === 'stray'
-      ? 'Направено е възстановяване с ключа на Restro, което Restro не е изпратил. Проверете таблото на доставчика. Настройки, Плащане, ги включва отново.'
-      : 'Възстановяванията тази вечер надхвърлиха границата, при която се спират. Вече потвърдените продължават. Настройки, Плащане, ги включва отново; таблото на доставчика работи.',
+  refundRouteOffBody:
+    'Направено е възстановяване с ключа на Restro, което Restro не е изпратил. Проверете таблото на доставчика. Настройки, Плащане, ги включва отново.',
   paymentAccountLost: (venue) => `${venue}: плащанията с карта са спрени`,
   paymentAccountLostBody: (reason) =>
     reason === 'access_removed'
@@ -445,7 +441,7 @@ export function alertMessage(alert: AlertWords, context: MessageContext, step: S
     case 'payment_refund_route_off':
       return {
         title: words.refundRouteOff(venueName),
-        body: words.refundRouteOffBody(alert.details.reason === 'stray' ? 'stray' : 'night'),
+        body: words.refundRouteOffBody,
       }
     default:
       return { title: `${venueName}: ${alert.kind}`, body: '' }

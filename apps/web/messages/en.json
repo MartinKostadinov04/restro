@@ -2488,6 +2488,7 @@
     "ev_copied": "Copied",
     "nt_rf_row": "{table} · receipt {rcpt} · {amt} · {storno}",
     "nt_rf_none": "No refunds on this night.",
+    "nt_rf_alarm": "Many refunds were sent from Restro tonight. Look at each one. Nothing is blocked.",
     "nt_d_open": "Disputes still open: {n}",
     "nt_fix_storno": "storno not done",
     "lg_pay_refund": "Refund of {amt} made in {provider}",

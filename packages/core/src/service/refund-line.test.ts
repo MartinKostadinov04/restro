@@ -261,7 +261,7 @@ describe.skipIf(!hasDatabase)('"Not served" (as the restro_app role)', () => {
         world.tenantId,
         world.venueId,
         state === 'off' ? new Date() : null,
-        state === 'off' ? 'night' : null,
+        state === 'off' ? 'stray' : null,
       ],
     )
   }
@@ -460,22 +460,27 @@ describe.skipIf(!hasDatabase)('"Not served" (as the restro_app role)', () => {
     expect((await rowsOf(target.id)).filter((row) => row.failed_at === null)).toHaveLength(1)
   })
 
-  it('switches the route off past the night’s figures without blocking the refund just written', async () => {
+  it('blocks nothing on a busy night: sixteen refunds, far past 5 % of what was captured, all go through', async () => {
     await account()
-    // This payment is the only thing the night captured: 12.00 of it is past 5 %.
-    const target = await paid({ table: 2 })
+    await world.owner.query('delete from restro.payment_refunds where venue_id = $1', [
+      world.venueId,
+    ])
+    // A small night: only these payments were captured, so the refunds are most of it.
     await world.owner.query(
-      "update restro.payments set state = 'released', captured_minor = null, refunded_minor = 0 where venue_id = $1 and id <> $2 and state = 'captured'",
-      [world.venueId, target.id],
+      "update restro.payments set state = 'released', captured_minor = null, refunded_minor = 0 where venue_id = $1 and state = 'captured'",
+      [world.venueId],
     )
-    expect(await tap(target.id)).toMatchObject({ status: 'accepted' })
-    expect((await routeOff())?.off).toBe(true)
-    expect(await alertsOf('payment_refund_route_off')).not.toHaveLength(0)
-    // New refunds are stopped from inside Restro …
-    const next = await paid({ table: 1 })
-    expect(await tap(next.id)).toMatchObject({ status: 'refused', code: 'refund_route_off' })
-    // … and the one written before is still there, to be sent.
-    expect(await rowsOf(target.id)).toHaveLength(1)
+    for (let n = 0; n < 16; n += 1) {
+      const target = await paid({ table: n % 3, lines: [{ closedMinor: 1_000, quantity: '1' }] })
+      const answer = await tap(target.id)
+      expect(answer, `refund ${n + 1}: ${JSON.stringify(answer)}`).toMatchObject({
+        status: 'accepted',
+      })
+    }
+    // No switch, no refusal: the route stays on, and only the alarm was raised.
+    expect((await routeOff())?.off).toBe(false)
+    expect((await alertsOf('payment_refund_route_off')).length).toBe(0)
+    expect((await alertsOf('payment_refund_alarm')).length).toBeGreaterThan(0)
   })
 
   it('an owner switches the route back on, and nobody else can', async () => {

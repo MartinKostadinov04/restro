@@ -17,13 +17,15 @@
 // the worker before the call: only a payment Restro captured, only a line the POS closed and only at
 // most the amount it closed that line for (per unit for part of a line), once per line (the unique
 // index of the row, and a refused second tap), and only inside the night the payment was captured
-// in. Nothing here limits what a person may refund beyond that: no PIN, no ceiling (Martin: "I am
-// not interested into imposing limits"). The nightly tripwire (`refund-tripwire.ts`) only stops new
-// refunds from inside Restro after a bad night, never one already confirmed.
+// in. Nothing here limits what a person may refund beyond that: no manager's PIN, no ceiling, no
+// cut-off (Martin: "I am not interested into imposing limits"). The nightly alarm
+// (`refund-tripwire.ts`) only tells owners to look and blocks nothing. The one thing that stops the
+// route is a refund made with Restro's key that has no row of ours (`tripStrayRefund`): a leaked key
+// or a bug, not a person.
 //
 // Locks: the payment's route locks (`lockRoute`: the table's order, the refund alert, the payment), then
-// the payment's refund rows. The venue's account row is taken last, `FOR UPDATE`, when the route is
-// switched on or off.
+// the payment's refund rows. The venue's account row is taken last, `FOR UPDATE`, when a stray refund
+// stops the route or an owner switches it back on.
 
 import {
   alerts,
@@ -49,7 +51,7 @@ import {
 import { defineCommand, type ServiceTx } from './definition'
 import { lockRoute, refusedLock } from './pay-route'
 import { closeAlertRows, insertRefundAlert, openAlertsOf } from './payment-refunds'
-import { refundTripwire } from './refund-tripwire'
+import { refundAlarm } from './refund-tripwire'
 import { accepted, refused } from './results'
 
 /** The Tonight permission of "Not served": whoever may answer a sent order and the alerts. */
@@ -163,8 +165,8 @@ async function raiseAlert(
   await stx.log({ kind: 'alert.raised', reason: kind, details: { alertId: id } })
 }
 
-/** Switches the route off; the first reason stands. Never touches a refund already confirmed. */
-async function switchOff(stx: ServiceTx, reason: 'night' | 'stray'): Promise<boolean> {
+/** Stops the route for a stray refund; the first stop stands. Never touches a refund already confirmed. */
+async function switchOff(stx: ServiceTx, reason: 'stray'): Promise<boolean> {
   const switched = await stx.tx
     .update(paymentAccounts)
     .set({
@@ -178,7 +180,7 @@ async function switchOff(stx: ServiceTx, reason: 'night' | 'stray'): Promise<boo
   return switched.length > 0
 }
 
-/** What Restro refunded tonight and what the night captured (the tripwire's two numbers). */
+/** What Restro refunded tonight and what the night captured (the alarm's two numbers). */
 async function nightTotals(stx: ServiceTx) {
   const [captured] = await stx.tx
     .select({ total: sql<string>`coalesce(sum(${payments.capturedMinor}), 0)` })
@@ -228,18 +230,12 @@ async function alarmRaised(stx: ServiceTx): Promise<boolean> {
 }
 
 /**
- * The tripwire after a refund was written (it counts the new row): the alarm past 1 % with three
- * refunds, the switch-off past 5 % or fifteen. The refund just written stands either way.
+ * The alarm after a refund was written (it counts the new row): past 1 % of the night's captured
+ * amount with three refunds or more, once a night, an alert (so a `alert.raised` Log entry) for
+ * owners and the team. It blocks nothing: the refund just written stands and so does every later one.
  */
 async function checkNight(stx: ServiceTx, subjectId: string): Promise<void> {
-  const verdict = refundTripwire(await nightTotals(stx))
-  if (verdict === 'quiet') return
-  if (verdict === 'switch_off') {
-    if (await switchOff(stx, 'night')) {
-      await raiseAlert(stx, PAYMENT_REFUND_ROUTE_OFF_KIND, subjectId, { reason: 'night' })
-    }
-  }
-  // The alarm comes with the switch-off too: a night past the alarm's figures is past its own.
+  if (!refundAlarm(await nightTotals(stx))) return
   if (!(await alarmRaised(stx))) {
     await raiseAlert(stx, PAYMENT_REFUND_ALARM_KIND, subjectId, {})
   }

@@ -3238,13 +3238,13 @@ export const paymentAccounts = restro.table(
      */
     payingPausedAt: timestamp('paying_paused_at', { withTimezone: true }),
     /**
-     * Since when Restro's own refunds ("Not served", `refundLine`) are switched off at the venue, or
-     * null while they flow: the night's tripwire or a refund Restro never wrote switched them off,
-     * and an owner switches them back on (the 11-18 refund decision, 148). A refund staff already
-     * confirmed is never held back by it; it only stops new ones from inside Restro.
+     * Since when Restro's own refunds ("Not served", `refundLine`) are stopped at the venue, or null
+     * while they flow: a refund made with Restro's key that has no row of ours stopped them (a leaked
+     * key or a bug, never a busy night), and an owner switches them back on (the 11-18 refund
+     * decision, 148). A refund staff already confirmed is never held back by it.
      */
     refundRouteOffAt: timestamp('refund_route_off_at', { withTimezone: true }),
-    /** Why it was switched off: `night` (the night's total), `stray` (a refund with no row of ours). */
+    /** Why it was stopped: `stray` (a refund made with Restro's key that has no row of ours). */
     refundRouteOffReason: text('refund_route_off_reason'),
     /** The breaker's state (core's `BreakerStateSchema`), so a restarted worker restores it. */
     breaker: jsonb('breaker').$type<Record<string, unknown>>(),
@@ -3280,7 +3280,7 @@ export const paymentAccounts = restro.table(
     check('payment_accounts_checks_object', sql`jsonb_typeof(${t.checks}) = 'object'`),
     check(
       'payment_accounts_refund_route',
-      sql`(${t.refundRouteOffAt} is null) = (${t.refundRouteOffReason} is null) and (${t.refundRouteOffReason} is null or ${t.refundRouteOffReason} in ('night', 'stray'))`,
+      sql`(${t.refundRouteOffAt} is null) = (${t.refundRouteOffReason} is null) and (${t.refundRouteOffReason} is null or ${t.refundRouteOffReason} in ('stray'))`,
     ),
     ...provenanceChecks('payment_accounts', t),
   ],

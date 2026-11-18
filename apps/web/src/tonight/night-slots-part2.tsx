@@ -75,7 +75,12 @@ export async function nightSlots(
       'refunds',
       t('nt_refunds'),
       money.refunds.length,
-      <NightRefunds refunds={money.refunds} frame={frame} provider={payments.provider} />,
+      <NightRefunds
+        refunds={money.refunds}
+        frame={frame}
+        provider={payments.provider}
+        alarm={money.refundAlarm === true}
+      />,
     )
     add(
       'disputes',

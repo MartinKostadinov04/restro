@@ -329,10 +329,13 @@ export function NightRefunds({
   refunds,
   frame,
   provider,
+  alarm = false,
 }: {
   refunds: MoneySectionsView['refunds']
   frame: Frame
   provider: string | null
+  /** The night's refunds Restro sent passed the alarm (148): said above the list, blocks nothing. */
+  alarm?: boolean
 }) {
   const t = useTranslations('tonight')
   const money = useMoney()
@@ -344,6 +347,11 @@ export function NightRefunds({
   }
   return (
     <>
+      {alarm ? (
+        <p className="mb-2 text-sm font-medium" data-testid="night-refund-alarm">
+          {t('nt_rf_alarm')}
+        </p>
+      ) : null}
       <ul className="divide-y rounded-lg border" data-testid="night-refunds-list">
         {refunds.map((refund) => {
           const failedText = t('py_refund_failed', { provider: provider ?? t('pb_provider_none') })
