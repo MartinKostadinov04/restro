@@ -37,7 +37,14 @@
 // `spots_changed` and the engine's savepoint takes the table work back with it. The party is
 // therefore either seated with its codes open or left exactly as it was — never half-seated.
 
-import { logEntries, reservationSpots, reservations, sentOrders, spots } from '@restro/db'
+import {
+  logEntries,
+  reservationSpots,
+  reservations,
+  sentOrders,
+  spots,
+  tableOrders,
+} from '@restro/db'
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 
 import type { Id } from '../../ids'
@@ -208,26 +215,36 @@ async function peekParty(
 }
 
 /**
- * Which of these open sittings have had a round sent from their table's phones: any sent order in
- * the sitting, whatever became of it, as `DoorTable.roundSent` reads it. Read once for all of them.
+ * Which of these open sittings have something on them: a round their phones sent (any sent order,
+ * whatever became of it) or lines in the guests' open bag, as `DoorTable.hasOrder` reads it. Starting
+ * such a table over would throw an order away, so it is the hostess's question (walk P24, #419). A
+ * table only opened for phones has neither. Read once for all of them.
  */
-async function tablesWithSentRound(
+async function tablesWithOrder(
   stx: ServiceTx,
   sittings: readonly (readonly [tableId: string, sittingId: string])[],
 ): Promise<Set<string>> {
   if (sittings.length === 0) return new Set()
-  const rows = await stx.tx
+  const sittingIds = sittings.map(([, sittingId]) => sittingId)
+  const sent = await stx.tx
     .select({ sittingId: sentOrders.sittingId })
     .from(sentOrders)
+    .where(inArray(sentOrders.sittingId, sittingIds))
+  const bagged = await stx.tx
+    .select({ tableId: tableOrders.tableId })
+    .from(tableOrders)
     .where(
-      inArray(
-        sentOrders.sittingId,
-        sittings.map(([, sittingId]) => sittingId),
+      and(
+        inArray(tableOrders.sittingId, sittingIds),
+        sql`jsonb_array_length(${tableOrders.lines}) > 0`,
       ),
     )
-  const sent = new Set(rows.map((row) => row.sittingId))
+  const sentSittings = new Set(sent.map((row) => row.sittingId))
+  const baggedTables = new Set(bagged.map((row) => row.tableId))
   return new Set(
-    sittings.filter(([, sittingId]) => sent.has(sittingId)).map(([tableId]) => tableId),
+    sittings
+      .filter(([tableId, sittingId]) => sentSittings.has(sittingId) || baggedTables.has(tableId))
+      .map(([tableId]) => tableId),
   )
 }
 
@@ -304,11 +321,12 @@ export type TableWorkResult =
  * Opens the codes of every table a party is being seated at, which is the whole of what seating
  * does to the floor (D137, log 12.12).
  *
- * A table that is already open is the interesting case, and only a table whose phones have **sent
- * a round** in its current sitting is a question (walk P24, #419): "is it the same company?" is
- * about the order already on the table. The answer is the hostess's: `true` keeps its sitting and
+ * A table that is already open is the interesting case, and only a table with **something ordered
+ * on it** in its current sitting — a round its phones sent, or lines in their unsent bag — is a
+ * question (walk P24, #419): "is it the same party?" is about the order already on the table, and
+ * starting over would throw it away. The answer is the hostess's: `true` keeps its sitting and
  * everything in it, `false` sends ordering's own "New guests", and `undefined` is refused. A table
- * open for phones that nobody ordered from is not asked about: it is opened fresh, as a closed one
+ * open for phones that nobody has ordered from is not asked about: it is opened fresh, as a closed one
  * would be. A table that cannot be opened at all refuses the arrival rather than seating a party
  * whose first order would have nowhere to land.
  *
@@ -327,15 +345,6 @@ export async function openPartyTables(
   const sorted = [...door.keys()].sort()
   const alreadyOpen = sorted.filter((tableId) => door.get(tableId)?.open != null)
   const toOpen = sorted.filter((tableId) => door.get(tableId)?.open == null)
-  // Of the tables already open, the ones whose phones sent a round are the ones that need her answer.
-  const withRound = await tablesWithSentRound(
-    stx,
-    alreadyOpen.flatMap((tableId) => {
-      const sitting = door.get(tableId)?.open
-      return sitting == null ? [] : [[tableId, sitting.id] as const]
-    }),
-  )
-  const asking = alreadyOpen.filter((tableId) => withRound.has(tableId))
   // A table nothing can open: the party stays as it was and the screen says to open it from
   // Tonight. Named one at a time, because that is what the hostess has to go and do.
   for (const tableId of toOpen) {
@@ -347,6 +356,20 @@ export async function openPartyTables(
       return { ok: false, code: 'table_not_openable', details: { tableId, reason: refusal } }
     }
   }
+  const mayOpenClose = stx.permissions.has('tables.open_close')
+  // The order rows are claimed before they are read, so a bag cannot change between the question
+  // and the renewal that would throw it away (#419).
+  if (mayOpenClose) await preClaimTableWork(stx, sorted)
+  // Of the tables already open, the ones with something on them — the guests' unsent bag or a
+  // round their phones sent — are the ones that need her answer.
+  const withOrder = await tablesWithOrder(
+    stx,
+    alreadyOpen.flatMap((tableId) => {
+      const sitting = door.get(tableId)?.open
+      return sitting == null ? [] : [[tableId, sitting.id] as const]
+    }),
+  )
+  const asking = alreadyOpen.filter((tableId) => withOrder.has(tableId))
   // The question nobody answers for her.
   if (asking.length > 0 && sameGuests === undefined) {
     return {
@@ -355,14 +378,13 @@ export async function openPartyTables(
       details: { tables: asking.join(','), tableId: asking[0] ?? null },
     }
   }
-  if (!stx.permissions.has('tables.open_close')) {
+  if (!mayOpenClose) {
     if (sameGuests === false) return { ok: false, code: 'permission_denied', details: {} }
     return { ok: true, work: { ...noWork, kept: alreadyOpen, notAllowed: true } }
   }
-  await preClaimTableWork(stx, sorted)
   const renewed: string[] = []
-  // "New guests" renews every open table; no answer at all means only quiet tables were open, and
-  // they start fresh. "Same guests" keeps them all.
+  // "New guests" renews every open table; no answer at all means only empty tables were open, and
+  // they start fresh. "Same party" keeps them all.
   const renewing = sameGuests === true ? [] : alreadyOpen
   for (const tableId of renewing) {
     const result = await newGuests(stx, { tableId })

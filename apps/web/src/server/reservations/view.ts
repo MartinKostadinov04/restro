@@ -564,8 +564,8 @@ export interface RvDoorTableView {
   readonly tableId: string
   readonly tableName: string
   readonly open: boolean
-  /** The phones at this table sent a round in its current sitting: the only reason to ask (#419). */
-  readonly roundSent: boolean
+  /** An order is on this table in its current sitting (a sent round or the bag): the only reason to ask (#419). */
+  readonly hasOrder: boolean
   readonly bill: boolean
 }
 
@@ -617,7 +617,7 @@ export function rvArrivalChecksView(checks: ArrivalChecks, timezone: string): Rv
       tableId: table.tableId,
       tableName: table.tableName,
       open: table.open,
-      roundSent: table.roundSent,
+      hasOrder: table.hasOrder,
       bill: table.bill,
     })),
     onTheSpot:

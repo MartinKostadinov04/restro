@@ -17,7 +17,7 @@
 //
 // Before a sitting party's save, the door's own advice is read (`arrivalChecksAction`) for the
 // tables being added, and the door's own questions are asked: the same-party question where a
-// table's phones have sent a round, the open-bill warning where one still carries a bill (#329).
+// table has an order on it (a sent round or the guests' bag), the open-bill warning where one still carries a bill (#329).
 import type { PayRule } from '@restro/core'
 import { useTranslations } from 'next-intl'
 import { useCallback, useMemo, useState } from 'react'
@@ -307,7 +307,7 @@ export function ChangeTablesSheet({
           return
         }
         const theirs = read.checks.tables.filter((table) => !ours.has(table.tableId))
-        if (theirs.some((table) => table.roundSent)) {
+        if (theirs.some((table) => table.hasOrder)) {
           setAsking({ step: 'same_guests', payRule: read.checks.payRule })
           return
         }
