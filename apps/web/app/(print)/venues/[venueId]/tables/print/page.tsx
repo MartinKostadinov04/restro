@@ -110,8 +110,12 @@ export default async function PrintTablesPage({
       {cards.length > 0 ? (
         <PrintSheets venueName={venue.name} logoUrl={logo?.url ?? null} cards={cards} />
       ) : (
-        <p style={{ padding: '16px', textAlign: 'center' }} data-testid="print-empty">
-          {t('print.empty')}
+        // Codes exist but the worker gave none: say that, not "create the codes first" (#441).
+        <p
+          style={{ padding: '16px', textAlign: 'center' }}
+          data-testid={view.coded > 0 ? 'print-unavailable' : 'print-empty'}
+        >
+          {view.coded > 0 ? t('codesUnavailable') : t('print.empty')}
         </p>
       )}
     </div>

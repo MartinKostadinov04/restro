@@ -247,6 +247,96 @@ describe('the Tables & QR tab', () => {
     expect(revealCodesAction).toHaveBeenCalledTimes(2)
   })
 
+  describe('when the worker cannot show the codes (#441)', () => {
+    /** The tab as the server draws it: table 2 has a code the page has not been given yet. */
+    const unrevealed = (): TablesView => {
+      const base = view()
+      return {
+        ...base,
+        sample: null,
+        halls: base.halls.map((hall) => ({
+          ...hall,
+          tables: hall.tables.map((row) =>
+            row.id === CODED ? { ...row, codeKey: 'key-a', address: null, qrSvg: null } : row,
+          ),
+        })),
+      }
+    }
+    const LINE = "The codes can't be shown right now."
+    const failureLine = () => screen.queryByText(LINE)
+
+    it.each([
+      ['fails', { ok: false, error: 'failed' } as const],
+      ['gives no code', { ok: true, codes: [] } as const],
+    ])('says so, with a way to try again, when the reveal %s', async (_name, answer) => {
+      vi.mocked(revealCodesAction).mockResolvedValue(answer)
+      renderWithIntl(<TablesPanel view={unrevealed()} />)
+      // While the answer is awaited the tab says it is loading, never the failure.
+      expect(screen.getByText('Loading the codes…')).toBeTruthy()
+      expect(failureLine()).toBeNull()
+      await waitFor(() => expect(failureLine()).toBeTruthy())
+      expect(screen.queryByText('Loading the codes…')).toBeNull()
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy()
+      expect((screen.getByTestId('open-test-link') as HTMLButtonElement).disabled).toBe(true)
+    })
+
+    it('says so when the call itself throws', async () => {
+      vi.mocked(revealCodesAction).mockRejectedValue(new Error('network'))
+      renderWithIntl(<TablesPanel view={unrevealed()} />)
+      await waitFor(() => expect(failureLine()).toBeTruthy())
+      expect(screen.queryByText('Loading the codes…')).toBeNull()
+    })
+
+    it('asks once more on Try again, and shows the codes when they come', async () => {
+      vi.mocked(revealCodesAction).mockResolvedValue({ ok: false, error: 'failed' })
+      const user = userEvent.setup({ delay: null })
+      renderWithIntl(<TablesPanel view={unrevealed()} />)
+      await waitFor(() => expect(failureLine()).toBeTruthy())
+      expect(revealCodesAction).toHaveBeenCalledTimes(1)
+
+      const address = `http://localhost:3000/t/${TOKEN_A}`
+      vi.mocked(revealCodesAction).mockResolvedValue({
+        ok: true,
+        codes: [{ id: CODED, codeKey: 'key-a', token: TOKEN_A, address, qrSvg: SVG }],
+      })
+      await user.click(screen.getByRole('button', { name: 'Try again' }))
+      await waitFor(() =>
+        expect(screen.getByTestId('open-test-link').getAttribute('href')).toBe(address),
+      )
+      expect(revealCodesAction).toHaveBeenCalledTimes(2)
+      expect(revealCodesAction).toHaveBeenLastCalledWith({ venueId: VENUE_ID, tableIds: [CODED] })
+      expect(failureLine()).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+    })
+
+    it('asks exactly once per click, and shows the line again when the retry fails too', async () => {
+      vi.mocked(revealCodesAction).mockResolvedValue({ ok: true, codes: [] })
+      const user = userEvent.setup({ delay: null })
+      renderWithIntl(<TablesPanel view={unrevealed()} />)
+      await waitFor(() => expect(failureLine()).toBeTruthy())
+      await user.click(screen.getByRole('button', { name: 'Try again' }))
+      await waitFor(() => expect(revealCodesAction).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect(failureLine()).toBeTruthy())
+      expect(revealCodesAction).toHaveBeenCalledTimes(2)
+    })
+
+    it('says nothing of the kind when no table has a code', async () => {
+      renderWithIntl(<TablesPanel view={view({ coded: 0, sample: null })} />)
+      expect(failureLine()).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+      expect(screen.getByText('Create a code for a table first, then test the link.')).toBeTruthy()
+    })
+
+    it('reads in Bulgarian', async () => {
+      vi.mocked(revealCodesAction).mockResolvedValue({ ok: false, error: 'failed' })
+      renderWithIntl(<TablesPanel view={unrevealed()} />, { locale: 'bg' })
+      await waitFor(() =>
+        expect(screen.getByText('Кодовете не се показват в момента.')).toBeTruthy(),
+      )
+      expect(screen.getByRole('button', { name: 'Опитай пак' })).toBeTruthy()
+    })
+  })
+
   it('creates codes for all tables and says how many, and what was left out', async () => {
     vi.mocked(createAllCodesAction).mockResolvedValue({
       ok: true,

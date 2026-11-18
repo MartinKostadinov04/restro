@@ -80,7 +80,10 @@ function Panel({ view: given }: { view: TablesView }) {
   const t = useTranslations('tables')
   const failureText = useFailureText()
   const [pending, startTransition] = useTransition()
-  const view = withRevealed(given, useRevealedCodes(given))
+  const { revealed, failed, retry } = useRevealedCodes(given)
+  const view = withRevealed(given, revealed)
+  // A wait that ends without a single code says so (#441); once one code is drawn, there is none.
+  const codesUnavailable = failed && view.coded > 0 && view.sample === null
 
   if (view.fromTill && view.total === 0) {
     return (
@@ -188,7 +191,7 @@ function Panel({ view: given }: { view: TablesView }) {
         </div>
       </div>
 
-      <QrAddressCard view={view} />
+      <QrAddressCard view={view} codesUnavailable={codesUnavailable} onRetry={retry} />
 
       {view.halls.length === 0 ? (
         <div className="space-y-1" data-testid="areas-empty">

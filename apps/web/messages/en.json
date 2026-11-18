@@ -1553,6 +1553,8 @@
     "skipped": "{count, plural, one {# table was left out: it has no number and no name.} other {# tables were left out: they have no number and no name.}}",
     "printSheet": "Print sheet",
     "printNone": "Create a code first, then print.",
+    "codesUnavailable": "The codes can't be shown right now.",
+    "codesRetry": "Try again",
     "queuedLate": "Saved, but the public page of the code could not be refreshed yet. If a scanned code says it is not active, wait a minute or ask your administrator.",
     "halls": {
       "count": "{count, plural, one {# table} other {# tables}}"
