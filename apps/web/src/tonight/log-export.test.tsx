@@ -38,6 +38,7 @@ describe('Tonight › Log › Export (#87)', () => {
     const from = screen.getByLabelText('From')
     await user.clear(from)
     await user.type(from, '2026-09-01')
+    await user.tab()
     expect(screen.getByTestId('export-log').getAttribute('href')).toContain(
       'from=2026-09-01&to=2026-10-27',
     )
@@ -50,6 +51,7 @@ describe('Tonight › Log › Export (#87)', () => {
     const to = screen.getByLabelText('To')
     await user.clear(to)
     await user.type(to, '2026-10-01')
+    await user.tab()
     expect(screen.getByRole('alert').textContent).toBe('From must not be after To.')
     expect(screen.queryByTestId('export-sent')).toBeNull()
     expect(
