@@ -8,9 +8,14 @@
 // **One closed table asks before it opens** (#329): the one somebody has booked later tonight, or
 // kept back. The waiter at the tile cannot know that, and the hostess is about to put those guests
 // there, so the tap says who holds it and from when and he decides. He is never stopped — he may
-// open it anyway, and her plan then reads the table In use, which is what keeps her from seating a
-// second party on it. Every other table opens in one tap as it always did, and so does this one
-// when the read does not come back: the question is advice, never a gate.
+// open it anyway; the hostess's own seating then asks the same-party question if phones have
+// ordered there. Every other table opens in one tap as it always did, and so does this one when
+// the read does not come back: the question is advice, never a gate.
+//
+// **A tile of a table with a party seated says the party's name** (walk P20, #419), cut short when
+// it is long, and nothing else: no count, no weight, no colour of its own — the sheet carries the
+// guests. A second party is a plain "+1" that never gets cut off. A role that does not work
+// tonight's reservations is sent no names (`TableTile.parties`), so its tile is the plain one.
 import {
   BellRingIcon,
   CircleCheckIcon,
@@ -59,6 +64,10 @@ function Tile({
   const tableName = useTableName()
   const name = tableName(tile.label, tile.numbered)
   const { Icon, word } = TILE[tile.state]
+  // The name of whoever is seated here; a walk-in nobody named has none, and the tile says nothing.
+  const named = tile.parties.filter((party) => party.name !== null)
+  const partyName = named[0]?.name ?? null
+  const more = tile.parties.length - 1
   const needs = tile.state !== 'open' && tile.state !== 'closed'
   const closed = tile.state === 'closed'
   // A closed table opens in one tap; a person without the right opens nothing and sees no sheet.
@@ -80,6 +89,15 @@ function Tile({
         <Icon aria-hidden className="size-4 shrink-0" />
         <span className="min-w-0 [overflow-wrap:anywhere]">{t(word)}</span>
       </span>
+      {partyName === null ? null : (
+        <span
+          className="flex w-full min-w-0 gap-1 text-[13px] leading-tight"
+          data-testid="tile-party"
+        >
+          <span className="min-w-0 truncate">{partyName}</span>
+          {more > 0 ? <span className="shrink-0">+{more}</span> : null}
+        </span>
+      )}
     </>
   )
   // A person who may not open tables sees a closed table as a plain status, never a greyed button.
@@ -99,7 +117,9 @@ function Tile({
         closed
           ? t('t_closed', { table: name })
           : tile.state === 'open'
-            ? t('t_open', { table: name })
+            ? partyName === null
+              ? t('t_open', { table: name })
+              : `${t('t_open', { table: name })}, ${partyName}`
             : `${name}, ${t(word)}`
       }
       disabled={busy}

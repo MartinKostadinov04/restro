@@ -72,6 +72,7 @@ const tile = (id: string, label: string, over: Partial<TableTile> = {}): TableTi
   sentOrders: 0,
   sittingId: null,
   payRule: null,
+  parties: [],
   ...over,
 })
 
@@ -107,6 +108,60 @@ describe('the payment tables', () => {
       tableCount: 1,
     })
     expect(screen.queryByRole('region', { name: 'Payment tables' })).toBeNull()
+  })
+})
+
+describe('who is seated at a table (walk P20, #419)', () => {
+  const open = (parties: TableTile['parties']) =>
+    draw({
+      groups: [
+        {
+          barId: null,
+          name: null,
+          paused: false,
+          tables: [tile('tb_1', 'Table 1', { state: 'open', since: '21:53', parties })],
+        },
+      ],
+      tableCount: 1,
+      openCount: 1,
+    })
+
+  it('puts the name alone on the tile, and a plain +1 for a second party', () => {
+    open([
+      { id: 'rv_1', name: 'Елена Димитрова', size: 6 },
+      { id: 'rv_2', name: 'Иванова', size: 2 },
+    ])
+    const party = screen.getByTestId('tile-party')
+    expect(party.textContent).toBe('Елена Димитрова+1')
+    // No guests on the tile: the sheet has them.
+    expect(party.textContent).not.toMatch(/6/)
+    // The name is cut short by the tile, never wrapped over its other lines.
+    expect(within(party).getByText('Елена Димитрова').className).toContain('truncate')
+  })
+
+  it('says nothing on the tile for a table with nobody seated, or a walk-in nobody named', () => {
+    open([])
+    expect(screen.queryByTestId('tile-party')).toBeNull()
+  })
+
+  it('says nothing on the tile for a walk-in nobody named', () => {
+    open([{ id: 'rv_3', name: null, size: 4 }])
+    expect(screen.queryByTestId('tile-party')).toBeNull()
+  })
+
+  it("puts the name and the guests on the table's sheet, one line a party", async () => {
+    open([
+      { id: 'rv_1', name: 'Елена Димитрова', size: 6 },
+      { id: 'rv_4', name: null, size: 1 },
+      { id: 'rv_5', name: 'Петров', size: null },
+    ])
+    await userEvent.click(screen.getByTestId('table-tile'))
+    const lines = (await screen.findAllByTestId('sh-party')).map((line) => line.textContent)
+    expect(lines).toEqual([
+      'Елена Димитрова · 6 guests',
+      'A party with no name · 1 guest',
+      'Петров',
+    ])
   })
 })
 

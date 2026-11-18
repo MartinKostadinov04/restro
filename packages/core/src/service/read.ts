@@ -78,6 +78,7 @@ import {
 import type { Permission } from './permissions'
 import { type ReceiptToBring, receiptsToBring } from './receipt-rows'
 import { payRuleAtTable, payRulesAtTables } from './reservations/pay-rule'
+import { type SeatedParty, seatedPartiesAtTables } from './reservations/seated-parties'
 import { sentOrderLinesOf } from './send'
 import { withoutTipMinor } from './staff-amount'
 import { readTableCapabilities } from './table-capabilities'
@@ -706,6 +707,13 @@ export interface TonightTable {
    * sitting, and there is none.
    */
   readonly payRule: { readonly payFirst: boolean; readonly level: PayFirstLevel } | null
+  /**
+   * The parties seated at this table now, by name and number of guests (walk P20, #419). Empty for
+   * a table nobody is seated at, and **empty for an actor without `reservations.tonight`**: the
+   * name on a booking is the booking book's, so a role that does not work tonight's reservations
+   * sees the table and no name.
+   */
+  readonly parties: readonly SeatedParty[]
 }
 
 /** An active pause as Tonight lists it: where it applies and who started it. */
@@ -924,6 +932,10 @@ export async function readTonight(
     // one function that resolves them (`payFirstRuleAt`). One read for the whole floor.
     const tonightPayFirst = readPayFirstSettings(venue.settings ?? {})
     const tonightPartyRules = await payRulesAtTables(tx, { venueId: venue.id })
+    // Who is seated at each table: only for whoever works tonight's reservations.
+    const tonightParties = held.has('reservations.tonight')
+      ? await seatedPartiesAtTables(tx, { venueId: venue.id })
+      : new Map<string, SeatedParty[]>()
     // Menus holding an orderable item paid first: an item's own mode makes the line true too.
     const payFirstMenus = await menusWithPayFirstItem(tx, {
       venueId: venue.id,
@@ -1194,6 +1206,7 @@ export async function readTonight(
                   menuId !== null && payFirstMenus.has(menuId),
                 )
               })(),
+        parties: row.sittingId === null ? [] : (tonightParties.get(row.id) ?? []),
       })),
       sentOrders: sent,
       alerts: openAlerts
