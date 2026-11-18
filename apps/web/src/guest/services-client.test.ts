@@ -1751,3 +1751,82 @@ describe('the screen the face has open (RR-52, D121)', () => {
     expect(body.view).toBe('bill')
   })
 })
+
+describe('the idle back-off (P25)', () => {
+  const quiet = (version: number, next = 2_000) => ({
+    unchanged: true,
+    version,
+    next,
+    location: 'off',
+    night: 'open',
+  })
+
+  it('doubles the gap while nothing changes, up to 15 s, and drops back on a change', async () => {
+    let n = 0
+    let changed = false
+    const h = harness(() => {
+      n += 1
+      if (n === 1) return json(200, tableState(4))
+      if (changed) {
+        changed = false
+        return json(200, tableState(5))
+      }
+      return json(200, quiet(4))
+    })
+    h.client.start()
+    await h.tick()
+    expect(h.nextWait()).toBe(10_000)
+    const gaps: (number | undefined)[] = []
+    for (let i = 0; i < 5; i++) {
+      await h.tick()
+      gaps.push(h.nextWait())
+    }
+    expect(gaps).toEqual([2_000, 4_000, 8_000, 15_000, 15_000])
+    changed = true
+    await h.tick()
+    // The server's own pace again, and the next quiet answer starts the doubling over.
+    expect(h.nextWait()).toBe(10_000)
+    await h.tick()
+    expect(h.nextWait()).toBe(2_000)
+  })
+
+  it('goes back to 2 s on a tap of the guest', async () => {
+    const h = harness(() => json(200, quiet(4)))
+    h.client.start()
+    await h.tick()
+    for (let i = 0; i < 4; i++) await h.tick()
+    expect(h.nextWait()).toBe(15_000)
+    void h.client.dispatch(add())
+    expect(h.nextWait()).toBe(2_000)
+  })
+
+  it('never slows while a round is on its way to the POS', async () => {
+    let n = 0
+    const h = harness(() => {
+      n += 1
+      if (n === 1) {
+        return json(200, {
+          ...tableState(4),
+          sentOrders: [
+            {
+              id: newId('so'),
+              state: 'sending',
+              reason: null,
+              ref: 'K7Q',
+              lines: [{ itemId: ITEM, optionIds: [], qty: 1 }],
+              sentAgoSeconds: 1,
+              sentClock: '19:42',
+            },
+          ],
+        })
+      }
+      return json(200, quiet(4))
+    })
+    h.client.start()
+    await h.tick()
+    for (let i = 0; i < 4; i++) {
+      await h.tick()
+      expect(h.nextWait()).toBe(2_000)
+    }
+  })
+})

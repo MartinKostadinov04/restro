@@ -35,11 +35,14 @@ export interface LanguageChoice {
   /** The languages the menu has; empty before it is loaded. */
   readonly available: readonly Locale[]
   readonly menuDefault: Locale | null
+  /** The language the guest picked earlier at this venue (its cookie), or null. */
+  readonly remembered?: string | null
 }
 
 /**
- * The page's language: `?lang=` if the menu has it, else the first browser language the menu has,
- * else the menu's default. Before the menu is loaded (`available` empty) the guest's own wish is
+ * The page's language: `?lang=` if the menu has it, else the guest's own earlier pick at this
+ * venue, else the venue's default language, else (the venue has none) the first browser language
+ * the menu has (P11). Before the menu is loaded (`available` empty) the guest's own wish is
  * used for the loading and error messages, and Bulgarian when there is none.
  */
 export function chooseLocale(choice: LanguageChoice): Locale {
@@ -52,11 +55,45 @@ export function chooseLocale(choice: LanguageChoice): Locale {
     const found = known(requested)
     if (found !== null) return found
   }
+  if (choice.remembered != null) {
+    const found = known(choice.remembered)
+    if (found !== null) return found
+  }
+  if (choice.menuDefault !== null) return choice.menuDefault
   for (const language of choice.browser) {
     const found = known(language)
     if (found !== null) return found
   }
-  return choice.menuDefault ?? FALLBACK_LOCALE
+  return FALLBACK_LOCALE
+}
+
+const LANGUAGE_COOKIE_PREFIX = 'restro_lang_'
+const LANGUAGE_COOKIE_SECONDS = 180 * 24 * 60 * 60
+
+/** The cookie's name: our venue id only (rule 3), never a POS id. */
+export function languageCookieName(publicId: string): string {
+  return `${LANGUAGE_COOKIE_PREFIX}${publicId}`
+}
+
+/** The guest's pick for a venue from a `document.cookie` string, or null. Value: a language code. */
+export function readLanguageCookie(cookies: string, publicId: string): string | null {
+  const name = languageCookieName(publicId)
+  for (const part of cookies.split(';')) {
+    const [key, value] = part.trim().split('=')
+    if (key === name && value !== undefined && /^[A-Za-z]{2,3}([_-][A-Za-z]{2,4})?$/.test(value)) {
+      return value
+    }
+  }
+  return null
+}
+
+/**
+ * The `document.cookie` assignment that keeps a pick for a venue: a user-interface customisation
+ * cookie (exempt from consent, WP29 Opinion 04/2012), set only when the guest picks a language,
+ * holding only that choice for 180 days, on the guest pages (`/m`) alone, `Secure` on HTTPS.
+ */
+export function languageCookie(publicId: string, locale: Locale, secure = false): string {
+  return `${languageCookieName(publicId)}=${langParam(locale)}; Path=/m; Max-Age=${LANGUAGE_COOKIE_SECONDS}; SameSite=Lax${secure ? '; Secure' : ''}`
 }
 
 /** The short form for the address: `bg_BG` is `bg`. */

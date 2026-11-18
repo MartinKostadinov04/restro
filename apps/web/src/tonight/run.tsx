@@ -60,8 +60,10 @@ export interface RunSpec {
     readonly confirm?: boolean
   }
   readonly act: (pin?: string) => Promise<TonightResult>
-  /** The toast after it worked. */
-  readonly done: string
+  /** The toast after it worked: a fixed line, or one read from what the write answered. */
+  readonly done: string | ((done: Accepted) => string)
+  /** A second line under the toast, read from the answer; none when it returns undefined. */
+  readonly note?: (done: Accepted) => string | undefined
   /**
    * The inverse write, given what the write answered, its undo token and the PIN the write was
    * entered with (the same person undoes it, on a shared device); without one the toast has no
@@ -113,8 +115,11 @@ export function RunProvider({
       const { undo } = spec
       // Whom a PIN named: the toast says so, on the tablet everyone shares (plan §5).
       const who = done.details.who
-      toast(typeof who === 'string' ? t('toast_who', { text: spec.done, who }) : spec.done, {
+      const text = typeof spec.done === 'function' ? spec.done(done) : spec.done
+      const note = spec.note?.(done)
+      toast(typeof who === 'string' ? t('toast_who', { text, who }) : text, {
         id: spec.id,
+        ...(note === undefined ? {} : { description: note }),
         ...(undo === undefined || spec.undoWhen?.(done) === false
           ? {}
           : {

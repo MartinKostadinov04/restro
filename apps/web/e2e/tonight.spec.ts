@@ -287,6 +287,7 @@ test('pausing ordering is two taps; lifting it needs a manager’s PIN on the ta
   await page.getByRole('button', { name: 'Open all' }).first().click()
   await typePin(page, '1234')
   await expect(page.getByTestId('open-count')).toHaveText('6 of 6 open for phones')
+  await expect(toast(page, '6 tables opened for phones')).toBeVisible()
 
   const pause = new Taps()
   await pause.tap(page.getByRole('button', { name: 'Pause ordering' }))

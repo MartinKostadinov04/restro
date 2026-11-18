@@ -48,7 +48,9 @@
 
 import {
   applyOrderEdit,
+  FAST_POLL_MS,
   type GuestPosition,
+  idleGap,
   LOCATE_TIMEOUT_MS,
   LOCATION_CONSENT_VERSION,
   type OrderEdit,
@@ -484,6 +486,8 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
   /** The screen the face says is open, or null: the default cadence. */
   let screen: GuestScreen | null = null
   let failures = 0
+  /** The gap of the last `unchanged` answer of an idle table (P25); 0 after a change or a tap. */
+  let idleMs = 0
   let running = false
   let cancelTimer: (() => void) | null = null
   let polling = false
@@ -796,6 +800,16 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     if (next.location.state === 'needed' && pass !== null) keepPass(null)
   }
 
+  /** A round of this table is on its way to the POS, or this phone's edit or payment is out. */
+  function busy(): boolean {
+    if (pending.length > 0) return true
+    if (payment !== null && !paymentIsFinal(paymentViewOf(payment, receiptEmail))) return true
+    return (
+      server?.sentOrders.some((o) => o.state === 'sending' || o.state === 'awaiting_approval') ===
+      true
+    )
+  }
+
   function schedule(ms: number): void {
     cancelTimer?.()
     cancelTimer = running ? deps.setTimer(poll, ms) : null
@@ -842,6 +856,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
         } else {
           // An edit on its way brings its own fresh state; a poll from before it would draw it twice.
           if (!answer.unchanged && pending.length === 0) accept(answer)
+          if (!answer.unchanged) idleMs = 0
           if (
             answer.unchanged &&
             server !== null &&
@@ -853,6 +868,13 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
           } else {
             // The face opened another screen while this one was out: ask again for that one at once.
             wait = view() === asked ? answer.next : 0
+            // Nothing changed and nothing is in flight: each quiet answer doubles the gap, up to 15 s.
+            if (answer.unchanged && wait > 0 && !busy()) {
+              idleMs = idleGap(idleMs, wait)
+              wait = idleMs
+            } else {
+              idleMs = 0
+            }
           }
         }
       }
@@ -1046,6 +1068,9 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     releaseLost()
     if (command.kind === 'order.send' && lost !== null) return refused('pending', ANSWER_LOST_CODE)
     const tappedAt = deps.now()
+    // Any tap of the guest brings the fast gap back (P25).
+    idleMs = 0
+    if (running && !polling && !retired) schedule(FAST_POLL_MS)
     const result = await send(command, tappedAt, null)
     if (result.code !== 'location_needed' || !LOCATED.has(command.kind)) return result
     // The server needs the phone's location for this one (D122 §4).
@@ -1132,6 +1157,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       const before = view()
       screen = next
       // A screen that asks differently is asked for now (opening the bill reads it fresh, D111).
+      idleMs = 0
       if (running && view() !== before && !polling) schedule(0)
       recompute()
     },
@@ -1157,6 +1183,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     start() {
       if (running || retired) return
       running = true
+      idleMs = 0
       answered()
       schedule(0)
       if (handle !== null) {

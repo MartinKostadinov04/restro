@@ -35,13 +35,14 @@ import {
 } from '@restro/db'
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 
+import { resolveRoutesIn } from '../apply/menu-routes'
 import type { AreaId, BarId, TableId } from '../ids'
 import type { LegalDetails } from '../legal-details'
 import { PAID_LINES_MAX } from '../paid-lines'
 import {
   type PayFirstLevel,
+  payFirstLineAt,
   payFirstRuleApplies,
-  payFirstRuleAt,
   readPayFirstSettings,
 } from '../pay-first-settings'
 import { CARD_FLOOR_MINOR, readPayingSettings, smallestCardMinor } from '../paying-settings'
@@ -56,6 +57,7 @@ import { resolveGrants } from './grants'
 import type { LeaseScope } from './leases'
 import { activePausesOfTable, pausesOfVenue } from './pause-scope'
 import {
+  menusWithPayFirstItem,
   type PayFirstState,
   type PayingState,
   payFirstItems,
@@ -664,6 +666,8 @@ export interface TonightTable {
   readonly numbered: boolean
   readonly barId: string | null
   readonly isPaymentTable: boolean
+  /** The table, or its hall, is hidden: "Open all" leaves it closed. */
+  readonly hidden: boolean
   /** The open sitting, or null: the table is open for phones exactly while it has one. */
   readonly sitting: {
     readonly id: string
@@ -878,11 +882,14 @@ export async function readTonight(
         barId: venueTables.barId,
         areaId: venueTables.areaId,
         isPaymentTable: venueTables.isPaymentTable,
+        hidden: venueTables.hidden,
+        areaHidden: areas.hidden,
         sittingId: sittings.id,
         openedAt: sittings.openedAt,
         openedHow: sittings.openedHow,
       })
       .from(venueTables)
+      .innerJoin(areas, eq(areas.id, venueTables.areaId))
       .leftJoin(sittings, and(eq(sittings.tableId, venueTables.id), isNull(sittings.endedAt)))
       .where(and(eq(venueTables.venueId, venue.id), isNull(venueTables.archivedAt)))
       .orderBy(venueTables.sortKey, venueTables.id)
@@ -892,6 +899,12 @@ export async function readTonight(
     // one function that resolves them (`payFirstRuleAt`). One read for the whole floor.
     const tonightPayFirst = readPayFirstSettings(venue.settings ?? {})
     const tonightPartyRules = await payRulesAtTables(tx, { venueId: venue.id })
+    // Menus holding an orderable item paid first: an item's own mode makes the line true too.
+    const payFirstMenus = await menusWithPayFirstItem(tx, {
+      venueId: venue.id,
+      itemMode: tonightPayFirst.itemMode,
+    })
+    const tableMenus = (await resolveRoutesIn(tx, venue.id)).tables
 
     const sent = await tx
       .select({
@@ -1134,6 +1147,7 @@ export async function readTonight(
         numbered: row.name === null && row.number !== null,
         barId: row.barId,
         isPaymentTable: row.isPaymentTable,
+        hidden: row.hidden || row.areaHidden,
         sitting:
           row.sittingId === null || row.openedAt === null || row.openedHow === null
             ? null
@@ -1142,7 +1156,9 @@ export async function readTonight(
           row.sittingId === null
             ? null
             : (() => {
-                const reading = payFirstRuleAt(
+                // Display only: nothing is hidden by it (`payFirstLineAt`).
+                const menuId = tableMenus.get(row.id as TableId) ?? null
+                return payFirstLineAt(
                   tonightPayFirst,
                   {
                     tableId: row.id as TableId,
@@ -1150,8 +1166,8 @@ export async function readTonight(
                     areaId: row.areaId as AreaId,
                   },
                   tonightPartyRules.get(row.id) ?? null,
+                  menuId !== null && payFirstMenus.has(menuId),
                 )
-                return { payFirst: reading.applies, level: reading.level }
               })(),
       })),
       sentOrders: sent,

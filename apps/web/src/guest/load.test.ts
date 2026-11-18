@@ -10,6 +10,9 @@ import {
   chooseLocale,
   confirmedTable,
   langParam,
+  languageCookie,
+  languageCookieName,
+  readLanguageCookie,
   readTableToken,
   rememberedTable,
   rememberTable,
@@ -410,16 +413,40 @@ describe('the CDN address', () => {
 describe('the guest context', () => {
   const available = ['bg_BG', 'en_US'] as const
 
-  it('takes ?lang= first, then the browser, then the menu default', () => {
-    const choice = (search: string, browser: string[], menuDefault: 'bg_BG' | 'en_US' = 'bg_BG') =>
-      chooseLocale({ search, browser, available, menuDefault })
+  it("takes ?lang= first, then the guest's pick, then the venue default, then the browser (P11)", () => {
+    const choice = (
+      search: string,
+      browser: string[],
+      menuDefault: 'bg_BG' | 'en_US' | null = 'bg_BG',
+      remembered: string | null = null,
+    ) => chooseLocale({ search, browser, available, menuDefault, remembered })
     expect(choice('?lang=en', ['bg-BG'])).toBe('en_US')
     expect(choice('?lang=bg_BG', ['en-US'])).toBe('bg_BG')
-    expect(choice('', ['en-GB', 'bg'])).toBe('en_US')
+    // A clean English browser at a Bulgarian venue opens in Bulgarian.
+    expect(choice('', ['en-GB', 'bg'])).toBe('bg_BG')
     expect(choice('', ['de-DE', 'fr'])).toBe('bg_BG')
     expect(choice('', [], 'en_US')).toBe('en_US')
+    // The guest's own pick beats the default; a link's language beats the pick.
+    expect(choice('', ['bg'], 'bg_BG', 'en')).toBe('en_US')
+    expect(choice('?lang=bg', [], 'bg_BG', 'en')).toBe('bg_BG')
+    // The browser counts only where the venue has no default.
+    expect(choice('', ['en-US'], null)).toBe('en_US')
     // A language the menu lacks is passed over.
-    expect(choice('?lang=de', ['en-US'])).toBe('en_US')
+    expect(choice('?lang=de', ['en-US'])).toBe('bg_BG')
+  })
+
+  it("keeps the guest's pick per venue in a cookie of our id", () => {
+    expect(languageCookieName('vn_abc')).toBe('restro_lang_vn_abc')
+    const set = languageCookie('vn_abc', 'en_US')
+    expect(set).toContain('restro_lang_vn_abc=en;')
+    expect(set).toContain('Path=/m;')
+    expect(set).toContain('Max-Age=15552000')
+    expect(set).not.toContain('Secure')
+    expect(languageCookie('vn_abc', 'en_US', true)).toContain('; Secure')
+    const jar = `other=1; ${set.split(';')[0]}`
+    expect(readLanguageCookie(jar, 'vn_abc')).toBe('en')
+    expect(readLanguageCookie(jar, 'vn_other')).toBeNull()
+    expect(readLanguageCookie('restro_lang_vn_abc=<x>', 'vn_abc')).toBeNull()
   })
 
   it('answers in Bulgarian or English before the menu is loaded, Bulgarian by default', () => {

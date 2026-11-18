@@ -91,6 +91,7 @@ export function view(overrides: Partial<TablesView> = {}): TablesView {
       }),
     ],
     total: 5,
+    guestTotal: 5,
     coded: 1,
     sample: { token: TOKEN_A, shownAs: '2' },
     ...overrides,
