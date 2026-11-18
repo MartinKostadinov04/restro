@@ -843,7 +843,9 @@ describe('Send: no local success (test 3)', () => {
         ordering: { state: 'closed', retired: true, notesAndOptions: true },
       }),
     )
-    expect(screen.getByRole('status').textContent).toBe(W.refusals.code_retired)
+    expect(document.querySelector('[data-slot="ordering.closed"]')?.textContent).toBe(
+      W.refusals.code_retired,
+    )
     expect(document.body.textContent).not.toContain(W.orderingClosed)
   })
 

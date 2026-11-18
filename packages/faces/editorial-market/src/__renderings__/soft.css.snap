@@ -575,6 +575,7 @@
 .rm-detail-allergens { font-size: 14px }
 .rm-detail-allergens { color: var(--rm-muted) }
 .rm-detail-copy { padding-bottom: 110px }
+.rm-overlay-panel.is-detail .rm-detail-copy:first-child { padding-top: 72px }
 .rm-detail-bar { position: sticky }
 .rm-detail-bar { bottom: 0 }
 .rm-detail-bar { display: flex }
@@ -862,6 +863,9 @@
 .rm .ro-plus svg { height: var(--ro-icon) }
 .rm .ro-plus svg { stroke-width: 2.4 }
 .rm .ro-plus:active { transform: scale(0.9) }
+.rm .ro-plus:disabled { opacity: 0.4 }
+.rm .ro-plus:disabled { cursor: default }
+.rm .ro-plus:disabled { transform: none }
 .rm .ro-plus-count { position: absolute }
 .rm .ro-plus-count { top: calc((44px - var(--ro-circle)) / 2 - 4px) }
 .rm .ro-plus-count { right: calc((44px - var(--ro-circle)) / 2 - 4px) }

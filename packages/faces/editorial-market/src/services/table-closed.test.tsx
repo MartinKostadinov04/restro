@@ -105,9 +105,14 @@ describe('P22: staff moved the party to another table', () => {
       view,
       { tableLabel: 'Table 1' },
     )
-    expect(screen.getByRole('status').textContent).toBe(W.billStayed('Table 1'))
+    expect(document.querySelector('[data-slot="ordering.closed"]')?.textContent).toBe(
+      W.billStayed('Table 1'),
+    )
     expect(document.body.textContent).not.toContain(W.orderingClosed)
-    expect(document.body.textContent).not.toMatch(/€\s?\d/)
+    // No amount of the bill: the host has none for a closed table, and the note names none.
+    expect(document.querySelector('[data-slot="ordering.closed"]')?.textContent).not.toMatch(
+      /€|EUR/,
+    )
   })
 
   it('says it in Bulgarian', () => {
