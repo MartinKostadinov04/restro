@@ -21,7 +21,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -31,9 +30,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { TimeField as TimeInput } from '@/components/ui/time-field'
+import { useFieldValidity } from '@/lib/use-field-validity'
 import { saveOrderingAction } from '@/server/settings/ordering-actions'
 import type { OrderingView } from '@/server/settings/ordering-view'
-
 import {
   CHOICES,
   dayEndText,
@@ -187,6 +187,7 @@ function DayDialog({
   const [closes, setCloses] = useState('')
   const [same, setSame] = useState<ReadonlySet<Weekday>>(new Set())
   const [tried, setTried] = useState(false)
+  const validity = useFieldValidity()
 
   useEffect(() => {
     if (day === null) return
@@ -212,8 +213,17 @@ function DayDialog({
   }
 
   function submit() {
+    if (validity.blocked()) return
     setTried(true)
-    if (day === null || !complete || problem !== null) return
+    if (day === null) return
+    if (!complete) {
+      // Save stays pressable (a field commits when left): say which time is still missing.
+      const missing =
+        opens === '' ? 'hours-opens' : lastOrders === '' ? 'hours-last' : 'hours-closes'
+      document.getElementById(missing)?.focus()
+      return
+    }
+    if (problem !== null) return
     const entry = { opens, lastOrders, closes }
     const next: ServiceHours = { ...hours, [day]: entry }
     for (const other of same) next[other] = entry
@@ -238,12 +248,19 @@ function DayDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <TimeField id="hours-opens" label={t('st_opens')} value={opens} onChange={setOpens} />
+            <TimeField
+              id="hours-opens"
+              label={t('st_opens')}
+              value={opens}
+              onChange={setOpens}
+              onValidityChange={validity.onValidityChange}
+            />
             <TimeField
               id="hours-last"
               label={t('st_last')}
               value={lastOrders}
               onChange={setLastOrders}
+              onValidityChange={validity.onValidityChange}
               problem={shown?.field === 'lastOrders' ? t(shown.key, { dayEnd }) : null}
             />
             <TimeField
@@ -251,6 +268,7 @@ function DayDialog({
               label={t('st_closes')}
               value={closes}
               onChange={setCloses}
+              onValidityChange={validity.onValidityChange}
               problem={shown?.field === 'closes' ? t(shown.key, { dayEnd }) : null}
             />
           </div>
@@ -272,7 +290,7 @@ function DayDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               {t('st_cancel')}
             </Button>
-            <Button type="submit" disabled={pending || !complete}>
+            <Button type="submit" disabled={pending}>
               {t('st_save')}
             </Button>
           </DialogFooter>
@@ -287,22 +305,24 @@ function TimeField({
   label,
   value,
   onChange,
+  onValidityChange,
   problem = null,
 }: {
   id: string
   label: string
   value: string
   onChange: (value: string) => void
+  onValidityChange: (invalid: boolean, id: string) => void
   problem?: string | null
 }) {
   return (
     <div className="grid grid-cols-1 content-start gap-2">
       <Label htmlFor={id}>{label}</Label>
-      <Input
+      <TimeInput
         id={id}
-        type="time"
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={onChange}
+        onValidityChange={onValidityChange}
         aria-invalid={problem === null ? undefined : true}
         aria-describedby={problem === null ? undefined : `${id}-problem`}
       />

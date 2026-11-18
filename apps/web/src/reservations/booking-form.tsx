@@ -31,6 +31,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { DateField } from '@/components/ui/date-field'
 import {
   Dialog,
   DialogContent,
@@ -58,7 +59,9 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
+import { TimeField } from '@/components/ui/time-field'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useFieldValidity } from '@/lib/use-field-validity'
 import { cn } from '@/lib/utils'
 import { WRAPS } from '@/lib/wrapping'
 import { reservationDetailAction, saveBookingAction } from '@/server/reservations/actions'
@@ -287,8 +290,10 @@ export function BookingForm({
     [editing, frame.venueId, noticeOf, pick.plan, t, who],
   )
 
+  const validity = useFieldValidity()
   const regularWithoutPhone = regular && editing === null && values.phone.trim() === ''
   const save = () => {
+    if (validity.blocked()) return
     setTried(true)
     if (Object.keys(errors).length > 0) {
       document.getElementById(`${ids}-${Object.keys(errors)[0]}`)?.focus()
@@ -486,13 +491,13 @@ export function BookingForm({
       {editing === null ? (
         <div className="space-y-1.5">
           <Label htmlFor={`${ids}-day`}>{t('bk_night')}</Label>
-          <Input
+          <DateField
             id={`${ids}-day`}
-            type="date"
             value={values.day}
             min={frame.editPastNights ? undefined : frame.today}
             data-testid="rv-f-day"
-            onChange={(event) => event.target.value !== '' && set('day', event.target.value)}
+            onChange={(next) => next !== '' && set('day', next)}
+            onValidityChange={validity.onValidityChange}
           />
         </div>
       ) : null}
@@ -500,25 +505,26 @@ export function BookingForm({
       <div className="grid grid-cols-2 gap-3">
         <div className="min-w-0 space-y-1.5">
           <Label htmlFor={`${ids}-time`}>{t('bk_from')}</Label>
-          <Input
+          <TimeField
             id={`${ids}-time`}
-            type="time"
             value={values.time}
             data-testid="rv-f-time"
-            onChange={(event) => event.target.value !== '' && set('time', event.target.value)}
+            onChange={(next) => next !== '' && set('time', next)}
+            onValidityChange={validity.onValidityChange}
           />
         </div>
         <div className="min-w-0 space-y-1.5">
           <Label htmlFor={`${ids}-until`}>{t('bk_until')}</Label>
           <div className="flex items-center gap-1">
-            <Input
+            <TimeField
               id={`${ids}-until`}
-              type="time"
+              className="flex-1"
               value={values.until}
               aria-invalid={problem('until', errorText) !== null}
               aria-describedby={`${ids}-until-e`}
               data-testid="rv-f-until"
-              onChange={(event) => set('until', event.target.value)}
+              onChange={(next) => set('until', next)}
+              onValidityChange={validity.onValidityChange}
             />
             {values.until === '' ? null : (
               <Button

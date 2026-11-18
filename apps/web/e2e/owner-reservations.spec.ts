@@ -152,7 +152,7 @@ test('adds a closed date through its dialog and removes it in one tap', async ({
   const { context, page } = await open(browser, OWNER)
   await page.goto(reservations())
   await page.getByTestId('rs-closed-add').click()
-  await page.getByTestId('rs-closed-date').fill('2030-12-24')
+  await page.getByTestId('rs-closed-date').fill('24.12.2030')
   await page.getByTestId('rs-closed-confirm').click()
   const row = page.locator('[data-testid="rs-closed-row"][data-date="2030-12-24"]')
   await expect(row).toBeVisible()

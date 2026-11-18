@@ -24,7 +24,6 @@ import { type FormEvent, useId, useState, useTransition } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { FormSection } from '@/components/ui/form-section'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -33,6 +32,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { TimeField } from '@/components/ui/time-field'
+import { useFieldValidity } from '@/lib/use-field-validity'
 import { saveAutomationAction } from '@/server/publish/actions'
 import type { PublishActionError } from '@/server/publish/service'
 import type { AutomationView } from '@/server/publish/view'
@@ -89,6 +90,7 @@ export function AutomationSettings({
   const t = useTranslations('publish.automation')
   const errors = useTranslations('publish.errors')
   const formId = useId()
+  const validity = useFieldValidity()
   const source = view.source
   const [mode, setMode] = useState<SyncMode>(view.sync.mode)
   const [minutes, setMinutes] = useState<IncrementalMinutes>(view.sync.incremental_minutes)
@@ -116,7 +118,7 @@ export function AutomationSettings({
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    if (!timeValid) return
+    if (validity.blocked() || !timeValid) return
     setError(null)
     setSaved(false)
     startTransition(async () => {
@@ -172,13 +174,12 @@ export function AutomationSettings({
               <div className="grid gap-1.5">
                 <Label htmlFor={`${formId}-time`}>{t('sync.fullRead')}</Label>
                 <div className="flex items-center gap-2">
-                  <Input
+                  <TimeField
                     id={`${formId}-time`}
-                    type="time"
-                    step={60}
                     className="w-32"
                     value={time}
-                    onChange={(event) => edit(setTime)(event.target.value)}
+                    onChange={edit(setTime)}
+                    onValidityChange={validity.onValidityChange}
                     aria-invalid={!timeValid}
                     disabled={!canManage}
                     data-testid="automation-time"

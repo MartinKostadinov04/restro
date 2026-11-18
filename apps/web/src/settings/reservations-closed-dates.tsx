@@ -9,6 +9,7 @@ import { useFormatter, useTranslations } from 'next-intl'
 import { type FormEvent, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { DateField } from '@/components/ui/date-field'
 import {
   Dialog,
   DialogContent,
@@ -18,11 +19,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Empty, EmptyDescription, EmptyHeader } from '@/components/ui/empty'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useFieldValidity } from '@/lib/use-field-validity'
 import { addClosedDateAction, removeClosedDateAction } from '@/server/settings/reservations-actions'
 import type { ReservationsView } from '@/server/settings/reservations-view'
-
 import type { useSettingsRun } from './use-settings-run'
 
 /** `YYYY-MM-DD` as a date to read: "Fri, 14 Nov 2026" in the language of the screen. */
@@ -152,10 +152,12 @@ function AddClosedDate({
 }) {
   const t = useTranslations('ownerSettings')
   const [date, setDate] = useState('')
+  const validity = useFieldValidity()
   const [problem, setProblem] = useState<'empty' | 'listed' | null>(null)
 
   function submit(event: FormEvent) {
     event.preventDefault()
+    if (validity.blocked()) return
     if (date === '') return setProblem('empty')
     // Adding a night that is already closed would offer an Undo that opens it again: say so instead.
     if (dates.includes(date)) return setProblem('listed')
@@ -171,16 +173,16 @@ function AddClosedDate({
         </DialogHeader>
         <div className="grid grid-cols-1 gap-2">
           <Label htmlFor="rs-closed-date">{t('rs_closed_date')}</Label>
-          <Input
+          <DateField
             id="rs-closed-date"
-            type="date"
             value={date}
             autoFocus
+            onValidityChange={validity.onValidityChange}
             aria-invalid={problem === null ? undefined : true}
             aria-describedby={problem === null ? undefined : 'rs-closed-problem'}
             data-testid="rs-closed-date"
-            onChange={(event) => {
-              setDate(event.target.value)
+            onChange={(next) => {
+              setDate(next)
               setProblem(null)
             }}
           />

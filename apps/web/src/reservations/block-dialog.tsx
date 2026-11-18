@@ -16,6 +16,7 @@ import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { DateField } from '@/components/ui/date-field'
 import {
   Dialog,
   DialogContent,
@@ -25,8 +26,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { useFieldValidity } from '@/lib/use-field-validity'
 import { WRAPS } from '@/lib/wrapping'
-
 import { BLOCK_REASONS, type BlockReason } from './block-reasons'
 import { useBlockReasonWord } from './plan-words'
 
@@ -59,6 +60,7 @@ export function BlockDialog({
   const [reason, setReason] = useState<BlockReason | null>(null)
   const [from, setFrom] = useState(day === today ? '' : day)
   const [until, setUntil] = useState('')
+  const validity = useFieldValidity()
 
   return (
     <Dialog open onOpenChange={(open) => !open && onLeave()}>
@@ -91,24 +93,22 @@ export function BlockDialog({
           <div className="flex flex-wrap items-end gap-3">
             <span className="space-y-1">
               <Label htmlFor="rv-block-from">{t('p_from')}</Label>
-              <input
+              <DateField
                 id="rv-block-from"
-                type="date"
-                className="h-11 min-w-0 rounded-md border bg-background px-3 text-base"
                 value={from}
                 data-testid="rv-block-from"
-                onChange={(event) => setFrom(event.target.value)}
+                onChange={setFrom}
+                onValidityChange={validity.onValidityChange}
               />
             </span>
             <span className="space-y-1">
               <Label htmlFor="rv-block-until">{t('p_until_day')}</Label>
-              <input
+              <DateField
                 id="rv-block-until"
-                type="date"
-                className="h-11 min-w-0 rounded-md border bg-background px-3 text-base"
                 value={until}
                 data-testid="rv-block-until"
-                onChange={(event) => setUntil(event.target.value)}
+                onChange={setUntil}
+                onValidityChange={validity.onValidityChange}
               />
             </span>
           </div>
@@ -121,7 +121,7 @@ export function BlockDialog({
             disabled={reason === null || busy}
             data-testid="rv-block-do"
             onClick={() => {
-              if (reason === null) return
+              if (reason === null || validity.blocked()) return
               onBlock({
                 reason,
                 ...(from === '' ? {} : { from }),

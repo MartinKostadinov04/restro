@@ -10,6 +10,7 @@ import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { DateField } from '@/components/ui/date-field'
 import {
   Dialog,
   DialogContent,
@@ -19,7 +20,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 /** How many nights the dialog starts with, today included. */
@@ -36,7 +36,17 @@ export function LogExport({ venueId, today }: { venueId: string; today: string }
   const t = useTranslations('tonight')
   const [from, setFrom] = useState(() => shift(today, DEFAULT_NIGHTS - 1))
   const [to, setTo] = useState(today)
-  const valid = from !== '' && to !== '' && from <= to
+  // A date field holding text that is not a date: its value is stale, so no download is offered.
+  const [invalidIds, setInvalidIds] = useState<ReadonlySet<string>>(new Set())
+  const track = (isInvalid: boolean, id: string) =>
+    setInvalidIds((current) => {
+      if (current.has(id) === isInvalid) return current
+      const next = new Set(current)
+      if (isInvalid) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  const valid = from !== '' && to !== '' && from <= to && invalidIds.size === 0
   const href = (kind: 'sent' | 'log') =>
     `/api/venues/${venueId}/export?kind=${kind}&from=${from}&to=${to}`
 
@@ -56,22 +66,22 @@ export function LogExport({ venueId, today }: { venueId: string; today: string }
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid gap-2">
             <Label htmlFor="export-from">{t('lg_from')}</Label>
-            <Input
+            <DateField
               id="export-from"
-              type="date"
               value={from}
               max={today}
-              onChange={(event) => setFrom(event.target.value)}
+              onChange={setFrom}
+              onValidityChange={track}
             />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="export-to">{t('lg_to')}</Label>
-            <Input
+            <DateField
               id="export-to"
-              type="date"
               value={to}
               max={today}
-              onChange={(event) => setTo(event.target.value)}
+              onChange={setTo}
+              onValidityChange={track}
             />
           </div>
         </div>

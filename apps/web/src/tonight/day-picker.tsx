@@ -8,6 +8,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
+import { DateField } from '@/components/ui/date-field'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -156,14 +157,12 @@ export function DayPicker({
   return (
     <div className="flex flex-wrap items-center gap-2">
       {button}
-      <input
-        type="date"
-        className="h-11 min-w-0 rounded-md border bg-background px-3 text-base"
+      <DateField
         value={day}
         aria-label={t('day_any')}
         data-testid="day-any"
-        onChange={(event) => {
-          if (event.target.value !== '') pick(event.target.value)
+        onChange={(next) => {
+          if (next !== '') pick(next)
         }}
       />
     </div>
