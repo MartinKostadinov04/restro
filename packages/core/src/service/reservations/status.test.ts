@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   canMove,
   countsAsNoShow,
+  createKindRefusal,
   END_STATUSES,
   holdsSpots,
   isEndStatus,
@@ -221,5 +222,39 @@ describe('undoArrival', () => {
     expect(canMove('seated', 'reserved')).toBe(false)
     expect(canMove('seated', 'waiting')).toBe(false)
     expect(canMove('seated', 'cancelled')).toBe(false)
+  })
+})
+
+describe('which status a new party may be created in (D137, D141, D144)', () => {
+  it('refuses a block that is not Reserved', () => {
+    for (const status of RESERVATION_STATUSES) {
+      expect(createKindRefusal('block', status)).toBe(
+        status === 'reserved' ? null : 'kind_not_allowed',
+      )
+    }
+  })
+
+  it('refuses a booking that is Waiting: only a walk-in has a place in the queue', () => {
+    expect(createKindRefusal('booking', 'waiting')).toBe('kind_not_allowed')
+    expect(createKindRefusal('walk_in', 'waiting')).toBeNull()
+  })
+
+  it('refuses a walk-in that is Reserved: he has no booking to be reserved for', () => {
+    expect(createKindRefusal('walk_in', 'reserved')).toBe('kind_not_allowed')
+    // At the door he is Waiting or already Seated; a booking is the one that is Reserved.
+    expect(createKindRefusal('walk_in', 'seated')).toBeNull()
+    expect(createKindRefusal('booking', 'reserved')).toBeNull()
+  })
+
+  it('refuses exactly the three combinations and no other', () => {
+    const refused = RESERVATION_KINDS.flatMap((kind) =>
+      RESERVATION_STATUSES.filter((status) => createKindRefusal(kind, status) !== null).map(
+        (status) => `${kind}:${status}`,
+      ),
+    )
+    const blocks = RESERVATION_STATUSES.filter((status) => status !== 'reserved').map(
+      (status) => `block:${status}`,
+    )
+    expect(refused.sort()).toEqual([...blocks, 'booking:waiting', 'walk_in:reserved'].sort())
   })
 })

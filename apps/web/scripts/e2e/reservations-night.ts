@@ -465,19 +465,51 @@ export async function seedReservationsNight(
     // The tables the night left open, as the door would have: Иванова's with a bill on it,
     // Петров's with none, and Бар 13's with a bill and nobody holding the spot (a waiter opened
     // it). `night empty` ran first, so no other sitting is open.
-    const open = async (tableId: string | undefined, bill: boolean) => {
+    const open = async (tableId: string | undefined, bill: boolean, round = false) => {
       if (tableId === undefined) throw new Error('the club has fewer than four tables')
+      const sittingId = newId('st')
       await owner.query(
         `insert into restro.sittings
            (id, tenant_id, venue_id, table_id, service_date, opened_how, opened_at,
             had_bill_lines, source, actor, job_id)
          values ($1, $2, $3, $4, $5, 'one', now() - interval '35 minutes', $6, $7, $8, $9)`,
-        [newId('st'), tenantId, venueId, tableId, day, bill, ...SEED],
+        [sittingId, tenantId, venueId, tableId, day, bill, ...SEED],
+      )
+      // A round its phones sent: the one thing that makes the door ask "is it the same party?"
+      // (#419). A bill the POS showed (`had_bill_lines`) is the open-bill warning's, not that.
+      if (!round) return
+      await owner.query(
+        `insert into restro.sent_orders
+           (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, reference, state,
+            lines, total_minor, action_id, sent_at, source, actor, job_id)
+         values ($1, $2, $3, $4, $5, $6, 'on_bill', 'R4K9TX', 'added', $7::jsonb, 900, $8,
+                 now() - interval '30 minutes', 'guest', 'guest', $9)`,
+        [
+          newId('so'),
+          tenantId,
+          venueId,
+          tableId,
+          sittingId,
+          day,
+          JSON.stringify([
+            {
+              id: newId('ol'),
+              itemId: newId('nd'),
+              optionIds: [],
+              qty: 1,
+              unitMinor: 900,
+              name: 'Mojito',
+              optionNames: [],
+            },
+          ]),
+          crypto.randomUUID(),
+          SEED[2],
+        ],
       )
     }
     await open(clubTables[0], true)
     await open(clubTables[2], false)
-    await open(clubTables[3], true)
+    await open(clubTables[3], true, true)
   }
   await reservation({
     serviceDate: day,

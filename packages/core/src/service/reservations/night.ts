@@ -111,6 +111,7 @@ export async function sweepNightLines(
         updatedAt: sql`now()`,
       })
       .where(eq(reservations.id, id))
+    stx.touchNight(line.serviceDate)
     await stx.log({
       kind: 'reservation.status',
       reservationId: id,

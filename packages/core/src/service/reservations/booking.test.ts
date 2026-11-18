@@ -284,6 +284,42 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
   })
 
   describe('taking a booking', () => {
+    it('refuses a party made in a status its kind never has (D137, D141)', async () => {
+      const day = night(4)
+      const base = { type: 'reservation.create', serviceDate: day, startsAt: hour(day, '22:00') }
+      // (The command's own shape never carries a block or a Seated party; `createKindRefusal` pins
+      // those in status.test.ts, for the callers that do.) Only a walk-in waits.
+      expect(
+        await run({
+          ...base,
+          kind: 'booking',
+          status: 'waiting',
+          partySize: 2,
+          guestName: 'Ivan',
+          phone: phone(),
+        } as ServiceCommand),
+      ).toMatchObject({ status: 'refused', code: 'kind_not_allowed' })
+      // A walk-in is never Reserved: he is at the door, with no booking to be reserved for; and
+      // nothing is written, so the door's counts never see him as a booking (D144).
+      const before = await world.owner.query(
+        'select count(*) as n from restro.reservations where venue_id = $1 and service_date = $2',
+        [world.venueId, day],
+      )
+      expect(
+        await run({ ...base, kind: 'walk_in', status: 'reserved', partySize: 2 } as ServiceCommand),
+      ).toMatchObject({ status: 'refused', code: 'kind_not_allowed' })
+      expect(
+        (
+          await world.owner.query(
+            'select count(*) as n from restro.reservations where venue_id = $1 and service_date = $2',
+            [world.venueId, day],
+          )
+        ).rows[0].n,
+      ).toBe(before.rows[0].n)
+      // At the door he is Waiting, or already Seated.
+      await accept({ ...base, kind: 'walk_in', status: 'waiting', partySize: 2 } as ServiceCommand)
+    })
+
     it('requires a phone unless the venue switched that off, and says so by code', async () => {
       const day = night(4)
       const withoutPhone = {
@@ -656,7 +692,7 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
         serviceDate: day,
         startsAt: hour(day, '22:00'),
         kind: 'walk_in',
-        status: 'reserved',
+        status: 'waiting',
         partySize: 2,
       } as ServiceCommand)
       expect(

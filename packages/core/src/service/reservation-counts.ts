@@ -91,28 +91,57 @@ export function noShowRatePercent(counts: ReservationCounts): number | null {
   return due === 0 ? null : Math.round((counts.resNoShows * 100) / due)
 }
 
-/** The commands that can change a reservation row: after one, a closed night's counts are re-rolled. */
-export function touchesReservations(type: string): boolean {
-  return /^(reservation\.|waiting\.|block\.|night\.end$|reservation_night\.)/.test(type)
+/**
+ * The lock that orders every writer of one night's counts: `service_day.close` and the re-roll of
+ * a closed night (`rerollClosedNights`) take it, held until their transaction ends. A Postgres
+ * advisory lock, because the counts' row (`service_days`) does not exist before the close and so
+ * cannot be locked by the two sides alike. The key is its own text (`restro:night-counts:…`),
+ * hashed to 64 bits like the other advisory locks here (`restro:document:`, `restro:publish:`,
+ * the worker's pull lock); `applyService` takes no advisory lock, and the migrate and roles
+ * scripts hash a 32-bit name, so none of them shares this key's text.
+ *
+ * Why it is needed: a command's own reservation rows are invisible to a second command in flight
+ * (read committed), so two re-rolls of one night, run side by side, would each count the other's
+ * rows as they were and the later write would erase the earlier one's change. With the lock the
+ * second re-roll waits for the first to commit and counts on top of it. It is taken after the
+ * command's row locks and, for a re-roll across nights, in date order.
+ */
+export async function lockNightCounts(
+  tx: Pick<ReadTx, 'execute'>,
+  venueId: string,
+  day: string,
+): Promise<void> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${nightCountsLockKey(venueId, day)}, 0))`,
+  )
+}
+
+/** The text `lockNightCounts` hashes: one key per venue and service date. */
+export function nightCountsLockKey(venueId: string, day: string): string {
+  return `restro:night-counts:${venueId}:${day}`
 }
 
 /**
- * A night that is written again is written whole (D144): every closed night whose reservation rows
- * this command wrote gets all its `res*` keys counted afresh, in the same transaction, and nothing
- * else of its totals is touched. A night is told by the rows' `updated_at`, which every reservation
- * write sets to the transaction's `now()`; a reservation never changes its night, so the night a
- * row sits on is the night it touched. Returns the nights re-rolled.
+ * A night that is written again is written whole (D144): each closed night among `nights` (the
+ * ones the command says it wrote, `ServiceTx.touchNight`) gets all its `res*` keys counted afresh,
+ * in the same transaction, and nothing else of its totals is touched. The nights come from the
+ * command, never from a timestamp: which rows a count covers is not decided by comparing a column
+ * to `now()`. A night not closed is left alone (the close counts it). Returns the nights re-rolled.
  */
-export async function rerollClosedNights(stx: ServiceTx): Promise<readonly string[]> {
-  const result = await stx.tx.execute<{ day: string }>(sql`
-    select distinct r.service_date::text as "day"
-    from restro.reservations r
-    join restro.service_days d
-      on d.venue_id = r.venue_id and d.service_date = r.service_date
-    where r.venue_id = ${stx.venueId} and r.updated_at = now()
-    order by 1`)
-  const days = result.rows.map((row) => row.day)
-  for (const day of days) {
+export async function rerollClosedNights(
+  stx: ServiceTx,
+  nights: Iterable<string>,
+): Promise<readonly string[]> {
+  const rolled: string[] = []
+  for (const day of [...new Set(nights)].sort()) {
+    // Before looking at whether the night is closed: a close in flight finishes first, and the
+    // night is then found closed.
+    await lockNightCounts(stx.tx, stx.venueId, day)
+    const [closed] = await stx.tx
+      .select({ serviceDate: serviceDays.serviceDate })
+      .from(serviceDays)
+      .where(and(eq(serviceDays.venueId, stx.venueId), eq(serviceDays.serviceDate, day)))
+    if (closed === undefined) continue
     const counts = await reservationCounts(stx.tx, stx.venueId, day)
     await stx.tx
       .update(serviceDays)
@@ -121,6 +150,7 @@ export async function rerollClosedNights(stx: ServiceTx): Promise<readonly strin
         ...stx.provenance,
       })
       .where(and(eq(serviceDays.venueId, stx.venueId), eq(serviceDays.serviceDate, day)))
+    rolled.push(day)
   }
-  return days
+  return rolled
 }

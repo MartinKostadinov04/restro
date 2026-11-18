@@ -26,6 +26,7 @@ import { openServiceWorld, type ServiceWorld } from '../../testing/service-world
 import { applyService } from '../apply-service'
 import type { ServiceActor, ServiceContext } from '../context'
 import type { ServiceCommand } from '../index'
+import { readTonight } from '../read'
 import { readArrivalChecks, readTablesTonight } from './arrive-checks'
 
 /** The venue's turn time in these tests: ninety minutes, as a club's would be. */
@@ -250,9 +251,24 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
     expect(await reservationOf(id)).toMatchObject({ status: 'seated', ended_at: null })
   })
 
-  it('refuses to seat anybody while the same-guests question is unanswered', async () => {
-    // A waiter opened the table before the hostess brought the party: an order may be on it.
+  /** A round sent from the open table's phones, as the guest page's Send leaves it. */
+  const sendRound = async (tableId: string) => {
+    const sittingId = await openSittingOf(tableId)
+    if (sittingId === null) throw new Error('the table is not open')
+    await world.addSentOrder({
+      tableId,
+      sittingId,
+      actionId: randomUUID(),
+      // The bar's own ticket number: the column takes three to six capitals or digits.
+      reference: randomUUID().slice(0, 6).toUpperCase(),
+      serviceDate: today,
+    })
+  }
+
+  it('refuses to seat anybody while the same-party question is unanswered', async () => {
+    // A waiter opened the table and its phones sent a round before the hostess brought the party.
     await accept({ type: 'table.open', tableId: tableOf('D2') })
+    await sendRound(tableOf('D2'))
     const was = await openSittingOf(tableOf('D2'))
     const id = await book(['D2'])
     expect(await run({ type: 'reservation.arrive', reservationId: id })).toMatchObject({
@@ -265,6 +281,84 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
     expect(await openSittingOf(tableOf('D2'))).toBe(was)
 
     // "The same guests": the sitting stands, so their order and their phones are untouched.
+    expect(
+      await accept({ type: 'reservation.arrive', reservationId: id, sameGuests: true }),
+    ).toMatchObject({ status: 'seated', kept: tableOf('D2'), renewed: '' })
+    expect(await openSittingOf(tableOf('D2'))).toBe(was)
+    await accept({ type: 'table.close', tableId: tableOf('D2') })
+  })
+
+  it('starts a table with nothing on it fresh, without asking (walk P24, #419)', async () => {
+    // "Open all" opened it, and no phone has ordered anything: no bag, no round, nothing to lose.
+    await accept({ type: 'table.open', tableId: tableOf('D2') })
+    const was = await openSittingOf(tableOf('D2'))
+    const read = await readArrivalChecks(world.app, {
+      tenantId: world.tenantId,
+      venueId: world.venueId,
+      actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
+      spotIds: [spotId('D2')],
+    })
+    if (!read.ok) throw new Error(read.code)
+    expect(read.checks.tables).toMatchObject([
+      { tableId: tableOf('D2'), open: true, hasOrder: false },
+    ])
+    const id = await book(['D2'])
+    expect(await accept({ type: 'reservation.arrive', reservationId: id })).toMatchObject({
+      status: 'seated',
+      renewed: tableOf('D2'),
+      kept: '',
+    })
+    const now = await openSittingOf(tableOf('D2'))
+    expect(now).not.toBeNull()
+    expect(now).not.toBe(was)
+    await accept({ type: 'table.close', tableId: tableOf('D2') })
+  })
+
+  it('asks about a table whose phones filled a bag and sent nothing: starting over would lose it', async () => {
+    await accept({ type: 'table.open', tableId: tableOf('D2') })
+    const was = await openSittingOf(tableOf('D2'))
+    // The order row appears with the guests' first tap, so this is what a filled bag leaves.
+    await world.owner.query(
+      `insert into restro.table_orders
+         (id, tenant_id, venue_id, table_id, sitting_id, lines, source, actor, job_id)
+       values ($1, $2, $3, $4, $5, '[{"n":1}]'::jsonb, 'guest', 'guest', 'test-seed')
+       on conflict (tenant_id, sitting_id) do update set lines = excluded.lines`,
+      [newId('to'), world.tenantId, world.venueId, tableOf('D2'), was],
+    )
+    // The table has had an earlier sitting, with an order row of its own that is empty and was
+    // written after this bag: it must never stand in for the open sitting's order.
+    const earlier = newId('st')
+    await world.owner.query(
+      `insert into restro.sittings
+         (id, tenant_id, venue_id, table_id, service_date, opened_how, opened_at, ended_at,
+          end_reason, source, actor, job_id)
+       values ($1, $2, $3, $4, $5, 'one', now() - interval '3 hours', now() - interval '2 hours',
+               'staff_closed', 'guest', 'guest', 'test-seed')`,
+      [earlier, world.tenantId, world.venueId, tableOf('D2'), today],
+    )
+    await world.owner.query(
+      `insert into restro.table_orders
+         (id, tenant_id, venue_id, table_id, sitting_id, source, actor, job_id)
+       values ($1, $2, $3, $4, $5, 'guest', 'guest', 'test-seed')`,
+      [newId('to'), world.tenantId, world.venueId, tableOf('D2'), earlier],
+    )
+    const read = await readArrivalChecks(world.app, {
+      tenantId: world.tenantId,
+      venueId: world.venueId,
+      actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
+      spotIds: [spotId('D2')],
+    })
+    if (!read.ok) throw new Error(read.code)
+    expect(read.checks.tables).toMatchObject([{ tableId: tableOf('D2'), hasOrder: true }])
+    const id = await book(['D2'])
+    expect(await run({ type: 'reservation.arrive', reservationId: id })).toMatchObject({
+      status: 'refused',
+      code: 'same_guests_unanswered',
+      details: { tableId: tableOf('D2') },
+    })
+    // Nothing moved: the sitting, and the bag in it, are as the guests left them.
+    expect(await openSittingOf(tableOf('D2'))).toBe(was)
+    // "The same party" keeps the bag; the sitting stands.
     expect(
       await accept({ type: 'reservation.arrive', reservationId: id, sameGuests: true }),
     ).toMatchObject({ status: 'seated', kept: tableOf('D2'), renewed: '' })
@@ -570,7 +664,7 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
       expect(read.checks.night).toBeNull()
       expect(read.checks.spotIds).toEqual([spotId('D1')])
       expect(read.checks.tables).toMatchObject([
-        { tableId: tableOf('D1'), open: false, bill: false },
+        { tableId: tableOf('D1'), open: false, hasOrder: false, bill: false },
       ])
       // Rule 3: our own ids and the name staff read, never a POS id or an internal field.
       expect(JSON.stringify(read.checks)).not.toContain('pos')
@@ -590,7 +684,9 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
       })
       const open = await advice({ spotIds: [spotId('D2')] })
       if (!open.ok) throw new Error(open.code)
-      expect(open.checks.tables).toMatchObject([{ tableId: tableOf('D2'), open: true, bill: true }])
+      expect(open.checks.tables).toMatchObject([
+        { tableId: tableOf('D2'), open: true, hasOrder: true, bill: true },
+      ])
 
       // The warning never forbids it (D134): she may seat a party onto that very table, so long
       // as she answers for what is on it — the same guests, so their round stands.
@@ -603,7 +699,7 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
       const closed = await advice({ spotIds: [spotId('D2')] })
       if (!closed.ok) throw new Error(closed.code)
       expect(closed.checks.tables).toMatchObject([
-        { tableId: tableOf('D2'), open: false, bill: false },
+        { tableId: tableOf('D2'), open: false, hasOrder: false, bill: false },
       ])
     })
 
@@ -664,6 +760,60 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
       if (!sat.ok) throw new Error(sat.code)
       expect(sat.tables).toEqual([])
       await accept({ type: 'reservation.release_spots', reservationId: booked })
+    })
+  })
+
+  describe('who is seated at a table, as Tonight lists it (walk P20, #419)', () => {
+    const tonightAs = async (userId: string) => {
+      const read = await readTonight(world.app, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        actor: { kind: 'user', userId, sessionId: `sess-${randomUUID()}` } satisfies ServiceActor,
+      })
+      if (!read.ok) throw new Error(read.code)
+      return (tableId: string) => read.tonight.tables.find((table) => table.id === tableId)
+    }
+
+    it("names the seated party and its guests to a role that works tonight's reservations, and to nobody else", async () => {
+      // A role that opens tables and sees the night, but not the booking book.
+      const waiterId = await world.addUser('member')
+      await world.addStaff(['tables.open_close', 'night.view'], waiterId)
+
+      const id = await book(['D1'], { partyLabel: 'Елена Димитрова', partySize: 6 })
+      await accept({ type: 'reservation.arrive', reservationId: id })
+
+      const asHostess = await tonightAs(floorOnlyId)
+      expect(asHostess(tableOf('D1'))?.parties).toEqual([
+        { reservationId: id, name: 'Елена Димитрова', partySize: 6 },
+      ])
+      // A table nobody is seated at has no party, even though it is open for phones.
+      await accept({ type: 'table.open', tableId: tableOf('D2') })
+      expect((await tonightAs(floorOnlyId))(tableOf('D2'))?.parties).toEqual([])
+
+      // The cautious reading: a role without `reservations.tonight` sees the table and no name.
+      const asWaiter = await tonightAs(waiterId)
+      expect(asWaiter(tableOf('D1'))?.sitting).not.toBeNull()
+      expect(asWaiter(tableOf('D1'))?.parties).toEqual([])
+
+      await accept({ type: 'table.close', tableId: tableOf('D2') })
+      await accept({ type: 'reservation.release_spots', reservationId: id })
+      // Freed, the table is closed and nobody is named at it any more.
+      expect((await tonightAs(floorOnlyId))(tableOf('D1'))?.parties).toEqual([])
+    })
+
+    it('names a walk-in nobody named as a party with no name', async () => {
+      const walkIn = (
+        await accept({
+          type: 'reservation.seat_walk_in',
+          serviceDate: today,
+          spotIds: [spotId('D3')],
+          partySize: 3,
+        } as ServiceCommand)
+      ).reservationId as Id<'rv'>
+      expect((await tonightAs(floorOnlyId))(tableOf('D3'))?.parties).toEqual([
+        { reservationId: walkIn, name: null, partySize: 3 },
+      ])
+      await accept({ type: 'reservation.release_spots', reservationId: walkIn })
     })
   })
 

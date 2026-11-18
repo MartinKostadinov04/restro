@@ -6,6 +6,10 @@
 // guests" (a dialog that names the consequence, rule 11). Reached by tapping an open tile, so
 // closing is two taps (plan §10 Q5).
 //
+// Who is seated is the first thing it says (walk P20, #419): the party's name and its guests, one
+// line each, in the ordinary text colour and weight — the sheet is a list of facts, and none of them
+// is louder than another. It is empty for a role that does not work tonight's reservations.
+//
 // One line says the sitting's pay rule and which level set it, where that is worth saying (#334,
 // D122 §5): pay first, or a rule the party at the table carries. The rule is set on the
 // reservation's own sheet — never here, because this screen is the waiter's and the rule is the
@@ -99,10 +103,22 @@ export function TableSheet({
     }
   }, [view.venueId, tile.id])
 
+  /** One seated party: its name (or that it has none) and, where the book has it, its guests. */
+  const partyLine = (party: TableTile['parties'][number]) => {
+    const who = party.name ?? t('sh_party_noname')
+    return party.size === null ? who : t('sh_party', { name: who, k: party.size })
+  }
   const since = tile.since ?? ''
   const sub = bar === null ? t('sh_sub_nobar', { since }) : t('sh_sub', { bar, since })
   const details = (
     <dl className="space-y-1 px-4 text-base">
+      {tile.parties.map((party) => (
+        <div key={party.id} className="flex justify-between gap-3">
+          <dt className="[overflow-wrap:anywhere]" data-testid="sh-party">
+            {partyLine(party)}
+          </dt>
+        </div>
+      ))}
       <div className="flex justify-between gap-3">
         <dt className="text-muted-foreground">{t('sh_f1', { k: tile.sentOrders })}</dt>
       </div>

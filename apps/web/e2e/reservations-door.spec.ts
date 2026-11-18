@@ -152,16 +152,23 @@ test('a table nobody holds later opens in one tap, as Tonight always did', async
   await expect(page.getByTestId('tonight-booked')).toHaveCount(0)
 })
 
-test('the same-guests question waits for the hostess, and writes nothing until she answers', async () => {
+test('the same-party question waits for the hostess, and writes nothing until she answers', async () => {
   const { page } = owner
+  // The phones at the table sent a round: that order is what the question is about (#419).
+  seed('round', '1')
   await openPlan(page)
   const seven = await openSpot(page, 'Маса 7')
   await seven.getByTestId('rv-spot-arrive').click()
 
-  // The table a waiter opened a moment ago is already open: this is the one question of the door.
+  // The table has an order from its phones: this is the one question of the door, and it is about
+  // that order, never about the people standing in front of her.
   const question = page.getByTestId('rv-same-guests')
   await expect(question).toBeVisible()
-  await expect(question).toContainText('Are these the same guests?')
+  await expect(question).toContainText(
+    'There is already a phone order at this table. Is it the same party?',
+  )
+  await expect(question.getByTestId('rv-same-keep')).toContainText('Same party — keep the order')
+  await expect(question.getByTestId('rv-same-new')).toContainText('Different party — start over')
   await expect(question.getByTestId('rv-same-keep')).toBeVisible()
   await expect(question.getByTestId('rv-same-new')).toBeVisible()
 
@@ -173,7 +180,7 @@ test('the same-guests question waits for the hostess, and writes nothing until s
   expect(await readTile(page, TABLE)).toBe('open')
 })
 
-test('“Same guests” seats them and leaves their order where it was', async () => {
+test('“Same party” seats them and leaves their order where it was', async () => {
   const { page } = owner
   await openList(page)
   await rowOf(page, 'Иванова').getByTestId('rv-row-arrive').click()
@@ -185,6 +192,10 @@ test('“Same guests” seats them and leaves their order where it was', async (
   await expect(rowOf(page, 'Иванова')).toHaveAttribute('data-status', 'seated')
   // The same table, still open: nothing of the order was cleared by seating them.
   expect(await readTile(page, TABLE)).toBe('open')
+  // And Tonight says whose table it is (#419): the name on the tile, the name and guests on its sheet.
+  await expect(tile(page, TABLE).getByTestId('tile-party')).toHaveText('Иванова')
+  await tile(page, TABLE).click()
+  await expect(page.getByTestId('table-sheet').getByTestId('sh-party')).toContainText('Иванова')
 })
 
 test('more guests joining changes the number and nothing else', async () => {
@@ -210,6 +221,8 @@ test('freeing the table closes its codes, and its Undo gives them back', async (
   const seven = await openSpot(page, 'Маса 7')
   await expect(seven.getByTestId('rv-spot-state')).toContainText('Sitting')
   await seven.getByTestId('rv-spot-free').click()
+  // Their round is on the table, so the door says so before it frees it (the open-bill warning).
+  await page.getByTestId('rv-free-bill-do').click()
   await expect(page.getByText('The table is free again.')).toBeVisible()
 
   // The toast's Undo is the same party claiming the same spots again, which opens the codes again.
@@ -230,10 +243,11 @@ test('freeing the table closes its codes, and its Undo gives them back', async (
 
 test('“New guests” is reached only as the answer to that question', async () => {
   const { page } = owner
-  // The waiter opens the table again, with yesterday's party gone.
+  // The waiter opens the table again, with yesterday's party gone, and its phones order.
   expect(await readTile(page, TABLE)).toBe('closed')
   await tile(page, TABLE).click()
   await expect(tile(page, TABLE)).toHaveAttribute('data-state', 'open')
+  seed('round', '1')
 
   // People walk up to the same table: the question comes again, and this time she starts over.
   await openPlan(page)
@@ -246,6 +260,29 @@ test('“New guests” is reached only as the answer to that question', async ()
   await expect(page.getByText('The table is open for phones.')).toBeVisible()
   // A new sitting, so the table is open for the people who are there now.
   expect(await readTile(page, TABLE)).toBe('open')
+})
+
+test('a table open for phones that nobody ordered from is not busy, and seating there asks nothing', async () => {
+  const { page } = owner
+  await openPlan(page)
+  const seven = await openSpot(page, 'Маса 7')
+  await seven.getByTestId('rv-spot-free').click()
+  await expect(page.getByText('The table is free again.')).toBeVisible()
+  expect(await readTile(page, TABLE)).toBe('closed')
+
+  // A waiter lets phones in ("Open all" does this for the whole house); nobody orders.
+  await tile(page, TABLE).click()
+  await expect(tile(page, TABLE)).toHaveAttribute('data-state', 'open')
+  await openPlan(page)
+  // Open for phones is not occupied (#419): only a party sitting makes a spot busy.
+  await expect(spotNamed(page, 'Маса 7').first()).toHaveAttribute('data-state', 'free')
+  const again = await openSpot(page, 'Маса 7')
+  await again.getByTestId('rv-walk-in').click()
+  await expect(page.getByText('Seated.', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('rv-same-guests')).toHaveCount(0)
+  // Seated onto it, the table is open for them and its tile says nobody's name: a walk-in has none.
+  expect(await readTile(page, TABLE)).toBe('open')
+  await expect(tile(page, TABLE).getByTestId('tile-party')).toHaveCount(0)
 })
 
 test('a walk-in on a spot somebody is on is refused, and the refusal names them', async () => {

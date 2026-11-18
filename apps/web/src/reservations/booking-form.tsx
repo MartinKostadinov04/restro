@@ -294,6 +294,12 @@ export function BookingForm({
   const regularWithoutPhone = regular && editing === null && values.phone.trim() === ''
   const save = () => {
     if (validity.blocked()) return
+    // Nothing to save: Save stays pressable (a date or time commits when it is left, so the form
+    // cannot know sooner), and with no change it leaves the form as Close does.
+    if (editing !== null && !dirty) {
+      onClose()
+      return
+    }
     setTried(true)
     if (Object.keys(errors).length > 0) {
       document.getElementById(`${ids}-${Object.keys(errors)[0]}`)?.focus()
@@ -710,7 +716,7 @@ export function BookingForm({
       <Button
         type="button"
         className={WRAPS}
-        disabled={busy || (!dirty && editing !== null)}
+        disabled={busy}
         data-testid="rv-f-save"
         onClick={save}
       >

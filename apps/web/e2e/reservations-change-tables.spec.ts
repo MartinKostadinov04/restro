@@ -190,7 +190,7 @@ test('a table still open with a bill gets the door’s question before anything 
 
   const question = page.getByTestId('rv-same-guests')
   await expect(question).toBeVisible()
-  await expect(question).toContainText('The table is already open for phones.')
+  await expect(question).toContainText('There is already a phone order at this table.')
   await expect(question).toContainText('A round the waiter already rang stays on the bill.')
   // Walking away from it writes nothing: Бар 13 is still nobody's.
   await question.getByTestId('rv-same-leave').click()

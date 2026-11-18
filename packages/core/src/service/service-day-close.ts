@@ -26,7 +26,8 @@
 // A close that is refused clears nothing.
 //
 // Locks, in the fixed order: the day's sittings (by table), its sent orders, the alerts to clear,
-// its payments.
+// its payments, then the night's reservations and, last, the night's counts (an advisory lock, the
+// one a re-roll of the closed night takes too: `lockNightCounts`).
 
 import {
   alerts,
@@ -43,7 +44,7 @@ import { ruleOf } from './alert-rules'
 import type { ServiceTx } from './definition'
 import { appendLogEntry, recordRetainUntil, tableOfAlert } from './log'
 import { PAYMENT_UNCONFIRMED_REASONS } from './pay-route'
-import { reservationCounts } from './reservation-counts'
+import { lockNightCounts, reservationCounts } from './reservation-counts'
 import { lockNightReservations } from './reservations/rows'
 import { accepted, refused, type ServiceResult } from './results'
 import { SETTLED_STATES } from './sent-order'
@@ -255,6 +256,12 @@ export async function closeServiceDay(
     )
     .limit(1)
   if (liveOrder !== undefined) return refused(null, 'orders_open')
+  // The night's reservations are locked before anything reads them (D144): a door edit in flight
+  // lands before the check and the count (or finds the closed night and re-rolls it), and none
+  // can slip between the check below and the count. The counts' own lock follows, so a booking
+  // written on the night while this runs is counted once it commits, by its own re-roll.
+  await lockNightReservations(stx, day)
+  await lockNightCounts(stx.tx, stx.venueId, day)
   // A party of the day still Reserved, Waiting or Seated was not reached by the sweep (it failed,
   // or has not run yet): closing now would freeze unfinished statuses into the door's counts
   // (D144), so the day waits for the next tick. The sweep runs before the close in the same tick.
@@ -340,10 +347,8 @@ export async function closeServiceDay(
     .returning({ id: payments.id })
 
   const totals = await serviceDayTotals(stx.tx, stx.venueId, day)
-  // The door's counts (D144 §3, #408): written with the rest, once, from rows that never expire.
-  // The night's reservations are locked first, so an edit in flight lands before the count (or
-  // finds the closed night and re-rolls it, D144).
-  await lockNightReservations(stx, day)
+  // The door's counts (D144 §3, #408): written with the rest, once, from rows that never expire,
+  // read while the night's reservations are locked (above).
   const door = await reservationCounts(stx.tx, stx.venueId, day)
   const closed = await stx.tx
     .insert(serviceDays)

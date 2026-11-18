@@ -1835,6 +1835,11 @@ export const sittings = restro.table(
       .where(sql`${t.endedAt} is null`),
     index('sittings_venue_id_service_date_idx').on(t.venueId, t.serviceDate),
     index('sittings_retain_until_idx').on(t.retainUntil),
+    // A table's ended sittings, newest first: the moved-party read of a closed table (P22, #427)
+    // wants the last one that ended inside a window. `table_id` alone is selective (a table
+    // belongs to one tenant), so the key needs no `tenant_id`: Row Level Security's own
+    // `tenant_id` test is applied as a filter on the few rows the index returns.
+    index('sittings_table_id_ended_at_idx').on(t.tableId, t.endedAt),
     check('sittings_id_format', sql`${t.id} ~ '^st_[0-9A-Za-z]+$'`),
     check('sittings_opened_how', sql`${t.openedHow} in ('one', 'all')`),
     check('sittings_end_pair', sql`(${t.endedAt} is null) = (${t.endReason} is null)`),

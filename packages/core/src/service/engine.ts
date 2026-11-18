@@ -52,7 +52,7 @@ import { appendLogEntry } from './log'
 import { tripOrderRate } from './order-rate'
 import { watchPayingState } from './paying-phones'
 import { isSettingsPermission } from './permissions'
-import { rerollClosedNights, touchesReservations } from './reservation-counts'
+import { rerollClosedNights } from './reservation-counts'
 import { fallOf, pinFallActionOf, readPinActions } from './reservations/pin-fall'
 import { accepted, refused, type ServiceResult } from './results'
 import { RowLocks } from './rows'
@@ -269,6 +269,7 @@ export async function executeCommand(
           .then((result) => new Date(Number(result.rows[0]?.ms)))
         return clock
       }
+      const touchedNights = new Set<string>()
       const kept: (() => Promise<void>)[] = []
       const logged: { readonly seq: number; readonly at: Date; readonly kind: string }[] = []
       const stx: ServiceTx = {
@@ -313,6 +314,9 @@ export async function executeCommand(
         },
         lastLogged: (kinds) =>
           logged.findLast((entry) => kinds.includes(entry.kind as never)) ?? null,
+        touchNight: (serviceDate) => {
+          touchedNights.add(serviceDate)
+        },
         keepOnRefusal: (write) => {
           kept.push(write)
         },
@@ -378,6 +382,7 @@ export async function executeCommand(
         if (!(error instanceof HandlerRefusal)) throw error
         await tx.execute(sql`rollback to savepoint service_command`)
         rows.discardTouches()
+        touchedNights.clear()
         result = error.result
         for (const write of kept) await write()
       }
@@ -400,7 +405,7 @@ export async function executeCommand(
 
       if (result.status === 'accepted') await payingMoved?.()
       // D144: a reservation write on a night already closed re-rolls that night's door counts.
-      if (result.status === 'accepted' && touchesReservations(type)) await rerollClosedNights(stx)
+      if (result.status === 'accepted') await rerollClosedNights(stx, touchedNights)
       const versions = await rows.bumpTouched()
       if (ring && command.tableId !== undefined && actionId !== null) {
         const order = rows.heldOrder(command.tableId)

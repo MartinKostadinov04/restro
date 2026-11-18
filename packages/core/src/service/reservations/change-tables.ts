@@ -347,6 +347,7 @@ export async function changeTables(
       .update(reservations)
       .set({ ...stx.provenance, updatedAt: sql`now()` })
       .where(eq(reservations.id, side.reservation.id))
+    stx.touchNight(side.reservation.serviceDate)
     const left = side.seated
       ? (await tablesOfSpots(stx, side.removed)).tableIds.filter((id) => billLeft.includes(id))
       : []

@@ -57,8 +57,16 @@ export interface ArrivalChecksInput extends ReadInput {
 export interface DoorTable {
   readonly tableId: string
   readonly tableName: string
-  /** Its codes are already open: the same-guests question has to be asked (#329). */
+  /** Its codes are already open (#329). On its own that asks nothing: see `roundSent`. */
   readonly open: boolean
+  /**
+   * Something is ordered on this table in its current sitting: a round its phones sent, or lines
+   * in the guests' unsent bag. This, and not `open`, is what makes the door ask "is it the same
+   * party?" (walk P24, #419): the question is about the order already on the table, which starting
+   * over would throw away. A table opened for phones that nobody has ordered from is opened fresh
+   * without asking.
+   */
+  readonly hasOrder: boolean
   /**
    * Something is already on that table — lines in its round, or a round already sent. The hostess
    * is told so before she seats anybody, and decides; nothing here forbids it (D134).
@@ -153,8 +161,10 @@ export async function openTables(
   tx: ReadTx,
   venueId: string,
   tableIds: readonly string[],
-): Promise<Map<string, { readonly open: boolean; readonly bill: boolean }>> {
-  const byTable = new Map<string, { open: boolean; bill: boolean }>()
+): Promise<
+  Map<string, { readonly open: boolean; readonly bill: boolean; readonly hasOrder: boolean }>
+> {
+  const byTable = new Map<string, { open: boolean; bill: boolean; hasOrder: boolean }>()
   if (tableIds.length === 0) return byTable
   const open = await tx
     .select({ id: sittings.id, tableId: sittings.tableId, hadBillLines: sittings.hadBillLines })
@@ -167,9 +177,11 @@ export async function openTables(
       ),
     )
   if (open.length === 0) return byTable
+  // The open sitting's own bag, by sitting: a table keeps an order row for each sitting it has had,
+  // and an earlier sitting's empty one must never stand in for this one's (#419).
   const orders = await tx
     .select({
-      tableId: tableOrders.tableId,
+      sittingId: tableOrders.sittingId,
       lines: sql<number>`jsonb_array_length(${tableOrders.lines})`,
     })
     .from(tableOrders)
@@ -177,12 +189,12 @@ export async function openTables(
       and(
         eq(tableOrders.venueId, venueId),
         inArray(
-          tableOrders.tableId,
-          open.map((row) => row.tableId),
+          tableOrders.sittingId,
+          open.map((row) => row.id),
         ),
       ),
     )
-  const lines = new Map(orders.map((row) => [row.tableId, Number(row.lines)]))
+  const lines = new Map(orders.map((row) => [row.sittingId, Number(row.lines)]))
   const sent = new Set(
     (
       await tx
@@ -199,7 +211,8 @@ export async function openTables(
   for (const row of open) {
     byTable.set(row.tableId, {
       open: true,
-      bill: row.hadBillLines || sent.has(row.id) || (lines.get(row.tableId) ?? 0) > 0,
+      bill: row.hadBillLines || sent.has(row.id) || (lines.get(row.id) ?? 0) > 0,
+      hasOrder: sent.has(row.id) || (lines.get(row.id) ?? 0) > 0,
     })
   }
   return byTable
@@ -270,6 +283,7 @@ export async function readArrivalChecks(
       tableName: [...bySpot.values()].find((one) => one.tableId === tableId)?.tableName ?? '',
       open: state.get(tableId)?.open ?? false,
       bill: state.get(tableId)?.bill ?? false,
+      hasOrder: state.get(tableId)?.hasOrder ?? false,
     }))
 
     const bounds = nightBounds(day, reader.venue.timezone, reader.venue.dayEndsAt)

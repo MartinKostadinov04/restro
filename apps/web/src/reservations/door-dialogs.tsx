@@ -59,8 +59,10 @@ function Answer({
 }
 
 /**
- * "Are these the same guests?" — asked whenever a party is seated onto a table whose codes are
- * already open. Yes keeps the sitting, its order and the phones that are on it; no sends the
+ * "There is already a phone order at this table. Is it the same party?" — asked when a party is
+ * seated onto a table with an order on it in its current sitting: a round its phones sent, or
+ * lines in their unsent bag (#419). The question
+ * is about the order on the table, not about the people at the door. Yes keeps the sitting, its order and the phones that are on it; no sends the
  * "New guests" the floor already has, which ends the sitting and empties the order.
  *
  * Where the party carries a pay rule (#334), each answer says what becomes of it as well: a rule

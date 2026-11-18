@@ -167,6 +167,18 @@ export interface TableTile {
    * a busy floor (D123 rule 2). Null is no line.
    */
   readonly payRule: { readonly payFirst: boolean; readonly level: PayFirstLevel } | null
+  /**
+   * The parties seated at the table now (walk P20, #419): the name and the number of guests, as the
+   * booking book has them and nothing more. Empty where nobody is seated, and empty for a role that
+   * does not work tonight's reservations, which sees the table and no name. A walk-in nobody named
+   * has `name: null`.
+   */
+  readonly parties: readonly {
+    /** Our `rv_` id: a key for the list, never a name or a number. */
+    readonly id: string
+    readonly name: string | null
+    readonly size: number | null
+  }[]
 }
 
 /**
@@ -668,6 +680,13 @@ export function buildTonightView(input: {
       sentOrders: open ? (sentCount.get(table.id) ?? 0) : 0,
       sittingId: table.sitting?.id ?? null,
       payRule: payRuleLine(table.payRule),
+      parties: open
+        ? table.parties.map((party) => ({
+            id: party.reservationId,
+            name: party.name,
+            size: party.partySize,
+          }))
+        : [],
       hidden: table.hidden,
     }
   })

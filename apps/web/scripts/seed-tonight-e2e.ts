@@ -12,6 +12,8 @@
 //                     has passed, `book-pay-rule` or `book-change-tables` (#331), whose spots have
 //                     Tables and whose open tables are written too (scripts/e2e/reservations-night.ts).
 //   call <table>      a guest at the open table (its number) calls a waiter, as the phone's tap does.
+//   round <table>     the phones at the open table (its number) have sent a round, as Send leaves it:
+//                     the one thing that makes the door ask "is it the same party?" (#419).
 //   device <email>    marks the newest session of the account a shared device of the venue, as the
 //                     owner's "mark this device" would.
 //   idle              ages the person on the shared device by an hour, so the next action asks for
@@ -876,6 +878,51 @@ async function call(number: string): Promise<void> {
   }
 }
 
+/** A round sent from the phones of an open table: a sent order of its current sitting. */
+async function round(number: string): Promise<void> {
+  const { tenantId, venueId } = await target()
+  const owner = ownerPool()
+  try {
+    const tables = await tableIds(owner, tenantId)
+    const open = await owner.query<{ id: string; service_date: string }>(
+      'select id, service_date from restro.sittings where table_id = $1 and ended_at is null',
+      [tables[number]],
+    )
+    const sitting = open.rows[0]
+    if (sitting === undefined) throw new Error(`table ${number} is not open`)
+    await owner.query(
+      `insert into restro.sent_orders
+         (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, reference, state,
+          lines, total_minor, action_id, sent_at, source, actor, job_id)
+       values ($1, $2, $3, $4, $5, $6, 'on_bill', $7, 'added', $8::jsonb, 900, $9,
+               now() - interval '2 minutes', 'guest', 'guest', 'e2e-seed')`,
+      [
+        newId('so'),
+        tenantId,
+        venueId,
+        tables[number],
+        sitting.id,
+        sitting.service_date,
+        randomUuid().slice(0, 6).toUpperCase(),
+        JSON.stringify([
+          {
+            id: newId('ol'),
+            itemId: newId('nd'),
+            optionIds: [],
+            qty: 1,
+            unitMinor: 900,
+            name: 'Mojito',
+            optionNames: [],
+          },
+        ]),
+        randomUuid(),
+      ],
+    )
+  } finally {
+    await owner.end()
+  }
+}
+
 /**
  * Pushes the person on the venue's shared devices an hour into the past: their own short session
  * has run out, as it would after the device sat idle (D141 12.11, #324), and the next record
@@ -965,15 +1012,17 @@ const run =
         ? book(argument)
         : step === 'call' && argument !== undefined
           ? call(argument)
-          : step === 'device' && argument !== undefined
-            ? device(argument)
-            : step === 'idle'
-              ? idle()
-              : Promise.reject(
-                  new Error(
-                    'seed | night <name> | book <scene> | call <table> | device <email> | idle',
-                  ),
-                )
+          : step === 'round' && argument !== undefined
+            ? round(argument)
+            : step === 'device' && argument !== undefined
+              ? device(argument)
+              : step === 'idle'
+                ? idle()
+                : Promise.reject(
+                    new Error(
+                      'seed | night <name> | book <scene> | call <table> | round <table> | device <email> | idle',
+                    ),
+                  )
 run
   .then(async () => {
     await getPool().end()
