@@ -212,6 +212,7 @@ describe.skipIf(!hasDatabase)('tables open for phones (as the restro_app role)',
       opened: 2,
       alreadyOpen: 1,
       skipped: 1,
+      skippedPayment: 0,
       ...undoToken,
     })
     for (const index of [0, 1, 2]) expect(await openSittingOf(table(index))).not.toBeNull()
@@ -362,7 +363,7 @@ describe.skipIf(!hasDatabase)('tables open for phones (as the restro_app role)',
       expect(await run({ type: 'table.new_guests', tableId })).toMatchObject({
         code: 'payment_table',
       })
-      expect(await accepted({ type: 'tables.open_all' })).toMatchObject({ skipped: 1 })
+      expect(await accepted({ type: 'tables.open_all' })).toMatchObject({ skipped: 1, skippedPayment: 1 })
       expect(await openSittingOf(tableId)).toBeNull()
       await closeEverything()
 

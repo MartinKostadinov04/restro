@@ -153,6 +153,8 @@ export interface TableTile {
   readonly label: string
   readonly numbered: boolean
   readonly state: TileState
+  /** The table, or its hall, is hidden: it is in neither count and "Open all" leaves it closed. */
+  readonly hidden: boolean
   /** When its sitting opened, as `HH:mm` in the venue's zone; null while closed. */
   readonly since: string | null
   /** Sent orders of its open sitting. */
@@ -666,6 +668,7 @@ export function buildTonightView(input: {
       sentOrders: open ? (sentCount.get(table.id) ?? 0) : 0,
       sittingId: table.sitting?.id ?? null,
       payRule: payRuleLine(table.payRule),
+      hidden: table.hidden,
     }
   })
   // Payment tables are the venue's own tools for paying, not places guests sit (D122 §8): they are
@@ -673,6 +676,9 @@ export function buildTonightView(input: {
   const paymentIds = new Set(tonight.tables.filter((t) => t.isPaymentTable).map((t) => t.id))
   const guestTiles = tiles.filter((tile) => !paymentIds.has(tile.id))
   const paymentTables = tiles.filter((tile) => paymentIds.has(tile.id))
+  // A hidden table stays on the screen (it may hold a sitting) but is no part of the count: "Open all"
+  // cannot open it, so a count that included it could never read "N of N".
+  const countedTiles = guestTiles.filter((tile) => !tile.hidden)
   const group = (barId: string | null, name: string | null): BarGroup => ({
     barId,
     name,
@@ -715,8 +721,8 @@ export function buildTonightView(input: {
     outOfStock: out.sort((a, b) => a.at.getTime() - b.at.getTime()).map((entry) => entry.name),
     groups,
     paymentTables,
-    openCount: guestTiles.filter((tile) => tile.state !== 'closed').length,
-    tableCount: guestTiles.length,
+    openCount: countedTiles.filter((tile) => tile.state !== 'closed').length,
+    tableCount: countedTiles.length,
     // Restro's own pause hides the button: a second pause adds nothing (plan §5).
     pausableBars:
       allBars || restro.length > 0 ? [] : tonight.bars.filter((bar) => !pausedBars.has(bar.id)),

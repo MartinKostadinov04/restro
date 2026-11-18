@@ -16,6 +16,7 @@ const table = (n: number, barId: string | null, open: boolean) => ({
   numbered: false,
   barId,
   isPaymentTable: false,
+  hidden: false,
   sitting: open
     ? {
         id: `st_0000000000000000000${n}`,
@@ -426,6 +427,21 @@ describe('the tiles', () => {
     expect(v.paymentTables.map((x) => [x.label, x.state])).toEqual([
       ['Table 3', 'closed'],
       ['Table 4', 'open'],
+    ])
+  })
+
+  it('leaves hidden tables out of both counts, so Open all can reach "N of N"', () => {
+    const t = tonight({
+      tables: [table(1, BAR1, true), table(2, BAR1, true), { ...table(3, BAR1, false), hidden: true }],
+    })
+    const v = view(t)
+    expect(v.openCount).toBe(2)
+    expect(v.tableCount).toBe(2)
+    // It stays on the screen, marked, so a sitting it still holds can be closed.
+    expect(v.groups.flatMap((g) => g.tables.map((x) => [x.label, x.hidden]))).toEqual([
+      ['Table 1', false],
+      ['Table 2', false],
+      ['Table 3', true],
     ])
   })
 

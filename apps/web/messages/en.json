@@ -2032,6 +2032,7 @@
     "oa_toast": "{k, plural, one {# table} other {# tables}} opened for phones",
     "oa_skipped": "{k, plural, one {# payment table does} other {# payment tables do}} not open for phones",
     "pay_tables": "Payment tables",
+    "noGuestTables": "No tables for guests yet. Add them in Tables & QR.",
     "ca_toast": "All tables closed for phones",
     "ne_open": "End the night",
     "ne_early": "End the night early",
