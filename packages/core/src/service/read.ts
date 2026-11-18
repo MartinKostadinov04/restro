@@ -313,7 +313,8 @@ export async function readTableState(
     readonly tableCodeHash?: string
     /**
      * The moment the read is made at, for the moved-party window (P22): the database's clock when
-     * left out. Tests set it, so the window's edges do not depend on when they run.
+     * left out. Tests only; production leaves it out. A wrong value here shows a guest a stale
+     * "your party moved" message, so no caller outside a test may pass one.
      */
     readonly now?: Date
   },
