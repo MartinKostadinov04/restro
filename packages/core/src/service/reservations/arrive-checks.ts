@@ -57,8 +57,15 @@ export interface ArrivalChecksInput extends ReadInput {
 export interface DoorTable {
   readonly tableId: string
   readonly tableName: string
-  /** Its codes are already open: the same-guests question has to be asked (#329). */
+  /** Its codes are already open (#329). On its own that asks nothing: see `roundSent`. */
   readonly open: boolean
+  /**
+   * The phones at this table have sent at least one round in its current sitting. This, and not
+   * `open`, is what makes the door ask "is it the same company?" (walk P24, #419): the question is
+   * about the order already on the table, so a table opened for phones that nobody ordered from
+   * is opened fresh without asking.
+   */
+  readonly roundSent: boolean
   /**
    * Something is already on that table — lines in its round, or a round already sent. The hostess
    * is told so before she seats anybody, and decides; nothing here forbids it (D134).
@@ -153,8 +160,10 @@ export async function openTables(
   tx: ReadTx,
   venueId: string,
   tableIds: readonly string[],
-): Promise<Map<string, { readonly open: boolean; readonly bill: boolean }>> {
-  const byTable = new Map<string, { open: boolean; bill: boolean }>()
+): Promise<
+  Map<string, { readonly open: boolean; readonly bill: boolean; readonly roundSent: boolean }>
+> {
+  const byTable = new Map<string, { open: boolean; bill: boolean; roundSent: boolean }>()
   if (tableIds.length === 0) return byTable
   const open = await tx
     .select({ id: sittings.id, tableId: sittings.tableId, hadBillLines: sittings.hadBillLines })
@@ -200,6 +209,7 @@ export async function openTables(
     byTable.set(row.tableId, {
       open: true,
       bill: row.hadBillLines || sent.has(row.id) || (lines.get(row.tableId) ?? 0) > 0,
+      roundSent: sent.has(row.id),
     })
   }
   return byTable
@@ -270,6 +280,7 @@ export async function readArrivalChecks(
       tableName: [...bySpot.values()].find((one) => one.tableId === tableId)?.tableName ?? '',
       open: state.get(tableId)?.open ?? false,
       bill: state.get(tableId)?.bill ?? false,
+      roundSent: state.get(tableId)?.roundSent ?? false,
     }))
 
     const bounds = nightBounds(day, reader.venue.timezone, reader.venue.dayEndsAt)

@@ -16,8 +16,8 @@
 // (D137, log 4.22; D110). Nothing on this sheet adds up the party's tables either (D137, log 12.18).
 //
 // Before a sitting party's save, the door's own advice is read (`arrivalChecksAction`) for the
-// tables being added, and the door's own questions are asked: the same-guests question where one
-// is already open, the open-bill warning where one still carries a bill (#329).
+// tables being added, and the door's own questions are asked: the same-party question where a
+// table's phones have sent a round, the open-bill warning where one still carries a bill (#329).
 import type { PayRule } from '@restro/core'
 import { useTranslations } from 'next-intl'
 import { useCallback, useMemo, useState } from 'react'
@@ -307,7 +307,7 @@ export function ChangeTablesSheet({
           return
         }
         const theirs = read.checks.tables.filter((table) => !ours.has(table.tableId))
-        if (theirs.some((table) => table.open)) {
+        if (theirs.some((table) => table.roundSent)) {
           setAsking({ step: 'same_guests', payRule: read.checks.payRule })
           return
         }

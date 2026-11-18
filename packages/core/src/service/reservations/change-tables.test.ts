@@ -390,9 +390,16 @@ describe.skipIf(!hasDatabase)('changing tables (as the restro_app role)', () => 
     expect(await openSittingOf('C4')).toBeNull()
   })
 
-  it('asks the same-guests question for a table already open, as the arrival does', async () => {
+  it('asks the same-party question for a table whose phones sent a round, as the arrival does', async () => {
     const id = await seated(['C1'])
     await accept({ type: 'table.open', tableId: tableOf('C2') })
+    await world.addSentOrder({
+      tableId: tableOf('C2'),
+      sittingId: (await openSittingOf('C2')) as string,
+      actionId: randomUUID(),
+      reference: randomUUID().slice(0, 6).toUpperCase(),
+      serviceDate: today,
+    })
     expect(await run(change(id, ['C1'], ['C2']))).toMatchObject({
       status: 'refused',
       code: 'same_guests_unanswered',
@@ -402,6 +409,19 @@ describe.skipIf(!hasDatabase)('changing tables (as the restro_app role)', () => 
       renewed: tableOf('C2'),
       closed: tableOf('C1'),
     })
+  })
+
+  it('opens a table nobody ordered from fresh when the party moves onto it, unasked (walk P24, #419)', async () => {
+    const id = await seated(['C1'])
+    await accept({ type: 'table.open', tableId: tableOf('C2') })
+    const was = await openSittingOf('C2')
+    expect(await accept(change(id, ['C1'], ['C2']))).toMatchObject({
+      renewed: tableOf('C2'),
+      closed: tableOf('C1'),
+    })
+    const now = await openSittingOf('C2')
+    expect(now).not.toBeNull()
+    expect(now).not.toBe(was)
   })
 
   it('refuses a save drawn over spots that changed meanwhile, and answers a repeat as done', async () => {

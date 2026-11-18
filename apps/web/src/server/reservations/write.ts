@@ -115,8 +115,9 @@ export type RvCommand =
       readonly endsAt?: string | null
       readonly partySize?: number
       /**
-       * The hostess's answer where a table of theirs is already open (#329): true keeps the order
-       * on it, false starts the table over. Left out only where no table of theirs is open — the
+       * The hostess's answer where a table of theirs has a round its phones already sent (#329,
+       * #419): true keeps the order on it, false starts the table over. Left out only where no
+       * such table is open — a table open for phones with no round is started fresh, unasked; the
        * write refuses `same_guests_unanswered` rather than choosing for her.
        */
       readonly sameGuests?: boolean

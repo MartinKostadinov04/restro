@@ -26,6 +26,11 @@ const table = (n: number, barId: string | null, open: boolean) => ({
     : null,
   // An open table on the house's ordinary rule: everything on the bill, so its tile keeps no line.
   payRule: open ? ({ payFirst: false, level: 'venue' } as const) : null,
+  parties: [] as readonly {
+    reservationId: string
+    name: string | null
+    partySize: number | null
+  }[],
 })
 
 function tonight(overrides: Partial<Tonight> = {}): Tonight {
@@ -608,6 +613,49 @@ describe('Pause ordering while Restro has paused', () => {
     )
     expect(v.canPauseAll).toBe(false)
     expect(v.pausableBars).toEqual([])
+  })
+})
+
+describe('who is seated at a table (walk P20, #419)', () => {
+  const seated = (parties: { name: string | null; partySize: number | null }[]) =>
+    tonight({
+      tables: [
+        {
+          ...table(1, BAR1, true),
+          parties: parties.map((p, i) => ({ reservationId: `rv_${i}`, ...p })),
+        },
+        table(2, BAR1, false),
+      ],
+    })
+
+  it("carries each seated party's name and guests on its table's tile", () => {
+    const tile = view(
+      seated([
+        { name: 'Елена Димитрова', partySize: 6 },
+        { name: null, partySize: 2 },
+      ]),
+    ).groups[0]?.tables[0]
+    expect(tile?.parties).toEqual([
+      { id: 'rv_0', name: 'Елена Димитрова', size: 6 },
+      { id: 'rv_1', name: null, size: 2 },
+    ])
+    // Rule 3: nothing but our own id and the two public facts leaves for the browser.
+    expect(Object.keys(tile?.parties[0] ?? {}).sort()).toEqual(['id', 'name', 'size'])
+  })
+
+  it('has no party at a table nobody is seated at, and none at a closed one', () => {
+    const v = view(seated([]))
+    expect(v.groups[0]?.tables.map((x) => x.parties)).toEqual([[], []])
+    // A party the read still lists on a closed table is not drawn: a closed table has no one.
+    const closed = tonight({
+      tables: [
+        {
+          ...table(2, BAR1, false),
+          parties: [{ reservationId: 'rv_1', name: 'Иванова', partySize: 4 }],
+        },
+      ],
+    })
+    expect(view(closed).groups[0]?.tables[0]?.parties).toEqual([])
   })
 })
 

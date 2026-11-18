@@ -13,15 +13,16 @@
 //     codes again — a new sitting, since the one its guests left was ended by the freeing.
 //
 // **The questions.** Before a seating the door reads its advice (`arrivalChecksAction`) and then:
-//   • a table of theirs is already open → the same-guests question, both answers at equal weight.
+//   • a table of theirs has a round its phones already sent → the same-party question (#419: the
+//     order on the table, not the people at the door), both answers at equal weight.
 //     Its own words say what happens to the order and what stays on the bill, so the open-bill
 //     warning is not stacked on top of it;
-//   • no table open but one still carries a bill → the open-bill warning, whose two buttons are
+//   • no such order but a table still carries a bill → the open-bill warning, whose two buttons are
 //     "Seat them anyway" and "Check the bill first".
 // Freeing reads the same advice and warns the same way, in its own words: the bill does not stop
 // the table being freed, it is only the thing she should look at before the codes close.
 // Where the advice does not get through, the write is attempted and the service path refuses
-// `same_guests_unanswered` if a table turns out to be open; the question is then asked and the
+// `same_guests_unanswered` if a table turns out to carry a sent round; the question is then asked and the
 // write repeated. Neither route can seat a party onto an open table without an answer.
 //
 // Nothing here decides whether a person may: the service path does, inside its own transaction.
@@ -234,7 +235,8 @@ export function useDoorActions({
           const billSpots = read.checks.tables
             .filter((table) => table.bill)
             .map((table) => table.tableName)
-          if (read.checks.tables.some((table) => table.open)) {
+          // Only an order already on the table is a question: open for phones alone asks nothing.
+          if (read.checks.tables.some((table) => table.roundSent)) {
             setAsking({
               party,
               step: 'same_guests',
