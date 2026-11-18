@@ -26,6 +26,7 @@ For the lead (`docs/agents/lead.md`). One request → one **category** → one *
 | **Audit › Behaviour** | does it work as intended, judged as the people who use it | `audit-behaviour.md` |
 | **Audit › Security** | attack it: tenancy, roles, inputs, tokens, secrets | `audit-security.md` |
 | **Audit › Robustness** | things at once or failing halfway: races, retries, partial reads, time | `audit-robustness.md` |
+| **Audit › Screens** | go over a set of screens for bugs, optimisations and simpler UX; an independent pass checks the findings and plans the fixes (D146) | the `screen-review` skill: read its `SKILL.md` |
 | **Upkeep** | codebase health, agent docs, a retro, incoming reports, operations (rehearsals, fixtures, upgrades) | `upkeep.md` |
 | **Release** | staging or production: deploy, migrate, incident (parked until the tracker opens it) | `upkeep.md` → Release |
 | **Outside question** | the answer sits with Lukanet, a lawyer, a pilot owner, or in external docs | `upkeep.md` → Outside question |

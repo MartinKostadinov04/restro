@@ -110,7 +110,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D103](decisions/D103.md) | Keep the D43 hosting split through 10 clubs; agent time goes into portability, not moves | firm |
 | [D104](decisions/D104.md) | Fable plans the heavy zone; "I don't know" gets a higher model's proposal | firm; refines D58; refined by D108 and D133 |
 | [D105](decisions/D105.md) | Templates are designed by agents in the repo, from the menu functionality file | firm; supersedes D63; refines D69; refined by D128 (a template is a Style preset; how a Style is made) |
-| [D106](decisions/D106.md) | The design-skill set in force: frontend-design vendored for templates, Vercel rules pinned, UI UX Pro Max rejected | firm; refined by D109 |
+| [D106](decisions/D106.md) | The design-skill set in force: frontend-design vendored for templates, Vercel rules pinned, UI UX Pro Max rejected | firm; refined by D109, D123, D146 |
 | [D107](decisions/D107.md) | Operational screens are for an owner who is not a tech person: plain words, undo, few taps | firm |
 | [D108](decisions/D108.md) | Planning climbs one rung at a time; the rung is sticky; the lead switches itself | firm; refines D104; refined by D133 |
 | [D109](decisions/D109.md) | What enters from Emil Kowalski's skills, where, and what stays out | firm; refines D106, D105, D107 |
@@ -127,7 +127,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D120](decisions/D120.md) | Failure and pause during service: a table pause and a venue pause, how each starts and lifts, alerts to everyone, and the venue's Log | firm; refines D102, D111, D116 and D117; refined by D122 |
 | [D121](decisions/D121.md) | How the guest page talks to the platform: two endpoints, the table code in a header, polling, the guards on each request, and the location pass | firm; refines D117, D118 and D119; refined by D122 |
 | [D122](decisions/D122.md) | Ordering at a one-bill POS like the pilot's Mistral: sent orders, tables open for phones, sittings, payment tables, staff roles and the connector capabilities | firm; refines D111, D112, D113, D115–D121; refined by D126; refined by D129 (the guest-feature screens are pages of the designer from the start); refined by D131 (a sold-out item leaves the guest menu) |
-| [D123](decisions/D123.md) | Operational screens are designed before they are coded (the screen plan, the admin map, the pattern list); what enters from Anthropic's design skills as lines, where, and what stays out; the manager's phone is supported | firm; refines D106, D107; closes D109's open question |
+| [D123](decisions/D123.md) | Operational screens are designed before they are coded (the screen plan, the admin map, the pattern list); what enters from Anthropic's design skills as lines, where, and what stays out; the manager's phone is supported | firm; refines D106, D107; closes D109's open question; refined by D146 |
 | [D124](decisions/D124.md) | Fitting any POS: an optional bar, never yesterday's bill, a fallback when a waiter's bill is closed to outside apps, card holds for paying, training mode only on a test installation, the POS's stock replaces the owner's sold-out switch | firm; refines D112, D115, D122 |
 | [D125](decisions/D125.md) | How a venue connects Stripe, and how Restro uses it | firm; refines D98, D126, D41 and D110; supersedes D19; closes D98's open line |
 | [D126](decisions/D126.md) | Stripe is the first payment provider; the pretend till stays for tables and bills | firm; refines D98 and D122; refined by D125 |
@@ -150,6 +150,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D143](decisions/D143.md) | The database backup connects as its own read-only role with BYPASSRLS, the second approved exception to the never-list | firm; refines D83 and D103 |
 | [D144](decisions/D144.md) | What the analytics answer: the measurement is already complete, the night writes its own numbers down, and Restro is never a second answer to the till | firm; refines D142 |
 | [D145](decisions/D145.md) | The guest's card form offers no Link account and asks the guest to save nothing | firm; refines D127 |
+| [D146](decisions/D146.md) | Screens are reviewed in rounds by an explorer and an independent reviewer, with Anthropic's design-critique, accessibility-review and ux-copy vendored whole; the design plugins switched off in Restro | firm; refines D106, D109, D123; contradicts D123 on vendoring |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

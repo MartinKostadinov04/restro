@@ -12,4 +12,6 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 
 Restro adds one label of its own: `waiting`, a ticket that must wait for the tickets, decisions or steps in its Blocked by section. The lead swaps it for `ready-for-agent` (or `ready-for-human`) when the last blocker lands.
 
+Finding labels say where a ticket was found: `walkthrough` (a walk of the screens: Martin's walk-throughs and every `screen-review` round, D146), `designer-audit` (the 11-01 designer audit), `repair-review` (the 10-29 repair review). A new kind of review reuses one of these rather than adding a label.
+
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
