@@ -241,7 +241,9 @@ function DayDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <TimeField id="hours-opens" label={t('st_opens')}
+            <TimeField
+              id="hours-opens"
+              label={t('st_opens')}
               value={opens}
               onChange={setOpens}
               onValidityChange={validity.onValidityChange}
