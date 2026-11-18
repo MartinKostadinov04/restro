@@ -261,6 +261,7 @@ export {
   type NightRead,
   type NightRefusal,
   type NightReport,
+  type NightReservations,
   NOT_ADDED_STATES,
   PAGE_SIZE,
   readExportDays,

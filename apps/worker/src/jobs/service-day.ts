@@ -1,7 +1,8 @@
 // The end of a service day (#84; D111, design §4).
 //
 //   service-day-tick  every hour: for each venue, each ended service day that has sittings, sent
-//                     orders or payments and no `service_days` row yet is closed through
+//                     orders, payments or reservations (a night of bookings only writes the door's
+//                     counts, D144) and no `service_days` row yet is closed through
 //                     `applyService` (`service_day.close`), oldest first: its sittings and sent
 //                     orders get their 18 months, its action ids are cleared and its totals kept.
 //                     Then every recent closed day whose end-of-night message has not gone
@@ -16,7 +17,8 @@
 // A venue's day ends at its own hour in its own time zone, so the tick runs hourly rather than
 // once at 07:00 Sofia. `service_day.close` changes nothing for a day already closed, so a run that
 // races another is harmless. A day that fails, or is refused because a payment or sent order of
-// it is still moving (`payments_open`, `orders_open`), is logged and skipped, and the venue's later
+// it is still moving (`payments_open`, `orders_open`, or `reservations_open` for a party the sweep
+// did not reach, e.g. because the sweep failed: the next tick sweeps again), is logged and skipped, and the venue's later
 // days wait for the next run, so the days close in order.
 //
 // The end-of-night message goes until it has gone, once an hour at most: a failed send is logged
@@ -66,6 +68,8 @@ export async function dueServiceDays(pool: DbPool, now: Date): Promise<DueServic
               select service_date from restro.sittings where venue_id = ${venue.id}
               union select service_date from restro.sent_orders where venue_id = ${venue.id}
               union select service_date from restro.payments where venue_id = ${venue.id}
+              union select service_date from restro.reservations
+                where venue_id = ${venue.id} and kind <> 'block' and deleted_at is null
             ) day
            where day.service_date < ${today}::date
              and not exists (

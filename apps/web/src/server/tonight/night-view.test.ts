@@ -14,6 +14,9 @@ import {
 } from '@restro/core/service'
 import { describe, expect, it } from 'vitest'
 
+import en from '../../../messages/en.json'
+import { nightCsvRows } from './night-csv'
+
 import {
   clockIn,
   logLineView,
@@ -368,6 +371,7 @@ const night = (fields: Partial<NightRead> = {}): NightRead => ({
     alerts: 4,
     pauses: 1,
   },
+  reservations: null,
   money: null,
   ...fields,
 })
@@ -394,5 +398,85 @@ describe('the end of the night', () => {
     const view = nightView(night({ full: false }), 'Europe/Sofia')
     expect(view.full).toBe(false)
     expect(JSON.stringify(view)).not.toMatch(/tip|captured|payments/i)
+  })
+})
+
+describe('the reservation group of the end of the night (#408, D144)', () => {
+  const counts = {
+    resBookings: 5,
+    resWalkIns: 2,
+    resArrived: 4,
+    resBookingsArrived: 3,
+    resNoShows: 1,
+    resCancelled: 1,
+    resNotSeated: 1,
+    resCoversBooked: 18,
+    resCoversSeated: 14,
+    noShowRate: 25,
+  }
+  const words = en.tonight as unknown as Record<string, string>
+  const say = (key: string) => words[key] ?? key
+  const csv = (view: ReturnType<typeof nightView>) =>
+    nightCsvRows(view, [], { say, source: 'tonight', timezone: 'Europe/Sofia' })
+  const door = (rows: ReturnType<typeof csv>) => rows.filter((row) => row.section === words.nt_res)
+
+  it('is hidden, in the view and in the file, where reservations are off', () => {
+    const view = nightView(night({ reservations: null }), 'Europe/Sofia')
+    expect(view.reservations).toBeNull()
+    expect(door(csv(view))).toEqual([])
+  })
+
+  it('shows zeros, and no rate, when reservations are on and nobody booked', () => {
+    const zeros = {
+      resBookings: 0,
+      resWalkIns: 0,
+      resArrived: 0,
+      resBookingsArrived: 0,
+      resNoShows: 0,
+      resCancelled: 0,
+      resNotSeated: 0,
+      resCoversBooked: 0,
+      resCoversSeated: 0,
+      noShowRate: null,
+    }
+    const view = nightView(night({ reservations: zeros }), 'Europe/Sofia')
+    expect(view.reservations).toEqual(zeros)
+    expect(door(csv(view)).map((row) => row.detail)).toEqual([
+      '0',
+      '0',
+      '0',
+      '0',
+      '0',
+      '0',
+      '0',
+      '0',
+      '',
+    ])
+  })
+
+  it('writes one CSV row per count, in the screen’s order, with the rate as a percentage', () => {
+    const rows = door(csv(nightView(night({ reservations: counts }), 'Europe/Sofia')))
+    expect(rows.map((row) => [row.what, row.detail])).toEqual([
+      ['Bookings', '5'],
+      ['Walk-ins', '2'],
+      ['Arrived', '4'],
+      ['No-shows', '1'],
+      ['Cancelled', '1'],
+      ['Not seated', '1'],
+      ['Covers booked', '18'],
+      ['Covers seated', '14'],
+      ['No-show rate', '25%'],
+    ])
+  })
+
+  it('gives a role with night.view alone the group and no money', () => {
+    const view = nightView(
+      night({ full: false, money: null, reservations: counts }),
+      'Europe/Sofia',
+    )
+    expect(view.reservations).toEqual(counts)
+    expect(view.money).toBeNull()
+    expect(door(csv(view))).toHaveLength(9)
+    expect(JSON.stringify(csv(view))).not.toMatch(/captured|tip/i)
   })
 })

@@ -584,6 +584,8 @@ export interface NightView {
   readonly answered: readonly AnsweredFixView[]
   readonly sent: SentListView
   readonly totals: NightRead['totals']
+  /** The door's counts: null where the venue works no reservations (#408). */
+  readonly reservations: NightRead['reservations']
   /** Payments, captured, tips and the unconfirmed: `money.follow_up` only, else null. */
   readonly money: NightRead['money']
 }
@@ -634,6 +636,7 @@ export function nightView(night: NightRead, timezone: string): NightView {
     ),
     sent: sentListView(night.sent.notAdded, timezone),
     totals: night.totals,
+    reservations: night.reservations,
     money: night.money,
   }
 }
