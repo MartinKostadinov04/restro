@@ -19,10 +19,20 @@ describe.skipIf(!hasDatabase)('menusWithPayFirstItem (as the restro_app role)', 
   let snapshotId: string
 
   const publish = async (items: Record<string, unknown>) => {
-    await world.owner.query('update restro.snapshots set body = $2::jsonb where id = $1', [
-      snapshotId,
-      JSON.stringify({ items }),
-    ])
+    // A published snapshot is immutable (its guard trigger), so the test swaps the body with the
+    // triggers off, as the design tests do.
+    const client = await world.owner.connect()
+    try {
+      await client.query('begin')
+      await client.query('set local session_replication_role = replica')
+      await client.query('update restro.snapshots set body = $2::jsonb where id = $1', [
+        snapshotId,
+        JSON.stringify({ items }),
+      ])
+      await client.query('commit')
+    } finally {
+      client.release()
+    }
   }
   const read = (itemMode: 'on_bill' | 'pay_first') =>
     withTenant(world.app, world.tenantId, (tx) =>

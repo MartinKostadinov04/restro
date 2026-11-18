@@ -40,6 +40,7 @@ const draw = (over: Partial<TonightView>) =>
           rows: [],
           outOfStock: [],
           groups: [],
+          paymentTables: [],
           openCount: 0,
           tableCount: 0,
           pausableBars: [],
