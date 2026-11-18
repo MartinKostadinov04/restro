@@ -1260,6 +1260,10 @@ ${HEAVY_FALLBACK_CSS}
 .rm-detail-copy {
   padding-bottom: 110px;
 }
+/* A dish page with no photo starts under the back button, never behind it (P14). */
+.rm-overlay-panel.is-detail .rm-detail-copy:first-child {
+  padding-top: 72px;
+}
 .rm-detail-bar {
   position: sticky;
   bottom: 0;

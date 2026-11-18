@@ -19,7 +19,7 @@
 // phone is offline Send is greyed with the weak-connection line (D121). While ordering is paused
 // (D120) Send is drawn and greyed under the pause's own line; the lines stay editable.
 
-import { orderingClosedText, payFirstWords, payMoney, refusalText, sentWords } from '@restro/shell'
+import { payFirstWords, payMoney, refusalText, sentWords } from '@restro/shell'
 import { useState } from 'react'
 
 import { Photo, Text } from '../parts'
@@ -47,11 +47,6 @@ function OrderingNotes({ o }: { readonly o: Services }) {
       {ordering === 'paused' ? (
         <p className="ro-notice" data-slot="ordering.paused">
           {words.orderingPaused}
-        </p>
-      ) : null}
-      {ordering === 'closed' ? (
-        <p className="ro-notice" data-slot="ordering.closed">
-          {orderingClosedText(state.ordering, words)}
         </p>
       ) : null}
       {night?.state === 'last_orders' && night.at !== null ? (

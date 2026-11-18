@@ -106,6 +106,8 @@ export const GuestTableStateSchema = z.strictObject({
   /** `notesAndOptions`: notes and options reach the POS's ticket (#78). */
   ordering: z.strictObject({
     state: z.enum(['on', 'paused', 'closed']),
+    /** Staff moved the party away from this table (P22): the bill stayed here. Absent otherwise. */
+    movedAway: z.literal(true).optional(),
     notesAndOptions: z.boolean(),
     /**
      * Pay-first at this table (#113): `on` where the POS opens a bill with a first round, pay-first

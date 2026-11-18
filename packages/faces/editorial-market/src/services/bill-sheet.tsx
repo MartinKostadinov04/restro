@@ -26,6 +26,13 @@ export function BillSheet() {
   // The POS's own amounts are signed: a waiter's discount line is negative (#293, DA-8).
   const money = (minor: number) => paySignedMoney(minor, table?.currency ?? 'EUR', locale)
   const paidLines = table?.paidLines ?? []
+  // A round the POS took after the bill was last read is not on this bill yet.
+  const readAt = table?.readAt
+  const roundPending =
+    readAt !== undefined &&
+    (state.sentOrders ?? []).some(
+      (sent) => sent.state === 'added' && sent.unpaid !== true && sent.sentAt > readAt,
+    )
   // The POS's own lines are the bill where the host has no record of rounds (the guest page's host
   // has none); where it has, the rounds are the same lines with their status and who ordered them.
   const tableLines =
@@ -64,7 +71,14 @@ export function BillSheet() {
   return (
     <div className="ro-sheet" data-design-part="bill">
       <p className="rm-overlay-intro">{words.tabIntro}</p>
-      {table === null || rounds.length > 0 ? null : (
+      {table === null || rounds.length > 0 ? null : roundPending ? (
+        // A round the guests sent that the last reading of the bill does not hold yet: the
+        // freshness line would present a total without it as current (P15). The round is never
+        // added to the total here (D72); the line goes once a reading includes it.
+        <p className="ro-allergy" data-slot="bill.pending">
+          {w.roundPending}
+        </p>
+      ) : (
         <p className="ro-allergy" data-slot="bill.updated">
           {table.complete ? w.updated(table.readAgoSeconds) : w.stale(table.readAgoSeconds)}
         </p>

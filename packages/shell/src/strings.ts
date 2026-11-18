@@ -167,6 +167,8 @@ export interface ServiceStrings {
   readonly lastOrdersAt: (time: string) => string
   /** After last orders, and all night on a closed weekday (#82). */
   readonly orderingClosedTonight: string
+  /** The party was moved to another table by staff: the bill stayed at `table` (P22). No amount. */
+  readonly billStayed: (table: string) => string
   /** Before the venue opens for phones (#82). */
   readonly orderingOpensAt: (time: string) => string
   /** The phone has not reached the server for a while (a weak signal): nothing new was sent. */
@@ -264,6 +266,8 @@ export interface PayingStrings {
   readonly billTitle: string
   readonly updated: (seconds: number) => string
   readonly stale: (seconds: number) => string
+  /** Above the bill while a round the guests sent has not reached it yet (P15). */
+  readonly roundPending: string
   readonly beingPaid: string
   readonly leftToPay: string
   readonly emptyBill: string
@@ -563,6 +567,8 @@ const EN: Strings = {
     orderingClosed: 'This table is not taking orders from phones right now.',
     lastOrdersAt: (time) => `Last orders at ${time}`,
     orderingClosedTonight: 'Ordering from phones has closed for tonight',
+    billStayed: (table) =>
+      `Your bill stayed at ${table}. Ask your waiter or scan the code on your new table.`,
     orderingOpensAt: (time) => `Ordering from phones opens at ${time}`,
     offline: 'Weak connection. Nothing new was sent yet, we keep trying.',
     locationConsent: (venue) =>
@@ -651,6 +657,7 @@ const EN: Strings = {
       billTitle: 'Your table’s bill',
       updated: (seconds) => `Updated ${seconds} s ago`,
       stale: (seconds) => `Not up to date · updated ${seconds} s ago`,
+      roundPending: 'The latest order is still reaching your bill',
       beingPaid: 'Being paid',
       leftToPay: 'Left to pay',
       emptyBill: 'Nothing on your bill yet',
@@ -922,6 +929,8 @@ const BG: Strings = {
     orderingClosed: 'Тази маса не приема поръчки от телефон в момента.',
     lastOrdersAt: (time) => `Последни поръчки в ${time}`,
     orderingClosedTonight: 'Поръчките от телефон приключиха за тази вечер',
+    billStayed: (table) =>
+      `Сметката ви остана на ${table}. Попитайте сервитьора или сканирайте кода на новата маса.`,
     orderingOpensAt: (time) => `Поръчките от телефон започват в ${time}`,
     offline: 'Слаба връзка. Нищо ново не е изпратено още, продължаваме да опитваме.',
     locationConsent: (venue) =>
@@ -1013,6 +1022,7 @@ const BG: Strings = {
       billTitle: 'Сметката на масата',
       updated: (seconds) => `Обновено преди ${seconds} сек.`,
       stale: (seconds) => `Не е актуална · обновена преди ${seconds} сек.`,
+      roundPending: 'Последната поръчка още влиза в сметката',
       beingPaid: 'Плаща се',
       leftToPay: 'За плащане',
       emptyBill: 'Все още няма нищо в сметката',

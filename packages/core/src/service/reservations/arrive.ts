@@ -48,6 +48,7 @@ import {
   endSitting,
   newGuests,
   openTableFor,
+  type SittingEndReason,
   sittingsWithOpenPayment,
   tablesAtTheDoor,
 } from '../sittings'
@@ -365,6 +366,7 @@ export async function openPartyTables(
 export async function closePartyTables(
   stx: ServiceTx,
   tableIds: readonly string[],
+  reason: SittingEndReason = 'staff_closed',
 ): Promise<TableWorkResult> {
   if (tableIds.length === 0) return { ok: true, work: noWork }
   const door = await tablesAtTheDoor(stx, tableIds)
@@ -398,7 +400,7 @@ export async function closePartyTables(
   )
   const closed: string[] = []
   for (const [tableId, sitting] of open) {
-    await endSitting(stx, sitting, 'staff_closed')
+    await endSitting(stx, sitting, reason)
     closed.push(tableId)
   }
   return { ok: true, work: { ...noWork, closed } }

@@ -84,6 +84,7 @@ export function Photo({
   className,
   loading = 'lazy',
   part,
+  onError,
 }: {
   readonly image: ViewImage
   readonly assetBase: string
@@ -94,6 +95,8 @@ export function Photo({
   readonly loading?: 'eager' | 'lazy'
   /** The part of the design this is (`data-design-part`, D130). */
   readonly part?: string
+  /** Called when the file does not load: the dish page then drops its photo area (P14). */
+  readonly onError?: () => void
 }) {
   const { objectPosition, ...attributes } = imageAttributes(image, assetBase, sizes)
   return (
@@ -106,6 +109,7 @@ export function Photo({
       lang={image.alt === null ? undefined : langOf(image.alt, page)}
       style={{ objectPosition }}
       loading={loading}
+      onError={onError}
     />
   )
 }

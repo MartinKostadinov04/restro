@@ -6,7 +6,7 @@
 // a note, a quantity and "Add to bag" (services/dish-order.tsx).
 
 import type { ViewItem } from '@restro/shell'
-import { Fragment } from 'react'
+import { Fragment, useState } from 'react'
 
 import { InfoIcon } from './icons'
 import { langOf, localeLang } from './model'
@@ -28,9 +28,11 @@ function DishBody({
   const { locale, strings, assetBase } = ctx
   const services = useServices()
   const ordering = services?.canOrder(item) === true
+  // A photo that does not load leaves a dark empty box: the page then reads as a dish without one.
+  const [photoFailed, setPhotoFailed] = useState(false)
   return (
     <div className="rm-detail" data-design-part="dish">
-      {item.image !== null ? (
+      {item.image !== null && !photoFailed ? (
         <div className="rm-detail-photo" data-design-part="dish.photo">
           <Photo
             image={item.image}
@@ -38,6 +40,7 @@ function DishBody({
             page={locale}
             sizes="min(100vw, 640px)"
             loading="eager"
+            onError={() => setPhotoFailed(true)}
           />
         </div>
       ) : null}

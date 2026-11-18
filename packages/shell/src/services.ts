@@ -429,6 +429,11 @@ export interface TableBillPartView {
 export interface TableBillView {
   /** Seconds since the reading: "Updated 12 s ago". */
   readonly readAgoSeconds: number
+  /**
+   * When the reading was made, in milliseconds by the phone's clock (the clock of a sent order's
+   * `sentAt`, so the two compare). Absent where the host does not say.
+   */
+  readonly readAt?: number
   /** False when the latest reading failed: the last good bill is drawn marked not up to date. */
   readonly complete: boolean
   readonly currency: Currency
@@ -696,6 +701,11 @@ export interface ServiceState {
      * code on the table. The face's words for `closed` come from `orderingClosedText`.
      */
     readonly retired?: true
+    /**
+     * Staff moved this table's party to another table (P22): the sitting here ended, and the bill
+     * stayed at this table. The page says where the bill is and shows no amount.
+     */
+    readonly movedAway?: true
     readonly notesAndOptions?: boolean
     /**
      * Pay-first at this table (#113): `on`, a pay-first line goes with the Send and is paid there;

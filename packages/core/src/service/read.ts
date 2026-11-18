@@ -134,6 +134,12 @@ export interface TableStateRead {
   }
   /** The open sitting, or null when the table is not open for phones. */
   readonly sitting: { readonly id: string; readonly openedAt: Date } | null
+  /**
+   * True when the table is closed and its last sitting ended because staff moved the party to
+   * another table, within the last few hours (P22): the phone says where the bill stayed. Absent
+   * is false.
+   */
+  readonly movedAway?: boolean
   /** The open sitting's order, or null before its first write. Lines are the guest API's shape. */
   readonly order: {
     readonly lines: readonly unknown[]
@@ -343,6 +349,24 @@ export async function readTableState(
       .select({ id: sittings.id, openedAt: sittings.openedAt })
       .from(sittings)
       .where(and(eq(sittings.tableId, table.id), isNull(sittings.endedAt)))
+    // A closed table whose last sitting ended with the party moved elsewhere (P22): the phone that
+    // was on it is told where the bill stayed. Bounded to the hours of one night out.
+    const [lastEnd] =
+      sitting !== undefined
+        ? []
+        : await tx
+            .select({ reason: sittings.endReason, endedAt: sittings.endedAt })
+            .from(sittings)
+            .where(
+              and(
+                eq(sittings.tableId, table.id),
+                isNotNull(sittings.endedAt),
+                sql`${sittings.endedAt} > now() - interval '6 hours'`,
+              ),
+            )
+            .orderBy(desc(sittings.endedAt))
+            .limit(1)
+    const movedAway = lastEnd?.reason === 'party_moved'
     const [order] =
       sitting === undefined
         ? []
@@ -551,6 +575,7 @@ export async function readTableState(
         codeGeneration: table.codeGeneration,
       },
       sitting: sitting ?? null,
+      ...(movedAway ? { movedAway: true } : {}),
       order:
         order === undefined
           ? null

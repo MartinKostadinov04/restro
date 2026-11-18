@@ -156,6 +156,11 @@ export interface GuestTableState {
    */
   readonly ordering: {
     readonly state: 'on' | 'paused' | 'closed'
+    /**
+     * Staff moved the party away from this table (P22): its bill stayed here. The phone says so
+     * and shows no amount. Absent otherwise; no ids, the table's own label is in `table`.
+     */
+    readonly movedAway?: true
     readonly notesAndOptions: boolean
     /** A tip can be given when paying here (D127: the POS records it on the receipt); else none. */
     readonly tips: boolean
@@ -549,6 +554,7 @@ export function projectGuestState(
     table: { label: read.table.label },
     ordering: {
       state: read.sitting === null ? 'closed' : read.pauses.length > 0 ? 'paused' : 'on',
+      ...(read.sitting === null && read.movedAway === true ? { movedAway: true as const } : {}),
       notesAndOptions: read.notesAndOptions,
       tips: read.tips,
       receiptEmail: read.receiptEmail,
