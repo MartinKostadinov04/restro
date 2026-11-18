@@ -258,6 +258,8 @@ test('Publish: the confirmation lists the whole menu, then "Version 1 is live" a
   ])
   await guest.waitForLoadState()
   expect(new URL(guest.url()).pathname).toBe(GUEST_ADDRESS)
+  // The venue's own language opens first (P11); the checks below read the English menu.
+  await guest.goto(`${GUEST_ADDRESS}?lang=en`)
   await expect(guest.getByRole('heading', { level: 1 })).toHaveText('Publish Club')
   await expect(guest.locator('[data-slot="item.name"]')).toHaveText([
     'Negroni',
