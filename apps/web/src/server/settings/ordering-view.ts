@@ -3,9 +3,7 @@
 // when it was last set: the Log's `settings.changed` entry that names it (nothing else keeps the
 // time, and no table is added). Reads only; plain data safe for the browser.
 import {
-  connectorLabel,
   hasPrivacyNotice,
-  isIntegrationKind,
   type LegalDetails,
   type OrderingSettings,
   readGuestFeatures,
@@ -18,6 +16,7 @@ import { and, desc, eq, sql } from 'drizzle-orm'
 
 import { tillVenueLinks } from '../../connectors/till-venues'
 import { getPool } from '../db'
+import { tillLabelOfKind } from '../till-label'
 
 /** Everything the two sections draw. */
 export interface OrderingView {
@@ -87,7 +86,7 @@ async function tillLabelOfVenue(tenantId: string, venueId: string): Promise<stri
       .limit(1),
   )
   if (row === undefined) return ''
-  return isIntegrationKind(row.kind) ? connectorLabel(row.kind) : row.kind
+  return tillLabelOfKind(row.kind)
 }
 
 /** The sections' view of a venue for a person who does or doesn't hold `settings.guards`. */

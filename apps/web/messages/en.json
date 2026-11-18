@@ -2800,7 +2800,7 @@
     "g_mine_removed": "Taken off your own list.",
     "g_note": "Note",
     "g_email_opt": "Email (optional)",
-    "g_counts": "Came {n, plural, =0 {never} one {once} other {# times}}, {m, plural, =0 {never missed} one {missed once} other {missed # times}}, at your club.",
+    "g_counts": "{n, plural, =0 {Has never come} one {Has come once} other {Has come # times}}, {m, plural, =0 {has never missed} one {missed once} other {missed # times}}, at your club.",
     "g_counts_note": "A rough count for the hostess, not a record of money.",
     "g_bookings": "Recent bookings",
     "g_no_bookings": "No bookings yet.",
