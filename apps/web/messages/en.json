@@ -1716,7 +1716,9 @@
   },
   "tablePage": {
     "title": "This table code is not active.",
-    "text": "Ask the staff."
+    "text": "Ask the staff.",
+    "unavailableTitle": "The menu can't open right now.",
+    "unavailableText": "Try again in a minute."
   },
   "design": {
     "readOnly": "Only owners and admins can change the design. You can see how it looks.",

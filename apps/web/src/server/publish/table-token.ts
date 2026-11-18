@@ -50,9 +50,24 @@ export async function getTokenSource(
 
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`)
 
-/** The "not active" page: both languages, system colours, no venue data, nothing for a search engine. */
+type PageWords = { title: string; text: string }
+
+const NOT_ACTIVE: Record<'bg' | 'en', PageWords> = { bg: bg.tablePage, en: en.tablePage }
+const UNAVAILABLE: Record<'bg' | 'en', PageWords> = {
+  bg: { title: bg.tablePage.unavailableTitle, text: bg.tablePage.unavailableText },
+  en: { title: en.tablePage.unavailableTitle, text: en.tablePage.unavailableText },
+}
+
+/**
+ * The "not active" page: both languages, system colours, no venue data, nothing for a search
+ * engine. For a code that leads nowhere (404) only: a 503 or 429 says something else (#442).
+ */
 export function inactivePageHtml(): string {
-  const block = (lang: string, message: { title: string; text: string }) =>
+  return pageHtml(NOT_ACTIVE)
+}
+
+function pageHtml(words: Record<'bg' | 'en', PageWords>): string {
+  const block = (lang: string, message: PageWords) =>
     `<section lang="${lang}"><h1>${escapeHtml(message.title)}</h1><p>${escapeHtml(message.text)}</p></section>`
   return `<!doctype html>
 <html lang="bg">
@@ -60,7 +75,7 @@ export function inactivePageHtml(): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>${escapeHtml(bg.tablePage.title)} / ${escapeHtml(en.tablePage.title)}</title>
+<title>${escapeHtml(words.bg.title)} / ${escapeHtml(words.en.title)}</title>
 <style>
 :root { color-scheme: light dark; }
 body { margin: 0; min-height: 100dvh; display: grid; place-content: center; gap: 28px; padding: 24px; text-align: center; font: 16px/1.5 system-ui, sans-serif; background: Canvas; color: CanvasText; }
@@ -69,8 +84,8 @@ p { margin: 0; color: GrayText; }
 </style>
 </head>
 <body>
-${block('bg', bg.tablePage)}
-${block('en', en.tablePage)}
+${block('bg', words.bg)}
+${block('en', words.en)}
 </body>
 </html>
 `
@@ -84,11 +99,13 @@ const HEADERS = {
 }
 
 /**
- * The inactive page as a response: 404 (the code leads nowhere), 503 (the files cannot be read)
- * or 429 (the network tried too many wrong codes; `retryAfterSeconds` says for how long).
+ * The inactive page as a response: 404 (the code leads nowhere: "not active"), 503 (the files
+ * cannot be read) or 429 (the network tried too many wrong codes; `retryAfterSeconds` says for
+ * how long). The last two say the menu cannot open right now, the same words for both so a
+ * blocked network learns nothing about codes (#442).
  */
 export function inactivePage(status: 404 | 429 | 503 = 404, retryAfterSeconds?: number): Response {
-  return new Response(inactivePageHtml(), {
+  return new Response(pageHtml(status === 404 ? NOT_ACTIVE : UNAVAILABLE), {
     status,
     headers: {
       ...HEADERS,
