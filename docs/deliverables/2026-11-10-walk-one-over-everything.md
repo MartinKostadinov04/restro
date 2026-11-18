@@ -1,6 +1,6 @@
 # The one walk: how to open it (for Martin)
 
-> Set up 2026-11-10 by the lead, rebuilt 2026-11-11 on the merged line, refreshed 2026-11-18. Two addresses run side by side on this PC, each on its own branch, its own database and its own simulated POS, so nothing either of them does can reach the other — or your day-to-day setup on port 3000. Issue [#387](https://github.com/MartinKostadinov04/restro/issues/387).
+> Set up 2026-11-10 by the lead, rebuilt 2026-11-11 on the merged line, refreshed 2026-11-18 (twice: the commands are PowerShell now, which is what your terminal opens with). Two addresses run side by side on this PC, each on its own branch, its own database and its own simulated POS, so nothing either of them does can reach the other — or your day-to-day setup on port 3000. Issue [#387](https://github.com/MartinKostadinov04/restro/issues/387).
 
 ## The two addresses
 
@@ -25,6 +25,7 @@ Since 2026-11-11 the walk is **Club Biad Sofia**, not the old twelve-table Demo 
 - **7 menu sections, 31 items**, on the simulated POS
 - **a night already running**: 8 tables opened from phones, 3 bills, 4 rounds, two guests waiting on a waiter
 - **7 bookings** across the night's states, one of them cancelled, plus a blocked date
+- **the guest page opens in Bulgarian.** Since 11-18 the venue's own language comes before the phone's, and a guest who switches language has that remembered for this club alone. That order was a default another lead chose while you were away, so it is worth a look rather than a glance.
 - **6 staff to sign in as**, each with its own screens:
 
 | Sign in as | Role |
@@ -39,9 +40,11 @@ The password for all six is the local-only one in `.env.example` (`DEV_ADMIN_PAS
 
 ## Starting and stopping
 
+Every block below runs in **PowerShell**, which is what the terminal here opens with. Where a block is anything else, it says so.
+
 **The database first.** One embedded Postgres on port 54329 serves both walks and your own work. From `E:\Restro`:
 
-```bash
+```powershell
 pnpm db:local
 ```
 
@@ -49,11 +52,11 @@ It brings its own Postgres — **Docker is not needed for any of this**. `docker
 
 **Then the walk**, two tabs from `E:\Restro\.claude\worktrees\walk-all`:
 
-```bash
+```powershell
 pnpm sim:serve --scenario club-biad --port 4020
 ```
 
-```bash
+```powershell
 $env:PORT = '3200'; pnpm dev
 ```
 
@@ -61,17 +64,39 @@ The app takes about 70 seconds to say `Ready`. Ctrl-C in a tab stops that piece.
 
 ## Rebuilding it from scratch
 
-Do this whenever `or/foundation` has moved since the walk was last seeded — otherwise you are accepting last week's code. From `E:\Restro\.claude\worktrees\walk-all`, with the branch pulled and `pnpm install` done:
+**The walk needs this before you open it.** It was seeded on `or/foundation` at 9f46ef20, and the branch has moved on to 0e3c253f since — eight merges, a new migration among them. Opening it as it stands means walking last week's code. Ask me to rebuild it, or run the four blocks below yourself.
 
-```bash
-set -a; . ./.env.local; set +a; pnpm db:migrate && pnpm db:roles && pnpm db:seed:demo
+All of them are **PowerShell**, from `E:\Restro\.claude\worktrees\walk-all`, with the branch pulled and `pnpm install` done. Stop the walk's `pnpm dev` first — it holds the database open.
+
+**One.** Make the database. Nothing else creates it, and this throws away the old one, which is what a rebuild means. `psql` is installed but not on your path, so it needs its full name:
+
+```powershell
+& "C:/Program Files/PostgreSQL/17/bin/psql.exe" "postgres://postgres:postgres@localhost:54329/postgres" -c "DROP DATABASE IF EXISTS restro_walk_all" -c "CREATE DATABASE restro_walk_all"
+```
+
+**Two.** Load the walk's settings into this terminal:
+
+```powershell
+Get-Content .env.local | ForEach-Object { if ($_ -match '^\s*([^#=\s]+)\s*=\s*(.*)$') { Set-Item "env:$($matches[1])" $matches[2].Trim().Trim('"') } }
+```
+
+**Three.** Clear the published files, so the guest pages are rebuilt rather than reused:
+
+```powershell
+Remove-Item -Recurse -Force .local\cdn-walk -ErrorAction SilentlyContinue; New-Item -ItemType Directory .local\cdn-walk | Out-Null
+```
+
+**Four.** The three steps, in order:
+
+```powershell
+pnpm db:migrate; if ($?) { pnpm db:roles }; if ($?) { pnpm db:seed:demo }
 ```
 
 Three things that will bite whoever rebuilds it:
 
-1. **Load `.env.local` first.** `pnpm db:migrate`, `pnpm db:roles` and the seed read the process environment only, so without the `set -a` line they all fail with "DATABASE_URL_OWNER is not set" however good your `.env.local` is.
-2. **Quote the Cyrillic values** in `.env.local`. An unquoted `WORKER_PAYMENTS_SIM_ACCOUNT_NAME` breaks the line above with a command-not-found error.
-3. **Making the database.** `pnpm db:seed:demo` does not create it. `CREATE DATABASE restro_walk_all` against `postgres://postgres:postgres@localhost:54329/postgres` first, then migrate.
+1. **Block two is not optional.** `pnpm db:migrate` and `pnpm db:roles` read their settings from the terminal's own environment and nowhere else, so without it they both stop at "DATABASE_URL_OWNER is not set" however good your `.env.local` is. The seed is the exception — it loads the file itself — which is why the error only ever appears on the first two steps.
+2. **`&&` does not work in this PowerShell.** `pnpm db:migrate && pnpm db:roles` fails outright on Windows PowerShell 5.1; that is what the `if ($?)` is for, and it also stops the chain when a step fails instead of seeding onto a half-migrated database.
+3. **Quote the Cyrillic values** in `.env.local`. `WORKER_PAYMENTS_SIM_ACCOUNT_NAME` unquoted breaks the loader in block two.
 
 The seed prints every address it made, including the guest menu and the QR sheet, and it is safe to run again — it rebuilds the club from nothing each time.
 
@@ -81,8 +106,7 @@ Each walk's `PUBLIC_BASE_URL` is this PC's address on your network with its own 
 
 ## Known blemishes, as of 2026-11-18
 
-Not faults in what you are walking — things to expect so they do not distract you.
+Not faults in what you are walking — things to expect so they do not distract you. The English guest page that was here on 11-11 is gone: #422 put the venue's own language first, so a rebuilt walk opens in Bulgarian.
 
-- **The guest page opens in English.** The club is Bulgarian; the guest menu greets you with BOTTLES, COCKTAILS, SHOTS. Raised with Martin 11-11, no ruling yet.
 - **Every item wears a NEW badge**, because the whole menu arrived in one sync.
 - **Four bottles show "1 проблем"** — the simulated POS gives them no public name, so [D75](../decisions/D75.md)'s warning fires. Correct behaviour, noisy in a demo.
