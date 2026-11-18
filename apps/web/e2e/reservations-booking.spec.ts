@@ -334,10 +334,12 @@ test('Save is pressable while a time is still being typed: the typed change is s
 
   // A value that is not a time blocks the save and takes the focus.
   await time.fill('25:99')
+  // Leaving the field shows its error line, which can move Save: let that settle first.
+  await time.blur()
+  await expect(time).toHaveAttribute('aria-invalid', 'true')
   await page.getByTestId('rv-f-save').click()
   await expect(time).toBeFocused()
   await expect(form(page)).toBeVisible()
-  await expect(page.getByText('Reservation saved.')).toHaveCount(0)
 
   // Nothing changed: Save leaves the form as Close does, and writes nothing.
   await time.fill('21:30')

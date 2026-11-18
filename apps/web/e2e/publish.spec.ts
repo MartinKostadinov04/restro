@@ -545,6 +545,9 @@ test('Settings › Publish: Save is pressable while the time is still being type
 
   // A value that is not a time blocks the save and takes the focus.
   await time.fill('99:99')
+  // Leaving the field shows its error line, which moves Save down: let that settle first.
+  await time.blur()
+  await expect(time).toHaveAttribute('aria-invalid', 'true')
   await page.getByTestId('automation-save').click()
   await expect(time).toBeFocused()
   await expect(page.getByTestId('automation-saved')).toHaveCount(0)
