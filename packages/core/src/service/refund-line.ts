@@ -60,7 +60,7 @@ export const REFUND_LINE_PERMISSION = 'alerts.answer' as const
 /** The owners' permission, which also switches the route back on (D125 2.2). */
 const ROUTE_PERMISSION = 'settings.connect_payments' as const
 
-/** The alerts of the tripwire are for owners and managers. */
+/** The alerts of the nightly alarm and of a stray refund are for owners and managers. */
 const ALERT_PERMISSION = 'money.follow_up' as const
 
 const refundId = idSchema('rf')
@@ -460,9 +460,10 @@ export function paymentRefundSent() {
 }
 
 /**
- * `payment_account.refund_route_on` (an owner): switches Restro's own refunds back on after the
- * tripwire or a stray refund switched them off, and closes the alert about it. The venue's own
- * provider dashboard never stopped working.
+ * `payment_account.refund_route_on` (an owner): switches Restro's own refunds back on after a
+ * stray refund (one made with Restro's key that has no row of ours) stopped them, and closes the
+ * alert about it. Nothing else ever stops the route: the nightly alarm blocks nothing. The venue's
+ * own provider dashboard never stopped working.
  */
 export function paymentRefundRouteOn() {
   return defineCommand({

@@ -13,9 +13,10 @@
 //        (`payment.observe`), which is the only thing that makes the refund "refunded" (D72: no
 //        local success).
 //
-// It never blocks a refund staff confirmed: the tripwire (`refund-tripwire.ts`) only stops new taps,
-// so a row already written is sent even when the route has been switched off since. Nothing here
-// logs an amount, a provider id or a key.
+// It never blocks a refund staff confirmed. The nightly alarm (`refund-tripwire.ts`) blocks
+// nothing at all. What stops new taps is the route being switched off, and only a stray refund (one
+// made with Restro's key that has no row of ours) does that; a row already written is sent even
+// then. Nothing here logs an amount, a provider id or a key.
 //
 // One run at a time per worker (`retryLimit: 0`, ticks do not overlap for long): two runs asking
 // for one row use the same key, and the provider refunds once.

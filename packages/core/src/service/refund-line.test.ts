@@ -4,7 +4,8 @@
 // a line, half-up); the bounds hold (a captured payment, a paid line, once per line, tonight, an
 // owner's switch); the worker's answer and the provider's list make it "sent" and then "confirmed"
 // and never a local success; a refund carrying Restro's stamp with no row of ours switches the
-// route off; and the tripwire never blocks the refund just written. Skipped without a database.
+// route off; and the nightly alarm blocks nothing, however many refunds a night holds. Skipped
+// without a database.
 import { createHash, randomUUID } from 'node:crypto'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -529,7 +530,7 @@ describe.skipIf(!hasDatabase)('"Not served" (as the restro_app role)', () => {
     expect(await rowsOf(target.id)).toHaveLength(1)
   })
 
-  it('raises the alarm once, at three refunds past 1 % and short of the switch-off', async () => {
+  it('raises the alarm once a night at three refunds past 1 %, and the route stays on', async () => {
     await account()
     await world.owner.query(
       "delete from restro.alerts where venue_id = $1 and kind like 'payment_refund_%'",
