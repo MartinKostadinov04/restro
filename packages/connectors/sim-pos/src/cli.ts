@@ -39,6 +39,18 @@ function baseUrl(): string {
   return url.replace(/\/$/, '')
 }
 
+/** The address for messages: without any `user:pass@` part, so a password never reaches a log. */
+function shownUrl(): string {
+  try {
+    const url = new URL(baseUrl())
+    url.username = ''
+    url.password = ''
+    return url.href.replace(/\/$/, '')
+  } catch {
+    return baseUrl().replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, '$1')
+  }
+}
+
 async function control(path: string, body: unknown): Promise<unknown> {
   const headers: Record<string, string> = { 'content-type': 'application/json' }
   const token = process.env.SIM_POS_CONTROL_TOKEN
@@ -51,7 +63,7 @@ async function control(path: string, body: unknown): Promise<unknown> {
       body: JSON.stringify(body),
     })
   } catch {
-    throw new Error(`no simulator at ${baseUrl()}: start it with pnpm sim:serve`)
+    throw new Error(`no simulator at ${shownUrl()}: start it with pnpm sim:serve`)
   }
   const data = (await response.json().catch(() => ({}))) as { error?: string }
   if (!response.ok) throw new Error(data.error ?? `HTTP ${response.status}`)
@@ -63,7 +75,7 @@ async function main(argv: readonly string[]): Promise<void> {
   // One line saying which simulator the command means, on stderr so a result stays clean to parse.
   // `serve` says its own address; `help` and no command touch nothing.
   if (command !== undefined && command !== 'serve' && command !== 'help') {
-    console.error(`sim-pos: using ${baseUrl()}`)
+    console.error(`sim-pos: using ${shownUrl()}`)
   }
   switch (command) {
     case 'serve': {
