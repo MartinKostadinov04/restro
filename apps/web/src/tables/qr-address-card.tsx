@@ -13,8 +13,18 @@ import { Button } from '@/components/ui/button'
 import { FormSection } from '@/components/ui/form-section'
 import type { TablesView } from '@/server/tables/view'
 
-export function QrAddressCard({ view }: { view: TablesView }) {
+export function QrAddressCard({
+  view,
+  codesUnavailable = false,
+  onRetry,
+}: {
+  view: TablesView
+  /** The worker could not give the codes (#441): the loading line gives way to this and Try again. */
+  codesUnavailable?: boolean
+  onRetry?: () => void
+}) {
   const t = useTranslations('tables.address')
+  const tTables = useTranslations('tables')
   const testAddress =
     view.sample === null || view.baseUrl === null
       ? null
@@ -67,13 +77,36 @@ export function QrAddressCard({ view }: { view: TablesView }) {
                 </a>
               </Button>
             )}
-            <span className="text-xs text-muted-foreground">
-              {view.sample !== null
-                ? t('testLinkHint')
-                : view.coded > 0
-                  ? t('testLinkLoading')
-                  : t('testLinkNone')}
-            </span>
+            {view.sample === null && view.coded > 0 && codesUnavailable ? (
+              <>
+                <span
+                  className="text-xs text-destructive"
+                  role="alert"
+                  data-testid="codes-unavailable"
+                >
+                  {tTables('codesUnavailable')}
+                </span>
+                {onRetry === undefined ? null : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={onRetry}
+                    data-testid="codes-retry"
+                  >
+                    {tTables('codesRetry')}
+                  </Button>
+                )}
+              </>
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                {view.sample !== null
+                  ? t('testLinkHint')
+                  : view.coded > 0
+                    ? t('testLinkLoading')
+                    : t('testLinkNone')}
+              </span>
+            )}
           </div>
         </div>
       </div>
