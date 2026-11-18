@@ -11,6 +11,7 @@
 //   pnpm sim-pos scenarios                     list the scenario files
 //   pnpm sim-pos ops                           list the waiter operations
 
+import { envLocalValue } from './control/env-file'
 import { parseFlags } from './control/flags'
 import { WAITER_OPS } from './control/ops'
 import { createSimServer, DEFAULT_PORT, TOKEN_HEADER } from './control/server'
@@ -23,10 +24,31 @@ const USAGE = `usage:
   sim-pos scenarios             list the scenario files
   sim-pos ops                   list the waiter operations
 
-environment: SIM_POS_URL (default http://127.0.0.1:${DEFAULT_PORT}), SIM_POS_CONTROL_TOKEN`
+environment: SIM_POS_URL (else .env.local of the working folder, else http://127.0.0.1:${DEFAULT_PORT}), SIM_POS_CONTROL_TOKEN`
 
+/**
+ * The simulator this folder talks to (walk P19): SIM_POS_URL from the environment, else from the
+ * working folder's `.env.local` (the folder `pnpm` was run in), else the default port.
+ */
 function baseUrl(): string {
-  return (process.env.SIM_POS_URL ?? `http://127.0.0.1:${DEFAULT_PORT}`).replace(/\/$/, '')
+  const folder = process.env.INIT_CWD ?? process.cwd()
+  const url =
+    process.env.SIM_POS_URL ??
+    envLocalValue(folder, 'SIM_POS_URL') ??
+    `http://127.0.0.1:${DEFAULT_PORT}`
+  return url.replace(/\/$/, '')
+}
+
+/** The address for messages: without any `user:pass@` part, so a password never reaches a log. */
+function shownUrl(): string {
+  try {
+    const url = new URL(baseUrl())
+    url.username = ''
+    url.password = ''
+    return url.href.replace(/\/$/, '')
+  } catch {
+    return baseUrl().replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, '$1')
+  }
 }
 
 async function control(path: string, body: unknown): Promise<unknown> {
@@ -41,7 +63,7 @@ async function control(path: string, body: unknown): Promise<unknown> {
       body: JSON.stringify(body),
     })
   } catch {
-    throw new Error(`no simulator at ${baseUrl()}: start it with pnpm sim:serve`)
+    throw new Error(`no simulator at ${shownUrl()}: start it with pnpm sim:serve`)
   }
   const data = (await response.json().catch(() => ({}))) as { error?: string }
   if (!response.ok) throw new Error(data.error ?? `HTTP ${response.status}`)
@@ -50,6 +72,11 @@ async function control(path: string, body: unknown): Promise<unknown> {
 
 async function main(argv: readonly string[]): Promise<void> {
   const [command, ...rest] = argv
+  // One line saying which simulator the command means, on stderr so a result stays clean to parse.
+  // `serve` says its own address; `help` and no command touch nothing.
+  if (command !== undefined && command !== 'serve' && command !== 'help') {
+    console.error(`sim-pos: using ${shownUrl()}`)
+  }
   switch (command) {
     case 'serve': {
       const flags = parseFlags(rest)

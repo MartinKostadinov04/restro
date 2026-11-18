@@ -510,15 +510,18 @@ export function GuestCard({
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
-        <Button
-          type="button"
-          variant="outline"
-          className="h-12"
-          data-testid="rv-g-close"
-          onClick={onClose}
-        >
-          {t('close')}
-        </Button>
+        {/* The desktop sheet has its own X; only the phone's drawer has no close of its own. */}
+        {isMobile ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-12"
+            data-testid="rv-g-close"
+            onClick={onClose}
+          >
+            {t('close')}
+          </Button>
+        ) : null}
       </>
     )
 

@@ -11,10 +11,12 @@ import {
   readOrderingSettings,
 } from '@restro/core'
 import { serviceHoursWindow } from '@restro/core/service'
-import { logEntries, type Venue, withTenant } from '@restro/db'
+import { integrations, logEntries, type Venue, withTenant } from '@restro/db'
 import { and, desc, eq, sql } from 'drizzle-orm'
 
+import { tillVenueLinks } from '../../connectors/till-venues'
 import { getPool } from '../db'
+import { tillLabelOfKind } from '../till-label'
 
 /** Everything the two sections draw. */
 export interface OrderingView {
@@ -30,6 +32,8 @@ export interface OrderingView {
   readonly canChange: boolean
   /** True for a venue with a POS: only then is there a connection to check before opening. */
   readonly hasPos: boolean
+  /** The name of the venue's POS (`{source}` in the hours text); '' for a venue without one. */
+  readonly tillLabel: string
   /** True while a night is open now: a change of hours then applies from now (plan §6). */
   readonly openNow: boolean
   /** When the spot was last set (ISO), or null. */
@@ -71,6 +75,20 @@ async function spotSetAt(tenantId: string, venueId: string): Promise<Date | null
   return row?.at ?? null
 }
 
+/** The admin's name of the POS serving the venue, or ''. */
+async function tillLabelOfVenue(tenantId: string, venueId: string): Promise<string> {
+  const [row] = await withTenant(getPool(), tenantId, (tx) =>
+    tx
+      .select({ kind: integrations.kind })
+      .from(tillVenueLinks)
+      .innerJoin(integrations, eq(integrations.id, tillVenueLinks.integrationId))
+      .where(eq(tillVenueLinks.venueId, venueId))
+      .limit(1),
+  )
+  if (row === undefined) return ''
+  return tillLabelOfKind(row.kind)
+}
+
 /** The sections' view of a venue for a person who does or doesn't hold `settings.guards`. */
 export async function loadOrderingView(input: {
   readonly tenantId: string
@@ -81,6 +99,7 @@ export async function loadOrderingView(input: {
   readonly email: string
 }): Promise<OrderingView> {
   const settings = readOrderingSettings(input.venue.settings)
+  const tillLabel = input.hasPos ? await tillLabelOfVenue(input.tenantId, input.venue.id) : ''
   const at = settings.spot === null ? null : await spotSetAt(input.tenantId, input.venue.id)
   return {
     venueId: input.venue.id,
@@ -90,6 +109,7 @@ export async function loadOrderingView(input: {
     currency: input.venue.currency,
     canChange: input.canChange,
     hasPos: input.hasPos,
+    tillLabel,
     openNow: serviceHoursWindow(
       settings,
       input.venue.timezone,

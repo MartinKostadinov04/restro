@@ -36,6 +36,7 @@ function view(
     currency: 'EUR',
     canChange: true,
     hasPos: true,
+    tillLabel: 'barsy',
     openNow: false,
     spotSetAt: null,
     email: 'owner@example.com',
@@ -259,6 +260,11 @@ describe('Settings › Ordering', () => {
       "Set the venue's spot, or nobody can order",
     )
     expect(screen.getByRole('button', { name: "I'm at the venue – use this spot" })).toBeTruthy()
+  })
+
+  it('shows no spot warning while the location check is off', () => {
+    renderWithIntl(<OrderingPanel view={view({ locationCheck: false })} />)
+    expect(screen.queryByTestId('ord-spot-unset')).toBeNull()
   })
 
   it('changes the cap in place: Enter saves through the money module, Escape cancels', async () => {

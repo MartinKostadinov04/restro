@@ -217,9 +217,12 @@ export function OrderingPanel({ view }: { view: OrderingView }) {
 
         <div className="grid grid-cols-1 gap-2 p-3">
           {settings.spot === null ? (
-            <p className="text-sm text-destructive" data-testid="ord-spot-unset">
-              {t('st_spot_unset')}
-            </p>
+            // Without the location check nothing needs the spot, so there is nothing to warn about.
+            settings.locationCheck ? (
+              <p className="text-sm text-destructive" data-testid="ord-spot-unset">
+                {t('st_spot_unset')}
+              </p>
+            ) : null
           ) : (
             <SpotLine view={view} />
           )}
