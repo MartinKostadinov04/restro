@@ -5,15 +5,26 @@
 // reservation group follows its display rules. Skipped without a database.
 import { randomUUID } from 'node:crypto'
 
+import { reservations } from '@restro/db'
+import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { z } from 'zod'
 
 import { hasDatabase } from '../apply/test-database'
-import { newId } from '../ids'
+import { idSchema, newId } from '../ids'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import type { ServiceContext } from './context'
+import { type CommandRegistry, defineCommand } from './definition'
+import { executeCommand } from './engine'
 import { applyService } from './index'
 import { readNight } from './night-read'
-import { noShowRatePercent, storedReservationCounts } from './reservation-counts'
+import {
+  nightCountsLockKey,
+  noShowRatePercent,
+  storedReservationCounts,
+} from './reservation-counts'
+import { lockReservation } from './reservations/rows'
+import { accepted } from './results'
 
 const NIGHT = '2026-01-12'
 
@@ -54,13 +65,14 @@ async function seedReservation(
   await world.owner.query(
     `insert into restro.reservations
        (id, tenant_id, venue_id, service_date, starts_at, kind, status, party_size, party_label,
-        seated_at, ended_at, deleted_at, source, actor, job_id)
+        seated_at, ended_at, deleted_at, queue_key, source, actor, job_id)
      values ($1, $2, $3, $4, ($4::date + time '20:00') at time zone 'UTC', $5, $6, $7, $8,
              case when $6 in ('seated', 'finished')
                   then ($4::date + time '20:10') at time zone 'UTC' end,
              case when $6 in ('finished', 'no_show', 'cancelled', 'not_seated')
                   then ($4::date + time '23:00') at time zone 'UTC' end,
-             case when $9 then now() end, 'staff', 'system', 'test-seed')`,
+             case when $9 then now() end, case when $6 = 'waiting' then 'a0' end,
+             'staff', 'system', 'test-seed')`,
     [
       id,
       world.tenantId,
@@ -298,5 +310,249 @@ describe.skipIf(!hasDatabase)('the door on the end of the night (as the restro_a
     })
     expect(night.full).toBe(false)
     expect(night.money).toBeNull()
+  })
+})
+
+describe.skipIf(!hasDatabase)('a night’s counts stay whole (as the restro_app role)', () => {
+  let world: ServiceWorld
+  let ownerId: string
+  const worker = (): ServiceContext => ({
+    tenantId: world.tenantId,
+    venueId: world.venueId,
+    origin: 'worker',
+    actor: { kind: 'system' },
+    jobId: `counts-test-${randomUUID()}`,
+  })
+  const staff = (): ServiceContext => ({
+    tenantId: world.tenantId,
+    venueId: world.venueId,
+    origin: 'staff',
+    actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
+    jobId: `req-${randomUUID()}`,
+    signedInAt: new Date(),
+  })
+  const sweep = async (day: string) =>
+    (await applyService(world.app, { type: 'reservation_night.sweep', serviceDate: day }, worker()))
+      .result
+  const close = async (day: string) =>
+    (await applyService(world.app, { type: 'service_day.close', serviceDate: day }, worker()))
+      .result
+  const totalsOf = async (day: string) =>
+    (
+      await world.owner.query<{ totals: Record<string, number> }>(
+        'select totals from restro.service_days where venue_id = $1 and service_date = $2',
+        [world.venueId, day],
+      )
+    ).rows[0]?.totals
+  const statusOf = async (id: string) =>
+    (
+      await world.owner.query<{ status: string }>(
+        'select status from restro.reservations where id = $1',
+        [id],
+      )
+    ).rows[0]?.status
+  const closeNight = async (day: string) => {
+    const result = await close(day)
+    if (result.status !== 'accepted') throw new Error(`close: ${result.code}`)
+  }
+  const remove = async (id: string) => {
+    const { result } = await applyService(
+      world.app,
+      { type: 'reservation.delete', reservationId: id as never },
+      staff(),
+    )
+    if (result.status !== 'accepted') throw new Error(`delete: ${result.code}`)
+  }
+  /** Waits until a backend is blocked on an advisory lock (not on a row). */
+  const untilBlockedOnAdvisoryLock = async () => {
+    const deadline = Date.now() + 10_000
+    for (;;) {
+      const { rows } = await world.owner.query<{ waiting: string }>(
+        `select count(*) as waiting from pg_locks
+          where locktype = 'advisory' and not granted`,
+      )
+      if (Number(rows[0]?.waiting) > 0) return
+      if (Date.now() > deadline) throw new Error('nothing ever waited for the advisory lock')
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+  }
+  /** Holds the night's counts lock on a connection of its own until `release` is called. */
+  const holdCountsLock = async (day: string) => {
+    const holder = await world.owner.connect()
+    await holder.query('begin')
+    await holder.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
+      nightCountsLockKey(world.venueId, day),
+    ])
+    return {
+      release: async () => {
+        await holder.query('commit')
+        holder.release()
+      },
+    }
+  }
+
+  beforeAll(async () => {
+    world = await openServiceWorld('door-whole')
+    ownerId = await world.addUser('owner')
+    await seedSettings(world, true)
+  })
+  afterAll(async () => {
+    await world?.close()
+  })
+
+  it('counts what the sweep left, when the close follows it in the same tick (D144)', async () => {
+    const day = '2026-01-20'
+    const reservedBooking = await seedReservation(world, day, 'booking', 'reserved', 4)
+    const seatedBooking = await seedReservation(world, day, 'booking', 'seated', 2)
+    const finishedBooking = await seedReservation(world, day, 'booking', 'finished', 5)
+    const waitingWalkIn = await seedReservation(world, day, 'walk_in', 'waiting', 3)
+    const seatedWalkIn = await seedReservation(world, day, 'walk_in', 'seated', 1)
+    await seedReservation(world, day, 'block', 'reserved', null)
+
+    // Before the sweep the night is not closable: its unfinished parties would freeze into the counts.
+    expect(await close(day)).toMatchObject({ status: 'refused', code: 'reservations_open' })
+    expect(await totalsOf(day)).toBeUndefined()
+
+    expect(await sweep(day)).toMatchObject({ status: 'accepted', details: { changed: true } })
+    await closeNight(day)
+
+    // The sweep's statuses: Seated → Finished, a booking still Reserved → No-show, Waiting → Not seated.
+    expect(await statusOf(reservedBooking)).toBe('no_show')
+    expect(await statusOf(seatedBooking)).toBe('finished')
+    expect(await statusOf(finishedBooking)).toBe('finished')
+    expect(await statusOf(waitingWalkIn)).toBe('not_seated')
+    expect(await statusOf(seatedWalkIn)).toBe('finished')
+    // And the counts are those statuses, not the ones before the sweep.
+    expect(await totalsOf(day)).toMatchObject({
+      resBookings: 3,
+      resWalkIns: 2,
+      resArrived: 3,
+      resBookingsArrived: 2,
+      resNoShows: 1,
+      resCancelled: 0,
+      resNotSeated: 1,
+      resCoversBooked: 11,
+      resCoversSeated: 8,
+    })
+  })
+
+  describe('which night a command re-rolls', () => {
+    const NIGHT_A = '2026-01-21'
+    const NIGHT_B = '2026-01-22'
+    const WRITER = z.strictObject({ type: z.literal('test.write'), reservationId: idSchema('rv') })
+    /** A writer that never sets `updated_at` to the transaction clock, and says (or not) which night it wrote. */
+    const registry = (touch: boolean): CommandRegistry => ({
+      'test.write': defineCommand({
+        schema: WRITER,
+        origins: ['worker'],
+        permission: null,
+        idempotency: 'by_nature',
+        handle: async (stx, command) => {
+          const row = await lockReservation(stx, command.reservationId)
+          if (row === null) throw new Error('the seeded row is gone')
+          await stx.tx
+            .update(reservations)
+            .set({ status: 'cancelled', updatedAt: new Date('2000-01-01T00:00:00Z') })
+            .where(eq(reservations.id, row.id))
+          if (touch) stx.touchNight(row.serviceDate)
+          return accepted(null)
+        },
+      }),
+    })
+    const write = async (touch: boolean, id: string) =>
+      (
+        await executeCommand(
+          world.app,
+          registry(touch),
+          { type: 'test.write', reservationId: id },
+          worker(),
+        )
+      ).status
+
+    it('counts a row whatever its updated_at says, because the command names its night', async () => {
+      const kept = await seedReservation(world, NIGHT_A, 'booking', 'finished', 2)
+      const changed = await seedReservation(world, NIGHT_A, 'booking', 'finished', 3)
+      await closeNight(NIGHT_A)
+      expect(await totalsOf(NIGHT_A)).toMatchObject({ resBookings: 2, resCancelled: 0 })
+      // The row is written with an `updated_at` from years ago: the old match on `now()` missed it.
+      expect(await write(true, changed)).toBe('accepted')
+      expect(await totalsOf(NIGHT_A)).toMatchObject({
+        resBookings: 2,
+        resArrived: 1,
+        resCancelled: 1,
+        resCoversSeated: 2,
+      })
+      expect(await statusOf(kept)).toBe('finished')
+    })
+
+    it('leaves the closed night alone when the command names no night', async () => {
+      // The contract the other way round: nothing is guessed from the rows or the clock.
+      const row = await seedReservation(world, NIGHT_B, 'booking', 'finished', 2)
+      await closeNight(NIGHT_B)
+      expect(await write(false, row)).toBe('accepted')
+      expect(await totalsOf(NIGHT_B)).toMatchObject({ resBookings: 1, resCancelled: 0 })
+    })
+  })
+
+  describe('one writer of a night’s counts at a time', () => {
+    it('makes a re-roll wait for the night’s counts lock, and finish once it is let go', async () => {
+      const day = '2026-01-23'
+      const a = await seedReservation(world, day, 'booking', 'finished', 2)
+      await seedReservation(world, day, 'booking', 'finished', 3)
+      await closeNight(day)
+
+      const holder = await holdCountsLock(day)
+      let done = false
+      const rerolled = remove(a).then(() => {
+        done = true
+      })
+      await untilBlockedOnAdvisoryLock()
+      expect(done).toBe(false)
+      expect(await totalsOf(day)).toMatchObject({ resBookings: 2 })
+      await holder.release()
+      await rerolled
+      expect(await totalsOf(day)).toMatchObject({ resBookings: 1, resCoversBooked: 3 })
+    })
+
+    it('is a lock of this venue and this date alone: another night’s writers go on', async () => {
+      const day = '2026-01-24'
+      const other = '2026-01-25'
+      const a = await seedReservation(world, day, 'booking', 'finished', 2)
+      await closeNight(day)
+      const holder = await holdCountsLock(other)
+      try {
+        await remove(a)
+      } finally {
+        await holder.release()
+      }
+      expect(await totalsOf(day)).toMatchObject({ resBookings: 0 })
+    })
+
+    it('makes the close wait for it too, so a booking in flight is not missed', async () => {
+      const day = '2026-01-26'
+      await seedReservation(world, day, 'booking', 'finished', 2)
+      const holder = await holdCountsLock(day)
+      let done = false
+      const closing = closeNight(day).then(() => {
+        done = true
+      })
+      await untilBlockedOnAdvisoryLock()
+      expect(done).toBe(false)
+      expect(await totalsOf(day)).toBeUndefined()
+      await holder.release()
+      await closing
+      expect(await totalsOf(day)).toMatchObject({ resBookings: 1 })
+    })
+
+    it('keeps both changes when two commands re-roll the same closed night together', async () => {
+      const day = '2026-01-27'
+      const a = await seedReservation(world, day, 'booking', 'finished', 2)
+      const b = await seedReservation(world, day, 'booking', 'finished', 3)
+      await seedReservation(world, day, 'booking', 'finished', 4)
+      await closeNight(day)
+      await world.saveTogether([() => remove(a), () => remove(b)])
+      // Each saw only its own change; the second counted on top of the first.
+      expect(await totalsOf(day)).toMatchObject({ resBookings: 1, resCoversBooked: 4 })
+    })
   })
 })

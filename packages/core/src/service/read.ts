@@ -33,7 +33,7 @@ import {
   waiterCalls,
   withTenant,
 } from '@restro/db'
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 
 import { resolveRoutesIn } from '../apply/menu-routes'
 import type { AreaId, BarId, TableId } from '../ids'
@@ -249,6 +249,33 @@ export interface TableStateUnchanged {
   readonly billReadAt: Date | null
 }
 
+/** How long after its sitting ended a closed table still tells a phone its party was moved (P22). */
+export const MOVED_AWAY_WINDOW_MS = 60 * 60_000
+
+/**
+ * The table's newest sitting that ended after `after` and not before `notBefore` (the moved-party
+ * window's two edges): the one read of a closed table's last end. Returned unrun, so a test can
+ * ask the database how it plans it (`sittings_table_id_ended_at_idx`, #427).
+ */
+export function lastEndedSittingQuery(
+  tx: ReadTx,
+  input: { readonly tableId: string; readonly after: Date; readonly notBefore: Date },
+) {
+  return tx
+    .select({ reason: sittings.endReason, endedAt: sittings.endedAt })
+    .from(sittings)
+    .where(
+      and(
+        eq(sittings.tableId, input.tableId),
+        isNotNull(sittings.endedAt),
+        gt(sittings.endedAt, input.after),
+        gte(sittings.endedAt, input.notBefore),
+      ),
+    )
+    .orderBy(desc(sittings.endedAt))
+    .limit(1)
+}
+
 /** The database's clock, to the millisecond. */
 async function databaseNow(tx: ReadTx): Promise<Date> {
   const clock = await tx.execute<{ ms: string }>(
@@ -284,6 +311,12 @@ export async function readTableState(
     readonly tableId: string
     readonly since?: number
     readonly tableCodeHash?: string
+    /**
+     * The moment the read is made at, for the moved-party window (P22): the database's clock when
+     * left out. Tests only; production leaves it out. A wrong value here shows a guest a stale
+     * "your party moved" message, so no caller outside a test may pass one.
+     */
+    readonly now?: Date
   },
 ): Promise<TableStateRead | TableStateUnchanged | null> {
   return withTenant(pool, input.tenantId, async (tx) => {
@@ -353,36 +386,28 @@ export async function readTableState(
       .where(and(eq(sittings.tableId, table.id), isNull(sittings.endedAt)))
     // A closed table whose last sitting ended with the party moved elsewhere (P22): the phone that
     // was on it is told where the bill stayed. Bounded to the last 60 minutes and never past the
-    // end of the venue's service day, so a new walk-in scanning the table later does not see it.
-    // (No index on `sittings.ended_at`: the table's own rows are few, the read is by `table_id`.)
+    // end of the venue's service day, so a new walk-in scanning the table later does not see it. Both
+    // edges are computed from one moment (`input.now`, else the database's clock), never from a
+    // second clock in SQL; `sittings_table_id_ended_at_idx` serves the lookup (#427).
+    const at = sitting !== undefined ? null : (input.now ?? (await databaseNow(tx)))
     const dayStart =
-      sitting !== undefined
+      at === null
         ? null
         : await tx
             .select({ timezone: venues.timezone, dayEndsAt: venues.serviceDayEndsAt })
             .from(venues)
             .where(eq(venues.id, table.venueId))
             .then(([venue]) =>
-              venue === undefined
-                ? null
-                : serviceDayStartsAt(new Date(), venue.timezone, venue.dayEndsAt),
+              venue === undefined ? null : serviceDayStartsAt(at, venue.timezone, venue.dayEndsAt),
             )
     const [lastEnd] =
-      sitting !== undefined || dayStart === null
+      at === null || dayStart === null
         ? []
-        : await tx
-            .select({ reason: sittings.endReason, endedAt: sittings.endedAt })
-            .from(sittings)
-            .where(
-              and(
-                eq(sittings.tableId, table.id),
-                isNotNull(sittings.endedAt),
-                sql`${sittings.endedAt} > now() - interval '60 minutes'`,
-                gte(sittings.endedAt, dayStart),
-              ),
-            )
-            .orderBy(desc(sittings.endedAt))
-            .limit(1)
+        : await lastEndedSittingQuery(tx, {
+            tableId: table.id,
+            after: new Date(at.getTime() - MOVED_AWAY_WINDOW_MS),
+            notBefore: dayStart,
+          })
     const movedAway = lastEnd?.reason === 'party_moved'
     const [order] =
       sitting === undefined

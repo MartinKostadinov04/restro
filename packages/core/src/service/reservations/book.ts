@@ -49,7 +49,7 @@ import {
   staffMemberOf,
   versionOf,
 } from './rows'
-import { isEndStatus, moveStatus, type ReservationStatus } from './status'
+import { createKindRefusal, isEndStatus, moveStatus, type ReservationStatus } from './status'
 
 /** What a reservation wants to hold, as the caller names it. */
 export interface SpotWish {
@@ -376,8 +376,9 @@ export async function createReservation(
   const night = await openNight(stx, command.serviceDate)
   if (!night.ok) return refuse(night.code)
   const block = command.kind === 'block'
-  if (block && command.status !== 'reserved') return refuse('kind_not_allowed')
-  if (command.status === 'waiting' && command.kind !== 'walk_in') return refuse('kind_not_allowed')
+  // A block is only Reserved, only a walk-in waits, and a walk-in is never Reserved (D141, D144).
+  const kindRefusal = createKindRefusal(command.kind, command.status)
+  if (kindRefusal !== null) return refuse(kindRefusal)
   if (block === (command.partySize != null)) return refuse('invalid_command')
   // The regulars are written by taking a booking, never by a walk-in's one tap at the door (D141).
   if (command.saveAsRegular === true && command.kind !== 'booking')
@@ -438,6 +439,7 @@ export async function createReservation(
     seatedAt: command.status === 'seated' ? stx.now : null,
     ...stx.provenance,
   })
+  stx.touchNight(command.serviceDate)
   await writeHeldSpots(stx, reservationId, spotIds, grant.stretch, endsAt !== null)
   await stx.log({
     kind: 'reservation.created',
@@ -605,6 +607,7 @@ export async function editReservation(
       updatedAt: sql`now()`,
     })
     .where(eq(reservations.id, reservation.id))
+  stx.touchNight(reservation.serviceDate)
   // What the entry says is which things moved, never what the guest's name or number became (D140,
   // D142): the booking names its guest by id, and the record is where the details live.
   await stx.log({
@@ -684,6 +687,7 @@ export async function cancelReservation(
       updatedAt: sql`now()`,
     })
     .where(eq(reservations.id, reservation.id))
+  stx.touchNight(reservation.serviceDate)
   await stx.log({
     kind: 'reservation.status',
     reservationId: reservation.id,
@@ -730,6 +734,7 @@ export async function deleteReservation(
       updatedAt: sql`now()`,
     })
     .where(eq(reservations.id, reservation.id))
+  stx.touchNight(reservation.serviceDate)
   await stx.log({
     kind: 'reservation.changed',
     reservationId: reservation.id,
@@ -789,6 +794,7 @@ export async function restoreReservation(
       updatedAt: sql`now()`,
     })
     .where(eq(reservations.id, reservation.id))
+  stx.touchNight(reservation.serviceDate)
   await stx.log({
     kind: 'reservation.restored',
     reservationId: reservation.id,
@@ -879,6 +885,7 @@ export async function copyReservation(
     madeBy: await staffMemberOf(stx),
     ...stx.provenance,
   })
+  stx.touchNight(command.serviceDate)
   await writeHeldSpots(stx, reservationId, spotIds, grant.stretch, endsAt !== null)
   await stx.log({
     kind: 'reservation.created',

@@ -102,6 +102,7 @@ export async function setReservationStatus(
       updatedAt: sql`now()`,
     })
     .where(eq(reservations.id, reservation.id))
+  stx.touchNight(reservation.serviceDate)
   await stx.log({
     kind: 'reservation.status',
     reservationId: reservation.id,
@@ -222,6 +223,7 @@ export async function putBackReservation(
       updatedAt: sql`now()`,
     })
     .where(eq(reservations.id, reservation.id))
+  stx.touchNight(reservation.serviceDate)
   await stx.log({
     kind: 'reservation.status',
     reservationId: reservation.id,
@@ -270,6 +272,7 @@ export async function undoPutBack(
       updatedAt: sql`now()`,
     })
     .where(eq(reservations.id, reservation.id))
+  stx.touchNight(reservation.serviceDate)
   await stx.log({
     kind: 'reservation.status',
     reservationId: reservation.id,
@@ -346,6 +349,7 @@ export async function reorderWaitingList(
     .update(reservations)
     .set({ queueKey, ...stx.provenance, updatedAt: sql`now()` })
     .where(eq(reservations.id, reservation.id))
+  stx.touchNight(reservation.serviceDate)
   await stx.log({
     kind: 'reservation.changed',
     reservationId: reservation.id,
@@ -446,6 +450,7 @@ export async function saveBlock(stx: ServiceTx, command: BlockSaveCommand): Prom
       updatedAt: sql`now()`,
     })
     .where(eq(reservations.id, reservation.id))
+  stx.touchNight(reservation.serviceDate)
   await stx.log({
     kind: 'reservation.changed',
     reservationId: reservation.id,

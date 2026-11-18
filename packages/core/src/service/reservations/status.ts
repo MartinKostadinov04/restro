@@ -233,6 +233,24 @@ export type ReservationKind = (typeof RESERVATION_KINDS)[number]
 export const ReservationKindSchema = z.enum(RESERVATION_KINDS)
 
 /**
+ * Whether a party of this kind may be **created** in this status: the one rule a new row must keep
+ * beside the table of moves (which governs a row that exists). A block is only ever Reserved (it
+ * holds a spot and nothing else); only a walk-in waits (a booking has a spot, not a place in the
+ * queue); and a walk-in is never Reserved: he is somebody standing at the door, with no booking to
+ * be reserved for (D141), and a row made so would count as a booking in the door's counts (D144).
+ * Answers `'kind_not_allowed'` for a combination none of those allows, else null.
+ */
+export function createKindRefusal(
+  kind: ReservationKind,
+  status: ReservationStatus,
+): 'kind_not_allowed' | null {
+  if (kind === 'block' && status !== 'reserved') return 'kind_not_allowed'
+  if (status === 'waiting' && kind !== 'walk_in') return 'kind_not_allowed'
+  if (kind === 'walk_in' && status === 'reserved') return 'kind_not_allowed'
+  return null
+}
+
+/**
  * The reason a reservation Cancelled by an undone arrival carries, so the one case where an undo
  * cannot put a party back reads as what it is wherever it is shown or logged.
  */
