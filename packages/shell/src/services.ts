@@ -603,6 +603,11 @@ export interface SentOrderView {
   }[]
   /** When it was sent, in milliseconds since the epoch by the phone's clock: for counting only. */
   readonly sentAt: number
+  /**
+   * When the round settled (the POS took it, or it ended), by the phone's clock like `sentAt`;
+   * null while it is in flight. The bill reading is compared with this, not with `sentAt` (P15).
+   */
+  readonly settledAt?: number | null
   /** When it was sent on the venue's clock ("19:42"): the time a guest shows a waiter. */
   readonly sentClock: string
   /** Sent from this phone: only this phone shows "Sending…" (D122 §5). */

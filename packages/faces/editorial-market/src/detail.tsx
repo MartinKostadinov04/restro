@@ -145,7 +145,7 @@ export function DishPage({
         ) : null
       }
     >
-      <DishBody item={item} ctx={ctx} onDone={onClose} />
+      <DishBody key={item.id} item={item} ctx={ctx} onDone={onClose} />
     </Overlay>
   )
 }

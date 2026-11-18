@@ -150,7 +150,6 @@ export function DishOrder({
           data-design-part="button"
           onClick={add}
           aria-disabled={!valid || shut}
-          disabled={shut}
         >
           <span>{words.addToBag}</span>
           {price === null ? null : <b key={price.minor}>{price.text}</b>}

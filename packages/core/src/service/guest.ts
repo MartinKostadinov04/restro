@@ -224,6 +224,8 @@ export interface GuestTableState {
     }[]
     /** Seconds since it was sent. */
     readonly sentAgoSeconds: number
+    /** Seconds since the round settled (the POS took it, or it ended); null while in flight. */
+    readonly settledAgoSeconds: number | null
     /** When it was sent on the venue's clock ("19:42"), for "Show this to your waiter". */
     readonly sentClock: string
     /** A pay-first round that is on the POS but whose card was not charged ("No receipt", #114). */
@@ -531,6 +533,8 @@ export function projectGuestState(
             ref: sent.reference,
             lines: sent.lines,
             sentAgoSeconds: seconds(now - sent.createdAt.getTime()),
+            settledAgoSeconds:
+              sent.settledAt === null ? null : seconds(now - sent.settledAt.getTime()),
             sentClock: clockIn(sent.createdAt, timeZone),
             ...(sent.unpaid ? { unpaid: true as const } : {}),
           },

@@ -23,11 +23,11 @@ const readingLine = () => Math.max(120, window.innerHeight * 0.3)
  * read is the last one whose top has passed the reading line, so it is the same going down and going
  * back up: no section has to be "inside" a band for the answer to move (S7).
  */
-function useActiveSection(ids: readonly string[]) {
+function useActiveSection(ids: readonly string[], filterKey: string) {
   const [active, setActive] = useState(ids[0] ?? '')
   const key = ids.join('|')
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for `ids`
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for `ids`; `filterKey` re-reads the page after the filters changed what is on it
   useEffect(() => {
     const elements = ids.flatMap((id) => {
       const element = document.getElementById(sectionDomId(id))
@@ -44,11 +44,24 @@ function useActiveSection(ids: readonly string[]) {
         // A section the filters emptied takes no room and is never the one being read.
         if (box.height > 0 && box.top <= line) current = id
       }
+      // At the very bottom of a page that scrolls, the last section on it is the one being read,
+      // even when it is too short to reach the reading line.
+      const root = document.documentElement
+      if (
+        root.scrollHeight > window.innerHeight &&
+        window.innerHeight + window.scrollY >= root.scrollHeight - 2
+      ) {
+        for (const { id, element } of elements) {
+          if (element.getBoundingClientRect().height > 0) current = id
+        }
+      }
       if (current !== undefined) setActive(current)
     }
     const schedule = () => {
       if (frame === 0) frame = window.requestAnimationFrame(read)
     }
+    // Read once now (on mount, and after a filter change), not only when the page scrolls.
+    schedule()
     window.addEventListener('scroll', schedule, { passive: true })
     window.addEventListener('resize', schedule)
     return () => {
@@ -56,7 +69,7 @@ function useActiveSection(ids: readonly string[]) {
       window.removeEventListener('resize', schedule)
       if (frame !== 0) window.cancelAnimationFrame(frame)
     }
-  }, [key])
+  }, [key, filterKey])
 
   return [active, setActive] as const
 }
@@ -73,7 +86,10 @@ export function CategoryRail({
   readonly label: string
   readonly page: Locale
 }) {
-  const [active, setActive] = useActiveSection(sections.map((section) => section.id))
+  const [active, setActive] = useActiveSection(
+    sections.map((section) => section.id),
+    `${[...filters.dietary].sort().join(',')};${[...filters.tags].sort().join(',')}`,
+  )
   const rail = useRef<HTMLElement>(null)
 
   // Keep the active link in the middle of the rail, without moving the page.

@@ -366,7 +366,7 @@ const DEPARTURES: readonly ((line: string, added: boolean) => boolean)[] = [
   // table closed for phones greys (P23, #420): each is its own new rule.
   (line, added) =>
     added && line.startsWith('.rm-overlay-panel.is-detail .rm-detail-copy:first-child {'),
-  (line, added) => added && line.startsWith('.rm .ro-plus:disabled {'),
+  (line, added) => added && line.startsWith('.rm .ro-plus[aria-disabled="true"] {'),
   // The confirmation's note states its size in pixels: 0.9 of the page's 16 px (no departure in look).
   (line) => /\.ro-confirm-note/.test(line) && property(line) === 'font-size',
   // The Privacy link of the location consent is drawn as a link in the sheet's writing (#173, D121).

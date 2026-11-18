@@ -752,6 +752,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
           ref: sent.ref,
           lines: sent.lines,
           sentAt: now - sent.sentAgoSeconds * 1000,
+          settledAt: sent.settledAgoSeconds == null ? null : now - sent.settledAgoSeconds * 1000,
           sentClock: sent.sentClock,
           mine: mine.has(sent.id),
           ...(sent.unpaid === true ? { unpaid: true as const } : {}),

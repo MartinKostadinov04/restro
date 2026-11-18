@@ -62,6 +62,40 @@ describe('P15: a round on its way to the bill', () => {
     )
   })
 
+  it('compares the reading with when the round settled, not when Send was tapped', () => {
+    // Sent 5 minutes ago, waited for approval, taken by the POS 1 minute ago; read 3 minutes ago.
+    drawFace(
+      fakeHost({
+        tableBill: bill(NOW - 180_000),
+        paying: payingOf(),
+        sentOrders: [
+          sentOrderOf('so_1', 'added', [{ item: hummus, qty: 1 }], {
+            sentAt: NOW - 300_000,
+            settledAt: NOW - 60_000,
+          }),
+        ],
+      }),
+    )
+    expect(openBill().querySelector('[data-slot="bill.pending"]')).not.toBeNull()
+  })
+
+  it('shows while a round is still in flight, and keeps the not-up-to-date warning beside it', () => {
+    drawFace(
+      fakeHost({
+        tableBill: { ...bill(NOW - 5000), complete: false },
+        paying: payingOf(),
+        sentOrders: [
+          sentOrderOf('so_1', 'awaiting_approval', [{ item: hummus, qty: 1 }], {
+            sentAt: NOW - 300_000,
+          }),
+        ],
+      }),
+    )
+    const sheet = openBill()
+    expect(sheet.querySelector('[data-slot="bill.pending"]')).not.toBeNull()
+    expect(sheet.querySelector('[data-slot="bill.updated"]')).not.toBeNull()
+  })
+
   it('goes once a reading after the round holds it', () => {
     drawFace(own(NOW - 1000, NOW - 8000))
     const sheet = openBill()
@@ -80,7 +114,8 @@ describe('P23 and S10: a table closed for phones', () => {
   it('greys "Add" on the item card, keeping its name', () => {
     drawFace(closed())
     const add = screen.getByRole('button', { name: 'Add Hummus' })
-    expect(add.hasAttribute('disabled')).toBe(true)
+    // Focusable, so its name and the reason stay reachable: aria-disabled and a click guard (P23).
+    expect(add.hasAttribute('disabled')).toBe(false)
     expect(add.getAttribute('aria-disabled')).toBe('true')
   })
 

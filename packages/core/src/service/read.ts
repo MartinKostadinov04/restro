@@ -33,7 +33,7 @@ import {
   waiterCalls,
   withTenant,
 } from '@restro/db'
-import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 
 import type { AreaId, BarId, TableId } from '../ids'
 import type { LegalDetails } from '../legal-details'
@@ -46,7 +46,7 @@ import {
 } from '../pay-first-settings'
 import { CARD_FLOOR_MINOR, readPayingSettings, smallestCardMinor } from '../paying-settings'
 import type { PayingMissing } from '../payment-connection'
-import { serviceDate } from '../service-day'
+import { serviceDate, serviceDayStartsAt } from '../service-day'
 import { nextOrderChangeAt, orderFromRow } from '../table-order'
 import type { CallWaiterKind } from '../theme'
 import { PAYMENT_LINES_NOT_BACK_KIND, PAYMENT_UNCONFIRMED_KIND } from './alert-rules'
@@ -350,9 +350,23 @@ export async function readTableState(
       .from(sittings)
       .where(and(eq(sittings.tableId, table.id), isNull(sittings.endedAt)))
     // A closed table whose last sitting ended with the party moved elsewhere (P22): the phone that
-    // was on it is told where the bill stayed. Bounded to the hours of one night out.
-    const [lastEnd] =
+    // was on it is told where the bill stayed. Bounded to the last 60 minutes and never past the
+    // end of the venue's service day, so a new walk-in scanning the table later does not see it.
+    // (No index on `sittings.ended_at`: the table's own rows are few, the read is by `table_id`.)
+    const dayStart =
       sitting !== undefined
+        ? null
+        : await tx
+            .select({ timezone: venues.timezone, dayEndsAt: venues.serviceDayEndsAt })
+            .from(venues)
+            .where(eq(venues.id, table.venueId))
+            .then(([venue]) =>
+              venue === undefined
+                ? null
+                : serviceDayStartsAt(new Date(), venue.timezone, venue.dayEndsAt),
+            )
+    const [lastEnd] =
+      sitting !== undefined || dayStart === null
         ? []
         : await tx
             .select({ reason: sittings.endReason, endedAt: sittings.endedAt })
@@ -361,7 +375,8 @@ export async function readTableState(
               and(
                 eq(sittings.tableId, table.id),
                 isNotNull(sittings.endedAt),
-                sql`${sittings.endedAt} > now() - interval '6 hours'`,
+                sql`${sittings.endedAt} > now() - interval '60 minutes'`,
+                gte(sittings.endedAt, dayStart),
               ),
             )
             .orderBy(desc(sittings.endedAt))

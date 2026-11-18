@@ -56,7 +56,6 @@ export function QuickAdd({ item }: { readonly item: ViewItem }) {
         data-slot="item.add"
         aria-label={words.addNamed(item.name.text)}
         aria-disabled={shut ? true : undefined}
-        disabled={shut}
         onClick={(event) => {
           if (shut) return
           if (needsChoices(item)) o.openDish(item.id, event.currentTarget)

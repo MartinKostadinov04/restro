@@ -36,6 +36,7 @@ export const editorialStyle = {
     'A label, a badge or a filter chip with no spaces wraps inside its box (today it clips, in the list layout, or widens the card).',
     'The payment number on the Paid screen and in the Payment confirmation is 48 px at the sheet’s full writing colour (today it is body text at 75 %, which a waiter cannot read across a bar).',
     'A payment that has not settled while its sheet is closed draws a slim line at the top of the menu (today nothing on the menu shows it).',
+    'The "Add" button of a table closed for phones greys, and stays focusable so its name and the reason are reachable (today it draws as if it worked).',
   ],
   values: {
     general: {
