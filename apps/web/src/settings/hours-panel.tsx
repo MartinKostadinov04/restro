@@ -216,7 +216,15 @@ function DayDialog({
   function submit() {
     if (validity.blocked()) return
     setTried(true)
-    if (day === null || !complete || problem !== null) return
+    if (day === null) return
+    if (!complete) {
+      // Save stays pressable (a field commits when left): say which time is still missing.
+      const missing =
+        opens === '' ? 'hours-opens' : lastOrders === '' ? 'hours-last' : 'hours-closes'
+      document.getElementById(missing)?.focus()
+      return
+    }
+    if (problem !== null) return
     const entry = { opens, lastOrders, closes }
     const next: ServiceHours = { ...hours, [day]: entry }
     for (const other of same) next[other] = entry
@@ -283,7 +291,7 @@ function DayDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               {t('st_cancel')}
             </Button>
-            <Button type="submit" disabled={pending || !complete}>
+            <Button type="submit" disabled={pending}>
               {t('st_save')}
             </Button>
           </DialogFooter>
