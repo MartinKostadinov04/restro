@@ -178,12 +178,8 @@
           "tableFrom": "alerts",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -192,14 +188,8 @@
           "tableFrom": "alerts",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -209,10 +199,7 @@
         "alerts_tenant_id_id_unique": {
           "name": "alerts_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -383,12 +370,8 @@
           "tableFrom": "areas",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -397,14 +380,8 @@
           "tableFrom": "areas",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -414,10 +391,7 @@
         "areas_tenant_id_id_unique": {
           "name": "areas_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -534,12 +508,8 @@
           "tableFrom": "assets",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -687,12 +657,8 @@
           "tableFrom": "auth_account",
           "tableTo": "auth_user",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -796,12 +762,8 @@
           "tableFrom": "auth_invitation",
           "tableTo": "auth_organization",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -810,12 +772,8 @@
           "tableFrom": "auth_invitation",
           "tableTo": "auth_user",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "inviter_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["inviter_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -901,12 +859,8 @@
           "tableFrom": "auth_member",
           "tableTo": "auth_organization",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "organization_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -915,12 +869,8 @@
           "tableFrom": "auth_member",
           "tableTo": "auth_user",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -930,10 +880,7 @@
         "auth_member_organization_id_user_id_unique": {
           "name": "auth_member_organization_id_user_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "organization_id",
-            "user_id"
-          ]
+          "columns": ["organization_id", "user_id"]
         }
       },
       "policies": {},
@@ -989,9 +936,7 @@
         "auth_organization_slug_unique": {
           "name": "auth_organization_slug_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "slug"
-          ]
+          "columns": ["slug"]
         }
       },
       "policies": {},
@@ -1087,12 +1032,8 @@
           "tableFrom": "auth_session",
           "tableTo": "auth_user",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1102,9 +1043,7 @@
         "auth_session_token_unique": {
           "name": "auth_session_token_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
+          "columns": ["token"]
         }
       },
       "policies": {},
@@ -1168,9 +1107,7 @@
         "auth_user_email_unique": {
           "name": "auth_user_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},
@@ -1328,12 +1265,8 @@
           "tableFrom": "bars",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1342,14 +1275,8 @@
           "tableFrom": "bars",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1359,10 +1286,7 @@
         "bars_tenant_id_id_unique": {
           "name": "bars_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -1468,12 +1392,8 @@
           "tableFrom": "barsy_venues",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1482,14 +1402,8 @@
           "tableFrom": "barsy_venues",
           "tableTo": "integrations",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "integration_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "integration_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1498,14 +1412,8 @@
           "tableFrom": "barsy_venues",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1513,28 +1421,19 @@
       "compositePrimaryKeys": {
         "barsy_venues_pkey": {
           "name": "barsy_venues_pkey",
-          "columns": [
-            "integration_id",
-            "bid"
-          ]
+          "columns": ["integration_id", "bid"]
         }
       },
       "uniqueConstraints": {
         "barsy_venues_tenant_id_integration_id_bid_unique": {
           "name": "barsy_venues_tenant_id_integration_id_bid_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "integration_id",
-            "bid"
-          ]
+          "columns": ["tenant_id", "integration_id", "bid"]
         },
         "barsy_venues_venue_id_unique": {
           "name": "barsy_venues_venue_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "venue_id"
-          ]
+          "columns": ["venue_id"]
         }
       },
       "policies": {},
@@ -1632,12 +1531,8 @@
           "tableFrom": "bill_readings",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1646,14 +1541,8 @@
           "tableFrom": "bill_readings",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1662,14 +1551,8 @@
           "tableFrom": "bill_readings",
           "tableTo": "tables",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "table_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "table_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1677,10 +1560,7 @@
       "compositePrimaryKeys": {
         "bill_readings_pk": {
           "name": "bill_readings_pk",
-          "columns": [
-            "tenant_id",
-            "table_id"
-          ]
+          "columns": ["tenant_id", "table_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1845,12 +1725,8 @@
           "tableFrom": "design_styles",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1860,10 +1736,7 @@
         "design_styles_tenant_id_id_unique": {
           "name": "design_styles_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -2038,12 +1911,8 @@
           "tableFrom": "events",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -2052,14 +1921,8 @@
           "tableFrom": "events",
           "tableTo": "nodes",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "node_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "node_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2235,12 +2098,8 @@
           "tableFrom": "field_values",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -2249,14 +2108,8 @@
           "tableFrom": "field_values",
           "tableTo": "nodes",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "node_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "node_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2265,14 +2118,8 @@
           "tableFrom": "field_values",
           "tableTo": "source_records",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "source_record_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "source_record_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2280,12 +2127,7 @@
       "compositePrimaryKeys": {
         "field_values_pkey": {
           "name": "field_values_pkey",
-          "columns": [
-            "node_id",
-            "field_key",
-            "layer",
-            "scope"
-          ]
+          "columns": ["node_id", "field_key", "layer", "scope"]
         }
       },
       "uniqueConstraints": {},
@@ -2465,12 +2307,8 @@
           "tableFrom": "floor_plans",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -2479,14 +2317,8 @@
           "tableFrom": "floor_plans",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2496,10 +2328,7 @@
         "floor_plans_tenant_id_id_unique": {
           "name": "floor_plans_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -2863,12 +2692,8 @@
           "tableFrom": "guest_private_notes",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -2877,14 +2702,8 @@
           "tableFrom": "guest_private_notes",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2893,14 +2712,8 @@
           "tableFrom": "guest_private_notes",
           "tableTo": "guests",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "guest_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "guest_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -2909,14 +2722,8 @@
           "tableFrom": "guest_private_notes",
           "tableTo": "staff_members",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "staff_member_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "staff_member_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2924,11 +2731,7 @@
       "compositePrimaryKeys": {
         "guest_private_notes_pkey": {
           "name": "guest_private_notes_pkey",
-          "columns": [
-            "tenant_id",
-            "guest_id",
-            "staff_member_id"
-          ]
+          "columns": ["tenant_id", "guest_id", "staff_member_id"]
         }
       },
       "uniqueConstraints": {},
@@ -3105,12 +2908,8 @@
           "tableFrom": "guests",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -3119,14 +2918,8 @@
           "tableFrom": "guests",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3136,10 +2929,7 @@
         "guests_tenant_id_id_unique": {
           "name": "guests_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -3285,12 +3075,8 @@
           "tableFrom": "integrations",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -3300,10 +3086,7 @@
         "integrations_tenant_id_id_unique": {
           "name": "integrations_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -3373,12 +3156,8 @@
           "tableFrom": "item_first_published",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -3387,14 +3166,8 @@
           "tableFrom": "item_first_published",
           "tableTo": "nodes",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "node_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "node_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -3403,14 +3176,8 @@
           "tableFrom": "item_first_published",
           "tableTo": "menus",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "menu_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "menu_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -3419,14 +3186,8 @@
           "tableFrom": "item_first_published",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3434,11 +3195,7 @@
       "compositePrimaryKeys": {
         "item_first_published_pkey": {
           "name": "item_first_published_pkey",
-          "columns": [
-            "menu_id",
-            "venue_id",
-            "node_id"
-          ]
+          "columns": ["menu_id", "venue_id", "node_id"]
         }
       },
       "uniqueConstraints": {},
@@ -3527,12 +3284,8 @@
           "tableFrom": "job_runs",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -3541,14 +3294,8 @@
           "tableFrom": "job_runs",
           "tableTo": "integrations",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "integration_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "integration_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3672,12 +3419,8 @@
           "tableFrom": "locks",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -3686,14 +3429,8 @@
           "tableFrom": "locks",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3701,11 +3438,7 @@
       "compositePrimaryKeys": {
         "locks_pk": {
           "name": "locks_pk",
-          "columns": [
-            "tenant_id",
-            "scope",
-            "key"
-          ]
+          "columns": ["tenant_id", "scope", "key"]
         }
       },
       "uniqueConstraints": {},
@@ -4011,12 +3744,8 @@
           "tableFrom": "log_entries",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -4025,14 +3754,8 @@
           "tableFrom": "log_entries",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -4173,12 +3896,8 @@
           "tableFrom": "menu_routes",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -4187,14 +3906,8 @@
           "tableFrom": "menu_routes",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -4203,14 +3916,8 @@
           "tableFrom": "menu_routes",
           "tableTo": "areas",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "area_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "area_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -4219,14 +3926,8 @@
           "tableFrom": "menu_routes",
           "tableTo": "tables",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "table_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "table_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -4235,16 +3936,8 @@
           "tableFrom": "menu_routes",
           "tableTo": "menus",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id",
-            "menu_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "venue_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id", "menu_id"],
+          "columnsTo": ["tenant_id", "venue_id", "id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -4363,12 +4056,8 @@
           "tableFrom": "menus",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -4377,14 +4066,8 @@
           "tableFrom": "menus",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -4393,14 +4076,8 @@
           "tableFrom": "menus",
           "tableTo": "nodes",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "root_node_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "root_node_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -4410,19 +4087,12 @@
         "menus_tenant_id_id_unique": {
           "name": "menus_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         },
         "menus_tenant_id_venue_id_id_unique": {
           "name": "menus_tenant_id_venue_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "venue_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "venue_id", "id"]
         }
       },
       "policies": {},
@@ -4532,12 +4202,8 @@
           "tableFrom": "nodes",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -4546,14 +4212,8 @@
           "tableFrom": "nodes",
           "tableTo": "nodes",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "parent_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "parent_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -4563,10 +4223,7 @@
         "nodes_tenant_id_id_unique": {
           "name": "nodes_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -4643,12 +4300,8 @@
           "tableFrom": "operators",
           "tableTo": "auth_user",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -4907,12 +4560,8 @@
           "tableFrom": "pauses",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -4921,14 +4570,8 @@
           "tableFrom": "pauses",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -4938,10 +4581,7 @@
         "pauses_tenant_id_id_unique": {
           "name": "pauses_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -5127,12 +4767,8 @@
           "tableFrom": "payment_accounts",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -5141,14 +4777,8 @@
           "tableFrom": "payment_accounts",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -5156,10 +4786,7 @@
       "compositePrimaryKeys": {
         "payment_accounts_pk": {
           "name": "payment_accounts_pk",
-          "columns": [
-            "tenant_id",
-            "venue_id"
-          ]
+          "columns": ["tenant_id", "venue_id"]
         }
       },
       "uniqueConstraints": {},
@@ -5376,12 +5003,8 @@
           "tableFrom": "payment_lines",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -5390,14 +5013,8 @@
           "tableFrom": "payment_lines",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -5406,14 +5023,8 @@
           "tableFrom": "payment_lines",
           "tableTo": "payments",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "payment_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "payment_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -5421,11 +5032,7 @@
       "compositePrimaryKeys": {
         "payment_lines_pk": {
           "name": "payment_lines_pk",
-          "columns": [
-            "tenant_id",
-            "payment_id",
-            "position"
-          ]
+          "columns": ["tenant_id", "payment_id", "position"]
         }
       },
       "uniqueConstraints": {},
@@ -5668,12 +5275,8 @@
           "tableFrom": "payment_refunds",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -5682,14 +5285,8 @@
           "tableFrom": "payment_refunds",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -5698,14 +5295,8 @@
           "tableFrom": "payment_refunds",
           "tableTo": "payments",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "payment_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "payment_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -5715,10 +5306,7 @@
         "payment_refunds_tenant_id_id_unique": {
           "name": "payment_refunds_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -5878,12 +5466,8 @@
           "tableFrom": "payment_steps",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -5892,14 +5476,8 @@
           "tableFrom": "payment_steps",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -5908,14 +5486,8 @@
           "tableFrom": "payment_steps",
           "tableTo": "payments",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "payment_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "payment_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -6348,12 +5920,8 @@
           "tableFrom": "payments",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -6362,14 +5930,8 @@
           "tableFrom": "payments",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -6378,14 +5940,8 @@
           "tableFrom": "payments",
           "tableTo": "tables",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "table_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "table_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -6394,14 +5950,8 @@
           "tableFrom": "payments",
           "tableTo": "sittings",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "sitting_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "sitting_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -6410,14 +5960,8 @@
           "tableFrom": "payments",
           "tableTo": "bars",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "bar_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "bar_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -6426,14 +5970,8 @@
           "tableFrom": "payments",
           "tableTo": "sent_orders",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "sent_order_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "sent_order_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -6442,14 +5980,8 @@
           "tableFrom": "payments",
           "tableTo": "tables",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "payment_table_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "payment_table_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -6459,25 +5991,17 @@
         "payments_tenant_id_id_unique": {
           "name": "payments_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         },
         "payments_tenant_id_action_id_unique": {
           "name": "payments_tenant_id_action_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "action_id"
-          ]
+          "columns": ["tenant_id", "action_id"]
         },
         "payments_handle_hash_unique": {
           "name": "payments_handle_hash_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "handle_hash"
-          ]
+          "columns": ["handle_hash"]
         }
       },
       "policies": {},
@@ -6640,12 +6164,8 @@
           "tableFrom": "placements",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -6654,14 +6174,8 @@
           "tableFrom": "placements",
           "tableTo": "nodes",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "item_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "item_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -6670,14 +6184,8 @@
           "tableFrom": "placements",
           "tableTo": "nodes",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "section_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "section_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -6685,10 +6193,7 @@
       "compositePrimaryKeys": {
         "placements_pkey": {
           "name": "placements_pkey",
-          "columns": [
-            "section_id",
-            "item_id"
-          ]
+          "columns": ["section_id", "item_id"]
         }
       },
       "uniqueConstraints": {},
@@ -6800,12 +6305,8 @@
           "tableFrom": "places",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -6814,16 +6315,8 @@
           "tableFrom": "places",
           "tableTo": "barsy_venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "integration_id",
-            "bid"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "integration_id",
-            "bid"
-          ],
+          "columnsFrom": ["tenant_id", "integration_id", "bid"],
+          "columnsTo": ["tenant_id", "integration_id", "bid"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -6832,14 +6325,8 @@
           "tableFrom": "places",
           "tableTo": "tables",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "table_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "table_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -6849,18 +6336,12 @@
         "places_integration_id_bid_place_id_unique": {
           "name": "places_integration_id_bid_place_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "integration_id",
-            "bid",
-            "place_id"
-          ]
+          "columns": ["integration_id", "bid", "place_id"]
         },
         "places_table_id_unique": {
           "name": "places_table_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "table_id"
-          ]
+          "columns": ["table_id"]
         }
       },
       "policies": {},
@@ -6995,10 +6476,7 @@
         "provider_notices_event_unique": {
           "name": "provider_notices_event_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "provider_kind",
-            "event_id"
-          ]
+          "columns": ["provider_kind", "event_id"]
         }
       },
       "policies": {},
@@ -7089,12 +6567,8 @@
           "tableFrom": "publish_pointers",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -7103,14 +6577,8 @@
           "tableFrom": "publish_pointers",
           "tableTo": "menus",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "menu_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "menu_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -7119,14 +6587,8 @@
           "tableFrom": "publish_pointers",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -7135,18 +6597,8 @@
           "tableFrom": "publish_pointers",
           "tableTo": "snapshots",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "menu_id",
-            "venue_id",
-            "current_snapshot_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "menu_id",
-            "venue_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "menu_id", "venue_id", "current_snapshot_id"],
+          "columnsTo": ["tenant_id", "menu_id", "venue_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -7154,10 +6606,7 @@
       "compositePrimaryKeys": {
         "publish_pointers_pkey": {
           "name": "publish_pointers_pkey",
-          "columns": [
-            "menu_id",
-            "venue_id"
-          ]
+          "columns": ["menu_id", "venue_id"]
         }
       },
       "uniqueConstraints": {},
@@ -7248,12 +6697,8 @@
           "tableFrom": "purge_log",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -7391,12 +6836,8 @@
           "tableFrom": "push_subscriptions",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -7405,12 +6846,8 @@
           "tableFrom": "push_subscriptions",
           "tableTo": "auth_user",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -7418,10 +6855,7 @@
       "compositePrimaryKeys": {
         "push_subscriptions_pk": {
           "name": "push_subscriptions_pk",
-          "columns": [
-            "tenant_id",
-            "endpoint_hash"
-          ]
+          "columns": ["tenant_id", "endpoint_hash"]
         }
       },
       "uniqueConstraints": {},
@@ -7547,12 +6981,8 @@
           "tableFrom": "reservation_nights",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -7561,14 +6991,8 @@
           "tableFrom": "reservation_nights",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -7576,11 +7000,7 @@
       "compositePrimaryKeys": {
         "reservation_nights_pkey": {
           "name": "reservation_nights_pkey",
-          "columns": [
-            "tenant_id",
-            "venue_id",
-            "service_date"
-          ]
+          "columns": ["tenant_id", "venue_id", "service_date"]
         }
       },
       "uniqueConstraints": {},
@@ -7717,12 +7137,8 @@
           "tableFrom": "reservation_settings",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -7731,14 +7147,8 @@
           "tableFrom": "reservation_settings",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -7746,10 +7156,7 @@
       "compositePrimaryKeys": {
         "reservation_settings_pkey": {
           "name": "reservation_settings_pkey",
-          "columns": [
-            "tenant_id",
-            "venue_id"
-          ]
+          "columns": ["tenant_id", "venue_id"]
         }
       },
       "uniqueConstraints": {},
@@ -7889,12 +7296,8 @@
           "tableFrom": "reservation_spots",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -7903,14 +7306,8 @@
           "tableFrom": "reservation_spots",
           "tableTo": "reservations",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "reservation_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "reservation_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -7919,14 +7316,8 @@
           "tableFrom": "reservation_spots",
           "tableTo": "spots",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "spot_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "spot_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -7934,12 +7325,7 @@
       "compositePrimaryKeys": {
         "reservation_spots_pkey": {
           "name": "reservation_spots_pkey",
-          "columns": [
-            "tenant_id",
-            "reservation_id",
-            "spot_id",
-            "held_from"
-          ]
+          "columns": ["tenant_id", "reservation_id", "spot_id", "held_from"]
         }
       },
       "uniqueConstraints": {},
@@ -8232,12 +7618,8 @@
           "tableFrom": "reservations",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -8246,14 +7628,8 @@
           "tableFrom": "reservations",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -8262,14 +7638,8 @@
           "tableFrom": "reservations",
           "tableTo": "guests",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "guest_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "guest_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -8278,14 +7648,8 @@
           "tableFrom": "reservations",
           "tableTo": "staff_members",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "made_by"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "made_by"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -8295,10 +7659,7 @@
         "reservations_tenant_id_id_unique": {
           "name": "reservations_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -8495,12 +7856,8 @@
           "tableFrom": "sent_order_notes",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -8509,14 +7866,8 @@
           "tableFrom": "sent_order_notes",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -8525,14 +7876,8 @@
           "tableFrom": "sent_order_notes",
           "tableTo": "sent_orders",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "sent_order_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "sent_order_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -8540,11 +7885,7 @@
       "compositePrimaryKeys": {
         "sent_order_notes_pk": {
           "name": "sent_order_notes_pk",
-          "columns": [
-            "tenant_id",
-            "sent_order_id",
-            "line_id"
-          ]
+          "columns": ["tenant_id", "sent_order_id", "line_id"]
         }
       },
       "uniqueConstraints": {},
@@ -8841,12 +8182,8 @@
           "tableFrom": "sent_orders",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -8855,14 +8192,8 @@
           "tableFrom": "sent_orders",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -8871,14 +8202,8 @@
           "tableFrom": "sent_orders",
           "tableTo": "tables",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "table_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "table_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -8887,14 +8212,8 @@
           "tableFrom": "sent_orders",
           "tableTo": "sittings",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "sitting_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "sitting_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -8903,14 +8222,8 @@
           "tableFrom": "sent_orders",
           "tableTo": "bars",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "bar_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "bar_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -8919,14 +8232,8 @@
           "tableFrom": "sent_orders",
           "tableTo": "sent_orders",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "duplicate_of"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "duplicate_of"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -8936,18 +8243,12 @@
         "sent_orders_tenant_id_id_unique": {
           "name": "sent_orders_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         },
         "sent_orders_tenant_id_action_id_unique": {
           "name": "sent_orders_tenant_id_action_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "action_id"
-          ]
+          "columns": ["tenant_id", "action_id"]
         }
       },
       "policies": {},
@@ -9074,12 +8375,8 @@
           "tableFrom": "service_days",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -9088,14 +8385,8 @@
           "tableFrom": "service_days",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -9103,11 +8394,7 @@
       "compositePrimaryKeys": {
         "service_days_pk": {
           "name": "service_days_pk",
-          "columns": [
-            "tenant_id",
-            "venue_id",
-            "service_date"
-          ]
+          "columns": ["tenant_id", "venue_id", "service_date"]
         }
       },
       "uniqueConstraints": {},
@@ -9251,12 +8538,8 @@
           "tableFrom": "shared_devices",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -9265,14 +8548,8 @@
           "tableFrom": "shared_devices",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -9281,14 +8558,8 @@
           "tableFrom": "shared_devices",
           "tableTo": "staff_members",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "person_staff_member_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "person_staff_member_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -9298,10 +8569,7 @@
         "shared_devices_tenant_id_id_unique": {
           "name": "shared_devices_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -9525,12 +8793,8 @@
           "tableFrom": "sittings",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -9539,14 +8803,8 @@
           "tableFrom": "sittings",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -9555,14 +8813,8 @@
           "tableFrom": "sittings",
           "tableTo": "tables",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "table_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "table_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -9572,10 +8824,7 @@
         "sittings_tenant_id_id_unique": {
           "name": "sittings_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -9726,12 +8975,8 @@
           "tableFrom": "snapshots",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -9740,14 +8985,8 @@
           "tableFrom": "snapshots",
           "tableTo": "menus",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "menu_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "menu_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -9756,14 +8995,8 @@
           "tableFrom": "snapshots",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -9772,18 +9005,8 @@
           "tableFrom": "snapshots",
           "tableTo": "snapshots",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "menu_id",
-            "venue_id",
-            "restores_snapshot_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "menu_id",
-            "venue_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "menu_id", "venue_id", "restores_snapshot_id"],
+          "columnsTo": ["tenant_id", "menu_id", "venue_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -9793,21 +9016,12 @@
         "snapshots_tenant_id_menu_id_venue_id_id_unique": {
           "name": "snapshots_tenant_id_menu_id_venue_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "menu_id",
-            "venue_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "menu_id", "venue_id", "id"]
         },
         "snapshots_menu_id_venue_id_version_unique": {
           "name": "snapshots_menu_id_venue_id_version_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "menu_id",
-            "venue_id",
-            "version"
-          ]
+          "columns": ["menu_id", "venue_id", "version"]
         }
       },
       "policies": {},
@@ -9951,12 +9165,8 @@
           "tableFrom": "source_links",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -9965,14 +9175,8 @@
           "tableFrom": "source_links",
           "tableTo": "integrations",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "integration_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "integration_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -9981,14 +9185,8 @@
           "tableFrom": "source_links",
           "tableTo": "nodes",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "node_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "node_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -9996,21 +9194,14 @@
       "compositePrimaryKeys": {
         "source_links_pkey": {
           "name": "source_links_pkey",
-          "columns": [
-            "integration_id",
-            "external_type",
-            "external_id"
-          ]
+          "columns": ["integration_id", "external_type", "external_id"]
         }
       },
       "uniqueConstraints": {
         "source_links_node_id_integration_id_unique": {
           "name": "source_links_node_id_integration_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "node_id",
-            "integration_id"
-          ]
+          "columns": ["node_id", "integration_id"]
         }
       },
       "policies": {},
@@ -10147,12 +9338,8 @@
           "tableFrom": "source_records",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -10161,14 +9348,8 @@
           "tableFrom": "source_records",
           "tableTo": "integrations",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "integration_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "integration_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -10178,10 +9359,7 @@
         "source_records_tenant_id_id_unique": {
           "name": "source_records_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -10385,12 +9563,8 @@
           "tableFrom": "spots",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -10399,14 +9573,8 @@
           "tableFrom": "spots",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -10415,14 +9583,8 @@
           "tableFrom": "spots",
           "tableTo": "floor_plans",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "plan_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "plan_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -10431,14 +9593,8 @@
           "tableFrom": "spots",
           "tableTo": "tables",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "table_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "table_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -10448,10 +9604,7 @@
         "spots_tenant_id_id_unique": {
           "name": "spots_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -10609,12 +9762,8 @@
           "tableFrom": "staff_assignments",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -10623,14 +9772,8 @@
           "tableFrom": "staff_assignments",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -10639,14 +9782,8 @@
           "tableFrom": "staff_assignments",
           "tableTo": "staff_members",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "staff_member_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "staff_member_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -10655,14 +9792,8 @@
           "tableFrom": "staff_assignments",
           "tableTo": "venue_roles",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "role_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "role_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -10670,11 +9801,7 @@
       "compositePrimaryKeys": {
         "staff_assignments_pk": {
           "name": "staff_assignments_pk",
-          "columns": [
-            "tenant_id",
-            "staff_member_id",
-            "venue_id"
-          ]
+          "columns": ["tenant_id", "staff_member_id", "venue_id"]
         }
       },
       "uniqueConstraints": {},
@@ -10822,12 +9949,8 @@
           "tableFrom": "staff_members",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -10836,12 +9959,8 @@
           "tableFrom": "staff_members",
           "tableTo": "auth_user",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -10851,10 +9970,7 @@
         "staff_members_tenant_id_id_unique": {
           "name": "staff_members_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -11011,12 +10127,8 @@
           "tableFrom": "table_orders",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -11025,14 +10137,8 @@
           "tableFrom": "table_orders",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -11041,14 +10147,8 @@
           "tableFrom": "table_orders",
           "tableTo": "tables",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "table_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "table_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -11057,14 +10157,8 @@
           "tableFrom": "table_orders",
           "tableTo": "sittings",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "sitting_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "sitting_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -11074,18 +10168,12 @@
         "table_orders_tenant_id_id_unique": {
           "name": "table_orders_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         },
         "table_orders_tenant_id_sitting_id_unique": {
           "name": "table_orders_tenant_id_sitting_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "sitting_id"
-          ]
+          "columns": ["tenant_id", "sitting_id"]
         }
       },
       "policies": {},
@@ -11215,12 +10303,8 @@
           "tableFrom": "tags",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -11229,14 +10313,8 @@
           "tableFrom": "tags",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -11246,10 +10324,7 @@
         "tags_tenant_id_id_unique": {
           "name": "tags_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -11350,12 +10425,8 @@
           "tableFrom": "templates",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -11462,10 +10533,7 @@
       "compositePrimaryKeys": {
         "tombstones_pkey": {
           "name": "tombstones_pkey",
-          "columns": [
-            "kind",
-            "value"
-          ]
+          "columns": ["kind", "value"]
         }
       },
       "uniqueConstraints": {},
@@ -11602,12 +10670,8 @@
           "tableFrom": "venue_roles",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -11616,14 +10680,8 @@
           "tableFrom": "venue_roles",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -11633,10 +10691,7 @@
         "venue_roles_tenant_id_id_unique": {
           "name": "venue_roles_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
@@ -11733,12 +10788,8 @@
           "tableFrom": "venue_slug_history",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -11747,14 +10798,8 @@
           "tableFrom": "venue_slug_history",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -11762,10 +10807,7 @@
       "compositePrimaryKeys": {
         "venue_slug_history_pkey": {
           "name": "venue_slug_history_pkey",
-          "columns": [
-            "tenant_id",
-            "slug"
-          ]
+          "columns": ["tenant_id", "slug"]
         }
       },
       "uniqueConstraints": {},
@@ -11879,12 +10921,8 @@
           "tableFrom": "venue_spot_kinds",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -11893,14 +10931,8 @@
           "tableFrom": "venue_spot_kinds",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -11908,11 +10940,7 @@
       "compositePrimaryKeys": {
         "venue_spot_kinds_pkey": {
           "name": "venue_spot_kinds_pkey",
-          "columns": [
-            "tenant_id",
-            "venue_id",
-            "key"
-          ]
+          "columns": ["tenant_id", "venue_id", "key"]
         }
       },
       "uniqueConstraints": {},
@@ -12110,12 +11138,8 @@
           "tableFrom": "tables",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -12124,14 +11148,8 @@
           "tableFrom": "tables",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -12140,14 +11158,8 @@
           "tableFrom": "tables",
           "tableTo": "areas",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "area_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "area_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -12156,14 +11168,8 @@
           "tableFrom": "tables",
           "tableTo": "bars",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "bar_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "bar_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -12173,24 +11179,17 @@
         "tables_tenant_id_id_unique": {
           "name": "tables_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         },
         "tables_qr_token_unique": {
           "name": "tables_qr_token_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "qr_token"
-          ]
+          "columns": ["qr_token"]
         },
         "tables_qr_code_hash_unique": {
           "name": "tables_qr_code_hash_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "qr_code_hash"
-          ]
+          "columns": ["qr_code_hash"]
         }
       },
       "policies": {},
@@ -12374,12 +11373,8 @@
           "tableFrom": "venues",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -12388,16 +11383,8 @@
           "tableFrom": "venues",
           "tableTo": "menus",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "id",
-            "live_menu_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "venue_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "id", "live_menu_id"],
+          "columnsTo": ["tenant_id", "venue_id", "id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -12407,18 +11394,12 @@
         "venues_tenant_id_id_unique": {
           "name": "venues_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         },
         "venues_tenant_id_slug_unique": {
           "name": "venues_tenant_id_slug_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "slug"
-          ]
+          "columns": ["tenant_id", "slug"]
         }
       },
       "policies": {},
@@ -12605,12 +11586,8 @@
           "tableFrom": "waiter_calls",
           "tableTo": "tenants",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["tenant_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -12619,14 +11596,8 @@
           "tableFrom": "waiter_calls",
           "tableTo": "venues",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "venue_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "venue_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -12635,14 +11606,8 @@
           "tableFrom": "waiter_calls",
           "tableTo": "tables",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "table_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "table_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -12651,14 +11616,8 @@
           "tableFrom": "waiter_calls",
           "tableTo": "sittings",
           "schemaTo": "restro",
-          "columnsFrom": [
-            "tenant_id",
-            "sitting_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
+          "columnsFrom": ["tenant_id", "sitting_id"],
+          "columnsTo": ["tenant_id", "id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -12668,10 +11627,7 @@
         "waiter_calls_tenant_id_id_unique": {
           "name": "waiter_calls_tenant_id_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
+          "columns": ["tenant_id", "id"]
         }
       },
       "policies": {},
