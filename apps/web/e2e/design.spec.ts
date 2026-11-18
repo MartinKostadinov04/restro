@@ -210,6 +210,48 @@ test('the panel is beside the preview, drawn in a frame of the width the switche
   await expect(frame().locator('[role="dialog"]')).toHaveCount(0)
 })
 
+test('on a laptop the whole preview is on screen at 1200, 1280 and 1440 px, and the page itself never scrolls (#431 S6)', async ({
+  browser,
+}) => {
+  for (const [width, height] of [
+    [1200, 700],
+    [1280, 720],
+    [1440, 900],
+  ] as const) {
+    const laptop = await browser.newContext({
+      storageState: ownerState,
+      viewport: { width, height },
+    })
+    try {
+      const target = await laptop.newPage()
+      await openDesign(target)
+      for (const name of ['Phone', 'Tablet', 'PC']) {
+        await target
+          .getByTestId('design-preview')
+          .getByRole('button', { name, exact: true })
+          .click()
+        // The frame is drawn again for each device; it must lie inside the window, edge to edge.
+        await expect(target.getByTestId('design-preview-frame')).toBeVisible()
+        const box = await target.getByTestId('design-preview-frame').boundingBox()
+        expect(box, `${name} at ${width}`).not.toBeNull()
+        expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width)
+        expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(height)
+      }
+      // The screen is exactly one window: no page scrollbar either way (the logo's hidden file
+      // input once stretched the page to 2365 px and took 15 px of the right edge).
+      const scroll = await target.evaluate(() => ({
+        width: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        height: document.documentElement.scrollHeight - document.documentElement.clientHeight,
+        scrollbar: window.innerWidth - document.documentElement.clientWidth,
+      }))
+      expect(scroll, `${width} px`).toEqual({ width: 0, height: 0, scrollbar: 0 })
+      if (width === 1200) await target.screenshot({ path: shotPath('laptop-1200') })
+    } finally {
+      await laptop.close()
+    }
+  }
+})
+
 test('a colour shows in the preview at once, and Undo takes the last step back', async () => {
   // One set of three pickers, no presets.
   await expect(page.getByTestId('design-three-colours').locator('[data-colour]')).toHaveCount(3)

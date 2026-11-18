@@ -50,23 +50,35 @@ describe('the Automation settings', () => {
     expect(screen.queryByTestId('automation-inherited')).toBeNull()
   })
 
-  it('saves nothing until something changes, then sends the mode, the schedule and the rule', async () => {
+  it('sends the mode, the schedule and the rule, and a click on Save straight after typing counts', async () => {
     const user = userEvent.setup()
     render()
-    expect(save().disabled).toBe(true)
+    expect(save().disabled).toBe(false)
     await user.clear(screen.getByTestId('automation-time'))
     await user.type(screen.getByTestId('automation-time'), '06:30')
     await user.click(radio('automation-after-manual'))
-    expect(save().disabled).toBe(false)
+    await user.type(screen.getByTestId('automation-time'), '{Backspace}{Backspace}45')
+    // The click leaves the field, which commits "06:45" on the way in (#428).
     await user.click(save())
     expect(actions.saveAutomationAction).toHaveBeenCalledWith({
       venueId: VENUE_ID,
-      sync: { mode: 'auto', incremental_minutes: 5, full_pull_time: '06:30' },
+      sync: { mode: 'auto', incremental_minutes: 5, full_pull_time: '06:45' },
       afterSync: 'manual',
     })
     expect((await screen.findByTestId('automation-saved')).textContent).toBe(
       'Saved. The settings apply from the next sync of this venue.',
     )
+  })
+
+  it('refuses a time that is not a time and takes the focus to it', async () => {
+    const user = userEvent.setup()
+    render()
+    const field = screen.getByTestId('automation-time')
+    await user.clear(field)
+    await user.type(field, '99:99')
+    await user.click(save())
+    expect(actions.saveAutomationAction).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(field)
   })
 
   it('manual mode hides the schedule and keeps it for later', async () => {
