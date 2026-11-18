@@ -167,6 +167,8 @@ export async function eraseGuest(
   // (`labelFor`), and a booking's note is typed about him: both are his, so both go with him. The
   // party size and the spots stay. `updated_at` moves, so a form opened on one of his bookings
   // before the erasure is refused rather than writing his name back (`version.ts`).
+  // counts-unaffected: no counted column (kind, status, party size, deleted_at) moves, so no night
+  // is touched (D144).
   await stx.tx
     .update(reservations)
     .set({ partyLabel: null, note: null, ...stx.provenance, updatedAt: sql`now()` })

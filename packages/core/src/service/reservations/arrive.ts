@@ -538,6 +538,7 @@ export async function arriveReservation(
       updatedAt: sql`now()`,
     })
     .where(eq(reservations.id, reservation.id))
+  stx.touchNight(reservation.serviceDate)
   const details: ResultDetails = {
     reservationId: reservation.id,
     spots: peek.spotIds.join(','),
@@ -664,6 +665,7 @@ export async function setGuestCount(
     .update(reservations)
     .set({ partySize: command.partySize, ...stx.provenance, updatedAt: sql`now()` })
     .where(eq(reservations.id, reservation.id))
+  stx.touchNight(reservation.serviceDate)
   await stx.log({
     kind: 'reservation.changed',
     reservationId: reservation.id,
@@ -776,6 +778,7 @@ export async function undoReservationArrival(
       updatedAt: sql`now()`,
     })
     .where(eq(reservations.id, reservation.id))
+  stx.touchNight(reservation.serviceDate)
   await stx.log({
     kind: 'reservation.status',
     reservationId: reservation.id,
@@ -852,6 +855,7 @@ export async function holdReservationSpots(
     .update(reservations)
     .set({ ...stx.provenance, updatedAt: sql`now()` })
     .where(eq(reservations.id, reservation.id))
+  stx.touchNight(reservation.serviceDate)
   const details: ResultDetails = {
     reservationId: reservation.id,
     spots: command.spotIds.join(','),
@@ -904,6 +908,7 @@ export async function releaseReservationSpots(
     .update(reservations)
     .set({ ...stx.provenance, updatedAt: sql`now()` })
     .where(eq(reservations.id, reservation.id))
+  stx.touchNight(reservation.serviceDate)
   const details: ResultDetails = {
     reservationId: reservation.id,
     spots: freed.join(','),

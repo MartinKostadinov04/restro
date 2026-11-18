@@ -61,6 +61,13 @@ export interface ServiceTx extends LeaseTx {
   readonly sendMenu: SendMenu | null
   /** The database's clock, read once per command: the clock of deadlines (Undo, idle). */
   dbNow(): Promise<Date>
+  /**
+   * Says that this command wrote a reservation row of this service night (D144): the night's door
+   * counts may have changed, so a night already closed is counted afresh before the command
+   * commits. Every write to `reservations` that can move a count calls it, with the night the row
+   * sits on (a reservation never changes its night). Nothing recovers the night from the clock.
+   */
+  touchNight(serviceDate: string): void
   /** Appends a Log entry with this command's venue, day and provenance. */
   log(entry: LogEntryInput): Promise<void>
   /**

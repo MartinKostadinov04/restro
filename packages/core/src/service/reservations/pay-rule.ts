@@ -271,6 +271,7 @@ export async function setReservationPayRule(
       updatedAt: sql`now()`,
     })
     .where(eq(reservations.id, reservation.id))
+  stx.touchNight(reservation.serviceDate)
   await stx.log({
     kind: 'reservation.pay_rule',
     reservationId: reservation.id,
