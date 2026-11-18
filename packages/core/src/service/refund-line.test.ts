@@ -14,7 +14,7 @@ import { hasDatabase } from '../apply/test-database'
 import { newId } from '../ids'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
 import type { ServiceActor, ServiceContext } from './context'
-import { applyService, type ServiceCommand } from './index'
+import { applyService, readNightPaymentsReport, type ServiceCommand } from './index'
 import { refundAmountMinor, refundBoundsProblem } from './refund-line'
 
 describe('the amount of a refund (rule 8: integer minor units, half-up)', () => {
@@ -220,9 +220,10 @@ describe.skipIf(!hasDatabase)('"Not served" (as the restro_app role)', () => {
         confirmed_at: Date | null
         actor: string
         source: string
+        service_date: string
       }>(
         `select id, origin, line_position, amount_minor, provider_refund_ref, failed_at, confirmed_at,
-                actor, source
+                actor, source, service_date::text
            from restro.payment_refunds where payment_id = $1 order by seen_at, id`,
         [paymentId],
       )
@@ -310,6 +311,14 @@ describe.skipIf(!hasDatabase)('"Not served" (as the restro_app role)', () => {
     ])
     // The existing storno to-do: an alert for the group, and the row Tonight reads it from.
     expect(await alertsOf('payment_refunded', target.id)).toHaveLength(1)
+    // The venue's closing Telegram message lists it as a storno still to do, with no amount, and the
+    // end-of-night page reads it as a refund row with who asked.
+    const report = await readNightPaymentsReport(world.app, {
+      tenantId: world.tenantId,
+      venueId: world.venueId,
+      day: rows[0]?.service_date ?? '',
+    })
+    expect(report.fix.filter((entry) => entry.what === 'storno_not_done').length).toBeGreaterThan(0)
   })
 
   it('refunds part of a line per unit, half-up, and only once per line', async () => {

@@ -94,9 +94,15 @@ export function moneyCsvRows(
         ? refund.seen === null
           ? say('py_refund_failed', { provider })
           : `${say('py_refund_failed', { provider })} · ${say('lg_pay_refund_seen')} · ${whoText(say, refund.seen.by)}, ${refund.seen.time}`
-        : refund.storno === null
-          ? say('nt_fix_storno')
-          : say('st_ok'),
+        : refund.sending === true
+          ? say('py_refund_sending')
+          : refund.storno === null
+            ? say('nt_fix_storno')
+            : say('st_ok'),
+      // A refund Restro sent for a line marked "Not served" names who asked (148), as the page does.
+      ...(refund.requestedBy === null || refund.requestedBy === undefined
+        ? {}
+        : { reason: `${say('py_not_served')}: ${whoText(say, refund.requestedBy)}` }),
       ...(refund.storno === null ? {} : { who: whoText(say, refund.storno.by) }),
       amountMinor: refund.amountMinor,
       detail: refund.receiptNumber ?? '',

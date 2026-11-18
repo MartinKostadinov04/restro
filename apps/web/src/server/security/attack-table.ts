@@ -1123,7 +1123,7 @@ export const ATTACKS: readonly Attack[] = [
     action: 'notServedAction',
     call: (v) => {
       const x = v.venues[0]
-      return tonight.notServedAction({ venueId: x.id, paymentId: x.payment, position: 1 })
+      return tonight.notServedAction({ venueId: x.id, paymentId: x.paidPayment, position: 1 })
     },
   },
 
@@ -2349,7 +2349,7 @@ export const MIXED: readonly Attack[] = [
     call: (v, a) =>
       tonight.notServedAction({
         venueId: a.venues[0].id,
-        paymentId: v.venues[0].payment,
+        paymentId: v.venues[0].paidPayment,
         position: 1,
       }),
   },
