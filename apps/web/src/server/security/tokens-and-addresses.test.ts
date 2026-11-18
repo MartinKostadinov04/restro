@@ -84,9 +84,10 @@ describe('a table code', () => {
     const held = new Array<bigint>(62).fill(0n)
     for (let quotient = 0n; quotient * unit < total; quotient++) {
       const rest = total - quotient * unit
-      held[Number(quotient % 62n)] += rest < unit ? rest : unit
+      const slot = Number(quotient % 62n)
+      held[slot] = (held[slot] ?? 0n) + (rest < unit ? rest : unit)
     }
-    return new Map(ALPHABET.split('').map((char, i) => [char, Number(held[i]) / Number(total)]))
+    return new Map(ALPHABET.split('').map((char, i) => [char, Number(held[i] ?? 0n) / Number(total)]))
   }
 
   // All 62 characters at a position against their exact weight. Each count is binomial; the
@@ -97,7 +98,10 @@ describe('a table code', () => {
   const L = Math.log(2 / ALPHA)
   const expectPositionToMatchEncoding = (position: number): Map<string, number> => {
     const counts = new Map<string, number>()
-    for (const code of codes) counts.set(code[position]!, (counts.get(code[position]!) ?? 0) + 1)
+    for (const code of codes) {
+      const char = code.charAt(position)
+      counts.set(char, (counts.get(char) ?? 0) + 1)
+    }
     for (const [char, weight] of weights(position)) {
       const count = counts.get(char) ?? 0
       if (weight === 0) {
