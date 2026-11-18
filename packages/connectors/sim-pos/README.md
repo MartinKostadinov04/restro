@@ -33,7 +33,7 @@ pnpm sim-pos scenarios                # the scenario files
 pnpm sim-pos ops                      # the waiter operations
 ```
 
-Tables are named by number (`7`) or by the POS's own id. `SIM_POS_URL` (default `http://127.0.0.1:4010`) and `SIM_POS_CONTROL_TOKEN` tell the CLI where the server is and what token to send.
+Tables are named by number (`7`) or by the POS's own id. `SIM_POS_URL` (from the environment, else from `.env.local` of the folder you run in, else `http://127.0.0.1:4010`; every command prints the address it uses) and `SIM_POS_CONTROL_TOKEN` tell the CLI where the server is and what token to send.
 
 **Scenario files** (`scenarios/*.json`, loaded by name; `demo-bar` is the base the others extend):
 

@@ -33,6 +33,7 @@ import { getLocale } from 'next-intl/server'
 import { Suspense } from 'react'
 import { readNameFallbackNodeIds } from '@/connectors/sync-reads'
 import { isAdminLocale, toDataLocale } from '@/i18n/locales'
+import { readGuestConnections } from '@/server/composer/guest-connections'
 import { composerMenusOf } from '@/server/composer/menu'
 import { readItemPayFirstDefault } from '@/server/composer/pay-first'
 import { getPool } from '@/server/db'
@@ -75,11 +76,13 @@ export function ComposerTab({ tenantId, role, venue, menu }: ComposerTabProps) {
 async function StructureSubtab({ tenantId, role, venue, menu: requested }: ComposerTabProps) {
   const { menus, current } = await composerMenusOf(tenantId, venue.id, requested)
   const manager = canManageIntegration(role)
+  const connections = await readGuestConnections(tenantId, venue.id)
   const guestFeatures = (
     <GuestFeaturesCard
       venueId={venue.id}
       features={readGuestFeatures(venue.settings)}
       canEdit={manager}
+      connections={connections}
       privacy={{
         onFile: hasPrivacyNotice(venue.settings),
         href: privacyHref(venue.id),

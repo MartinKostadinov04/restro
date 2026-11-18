@@ -43,6 +43,19 @@ export interface GuestFeaturesCardProps {
    * (`onFile`); `href` is the form on Settings › Ordering where it is set.
    */
   readonly privacy: PrivacyNotice
+  /**
+   * What is connected for this venue, from the database: the notes saying a feature needs the POS
+   * or card payments show only while that part is not (walk P3).
+   */
+  readonly connections: GuestConnections
+}
+
+/** Which of the venue's connections the guest features lean on are in place. */
+export interface GuestConnections {
+  /** A POS instance serves the venue's tables, so a sent order or a bill request has somewhere to go. */
+  readonly pos: boolean
+  /** The venue's payment account is connected (not connecting, lost or disconnected). */
+  readonly card: boolean
 }
 
 /** Whether the venue has a privacy notice link, and where it is set. */
@@ -67,7 +80,13 @@ export function GuestFeaturesCard(props: GuestFeaturesCardProps) {
   )
 }
 
-function FeaturesForm({ venueId, features, canEdit, privacy }: GuestFeaturesCardProps) {
+function FeaturesForm({
+  venueId,
+  features,
+  canEdit,
+  privacy,
+  connections,
+}: GuestFeaturesCardProps) {
   const t = useTranslations('composer.guestFeatures')
   const ids = useId()
   const [saved, setSaved] = useState<GuestFeatures>(features)
@@ -198,7 +217,7 @@ function FeaturesForm({ venueId, features, canEdit, privacy }: GuestFeaturesCard
               testId="feature-bill"
               onChange={(on) => setFeature((current) => ({ ...current, bill: on }))}
             >
-              <Note>{t('needsPos')}</Note>
+              {connections.pos ? null : <Note>{t('needsPos')}</Note>}
             </SwitchRow>
             <SwitchRow
               id={`${ids}-ordering`}
@@ -210,7 +229,7 @@ function FeaturesForm({ venueId, features, canEdit, privacy }: GuestFeaturesCard
               testId="feature-ordering"
               onChange={(on) => setFeature((current) => ({ ...current, ordering: on }))}
             >
-              <Note>{t('needsPos')}</Note>
+              {connections.pos ? null : <Note>{t('needsPos')}</Note>}
               {privacy.onFile ? null : (
                 <PrivacyLine
                   state={saved.ordering ? 'missing' : 'need'}
@@ -227,7 +246,7 @@ function FeaturesForm({ venueId, features, canEdit, privacy }: GuestFeaturesCard
               testId="feature-pay"
               onChange={(on) => setFeature((current) => ({ ...current, pay: on }))}
             >
-              <Note>{t('needsCard')}</Note>
+              {connections.card ? null : <Note>{t('needsCard')}</Note>}
             </SwitchRow>
           </section>
         </div>
