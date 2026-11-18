@@ -177,9 +177,11 @@ export async function openTables(
       ),
     )
   if (open.length === 0) return byTable
+  // The open sitting's own bag, by sitting: a table keeps an order row for each sitting it has had,
+  // and an earlier sitting's empty one must never stand in for this one's (#419).
   const orders = await tx
     .select({
-      tableId: tableOrders.tableId,
+      sittingId: tableOrders.sittingId,
       lines: sql<number>`jsonb_array_length(${tableOrders.lines})`,
     })
     .from(tableOrders)
@@ -187,12 +189,12 @@ export async function openTables(
       and(
         eq(tableOrders.venueId, venueId),
         inArray(
-          tableOrders.tableId,
-          open.map((row) => row.tableId),
+          tableOrders.sittingId,
+          open.map((row) => row.id),
         ),
       ),
     )
-  const lines = new Map(orders.map((row) => [row.tableId, Number(row.lines)]))
+  const lines = new Map(orders.map((row) => [row.sittingId, Number(row.lines)]))
   const sent = new Set(
     (
       await tx
@@ -209,8 +211,8 @@ export async function openTables(
   for (const row of open) {
     byTable.set(row.tableId, {
       open: true,
-      bill: row.hadBillLines || sent.has(row.id) || (lines.get(row.tableId) ?? 0) > 0,
-      hasOrder: sent.has(row.id) || (lines.get(row.tableId) ?? 0) > 0,
+      bill: row.hadBillLines || sent.has(row.id) || (lines.get(row.id) ?? 0) > 0,
+      hasOrder: sent.has(row.id) || (lines.get(row.id) ?? 0) > 0,
     })
   }
   return byTable

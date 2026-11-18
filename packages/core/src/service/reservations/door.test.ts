@@ -325,6 +325,23 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
        on conflict (tenant_id, sitting_id) do update set lines = excluded.lines`,
       [newId('to'), world.tenantId, world.venueId, tableOf('D2'), was],
     )
+    // The table has had an earlier sitting, with an order row of its own that is empty and was
+    // written after this bag: it must never stand in for the open sitting's order.
+    const earlier = newId('st')
+    await world.owner.query(
+      `insert into restro.sittings
+         (id, tenant_id, venue_id, table_id, service_date, opened_how, opened_at, ended_at,
+          end_reason, source, actor, job_id)
+       values ($1, $2, $3, $4, $5, 'one', now() - interval '3 hours', now() - interval '2 hours',
+               'staff_closed', 'guest', 'guest', 'test-seed')`,
+      [earlier, world.tenantId, world.venueId, tableOf('D2'), today],
+    )
+    await world.owner.query(
+      `insert into restro.table_orders
+         (id, tenant_id, venue_id, table_id, sitting_id, source, actor, job_id)
+       values ($1, $2, $3, $4, $5, 'guest', 'guest', 'test-seed')`,
+      [newId('to'), world.tenantId, world.venueId, tableOf('D2'), earlier],
+    )
     const read = await readArrivalChecks(world.app, {
       tenantId: world.tenantId,
       venueId: world.venueId,
