@@ -435,6 +435,7 @@ describe('the services client', () => {
         ref: 'K7Q',
         lines: [{ itemId: ITEM, optionIds: [], qty: 2 }],
         sentAt: 1_000_000 - 30_000,
+        settledAt: null,
         sentClock: '19:42',
         mine: true,
       },

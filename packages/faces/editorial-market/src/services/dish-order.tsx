@@ -51,6 +51,8 @@ export function DishOrder({
     )
   }
 
+  // A table closed for phones takes nothing: the notice line says why (P23), so no tap is taken.
+  const shut = o.state.ordering?.state === 'closed'
   const valid = selectionValid(item.modifierGroups, selection)
   const optionIds = selectedOptionIds(item.modifierGroups, selection)
   const price = draftPrice(o.view, item, optionIds, qty)
@@ -59,6 +61,7 @@ export function DishOrder({
     setSelection({ ...selection, [group.id]: toggleOption(group, picked, optionId) })
 
   const add = () => {
+    if (shut) return
     if (!valid) {
       setTried(true)
       return
@@ -146,7 +149,7 @@ export function DishOrder({
           className="ro-primary"
           data-design-part="button"
           onClick={add}
-          aria-disabled={!valid}
+          aria-disabled={!valid || shut}
         >
           <span>{words.addToBag}</span>
           {price === null ? null : <b key={price.minor}>{price.text}</b>}

@@ -1840,7 +1840,7 @@ export const sittings = restro.table(
     check('sittings_end_pair', sql`(${t.endedAt} is null) = (${t.endReason} is null)`),
     check(
       'sittings_end_reason',
-      sql`${t.endReason} is null or ${t.endReason} in ('bill_closed', 'staff_closed', 'new_guests', 'closing_hour', 'code_reissued')`,
+      sql`${t.endReason} is null or ${t.endReason} in ('bill_closed', 'staff_closed', 'new_guests', 'closing_hour', 'code_reissued', 'party_moved')`,
     ),
     ...provenanceChecks('sittings', t),
   ],

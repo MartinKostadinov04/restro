@@ -157,6 +157,11 @@ export interface GuestTableState {
    */
   readonly ordering: {
     readonly state: 'on' | 'paused' | 'closed'
+    /**
+     * Staff moved the party away from this table (P22): its bill stayed here. The phone says so
+     * and shows no amount. Absent otherwise; no ids, the table's own label is in `table`.
+     */
+    readonly movedAway?: true
     readonly notesAndOptions: boolean
     /** A tip can be given when paying here (D127: the POS records it on the receipt); else none. */
     readonly tips: boolean
@@ -220,6 +225,8 @@ export interface GuestTableState {
     }[]
     /** Seconds since it was sent. */
     readonly sentAgoSeconds: number
+    /** Seconds since the round settled (the POS took it, or it ended); null while in flight. */
+    readonly settledAgoSeconds: number | null
     /** When it was sent on the venue's clock ("19:42"), for "Show this to your waiter". */
     readonly sentClock: string
     /** A pay-first round that is on the POS but whose card was not charged ("No receipt", #114). */
@@ -527,6 +534,8 @@ export function projectGuestState(
             ref: sent.reference,
             lines: sent.lines,
             sentAgoSeconds: seconds(now - sent.createdAt.getTime()),
+            settledAgoSeconds:
+              sent.settledAt === null ? null : seconds(now - sent.settledAt.getTime()),
             sentClock: clockIn(sent.createdAt, timeZone),
             ...(sent.unpaid ? { unpaid: true as const } : {}),
           },
@@ -550,6 +559,7 @@ export function projectGuestState(
     table: { label: read.table.label },
     ordering: {
       state: read.sitting === null ? 'closed' : read.pauses.length > 0 ? 'paused' : 'on',
+      ...(read.sitting === null && read.movedAway === true ? { movedAway: true as const } : {}),
       notesAndOptions: read.notesAndOptions,
       tips: read.tips,
       receiptEmail: read.receiptEmail,

@@ -33,7 +33,7 @@ import {
   waiterCalls,
   withTenant,
 } from '@restro/db'
-import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 
 import { resolveRoutesIn } from '../apply/menu-routes'
 import type { AreaId, BarId, TableId } from '../ids'
@@ -47,7 +47,7 @@ import {
 } from '../pay-first-settings'
 import { CARD_FLOOR_MINOR, readPayingSettings, smallestCardMinor } from '../paying-settings'
 import type { PayingMissing } from '../payment-connection'
-import { serviceDate } from '../service-day'
+import { serviceDate, serviceDayStartsAt } from '../service-day'
 import { nextOrderChangeAt, orderFromRow } from '../table-order'
 import type { CallWaiterKind } from '../theme'
 import { PAYMENT_LINES_NOT_BACK_KIND, PAYMENT_UNCONFIRMED_KIND } from './alert-rules'
@@ -136,6 +136,12 @@ export interface TableStateRead {
   }
   /** The open sitting, or null when the table is not open for phones. */
   readonly sitting: { readonly id: string; readonly openedAt: Date } | null
+  /**
+   * True when the table is closed and its last sitting ended because staff moved the party to
+   * another table, within the last few hours (P22): the phone says where the bill stayed. Absent
+   * is false.
+   */
+  readonly movedAway?: boolean
   /** The open sitting's order, or null before its first write. Lines are the guest API's shape. */
   readonly order: {
     readonly lines: readonly unknown[]
@@ -345,6 +351,39 @@ export async function readTableState(
       .select({ id: sittings.id, openedAt: sittings.openedAt })
       .from(sittings)
       .where(and(eq(sittings.tableId, table.id), isNull(sittings.endedAt)))
+    // A closed table whose last sitting ended with the party moved elsewhere (P22): the phone that
+    // was on it is told where the bill stayed. Bounded to the last 60 minutes and never past the
+    // end of the venue's service day, so a new walk-in scanning the table later does not see it.
+    // (No index on `sittings.ended_at`: the table's own rows are few, the read is by `table_id`.)
+    const dayStart =
+      sitting !== undefined
+        ? null
+        : await tx
+            .select({ timezone: venues.timezone, dayEndsAt: venues.serviceDayEndsAt })
+            .from(venues)
+            .where(eq(venues.id, table.venueId))
+            .then(([venue]) =>
+              venue === undefined
+                ? null
+                : serviceDayStartsAt(new Date(), venue.timezone, venue.dayEndsAt),
+            )
+    const [lastEnd] =
+      sitting !== undefined || dayStart === null
+        ? []
+        : await tx
+            .select({ reason: sittings.endReason, endedAt: sittings.endedAt })
+            .from(sittings)
+            .where(
+              and(
+                eq(sittings.tableId, table.id),
+                isNotNull(sittings.endedAt),
+                sql`${sittings.endedAt} > now() - interval '60 minutes'`,
+                gte(sittings.endedAt, dayStart),
+              ),
+            )
+            .orderBy(desc(sittings.endedAt))
+            .limit(1)
+    const movedAway = lastEnd?.reason === 'party_moved'
     const [order] =
       sitting === undefined
         ? []
@@ -553,6 +592,7 @@ export async function readTableState(
         codeGeneration: table.codeGeneration,
       },
       sitting: sitting ?? null,
+      ...(movedAway ? { movedAway: true } : {}),
       order:
         order === undefined
           ? null

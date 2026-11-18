@@ -776,7 +776,8 @@ describe('Send: no local success (test 3)', () => {
     })
     drawFace(host)
     const sheet = openBag()
-    expect(sheet.textContent).toContain(W.orderingClosed)
+    // The sentence is on the page behind the sheet, once (S10), not repeated in the bag.
+    expect(sheet.textContent).not.toContain(W.orderingClosed)
     expect(maybeSendButton(sheet)).toBeNull()
     expect(within(sheet).getByText('Hummus')).toBeTruthy()
   })
@@ -842,9 +843,10 @@ describe('Send: no local success (test 3)', () => {
         ordering: { state: 'closed', retired: true, notesAndOptions: true },
       }),
     )
-    const sheet = openBag()
-    expect(sheet.textContent).toContain(W.refusals.code_retired)
-    expect(sheet.textContent).not.toContain(W.orderingClosed)
+    expect(document.querySelector('[data-slot="ordering.closed"]')?.textContent).toBe(
+      W.refusals.code_retired,
+    )
+    expect(document.body.textContent).not.toContain(W.orderingClosed)
   })
 
   it('shows a waiter the venue’s clock, not what the phone makes of sentAt (RR-58)', () => {

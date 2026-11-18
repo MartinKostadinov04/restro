@@ -79,6 +79,11 @@ export const SERVICES_CSS = `
 .rm .ro-plus:active {
   transform: scale(0.9);
 }
+.rm .ro-plus[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+  transform: none;
+}
 .rm .ro-plus-count {
   position: absolute;
   top: calc((44px - var(--ro-circle)) / 2 - 4px);

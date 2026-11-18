@@ -57,6 +57,8 @@ export const SITTING_END_REASONS = [
   'closing_hour',
   /** The table's code was re-issued. */
   'code_reissued',
+  /** Staff moved the party to another table (Change tables): its bill stayed at this one (D137). */
+  'party_moved',
 ] as const
 
 /** One end reason. */

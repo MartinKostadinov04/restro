@@ -17,6 +17,7 @@ import { openServiceWorld, type ServiceWorld } from '../../testing/service-world
 import { applyService } from '../apply-service'
 import type { ServiceActor, ServiceContext } from '../context'
 import type { ServiceCommand } from '../index'
+import { readTableState } from '../read'
 
 const TURN = 90
 
@@ -231,6 +232,95 @@ describe.skipIf(!hasDatabase)('changing tables (as the restro_app role)', () => 
     const id = await seated(['C1'])
     expect(await accept(change(id, ['C1'], ['C2']))).toMatchObject({ billLeft: '' })
     expect(await lastSpotsLine(id)).toMatchObject({ to_state: 'moved' })
+  })
+
+  describe('P22: telling a phone where the bill stayed', () => {
+    const lastEnd = async (name: string) =>
+      (
+        await world.owner.query<{ end_reason: string }>(
+          `select end_reason from restro.sittings
+            where table_id = $1 and ended_at is not null order by ended_at desc limit 1`,
+          [tableOf(name)],
+        )
+      ).rows[0]?.end_reason ?? null
+
+    const movedAway = async (name: string) => {
+      const state = await readTableState(world.app, {
+        tenantId: world.tenantId,
+        tableId: tableOf(name),
+      })
+      return state !== null && 'movedAway' in state && state.movedAway === true
+    }
+
+    /** A party at `from` with a round on its bill, moved to `to`. */
+    const movedWithBill = async (from: string, to: string) => {
+      const id = await seated([from])
+      const sittingId = await openSittingOf(from)
+      if (sittingId === null) throw new Error('the table did not open')
+      await world.addSentOrder({
+        tableId: tableOf(from),
+        sittingId,
+        actionId: randomUUID(),
+        reference: randomUUID().slice(0, 6).toUpperCase(),
+        serviceDate: today,
+      })
+      await accept(change(id, [from], [to]))
+      return id
+    }
+
+    it('writes party_moved only for a table with a bill left, and sets movedAway for a phone there', async () => {
+      await movedWithBill('C1', 'C3')
+      expect(await lastEnd('C1')).toBe('party_moved')
+      expect(await movedAway('C1')).toBe(true)
+    })
+
+    it('ends a table with no bill as a plain close, and a phone there is told nothing', async () => {
+      const id = await seated(['C2'])
+      await accept(change(id, ['C2'], ['C4']))
+      expect(await lastEnd('C2')).toBe('staff_closed')
+      expect(await movedAway('C2')).toBe(false)
+    })
+
+    it('splits one move: the table with the bill says party_moved, the one without does not', async () => {
+      const id = await seated(['C1', 'C2'])
+      const sittingId = await openSittingOf('C1')
+      if (sittingId === null) throw new Error('the table did not open')
+      await world.addSentOrder({
+        tableId: tableOf('C1'),
+        sittingId,
+        actionId: randomUUID(),
+        reference: randomUUID().slice(0, 6).toUpperCase(),
+        serviceDate: today,
+      })
+      await accept(change(id, ['C1', 'C2'], ['C3']))
+      expect(await lastEnd('C1')).toBe('party_moved')
+      expect(await lastEnd('C2')).toBe('staff_closed')
+    })
+
+    it('clears when the table is opened again', async () => {
+      await movedWithBill('C1', 'C3')
+      expect(await movedAway('C1')).toBe(true)
+      await seated(['C1'])
+      expect(await openSittingOf('C1')).not.toBeNull()
+      expect(await movedAway('C1')).toBe(false)
+    })
+
+    it('clears after the 60-minute window', async () => {
+      await movedWithBill('C1', 'C3')
+      expect(await movedAway('C1')).toBe(true)
+      // Opened long enough before, so the end time stays after the opening.
+      await world.owner.query(
+        `update restro.sittings set opened_at = now() - interval '3 hours'
+          where table_id = $1 and end_reason = 'party_moved'`,
+        [tableOf('C1')],
+      )
+      await world.owner.query(
+        `update restro.sittings set ended_at = now() - interval '61 minutes'
+          where table_id = $1 and end_reason = 'party_moved'`,
+        [tableOf('C1')],
+      )
+      expect(await movedAway('C1')).toBe(false)
+    })
   })
 
   it('swaps two sitting parties in one write on a full floor, and all four codes follow', async () => {

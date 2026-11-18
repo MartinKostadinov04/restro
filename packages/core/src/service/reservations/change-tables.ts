@@ -271,9 +271,17 @@ export async function changeTables(
   // that bill stays at the POS, where only staff can move it.
   const bills = await openTables(stx.tx, stx.venueId, closing)
   const billLeft = closing.filter((tableId) => bills.get(tableId)?.bill === true)
-  const closed = await closePartyTables(stx, closing)
-  if (!closed.ok) return refused(null, closed.code, closed.details)
-  let work: TableWork = closed.work
+  // `party_moved` only where a bill was left: a phone at a table with no bill has nothing to be
+  // told about, and would read "your bill stayed" wrongly (P22).
+  const closedWithBill = await closePartyTables(stx, billLeft, 'party_moved')
+  if (!closedWithBill.ok) return refused(null, closedWithBill.code, closedWithBill.details)
+  const closedEmpty = await closePartyTables(
+    stx,
+    closing.filter((tableId) => !billLeft.includes(tableId)),
+    'staff_closed',
+  )
+  if (!closedEmpty.ok) return refused(null, closedEmpty.code, closedEmpty.details)
+  let work: TableWork = bothWorks(closedWithBill.work, closedEmpty.work)
   for (const side of sides) {
     if (side.opening.length === 0) continue
     const opened = await openPartyTables(stx, side.opening, command.sameGuests)

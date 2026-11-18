@@ -9,7 +9,7 @@
 // tap was refused for the location check (DA-22). The weak-connection line is a slim line at the
 // top of the menu (DA-23).
 
-import { callIsSingleStep, paymentIsFinal } from '@restro/shell'
+import { callIsSingleStep, orderingClosedText, paymentIsFinal } from '@restro/shell'
 
 import { HandIcon } from '../icons'
 import { LocationNeeded } from './location-sheet'
@@ -63,11 +63,26 @@ export function ServiceBar() {
   const { features, words, order } = o
   if (features.callWaiter === null && !features.ordering) return null
   const filled = orderBusy(o)
+  // The one line that says why a table closed for phones takes nothing (S10, P23): its "Add"
+  // buttons are greyed, and this is the only place the sentence is printed. After staff moved the
+  // party away it says where the bill stayed, and shows no amount (P22).
+  const ordering = o.state.ordering ?? null
+  const closedText =
+    !features.ordering || ordering === null || ordering.state !== 'closed'
+      ? null
+      : ordering.movedAway === true && o.tableLabel !== null && o.tableLabel.trim() !== ''
+        ? words.billStayed(o.guest.table(o.tableLabel))
+        : orderingClosedText(ordering, words)
   // While a sheet is open the bar is hidden, not removed: the button that opened the sheet gets the
   // focus back when it closes.
   return (
     <>
-      {o.notice !== null && o.sheet === null ? (
+      {closedText !== null && o.sheet === null ? (
+        <p className="ro-barnote" role="status" data-slot="ordering.closed">
+          {closedText}
+        </p>
+      ) : null}
+      {o.notice !== null && o.notice !== closedText && o.sheet === null ? (
         <div role="alert" data-order-notice="">
           <button type="button" className="ro-barnote" onClick={o.dismissNotice}>
             {o.notice}

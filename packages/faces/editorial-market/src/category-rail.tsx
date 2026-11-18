@@ -1,6 +1,6 @@
 // The sticky category rail: one link per top-level section, the one being read underlined. The
-// active section follows the scroll (an IntersectionObserver on a band near the top of the
-// screen) and the rail scrolls itself sideways to keep that link in the middle; it never scrolls
+// active section follows the scroll (the last section above a reading line near the top of the
+// screen, both ways) and the rail scrolls itself sideways to keep that link in the middle; it never scrolls
 // the page. A section the guest's filters have emptied loses its link.
 
 import type { Locale, ViewSection } from '@restro/shell'
@@ -15,41 +15,61 @@ import {
   sectionDomId,
 } from './model'
 
-/** The band of the screen in which a section counts as the one being read: below the rail, in the top 38 %. */
-const READING_BAND = '-74px 0px -62% 0px'
+/** How far down the screen the reading line sits: below the rail, and a third of the way down. */
+const readingLine = () => Math.max(120, window.innerHeight * 0.3)
 
-/** The id of the section being read, and a way to set it when a link is tapped. */
-function useActiveSection(ids: readonly string[]) {
+/**
+ * The id of the section being read, and a way to set it when a link is tapped. The section being
+ * read is the last one whose top has passed the reading line, so it is the same going down and going
+ * back up: no section has to be "inside" a band for the answer to move (S7).
+ */
+function useActiveSection(ids: readonly string[], filterKey: string) {
   const [active, setActive] = useState(ids[0] ?? '')
   const key = ids.join('|')
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for `ids`
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for `ids`; `filterKey` re-reads the page after the filters changed what is on it
   useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined') return
-    const byElement = new Map<Element, string>()
-    for (const id of ids) {
+    const elements = ids.flatMap((id) => {
       const element = document.getElementById(sectionDomId(id))
-      if (element !== null) byElement.set(element, id)
-    }
-    if (byElement.size === 0) return
-    const inBand = new Set<string>()
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const id = byElement.get(entry.target)
-          if (id === undefined) continue
-          if (entry.isIntersecting) inBand.add(id)
-          else inBand.delete(id)
+      return element === null ? [] : [{ id, element }]
+    })
+    if (elements.length === 0) return
+    let frame = 0
+    const read = () => {
+      frame = 0
+      const line = readingLine()
+      let current = elements[0]?.id
+      for (const { id, element } of elements) {
+        const box = element.getBoundingClientRect()
+        // A section the filters emptied takes no room and is never the one being read.
+        if (box.height > 0 && box.top <= line) current = id
+      }
+      // At the very bottom of a page that scrolls, the last section on it is the one being read,
+      // even when it is too short to reach the reading line.
+      const root = document.documentElement
+      if (
+        root.scrollHeight > window.innerHeight &&
+        window.innerHeight + window.scrollY >= root.scrollHeight - 2
+      ) {
+        for (const { id, element } of elements) {
+          if (element.getBoundingClientRect().height > 0) current = id
         }
-        // The last section whose top has come into the band is the one being read.
-        const current = ids.filter((id) => inBand.has(id)).at(-1)
-        if (current !== undefined) setActive(current)
-      },
-      { rootMargin: READING_BAND, threshold: [0, 0.1] },
-    )
-    for (const element of byElement.keys()) observer.observe(element)
-    return () => observer.disconnect()
-  }, [key])
+      }
+      if (current !== undefined) setActive(current)
+    }
+    const schedule = () => {
+      if (frame === 0) frame = window.requestAnimationFrame(read)
+    }
+    // Read once now (on mount, and after a filter change), not only when the page scrolls.
+    schedule()
+    window.addEventListener('scroll', schedule, { passive: true })
+    window.addEventListener('resize', schedule)
+    return () => {
+      window.removeEventListener('scroll', schedule)
+      window.removeEventListener('resize', schedule)
+      if (frame !== 0) window.cancelAnimationFrame(frame)
+    }
+  }, [key, filterKey])
 
   return [active, setActive] as const
 }
@@ -66,7 +86,10 @@ export function CategoryRail({
   readonly label: string
   readonly page: Locale
 }) {
-  const [active, setActive] = useActiveSection(sections.map((section) => section.id))
+  const [active, setActive] = useActiveSection(
+    sections.map((section) => section.id),
+    `${[...filters.dietary].sort().join(',')};${[...filters.tags].sort().join(',')}`,
+  )
   const rail = useRef<HTMLElement>(null)
 
   // Keep the active link in the middle of the rail, without moving the page.

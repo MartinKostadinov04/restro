@@ -26,6 +26,16 @@ export function BillSheet() {
   // The POS's own amounts are signed: a waiter's discount line is negative (#293, DA-8).
   const money = (minor: number) => paySignedMoney(minor, table?.currency ?? 'EUR', locale)
   const paidLines = table?.paidLines ?? []
+  // A round that is not on the bill as last read: still in flight, or taken by the POS after the
+  // reading was made (P15). Compared with when the round settled, not when Send was tapped: a
+  // round that waited for approval and settled after the reading is not on this bill yet.
+  const readAt = table?.readAt
+  const roundPending = (state.sentOrders ?? []).some((sent) => {
+    if (sent.unpaid === true) return false
+    if (sent.state === 'sending' || sent.state === 'awaiting_approval') return true
+    if (sent.state !== 'added' || readAt === undefined) return false
+    return (sent.settledAt ?? sent.sentAt) > readAt
+  })
   // The POS's own lines are the bill where the host has no record of rounds (the guest page's host
   // has none); where it has, the rounds are the same lines with their status and who ordered them.
   const tableLines =
@@ -65,9 +75,22 @@ export function BillSheet() {
     <div className="ro-sheet" data-design-part="bill">
       <p className="rm-overlay-intro">{words.tabIntro}</p>
       {table === null || rounds.length > 0 ? null : (
-        <p className="ro-allergy" data-slot="bill.updated">
-          {table.complete ? w.updated(table.readAgoSeconds) : w.stale(table.readAgoSeconds)}
-        </p>
+        <>
+          {roundPending ? (
+            // A round the guests sent that the last reading of the bill does not hold yet: the
+            // freshness line would present a total without it as current (P15). The round is never
+            // added to the total here (D72); the line goes once a reading includes it.
+            <p className="ro-allergy" data-slot="bill.pending">
+              {w.roundPending}
+            </p>
+          ) : null}
+          {/* A failed reading keeps its warning, with the pending line beside it, never instead. */}
+          {roundPending && table.complete ? null : (
+            <p className="ro-allergy" data-slot="bill.updated">
+              {table.complete ? w.updated(table.readAgoSeconds) : w.stale(table.readAgoSeconds)}
+            </p>
+          )}
+        </>
       )}
       {empty ? <p className="ro-empty">{table === null ? words.emptyTab : w.emptyBill}</p> : null}
       {tableLines.length === 0 ? null : (

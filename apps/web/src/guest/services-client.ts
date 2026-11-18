@@ -256,10 +256,11 @@ export interface PayFormValues {
 }
 
 /** The table's bill as the face draws it (our ids and the POS's own amounts). */
-function tableBillOf(bill: GuestTableState['bill']): TableBillView | null {
+function tableBillOf(bill: GuestTableState['bill'], now: number): TableBillView | null {
   if (bill === null) return null
   return {
     readAgoSeconds: bill.readAgoSeconds,
+    readAt: now - bill.readAgoSeconds * 1000,
     complete: bill.complete,
     currency: 'EUR',
     totalMinor: bill.totalMinor,
@@ -728,7 +729,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     state = {
       ...EMPTY_SERVICE_STATE,
       revision: server?.version ?? 0,
-      tableBill: server === null ? null : tableBillOf(server.bill),
+      tableBill: server === null ? null : tableBillOf(server.bill, now),
       paying: server === null || retired ? null : payingView(server),
       payment: payment === null || isHidden(payment) ? null : paymentViewOf(payment, receiptEmail),
       order: server?.order == null ? null : orderView(server.order, pending, now),
@@ -743,6 +744,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
               payFirst: server.ordering.payFirst,
               tips: server.ordering.tips,
               night: server.ordering.night,
+              ...(server.ordering.movedAway === true ? { movedAway: true as const } : {}),
             },
       offline: offline(),
       sendLost: lost === null ? null : { ref: null },
@@ -754,6 +756,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
           ref: sent.ref,
           lines: sent.lines,
           sentAt: now - sent.sentAgoSeconds * 1000,
+          settledAt: sent.settledAgoSeconds == null ? null : now - sent.settledAgoSeconds * 1000,
           sentClock: sent.sentClock,
           mine: mine.has(sent.id),
           ...(sent.unpaid === true ? { unpaid: true as const } : {}),

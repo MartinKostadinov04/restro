@@ -14,7 +14,7 @@ import { useServices } from './provider'
 export function QuickAdd({ item }: { readonly item: ViewItem }) {
   const o = useServices()
   if (o === null || !o.canOrder(item)) return null
-  const { words, order } = o
+  const { words, order, state } = o
 
   // Where the ticket takes no options, an item that needs a choice is ordered from the waiter.
   if (!o.notesAndOptions && needsChoices(item)) {
@@ -27,6 +27,7 @@ export function QuickAdd({ item }: { readonly item: ViewItem }) {
     )
   }
 
+  const shut = state.ordering?.state === 'closed'
   const word = o.view.design.order?.add_control === 'add'
   const mine = order.lines.filter((line) => line.itemId === item.id)
   const total = mine.reduce((sum, line) => sum + line.qty, 0)
@@ -54,7 +55,9 @@ export function QuickAdd({ item }: { readonly item: ViewItem }) {
         data-design-part="item.add"
         data-slot="item.add"
         aria-label={words.addNamed(item.name.text)}
+        aria-disabled={shut ? true : undefined}
         onClick={(event) => {
+          if (shut) return
           if (needsChoices(item)) o.openDish(item.id, event.currentTarget)
           else void o.add(item)
         }}
