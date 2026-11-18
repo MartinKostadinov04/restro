@@ -380,6 +380,7 @@ export async function loadTablesView(
       : null,
     halls,
     total: rows.length,
+    guestTotal: rows.filter((row) => !row.isPaymentTable).length,
     coded: withCode.length,
     sample:
       firstShown === undefined || firstCode === undefined

@@ -142,6 +142,41 @@ describe('the toast after a write', () => {
     expect(plain).toBe('Receipt for Table 1 brought')
   })
 
+  it('words the toast from what the write answered, and adds a second line only when given one', async () => {
+    const spec = (skipped: number): RunSpec => ({
+      id: 'open-all',
+      act: async (): Promise<TonightResult> => ({ ok: true, details: { opened: 3, skipped } }),
+      done: (done) => `Opened ${String(done.details.opened)}`,
+      note: (done) =>
+        typeof done.details.skipped === 'number' && done.details.skipped > 0
+          ? `${String(done.details.skipped)} skipped`
+          : undefined,
+    })
+    renderWithIntl(
+      <RunProvider>
+        <Button spec={spec(2)} />
+      </RunProvider>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'go' }))
+    await waitFor(() => expect(toast).toHaveBeenCalledTimes(1))
+    expect(toast.mock.calls[0]).toEqual([
+      'Opened 3',
+      expect.objectContaining({ id: 'open-all', description: '2 skipped' }),
+    ])
+    cleanup()
+    toast.mockClear()
+    renderWithIntl(
+      <RunProvider>
+        <Button spec={spec(0)} />
+      </RunProvider>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'go' }))
+    await waitFor(() => expect(toast).toHaveBeenCalledTimes(1))
+    const [text, options] = toast.mock.calls[0] as [string, { description?: string }]
+    expect(text).toBe('Opened 3')
+    expect(options.description).toBeUndefined()
+  })
+
   it('says what failed when the write never reached the server, and keeps the toast (RR-78)', async () => {
     const after = vi.fn()
     renderWithIntl(
