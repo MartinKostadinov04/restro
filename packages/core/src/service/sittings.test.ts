@@ -363,7 +363,10 @@ describe.skipIf(!hasDatabase)('tables open for phones (as the restro_app role)',
       expect(await run({ type: 'table.new_guests', tableId })).toMatchObject({
         code: 'payment_table',
       })
-      expect(await accepted({ type: 'tables.open_all' })).toMatchObject({ skipped: 1, skippedPayment: 1 })
+      expect(await accepted({ type: 'tables.open_all' })).toMatchObject({
+        skipped: 1,
+        skippedPayment: 1,
+      })
       expect(await openSittingOf(tableId)).toBeNull()
       await closeEverything()
 

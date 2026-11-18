@@ -41,8 +41,8 @@ import type { LegalDetails } from '../legal-details'
 import { PAID_LINES_MAX } from '../paid-lines'
 import {
   type PayFirstLevel,
-  payFirstRuleApplies,
   payFirstLineAt,
+  payFirstRuleApplies,
   readPayFirstSettings,
 } from '../pay-first-settings'
 import { CARD_FLOOR_MINOR, readPayingSettings, smallestCardMinor } from '../paying-settings'
@@ -57,9 +57,9 @@ import { resolveGrants } from './grants'
 import type { LeaseScope } from './leases'
 import { activePausesOfTable, pausesOfVenue } from './pause-scope'
 import {
+  menusWithPayFirstItem,
   type PayFirstState,
   type PayingState,
-  menusWithPayFirstItem,
   payFirstItems,
   payFirstState,
   payingOffer,
