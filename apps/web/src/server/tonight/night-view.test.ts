@@ -417,8 +417,7 @@ describe('the reservation group of the end of the night (#408, D144)', () => {
   const say = (key: string) => words[key] ?? key
   const csv = (view: ReturnType<typeof nightView>) =>
     nightCsvRows(view, [], { say, source: 'tonight', timezone: 'Europe/Sofia' })
-  const door = (rows: ReturnType<typeof csv>) =>
-    rows.filter((row) => row.section === words.nt_res)
+  const door = (rows: ReturnType<typeof csv>) => rows.filter((row) => row.section === words.nt_res)
 
   it('is hidden, in the view and in the file, where reservations are off', () => {
     const view = nightView(night({ reservations: null }), 'Europe/Sofia')

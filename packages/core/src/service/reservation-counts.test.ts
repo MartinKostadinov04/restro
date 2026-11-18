@@ -175,38 +175,43 @@ describe.skipIf(!hasDatabase)('the door’s counts at the close (as the restro_a
       [world.venueId, NIGHT],
     )
     const others = { sittings: 11, addedMinor: 4200 }
-
-    // The manager puts the no-show back: No-shows falls to 0 and Reserved counts nowhere.
-    expect(
-      (
-        await applyService(
-          world.app,
-          { type: 'reservation.put_back', reservationId: ids.noShow as never },
-          staff(),
-        )
-      ).result,
-    ).toMatchObject({ status: 'accepted' })
-    expect(await readTotals()).toMatchObject({ ...others, resNoShows: 0, resBookings: 3 })
+    const run = async (type: 'reservation.delete' | 'reservation.restore', id: string) => {
+      const { result } = await applyService(
+        world.app,
+        { type, reservationId: id as never },
+        staff(),
+      )
+      if (result.status !== 'accepted') throw new Error(`${type}: ${result.code}`)
+    }
 
     // The cancelled booking is taken out of the book: bookings, cancelled and covers booked move.
-    expect(
-      (
-        await applyService(
-          world.app,
-          { type: 'reservation.delete', reservationId: ids.cancelled as never },
-          staff(),
-        )
-      ).result,
-    ).toMatchObject({ status: 'accepted' })
+    await run('reservation.delete', ids.cancelled as string)
+    expect(await readTotals()).toMatchObject({
+      ...others,
+      resBookings: 2,
+      resCancelled: 0,
+      resNoShows: 1,
+      resCoversBooked: 10,
+    })
+    // So is the no-show: the rate's numerator goes with it.
+    await run('reservation.delete', ids.noShow as string)
+    expect(await readTotals()).toMatchObject({
+      ...others,
+      resBookings: 1,
+      resNoShows: 0,
+      resCoversBooked: 4,
+      resArrived: 2,
+      resCoversSeated: 7,
+    })
+    // And the cancelled one is put back: counted again, whole.
+    await run('reservation.restore', ids.cancelled as string)
     const after = await readTotals()
     expect(after).toMatchObject({
       ...others,
       resBookings: 2,
-      resCancelled: 0,
+      resCancelled: 1,
       resNoShows: 0,
-      resCoversBooked: 10,
-      resArrived: 2,
-      resCoversSeated: 7,
+      resCoversBooked: 6,
     })
     // Before the edits the night said otherwise; the same keys are there after, none dropped.
     expect(before).toMatchObject({ resBookings: 3, resNoShows: 1, resCancelled: 1 })
@@ -222,7 +227,11 @@ describe.skipIf(!hasDatabase)('the door’s counts at the close (as the restro_a
       day: NIGHT,
     })
     if (!read.ok) throw new Error(read.code)
-    expect(read.night.reservations).toMatchObject({ resBookings: 2, resNoShows: 0 })
+    expect(read.night.reservations).toMatchObject({
+      resBookings: 2,
+      resCancelled: 1,
+      resNoShows: 0,
+    })
   })
 })
 
@@ -274,16 +283,16 @@ describe.skipIf(!hasDatabase)('the door on the end of the night (as the restro_a
   it('counts the rows live while the night is open, for a role with night.view alone and no money', async () => {
     await seedReservation(world, OPEN_NIGHT, 'booking', 'seated', 4)
     await seedReservation(world, OPEN_NIGHT, 'booking', 'no_show', 2)
-    await seedReservation(world, OPEN_NIGHT, 'walk_in', 'waiting', 3)
+    await seedReservation(world, OPEN_NIGHT, 'walk_in', 'seated', 3)
     const night = await read(OPEN_NIGHT)
     expect(night.closedAt).toBeNull()
     expect(night.reservations).toMatchObject({
       resBookings: 2,
       resWalkIns: 1,
-      resArrived: 1,
+      resArrived: 2,
       resNoShows: 1,
       resCoversBooked: 6,
-      resCoversSeated: 4,
+      resCoversSeated: 7,
       noShowRate: 50,
     })
     expect(night.full).toBe(false)
