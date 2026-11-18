@@ -151,6 +151,13 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D144](decisions/D144.md) | What the analytics answer: the measurement is already complete, the night writes its own numbers down, and Restro is never a second answer to the till | firm; refines D142 |
 | [D145](decisions/D145.md) | The guest's card form offers no Link account and asks the guest to save nothing | firm; refines D127 |
 | [D146](decisions/D146.md) | Screens are reviewed in rounds by an explorer and an independent reviewer, with Anthropic's design-critique, accessibility-review and ux-copy vendored whole; the design plugins switched off in Restro | firm; refines D106, D109, D123; contradicts D123 on vendoring |
+| [D147](decisions/D147.md) | Staff mark an item sold out, and it is sold out for the whole club that night | firm; narrows D124 |
+| [D148](decisions/D148.md) | If a payment went through Restro and staff mark the line undeliverable, Restro sends the money back | firm on the rule; the guardrail change waits on Martin |
+| [D149](decisions/D149.md) | Prices are kept right by asking the POS often, and a till-only happy hour waits | firm |
+| [D150](decisions/D150.md) | No POS is connected without first being tested in a test environment | firm |
+| [D151](decisions/D151.md) | Carrying a printed receipt to the guest is not Restro's work | firm |
+| [D152](decisions/D152.md) | Restro never puts a badge on a menu item by itself | firm |
+| [D153](decisions/D153.md) | A bar tablet is paired with a one-time code, not with an account | firm; refines D141 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.
