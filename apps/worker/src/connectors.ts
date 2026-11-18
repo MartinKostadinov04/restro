@@ -90,9 +90,17 @@ export function paymentProviders(env: NodeJS.ProcessEnv = process.env): PaymentP
   const providers = new Map<string, PaymentProvider>()
   const stripeKey = env.STRIPE_SECRET_KEY
   if (stripeKey !== undefined && stripeKey !== '') {
+    // The refund-only restricted key (148) is a second, separate key: unset, Stripe offers no line
+    // refund and "Not served" refunds fail with "see the bar". It must be a restricted key and not
+    // the platform's (`checkStripeRefundKey`).
+    const refundKey = env.STRIPE_REFUND_KEY
     providers.set(
       STRIPE_KIND,
-      createStripeProvider({ env: env.PAYMENTS_ENV ?? '', key: stripeKey }),
+      createStripeProvider({
+        env: env.PAYMENTS_ENV ?? '',
+        key: stripeKey,
+        ...(refundKey === undefined || refundKey === '' ? {} : { refundKey }),
+      }),
     )
   }
   if (env.WORKER_PAYMENTS_SIM === 'on') {

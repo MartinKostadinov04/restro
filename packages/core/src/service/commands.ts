@@ -111,6 +111,7 @@ import {
 import { preOpeningAlert } from './pre-opening'
 import { recordReading } from './readings'
 import { receiptBrought, receiptUnbrought } from './receipt-brought'
+import { paymentRefundLine, paymentRefundRouteOn, paymentRefundSent } from './refund-line'
 import { RESERVATION_COMMANDS } from './reservations/commands'
 import { sendOrder } from './send'
 import { SENT_ORDER_COMMANDS } from './sent-order'
@@ -727,6 +728,11 @@ export const SERVICE_COMMANDS = {
   // #234: a refund that did not go through, seen by a manager or owner (Undo within the window).
   'payment.refund_failed_seen': paymentRefundFailedSeen(),
   'payment.refund_failed_seen_undo': paymentRefundFailedSeenUndo(),
+  // The 11-18 refund decision (148): "Not served" on a paid line writes the refund row first, the
+  // worker records what the provider answered, an owner switches the route back on.
+  'payment.refund_line': paymentRefundLine(),
+  'payment.refund_sent': paymentRefundSent(),
+  'payment_account.refund_route_on': paymentRefundRouteOn(),
   // #110: the worker's steps from `requested` to `held`, each a compare-and-set on the payment.
   'payment.price': paymentPrice(),
   'payment.hold_created': paymentHoldCreated(),

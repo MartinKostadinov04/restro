@@ -6,7 +6,8 @@
 // platform and throws. Every Stripe answer is parsed with this package's schemas (`api.ts`)
 // before it is mapped. A timeout, a 5xx, a 409 or a rate limit is `unknown` (`errors.ts`), and
 // stripe-node never retries on its own (`maxNetworkRetries: 0`): the platform decides. Restro
-// never refunds (D125 3.5): nothing here makes one; a refund or a dispute is only read back.
+// refunds in one case only, `refundLine` (refund-line.ts, the 11-18 refund decision, 148), with its
+// own refund-only key; any other refund or a dispute is only read back.
 // No key, client secret or Stripe message reaches a log or an error unredacted (`withoutSecrets`).
 
 import {
@@ -52,7 +53,7 @@ import {
   type StripeCharge,
   type StripePaymentIntent,
 } from './api'
-import { checkStripeKey, withoutSecrets } from './config'
+import { checkStripeKey, checkStripeRefundKey, withoutSecrets } from './config'
 import { classify, detailOf, failedWrite, isMissing, type WriteStep } from './errors'
 import {
   connectionStatus,
@@ -63,6 +64,7 @@ import {
   providerPayment,
   providerRefund,
 } from './mapping'
+import { refundLine as refundLineStep } from './refund-line'
 
 /** The provider kind (`payments.provider_kind`, `apps/web/src/connectors/stripe/`). */
 export const STRIPE_KIND = 'stripe'
@@ -95,6 +97,8 @@ export const STRIPE_CAPABILITIES: PaymentCapabilities = {
   partialCapture: true,
   wallets: ['apple_pay', 'google_pay'],
   refundNotices: true,
+  // True only for a provider built with a refund key (`createStripeProvider`).
+  lineRefund: false,
   minimumMinor: (currency) => MINIMUM_MINOR[currency],
 }
 
@@ -123,6 +127,12 @@ export interface StripeProviderOptions {
   readonly env: string
   /** The platform's secret or restricted key. Never logged. */
   readonly key: string
+  /**
+   * The refund-only restricted key (the 11-18 refund decision, 148), used by `refundLine` alone;
+   * IP-restricted to the worker's addresses where the host allows it. Without it the provider
+   * declares no line refund and refuses the step. Never logged.
+   */
+  readonly refundKey?: string
   /** The fetch every request goes through (tests: recordings and faults). Default: global fetch. */
   readonly fetch?: typeof fetch
   readonly timeoutMs?: number
@@ -145,6 +155,18 @@ export function createStripeProvider(options: StripeProviderOptions): PaymentPro
     timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     httpClient: Stripe.createFetchHttpClient(fetchFn),
   })
+  // The refund-only key's own client: the platform's key never refunds, and this one does nothing
+  // else (`refundLine` is the only step that uses it).
+  const refundClient =
+    options.refundKey === undefined
+      ? null
+      : new Stripe(checkStripeRefundKey(options.env, options.refundKey, key), {
+          apiVersion: STRIPE_API_VERSION,
+          maxNetworkRetries: 0,
+          telemetry: false,
+          timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+          httpClient: Stripe.createFetchHttpClient(fetchFn),
+        })
 
   const on = (accountRef: ProviderRef) => ({ stripeAccount: accountRef.provider })
   const keyed = (accountRef: ProviderRef, idempotencyKey: string) => ({
@@ -352,7 +374,7 @@ export function createStripeProvider(options: StripeProviderOptions): PaymentPro
 
   return {
     kind: STRIPE_KIND,
-    capabilities: STRIPE_CAPABILITIES,
+    capabilities: { ...STRIPE_CAPABILITIES, lineRefund: refundClient !== null },
 
     async startConnection(request): Promise<PaymentWriteOutcome<StartConnectionResult>> {
       const req = StartConnectionRequestSchema.parse(request)
@@ -612,6 +634,43 @@ export function createStripeProvider(options: StripeProviderOptions): PaymentPro
       } catch (error) {
         return failed('release', req.accountRef, error)
       }
+    },
+
+    async refundLine(request) {
+      // No refund key: the step is not offered (`capabilities.lineRefund`), and nothing is sent.
+      if (refundClient === null) {
+        return {
+          kind: 'refused',
+          refusal: { code: 'not_supported', scope: 'payment', detail: 'no refund key is set' },
+        }
+      }
+      return refundLineStep(
+        {
+          refundClient,
+          // The platform's key reads the payment as Stripe holds it now.
+          readPayment: async (account, ref) => {
+            const accountRef = ProviderRefSchema.parse(account)
+            // GET /v1/payment_intents/:id?expand[]=latest_charge, like `readNoticeSubject`: one that is
+            // not on the account, or carries no payment id of ours, is not a payment Restro made.
+            const read = await get(PaymentIntentSchema, () =>
+              stripe.paymentIntents.retrieve(
+                ref.provider,
+                { expand: ['latest_charge'] },
+                on(accountRef),
+              ),
+            )
+            if (!read.ok) return read.missing ? { complete: true, value: null } : incomplete(read.reason)
+            if (!PaymentIdSchema.safeParse(read.value.metadata?.[PAYMENT_METADATA_KEY]).success) {
+              return { complete: true, value: null }
+            }
+            const payment = await paymentOf(accountRef, read.value)
+            return payment.ok
+              ? { complete: true, value: payment.value }
+              : incomplete(payment.reason)
+          },
+        },
+        request,
+      )
     },
   }
 }

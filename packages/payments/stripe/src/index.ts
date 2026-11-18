@@ -5,6 +5,7 @@
 
 export {
   checkStripeKey,
+  checkStripeRefundKey,
   STRIPE_ENVS,
   StripeConfigError,
   type StripeEnv,

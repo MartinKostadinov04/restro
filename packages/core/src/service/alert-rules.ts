@@ -76,6 +76,18 @@ export const PAYMENT_ACCOUNT_LOST_KIND = 'payment_account_lost'
  */
 export const PAYMENT_REFUNDED_KIND = 'payment_refunded'
 /**
+ * A venue's refunds Restro sent in one night passed the tripwire's alarm (the 11-18 refund decision,
+ * 148; `REFUND_ALARM`): owners and managers, and Restro's team, are told. It is a signal to look, never
+ * a block; a person presses Done once they have.
+ */
+export const PAYMENT_REFUND_ALARM_KIND = 'payment_refund_alarm'
+/**
+ * Restro's own refunds were switched off at a venue (148): the night's refunds passed the switch-off
+ * figures, or a refund carrying Restro's stamp had no row of ours. It closes itself when an owner
+ * switches the route back on.
+ */
+export const PAYMENT_REFUND_ROUTE_OFF_KIND = 'payment_refund_route_off'
+/**
  * A card payment was disputed with the guest's bank (#222; decision log 5.11): the group is told
  * once, with the table and the payment's day and no amount. It closes when the dispute closes.
  */
@@ -279,6 +291,22 @@ export const ALERT_RULES: Readonly<Record<string, KindRule>> = {
   // when the storno is answered or the dispute closes; the day's close may clear one nobody
   // closed, since the to-do itself is read from the payment records (#162).
   [PAYMENT_REFUNDED_KIND]: { ...NOBODY, venueTelegram: venueGroup },
+  // The tripwire over Restro's own refunds (148): the owners at once and again until Done, as any
+  // money alert; the team is told once. The switch-off closes when an owner switches the route on.
+  // Not a money alert of D122 §7 (those seven are about one card payment): a refund is only ever
+  // sent during service, so these are told as a pause of paying is, to the ticked accounts (owners and
+  // managers hold `money.follow_up`) and the team once, with a reminder to the owners after an hour.
+  [PAYMENT_REFUND_ALARM_KIND]: {
+    ...NOBODY,
+    push: staffPush({ afterMs: 60 * MINUTE, max: 1, ownersOnly: true }),
+    team: { firstDelayMs: 0, minGapMs: 0, reminder: null },
+  },
+  [PAYMENT_REFUND_ROUTE_OFF_KIND]: {
+    ...NOBODY,
+    closesItself: true,
+    push: staffPush({ afterMs: 60 * MINUTE, max: 1, ownersOnly: true }),
+    team: { firstDelayMs: 0, minGapMs: 0, reminder: null },
+  },
   [PAYMENT_DISPUTED_KIND]: { ...NOBODY, venueTelegram: venueGroup },
   [PAYMENT_ACCOUNT_LOST_KIND]: {
     ...NOBODY,

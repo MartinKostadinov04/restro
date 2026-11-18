@@ -331,6 +331,10 @@ export interface PayingStrings {
   readonly paidReceiptRequested: (email: string) => string
   /** The bill's section of lines paid in the app in this sitting (D127 1.2). */
   readonly paidInApp: string
+  /** A paid line the venue marked not served (148): the refund is on its way, made, or failed. */
+  readonly paidRefundSending: string
+  readonly paidRefunded: string
+  readonly paidRefundFailed: string
   /** The Paid screen's button and the title of the Payment confirmation (D127 1.4). */
   readonly confirmTitle: string
   readonly paidByCard: string
@@ -701,6 +705,9 @@ const EN: Strings = {
       paidReceiptRequested: (email) =>
         `Show this number to your waiter. Your receipt was requested to ${email}.`,
       paidInApp: 'Paid in the app',
+      paidRefundSending: 'Not served · refund being sent',
+      paidRefunded: 'Not served · refunded',
+      paidRefundFailed: 'Not served · please see the bar',
       confirmTitle: 'Payment confirmation',
       paidByCard: 'Paid by card',
       confirmNotReceipt: 'This is not your receipt. Your waiter brings the venue’s receipt.',
@@ -1067,6 +1074,9 @@ const BG: Strings = {
       paidReceiptRequested: (email) =>
         `Покажете този номер на сервитьора. Поискахте касова бележка на ${email}.`,
       paidInApp: 'Платено в приложението',
+      paidRefundSending: 'Не е сервирано · връщането се изпраща',
+      paidRefunded: 'Не е сервирано · върнато',
+      paidRefundFailed: 'Не е сервирано · моля, идете до бара',
       confirmTitle: 'Потвърждение за плащане',
       paidByCard: 'Платено с карта',
       confirmNotReceipt:

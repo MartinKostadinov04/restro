@@ -35,6 +35,7 @@ import { createFloorJobs } from './floor'
 import { createSendJobs } from './order-send'
 import { orderTidyTick } from './order-tidy'
 import { createPaymentRecoveryJob } from './payment-recovery'
+import { createPaymentRefundJob } from './payment-refunds'
 import { createPaymentJobs } from './payments'
 import { createProviderNoticesJob } from './provider-notices'
 import { createPublishJobs } from './publish'
@@ -102,6 +103,8 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
       : [
           ...createPaymentJobs({ sim: config.sim, providers, receiptSender }),
           createPaymentRecoveryJob({ sim: config.sim, providers, receiptSender }),
+          // Restro's own refunds (148): the one job that calls the provider's refund step.
+          createPaymentRefundJob({ providers }),
         ]),
   ]
   // The Send (#77) needs no credentials either (the simulated POS has none); like the readings, a

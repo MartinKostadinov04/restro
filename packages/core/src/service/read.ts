@@ -20,6 +20,7 @@ import {
   logEntries,
   pauses,
   paymentLines,
+  paymentRefunds,
   payments,
   type ReadTx,
   reservationNights,
@@ -51,7 +52,13 @@ import { serviceDate, serviceDayStartsAt } from '../service-day'
 import { nextOrderChangeAt, orderFromRow } from '../table-order'
 import type { CallWaiterKind } from '../theme'
 import { PAYMENT_LINES_NOT_BACK_KIND, PAYMENT_UNCONFIRMED_KIND } from './alert-rules'
-import { type BillView, billBackendValues, billView, parseStoredBills } from './bill'
+import {
+  type BillView,
+  billBackendValues,
+  billView,
+  type LineRefundState,
+  parseStoredBills,
+} from './bill'
 import type { ServiceActor } from './context'
 import { resolveGrants } from './grants'
 import type { LeaseScope } from './leases'
@@ -507,6 +514,8 @@ export async function readTableState(
               name: paymentLines.name,
               quantity: paymentLines.closedQuantity,
               amountMinor: paymentLines.closedMinor,
+              paymentId: paymentLines.paymentId,
+              position: paymentLines.position,
             })
             .from(paymentLines)
             .innerJoin(
@@ -526,11 +535,46 @@ export async function readTableState(
             )
             .orderBy(asc(payments.settledAt), asc(payments.id), asc(paymentLines.position))
             .limit(PAID_LINES_MAX)
-    const paidLines = paidRows.flatMap((row) =>
-      row.quantity === null || row.amountMinor === null
+    // Restro's own refund of a paid line (148): "being sent" until the provider's list shows it
+    // (D72: no local success), then "refunded"; "did not go through" tells the guest to see the bar.
+    const refundRows =
+      paidRows.length === 0
         ? []
-        : [{ name: row.name, quantity: row.quantity, amountMinor: row.amountMinor }],
-    )
+        : await tx
+            .select({
+              paymentId: paymentRefunds.paymentId,
+              position: paymentRefunds.linePosition,
+              failedAt: paymentRefunds.failedAt,
+              confirmedAt: paymentRefunds.confirmedAt,
+            })
+            .from(paymentRefunds)
+            .where(
+              and(
+                inArray(paymentRefunds.paymentId, [
+                  ...new Set(paidRows.map((row) => row.paymentId)),
+                ]),
+                eq(paymentRefunds.origin, 'line'),
+              ),
+            )
+            .orderBy(asc(paymentRefunds.seenAt), asc(paymentRefunds.id))
+    const refundOf = (paymentId: string, position: number): LineRefundState | null => {
+      const rows = refundRows.filter((r) => r.paymentId === paymentId && r.position === position)
+      const live = rows.findLast((r) => r.failedAt === null)
+      if (live !== undefined) return live.confirmedAt === null ? 'sending' : 'refunded'
+      return rows.length === 0 ? null : 'failed'
+    }
+    const paidLines = paidRows.flatMap((row) => {
+      if (row.quantity === null || row.amountMinor === null) return []
+      const refund = refundOf(row.paymentId, row.position)
+      return [
+        {
+          name: row.name,
+          quantity: row.quantity,
+          amountMinor: row.amountMinor,
+          ...(refund === null ? {} : { refund }),
+        },
+      ]
+    })
     const backendValues = billBackendValues(stored)
     for (const payment of open) {
       if (payment.ref !== null) backendValues.add(payment.ref)

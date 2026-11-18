@@ -109,6 +109,10 @@ export interface RefundRowView {
   readonly storno: { readonly by: WhoView; readonly time: string } | null
   /** Who saw a refund that did not go through ("Got it", #234), and when. */
   readonly seen: { readonly by: WhoView; readonly time: string } | null
+  /** For a refund Restro sent for a line marked "Not served" (148): who asked. */
+  readonly requestedBy?: WhoView | null
+  /** Restro sent it and the provider's list does not show it yet. */
+  readonly sending?: boolean
 }
 
 /** The payments of one night as the page draws them. */
@@ -262,6 +266,8 @@ export function paymentsView(read: NightPayments, timezone: string): PaymentsVie
                 serviceDate: refund.serviceDate,
                 earlier: refund.earlier,
                 failed: refund.failed,
+                requestedBy: refund.requestedBy === null ? null : whoView(refund.requestedBy, null),
+                sending: refund.sending,
                 storno:
                   refund.storno === null
                     ? null
@@ -319,7 +325,19 @@ export interface PaymentDetailView {
     readonly name: string
     readonly quantity: string
     readonly amountMinor: number
+    /** The line's place in the payment: what "Not served" names (148). */
+    readonly position?: number
+    /** What the POS closed the line for; null when it was not paid (never refundable). */
+    readonly closedMinor?: number | null
+    /** Restro's own refund of the line: `sending` until the provider's list shows it (D72). */
+    readonly refund?: {
+      readonly state: 'sending' | 'refunded' | 'failed'
+      readonly amountMinor: number
+      readonly by: WhoView
+    } | null
   }[]
+  /** Restro's own refunds are switched off at the venue (the tripwire, 148). */
+  readonly refundRouteOff?: boolean
   readonly steps: readonly {
     readonly time: string
     readonly kind: 'payment.state' | 'payment.answered'
@@ -334,6 +352,10 @@ export interface PaymentDetailView {
     readonly amountMinor: number
     readonly time: string
     readonly failed: boolean
+    /** Restro sent it for a line marked "Not served" (148), and who asked. */
+    readonly requestedBy?: WhoView | null
+    /** Restro sent it and the provider's list does not show it yet. */
+    readonly sending?: boolean
     readonly storno: { readonly by: WhoView; readonly time: string } | null
   }[]
   /** Where a dispute stands (#222); null for none. */
@@ -362,7 +384,18 @@ export function paymentDetailView(detail: PaymentDetail, timezone: string): Paym
       name: line.name,
       quantity: line.quantity,
       amountMinor: line.amountMinor,
+      position: line.position,
+      closedMinor: line.closedMinor,
+      refund:
+        line.refund === null
+          ? null
+          : {
+              state: line.refund.state,
+              amountMinor: line.refund.amountMinor,
+              by: whoView(line.refund.by, null),
+            },
     })),
+    refundRouteOff: detail.refundRouteOff,
     steps: detail.steps.map((step) => ({
       time: clock(step.at) ?? '',
       kind: step.kind,
@@ -375,6 +408,8 @@ export function paymentDetailView(detail: PaymentDetail, timezone: string): Paym
       amountMinor: refund.amountMinor,
       time: clock(refund.seenAt) ?? '',
       failed: refund.failed,
+      requestedBy: refund.requestedBy === null ? null : whoView(refund.requestedBy, null),
+      sending: refund.origin === 'line' && !refund.failed && !refund.confirmed,
       storno:
         refund.storno === null
           ? null

@@ -7,8 +7,10 @@
 //     id before anything else (D125 3.9);
 //   - a reading with any failed part is `complete: false` and concludes nothing.
 //
-// There is no refund (D125 3.5, D127 4.4): a refund is the venue's, in its own dashboard, and
-// Restro only observes it through notices, by reading the payment back (`readNoticeSubject`).
+// Restro refunds in one case only (the 11-18 refund decision, 148): a line staff mark "Not served"
+// on a payment Restro captured, through the one step `refundLine`. Any other refund is the venue's,
+// in its own dashboard, and Restro only observes it through notices, by reading the payment back
+// (`readNoticeSubject`).
 
 import { z } from 'zod'
 
@@ -81,6 +83,10 @@ export const PAYMENT_REFUSAL_CODES = [
   'account_restricted',
   /** The provider does not offer this step for this account (wallet domains, say). */
   'not_supported',
+  /** A refund above what is left of the payment to refund (`refundLine`). */
+  'amount_above_remaining',
+  /** The payment cannot be refunded now: not captured, not made by Restro, or past the provider's window. */
+  'not_eligible',
 ] as const
 export type PaymentRefusalCode = (typeof PAYMENT_REFUSAL_CODES)[number]
 
@@ -217,6 +223,12 @@ export const ProviderRefundSchema = z.strictObject({
   ref: ProviderRefSchema,
   amountMinor: PositiveMinorSchema,
   failed: z.boolean(),
+  /**
+   * Our refund row (`rf_`) that Restro stamped on the refund when it made it (`refundLine`); absent
+   * on a refund made in the provider's dashboard. A refund that carries one and has no row of ours
+   * was made with Restro's key without Restro's own code: the tripwire (the refund decision, 148).
+   */
+  restroRefundId: idSchema('rf').optional(),
 })
 export type ProviderRefund = z.output<typeof ProviderRefundSchema>
 
@@ -361,6 +373,24 @@ export const ReleaseRequestSchema = z.strictObject({
 })
 export type ReleaseRequest = z.output<typeof ReleaseRequestSchema>
 
+/**
+ * Refund part of a payment Restro captured, once (the refund decision, 148): `refundId` is our
+ * refund row, and also the idempotency key, so a retry of the same row can never pay twice. The
+ * bounds (only a payment Restro captured, only the amount the POS closed the line for, once per
+ * line) are Restro's own and are checked before this is called (`refundBoundsProblem`); the
+ * provider checks them against what it holds again.
+ */
+export const RefundLineRequestSchema = z.strictObject({
+  accountRef: ProviderRefSchema,
+  paymentRef: ProviderRefSchema,
+  /** Our payment, which the provider keeps on its payment: the provider refuses any other. */
+  paymentId: PaymentIdSchema,
+  refundId: idSchema('rf'),
+  amountMinor: PositiveMinorSchema,
+  idempotencyKey: IdempotencyKeySchema,
+})
+export type RefundLineRequest = z.output<typeof RefundLineRequestSchema>
+
 // ---------------------------------------------------------------------------------------------
 // Answer schemas, one per step, for the platform and the conformance suite
 
@@ -375,4 +405,5 @@ export const PAYMENT_ANSWER_SCHEMAS = {
   readRefunds: readingSchema(z.array(ProviderRefundSchema)),
   capture: paymentWriteOutcomeSchema(ProviderPaymentSchema),
   release: paymentWriteOutcomeSchema(ProviderPaymentSchema),
+  refundLine: paymentWriteOutcomeSchema(ProviderRefundSchema),
 } as const

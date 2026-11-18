@@ -511,6 +511,40 @@ export async function tableBookedLaterAction(
   }
 }
 
+const OnNotServed = z.strictObject({
+  venueId,
+  paymentId: idSchema('py'),
+  /** The line's place in the payment. */
+  position: z.int().min(1).max(10_000),
+  /** For part of a line (1 of 2): the quantity not served, a decimal text; all of it when left out. */
+  quantity: z
+    .string()
+    .regex(/^d{1,12}(?:.d{1,6})?$/)
+    .optional(),
+  pin,
+})
+
+/**
+ * "Not served" on a paid line (the 11-18 refund decision, 148): a person who may answer alerts says
+ * the guest paid for a line that was never served. The refund row is written first and the worker
+ * sends it (the payment's refund job); nothing here calls the provider. A shared device asks the
+ * person's own PIN, so the Log and the end of the night name who tapped. No Undo: the money is on
+ * its way.
+ */
+export async function notServedAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnNotServed.safeParse(input)
+  if (!parsed.success) return INVALID
+  const { paymentId, position, quantity } = parsed.data
+  return perform(parsed.data, (scope) =>
+    command(scope, {
+      type: 'payment.refund_line',
+      paymentId,
+      position,
+      ...(quantity === undefined ? {} : { quantity }),
+    }),
+  )
+}
+
 const OnRefund = z.strictObject({ venueId, refundId: idSchema('rf'), pin })
 const OnRefundUndo = OnRefund.extend({ undo: z.strictObject({ entry: z.int().positive() }) })
 

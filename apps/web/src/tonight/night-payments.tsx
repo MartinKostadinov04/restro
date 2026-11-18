@@ -348,13 +348,20 @@ export function NightRefunds({
         {refunds.map((refund) => {
           const failedText = t('py_refund_failed', { provider: provider ?? t('pb_provider_none') })
           // A failed refund a manager saw says so, and who (#234), as "Storno done" does.
-          const state = refund.failed
+          const base = refund.failed
             ? refund.seen === null
               ? failedText
               : `${failedText} · ${t('lg_pay_refund_seen')} · ${who(refund.seen.by)}, ${refund.seen.time}`
-            : refund.storno === null
-              ? t('nt_fix_storno')
-              : t('py_storno', { who: who(refund.storno.by), time: refund.storno.time })
+            : refund.sending
+              ? t('py_refund_sending')
+              : refund.storno === null
+                ? t('nt_fix_storno')
+                : t('py_storno', { who: who(refund.storno.by), time: refund.storno.time })
+          // A refund Restro sent for a line marked "Not served" names who asked (148).
+          const state =
+            refund.requestedBy === null || refund.requestedBy === undefined
+              ? base
+              : `${t('py_not_served')}: ${who(refund.requestedBy)} · ${base}`
           return (
             <li key={refund.refundId} className="p-3 text-sm">
               <button

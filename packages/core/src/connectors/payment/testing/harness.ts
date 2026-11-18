@@ -5,9 +5,14 @@
 // provider's harness drives its sandbox (#107), never a venue's live account (rule 7).
 
 import type { Currency } from '../../../money'
-import type { PaymentProvider } from '../provider'
+import type { PaymentProvider, PaymentWriteOutcome } from '../provider'
 import type { ProviderRef } from '../provider-ref'
-import type { ProviderFormValues, ProviderNotice } from '../schemas'
+import type {
+  ProviderFormValues,
+  ProviderNotice,
+  ProviderRefund,
+  RefundLineRequest,
+} from '../schemas'
 
 /** The steps a fault can hit: the provider writes about a payment. */
 export const FAULT_STEPS = ['createHold', 'capture', 'release'] as const
@@ -98,6 +103,13 @@ export interface PaymentHarness {
   readonly faults: PaymentFaults
   /** The venue and the bank at the provider; an action left out shows its check as a todo. */
   readonly outside?: OutsideActions
+  /**
+   * Makes the provider's one refund (the 11-18 refund decision, 148) for the refund check. The
+   * provider package's own test hands it over, so the kit never calls a refund itself
+   * (`scripts/no-refunds.test.ts`); a harness whose provider offers none leaves it out and the
+   * check shows as a todo.
+   */
+  readonly lineRefund?: (request: RefundLineRequest) => Promise<PaymentWriteOutcome<ProviderRefund>>
   /** A second venue account, whose reads must see nothing of `account`'s. */
   readonly otherAccount?: ProviderRef
   /**

@@ -92,6 +92,14 @@ export function useTonightRun() {
   return context
 }
 
+/**
+ * The runner when there is one: a screen that only reads (a sheet opened where no write runs) has
+ * none, and a control that writes is then left out instead of failing.
+ */
+export function useOptionalTonightRun() {
+  return useContext(RunContext)
+}
+
 export function RunProvider({
   children,
   asks = true,

@@ -22,6 +22,7 @@ import {
   bars,
   type DbPool,
   logEntries,
+  paymentAccounts,
   paymentLines,
   paymentRefunds,
   payments,
@@ -183,6 +184,13 @@ export interface NightRefund {
   readonly earlier: boolean
   /** The refund did not go through at the provider. */
   readonly failed: boolean
+  /**
+   * For a refund Restro sent for a line staff marked "Not served" (148): who asked. Null for a refund
+   * the venue made at the provider.
+   */
+  readonly requestedBy: Who | null
+  /** Restro sent it and the provider's list does not show it yet. */
+  readonly sending: boolean
   /** Who said the storno was made, and when; null while it waits. */
   readonly storno: { readonly who: Who; readonly via: string | null; readonly at: Date } | null
   /** Who saw a refund that did not go through ("Got it", #234), and when; null while unseen. */
@@ -709,6 +717,9 @@ async function moneySections(
       failedAt: paymentRefunds.failedAt,
       stornoAt: paymentRefunds.stornoAt,
       stornoBy: paymentRefunds.stornoBy,
+      origin: paymentRefunds.origin,
+      confirmedAt: paymentRefunds.confirmedAt,
+      actor: paymentRefunds.actor,
       stornoVia: sql<string | null>`(select l.via from ${logEntries} l
         where l.venue_id = ${paymentRefunds.venueId} and l.kind = 'payment.storno'
           and l.to_state = 'done' and l.details ->> 'refundId' = ${paymentRefunds.id}
@@ -759,6 +770,7 @@ async function moneySections(
   }
   const stornoNames = await whoOf(tx, [
     ...refundRows.flatMap((row) => (row.stornoBy === null ? [] : [row.stornoBy])),
+    ...refundRows.flatMap((row) => (row.origin === 'line' ? [row.actor] : [])),
     ...failedIds.flatMap((id) => seenOf(id)?.actor ?? []),
   ])
   // Section 6: the disputes opened on the day (a dispute read before its times were kept belongs
@@ -795,6 +807,8 @@ async function moneySections(
         serviceDate: row.serviceDate,
         earlier: row.serviceDate !== day,
         failed: row.failedAt !== null,
+        requestedBy: row.origin === 'line' ? (stornoNames.get(row.actor) ?? RESTRO) : null,
+        sending: row.origin === 'line' && row.failedAt === null && row.confirmedAt === null,
         storno:
           row.stornoAt === null || row.stornoBy === null
             ? null
@@ -856,11 +870,12 @@ export interface PaymentDetail {
   readonly payment: NightPaymentRow
   /** The number the guest shows the waiter on the Paid screen (`paymentNumberOf`). */
   readonly number: string
-  readonly lines: readonly {
-    readonly name: string
-    readonly quantity: string
-    readonly amountMinor: number
-  }[]
+  readonly lines: readonly PaymentLineDetail[]
+  /**
+   * Restro's own refunds are switched off at the venue (the tripwire, 148): the sheet offers no
+   * "Not served" and says so.
+   */
+  readonly refundRouteOff: boolean
   readonly steps: readonly PaymentStep[]
   /** The provider's kind (`payments.provider_kind`), for the screen to name it. */
   readonly providerKind: string
@@ -880,12 +895,38 @@ export interface PaymentDetail {
   readonly evidence: DisputeEvidenceInput | null
 }
 
+/** One line of a payment in its sheet. */
+export interface PaymentLineDetail {
+  readonly name: string
+  readonly quantity: string
+  readonly amountMinor: number
+  /** The line's place in the payment: what "Not served" names. */
+  readonly position: number
+  /** What the POS closed the line for, or null when the line was not paid (never refundable). */
+  readonly closedMinor: number | null
+  /**
+   * Restro's own refund of the line, if one was asked (148): `sending` until the provider's list
+   * shows it (D72), then `refunded`; `failed` when it did not go through.
+   */
+  readonly refund: {
+    readonly refundId: string
+    readonly state: 'sending' | 'refunded' | 'failed'
+    readonly amountMinor: number
+    readonly by: Who
+  } | null
+}
+
 /** One refund of a payment in its sheet. */
 export interface PaymentRefundLine {
   readonly refundId: string
   readonly amountMinor: number
   readonly seenAt: Date
   readonly failed: boolean
+  /** Restro sent it for a line staff marked "Not served" (148), or the venue made it at the provider. */
+  readonly origin: 'provider' | 'line'
+  /** For a refund Restro sent: who asked, and whether the provider's list shows it yet. */
+  readonly requestedBy: Who | null
+  readonly confirmed: boolean
   readonly storno: { readonly who: Who; readonly via: string | null; readonly at: Date } | null
 }
 
@@ -913,15 +954,35 @@ export async function readPaymentDetail(
       and(eq(payments.venueId, reader.venue.id), eq(payments.id, input.paymentId)),
     )
     if (row === undefined) return { ok: true, access: accessOf(reader), detail: null } as const
-    const lines = await tx
+    const lineRows = await tx
       .select({
         name: paymentLines.displayName,
         quantity: paymentLines.quantity,
         amountMinor: paymentLines.posAmountMinor,
+        position: paymentLines.position,
+        closedMinor: paymentLines.closedMinor,
       })
       .from(paymentLines)
       .where(eq(paymentLines.paymentId, row.id))
       .orderBy(asc(paymentLines.position))
+    // Restro's own refunds of the lines (148), read for whoever opens the sheet: they hold a line's
+    // amount and no tip, and the one who taps "Not served" must see what became of it.
+    const lineRefundRows = await tx
+      .select({
+        refundId: paymentRefunds.id,
+        position: paymentRefunds.linePosition,
+        amountMinor: paymentRefunds.amountMinor,
+        failedAt: paymentRefunds.failedAt,
+        confirmedAt: paymentRefunds.confirmedAt,
+        actor: paymentRefunds.actor,
+      })
+      .from(paymentRefunds)
+      .where(and(eq(paymentRefunds.paymentId, row.id), eq(paymentRefunds.origin, 'line')))
+      .orderBy(asc(paymentRefunds.seenAt), asc(paymentRefunds.id))
+    const [account] = await tx
+      .select({ off: paymentAccounts.refundRouteOffAt })
+      .from(paymentAccounts)
+      .where(eq(paymentAccounts.venueId, reader.venue.id))
     const steps = await tx
       .select({
         at: logEntries.at,
@@ -962,12 +1023,17 @@ export async function readPaymentDetail(
             failedAt: paymentRefunds.failedAt,
             stornoAt: paymentRefunds.stornoAt,
             stornoBy: paymentRefunds.stornoBy,
+            origin: paymentRefunds.origin,
+            confirmedAt: paymentRefunds.confirmedAt,
+            actor: paymentRefunds.actor,
           })
           .from(paymentRefunds)
           .where(eq(paymentRefunds.paymentId, row.id))
           .orderBy(asc(paymentRefunds.seenAt), asc(paymentRefunds.id))
       : []
     const names = await whoOf(tx, [
+      ...lineRefundRows.map((refund) => refund.actor),
+      ...refundRows.flatMap((refund) => (refund.origin === 'line' ? [refund.actor] : [])),
       ...steps.map((step) => step.actor),
       ...refundRows.flatMap((refund) => (refund.stornoBy === null ? [] : [refund.stornoBy])),
     ])
@@ -1002,6 +1068,9 @@ export async function readPaymentDetail(
         amountMinor: refund.amountMinor,
         seenAt: refund.seenAt,
         failed: refund.failedAt !== null,
+        origin: refund.origin === 'line' ? 'line' : 'provider',
+        requestedBy: refund.origin === 'line' ? (names.get(refund.actor) ?? RESTRO) : null,
+        confirmed: refund.origin !== 'line' || refund.confirmedAt !== null,
         storno:
           refund.stornoAt === null || refund.stornoBy === null
             ? null
@@ -1012,6 +1081,29 @@ export async function readPaymentDetail(
               },
       }),
     )
+    const lines: PaymentLineDetail[] = lineRows.map((line) => {
+      const refund =
+        lineRefundRows.findLast(
+          (candidate) => candidate.position === line.position && candidate.failedAt === null,
+        ) ?? lineRefundRows.findLast((candidate) => candidate.position === line.position)
+      return {
+        ...line,
+        refund:
+          refund === undefined
+            ? null
+            : {
+                refundId: refund.refundId,
+                state:
+                  refund.failedAt !== null
+                    ? 'failed'
+                    : refund.confirmedAt !== null
+                      ? 'refunded'
+                      : 'sending',
+                amountMinor: refund.amountMinor,
+                by: names.get(refund.actor) ?? RESTRO,
+              },
+      }
+    })
     const payment = rowOf(row, full)
     const dispute =
       row.dispute === null
@@ -1078,6 +1170,7 @@ export async function readPaymentDetail(
         payment,
         number: paymentNumberOf(row.id),
         lines,
+        refundRouteOff: account?.off != null,
         steps: stepViews,
         providerKind: extra?.providerKind ?? row.kind,
         refunds,

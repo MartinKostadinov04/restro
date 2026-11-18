@@ -33,7 +33,7 @@ import {
   venueTables,
   withTenant,
 } from '@restro/db'
-import { and, asc, desc, eq, ilike, inArray, isNull, ne, notInArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, isNull, notInArray, or, sql } from 'drizzle-orm'
 
 import { serviceDate } from '../service-day'
 import { TEAM_ALERT_KINDS } from './alert-rules'
@@ -54,6 +54,16 @@ import { type ServiceDayTotals, serviceDayTotals } from './service-day-close'
 import { withoutTipMinor } from './staff-amount'
 
 /** The states that never reached the bill: what "Not added" counts. */
+/**
+ * The Log kinds that name a refund's own amount, which may hold the tip: those who read no tips never
+ * see them (#222). A refund Restro sent for a line staff marked "Not served" is one (148).
+ */
+const REFUND_LOG_KINDS = [
+  'payment.refund_seen',
+  'payment.refund_requested',
+  'payment.refund_sent',
+] as const
+
 export const NOT_ADDED_STATES = ['not_sent', 'unconfirmed'] as const
 
 /** The reasons the answer to an Unconfirmed sent order leaves on it (`sent-order-answer.ts`). */
@@ -697,7 +707,7 @@ export async function readLog(
           inArray(logEntries.kind, [...logKindsOf(group)]),
           venueSeesOnly(reader),
           // A refund's amount may hold the tip: those who read no tips never see the line (#222).
-          fullNight ? undefined : ne(logEntries.kind, 'payment.refund_seen'),
+          fullNight ? undefined : notInArray(logEntries.kind, [...REFUND_LOG_KINDS]),
           or(
             and(
               eq(logEntries.serviceDate, day),
@@ -844,7 +854,8 @@ export async function readLog(
                 : null,
             // A refund line names the refund's own amount, not the payment's (#222).
             amountMinor:
-              row.kind === 'payment.refund_seen' && typeof row.details.amountMinor === 'number'
+              (REFUND_LOG_KINDS as readonly string[]).includes(row.kind) &&
+              typeof row.details.amountMinor === 'number'
                 ? row.details.amountMinor
                 : fullNight
                   ? (row.amountMinor ?? null)
