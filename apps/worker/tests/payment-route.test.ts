@@ -167,7 +167,9 @@ describe.skipIf(!hasDatabase)('the payment route', () => {
   let pool: DbPool
   let sim: SimServer
   const simClock = new SimPosClock()
-  const payClock = new SimPayClock()
+  // The provider's clock starts at the run's own now, like the route's (`clock`): a fixed start
+  // made every hold read as run out once the calendar passed its window (`hold_expired`).
+  const payClock = new SimPayClock(new Date())
   const engine = new SimPayEngine({ clock: payClock })
   const provider = createSimPayProvider({ env: 'test', engine })
   const tenantId = newId('tn')
