@@ -17,7 +17,8 @@
 // A venue's day ends at its own hour in its own time zone, so the tick runs hourly rather than
 // once at 07:00 Sofia. `service_day.close` changes nothing for a day already closed, so a run that
 // races another is harmless. A day that fails, or is refused because a payment or sent order of
-// it is still moving (`payments_open`, `orders_open`), is logged and skipped, and the venue's later
+// it is still moving (`payments_open`, `orders_open`, or `reservations_open` for a party the sweep
+// did not reach, e.g. because the sweep failed: the next tick sweeps again), is logged and skipped, and the venue's later
 // days wait for the next run, so the days close in order.
 //
 // The end-of-night message goes until it has gone, once an hour at most: a failed send is logged

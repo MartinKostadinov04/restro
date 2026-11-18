@@ -15,7 +15,8 @@
 // payment held, cancelling or awaiting the guest at the day's end goes on afterwards, so the
 // totals would undercount, and its action id is what answers a repeat of `pay.start`. A payment is
 // final once `settled_at` is set (0030's `payments_settled`), a sent order once it is in one of
-// `SETTLED_STATES`. The worker tries again on its next run.
+// `SETTLED_STATES`. A party still Reserved, Waiting or Seated waits too (`reservations_open`), so
+// the door's counts never freeze an unfinished status. The worker tries again on its next run.
 //
 // The night's open venue alerts are cleared with the close (#162; Martin 10-27): each gets `done_at`
 // and one `alert.cleared` Log line, so nobody presses Done on yesterday's alerts and the next night
@@ -27,14 +28,23 @@
 // Locks, in the fixed order: the day's sittings (by table), its sent orders, the alerts to clear,
 // its payments.
 
-import { alerts, payments, type ReadTx, sentOrders, serviceDays, sittings } from '@restro/db'
-import { and, eq, inArray, isNotNull, isNull, notInArray, sql } from 'drizzle-orm'
+import {
+  alerts,
+  payments,
+  type ReadTx,
+  reservations,
+  sentOrders,
+  serviceDays,
+  sittings,
+} from '@restro/db'
+import { and, eq, inArray, isNotNull, isNull, ne, notInArray, sql } from 'drizzle-orm'
 
 import { ruleOf } from './alert-rules'
 import type { ServiceTx } from './definition'
 import { appendLogEntry, recordRetainUntil, tableOfAlert } from './log'
 import { PAYMENT_UNCONFIRMED_REASONS } from './pay-route'
 import { reservationCounts } from './reservation-counts'
+import { lockNightReservations } from './reservations/rows'
 import { accepted, refused, type ServiceResult } from './results'
 import { SETTLED_STATES } from './sent-order'
 
@@ -245,6 +255,23 @@ export async function closeServiceDay(
     )
     .limit(1)
   if (liveOrder !== undefined) return refused(null, 'orders_open')
+  // A party of the day still Reserved, Waiting or Seated was not reached by the sweep (it failed,
+  // or has not run yet): closing now would freeze unfinished statuses into the door's counts
+  // (D144), so the day waits for the next tick. The sweep runs before the close in the same tick.
+  const [openParty] = await stx.tx
+    .select({ id: reservations.id })
+    .from(reservations)
+    .where(
+      and(
+        eq(reservations.venueId, stx.venueId),
+        eq(reservations.serviceDate, day),
+        isNull(reservations.deletedAt),
+        ne(reservations.kind, 'block'),
+        inArray(reservations.status, ['reserved', 'waiting', 'seated']),
+      ),
+    )
+    .limit(1)
+  if (openParty !== undefined) return refused(null, 'reservations_open')
 
   for (const alert of toClear) {
     await stx.tx
@@ -314,6 +341,9 @@ export async function closeServiceDay(
 
   const totals = await serviceDayTotals(stx.tx, stx.venueId, day)
   // The door's counts (D144 §3, #408): written with the rest, once, from rows that never expire.
+  // The night's reservations are locked first, so an edit in flight lands before the count (or
+  // finds the closed night and re-rolls it, D144).
+  await lockNightReservations(stx, day)
   const door = await reservationCounts(stx.tx, stx.venueId, day)
   const closed = await stx.tx
     .insert(serviceDays)

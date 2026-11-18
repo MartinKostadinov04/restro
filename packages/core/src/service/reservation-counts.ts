@@ -12,8 +12,10 @@
 // A row taken out of the book (`deleted_at`) is not counted. The counts are plain numbers under
 // `res*` keys of the totals object (jsonb of scalars: no schema change, D144).
 
-import type { ReadTx } from '@restro/db'
-import { sql } from 'drizzle-orm'
+import { type ReadTx, serviceDays } from '@restro/db'
+import { and, eq, sql } from 'drizzle-orm'
+
+import type { ServiceTx } from './definition'
 
 /** The door's numbers of a night, as `service_days.totals` keeps them. */
 export interface ReservationCounts {
@@ -87,4 +89,38 @@ export function storedReservationCounts(
 export function noShowRatePercent(counts: ReservationCounts): number | null {
   const due = counts.resNoShows + counts.resBookingsArrived
   return due === 0 ? null : Math.round((counts.resNoShows * 100) / due)
+}
+
+/** The commands that can change a reservation row: after one, a closed night's counts are re-rolled. */
+export function touchesReservations(type: string): boolean {
+  return /^(reservation\.|waiting\.|block\.|night\.end$|reservation_night\.)/.test(type)
+}
+
+/**
+ * A night that is written again is written whole (D144): every closed night whose reservation rows
+ * this command wrote gets all its `res*` keys counted afresh, in the same transaction, and nothing
+ * else of its totals is touched. A night is told by the rows' `updated_at`, which every reservation
+ * write sets to the transaction's `now()`; a reservation never changes its night, so the night a
+ * row sits on is the night it touched. Returns the nights re-rolled.
+ */
+export async function rerollClosedNights(stx: ServiceTx): Promise<readonly string[]> {
+  const result = await stx.tx.execute<{ day: string }>(sql`
+    select distinct r.service_date::text as "day"
+    from restro.reservations r
+    join restro.service_days d
+      on d.venue_id = r.venue_id and d.service_date = r.service_date
+    where r.venue_id = ${stx.venueId} and r.updated_at = now()
+    order by 1`)
+  const days = result.rows.map((row) => row.day)
+  for (const day of days) {
+    const counts = await reservationCounts(stx.tx, stx.venueId, day)
+    await stx.tx
+      .update(serviceDays)
+      .set({
+        totals: sql`${serviceDays.totals} || ${JSON.stringify(counts)}::jsonb`,
+        ...stx.provenance,
+      })
+      .where(and(eq(serviceDays.venueId, stx.venueId), eq(serviceDays.serviceDate, day)))
+  }
+  return days
 }
