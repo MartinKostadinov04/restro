@@ -141,6 +141,7 @@ export {
   forgetGuestCodes,
   GUEST_POLL_MS,
   GUEST_VIEWS,
+  idleGap,
   type GuardEvent,
   type GuestActed,
   type GuestActInput,
