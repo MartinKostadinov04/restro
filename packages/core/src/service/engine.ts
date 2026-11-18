@@ -111,7 +111,8 @@ export interface ServiceOptions {
 /** What the command carries that the engine reads: its type, table and action id, when it has them. */
 interface Envelope {
   readonly type: string
-  readonly tableId?: string
+  /** `null` is "no Table" (`spot.save` unlinks a spot with it): the engine reads it as not naming one. */
+  readonly tableId?: string | null
   readonly actionId?: string
   /** Milliseconds since the guest's tap, for a command with a `maxAgeMs`. */
   readonly ageMs?: number
@@ -145,7 +146,9 @@ export async function executeCommand(
   }
   const parsed = definition.schema.safeParse(input)
   if (!parsed.success) return refused(echoedActionId, 'invalid_command')
-  const command = parsed.data as Envelope
+  const envelope = parsed.data as Envelope
+  // A `null` Table names none: every Table check below sees it as left out, not as an id to find.
+  const command = { ...envelope, tableId: envelope.tableId ?? undefined }
   const actionId = command.actionId ?? null
 
   if (!definition.origins.includes(context.origin)) {
