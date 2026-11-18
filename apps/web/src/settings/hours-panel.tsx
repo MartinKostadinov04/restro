@@ -31,7 +31,6 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { TimeField as TimeInput } from '@/components/ui/time-field'
-import { useTillLabel } from '@/fields/till-label'
 import { useFieldValidity } from '@/lib/use-field-validity'
 import { saveOrderingAction } from '@/server/settings/ordering-actions'
 import type { OrderingView } from '@/server/settings/ordering-view'
@@ -345,7 +344,7 @@ function PreOpening({
   runner: ReturnType<typeof useSettingsRun>
 }) {
   const t = useTranslations('ownerSettings')
-  const source = useTillLabel()
+  const source = view.tillLabel
   const duration = useDuration()
   const { pending, run } = runner
   const rule = view.settings.preOpeningCheck

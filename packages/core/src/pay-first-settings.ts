@@ -140,6 +140,28 @@ export function payFirstRuleApplies(
   return payFirstRuleAt(settings, place, rule).applies
 }
 
+/**
+ * Whether a table's open sitting is really paid first, for the one line Tonight draws about it. The
+ * rule's `applies` alone only says pay-first is allowed there, which is the default everywhere, so
+ * the line is true when a setting below the house's says so (table, bar, hall, the party), or when
+ * the venue's item mode is pay-first, or when an orderable item of the menu the table shows is
+ * (`menuHasPayFirstItem`). Display only: it never decides what a guest may order.
+ */
+export function payFirstLineAt(
+  settings: PayFirstSettings,
+  place: PayFirstPlace,
+  rule: PayRule | null,
+  menuHasPayFirstItem: boolean,
+): { readonly payFirst: boolean; readonly level: PayFirstLevel } {
+  const reading = payFirstRuleAt(settings, place, rule)
+  return {
+    payFirst:
+      reading.applies &&
+      (reading.level !== 'venue' || settings.itemMode === 'pay_first' || menuHasPayFirstItem),
+    level: reading.level,
+  }
+}
+
 /** An item's payment mode: its own, else the venue's default. */
 export function itemPaymentMode(
   own: PaymentMode | null | undefined,

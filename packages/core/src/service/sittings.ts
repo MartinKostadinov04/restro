@@ -540,6 +540,8 @@ export async function openAllTables(stx: ServiceTx): Promise<ServiceResult> {
       opened,
       alreadyOpen: candidates.length - opened,
       skipped: checked.size - candidates.length,
+      // Of those skipped, the payment tables: the only ones the staff screen names.
+      skippedPayment: [...checked.values()].filter((refusal) => refusal === 'payment_table').length,
     },
   })
 }

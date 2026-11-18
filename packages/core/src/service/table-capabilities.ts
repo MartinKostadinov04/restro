@@ -2,7 +2,7 @@
 // `integrations.config.service_capabilities` (#78): the table's place names its POS instance.
 // All false for a table no POS instance serves, or one whose instance recorded nothing readable.
 
-import { integrations, places, type ReadTx, venueTables } from '@restro/db'
+import { type DbPool, integrations, places, type ReadTx, venueTables, withTenant } from '@restro/db'
 import { and, eq, isNull, ne } from 'drizzle-orm'
 
 import {
@@ -42,4 +42,18 @@ export async function readVenueCapabilities(
       ),
     )
   return rows.map((row) => readServiceCapabilities(row.config))
+}
+
+/**
+ * Whether a POS instance serves any table of the venue, so a sent order has somewhere to go
+ * (D122). The guest-feature notes in the composer read it. A POS instance is the whole fact: no
+ * capability is about ordering itself, and one that declared nothing still takes a round.
+ */
+export async function readVenueServesOrders(
+  pool: DbPool,
+  tenantId: string,
+  venueId: string,
+): Promise<boolean> {
+  const pos = await withTenant(pool, tenantId, (tx) => readVenueCapabilities(tx, venueId))
+  return pos.length > 0
 }

@@ -79,7 +79,7 @@ describe('the door, after an arrival', () => {
   it('seats a party with no spot without saying a table opened', async () => {
     const spec = await arrive('en', party())
     // What the write is certain of, said before it answers: nobody is told about a table yet.
-    expect(spec.done).toBe('Ivanova is seated.')
+    expect(spec.done).toBe('Seated Ivanova.')
     // The write answered: it opened no table, because the party holds no spot.
     const lines = told(spec, { status: 'seated', spots: '', opened: '', tablesOpen: 0 })
     expect(lines).toEqual([])
@@ -88,14 +88,14 @@ describe('the door, after an arrival', () => {
 
   it('says the same in Bulgarian, which is the language the hostess reads', async () => {
     const spec = await arrive('bg', party())
-    expect(spec.done).toBe('Ivanova е настанена.')
+    expect(spec.done).toBe('Настанихме Ivanova.')
     expect(told(spec, { status: 'seated', opened: '', tablesOpen: 0 })).toEqual([])
     expect(spec.done).not.toContain('отворена')
   })
 
   it('adds the table line only when a code really opened', async () => {
     const spec = await arrive('en', party({ spotIds: ['sp_7'] }))
-    expect(spec.done).toBe('Ivanova is seated.')
+    expect(spec.done).toBe('Seated Ivanova.')
     expect(told(spec, { status: 'seated', opened: 'tb_7', tablesOpen: 1 })).toEqual([
       'The table is open for phones.',
     ])
@@ -103,7 +103,7 @@ describe('the door, after an arrival', () => {
 
   it('adds it in Bulgarian, and names the spot the hostess chose in the main toast', async () => {
     const spec = await arrive('bg', party({ onSpot: 'Маса 7', spotIds: ['sp_7'] }))
-    expect(spec.done).toBe('Ivanova е настанена на Маса 7.')
+    expect(spec.done).toBe('Настанихме Ivanova на Маса 7.')
     expect(told(spec, { opened: 'tb_7', tablesOpen: 1 })).toEqual([
       'Масата е отворена за телефони.',
     ])

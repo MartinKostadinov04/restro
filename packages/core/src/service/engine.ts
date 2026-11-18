@@ -52,6 +52,7 @@ import { appendLogEntry } from './log'
 import { tripOrderRate } from './order-rate'
 import { watchPayingState } from './paying-phones'
 import { isSettingsPermission } from './permissions'
+import { rerollClosedNights, touchesReservations } from './reservation-counts'
 import { fallOf, pinFallActionOf, readPinActions } from './reservations/pin-fall'
 import { accepted, refused, type ServiceResult } from './results'
 import { RowLocks } from './rows'
@@ -398,6 +399,8 @@ export async function executeCommand(
       }
 
       if (result.status === 'accepted') await payingMoved?.()
+      // D144: a reservation write on a night already closed re-rolls that night's door counts.
+      if (result.status === 'accepted' && touchesReservations(type)) await rerollClosedNights(stx)
       const versions = await rows.bumpTouched()
       if (ring && command.tableId !== undefined && actionId !== null) {
         const order = rows.heldOrder(command.tableId)

@@ -426,9 +426,9 @@ test.describe('the end of the night', () => {
     await page.getByTestId('night-show-all').click()
     await expect(sentRows(page)).toHaveCount(9)
     const totals = page.getByTestId('night-totals-list')
-    await expect(totals).toContainText('Tables opened for phones')
+    await expect(totals).toContainText('Table openings for phones')
     await expect(
-      totals.locator('div', { hasText: 'Tables opened for phones' }).first(),
+      totals.locator('div', { hasText: 'Table openings for phones' }).first(),
     ).toContainText('6')
     await expect(totals.locator('div', { hasText: 'Amount added to bills' }).first()).toContainText(
       '€36.00',
@@ -517,7 +517,7 @@ test.describe('the end of the night', () => {
     )
     const totals = page.getByTestId('night-totals-list')
     await expect(
-      totals.locator('div', { hasText: 'Tables opened for phones' }).first(),
+      totals.locator('div', { hasText: 'Table openings for phones' }).first(),
     ).toContainText('12')
     await expect(totals.locator('div', { hasText: 'Amount added to bills' }).first()).toContainText(
       '€512.00',
