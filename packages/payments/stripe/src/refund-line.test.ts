@@ -81,9 +81,7 @@ function fakeStripe(scenario: Scenario = {}, options: { refundKey?: string | nul
             : 0,
         currency: 'eur',
         metadata:
-          scenario.metadata === null
-            ? {}
-            : (scenario.metadata ?? { restro_payment: paymentId }),
+          scenario.metadata === null ? {} : (scenario.metadata ?? { restro_payment: paymentId }),
         latest_charge: {
           id: 'ch_3Test',
           object: 'charge',
@@ -95,7 +93,10 @@ function fakeStripe(scenario: Scenario = {}, options: { refundKey?: string | nul
     if (url.pathname === '/v1/disputes') {
       return Response.json({ object: 'list', data: [], has_more: false })
     }
-    return Response.json({ error: { type: 'invalid_request_error', code: 'resource_missing' } }, { status: 404 })
+    return Response.json(
+      { error: { type: 'invalid_request_error', code: 'resource_missing' } },
+      { status: 404 },
+    )
   }
   const refundKey = options.refundKey === undefined ? REFUND_KEY : options.refundKey
   const stripe = createStripeProvider({

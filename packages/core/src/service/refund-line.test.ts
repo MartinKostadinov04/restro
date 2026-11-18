@@ -32,7 +32,7 @@ describe('the bounds, in one place', () => {
   const base = {
     payment: {
       state: 'captured',
-      providerPaymentRef: 'pi_1',
+      providerPaymentRef: 'pi_1' as string | null,
       capturedMinor: 2_000,
       refundedMinor: 0,
       serviceDate: '2026-11-18',
@@ -50,7 +50,9 @@ describe('the bounds, in one place', () => {
   })
   it('refuses each way out, by code', () => {
     const problem = (change: Partial<typeof base>) => refundBoundsProblem({ ...base, ...change })
-    expect(problem({ payment: { ...base.payment, state: 'released' } })).toBe('payment_not_captured')
+    expect(problem({ payment: { ...base.payment, state: 'released' } })).toBe(
+      'payment_not_captured',
+    )
     expect(problem({ payment: { ...base.payment, providerPaymentRef: null } })).toBe(
       'payment_not_captured',
     )
@@ -106,7 +108,8 @@ describe.skipIf(!hasDatabase)('"Not served" (as the restro_app role)', () => {
       context(user(by)),
     )
   const worker = () => context({ kind: 'system' }, 'worker')
-  const refundIdOf = (result: unknown) => (result as { details: { refundId: string } }).details.refundId
+  const refundIdOf = (result: unknown) =>
+    (result as { details: { refundId: string } }).details.refundId
 
   async function sittingOf(table: string) {
     const open = await world.owner.query(
@@ -254,7 +257,12 @@ describe.skipIf(!hasDatabase)('"Not served" (as the restro_app role)', () => {
           refund_route_off_at, refund_route_off_reason)
        values ($1, $2, 'sim-pay', 'simacct_refund435', 'connected', now(), 'restro', 'system', 'test-seed',
                $3::timestamptz, $4)`,
-      [world.tenantId, world.venueId, state === 'off' ? new Date() : null, state === 'off' ? 'night' : null],
+      [
+        world.tenantId,
+        world.venueId,
+        state === 'off' ? new Date() : null,
+        state === 'off' ? 'night' : null,
+      ],
     )
   }
   const routeOff = async () =>
@@ -293,7 +301,11 @@ describe.skipIf(!hasDatabase)('"Not served" (as the restro_app role)', () => {
     })
     // Every refund is in the Log with its actor (rule 2).
     expect(await logOf(target.id, 'payment.refund_requested')).toMatchObject([
-      { actor: `user:${waiterId}`, to_state: 'requested', details: { amountMinor: 1_200, line: 1 } },
+      {
+        actor: `user:${waiterId}`,
+        to_state: 'requested',
+        details: { amountMinor: 1_200, line: 1 },
+      },
     ])
     // The existing storno to-do: an alert for the group, and the row Tonight reads it from.
     expect(await alertsOf('payment_refunded', target.id)).toHaveLength(1)
@@ -307,7 +319,10 @@ describe.skipIf(!hasDatabase)('"Not served" (as the restro_app role)', () => {
       status: 'accepted',
       details: { amountMinor: 501 },
     })
-    expect(await tap(target.id, 1, '1')).toMatchObject({ status: 'refused', code: 'refund_already' })
+    expect(await tap(target.id, 1, '1')).toMatchObject({
+      status: 'refused',
+      code: 'refund_already',
+    })
   })
 
   it('refuses each way out of the bounds, and writes nothing', async () => {
@@ -405,7 +420,9 @@ describe.skipIf(!hasDatabase)('"Not served" (as the restro_app role)', () => {
         providerKind: 'sim-pay',
         providerPaymentRef: target.ref,
         capturedMinor: 2_200,
-        refunds: [{ ref: 're_lost_1', amountMinor: 1_200, failed: false, restroRefundId: refundId }],
+        refunds: [
+          { ref: 're_lost_1', amountMinor: 1_200, failed: false, restroRefundId: refundId },
+        ],
         dispute: null,
         disputeDueAt: null,
       },
@@ -426,7 +443,12 @@ describe.skipIf(!hasDatabase)('"Not served" (as the restro_app role)', () => {
     const refundId = refundIdOf(await tap(target.id))
     expect(
       await run(
-        { type: 'payment.refund_sent', refundId, outcome: 'failed', code: 'amount_above_remaining' },
+        {
+          type: 'payment.refund_sent',
+          refundId,
+          outcome: 'failed',
+          code: 'amount_above_remaining',
+        },
         worker(),
       ),
     ).toMatchObject({ status: 'accepted', details: { changed: true } })
@@ -473,7 +495,10 @@ describe.skipIf(!hasDatabase)('"Not served" (as the restro_app role)', () => {
 
   it('a refund with our stamp and no row of ours switches the route off and tells the owners', async () => {
     await account()
-    await world.owner.query("delete from restro.alerts where venue_id = $1 and kind like 'payment_refund_%'", [world.venueId])
+    await world.owner.query(
+      "delete from restro.alerts where venue_id = $1 and kind like 'payment_refund_%'",
+      [world.venueId],
+    )
     await bigNight()
     const target = await paid()
     const read = await run(
@@ -483,7 +508,9 @@ describe.skipIf(!hasDatabase)('"Not served" (as the restro_app role)', () => {
         providerKind: 'sim-pay',
         providerPaymentRef: target.ref,
         capturedMinor: 2_200,
-        refunds: [{ ref: 're_stray', amountMinor: 700, failed: false, restroRefundId: newId('rf') }],
+        refunds: [
+          { ref: 're_stray', amountMinor: 700, failed: false, restroRefundId: newId('rf') },
+        ],
         dispute: null,
         disputeDueAt: null,
       },
@@ -499,9 +526,14 @@ describe.skipIf(!hasDatabase)('"Not served" (as the restro_app role)', () => {
 
   it('raises the alarm once, at three refunds past 1 % and short of the switch-off', async () => {
     await account()
-    await world.owner.query("delete from restro.alerts where venue_id = $1 and kind like 'payment_refund_%'", [world.venueId])
+    await world.owner.query(
+      "delete from restro.alerts where venue_id = $1 and kind like 'payment_refund_%'",
+      [world.venueId],
+    )
     // The night starts clean: earlier tests' refunds are not this night's.
-    await world.owner.query('delete from restro.payment_refunds where venue_id = $1', [world.venueId])
+    await world.owner.query('delete from restro.payment_refunds where venue_id = $1', [
+      world.venueId,
+    ])
     // Nothing else captured tonight but 1,000.00 and the three payments of 10.00 below (about 3 %).
     await world.owner.query(
       "update restro.payments set state = 'released', captured_minor = null, refunded_minor = 0 where venue_id = $1 and state = 'captured'",

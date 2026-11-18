@@ -55,7 +55,8 @@ describe('refundTripwire', () => {
         fc.integer({ min: 0, max: 5 }),
         (captured, refunded, count, moreMinor, moreCount) => {
           const before = rank[refundTripwire(night(captured, refunded, count))]
-          const after = rank[refundTripwire(night(captured, refunded + moreMinor, count + moreCount))]
+          const after =
+            rank[refundTripwire(night(captured, refunded + moreMinor, count + moreCount))]
           expect(after).toBeGreaterThanOrEqual(before)
         },
       ),

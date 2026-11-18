@@ -659,7 +659,8 @@ export function createStripeProvider(options: StripeProviderOptions): PaymentPro
                 on(accountRef),
               ),
             )
-            if (!read.ok) return read.missing ? { complete: true, value: null } : incomplete(read.reason)
+            if (!read.ok)
+              return read.missing ? { complete: true, value: null } : incomplete(read.reason)
             if (!PaymentIdSchema.safeParse(read.value.metadata?.[PAYMENT_METADATA_KEY]).success) {
               return { complete: true, value: null }
             }
