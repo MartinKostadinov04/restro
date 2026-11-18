@@ -25,6 +25,7 @@ import {
   reconcileRefunds,
   refundTotalMinor,
 } from './payment-refunds'
+import { tripStrayRefund } from './refund-line'
 import { accepted, refused } from './results'
 
 // The service path imports nothing under connectors/ (no-outbound.test.ts), so the reading's shape
@@ -60,6 +61,8 @@ export function paymentObserve() {
             ref: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,254}$/),
             amountMinor: z.int().positive(),
             failed: z.boolean(),
+            /** Our refund row stamped on a refund Restro made (`refundLine`); none on the venue's own. */
+            restroRefundId: idSchema('rf').optional(),
           }),
         )
         .max(REFUND_LIST_CAP)
@@ -100,13 +103,13 @@ export function paymentObserve() {
       // amount leave the total as it was.
       const refunds =
         command.refunds === null
-          ? { added: 0, failed: 0, named: 0, unmatched: 0 }
+          ? { added: 0, failed: 0, named: 0, unmatched: 0, confirmed: 0, stray: 0 }
           : await reconcileRefunds(stx, locked, command.refunds, refundedMinor)
       if (
         payment.refundedMinor === refundedMinor &&
         payment.dispute === command.dispute &&
         sameDue &&
-        refunds.added + refunds.failed + refunds.named === 0
+        refunds.added + refunds.failed + refunds.named + refunds.confirmed + refunds.stray === 0
       ) {
         return accepted(null, {
           details: {
@@ -118,6 +121,9 @@ export function paymentObserve() {
       }
 
       const dispute = await observeDispute(stx, locked, command.dispute, dueAt)
+      // A refund that carries our stamp and no row of ours was made with Restro's refund key without
+      // Restro's code: the route is switched off and the owners are told (the tripwire, 148).
+      if (refunds.stray > 0) await tripStrayRefund(stx, payment.id)
 
       await stx.tx
         .update(payments)
@@ -137,6 +143,8 @@ export function paymentObserve() {
           refundsAdded: refunds.added,
           refundsFailed: refunds.failed,
           refundsUnmatched: refunds.unmatched,
+          refundsConfirmed: refunds.confirmed,
+          refundsStray: refunds.stray,
           storedMinor: payment.refundedMinor,
         },
       })

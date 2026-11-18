@@ -117,6 +117,8 @@ export type StaffMemberId = Id<'sm'>
 export type SharedDeviceId = Id<'dv'>
 /** Id of a payment from a phone (D127); also the key of its provider calls' idempotency. */
 export type PaymentId = Id<'py'>
+/** Id of a refund row of a payment (`rf_`); the idempotency key of the refund it sends (the 11-18 refund decision, 148). */
+export type RefundId = Id<'rf'>
 /** Id of one POS bill of a table's reading (#74): stable across readings, never the POS's id. */
 export type BillId = Id<'rd'>
 /** Id of one line of a POS bill of a table's reading (#74), stable across readings. */

@@ -213,6 +213,27 @@ export const SENTENCES = {
       ? c.say('py_refund_failed', { provider })
       : c.say('lg_pay_refund', { amt: c.money(l.amountMinor ?? 0), provider })
   },
+  // A refund Restro sends for a line staff marked "Not served" (148): who asked, then each step.
+  'payment.refund_requested': (l, c) =>
+    c.say('lg_ref_requested', {
+      who: c.who(l.by),
+      amt: c.money(l.amountMinor ?? 0),
+      table: c.table(l),
+    }),
+  'payment.refund_sent': (l, c) => {
+    const values = {
+      amt: c.money(l.amountMinor ?? 0),
+      provider: l.provider ?? c.say('pb_provider_none'),
+    }
+    return c.say(
+      l.refundStep === 'failed'
+        ? 'lg_ref_failed'
+        : l.refundStep === 'confirmed'
+          ? 'lg_ref_confirmed'
+          : 'lg_ref_sent',
+      values,
+    )
+  },
   // "Got it" on a refund that did not go through, and its Undo (#234; the Undo's words: Martin 10-30).
   'payment.refund_failed_seen': (l, c) =>
     c.say(l.refundSeenUndone ? 'lg_pay_refund_seen_undone' : 'lg_pay_refund_seen'),

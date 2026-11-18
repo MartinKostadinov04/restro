@@ -24,6 +24,8 @@ export interface PaymentCapabilities {
   readonly wallets: readonly PaymentWallet[]
   /** The provider sends a notice when the venue refunds in its own dashboard (false: D122 §8's daily list). */
   readonly refundNotices: boolean
+  /** Restro may refund a line itself (`refundLine`): the provider offers it and a refund key is set. */
+  readonly lineRefund: boolean
   /** The smallest amount the provider takes in `currency`, in minor units (D127: the venue's floor). */
   minimumMinor(currency: Currency): number
 }
@@ -35,6 +37,7 @@ const DataSchema = z.strictObject({
     .array(z.enum(PAYMENT_WALLETS))
     .refine((wallets) => new Set(wallets).size === wallets.length, 'a wallet is listed twice'),
   refundNotices: z.boolean(),
+  lineRefund: z.boolean(),
 })
 
 /**

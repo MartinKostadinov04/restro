@@ -30,7 +30,13 @@ export interface StripeErrorLike {
 }
 
 /** The write a refusal is about: it decides how a payment in the wrong state reads. */
-export type WriteStep = 'createHold' | 'capture' | 'release' | 'startConnection' | 'prepareDomain'
+export type WriteStep =
+  | 'createHold'
+  | 'capture'
+  | 'release'
+  | 'startConnection'
+  | 'prepareDomain'
+  | 'refundLine'
 
 /** What a failed call reads as. `released` is a release of an intent already cancelled. */
 export type Classified =
@@ -98,6 +104,20 @@ export function classify(step: WriteStep, error: unknown): Classified {
   // the error-codes page names it "greater than the maximum amount allowed").
   if (e.code === 'amount_too_large' && step === 'capture') {
     return refused('amount_above_hold', error)
+  }
+  // A refund above what is left of the charge, or of one already refunded in full.
+  if (
+    step === 'refundLine' &&
+    (e.code === 'amount_too_large' || e.code === 'charge_already_refunded')
+  ) {
+    return refused('amount_above_remaining', error)
+  }
+  // A charge in dispute, or one that cannot be refunded any more, is not refundable.
+  if (
+    step === 'refundLine' &&
+    (e.code === 'charge_disputed' || e.code === 'refund_disputed_payment')
+  ) {
+    return refused('not_eligible', error)
   }
   if (e.code === 'charge_already_captured') return refused('already_captured', error)
   if (

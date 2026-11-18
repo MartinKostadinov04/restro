@@ -41,6 +41,23 @@ export function checkStripeKey(env: string, key: string): { env: StripeEnv; key:
   return { env: env as StripeEnv, key }
 }
 
+/**
+ * The refund-only key (the 11-18 refund decision, 148), checked like the platform's and more: it
+ * must be a restricted key (`rk_`, never a secret key that can do anything) and a different key from
+ * the platform's, so the key that creates and captures payments never refunds and the one that
+ * refunds does nothing else. Throws `StripeConfigError`; the message never carries a key.
+ */
+export function checkStripeRefundKey(env: string, refundKey: string, platformKey: string): string {
+  checkStripeKey(env, refundKey)
+  if (!refundKey.startsWith('rk_')) {
+    throw new StripeConfigError('the refund key must be a restricted key (rk_), not a secret key')
+  }
+  if (refundKey === platformKey) {
+    throw new StripeConfigError('the refund key must not be the platform key')
+  }
+  return refundKey
+}
+
 /** Removes anything key-like or secret-like from a text the provider will log or store. */
 export function withoutSecrets(text: string): string {
   return text

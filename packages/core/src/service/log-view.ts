@@ -28,6 +28,8 @@ export const LOG_KIND_GROUP = {
   'payment.state': 'money',
   'payment.answered': 'money',
   'payment.refund_seen': 'money',
+  'payment.refund_requested': 'money',
+  'payment.refund_sent': 'money',
   'payment.storno': 'money',
   'payment.refund_failed_seen': 'money',
   'payment.dispute': 'money',

@@ -52,6 +52,11 @@ export interface SeededVenue {
   /** The booking's guest, a regular named after the marker, with a private note (#333). */
   readonly guest: string
   readonly payment: string
+  /**
+   * A captured payment of tonight with one paid line the POS closed (148): refundable by its own
+   * venue's staff, so only tenancy stands between another tenant and a refund of it.
+   */
+  readonly paidPayment: string
   readonly refund: string
   readonly alert: string
   readonly waiterCall: string
@@ -250,6 +255,23 @@ async function seedVenue(
      values ($1, $2, $3, $4, $5, $6, 'on_bill', 'entered', $7, 'EUR', 'sim', 'guest', 'guest', 'attack-seed')`,
     [payment, tenantId, venue.id, table, sitting, day, hex64()],
   )
+  const paidPayment = newId('py')
+  await owner.query(
+    `insert into restro.payments
+       (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, state, handle_hash,
+        amount_minor, tip_minor, captured_minor, currency, provider_kind, provider_payment_ref,
+        receipt_number, fiscal_memory_number, settled_at, source, actor, job_id)
+     values ($1, $2, $3, $4, $5, $6, 'on_bill', 'captured', $7, 1200, 0, 1200, 'EUR', 'sim-pay', $8,
+             'R-000001', 'FM-1', now(), 'restro', 'system', 'attack-seed')`,
+    [paidPayment, tenantId, venue.id, table, sitting, day, hex64(), `simpay_${paidPayment}`],
+  )
+  await owner.query(
+    `insert into restro.payment_lines
+       (tenant_id, venue_id, payment_id, position, quantity, pos_amount_minor, display_name,
+        closed_minor, closed_quantity, open, source, actor, job_id)
+     values ($1, $2, $3, 1, 1, 1200, $4, 1200, 1, false, 'restro', 'system', 'attack-seed')`,
+    [tenantId, venue.id, paidPayment, `${marker} drink`.slice(0, 60)],
+  )
   const refund = newId('rf')
   await owner.query(
     `insert into restro.payment_refunds
@@ -377,6 +399,7 @@ async function seedVenue(
     reservation,
     guest,
     payment,
+    paidPayment,
     refund,
     alert,
     waiterCall,

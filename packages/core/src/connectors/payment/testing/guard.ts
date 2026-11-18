@@ -1,5 +1,6 @@
 // The suite's static guard: the provider object offers the interface's steps and nothing else,
-// so no refund (D125 3.5, D127 4.4) and no other money path reaches the provider past the seam.
+// so no refund but the one step `refundLine` (the 11-18 refund decision, 148) and no other money
+// path reaches the provider past the seam.
 // Returns the problems it found, empty when clean.
 
 import { PAYMENT_PROVIDER_STEPS } from '../provider'

@@ -389,6 +389,11 @@ export interface LogLineView {
   readonly stornoUndone: boolean
   /** A "Got it" line taken back by Undo (#234). */
   readonly refundSeenUndone: boolean
+  /**
+   * Where a refund Restro sent for a line marked "Not served" stands (148): asked by a person, sent
+   * to the provider, confirmed by its list, or did not go through. Only on those entries.
+   */
+  readonly refundStep?: 'requested' | 'sent' | 'confirmed' | 'failed'
   readonly sentOrdersOfDay: number | null
   /** The bills still open when the night ended (#332); null for any other entry. */
   readonly openBills: number | null
@@ -516,6 +521,14 @@ export function logLineView(
     refundFailed: line.kind === 'payment.refund_seen' && line.toState === 'failed',
     stornoUndone: line.kind === 'payment.storno' && line.toState === 'open',
     refundSeenUndone: line.kind === 'payment.refund_failed_seen' && line.toState === 'open',
+    ...(line.kind === 'payment.refund_requested' || line.kind === 'payment.refund_sent'
+      ? {
+          refundStep:
+            line.toState === 'sent' || line.toState === 'confirmed' || line.toState === 'failed'
+              ? line.toState
+              : ('requested' as const),
+        }
+      : {}),
     sentOrdersOfDay: line.sentOrdersOfDay,
     openBills: line.openBills,
     endedEarly: line.kind === 'night.closed' && line.reason === 'ended_early',

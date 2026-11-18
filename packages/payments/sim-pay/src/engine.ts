@@ -5,7 +5,9 @@
 // time (`SimPayFaults`).
 //
 // The rules it keeps:
-//   - only `capture` moves money, once, never above the hold; a smaller capture releases the rest;
+//   - only `capture` and `refundLine` move money; a capture once, never above the hold, and a
+//     smaller capture releases the rest; a refund only of a captured payment of ours, never above
+//     what is left of it (the 11-18 refund decision, 148);
 //   - the same idempotency key with the same request answers the stored answer again (a stored
 //     server error included); with another request it is refused (`key_reused`);
 //   - a hold not captured by its `captureBefore` is dropped (read as released);
@@ -37,6 +39,7 @@ import {
   type ProviderRefund,
   providerRef,
   type Reading,
+  type RefundLineRequest,
   type ReleaseRequest,
   type StartConnectionRequest,
   type StartConnectionResult,
@@ -62,6 +65,12 @@ export interface SimPaySwitches {
   readonly wallets: readonly PaymentWallet[]
   /** No refund notices, so the platform's fallback (the daily list) is exercised. */
   readonly refundNotices: boolean
+  /**
+   * Restro may refund a line itself (`refundLine`): the simulated provider stands for one with a
+   * refund key set, so the refund route can be built and walked. A test turns it off to see the
+   * route without it.
+   */
+  readonly lineRefund: boolean
   /** The smallest amount, in minor units, per currency. */
   readonly minimumMinor: { readonly [C in Currency]: number }
   /**
@@ -79,6 +88,7 @@ export const CAUTIOUS_SWITCHES: SimPaySwitches = Object.freeze({
   partialCapture: true,
   wallets: [],
   refundNotices: false,
+  lineRefund: true,
   minimumMinor: Object.freeze({ EUR: 50 }),
   guestCardAccepted: false,
 })
@@ -122,7 +132,13 @@ interface SimPayment {
   /** What the venue refunded in its dashboard, in total. */
   refundedMinor: number
   /** Each refund the venue made, oldest first. */
-  readonly refunds: { readonly ref: string; readonly amountMinor: number; failed: boolean }[]
+  readonly refunds: {
+    readonly ref: string
+    readonly amountMinor: number
+    failed: boolean
+    /** Our refund row, stamped by `refundLine`; none on a dashboard refund. */
+    readonly restroRefundId?: RefundLineRequest['refundId']
+  }[]
   /** The latest dispute's ref, once the guest's bank opened one. */
   disputeRef: string | null
   /** The hold ran out uncaptured (`captureBefore` passed). */
@@ -530,6 +546,7 @@ export class SimPayEngine {
         ref: providerRef(refund.ref),
         amountMinor: refund.amountMinor,
         failed: refund.failed,
+        ...(refund.restroRefundId === undefined ? {} : { restroRefundId: refund.restroRefundId }),
       })),
     }
   }
@@ -563,6 +580,38 @@ export class SimPayEngine {
       payment.needsGuestAction = false
       payment.heldMinor = 0
       return done(this.#view(payment))
+    })
+  }
+
+  /**
+   * Refund part of a captured payment of ours, once by key (the 11-18 refund decision, 148): never
+   * above what is left of it, never a payment another id names, never one not captured.
+   */
+  giveBackLine(request: RefundLineRequest): PaymentWriteOutcome<ProviderRefund> {
+    return this.#accountWrite(request.accountRef, 'refundLine', request, (account) => {
+      const payment = this.#paymentOf(account, request.paymentRef)
+      if (payment === undefined) return refused('not_found', 'payment')
+      if (payment.paymentId !== request.paymentId || payment.status !== 'captured') {
+        return refused('not_eligible', 'payment')
+      }
+      const left = subtractMinor(payment.capturedMinor, payment.refundedMinor)
+      if (request.amountMinor > left) return refused('amount_above_remaining', 'payment')
+      const ref = `simrefund_${this.#tag()}`
+      this.#refunds.set(ref, { payment: payment.ref.provider })
+      payment.refunds.push({
+        ref,
+        amountMinor: request.amountMinor,
+        failed: false,
+        restroRefundId: request.refundId,
+      })
+      payment.refundedMinor = addMinor(payment.refundedMinor, request.amountMinor)
+      this.#send('refund.made', payment.account, ref, this.switches.refundNotices)
+      return done({
+        ref: providerRef(ref),
+        amountMinor: request.amountMinor,
+        failed: false,
+        restroRefundId: request.refundId,
+      })
     })
   }
 
@@ -614,7 +663,7 @@ export class SimPayEngine {
   /** A write about one account: the account is known (`#write` refused an unknown one). */
   #accountWrite<R>(
     accountRef: ProviderRef,
-    step: SimPayStep | 'prepareDomain',
+    step: SimPayStep | 'prepareDomain' | 'refundLine',
     request: { readonly idempotencyKey: string },
     run: (account: SimAccount) => PaymentWriteOutcome<R>,
   ): PaymentWriteOutcome<R> {
