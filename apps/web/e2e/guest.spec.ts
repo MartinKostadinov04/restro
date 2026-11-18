@@ -560,12 +560,19 @@ test.describe('the table code', () => {
     await page.screenshot({ path: shot('guest-bg-light-table') })
   })
 
-  test('an English browser gets the English menu without asking', async ({ browser }) => {
+  test("an English browser at a Bulgarian venue gets Bulgarian; the guest's pick is remembered (P11)", async ({
+    browser,
+  }) => {
     const context = await browser.newContext({ ...devices['Pixel 7'], locale: 'en-GB' })
     const page = await context.newPage()
     await page.goto(`/t/${GUEST_TABLE_TOKEN}`)
+    // The venue's own language first, whatever the browser says.
+    await expect(page.getByText(`Маса ${GUEST_TABLE_LABEL}`, { exact: true })).toBeVisible()
+    // After the guest picks English, the next scan of the table's code opens in English.
+    await page.getByRole('button', { name: 'EN', exact: true }).click()
     await expect(page.getByText(`Table ${GUEST_TABLE_LABEL}`, { exact: true })).toBeVisible()
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Demo Club')
+    await page.goto(`/t/${GUEST_TABLE_TOKEN}`)
+    await expect(page.getByText(`Table ${GUEST_TABLE_LABEL}`, { exact: true })).toBeVisible()
     await context.close()
   })
 
