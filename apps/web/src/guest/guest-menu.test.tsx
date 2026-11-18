@@ -13,6 +13,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import { DEFAULT_FACE_ID, faceEntry } from '@/faces/registry'
 
+import { languageCookieName } from './context'
 import { GuestMenu } from './guest-menu'
 import { files } from './load'
 
@@ -80,13 +81,21 @@ function serve(bodies: Map<string, unknown>) {
   )
 }
 
+/**
+ * Opens the page. `languages` is the guest's own earlier pick at this venue (its cookie, P11): the
+ * venue's default language comes before the browser's, so a test that wants a language names it
+ * the way a guest would. The browser reports the same list.
+ */
 function visit(search: string, languages = ['bg-BG'], param = PARAM) {
   window.history.replaceState(null, '', `/m/${param}${search}`)
   vi.spyOn(window.navigator, 'languages', 'get').mockReturnValue(languages)
+  const pick = languages[0]?.split('-')[0]
+  if (pick !== undefined) document.cookie = `${languageCookieName(CODE)}=${pick}; Path=/m`
 }
 
 beforeEach(() => {
   document.title = ''
+  document.cookie = `${languageCookieName(CODE)}=; Path=/m; Max-Age=0`
 })
 afterEach(() => {
   vi.unstubAllGlobals()
