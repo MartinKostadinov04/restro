@@ -112,6 +112,8 @@ export function AutomationSettings({
 
   function submit(event: FormEvent) {
     event.preventDefault()
+    // A refused Save must not keep saying the last one went through.
+    setSaved(false)
     if (validity.blocked()) return
     // Save stays pressable while the time is empty: say so by moving to the field. A hidden
     // schedule (manual mode) keeps the time it had.
@@ -121,7 +123,6 @@ export function AutomationSettings({
     }
     const fullPullTime = timeValid ? time : view.sync.full_pull_time
     setError(null)
-    setSaved(false)
     startTransition(async () => {
       const result = await saveAutomationAction({
         venueId,
