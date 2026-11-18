@@ -52,6 +52,7 @@ const logLine = (fields: Partial<LogLineView> = {}): LogLineView => ({
   setting: 'setting',
   subject: null,
   heldCount: null,
+  codeCount: null,
   amountMinor: null,
   paymentState: null,
   paymentAnswer: null,

@@ -146,7 +146,7 @@ function Panel({ view: given }: { view: TablesView }) {
             {live === undefined ? t('venueMenuNone') : t('venueMenu', { menu: live.name })}
           </p>
           <p className="mt-2 text-sm font-medium" data-testid="tables-summary">
-            {t('summary', { total: view.total, coded: view.coded })}
+            {t('summary', { total: view.guestTotal, coded: view.coded })}
           </p>
           {view.canManage ? null : (
             <p className="mt-2 text-sm text-muted-foreground" data-testid="tables-read-only">

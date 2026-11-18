@@ -68,7 +68,11 @@ export function QrAddressCard({ view }: { view: TablesView }) {
               </Button>
             )}
             <span className="text-xs text-muted-foreground">
-              {view.sample === null ? t('testLinkNone') : t('testLinkHint')}
+              {view.sample !== null
+                ? t('testLinkHint')
+                : view.coded > 0
+                  ? t('testLinkLoading')
+                  : t('testLinkNone')}
             </span>
           </div>
         </div>

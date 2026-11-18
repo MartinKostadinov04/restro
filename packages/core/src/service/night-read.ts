@@ -22,6 +22,7 @@ import {
   pauses,
   payments,
   type ReadTx,
+  reservationSettings,
   sentOrderNotes,
   sentOrders,
   serviceDays,
@@ -42,6 +43,12 @@ import type { LogKind } from './log'
 import { isLogGroup, type LogGroup, logKindsOf } from './log-view'
 import type { Permission } from './permissions'
 import type { TonightRefusal } from './read'
+import {
+  noShowRatePercent,
+  type ReservationCounts,
+  reservationCounts,
+  storedReservationCounts,
+} from './reservation-counts'
 import { sentOrderLinesOf } from './sent-lines'
 import { type ServiceDayTotals, serviceDayTotals } from './service-day-close'
 import { withoutTipMinor } from './staff-amount'
@@ -589,6 +596,8 @@ export interface LogLine {
    * details. Null for every other entry, and for role entries written before this was kept.
    */
   readonly heldCount: number | null
+  /** How many codes a `table_code.revealed` entry showed at once; null for any other entry. */
+  readonly codeCount: number | null
   /** A payment's amount in minor units: with the tip for `night.view_full`, else without it. */
   readonly amountMinor: number | null
   /** The provider a payment's refund or dispute entry names (its kind); null for any other entry. */
@@ -829,6 +838,10 @@ export async function readLog(
             cause: row.kind === 'pause.started' ? row.reason : detailText(row.details, 'cause'),
             subject: subjectKey === null ? null : (subjectName.get(subjectKey) ?? null),
             heldCount: typeof row.details.holdsCount === 'number' ? row.details.holdsCount : null,
+            codeCount:
+              row.kind === 'table_code.revealed' && typeof row.details.count === 'number'
+                ? row.details.count
+                : null,
             // A refund line names the refund's own amount, not the payment's (#222).
             amountMinor:
               row.kind === 'payment.refund_seen' && typeof row.details.amountMinor === 'number'
@@ -909,6 +922,17 @@ export interface NightRead {
     'payments' | 'capturedMinor' | 'tipMinor' | 'paymentsUnconfirmed' | 'unconfirmedMinor'
   >
   readonly money: NightMoney | null
+  /**
+   * The door's counts (D144 §3, #408), `night.view`: no money in them. Null when the venue does not
+   * work reservations (no saved settings and nothing on this night).
+   */
+  readonly reservations: NightReservations | null
+}
+
+/** The night's reservation group: D144's counts and its no-show rate. */
+export interface NightReservations extends ReservationCounts {
+  /** Whole percent, or null when no booking was due to arrive or fail to. */
+  readonly noShowRate: number | null
 }
 
 /** True when the actor may read the end of the night. */
@@ -921,19 +945,44 @@ async function totalsOfDay(
   tx: ReadTx,
   venueId: string,
   day: string,
-): Promise<{ readonly totals: ServiceDayTotals; readonly closedAt: Date | null }> {
+): Promise<{
+  readonly totals: ServiceDayTotals
+  readonly closedAt: Date | null
+  readonly written: Readonly<Record<string, unknown>> | null
+}> {
   const [closed] = await tx
     .select({ totals: serviceDays.totals, closedAt: serviceDays.closedAt })
     .from(serviceDays)
     .where(and(eq(serviceDays.venueId, venueId), eq(serviceDays.serviceDate, day)))
   if (closed === undefined)
-    return { totals: await serviceDayTotals(tx, venueId, day), closedAt: null }
+    return { totals: await serviceDayTotals(tx, venueId, day), closedAt: null, written: null }
   const live = await serviceDayTotals(tx, venueId, day)
   // A key an older close didn't write reads as 0; the live count fills no gap in a closed day.
   const stored = Object.fromEntries(
     Object.keys(live).map((key) => [key, Number(closed.totals[key] ?? 0)]),
   ) as unknown as ServiceDayTotals
-  return { totals: stored, closedAt: closed.closedAt }
+  return { totals: stored, closedAt: closed.closedAt, written: closed.totals }
+}
+
+/**
+ * The door's counts of `day`: a closed night's written ones (a night closed before they were
+ * written is counted from the rows, which never expire), else counted now.
+ */
+async function reservationsOfDay(
+  tx: ReadTx,
+  venueId: string,
+  day: string,
+  closedTotals: Readonly<Record<string, unknown>> | null,
+): Promise<NightReservations | null> {
+  const stored = closedTotals === null ? null : storedReservationCounts(closedTotals)
+  const counts = stored ?? (await reservationCounts(tx, venueId, day))
+  const [settings] = await tx
+    .select({ venueId: reservationSettings.venueId })
+    .from(reservationSettings)
+    .where(eq(reservationSettings.venueId, venueId))
+  const any = Object.values(counts).some((value) => value > 0)
+  if (settings === undefined && !any) return null
+  return { ...counts, noShowRate: noShowRatePercent(counts) }
 }
 
 /** The end of the night for one service day (`day`, default today). */
@@ -953,7 +1002,8 @@ export async function readNight(
     const today = day === reader.today
     const { venue } = reader
 
-    const { totals, closedAt } = await totalsOfDay(tx, venue.id, day)
+    const { totals, closedAt, written } = await totalsOfDay(tx, venue.id, day)
+    const reservations = await reservationsOfDay(tx, venue.id, day, written)
     const sent = await sentOrderPage(tx, reader, {
       day,
       search: '',
@@ -1107,6 +1157,7 @@ export async function readNight(
         fix,
         sent: { counts: sent.counts, notAdded: sent },
         totals: part1,
+        reservations,
         money:
           reader.held.has('money.follow_up') && reader.held.has('night.view_full')
             ? {

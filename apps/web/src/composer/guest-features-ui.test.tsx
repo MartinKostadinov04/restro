@@ -4,7 +4,7 @@
 // (R6), the one Save button, and the read-only view for a person who may not change the venue.
 
 import type { GuestFeatures } from '@restro/core'
-import { screen, waitFor, within } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -12,7 +12,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { saveGuestFeaturesAction } from '@/server/composer/guest-features-actions'
 import { renderWithIntl } from '@/test-utils'
 
-import { GuestFeaturesCard, type PrivacyNotice } from './guest-features-panel'
+import {
+  type GuestConnections,
+  GuestFeaturesCard,
+  type PrivacyNotice,
+} from './guest-features-panel'
 
 vi.mock('@/server/composer/guest-features-actions', () => ({
   saveGuestFeaturesAction: vi.fn(),
@@ -36,15 +40,23 @@ function setup({
   features = FEATURES,
   canEdit = true,
   privacy = { onFile: true, href: LEGAL_FORM },
+  connections = { pos: false, card: false },
   locale = 'en',
 }: {
   features?: GuestFeatures
   canEdit?: boolean
   privacy?: PrivacyNotice
+  connections?: GuestConnections
   locale?: 'en' | 'bg'
 } = {}) {
   renderWithIntl(
-    <GuestFeaturesCard venueId={VENUE} features={features} canEdit={canEdit} privacy={privacy} />,
+    <GuestFeaturesCard
+      venueId={VENUE}
+      features={features}
+      canEdit={canEdit}
+      privacy={privacy}
+      connections={connections}
+    />,
     { locale },
   )
 }
@@ -140,6 +152,18 @@ describe('the guest features panel', () => {
       screen.getByText('Guests see this once card payments are connected for the venue'),
     ).toBeTruthy()
     expect(screen.queryByText(/Stage [45]/)).toBeNull()
+  })
+
+  it('shows a note only for the part that is not connected (walk P3)', () => {
+    const posNote = "Guests see this once the venue's POS is connected"
+    const cardNote = 'Guests see this once card payments are connected for the venue'
+    setup({ connections: { pos: true, card: true } })
+    expect(screen.queryAllByText(posNote)).toHaveLength(0)
+    expect(screen.queryAllByText(cardNote)).toHaveLength(0)
+    cleanup()
+    setup({ connections: { pos: true, card: false } })
+    expect(screen.queryAllByText(posNote)).toHaveLength(0)
+    expect(screen.queryAllByText(cardNote)).toHaveLength(1)
   })
 
   it('says why a save was refused and keeps the change to try again', async () => {

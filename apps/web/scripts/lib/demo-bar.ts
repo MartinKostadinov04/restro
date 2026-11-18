@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url'
 import {
   type ChangeSet,
   type ChangeSetOp,
+  connectorLabel,
   type LocalizedText,
   type NodeId,
   newId,
@@ -36,7 +37,7 @@ export const DEMO_BAR_SCENARIO = 'quiet-night'
 
 /** The venue and its organisation's instance. */
 export const DEMO_BAR_VENUE = { name: 'Demo Bar', slug: 'demo-bar' } as const
-export const DEMO_BAR_INSTANCE_NAME = 'Simulated POS'
+export const DEMO_BAR_INSTANCE_NAME = connectorLabel('sim')
 
 /** Where `pnpm sim:serve` listens by default (`packages/connectors/sim-pos/src/control/server.ts`). */
 export const DEMO_BAR_HOST = 'localhost:4010'

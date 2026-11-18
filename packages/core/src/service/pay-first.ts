@@ -175,6 +175,35 @@ export async function payFirstItems(
   return new Set(rows.rows.map((row) => row.id))
 }
 
+/**
+ * The menus (of those the venue's tables show) that have an orderable item paid first, by the
+ * item's own `payment_mode` or the venue's default (`itemMode`). One query over the published
+ * snapshots, read the way `payFirstItems` reads them; display only (Tonight's pay-rule line).
+ */
+export async function menusWithPayFirstItem(
+  tx: ReadTx,
+  input: { readonly venueId: string; readonly itemMode: PaymentMode },
+): Promise<ReadonlySet<string>> {
+  const routes = await resolveRoutesIn(tx, input.venueId)
+  const shown = new Set<string>()
+  for (const menuId of routes.tables.values()) if (menuId !== null) shown.add(menuId)
+  if (shown.size === 0) return new Set()
+  const rows = await tx.execute<{ menu_id: string }>(sql`
+    select ${publishPointers.menuId} as menu_id
+    from ${publishPointers}
+    join ${snapshots} on ${snapshots.id} = ${publishPointers.currentSnapshotId}
+    where ${publishPointers.venueId} = ${input.venueId}
+      and ${publishPointers.menuId} in (${sql.join(
+        [...shown].map((id) => sql`${id}`),
+        sql`, `,
+      )})
+      and exists (
+        select 1 from jsonb_each(${snapshots.body} -> 'items') as item(key, value)
+        where (item.value ->> 'orderable')::boolean is true
+          and coalesce(item.value ->> 'payment_mode', ${input.itemMode}) = 'pay_first')`)
+  return new Set(rows.rows.map((row) => row.menu_id))
+}
+
 // ---------------------------------------------------------------------------------------------
 // The Send
 

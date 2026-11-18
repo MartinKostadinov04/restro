@@ -37,11 +37,17 @@ describe('the address card (D94)', () => {
   })
 
   it('waits for a code before the test link works', () => {
-    renderWithIntl(<QrAddressCard view={view({ sample: null })} />)
+    renderWithIntl(<QrAddressCard view={view({ sample: null, coded: 0 })} />)
     const button = screen.getByTestId('open-test-link') as HTMLButtonElement
     expect(button.tagName).toBe('BUTTON')
     expect(button.disabled).toBe(true)
     expect(screen.getByText('Create a code for a table first, then test the link.')).toBeTruthy()
+  })
+
+  it('says the codes are loading while some table has one that is not yet read', () => {
+    renderWithIntl(<QrAddressCard view={view({ sample: null, coded: 2 })} />)
+    expect(screen.getByText('Loading the codes…')).toBeTruthy()
+    expect(screen.queryByText('Create a code for a table first, then test the link.')).toBeNull()
   })
 
   it('says so when the installation has no address, and offers no test link', () => {

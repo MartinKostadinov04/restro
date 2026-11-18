@@ -203,6 +203,26 @@ export function nightCsvRows(
     count(say('nt_t_pauses'), totals.pauses),
     count(say('nt_t_alerts'), totals.alerts),
   )
+  const door = night.reservations
+  if (door !== null) {
+    const reservations = say('nt_res')
+    const line = (label: string, value: string): CsvRow => ({
+      section: reservations,
+      what: label,
+      detail: value,
+    })
+    rows.push(
+      line(say('nt_r_bookings'), String(door.resBookings)),
+      line(say('nt_r_walkins'), String(door.resWalkIns)),
+      line(say('nt_r_arrived'), String(door.resArrived)),
+      line(say('nt_r_noshows'), String(door.resNoShows)),
+      line(say('nt_r_cancelled'), String(door.resCancelled)),
+      line(say('nt_r_notseated'), String(door.resNotSeated)),
+      line(say('nt_r_covers_booked'), String(door.resCoversBooked)),
+      line(say('nt_r_covers_seated'), String(door.resCoversSeated)),
+      line(say('nt_r_noshow_rate'), door.noShowRate === null ? '' : `${door.noShowRate}%`),
+    )
+  }
   const money = night.money
   if (money !== null) {
     rows.push(

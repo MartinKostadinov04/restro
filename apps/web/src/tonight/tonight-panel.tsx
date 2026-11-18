@@ -227,12 +227,13 @@ function Content({
 
   const closedIds = view.groups
     .flatMap((g) => g.tables)
-    .filter((x) => x.state === 'closed')
+    .filter((x) => x.state === 'closed' && !x.hidden)
     .map((x) => x.id)
   const nothingOpen = view.openCount === 0
   // "Open them" only where there are tables to open; a venue with none gets its own line (RR-O33).
-  const noTables = view.tableCount === 0
-  const notOpenYet = nothingOpen && !noTables
+  const noGuestTables = view.groups.length === 0
+  const noTables = noGuestTables && view.paymentTables.length === 0
+  const notOpenYet = nothingOpen && view.tableCount > 0
   // The empty block (with its one filled "Open all") shows while nothing waits at all; a stock notice
   // alone keeps the header's button, so a night with a notice can still be opened.
   const emptyShown = view.rows.length === 0 && view.outOfStock.length === 0
@@ -247,6 +248,8 @@ function Content({
   const sayWhoEnds = nightGoing && !view.can.endNight && !view.device
   const mayCloseAll = view.can.openClose && view.openCount > 0
 
+  const countOf = (value: unknown): number => (typeof value === 'number' ? value : 0)
+
   function openAll() {
     run({
       id: 'open-all',
@@ -260,7 +263,15 @@ function Content({
           }
         : {}),
       act: (pin) => openAllTablesAction({ venueId: view.venueId, pin }),
-      done: t('oa_toast', { k: closedIds.length }),
+      // What the command opened, not every tile on the screen (walk P2): a table that was open
+      // already, or one phones may not use, is not counted.
+      done: (done) => t('oa_toast', { k: countOf(done.details.opened) }),
+      note: (done) => {
+        // Only payment tables are named: the command also skips hidden or vanished tables, and
+        // saying "payment tables" for those would give the wrong reason, so they get no line.
+        const skipped = countOf(done.details.skippedPayment)
+        return skipped > 0 ? t('oa_skipped', { k: skipped }) : undefined
+      },
       // On a shared device the Undo names the same person, with the PIN of the write.
       undo: (_, undo, pin) => undoOpenAllAction({ venueId: view.venueId, undo, pin }),
       undoWhen: wroteSomething,
@@ -419,10 +430,17 @@ function Content({
           ) : null}
         </div>
       </div>
-      {view.tableCount === 0 ? (
+      {noTables ? (
         <p className="text-sm text-muted-foreground">{t('noTables')}</p>
       ) : (
-        <TablesGrid view={view} />
+        <>
+          {noGuestTables ? (
+            <p className="text-sm text-muted-foreground" data-testid="no-guest-tables">
+              {t('noGuestTables')}
+            </p>
+          ) : null}
+          <TablesGrid view={view} />
+        </>
       )}
     </section>
   )

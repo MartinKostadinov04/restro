@@ -348,7 +348,7 @@ describe('the waiting list, under its own filter (#330)', () => {
     await userEvent.click(screen.getByTestId('rv-filter-waiting'))
     await userEvent.click(screen.getByTestId('rv-wl-add'))
     const form = screen.getByTestId('rv-wl-form')
-    expect(form.textContent).toContain('Add a party')
+    expect(form.textContent).toContain('Add to the waiting list')
     expect(screen.getByTestId('rv-wl-guests')).toBeTruthy()
     expect(screen.getByTestId('rv-wl-name')).toBeTruthy()
     expect(screen.queryByTestId('rv-f-time')).toBeNull()

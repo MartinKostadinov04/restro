@@ -59,7 +59,6 @@ const CONNECT_ERRORS = [
   'provider_unavailable',
   'provider_refused',
   'no_provider',
-  'payments_off',
   'no_address',
 ]
 
@@ -94,6 +93,7 @@ export function PayingPanel({
   /** The words for the refusals this screen words itself (the others use the shared sentences). */
   const words = (error: string): string | undefined => {
     if (error === 'payment_in_flight') return t('pa_err_inflight')
+    if (error === 'payments_off') return t('pa_err_off')
     if (CONNECT_ERRORS.includes(error)) return t('pa_err_connect', provider)
     return undefined
   }

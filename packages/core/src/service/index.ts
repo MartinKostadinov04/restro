@@ -261,6 +261,7 @@ export {
   type NightRead,
   type NightRefusal,
   type NightReport,
+  type NightReservations,
   NOT_ADDED_STATES,
   PAGE_SIZE,
   readExportDays,
@@ -647,6 +648,7 @@ export {
   type VenueAccess,
 } from './staff-read'
 export { OUT_OF_STOCK_ALERT, type StockNotice } from './stock'
+export { readVenueServesOrders } from './table-capabilities'
 export { MAX_REVEALED_CODES } from './table-codes'
 export { type TelegramLinkSaying, telegramLinkText } from './telegram-link-text'
 export { waiterCallLapsesAt } from './waiter-call'
