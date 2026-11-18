@@ -93,7 +93,9 @@ describe('the payment tables', () => {
     })
     expect(screen.queryByTestId('no-guest-tables')).toBeNull()
     const group = screen.getByRole('region', { name: 'Payment tables' })
-    expect(within(group).getByRole('button', { name: 'Bar till is closed for phones' })).toBeTruthy()
+    expect(
+      within(group).getByRole('button', { name: 'Bar till is closed for phones' }),
+    ).toBeTruthy()
     expect(screen.getAllByTestId('table-tile')).toHaveLength(2)
   })
 

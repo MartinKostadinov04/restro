@@ -432,7 +432,11 @@ describe('the tiles', () => {
 
   it('leaves hidden tables out of both counts, so Open all can reach "N of N"', () => {
     const t = tonight({
-      tables: [table(1, BAR1, true), table(2, BAR1, true), { ...table(3, BAR1, false), hidden: true }],
+      tables: [
+        table(1, BAR1, true),
+        table(2, BAR1, true),
+        { ...table(3, BAR1, false), hidden: true },
+      ],
     })
     const v = view(t)
     expect(v.openCount).toBe(2)
