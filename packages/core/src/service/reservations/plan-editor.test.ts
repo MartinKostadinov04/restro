@@ -147,12 +147,12 @@ describe.skipIf(!hasDatabase)('the plan editor (as the restro_app role)', () => 
     expect(plan.unreadable).toBe(0)
   })
 
-  it('links a spot to a Table and clears it again by leaving the Table out', async () => {
+  it('links a spot to a Table and clears it again, by null or by leaving the Table out', async () => {
     const read1 = await read()
     const spot = read1.spots[0]
     const table = read1.tables[0]
     if (spot === undefined || table === undefined) throw new Error('the plan has no spot or Table')
-    const save = (tableId?: string) =>
+    const save = (tableId?: string | null) =>
       accept({
         type: 'spot.save',
         spotId: spot.id,
@@ -165,11 +165,18 @@ describe.skipIf(!hasDatabase)('the plan editor (as the restro_app role)', () => 
       })
     await save(table.id)
     expect((await read()).spots[0]?.tableId).toBe(table.id)
-    // What the editor's action sends to clear it: no `tableId` at all, stored as none.
+    // What the editor's action sends to clear it (#404): an explicit `null`, stored as none.
+    await save(null)
+    expect((await read()).spots[0]?.tableId).toBeNull()
+    // Left out, a spot names no Table either.
+    await save(table.id)
     await save()
     expect((await read()).spots[0]?.tableId).toBeNull()
-    // The engine looks up any `tableId` it is handed, null included (#404 follows this up).
-    await save(table.id)
+  })
+
+  it('still refuses a spot linked to a Table that is not the venue’s', async () => {
+    const spot = (await read()).spots[0]
+    if (spot === undefined) throw new Error('the plan has no spot')
     expect(
       await run({
         type: 'spot.save',
@@ -179,10 +186,9 @@ describe.skipIf(!hasDatabase)('the plan editor (as the restro_app role)', () => 
         kind: spot.kind,
         ...spot.place,
         seats: spot.seats,
-        tableId: null,
+        tableId: 'tb_0000000000000000000000',
       }),
     ).toMatchObject({ status: 'refused', code: 'table_missing' })
-    await save()
   })
 
   it('refuses a second spot by a name already on the floor, by its own code', async () => {
