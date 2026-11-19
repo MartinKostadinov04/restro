@@ -9,6 +9,8 @@
 - Security check (security-review + audit-security.md, Fable): no row; summary in `findings.md`.
 
 ## In progress / next
-1. Explorer (Sonnet, screen-review step 2): rows S<n> to append to `findings.md`.
-2. Reset `restro_lane2` (drop, create, migrate, roles, seed:dev, seed:demo), sign in again, then the reviewer (Opus, step 4) with only the ledger path and the commit.
-3. Fix PRs into `sr/foundation`; three reviews per PR; re-check by a fresh Fable; `READY #<n>`.
+- Explorer (Sonnet) done: S1-S13 in `findings.md` (commit 14abab7b).
+- Reset done (fresh `restro_lane2`; venue `vn_2iSwka0DYi9ywNOYdvk1dP`, guest `/m/club-biad-dj3z4gypdbsb`); pane signed in again.
+1. Reviewer (Opus, step 4) running: paste its verdicts, R rows and fix plan into `findings.md`.
+2. Stop web/worker/sim (lead's rule: servers only during walk steps). Fix PRs into `sr/foundation` by bundle; per PR: code-review high + security-review (Opus), pr-review-toolkit:review-pr (Opus), template-review for `packages/faces`.
+3. Re-check walker (Opus, fresh) on the PR branch, `<id>-after.jpg`, rows to `re-verified`; `READY #<n>`.
