@@ -279,16 +279,31 @@ export interface TableFile extends ConfirmedTable {
 }
 
 /**
- * The table behind a code, or null when the code is unknown, malformed, belongs to another venue
- * (its `venue_public_id` is not this venue's code) or cannot be read. A table banner is a nicety:
- * any problem just leaves it out (and the venue's live menu is shown).
+ * What the published files say about a table's code. Only `unknown` is an answer that the code
+ * names no table here; `unreadable` is no answer at all (rule 6's spirit: a read that failed
+ * concludes nothing), so whoever kept the code keeps it.
+ */
+export type TableLookup =
+  | { readonly kind: 'found'; readonly table: TableFile }
+  /** Malformed, no such file (404), or the file names another venue. */
+  | { readonly kind: 'unknown' }
+  /** The network, the server or the file itself failed: the code may still be good. */
+  | { readonly kind: 'unreadable' }
+
+const UNKNOWN_TABLE: TableLookup = { kind: 'unknown' }
+const UNREADABLE_TABLE: TableLookup = { kind: 'unreadable' }
+
+/**
+ * The table behind a code: found, unknown (malformed, no file, or another venue's: its
+ * `venue_public_id` is not this venue's code), or unreadable. A table banner is a nicety: any
+ * problem just leaves it out (and the venue's live menu is shown).
  */
 export async function loadTableFile(
   deps: LoadDeps,
   token: string,
   publicId: string,
-): Promise<TableFile | null> {
-  if (!TABLE_TOKEN_PATTERN.test(token)) return null
+): Promise<TableLookup> {
+  if (!TABLE_TOKEN_PATTERN.test(token)) return UNKNOWN_TABLE
   try {
     // The file is named after the code's hash (#70, Web Crypto): the code never goes over the wire.
     const codeHash = await hashTableCode(token)
@@ -298,20 +313,26 @@ export async function loadTableFile(
       TableTokenFileSchema,
       'unknown_venue',
     )
-    if (file.venue_public_id !== publicId) return null
-    return { token, label: file.table_label, menuId: file.menu_id ?? null }
-  } catch {
-    return null
+    if (file.venue_public_id !== publicId) return UNKNOWN_TABLE
+    return {
+      kind: 'found',
+      table: { token, label: file.table_label, menuId: file.menu_id ?? null },
+    }
+  } catch (error) {
+    return error instanceof GuestLoadError && error.reason === 'unknown_venue'
+      ? UNKNOWN_TABLE
+      : UNREADABLE_TABLE
   }
 }
 
-/** The label of a table from its code, or null (see `loadTableFile`). */
+/** The label of a table from its code, or null when it is unknown or unreadable (see `loadTableFile`). */
 export async function loadTableLabel(
   deps: LoadDeps,
   token: string,
   publicId: string,
 ): Promise<string | null> {
-  return (await loadTableFile(deps, token, publicId))?.label ?? null
+  const lookup = await loadTableFile(deps, token, publicId)
+  return lookup.kind === 'found' ? lookup.table.label : null
 }
 
 /** What a loaded menu consists of. */
@@ -328,6 +349,11 @@ export interface LoadedMenu {
    * file answered for this venue; else null.
    */
   readonly table: ConfirmedTable | null
+  /**
+   * True when the table's file could not be read: this load says nothing about the code, so the
+   * code the tab kept stays kept (only a code the files call unknown is forgotten).
+   */
+  readonly tableUnreadable: boolean
   /** The address the page should show (D84), or null when the files do not know the organisation. */
   readonly canonical: GuestAddress | null
 }
@@ -355,7 +381,8 @@ async function loadMenuFrom(
   remembered: RememberedTable,
 ): Promise<LoadedMenu> {
   const claim = token ?? remembered(resolved.publicId)
-  const table = claim === null ? null : await loadTableFile(deps, claim, resolved.publicId)
+  const lookup = claim === null ? null : await loadTableFile(deps, claim, resolved.publicId)
+  const table = lookup?.kind === 'found' ? lookup.table : null
   const index: VenueIndex =
     table?.menuId == null ? resolved.index : { ...resolved.index, menu_id: table.menuId }
   const pointer = await loadPointer(deps, index)
@@ -370,6 +397,7 @@ async function loadMenuFrom(
     live,
     publicId: resolved.publicId,
     table: table === null ? null : { token: table.token, label: table.label },
+    tableUnreadable: lookup?.kind === 'unreadable',
     canonical,
   }
 }

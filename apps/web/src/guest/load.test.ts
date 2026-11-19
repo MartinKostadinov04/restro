@@ -325,6 +325,51 @@ describe('the table banner', () => {
     expect(await loadTableLabel(f.deps(broken), token, CODE)).toBeNull()
   })
 
+  it('tells a code the files do not know from a file that could not be read (C2)', async () => {
+    const f = publishedFiles()
+    const found = await loadTableFile(f.deps(), token, CODE)
+    expect(found).toEqual({ kind: 'found', table: { token, label: '12', menuId: null } })
+    // Unknown: no such file, another venue's code, a malformed code.
+    expect(await loadTableFile(f.deps(), 'tb_ZZZZZZZZZZZZZZZZZZZZZZ', CODE)).toEqual({
+      kind: 'unknown',
+    })
+    expect(await loadTableFile(f.deps(), token, 'zzzzzzzzzzzz')).toEqual({ kind: 'unknown' })
+    expect(await loadTableFile(f.deps(), '../x', CODE)).toEqual({ kind: 'unknown' })
+    // Unreadable: a server error, a broken file, a file that is not a table's, a lost connection.
+    const tableUrl = files.table(BASE, sha(token))
+    for (const body of [
+      new Response('x', { status: 500 }),
+      new Response('not json', { status: 200 }),
+      Response.json({ nothing: true }),
+    ]) {
+      const broken = new Map<string, unknown>([[tableUrl, body]])
+      expect(await loadTableFile(f.deps(broken), token, CODE)).toEqual({ kind: 'unreadable' })
+    }
+    const offline: LoadDeps = {
+      base: BASE,
+      fetch: async () => {
+        throw new TypeError('offline')
+      },
+    }
+    expect(await loadTableFile(offline, token, CODE)).toEqual({ kind: 'unreadable' })
+  })
+
+  it('says when the table could not be read, so the code the tab kept is not forgotten (C2)', async () => {
+    const f = publishedFiles()
+    const broken = new Map<string, unknown>([
+      [files.table(BASE, sha(token)), new Response('x', { status: 503 })],
+    ])
+    const failed = await loadMenu(f.deps(broken), CODE, null, () => token)
+    expect(failed.table).toBeNull()
+    expect(failed.tableUnreadable).toBe(true)
+    const unknown = await loadMenu(f.deps(), CODE, 'tb_ZZZZZZZZZZZZZZZZZZZZZZ')
+    expect(unknown.table).toBeNull()
+    expect(unknown.tableUnreadable).toBe(false)
+    const none = await loadMenu(f.deps(), CODE)
+    expect(none.tableUnreadable).toBe(false)
+    expect((await loadMenu(f.deps(), CODE, token)).tableUnreadable).toBe(false)
+  })
+
   it('checks the code this tab kept when the address has none, and the address code before it', async () => {
     const f = publishedFiles()
     const asked: string[] = []
@@ -636,7 +681,7 @@ describe('the address /m/<organisation>/<venue> (D84) and the menu a table opens
     )
     expect(stranger.index.menu_id).toBe(f.index.menu_id)
     expect(stranger.table).toBeNull()
-    expect(await loadTableFile(f.deps(foreign), TABLE_CODE, CODE)).toBeNull()
+    expect(await loadTableFile(f.deps(foreign), TABLE_CODE, CODE)).toEqual({ kind: 'unknown' })
   })
 
   it('the address of before moves to the new one when the venue’s file names the organisation', async () => {

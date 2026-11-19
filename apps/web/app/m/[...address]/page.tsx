@@ -12,8 +12,9 @@ import { notFound } from 'next/navigation'
 import { GuestMenu } from '@/guest/guest-menu'
 
 export const metadata: Metadata = {
-  // The menu's own title replaces this once it is loaded.
-  title: { absolute: 'Menu' },
+  // Bulgarian first (the page's language is known only in the browser): the page names the tab in
+  // its own language at once, and after the menu's own title once it is loaded.
+  title: { absolute: 'Меню' },
   robots: { index: false, follow: false },
 }
 
