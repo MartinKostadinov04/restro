@@ -7,9 +7,19 @@
 // may hold a PIN of their own, and if their own PIN wiped the count, four guesses and their own PIN,
 // repeated, would walk the 10,000 PINs without a trip and without a Log entry. The wrong PINs leave
 // the window by age alone, and the trips are forgotten only after the device has gone an hour past
-// its last wrong PIN and its last wait. An organisation's devices also share one ceiling: past `PIN_GUARD_SCOPE_FAILURES` wrong
-// PINs in `PIN_GUARD_SCOPE_WINDOW_MS`, every further wrong PIN in it trips its device at once, so
-// several tablets do not multiply the guesses.
+// its last wrong PIN and its last wait.
+//
+// The wait always falls on the device that guessed, never on the other tablets: one wrong PIN at the
+// door never makes the bar wait on a busy night. An organisation's devices also share a high
+// backstop against guesses sprayed across tablets: past `PIN_GUARD_SCOPE_FAILURES` wrong PINs in
+// `PIN_GUARD_SCOPE_WINDOW_MS`, each further wrong PIN trips the device it was typed on.
+//
+// The numbers (screen round 11-18, X1; the lead's call, 11-19): NIST SP 800-63B §5.2.2 asks a
+// verifier to rate-limit failed attempts per account (at most 100) and to prefer growing waits to
+// lock-outs; OWASP's Authentication Cheat Sheet ("Account lockout") warns that a shared lock-out is
+// itself a denial of service, so the wait is per device. Five per device in five minutes with waits
+// of 1, 5, 15 and 60 minutes, and 20 per organisation in 10 minutes, keep the 10,000 PINs days
+// away from a guesser while a typo costs one minute at one tablet.
 //
 // The counters live in the web process's memory (design §8: rate counters are never written to
 // the database; with two web instances the limits are at most twice as loose). Pure: the clock is
@@ -27,7 +37,7 @@ export const PIN_GUARD_TRIPS_FORGOTTEN_MS = 60 * 60_000
 /** Wrong PINs across all the devices of one organisation that make each further one trip… */
 export const PIN_GUARD_SCOPE_FAILURES = 20
 /** …within this window. */
-export const PIN_GUARD_SCOPE_WINDOW_MS = 15 * 60_000
+export const PIN_GUARD_SCOPE_WINDOW_MS = 10 * 60_000
 /** A device not seen for this long is forgotten (its trips too). */
 const FORGET_AFTER_MS = 24 * 60 * 60_000
 

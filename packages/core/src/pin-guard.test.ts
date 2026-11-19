@@ -54,6 +54,18 @@ describe('the wrong-PIN guard', () => {
     expect(waits).toEqual([60, 300, 900, 3600, 3600])
   })
 
+  it("one device's wrong PINs never make another device of the organisation wait", () => {
+    const guard = new PinGuard()
+    expect(failTimes(guard, 'dv_door', PIN_GUARD_FAILURES, 0, 'tn_a')).toMatchObject({
+      tripped: true,
+    })
+    expect(guard.check('dv_door', at(6000)).ok).toBe(false)
+    // The bar's tablet, same organisation: free to try, and its own typo is only a typo.
+    expect(guard.check('dv_bar', at(6000)).ok).toBe(true)
+    expect(guard.fail('dv_bar', at(7000), 'tn_a')).toEqual({ tripped: false })
+    expect(guard.check('dv_bar', at(8000)).ok).toBe(true)
+  })
+
   it('another device counts alone', () => {
     const guard = new PinGuard()
     failTimes(guard, 'dv_a', PIN_GUARD_FAILURES)
