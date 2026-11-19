@@ -117,7 +117,7 @@ describe('the menu switcher', () => {
     bar()
     await userEvent.click(screen.getByTestId('menu-switcher'))
     const options = screen.getAllByTestId('menu-option')
-    expect(options.map((option) => option.textContent)).toEqual(['ClubLive', 'Brunch'])
+    expect(options.map((option) => option.textContent)).toEqual(['ClubOpens by default', 'Brunch'])
     expect(within(options[0] as HTMLElement).getByTestId('menu-live')).toBeTruthy()
   })
 
@@ -242,6 +242,48 @@ describe('what each kind of venue may do (D89, D90, D92)', () => {
     expect(screen.queryByTestId('item-rename-start')).toBeNull()
   })
 
+  it('a member (no menu-edit rights, RR-70) reads Structure and is offered no edit control', async () => {
+    const state = venue('hand', {
+      canEdit: false,
+      canCreateItem: false,
+      canDelete: false,
+      canMarkSoldOut: false,
+    })
+    state.selection = state.ids.beer
+    const { container } = inComposer(
+      state,
+      <>
+        <SectionTree />
+        <ItemPane />
+      </>,
+    )
+    // Everything is still there to read: the sections, the items, their names.
+    expect(screen.getAllByTestId('section-node').length).toBeGreaterThan(0)
+    expect(within(rowOf(state.ids.lager)).getByTestId('item-open')).toBeTruthy()
+    // No control that could only fail (D72): no "…" menu, switch, rename, tick, "New", or drag.
+    for (const testId of [
+      'section-menu',
+      'item-menu',
+      'section-visible',
+      'section-layout',
+      'item-visible',
+      'section-rename-start',
+      'item-rename-start',
+      'item-select',
+      'select-all',
+      'new-item',
+      'new-item-empty',
+    ]) {
+      expect(screen.queryAllByTestId(testId), testId).toHaveLength(0)
+    }
+    expect(screen.queryAllByRole('switch')).toHaveLength(0)
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
+    expect(container.querySelectorAll('[data-rfd-drag-handle-draggable-id]')).toHaveLength(0)
+    // Opening an item to read it still works.
+    await userEvent.click(within(rowOf(state.ids.lager)).getByTestId('item-open'))
+    expect(state.openItem).toHaveBeenCalledWith(state.ids.lager)
+  })
+
   it('someone who is not an owner or admin deletes nothing', async () => {
     const state = venue('hand', { canDelete: false })
     await sectionMenu(state, state.ids.cocktails)
@@ -320,7 +362,8 @@ describe('the "Delete?" dialog', () => {
     const dialog = screen.getByTestId('delete-dialog')
     expect(within(dialog).getByText('Delete Cocktails?')).toBeTruthy()
     expect(dialog.textContent).toContain('Their items move to Unsorted')
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    // The way out says what stays (S17).
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Keep the section' }))
     expect(onOpenChange).toHaveBeenCalledWith(false)
     expect(onConfirm).not.toHaveBeenCalled()
     await userEvent.click(screen.getByTestId('delete-confirm'))

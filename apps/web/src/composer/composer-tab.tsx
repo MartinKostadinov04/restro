@@ -37,7 +37,7 @@ import { readGuestConnections } from '@/server/composer/guest-connections'
 import { composerMenusOf } from '@/server/composer/menu'
 import { readItemPayFirstDefault } from '@/server/composer/pay-first'
 import { getPool } from '@/server/db'
-import { canManageIntegration, canMarkSoldOut } from '@/server/roles'
+import { canEditMenu, canManageIntegration, canMarkSoldOut } from '@/server/roles'
 import { loadTillLabels, tillLabelOf } from '@/server/till-label'
 import { venueHasTill } from '@/server/venues'
 import { privacyHref } from '@/settings/privacy-href'
@@ -172,6 +172,8 @@ async function StructureSubtab({ tenantId, role, venue, menu: requested }: Compo
         defaultLocale={defaultLocale}
         enabledLocales={enabledLocales}
         currency={currency}
+        // A plain member reads the menu and changes nothing (RR-70): Studio draws no edit control.
+        canEdit={canEditMenu(role)}
         // On a POS venue the POS says what ran out: no sold-out switch here (D124 §6, #80).
         canMarkSoldOut={canMarkSoldOut(role) && !hasTill}
         canCreateItem={manager}

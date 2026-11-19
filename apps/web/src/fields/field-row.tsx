@@ -1,7 +1,7 @@
 'use client'
 
 import type { FieldDefinition } from '@restro/core'
-// One field of a node as a row: label with a hover card (the field key), the value drawn by the
+// One field of a node as a row: label with a help popover, the value drawn by the
 // field type's Display, a provenance badge and an edit button. Ported from the Platform's
 // ValueField.jsx (43-165), whose 5-column layout and hover card it keeps. Changed: the value is
 // rendered by the registry instead of a type switch, the row has a provenance slot, and the
@@ -10,7 +10,7 @@ import { InfoIcon, PencilIcon, PlusIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 
 import { useFieldEnvironment } from './environment'
@@ -63,23 +63,33 @@ export function FieldRow({
             *
           </span>
         ) : null}
-        <HoverCard>
-          <HoverCardTrigger asChild>
+        {/* A popover, not a hover card: it opens on a tap (a phone has no hover) as well as on a
+            click or from the keyboard. The button is 24 px (WCAG 2.5.8) and takes taps over 44 px
+            on a touch screen (`tap-area`, D123). */}
+        <Popover>
+          <PopoverTrigger asChild>
             <button
               type="button"
-              className="mt-1 rounded-full text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              className="tap-area inline-flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               aria-label={t('about', { field: label })}
+              data-testid="field-help"
             >
               <InfoIcon className="size-4" aria-hidden />
             </button>
-          </HoverCardTrigger>
-          <HoverCardContent className="grid w-64 gap-1 text-sm">
-            <span className="text-xs text-muted-foreground">{t('keyLabel')}</span>
-            <code className="font-mono">{definition.key}</code>
-            <span className="mt-1 text-xs text-muted-foreground">{t('typeLabel')}</span>
-            <span>{t(`types.${definition.type}`)}</span>
-          </HoverCardContent>
-        </HoverCard>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="grid w-64 gap-1 text-sm">
+            {/* The owner's words, never the field's key (S10): a sentence for each item field,
+                else what kind of value it takes. */}
+            {t.has(`help.${definition.key}`) ? (
+              <span data-testid="field-help-text">{t(`help.${definition.key}`)}</span>
+            ) : (
+              <>
+                <span className="text-xs text-muted-foreground">{t('typeLabel')}</span>
+                <span>{t(`types.${definition.type}`)}</span>
+              </>
+            )}
+          </PopoverContent>
+        </Popover>
       </dt>
       <dd className="flex items-start justify-between gap-3 text-sm sm:col-span-3">
         <div className="grid min-w-0 flex-1 justify-items-start gap-2">

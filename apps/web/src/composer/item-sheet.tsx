@@ -65,6 +65,11 @@ export interface ItemSheetProps {
   venueId?: string
   /** The menu the composer has open (brief S6); absent = the venue's live menu. */
   menuId?: string
+  /**
+   * The person may not change the menu (a plain member, RR-70): the sheet shows the item and
+   * offers no edit, Revert, upload or save. The server refuses such a write anyway.
+   */
+  readOnly?: boolean
   /** Open or closed; open when omitted. */
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -129,12 +134,14 @@ export function ItemSheet({
   itemId,
   venueId: venueIdProp,
   menuId,
+  readOnly = false,
   open = true,
   onOpenChange,
   tags,
   onCreateTag,
 }: ItemSheetProps) {
   const t = useTranslations('itemSheet')
+  const composer = useTranslations('composer')
   const owner = useTranslations('ownerSettings')
   const inSentence = useModeInSentence()
   const uiLocale = useLocale()
@@ -338,6 +345,11 @@ export function ItemSheet({
           </p>
         ) : null}
 
+        {data && readOnly ? (
+          <p className="mx-4 mt-3 text-sm text-muted-foreground" data-testid="item-sheet-read-only">
+            {composer('readOnly')}
+          </p>
+        ) : null}
         {data ? <ReviewNotice data={data} /> : null}
 
         {data ? (
@@ -376,6 +388,7 @@ export function ItemSheet({
                       <ItemSheetDetailsTab
                         data={data}
                         busy={busy}
+                        readOnly={readOnly}
                         onSave={saveField}
                         onRevert={revertField}
                         onKeep={keepField}
@@ -387,7 +400,12 @@ export function ItemSheet({
                   </TabsContent>
                   <TabsContent value="translations" forceMount>
                     <div hidden={tab !== 'translations'}>
-                      <ItemSheetTranslationsTab data={data} busy={busy} onSave={saveTranslation} />
+                      <ItemSheetTranslationsTab
+                        data={data}
+                        busy={busy}
+                        readOnly={readOnly}
+                        onSave={saveTranslation}
+                      />
                     </div>
                   </TabsContent>
                   <TabsContent value="media" forceMount>
@@ -396,6 +414,7 @@ export function ItemSheet({
                         key={`${data.revision}:${data.image?.assetId ?? ''}`}
                         data={data}
                         busy={busy}
+                        readOnly={readOnly}
                         onAttach={attachImage}
                         onSaveDetails={saveImageDetails}
                         onRemove={removeImage}

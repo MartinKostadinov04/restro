@@ -14,6 +14,7 @@ import {
   PlusIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { useId } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -141,13 +142,22 @@ function ItemList({ sectionId, ids }: { sectionId: NodeId | null; ids: readonly 
 
 function SectionHeader({ sectionId }: { sectionId: NodeId }) {
   const t = useTranslations('composer')
-  const { view, toggleSectionHidden, setSectionLayout, renaming, startRename, renameSection } =
-    useComposer()
+  const visibleId = useId()
+  const layoutId = useId()
+  const {
+    view,
+    canEdit,
+    toggleSectionHidden,
+    setSectionLayout,
+    renaming,
+    startRename,
+    renameSection,
+  } = useComposer()
   const section = view.sections[sectionId]
   if (!section) return null
   const title = sectionTitle(view, sectionId, t('untitledSection'))
   const count = view.placements[sectionId]?.length ?? 0
-  const editing = renaming?.kind === 'section' && renaming.id === sectionId
+  const editing = canEdit && renaming?.kind === 'section' && renaming.id === sectionId
   const horizontal = section.layout === 'horizontal'
   return (
     <header className="flex flex-wrap items-start justify-between gap-3">
@@ -165,17 +175,19 @@ function SectionHeader({ sectionId }: { sectionId: NodeId }) {
             <h2 className="truncate text-lg font-semibold tracking-tight" data-testid="pane-title">
               {title}
             </h2>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-8 shrink-0 text-muted-foreground"
-              aria-label={t('rename.section', { name: title })}
-              onClick={() => startRename({ kind: 'section', id: sectionId })}
-              data-testid="section-rename-start"
-            >
-              <PencilIcon aria-hidden />
-            </Button>
+            {canEdit ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0 text-muted-foreground"
+                aria-label={t('rename.section', { name: title })}
+                onClick={() => startRename({ kind: 'section', id: sectionId })}
+                data-testid="section-rename-start"
+              >
+                <PencilIcon aria-hidden />
+              </Button>
+            ) : null}
           </div>
         )}
         <div className="flex flex-wrap items-center gap-1.5">
@@ -189,28 +201,43 @@ function SectionHeader({ sectionId }: { sectionId: NodeId }) {
       <div className="flex flex-wrap items-center gap-2">
         <NewItemButton sectionId={sectionId} testId="new-item" />
         <SoldOutChip />
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Switch
-            checked={!section.hidden}
-            onCheckedChange={() => toggleSectionHidden(sectionId)}
-            aria-label={t('visibility.toggleSection')}
-            data-testid="section-visible"
-          />
-          <span className="hidden sm:inline">{t('visibility.toggleSection')}</span>
-        </div>
-        {/* D92: a horizontal section is a row guests scroll sideways (the guest page's strip). */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Switch
-            checked={horizontal}
-            onCheckedChange={(checked) =>
-              setSectionLayout(sectionId, checked ? 'horizontal' : 'vertical')
-            }
-            aria-label={t('layout.horizontal')}
-            data-testid="section-layout"
-          />
-          <span className="hidden sm:inline">{t('layout.horizontal')}</span>
-        </div>
-        <SectionMenu sectionId={sectionId} />
+        {canEdit ? (
+          <>
+            {/* Every switch keeps its words in sight, on a phone too (WCAG 3.3.2); the words are its label. */}
+            <label
+              htmlFor={visibleId}
+              className="flex items-center gap-2 text-sm text-muted-foreground"
+            >
+              <Switch
+                id={visibleId}
+                checked={!section.hidden}
+                onCheckedChange={() => toggleSectionHidden(sectionId)}
+                aria-label={t('visibility.toggleSection')}
+                data-testid="section-visible"
+              />
+              <span>{t('visibility.toggleSection')}</span>
+            </label>
+            {/* D92: a horizontal section is a row guests scroll sideways (the guest page's strip).
+                Not on a phone: there it is "Horizontal row" in the section's "…" menu, so the header
+                holds one switch, not two that look alike. */}
+            <label
+              htmlFor={layoutId}
+              className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex"
+            >
+              <Switch
+                id={layoutId}
+                checked={horizontal}
+                onCheckedChange={(checked) =>
+                  setSectionLayout(sectionId, checked ? 'horizontal' : 'vertical')
+                }
+                aria-label={t('layout.horizontal')}
+                data-testid="section-layout"
+              />
+              <span>{t('layout.horizontal')}</span>
+            </label>
+            <SectionMenu sectionId={sectionId} />
+          </>
+        ) : null}
       </div>
     </header>
   )
@@ -218,7 +245,7 @@ function SectionHeader({ sectionId }: { sectionId: NodeId }) {
 
 export function ItemPane() {
   const t = useTranslations('composer')
-  const { view, selection, newSection } = useComposer()
+  const { view, selection, newSection, canEdit } = useComposer()
 
   if (selection === null || (selection !== UNSORTED_KEY && !view.sections[selection])) {
     // A menu with no section at all (a venue just made): offer the first one.
@@ -232,11 +259,17 @@ export function ItemPane() {
             <EmptyTitle>{t('empty.noSections.title')}</EmptyTitle>
             <EmptyDescription>{t('empty.noSections.description')}</EmptyDescription>
           </EmptyHeader>
-          <EmptyContent>
-            <Button type="button" onClick={() => newSection(null)} data-testid="new-section-empty">
-              {t('empty.noSections.action')}
-            </Button>
-          </EmptyContent>
+          {canEdit ? (
+            <EmptyContent>
+              <Button
+                type="button"
+                onClick={() => newSection(null)}
+                data-testid="new-section-empty"
+              >
+                {t('empty.noSections.action')}
+              </Button>
+            </EmptyContent>
+          ) : null}
         </Empty>
       )
     }

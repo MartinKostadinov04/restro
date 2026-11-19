@@ -150,6 +150,9 @@ describe('the warning that a name is the till’s own (D75)', () => {
 
   it('a translation added for another language does not: guests still see the till’s name in its own', () => {
     expect(view.items[ids.translated]?.nameFromTill).toBe(true)
+    // The languages still showing the till's own name, which a rename takes out one by one (S15).
+    expect(view.items[ids.fallback]?.nameFromTillIn).toEqual(['bg_BG'])
+    expect(view.items[ids.typed]?.nameFromTillIn).toEqual([])
   })
 
   it('a public name from the till, a name made here, and no name at all carry none', () => {

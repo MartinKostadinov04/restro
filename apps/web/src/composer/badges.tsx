@@ -101,12 +101,18 @@ export function NameFromTillBadge({ target = 'item' }: { target?: 'item' | 'sect
   return (
     <HoverCard openDelay={150}>
       <HoverCardTrigger asChild>
+        {/* The sentence is long: it wraps inside the screen rather than widen it (WCAG 1.4.10). */}
         <button
           type="button"
-          className="rounded-full focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          className="max-w-full min-w-0 rounded-[0.75rem] text-left focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           data-testid="name-from-till-badge"
         >
-          <Badge variant="warning">{t('nameFromTill', { source })}</Badge>
+          <Badge
+            variant="warning"
+            className="max-w-full shrink justify-start rounded-[0.75rem] whitespace-normal"
+          >
+            {t('nameFromTill', { source })}
+          </Badge>
         </button>
       </HoverCardTrigger>
       <HoverCardContent className="w-72 text-sm">

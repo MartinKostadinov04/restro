@@ -11,10 +11,26 @@
     "noValue": "No value set",
     "invalidStored": "The stored value is not valid for this field type.",
     "about": "About the field {field}",
-    "keyLabel": "Field key",
     "typeLabel": "Type",
     "edit": "Edit {field}",
     "set": "Set {field}",
+    "help": {
+      "name": "The name guests see on the menu, in each language.",
+      "description": "A short text under the name on the menu, in each language.",
+      "image": "The item's photo on the menu. Change it on the Media tab.",
+      "price": "The price guests see and pay.",
+      "portion": "How much one serving is, for example 330 ml.",
+      "abv": "The alcohol content, in per cent.",
+      "allergens": "The allergens in the item. Guests see them on the menu.",
+      "dietary": "Labels such as vegan or gluten-free that guests see on the menu.",
+      "tags": "The venue's tags, which guests see on the menu and can filter by.",
+      "availability": "On which days and at which times the item is offered.",
+      "order_mode": "Whether guests can order the item from their phone, ask a waiter for it, or do not see it at all.",
+      "payment_mode": "Whether the item goes on the table's bill or is paid when it is ordered. Without a choice, the venue's setting applies.",
+      "for_sale": "Whether the item is on sale. Guests do not see a sold-out item until it is back on sale.",
+      "visible": "Whether guests see the item on the menu.",
+      "internal_note": "A note for the team only. Guests never see it."
+    },
     "types": {
       "short_text": "Short text",
       "long_text": "Long text",
@@ -96,7 +112,7 @@
         "border": "Outline"
       },
       "preview": "Preview",
-      "cancel": "Cancel"
+      "cancel": "Don’t create"
     },
     "availability": {
       "always": "Always available",
@@ -202,7 +218,7 @@
     "backOnSale": "Back on sale",
     "errors": {
       "not_found": "This item or field could not be found.",
-      "not_allowed": "Only an owner or admin can mark items sold out.",
+      "not_allowed": "Only an owner or admin can change the menu.",
       "read_only": "This value cannot be changed here.",
       "locked": "{source} owns this value. Change it in {source}.",
       "nothing_to_revert": "There is nothing to revert.",
@@ -281,7 +297,7 @@
       "revertFor": "Revert {field} to {source}'s value"
     },
     "translations": {
-      "intro": "Every language of this venue. Languages {source} already holds are read-only; the ones you add are saved as your own translations.",
+      "intro": "Every language of this venue. The text in languages {source} already holds comes from {source}; you can rename the item in Details. Languages you add are saved as your own translations.",
       "missing": "Missing",
       "review": "Review",
       "reviewHint": "{source}'s text changed after this translation was written. It stays live; edit it to clear this flag.",
@@ -333,6 +349,12 @@
       "set": "{who} set {field} to {value}",
       "changed": "{who} changed {field} from {from} to {to}",
       "cleared": "{who} removed {field} (it was {value})",
+      "flags": {
+        "hid": "{who} hid the item",
+        "showed": "{who} showed the item",
+        "soldOut": "{who} marked the item sold out",
+        "backOnSale": "{who} put the item back on sale"
+      },
       "structure": {
         "createNode": "{who} created the item",
         "setPlacement": "{who} placed the item in a section",
@@ -614,6 +636,7 @@
     "unsortedHint": "Items that are in no section yet. Drag one onto a section, or use “Move to…”.",
     "itemCount": "{count, plural, one {# item} other {# items}}",
     "chooseSection": "Choose a section",
+    "readOnly": "You can look at the menu here. Only an owner or admin can change it.",
     "untitledSection": "Section without a title",
     "unnamedItem": "Item without a name",
     "noPrice": "No price",
@@ -652,7 +675,7 @@
     },
     "badges": {
       "fromTill": "From {source}",
-      "owned": "Owned here",
+      "owned": "Created here",
       "hiddenByTill": "Hidden by {source}",
       "hidden": "Hidden",
       "hiddenOther": "Hidden (setting)",
@@ -663,7 +686,7 @@
       "soldOutTonight": "Sold out tonight",
       "offSaleTill": "Not on sale in {source}",
       "offSaleOther": "Not on sale",
-      "issues": "{count, plural, one {# issue} other {# issues}}",
+      "issues": "{count, plural, one {# thing to check} other {# things to check}}",
       "review": "{count, plural, one {# override to review} other {# overrides to review}}",
       "reviewHelp": "{source} changed this value after you replaced it here. Open the item to keep yours or take {source}’s."
     },
@@ -720,7 +743,7 @@
       "nameRequired": "Enter a name in the main language.",
       "create": "Create",
       "creating": "Creating…",
-      "cancel": "Cancel"
+      "cancel": "Don’t create"
     },
     "newItem": {
       "button": "New item",
@@ -733,8 +756,9 @@
       "price": "Price ({currency})",
       "priceHelp": "For example 4.50. You can add or change it later.",
       "priceInvalid": "Enter a price like 4.50, with at most two decimals.",
+      "pricePlaceholder": "0.00",
       "create": "Create item",
-      "cancel": "Cancel"
+      "cancel": "Don’t create"
     },
     "itemSheet": {
       "stub": "Details, translations, photos and history arrive with the item sheet."
@@ -742,7 +766,7 @@
     "errors": {
       "not_found": "This venue or its menu was not found. Reload the page.",
       "invalid": "This action is not allowed.",
-      "not_allowed": "Only an owner or admin can do this.",
+      "not_allowed": "Only an owner or admin can change the menu.",
       "till_venue": "This venue gets its items from the till: items cannot be created, renamed in the list or deleted here.",
       "rejected": "The change cannot be made. For example, sections can be nested three levels deep at most, and a tag that was archived meanwhile cannot be added.",
       "failed": "Something went wrong. The change was not saved, try again.",
@@ -776,6 +800,7 @@
       "new": "New tag",
       "create": "Create tag",
       "save": "Save",
+      "dontSave": "Don’t save",
       "empty": {
         "title": "No tags yet",
         "description": "Create the first tag, then add it to items one by one or to several at once."
@@ -858,7 +883,7 @@
     "menuBar": {
       "label": "Menu",
       "menu": "Menu",
-      "live": "Live",
+      "live": "Opens by default",
       "manage": "Manage menus"
     },
     "layout": {
@@ -873,16 +898,17 @@
       "itemLabel": "Name of {name}"
     },
     "delete": {
-      "cancel": "Cancel",
       "section": {
         "title": "Delete {name}?",
         "description": "The section and the sections inside it leave the menu. Their items move to Unsorted unless they are in another section too. The history keeps a record.",
-        "confirm": "Delete section"
+        "confirm": "Delete section",
+        "keep": "Keep the section"
       },
       "item": {
         "title": "Delete {name}?",
         "description": "The item leaves every menu of the venue and Structure. The history keeps a record.",
-        "confirm": "Delete item"
+        "confirm": "Delete item",
+        "keep": "Keep the item"
       }
     }
   },
@@ -998,7 +1024,7 @@
       "guestNothing": "Nothing is published yet.",
       "reason": {
         "role": "Only an owner or admin can publish.",
-        "busy": "Waiting for the publisher…",
+        "busy": "Publishing. It usually takes a few seconds.",
         "up_to_date": "Up to date: guests see the latest version.",
         "allUpToDate": "Up to date: every menu is published as it is.",
         "noMenu": "This venue has no menu yet.",
@@ -1021,7 +1047,7 @@
       "samePaused": "Nothing in the menu changed. Publishing resumes automatic publishing.",
       "sameAddressOff": "Nothing in the menu changed. Publishing switches the menu address back on.",
       "preview": "Preview",
-      "cancel": "Cancel"
+      "cancel": "Don’t publish"
     },
     "live": {
       "reason": {
@@ -1044,11 +1070,11 @@
         "areas": "{count, plural, one {# change outside the items} other {# changes outside the items}}"
       },
       "lists": {
-        "added": "Added to the menu",
-        "hidden": "Hidden or removed from the menu",
-        "prices": "New prices",
-        "renamed": "New names",
-        "other": "Other changes (text, photo, allergens, choices)",
+        "added": "{count, plural, other {Added to the menu}}",
+        "hidden": "{count, plural, other {Hidden or removed from the menu}}",
+        "prices": "{count, plural, one {New price} other {New prices}}",
+        "renamed": "{count, plural, one {New name} other {New names}}",
+        "other": "{count, plural, one {Another change (text, photo, allergens, choices)} other {Other changes (text, photo, allergens, choices)}}",
         "areas": "Outside the items"
       },
       "areas": {

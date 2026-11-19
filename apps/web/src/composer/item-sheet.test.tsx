@@ -127,6 +127,46 @@ describe('ItemSheet', () => {
     expect(toast.success).toHaveBeenCalledWith('Saved')
   })
 
+  it('read-only for a member (RR-70): every value shows, no edit, upload or save is offered', async () => {
+    A.loadItemSheetAction.mockResolvedValue(
+      sheetData({
+        sale: { soldOutTonight: false, offSale: null, canMark: false, stockFromTill: false },
+        image: {
+          assetId: 'as_0123456789ABCDEFGHIJKL',
+          url: 'https://assets.test/photo.png',
+          alt: {},
+          focal: null,
+          width: 800,
+          height: 600,
+          contentType: 'image/png',
+          provenance: 'owned',
+          canRemove: true,
+        },
+        fields: { abv: { value: 30, provenance: 'owned', layer: 'manual', canRevert: true } },
+      }),
+    )
+    renderWithIntl(<ItemSheet itemId={ITEM} venueId="vn_x" readOnly />)
+    await screen.findByTestId('item-sheet-title')
+    expect(screen.getByTestId('item-sheet-read-only').textContent).toBe(
+      'You can look at the menu here. Only an owner or admin can change it.',
+    )
+    const abv = document.querySelector('[data-field-key="abv"]') as HTMLElement
+    expect(within(abv).getByText('Owned here')).toBeTruthy()
+    // The only buttons left are the sheet's own (close, tabs) and the field help.
+    const sheet = screen.getByTestId('item-sheet')
+    const offered = within(sheet)
+      .queryAllByRole('button')
+      .filter((button) => !/^About the field|^Close$/.test(button.getAttribute('aria-label') ?? ''))
+      .filter((button) => button.textContent !== 'Close')
+    expect(
+      offered.map((button) => button.getAttribute('aria-label') ?? button.textContent),
+    ).toEqual([])
+    expect(screen.queryByTestId('sale-mark')).toBeNull()
+    expect(screen.queryByTestId('photo-drop')).toBeNull()
+    expect(screen.queryByTestId('image-details')).toBeNull()
+    expect(screen.queryAllByRole('textbox')).toHaveLength(0)
+  })
+
   it('says why a save did not happen and keeps what it showed', async () => {
     A.loadItemSheetAction.mockResolvedValue(sheetData())
     A.saveItemFieldAction.mockResolvedValue({ ok: false, error: 'locked' })

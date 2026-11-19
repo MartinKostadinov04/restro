@@ -38,6 +38,17 @@ describe('parseMoneyInput (the money editor: major units in, integer minor units
     expect(moneyToInput(undefined)).toBe('')
   })
 
+  it('writes the decimal comma in Bulgarian, and reads it back (S19)', () => {
+    expect(moneyToInput({ amount_minor: 1250, currency: 'EUR' }, 'bg_BG')).toBe('12,50')
+    expect(moneyToInput({ amount_minor: 1250, currency: 'EUR' }, 'en_US')).toBe('12.50')
+    expect(
+      parseMoneyInput(moneyToInput({ amount_minor: 405, currency: 'EUR' }, 'bg_BG'), 'EUR'),
+    ).toEqual({
+      amount_minor: 405,
+      currency: 'EUR',
+    })
+  })
+
   it('round-trips every amount: minor → text → minor (property)', () => {
     fc.assert(
       fc.property(fc.integer({ min: 0, max: 100_000_000 }), (minor) => {

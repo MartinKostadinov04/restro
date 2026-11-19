@@ -135,6 +135,39 @@ describe('the History tab', () => {
     expect(within(entries[1] as HTMLElement).getByText('From barsy')).toBeTruthy()
   })
 
+  it('words hiding, showing and sold out in plain words, not field names (S20)', async () => {
+    const flag = (seq: number, fieldKey: string, overrides: Partial<HistoryEntry>): HistoryEntry =>
+      entry(seq, { fieldKey, definition: definition(fieldKey), ...overrides })
+    const pages = (): HistoryPage[] => [
+      {
+        entries: [
+          flag(4, 'visible', { kind: 'cleared', oldValue: false, newValue: null }),
+          flag(3, 'visible', { kind: 'set', newValue: false }),
+          flag(2, 'for_sale', { kind: 'set', newValue: false }),
+          flag(1, 'for_sale', { kind: 'cleared', oldValue: false, newValue: null }),
+        ],
+        nextBefore: null,
+      },
+    ]
+    const { unmount } = setup(pages())
+    const lines = await screen.findAllByTestId('history-sentence')
+    expect(lines.map((line) => line.textContent)).toEqual([
+      'Anna Test showed the item',
+      'Anna Test hid the item',
+      'Anna Test marked the item sold out',
+      'Anna Test put the item back on sale',
+    ])
+    unmount()
+    setup(pages(), 'bg')
+    const bg = await screen.findAllByTestId('history-sentence')
+    expect(bg.map((line) => line.textContent)).toEqual([
+      'Anna Test показа артикула',
+      'Anna Test скри артикула',
+      'Anna Test отбеляза артикула като изчерпан',
+      'Anna Test върна артикула в продажба',
+    ])
+  })
+
   it('shows a field the template no longer has as plain text', async () => {
     setup([
       {

@@ -22,6 +22,7 @@ export function makeTestState(overrides: Partial<ComposerState> = {}): TestState
     overTarget: null,
     selected: new Set(),
     tagFilter: new Set(),
+    canEdit: true,
     canMarkSoldOut: true,
     canCreateItem: true,
     hasTill: false,

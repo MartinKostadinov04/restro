@@ -9,7 +9,7 @@
 // address is switched off.
 import { ChevronDownIcon, ExternalLinkIcon, RocketIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -76,6 +76,21 @@ export function PublishBar({
         : (single?.block ?? 'up_to_date')
   const total = open.reduce((sum, row) => sum + countOf(row.menu), 0)
 
+  // "Version N is live" answers the press; once something new waits it no longer holds, so it
+  // goes rather than stand beside "1 change waiting" (S5).
+  const published = publisher.outcome?.kind === 'published'
+  const waitingNow = open.length + total
+  const waitingAtPublish = useRef<number | null>(null)
+  const { dismiss } = publisher
+  useEffect(() => {
+    if (!published) {
+      waitingAtPublish.current = null
+      return
+    }
+    if (waitingAtPublish.current === null) waitingAtPublish.current = waitingNow
+    else if (waitingNow > waitingAtPublish.current) dismiss()
+  }, [published, waitingNow, dismiss])
+
   const reason = ((): string => {
     if (single === undefined) return t('reason.noMenu')
     if (block === 'role' || block === 'busy') return reasonOf(block, null)
@@ -109,12 +124,16 @@ export function PublishBar({
   const offerPublish = !onlyWhatWorks || block === null
   const offerReason = offerPublish || block === 'busy'
   if (!offerGuest && !offerReason) return null
+  // Before the first publish of a single menu, the reason line already says guests see nothing:
+  // the guest link's hint would say it twice (S5).
+  const saysFirstPublish =
+    !several && block === null && single !== undefined && !single.menu.published
   const guestHint =
     view.guestPath === null
       ? null
       : !view.addressServed
         ? t('guestOff')
-        : liveMenu?.published !== true
+        : liveMenu?.published !== true && !saysFirstPublish
           ? t('guestNothing')
           : null
 

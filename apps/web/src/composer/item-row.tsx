@@ -48,6 +48,7 @@ export function ItemRow({
   const {
     view,
     locale,
+    canEdit,
     openItem,
     toggleItemHidden,
     selected,
@@ -67,12 +68,17 @@ export function ItemRow({
   const isSelected = selected.has(itemId)
   const selecting = selected.size > 0
   // Items made by hand are renamed in place (D89); a till's item is named in its sheet.
-  const renamable = !hasTill && item.origin === 'owned'
+  const renamable = canEdit && !hasTill && item.origin === 'owned'
   const editing = renamable && renaming?.kind === 'item' && renaming.id === itemId
 
   return (
     // Reordering a filtered list would compute its places from a partial list: off while filtered.
-    <Draggable draggableId={`item:${itemId}`} index={index} isDragDisabled={tagFilter.size > 0}>
+    // A member changes nothing (RR-70): no drag at all.
+    <Draggable
+      draggableId={`item:${itemId}`}
+      index={index}
+      isDragDisabled={!canEdit || tagFilter.size > 0}
+    >
       {(drag, snapshot) => (
         <li
           ref={drag.innerRef}
@@ -87,32 +93,37 @@ export function ItemRow({
             snapshot.isDragging && 'shadow-lg ring-2 ring-ring',
           )}
         >
-          {/* Shown on hover and focus (always on a touch screen, and once something is ticked). */}
-          {/* A native checkbox takes no pseudo-element, so on a phone its label is the 44 px target (D123). */}
-          <label className="flex shrink-0 items-center justify-center phone:size-11">
-            <input
-              type="checkbox"
-              checked={isSelected}
-              onChange={() => toggleSelected(itemId)}
-              aria-label={t('selection.select', { name })}
-              data-testid="item-select"
-              className={cn(
-                'size-4 shrink-0 accent-primary focus-visible:opacity-100',
-                !isSelected &&
-                  !selecting &&
-                  'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100',
-              )}
-            />
-          </label>
-          {/* A div, not a button: the library does not start a drag from an interactive element. */}
-          {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: the handle props add role="button" and tabIndex */}
-          <div
-            {...drag.dragHandleProps}
-            aria-label={t('actions.dragItem', { name })}
-            className="flex size-8 shrink-0 cursor-grab items-center justify-center rounded-md phone:size-11 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none active:cursor-grabbing"
-          >
-            <GripVerticalIcon className="size-4" aria-hidden />
-          </div>
+          {/* Ticking leads only to bulk changes, and dragging is a change: neither for a member. */}
+          {canEdit ? (
+            <>
+              {/* Shown on hover and focus (always on a touch screen, and once something is ticked). */}
+              {/* A native checkbox takes no pseudo-element, so on a phone its label is the 44 px target (D123). */}
+              <label className="flex shrink-0 items-center justify-center phone:size-11">
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => toggleSelected(itemId)}
+                  aria-label={t('selection.select', { name })}
+                  data-testid="item-select"
+                  className={cn(
+                    'size-4 shrink-0 accent-primary focus-visible:opacity-100',
+                    !isSelected &&
+                      !selecting &&
+                      'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100',
+                  )}
+                />
+              </label>
+              {/* A div, not a button: the library does not start a drag from an interactive element. */}
+              {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: the handle props add role="button" and tabIndex */}
+              <div
+                {...drag.dragHandleProps}
+                aria-label={t('actions.dragItem', { name })}
+                className="flex size-8 shrink-0 cursor-grab items-center justify-center rounded-md phone:size-11 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none active:cursor-grabbing"
+              >
+                <GripVerticalIcon className="size-4" aria-hidden />
+              </div>
+            </>
+          ) : null}
 
           <div className={cn('grid min-w-0 flex-1 gap-1', hidden && 'opacity-70')}>
             {editing ? (
@@ -167,22 +178,27 @@ export function ItemRow({
               : t('noPrice')}
           </span>
 
-          <div className="flex shrink-0 flex-col items-end gap-0.5">
-            <Switch
-              checked={!hidden}
-              disabled={locked !== null}
-              onCheckedChange={() => toggleItemHidden(itemId)}
-              aria-label={t('visibility.toggleItem', { name })}
-              data-testid="item-visible"
-            />
-            {locked ? (
-              <span className="max-w-32 text-right text-[11px] leading-tight text-muted-foreground">
-                {t(`visibility.${locked}`, { source })}
-              </span>
-            ) : null}
-          </div>
+          {/* A member reads whether it is hidden from the badge; the switch and the menu are edits. */}
+          {canEdit ? (
+            <>
+              <div className="flex shrink-0 flex-col items-end gap-0.5">
+                <Switch
+                  checked={!hidden}
+                  disabled={locked !== null}
+                  onCheckedChange={() => toggleItemHidden(itemId)}
+                  aria-label={t('visibility.toggleItem', { name })}
+                  data-testid="item-visible"
+                />
+                {locked ? (
+                  <span className="max-w-32 text-right text-[11px] leading-tight text-muted-foreground">
+                    {t(`visibility.${locked}`, { source })}
+                  </span>
+                ) : null}
+              </div>
 
-          <ItemMenu itemId={itemId} sectionId={sectionId} />
+              <ItemMenu itemId={itemId} sectionId={sectionId} />
+            </>
+          ) : null}
         </li>
       )}
     </Draggable>
