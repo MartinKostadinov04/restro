@@ -119,7 +119,7 @@ function DeleteVenueForm({ onOpenChange, venueId, venueName }: DeleteVenueDialog
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            {t('cancel')}
+            {t('keep')}
           </Button>
           <Button
             type="submit"

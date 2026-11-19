@@ -198,3 +198,37 @@ for (const scheme of ['light', 'dark'] as const) {
     })
   }
 }
+
+test('every section fits a 1024 px screen with the sidebar open (S3)', async ({ browser }) => {
+  const { context, page } = await open(browser, {
+    width: 1024,
+    height: 768,
+    colorScheme: 'light',
+  })
+  for (const name of [
+    'general',
+    'hours',
+    'ordering',
+    'staff',
+    'alerts',
+    'publish',
+    'versioning',
+    'paying',
+    'reservations',
+  ]) {
+    await page.goto(section(name))
+    await expect(page.getByRole('heading', { level: 2 }).first()).toBeVisible()
+    const fits = await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    )
+    expect(fits, `${name} at 1024 px`).toBe(true)
+  }
+  await context.close()
+})
+
+test('a section this venue does not have opens General instead (S26)', async ({ browser }) => {
+  const { context, page } = await open(browser, { width: 1280, height: 900, colorScheme: 'light' })
+  await page.goto(section('no-such-section'))
+  await expect(page).toHaveURL(/[?&]section=general(?:&|$)/)
+  await context.close()
+})

@@ -94,6 +94,25 @@ export function PublishBar({
     publisher.publish(menu.live ? undefined : menu.menuId)
   }
 
+  // A role that may not publish, in the page header (S27): where the venue stands, in the words an
+  // owner reads, but never a Publish it cannot press nor a sentence on why (RR-90). Tonight's way
+  // draws nothing it cannot act on, so it has no such line.
+  const stateOnly = !view.canPublish && !tonightWay
+  const stateLine = ((): string => {
+    if (single === undefined) return t('reason.noMenu')
+    if (busy || view.menus.some((menu) => menu.busy !== null)) return reasonOf('busy', null)
+    if (!view.menus.some((menu) => menu.published)) return t('guestNothing')
+    const waiting = view.menus.filter((menu) => menu.blocked === null && !menu.identical)
+    if (waiting.length === 0) {
+      if (!several && single.menu.blocked !== null) {
+        return reasonOf('draft', single.menu.blocked)
+      }
+      return several ? t('reason.allUpToDate') : reasonOf('up_to_date', null)
+    }
+    const changes = waiting.reduce((sum, menu) => sum + countOf(menu), 0)
+    return changes > 0 ? t('waiting', { count: changes }) : t('minor')
+  })()
+
   const label = busy ? t('publishing') : t('publish')
   const icon = <RocketIcon aria-hidden className={busy ? 'animate-pulse' : undefined} />
   const count =
@@ -107,7 +126,7 @@ export function PublishBar({
   const guestOff = view.guestPath === null || !view.addressServed || liveMenu?.published !== true
   const offerGuest = !onlyWhatWorks || !guestOff
   const offerPublish = !onlyWhatWorks || block === null
-  const offerReason = offerPublish || block === 'busy'
+  const offerReason = offerPublish || block === 'busy' || stateOnly
   if (!offerGuest && !offerReason) return null
   const guestHint =
     view.guestPath === null
@@ -225,7 +244,7 @@ export function PublishBar({
           data-testid="publish-block-reason"
           data-block={block ?? 'none'}
         >
-          {reason}
+          {stateOnly ? stateLine : reason}
         </p>
       ) : null}
       {guestHint !== null && !onlyWhatWorks ? (

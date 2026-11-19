@@ -291,7 +291,7 @@ test('an admin renames but cannot delete; a member sees the name as text only', 
     await expect(admin.target.getByTestId('venue-name-input')).toBeVisible()
     await expect(admin.target.getByTestId('venue-danger-zone')).toHaveCount(0)
     await expect(admin.target.getByTestId('delete-venue-open')).toHaveCount(0)
-    // Settings has no "Deleted venues" for an admin, and the page is not there.
+    // Settings has no "Deleted venues" for an admin, and its address lands on General (S26).
     await admin.target.goto('/settings')
     // It opens General, where an admin sees the organisation's values as text (owners change them).
     await expect(admin.target).toHaveURL(/\/settings\/general$/)
@@ -300,8 +300,10 @@ test('an admin renames but cannot delete; a member sees the name as text only', 
     await expect(admin.target.getByTestId('general-slug-input')).toHaveCount(0)
     await expect(admin.target.getByTestId('settings-nav-integrations')).toBeVisible()
     await expect(admin.target.getByTestId('settings-nav-deleted-venues')).toHaveCount(0)
-    const response = await admin.target.goto('/settings/deleted-venues')
-    expect(response?.status()).toBe(404)
+    await admin.target.goto('/settings/deleted-venues')
+    await expect(admin.target).toHaveURL(/\/settings\/general$/)
+    await expect(admin.target.getByTestId('deleted-venues-list')).toHaveCount(0)
+    await expect(admin.target.getByTestId('deleted-venues-empty')).toHaveCount(0)
   } finally {
     await admin.context.close()
   }

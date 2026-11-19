@@ -67,7 +67,13 @@ function VenueItems({ venues, openId, tab }: VenueItemsProps) {
     const open = venue.id === openId
     return (
       <SidebarMenuItem key={venue.id}>
-        <SidebarMenuButton asChild isActive={open} tooltip={venue.name}>
+        <SidebarMenuButton
+          asChild
+          isActive={open}
+          tooltip={venue.name}
+          // A long name wraps instead of being cut (S19): the row grows from its usual height.
+          className="h-auto min-h-8 phone:h-auto phone:min-h-11"
+        >
           <Link
             href={tab ? `${VENUES_PATH}/${venue.id}?tab=${tab}` : `${VENUES_PATH}/${venue.id}`}
             aria-current={open ? 'page' : undefined}
@@ -82,7 +88,8 @@ function VenueItems({ venues, openId, tab }: VenueItemsProps) {
             >
               {initialOf(venue.name)}
             </span>
-            <span>{venue.name}</span>
+            {/* `!`: the button's own rule cuts its last span to one line. */}
+            <span className="whitespace-normal! [overflow-wrap:anywhere]">{venue.name}</span>
           </Link>
         </SidebarMenuButton>
       </SidebarMenuItem>

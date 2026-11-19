@@ -1,32 +1,31 @@
 <!-- lang:bg -->
-# QR кодове за масите: нашият линк или собствен линк на заведението
+# QR кодове за масите: накъде водят
 
-Това ръководство е за управителя на заведението. Обяснява какъв адрес носи QR кодът на всяка маса и как да използвате собствен адрес от вашия сайт вместо нашия. Не са нужни технически знания за първия вариант; за втория ще ви трябва човекът, който се грижи за сайта или домейна ви.
+Това ръководство е за управителя на заведението. Обяснява какъв адрес носи QR кодът на всяка маса, как да отпечатате кодовете и как ще работи собствен линк от вашия сайт, когато заведението може да зададе свой домейн.
 
-Настройката е в раздел „Маси и QR“, карта „Адрес в кодовете“.
+Всичко е в раздел „Маси и QR“, карта „Адрес в кодовете“.
 
 ## Два начина
 
-**Вариант 1: нашият линк.** Кодът отваря адрес от вида `<нашия-адрес>/t/<код-на-масата>`. Нищо не се настройва.
+**Вариант 1: нашият адрес.** Кодът отваря адрес от вида `<нашия-адрес>/t/<код-на-масата>`. Нищо не се настройва. Така работят всички кодове днес.
 
-**Вариант 2: вашият собствен линк.** Кодът отваря адрес от вашия домейн, например `<вашия-домейн>/t/<код-на-масата>`, а вашият сайт препраща госта към нашия адрес. Така стикерите носят вашето име и остават валидни, дори някога да сменим нашия адрес.
+**Вариант 2: вашият собствен линк (по-късно).** Кодът ще отваря адрес от вашия домейн, например `<вашия-домейн>/t/<код-на-масата>`, а вашият сайт ще препраща госта към нашия адрес. Така стикерите ще носят вашето име. Настройката за това още я няма: картата пише „Собствен домейн за кодовете ще има по-късно.“ Препращането можете да подготвите и сега.
 
-Ако не сте сигурни, започнете с Вариант 1. Можете да минете на Вариант 2 по-късно, но стикерите, които вече са отпечатани, запазват адреса, с който са отпечатани.
+Стикерите, които вече са отпечатани, запазват адреса, с който са отпечатани.
 
-## Вариант 1: нашият линк
+## Вариант 1: нашият адрес
 
 1. Отворете раздел „Маси и QR“.
-2. В картата „Адрес в кодовете“ изберете „Нашият линк“.
+2. В картата „Адрес в кодовете“, под „Кодовете водят до“, е адресът, който носи всеки код.
 3. Натиснете „Създай кодове за всички маси“.
-4. Натиснете „Лист за печат“, после „Печат / Запиши като PDF“.
+4. Натиснете „Отвори тестовия линк“: в нов раздел на браузъра трябва да се отвори менюто с името на една маса най-отгоре.
+5. Натиснете „Лист за печат“, после „Печат / Запиши като PDF“.
 
-Докато изграждаме системата, „Основен адрес“ е адресът на компютъра, на който работи приложението. За да сканирате от телефон в същата Wi-Fi мрежа, въведете мрежовия адрес на този компютър, например `http://192.168.1.20:3000`. Когато системата получи постоянен адрес, ще го зададем тук и ще отпечатаме стикерите отново.
+## Вариант 2: вашият собствен линк (по-късно)
 
-## Вариант 2: вашият собствен линк
+Ще е нужно едно правило за препращане в сайта или домейна ви: всичко, което започва с `https://<вашия-домейн>/t/`, се препраща към `https://<нашия-адрес>/t/`, като остатъкът от адреса се запазва. Кодът на масата е в остатъка, затова той трябва да се запази.
 
-Нужно е едно правило за препращане в сайта или домейна ви: всичко, което започва с `https://<вашия-домейн>/t/`, се препраща към `https://<нашия-адрес>/t/`, като остатъкът от адреса се запазва. Кодът на масата е в остатъка, затова той трябва да се запази.
-
-„Нашия адрес“ е „Основният адрес“ от картата „Адрес в кодовете“ (избрана на „Нашият линк“). „Вашия домейн“ е домейнът или поддомейнът, който ще пише на стикерите, например `menu.<вашия-домейн>`.
+„Нашия адрес“ е адресът под „Кодовете водят до“ в картата „Адрес в кодовете“, без `/t/<code>` в края. „Вашия домейн“ е домейнът или поддомейнът, който ще пише на стикерите, например `menu.<вашия-домейн>`.
 
 Направете препращането със **временно** (302) пренасочване, а не с постоянно (301): така можем да сменим нашия адрес, без браузърите на гостите да помнят стария.
 
@@ -64,23 +63,22 @@ location /t/ {
 Повечето конструктори имат раздел „Redirects“, „URL redirects“ или „URL mappings“ в настройките на сайта. Важно е дали позволява правило за всички адреси, започващи с `/t/` („wildcard“).
 
 - Ако позволява, въведете `/t/*` като източник и `https://<нашия-адрес>/t/*` като цел, временно (302).
-- Ако позволява само по един адрес, ще трябва по едно правило за всяка маса: от `/t/<код-на-масата>` към `https://<нашия-адрес>/t/<код-на-масата>`. Кодът на всяка маса виждате, като натиснете малкия QR код на масата в раздел „Маси и QR“. Тогава е по-практично да ползвате Вариант 1 или да помолите човека, който се грижи за сайта ви, да го направи.
+- Ако позволява само по един адрес, ще трябва по едно правило за всяка маса: от `/t/<код-на-масата>` към `https://<нашия-адрес>/t/<код-на-масата>`. Кода на всяка маса виждате, като натиснете малкия QR код на масата в раздел „Маси и QR“. Тогава е по-практично да останете на Вариант 1 или да помолите човека, който се грижи за сайта ви, да го направи.
 
-### След като препращането е готово
+### Когато собственият домейн стане наличен
 
-1. В картата „Адрес в кодовете“ изберете „Собствен линк на заведението“.
-2. В „Шаблон на линка“ напишете адреса си със `{token}` на мястото на кода на масата, например `https://<вашия-домейн>/t/{token}`.
-3. Под полето се показва пример с кода на една от масите. Натиснете „Отвори тестовия линк“: в нов раздел на браузъра трябва да се отвори менюто с името на масата най-отгоре.
-4. Натиснете „Запиши адреса“, после „Лист за печат“ и отпечатайте.
+Картата „Адрес в кодовете“ ще приема адреса ви като шаблон със `{token}` на мястото на кода на масата, например `https://<вашия-домейн>/t/{token}`. Преди да отпечатате, проверете с „Отвори тестовия линк“, че се отваря менюто с името на масата.
 
-Тестовият линк се отваря от вашия браузър. Нашият сървър никога не отваря адреса, който сте въвели.
+Тестовият линк се отваря от вашия браузър. Нашият сървър никога не отваря адреса на вашия сайт.
+
+Дотогава кодовете носят нашия адрес. Той продължава да работи и след като добавите собствен домейн, така че стикерите, отпечатани сега, няма да се развалят.
 
 ## Ако препращането се развали
 
-Стикерите са с адрес от вашия домейн и работят само докато правилото за препращане работи. Ако правилото бъде изтрито или домейнът изтече, гостът ще види грешка от вашия сайт, а не менюто.
+Стикерите с адрес от вашия домейн работят само докато правилото за препращане работи. Ако правилото бъде изтрито или домейнът изтече, гостът ще види грешка от вашия сайт, а не менюто.
 
 - Върнете правилото. Стикерите започват да работят веднага, без нов печат.
-- Ако не можете да го върнете, изберете „Нашият линк“, създайте нов лист и го отпечатайте. Старите стикери ще продължат да не работят.
+- Ако не можете да го върнете, върнете кодовете на нашия адрес, отпечатайте нов „Лист за печат“ и сменете стикерите. Старите стикери ще продължат да не работят.
 
 Ако „Отвори тестовия линк“ показва:
 
@@ -92,38 +90,37 @@ location /t/ {
 
 - „Нов код“ за маса прави стария стикер неработещ: пише, че кодът не е активен. Затова пита за потвърждение.
 - „Изключи кода“ прави същото, без да създава нов.
-- Ако barsy изтрие масата, кодът ѝ се изключва автоматично при следващото синхронизиране.
-- Смяната на адреса в картата не променя вече отпечатаните стикери.
+- Ако POS системата изтрие масата, кодът ѝ се изключва автоматично при следващото синхронизиране.
+- Смяната на адреса не променя вече отпечатаните стикери.
 
 <!-- lang:en -->
-# Table QR codes: our link or the venue's own link
+# Table QR codes: where they lead
 
-This guide is for the venue manager. It explains which address the QR code on each table carries, and how to use an address on your own website instead of ours. The first option needs no technical knowledge; for the second you will need whoever looks after your website or domain.
+This guide is for the venue manager. It explains which address the QR code on each table carries, how to print the codes, and how a link on your own website will work once a venue can set a domain of its own.
 
-The setting is in the Tables & QR tab, in the "Address in the codes" card.
+Everything is in the Tables & QR tab, in the "Address in the codes" card.
 
 ## Two ways
 
-**Option 1: our link.** The code opens an address like `<our-address>/t/<table-code>`. Nothing to set up.
+**Option 1: our address.** The code opens an address like `<our-address>/t/<table-code>`. Nothing to set up. This is how every code works today.
 
-**Option 2: your own link.** The code opens an address on your own domain, for example `<your-domain>/t/<table-code>`, and your website forwards the guest to our address. The stickers carry your name, and they keep working even if we ever change our address.
+**Option 2: your own link (comes later).** The code will open an address on your own domain, for example `<your-domain>/t/<table-code>`, and your website will forward the guest to our address. The stickers will then carry your name. The setting for it is not there yet: the card says "A domain of your own for the codes comes later." You can prepare the forwarding now.
 
-If you are not sure, start with Option 1. You can move to Option 2 later, but stickers that are already printed keep the address they were printed with.
+Stickers that are already printed keep the address they were printed with.
 
-## Option 1: our link
+## Option 1: our address
 
 1. Open the Tables & QR tab.
-2. In the "Address in the codes" card choose "Our link".
+2. In the "Address in the codes" card, under "Codes lead to", is the address every code carries.
 3. Click "Create codes for all tables".
-4. Click "Print sheet", then "Print / Save as PDF".
+4. Click "Open test link": in a new browser tab the menu should open, with a table's name at the top.
+5. Click "Print sheet", then "Print / Save as PDF".
 
-While we build the system, the "Base address" is the address of the computer the app runs on. To scan from a phone on the same Wi-Fi, type this computer's network address, for example `http://192.168.1.20:3000`. When the system has its permanent address we will set it here and print the stickers again.
+## Option 2: your own link (comes later)
 
-## Option 2: your own link
+You will need one forwarding rule on your website or domain: everything that starts with `https://<your-domain>/t/` is forwarded to `https://<our-address>/t/`, and the rest of the address is kept. The table's code is in that rest, so it must be kept.
 
-You need one forwarding rule on your website or domain: everything that starts with `https://<your-domain>/t/` is forwarded to `https://<our-address>/t/`, and the rest of the address is kept. The table's code is in that rest, so it must be kept.
-
-"Our address" is the "Base address" in the "Address in the codes" card (with "Our link" chosen). "Your domain" is the domain or subdomain that will be printed on the stickers, for example `menu.<your-domain>`.
+"Our address" is the address under "Codes lead to" in the "Address in the codes" card, without the `/t/<code>` at the end. "Your domain" is the domain or subdomain that will be printed on the stickers, for example `menu.<your-domain>`.
 
 Make the forwarding a **temporary** (302) redirect, not a permanent (301) one: that way we can change our address without guests' browsers remembering the old one.
 
@@ -161,23 +158,22 @@ location /t/ {
 Most builders have "Redirects", "URL redirects" or "URL mappings" in the site settings. What matters is whether it allows one rule for every address that starts with `/t/` (a "wildcard").
 
 - If it does, enter `/t/*` as the source and `https://<our-address>/t/*` as the target, temporary (302).
-- If it allows only one address per rule, you need one rule for each table: from `/t/<table-code>` to `https://<our-address>/t/<table-code>`. You see each table's code by clicking the small QR code of the table in the Tables & QR tab. In that case Option 1 is more practical, or ask whoever looks after your site to do it.
+- If it allows only one address per rule, you need one rule for each table: from `/t/<table-code>` to `https://<our-address>/t/<table-code>`. You see each table's code by clicking the small QR code of the table in the Tables & QR tab. In that case staying with Option 1 is more practical, or ask whoever looks after your site to do it.
 
-### When the forwarding is ready
+### When a domain of your own arrives
 
-1. In the "Address in the codes" card choose "The venue's own link".
-2. In "Link pattern" write your address with `{token}` where the table's code goes, for example `https://<your-domain>/t/{token}`.
-3. Under the field you see an example with the code of one of your tables. Click "Open test link": in a new browser tab the menu should open, with the table's name at the top.
-4. Click "Save address", then "Print sheet" and print.
+The "Address in the codes" card will take your address as a pattern with `{token}` where the table's code goes, for example `https://<your-domain>/t/{token}`. Before you print, check with "Open test link" that the menu opens with the table's name.
 
-The test link is opened by your browser. Our server never opens the address you typed.
+The test link is opened by your browser. Our server never opens your website's address.
+
+Until then the codes carry our address. It keeps working after you add a domain of your own, so the stickers you print now will not break.
 
 ## If the forwarding breaks
 
-The stickers carry an address on your domain and work only while the forwarding rule works. If the rule is deleted or the domain expires, the guest sees an error from your website instead of the menu.
+Stickers with an address on your domain work only while the forwarding rule works. If the rule is deleted or the domain expires, the guest sees an error from your website instead of the menu.
 
 - Put the rule back. The stickers work again at once, with no new print.
-- If you cannot, choose "Our link", create a new sheet and print it. The old stickers stay broken.
+- If you cannot, switch the codes back to our address, print a new "Print sheet" and replace the stickers. The old stickers stay broken.
 
 If "Open test link" shows:
 
@@ -189,5 +185,5 @@ If "Open test link" shows:
 
 - "New code" for a table makes the old sticker stop working: it says the code is not active. That is why it asks you to confirm.
 - "Turn off code" does the same without making a new one.
-- If barsy deletes the table, its code is turned off automatically at the next sync.
-- Changing the address in the card does not change stickers that are already printed.
+- If the POS deletes the table, its code is turned off automatically at the next sync.
+- Changing the address does not change stickers that are already printed.

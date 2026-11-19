@@ -491,7 +491,7 @@
           "kept": "Items that the till or another venue still uses stay."
         },
         "confirmLabel": "Type the venue name to confirm: {name}",
-        "cancel": "Cancel",
+        "keep": "Keep venue",
         "confirm": "Delete permanently",
         "deleting": "Deleting…",
         "deleted": "{name} is being erased. It leaves this list now.",
@@ -542,7 +542,7 @@
           "draft": "The venue goes back to Draft. Nothing is deleted: its menus, tables and settings stay.",
           "again": "Publish a menu of the venue again to put it back on guests’ phones."
         },
-        "cancel": "Cancel",
+        "keep": "Keep venue",
         "confirm": "Unpublish",
         "working": "Unpublishing…",
         "done": "{name} was unpublished.",
@@ -572,6 +572,7 @@
         "hand": "By hand",
         "handHelp": "You write the menu yourself: sections, items and prices.",
         "venueCount": "{count, plural, one {# venue} other {# venues}}",
+        "noFree": "No free venues",
         "none": "No point-of-sale system is connected yet.",
         "connect": "Connect one in Settings › Integrations"
       },
@@ -940,7 +941,7 @@
             "kept": "Nothing is erased. Its menu, tables and settings are kept, and you can restore it from Settings › Deleted venues."
           },
           "confirmLabel": "Type the venue name to confirm: {name}",
-          "cancel": "Cancel",
+          "keep": "Keep venue",
           "confirm": "Delete venue",
           "deleting": "Deleting…",
           "deleted": "{name} was deleted.",
@@ -1173,6 +1174,7 @@
       },
       "inherited": "These are the settings the connection had before they moved to the venue. Saving makes them this venue’s own.",
       "save": "Save",
+      "readOnly": "Only owners and admins can change this.",
       "saving": "Saving…",
       "saved": "Saved. The settings apply from the next sync of this venue."
     }
@@ -1673,11 +1675,6 @@
     "address": {
       "title": "Address in the codes",
       "description": "Where a code leads when someone scans it.",
-      "ours": "Our link",
-      "own": "The venue's own link",
-      "baseUrl": "Base address",
-      "pattern": "Link pattern",
-      "save": "Save address",
       "leads": "Codes lead to",
       "none": "This installation has no address configured yet, so no code can be drawn. Ask your administrator.",
       "warning": "Stickers you have already printed keep the address they were printed with. Our address keeps working even after you add a domain of your own.",

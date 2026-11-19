@@ -248,18 +248,28 @@ function SourceStep({
       {state.status === 'ready' ? (
         <fieldset className="grid gap-2" data-testid="new-venue-sources">
           <legend className="sr-only">{t('sources.legend')}</legend>
-          {state.sources.instances.map((instance) => (
-            <Choice
-              key={instance.id}
-              group={group}
-              value={instance.id}
-              checked={choice === instance.id}
-              title={instance.name}
-              caption={t('sources.venueCount', { count: instance.tillVenues.length })}
-              testId={`new-venue-source-${instance.id}`}
-              onSelect={onChoose}
-            />
-          ))}
+          {state.sources.instances.map((instance) => {
+            // A POS whose every venue already serves one of ours has nothing to pick in step 2:
+            // it cannot be chosen, and its line says why (S7).
+            const full = !instance.tillVenues.some((venue) => venue.linkedVenueName === null)
+            return (
+              <Choice
+                key={instance.id}
+                group={group}
+                value={instance.id}
+                checked={choice === instance.id}
+                disabled={full}
+                title={instance.name}
+                caption={
+                  full
+                    ? t('sources.noFree')
+                    : t('sources.venueCount', { count: instance.tillVenues.length })
+                }
+                testId={`new-venue-source-${instance.id}`}
+                onSelect={onChoose}
+              />
+            )
+          })}
           <Choice
             group={group}
             value={HAND}

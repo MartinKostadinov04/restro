@@ -219,3 +219,35 @@ test('Tonight and the Settings screens wrap at 200% text inside a 390 px phone (
       .toBeLessThanOrEqual(0)
   }
 })
+
+test('a menu row on a 390 px phone puts its name and badge above its buttons (S1)', async () => {
+  await owner.evaluate(() => {
+    document.documentElement.style.fontSize = ''
+  })
+  await owner.goto(`${venuePath}?tab=settings&section=general`)
+  const rows = onScreen(owner, 'menu-row')
+  await expect(rows.first()).toBeVisible({ timeout: 30_000 })
+  for (const row of await rows.all()) {
+    const name = await row.locator('span').first().boundingBox()
+    const actions = await row.getByTestId('menu-actions').boundingBox()
+    expect(name).not.toBeNull()
+    expect(actions).not.toBeNull()
+    if (name === null || actions === null) continue
+    // Stacked: the buttons start below the name and its badge, so nothing covers either.
+    expect(actions.y).toBeGreaterThanOrEqual(name.y + name.height - 1)
+    const badge = row.getByTestId('menu-live-badge')
+    if ((await badge.count()) === 0) continue
+    const box = await badge.boundingBox()
+    if (box === null) continue
+    for (const control of await row.getByTestId('menu-actions').locator('button, a').all()) {
+      const other = await control.boundingBox()
+      if (other === null) continue
+      const overlaps =
+        box.x < other.x + other.width &&
+        other.x < box.x + box.width &&
+        box.y < other.y + other.height &&
+        other.y < box.y + box.height
+      expect(overlaps, 'the Live badge and a button overlap').toBe(false)
+    }
+  }
+})

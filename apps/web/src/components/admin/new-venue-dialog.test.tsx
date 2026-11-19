@@ -86,7 +86,7 @@ describe('step 1: the source', () => {
     expect(group.textContent).toContain('Till Sofia')
     expect(group.textContent).toContain('3 venues')
     expect(group.textContent).toContain('Till Varna')
-    expect(group.textContent).toContain('0 venues')
+    expect(group.textContent).toContain('No free venues')
     expect(group.textContent).toContain('By hand')
     expect(loadNewVenueSourcesAction).toHaveBeenCalledTimes(1)
   })
@@ -222,14 +222,8 @@ describe('step 2, from a POS: nothing is typed', () => {
     )
   })
 
-  it('says so when the instance reports no venue, and when all of them are linked', async () => {
-    const { user } = dialog()
-    await goOn(user, VARNA)
-    expect(screen.getByTestId('new-venue-no-till-venues').textContent).toContain(
-      'Till Varna has not reported any venues yet.',
-    )
-    cleanup()
-
+  it('cannot be chosen from a POS with no free venue, and says why in step 1 (S7)', async () => {
+    // One that reports no venue, and one whose every venue is linked already.
     vi.mocked(loadNewVenueSourcesAction).mockResolvedValue({
       ok: true,
       sources: {
@@ -240,14 +234,30 @@ describe('step 2, from a POS: nothing is typed', () => {
             name: 'Till Sofia',
             tillVenues: [{ bid: 1, name: 'Only one', linkedVenueName: 'Mine' }],
           },
+          { id: VARNA, name: 'Till Varna', tillVenues: [] },
         ],
       },
     })
-    const second = dialog()
-    await goOn(second.user, SOFIA)
-    expect(screen.getByTestId('new-venue-all-linked').textContent).toBe(
-      'Every venue in Till Sofia is linked to a venue already.',
-    )
+    const { user } = dialog()
+    await screen.findByTestId('new-venue-sources')
+    for (const id of [SOFIA, VARNA]) {
+      const radio = screen.getByTestId(`new-venue-source-${id}`) as HTMLInputElement
+      expect(radio.disabled, id).toBe(true)
+      expect(radio.closest('label')?.textContent, id).toContain('No free venues')
+      await user.click(radio)
+      expect(radio.checked, id).toBe(false)
+    }
+    expect(next().disabled).toBe(true)
+    // By hand stays open.
+    await user.click(screen.getByTestId('new-venue-source-hand'))
+    expect(next().disabled).toBe(false)
+  })
+
+  it('says “No free venues” in Bulgarian (S7)', async () => {
+    dialog('bg')
+    const radio = (await screen.findByTestId(`new-venue-source-${VARNA}`)) as HTMLInputElement
+    expect(radio.disabled).toBe(true)
+    expect(radio.closest('label')?.textContent).toContain('Няма свободни заведения')
   })
 
   it('goes back to step 1 with the choice kept', async () => {
