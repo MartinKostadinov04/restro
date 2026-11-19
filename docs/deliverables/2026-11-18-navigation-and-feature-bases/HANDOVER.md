@@ -12,8 +12,10 @@ Kept current by the lane 6 session so a restart reuses what exists.
 - Step 1 plan written (Fable, before the model change), first critique `critique.md` (Fable), plan revised by a fresh Opus planner (Martin 11-19: no more Fable).
 - Step 3: D154–D158 written as proposed and indexed.
 
-## In progress
-- Second critique `critique-2.md` (fresh Opus, sees only the plan).
+- Second critique `critique-2.md` (Opus); answers L1–L10 in the plan.
+- Step 4 build: PR #456 into `sr/foundation` (commit 783eda35).
+- Step 5 reviews: code-review high (Opus) on #456, 3 fixed in 9509581f, 2 skipped to ticket 8 (#467); security-review (Opus): one medium (Better Auth's `/organization/set-active` over HTTP let a device switch organisation), fixed by disabling the path.
+- Step 6: tickets 1–9 filed `needs-triage`: #460–#468.
 
 ## Next
-Fold in any Blocking point from `critique-2.md` → build PR into `sr/foundation` per the plan's "Tonight's build" → reviews (code-review high, security-review, pr-review-toolkit:review-pr; all Opus) → persona walk with screenshots (start web, worker and sim-pos only for the walk) → tickets filed `needs-triage` → rebase → report.
+pr-review-toolkit:review-pr (Opus) → persona walk with after screenshots in `after/` (start web, worker and sim-pos only for the walk, stop them after) → PR body with screenshots, ready (never merge) → rebase onto `origin/sr/foundation` → report.
