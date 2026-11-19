@@ -217,6 +217,35 @@ export async function releaseHeldSpots(
   return wanted.map((row) => row.spotId)
 }
 
+/**
+ * Claims again the spots a party had, where nobody has taken them since; where one has been, the
+ * party gets none of them back (`lost`), as a restore does. Shared by putting a party back
+ * (`putBackReservation`) and undoing an arrival (`undoReservationArrival`).
+ */
+export async function reclaimSpots(
+  stx: ServiceTx,
+  reservation: Reservation,
+  spotIds: readonly string[],
+  turnMinutes: number,
+): Promise<{ readonly back: readonly string[]; readonly lost: boolean }> {
+  if (spotIds.length === 0) return { back: [], lost: false }
+  const grant = await claimSpots(
+    stx,
+    {
+      reservationId: reservation.id,
+      spotIds,
+      serviceDate: reservation.serviceDate,
+      startsAt: reservation.startsAt,
+      endsAt: reservation.endsAt,
+      turnMinutes: reservation.turnMinutes,
+    },
+    turnMinutes,
+  )
+  if (!grant.ok) return { back: [], lost: true }
+  await writeHeldSpots(stx, reservation.id, spotIds, grant.stretch, reservation.endsAt !== null)
+  return { back: spotIds, lost: false }
+}
+
 /** How the caller names the party: the venue's own record, a number, or a name on the book. */
 export interface PartyInput {
   readonly guestId?: string
@@ -498,9 +527,10 @@ const sameSet = (a: readonly string[], b: readonly string[]) =>
  * end, a new turn time, other tables — the spots it will hold are claimed again against that
  * night, so an edit can never slide a party onto a spot somebody else has; the held rows follow.
  *
- * Whoever has `reservations.manage` works any booking, whoever took it (D135: nothing ties a
- * booking to the person who entered it) — so the check that matters here is not whose it is but
- * whether it is still the one the form was opened on.
+ * Whoever works tonight's reservations edits any booking, whoever took it (D135 13.18: nothing
+ * ties a booking to the person who entered it; on a shared device it takes the PIN, D141) — so the
+ * check that matters here is not whose it is but whether it is still the one the form was opened
+ * on.
  */
 export async function editReservation(
   stx: ServiceTx,
@@ -567,6 +597,10 @@ export async function editReservation(
   const heldIds = held.map((row) => row.spotId)
   const wanted = command.spotIds ?? heldIds
   const spotsChanged = command.spotIds !== undefined && !sameSet(wanted, heldIds)
+  // A party at its table moves through Change tables, never through this form (C6 of the 11-18
+  // screen round): that move is judged by who is on the spot now, not by the booking rule, and it
+  // opens the new table's code (D137, #331). Here neither would happen.
+  if (spotsChanged && reservation.status === 'seated') return refuse('seated_use_change_tables')
   const moved =
     startsAt.getTime() !== reservation.startsAt.getTime() ||
     (endsAt?.getTime() ?? null) !== (reservation.endsAt?.getTime() ?? null) ||
@@ -642,11 +676,14 @@ export type OpenReservation =
  * Locks one reservation and opens its night: the start of every command that changes an existing
  * line. The reservation comes first, then its night's record, which is the order `LOCK_RANKS`
  * fixes (`reservation` before `reservation_night`).
+ *
+ * `night` names another night to open instead of the line's own, for the one line that outlives
+ * its night: a block still on, which is lifted on the night it is lifted (`removeBlock`).
  */
 export async function openReservation(
   stx: ServiceTx,
   reservationId: string,
-  options: { readonly deleted?: boolean } = {},
+  options: { readonly deleted?: boolean; readonly night?: (line: Reservation) => string } = {},
 ): Promise<OpenReservation> {
   const reservation = await lockReservation(stx, reservationId)
   if (reservation === null) return { ok: false, code: 'reservation_missing' }
@@ -654,7 +691,7 @@ export async function openReservation(
   if (wantDeleted !== (reservation.deletedAt !== null)) {
     return { ok: false, code: wantDeleted ? 'reservation_not_deleted' : 'reservation_missing' }
   }
-  const night = await openNight(stx, reservation.serviceDate)
+  const night = await openNight(stx, options.night?.(reservation) ?? reservation.serviceDate)
   if (!night.ok) return { ok: false, code: night.code }
   return { ok: true, reservation, night }
 }
@@ -667,9 +704,13 @@ export async function openReservation(
 export async function cancelReservation(
   stx: ServiceTx,
   command: { readonly reservationId: string; readonly reason?: string | null },
-  options: { readonly block?: boolean } = {},
+  options: { readonly block?: boolean; readonly night?: (line: Reservation) => string } = {},
 ): Promise<ServiceResult> {
-  const open = await openReservation(stx, command.reservationId)
+  const open = await openReservation(
+    stx,
+    command.reservationId,
+    options.night === undefined ? {} : { night: options.night },
+  )
   if (!open.ok) return refuse(open.code)
   const { reservation } = open
   if (reservation.kind === 'block' && options.block !== true) return refuse('kind_not_allowed')
@@ -748,9 +789,11 @@ export async function deleteReservation(
 }
 
 /**
- * Puts a reservation back into the book. Its spots are claimed again, because the night moved on
- * while it was out: a party whose table was given away comes back without it rather than on top of
- * somebody, and the answer says which spots it came back with.
+ * Puts a reservation back into the book. The spots claimed again are the ones the delete freed —
+ * released at the delete's own instant, never a spot an earlier edit or arrival let go (C4 of the
+ * 11-18 screen round). They are claimed again because the night moved on while it was out: a party
+ * whose table was given away comes back without it rather than on top of somebody, and the answer
+ * says which spots it came back with.
  */
 export async function restoreReservation(
   stx: ServiceTx,
@@ -760,11 +803,26 @@ export async function restoreReservation(
   if (!open.ok) return refuse(open.code)
   const { reservation, night } = open
   if (reservation.kind === 'block') return refuse('kind_not_allowed')
-  const held = await stx.tx
+  // The delete wrote `deleted_at` and released its spots with the one transaction clock (`now()`),
+  // so the rows it freed are exactly those released at that instant. Compared in the database:
+  // a JavaScript date keeps milliseconds, the column keeps microseconds.
+  const freed = await stx.tx
     .select({ spotId: reservationSpots.spotId })
     .from(reservationSpots)
-    .where(eq(reservationSpots.reservationId, reservation.id))
-  const spotIds = [...new Set(held.map((row) => row.spotId))]
+    .innerJoin(
+      reservations,
+      and(
+        eq(reservations.tenantId, reservationSpots.tenantId),
+        eq(reservations.id, reservationSpots.reservationId),
+      ),
+    )
+    .where(
+      and(
+        eq(reservationSpots.reservationId, reservation.id),
+        eq(reservationSpots.releasedAt, reservations.deletedAt),
+      ),
+    )
+  const spotIds = [...new Set(freed.map((row) => row.spotId))].sort()
   let back: string[] = []
   if (spotIds.length > 0) {
     const grant = await claimSpots(

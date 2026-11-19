@@ -19,7 +19,8 @@ import { createHash, randomUUID } from 'node:crypto'
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
-import { hasDatabase } from '../../apply/test-database'
+import { provisionVenue } from '../../apply/provision'
+import { hasDatabase, testSlug } from '../../apply/test-database'
 import { type Id, newId } from '../../ids'
 import { serviceDate as serviceDateOf } from '../../service-day'
 import { openServiceWorld, type ServiceWorld } from '../../testing/service-world'
@@ -530,14 +531,33 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
         [reservationId, String(minutes)],
       )
 
-    it('puts a booking back and closes the table its arrival opened', async () => {
-      const id = await book(['D1'])
+    it('puts a booking back as it was: its own reason, the spot it held, and the table closed (C5)', async () => {
+      const id = await book(['D1'], { reason: 'company' })
       await accept({ type: 'reservation.arrive', reservationId: id })
       expect(await openSittingOf(tableOf('D1'))).not.toBeNull()
-      await accept({ type: 'reservation.undo_arrival', reservationId: id })
-      expect(await reservationOf(id)).toMatchObject({ status: 'reserved', ended_at: null })
+      const details = await accept({ type: 'reservation.undo_arrival', reservationId: id })
+      expect(details).toMatchObject({ spots: spotId('D1'), spotsLost: false })
+      expect(await reservationOf(id)).toMatchObject({
+        status: 'reserved',
+        ended_at: null,
+        reason: 'company',
+      })
       expect(await openSittingOf(tableOf('D1'))).toBeNull()
-      expect((await heldSpotsOf(id)).every((held) => held.released_at !== null)).toBe(true)
+      // The seated hold is released; the booking holds its spot again, as before the arrival.
+      expect((await stillHeldBy(id)).map((held) => held.spot_id)).toEqual([spotId('D1')])
+    })
+
+    it('puts a booking back without its spot when somebody took it since, and says so (C5)', async () => {
+      const id = await book(['D1'], { reason: 'company' })
+      // Seated at another table than the one booked: D1 is free while they sit at D2.
+      await accept({ type: 'reservation.arrive', reservationId: id, spotIds: [spotId('D2')] })
+      const taker = await book(['D1'])
+      const details = await accept({ type: 'reservation.undo_arrival', reservationId: id })
+      expect(details).toMatchObject({ spots: '', spotsLost: true })
+      expect(await reservationOf(id)).toMatchObject({ status: 'reserved', reason: 'company' })
+      expect(await stillHeldBy(id)).toEqual([])
+      expect((await stillHeldBy(taker)).map((held) => held.spot_id)).toEqual([spotId('D1')])
+      expect(await openSittingOf(tableOf('D2'))).toBeNull()
     })
 
     it('leaves a table the waiter had open before the party sat down alone', async () => {
@@ -657,6 +677,67 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
         } satisfies ServiceActor,
         ...over,
       })
+
+    it('reads a party of another venue of the organization as nothing (X1)', async () => {
+      const other = await provisionVenue(world.app, world.tenantId, {
+        name: 'Second club',
+        slug: testSlug('door-2'),
+      })
+      const there = (): ServiceContext => ({ ...staff(ownerId), venueId: other.id })
+      await accept(
+        { type: 'reservation_settings.set', turnMinutes: TURN } as ServiceCommand,
+        there(),
+      )
+      const plan = (await accept({ type: 'plan.save', name: 'Floor', makeCurrent: true }, there()))
+        .planId as string
+      await accept(
+        { type: 'spot_kind.save', key: 'table', label: 'Table', defaultSeats: 4 },
+        there(),
+      )
+      const spot = (
+        await accept(
+          {
+            type: 'spot.save',
+            planId: plan,
+            name: 'Theirs',
+            kind: 'table',
+            shape: 'rect',
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 80,
+          } as ServiceCommand,
+          there(),
+        )
+      ).spotId as string
+      const theirs = (
+        await accept(
+          {
+            type: 'reservation.create',
+            serviceDate: today,
+            startsAt: new Date().toISOString(),
+            kind: 'booking',
+            status: 'reserved',
+            partySize: 2,
+            partyLabel: 'Next door',
+            phone: `+35988${Math.floor(1_000_000 + Math.random() * 8_999_999)}`,
+            spotIds: [spot],
+          } as ServiceCommand,
+          there(),
+        )
+      ).reservationId as Id<'rv'>
+      await accept(
+        { type: 'reservation.set_pay_rule', reservationId: theirs, rule: 'pay_first' },
+        there(),
+      )
+      // Asked at this venue about that venue's party: none of its spots, names or rule come back.
+      const read = await advice({ reservationId: theirs })
+      if (!read.ok) throw new Error(read.code)
+      expect(read.checks.spotIds).toEqual([])
+      expect(read.checks.tables).toEqual([])
+      expect(read.checks.payRule).toBeNull()
+      expect(JSON.stringify(read.checks)).not.toContain(spot)
+    })
 
     it('names the Table of each spot, whether its codes are open and whether it carries a bill', async () => {
       const read = await advice({ spotIds: [spotId('D1')] })

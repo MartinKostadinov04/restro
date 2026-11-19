@@ -17,9 +17,10 @@ import {
   staffMembers,
   venueSpotKinds,
 } from '@restro/db'
-import { and, eq, inArray, isNull, lt, max, sql } from 'drizzle-orm'
+import { and, eq, gt, inArray, isNull, lt, max, or, sql } from 'drizzle-orm'
 
 import type { Id } from '../../ids'
+import { localInstant } from '../../service-day'
 import { sortKeyBetween } from '../../sort-keys'
 import type { ServiceTx } from '../definition'
 import type { Permission } from '../permissions'
@@ -109,6 +110,12 @@ export const RESERVATION_REFUSALS = [
    * table), so there is no sitting to seat the party into (#329). The reason is in the details.
    */
   'table_not_openable',
+  /**
+   * The party is already sitting, so the booking form does not move it to other spots: that is
+   * Change tables, which judges the move by who is on the spot now and opens the new table's code
+   * (D137, #331). The form may still change everything else about the party.
+   */
+  'seated_use_change_tables',
 ] as const
 
 /** One reservation refusal code. */
@@ -162,12 +169,47 @@ export async function lockNightReservations(
     .for('update')
 }
 
-/** Locks the night's record, creating nothing: null when the night has none yet. */
+/**
+ * The text `lockNightWrites` hashes: one key per venue and service date. Its own prefix, so it is
+ * never the key of another advisory lock: `restro:document:` and `restro:publish:` (core/apply),
+ * `restro:night-counts:` (`lockNightCounts`), the worker's `restro:barsy-pull:`, and the migrate and
+ * roles scripts' 32-bit locks. `applyService` takes no advisory lock of its own.
+ */
+export function nightWritesLockKey(venueId: string, serviceDate: string): string {
+  return `restro:reservation-night:${venueId}:${serviceDate}`
+}
+
+/**
+ * Lines up every write of one venue's night, until the transaction ends (C1 of the 11-18 screen
+ * round). The night's record cannot do it alone: it exists only once the night was closed or swept
+ * (`night.ts`), so on a night ahead `SELECT … FOR UPDATE` finds no row and locks nothing, and two
+ * bookings on one spot would each read the other's as not there yet (read committed) and both be
+ * accepted. A transaction-scoped advisory lock exists whether the row does or not.
+ *
+ * Taken where the night's record is locked (`lockNight`), so it keeps that rank of `LOCK_RANKS`:
+ * after the reservation a command was given, before a guest, and nights in date order. A night's
+ * counts lock (`lockNightCounts`) is taken later still, by the re-roll at the end of the command.
+ */
+export async function lockNightWrites(
+  tx: Pick<ServiceTx['tx'], 'execute'>,
+  venueId: string,
+  serviceDate: string,
+): Promise<void> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${nightWritesLockKey(venueId, serviceDate)}, 0))`,
+  )
+}
+
+/**
+ * Locks the night's record, creating nothing: null when the night has none yet. The night's writes
+ * are lined up first (`lockNightWrites`), so a night with no record is serialised all the same.
+ */
 export async function lockNight(
   stx: ServiceTx,
   serviceDate: string,
 ): Promise<ReservationNight | null> {
-  stx.rows.claim('reservation_night', [`${stx.venueId}:${serviceDate}`])
+  const fresh = stx.rows.claim('reservation_night', [`${stx.venueId}:${serviceDate}`])
+  if (fresh.length > 0) await lockNightWrites(stx.tx, stx.venueId, serviceDate)
   const [row] = await stx.tx
     .select()
     .from(reservationNights)
@@ -209,6 +251,21 @@ export async function readSettings(stx: ServiceTx): Promise<ReservationSettings 
     .select()
     .from(reservationSettings)
     .where(eq(reservationSettings.venueId, stx.venueId))
+  return row ?? null
+}
+
+/**
+ * The venue's reservation settings, locked until the transaction ends: for a command that writes a
+ * value back from what it read (the closed dates' list), so two at once queue instead of the later
+ * one writing over the earlier (C7 of the 11-18 screen round). Not a rank of `LOCK_RANKS`: the
+ * commands that take it lock no other row, so it can never be waited for the other way round.
+ */
+export async function lockSettings(stx: ServiceTx): Promise<ReservationSettings | null> {
+  const [row] = await stx.tx
+    .select()
+    .from(reservationSettings)
+    .where(eq(reservationSettings.venueId, stx.venueId))
+    .for('update')
   return row ?? null
 }
 
@@ -306,16 +363,20 @@ export async function heldSpotsOfNight(
       isNull(reservations.deletedAt),
     ),
   )
-  // A block with no end stays on until somebody lifts it (D137) and carries the night it was made
-  // on, so the open blocks of the nights before this one are in the way of a booking here as well.
+  // A block carries the night it was made on, and reaches past it: with no end it stays on until
+  // somebody lifts it, and with dates it runs to the morning after its last night (D137). So the
+  // blocks of the nights before this one that are still on when it begins are in the way of a
+  // booking here as well; the overlap rule then reads each one's own stretch (C2 of the 11-18
+  // screen round: a dated block was read on its first night only).
+  const starts = nightStartsAt(stx, serviceDate)
   const openBlocks = await joined().where(
     and(
       eq(reservations.venueId, stx.venueId),
       lt(reservations.serviceDate, serviceDate),
       eq(reservations.kind, 'block'),
       eq(reservations.status, 'reserved'),
-      isNull(reservations.endsAt),
-      isNull(reservationSpots.heldTo),
+      or(isNull(reservations.endsAt), gt(reservations.endsAt, starts)),
+      or(isNull(reservationSpots.heldTo), gt(reservationSpots.heldTo, starts)),
       isNull(reservationSpots.releasedAt),
       isNull(reservations.deletedAt),
     ),
@@ -331,6 +392,12 @@ export async function heldSpotsOfNight(
     // until it is finished or the night ends (`holdsSpotAt`), so the two must be told apart.
     ownEnd: row.heldTo !== null || row.endsAt !== null,
   }))
+}
+
+/** The instant a service day begins at this venue: the end of the day before (D45). */
+function nightStartsAt(stx: ServiceTx, serviceDate: string): Date {
+  const dayEndsAt = stx.venue.serviceDayEndsAt.slice(0, 5)
+  return localInstant(serviceDate, dayEndsAt, stx.venue.timezone, dayEndsAt)
 }
 
 /**

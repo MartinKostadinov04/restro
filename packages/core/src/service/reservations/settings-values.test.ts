@@ -1,10 +1,19 @@
 // The pure side of ticket #325: part 2's stored values and their defaults, the closed dates' shape,
 // and what the three new commands are (settings-class, a fresh sign-in, built). The writes
-// themselves are the integration tests' (`apply.test.ts`); nothing here needs a database.
+// themselves are the integration tests' (`apply.test.ts`), save one: two closed dates added at
+// once both stay (C7 of the 11-18 screen round), which only a database can show and is skipped
+// without one.
+import { randomUUID } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+import { hasDatabase } from '../../apply/test-database'
+import { openServiceWorld, type ServiceWorld } from '../../testing/service-world'
+import { applyService } from '../apply-service'
+import type { ServiceContext } from '../context'
+import type { ServiceCommand } from '../index'
 import { ClosedDateSchema, closedDatesOf } from './closed-dates'
 import { RESERVATION_COMMANDS } from './commands'
 import {
@@ -121,5 +130,46 @@ describe("ticket #325's commands", () => {
     expect(
       set.safeParse({ type: 'reservation_settings.set', online: { autoConfirm: true } }).success,
     ).toBe(false)
+  })
+})
+
+describe.skipIf(!hasDatabase)('closed dates written at once (as the restro_app role)', () => {
+  let world: ServiceWorld
+  let ownerId: string
+  const staff = (): ServiceContext => ({
+    tenantId: world.tenantId,
+    venueId: world.venueId,
+    origin: 'staff',
+    actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
+    jobId: `req-${randomUUID()}`,
+    signedInAt: new Date(),
+  })
+  const run = async (command: ServiceCommand) =>
+    (await applyService(world.app, command, staff())).result
+
+  beforeAll(async () => {
+    world = await openServiceWorld('closed-dates')
+    ownerId = await world.addUser('owner')
+    expect(
+      await run({ type: 'reservation_settings.set', turnMinutes: 90 } as ServiceCommand),
+    ).toMatchObject({ status: 'accepted' })
+  }, 60_000)
+
+  afterAll(async () => {
+    await world?.close()
+  })
+
+  it('keeps both dates when two are added together: the list is locked before it is read (C7)', async () => {
+    const add = (date: string) => () =>
+      run({ type: 'reservation_closed_date.add', date } as ServiceCommand)
+    const answers = await world.saveTogether([add('2027-01-01'), add('2027-01-02')])
+    expect(answers.map((answer) => answer.status)).toEqual(['accepted', 'accepted'])
+    const stored = (
+      await world.owner.query<{ closed_dates: unknown }>(
+        'select closed_dates from restro.reservation_settings where venue_id = $1',
+        [world.venueId],
+      )
+    ).rows[0]?.closed_dates
+    expect(closedDatesOf(stored)).toEqual(['2027-01-01', '2027-01-02'])
   })
 })

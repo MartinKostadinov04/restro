@@ -11,8 +11,9 @@
 //
 // The list is an **action**, not a command type, because one command covers two different taps:
 // `reservation.edit` changes the guest count at the door (a tap) and edits a booking's details (a
-// PIN), and `reservation.create` writes a booking (a PIN) or puts a walk-in down (a tap). The
-// action is read off the payload, so the venue's choice lands on what the person is actually doing.
+// PIN), `reservation.create` writes a booking (a PIN) or puts a walk-in down (a tap), and
+// `reservation.set_status` is a tap unless it calls the party off (cancel, a PIN). The action is
+// read off the payload, so the venue's choice lands on what the person is actually doing.
 //
 // Pure data and one read; no I/O beyond the select.
 
@@ -158,8 +159,12 @@ export function pinFallActionOf(type: string, payload: unknown): PinFallAction |
     unknown
   >
   switch (type) {
-    case 'reservation.arrive':
+    // Calling a party off through the status door is the Cancel button's act, and so its line
+    // (S20 of the 11-18 screen round): with cancelling open to whoever works tonight (D135 13.18),
+    // the PIN is what keeps it named on a shared device. Every other move is a tap.
     case 'reservation.set_status':
+      return fields.status === 'cancelled' ? 'cancel' : 'status'
+    case 'reservation.arrive':
     case 'reservation.undo_arrival':
       return 'status'
     case 'reservation.seat_walk_in':

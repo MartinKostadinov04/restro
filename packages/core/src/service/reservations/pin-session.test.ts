@@ -187,14 +187,14 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
       partyLabel: 'Another',
       phone: '+359888765432',
     } as const
-    // Taking a booking is the hostess's key (#328); changing one is the booking book's, and the
-    // book's key does not take one.
+    // Taking and changing a booking are the hostess's key (#328; D135 13.18, S20 of the 11-18
+    // screen round); the book's key alone is the manager's acts, and takes or changes none.
     const edit = { type: 'reservation.edit', reservationId: party, partySize: 5 } as const
-    expect(await run(edit, person(tonightOnly))).toMatchObject({ code: 'permission_denied' })
+    expect(await run(edit, person(tonightOnly))).toMatchObject({ status: 'accepted' })
     expect(await run(seat, person(tonightOnly))).toMatchObject({ status: 'accepted' })
     expect(await run(newBooking, person(tonightOnly))).toMatchObject({ status: 'accepted' })
     expect(await run(newBooking, person(bookOnly))).toMatchObject({ code: 'permission_denied' })
-    expect(await run(edit, person(bookOnly))).toMatchObject({ status: 'accepted' })
+    expect(await run(edit, person(bookOnly))).toMatchObject({ code: 'permission_denied' })
     // Blocking a spot and ending the night are keys of their own again.
     expect(
       await run({ type: 'block.remove', reservationId: party }, person(bookOnly)),

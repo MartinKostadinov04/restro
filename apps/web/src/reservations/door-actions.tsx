@@ -164,12 +164,15 @@ export function useDoorActions({
               }),
         // The arrival is undone by its own command, which closes the codes it opened (#329); a
         // walk-in the seat tap itself created is cancelled with its own reason, by the same command.
+        // The party goes back to the spots it held before; where one was taken since, it comes back
+        // without them and she reads it in one line (C5 of the 11-18 screen round).
         ...(reservationId === null
           ? {}
           : {
               again: {
                 label: t('p_undo'),
                 done: t('d_undone'),
+                notice: (details) => (details.spotsLost === true ? t('d_undone_lost') : null),
                 act: (pin?: string) =>
                   undoArrivalAction({
                     venueId,

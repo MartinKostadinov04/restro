@@ -117,6 +117,24 @@ describe('spotConflict', () => {
     expect(conflict).toBeNull()
   })
 
+  it('refuses a booking on any night a dated block runs over, not only its first (C2)', () => {
+    // A block from the 20th at 20:00 to the morning of the 26th: its stretch covers five nights.
+    const block = hold({
+      reservationId: 'rv_block',
+      stretch: {
+        from: new Date(Date.UTC(2026, 10, 20, 20, 0)),
+        to: new Date(Date.UTC(2026, 10, 26, 4, 0)),
+      },
+    })
+    const onThe22nd = claim({ startsAt: new Date(Date.UTC(2026, 10, 22, 22, 0)) })
+    expect(spotConflict(onThe22nd, [block], TURN)).toEqual({
+      spotId: 'sp_a',
+      reservationId: 'rv_block',
+    })
+    const onThe26th = claim({ startsAt: new Date(Date.UTC(2026, 10, 26, 22, 0)) })
+    expect(spotConflict(onThe26th, [block], TURN)).toBeNull()
+  })
+
   it('never puts a reservation in its own way, so an edit keeps its spot', () => {
     const mine = hold({ reservationId: 'rv_candidate' })
     expect(spotConflict(claim({ startsAt: at(22, 30) }), [mine], TURN)).toBeNull()

@@ -54,6 +54,11 @@ export interface RvRunSpec {
     readonly label: string
     readonly done: string
     readonly act: (pin?: string) => Promise<RvWriteResult>
+    /**
+     * A line to say instead of `done` when the answer carries something she must know (an undone
+     * arrival that came back without its spots): it stays until she closes it, never silent.
+     */
+    readonly notice?: (details: Extract<RvWriteResult, { ok: true }>['details']) => string | null
   }
   /**
    * This screen's own sentence for a refusal it can say more about, given the code and whatever
@@ -114,6 +119,15 @@ export function useReservationRun({ device }: { device: boolean }): {
                   void attempt(() => again.act(pin)).then((result) => {
                     spec.after?.()
                     if (result.ok) {
+                      const notice = again.notice?.(result.details) ?? null
+                      if (notice !== null) {
+                        toast.message(notice, {
+                          id: `${spec.id}:again`,
+                          duration: Number.POSITIVE_INFINITY,
+                          closeButton: true,
+                        })
+                        return
+                      }
                       toast.success(again.done, { id: `${spec.id}:again`, duration: DONE_MS })
                       return
                     }

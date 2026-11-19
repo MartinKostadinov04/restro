@@ -155,6 +155,9 @@ export function BookingForm({
   const dateText = useDateText()
   const ids = useId()
   const editing = mode.kind === 'edit' ? mode.detail : null
+  // A seated party's spots are the tables it sits at: they move with "Change tables", which takes
+  // the tables' codes along, never from this form (C6 of the 11-18 screen round).
+  const seated = editing?.row.status === 'seated'
 
   const [start] = useState<BookingValues>(() =>
     mode.kind === 'edit'
@@ -565,27 +568,32 @@ export function BookingForm({
               <li key={id}>
                 <Badge variant="outline" className="min-h-8 gap-1 pr-1 text-sm">
                   <span className="[overflow-wrap:anywhere]">{spotNames.get(id) ?? '…'}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-8"
-                    aria-label={t('bk_spot_remove', { spot: spotNames.get(id) ?? '' })}
-                    onClick={() =>
-                      set(
-                        'spotIds',
-                        values.spotIds.filter((one) => one !== id),
-                      )
-                    }
-                  >
-                    <XIcon aria-hidden />
-                  </Button>
+                  {seated ? null : (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8"
+                      aria-label={t('bk_spot_remove', { spot: spotNames.get(id) ?? '' })}
+                      onClick={() =>
+                        set(
+                          'spotIds',
+                          values.spotIds.filter((one) => one !== id),
+                        )
+                      }
+                    >
+                      <XIcon aria-hidden />
+                    </Button>
+                  )}
                 </Badge>
               </li>
             ))}
           </ul>
         )}
-        {checks?.taken == null ? null : (
+        {seated ? (
+          <Hint testId="rv-f-seated-spots">{t('errors.seated_use_change_tables')}</Hint>
+        ) : null}
+        {seated || checks?.taken == null ? null : (
           <Hint tone="refusal" testId="rv-w-taken">
             {checks.taken.kind === 'block'
               ? t('bk_taken_block', { spot: checks.taken.spotName, time: checks.taken.time })
@@ -596,7 +604,7 @@ export function BookingForm({
                 })}
           </Hint>
         )}
-        {noPlan ? (
+        {seated ? null : noPlan ? (
           <NoPlanYet frame={frame} noSpots={pick.plan?.planId != null} testId="rv-f-no-plan" />
         ) : (
           <div className="flex flex-wrap gap-2">
@@ -622,7 +630,7 @@ export function BookingForm({
             </Button>
           </div>
         )}
-        {picker === 'closed' || noPlan ? null : pick.plan === null ? (
+        {picker === 'closed' || noPlan || seated ? null : pick.plan === null ? (
           pick.failed ? (
             <p className="text-muted-foreground" role="alert">
               {t('p_fail')}

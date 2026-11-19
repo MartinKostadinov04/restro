@@ -17,6 +17,7 @@ import { applyService } from '../apply-service'
 import type { ServiceActor, ServiceContext } from '../context'
 import type { ServiceCommand } from '../index'
 import { readBookingChecks } from './booking-checks'
+import { readFloorPlan } from './plan-read'
 import { readReservationDetail } from './read'
 
 const TURN = 90
@@ -201,7 +202,7 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
   })
 
   describe('who may do what (D135, D141)', () => {
-    it('lets whoever works tonight take a booking, and not change it', async () => {
+    it('lets whoever works tonight take, edit and cancel any booking, and keeps deleting another’s and restoring for a manager (S20)', async () => {
       const day = night(3)
       await book(day, '22:00', ['T1'])
       const taken = await run(
@@ -218,30 +219,49 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
         staff(hostessId),
       )
       expect(taken.status).toBe('accepted')
-      const reservationId = taken.details.reservationId as Id<'rv'>
       // The maker is the hostess, by her staff record, even signed in as herself.
-      expect((await row(reservationId)).made_by).toBe(hostessStaffId)
-      for (const command of [
-        { type: 'reservation.edit', reservationId, partySize: 3 },
-        { type: 'reservation.cancel', reservationId },
-        { type: 'reservation.restore', reservationId },
-      ] as ServiceCommand[]) {
-        expect(await run(command, staff(hostessId))).toMatchObject({
-          status: 'refused',
-          code: 'permission_denied',
-        })
-      }
-      // The same call-off through the status door is the same act.
+      expect((await row(taken.details.reservationId as string)).made_by).toBe(hostessStaffId)
+      // A colleague's booking (D135 13.18): the hostess on duty edits it and cancels it.
+      const colleagues = (
+        await accept(
+          {
+            type: 'reservation.create',
+            serviceDate: day,
+            startsAt: hour(day, '23:30'),
+            kind: 'booking',
+            status: 'reserved',
+            partySize: 2,
+            guestName: 'Colleague’s',
+            phone: phone(),
+          } as ServiceCommand,
+          staff(managerId),
+        )
+      ).reservationId as Id<'rv'>
+      await accept(
+        { type: 'reservation.edit', reservationId: colleagues, partySize: 3 },
+        staff(hostessId),
+      )
+      expect((await row(colleagues)).party_size).toBe(3)
+      await accept({ type: 'reservation.cancel', reservationId: colleagues }, staff(hostessId))
+      expect((await row(colleagues)).status).toBe('cancelled')
+      // The same call-off through the status door is the same act, and hers as well.
+      const another = await book(day, '21:30', [])
+      await accept(
+        { type: 'reservation.set_status', reservationId: another, status: 'cancelled' },
+        staff(hostessId),
+      )
+      expect((await row(another)).status).toBe('cancelled')
+      // Deleting someone else's booking and bringing one back stay the manager's.
+      const kept = await book(day, '21:00', [])
       expect(
-        await run(
-          { type: 'reservation.set_status', reservationId, status: 'cancelled' },
-          staff(hostessId),
-        ),
+        await run({ type: 'reservation.delete', reservationId: kept }, staff(hostessId)),
       ).toMatchObject({ status: 'refused', code: 'permission_denied' })
-      expect((await row(reservationId)).status).toBe('reserved')
-      // A manager works any booking, whoever took it.
-      await accept({ type: 'reservation.edit', reservationId, partySize: 3 }, staff(managerId))
-      expect((await row(reservationId)).party_size).toBe(3)
+      expect((await row(kept)).deleted_at).toBeNull()
+      await accept({ type: 'reservation.delete', reservationId: kept }, staff(managerId))
+      expect(
+        await run({ type: 'reservation.restore', reservationId: kept }, staff(hostessId)),
+      ).toMatchObject({ status: 'refused', code: 'permission_denied' })
+      expect((await row(kept)).deleted_at).not.toBeNull()
     })
 
     it('lets a hostess take out a line she made, and keeps another’s for a manager', async () => {
@@ -464,6 +484,111 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
       await book(second, '22:00', ['T4'])
     })
 
+    it('refuses a spot on every night a dated block covers, and the plan shows it there (C2)', async () => {
+      const first = night(40)
+      const last = night(45)
+      const middle = night(42)
+      const block = (
+        await accept({
+          type: 'block.save',
+          serviceDate: first,
+          startsAt: hour(first, '20:00'),
+          endsAt: hour(last, '04:00'),
+          spotIds: [spotId('T4')],
+          reason: 'broken',
+        } as ServiceCommand)
+      ).reservationId as Id<'rv'>
+      expect(
+        await run({
+          type: 'reservation.create',
+          serviceDate: middle,
+          startsAt: hour(middle, '22:00'),
+          kind: 'booking',
+          status: 'reserved',
+          partySize: 2,
+          guestName: 'Mid-block',
+          phone: phone(),
+          spotIds: [spotId('T4')],
+        } as ServiceCommand),
+      ).toMatchObject({ status: 'refused', code: 'spot_taken', details: { reservationId: block } })
+      // The plan of that night shows the block on the spot, as the booking path found it.
+      const plan = await readFloorPlan(world.app, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        actor: staff(ownerId).actor,
+        day: middle,
+      })
+      if (!plan.ok) throw new Error(plan.code)
+      const t4 = plan.plan.spots.find((one) => one.id === spotId('T4'))
+      expect(t4?.holds.map((one) => one.reservationId)).toContain(block)
+      // The night after its end, the spot is free again.
+      await book(night(46), '22:00', ['T4'])
+      await accept({ type: 'block.remove', reservationId: block })
+    })
+
+    it('lifts a block with no end made on a night that has passed, as work on tonight (C3)', async () => {
+      const past = addDaysToDay(today, -3)
+      await setSettings({ editPastNights: true })
+      const block = (
+        await accept({
+          type: 'block.save',
+          serviceDate: past,
+          startsAt: hour(past, '20:00'),
+          spotIds: [spotId('T4')],
+          reason: 'broken',
+        } as ServiceCommand)
+      ).reservationId as Id<'rv'>
+      await setSettings({ editPastNights: false })
+      // Still on tonight: the spot is out of use until somebody lifts it.
+      expect(
+        await run({
+          type: 'reservation.create',
+          serviceDate: night(1),
+          startsAt: hour(night(1), '22:00'),
+          kind: 'booking',
+          status: 'reserved',
+          partySize: 2,
+          guestName: 'Behind the block',
+          phone: phone(),
+          spotIds: [spotId('T4')],
+        } as ServiceCommand),
+      ).toMatchObject({ status: 'refused', code: 'spot_taken' })
+      // Its first night has passed and the venue keeps the past shut; tonight is writable, so the
+      // block comes off.
+      await accept({ type: 'block.remove', reservationId: block })
+      expect((await row(block)).status).toBe('cancelled')
+      await book(night(1), '22:00', ['T4'])
+    })
+
+    it('lets only one of two bookings taken at once hold the same spot (C1)', async () => {
+      const day = night(31)
+      const take = () =>
+        run({
+          type: 'reservation.create',
+          serviceDate: day,
+          startsAt: hour(day, '22:00'),
+          kind: 'booking',
+          status: 'reserved',
+          partySize: 2,
+          guestName: `Together ${randomUUID().slice(0, 6)}`,
+          phone: phone(),
+          spotIds: [spotId('T2')],
+        } as ServiceCommand)
+      const answers = await world.saveTogether([take, take])
+      expect(
+        answers.map((answer) => (answer.status === 'accepted' ? 'accepted' : answer.code)).sort(),
+      ).toEqual(['accepted', 'spot_taken'])
+      const holders = (
+        await world.owner.query<{ n: string }>(
+          `select count(*) as n from restro.reservation_spots h
+             join restro.reservations r on r.id = h.reservation_id
+            where h.spot_id = $1 and h.released_at is null and r.service_date = $2`,
+          [spotId('T2'), day],
+        )
+      ).rows[0]
+      expect(Number(holders?.n)).toBe(1)
+    })
+
     it('refuses a night that has passed, unless the venue switched the past on', async () => {
       const past = addDaysToDay(today, -2)
       const command = {
@@ -622,6 +747,18 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
       expect(await heldNames(id)).toEqual([])
       expect(await heldNames(taker)).toEqual(['T3'])
       expect((await row(id)).deleted_at).toBeNull()
+    })
+
+    it('brings a deleted booking back on the spots it had when it was deleted, not on older ones (C4)', async () => {
+      const day = night(32)
+      const id = await book(day, '22:00', ['T1'])
+      await accept({ type: 'reservation.edit', reservationId: id, spotIds: [spotId('T2')] })
+      await accept({ type: 'reservation.delete', reservationId: id })
+      const details = await accept({ type: 'reservation.restore', reservationId: id })
+      expect(details.spotsLost).not.toBe(true)
+      expect(await heldNames(id)).toEqual(['T2'])
+      // T1, which it gave up before it was deleted, is still free for somebody else.
+      await book(day, '22:00', ['T1'])
     })
   })
 
