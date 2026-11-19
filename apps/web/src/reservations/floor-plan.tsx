@@ -29,7 +29,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { WRAPS } from '@/lib/wrapping'
 import { blockSpotAction, floorPlanAction, unblockSpotAction } from '@/server/reservations/actions'
 import type { RvFrame, RvPlanView, RvSpotView } from '@/server/reservations/view'
-import { DayPicker } from '@/tonight/day-picker'
+import { DayPicker, useDateText } from '@/tonight/day-picker'
 import { FEED_POLL_MS } from '@/tonight/live-feed'
 import { FailedBlock } from '@/tonight/tab-parts'
 
@@ -64,6 +64,8 @@ function plannedNights(today: string): string[] {
 /** The one banner that says what the whole night is (Patterns: "A state of the whole page"). */
 function PlanBanner({ plan, frame }: { plan: RvPlanView; frame: RvFrame }) {
   const t = useTranslations('reservations')
+  // The night by its date, as the list's banner says it (S23).
+  const date = useDateText()(plan.day)
   const kind = plan.tooOld
     ? 'old'
     : plan.settingsMissing
@@ -82,10 +84,10 @@ function PlanBanner({ plan, frame }: { plan: RvPlanView; frame: RvFrame }) {
       : kind === 'settings'
         ? t('b_settings')
         : kind === 'open'
-          ? t('b_passed_open')
+          ? t('b_passed_open', { date })
           : kind === 'denied'
-            ? t('b_passed_denied')
-            : t('b_passed')
+            ? t('b_passed_denied', { date })
+            : t('b_passed', { date })
   const Icon = kind === 'settings' ? CircleAlertIcon : LockIcon
   return (
     <div
@@ -561,6 +563,8 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
                     // is stuck with — "Guests" on the sheet is one field (#329).
                     partySize: spot.seats ?? 1,
                     until,
+                    // The toast says where they sit: "Party seated at Маса 7." (S21).
+                    onSpot: spot.name,
                   })
               : null
           }

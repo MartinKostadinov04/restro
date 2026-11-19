@@ -31,7 +31,6 @@
 import type { PayRule } from '@restro/core'
 import { useTranslations } from 'next-intl'
 import { useCallback, useState } from 'react'
-import { toast } from 'sonner'
 
 import {
   arrivalChecksAction,
@@ -45,6 +44,7 @@ import {
 import type { RvFrame } from '@/server/reservations/view'
 import { ConfirmDialog } from './confirm-dialog'
 import { SameGuestsDialog } from './door-dialogs'
+import { useSpotsText } from './reservation-words'
 import type { RvRunSpec } from './use-reservation-run'
 
 /** The party at the door: what a seating needs to know about it. */
@@ -109,6 +109,7 @@ export function useDoorActions({
   const venueId = frame.venueId
   const [asking, setAsking] = useState<Asking | null>(null)
   const [reading, setReading] = useState(false)
+  const spotsText = useSpotsText()
 
   /** The party in a sentence: its name, or "No name" for a walk-in nobody named. */
   const named = useCallback((party: DoorParty) => party.name ?? t('no_name'), [t])
@@ -126,14 +127,23 @@ export function useDoorActions({
           reservationId === null
             ? `rv-walk-in:${party.spotIds.join(',')}`
             : `rv-arrive:${reservationId}`,
-        // Only what the write is certain of: the party is seated. Whether a table opened for phones
-        // is told after the answer, from what the write reports (#396).
-        done:
-          reservationId === null
-            ? t('d_seated_walk_in')
-            : party.onSpot === undefined
-              ? t('d_seated', { party: named(party) })
-              : t('w_seated', { party: named(party), spot: party.onSpot }),
+        // One toast per write (S21), naming the party: that it is seated, and in the same sentence
+        // what the write reports of its tables — open for phones, or closed because this role may
+        // not open them. Never guessed before the answer (#396).
+        done: (details) => {
+          const spot = party.onSpot === undefined ? null : spotsText([party.onSpot])
+          const seated =
+            reservationId === null
+              ? spot === null
+                ? t('d_seated_walk_in_bare')
+                : t('d_seated_walk_in', { spot })
+              : spot === null
+                ? t('d_seated', { party: named(party) })
+                : t('w_seated', { party: named(party), spot })
+          // The role may not open tables: the party is seated and the table stayed closed (#329).
+          if (details.tableClosed === true) return `${seated} ${t('d_closed')}`
+          return tablesOpenFor(details) > 0 ? `${seated} ${t('d_open')}` : seated
+        },
         pin: {
           title:
             reservationId === null
@@ -163,21 +173,22 @@ export function useDoorActions({
                 ...(pin === undefined ? {} : { pin }),
               }),
         // The arrival is undone by its own command, which closes the codes it opened (#329); a
-        // walk-in the seat tap itself created is cancelled with its own reason, by the same command.
-        ...(reservationId === null
-          ? {}
-          : {
-              again: {
-                label: t('p_undo'),
-                done: t('d_undone'),
-                act: (pin?: string) =>
-                  undoArrivalAction({
-                    venueId,
-                    reservationId,
-                    ...(pin === undefined ? {} : { pin }),
-                  }),
-              },
-            }),
+        // walk-in the seat tap itself created is cancelled with its own reason, by the same command,
+        // on the line the write reports it made (S21: every door write offers its Undo).
+        again: {
+          label: t('p_undo'),
+          done: t('d_undone'),
+          act: (pin, details) => {
+            const made = details?.reservationId
+            const id = reservationId ?? (typeof made === 'string' ? made : null)
+            if (id === null) return Promise.resolve({ ok: false, error: 'failed' } as const)
+            return undoArrivalAction({
+              venueId,
+              reservationId: id,
+              ...(pin === undefined ? {} : { pin }),
+            })
+          },
+        },
         // Somebody is on the spot right now (`holdsSpotNow`, not the booking rule): the sentence
         // names them and their hour, which is the whole point of it. `spot_taken` carries only
         // ids, so the names come from the door's own advice, read once, on the refusal only.
@@ -198,20 +209,10 @@ export function useDoorActions({
           })
         },
         after: onChanged,
-        onDone: (details) => {
-          const id = reservationId ?? 'walk-in'
-          // The role may not open tables: the party is seated and the table stayed closed (#329).
-          if (details.tableClosed === true) {
-            toast.message(t('d_closed'), { id: `rv-closed:${id}` })
-          } else if (tablesOpenFor(details) > 0) {
-            // A code really is open for phones: said here, never guessed before the write (#396).
-            toast.message(t('d_open'), { id: `rv-open:${id}` })
-          }
-          setAsking(null)
-        },
+        onDone: () => setAsking(null),
       })
     },
-    [named, onChanged, run, t, venueId],
+    [named, onChanged, run, spotsText, t, venueId],
   )
 
   /** Asks first where the advice says a question is due, and writes where it does not. */
@@ -303,7 +304,7 @@ export function useDoorActions({
       const asked = party.spotIds
       run({
         id: `rv-free:${reservationId}`,
-        done: t('d_freed'),
+        done: t('d_freed', { party: named(party) }),
         pin: { title: t('d_pin_free', { party: named(party) }), body: t('d_pin_b') },
         act: (pin) =>
           freeSpotsAction({

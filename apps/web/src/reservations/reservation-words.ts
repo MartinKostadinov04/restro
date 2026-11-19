@@ -31,6 +31,30 @@ export function useGuestsText() {
     party === null ? null : t('guests', { k: party })
 }
 
+/** A spot name that is only a number ("9", "25.1", "40/41", "53 А"), which reads as a count. */
+const BARE_NUMBER = /^\d/
+
+/**
+ * The spots a party holds, as a row says them (the screen round's S1): a name that is only a number
+ * gets the word "spot" before it — «място 9», «места 9, 10» — so "5 guests · 9" never reads as two
+ * counts. A name that already says what it is ("Бар 1 · стол 1", "Маса 7") is left as the venue
+ * wrote it (D134: spot names are the venue's). Null for a party holding none.
+ */
+export function useSpotsText() {
+  const t = useTranslations('reservations')
+  return (names: readonly string[]): string | null => {
+    if (names.length === 0) return null
+    if (names.every((name) => BARE_NUMBER.test(name))) {
+      return names.length === 1
+        ? t('spot_one', { spot: names.join('') })
+        : t('spot_many', { spots: names.join(', ') })
+    }
+    return names
+      .map((name) => (BARE_NUMBER.test(name) ? t('spot_one', { spot: name }) : name))
+      .join(', ')
+  }
+}
+
 /**
  * A pay rule in words (#334): the two the levels can carry, and the absence of one, which reads
  * "The club's rule" and never as a blank. The same three words wherever a rule is said — the
@@ -76,7 +100,7 @@ const PAY_RULE_LOG_WORDS: Readonly<Record<string, string>> = {
  */
 export function useHistoryText() {
   const t = useTranslations('tonight')
-  return (line: RvHistoryView): string | null => {
+  return (line: Pick<RvHistoryView, 'kind' | 'toState'>): string | null => {
     const state = t(LOG_STATE_WORDS[line.toState ?? ''] ?? 'lg_rv_s_other')
     switch (line.kind) {
       case 'reservation.created':

@@ -164,6 +164,7 @@ describe('one reservation’s sheet', () => {
         reason: null,
         who: { kind: 'person', name: 'Mila' },
         via: null,
+        mine: false,
       },
       {
         seq: 2,
@@ -174,6 +175,7 @@ describe('one reservation’s sheet', () => {
         reason: null,
         who: { kind: 'person', name: 'Mila' },
         via: 'tablet',
+        mine: true,
       },
     ],
     ...over,
@@ -194,6 +196,10 @@ describe('one reservation’s sheet', () => {
     ])
     expect(JSON.stringify(view.history)).not.toContain('359888')
     expect(JSON.stringify(view.history)).not.toContain('guest@example.test')
+  })
+
+  it('carries which lines the reader wrote, so their own write is never news to them', () => {
+    expect(rvDetailView(detail(), SOFIA).history.map((line) => line.mine)).toEqual([false, true])
   })
 
   it('says nothing about who took it where the Log does not know', () => {

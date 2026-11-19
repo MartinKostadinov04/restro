@@ -356,7 +356,7 @@ export function BookingForm({
     checks?.night == null
       ? null
       : checks.night === 'night_passed'
-        ? t('b_passed')
+        ? t('b_passed', { date: dateText(values.day) })
         : checks.night === 'settings_missing'
           ? t('b_settings')
           : t('errors.past_night_denied')

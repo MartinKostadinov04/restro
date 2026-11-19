@@ -40,20 +40,27 @@ export function useRvFailureText() {
   )
 }
 
+/** What a write that worked reports: the reservation it made or changed, and what it did. */
+export type RvDoneDetails = Extract<RvWriteResult, { ok: true }>['details']
+
 /** One write of the plan. */
 export interface RvRunSpec {
   /** A stable id built from the thing changed, so a second tap updates the same toast. */
   readonly id: string
   readonly act: (pin?: string) => Promise<RvWriteResult>
-  /** The toast after it worked. */
-  readonly done: string
+  /**
+   * The toast after it worked: one sentence, or one built from what the write reports, so a write
+   * that did two things (seated, and opened the table) still says both in its one toast (S21).
+   */
+  readonly done: string | ((details: RvDoneDetails) => string)
   /** Present when a shared device must name a person first. */
   readonly pin?: { readonly title: string; readonly body: string }
   /** The write that puts it back, offered on the toast (lifting a block offers to block again). */
   readonly again?: {
     readonly label: string
     readonly done: string
-    readonly act: (pin?: string) => Promise<RvWriteResult>
+    /** `details` is what the first write reported: a walk-in's Undo needs the line it made. */
+    readonly act: (pin?: string, details?: RvDoneDetails) => Promise<RvWriteResult>
   }
   /**
    * This screen's own sentence for a refusal it can say more about, given the code and whatever
@@ -64,7 +71,7 @@ export interface RvRunSpec {
     details: Readonly<Record<string, unknown>> | undefined,
   ) => string | null | Promise<string | null>
   /** It worked: the screen that asked closes its form, and reads again. */
-  readonly onDone?: (details: Extract<RvWriteResult, { ok: true }>['details']) => void
+  readonly onDone?: (details: RvDoneDetails) => void
   /** Read the plan again, whatever the answer was: the screen never keeps a guess. */
   readonly after?: () => void
 }
@@ -100,9 +107,10 @@ export function useReservationRun({ device }: { device: boolean }): {
   )
 
   const accept = useCallback(
-    (spec: RvRunSpec, who: string | undefined, pin: string | undefined) => {
+    (spec: RvRunSpec, who: string | undefined, pin: string | undefined, details: RvDoneDetails) => {
       const { again } = spec
-      toast.success(who === undefined ? spec.done : `${spec.done} · ${who}`, {
+      const done = typeof spec.done === 'string' ? spec.done : spec.done(details)
+      toast.success(who === undefined ? done : `${done} · ${who}`, {
         id: spec.id,
         duration: DONE_MS,
         ...(again === undefined
@@ -111,7 +119,7 @@ export function useReservationRun({ device }: { device: boolean }): {
               action: {
                 label: again.label,
                 onClick: () => {
-                  void attempt(() => again.act(pin)).then((result) => {
+                  void attempt(() => again.act(pin, details)).then((result) => {
                     spec.after?.()
                     if (result.ok) {
                       toast.success(again.done, { id: `${spec.id}:again`, duration: DONE_MS })
@@ -138,7 +146,7 @@ export function useReservationRun({ device }: { device: boolean }): {
       setBusy(false)
       spec.after?.()
       if (result.ok) {
-        accept(spec, result.who, pin)
+        accept(spec, result.who, pin, result.details)
         spec.onDone?.(result.details)
       }
       return result

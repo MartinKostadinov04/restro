@@ -1,11 +1,20 @@
 import { expect, type Frame, type Page, test } from '@playwright/test'
 
-import { ADMIN_EMAIL, ADMIN_PASSWORD, INTEGRATION_OWNER_EMAIL } from './support'
+import { runScriptWith } from './global-setup'
+import {
+  ADMIN_EMAIL,
+  ADMIN_PASSWORD,
+  INTEGRATION_OWNER_EMAIL,
+  TONIGHT_OWNER_EMAIL,
+  TONIGHT_PIN_PEPPER,
+  TONIGHT_VENUE_NAME,
+} from './support'
 
 // D123: the manager's phone is a supported admin device, and a tappable control has a hit area of
 // at least 44 x 44 px (Restro's own floor, docs/guides/operational-screens.md, Accessibility). This
 // walks the Studio's Structure screen, the Design page with the guest template in its preview, and
-// Settings -> Integrations on a 390 px phone and checks
+// Settings -> Integrations and Venue › Reservations (the night's list, a reservation's sheet and
+// Guests) on a 390 px phone and checks
 // every control on them, so the floor cannot slip back unseen. A control may look smaller than 44 px
 // if its hit area is extended around it (the `tap-area` utility in globals.css), so the check is
 // not on the element's box: it asks the browser what is under the pointer at the edges of a
@@ -181,7 +190,8 @@ async function signIn(page: Page, email: string) {
     await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
     await page.getByRole('button', { name: 'Вход' }).click()
     try {
-      await expect(page).toHaveURL(/\/venues$/, { timeout: 5_000 })
+      // A person with one venue may land on it straight away.
+      await expect(page).toHaveURL(/\/venues(\/vn_[^/?]+\?tab=\w+)?$/, { timeout: 5_000 })
       return
     } catch {
       await page.waitForTimeout(10_000)
@@ -299,6 +309,65 @@ test('Settings -> Integrations: every control has a 44 px hit area on a phone', 
       await expect(page.getByTestId('instance').first()).toBeVisible()
     }
     await expectFloor(page, 'integrations, a connection', 10)
+  } finally {
+    await context.close()
+  }
+})
+
+// The screen round's 44 px rows for Reservations: the night's list (its row actions and "…"), a
+// reservation's sheet, and Guests with a row's "…" open. Scoped to the tab itself: the venue's
+// header and navigation are checked with their own screens.
+test('Venue › Reservations: every control has a 44 px hit area on a phone', async ({ browser }) => {
+  const fixture = (...args: string[]) =>
+    runScriptWith(
+      { STAFF_PIN_PEPPER: TONIGHT_PIN_PEPPER },
+      './scripts/seed-tonight-e2e.ts',
+      ...args,
+    )
+  fixture('seed')
+  fixture('night', 'empty')
+  fixture('book', 'book')
+  const context = await browser.newContext(phone)
+  const page = await context.newPage()
+  try {
+    await signIn(page, TONIGHT_OWNER_EMAIL)
+    if (!/\/venues\/vn_/.test(page.url())) {
+      await page
+        .getByRole('link', { name: new RegExp(TONIGHT_VENUE_NAME) })
+        .first()
+        .click()
+      await expect(page).toHaveURL(/\/venues\/vn_[^/?]+/)
+    }
+    const venueId = new URL(page.url()).pathname.split('/')[2] ?? ''
+
+    await page.goto(`/venues/${venueId}?tab=reservations`)
+    const night = page.getByTestId('reservations-night')
+    await expect(night.getByTestId('rv-row').first()).toBeVisible()
+    await expectFloor(page, 'reservations, the night', 6, '[data-testid="reservations-night"]')
+
+    const more = night.getByTestId('rv-row-more').first()
+    if ((await more.count()) > 0) {
+      await more.click()
+      await expectFloor(page, 'reservations, a row’s "…" open', 1, '[role="menu"]')
+      await page.keyboard.press('Escape')
+    }
+
+    await night.getByTestId('rv-row').first().click()
+    const sheet = page.getByTestId('rv-sheet')
+    await expect(sheet).toBeVisible()
+    await expect(sheet).toHaveAttribute('aria-busy', 'false')
+    await expectFloor(page, 'reservations, a reservation', 2, '[data-testid="rv-sheet"]')
+    await page.keyboard.press('Escape')
+
+    await page.goto(`/venues/${venueId}?tab=reservations&view=guests`)
+    const guests = page.getByTestId('reservations-guests')
+    await expect(guests).toBeVisible()
+    await expectFloor(page, 'reservations, guests', 2, '[data-testid="reservations-guests"]')
+    const guestMore = guests.getByTestId('rv-g-row-more').first()
+    if ((await guestMore.count()) > 0) {
+      await guestMore.click()
+      await expectFloor(page, 'reservations, a guest’s "…" open', 1, '[role="menu"]')
+    }
   } finally {
     await context.close()
   }

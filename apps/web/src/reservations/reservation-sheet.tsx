@@ -331,7 +331,8 @@ export function ReservationSheet({
   busy: boolean
   onEdit: (detail: RvDetailView) => void
   onCopy: (detail: RvDetailView) => void
-  onNoShow: (reservationId: string) => void
+  /** Marks the party as a no-show; the toast names it, so it comes with the reservation. */
+  onNoShow: (reservationId: string, party: string) => void
   /** Puts back one party the night's end closed (#332); the sheet reads it again when it worked. */
   onPutBack: (reservationId: string, party: PartyName, done: () => void) => void
   /** Calls the booking off; the sheet reads it again when it worked. */
@@ -376,7 +377,13 @@ export function ReservationSheet({
         setDetail(fresh)
         const newest = fresh?.history.at(-1)
         if (newest !== undefined) {
-          if (seen.current !== null && newest.seq > seen.current) setChangedBy(newest.by)
+          // Only somebody else's change is news: her own write already said itself in its toast,
+          // so a line she wrote never raises the notice (S18).
+          const theirs =
+            seen.current === null
+              ? undefined
+              : fresh?.history.findLast((line) => line.seq > (seen.current ?? 0) && !line.mine)
+          if (theirs !== undefined) setChangedBy(theirs.by)
           seen.current = newest.seq
         }
       },
@@ -578,7 +585,7 @@ export function ReservationSheet({
               <DropdownMenuItem
                 className="min-h-11"
                 data-testid="rv-noshow"
-                onSelect={() => onNoShow(detail.row.id)}
+                onSelect={() => onNoShow(detail.row.id, detail.row.name ?? t('no_name'))}
               >
                 {t('bk_noshow')}
               </DropdownMenuItem>

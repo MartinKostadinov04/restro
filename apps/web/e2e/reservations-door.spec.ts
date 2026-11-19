@@ -187,8 +187,8 @@ test('“Same party” seats them and leaves their order where it was', async ()
   const question = page.getByTestId('rv-same-guests')
   await expect(question).toBeVisible()
   await question.getByTestId('rv-same-keep').click()
-  await expect(page.getByText('Seated Иванова.')).toBeVisible()
-  await expect(page.getByText('The table is open for phones.')).toBeVisible()
+  // One toast for the one write (S21): who is seated, and that the table opened.
+  await expect(toast(page, 'Seated: Иванова. The table is open for phones.')).toBeVisible()
   await expect(rowOf(page, 'Иванова')).toHaveAttribute('data-status', 'seated')
   // The same table, still open: nothing of the order was cleared by seating them.
   expect(await readTile(page, TABLE)).toBe('open')
@@ -223,7 +223,7 @@ test('freeing the table closes its codes, and its Undo gives them back', async (
   await seven.getByTestId('rv-spot-free').click()
   // Their round is on the table, so the door says so before it frees it (the open-bill warning).
   await page.getByTestId('rv-free-bill-do').click()
-  await expect(page.getByText('The table is free again.')).toBeVisible()
+  await expect(toast(page, 'They left: Иванова. The table is free again.')).toBeVisible()
 
   // The toast's Undo is the same party claiming the same spots again, which opens the codes again.
   await page.getByRole('button', { name: 'Undo' }).first().click()
@@ -256,8 +256,7 @@ test('“New guests” is reached only as the answer to that question', async ()
   const question = page.getByTestId('rv-same-guests')
   await expect(question).toBeVisible()
   await question.getByTestId('rv-same-new').click()
-  await expect(page.getByText('Seated.', { exact: true })).toBeVisible()
-  await expect(page.getByText('The table is open for phones.')).toBeVisible()
+  await expect(toast(page, 'Party seated at Маса 7. The table is open for phones.')).toBeVisible()
   // A new sitting, so the table is open for the people who are there now.
   expect(await readTile(page, TABLE)).toBe('open')
 })
@@ -278,7 +277,7 @@ test('a table open for phones that nobody ordered from is not busy, and seating 
   await expect(spotNamed(page, 'Маса 7').first()).toHaveAttribute('data-state', 'free')
   const again = await openSpot(page, 'Маса 7')
   await again.getByTestId('rv-walk-in').click()
-  await expect(page.getByText('Seated.', { exact: true })).toBeVisible()
+  await expect(toast(page, 'Party seated at Маса 7.')).toBeVisible()
   await expect(page.getByTestId('rv-same-guests')).toHaveCount(0)
   // Seated onto it, the table is open for them and its tile says nobody's name: a walk-in has none.
   expect(await readTile(page, TABLE)).toBe('open')
@@ -305,7 +304,10 @@ test('a walk-in off a free spot is two taps, with the hour the door offered', as
   // Nobody holds Маса 9 later tonight, so there is no hour to offer and the button is the plain one.
   await expect(walkIn).toHaveText('Seat a walk-in')
   await walkIn.click()
-  await expect(page.getByText('Seated.', { exact: true })).toBeVisible()
+  // One toast naming the spot, with its Undo (S21).
+  const seated = toast(page, 'Party seated at Маса 9.')
+  await expect(seated).toBeVisible()
+  await expect(seated.getByRole('button', { name: 'Undo' })).toBeVisible()
   // Маса 9 has no Table, so no code opened and the toast must not say one did (#396).
   await expect(page.getByText('The table is open for phones.')).toHaveCount(0)
   await openPlan(page)
@@ -335,3 +337,41 @@ test('the door reads whole at 390 px, with every tap a thumb can hit', async ({ 
     await phone.context.close()
   }
 })
+
+// The screen round's S16 (WCAG 1.4.10, reflow): at a phone's width the night's row stacks — the
+// name and the party, the state under them, the row's action full width below — so a name is never
+// squeezed to a letter a line and nothing pushes the page sideways.
+for (const width of [320, 390]) {
+  test(`the night's list reflows at ${width} px: whole names, no sideways scroll`, async ({
+    browser,
+  }) => {
+    const phone = await person(browser, TONIGHT_OWNER_EMAIL, { width, height: 844 })
+    try {
+      await openList(phone.page)
+      const all = rows(phone.page)
+      await expect(all.first()).toBeVisible()
+      const overflow = await phone.page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+      expect(overflow).toBeLessThanOrEqual(1)
+      const count = await all.count()
+      for (let at = 0; at < count; at += 1) {
+        const row = all.nth(at)
+        const name = await row.getByTestId('rv-row-name').boundingBox()
+        expect(name?.width ?? 0).toBeGreaterThanOrEqual(120)
+        const box = await row.boundingBox()
+        expect(box?.height ?? 0).toBeLessThan(160)
+        expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width)
+      }
+      // The row's one action is full width under it, and a thumb can hit it.
+      const arrive = phone.page.getByTestId('rv-row-arrive').first()
+      if ((await arrive.count()) > 0) {
+        const box = await arrive.boundingBox()
+        expect(box?.height ?? 0).toBeGreaterThanOrEqual(44)
+        expect(box?.width ?? 0).toBeGreaterThanOrEqual(width / 2)
+      }
+    } finally {
+      await phone.context.close()
+    }
+  })
+}

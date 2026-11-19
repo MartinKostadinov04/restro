@@ -160,6 +160,11 @@ export interface ReservationHistoryLine {
   readonly reason: string | null
   readonly who: Who
   readonly via: string | null
+  /**
+   * The person reading wrote this line themselves (their own account or their own staff record):
+   * the sheet never tells someone that they changed the reservation under their own eyes.
+   */
+  readonly mine: boolean
 }
 
 /** One reservation and everything about it, for its sheet. */
@@ -625,6 +630,12 @@ export async function readReservationDetail(
       .select({ settings: venues.settings })
       .from(venues)
       .where(eq(venues.id, reader.venue.id))
+    // Who the reader is in the Log's own words, so their own lines are known as theirs.
+    const me = await staffMemberFor(tx, input)
+    const myActors = new Set<string>([
+      ...(input.actor.kind === 'user' ? [`user:${input.actor.userId}`] : []),
+      ...(me === null ? [] : [`staff:${me}`]),
+    ])
     const beaten = await payRuleBeatenAt(tx, {
       reservationId: row.id,
       settings: readPayFirstSettings(venue?.settings ?? {}),
@@ -646,7 +657,7 @@ export async function readReservationDetail(
             null,
           ),
         ),
-        mine: row.madeBy !== null && row.madeBy === (await staffMemberFor(tx, input)),
+        mine: row.madeBy !== null && row.madeBy === me,
         payRule: { rule: storedPayRule(row.payRule), beaten },
         endedByNightEnd: endedByNightEnd(
           entries
@@ -667,6 +678,7 @@ export async function readReservationDetail(
           reason: entry.reason,
           who: named.get(entry.actor) ?? { kind: 'restro' },
           via: entry.via,
+          mine: myActors.has(entry.actor),
         })),
       },
     } as const

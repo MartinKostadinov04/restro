@@ -518,6 +518,21 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
       expect(JSON.stringify(entry[0]?.details)).not.toMatch(/New Name|\+359/)
     })
 
+    it('marks the lines of the history the reader wrote, and only for that reader', async () => {
+      const id = await book(night(9), '22:00', ['T1'])
+      // The owner took it: every line is the owner's own, so the sheet tells them nothing new.
+      expect((await detailOf(id)).history.map((line) => line.mine)).toEqual([true])
+      // A colleague reads the same booking: the owner's line is news to her.
+      const read = await readReservationDetail(world.app, {
+        tenantId: world.tenantId,
+        venueId: world.venueId,
+        actor: staff(hostessId).actor,
+        reservationId: id,
+      })
+      if (!read.ok || read.detail === null) throw new Error('detail not read')
+      expect(read.detail.history.map((line) => line.mine)).toEqual([false])
+    })
+
     it('refuses an edit whose spot a colleague took first, by name, and writes nothing', async () => {
       const day = night(8)
       const holder = await book(day, '20:00', ['T4'])
