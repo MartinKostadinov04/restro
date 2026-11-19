@@ -3,12 +3,28 @@
 // One frame of the Design page, as the page sees it (D129, RR-87): an iframe laid out at `width` and
 // scaled down to fit the box it sits in, never up. `content` is handed to the frame's page through
 // its store (`preview-frames.ts`). With `picture`, it is a picture and not a control (a Style tile):
-// nothing in it can be focused, clicked or read twice.
+// nothing in it can be focused, clicked or read twice. Until the frame's page has loaded, the box
+// shows a placeholder, with `loading` written on it when given (the live preview).
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 import { type FrameContent, framePath, openFrameStore } from './preview-frames'
+
+/** What stands in a frame's place while the draft or the frame's page is on its way. */
+export function PreviewLoading({ label }: { label: string }) {
+  return (
+    <div
+      role="status"
+      className="absolute inset-0 grid place-items-center"
+      data-testid="design-preview-loading"
+    >
+      <Skeleton className="absolute inset-0 rounded-none" />
+      <p className="relative text-sm text-muted-foreground">{label}</p>
+    </div>
+  )
+}
 
 export function ScaledFrame({
   venueId,
@@ -20,6 +36,7 @@ export function ScaledFrame({
   className,
   testId,
   onPart,
+  loading,
 }: {
   venueId: string
   /** The frame's name on this page. */
@@ -31,11 +48,14 @@ export function ScaledFrame({
   picture?: boolean
   className?: string
   testId?: string
-  /** A tap on a marked part of the frame (`data-design-part`), by the part's name. */
-  onPart?: (marker: string) => void
+  /** A tap on a marked part of the frame (`data-design-part`), by the part's name and those around it. */
+  onPart?: (marker: string, around: readonly string[]) => void
+  /** What the placeholder says while the frame loads; a picture's placeholder says nothing. */
+  loading?: string
 }) {
   const box = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState<{ width: number; height: number } | null>(null)
+  const [loaded, setLoaded] = useState(false)
   const store = useRef<ReturnType<typeof openFrameStore> | null>(null)
   const latest = useRef(content)
   latest.current = content
@@ -44,7 +64,7 @@ export function ScaledFrame({
 
   // Before the frame is put in, so its page always finds its store.
   useLayoutEffect(() => {
-    const opened = openFrameStore(slot, (marker) => tapped.current?.(marker))
+    const opened = openFrameStore(slot, (marker, around) => tapped.current?.(marker, around))
     opened.set(latest.current)
     store.current = opened
     return () => {
@@ -94,6 +114,7 @@ export function ScaledFrame({
           scrolling={picture ? 'no' : undefined}
           loading={picture ? 'lazy' : undefined}
           data-testid={testId}
+          onLoad={() => setLoaded(true)}
           className="absolute top-0 origin-top-left border-0"
           style={{
             left: Math.max(0, (size.width - width * scale) / 2),
@@ -102,6 +123,11 @@ export function ScaledFrame({
             transform: scale === 1 ? undefined : `scale(${scale})`,
           }}
         />
+      )}
+      {loaded ? null : loading === undefined ? (
+        <Skeleton className="absolute inset-0 rounded-none" data-testid="design-frame-loading" />
+      ) : (
+        <PreviewLoading label={loading} />
       )}
     </div>
   )

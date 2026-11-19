@@ -214,3 +214,44 @@ export function tilePlanOf(
   const page = pageById(pageId, pages)
   return { stage, focus: page === undefined ? [] : page.markers.slice(0, 2) }
 }
+
+// --- A tap on the preview ------------------------------------------------------------------------
+
+/**
+ * The page a tap on the preview opens in Advanced, or null to stay where the panel is. `marker` is
+ * the part tapped; `around` the parts it sits in, and the part the tap opens (a dish tapped open is
+ * `dish`). The panel stays when the open page owns any of them: a dish tapped open on the Dish page
+ * keeps the Dish page's options in view.
+ */
+export function pageOfTap(
+  marker: string,
+  around: readonly string[],
+  open: DesignPageId,
+): DesignPageId | null {
+  const owner = pageOfMarker(marker)
+  if (owner === null) return null
+  if ([marker, ...around].some((part) => pageOfMarker(part) === open)) return null
+  return owner
+}
+
+/**
+ * What the live preview shows first while a page is open: a dish, while the Dish page is open in
+ * Advanced, so its options are seen at work (D129); the menu otherwise.
+ */
+export function previewStageOf(mode: PanelMode, pageId: DesignPageId): Stage | undefined {
+  return mode === 'advanced' && pageId === 'dish' ? 'dish' : undefined
+}
+
+// --- How a row lists its values ------------------------------------------------------------------
+
+/** The sizes, smallest first. */
+const SIZE_ORDER = ['s', 'm', 'l', 'xl']
+
+/**
+ * The values of an option in the order the row shows them. A row of sizes reads as a scale, small to
+ * large; the contract keeps Basic's value first (D130), which is the stored order and stays so.
+ */
+export function shownValues<T extends { readonly id: string }>(values: readonly T[]): readonly T[] {
+  if (!values.every((value) => SIZE_ORDER.includes(value.id))) return values
+  return [...values].sort((a, b) => SIZE_ORDER.indexOf(a.id) - SIZE_ORDER.indexOf(b.id))
+}

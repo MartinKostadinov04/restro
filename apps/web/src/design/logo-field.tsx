@@ -4,9 +4,10 @@
 // The picture goes up through the same route as the item photos, with the same checks first
 // (`precheckImage`, `uploadImage`); what comes back is an asset id that is attached to the look when
 // "Save look" is pressed. A saved logo is shown from its signed link, a new one from the file just
-// chosen.
+// chosen. That file's local link is made and released by the page (`pictureOf`), not here: the draft
+// and Undo's steps hold it, and the field comes and goes with Simple and Advanced.
 import { useTranslations } from 'next-intl'
-import { type ChangeEvent, useEffect, useRef, useState } from 'react'
+import { type ChangeEvent, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -25,6 +26,7 @@ export function LogoField({
   canEdit,
   onChange,
   onBusy,
+  pictureOf,
 }: {
   logo: LogoState | null
   /** The logo the venue has saved, to tell a new one from it. */
@@ -33,21 +35,14 @@ export function LogoField({
   onChange: (logo: LogoState | null) => void
   /** True while a file is going up, so the tab holds Save back. */
   onBusy: (busy: boolean) => void
+  /** A local link to a chosen file, kept by the page for as long as the page is open. */
+  pictureOf: (file: File) => string
 }) {
   const t = useTranslations('design.logo')
   const tErrors = useTranslations('itemSheet.media.errors')
   const fileInput = useRef<HTMLInputElement>(null)
   const [progress, setProgress] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
-
-  // A blob link made for a chosen file is released when it is replaced or the tab goes away.
-  const blob = useRef<string | null>(null)
-  useEffect(
-    () => () => {
-      if (blob.current) URL.revokeObjectURL(blob.current)
-    },
-    [],
-  )
 
   async function onFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -68,9 +63,8 @@ export function LogoField({
       setError(tErrors(outcome.error))
       return
     }
-    if (blob.current) URL.revokeObjectURL(blob.current)
-    blob.current = URL.createObjectURL(file)
-    onChange({ assetId: outcome.assetId, url: blob.current })
+    // `onChange` adds the logo to the draft as it is now, not as it was when the file was chosen.
+    onChange({ assetId: outcome.assetId, url: pictureOf(file) })
   }
 
   return (

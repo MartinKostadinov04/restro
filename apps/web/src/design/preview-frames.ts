@@ -31,8 +31,11 @@ export interface FrameContent {
 export interface FrameStore {
   read(): FrameContent | null
   subscribe(listener: () => void): () => void
-  /** A tap on a marked part of the frame (`data-design-part`): the page opens that part's page. */
-  tap(marker: string): void
+  /**
+   * A tap on a marked part of the frame (`data-design-part`): the page opens that part's page.
+   * `around` holds the parts it sits in and what the tap opens (`dish`), outermost last.
+   */
+  tap(marker: string, around?: readonly string[]): void
 }
 
 const STORES_KEY = '__restroDesignFrames'
@@ -47,7 +50,7 @@ export function framePath(venueId: string, slot: string): string {
 /** The page's side: makes the store of a frame, and the way to give it new content. */
 export function openFrameStore(
   slot: string,
-  onPart?: (marker: string) => void,
+  onPart?: (marker: string, around: readonly string[]) => void,
 ): {
   readonly set: (content: FrameContent | null) => void
   readonly close: () => void
@@ -59,7 +62,7 @@ export function openFrameStore(
   owner[STORES_KEY] = stores
   const store: FrameStore = {
     read: () => current,
-    tap: (marker) => onPart?.(marker),
+    tap: (marker, around = []) => onPart?.(marker, around),
     subscribe(listener) {
       listeners.add(listener)
       return () => listeners.delete(listener)

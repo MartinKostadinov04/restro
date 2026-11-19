@@ -25,7 +25,16 @@ import { ArrowLeftIcon, Undo2Icon, XIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
-import { type ReactNode, useEffect, useId, useMemo, useState, useTransition } from 'react'
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -49,13 +58,21 @@ import { Switch } from '@/components/ui/switch'
 import { studioPath } from '@/composer/design-path'
 import { FONT_STACKS } from '@/fonts'
 import { resolveAdminLocale } from '@/i18n/locales'
+import { cn } from '@/lib/utils'
 import { WRAPS } from '@/lib/wrapping'
 import type { PreviewScheme } from '@/publish/draft-face'
 import { saveDesignAction } from '@/server/design/actions'
 import type { DesignView } from '@/server/design/service'
 import type { MyStyles as MyStylesData } from '@/server/design/styles'
 
-import { FIRST_PAGE, type PanelMode, pageOfMarker, withOption } from './advanced-model'
+import {
+  FIRST_PAGE,
+  type PanelMode,
+  pageOfMarker,
+  pageOfTap,
+  previewStageOf,
+  withOption,
+} from './advanced-model'
 import { AdvancedPanel } from './advanced-panel'
 import { ColourPanel } from './colour-panel'
 import {
@@ -101,6 +118,13 @@ function PanelSection({
       {children}
     </section>
   )
+}
+
+/** A box the phone's keyboard comes up for (not a radio, a switch or a colour picker). */
+function isTextBox(target: EventTarget): boolean {
+  if (target instanceof HTMLTextAreaElement) return true
+  if (!(target instanceof HTMLInputElement)) return false
+  return !['radio', 'checkbox', 'color', 'file', 'button', 'submit', 'range'].includes(target.type)
 }
 
 /** A choice option of the contract's General page. */
@@ -241,6 +265,34 @@ export function DesignPage({
   const [reveal, setReveal] = useState(false)
   // In Simple, the page of a tapped part that only Advanced styles.
   const [styledIn, setStyledIn] = useState<DesignPageId | null>(null)
+  // On a phone the preview sits at the foot of the screen; it steps aside while the keyboard is up.
+  const [typing, setTyping] = useState(false)
+  useEffect(() => {
+    const onIn = (event: FocusEvent) => setTyping(event.target !== null && isTextBox(event.target))
+    const onOut = (event: FocusEvent) =>
+      setTyping(event.relatedTarget !== null && isTextBox(event.relatedTarget))
+    document.addEventListener('focusin', onIn)
+    document.addEventListener('focusout', onOut)
+    return () => {
+      document.removeEventListener('focusin', onIn)
+      document.removeEventListener('focusout', onOut)
+    }
+  }, [])
+
+  // The local links to logo files chosen here: the draft and Undo's steps hold them, so they live as
+  // long as the page, whichever control is on the screen.
+  const pictures = useRef<string[]>([])
+  useEffect(
+    () => () => {
+      for (const url of pictures.current.splice(0)) URL.revokeObjectURL(url)
+    },
+    [],
+  )
+  const pictureOf = useCallback((file: File) => {
+    const url = URL.createObjectURL(file)
+    pictures.current.push(url)
+    return url
+  }, [])
 
   const view = useMemo(() => lookViewOfDraft(draft), [draft])
   // While a box holds half a colour the look has no value; the roles and the preview keep the last
@@ -278,8 +330,15 @@ export function DesignPage({
     return () => window.removeEventListener('beforeunload', warn)
   }, [canEdit, edited])
 
-  function change(next: DesignDraft, key?: string) {
-    setHistory((current) => changed(current, next, { key, now: Date.now() }))
+  /**
+   * A new draft. A function is given the draft as it is when the change lands, for a change that
+   * finishes later than it started (a logo upload): the edits made meanwhile stay.
+   */
+  function change(next: DesignDraft | ((current: DesignDraft) => DesignDraft), key?: string) {
+    const now = Date.now()
+    setHistory((current) =>
+      changed(current, typeof next === 'function' ? next(current.draft) : next, { key, now }),
+    )
   }
 
   // --- The preview ---
@@ -303,14 +362,17 @@ export function DesignPage({
 
   function onDone() {
     if (!canSave || design === null) return
+    // The draft as Done saves it. The panel stays open while it goes: an edit made meanwhile is not
+    // in this save, and stays as an unsaved change.
+    const saved = draft
     startSaving(async () => {
       const result = await saveDesignAction({ venueId, expectedRevision: revision, design }).catch(
         () => ({ ok: false, error: 'failed' }) as const,
       )
       if (result.ok) {
         setRevision(result.revision)
-        setBaseline(draft)
-        setHistory(historyOf(draft))
+        setBaseline(saved)
+        setHistory((current) => (current.draft === saved ? historyOf(saved) : current))
         setRepair(false)
         toast.success(t('saved'))
         // A new logo has its picture for guests only now.
@@ -345,13 +407,17 @@ export function DesignPage({
     setReveal(true)
   }
 
-  // Click to edit: a tap on a marked part of the preview opens the page that owns it. In Simple the
-  // part is styled in Advanced only, and the panel says so.
-  function onPart(marker: string) {
-    const owner = pageOfMarker(marker)
-    if (owner === null) return
-    if (mode === 'simple') setStyledIn(owner)
-    else openPage(owner)
+  // Click to edit: a tap on a marked part of the preview opens the page that owns it, unless the
+  // open page is about that part already (a dish tapped open on the Dish page). In Simple the part is
+  // styled in Advanced only, and the panel says so.
+  function onPart(marker: string, around: readonly string[] = []) {
+    if (mode === 'simple') {
+      const owner = pageOfMarker(marker)
+      if (owner !== null) setStyledIn(owner)
+      return
+    }
+    const owner = pageOfTap(marker, around, pageId)
+    if (owner !== null) openPage(owner)
   }
 
   function showAdvanced() {
@@ -423,6 +489,7 @@ export function DesignPage({
       derived={shown.derived}
       issues={shown.issues}
       canEdit={canEdit}
+      scheme={scheme}
       onChange={(look) => change({ ...draft, look }, 'colours')}
     />
   )
@@ -449,8 +516,9 @@ export function DesignPage({
       logo={draft.logo}
       savedAssetId={baseline.logo?.assetId ?? null}
       canEdit={canEdit}
-      onChange={(logo) => change(withLogo(draft, logo))}
+      onChange={(logo) => change((current) => withLogo(current, logo))}
       onBusy={setUploading}
+      pictureOf={pictureOf}
     />
   )
 
@@ -479,7 +547,9 @@ export function DesignPage({
 
       <div className="grid flex-1 md:min-h-0 md:grid-cols-[22rem_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)_auto] lg:grid-cols-[26rem_minmax(0,1fr)]">
         <div
-          className="relative grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-8 p-4 md:overflow-y-auto md:border-r"
+          // On a phone the preview and the bar are docked under the panel: a control moved into view
+          // stops above them, never behind them.
+          className="relative grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-8 p-4 max-md:[&_*]:scroll-mb-[calc(40svh+5rem)] md:overflow-y-auto md:border-r"
           data-testid="design-panel"
         >
           {canEdit ? null : (
@@ -587,70 +657,82 @@ export function DesignPage({
           )}
         </div>
 
-        <section
-          className="h-[85svh] min-w-0 border-t p-4 md:col-start-2 md:row-span-2 md:row-start-1 md:h-auto md:min-h-0 md:border-t-0"
-          aria-label={t('preview.title')}
+        {/* On a phone the preview is docked at the foot of the screen, above the bar, so a tap on a
+            Style shows at once (D129); from 768 px both are cells of the page's grid. */}
+        <div
+          className="sticky bottom-0 z-10 grid bg-background md:contents"
+          data-testid="design-dock"
         >
-          <DesignPreview
-            venueId={venueId}
-            draft={previewDraft}
-            onRetry={refresh}
-            theme={previewTheme}
-            values={draft.values}
-            scheme={scheme}
-            onScheme={setScheme}
-            onPart={onPart}
-          />
-        </section>
-
-        {canEdit ? (
-          <div
-            className="sticky bottom-0 z-10 grid gap-2 border-t bg-background p-3 md:static md:col-start-1 md:row-start-2 md:border-r"
-            data-testid="design-bar"
+          <section
+            className={cn(
+              'h-[40svh] min-w-0 border-t p-2 md:col-start-2 md:row-span-2 md:row-start-1 md:h-auto md:min-h-0 md:border-t-0 md:p-4',
+              typing && 'max-md:hidden',
+            )}
+            aria-label={t('preview.title')}
+            data-testid="design-preview-section"
           >
-            {view.theme === null || !readable ? (
-              <p role="alert" className="text-sm text-destructive" data-testid="design-status">
-                {view.theme === null ? t('status.invalid') : t('status.unreadable')}
-              </p>
-            ) : null}
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={history.past.length === 0 || saving}
-                onClick={onUndo}
-                data-testid="design-undo"
-              >
-                <Undo2Icon aria-hidden />
-                {t('undo')}
-              </Button>
-              {dirty ? (
-                <span className="text-sm text-muted-foreground" data-testid="design-unsaved">
-                  {t('unsaved')}
-                </span>
+            <DesignPreview
+              venueId={venueId}
+              draft={previewDraft}
+              onRetry={refresh}
+              theme={previewTheme}
+              values={draft.values}
+              scheme={scheme}
+              onScheme={setScheme}
+              onPart={onPart}
+              stage={previewStageOf(mode, pageId)}
+            />
+          </section>
+
+          {canEdit ? (
+            <div
+              className="grid gap-2 border-t bg-background p-3 md:col-start-1 md:row-start-2 md:border-r"
+              data-testid="design-bar"
+            >
+              {view.theme === null || !readable ? (
+                <p role="alert" className="text-sm text-destructive" data-testid="design-status">
+                  {view.theme === null ? t('status.invalid') : t('status.unreadable')}
+                </p>
               ) : null}
-              <span className="ml-auto flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
-                  variant="outline"
-                  disabled={!dirty || saving}
-                  onClick={onCancel}
-                  data-testid="design-cancel"
+                  variant="ghost"
+                  disabled={history.past.length === 0 || saving}
+                  onClick={onUndo}
+                  data-testid="design-undo"
                 >
-                  {t('cancel')}
+                  <Undo2Icon aria-hidden />
+                  {t('undo')}
                 </Button>
-                <Button
-                  type="button"
-                  disabled={!canSave}
-                  onClick={onDone}
-                  data-testid="design-done"
-                >
-                  {saving ? t('saving') : t('done')}
-                </Button>
-              </span>
+                {dirty ? (
+                  <span className="text-sm text-muted-foreground" data-testid="design-unsaved">
+                    {t('unsaved')}
+                  </span>
+                ) : null}
+                <span className="ml-auto flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!dirty || saving}
+                    onClick={onCancel}
+                    data-testid="design-cancel"
+                  >
+                    {t('cancel')}
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={!canSave}
+                    onClick={onDone}
+                    data-testid="design-done"
+                  >
+                    {saving ? t('saving') : t('done')}
+                  </Button>
+                </span>
+              </div>
             </div>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
 
       <Dialog open={leaving} onOpenChange={setLeaving}>

@@ -20,6 +20,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DesignView } from '@/server/design/service'
 import { MESSAGES, renderWithIntl } from '@/test-utils'
 
+import { pageOfTap, previewStageOf, shownValues } from './advanced-model'
 import { AdvancedPanel } from './advanced-panel'
 import { DesignPage as Page } from './design-page'
 
@@ -120,7 +121,9 @@ describe('Advanced on the Design page', () => {
           continue
         }
         const tiles = within(row(page.id, option.id)).getAllByTestId('design-tile')
-        expect(tiles.map((entry) => entry.dataset.value)).toEqual(option.values.map((v) => v.id))
+        expect(tiles.map((entry) => entry.dataset.value)).toEqual(
+          shownValues<{ readonly id: string }>(option.values).map((v) => v.id),
+        )
       }
     }
   })
@@ -194,6 +197,39 @@ describe('Advanced on the Design page', () => {
     await waitFor(() => expect(pageChip('bill').getAttribute('aria-current')).toBe('page'))
   })
 
+  it('shows sizes small to large, whatever the contract lists first (R5)', async () => {
+    const sizes = [{ id: 'm' }, { id: 's' }, { id: 'l' }, { id: 'xl' }]
+    expect(shownValues(sizes).map((v) => v.id)).toEqual(['s', 'm', 'l', 'xl'])
+    const words = [{ id: 'rows' }, { id: 'cards' }]
+    expect(shownValues(words)).toBe(words)
+    setup()
+    await advanced()
+    await userEvent.click(pageChip('items'))
+    const tiles = within(row('items', 'name_size')).getAllByTestId('design-tile')
+    expect(tiles.map((entry) => entry.dataset.value)).toEqual(['s', 'm', 'l'])
+  })
+
+  it('a tap on a dish while the Dish page is open stays there, and the preview opens a dish (S6, S10)', async () => {
+    // The tap that opens the dish lands on its name: the open page is about that part already.
+    expect(pageOfTap('item.name', ['dish'], 'dish')).toBeNull()
+    expect(pageOfTap('item.name', [], 'dish')).toBe('items')
+    expect(pageOfTap('item.name', ['dish'], 'header')).toBe('items')
+    expect(previewStageOf('advanced', 'dish')).toBe('dish')
+    expect(previewStageOf('advanced', 'items')).toBeUndefined()
+    expect(previewStageOf('simple', 'dish')).toBeUndefined()
+    setup()
+    await advanced()
+    await userEvent.click(pageChip('dish'))
+    await waitFor(() => expect(screen.getByTestId('design-preview-frame')).toBeTruthy())
+    const stores = (
+      window as unknown as {
+        __restroDesignFrames: Map<string, { tap(m: string, around?: string[]): void }>
+      }
+    ).__restroDesignFrames
+    act(() => stores.get('main')?.tap('item.name', ['item', 'dish']))
+    expect(pageChip('dish').getAttribute('aria-current')).toBe('page')
+  })
+
   it('in Simple a tap on an Advanced part says so, and Show Advanced opens its page', async () => {
     setup()
     expect(screen.queryByTestId('design-styled-in-advanced')).toBeNull()
@@ -233,6 +269,8 @@ describe('Advanced on the Design page', () => {
     for (const entry of within(corners).getAllByRole('radio')) {
       expect((entry as HTMLInputElement).disabled).toBe(true)
     }
+    // A row that does not apply draws no pictures (C8).
+    expect(within(corners).queryAllByTestId('design-tile-picture')).toHaveLength(0)
     await userEvent.click(radioOf(tile('photos', 'frame', 'inset')))
     expect((row('photos', 'corners') as HTMLFieldSetElement).disabled).toBe(false)
     expect(within(row('photos', 'corners')).queryByTestId('design-option-note')).toBeNull()
@@ -266,6 +304,10 @@ describe('Advanced on the Design page', () => {
     await userEvent.click(pageChip('items'))
     for (const entry of within(row('items', 'frame')).getAllByRole('radio')) {
       expect((entry as HTMLInputElement).disabled).toBe(true)
+    }
+    // The pictures still draw for a member who may only look (C8).
+    for (const entry of within(row('items', 'frame')).getAllByTestId('design-tile')) {
+      expect(within(entry).getByTestId('design-tile-picture')).toBeTruthy()
     }
     expect(screen.queryByTestId('design-done')).toBeNull()
   })

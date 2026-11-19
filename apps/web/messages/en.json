@@ -1052,7 +1052,7 @@
         "areas": "Outside the items"
       },
       "areas": {
-        "look": "The look of the menu (template, colours, logo)",
+        "look": "The menu's look (style, colours, logo)",
         "sections": "Sections and their order",
         "menu": "The menu's title or introduction",
         "languages": "Languages or currency",
@@ -1745,24 +1745,24 @@
       "invalid": "Enter a colour like #3366cc.",
       "tertiary": {
         "name": "Your brand colour",
-        "help": "The colour of your brand: buttons, badges and highlights. About 10% of what guests see. The page and the panels below are filled in from it.",
+        "help": "Your brand colour: buttons, badges and accents. The page and the panels below are filled in from it.",
         "picker": "Pick your brand colour",
         "placeholder": "Not chosen yet"
       },
       "primary": {
         "name": "Page",
-        "help": "The background of the whole menu. A calm tint of your brand colour until you change it.",
+        "help": "The background of the whole menu. A calm tint of your brand colour until you change it. On a dark screen a dark shade is worked out from it.",
         "picker": "Pick the page colour"
       },
       "secondary": {
         "name": "Panels",
-        "help": "Behind photos, cards and the header. Filled in from your brand colour until you change it.",
+        "help": "Behind photos, cards and the header. Filled in from your brand colour until you change it. On a dark screen a dark shade is worked out from it.",
         "picker": "Pick the panels colour"
       },
       "followBrand": "Use tints of my brand colour again",
       "saturated": "This page colour is strongly saturated. A calm, light tint usually looks best behind photos and text.",
       "paleHighlight": "Your brand colour stands out less than 3:1 against the page ({screens}), so it stays as you chose it.",
-      "suggest": "Suggest with colour theory",
+      "suggest": "Suggest colours from my brand",
       "suggestHelp": "Works out the page and the panels from your brand colour, which stays as it is.",
       "rules": {
         "complementary": {
@@ -1912,7 +1912,7 @@
         "tablet": "Tablet",
         "pc": "PC"
       },
-      "loading": "The preview is loading"
+      "loading": "Loading the preview…"
     },
     "title": "Design",
     "back": "Back to the Studio",
@@ -1958,7 +1958,8 @@
     "myStyles": {
       "title": "My styles",
       "inUse": "In use at {venue}",
-      "save": "Save as a style…",
+      "save": "Save this look as a style",
+      "saveTitle": "Save as a style",
       "saveButton": "Save",
       "cancel": "Cancel",
       "name": "Name",

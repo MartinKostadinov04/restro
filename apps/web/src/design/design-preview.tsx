@@ -5,6 +5,9 @@
 // switcher says and scaled to fit. The frame is its own document (`scaled-frame.tsx`), so the renderer
 // meets the width it would meet on that screen (RR-87).
 //
+// On a phone the preview is as wide as the phone, so the width switcher is not offered there.
+// While the draft or the frame's renderer is on its way, the well says so.
+//
 // "Preview guest services" (D71) draws the service screens the venue switched on with demo data, so
 // the owner sees them before the platform supports them. It is off when the page opens.
 import {
@@ -19,14 +22,14 @@ import { useDeferredValue, useId, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import type { PreviewScheme } from '@/publish/draft-face'
 
+import type { Stage } from './advanced-model'
 import type { Draft } from './preview-draft'
 import type { FrameContent } from './preview-frames'
 import { previewSnapshot } from './preview-snapshot'
-import { ScaledFrame } from './scaled-frame'
+import { PreviewLoading, ScaledFrame } from './scaled-frame'
 import { Segmented } from './segmented'
 
 /** The widths the switcher draws at, in CSS pixels. */
@@ -109,12 +112,15 @@ export function DesignPreview({
   scheme,
   onScheme,
   onPart,
+  stage,
 }: {
   venueId: string
   draft: Draft
   onRetry: () => void
   /** A tap on a marked part of the page (`data-design-part`): click to edit (D129). */
-  onPart?: (marker: string) => void
+  onPart?: (marker: string, around: readonly string[]) => void
+  /** What the frame shows first: a dish while the Dish page is open (D129); the menu otherwise. */
+  stage?: Stage
   /** The draft's look, whole. */
   theme: VenueTheme
   values: DesignValues
@@ -130,20 +136,22 @@ export function DesignPreview({
   const content = useMemo<FrameContent | null>(
     () =>
       draft.state === 'ready' && snapshot !== null
-        ? { snapshot, overlay: draft.overlay, scheme, services }
+        ? { snapshot, overlay: draft.overlay, scheme, services, ...(stage ? { stage } : {}) }
         : null,
-    [draft, snapshot, scheme, services],
+    [draft, snapshot, scheme, services, stage],
   )
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3" data-testid="design-preview">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <Segmented
-          label={t('device')}
-          value={device}
-          options={DEVICES.map((value) => ({ value, label: t(`devices.${value}`) }))}
-          onChange={setDevice}
-        />
+        <div className="hidden md:block" data-testid="design-preview-devices">
+          <Segmented
+            label={t('device')}
+            value={device}
+            options={DEVICES.map((value) => ({ value, label: t(`devices.${value}`) }))}
+            onChange={setDevice}
+          />
+        </div>
         <SchemeSwitch scheme={scheme} onScheme={onScheme} />
         <div className="flex items-center gap-2">
           <Switch
@@ -161,13 +169,13 @@ export function DesignPreview({
         <p className="text-xs text-muted-foreground">{t('servicesNoneOn')}</p>
       ) : null}
       <div
-        className="min-h-0 flex-1 overflow-hidden rounded-lg border bg-muted/40"
+        className="relative min-h-0 flex-1 overflow-hidden rounded-lg border bg-muted/40"
         data-testid="design-preview-well"
       >
         {draft.state === 'error' ? (
           <DraftMessage draft={draft} onRetry={onRetry} />
         ) : draft.state === 'loading' ? (
-          <Skeleton className="size-full rounded-none" role="status" aria-label={t('loading')} />
+          <PreviewLoading label={t('loading')} />
         ) : (
           <ScaledFrame
             venueId={venueId}
@@ -176,6 +184,7 @@ export function DesignPreview({
             title={t('title')}
             content={content}
             onPart={onPart}
+            loading={t('loading')}
             testId="design-preview-frame"
           />
         )}

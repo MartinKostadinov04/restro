@@ -69,6 +69,25 @@ function scrollSheetTo(part: HTMLElement): void {
 }
 
 /**
+ * How much of the top of the window a bar stuck to it covers (the renderer's section rail): a part
+ * scrolled to the top stops under it, not behind it. A sheet's own bars, and anything as tall as half
+ * the window (a sheet's backdrop), do not count.
+ */
+export function stuckTop(): number {
+  let covered = 0
+  for (const element of document.body.querySelectorAll<HTMLElement>('*')) {
+    const style = getComputedStyle(element)
+    if (style.position !== 'sticky' && style.position !== 'fixed') continue
+    if (Number.parseFloat(style.top) !== 0) continue
+    if (element.closest('[role="dialog"], dialog') !== null) continue
+    const height = element.getBoundingClientRect().height
+    if (height >= window.innerHeight / 2) continue
+    covered = Math.max(covered, height)
+  }
+  return covered
+}
+
+/**
  * Scrolls to the first part that exists: the page for a part of the menu, the sheet for one in a
  * sheet. True when one was found (or none was asked for).
  */
@@ -80,7 +99,8 @@ export function reveal(markers: readonly string[]): boolean {
     if (part.closest('[role="dialog"], dialog') !== null) {
       scrollSheetTo(part)
     } else {
-      window.scrollTo({ top: Math.max(0, part.getBoundingClientRect().top + window.scrollY - 8) })
+      const top = part.getBoundingClientRect().top + window.scrollY - stuckTop() - 8
+      window.scrollTo({ top: Math.max(0, top) })
     }
     return true
   }
@@ -135,4 +155,13 @@ export function drive(stage: Stage, focus: readonly string[], onReached?: () => 
     stopped = true
     if (timer !== undefined) clearTimeout(timer)
   }
+}
+
+/**
+ * Closes the sheet a stage opened (the renderer closes its top sheet on Escape, as for a guest), so a
+ * frame that goes back to the menu shows the menu.
+ */
+export function closeSheets(): void {
+  if (document.querySelector('[role="dialog"]') === null) return
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
 }

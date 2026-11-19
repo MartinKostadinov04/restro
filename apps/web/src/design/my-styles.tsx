@@ -18,6 +18,8 @@
 // button nor the "…" menus.
 import type {
   DesignValues,
+  LiveOverlay,
+  MenuSnapshot,
   PremadeStyleId,
   SavedStyle,
   StyleValues,
@@ -68,6 +70,44 @@ const isPicked = (picked: PickedStyle, entry: Entry): boolean =>
     ? picked.kind === 'saved' && picked.id === entry.style.id
     : picked.kind === 'venue' && picked.venueId === entry.venue.venueId
 
+/**
+ * A tile's picture: the Style's values with this venue's body font, worked out once per Style and
+ * font, so a re-render of the page (a keystroke in a colour box) redraws no frame.
+ */
+function MySpecimen({
+  venueId,
+  slot,
+  name,
+  snapshot,
+  overlay,
+  theme,
+  styleValues,
+  bodyFont,
+}: {
+  venueId: string
+  slot: string
+  name: string
+  snapshot: MenuSnapshot
+  overlay: LiveOverlay
+  theme: VenueTheme
+  styleValues: StyleValues
+  bodyFont: string
+}) {
+  const own = useMemo(() => designValuesOfStyle(styleValues, bodyFont), [styleValues, bodyFont])
+  return (
+    <StyleSpecimen
+      venueId={venueId}
+      slot={slot}
+      name={name}
+      snapshot={snapshot}
+      overlay={overlay}
+      theme={theme}
+      own={own}
+      testId="design-my-style-specimen"
+    />
+  )
+}
+
 export function MyStyles({
   venueId,
   data,
@@ -89,7 +129,7 @@ export function MyStyles({
   draft: Draft
   /** The draft's look, whole. */
   theme: VenueTheme
-  /** The draft's values: what "Save as a style…" and Update store, and the body font the tiles draw in. */
+  /** The draft's values: what "Save this look as a style" and Update store, and the body font the tiles draw in. */
   values: DesignValues
   /** The premade Style the draft's values came from. */
   style: PremadeStyleId
@@ -187,7 +227,6 @@ export function MyStyles({
           const label =
             entry.kind === 'saved' ? entry.style.name : t('inUse', { venue: entry.venue.venueName })
           const from = entry.kind === 'saved' ? entry.style : entry.venue
-          const own = designValuesOfStyle(from.values, values.general.body_font)
           const ticked = isPicked(picked, entry)
           return (
             <div key={entry.key} className="relative grid min-w-0">
@@ -199,15 +238,15 @@ export function MyStyles({
               >
                 <div className="h-32 overflow-hidden rounded-sm bg-muted/40">
                   {specimen !== null && draft.state === 'ready' ? (
-                    <StyleSpecimen
+                    <MySpecimen
                       venueId={venueId}
                       slot={`my-style-${entry.key}`}
                       name={label}
                       snapshot={specimen}
                       overlay={draft.overlay}
                       theme={look.theme}
-                      own={own}
-                      testId="design-my-style-specimen"
+                      styleValues={from.values}
+                      bodyFont={look.values.general.body_font}
                     />
                   ) : null}
                 </div>
@@ -276,8 +315,7 @@ export function MyStyles({
       {canEdit ? (
         <Button
           type="button"
-          variant="ghost"
-          size="sm"
+          variant="outline"
           className="justify-self-start"
           disabled={busy}
           onClick={() => setNaming(true)}
@@ -290,7 +328,7 @@ export function MyStyles({
       <Dialog open={naming} onOpenChange={setNaming}>
         <DialogContent data-testid="design-save-style-dialog">
           <DialogHeader>
-            <DialogTitle>{t('save')}</DialogTitle>
+            <DialogTitle>{t('saveTitle')}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-1.5">
             <Label htmlFor={nameId}>{t('name')}</Label>

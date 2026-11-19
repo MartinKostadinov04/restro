@@ -15,6 +15,7 @@
 // control (typing a colour, dragging a picker) is one step.
 import {
   CORNER_RADIUS,
+  canonicalJson,
   DEPTH_SHADOW,
   type DesignContent,
   type DesignValues,
@@ -62,7 +63,9 @@ export function draftOf({ design, theme, logo }: SavedDesign): DesignDraft {
   return {
     style: design.style,
     values: design.values,
-    look: lookStateOf(theme),
+    // A logo id whose picture is gone (no asset, or one no longer stored) is not carried: the page
+    // shows no logo, so the draft holds none, and a save does not write the dead id back.
+    look: { ...lookStateOf(theme), logoAssetId: logo?.assetId ?? null },
     logo: logo === null ? null : { assetId: logo.assetId, url: logo.url },
     picked: { kind: 'premade' },
   }
@@ -114,8 +117,12 @@ export function designOf(
   }
 }
 
-/** The design as one comparable string: what "has anything changed" is measured with. */
-export const keyOfDesign = (design: DesignContent): string => JSON.stringify(design)
+/**
+ * The design as one comparable string: what "has anything changed" is measured with. The order of
+ * keys plays no part (a Style's file lists the body font elsewhere than a stored design does), as in
+ * the server's own comparison.
+ */
+export const keyOfDesign = (design: DesignContent): string => canonicalJson(design)
 
 /**
  * The key of a draft as the page would save it, or null while a box holds half a colour. Something
@@ -208,13 +215,17 @@ const MAX_STEPS = 100
 
 export const historyOf = (draft: DesignDraft): DraftHistory => ({ draft, past: [], burst: null })
 
+/** True when two drafts hold the same things, whatever the order of their keys. */
+export const sameDraft = (one: DesignDraft, other: DesignDraft): boolean =>
+  one === other || canonicalJson(one) === canonicalJson(other)
+
 /** A new draft. `key` names a control whose burst of changes is one step; without it, one step. */
 export function changed(
   history: DraftHistory,
   next: DesignDraft,
   change: { readonly key?: string; readonly now: number },
 ): DraftHistory {
-  if (JSON.stringify(next) === JSON.stringify(history.draft)) return history
+  if (sameDraft(next, history.draft)) return history
   const { key, now } = change
   const burst = key === undefined ? null : { key, at: now }
   if (

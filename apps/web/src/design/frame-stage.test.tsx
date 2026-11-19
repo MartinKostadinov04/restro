@@ -11,7 +11,8 @@ import { DraftFace } from '@/publish/draft-face'
 import { renderWithIntl } from '@/test-utils'
 
 import { type Stage, tilePlanOf } from './advanced-model'
-import { drive, WAYS } from './frame-stage'
+import { partsOf } from './design-frame'
+import { closeSheets, drive, stuckTop, WAYS } from './frame-stage'
 import { previewSnapshot } from './preview-snapshot'
 import { DEMO_ASSET_BASE, specimenOf } from './specimen'
 
@@ -124,4 +125,42 @@ describe('what every option looks at', () => {
       stop()
     }, 30_000)
   }
+})
+
+describe('around the stages', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('a part scrolled to the top stops under the stuck section rail, not behind it (S2)', () => {
+    document.body.innerHTML =
+      '<nav style="position:sticky;top:0" id="rail"></nav><div role="dialog"><header style="position:sticky;top:0" id="own"></header></div>'
+    const rail = document.getElementById('rail') as HTMLElement
+    const own = document.getElementById('own') as HTMLElement
+    vi.spyOn(rail, 'getBoundingClientRect').mockReturnValue({ height: 56 } as DOMRect)
+    vi.spyOn(own, 'getBoundingClientRect').mockReturnValue({ height: 90 } as DOMRect)
+    expect(stuckTop()).toBe(56)
+  })
+
+  it('a tap on the control that opens a dish names the Dish page part too (S6)', () => {
+    document.body.innerHTML =
+      '<article data-design-part="item"><button data-slot="item.open"><span data-design-part="item.name" id="name">Ayran</span></button></article>'
+    expect(partsOf(document.getElementById('name') as Element)).toEqual([
+      'item.name',
+      'item',
+      'dish',
+    ])
+  })
+
+  it('a frame going back to the menu closes the open sheet, as Escape does for a guest (S10)', () => {
+    const keys: string[] = []
+    const listen = (event: KeyboardEvent) => keys.push(event.key)
+    window.addEventListener('keydown', listen)
+    closeSheets()
+    expect(keys).toEqual([])
+    document.body.innerHTML = '<div role="dialog"></div>'
+    closeSheets()
+    expect(keys).toEqual(['Escape'])
+    window.removeEventListener('keydown', listen)
+  })
 })
