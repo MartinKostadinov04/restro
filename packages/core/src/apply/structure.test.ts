@@ -563,6 +563,23 @@ describe.skipIf(!hasDatabase)('structure: moveNode, structural events, atomic, u
       expect((await loadUnplacedItems(app, tenant, secondMenu.id)).itemIds).not.toContain(item)
     })
 
+    it('never lists a hand-made item in a POS venue, nor counts it as that venue’s (S14, D87)', async () => {
+      // A POS venue: a till venue of the integration serves it (the integration layer's link).
+      const posVenueId = (await provisionVenue(app, tenant, { name: 'POS', slug: testSlug('pos') }))
+        .id
+      await owner.query(
+        'insert into restro.barsy_venues (tenant_id, integration_id, bid, name, venue_id) values ($1, $2, 7, $3, $4)',
+        [tenant, integration, 'Till', posVenueId],
+      )
+      const posMenu = await provisionMenu(app, tenant, posVenueId)
+      const item = await makeItem('Лимонада на къщата')
+      // A hand-made venue may take it; the POS venue's menu comes from its POS only.
+      expect((await loadUnplacedItems(app, tenant, menu.id)).itemIds).toContain(item)
+      expect((await loadUnplacedItems(app, tenant, posMenu.id)).itemIds).not.toContain(item)
+      expect([...(await itemsOfVenue(app, tenant, posVenueId, [item]))]).toEqual([])
+      expect([...(await itemsOfVenue(app, tenant, venueId, [item]))]).toEqual([item])
+    })
+
     it('lists a till item only in the venue the till read it for (T72)', async () => {
       // As a pull leaves it: linked to the till, a price for the second venue only, placed nowhere.
       const item = newId('nd')

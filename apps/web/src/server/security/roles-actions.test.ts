@@ -83,6 +83,8 @@ const CROSSES_VENUES: ReadonlySet<string> = new Set([
 /** Item writes that took venue 2's item with venue 1 in the call, the row RR-72 is about. */
 const ITEM_WRITES_ACROSS_VENUES = [
   'placeItemAction',
+  'moveSectionAction',
+  'createSectionAction',
   'setItemHiddenAction',
   'saveItemFieldAction',
   'saveItemTranslationAction',

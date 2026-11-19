@@ -97,6 +97,7 @@ async function readSlots(
   integrationId: string,
   venueId: string,
   itemIds: readonly string[],
+  anyLinkState = false,
 ): Promise<{ readonly slots: Map<string, StoredSlot>; readonly external: Map<string, string> }> {
   const slots = new Map<string, StoredSlot>()
   const external = new Map<string, string>()
@@ -108,7 +109,9 @@ async function readSlots(
       and(
         eq(sourceLinks.integrationId, integrationId),
         inArray(sourceLinks.nodeId, [...itemIds]),
-        eq(sourceLinks.state, 'active'),
+        // The lapse pass clears a mark whatever became of the link since: a mark on an item whose
+        // link went inactive would otherwise stay for good (screen round 11-18, S26).
+        anyLinkState ? undefined : eq(sourceLinks.state, 'active'),
       ),
     )
   for (const link of links) {
@@ -167,7 +170,13 @@ async function writeStock(
   const locked = await lockLiveVenue(tx, venueId)
   if (locked.refused !== null) return NOTHING
   const day = serviceDate(now, locked.venue.timezone, locked.venue.serviceDayEndsAt)
-  const { slots, external } = await readSlots(tx, integrationId, venueId, target.itemIds)
+  const { slots, external } = await readSlots(
+    tx,
+    integrationId,
+    venueId,
+    target.itemIds,
+    target.pass === 'lapse',
+  )
   const plan = decide(slots, day)
   if (plan.mark.length + plan.clear.length === 0) return NOTHING
 

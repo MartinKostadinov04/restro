@@ -38,6 +38,8 @@ const INVALID_ON_OWN_IDS = new Set<string>([
   "all: createVenueAction (the victim's POS venue)",
   // The tag already exists: the id is the point of this attack.
   "mixed: createTagAction (with the victim's tag id)",
+  // The section already exists: the id is the point of this attack (S28).
+  "mixed: createSectionAction (with the victim's section id)",
 ])
 
 describe.skipIf(!hasDatabase)("the attack calls, on the caller's own ids", () => {
