@@ -1,7 +1,15 @@
 // The wrong-PIN guard of a shared device (D122 §7; design §5): after 5 wrong PINs in 5 minutes the
 // device waits, and each further trip waits longer (1, 5, 15, then 60 minutes, the schedule phones
-// use for their own PIN). A correct PIN forgets the device's trips. Each trip is a `guard.tripped`
-// entry in the Log (`identifyStaffByPin` writes it).
+// use for their own PIN). Each trip is a `guard.tripped` entry in the Log (`identifyStaffByPin`
+// writes it).
+//
+// A correct PIN forgets nothing (screen round 11-18, X1): on a shared tablet the person guessing
+// may hold a PIN of their own, and if their own PIN wiped the count, four guesses and their own PIN,
+// repeated, would walk the 10,000 PINs without a trip and without a Log entry. The wrong PINs leave
+// the window by age alone, and the trips are forgotten only after the device has gone an hour past
+// its last wrong PIN and its last wait. An organisation's devices also share one ceiling: past `PIN_GUARD_SCOPE_FAILURES` wrong
+// PINs in `PIN_GUARD_SCOPE_WINDOW_MS`, every further wrong PIN in it trips its device at once, so
+// several tablets do not multiply the guesses.
 //
 // The counters live in the web process's memory (design §8: rate counters are never written to
 // the database; with two web instances the limits are at most twice as loose). Pure: the clock is
@@ -14,14 +22,22 @@ export const PIN_GUARD_FAILURES = 5
 export const PIN_GUARD_WINDOW_MS = 5 * 60_000
 /** How long the device waits after its first, second, third and every later trip. */
 export const PIN_GUARD_WAITS_MS: readonly number[] = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000]
+/** A device this long past its last wrong PIN and its last wait starts again from the first wait. */
+export const PIN_GUARD_TRIPS_FORGOTTEN_MS = 60 * 60_000
+/** Wrong PINs across all the devices of one organisation that make each further one trip… */
+export const PIN_GUARD_SCOPE_FAILURES = 20
+/** …within this window. */
+export const PIN_GUARD_SCOPE_WINDOW_MS = 15 * 60_000
 /** A device not seen for this long is forgotten (its trips too). */
 const FORGET_AFTER_MS = 24 * 60 * 60_000
 
 interface DeviceState {
   /** When the wrong PINs of the current window were entered. */
   failures: number[]
-  /** Trips since the last correct PIN. */
+  /** Trips since the device last went an hour without a wrong PIN or a wait. */
   trips: number
+  /** When the last wrong PIN was entered (ms since the epoch). */
+  lastFailure: number
   /** Until when the device waits (ms since the epoch); 0 when it doesn't. */
   waitUntil: number
   lastSeen: number
@@ -40,6 +56,8 @@ export type PinGuardFailure =
 /** The wrong-PIN counters of every shared device this process has seen. */
 export class PinGuard {
   readonly #devices = new Map<string, DeviceState>()
+  /** The wrong PINs of each organisation's devices within the scope window. */
+  readonly #scopes = new Map<string, number[]>()
 
   /** May the device try a PIN at `now`? A waiting device is told how long is left. */
   check(deviceId: string, now: Date): PinGuardCheck {
@@ -49,20 +67,30 @@ export class PinGuard {
     return { ok: false, retryAfterSeconds: Math.ceil((state.waitUntil - at) / 1000) }
   }
 
-  /** Counts a wrong PIN; the fifth in the window trips the guard. */
-  fail(deviceId: string, now: Date): PinGuardFailure {
+  /**
+   * Counts a wrong PIN; the fifth in the device's window trips the guard, and so does every wrong
+   * PIN once the organisation (`scopeId`) is past its ceiling.
+   */
+  fail(deviceId: string, now: Date, scopeId?: string): PinGuardFailure {
     const at = now.getTime()
     this.#forgetIdle(at)
     const state = this.#devices.get(deviceId) ?? {
       failures: [],
       trips: 0,
+      lastFailure: 0,
       waitUntil: 0,
       lastSeen: at,
     }
+    if (at - Math.max(state.lastFailure, state.waitUntil) >= PIN_GUARD_TRIPS_FORGOTTEN_MS) {
+      state.trips = 0
+    }
     state.lastSeen = at
+    state.lastFailure = at
     state.failures = [...state.failures.filter((time) => at - time < PIN_GUARD_WINDOW_MS), at]
     this.#devices.set(deviceId, state)
-    if (state.failures.length < PIN_GUARD_FAILURES) return { tripped: false }
+    const scopeOver =
+      scopeId !== undefined && this.#countScope(scopeId, at) > PIN_GUARD_SCOPE_FAILURES
+    if (state.failures.length < PIN_GUARD_FAILURES && !scopeOver) return { tripped: false }
     const wait =
       PIN_GUARD_WAITS_MS[Math.min(state.trips, PIN_GUARD_WAITS_MS.length - 1)] ?? 60 * 60_000
     state.trips += 1
@@ -71,9 +99,14 @@ export class PinGuard {
     return { tripped: true, trip: state.trips, waitSeconds: wait / 1000 }
   }
 
-  /** A correct PIN: the device starts afresh. */
-  succeed(deviceId: string): void {
-    this.#devices.delete(deviceId)
+  /** Adds a wrong PIN to the organisation's window and answers how many it now holds. */
+  #countScope(scopeId: string, at: number): number {
+    const failures = [
+      ...(this.#scopes.get(scopeId) ?? []).filter((time) => at - time < PIN_GUARD_SCOPE_WINDOW_MS),
+      at,
+    ]
+    this.#scopes.set(scopeId, failures)
+    return failures.length
   }
 
   #forgetIdle(at: number): void {
@@ -81,6 +114,10 @@ export class PinGuard {
       if (at - state.lastSeen > FORGET_AFTER_MS && state.waitUntil <= at) {
         this.#devices.delete(deviceId)
       }
+    }
+    for (const [scopeId, failures] of this.#scopes) {
+      if (failures.every((time) => at - time >= PIN_GUARD_SCOPE_WINDOW_MS))
+        this.#scopes.delete(scopeId)
     }
   }
 }

@@ -467,11 +467,15 @@ describe.skipIf(!hasDatabase)('the people commands (as the restro_app role)', ()
 
     const wrong = pin === '9999' ? '9998' : String((Number(pin) + 1) % 10_000).padStart(4, '0')
     const answers = []
-    for (let n = 0; n < 5; n += 1) answers.push(await identify(wrong))
-    expect(answers.slice(0, 4).every((answer) => !answer.ok && answer.code === 'pin_wrong')).toBe(
-      true,
-    )
-    expect(answers[4]).toEqual({ ok: false, code: 'device_waiting', retryAfterSeconds: 60 })
+    for (let n = 0; n < 4; n += 1) answers.push(await identify(wrong))
+    expect(answers.every((answer) => !answer.ok && answer.code === 'pin_wrong')).toBe(true)
+    // A right PIN between the guesses clears nothing (X1): the fifth wrong one still trips.
+    expect(await identify(pin)).toMatchObject({ ok: true, staffMemberId })
+    expect(await identify(wrong)).toEqual({
+      ok: false,
+      code: 'device_waiting',
+      retryAfterSeconds: 60,
+    })
     expect(await identify(pin)).toMatchObject({ ok: false, code: 'device_waiting' })
     const trips = await logOf('guard.tripped')
     expect(trips.at(-1)).toMatchObject({ details: { deviceId, trip: 1, waitSeconds: 60 } })
