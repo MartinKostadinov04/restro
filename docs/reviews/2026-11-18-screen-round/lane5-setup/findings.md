@@ -464,3 +464,248 @@ Out of scope: `roles-actions` "plain member › nightEndPreviewAction" changed o
 
 The reviewer was started with only this ledger path and commit `9e67d6a1`, after a reset and reseed (venue `vn_4sX6oXRZVgwQrXxlcGCRCh`), worker and simulated POS running, signed in as the owner. It did not switch personas: S25–S29 are confirmed from the code plus the explorer's evidence. Its reply follows as given.
 
+
+All 34 rows have a verdict: 28 confirmed (eight of them only in part), 2 rejected, 4 handed to other lanes, and I added 8 rows of my own. Nothing contradicts a decision in force, so every row I fix below has "Needs Martin's yes: no". Two points in rows S10 and S28 stay open questions; they are listed in the Fix plan.
+
+I walked as the owner, mainly at 390 px and 1280 px in English. The pane drew pages in light even when I asked for dark, because the owner account is set to light. I did not switch personas. So S25–S29 are confirmed from the code plus the explorer's evidence, not walked again live. If you want them walked live as the manager, the user with no organisation, and a signed-out visitor, the lead needs to switch the pane. I edited no files and committed nothing. The viewport is reset to desktop; the tab was left on the print sheet.
+
+## Blind-walk notes (before reading the ledger)
+- **`/venues`:** the card puts "Unpublish…" next to Open and Preview. The Next dev badge says Next.js 16.4.x has a known security vulnerability; that is already issue #202.
+- **`/venues/<id>/settings`** is a 404, because Settings is a tab (`?tab=settings`). That is expected, not a finding.
+- **Venue Settings › General (1280 px):**
+  - Both tab rows draw a stray up/down scroll arrow.
+  - The section tabs first draw 6 entries, then 9 once loaded (Paying, Staff and roles, Alerts appear late).
+  - Menu source says "Save the test POS credentials first" and "Not synced yet", yet "Last run: Other · Completed".
+  - "The menus come from the till".
+  - "The other settings are read-only for now. Editing them arrives with the Studio." The Studio already exists.
+- **Tables & QR (1280 px):**
+  - Three intro paragraphs.
+  - Each of the 76 cards repeats "Menu: Venue's (Club Biad Sofia)" and "Pay first: Same as the venue (On)".
+  - "Create codes for all tables" is the filled primary button although all 76 tables already have a code.
+  - "Loading the codes…" takes several seconds.
+
+## Reviewer lines per row
+
+| Id | Verdict | Severity | Effort | Decision | Needs Martin's yes | Fix |
+|---|---|---|---|---|---|---|
+| S1 | confirmed — 390 px en: the name wraps one word per line (6 lines); the Live badge ends at x 146 and the Rename button starts at x 145, so they overlap by 1 px, more with a longer name | Before the pilot | S | none | no | A |
+| S2 | confirmed — both tablists: clientHeight 36, scrollHeight 37, overflow auto (1024 and 1280 px) | Polish | S | none | no | A |
+| S3 | confirmed — 1024 px: page is 1039 px wide; MAIN, HEADER and the content wrapper end at x 1038 | Polish | S | none | no | A |
+| S4 | confirmed, merged into S5 — "Not synced yet" sits over a last run that is a floor read labelled "Other". The "Save credentials first" half comes from the seed (see S6) | Before the pilot | S | none | no | B |
+| S5 | confirmed — the "Other" runs are the worker's `floor_read` (`apps/worker/src/jobs/floor.ts:66`), which `run-history.tsx` does not name, so it falls back to "Other" | Before the pilot | S | none | no | B |
+| S6 | confirmed as a **seed defect**, rejected as a product bug. `seed-demo-club.ts:157-161` sets the connection to `connected` with no credentials and no check time. With credentials saved, `connect-card.tsx` already shows a "saved" state and never shows the password. Today the seeded demo can never press "Sync this venue" | Before the pilot | S | none | no | B |
+| S7 | confirmed — step 1 offers "test POS · 1 venue"; step 2 says everything is linked, with the radio and Create venue disabled | Before the pilot | S | none | no | C |
+| S8 | **rejected** — every hours checkbox has the `tap-area` class, which gives a 44 px hit area on a phone (`globals.css:25`; operational-screens Accessibility) | — | — | — | — | — |
+| S9 | confirmed — 119 controls under 44 px, spots 12–14 px | — | — | — | — | lane 4 |
+| S10 | confirmed — "till"/"каса" in about 15 owner-facing strings breaks copy rule 8 and D82 ({source}); the heading "Menu source" is a glossary _Avoid_. The "Deleted venues" → "Archived" part is an open question: D76 and D83 name the page "Deleted venues" | Before the pilot | S | none (rename part: contradicts D76/D83) | no | D |
+| S11 | confirmed — `composer…empty.description` (en.json:631) tells a hand-made venue to "connect a till" | Before the pilot | S | none | no | D |
+| S12 | confirmed — the section tab says "Publish", the heading says "Automation", it covers "Reading the menu" (= Sync); the footer is jargon | Before the pilot | S | none | no | D |
+| S13 | **rejected** — one component (`legal-details-card.tsx`), one record, one action, drawn on purpose in both sections (#288, RR-O15), so ordering can be turned on without leaving the section | — | — | — | — | — |
+| S14 | confirmed — the page is 23,700 px tall at 390 px; 76 cards each with two selects at the default; three intro paragraphs | Before the pilot | M | none | no | E |
+| S15 | confirmed — the organisation tabs wrap to two rows at 390 px | — | — | — | — | lane 6 |
+| S16 | confirmed — no link from Tables to the guide. The guide's wrong content is R3 (lane 5) | — | — | — | — | lane 6 (link); R3 → F |
+| S17 | confirmed — two stacked dropdowns before the section heading | — | — | — | — | lane 6 |
+| S18 | confirmed in part — under 44 px: "See on a map" 90×17, "Back to Tables & QR" 153×20, the staff One tap / A PIN labels 61×24 and 48×24, and the "Hours" link in Settings › Reservations 40×17. **Rejected:** the breadcrumb, which has `tap-area` | Before the pilot | S | none | no | A |
+| S19 | confirmed — `[&>span:last-child]:truncate` in `ui/sidebar.tsx:460`. Not a rule break (never-truncate is for templates only, overrides row 2) | Polish | S | none | no | A |
+| S20 | confirmed in part — the dismiss button "Cancel" breaks copy rule 11 (known divergence #60 row 7). **Rejected:** dropping the typed name, which D76 requires ("owners only, after typing its name") | Polish | S | none | no | C |
+| S21 | confirmed in part — browser tab titles "General", "Integrations", "Deleted venues" and "Restro" (print) lack "· Restro" while venue pages have it; "Status" appears as both heading and label. **Rejected:** the card repeating the POS venue name (D86 asks for it) and the organisation block (it names the organisation) | Polish | S | none | no | D |
+| S22 | confirmed — the 794 px layout is shrunk to fit on a phone | Polish | S | none | no | E |
+| S23 | confirmed — "Върни" and "Изтрий завинаги" are both outline buttons of equal weight (`deleted-venues-list.tsx:125-143`) | Polish | S | none | no | C |
+| S24 | confirmed — 6 «» strings in bg.json (copy rule 7); "Studio" promise (914); "Published by hand · the system" (982); "Venue's ({menu})" | Polish | S | none | no | D |
+| S25 | confirmed from code and the explorer's evidence — Manager lacks `settings.codes` (`permissions.ts`), yet en.json:1537 promises "You can look at the codes and print them" | Before the pilot | S | none (grants stay as D141/#324) | no | E |
+| S26 | confirmed from code — `settingsSectionOf` falls back to General without changing the address; Deleted venues uses `notFound()` | Polish | S | none | no | G |
+| S27 | confirmed from code — `automation-settings.tsx` has fieldsets disabled with no read-only line; the header shows no state without the right to publish | Before the pilot | S | none | no | G |
+| S28 | confirmed in part — no language switch on `app/no-organization/page.tsx`. The contact line is an open question (which contact) | Polish | S | none | no | H |
+| S29 | confirmed from code — `login-form.tsx:92` form error has no `aria-describedby` from the inputs, and no `aria-invalid` on a failed sign-in | Polish | S | none | no | H |
+| C1 | confirmed — `use-settings-run.tsx:183` starts a new session; `auth.ts:82-89` puts it in the first organisation | Before the pilot | S | none | no | I |
+| C2 | confirmed — `submit()` has no try/finally, so a network throw leaves the dialog stuck | Before the pilot | S | none | no | I |
+| C3 | confirmed — the QR route (`route.ts:17-24`) and the print page skip `onSharedDevice`. Core still refuses, so no code leaks | Polish | S | none | no | I |
+| X1 | confirmed — no fresh sign-in check in venues-actions, organization-actions, integration/actions or the tables actions; D122 §7 asks for one | Before the pilot | M | none (implements D122 §7) | no | I |
+| X2 | confirmed — `DISABLED_HTTP_PATHS` (`auth.ts:28-47`) lacks `/update-user` | Before the pilot | S | none | no | I |
+
+## My rows
+
+### R1. "Create codes for all tables" is the filled main button when every table already has a code
+- Kind: simplification (reviewer's row)
+- Screen: `?tab=tables`, owner, 1280 and 390 px, light, en
+- Steps: open Tables & QR on the seed (76 tables, 76 with a code).
+- Expected: the primary action is the one the owner needs now (operational-screens: one primary action; Clean rule 2).
+- Saw: the button is enabled and filled; pressing it only toasts "createdNone". Print sheet is the outline button.
+- Check: design-critique 2; Clean rule 2
+- Evidence: `tables-panel.tsx:161-166` shows it whenever `total > 0`; JS `disabled:false` with summary "76 tables, 76 with a code"
+- Proposal: show it only when `coded < guestTotal`, as «Създай липсващите N кода» / "Create the N missing codes". When every table has a code, Print sheet becomes the primary button.
+- Status: confirmed · Before the pilot · S · none · no · Fix E
+
+### R2. The disabled Print sheet gives its reason only on hover
+- Kind: bug (reviewer's row)
+- Screen: `?tab=tables`, a venue with no codes, owner, 390 px
+- Steps: open Tables & QR before any code exists.
+- Expected: nothing appears only on hover (Patterns: secondary actions; a phone has no hover).
+- Saw: `disabled` button with `title={t('printNone')}`.
+- Check: operational-screens Patterns (nothing hover-only)
+- Evidence: `tables-panel.tsx:180-189`
+- Proposal: hide the button until a code exists, or show the `printNone` text as a line under it.
+- Status: confirmed · Polish · S · none · no · Fix E
+
+### R3. The QR guide describes controls that do not exist and gives developer-only steps
+- Kind: bug (reviewer's row)
+- Screen: `/guides/qr-links`, owner, 390 px, en
+- Steps: read Option 1 and compare it with Tables & QR › Address in the codes.
+- Expected: the guide's steps match the screen (design-critique 2; ux-copy).
+- Saw: it says to choose "Our link" and use "Base address"; the card has only a read-only "Codes lead to". It also says "While we build the system… type this computer's network address, for example http://192.168.1.20:3000".
+- Check: ux-copy (clear, accurate); design-critique 2
+- Evidence: page text of `/guides/qr-links`
+- Proposal: rewrite Option 1 to the existing card ("Codes lead to …", Create codes, Print sheet). Drop the developer paragraph. Keep Option 2 as "comes later" until a domain setting exists.
+- Status: confirmed · Before the pilot · S · none · no · Fix F
+
+### R4. The print sheet's browser tab title is "Restro", so a saved PDF is called Restro.pdf
+- Kind: simplification (reviewer's row)
+- Screen: `/venues/<id>/tables/print`, owner, any
+- Steps: open the print sheet and choose Save as PDF.
+- Expected: a file named after what it holds.
+- Saw: `document.title` is "Restro".
+- Check: ux-copy (clear)
+- Evidence: JS `title=Restro`
+- Proposal: «QR кодове · Club Biad Sofia» / "QR codes · Club Biad Sofia".
+- Status: confirmed · Polish · S · none · no · Fix E
+
+### R5. Lane 5 error messages say "Something went wrong"
+- Kind: simplification (reviewer's row)
+- Screen: Deleted venues, New venue, Unpublish, venue name/address/delete, organisation, integrations, owner
+- Steps: read the `failed` strings.
+- Expected: an error names the fix, never "Something went wrong" (copy rule 4; operational-screens Undo).
+- Saw: en.json lines 467, 504, 513, 554, 606, 926, 954, 974, 1253 (15 such strings in the file).
+- Check: copy-rules rule 4
+- Evidence: en.json lines above
+- Proposal: «Връзката прекъсна. Нищо не е променено: проверете връзката и опитайте пак.» / "The connection dropped. Nothing was changed: check the connection and try again."
+- Status: confirmed · Polish · S · none · no · Fix D
+
+### R6. Venue Settings' section tabs grow from 6 to 9 after the page loads
+- Kind: bug (reviewer's row)
+- Screen: `?tab=settings`, owner, 1280 px
+- Steps: click the Settings tab from the Studio.
+- Expected: no layout shift in the navigation.
+- Saw: the skeleton row shows General…Versioning (6). Paying, Staff and roles and Alerts appear a moment later and push Publish and Versioning right.
+- Check: design-critique 4 (consistency)
+- Evidence: blind-walk screenshot during the skeleton vs after load
+- Proposal: compute the visible sections before the skeleton draws, or render the skeleton from the same `visibleSettingsSections`.
+- Status: confirmed · Polish · S · none · no · Fix A
+
+### R7. "In Settings → Integrations" is plain text, not a link
+- Kind: optimisation (reviewer's row)
+- Screen: Settings › General, Menu source card, owner, 1280 px
+- Steps: read the sync-blocked line.
+- Expected: the way out is one tap (wayfinding Q4).
+- Saw: the `sync.blocked.*` strings name the path in text only.
+- Check: operational-screens wayfinding Q4
+- Evidence: en.json:1474-1476
+- Proposal: render "Settings → Integrations" as a link to `/settings/integrations`.
+- Status: confirmed · Polish · S · none · no · Fix B
+
+### R8. Integrations history names barsy runs "Full sync" / "Quick sync"; the glossary says "Full read"
+- Kind: simplification (reviewer's row)
+- Screen: `/settings/integrations`, barsy tab, owner
+- Steps: read the run kinds.
+- Expected: GLOSSARY "Full read" (_Avoid_: full pull, full sync).
+- Saw: `connectors.barsy.runKinds` uses "Full sync" and "Quick sync".
+- Check: copy rule 8
+- Evidence: en.json:1493-1497
+- Proposal: «Пълно четене» / "Full read". "Quick sync" becomes "Changes read", if the glossary has no term; add one.
+- Status: confirmed · Polish · S · none · no · Fix D
+
+## Fix plan
+
+Each bundle is one ticket in `ship.md` §1's format: model Sonnet unless noted; coded by an agent session; branch `sr/<slug>` from `sr/foundation`; pull request into `sr/foundation`; Menu functionality: none.
+
+**A — `sr/admin-layout` (bug.md): S1, S2, S3, S18, S19, R6.**
+- Read: D123, operational-screens Accessibility.
+- Screen: none (visual).
+- Menu row stacks the name and the badge above the actions below 640 px.
+- Tablist gets `overflow-y-hidden` (or the 1 px fix).
+- Find the min-content that widens MAIN at 1024 px.
+- Add `tap-area` or 44 px height to "See on a map", the guide's back link, the staff segmented control and the Reservations "Hours" link.
+- Sidebar venue name wraps instead of being cut.
+- Section skeleton built from `visibleSettingsSections`.
+- Tests:
+  - S18 (D123 floor): `e2e/touch-targets.spec.ts` gains Settings › Staff, Settings › Ordering and `/guides/qr-links` at 390 px.
+  - S1: `e2e/venue-phone.spec.ts` asserts the menu row's badge and buttons do not overlap at 390 px.
+  - S3: `e2e/owner-settings.spec.ts` asserts `scrollWidth <= innerWidth` at 1024 px.
+
+**B — `sr/sync-state` (bug.md): S4, S5, S6, R7.**
+- Read: D82, GLOSSARY Sync.
+- Screen: none.
+- Name `floor_read` as a neutral run kind, «Прочетени маси» / "Tables read" (as `places_read`), and show its counters.
+- The venue card's "Last run" line shows the last menu sync, not a floor read.
+- Seed: put the demo connection in a coherent state. Either seal throwaway credentials for the sim through the real save path and record a check time, or seed `status: 'new'`.
+- Link to Integrations in the blocked lines.
+- Tests: `run-history` test for `floor_read`; `menu-source-card.test.tsx` for the "Last run" line; `seed-demo-bar.test.ts` or the club seed test asserts credentials, or a non-`connected` status.
+
+**C — `sr/venue-lifecycle-copy` (change.md): S7, S20 (dismiss only), S23.**
+- Read: D76, D83, D86, copy-rules 11.
+- Screen plan (New venue step 1):
+  - Story: as an owner I start a POS venue only when the POS has a free venue; 2 taps today.
+  - Pattern: radio cards; a POS with no free venue shows «Няма свободни заведения» / "No free venues" and is disabled with that reason in text.
+  - States: no free venue; one free venue; the longest Bulgarian text.
+- Dialog dismiss buttons in the lane: «Запази заведението» / "Keep venue" (delete, purge, unpublish).
+- Deleted venues: «Възстанови» / "Restore" filled; "Delete permanently" stays outline after it.
+- Tests (rule 11): `delete-venue-dialog.test.tsx`, `purge-venue-dialog.test.tsx` and `unpublish-venue-dialog` assert the button names; `new-venue-dialog.test.tsx` asserts the disabled POS and its reason.
+
+**D — `sr/settings-words` (change.md): S10 (not the rename), S11, S12, S21, S24, R5, R8.**
+- Read: D82, GLOSSARY, copy-rules.
+- Screen: none.
+- "till"/"каса" becomes `{source}` in the lane's strings (en/bg lines 474, 491, 508, 512, 631, 939, 1183, 1249, 1356).
+- Heading «Източник» / "Source".
+- Hand-made empty state: «Създайте секция, за да започне менюто.» / "Create a section to start your menu."
+- Section «Синхронизиране и публикуване» / "Sync and publish"; "Sync" used throughout; shorter footer.
+- Page titles «… · Restro».
+- One "Status".
+- „…" quotes in bg.
+- Drop the Studio promise; "Published by hand".
+- R5 and R8 strings.
+- Tests (copy rules 4, 7, 8): `src/i18n/messages.test.ts` gains three assertions:
+  - no "till" or "каса" outside an explicit allowlist of other lanes' keys;
+  - no «» in bg;
+  - no "Something went wrong" / "Нещо се обърка" outside a shrinking allowlist.
+
+**E — `sr/tables-qr` (change.md): S14, S22, S25, R1, R2, R4.**
+- Read: D103, D122 §7, D141, admin-map lines 20 and 97-106, operational-screens.
+- Screen plan:
+  - Stories: Set a menu for an area, 2 taps; PF4 and PF5, 2 taps; PF9, 0 taps; Create codes, 1 tap; Print, 3 taps. Every target is kept.
+  - Pattern: an area index at the top (jump links), intro cut to one sentence, the "from {source}: N" line only when the name differs, and shorter select texts («Менюто на заведението», «Като зоната»). The selects stay on the card, so PF5 stays 2 taps.
+  - Primary action: Create the missing codes, or Print sheet when every table has one.
+  - States: no codes; all codes; a role without `settings.codes` («Само собственици и администратори виждат кодовете.» / "Only owners and admins can see the codes.", and no codes or Print); 76 tables; the longest Bulgarian text.
+  - Print sheet: A4 width only under `@media print`, the title from R4.
+- Tests: `e2e/tables.spec.ts` (the manager state and the R1 button); a tables-panel unit test.
+
+**F — `sr/qr-guide` (change.md): R3.** Rewrite `/guides/qr-links` to the existing card. Test: `src/guides/qr-links-guide.test.ts` asserts that no "Base address", "Our link" or `192.168` text remains.
+
+**G — `sr/role-read-only` (change.md): S26, S27.**
+- One read-only line in Publish, «Само собственици и администратори могат да променят това.» / "Only owners and admins can change this."
+- The header shows the venue state («Актуално…» / "Up to date…") without the button.
+- A section the person may not open redirects to General, so the address matches the page; the same redirect for `/settings/deleted-venues` instead of the 404.
+- Screen plan: states for the manager on each section.
+- Tests: `automation-settings.test.tsx`, `settings-nav.test.tsx`, `e2e/owner-settings.spec.ts`.
+
+**H — `sr/auth-pages` (bug.md): S28 (language switch), S29.**
+- `LocaleToggle` on `/no-organization`.
+- `aria-invalid` on both inputs and `aria-describedby="login-error"` after a failed sign-in.
+- Tests: `login-form` test (WCAG 3.3.1); a page test for `/no-organization`.
+
+**I — `sr/reauth-guards` (bug.md, Opus: auth and security; `security-review` on the PR): C1, C2, C3, X1, X2.**
+- Read: D122 §7, RR-84, RR-88.
+- After re-sign-in, `organization.setActive` to the page's organisation before the retry; try/catch/finally in `submit()`.
+- `onSharedDevice` on the QR route (404) and on the print page (the own-sign-in notice).
+- One `isFreshSignIn` guard answering `sign_in_again`, wired to the existing password dialog, on organisation rename/slug, POS credentials and the systems list, venue rename/slug/delete/purge/unpublish and the tables writes; `freshSignIn: true` on `table_code.reissue`.
+- `/update-user` added to `DISABLED_HTTP_PATHS`.
+- Tests:
+  - X1: `organization-actions.test.ts`, `venue-lifecycle-actions.test.ts`, the integration and tables action tests, each with a 16-minute-old `signedInAt` getting `sign_in_again` and nothing moving.
+  - X2: `auth.test.ts`'s 404 list.
+  - C3: the shared-device row for the QR route in `src/server/security/attack-table.ts`.
+
+**Other lanes:** lane 6 takes S15, S16 (the link) and S17. Lane 4 takes S9.
+
+**Filed as issues instead of fixed:**
+- **S10's "Deleted venues" → "Archived" rename:** an open question, because D76 and D83 name the page and the button "Deleted venues" / "Delete permanently" and the glossary contradicts them. My recommendation is to keep the decisions' words and add a glossary note.
+- **S28's contact line:** needs the real contact address or link (a fact Martin holds). My recommendation is a support e-mail from config, with the line hidden until one is set.
+- **"till"/"каса" strings outside this lane** (Studio 637, 746, 1108, 1428; Tonight 2332–2413): a note to the lanes that own those screens; Tonight's staff wording may be intended.
+- **The Next.js upgrade:** already #202.
