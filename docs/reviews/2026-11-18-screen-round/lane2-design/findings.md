@@ -15,7 +15,13 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/guest/guest-menu.tsx:356-358` (`look(); addEventListener('hashchange', look)`); `packages/faces/editorial-market/src/use-dish-route.ts:116` (`window.history[replace ? 'replaceState' : 'pushState']`), which itself listens on `popstate` (:71).
 - Proposal: Have the renderer's dish route tell the host when it opens a dish (a callback), or have the host also listen to `popstate` and the open call; drop the duplicated address parsing.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed — `use-dish-route.ts:116` opens with pushState; host listens only to hashchange (`guest-menu.tsx:357`)
+- Severity: Before the pilot
+- Effort: S
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-HOST
 
 ### C2. One failed read of the table file makes the tab forget its table
 - Kind: bug
@@ -26,7 +32,13 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/guest/load.ts:292-305` (`catch { return null }`); `apps/web/src/guest/load.ts:357-358`; `apps/web/src/guest/guest-menu.tsx:179` (`rememberTable(storage, menu.publicId, menu.table?.token ?? null)`).
 - Proposal: Make `loadTableFile` tell "not found or other venue" from "could not be read", and leave the remembered code alone on the second.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed — `load.ts:302` turns any error into null and `guest-menu.tsx:179` forgets the table
+- Severity: Before the pilot
+- Effort: S
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-HOST
 
 ### C3. An edit made while Done is saving is thrown away without a word
 - Kind: bug
@@ -37,7 +49,13 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/design/design-page.tsx:311-313` (`setBaseline(draft); setHistory(historyOf(draft))` inside the async transition); `:620`, `:636`, `:644` (only the three buttons carry `saving`).
 - Proposal: On success set only the baseline and the revision to the saved draft and leave the history alone, or disable the panel while saving.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed — `onDone` resets baseline and history from the draft of the Done render; only three buttons disabled
+- Severity: Before the pilot
+- Effort: S
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-DSTATE
 
 ### C4. A logo upload that finishes after other edits reverts those edits
 - Kind: bug
@@ -48,7 +66,13 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/design/logo-field.tsx:65-73`; `apps/web/src/design/design-page.tsx:452` (`onChange={(logo) => change(withLogo(draft, logo))}`).
 - Proposal: Apply the logo to the current draft with a functional update, or keep `onChange` in a ref.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed — `logo-field.tsx:72` calls a stale onChange; `design-page.tsx:452` builds on the old draft
+- Severity: Before the pilot
+- Effort: S
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-DSTATE
 
 ### C5. A newly uploaded logo's picture breaks when the owner switches Simple/Advanced, or after Undo
 - Kind: bug
@@ -59,7 +83,13 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/design/logo-field.tsx:44-50` (revoke on unmount), `:71` (revoke on replace); `apps/web/src/design/design-page.tsx:548` and `:579`.
 - Proposal: Have `DesignPage` own the blob URLs and revoke them on page unmount or after a save, not in the field.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed — revoke on unmount and replace; `logoControl` mounts in two branches
+- Severity: Before the pilot
+- Effort: S
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-DSTATE
 
 ### C6. A layout the owner once tapped in the preview overrides the Layout option in every Design frame
 - Kind: bug
@@ -70,7 +100,13 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `packages/faces/editorial-market/src/use-layout.ts:13-20`, `:32` (`switchShown && chosen !== null ? chosen : start`); `face.tsx:98`; `packages/shell/src/build.ts:471`.
 - Proposal: Let the host say whether to remember the choice (the Design frames pass "no"), or scope the key to the venue and skip storage in the preview.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed in the browser at 1280 px: panel 'Две колони' pressed, preview stayed `data-layout="one"`, `sessionStorage['rm-layout']` shared
+- Severity: Before the pilot
+- Effort: M
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-FACE
 
 ### C7. Picking the Style a venue is already on shows as an unsaved change
 - Kind: bug
@@ -81,7 +117,13 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/design/design-draft.ts:140-143`, `:118` (`keyOfDesign = JSON.stringify`), `:217`; `packages/shell/src/design/styles/basic.ts:12-21`.
 - Proposal: Compare with a key-order-independent form in `keyOfDesign` and `changed`.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed in the browser: tapping the current tile (Club) shows 'Незапазено' and enables Undo
+- Severity: Polish
+- Effort: S
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-DSTATE
 
 ### C8. Members who cannot edit see no option pictures in Advanced
 - Kind: bug
@@ -92,7 +134,13 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/design/option-tiles.tsx:89`, `:226`.
 - Proposal: Pass the "does not apply" state to `Tile` separately and base `drawn` on that alone.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed in code (`option-tiles.tsx:89`, `:226`); not walked, no member sign-in
+- Severity: Polish
+- Effort: S
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-DSTATE
 
 ### C9. A logo whose asset is gone cannot be removed, and every save writes its dead id back
 - Kind: bug
@@ -103,7 +151,13 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/server/design/service.ts:88`; `apps/web/src/design/design-draft.ts:66`, `:113`; `look-state.ts:163`; `logo-field.tsx:114`; `packages/core/src/apply/apply.ts:1689-1694`.
 - Proposal: In `draftOf`, clear `look.logoAssetId` when the view has no logo.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed in code; no app path reaches it today (assets leave `stored` only by purge)
+- Severity: Polish
+- Effort: S
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-DSTATE
 
 ### C10. Every option tile's frame is redrawn on every re-render of the Design page
 - Kind: optimisation
@@ -114,7 +168,13 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/design/option-tiles.tsx:202-217`; `scaled-frame.tsx:56-58`; `design-frame.tsx:43`; `my-styles.tsx:190`.
 - Proposal: Memoize each tile's content in a small per-tile component, as `Specimen` in `style-tiles.tsx` does.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed in code; not timed
+- Severity: Polish
+- Effort: S
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-DSTATE
 
 ## Security check (security-review + audit-security.md, Fable)
 
@@ -133,7 +193,13 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: `operational-screens.md` wayfinding question 3, design-critique 2
 - Evidence: S1-before.jpg
 - Proposal: make the page list a compact row of tabs or a Select, so the options sit directly under it. "Страница" / "Page".
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed at 1280×800: the 14-row list stays, options start at the fold
+- Severity: Before the pilot
+- Effort: M
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-DPANEL
 
 ### S2. Advanced option pictures for name size, weight and case look identical
 - Kind: bug
@@ -144,7 +210,13 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: design-critique 2, D129/D130
 - Evidence: S2-before.jpg
 - Proposal: crop the tile frame on the item name for name options, or draw a name sample in each value.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed; cause: each tile scrolls the focused item under the sticky section bar, which hides the name ('Рамка' tiles too)
+- Severity: Before the pilot
+- Effort: M
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-DPANEL
 
 ### S3. On a phone the live preview sits about 2300 px below the Style tiles
 - Kind: bug
@@ -155,7 +227,13 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: `operational-screens.md` feedback 1, D129
 - Evidence: S3-before.jpg, S4-before.jpg; DOM `iframe[src*="slot=main"]` y=2290
 - Proposal: on a phone a floating "Преглед" / "Preview" button opening the preview as a bottom drawer, or a docked half-height preview above the sticky Undo/Cancel/Done bar.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed at 390×844: main preview at y=2290 of 2891
+- Severity: Before the pilot
+- Effort: M
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-DPANEL
 
 ### S4. The Phone / Tablet / Desktop switcher is offered on a phone
 - Kind: simplification
@@ -166,7 +244,13 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: `operational-screens.md` Clean rule 2
 - Evidence: S4-before.jpg
 - Proposal: hide the width switcher below 768 px.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed at 390; D129's switcher is a desktop tool, hiding it below 768 px contradicts nothing
+- Severity: Polish
+- Effort: S
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-DPANEL
 
 ### S5. The preview and the tile pictures stay blank grey for 10+ seconds with no word
 - Kind: optimisation
@@ -177,7 +261,13 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: ux-copy loading states, `operational-screens.md` feedback 1
 - Evidence: S5-before.jpg (dev server)
 - Proposal: a skeleton with "Зареждане на прегледа…" / "Loading the preview…".
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed (dev server): empty grey box 3–9 s
+- Severity: Polish
+- Effort: S
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-DPANEL
 
 ### S6. Tapping a dish in the preview moves the options panel to another page
 - Kind: bug
@@ -188,7 +278,13 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: design-critique 2, `operational-screens.md` question 3
 - Evidence: S6-before.jpg
 - Proposal: only jump when the tapped part belongs to no open page, or never jump from a dish tap.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed and wider: with Kind Panel too, tapping a dish jumps the panel to 'Артикули'
+- Severity: Before the pilot
+- Effort: S
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-DPANEL
 
 ### S7. "Две колони" has no visible effect when items have no photo
 - Kind: bug
@@ -199,7 +295,13 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: D130 (Items › Layout), design-critique 2
 - Evidence: S7-before.jpg, `getComputedStyle` of `.rm-items` and `.rm-item`
 - Proposal: disable the option with "Две колони се виждат само при артикули със снимка" / "Two columns show only for items with a photo", or lay out text items in two columns.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed, also found blind: Editorial sets two columns, text items span both (`css.ts:1424`); the pilot club's items have no photos
+- Severity: Before the pilot
+- Effort: M
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-FACE
 
 ### S8. The Publish dialog calls the design "шаблон" while Design calls it "Стил"
 - Kind: bug
@@ -210,7 +312,13 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: copy-rules.md rule 8, D128
 - Evidence: S8-before.jpg
 - Proposal: "Външният вид на менюто (стил, цветове, лого)" / "The menu's look (style, colours, logo)".
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed — `messages/bg.json:1055` 'шаблон', en 'template'; copy rule 8, D128
+- Severity: Before the pilot
+- Effort: S
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-COPY
 
 ### S9. The brand colour swatch shows a colour while the field says none is chosen
 - Kind: bug
@@ -221,7 +329,13 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: `operational-screens.md` wayfinding question 3
 - Evidence: S9-before.jpg
 - Proposal: an empty striped swatch when no colour is chosen; derived fields show "—" until one is.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed — colour input holds `#6b7280` while the box shows the placeholder
+- Severity: Polish
+- Effort: S
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-DPANEL
 
 ### S10. Editing the Dish page options leaves the preview on the menu list
 - Kind: simplification
@@ -232,7 +346,13 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: D129, design-critique 2
 - Evidence: S10-before.jpg
 - Proposal: while a dish-related page is open, show a sample dish in the preview; back to the list on any other page.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed — with Dish page open the main preview stays on the list
+- Severity: Before the pilot
+- Effort: M
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-DPANEL
 
 ### S11. Bulgarian guest menu: the "→" arrow wraps alone onto a second line
 - Kind: bug
@@ -243,7 +363,13 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: `template-review` step 4
 - Evidence: S11-before.jpg
 - Proposal: tie the arrow to the last word of the name (nowrap on the final word and the arrow).
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed at 375 px on Club ('ABSOLUT VODKA 0.7'); also found blind
+- Severity: Polish
+- Effort: S
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-FACE
 
 ### S12. "Запази като стил…" does not look like a control
 - Kind: simplification
@@ -254,7 +380,13 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: design-critique 2
 - Evidence: S12-before.jpg
 - Proposal: outline-button look, "Запази този вид като стил" / "Save this look as a style"; drop the "…" from the dialog title.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed — `my-styles.tsx:277` ghost sm; dialog title reuses `t('save')` with '…'
+- Severity: Polish
+- Effort: S
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-DPANEL
 
 ### S13. The page title does not change when a dish is open
 - Kind: bug
@@ -265,7 +397,13 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: WCAG 2.4.2
 - Evidence: tab title before and after the tap (no screenshot)
 - Proposal: "<dish name> · <venue>" while a dish is open.
-- Status: candidate
+- Status: confirmed
+- Verdict: confirmed with the sheet open; host sets the title at `guest-menu.tsx:417`
+- Severity: Polish
+- Effort: S
+- Decision: none
+- Needs Martin's yes: no
+- Fix: F-HOST
 
 Not written as rows: the empty dish sheet and the repeated name and price in the bottom bar (#448); the Next.js dev overlay over "Отмени" (dev-only).
 
@@ -287,3 +425,111 @@ Not written as rows: the empty dish sheet and the repeated name and price in the
 - design-critique: S2, S3, S4, S6, S10, S12.
 - accessibility-review: S13 (2.4.2).
 - ux-copy: S5 (loading state); S8 is already copy-rules rule 8.
+
+## Reviewer (screen-review step 4, Opus)
+
+Walked blind first (found S7, S9, S11 and R1–R6), then reproduced every row on a fresh database. All 23 rows confirmed; none Blocking; none contradicts a decision, so nothing needs Martin's yes (round rule: Martin is not picking). The reviewer left the design as found.
+
+### R1. Undo is called "Отмени", right next to Cancel "Отказ"
+- Kind: simplification (reviewer)
+- Screen: `/venues/vn_…/design`, owner, 1280 px, dark, bg
+- Steps: change anything and read the bottom bar.
+- Expected: one name per action (copy rule 3); Undo is "Върни" elsewhere (`bg.json:2100`).
+- Saw: "Отмени · Незапазено · Отказ · Готово"; in Bulgarian "Отмени" commonly means Cancel, so the owner sees two Cancels. The My styles toast uses "Отмени" for Undo too (`bg.json:1972`).
+- Check: copy-rules 3
+- Evidence: `bg.json:1919`, `:1972`; `[data-testid=design-undo]` text
+- Proposal: "Върни" / "Undo" for both keys.
+- Status: confirmed
+- Verdict: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: no · Fix: F-COPY
+
+### R2. On a dark Style, the Page and Panels colours barely change the preview, and nothing says why
+- Kind: simplification (reviewer)
+- Screen: `/venues/vn_…/design` Simple › Цветове, owner, 1280 px, dark preview (Club), bg
+- Steps: on Club, type `#ffcc00` in "Страница".
+- Expected: the preview shows the change at once, or the field says where it applies (D129; screen-read question 3).
+- Saw: the dark page went from near-black to `rgb(23,17,3)`; the warning advises "Спокоен, светъл нюанс" on a dark Style; nothing says these are the light screen's colours and the dark screen is worked out from them.
+- Check: operational-screens question 3, D129
+- Evidence: `.rm` background before/after in `iframe[src*="slot=main"]`; the warning text
+- Proposal: Page and Panels help adds "На тъмен екран от него се изчислява тъмен нюанс." / "On a dark screen a dark shade is worked out from it."; the saturation hint only on a light preview.
+- Status: confirmed
+- Verdict: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: no · Fix: F-DPANEL
+
+### R3. In dark mode the dish and sheet overlay is a near-white wash over the menu
+- Kind: bug (reviewer)
+- Screen: `/m/club-biad/club-biad`, guest, 375 px, dark, bg
+- Steps: open any dish (Panel sheet).
+- Expected: a scrim darkens what is behind it; pilot venues are dark rooms (§7.5; template-review step 4).
+- Saw: `.rm-overlay` is `color-mix(var(--rm-text) 72%)` (`css.ts:696-704`), `rgb(248 248 249 / .72)` in dark; the menu behind turns light grey (Design preview too).
+- Check: template-review step 4 (design-critique 3)
+- Evidence: `getComputedStyle('.rm-overlay').backgroundColor`, `data-scheme=dark`
+- Proposal: the scrim takes a dark ink in both schemes.
+- Status: confirmed
+- Verdict: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: no · Fix: F-FACE
+
+### R4. The guest tab is titled "Menu", in English, until the menu loads, and stays so if it fails
+- Kind: bug (reviewer)
+- Screen: `/m/club-biad-dj3z4gypdbsb`, guest, 375 px, dark, bg
+- Steps: open the QR address and read the tab title before the menu draws.
+- Expected: Bulgarian first (copy rule 9).
+- Saw: "Menu" (`app/m/[...address]/page.tsx:16`).
+- Check: copy-rules 9, WCAG 2.4.2
+- Evidence: the tab title right after `navigate`
+- Proposal: "Меню" / "Menu" by the page's language.
+- Status: confirmed
+- Verdict: confirmed · Severity: Polish · Effort: S · Decision: none · Needs Martin's yes: no · Fix: F-HOST
+
+### R5. Size options are listed Medium, Small, Large
+- Kind: simplification (reviewer)
+- Screen: `/venues/vn_…/design` Advanced › Артикули › Размер на името (and title, logo, strip-card sizes), owner, 1280 px, bg
+- Steps: look at the tiles.
+- Expected: a scale reads in order.
+- Saw: "Среден, Малък / Голям": the contract order (Basic's value first, D130).
+- Check: design-critique 4
+- Evidence: `contract.ts:224,231,283,297,330`
+- Proposal: show size values S, M, L, XL for display only; the contract and D130 order stay.
+- Status: confirmed
+- Verdict: confirmed · Severity: Polish · Effort: S · Decision: none · Needs Martin's yes: no · Fix: F-DPANEL
+
+### R6. Colour help uses words a club owner does not use
+- Kind: simplification (reviewer)
+- Screen: `/venues/vn_…/design` Simple › Цветове, owner, 1280 px, bg
+- Steps: read the brand-colour help and the suggest button.
+- Expected: plain words (copy rules 2 and 8).
+- Saw: "Около 10% от видяното от гостите" and "Предложи по теория на цветовете".
+- Check: copy-rules 2
+- Evidence: `bg.json:1748`, `:1765`
+- Proposal: help "Цветът на марката ви: бутони, значки и акценти." / "Your brand colour: buttons, badges and accents."; button "Предложи цветове от марката" / "Suggest colours from my brand".
+- Status: confirmed
+- Verdict: confirmed · Severity: Polish · Effort: S · Decision: none · Needs Martin's yes: no · Fix: F-COPY
+
+## Fix plan
+
+| Bundle | Rows | Where | Flow |
+|---|---|---|---|
+| F-DSTATE: the Design page keeps exactly what the owner did | C3, C4, C5, C7, C8, C9, C10 | `apps/web/src/design/*`, `server/design/service.ts` | bug.md |
+| F-DPANEL: the Design panel and preview | S1, S2, S3, S4, S5, S6, S9, S10, S12, R2, R5 | `apps/web/src/design/*` | change.md, screen plan: an owner on a phone picks a Style and sees it (1 tap, 0 scrolls); an Advanced page shows its options (1 tap, 0 scrolls at 1280×800) |
+| F-FACE: the renderer | C6, S7, S11, R3 | `packages/faces/editorial-market/src/*`, shell env flag | template flow + template-review |
+| F-HOST: the guest host page | C1, C2, S13, R4 | `apps/web/src/guest/*`, `app/m/[...address]/page.tsx` | bug.md |
+| F-COPY: strings | S8, R1, R6 | `apps/web/messages/{bg,en}.json` | change.md |
+
+Tests named by the reviewer: `design-page.test.tsx`, `design-draft.test.ts`, `advanced.test.tsx`, `frame-stage.test.tsx`, `my-styles.test.tsx`; `face.test.tsx`, `renderer-rules.test.tsx`, `css.test.ts`; `guest-menu.test.tsx`, `load.test.ts`; a messages test (no owner string says "шаблон"/"template"; undo differs from cancel).
+
+### Polish table (all bundled above; Martin is not picking this round)
+
+| Row | What | Bundle |
+|---|---|---|
+| C7 | Current Style tap shows unsaved | F-DSTATE |
+| C8 | Read-only members see no option pictures | F-DSTATE |
+| C9 | Dead logo id written back (unreachable today) | F-DSTATE |
+| C10 | Every tile frame redrawn per keystroke | F-DSTATE |
+| S4 | Width switcher on a phone | F-DPANEL |
+| S5 | Blank preview with no loading word | F-DPANEL |
+| S9 | Grey swatch while "not chosen" | F-DPANEL |
+| S11 | Arrow wraps alone | F-FACE |
+| S12 | "Save as style" not seen as a control | F-DPANEL |
+| S13 | Dish open keeps the venue title | F-HOST |
+| R4 | "Menu" English pre-load title | F-HOST |
+| R5 | Sizes listed M, S, L | F-DPANEL |
+| R6 | Colour jargon | F-COPY |
+
+Reviewer could not see: C8 as a real member; C1 and C2 at a table (code only); S3's docked preview on a real device.
