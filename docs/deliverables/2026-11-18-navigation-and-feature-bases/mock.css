@@ -1,4 +1,4 @@
-/* MOCKUP ONLY. Throwaway styles for the navigation plan; nothing here ships. shadcn's look:
+/* MOCKUP ONLY. Throwaway styles for the navigation plan (revised 11-19); nothing here ships. shadcn's look:
    neutral greys, one accent, system/Inter font, 8 px radius. */
 :root {
   --bg: #ffffff; --muted: #f4f4f5; --border: #e4e4e7; --text: #18181b; --soft: #71717a;
@@ -35,7 +35,6 @@ a { color: inherit; }
 .entry .ic { width: 16px; text-align: center; color: var(--soft); font-size: 13px; }
 .entry.on .ic { color: var(--accent); }
 .entry .en { margin-left: auto; color: var(--soft); font-size: 11px; font-weight: 400; }
-.entry .dot { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 11px; display: grid; place-items: center; }
 .side .foot { margin-top: auto; border-top: 1px solid var(--border); padding-top: 8px; }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .crumb { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 20px; border-bottom: 1px solid var(--border); color: var(--soft); }
@@ -63,7 +62,6 @@ a { color: inherit; }
 .bar button { flex: 1; min-height: 58px; border: 0; background: none; font: inherit; font-size: 11px; color: var(--soft); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer; position: relative; }
 .bar button .ic { font-size: 17px; }
 .bar button.on { color: var(--accent); font-weight: 600; }
-.bar button .dot { position: absolute; top: 8px; left: 55%; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 .row2 { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
 .row2 button { flex: 1; min-height: 48px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); font: inherit; font-size: 15px; cursor: pointer; }
 .row2 button.on { background: var(--text); color: #fff; border-color: var(--text); }
@@ -80,3 +78,28 @@ a { color: inherit; }
 .grid4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 24px; width: min(1180px, 100%); }
 .grid4 .bar { border: 1px solid var(--border); border-radius: var(--radius); margin-top: 10px; }
 ul.links { line-height: 2; }
+
+/* revised 11-19: tonight's frame (title names the screen, ☰ opens the sheet) and the Later page */
+.trigger { border: 0; background: none; font-size: 18px; min-width: 44px; min-height: 44px; margin-left: -10px; cursor: pointer; color: var(--text); }
+.titlerow { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.titlerow .pub { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.addr { display: inline-block; margin-top: 6px; font-size: 12px; color: var(--soft); background: var(--muted); padding: 2px 6px; border-radius: 6px; }
+.select { display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 14px; }
+.select span { color: var(--soft); }
+.phone .crumb { padding: 0 12px; }
+.sheet.left { align-items: stretch; justify-content: flex-start; }
+.sheet.left > div { width: 288px; max-height: none; height: 100%; border-radius: 0; padding: 0; overflow: auto; }
+.sheet.left .side { width: 100%; min-height: 100%; border-right: 0; }
+.selbar { position: absolute; left: 50%; transform: translateX(-50%); bottom: 72px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / .12); padding: 8px 12px; font-size: 13px; white-space: nowrap; }
+.phone .bar { margin-top: auto; }
+.later-banner { background: #fef3c7; color: #78350f; border-bottom: 1px solid #fcd34d; padding: 10px 16px; font-size: 14px; }
+.later-block { width: min(1180px, 100%); margin: 0 auto 40px; padding: 16px; border: 2px dashed #f59e0b; border-radius: 12px; background: #fffbeb; }
+.later-block h2 { margin: 0 0 6px; font-size: 17px; }
+.later-block h2 small { font-weight: 400; color: var(--soft); font-size: 12px; margin-left: 8px; }
+.later-block .caption { max-width: none; }
+.card { display: flex; align-items: center; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); margin-bottom: 8px; color: var(--text); }
+.sw { margin-left: auto; width: 36px; height: 20px; border-radius: 10px; background: #d4d4d8; position: relative; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+.sw.on { background: var(--text); }
+.sw.on::after { left: 18px; }
+.views.fade { -webkit-mask-image: linear-gradient(to right, #000 80%, transparent); mask-image: linear-gradient(to right, #000 80%, transparent); }

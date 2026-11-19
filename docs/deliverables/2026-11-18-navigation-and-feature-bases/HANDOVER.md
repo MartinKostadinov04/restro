@@ -7,9 +7,13 @@ Kept current by the lane 6 session so a restart reuses what exists.
 - Step 0 security check: `docs/reviews/2026-11-18-screen-round/lane6-navigation/step0-security.md`.
 - "Before" screenshots: `before/`.
 
+## Done since
+- Step 0 code check: `docs/reviews/2026-11-18-screen-round/lane6-navigation/step0-code.md`.
+- Step 1 plan written (Fable, before the model change), first critique `critique.md` (Fable), plan revised by a fresh Opus planner (Martin 11-19: no more Fable).
+- Step 3: D154–D158 written as proposed and indexed.
+
 ## In progress
-- Step 0 code check: done, `docs/reviews/2026-11-18-screen-round/lane6-navigation/step0-code.md`.
-- Step 1 plan written (Fable, before the model change), critique written (`critique.md`, Fable). Revision by a fresh Opus planner in progress (Martin 11-19: no more Fable).
+- Second critique `critique-2.md` (fresh Opus, sees only the plan).
 
 ## Next
-Critique (independent Fable) → planner revises → D154–D158 (proposed) → build PR into `sr/foundation` → reviews (code-review high, security-review, pr-review-toolkit:review-pr) → persona walk with screenshots → tickets filed `needs-triage` → report.
+Fold in any Blocking point from `critique-2.md` → build PR into `sr/foundation` per the plan's "Tonight's build" → reviews (code-review high, security-review, pr-review-toolkit:review-pr; all Opus) → persona walk with screenshots (start web, worker and sim-pos only for the walk) → tickets filed `needs-triage` → rebase → report.

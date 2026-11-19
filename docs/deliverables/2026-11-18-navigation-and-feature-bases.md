@@ -1,14 +1,14 @@
 # The admin's navigation and its feature bases: plan
 
-Lane 6 of the 11-18 screen round. Planner's deliverable for Martin; nothing here is built. Mockups are beside this file (last section).
+Lane 6 of the 11-18 screen round. Planner's deliverable for Martin, revised on 11-19 against the independent critique (`2026-11-18-navigation-and-feature-bases/critique.md`) and the lane lead's constraint. Nothing here is built. Mockups are beside this file (last section).
 
 ## Summary
 
-1. Today a venue is one page with five tabs, up to nine sections under one of them, and views under two others: three levels, on a phone each behind a dropdown.
-2. Proposal: **the sidebar becomes the venue's own menu**, grouped by feature base: Menu, Ordering, Reservations, Song requests, Venue. The venues move to a switcher at its top. Never more than two levels: the sidebar says where, one row on the page says which view.
-3. **A feature base that is off is not drawn at all.** A venue with only the menu has four entries; each base adds its own group, its own screens and its own Settings.
-4. On a phone: a bottom bar with the service screens first and "Още / More". Staff see only what their role works; the shared tablet keeps its one row and loses the sidebar.
-5. Tonight's build is the move only (new addresses, old links redirect, no screen's inside changes, no migration). The per-venue switch and five more pieces are tickets.
+1. Today a venue is one page with five tabs, nine sections under one, views under two others: three levels, each a dropdown on a phone.
+2. **Tonight's build:** the sidebar becomes the open venue's own menu, grouped by module: Меню (Studio, Tables & QR), Поръчки (Tonight, its settings), Резервации (Reservations, its settings), Заведение (the venue's settings). Venues move to a switcher at its top. The venue's tab bar goes away; the page's title names the screen. **Every address stays as today**: no link, worker message or provider changes, no screen's inside moves.
+3. The bar tablet keeps today's screen (Тази вечер · Резервации) without the sidebar; its name in the top bar opens language, theme, sign-out.
+4. At 390 px: no bottom bar tonight (it collides with the Studio's selection bar); the same menu opens from ☰.
+5. **Later, as tickets:** modules switched per venue, the bottom bar, path addresses, staff seeing only their screens, opening inside the venue. Five decisions (154–158).
 
 ## Today: what is cluttered, and why
 
@@ -18,20 +18,17 @@ Walked from `docs/guides/admin-map.md` and the code that draws it.
 |---|---|
 | Sidebar | Every venue by name, All venues, New venue, the organisation's Settings, organisation switcher, user menu |
 | Venue tabs | Studio · Tables & QR · Tonight · Reservations · Settings |
-| Under Studio | Structure, Design (Design is a page of its own, without the sidebar); the Guest features card under Structure |
+| Under Studio | Structure, Design (Design is a page of its own, without the sidebar) |
 | Under Tonight | Actions and tables · Sent orders · Log · End of night |
 | Under Reservations | List · Plan · Guests |
 | Under Settings | General · Hours · Ordering · Reservations · Paying · Staff and roles · Alerts · Publish · Versioning |
 | Organisation Settings | General · Integrations · Deleted venues |
 
-What is wrong, concretely:
-
-- **Three levels in one page.** Venue → tab → section or view. Settings › Paying is 3 taps on a wide screen and 5 on a phone; opening a night for phones (Hours) is 8 on a phone.
-- **On a phone every level is a dropdown** (below 1024 px): two taps per switch, and the choices are hidden until opened. The manager moving from Tonight to Reservations mid-service pays 2 taps each way.
-- **One Settings holds three feature bases.** Hours, Ordering and Paying are ordering's; Reservations (with the whole plan editor inside it) is reservations'; the rest is the venue's or the menu's. Nine sections do not fit one row, so their icons are already dropped.
-- **Two things called Settings** (the organisation's in the sidebar, the venue's as a tab).
-- **Nothing says which feature base a screen belongs to.** Tonight and Reservations sit between Tables & QR and Settings as equal tabs; a venue that only wants the menu still gets all of it.
-- From the security check (`docs/reviews/2026-11-18-screen-round/lane6-navigation/step0-security.md`): a shared device still draws the organisation switcher and every venue (S1, S3), and any member can read Settings at any venue (S4).
+- **Three levels on one page:** venue → tab → section or view. Hours is 3 taps on a wide screen, 5 on a phone.
+- **On a phone every level is a dropdown** (below 1024 px): the choices are hidden until opened.
+- **One Settings holds three modules.** Hours, Ordering, Paying and Alerts serve ordering; Reservations (with the plan editor) serves reservations; the rest is the venue's. Nine sections do not fit one row; at 1280 px it already clips (`before/owner-desktop-settings.jpg`).
+- **Nothing says which module a screen belongs to.** Tonight and Reservations sit between Tables & QR and Settings as equal tabs.
+- **Step 0 found defects in the frame:** a shared device still draws the organisation switcher and every venue (S1, S3, C2); a waiter's "All venues" sends him back where he was (C4); the phone sheet stays open after a tap (C5); parameters of one tab leak into another (C1); arrow keys on the tab bar load every tab passed (C6); old links keep a stale address (C9).
 
 ## What others do
 
@@ -43,7 +40,7 @@ Vendor help pages, read on 11-18. "(snippet)" means only the search result was r
 | Left navigation; rarely used setup nested under a Settings entry of its own area | Toast Web | https://support.toasttab.com/en/article/New-Team-Navigation-Coming-to-Toast-Web?lang=en_US |
 | An add-on is a module in the same back office, with its own Settings ("Toast Web > Waitlist & Reservations > Settings") | Toast | https://support.toasttab.com/en/article/Getting-Started-Toast-Waitlist?lang=en_US |
 | Add-ons are switched on from one page and "not visible in your Square Dashboard until activated" | Square | https://squareup.com/help/us/en/article/8486-add-advanced-capabilities |
-| Staff use another surface than the owner: a PIN or passcode on a shared device; permissions belong to a job and are edited only in the back office | Toast, Square, me&u | https://support.toasttab.com/en/article/Assigning-User-Access-Permissions?lang=en_US , https://squareup.com/help/us/en/article/5822-employee-permissions , https://meandu.helpjuice.com/how-to-set-up-a-staff-pin- |
+| Staff use another surface than the owner; permissions belong to a job and are edited only in the back office | Toast, Square, me&u | https://support.toasttab.com/en/article/Assigning-User-Access-Permissions?lang=en_US , https://squareup.com/help/us/en/article/5822-employee-permissions , https://meandu.helpjuice.com/how-to-set-up-a-staff-pin- |
 | A missing navigation entry means the role lacks the permission | OpenTable (snippet) | https://support.opentable.com/s/article/Custom-roles-and-user-permissions?language=en_US |
 | Manager's phone: a bottom bar of up to four tools plus More; switch venue by tapping its name at the top | Square Dashboard app, Toast Now | https://squareup.com/help/us/en/article/5618-get-started-with-the-square-dashboard-app , https://support.toasttab.com/en/article/Get-Started-with-the-Toast-Now-App?lang=en_US |
 | A phone's bottom bar holds three to five destinations | Android design guide | https://developer.android.com/design/ui/mobile/guides/layout-and-content/layout-and-nav-patterns |
@@ -51,185 +48,232 @@ Vendor help pages, read on 11-18. "(snippet)" means only the search result was r
 | Never mix navigation tabs and in-page tabs in one control | NN/g | https://www.nngroup.com/articles/tabs-used-right/ |
 | The sidebar's header is the place for a workspace switcher; groups can collapse; on a phone it is a sheet | shadcn/ui Sidebar | https://ui.shadcn.com/docs/components/sidebar |
 
-The proposal below uses these and adds nothing of its own.
-
 ## The navigation
 
-**The rule: two levels.** The sidebar (or the phone's bar) says where you are; one row at the top of a page switches views of that same thing. Where a third level would appear, the second level becomes a sidebar entry.
+**The rule: two levels.** The sidebar says where you are; at most one row at the top of a page switches views of that same thing, and no row has more than four choices.
 
-### Entries
+**Words.** A *module* (in code, feature base) is a part of Restro a venue can have or not: ordering, reservations, later song requests. The menu is not a module; every venue has it. The interface word is "Модули / Modules" (K14); the glossary entry comes with the switch's ticket, because tonight's build shows the word nowhere.
 
-| Group | Entry (BG / EN) | Address | Views on the page (as today) | Who sees it |
-|---|---|---|---|---|
-| top | Venue switcher: the venue's name; inside it the other venues, Всички заведения / All venues, Ново заведение / New venue | — | — | Personal sign-ins. Never a shared device (S1, S3) |
-| Меню / Menu | Студио / Studio | `/venues/{v}/studio` | Structure (item sheet, Tags, Sold out) | Everyone but a staff-only sign-in and a shared device |
-| | Дизайн / Design | `/venues/{v}/design` (exists) | its own full page, as today | same |
-| | Маси и QR / Tables & QR | `/venues/{v}/tables` | — | same |
-| Поръчки / Ordering | Тази вечер / Tonight | `/venues/{v}/tonight` | Действия и маси · Поръчки · Дневник · Край на вечерта | A role with `tables.open_close` or `alerts.answer`; the shared device |
-| | Настройки / Settings | `/venues/{v}/ordering/settings` | Работно време · Поръчки · Плащане | Not staff-only; read-only without the right, as today |
-| Резервации / Reservations | Вечерта / The night | `/venues/{v}/reservations` | Списък · План · Гости | `reservations.tonight`; the shared device when its role holds it |
-| | Настройки / Settings | `/venues/{v}/reservations/settings` | one page (rules, closed dates, plan editor) | Not staff-only |
-| Заявки за песни / Song requests (not built) | Опашка / Request queue | `/venues/{v}/requests` | — | the DJ's role |
-| | Настройки / Settings | `/venues/{v}/requests/settings` | — | Not staff-only |
-| Заведение / Venue | Настройки / Settings | `/venues/{v}/settings` | Общи · Персонал и роли · Известия · Публикуване · Версии | Not staff-only |
-| foot | Организация / Organisation (its Settings), the user menu | `/settings/…` (unchanged) | General · Integrations · Deleted venues | Personal sign-ins |
+### The sidebar on a venue's page (tonight)
 
-A venue with everything has ten entries; a venue with only the menu has four. Each Settings entry sits under its group's label, so "Settings" always means "of this"; collapsed to icons, its tooltip reads "Резервации · Настройки".
+| Group (BG / EN) | Entry (BG / EN) | Opens (today's address) | Row of views on the page |
+|---|---|---|---|
+| top | Venue switcher: the venue's name; inside it the other venues, Всички заведения / All venues, Ново заведение / New venue | — | — |
+| Меню / Menu | Студио / Studio | `?tab=studio` | Структура · Дизайн (as today; Дизайн opens its own page) |
+| | Маси и QR / Tables & QR | `?tab=tables` | — |
+| Поръчки / Ordering | Тази вечер / Tonight | `?tab=tonight` | Действия и маси · Поръчки · Дневник · Край на вечерта |
+| | Настройки / Settings | `?tab=settings&section=hours` | Работно време · Поръчки · Плащане · Известия |
+| Резервации / Reservations | Резервации / Reservations | `?tab=reservations` | Списък · План · Гости |
+| | Настройки / Settings | `?tab=settings&section=reservations` | none (one section) |
+| Заведение / Venue | Настройки / Settings | `?tab=settings&section=general` | Общи · Персонал и роли · Публикуване · Версии |
+| Организация / Organisation | Настройки / Settings (as today) | `/settings` | General · Integrations · Deleted venues |
+| foot | Organisation switcher, user menu (as today) | — | — |
 
-### Per persona
+Addresses are relative to `/venues/{v}`. Seven entries for the venue. Each "Настройки" sits under its group's label; its tooltip and accessible name carry the group ("Настройки на поръчките"), so collapsed to icons or read by a screen reader it is never just "Settings" (K6). Design is not a sidebar entry: it stays the Studio's second view, so it keeps the open menu and its leave warning, and nothing is shown twice (K7).
+
+**Alerts move to Ordering's settings.** Everything they ring for (pauses, sent orders to check, money alerts, the end of the night) is ordering's. It also keeps every row at four or fewer (K8).
+
+**Off a venue's page** (`/venues`, the organisation's Settings, the guides) the sidebar is what it is today: the list of venues, All venues, New venue, the organisation. You pick a venue there, and inside it the sidebar becomes that venue's menu.
+
+### The page
+
+- **Top bar:** ☰ (opens or collapses the sidebar) and the breadcrumb `Заведения › Club Biad`; the Publish bar where it shows today (every screen but Tonight, never on a device).
+- **Title:** the screen's name ("Тази вечер", "Настройки на поръчките"), with the guest address under it as today. The venue is in the breadcrumb and the switcher: "Where am I?" is answered by both (`operational-screens.md`, wayfinding 1).
+- **One row** of views or sections under the title, as today (a dropdown below 1024 px, unchanged tonight). No group line, no repeated name (K16).
+
+### Per persona (tonight)
 
 | Persona | Desktop | 390 px phone |
 |---|---|---|
-| **Owner** (organisation owner or admin) | The whole sidebar. Opens on Studio, as today. | Bottom bar: Тази вечер · Вечерта · Студио · Дизайн · Още. "Още / More" opens the whole list as a sheet. The venue's name at the top opens the switcher. A menu-only venue: Студио · Дизайн · Маси и QR · Още. |
-| **Manager** (a venue role above staff) | The same groups; an entry whose right he lacks is read-only or absent, as today. | The same bar. |
-| **Waiter** (staff-only sign-in, own phone) | Only Тази вечер, and Вечерта if the role holds it. No Menu, no Settings. | The same one or two entries as the bar, plus his name (language, sign out). Lands as D141 says. |
-| **Door host** (own phone) | Вечерта, and Тази вечер if held. Lands on Вечерта (D141). | The same. |
-| **Shared tablet or phone** (D122 §7, D153) | **No sidebar, no venue list, no organisation switcher.** One row at the top: Тази вечер · Вечерта. Exactly today's screen. | The same row. |
+| **Owner, admin** | The whole sidebar; the switcher has the other venues, All venues, New venue. Opens on Studio, as today. | The same menu in the sheet behind ☰. |
+| **Manager or any member on their own sign-in** | The same entries as today's tabs: Резервации only with `reservations.tonight`; settings read-only where their role lacks the right, as today. No New venue. | Same. |
+| **Staff-only sign-in** (waiter, door host) | Lands as D141 says. Same entries as today; the switcher shows only the venue's name (no All venues, no Restro link, no "Заведения" crumb: C4). Hiding Studio and Settings from staff is D157, not tonight. | Same. |
+| **Shared device** (D122 §7, D153) | **No sidebar, no venue list, no organisation switcher.** Today's row of two: Тази вечер · Резервации (the second only where the device's role holds it). The top bar shows the venue's name and, on the right, the device's name; tapping it opens Език / Language, Тема / Theme, Изход / Sign out (K2). | Same. |
 
-The bar's rule: the service screens of the bases that are on, then the Menu's entries, four at most, then Още. Setup screens live under Още: they are desk work. The row of views on a page scrolls sideways on a phone instead of turning into a dropdown.
+### Taps, today and tonight
 
-### Taps, today and new
+Counted from inside the venue (the Studio open), as the admin map counts: wide / phone.
 
-Counted as the admin map counts: an owner, from the venues list, "Open" is tap 1. Wide / phone.
-
-| Story: reach… | Today | New | |
+| Reach… | Today | Tonight | |
 |---|---|---|---|
-| Studio › Structure | 1 / 1 | 1 / 1 | = |
-| Design | 2 / 3 | 2 / 2 | phone −1 (3 once three bases are on) |
-| Tables & QR | 2 / 3 | 2 / 3 | = (2 with one base or none) |
-| Tonight | 2 / 3 | 2 / 2 | phone −1 |
-| Tonight › Sent orders | 3 / 4 | 3 / 3 | phone −1 |
-| Tonight › Log | 3 / 4 | 3 / 3 | phone −1 |
-| Tonight › End of night | 3 / 4 | 3 / 3 | phone −1 |
-| Reservations, the night | 2 / 3 | 2 / 2 | phone −1 |
-| Reservations › Plan | 3 / 4 | 3 / 3 | phone −1 |
-| Reservations › Guests | 3 / 4 ¹ | 3 / 3 | phone −1 |
-| Hours (open a night for phones) | 3 / 5 | 2 / 3 | −1 / −2 |
-| Ordering rules | 3 / 5 | 3 / 4 | phone −1 |
-| Paying | 3 / 5 | 3 / 4 | phone −1 |
-| Reservation settings and the plan editor | 3 / 5 | 2 / 3 | −1 / −2 |
-| Staff and roles | 3 / 5 | 3 / 4 | phone −1 |
-| Alerts | 3 / 5 | 3 / 4 | phone −1 |
-| Venue › General (menus) | 2 / 3 | 2 / 3 | = |
-| Versioning | 3 / 5 | 3 / 4 | phone −1 |
-| Move between Tonight and Reservations mid-service | 1 / 2 | 1 / 1 | phone −1 |
-| Publish (from a menu screen) | 2 / 2 | 2 / 2 | = |
-| Organisation Settings | 1 / 2 | 1 / 2 | = |
-| Switch to another venue | 1 / 2 | 2 / 2 | **wide +1** |
-| Staff sign-in to its screen; shared tablet to Reservations | 0; 1 | 0; 1 | = |
+| Tonight; Reservations | 1 / 2 | 1 / 2 | = |
+| Tonight › Log | 2 / 4 | 2 / 4 | = |
+| Hours (open a night for phones) | 2 / 4 | 1 / 2 | −1 / −2 |
+| Reservation settings and the plan editor | 2 / 4 | 1 / 2 | −1 / −2 |
+| Paying, Alerts, Staff and roles, Versioning | 2 / 4 | 2 / 4 | = |
+| Venue › General (menus) | 1 / 2 | 1 / 2 | = |
+| Move between Tonight and Reservations | 1 / 2 | 1 / 2 | = |
+| Another venue | 1 / 2 | 2 / 3 | **+1** |
+| Staff sign-in to its screen; the tablet to Reservations | 0; 1 | 0; 1 | = |
 
-¹ The map says 2 / 3 for Guests; it is a view like Plan, so I count 3 / 4.
+Tonight's gain is order, not taps: two levels, settings split by module, a title that names the screen, and two settings one tap closer. Switching venue gets one tap longer. The phone's real cut comes with the bottom bar ticket (Tonight and Reservations at 1 tap); D158 takes one more tap off for a one-venue owner.
 
-On a wide screen little gets shorter; the gain is on the phone and in two levels instead of three. Switching venue on a wide screen gets one tap longer. Every story that starts on a screen (the map's §2: hide an item, take a waiter call, answer a money row) is unchanged, because no screen's inside moves. With decision 5 below, every owner row drops one more tap for a one-venue organisation.
+## Modules (feature bases), later
 
-## Feature bases
+**The menu is what every venue has** (Studio, Tables & QR, Publish). **Ordering, reservations and song requests are modules:** each switched on per venue, each owning one sidebar group, its screens, its settings, its rights and its folder. Off means not drawn and refused: no entry, no settings, and the pages, actions and commands of an off module refuse (K12a). Switching off deletes nothing.
 
-**The menu is the base every venue has** (Studio, Design, Tables & QR, Publish). **Ordering, reservations and song requests are feature bases:** each is switched on per venue, and each owns one sidebar group, its screens, its Settings, its rights and its folder. Off means not drawn: no entry, no settings, no dead link. Nothing is deleted by switching off.
+| Venue | Sidebar groups |
+|---|---|
+| Menu only | Меню · Заведение |
+| + Ordering | + Поръчки |
+| + Reservations | + Резервации |
+| + Song requests | + Заявки за песни (Опашка, Настройки) |
 
-| Venue | Sidebar | Phone bar |
+**Today** `venues.settings.guest_features` (published) says what a guest is offered; it is no admin switch. Reservations have no venue switch at all.
+
+**The switch (ticket 2):** `venues.settings.feature_bases = { ordering, reservations, song_requests }` beside it; JSON, so no migration. One writer in `core/apply` (`setFeatureBases`, shaped like `setGuestFeatures`; rule 1), never published (rules 3, 4). No key reads as today; a new venue starts menu-only. Refused: ordering off while the live menu offers ordering, the bill, paying or a waiter call; reservations off while bookings are to come (K12b); ordering on where the integration layer says the source cannot take orders onto a bill, never read from a POS name (K12c). Switched in Venue › Settings › Модули.
+
+**One list in code:** tonight's `venue-nav-defs.ts`. The switch adds one condition per group; a new module is one block plus its pages.
+
+**Song requests (T82, D99, D100):** group Заявки за песни; screens in `src/requests/`; commands through `applyService` (rule 1); money from the worker only (D127); the guest's queue a published live file (rule 4); rights `requests.queue`, `settings.requests`. The DJ's role holds only `requests.queue`, and D141's landing sends him there.
+
+## Tonight's build (one pull request into `sr/foundation`, no migration, no new page, no address changed)
+
+**What it is:** chrome over today's addresses. The page keeps its guards (tenant 404, shared-device redirect, rights); the sidebar is never a guard. Model: Opus. Paths are under `apps/web/`.
+
+**Files to change**
+
+| # | File | Change |
 |---|---|---|
-| Menu only | Menu (3) · Venue Settings | Студио · Дизайн · Маси и QR · Още |
-| + Ordering | + Ordering: Тази вечер, Настройки | Тази вечер · Студио · Дизайн · Маси и QR · Още |
-| + Reservations | + Reservations: Вечерта, Настройки | Тази вечер · Вечерта · Студио · Дизайн · Още |
-| + Song requests | + Song requests: Опашка, Настройки | Тази вечер · Вечерта · Опашка · Студио · Още |
+| 1 | `src/components/admin/workspace-tab-defs.ts` | `SETTINGS_MODULE_OF`: `hours`, `ordering`, `paying`, `alerts` → `ordering`; `reservations` → `reservations`; `general`, `staff`, `publish`, `versioning` → `venue`. Section defs reordered general, staff, publish, versioning, hours, ordering, paying, alerts, reservations. `settingsSectionsOf(hasTill, rights, module?)`; `FIRST_SECTION_OF = { ordering: 'hours', reservations: 'reservations', venue: 'general' }`. `canonicalVenueQuery(query, rights, hasTill)`: `integration` → `settings&section=general`, `publishing` → `settings&section=publish` (general without a till), an unoffered tab or section → its default; keeps only what the target reads (studio `menu`, `item`; tonight `view`, `day`; reservations `view`, `day`, `guest`; settings `section`, `connection`). Unit table of every old link incl. `composer`, `sub=design`, `connection=return` (C1, C9). |
+| 2 | new `src/components/admin/venue-nav-defs.ts` + test | The groups and entries above: label key, icon, `href(venueId)`, `isActive(tab, section)` from resolved values, `shows(viewer)`. Unit table: every entry × owner, member, staff-only, member without `reservations.tonight`. |
+| 3 | `src/components/admin/venue-nav.tsx` | On `/venues/{v}`: the switcher and the groups, `aria-current="page"` on the open entry. Elsewhere: today's venue list. Switcher items link to `/venues/{id}` keeping only `tab` and `section` (C1), and keep `data-testid="venue-nav-item"`. |
+| 4 | `src/components/admin/app-sidebar.tsx` | Header: the switcher on a venue page, today's Restro link elsewhere (no link for staff-only, C4). Every entry's click closes the phone sheet (C5). Organisation Settings tooltip "Настройки на организацията". |
+| 5 | `app/(admin)/layout.tsx` | Shared device: no sidebar, no venue or organisation list (S1, S3, C2); the device's name and venue go to the top bar. Otherwise: each venue with `reservations` (`reservationsOffered`) and the staff-only landing venue (`staffLandingVenue`), in one `Promise.all`. Here, not a venue layout, because this layout draws the sidebar and a child cannot hand it data without moving the sidebar into three layouts (ticket 1 revisits). A rights change shows after a reload; the page still refuses. |
+| 6 | `app/(admin)/venues/[venueId]/page.tsx` | Redirect to `canonicalVenueQuery` when `tab` or `section` is present and differs. Personal sign-in: only the open screen, no `WorkspaceTabs`, in a `Suspense` keyed by screen; title = the screen's name; breadcrumb `Заведения › {venue}` (`{venue}` alone for staff-only); Settings' row filtered to the open section's module. Shared device: unchanged (`WorkspaceTabs` device mode). |
+| 7 | new `app/(admin)/venues/[venueId]/loading.tsx` | The frame's skeleton, so a sidebar tap answers at once (K18). |
+| 8 | `src/components/admin/workspace-tabs.tsx` | `SettingsSections` takes `module`; `useUrlTab` takes parameters to drop (the section row drops `connection`); `activationMode="manual"` (C6, C7); `WorkspaceTabs` kept for the device only. |
+| 9 | `src/components/admin/admin-header.tsx` | On a device: no ☰; the device's name on the right opens the user menu's items (K2). |
+| 10 | `src/components/admin/user-menu.tsx` | Items (language, theme, sign out) become `UserMenuItems`, used by the sidebar foot and the device's top bar. |
+| 11 | `src/server/staff/shared-device.ts` | `sharedDeviceOf({ tenantId, sessionId })` → `{ venueId, name } \| null`, in `cache()`. |
+| 12 | `src/server/actions.ts` | `switchOrganization` refuses a device session (S1); attack row in `src/server/security/shared-device-admin.test.ts`. |
+| 13 | `messages/bg.json`, `messages/en.json` | The strings below. |
+| 14 | `docs/guides/admin-map.md` | Sidebar entries and taps (D123). |
+| 15 | e2e specs `admin`, `composer`, `design`, `integration`, `navigation`, `owner-paying`, `owner-reservations`, `reservations`, `tonight`, `venue-phone`, `venue-lifecycle` | Clicks on the venue tab bar become sidebar links; tab counts and "venue name is the h1" move to the sidebar and breadcrumb; `venue-phone`'s device has no sheet. No URL changes. |
 
-### How it is implemented
+**Who sees each entry** (rights that exist today; the page decides again)
 
-**What exists today** (looked up before proposing anything):
+| Entry | Owner, admin | Member on own sign-in (incl. staff-only) | Shared device |
+|---|---|---|---|
+| Switcher with other venues, All venues | yes | yes; staff-only: the name alone | — |
+| New venue | yes | — | — |
+| Студио, Маси и QR | yes | yes (read-only where today) | — |
+| Тази вечер | yes | yes | row |
+| Резервации | with `reservations.tonight` | same | row, same right |
+| Поръчки › Настройки | yes | yes; read-only without `settings.guards` | — |
+| Резервации › Настройки | yes | yes; read-only without `settings.reservations` | — |
+| Заведение › Настройки | yes | yes | — |
+| Организация › Настройки | yes | yes (as today) | — |
 
-- `venues.settings.guest_features` (a JSON value on the venue, written only by core's `setGuestFeatures`, published with the menu): `filters`, `call_waiter`, `bill`, `ordering`, `pay`. These say what a **guest** is offered. They are not a switch for the admin: Tonight shows at every venue.
-- Reservations have no venue switch at all: the tab shows to anyone holding `reservations.tonight` (`reservationsOffered`).
-- Paying shows where the POS can take cards (`payingOffered`); Publish settings where the venue has a POS.
+**Each module's Settings row**
 
-**The switch:** a new key beside the existing one, `venues.settings.feature_bases = { ordering, reservations, song_requests }`. The column is already JSON, so **no migration**. It is the venue's data, so it gets one writer in `core/apply` (`setFeatureBases`, the shape of `setGuestFeatures`; rule 1) and a pure reader. It is admin-side only: it is not published, so the snapshot and the faces do not change (rules 3, 4). Guest features stay the guest's side and keep their Publish.
-
-- **A venue with no key reads as today:** ordering on, reservations on, song requests off. Nobody loses a screen on the day this ships. A new venue starts with the menu only.
-- **Switching off is refused while guests can still use it:** ordering cannot go off while the live menu offers ordering, the bill, paying or a waiter call ("Turn these off and publish first"). Our layers only make things more cautious (rule 5); the admin never hides a screen staff still need.
-- **Where the owner switches:** Venue › Settings gets a section Функции / Features, one card per base with what it adds and one switch (Square's "Add more" page). Needs `settings.roles`' holder or the organisation's owner: Martin's call, decision 2.
-
-**One list in code.** `apps/web/src/components/admin/venue-nav-defs.ts` declares the groups and entries once (the base, the address, the label, the icon, the right that shows it, whether a shared device may have it). The sidebar, the phone bar, the shared device's row, the landing and the old-link redirects all read it. A new base is one block there plus its pages.
-
-**Rights.** No new right for the move. An entry shows by the rights that exist; the page checks again (a link is never the guard). Staff-only is `holdsStaffRightsOnly`, which exists.
-
-**Three layers and nine rules.** All of this is the platform layer: no POS name, no POS field. No write path is added except the one `core/apply` writer. Nothing reads the database for a guest. No rule is touched.
-
-**Song requests (plan only; T82, D99, D100).** They plug in as the fourth block of the list: group Заявки за песни, pages `/venues/{v}/requests` and `/requests/settings`, screens in `apps/web/src/requests/`, commands through `applyService` in `core/service/requests/` (rule 1), money through the payment provider from the worker only (D127), the guest's queue as a published live file (rule 4), a guest feature `song_requests` that declares it needs no table (D100), rights `requests.queue` and `settings.requests`. The DJ is a role holding only `requests.queue`: one entry, and D141's landing order sends him to it.
-
-## Tonight's build (one pull request, no migration, no inside redesigned)
-
-**New addresses** (each page renders the screen component that exists, unchanged):
-
-| New | Renders | Old link that redirects to it |
+| Module | `?section=` values, in order | Shown when |
 |---|---|---|
-| `/venues/{v}` | redirect: an old `?tab=` to its new address with every other parameter kept; else staff as D141, others to Studio | — |
-| `/venues/{v}/studio` | `ComposerTab` | `?tab=studio`, `?tab=composer`, no tab |
-| `/venues/{v}/tables` | `TablesTab` | `?tab=tables` |
-| `/venues/{v}/tonight` | `TonightTab` (`?view`, `?day`) | `?tab=tonight…` |
-| `/venues/{v}/reservations` | `ReservationsTab` (`?view`, `?day`, `?guest`) | `?tab=reservations…` |
-| `/venues/{v}/ordering/settings` | `OrderingSection` hours / ordering, `PayingSection` (`?section`, `?connection`) | `?tab=settings&section=hours\|ordering\|paying` |
-| `/venues/{v}/reservations/settings` | `ReservationsSection` | `…&section=reservations` |
-| `/venues/{v}/settings` | General, Staff, Alerts, Publish, Versioning (`?section`) | `?tab=settings`, other sections, `?tab=integration\|publishing` |
+| Поръчки | `hours`, `ordering`, `paying`, `alerts` | `paying`: the POS can take cards; `alerts`: `settings.alerts` |
+| Резервации | `reservations` | always (one section: no row) |
+| Заведение | `general`, `staff`, `publish`, `versioning` | `staff`: `settings.roles`; `publish`: the venue has a till |
 
-`/venues/{v}/design`, the print sheet, `/venues`, `/settings/…` stay.
+**Strings to add** (existing ones reused: `workspace.tabs.*`, `nav.allVenues`, `nav.newVenue`, `nav.venues`, `nav.organization`, `nav.settings`)
 
-**Files.**
-- `app/(admin)/venues/[venueId]/page.tsx` shrinks to the redirects; seven new `page.tsx` beside it, sharing a new `components/admin/venue-frame.tsx` (the breadcrumb, the venue's name, the Publish bar where it shows today).
-- `workspace-tab-defs.ts` → `venue-nav-defs.ts` (entries, groups, the three section lists, `legacyTarget()`); `workspace-tabs.tsx` keeps `UrlTabs` and `useUrlTab` for views and sections, loses `WorkspaceTabs`, and its row scrolls at every width (no dropdown).
-- `venue-nav.tsx` becomes the venue switcher plus the groups; `app-sidebar.tsx` draws them; new `venue-bottom-bar.tsx` (below 768 px). The open venue's rights reach the sidebar through a parallel route slot (`app/(admin)/@nav/`), or, simpler for a handful of venues, are read in the admin layout: the lead picks.
-- `server/tonight/landing.ts` returns the new addresses; a new `server/venue-bases.ts` answers `{ordering: true, reservations: true, songRequests: false}` until ticket 1 gives it the stored value.
-- Shared device: the admin layout draws no sidebar and passes no venue list or organisation list (S1's surface, S3).
-- The 37 `tab=` links in 27 source files and about 50 test files move to the new addresses; `messages/bg.json` and `en.json` get the group labels, "Още / More", "Смени заведението / Switch venue"; `docs/guides/admin-map.md` is rewritten in the same change (D123).
-- Landing: `/` and sign-in open the only venue when the organisation has one (decision 5); `/venues` itself never redirects an owner.
+| Key | BG | EN |
+|---|---|---|
+| `nav.groups.menu` | Меню | Menu |
+| `nav.groups.ordering` | Поръчки | Ordering |
+| `nav.groups.reservations` | Резервации | Reservations |
+| `nav.groups.venue` | Заведение | Venue |
+| `nav.settingsOf.ordering` | Настройки на поръчките | Ordering settings |
+| `nav.settingsOf.reservations` | Настройки на резервациите | Reservation settings |
+| `nav.settingsOf.venue` | Настройки на заведението | Venue settings |
+| `nav.settingsOf.organization` | Настройки на организацията | Organisation settings |
+| `nav.switchVenue` | Смени заведението | Switch venue |
+| `nav.venueNav` | Навигация в заведението | Venue navigation |
+| `nav.deviceMenu` | Език, тема и изход | Language, theme and sign out |
 
-**Stays:** every screen's inside, the Guest features card under Structure, the Publish bar's rules, the Design page, the organisation's Settings, all rights, all data.
+**Stays:** every screen's inside, the Studio's Structure · Design row, the Design page, the Publish bar's rules, the Guest features card, the organisation's Settings, every right, every address, the worker's push link (`?tab=tonight&view=log`) and the provider's return address (`?tab=settings&section=paying&connection=return`).
+
+**Checked at review:** both themes; `aria-current` on the open entry; the sheet's focus held with Esc; 44 px entries on a phone; the persona walk as owner, waiter, door host and tablet at 390 px and 1280 px.
 
 ## Tickets (everything else)
 
-Each ends with the `ship.md` §1 block. Stage branch `sr/foundation`.
+Each ends with the `ship.md` §1 block; branches from and pull requests into `sr/foundation`. "Decision 15x" means the proposal below until its file exists.
 
-**1. The feature-base switch.** `core/apply`: `setFeatureBases` and `readFeatureBases` over `venues.settings.feature_bases`, defaults and the refusal above; Venue › Settings › Функции / Features; `server/venue-bases.ts` reads it; a new venue starts menu-only.
-- **Model:** Fable (core write path) · **Codes it:** lead · **Branch:** `sr/nav-feature-bases` from `sr/foundation`; pull request into `sr/foundation` · **Read:** D71, D100, D155, rule 1 and 5; `packages/core/src/apply/guest-features.ts` · **Stop and ask if:** a default would hide a screen a venue uses today · **Menu functionality:** none · **Screen:** the plan below; `operational-screens.md`.
-- *Screen plan.* **Stories:** "As an owner I want to switch reservations on for my club, so that its screens appear": target 3 wide / 4 phone (Settings, Features, the switch; saves at once with Undo). **Place:** Venue › Settings, last section. **Pattern:** a single reversible write; a refusal is the error toast naming the fix. **Primary action:** none (switches). **States:** all off; a base refused; a member without the right (read-only line); a POS venue n/a; longest BG text "Заявки за песни". **Strings:** Функции / Features; Поръчки на масата и Тази вечер / Ordering at the table and Tonight; Резервации, планът и гостите / Reservations, the plan and the guests; Първо изключете функциите за гости и публикувайте. / Turn the guest features off and publish first.
+**1. Path addresses.** `/venues/{v}/studio`, `/tables`, `/tonight`, `/reservations`, `/ordering/settings`, `/reservations/settings`, `/settings`, each rendering today's screen; old `?tab=` links redirect through `canonicalVenueQuery`. One `venuePageGuard()` every venue page calls (tenant 404, device, staff-only, module off) and one test table of every venue address × (other tenant, device, staff-only, no `reservations.tonight`), written before the pages (K1). One `venuePath()` every link calls, including the worker's push link (`apps/worker/src/alerts/deliver.ts:89`) and the provider's return (`apps/web/src/server/settings/paying-addresses.ts:8`). A `loading.tsx` per page; whether the sidebar moves into a venue layout.
+- **Model:** Opus · **Codes it:** agent session · **Branch:** `sr/nav-paths` · **Read:** D97, D122 §7, D141, D154, step 0's S2 · **Stop and ask if:** a link outside `apps/web` names a venue address · **Menu functionality:** none · **Screen:** none (same screens).
 
-**2. Guest features go to their bases.** Split the card: filters stay in Studio; call a waiter, the bill, ordering and paying move to Ordering › Settings as a section "За гостите / For guests", saving at once with Undo (closes the pattern list's divergence).
-- **Model:** Sonnet · **Codes it:** agent · **Branch:** `sr/nav-guest-features` · **Read:** D71, D72, D129, D155 · **Stop and ask if:** a switch would reach guests without Publish · **Menu functionality:** none · **Screen:** plan: story "switch a guest feature" today 2, target 1; place Ordering › Settings; pattern row 1; states as the card has today; no new strings but the section's name.
+**2. The module switch.** The section "Modules" above: writer, reader, defaults, three refusals; an off module's pages, actions and `applyService` commands refuse through ticket 1's guard (K12a); Venue › Settings › Модули; glossary "Module / Модул".
+- **Model:** Opus (core write path) · **Codes it:** agent session · **Branch:** `sr/nav-modules` · **Read:** D64, D71, D100, D122 §7, D155, rules 1 and 5, `packages/core/src/apply/guest-features.ts` · **Stop and ask if:** a default would hide a screen a venue uses today · **Menu functionality:** none · **Screen:** plan below; `operational-screens.md`.
+- *Screen plan.* **Story:** "As an owner I want to switch reservations on for my club, so that its screens appear": 2 wide / 3 phone. **Place:** Venue › Settings › Модули, last. **Pattern:** reversible write with Undo; a refusal is the error toast naming the fix. **Primary action:** none. **States:** all off; each refusal; no right (read-only line); hand-made venue (Ordering says why it is off); longest BG "Заявки за песни". **Strings:** Модули / Modules; Поръчки на масата и Тази вечер / Ordering at the table and Tonight; Резервации, планът и гостите / Reservations, the plan and the guests; Първо изключете функциите за гости и публикувайте. / Turn the guest features off and publish first.; Има резервации за идните вечери. / There are reservations for nights to come.; Това заведение не може да приема поръчки по сметка. / This venue cannot take orders onto a bill.
 
-**3. Settings are readable only where you work (S4).** The read side of every settings page takes the actor; a member with no role at the venue gets the 404; staff-only gets none of them.
-- **Model:** Fable (rights) · **Codes it:** lead · **Branch:** `sr/nav-settings-read` · **Read:** D97, D141, D157, the security check · **Stop and ask if:** an owner's read changes · **Menu functionality:** none · **Screen:** none.
+**3. Guest features go to their modules.** Filters stay in Studio; call a waiter, the bill, ordering and paying move to Ordering's settings as "За гостите / For guests", saving at once with Undo.
+- **Model:** Sonnet · **Codes it:** agent session · **Branch:** `sr/nav-guest-features` · **Read:** D71, D72, D129, D155 · **Stop and ask if:** a switch would reach guests without Publish · **Menu functionality:** none · **Screen:** story "switch a guest feature" 2 → 1; place Ordering › Settings; pattern row 1; states as today's card; string За гостите / For guests.
 
-**4. One folder per feature base, and a rule that keeps them apart.** Move `src/settings/` files to `src/ordering/settings/`, `src/reservations/settings/`, `src/venue-settings/`; a dependency-cruiser rule: a base's folder never imports another base's.
-- **Model:** Sonnet for the move · **Codes it:** agent, the guardrail by the lead (D67) · **Branch:** `sr/nav-base-folders` · **Read:** CLAUDE.md import boundaries · **Stop and ask if:** two bases truly share a screen · **Menu functionality:** none · **Screen:** none.
+**4. Who opens what (D157).** Staff-only sign-ins see and open only their service screens; the rest refuse through ticket 1's guard (K11). Settings and the Studio need a role at that venue (S4).
+- **Model:** Opus (rights) · **Codes it:** agent session · **Branch:** `sr/nav-who-opens` · **Read:** D97, D141, D157, `step0-security.md` · **Stop and ask if:** an owner's or admin's reach changes · **Menu functionality:** none · **Screen:** none.
 
-**5. Open in the venue you used last** (organisations with several venues): a cookie with the last venue; `/` opens it; "All venues" stays in the switcher.
-- **Model:** Sonnet · **Codes it:** agent · **Branch:** `sr/nav-last-venue` · **Read:** D141, D158 · **Stop and ask if:** a venue the person lost access to is remembered · **Menu functionality:** none · **Screen:** none.
+**5. The phone's bottom bar** (below 768 px). The on modules' service screens in D141's landing order (Резервации, Тази вечер, later Опашка), then Студио, then Още; four before Още. Design and every Settings under Още, which lists only what the bar lacks (K7, K17). Under two destinations, no bar (K10). Studio's slot moves as modules switch on (K19). The selection bar (`composer/selection-bar.tsx:56`) sits above the bar (K9). View rows scroll with a cut-off last label, a fade, the open view in sight, arrow keys (K8). In `e2e/touch-targets.spec.ts`; WCAG 2.4.11.
+- **Model:** Sonnet · **Codes it:** agent session · **Branch:** `sr/nav-phone-bar` · **Read:** D123, D154, `operational-screens.md` · **Stop and ask if:** another floating control collides · **Menu functionality:** none · **Screen:** story "reach Tonight or Reservations mid-service" 2 → 1 (Square Dashboard, Toast Now); every venue page below 768 px; states: one, two, five destinations; string Още / More.
 
-**6. Song requests' place (docs only).** Amend T82 and T81 in the tracker with the plug-in contract of this plan, so the port starts from it.
-- **Model:** Haiku · **Codes it:** agent · **Branch:** `docs/nav-song-requests-place` · **Read:** D99, D100, D155 · **Menu functionality:** none · **Screen:** none.
+**6. Open inside the venue (D158).** One venue: `/` and sign-in open it; several: the last used (a cookie), never one the person lost.
+- **Model:** Sonnet · **Codes it:** agent session · **Branch:** `sr/nav-last-venue` · **Read:** D141, D158 · **Stop and ask if:** a staff landing would change · **Menu functionality:** none · **Screen:** none.
 
-## Decisions for Martin (proposed; they become D154–D158)
+**7. One folder per module.** First what reservations and Tonight share (`useWho`, the day picker, the live feed) moves to `src/service/` (K13); then `src/ordering/`, `src/reservations/`, `src/venue-settings/`; then a dependency-cruiser rule: no module imports another.
+- **Model:** Sonnet · **Codes it:** agent session; the rule by the lead (D67) · **Branch:** `sr/nav-module-folders` · **Read:** CLAUDE.md import boundaries · **Stop and ask if:** two modules truly share a screen · **Menu functionality:** none · **Screen:** none.
 
-**D154. The sidebar is the venue's menu; the venues move to a switcher** (refines D74, D97). The sidebar lists the open venue's screens in groups; the venue's name at its top switches venue. A page has at most one row of views. *Recommend yes.* It undoes your 10-11 choice ("bring venues to the sidebar and keep the tabs"): then a venue had three tabs, now it has five and nineteen screens under them. Cost: switching venue is one tap longer on a wide screen.
+**8. Step 0's rest.** C8 (`not-found.tsx`, `error.tsx` in the frame), C10, C11, S2 (organisation Settings pages check for a device through one helper), a device's `/venues` lists only its venue.
+- **Model:** Sonnet · **Codes it:** agent session · **Branch:** `sr/nav-step0-rest` · **Read:** `step0-code.md`, `step0-security.md` · **Stop and ask if:** an owner would see less · **Menu functionality:** none · **Screen:** none.
 
-**D155. Ordering, reservations and song requests are feature bases, switched on per venue.** The menu is the base every venue has. A base that is off is not drawn anywhere. Switching off deletes nothing and is refused while guests can still use it. Existing venues keep what they have; a new venue starts with the menu. *Recommend yes;* the open half is who may switch (I recommend the organisation's owner).
+**9. Song requests' place (docs).** Amend T82 and T81 in the tracker with this plan's contract.
+- **Model:** Haiku · **Codes it:** agent session · **Branch:** `docs/nav-song-requests-place` · **Read:** D99, D100, D155 · **Menu functionality:** none · **Screen:** none.
 
-**D156. Each feature base has its own Settings** (refines D97). Ordering: Hours, Ordering, Paying. Reservations: rules, closed dates, the plan editor. Venue: General, Staff and roles, Alerts, Publish, Versioning, Features. *Recommend yes* (Toast does exactly this). The alternative, one Settings page with headings per base, keeps nine sections in one place.
+## Decisions for Martin (154–158)
 
-**D157. A person sees only the entries their role works** (refines D141, D122 §7). A staff-only sign-in sees Tonight and/or The night and nothing else. A shared device has one row and no sidebar, venue list or organisation switcher. Settings are read only by people with a role at that venue (S4). On a phone the admin has a bottom bar: service screens first, then Studio, then More. *Recommend yes.* It takes away the read-only look a waiter has at the Studio and Settings today.
+The lead assigned these numbers. They are written without the "D" until their files exist, because the decisions guard fails CI on a cited number with no file.
 
-**D158. Restro opens inside the venue** (extends D141's landing to owners). With one venue, sign-in opens it; with several, the one used last; "All venues" stays one tap away in the switcher. The owner's first screen stays the Studio. *Recommend yes:* one tap off every story for a one-club owner.
+**154. The admin is organised around the open venue** (replaces D74; refines D97's tab list). The sidebar lists the open venue's screens grouped by module; the venue's name at its top switches venue; a page has at most one row of views, four at most. On a phone the same menu opens from ☰ now, and a bottom bar follows (ticket 5). *Recommend yes.* It undoes your 10-11 choice ("bring venues to the sidebar and keep the tabs"): then a venue had three tabs, now five tabs and twenty screens. Cost: switching venue is one tap longer.
+
+**155. Ordering, reservations and song requests are modules, switched on per venue.** Off means not shown and refused; nothing is deleted; switching off is refused while guests can still use it or bookings are to come; existing venues keep what they have, a new venue starts with the menu. Who switches: *recommend the organisation's owner*, with Restro's team able to do it for him. The alternative is Restro's team only, as a paid add-on would be (Square).
+
+**156. Each module has its own Settings.** Ordering: Hours, Ordering, Paying, Alerts. Reservations: rules, closed dates, the plan editor. Venue: General, Staff and roles, Publish, Versioning. *Recommend A, grouped* (built tonight; Toast does this): each group has its screen and its "Настройки". B, flat: one entry per module (Тази вечер, Резервации) with a "Настройки" button on that screen, and one "Настройки" for the venue: six entries instead of seven, no repeated word, but a module's settings hide behind its service screen, which a shared device cannot open. Both are on the mockups.
+
+**157. A person opens only what their role at that venue works** (refines D141, D97). A staff-only sign-in sees and opens Tonight and/or Reservations and nothing else; the Studio, Tables & QR and every Settings refuse him. The venue's Settings are readable only by people with a role at that venue (step 0's S4: today any member reads any venue's settings). *Recommend yes,* refused rather than hidden: hidden only is cosmetic.
+
+**158. Restro opens inside the venue** (extends D141's landing to owners). One venue: sign-in opens it; several: the one used last; All venues stays in the switcher. *Recommend yes:* one tap off every story for a one-club owner.
+
+## Answers to the critique
+
+| | Answer |
+|---|---|
+| K1 | Changed. Tonight adds no page, so the one page keeps its guards; tonight's tests are unit tables (entries × actor, every old link). The shared `venuePageGuard()` and the route × actor table are ticket 1, written before its pages. |
+| K2 | Changed. On a device the top bar shows its name; it opens language, theme and sign-out. |
+| K3 | Changed (lane lead): one small pull request of chrome over today's addresses; no new page, no worker or provider link. The sidebar's data come from the admin layout, with why; path addresses are ticket 1. |
+| K4 | Changed. Tonight's mockups show only tonight's build: no badge, no Модули, the Publish bar where it is today. Everything later is on the "По-късно / Later" page. |
+| K5 | Changed. The entry is "Резервации" everywhere. |
+| K6 | Partly. Grouped is built (lane lead's shape); every Settings carries its group in tooltip and accessible name; the flat option is D156 B, drawn. |
+| K7 | Changed. Design is no sidebar entry and never on the bar; it stays the Studio's view. |
+| K8 | Changed. Alerts move to Ordering, so no row exceeds four; rows stay today's dropdown on a phone tonight; the scrolling row with cue is ticket 5. |
+| K9 | Changed. No bottom bar tonight; ticket 5 lifts the selection bar. The Undo toast is top-right (`app/layout.tsx:37`), so it does not collide. |
+| K10 | Changed, in ticket 5: fewer than two destinations, no bar; order as D141 lands. |
+| K11 | Decided as a question: D157, recommending refused; tonight hides nothing a role sees today. |
+| K12 | Changed: (a)–(c) are ticket 2's criteria. (d): the group keeps Martin's word "Поръчки"; its settings row now holds Alerts too. |
+| K13 | Changed: ticket 7 moves the shared service parts first. |
+| K14 | Changed: "Модули / Modules", glossary entry in ticket 2. |
+| K15 | Changed: the old 157 split into the staff and Settings rights (D157), the bar (into D154); the device frame is fixed tonight as defects (S1, S3). "Who switches" is in D155. Numbers per the lead. |
+| K16 | Changed: no group line; crumb names the venue, the title the screen. |
+| K17 | Changed, in ticket 5. |
+| K18 | Changed: a `loading.tsx` and a keyed `Suspense` per screen. |
+| K19 | Accepted, said in ticket 5. |
+
+**Step 0 findings fixed tonight:** C1, C2/S1, C4, C5, C6, C7, C9, S3. **Left to ticket 8:** C3/S2, C8, C10, C11; S4 is D157.
 
 ## Open questions
 
-1. **Words.** "Тази вечер" (ordering) and "Вечерта" (reservations) stand near each other. I kept today's labels. The alternative for the second is "Резервации" under the group label "Резервации". Recommend: keep, and let the screen review's copy pass judge it.
-2. **The Publish bar** shows on every screen but Tonight today, including Reservations and settings. Recommend a follow-up that keeps it to the Menu group and Venue › Settings; not tonight, because D96 and D97 placed it.
-3. **A manager and the Menu group.** I show it to everyone above staff-only, read-only where the organisation role is "member", as today. Whether a manager should see the Studio at all is unknown (D147 lets staff mark sold out, which lives on Structure and Tonight).
+1. **The Publish bar** shows on every screen but Tonight, including Reservations and settings. Recommend a follow-up keeping it to the Menu group and Venue › Settings; not tonight, because D96 and D97 placed it.
+2. **The group label "Поръчки"** covers Tonight, which also carries waiter calls and sold out. Recommend keep (Martin's own word for the module); the screen review's copy pass can judge it.
 
 ## Mockups
 
-Throwaway static HTML (the `prototype` skill, UI branch); open in a browser. The bar at the bottom of each switches the persona and the feature bases.
+Throwaway static HTML (the `prototype` skill, UI branch); open in a browser. The bar at the bottom of each switches the persona.
 
 - [Start page](2026-11-18-navigation-and-feature-bases/index.html)
-- [Owner, desktop](2026-11-18-navigation-and-feature-bases/owner-desktop.html)
-- [Owner, 390 px phone](2026-11-18-navigation-and-feature-bases/owner-phone.html)
-- [Door host on a shared phone or tablet](2026-11-18-navigation-and-feature-bases/shared-device.html)
-- [Venues with one, two and three feature bases](2026-11-18-navigation-and-feature-bases/feature-bases.html)
+- Tonight's build: [Owner, desktop](2026-11-18-navigation-and-feature-bases/owner-desktop.html) · [Owner, 390 px phone](2026-11-18-navigation-and-feature-bases/owner-phone.html) · [Shared phone or tablet](2026-11-18-navigation-and-feature-bases/shared-device.html)
+- [По-късно / Later: modules, the bottom bar, staff-only, D156 B](2026-11-18-navigation-and-feature-bases/feature-bases.html)
