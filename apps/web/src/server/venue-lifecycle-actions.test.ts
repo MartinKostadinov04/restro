@@ -34,7 +34,11 @@ import {
 /** The worker's public seal key a new table code is sealed with (#70). */
 const { publicKey } = generateKeyPairSync('x25519')
 
-const asked = vi.hoisted(() => ({ tenantId: '', role: 'owner' }))
+const asked = vi.hoisted(() => ({
+  tenantId: '',
+  role: 'owner',
+  signedInAt: undefined as Date | undefined,
+}))
 const revalidated = vi.hoisted(() => [] as string[])
 const queue = vi.hoisted(() => ({
   jobs: [] as { name: string; data: Record<string, unknown> }[],
@@ -44,7 +48,7 @@ const queue = vi.hoisted(() => ({
 vi.mock('@/server/session', () => ({
   requireTenant: async () => ({
     sessionId: 'session-personal',
-    signedInAt: new Date(),
+    signedInAt: asked.signedInAt ?? new Date(),
     user: { id: 'us_cf18tester', name: 'Tester', email: 'tester@example.test' },
     organizations: [],
     organization: { id: asked.tenantId, name: 'CF-18 club', slug: 'cf18-club', role: asked.role },
@@ -319,6 +323,26 @@ describe.skipIf(!hasDatabase)('rename, delete and restore a venue (as the restro
         ).toEqual({ ok: false, error: 'name_mismatch' })
       }
       expect((await rowOf(venue.id))?.archived_at).toBeNull()
+      expect(queue.jobs).toEqual([])
+      expect(revalidated).toEqual([])
+    })
+
+    it('asks for the password again 15 minutes after it was typed (D122 §7): rename, delete and unpublish move nothing', async () => {
+      const { venue } = await makeVenue(tenant, 'Stale sign-in')
+      asked.signedInAt = new Date(Date.now() - 16 * 60_000)
+      try {
+        const again = { ok: false, error: 'sign_in_again' }
+        expect(await renameVenueAction({ venueId: venue.id, name: 'Renamed' })).toEqual(again)
+        expect(
+          await deleteVenueAction({ venueId: venue.id, confirmName: 'Stale sign-in' }),
+        ).toEqual(again)
+        expect(await unpublishVenueAction({ venueId: venue.id })).toEqual(again)
+      } finally {
+        asked.signedInAt = undefined
+      }
+      const after = await rowOf(venue.id)
+      expect(after?.name).toBe('Stale sign-in')
+      expect(after?.archived_at).toBeNull()
       expect(queue.jobs).toEqual([])
       expect(revalidated).toEqual([])
     })

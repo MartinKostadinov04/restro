@@ -64,7 +64,8 @@ export function LoginForm({ next }: { next: string }) {
           type="email"
           autoComplete="username"
           autoFocus
-          aria-invalid={errors.email ? true : undefined}
+          aria-invalid={errors.email || error ? true : undefined}
+          aria-describedby={error ? 'login-error' : undefined}
           {...register('email')}
         />
         {errors.email ? (
@@ -79,7 +80,8 @@ export function LoginForm({ next }: { next: string }) {
           id="password"
           type="password"
           autoComplete="current-password"
-          aria-invalid={errors.password ? true : undefined}
+          aria-invalid={errors.password || error ? true : undefined}
+          aria-describedby={error ? 'login-error' : undefined}
           {...register('password')}
         />
         {errors.password ? (
@@ -89,7 +91,13 @@ export function LoginForm({ next }: { next: string }) {
         ) : null}
       </div>
       {error ? (
-        <p className="text-sm text-destructive" role="alert" data-testid="login-error">
+        // Named by both fields, so a screen reader reads it with them (WCAG 3.3.1, lane 5 S29).
+        <p
+          id="login-error"
+          className="text-sm text-destructive"
+          role="alert"
+          data-testid="login-error"
+        >
           {t(`error.${error}`)}
         </p>
       ) : null}

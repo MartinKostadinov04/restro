@@ -36,6 +36,18 @@ vi.mock('next/headers', async () => (await import('./attack-session')).headersMo
 vi.mock('next-intl/server', async () => (await import('./attack-session')).intlModule)
 vi.mock('@/server/jobs', async () => (await import('./attack-session')).jobsModule)
 vi.mock('@/server/log', async () => (await import('./attack-session')).logModule)
+// Counts the QR route's way into the codes, so the test sees the tablet stopped before it (C3).
+const qrBuilt = vi.hoisted(() => ({ calls: 0 }))
+vi.mock('@/server/tables/download', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/server/tables/download')>()
+  return {
+    ...real,
+    buildQrDownload: (...args: Parameters<typeof real.buildQrDownload>) => {
+      qrBuilt.calls += 1
+      return real.buildQrDownload(...args)
+    },
+  }
+})
 
 /**
  * Every action of these five files: none of them is Tonight's, or the tablet's landing's. The design
@@ -155,19 +167,21 @@ describe.skipIf(!hasDatabase)('the shared tablet and the admin writes (RR-84)', 
       expect(changedTables(before, await fingerprint(owner, org.tenantId))).toContain('areas')
     }, 60_000)
 
-    it('the QR download asks the worker on a personal sign-in, and never from the tablet (C3)', async () => {
+    it('the QR download looks for the code on a personal sign-in, and never from the tablet (C3)', async () => {
       const table = org.venues[0].table
       const download = () =>
         qrFile(new Request(`http://localhost/api/tables/${table}/qr?format=svg`), {
           params: Promise.resolve({ tableId: table }),
         })
       asOwner(org, `personal-${randomUUID()}`)
-      seen.reset()
+      qrBuilt.calls = 0
       await download()
-      expect(seen.fetches.length).toBeGreaterThan(0)
+      expect(qrBuilt.calls).toBe(1)
       asOwner(org, org.venues[0].deviceSession)
+      qrBuilt.calls = 0
       seen.reset()
       expect((await download()).status).toBe(404)
+      expect(qrBuilt.calls).toBe(0)
       expect(seen.fetches).toEqual([])
     }, 60_000)
 
