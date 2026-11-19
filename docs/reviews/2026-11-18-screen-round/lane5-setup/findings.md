@@ -459,3 +459,8 @@ Tenancy/roles matrix: every action in the area is in `attack-table.ts` (tenancy-
 `pnpm audit --prod`: next 16.4.3 (2 moderate, `'use cache'`, unused), undici < 8.12.2 (4 high, 3 moderate), esbuild (1 moderate) — dependency upgrade outside this lane.
 
 Out of scope: `roles-actions` "plain member › nightEndPreviewAction" changed org data despite `permission_denied` (before the database shutdown; unverified).
+
+## Review (step 4, Opus, blind, fresh database)
+
+The reviewer was started with only this ledger path and commit `9e67d6a1`, after a reset and reseed (venue `vn_4sX6oXRZVgwQrXxlcGCRCh`), worker and simulated POS running, signed in as the owner. It did not switch personas: S25–S29 are confirmed from the code plus the explorer's evidence. Its reply follows as given.
+
