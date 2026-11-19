@@ -997,6 +997,10 @@
       "openGuest": "Open the guest page",
       "guestOff": "The menu address is switched off. Publish to put it back.",
       "guestNothing": "Nothing is published yet.",
+      "state": {
+        "paused": "Nothing new; automatic publishing is paused.",
+        "addressOff": "Nothing new; the menu address is switched off."
+      },
       "reason": {
         "role": "Only an owner or admin can publish.",
         "busy": "Waiting for the publisher…",

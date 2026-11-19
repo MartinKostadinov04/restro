@@ -205,18 +205,20 @@ test('every section fits a 1024 px screen with the sidebar open (S3)', async ({ 
     height: 768,
     colorScheme: 'light',
   })
+  // The sections every owner has. Publish (a till) and Paying (a card-taking POS) depend on the
+  // venue, and a missing one would land on General (S26), so they are left out.
   for (const name of [
     'general',
     'hours',
     'ordering',
+    'reservations',
     'staff',
     'alerts',
-    'publish',
     'versioning',
-    'paying',
-    'reservations',
   ]) {
     await page.goto(section(name))
+    // The section asked for, not General after a redirect.
+    await expect(page).toHaveURL(new RegExp(`[?&]section=${name}(?:&|$)`))
     await expect(page.getByRole('heading', { level: 2 }).first()).toBeVisible()
     const fits = await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,

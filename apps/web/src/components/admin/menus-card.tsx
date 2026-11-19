@@ -363,7 +363,12 @@ export function MenusCard({
           <li
             key={menu.id}
             // Below 640 px the name and its badge sit above the buttons, never beside them (S1).
-            className="flex flex-col gap-2 px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center"
+            // Someone who only reads has the chevron alone: it stays at the end of the line.
+            className={
+              canManage
+                ? 'flex flex-col gap-2 px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center'
+                : 'flex flex-wrap items-center gap-2 px-3 py-2'
+            }
             data-testid="menu-row"
             data-menu={menu.id}
             data-live={menu.live ? 'true' : 'false'}
@@ -384,7 +389,9 @@ export function MenusCard({
               />
             ) : (
               <>
-                <span className="flex min-w-0 flex-wrap items-center gap-2 font-medium sm:flex-1">
+                <span
+                  className={`flex min-w-0 flex-wrap items-center gap-2 font-medium ${canManage ? 'sm:flex-1' : 'flex-1'}`}
+                >
                   <MenuName name={menu.name} venueName={venueName} />
                   {menu.live ? (
                     <Badge variant="success" data-testid="menu-live-badge">

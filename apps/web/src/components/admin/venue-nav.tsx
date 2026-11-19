@@ -72,7 +72,9 @@ function VenueItems({ venues, openId, tab }: VenueItemsProps) {
           isActive={open}
           tooltip={venue.name}
           // A long name wraps instead of being cut (S19): the row grows from its usual height.
-          className="h-auto min-h-8 phone:h-auto phone:min-h-11"
+          // Folded to icons, the button stays the sidebar's square, a touch screen's too (`!`: the
+          // `phone` floor would otherwise win).
+          className="h-auto min-h-8 phone:h-auto phone:min-h-11 group-data-[collapsible=icon]:min-h-8!"
         >
           <Link
             href={tab ? `${VENUES_PATH}/${venue.id}?tab=${tab}` : `${VENUES_PATH}/${venue.id}`}

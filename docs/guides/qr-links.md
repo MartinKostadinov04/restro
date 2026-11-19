@@ -78,7 +78,7 @@ location /t/ {
 Стикерите с адрес от вашия домейн работят само докато правилото за препращане работи. Ако правилото бъде изтрито или домейнът изтече, гостът ще види грешка от вашия сайт, а не менюто.
 
 - Върнете правилото. Стикерите започват да работят веднага, без нов печат.
-- Ако не можете да го върнете, върнете кодовете на нашия адрес, отпечатайте нов „Лист за печат“ и сменете стикерите. Старите стикери ще продължат да не работят.
+- Ако не можете да го върнете, картата ще ви позволи да върнете кодовете на нашия адрес; след това отпечатайте нов „Лист за печат“ и сменете стикерите. Старите стикери ще продължат да не работят.
 
 Ако „Отвори тестовия линк“ показва:
 
@@ -173,7 +173,7 @@ Until then the codes carry our address. It keeps working after you add a domain 
 Stickers with an address on your domain work only while the forwarding rule works. If the rule is deleted or the domain expires, the guest sees an error from your website instead of the menu.
 
 - Put the rule back. The stickers work again at once, with no new print.
-- If you cannot, switch the codes back to our address, print a new "Print sheet" and replace the stickers. The old stickers stay broken.
+- If you cannot, the card will let you switch the codes back to our address; then print a new "Print sheet" and replace the stickers. The old stickers stay broken.
 
 If "Open test link" shows:
 

@@ -103,25 +103,24 @@ export default async function VenueWorkspacePage({
   const tablesOpen = openTab === 'tables'
   const tonightOpen = openTab === 'tonight'
   const reservationsOpen = openTab === 'reservations'
-  const [hasTill, guestPath] = await Promise.all([
-    venueHasTill(organization.id, venue.id),
-    guestPathOf(getPool(), organization.id, venue.slug),
-  ])
   // What the person holds here decides which Settings sections they see (#87); every command
   // checks it again. Read on every tab but a shared device's (which never opens Settings), so the
-  // section row is drawn whole before Settings opens and does not grow from 6 to 9 (R6).
-  const [access, payingHere] = sharedDevice
-    ? [null, false]
-    : await Promise.all([
-        loadSettingsAccess({
+  // section row is drawn whole before Settings opens and does not grow from 6 to 9 (R6). All four
+  // reads go out together.
+  const [hasTill, guestPath, access, payingHere] = await Promise.all([
+    venueHasTill(organization.id, venue.id),
+    guestPathOf(getPool(), organization.id, venue.slug),
+    sharedDevice
+      ? null
+      : loadSettingsAccess({
           tenantId: organization.id,
           venueId: venue.id,
           userId: user.id,
           sessionId,
         }),
-        // Paying is listed only where a POS serving the venue can take card payments (D122 §3, #116).
-        payingOffered(organization.id, venue.id),
-      ])
+    // Paying is listed only where a POS serving the venue can take card payments (D122 §3, #116).
+    sharedDevice ? false : payingOffered(organization.id, venue.id),
+  ])
   const held = access?.held ?? []
   const paying = access !== null && !access.sharedDevice && payingHere
   const rights: SettingsRights =

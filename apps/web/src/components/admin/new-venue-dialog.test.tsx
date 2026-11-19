@@ -86,7 +86,7 @@ describe('step 1: the source', () => {
     expect(group.textContent).toContain('Till Sofia')
     expect(group.textContent).toContain('3 venues')
     expect(group.textContent).toContain('Till Varna')
-    expect(group.textContent).toContain('No free venues')
+    expect(group.textContent).toContain('0 venues')
     expect(group.textContent).toContain('By hand')
     expect(loadNewVenueSourcesAction).toHaveBeenCalledTimes(1)
   })
@@ -222,40 +222,61 @@ describe('step 2, from a POS: nothing is typed', () => {
     )
   })
 
-  it('cannot be chosen from a POS with no free venue, and says why in step 1 (S7)', async () => {
-    // One that reports no venue, and one whose every venue is linked already.
+  it('says so in step 2 when the instance reports no venue yet', async () => {
+    const { user } = dialog()
+    await goOn(user, VARNA)
+    expect(screen.getByTestId('new-venue-no-till-venues').textContent).toContain(
+      'Till Varna has not reported any venues yet.',
+    )
+  })
+
+  const FULL = {
+    id: SOFIA,
+    name: 'Till Sofia',
+    tillVenues: [{ bid: 1, name: 'Only one', linkedVenueName: 'Mine' }],
+  }
+
+  it('cannot be chosen from a POS whose every venue is linked, and says why in step 1 (S7)', async () => {
     vi.mocked(loadNewVenueSourcesAction).mockResolvedValue({
       ok: true,
       sources: {
         organizationSlug: 'night-group',
-        instances: [
-          {
-            id: SOFIA,
-            name: 'Till Sofia',
-            tillVenues: [{ bid: 1, name: 'Only one', linkedVenueName: 'Mine' }],
-          },
-          { id: VARNA, name: 'Till Varna', tillVenues: [] },
-        ],
+        instances: [FULL, { id: VARNA, name: 'Till Varna', tillVenues: [] }],
       },
     })
     const { user } = dialog()
     await screen.findByTestId('new-venue-sources')
-    for (const id of [SOFIA, VARNA]) {
-      const radio = screen.getByTestId(`new-venue-source-${id}`) as HTMLInputElement
-      expect(radio.disabled, id).toBe(true)
-      expect(radio.closest('label')?.textContent, id).toContain('No free venues')
-      await user.click(radio)
-      expect(radio.checked, id).toBe(false)
-    }
+    const full = screen.getByTestId(`new-venue-source-${SOFIA}`) as HTMLInputElement
+    expect(full.disabled).toBe(true)
+    expect(full.closest('label')?.textContent).toContain('No free venues')
+    await user.click(full)
+    expect(full.checked).toBe(false)
+    // One that has reported nothing yet stays open: step 2 says so.
+    const empty = screen.getByTestId(`new-venue-source-${VARNA}`) as HTMLInputElement
+    expect(empty.disabled).toBe(false)
+    expect(empty.closest('label')?.textContent).toContain('0 venues')
+    // With a POS still open, nothing is chosen for the person.
     expect(next().disabled).toBe(true)
-    // By hand stays open.
-    await user.click(screen.getByTestId('new-venue-source-hand'))
+  })
+
+  it('has By hand chosen when every POS is full (S7)', async () => {
+    vi.mocked(loadNewVenueSourcesAction).mockResolvedValue({
+      ok: true,
+      sources: { organizationSlug: 'night-group', instances: [FULL] },
+    })
+    dialog()
+    await screen.findByTestId('new-venue-sources')
+    expect((screen.getByTestId('new-venue-source-hand') as HTMLInputElement).checked).toBe(true)
     expect(next().disabled).toBe(false)
   })
 
   it('says “No free venues” in Bulgarian (S7)', async () => {
+    vi.mocked(loadNewVenueSourcesAction).mockResolvedValue({
+      ok: true,
+      sources: { organizationSlug: 'night-group', instances: [FULL] },
+    })
     dialog('bg')
-    const radio = (await screen.findByTestId(`new-venue-source-${VARNA}`)) as HTMLInputElement
+    const radio = (await screen.findByTestId(`new-venue-source-${SOFIA}`)) as HTMLInputElement
     expect(radio.disabled).toBe(true)
     expect(radio.closest('label')?.textContent).toContain('Няма свободни заведения')
   })

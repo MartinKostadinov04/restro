@@ -101,7 +101,7 @@ export function PinFallList({ view, runner }: { view: StaffView; runner: Runner 
                   return (
                     <label
                       key={option}
-                      className={`inline-flex cursor-pointer items-center rounded px-2 py-1 text-xs phone:min-h-11 phone:min-w-11 ${
+                      className={`inline-flex cursor-pointer items-center justify-center rounded px-2 py-1 text-xs phone:min-h-11 phone:min-w-11 ${
                         chosen ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
                       } ${may && !pending ? '' : 'cursor-default opacity-70'}`}
                     >
