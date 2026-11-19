@@ -238,6 +238,16 @@ describe('on a venue’s page (D154)', () => {
     expect(entry('studio').getAttribute('aria-current')).toBeNull()
   })
 
+  it('leaves the mark alone on a click that opens another browser tab', async () => {
+    renderSidebar({ pathname: '/venues/vn_beta', search: 'tab=studio' })
+    const user = userEvent.setup()
+    await user.keyboard('{Control>}')
+    await user.click(entry('settings-ordering'))
+    await user.keyboard('{/Control}')
+    expect(entry('settings-ordering').getAttribute('aria-current')).toBeNull()
+    expect(entry('studio').getAttribute('aria-current')).toBe('page')
+  })
+
   it('names each Settings by its module to a screen reader and in its tooltip', async () => {
     renderSidebar({ pathname: '/venues/vn_beta', collapsed: true })
     expect(screen.getByRole('link', { name: 'Ordering settings' })).toBe(entry('settings-ordering'))

@@ -305,7 +305,17 @@ function VenueGroups({ venue, tab, section, onNavigate }: VenueGroupsProps) {
                   aria-current={open ? 'page' : undefined}
                   aria-label={fullName}
                   data-nav={entry.key}
-                  onClick={() => {
+                  onClick={(event) => {
+                    // A modified or middle click opens another browser tab: this one stays put.
+                    if (
+                      event.button !== 0 ||
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.shiftKey ||
+                      event.altKey
+                    ) {
+                      return
+                    }
                     setTapped({ key: entry.key, from: urlKey })
                     onNavigate()
                   }}

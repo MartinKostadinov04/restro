@@ -272,7 +272,10 @@ describe('SettingsSections: one module’s sections in the URL (D97, D156)', () 
     ])
     expect(settingsSectionOf('staff', true)).toBe('general')
     expect(settingsSectionOf('alerts', true, { roles: false, alerts: true })).toBe('alerts')
-    expect(settingsSectionOf('paying', false, { roles: true, alerts: true })).toBe('general')
+    expect(settingsSectionOf('paying', false, { roles: true, alerts: true })).toBe('hours')
+    // An unoffered section stays in its own module's Settings (critique L1).
+    expect(settingsSectionOf('alerts', true)).toBe('hours')
+    expect(settingsSectionOf('staff', true)).toBe('general')
     // Every section has a module, and each module's first section is offered to every role.
     for (const [module, first] of Object.entries(FIRST_SECTION_OF)) {
       expect(SETTINGS_MODULE_OF[first]).toBe(module)
@@ -326,6 +329,8 @@ describe('venueQueryRedirect: one address per screen (C1, C9)', () => {
     ['tab=settings&section=hours&view=log', owner, everything, 'tab=settings&section=hours'],
     ['tab=settings&section=staff', owner, nothing, 'tab=settings&section=general'],
     ['tab=settings&section=nonsense', owner, everything, 'tab=settings&section=general'],
+    // Paying carried to a venue no POS serves stays in Ordering settings (critique L1).
+    ['tab=settings&section=paying', owner, nothing, 'tab=settings&section=hours'],
     // The payment provider's return (#116) and refresh keep their marker on Paying alone.
     ['tab=settings&section=paying&connection=return', owner, everything, null],
     [

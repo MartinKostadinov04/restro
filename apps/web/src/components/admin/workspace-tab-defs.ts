@@ -203,14 +203,27 @@ export function settingsSectionsOf(
   })
 }
 
-/** The section a `?section=` value opens for a venue with or without a till. */
+/**
+ * The section a `?section=` value opens for a venue with or without a till. A known section the
+ * venue or the person is not offered (Paying without a POS, Alerts without the right) opens its
+ * own module's first section, so the person stays in that module's Settings; anything else opens
+ * the default.
+ */
 export function settingsSectionOf(
   requested: unknown,
   hasTill: boolean,
   rights: SettingsRights = NO_SETTINGS_RIGHTS,
 ): SettingsSectionValue {
   const sections = settingsSectionsOf(hasTill, rights)
-  return sections.find((section) => section === requested) ?? DEFAULT_SETTINGS_SECTION
+  const offered = sections.find((section) => section === requested)
+  if (offered !== undefined) return offered
+  return isSettingsSection(requested)
+    ? FIRST_SECTION_OF[SETTINGS_MODULE_OF[requested]]
+    : DEFAULT_SETTINGS_SECTION
+}
+
+function isSettingsSection(value: unknown): value is SettingsSectionValue {
+  return typeof value === 'string' && Object.hasOwn(SETTINGS_MODULE_OF, value)
 }
 
 /** A page's query as Next.js hands it over. */
