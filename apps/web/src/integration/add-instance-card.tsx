@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { addInstanceAction } from '@/server/integration/actions'
 import type { IntegrationErrorCode, SystemOption } from '@/server/integration/view'
+import { useSignInAgain } from '@/settings/use-settings-run'
 
 import { ErrorNote } from './error-note'
 
@@ -40,6 +41,7 @@ export function AddInstanceCard({
   const [error, setError] = useState<IntegrationErrorCode | null>(null)
   const [pending, startTransition] = useTransition()
   const source = system.label
+  const again = useSignInAgain()
 
   const exampleKey = `${system.kind}.connect.hostExample`
   const example = connectors.has(exampleKey) ? connectors(exampleKey) : ''
@@ -50,21 +52,29 @@ export function AddInstanceCard({
     const sent = { kind: system.kind, name, host, user, password }
     // The password leaves the form the moment it is sent, whatever comes back.
     setPassword('')
-    startTransition(async () => {
-      const result = await addInstanceAction(sent)
-      setUser('')
-      if (!result.ok) {
-        setError(result.error)
-        return
-      }
-      setName('')
-      setHost('')
-      onClose?.()
-    })
+    // Sent again as it was after the password dialog (D122 §7); dropped if it is closed.
+    const send = () =>
+      startTransition(async () => {
+        const result = await addInstanceAction(sent)
+        setUser('')
+        if (!result.ok) {
+          if (result.error === 'sign_in_again') {
+            again.ask(send)
+            return
+          }
+          setError(result.error)
+          return
+        }
+        setName('')
+        setHost('')
+        onClose?.()
+      })
+    send()
   }
 
   return (
     <FormSection title={t('title', { source })} description={t('description', { source })}>
+      {again.dialog}
       {sealReady ? (
         <form onSubmit={submit} className="grid gap-4" noValidate data-testid="add-instance-form">
           <div className="grid gap-1.5">

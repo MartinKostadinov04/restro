@@ -38,6 +38,7 @@ const logged = vi.hoisted(() => [] as string[])
 vi.mock('@/server/session', () => ({
   requireTenant: async () => ({
     sessionId: 'session-personal',
+    signedInAt: new Date(),
     user: { id: 'us_s3tester', name: 'Tester', email: 'tester@example.test' },
     organizations: [],
     organization: { id: asked.tenantId, name: 'S3 club', slug: 's3-club', role: asked.role },

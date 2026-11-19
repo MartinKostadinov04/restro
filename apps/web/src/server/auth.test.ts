@@ -149,6 +149,7 @@ describe.skipIf(!hasDatabase)('organisation = tenant (Better Auth over the app r
     '/api/auth/organization/invite-member',
     '/api/auth/organization/remove-member',
     '/api/auth/delete-user',
+    '/api/auth/update-user',
   ])('does not answer %s over HTTP', async (path) => {
     const response = await auth.handler(
       new Request(`http://localhost:3000${path}`, {

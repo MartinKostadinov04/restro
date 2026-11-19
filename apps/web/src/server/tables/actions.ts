@@ -14,6 +14,7 @@ import { z } from 'zod'
 
 import { getPool } from '../db'
 import { defaultQrBaseUrl, serverEnv } from '../env'
+import { signInTooOld } from '../fresh-sign-in'
 import { enqueueJob } from '../jobs'
 import { logError } from '../log'
 import { revealConfig, revealFor } from '../reveal'
@@ -84,6 +85,7 @@ const MenuRoute = z.strictObject({
 const INVALID: TablesActionResult = { ok: false, error: 'invalid' }
 const NOT_FOUND: TablesActionResult = { ok: false, error: 'not_found' }
 const FORBIDDEN: TablesActionResult = { ok: false, error: 'forbidden' }
+const FRESH = { fresh: true } as const
 
 // Read when an action runs (the settings are read lazily, so `next build` needs none of them).
 const services = (): TablesServices => ({
@@ -98,11 +100,14 @@ type Target = { readonly venue: string } | { readonly table: string }
 async function perform(
   target: Target,
   run: (scope: TablesScope) => Promise<TablesActionResult>,
+  { fresh = false }: { readonly fresh?: boolean } = {},
 ): Promise<TablesActionResult> {
   try {
-    const { organization, user, sessionId } = await requireTenant()
+    const { organization, user, sessionId, signedInAt } = await requireTenant()
     // A shared tablet works Tonight; tables and codes need the person's own sign-in (RR-84).
     if (await onSharedDevice({ tenantId: organization.id, sessionId })) return FORBIDDEN
+    // A code (new, again, or off) asks for the password after 15 minutes (D122 §7).
+    if (fresh && signInTooOld(signedInAt)) return { ok: false, error: 'sign_in_again' }
     const venueOfAction =
       'venue' in target
         ? target.venue
@@ -171,15 +176,21 @@ export async function revealCodesAction(input: unknown): Promise<RevealCodesResu
 export async function createAllCodesAction(input: unknown): Promise<TablesActionResult> {
   const parsed = OnVenue.safeParse(input)
   if (!parsed.success) return INVALID
-  return perform({ venue: parsed.data.venueId }, (scope) => createAllCodes(scope, services()))
+  return perform(
+    { venue: parsed.data.venueId },
+    (scope) => createAllCodes(scope, services()),
+    FRESH,
+  )
 }
 
 /** Gives one table a code, or a new one (the printed sticker stops working). */
 export async function issueCodeAction(input: unknown): Promise<TablesActionResult> {
   const parsed = OnTable.safeParse(input)
   if (!parsed.success) return INVALID
-  return perform({ table: parsed.data.tableId }, (scope) =>
-    issueCode(scope, services(), parsed.data.tableId),
+  return perform(
+    { table: parsed.data.tableId },
+    (scope) => issueCode(scope, services(), parsed.data.tableId),
+    FRESH,
   )
 }
 
@@ -187,8 +198,10 @@ export async function issueCodeAction(input: unknown): Promise<TablesActionResul
 export async function turnOffCodeAction(input: unknown): Promise<TablesActionResult> {
   const parsed = OnTable.safeParse(input)
   if (!parsed.success) return INVALID
-  return perform({ table: parsed.data.tableId }, (scope) =>
-    turnOffCode(scope, services(), parsed.data.tableId),
+  return perform(
+    { table: parsed.data.tableId },
+    (scope) => turnOffCode(scope, services(), parsed.data.tableId),
+    FRESH,
   )
 }
 

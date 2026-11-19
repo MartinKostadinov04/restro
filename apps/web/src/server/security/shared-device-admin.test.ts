@@ -12,6 +12,7 @@ import type { DbPool } from '@restro/db'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { GET as qrFile } from '../../../app/api/tables/[tableId]/qr/route'
 import { getPool } from '../db'
 import * as design from '../design/actions'
 import * as integration from '../integration/actions'
@@ -152,6 +153,22 @@ describe.skipIf(!hasDatabase)('the shared tablet and the admin writes (RR-84)', 
       const before = await fingerprint(owner, org.tenantId)
       expect(await attack('createAreaAction').call(org, org)).toMatchObject({ ok: true })
       expect(changedTables(before, await fingerprint(owner, org.tenantId))).toContain('areas')
+    }, 60_000)
+
+    it('the QR download asks the worker on a personal sign-in, and never from the tablet (C3)', async () => {
+      const table = org.venues[0].table
+      const download = () =>
+        qrFile(new Request(`http://localhost/api/tables/${table}/qr?format=svg`), {
+          params: Promise.resolve({ tableId: table }),
+        })
+      asOwner(org, `personal-${randomUUID()}`)
+      seen.reset()
+      await download()
+      expect(seen.fetches.length).toBeGreaterThan(0)
+      asOwner(org, org.venues[0].deviceSession)
+      seen.reset()
+      expect((await download()).status).toBe(404)
+      expect(seen.fetches).toEqual([])
     }, 60_000)
 
     it("the tablet still reads its own venue's Tonight", async () => {

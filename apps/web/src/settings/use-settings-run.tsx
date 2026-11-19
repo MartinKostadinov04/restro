@@ -160,6 +160,42 @@ export function useSettingsRun(email: string) {
   return { pending, run, dialog, sentence }
 }
 
+/**
+ * The same password dialog for a screen that runs its actions itself (the organisation, POS
+ * instances, a venue's name, address, deletion and purge, table codes): `ask(retry)` when an
+ * action answers `sign_in_again`; after a fresh sign-in `retry` runs. Render `dialog` once.
+ */
+export function useSignInAgain() {
+  const [email, setEmail] = useState<string | null>(null)
+  const again = useRef<(() => void) | null>(null)
+  const ask = useCallback((retry: () => void) => {
+    again.current = retry
+    // The address to sign in with is the signed-in person's own; read it only when needed.
+    authClient.getSession().then(
+      ({ data }) => setEmail(data?.user.email ?? ''),
+      () => setEmail(''),
+    )
+  }, [])
+  const dialog = (
+    <PasswordAgain
+      open={email !== null}
+      email={email ?? ''}
+      onOpenChange={(open) => {
+        if (open) return
+        setEmail(null)
+        again.current = null
+      }}
+      onSignedIn={() => {
+        setEmail(null)
+        const retry = again.current
+        again.current = null
+        retry?.()
+      }}
+    />
+  )
+  return { ask, dialog }
+}
+
 /** "Enter your password to change settings": a fresh sign-in, then the change goes through. */
 function PasswordAgain({
   open,
@@ -180,11 +216,29 @@ function PasswordAgain({
   async function submit() {
     setBusy(true)
     setWrong(null)
-    const { error } = await authClient.signIn.email({ email, password })
-    setBusy(false)
-    if (error) {
-      setWrong(error.status === 429 ? 'tooMany' : error.status === 401 ? 'invalid' : 'unknown')
+    try {
+      // A new session starts in the person's first organisation (auth.ts), so note the one in
+      // use now and put the new session back there before the change is retried (C1).
+      const { data: before } = await authClient.getSession()
+      const organizationId = before?.session.activeOrganizationId ?? null
+      const { error } = await authClient.signIn.email({ email, password })
+      if (error) {
+        setWrong(error.status === 429 ? 'tooMany' : error.status === 401 ? 'invalid' : 'unknown')
+        return
+      }
+      if (organizationId !== null) {
+        const kept = await authClient.organization.setActive({ organizationId })
+        if (kept.error) {
+          setWrong('unknown')
+          return
+        }
+      }
+    } catch {
+      // The connection dropped: say so and let the button be pressed again (C2, as RR-88).
+      setWrong('unknown')
       return
+    } finally {
+      setBusy(false)
     }
     setPassword('')
     onSignedIn()
@@ -197,6 +251,8 @@ function PasswordAgain({
           method="post"
           onSubmit={(event) => {
             event.preventDefault()
+            // The dialog may sit inside a screen's own form (a portal still bubbles in React).
+            event.stopPropagation()
             void submit()
           }}
           className="grid grid-cols-1 gap-4"

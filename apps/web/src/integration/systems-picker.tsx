@@ -12,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { FormSection } from '@/components/ui/form-section'
 import { saveSystemsAction } from '@/server/integration/actions'
 import type { IntegrationErrorCode, SystemOption } from '@/server/integration/view'
+import { useSignInAgain } from '@/settings/use-settings-run'
 
 import { ErrorNote, Notice } from './error-note'
 
@@ -32,6 +33,7 @@ export function SystemsPicker({
   const [edits, setEdits] = useState<Readonly<Record<string, boolean>>>({})
   const [error, setError] = useState<IntegrationErrorCode | null>(null)
   const [saved, setSaved] = useState(false)
+  const again = useSignInAgain()
   const [pending, startTransition] = useTransition()
 
   const isSelected = (kind: string) => edits[kind] ?? chosen.includes(kind)
@@ -59,12 +61,14 @@ export function SystemsPicker({
         systems: systems.filter((system) => isSelected(system.kind)).map((system) => system.kind),
       })
       if (result.ok) setSaved(true)
+      else if (result.error === 'sign_in_again') again.ask(submit)
       else setError(result.error)
     })
   }
 
   return (
     <FormSection title={t('title')} description={t('description')}>
+      {again.dialog}
       <fieldset
         className="grid gap-2"
         disabled={!canManage || pending}

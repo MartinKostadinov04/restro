@@ -24,6 +24,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { deleteVenueAction } from '@/server/venues-actions'
 import type { DeleteVenueError } from '@/server/venues-result'
+import { useSignInAgain } from '@/settings/use-settings-run'
 
 const VENUES_PATH = '/venues'
 const DELETED_VENUES_PATH = '/settings/deleted-venues'
@@ -49,6 +50,7 @@ function DeleteVenueForm({ onOpenChange, venueId, venueName }: DeleteVenueDialog
   const router = useRouter()
   const formId = useId()
   const [pending, startTransition] = useTransition()
+  const again = useSignInAgain()
   const [typed, setTyped] = useState('')
   const [error, setError] = useState<DeleteVenueError | null>(null)
 
@@ -64,6 +66,10 @@ function DeleteVenueForm({ onOpenChange, venueId, venueName }: DeleteVenueDialog
         () => ({ ok: false, error: 'failed' }) as const,
       )
       if (!result.ok) {
+        if (result.error === 'sign_in_again') {
+          again.ask(() => submit(event))
+          return
+        }
         setError(result.error)
         return
       }
@@ -80,6 +86,7 @@ function DeleteVenueForm({ onOpenChange, venueId, venueName }: DeleteVenueDialog
 
   return (
     <DialogContent data-testid="delete-venue-dialog">
+      {again.dialog}
       <form onSubmit={submit} className="grid gap-4" noValidate>
         <DialogHeader>
           <DialogTitle>{t('title', { name: venueName })}</DialogTitle>

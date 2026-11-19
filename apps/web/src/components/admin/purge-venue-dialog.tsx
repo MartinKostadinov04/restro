@@ -25,6 +25,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { purgeVenueAction } from '@/server/venues-actions'
 import type { PurgeVenueError } from '@/server/venues-result'
+import { useSignInAgain } from '@/settings/use-settings-run'
 
 interface PurgeVenueDialogProps {
   readonly open: boolean
@@ -56,6 +57,7 @@ function PurgeVenueForm({
   const t = useTranslations('settings.deletedVenues.purgeDialog')
   const formId = useId()
   const [pending, startTransition] = useTransition()
+  const again = useSignInAgain()
   const [typed, setTyped] = useState('')
   const [error, setError] = useState<PurgeVenueError | null>(null)
 
@@ -71,6 +73,10 @@ function PurgeVenueForm({
         () => ({ ok: false, error: 'failed' }) as const,
       )
       if (!result.ok) {
+        if (result.error === 'sign_in_again') {
+          again.ask(() => submit(event))
+          return
+        }
         setError(result.error)
         return
       }
@@ -83,6 +89,7 @@ function PurgeVenueForm({
 
   return (
     <DialogContent data-testid="purge-venue-dialog">
+      {again.dialog}
       <form onSubmit={submit} className="grid gap-4" noValidate>
         <DialogHeader>
           <DialogTitle>{t('title', { name: venueName })}</DialogTitle>
