@@ -17,7 +17,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: copy-rules rule 5; copy-rules rule 4; design-critique 2 (a dead end)
 - Evidence: S1-before.jpg; the sheet text and a disabled button 350×48
 - Proposal: if the bill is empty, replace the form with "Няма какво да се плати" / "Nothing to pay yet" and a "Към менюто" / "Back to the menu" button. Alternatively hide the Pay entry while nothing is owed.
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### S2. On a phone, Tonight names the same screen three times and stacks two dropdowns above the content
 - Kind: simplification
@@ -28,7 +28,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: operational-screens.md Clean rule 2; screen read 3
 - Evidence: S2-before.jpg
 - Proposal: at 390 px keep only the heading and drop one of the dropdowns, or move the section switch into the heading row. Alerts then sit about 120 px higher.
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### S3. The table sheet on Tonight has no visible close control
 - Kind: bug
@@ -39,7 +39,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: operational-screens.md, "How do I get out" on Tonight; WCAG 2.5.7 (the drawer is dismissed only by drag or tap outside)
 - Evidence: S3-before.jpg; the sheet's buttons are 358×44 each and none is a close control
 - Proposal: add a "Затвори" / "Close" 44 px control in the sheet's top-right corner, as the guest's sheets have.
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### S4. A table can be "Отворена" for phones while phones cannot order, and Tonight does not say so
 - Kind: bug
@@ -50,7 +50,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: operational-screens.md screen read 4 (state over normal); copy-rules rule 4 (no fix named); D72
 - Evidence: guest bag text (dialog innerText); Tonight sheet text "Бар 2 · отворена от 09:45"
 - Proposal: on Tonight's header and on each open tile or sheet add a line "Поръчките от телефон започват в 22:00" / "Phone orders start at 22:00". In the guest bag, put the start time on the bar's "Виж поръчката" line instead of "прибл. 205,00 €".
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### S5. The Pay sheet names the same three figures differently in Bulgarian and English
 - Kind: bug
@@ -61,7 +61,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: copy-rules rules 3, 8 and 9
 - Evidence: Pay sheet text in both languages (see S1)
 - Proposal: "Selected" / "Избрано" for the second row in both languages, or a matching pair of words.
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### S6. Call a waiter: the first option repeats the dialog's title, and the confirmation is about "it"
 - Kind: simplification
@@ -72,7 +72,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: copy-rules rules 3 and 9; design-critique 4
 - Evidence: Call sheet text in BG and EN (buttons "Повикай сервитьор", "Сметката, моля", "Лед", "Вода", "Чаши", "Почистване на масата", "ПОС терминал")
 - Proposal: rename the first tile "Друго" / "Something else" (or "Просто повикай" / "Just call"). Confirm with "Заявката е изпратена" / "Request sent" and "Чакаме сервитьорът да я потвърди." / "Waiting for a waiter to confirm."
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### S7. Bill sheet has no way to refresh and shows an age that only grows
 - Kind: optimisation
@@ -83,7 +83,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: design-critique 2 (is it obvious?); operational-screens feedback 1
 - Evidence: Bill dialog text (no refresh button in its button list)
 - Proposal: add "Обнови" / "Refresh" next to the age, or say "Обновява се само" / "Refreshes by itself" if it does. A reviewer should confirm the polling first.
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### S8. Dev-only: the guest table page showed an empty skeleton for several seconds on first load
 - Kind: optimisation
@@ -94,7 +94,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: operational-screens feedback 1 ("set expectations"); dev server
 - Evidence: first screenshot of the load (skeleton, 293×633), dev server
 - Proposal: none before CI's production build is measured.
-- Status: candidate
+- Status: rejected (see Review)
 
 ### S9. In the bag the "Remove" link and the stepper sit in a different place on each line, and rows have uneven backgrounds
 - Kind: bug
@@ -105,7 +105,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: design-critique 4 (consistency); design-critique 3 (hierarchy)
 - Evidence: S9-before.jpg
 - Proposal: one fixed layout per line: name and price on the first row, then "Remove" on the left and the stepper on the right on the second row, with no alternating band.
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### S10. A €525 Send is refused as "Ordering is paused" and stops table 32 for everyone, and the guest is not told it was the amount
 - Kind: bug
@@ -116,7 +116,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: copy-rules rule 4; operational-screens.md screen read 4; D118 (cap at Send)
 - Evidence: S10-before.jpg; Log rows 14:54
 - Proposal: guest: "This order is too large to send from a phone. Send fewer items or ask your waiter." / "Тази поръчка е твърде голяма за телефон. Изпратете по-малко или повикайте сервитьор." Waiter alert: add the amount and the limit: "Маса 32: поръчка за 525,00 € над лимита …. Прегледайте и пуснете масата."
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### S11. On Tonight at tablet width, the section tabs, the sheet close and the menu items are under the 44 px floor
 - Kind: bug
@@ -127,7 +127,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: Restro 44 px floor; operational-screens.md "Targets and text"
 - Evidence: S11-before.jpg; measured heights in the DOM
 - Proposal: on Tonight, give the section tabs, the sheet X (a 44 px hit area) and the menu items 44 px; the venue tabs and the sidebar toggle are the admin shell (navigation → lane 6).
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### S12. "Край на вечерта" is a report tab; the action that ends the night is hidden in a "…" menu on another tab
 - Kind: simplification
@@ -138,7 +138,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: copy-rules rule 3; operational-screens.md wayfinding 2 and Patterns ("secondary actions of a row")
 - Evidence: End of night text and the "…" menu items "Затвори всички…", "Приключи вечерта" (DOM text; no screenshot)
 - Proposal: put a "Приключи вечерта" / "End the night" button on the "Край на вечерта" tab, and call the report "Вечерта в числа" / "The night in numbers" (or the reverse).
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### S13. The End-the-night dialog is a wall of reservation jargon
 - Kind: bug
@@ -149,7 +149,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: copy-rules rules 4, 8, 11; GLOSSARY ("Party"/reservation words); operational-screens.md Clean rule 1
 - Evidence: S13-before.jpg
 - Proposal: list as lines: "10 маси се затварят за телефони", "3 сметки остават отворени в POS", "3 резервации стават „не дошли“". Show the banner or the alert for open bills, not both.
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### S14. The bill's "Pay €110.00" button opens the Pay sheet at "€0.00" and "Choose at least one line", then a second Pay
 - Kind: simplification
@@ -160,7 +160,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: design-critique 2 (unnecessary steps); copy-rules rule 3
 - Evidence: Pay sheet text at each step
 - Proposal: pre-select the lines the bill's button spoke of, so the Pay sheet opens with "Pay €110.00" ready; show the Tip row only if a tip can be set; the confirmation button says "Confirm €110.00" / "Потвърди 110,00 €".
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### S15. Log: one phone order is three rows, and one row says only "настройка"
 - Kind: simplification
@@ -171,7 +171,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: operational-screens.md Clean rule 1; copy-rules rule 4
 - Evidence: Log text at 14:58, 14:53 and 09:54
 - Proposal: collapse an order's steps into one row that shows its latest state ("Поръчка V96: Добавена · 3 стъпки") that opens the steps; say what the setting is: "Променено: часове за поръчки".
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### S16. Tapping a closed table's tile opens it for phones at once, though the tile says "closed"
 - Kind: bug
@@ -182,7 +182,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: WCAG 2.2 4.1.2; operational-screens.md screen read 4
 - Evidence: tile aria-label before and the toast after
 - Proposal: name the control by its action ("Отвори маса 32 за телефони") and keep the Undo. Alternatively always open the sheet first, as with an open table.
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### S17. All "Add" buttons stay live on a table that is closed for phones, and the reason comes only after a tap
 - Kind: bug
@@ -193,7 +193,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: copy-rules rule 4; design-critique 2; D72 (no local success)
 - Evidence: toast text; 29 active Add buttons in the DOM
 - Proposal: one calm line at the top of the page, "Тази маса не приема поръчки от телефон. Повикайте сервитьор." / "This table is not taking phone orders. Call a waiter.", and the Add buttons replaced by the waiter call.
-- Status: candidate
+- Status: confirmed (see Review)
 
 ## Code rows (code check, Opus, `code-review high`)
 
@@ -203,7 +203,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Failure: after a waiter's PIN on the tablet, for about 3 minutes perform() swaps the actor to `{kind:'staff'}` for every action with no PIN and no `asOperator`, including `push.subscribe` (the visibility re-read or a "Turn on" tap). `pushSubscribe` returns `account_required`; `push-control.tsx:104` stores `refused.current = endpoint` and shows push as off, so the tablet's alert subscription is never renewed. The docstring says it should run as the device's own account, with no PIN.
 - Rule: D122 §7, D141 12.11
 - Proposal: the push actions skip the remembered person and keep the device account (an `asDevice` option on perform() that skips `personAtSharedDevice`).
-- Status: candidate
+- Status: confirmed (see Review)
 - Note: the file is also changed by PR #451 (a different region).
 
 ### C2. A refused Pay keeps spending the phone's `payGap` and `pays` limits; a refused Send gives the same limits back
@@ -212,7 +212,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Failure: a guest taps Pay and is refused by Turnstile (an expired token), by `stale_action` (the bill changed) or by the engine. Each retry starts the 15 s `payGap` and uses one of the 5 `pays` per 10 minutes, and nothing is given back. After a few refusals the phone gets 429 and cannot pay for up to 10 minutes, though no payment was made.
 - Rule: RR-26 / D122 §4 (the refused-try rule that applies to Send)
 - Proposal: record `takenAt`; when the Turnstile check, the open-payment check or `applyService` does not accept, call `limits.giveBack(subject, ['payGap','pays'], takenAt)`. A thrown request keeps the hits, as Send does.
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### C3. A 429 answer to Send or Pay makes the phone look offline and blocks Send and Pay with the offline code
 - Kind: bug
@@ -220,7 +220,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Failure: `request()` sets `awaitingSince` and arms the 10 s watch. The 429 branch never calls `answered()` and reschedules the poll by Retry-After (15 s for `payGap`). At 10 s `offline()` turns true: the phone shows the offline line, and `dispatch` refuses every Send or Pay with `OFFLINE_CODE` until the next poll answers, although the server did answer. `backoff()` also counts a failure for a request that got an answer.
 - Rule: D121 (offline means no answer)
 - Proposal: call `answered()` before scheduling on 429, and on the other non-5xx statuses that are not OK.
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### C4. One failing listing query in the minute tick stops waiter-call lapses and the unconfirmed-pause sweep for every venue
 - Kind: bug
@@ -228,7 +228,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Failure: one organisation's `idleOrders` query throws (a statement timeout or an RLS error); the handler throws before `lapseWaiterCalls` and `sweepUnconfirmedPauses` run. With `retryLimit: 0` that minute is lost; if the error persists, no venue's waiter calls lapse and no Unconfirmed table pause is lifted.
 - Rule: none
 - Proposal: each pass in its own try/catch with a log line; each organisation's listing in a try so that one tenant is skipped, not all.
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### C5. Guest events placed back by `ageMs` are filed under the service day and sitting of the moment they reach the server
 - Kind: bug
@@ -236,7 +236,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Failure: a phone holds `menu.opened` from 06:55 and flushes it at 07:05. The event's `at` is 06:55, but `serviceDate` comes from `now`, so the event lands on the next service day, under whichever sitting is open now. This skews D142's per-night and per-sitting counts (analytics only; no service row is affected).
 - Rule: CLAUDE.md conventions (time: the venue's service day)
 - Proposal: work out `serviceDate` from each event's `at`; drop the `sittingId` of events older than the current sitting's start, or from another day.
-- Status: candidate
+- Status: confirmed (see Review)
 
 ### C6. `scopeOf` and `answer` are copied between the two Tonight read-action files
 - Kind: simplification
@@ -244,7 +244,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Failure: the tenant, venue and actor scoping (`rememberedAtSharedDevice`, the digest rethrow, the FAILED shape) lives in two copies; a fix to one silently misses the other.
 - Rule: none
 - Proposal: one shared `scopeOf` and `answer`, imported by both.
-- Status: candidate
+- Status: confirmed (see Review)
 
 Rejected by the code check itself: `pin_required` on PIN-less undo and receipt actions (every default role holds `alerts.answer`); per-tenant tick round trips (scale only); the duplicated `reject` builder, `sleepFor` helper and `command()` alias (trivial).
 
@@ -256,9 +256,97 @@ Rejected by the code check itself: `pin_required` on PIN-less undo and receipt a
 - Attack: a waiter with a valid PIN, at the venue's shared tablet, sends four wrong guesses and then their own PIN, and repeats. Any PIN-taking action works (`perform` in apps/web/src/server/tonight/actions.ts:80, or `paymentEvidenceAction`). The counter never reaches five, so there is no wait and no `guard.tripped` Log entry, and wrong PINs under the trip are not logged at all. The 10,000 four-digit PINs are covered in at most 2,500 cycles. A PIN match is organisation-wide (identify.ts:73-82), so a hit names whoever holds that PIN: the waiter gets a manager's non-settings rights at the venue (lift pauses, storno done, payment answers, end the night, dispute evidence), and the Log names the manager.
 - Rule: D122 §7 (the wrong-PIN guard); audit-security item 7
 - Proposal: a correct PIN clears only the trip escalation, never the window's wrong PINs; log wrong PINs, or at least a count per device.
-- Status: candidate
+- Status: confirmed (see Review)
 
 Security notes (not rows): a repeated `pay.start` with the same action id replaces the handle hash and skips Turnstile (pay.ts:414-426), not exploitable because no guest answer carries another phone's action id (a regression test is worth adding); `pnpm audit --prod` lists 11 advisories in `undici`, `next` and `esbuild` (an upkeep ticket, not traced). Found sound: the guest table binding, the guest payment handle, rule 3's forbidden-values walk, the notice route and worker, Tonight's venue scoping, the shared device's rights, the simulated onboarding gate, SQL parameters.
+
+## Review (Opus, `screen-review` step 4, blind walk first, fresh database)
+
+The reviewer walked blind, then reproduced every row on a fresh seed (venue `vn_7K3agoUxiDeHzGVOZivmVI`). The staff PIN sheet was not reachable in the pane (it needs a device account), so X1 and C1 are confirmed from the code. Tonight's "Зареждане…" in a hidden pane is the browser not drawing frames, not a finding. Martin will not pick tonight (round brief): every confirmed row is fixed, Polish included; "Needs Martin's yes" is informational.
+
+| Row | Verdict | Severity | Effort | Decision | Needs Martin's yes | Fix |
+|---|---|---|---|---|---|---|
+| S1 | confirmed on table 33 (empty bill): "Цялата сметка", disabled "Плати 0,00 €", "Изберете поне един ред."; "Simulated payments" is the simulated provider's name and not part of the row | Before the pilot | S | none | yes | F1 |
+| S2 | confirmed at 390 px; the first dropdown is the venue-tab switcher (navigation → lane 6), the section part is ours | Before the pilot | S | none | yes | F5 |
+| S3 | confirmed: at 390 px the drawer has no close control; at 1180 px the side sheet's X is 16×16 (two patterns for one job) | Before the pilot | S | none | yes | F5 |
+| S4 | confirmed from the code: Tonight never reads the service hours (only `settings/hours*` and `ordering-view.ts` do); not reproduced live because the round opened at 08:00 | Before the pilot | M | none | yes | F6 |
+| S5 | confirmed: EN "Left to pay / Your items / Total", BG "За плащане / Избрано / Общо" | Before the pilot | S | none | yes | F2 |
+| S6 | confirmed, plus: "Чакаме екипът да я потвърди" is wrong grammar ("екипа"); Ice and Water share one SVG path; EN's first tile reads "Call the waiter" under "CALL A WAITER" | Before the pilot | S | none | yes | F2 |
+| S7 | confirmed with another cause: the bill refreshes by itself (2 s polling backing off to 15 s, a new POS reading when the last is over 15 s old), but the age label freezes at the last changed answer ("Updated 56 s ago" for 25 s+). No Refresh button: the label should tick | Before the pilot | S | none | yes | F3 |
+| S8 | **rejected**: a dev-server timing with no proposal; re-check on CI's production build | — | — | — | — | — |
+| S9 | confirmed on table 33 in EN | Polish | S | none | yes | F4 |
+| S10 | confirmed both sides; the pause itself follows D122 (the table stays paused until staff resume it), but D118 says the guest's phone says why, and it does not. The proposed "send fewer items" would fail too: the guest text must not suggest it | Before the pilot | M | none (the pause stays) | yes | F2 + F6 |
+| S11 | confirmed at 1180×820: section tabs 29 px, "Отвори страницата за гости" 37 px, sheet X 16 px, "…" menu items 42 px, end-night dialog X 15 px; venue tabs and sidebar toggle → lane 6 | Before the pilot | S | none | no | F5 |
+| S12 | confirmed; renaming the report would contradict D122 ("End of night" is the page's name), so only the button is added | Before the pilot | S | none for the button; the rename contradicts D122 and is dropped | yes | F7 |
+| S13 | confirmed, plus: the dialog's words differ from the report's ("не се явили" vs "Не дошли", "не бяха настанени" vs "Неседнали"; copy rule 8); after confirming, banner and alert both say "3 сметки са още отворени" and "Отвори всички" / "Спри поръчките" stay active | Before the pilot | M | none | yes | F7 |
+| S14 | confirmed: four taps from the bill; the second step is the bill being prepared, which the flow needs, so it stays but is renamed | Before the pilot | M | none | yes | F1 |
+| S15 | confirmed: one order makes three rows, "Променени настройки: настройка" comes from `lg_w_setting`, one payment makes seven rows (S20) | Before the pilot | M | none | yes | F8 |
+| S16 | confirmed: a tap on a closed tile opened it for phones with no sheet; breaks "a tap opens the thing"; same tiles as #419 | Before the pilot | S | none | yes | F5 |
+| S17 | confirmed: closed tables' "+" buttons look live; the glossary says a table that is not open shows the menu only. The proposed waiter-call replacement fails (calls are refused on a closed table too, `waiter-call.ts:128`): show a read-only menu | Before the pilot | M | none | yes | F4 |
+| C1 | confirmed, smaller effect: the existing subscription is not revoked, so alerts still arrive; the harm is a false "off" and a changed push address not registered until a later open | Before the pilot | S | none | no | F9 |
+| C2 | confirmed; the same gap as RR-O27 of the 10-29 repair review (deferred then): merged | Before the pilot | S | none | no | F10 |
+| C3 | confirmed and worse: the Retry-After reschedule replaces the poll timer, so a Pay-limit 429 can hold "offline" for up to 600 s and block Send; polls and other 4xx answers also skip `answered()` | Before the pilot | S | none | no | F10 |
+| C4 | confirmed; `waiter-call-lapse.ts:37-58` has the same pattern | Before the pilot | S | none | no | F11 |
+| C5 | confirmed; analytics only, related to #358 | Polish | S (day) / M (sitting) | none | no | F10 |
+| C6 | confirmed: `scopeOf` identical, `answer` differs only in types | Polish | S | none | no | F9 |
+| X1 | confirmed: `succeed()` clears the whole device state; PINs are 4 digits matched organisation-wide; wrong PINs below the trip leave no Log entry; no other limit on this path, and counters are per process | **Blocking** | S–M | none | no | F12 |
+
+### S18. After Send, the bag says the table's order is empty right above "Added to your bill" (reviewer)
+- Kind: bug
+- Screen: /t/3rkwT7KevDf6UU0XgHuODW (table 32) → bag after Send, guest, 390 px, dark, bg
+- Steps: add one item, open the bag, tap "Изпрати 1 артикул".
+- Expected: one state at a time; a just-confirmed send is not followed by an empty-state line (copy-rules rule 5; D72).
+- Saw: "В поръчката на масата още няма нищо." directly above "1 × Absolut Vodka 0.7 / Добавено към сметката ви / Покажете това на сервитьора". EN: "Nothing on the table order yet."
+- Check: copy-rules rule 5; design-critique 2
+- Evidence: S18-review.jpg; dialog innerText
+- Proposal: while a sent card is shown, replace the empty line with "Добавете още от менюто." / "Add more from the menu."
+- Status: confirmed
+- Verdict: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: yes · Fix: F4
+
+### S19. Call a waiter on a closed table: the bell and Send are offered, and the refusal talks about orders (reviewer)
+- Kind: bug
+- Screen: /t/3rkwT7KevDf6UU0XgHuODW (table 32, just after paying the whole bill by phone), guest, 390 px, dark, en
+- Steps: pay the whole bill (the table closes for phones at once), tap the bell, choose "Ice", tap "Send".
+- Expected: a control the table cannot use is not offered (design-critique 2), and a refusal names the thing tried (copy-rules rule 4).
+- Saw: "The team could not take this request / This table is not taking orders from phones right now." The guest asked for ice, not an order. A guest who has just paid can no longer call anyone (`waiter-call.ts:128` refuses `table_not_open`).
+- Check: copy-rules rule 4; design-critique 2
+- Evidence: dialog innerText; `packages/shell/src/strings.ts:625` (`table_not_open` is shared by Send and Call)
+- Proposal: hide the bell when the table is not open for phones; give calls their own refusal: "Тази маса не е отворена за телефони. Махнете на сервитьор." / "This table isn't open for phones. Wave to a waiter." Whether calls should outlive the bill is a question for Martin.
+- Status: confirmed
+- Verdict: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: yes · Fix: F2 + F4
+
+### S20. The Log shows "таксувано" (charged) twice for one payment (reviewer)
+- Kind: bug
+- Screen: Tonight → Дневник, manager, 1180×820, dark, bg
+- Steps: pay a bill from a phone, open the Log.
+- Expected: one line per fact (operational-screens Clean rule 1); a money Log never reads as a second charge.
+- Saw: at 15:20, "Плащане за Маса 32, 95,00 €: таксувано" twice among seven payment rows. The second is the payment table being freed (`pay-route.ts:507`, reason `table_freed`); `log-sentence.ts:197-201` drops the reason.
+- Check: operational-screens Clean rule 1; copy-rules rule 4
+- Evidence: Log text at 15:20; the code above
+- Proposal: render `table_freed` as "Плащане за Маса 32: масата за плащане е освободена" / "Payment for Table 32: payment table freed"; `release_refused` likewise.
+- Status: confirmed
+- Verdict: confirmed · Severity: Before the pilot (a manager could refund a "duplicate") · Effort: S · Decision: none · Needs Martin's yes: no · Fix: F8
+
+## Fix plan (reviewer)
+
+Every ticket branches from `sr/foundation` and its pull request goes into `sr/foundation`. Tonight the lane's lead (Opus) codes them, bundled into fewer pull requests by area.
+
+| Bundle | Rows | Brief | Test home |
+|---|---|---|---|
+| F1 Guest Pay sheet opens ready to pay | S1, S14 | Empty bill → "Няма какво да се плати" / "Nothing to pay yet" + "Към менюто" / "Back to the menu"; opened from the bill's "Pay N" the whole bill is pre-ticked; the Tip row only when a tip can be set; the second step's button "Потвърди N" / "Confirm N". Template flow; D72, D127 | the face's pay tests; tap count in the guest pay e2e |
+| F2 Guest service words | S5, S6, S10 (guest), S19 | "Selected" / "Избрано"; first call tile "Друго" / "Something else"; "Заявката е изпратена / Чакаме сервитьор да я потвърди." / "Request sent / Waiting for a waiter to confirm."; Ice its own icon; a cap trip says the order is over the phone limit and the waiter takes it (the reason must reach the phone); a separate call refusal | `packages/shell` strings tests |
+| F3 Bill age label ticks | S7 | the age of the reading ticks on the phone, or resets on each reading; D121 | `apps/web/src/guest/services-client.test.ts` |
+| F4 Bag and closed-table menu | S9, S17, S18, S19 (bell) | one bag line layout, no bands; a closed table shows the menu only (no Add, no bell) with "Тази маса не е отворена за поръчки от телефон. Попитайте сервитьор." / "This table isn't open for phone orders. Ask a waiter."; no empty line beside a sent card. Template flow | the face's contract tests; e2e: closed table → 0 Add buttons |
+| F5 Tonight tables and sheets | S2, S3, S11, S16 | 390 px: section switch in the heading row, the repeated "Чака вас" heading goes; the drawer gets a 44 px "Затвори" / "Close"; the side sheet's X a 44 px hit area; section tabs, "Отвори страницата за гости" and menu items ≥ 44 px; a tile tap opens the sheet, which holds "Отвори за телефони" / "Open for phones" with Undo. D107, D123 | `apps/web/e2e/touch-targets.spec.ts` (Tonight at 390 and 1180×820); Tonight e2e |
+| F6 Tonight says why | S4, S10 (waiter) | before opening, the Tables header and open sheets say "Поръчките от телефон започват в 22:00" / "Phone orders start at 22:00"; the cap alert names the amount and the limit | `pause-banners.test.tsx`; Tonight e2e |
+| F7 End of night | S12, S13 | a "Приключи вечерта" / "End the night" button on the tab (the menu item and the tab's name stay, D122); the dialog body as lines with the report's words; after confirming, banner or alert, not both; "Отвори всички" and "Спри поръчките" disabled once the night is closed. D122, D138, D144 | Tonight e2e |
+| F8 Log lines | S15, S20 | one row per order with its latest state, expanding to the steps; name the setting that changed; `table_freed` / `release_refused` rows name their reason | `apps/web/src/tonight/log-sentence.test.ts` |
+| F9 Tonight server actions | C1, C6 | push subscribe and revoke run as the device's account; one shared `scopeOf` / `answer` | `apps/web/src/server/tonight` tests |
+| F10 Guest limits and client | C2, C3, C5 | a refused Pay gives back `payGap` and `pays` (closes RR-O27); a 429 or other non-5xx answer calls `answered()`; a guest event's service day from its own time, no sitting for events older than the sitting | core pay / guest-events tests; `services-client.test.ts` |
+| F11 Worker tick isolation | C4 | each pass and each organisation's listing in its own try with a log line; `waiter-call-lapse.ts` too | `apps/worker/tests/order-tidy.test.ts` |
+| F12 PIN guard (Blocking) | X1 | a correct PIN clears only the trip escalation, never the window's wrong PINs; a per-organisation wrong-PIN limit; a logged count of wrong PINs per device. Stop and ask if a shared counter needs a schema change | `packages/core/src/pin-guard.test.ts`; `identify` test (4 wrong + 1 right, repeated, still trips) |
+
+Polish rows (S9, C5, C6) sit inside F4, F10 and F9; there is no separate Polish table.
 
 ## Works
 
