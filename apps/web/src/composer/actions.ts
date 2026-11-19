@@ -256,8 +256,7 @@ export async function moveSectionAction(input: unknown): Promise<ActionResult> {
   const { venueId, menuId, ...move } = parsed.data
   return perform({ venueId, menuId }, async (context) => {
     if (!(await inMenu(context, move.sectionId, move.parentId))) return null
-    // Every key is moved under the parent, so every key must be a section of this menu (S27).
-    if (!(await inMenu(context, ...move.keys.map((entry) => entry.id)))) return null
+    // A key from another menu is refused by apply()'s own root check (S27; attack-table).
     return moveSectionOps({ ...move, menuId: context.menuId })
   })
 }
@@ -275,8 +274,10 @@ export async function createSectionAction(input: unknown): Promise<ActionResult>
     if (!title[context.defaultLocale as keyof LocalizedText]) return null
     if (keys.some((locale) => !context.enabledLocales.includes(locale))) return null
     if (!(await inMenu(context, section.parentId))) return null
-    // The id is the client's: a new section, never an existing node (apply() would treat a
-    // repeated createNode as done and overwrite that node's title; screen round 11-18, S28).
+    // The id is the client's: a new section, never an existing node. apply() treats a repeated
+    // createNode under the same parent as done, and the title after it would overwrite that
+    // section's (screen round 11-18, S28). Another organisation's id is hidden by RLS here and
+    // stopped by the nodes primary key in apply().
     if (await getNodeBasics(context.tenantId, section.id)) return null
     return createSectionOps({ ...section, menuId: context.menuId, title })
   })

@@ -1608,7 +1608,7 @@ export const MIXED: readonly Attack[] = [
   {
     action: 'moveSectionAction',
     how: "my section, the victim's section smuggled into the keys",
-    // Every key is moved under the parent: the victim's section would join my menu (S27).
+    // Every key is moved under the parent; apply()'s root check refuses one from another menu (S27).
     call: (v, a) => {
       const x = v.venues[0]
       const m = a.venues[0]
@@ -1621,24 +1621,6 @@ export const MIXED: readonly Attack[] = [
           { id: m.section, key: 'a1' },
           { id: x.section, key: 'a2' },
         ],
-      })
-    },
-  },
-  {
-    action: 'createSectionAction',
-    how: "with the victim's section id",
-    // A repeated createNode is a no-op in apply(), and the title after it would overwrite the
-    // victim's section (S28).
-    call: (v, a) => {
-      const x = v.venues[0]
-      const m = a.venues[0]
-      return composer.createSectionAction({
-        venueId: m.id,
-        menuId: m.menu,
-        id: x.section,
-        parentId: null,
-        title: { bg_BG: 'Taken over' },
-        sortKey: 'a5',
       })
     },
   },

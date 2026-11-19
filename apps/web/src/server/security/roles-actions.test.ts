@@ -4,11 +4,15 @@
 // (RR-71, RR-72), and the composer's writes refused to a plain member (RR-70).
 import { randomUUID } from 'node:crypto'
 
+import { newId } from '@restro/core'
 import { applyService, PERMISSIONS } from '@restro/core/service'
 import type { DbPool } from '@restro/db'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { createItemAction, createSectionAction } from '@/composer/actions'
+import { setItemPaymentModeAction } from '@/composer/payment-mode-actions'
+import { setItemTagsAction } from '@/composer/tag-actions'
 import { loadItemHistoryAction, loadItemSheetAction } from '@/server/item-sheet/actions'
 import { tableBillAction } from '@/server/tonight/actions'
 
@@ -84,7 +88,6 @@ const CROSSES_VENUES: ReadonlySet<string> = new Set([
 const ITEM_WRITES_ACROSS_VENUES = [
   'placeItemAction',
   'moveSectionAction',
-  'createSectionAction',
   'setItemHiddenAction',
   'saveItemFieldAction',
   'saveItemTranslationAction',
@@ -246,6 +249,65 @@ describe.skipIf(!hasDatabase)('roles (as restro_app)', () => {
         theirs.item,
       )
       expect(own.entries.length).toBeGreaterThan(0)
+    }, 60_000)
+
+    it('createSectionAction: an existing section id is refused, its own or the other venue’s (S28)', async () => {
+      const org = await freshOrg()
+      asOwner(org)
+      const before = await fingerprint(owner, org.tenantId)
+      for (const taken of [org.venues[0].section, org.venues[1].section]) {
+        const answer = await createSectionAction({
+          venueId: org.venues[0].id,
+          menuId: org.venues[0].menu,
+          id: taken,
+          parentId: null,
+          title: { bg_BG: 'Taken over' },
+          sortKey: 'a5',
+        })
+        expect(refused(answer), `answered ${JSON.stringify(answer)}`).toBe(true)
+      }
+      expect(changedTables(before, await fingerprint(owner, org.tenantId))).toEqual([])
+    }, 60_000)
+
+    it('tags and payment mode: a hand-made item is not a POS venue’s (S24, S29, D87)', async () => {
+      const org = await freshOrg()
+      asOwner(org)
+      const [pos, handMade] = org.venues
+      // An unplaced hand-made item: the organisation's, so every hand-made venue's.
+      const item = newId('nd')
+      const made = await createItemAction({
+        venueId: handMade.id,
+        menuId: handMade.menu,
+        id: item,
+        sectionId: null,
+        name: { bg_BG: 'Лимонада на къщата' },
+        sortKey: 'a9',
+      })
+      expect(made, JSON.stringify(made)).toMatchObject({ ok: true })
+      // Venue 1 becomes a POS venue: a till venue of the organisation's integration serves it.
+      await owner.query(
+        'insert into restro.barsy_venues (tenant_id, integration_id, bid, name, venue_id) values ($1, $2, 1, $3, $4)',
+        [org.tenantId, org.integration, 'Till', pos.id],
+      )
+      const before = await fingerprint(owner, org.tenantId)
+      const tagged = await setItemTagsAction({
+        venueId: pos.id,
+        itemIds: [item],
+        add: [pos.tag],
+        remove: [],
+      })
+      expect(tagged).toMatchObject({ ok: false, error: 'not_found' })
+      const paid = await setItemPaymentModeAction({ venueId: pos.id, itemIds: [item], mode: null })
+      expect(refused(paid), `answered ${JSON.stringify(paid)}`).toBe(true)
+      expect(changedTables(before, await fingerprint(owner, org.tenantId))).toEqual([])
+      // The control: at the hand-made venue the same item takes that venue's tag.
+      const own = await setItemTagsAction({
+        venueId: handMade.id,
+        itemIds: [item],
+        add: [handMade.tag],
+        remove: [],
+      })
+      expect(own, JSON.stringify(own)).toMatchObject({ ok: true })
     }, 60_000)
 
     it('the control: the same owner, the same action, venue 1 and its own item', async () => {

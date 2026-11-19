@@ -89,8 +89,9 @@ function dayOf(payload: unknown): string | null {
 }
 
 /**
- * The POS layer's `for_sale` at the venue's scope for each item linked (active) to the
- * integration; an item with no link is missing from the map.
+ * The POS layer's `for_sale` at the venue's scope for each item linked to the integration: by an
+ * active link, or by a link in any state when `anyLinkState` (the lapse pass). An item with no
+ * such link is missing from the map.
  */
 async function readSlots(
   tx: WriteTx,
@@ -110,7 +111,7 @@ async function readSlots(
         eq(sourceLinks.integrationId, integrationId),
         inArray(sourceLinks.nodeId, [...itemIds]),
         // The lapse pass clears a mark whatever became of the link since: a mark on an item whose
-        // link went inactive would otherwise stay for good (screen round 11-18, S26).
+        // link went `missing` or `deleted` would otherwise stay for good (screen round 11-18, S26).
         anyLinkState ? undefined : eq(sourceLinks.state, 'active'),
       ),
     )
