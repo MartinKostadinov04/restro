@@ -5,13 +5,14 @@ import { screen } from '@testing-library/react'
 import { createTranslator } from 'next-intl'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { canManageIntegration } from '@/server/roles'
 import { loadTablesView } from '@/server/tables/service'
 import type { TablesView } from '@/server/tables/view'
 import { SVG, TOKEN_A, VENUE_ID, view } from '@/tables/test-view'
 import { renderWithIntl } from '@/test-utils'
 
 import en from '../../../../../../messages/en.json'
-import PrintTablesPage from './page'
+import PrintTablesPage, { generateMetadata } from './page'
 
 vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace: string) =>
@@ -85,6 +86,7 @@ function unrevealed(): TablesView {
 
 beforeEach(() => {
   vi.mocked(loadTablesView).mockReset()
+  vi.mocked(canManageIntegration).mockReturnValue(true)
 })
 
 describe('the print page when it has nothing to print (#441)', () => {
@@ -106,5 +108,28 @@ describe('the print page when it has nothing to print (#441)', () => {
     expect(screen.getByTestId('print-pages').textContent).toBe('1 code on 1 page')
     expect(screen.queryByText(LINE)).toBeNull()
     expect(screen.queryByText(EMPTY)).toBeNull()
+  })
+})
+
+describe('the print page for someone who may not see the codes (S25)', () => {
+  it('says the codes are for owners and admins, not that none exist or that they failed', async () => {
+    vi.mocked(canManageIntegration).mockReturnValue(false)
+    await renderPage({ ...unrevealed(), canManage: false })
+    expect(screen.getByTestId('print-codes-hidden').textContent).toBe(
+      'Only owners and admins can see the codes.',
+    )
+    expect(screen.queryByText(LINE)).toBeNull()
+    expect(screen.queryByText(EMPTY)).toBeNull()
+    expect(screen.queryByTestId('print-card')).toBeNull()
+  })
+})
+
+describe('the print page’s title (R4)', () => {
+  it('names the sheet and the venue, so a saved PDF is named after them', async () => {
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ venueId: VENUE_ID }),
+    } as Parameters<typeof generateMetadata>[0])
+    expect(metadata.title).toBe('QR codes · Demo Club')
+    expect(metadata.robots).toEqual({ index: false, follow: false })
   })
 })
