@@ -171,10 +171,7 @@ describe('the venue address', () => {
       ['not_allowed', 'Only an owner or admin can change the address.'],
       ['invalid', 'This address cannot be used. Check it and try again.'],
       ['taken', 'Another venue of yours already has this address name. Choose another one.'],
-      [
-        'failed',
-        'Restro did not answer. The address was not changed: check the connection and try again.',
-      ],
+      ['failed', "Restro couldn't change the address. Nothing changed; try again."],
     ] as const) {
       vi.mocked(renameVenueSlugAction).mockResolvedValue({ ok: false, error })
       const user = address()
@@ -198,7 +195,7 @@ describe('the venue address', () => {
     await user.type(input(), 'sea-bar')
     await user.click(save())
     expect((await screen.findByTestId('venue-slug-error')).textContent).toBe(
-      'Restro did not answer. The address was not changed: check the connection and try again.',
+      "Restro couldn't change the address. Nothing changed; try again.",
     )
   })
 

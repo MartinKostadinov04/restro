@@ -202,10 +202,7 @@ describe('step 2, from a POS: nothing is typed', () => {
     for (const [error, text] of [
       ['not_allowed', 'Only an owner or admin can create a venue.'],
       ['invalid', 'Check the name, the address and the languages, then try again.'],
-      [
-        'failed',
-        'Restro did not answer. The venue was not created: check the connection and try again.',
-      ],
+      ['failed', "Restro couldn't create the venue. Nothing changed; try again."],
     ] as const) {
       vi.mocked(createVenueAction).mockResolvedValue({ ok: false, error })
       const { user } = dialog()
@@ -221,7 +218,7 @@ describe('step 2, from a POS: nothing is typed', () => {
     await user.click(tillVenue(11))
     await user.click(submit())
     expect((await screen.findByTestId('new-venue-error')).textContent).toContain(
-      'Restro did not answer',
+      'Nothing changed; try again',
     )
   })
 
@@ -460,10 +457,7 @@ describe('creating by hand', () => {
     for (const [error, text] of [
       ['not_allowed', 'Only an owner or admin can create a venue.'],
       ['invalid', 'Check the name, the address and the languages, then try again.'],
-      [
-        'failed',
-        'Restro did not answer. The venue was not created: check the connection and try again.',
-      ],
+      ['failed', "Restro couldn't create the venue. Nothing changed; try again."],
     ] as const) {
       vi.mocked(createVenueAction).mockResolvedValue({ ok: false, error })
       const { user } = dialog()
@@ -478,7 +472,7 @@ describe('creating by hand', () => {
     const { user, onCreated } = dialog()
     await fill(user)
     expect((await screen.findByTestId('new-venue-error')).textContent).toContain(
-      'Restro did not answer',
+      'Nothing changed; try again',
     )
     expect(onCreated).not.toHaveBeenCalled()
   })

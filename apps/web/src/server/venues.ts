@@ -20,7 +20,6 @@ import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm'
 import { cache } from 'react'
 
 import { getPool } from './db'
-import { tillLabelOfKind } from './till-label'
 import type { NewVenueInstance, NewVenueSources, VenueCard } from './venues-result'
 
 export type { VenueCard } from './venues-result'
@@ -250,27 +249,4 @@ export async function venueHasTill(tenantId: string, venueId: string): Promise<b
       .limit(1),
   )
   return rows.length > 0
-}
-
-/**
- * The name of the POS a venue's items come from (`{source}` in its settings texts, D82), or null
- * for a hand-made venue. Also null for an id that is not a venue of the tenant.
- */
-export async function venueSourceLabel(tenantId: string, venueId: string): Promise<string | null> {
-  if (!isId('vn', venueId)) return null
-  const [row] = await withTenant(getPool(), tenantId, (tx) =>
-    tx
-      .select({ kind: integrations.kind })
-      .from(tillVenueLinks)
-      .innerJoin(
-        integrations,
-        and(
-          eq(integrations.tenantId, tillVenueLinks.tenantId),
-          eq(integrations.id, tillVenueLinks.integrationId),
-        ),
-      )
-      .where(eq(tillVenueLinks.venueId, venueId))
-      .limit(1),
-  )
-  return row === undefined ? null : tillLabelOfKind(row.kind)
 }

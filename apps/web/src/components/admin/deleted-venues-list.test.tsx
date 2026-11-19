@@ -116,10 +116,7 @@ describe('the deleted venues', () => {
   it.each([
     ['not_allowed', 'Only an owner can restore a venue.'],
     ['invalid', 'This venue could not be found.'],
-    [
-      'failed',
-      'Restro did not answer. The venue was not restored: check the connection and try again.',
-    ],
+    ['failed', "Restro couldn't restore the venue. Nothing changed; try again."],
   ] as const)('shows the answer %s and keeps the venue in the list', async (error, text) => {
     vi.mocked(restoreVenueAction).mockResolvedValue({ ok: false, error })
     const user = list()
@@ -134,7 +131,7 @@ describe('the deleted venues', () => {
     const user = list()
     await user.click(within(items()[0] as HTMLElement).getByTestId('restore-venue'))
     expect((await screen.findByTestId('restore-error')).textContent).toContain(
-      'Restro did not answer',
+      'Nothing changed; try again',
     )
   })
 

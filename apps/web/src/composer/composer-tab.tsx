@@ -38,6 +38,7 @@ import { composerMenusOf } from '@/server/composer/menu'
 import { readItemPayFirstDefault } from '@/server/composer/pay-first'
 import { getPool } from '@/server/db'
 import { canManageIntegration, canMarkSoldOut } from '@/server/roles'
+import { tillLabelOfVenue } from '@/server/tables/service'
 import { loadTillLabels, tillLabelOf } from '@/server/till-label'
 import { venueHasTill } from '@/server/venues'
 import { privacyHref } from '@/settings/privacy-href'
@@ -90,9 +91,11 @@ async function StructureSubtab({ tenantId, role, venue, menu: requested }: Compo
     />
   )
   if (current === null) {
+    // The POS's name, for the refusal that says the menus come from it (`{source}`, D82).
+    const source = (await tillLabelOfVenue(getPool(), tenantId, venue.id)) ?? ''
     return (
       <div className="grid gap-4">
-        <NoMenu venueId={venue.id} canCreate={manager} />
+        <NoMenu venueId={venue.id} canCreate={manager} source={source} />
         {guestFeatures}
       </div>
     )

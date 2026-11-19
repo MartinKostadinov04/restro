@@ -464,7 +464,7 @@
         "not_allowed": "Only an owner can change the organisation's name or address name.",
         "invalid": "This cannot be used. Check it and try again.",
         "taken": "Another organisation has this address name, or had it before. Choose another one.",
-        "failed": "Restro did not answer. Nothing was changed: check the connection and try again."
+        "failed": "Restro couldn't save this. Nothing changed; try again."
       }
     },
     "integrations": {
@@ -501,7 +501,7 @@
           "invalid": "This venue could not be found.",
           "not_deleted": "This venue is not in the deleted venues. Delete it first.",
           "name_mismatch": "The name does not match. Type it exactly as shown.",
-          "failed": "Restro did not answer. The venue was not deleted: check the connection and try again."
+          "failed": "Restro couldn't delete the venue. Nothing changed; try again."
         }
       },
       "restored": "{name} is back as a draft. Publish its menu to put it back on guests' phones; its table codes come back with that publish.",
@@ -510,7 +510,7 @@
         "not_allowed": "Only an owner can restore a venue.",
         "invalid": "This venue could not be found.",
         "till_taken": "Not restored: its venue in the POS is linked to “{holder}” now.",
-        "failed": "Restro did not answer. The venue was not restored: check the connection and try again."
+        "failed": "Restro couldn't restore the venue. Nothing changed; try again."
       }
     }
   },
@@ -551,7 +551,7 @@
           "not_allowed": "Only an owner or admin can unpublish a venue.",
           "invalid": "This venue could not be found.",
           "venue_archived": "This venue was deleted.",
-          "failed": "Restro did not answer. The venue was not unpublished: check the connection and try again."
+          "failed": "Restro couldn't unpublish the venue. Nothing changed; try again."
         }
       }
     },
@@ -603,7 +603,7 @@
         "invalid": "Check the name, the address and the languages, then try again.",
         "taken": "Another venue of yours already has this address. Choose another one.",
         "link_taken": "This venue of {source} was linked to another venue in the meantime. Pick another one.",
-        "failed": "Restro did not answer. The venue was not created: check the connection and try again."
+        "failed": "Restro couldn't create the venue. Nothing changed; try again."
       }
     }
   },
@@ -923,7 +923,7 @@
           "not_allowed": "Only an owner or admin can rename a venue.",
           "invalid": "This name cannot be used. Check it and try again.",
           "venue_archived": "This venue was deleted.",
-          "failed": "Restro did not answer. The name was not changed: check the connection and try again."
+          "failed": "Restro couldn't change the name. Nothing changed; try again."
         }
       },
       "danger": {
@@ -951,7 +951,7 @@
             "invalid": "This venue could not be found.",
             "name_mismatch": "The name does not match. Type it exactly as shown.",
             "venue_archived": "This venue was deleted.",
-            "failed": "Restro did not answer. The venue was not deleted: check the connection and try again."
+            "failed": "Restro couldn't delete the venue. Nothing changed; try again."
           }
         }
       },
@@ -971,7 +971,7 @@
           "not_allowed": "Only an owner or admin can change the address.",
           "invalid": "This address cannot be used. Check it and try again.",
           "taken": "Another venue of yours already has this address name. Choose another one.",
-          "failed": "Restro did not answer. The address was not changed: check the connection and try again."
+          "failed": "Restro couldn't change the address. Nothing changed; try again."
         }
       }
     }
@@ -1250,7 +1250,7 @@
       "unknown_source": "That menu cannot be imported any more. Choose another one.",
       "not_allowed": "Only an owner or admin can change the menus.",
       "invalid": "That request was not understood. Reload the page and try again.",
-      "failed": "Restro did not answer. Nothing was changed: check the connection and try again."
+      "failed": "Restro couldn't save this. Nothing changed; try again."
     }
   },
   "integration": {
@@ -1457,7 +1457,7 @@
       "not_ready": "Not ready yet: finish the earlier steps first.",
       "already_running": "A sync is already queued or running.",
       "queue_unavailable": "The sync service could not be reached. Try again in a moment.",
-      "failed": "Restro did not answer. Nothing was changed or started: check the connection and try again."
+      "failed": "Restro couldn't do this. Nothing changed or started; try again."
     }
   },
   "menuSource": {

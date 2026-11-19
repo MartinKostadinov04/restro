@@ -188,10 +188,7 @@ describe('Unpublish', () => {
       ['not_allowed', 'Only an owner or admin can unpublish a venue.'],
       ['invalid', 'This venue could not be found.'],
       ['venue_archived', 'This venue was deleted.'],
-      [
-        'failed',
-        'Restro did not answer. The venue was not unpublished: check the connection and try again.',
-      ],
+      ['failed', "Restro couldn't unpublish the venue. Nothing changed; try again."],
     ] as const) {
       vi.mocked(unpublishVenueAction).mockResolvedValue({ ok: false, error })
       const user = card(LIVE)
@@ -210,7 +207,7 @@ describe('Unpublish', () => {
     await user.click(screen.getByTestId('unpublish-venue-open'))
     await user.click(screen.getByTestId('unpublish-venue-confirm'))
     expect((await screen.findByTestId('unpublish-venue-error')).textContent).toContain(
-      'Restro did not answer',
+      'Nothing changed; try again',
     )
   })
 })

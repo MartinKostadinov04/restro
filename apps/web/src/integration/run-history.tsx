@@ -46,7 +46,7 @@ const STATUS_BADGE = {
 const NEUTRAL_RUN_KINDS = ['places_read', 'floor_read'] as const
 
 /** Runs that read a venue's tables, not its menu: a venue's Menu source card never sums up with one. */
-const TABLE_RUN_KINDS: readonly string[] = ['floor_read']
+const TABLE_RUN_KINDS: readonly string[] = ['places_read', 'floor_read']
 
 interface HistoryProps {
   readonly runs: readonly RunView[]

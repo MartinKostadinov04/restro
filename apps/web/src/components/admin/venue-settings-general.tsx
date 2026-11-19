@@ -10,7 +10,7 @@ import { MenuSourceSkeleton } from '@/integration/menu-source-skeleton'
 import { MenuSourceTab } from '@/integration/menu-source-tab'
 import { getPool } from '@/server/db'
 import { canDeleteVenue, canManageIntegration } from '@/server/roles'
-import { venueSourceLabel } from '@/server/venues'
+import { tillLabelOfVenue } from '@/server/tables/service'
 
 import { type MenuRow, MenusCard } from './menus-card'
 import { VenueDangerZone } from './venue-danger-zone'
@@ -29,7 +29,7 @@ export async function VenueSettingsGeneral({
 }) {
   const [all, source] = await Promise.all([
     listMenus(getPool(), tenantId, venue.id, { includeDeleted: true }),
-    hasTill ? venueSourceLabel(tenantId, venue.id) : null,
+    hasTill ? tillLabelOfVenue(getPool(), tenantId, venue.id) : null,
   ])
   const row = (menu: (typeof all)[number]): MenuRow => ({
     id: menu.id,

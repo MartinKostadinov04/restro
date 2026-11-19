@@ -160,24 +160,33 @@ describe('the Menu source card of a POS venue: the common part', () => {
     })
 
     // Screen round 2026-11-18, S4: a table read sat under "Not synced yet" as "Last run: Other".
-    it('sums up with the last menu run, never a table read, which stays in the list', async () => {
-      const user = userEvent.setup()
+    // A table read is the simulated POS's `floor_read` or barsy's `places_read`.
+    it.each(['floor_read', 'places_read'])(
+      'sums up with the last menu run, never a table read (%s), which stays in the list',
+      async (kind) => {
+        const user = userEvent.setup()
+        card(
+          linkedMenuSource({
+            lastSyncedAt: null,
+            runs: [run({ id: 'jb_a', kind }), run({ id: 'jb_b' })],
+          }),
+        )
+        expect(screen.getByTestId('history-last').textContent).toMatch(/^Last run: Full read/)
+        await user.click(screen.getByTestId('history-toggle'))
+        expect(screen.getAllByTestId('run-row')).toHaveLength(2)
+      },
+    )
+
+    it('has no summary line when every run is a table read', () => {
       card(
         linkedMenuSource({
           lastSyncedAt: null,
-          runs: [run({ id: 'jb_a', kind: 'floor_read' }), run({ id: 'jb_b' })],
+          runs: [run({ kind: 'places_read' }), run({ id: 'jb_b', kind: 'floor_read' })],
         }),
       )
-      expect(screen.getByTestId('history-last').textContent).toMatch(/^Last run: Full read/)
-      await user.click(screen.getByTestId('history-toggle'))
-      expect(screen.getAllByTestId('run-row')).toHaveLength(2)
-    })
-
-    it('has no summary line when every run is a table read', () => {
-      card(linkedMenuSource({ lastSyncedAt: null, runs: [run({ kind: 'floor_read' })] }))
       expect(screen.getByTestId('sync-last').textContent).toBe('Not synced yet.')
       expect(screen.queryByTestId('history-last')).toBeNull()
-      expect(screen.getByTestId('history-toggle').textContent).toBe('Show the last run')
+      expect(screen.getByTestId('history-toggle').textContent).toBe('Show the last 2 runs')
     })
   })
 

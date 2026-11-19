@@ -112,10 +112,7 @@ describe('the delete dialog', () => {
     ['name_mismatch', 'The name does not match. Type it exactly as shown.'],
     ['venue_archived', 'This venue was deleted.'],
     ['invalid', 'This venue could not be found.'],
-    [
-      'failed',
-      'Restro did not answer. The venue was not deleted: check the connection and try again.',
-    ],
+    ['failed', "Restro couldn't delete the venue. Nothing changed; try again."],
   ] as const)('shows the answer %s and stays open', async (error, text) => {
     vi.mocked(deleteVenueAction).mockResolvedValue({ ok: false, error })
     const user = zone()
@@ -135,7 +132,7 @@ describe('the delete dialog', () => {
     await user.type(typed(), NAME)
     await user.click(confirm())
     expect((await screen.findByTestId('delete-venue-error')).textContent).toContain(
-      'Restro did not answer',
+      'Nothing changed; try again',
     )
   })
 

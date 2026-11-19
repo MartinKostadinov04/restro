@@ -130,10 +130,7 @@ describe('the Delete permanently dialog', () => {
     ['invalid', 'This venue could not be found.'],
     ['not_deleted', 'This venue is not in the deleted venues. Delete it first.'],
     ['name_mismatch', 'The name does not match. Type it exactly as shown.'],
-    [
-      'failed',
-      'Restro did not answer. The venue was not deleted: check the connection and try again.',
-    ],
+    ['failed', "Restro couldn't delete the venue. Nothing changed; try again."],
   ] as const)('shows the answer %s and stays open', async (error, text) => {
     vi.mocked(purgeVenueAction).mockResolvedValue({ ok: false, error })
     const user = dialog()
@@ -156,7 +153,7 @@ describe('the Delete permanently dialog', () => {
     await user.type(typed(), NAME)
     await user.click(confirm())
     expect((await screen.findByTestId('purge-venue-error')).textContent).toContain(
-      'Restro did not answer',
+      'Nothing changed; try again',
     )
     expect(purged).not.toHaveBeenCalled()
   })
