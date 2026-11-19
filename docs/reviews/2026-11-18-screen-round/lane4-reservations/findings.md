@@ -15,7 +15,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: `operational-screens.md` screen read 2 and 3; GLOSSARY "Spot".
 - Evidence: S1-before.jpg (800 px crop of the list)
 - Proposal: "5 гости · маса 9" (BG) / "5 guests · spot 9" (EN), using the spot's kind word where known.
-- Status: candidate
+- Reviewer: the row joins the spot names bare (`reservation-row.tsx` `parts`). Use «място 9» / "spot 9", not «маса»: spots include stools and standing places.
+- Status: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: yes · Fix: B1
 
 ### S2. The row's "…" menu is missing on waiting and cancelled rows, so the row layout shifts
 - Kind: simplification
@@ -26,7 +27,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: `design-critique 4`; Patterns row "secondary actions of a row".
 - Evidence: S1-before.jpg
 - Proposal: show "…" on every row, or on none, and keep the primary button in one column.
-- Status: candidate
+- Reviewer: a row with nothing secondary has nothing to put in "…", and the pattern does not ask for an empty menu. The button column is solved by S16's restack, which reserves the "…" slot. A waiting party leaving is handled from its sheet (D137).
+- Status: rejected
 
 ### S3. The same word «Гости» names three different things in one flow
 - Kind: simplification
@@ -37,7 +39,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: `ux-copy` principle 3; `copy-rules` rule 8.
 - Evidence: sheet text and dialog text read in the DOM at 1280 (screenshot cropped)
 - Proposal: button «Колко дойдоха» / "How many came" or «Брой гости»; keep "Гости" for the guest list only.
-- Status: candidate
+- Reviewer: for a seated party the sheet's primary button is `d_guests` «Гости» (`reservation-sheet.tsx:485-495`) and opens «Колко дойдоха?». Rename to «Брой гости» / "Guest count".
+- Status: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: yes · Fix: B1
 
 ### S4. The sheet's close "X" is 16 × 16 px
 - Kind: bug
@@ -48,7 +51,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: Restro 44 px floor; WCAG 2.5.8 (24 px) would also fail.
 - Evidence: DOM measurement of `[role=dialog] button`, 16×16
 - Proposal: size the X through the shared `tap-area` class.
-- Status: candidate
+- Reviewer: the shared Sheet's X is `phone:size-11` (44 px) at phone width; at 390 the sheet is a Drawer with no X; at 1280 the 48 px «Затвори» is the equivalent control (WCAG 2.5.8). A shared `components/ui` change is not this lane's.
+- Status: rejected
 
 ### S5. In Change tables the spot list is sorted as text ("1, 10, 101, 11 … 2, 22") and "Избрани: 9" reads as spot 9
 - Kind: bug
@@ -60,7 +64,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Evidence: dialog text read in the DOM (the spot list and "Избрани: 9")
 - Proposal: natural-order sort (numeric-aware) and the foot "1 място избрано" / "1 spot selected".
 - Explorer's correction (host pass): «Избрани: 9» lists the selected spots' names, not a count; the fault is a bare number with no word.
-- Status: candidate
+- Reviewer: `plan-read.ts:501` sorts with `orderBy(asc(spots.name))`, text order. «Избрани: 9» is the label plus names, with no noun.
+- Status: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B2
 
 ### S6. The menu item "Освободи" does not say what it frees
 - Kind: simplification
@@ -71,7 +76,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: `copy-rules` rules 2-3; GLOSSARY (Seated / Finished).
 - Evidence: menu items read in the DOM: "Картата на госта | Копирай в друга вечер | Освободи | Изтрий резервацията…"
 - Proposal: «Освободи масата (край на сядането)» / "Free the table (finish)"; the reviewer to press it and confirm what it does.
-- Status: candidate
+- Reviewer: `d_free` «Освободи» has no object; per D137 it frees the spots and closes the codes. Rename to «Тръгнаха си» / "They left", mirroring «Пристигнаха».
+- Status: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: yes · Fix: B1
 
 ### S7. On the Plan the spots show only a symbol, with no name or number, and the plan sits below four rows of controls
 - Kind: simplification
@@ -82,7 +88,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: `operational-screens.md` screen read 3 and 4; WCAG 1.4.1 (state by symbol only at fit zoom).
 - Evidence: S7-before.jpg
 - Proposal: label the spots at the zoom where they fit, or open at a zoom where names fit; fold the hint sentence into a "?"; «Покажи целия план» stays.
-- Status: candidate
+- Reviewer: at 390 spot buttons are 8–19 px with the name only in the aria-label; the keyboard hint shows on a touch phone. Correction: WCAG 1.4.1 does not fail (the state is a shape, not colour alone).
+- Status: confirmed · Severity: Before the pilot · Effort: M · Decision: none · Needs Martin's yes: yes · Fix: B2
 
 ### S8. At 390 px not one booking is visible on the night list's first screen
 - Kind: optimisation
@@ -93,7 +100,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: screen read 1 and 2; `operational-screens.md` bar-tablet persona; design-critique 3.
 - Evidence: S8-before.jpg (the first row at y 835 of an 844 px screen)
 - Proposal: chips and "New reservation" / "Add to waiting list" in one compact row; hide the venue header and guest-page link on this tab at phone width (the header part: navigation → lane 6); keep the legend behind the "Late" chip.
-- Status: candidate
+- Reviewer: the grey stripe on the view switcher is probably Windows' classic scrollbars; check on a phone.
+- Status: confirmed · Severity: Before the pilot · Effort: M · Decision: none · Needs Martin's yes: yes · Fix: B1 (in-tab part); venue header part: navigation → lane 6
 
 ### S9. The Block dialog and the spot sheet name a bare spot number, a missing reason says nothing, and the refusal is gendered wrong
 - Kind: bug
@@ -104,7 +112,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: WCAG 3.3.1; `copy-rules` rules 4 and 8; D137.
 - Evidence: S9-before.jpg (the dialog), toast text from the DOM
 - Proposal: «Да блокираме ли място 1?» / "Block spot 1?"; «Избери причина» beside the reason chips; neutral toast «Мястото е резервирано от Стефан Колев за 14:00. Първо премести компанията.» / "Spot 1 is booked by Stefan Kolev for 14:00. Move the party first."
-- Status: candidate
+- Reviewer: `p_block_t` names a bare number; the block button is disabled until a reason is picked (`block-dialog.tsx:121`), which Patterns forbids; `p_taken` / `d_taken` hard-code the feminine.
+- Status: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B2
 
 ### S10. The word «места» means both spots and seats
 - Kind: simplification
@@ -115,7 +124,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: `copy-rules` rule 8; GLOSSARY "Spot".
 - Evidence: texts read in the DOM; S9-before.jpg shows the spot sheet behind the dialog
 - Proposal: spot = «място», seats = «седящи»: «Седящи 6», «за 4 души · 60 места».
-- Status: candidate
+- Reviewer: `sh_spots` «Места» and `p_seats` «Места» share one word; EN already separates Spots / Seats.
+- Status: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B2
 
 ### S11. Hard-coded masculine verbs on the guest card
 - Kind: bug
@@ -126,7 +136,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: `copy-rules` rule 9.
 - Evidence: guest sheet text read in the DOM
 - Proposal: «Идвания: 0 · Неидвания: 0 (в твоя клуб)» / "Came 0 times, did not come 0 times at your club."
-- Status: candidate
+- Reviewer: `g_counts` is masculine for every guest.
+- Status: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B1
 
 ### S12. Walk-in and waiting parties appear on Guests as people with a phone
 - Kind: bug
@@ -137,7 +148,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: D140; screen read 3.
 - Evidence: S12-before.jpg
 - Proposal: confirm whether the seed or the waiting form creates the record; a party with no name should not become a guest record.
-- Status: candidate
+- Reviewer: follows D140: `findParty` makes a guest record from any phone given (`book.ts:300-332`). The odd names are the seed's (`demo-club.ts:486-487`): a seed observation, not a screen fault.
+- Status: rejected
 
 ### S13. Settings › Reservations: the spot kinds sit far down, after a ~130-button spot list, and the plan editor has no zoom
 - Kind: simplification
@@ -148,7 +160,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: `operational-screens.md` Patterns (pick one of a few); screen read 3; WCAG 2.1.1 (keyboard walk through ~130 buttons).
 - Evidence: texts read in the DOM (canvas screenshot not saved)
 - Proposal: collapse the spot list into one control; move kinds above it.
-- Status: candidate
+- Reviewer: at 390 «Видове места» starts at y 7456 of 7829 px; `plan-editor/*` has no zoom while the shared `plan-zoom.ts` exists.
+- Status: confirmed · Severity: Before the pilot · Effort: M · Decision: none · Needs Martin's yes: yes · Fix: B2
 
 ### S14. Settings: a successful write says only «Запазено», and the hold field keeps an invalid value
 - Kind: simplification
@@ -159,7 +172,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: `operational-screens.md` feedback 1.
 - Evidence: toast text from the DOM
 - Proposal: «Телефонът вече не е задължителен» / "Phone is no longer required".
-- Status: candidate
+- Reviewer: `st_saved` / `pe_spot_saved` «Запазено» confirmed. The hold-field part is rejected: keeping a typed invalid value beside its error is standard form behaviour.
+- Status: confirmed (toast part) · Severity: Polish · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B2
 
 ### S15. Mixed forms of address in Bulgarian
 - Kind: simplification
@@ -170,7 +184,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: `copy-rules` rule 9.
 - Evidence: dialog text from the DOM
 - Proposal: «Въведи дата като ден.месец.година, например 10.11.2026.»
-- Status: candidate
+- Reviewer: the fix goes the other way. The app's voice is formal (about 75 formal forms against 20 informal); the outliers are the informal reservation strings `bk_w_closed`, `bk_w_before`, `g_counts`, `g_mine_hint`, `g_mine_saved`, `pe_seats_bad`.
+- Status: confirmed · Severity: Polish · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B1
 
 ### S16. At 390 px the booking row squeezes the name to one letter per line
 - Kind: bug
@@ -181,7 +196,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: WCAG 1.4.10 and 1.4.4; screen read 1 and 3; `design-critique 3`.
 - Evidence: S16-before.jpg; row heights from the DOM at 320 (114 px to 562 px); scrollWidth 397 at 200 %
 - Proposal: stack the row at phone width: name and party on line one, badge on line two, the primary button full width under them, "…" in the corner; give the name a minimum width and let the badge wrap.
-- Status: candidate
+- Reviewer (also found blind): `[overflow-wrap:anywhere]` on a `min-w-0 flex-1` name column beside the badge column, chevron, action button and 44 px "…" (`reservation-row.tsx`).
+- Status: confirmed · Severity: Before the pilot · Effort: M · Decision: none · Needs Martin's yes: yes · Fix: B1
 
 ### S17. Plan and Change tables at 390 px: tiles are about 14 px with no name, so a host cannot pick a spot by thumb
 - Kind: bug
@@ -192,7 +208,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: Restro 44 px floor; `operational-screens.md` bar-tablet targets; WCAG 2.5.8 (24 px).
 - Evidence: S17-before.jpg (Plan at 390); DOM: spot buttons 10 to 19 px high
 - Proposal: on a phone open Change tables on the list (as the waiting-list dialog does), with search by number; give plan spots a larger hit area.
-- Status: candidate
+- Reviewer (also found blind): spot buttons 8–19 px at 390; the same `SpotPlan` is used in Change tables and Give a spot.
+- Status: confirmed · Severity: Before the pilot · Effort: M · Decision: none · Needs Martin's yes: yes · Fix: B2
 
 ### S18. After Change tables then Arrive, the sheet tells the host «Ния промени тази резервация» (her own name)
 - Kind: bug
@@ -203,7 +220,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: `operational-screens.md` feedback 1; Patterns "What happened after a write".
 - Evidence: sheet text and toast text read in the DOM
 - Proposal: no conflict notice when the writer is the current user; merge the arrival and table toasts into one.
-- Status: candidate
+- Reviewer: `reservation-sheet.tsx:379` sets `changedBy` for any newer history line, the person's own included. The three toasts come from `door-actions.tsx:205-208`.
+- Status: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B1
 
 ### S19. In "Дай място" a checkbox tap seats the party at once, with no confirm
 - Kind: bug
@@ -214,7 +232,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: `operational-screens.md` Patterns ("Pick one of a few", a write with a consequence); WCAG 3.2.2 (on input).
 - Evidence: toast text in the DOM; the unsorted list in the dialog
 - Proposal: radio-style rows with a «Настани тук» / "Seat here" button; natural sort (as S5).
-- Status: candidate
+- Reviewer: seating on tap is deliberate (#330, Patterns "A choice that is also the action"). The fault is that the control is a `Checkbox` (`spot-picker.tsx:159`) acting on input (WCAG 3.2.2), plus text order. Fix: each row a button «Настани на {spot}», still one tap with Undo.
+- Status: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: yes · Fix: B2
 
 ### S20. The host sees no Cancel, Edit or Delete, and a sentence says why in a way D135 contradicts
 - Kind: bug
@@ -225,7 +244,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: D135 "who may work a booking"; D141.
 - Evidence: sentence and menu items read in the DOM at 390; the manager pass saw "Редактирай" in the sheet
 - Proposal: check whether the seeded host role lacks the permission or the screen hides it; if the role is meant to have it, show Edit and Cancel; otherwise say who («Поискай от управителя»).
-- Status: candidate
+- Reviewer: `reservation.edit` / `reservation.cancel` require `reservations.manage` (`commands.ts:373, 384`); the seeded host has the default `staff` role. D135 (Martin, log 13.18, 11-07) says the host on duty edits and cancels a colleague's booking; D141's lead's-call list puts edit and cancel under managing bookings.
+- Status: confirmed · Severity: Blocking · Effort: S · Decision: contradicts D141 (lead's call) → open question · Needs Martin's yes: no · Fix: B3 once settled
 
 ### S21. Arrival, walk-in and free write several toasts, only some with Undo
 - Kind: simplification
@@ -236,7 +256,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: `operational-screens.md` feedback 1; `copy-rules` rule 8.
 - Evidence: toast texts in the DOM
 - Proposal: one toast per write with the object and Undo: «Стефан Колев е настанен. Масата е отворена.» / "Stefan is seated. The table is open."; walk-in «Настанена компания на 0.» / "Party seated at 0."
-- Status: candidate
+- Reviewer: each write stacks `d_open` (no action) with the seat toast; `d_seated_walk_in` «Настанени.» names nothing; `bk_noshow_done` is masculine.
+- Status: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B1
 
 ### S22. The swap dialog, the row menu and dialog chips at 390 px are 42 px, and the grammar is «с Стефан»
 - Kind: bug
@@ -247,7 +268,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: Restro 44 px floor; `copy-rules` rule 9.
 - Evidence: S22-before.jpg; DOM heights
 - Proposal: «Да сменим ли местата със Стефан Колев? Иван Петров ще седне на 1, Стефан Колев на 10.»; menu items and chips to 44 px.
-- Status: candidate
+- Reviewer: `ct_swap_t` / `ct_swap_do` «с {party}». The 42 px part is rejected: the row-menu item measured 44 px (`min-h-11`), kind chips have `min-h-11`, confirm buttons use `WRAPS`.
+- Status: confirmed (grammar and missing tables) · Severity: Polish · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B2
 
 ### S23. «Тази вечер» is used for any night, and a past night says «Още няма резервации»
 - Kind: simplification
@@ -258,7 +280,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: `copy-rules` rule 5; `operational-screens.md` screen read 2.
 - Evidence: S23-before.jpg
 - Proposal: «18 ноември е минала. Може да се чете, но не и да се променя.»; empty «Няма резервации за 18 ноември.»
-- Status: candidate
+- Reviewer: `b_passed*` and `empty` say «тази вечер» for any date.
+- Status: confirmed · Severity: Polish · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B1
 
 ### S24. EN uses different words for the same states, and a seated waiting party reads «Walk-in»
 - Kind: simplification
@@ -269,7 +292,8 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Check: GLOSSARY "Walk-in", "Waiting list"; D135.
 - Evidence: list text read in the DOM in EN
 - Proposal: «Reserved» for the state; a «From the waiting list» badge for a seated waiting party.
-- Status: candidate
+- Reviewer: «Coming» translates the designed badge «Предстояща» (`2026-11-10-reservations-screens.md` §words); D135's Reserved is the stored status. A party seated from the waiting list had no reservation, so it is a walk-in by GLOSSARY. «Още за Без име» is right for an unnamed party.
+- Status: rejected
 
 ## Works
 - Night list: the per-state chips with counts, the "Закъснява" word and its legend line, and "Пристигнаха" as one visible primary button per upcoming row.
@@ -297,7 +321,8 @@ The skill run returned 9 findings; 7 confirmed below. Dropped as unreachable fro
 - Check: code-review (high); the overlap rule (D135 turn time, D137)
 - Evidence: `rows.ts:166-183`, `rows.ts:409-415`, `book.ts:405-418`
 - Proposal: `pg_advisory_xact_lock` on venue + service date in `openNight` (or upsert the night row before locking it).
-- Status: candidate
+- Reviewer: `lockNight` selects `FOR UPDATE` on a row that may not exist (`rows.ts:165-182`); `stx.rows.claim` only checks lock order. Share one advisory-lock helper on venue and service date with #425.
+- Status: confirmed · Severity: Blocking · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B3
 
 ### C2. A block with dates over several nights only works on its first night
 - Kind: bug
@@ -308,7 +333,8 @@ The skill run returned 9 findings; 7 confirmed below. Dropped as unreachable fro
 - Check: code-review (high); D137
 - Evidence: `rows.ts:310-321`, `plan-read.ts:339-344`
 - Proposal: take earlier-night blocks whose `endsAt` is null or later than the asked night's start, in both reads.
-- Status: candidate
+- Reviewer: both reads need `endsAt IS NULL` (`rows.ts:310-321`, `plan-read.ts:337-347`); a blocked table takes bookings, online ones too.
+- Status: confirmed · Severity: Blocking · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B3
 
 ### C3. A block cannot be lifted once the night it was made on has passed
 - Kind: bug
@@ -319,7 +345,8 @@ The skill run returned 9 findings; 7 confirmed below. Dropped as unreachable fro
 - Check: code-review (high); D137
 - Evidence: `tonight.ts:472`, `book.ts:657-659`, `rows.ts:388-394`
 - Proposal: for `block.remove`, check writability against today's night, not the block's start night.
-- Status: candidate
+- Reviewer: `removeBlock` → `cancelReservation` → `openNight(block's own date)` → `night_passed` (`tonight.ts:465-476`, `book.ts:657`).
+- Status: confirmed · Severity: Blocking · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B3
 
 ### C4. Restoring a deleted booking claims every spot it has ever held
 - Kind: bug
@@ -330,7 +357,7 @@ The skill run returned 9 findings; 7 confirmed below. Dropped as unreachable fro
 - Check: code-review (high)
 - Evidence: `book.ts:763-786`
 - Proposal: restore only the spots the delete freed (released at the delete's instant, or its Log entry's `freed` list).
-- Status: candidate
+- Status: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B3
 
 ### C5. Undoing an arrival overwrites the booking's own reason with `arrival_undone`
 - Kind: bug
@@ -341,7 +368,8 @@ The skill run returned 9 findings; 7 confirmed below. Dropped as unreachable fro
 - Check: code-review (high); D135
 - Evidence: `arrive.ts:826-834`
 - Proposal: write `arrival_undone` only when the result is Cancelled; keep `reservation.reason` otherwise.
-- Status: candidate
+- Reviewer: `door.test.ts:540` asserts that the undo releases every spot, so an undone arrival comes back Reserved with no table. Recommendation: re-claim the spots held before the arrival when free, as Restore does.
+- Status: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B3
 
 ### C6. Editing a seated party's tables uses the booking rule, not the seating rule, and opens no table
 - Kind: bug
@@ -352,7 +380,8 @@ The skill run returned 9 findings; 7 confirmed below. Dropped as unreachable fro
 - Check: code-review (high); D137
 - Evidence: `book.ts:514`, `book.ts:575-590`
 - Proposal: refuse a spot change on a seated party in `editReservation` (send it through Change tables), or pass `seatingAt: stx.now`.
-- Status: candidate
+- Reviewer: the sheet offers Edit on a seated party (`mayEdit`, `reservation-sheet.tsx:407`), and `claimSpots` gets no `seatingAt` (`book.ts:575-586`).
+- Status: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B3
 
 ### C7. Adding and removing a closed date at the same time loses one of the changes
 - Kind: bug
@@ -363,7 +392,7 @@ The skill run returned 9 findings; 7 confirmed below. Dropped as unreachable fro
 - Check: code-review (high)
 - Evidence: `closed-dates.ts:63-68`, `closed-dates.ts:85-91`
 - Proposal: lock the settings row before reading, or a `jsonb` append/remove in one `UPDATE`.
-- Status: candidate
+- Status: confirmed · Severity: Polish · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B3
 
 ## Security check rows (Opus, `security-review` + `audit-security.md`)
 
@@ -382,4 +411,46 @@ The skill run returned 9 findings; 7 confirmed below. Dropped as unreachable fro
 - Check: security-review (3/10, below its bar) / audit-security.md item 3 (tenancy); D135 (pay rule)
 - Evidence: the later lookups are venue-scoped (`tablesOfSpots`, `openTables`, `holdsOfNight` take `reader.venue.id`), so the other venue's spots resolve to nothing; what leaks is that party's pay rule, shown in the "same guests?" wording. Needs a known opaque `rv_` id. No contact data. Not reproduced live.
 - Proposal: add `eq(reservations.venueId, reader.venue.id)` to the read and filter `reservationSpots` through the venue's reservations; one integration test with two venues in one organisation.
-- Status: candidate
+- Status: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: no · Fix: B3
+
+## Reviewer (Opus, screen-review step 4)
+
+Blind walk first (List, Plan, Guests, Settings › Reservations at 390 px as manager), then the ledger. Its blind findings that duplicate explorer rows are merged there (S16; S7, S17, S8). It reproduced S18–S24 from the code, the message files and the seeded roles (`apps/web/scripts/lib/demo-club.ts`) rather than signing in as the door host, and checked the C and X rows in the code. Verdicts: 30 of 35 confirmed, 5 rejected (S2, S4, S12, S24, and R3, a duplicate of S8).
+
+### R1. On Guests, every row's only button is «Архивирай» (reviewer)
+- Kind: simplification
+- Screen: `?tab=reservations&view=guests`, manager, 390, light, bg
+- Steps: open Guests and look at any row.
+- Expected: a row's secondary actions sit under "…" and its main action is opening it (`operational-screens.md` Patterns: "The secondary actions of a row"), as on the night list.
+- Saw: a full-weight outline «Архивирай» on every row, as heavy as the name, and no chevron. One job ("a list of records") is drawn two ways in one tab.
+- Check: Patterns "The secondary actions of a row"; design-critique 4
+- Evidence: `guests-view.tsx:266-278`; all 7 rows at 390
+- Proposal: «Архивирай» / «Върни от архива» under a "…" per row, like `ReservationRow`, with the chevron; the archive keeps its undo toast.
+- Status: confirmed · Severity: Polish · Effort: S · Decision: none · Needs Martin's yes: yes · Fix: B1
+
+### R2. Under "Всички", a waiting party shows a clock time in the booking-hour column (reviewer)
+- Kind: simplification
+- Screen: `?tab=reservations`, manager, 390, light, bg
+- Steps: open the list on "Всички" and read «15:09 Компания на бара 4 гости Чака място».
+- Expected: the hour column means "expected at" for every row (screen read 3).
+- Saw: for a waiting party, 15:09 is when it was added; it reads like a booking for 15:09.
+- Check: `operational-screens.md` screen read 3
+- Evidence: list text at 390 (DOM)
+- Proposal: a waiting row shows «от 15:09» / "since 15:09".
+- Status: confirmed · Severity: Polish · Effort: S · Decision: none · Needs Martin's yes: yes · Fix: B1
+
+## Fix plan
+
+Polish rows are bundled too (round rule). S8's venue-header part is navigation → lane 6. Every bundle is a pull request into `sr/foundation`, coded by Opus.
+
+- **B1. The door's list, sheet and guests on a phone** (`sr/l4-door-list`): S16, S8 (in-tab), S1, S3, S6, S18, S21, S23, S11, S15, R1, R2. Restack the row at 320–390 px (name and party, badges, the action full width, "…" in the corner); «място 9»; «Брой гости»; «Тръгнаха си»; one toast per door write naming the party, with Undo; no "changed by" notice for one's own write; past-night strings name the date; neutral counts; reservation strings in the app's formal voice; Guests rows get "…" for Archive; a waiting row's hour reads «от 15:09». Tests: reflow at 320 and 390 in `e2e/reservations-door.spec.ts`; the list, sheet and Guests at 390 in `e2e/touch-targets.spec.ts`; one's own write raises no `rv-stale`.
+- **B2. Plan, spot pickers, Change tables, Block, plan editor** (`sr/l4-plan-pickers`): S7, S17, S5, S19, S9, S10, S13, S14, S22. Natural spot order (numeric collation, in code); on a phone Change tables and Give a spot open on the list, Give a spot's rows are buttons; Plan spots labelled once large enough and the phone Plan opens at a zoom meeting 44 px; keyboard hint for fine pointers only; Block names «място {spot}» and an unchosen reason says «Изберете причина.» instead of a disabled button; neutral refusal toasts; «Седящи» for seats; the plan editor gets `plan-zoom.ts` and «Видове места» moves above a collapsed spot list; Settings toasts say what changed; the swap sentence names both tables and says «със». Tests: 44 px at 390 for the list pickers and the Plan's opening zoom; Block with no reason; no checkbox in Give a spot; natural order unit test.
+- **B3. The reservation engine** (`sr/l4-engine`): C1, C2, C3, C4, C5, C6, C7, X1, and S20 once settled. C1 an advisory transaction lock on venue and service date (one helper #425 can reuse); C2 dated blocks read on every night they cover; C3 lifting a block checks writability against today's night; C4 Restore re-claims only the spots the delete freed; C5 undoing an arrival keeps the reason and re-claims the spots held before when free; C6 `editReservation` refuses a spot change on a seated party (that is Change tables); C7 lock the settings row before reading; X1 scope both reads in `arrive-checks.ts` to the venue. Each with a database test in its existing home.
+
+## Open questions (reviewer)
+1. **S20 against D141:** follow D135 (Martin's own answer 13.18) and correct the lead's-call permission list in D141? Recommendation: yes; code it in B3 (edit and cancel take `reservations.tonight`, stay PIN-class on a shared device; deleting another's and Restore stay `reservations.manage`) and amend that one line of D141 (lane 6 writes decisions).
+2. **C5 undo semantics:** should an undone arrival get its tables back? Recommendation: yes, re-claim when free, as Restore does; today's test asserts the opposite.
+
+## Out-of-scope observations (reviewer)
+- The seed's waiting parties carry descriptions as names («Двама на вратата»), so Guests looks wrong; give them person names in `demo-club.ts`.
+- #426 (a walk-in created as reserved) touches the same `book.ts` block as B3.
