@@ -1,6 +1,6 @@
 # The one walk: how to open it (for Martin)
 
-> Set up 2026-11-10 by the lead, rebuilt 2026-11-11 on the merged line, refreshed 2026-11-18 (twice: the commands are PowerShell now, which is what your terminal opens with). Two addresses run side by side on this PC, each on its own branch, its own database and its own simulated POS, so nothing either of them does can reach the other — or your day-to-day setup on port 3000. Issue [#387](https://github.com/MartinKostadinov04/restro/issues/387).
+> Set up 2026-11-10 by the lead, rebuilt 2026-11-11 on the merged line, refreshed 2026-11-18 (twice: the commands are PowerShell now, which is what your terminal opens with), **rebuilt again 2026-11-19 on `or/foundation` at `4091b7a0`, and it is running now.** Two addresses run side by side on this PC, each on its own branch, its own database and its own simulated POS, so nothing either of them does can reach the other — or your day-to-day setup on port 3000. Issue [#387](https://github.com/MartinKostadinov04/restro/issues/387).
 
 ## The two addresses
 
@@ -64,9 +64,9 @@ The app takes about 70 seconds to say `Ready`. Ctrl-C in a tab stops that piece.
 
 ## Rebuilding it from scratch
 
-**The walk needs this before you open it.** It was seeded on `or/foundation` at 9f46ef20, and the branch has moved on to 0e3c253f since — eight merges, a new migration among them. Opening it as it stands means walking last week's code. Ask me to rebuild it, or run the four blocks below yourself.
+**It does not need this today.** It was rebuilt on 2026-11-19 at `4091b7a0`, which is the tip of `or/foundation` — 114 commits on from the old 9f46ef20 seeding, two new migrations among them (0055 and 0056), and the refund of an undeliverable paid line (D148) is in it. The night it holds is dated **2026-11-19**, so it is tonight's.
 
-All of them are **PowerShell**, from `E:\Restro\.claude\worktrees\walk-all`, with the branch pulled and `pnpm install` done. Stop the walk's `pnpm dev` first — it holds the database open.
+Run the four blocks below when the branch has moved on again and you want the walk to match it. All of them are **PowerShell**, from `E:\Restro\.claude\worktrees\walk-all`, with the branch pulled and `pnpm install` done. Stop the walk's `pnpm dev` first — it holds the database open.
 
 **One.** Make the database. Nothing else creates it, and this throws away the old one, which is what a rebuild means. `psql` is installed but not on your path, so it needs its full name:
 
