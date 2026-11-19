@@ -1,16 +1,24 @@
 # Lane 1 (Studio) hand-over
 
-Updated 2026-11-19.
+Updated 2026-11-19. Branch `sr/lane1-studio` (local, ledger committed at 2747bb79, not pushed yet).
 
 ## Done
-- Environment: database `restro_lane1` recreated, migrated, roles, `db:seed:dev`, `db:seed:demo` (bills skipped: no BILL_ID_KEY; not needed for Studio). `.env.local` adds a local STAFF_PIN_PEPPER. Web on `http://lane1.localhost:3110` (launch entry `lane1-web`, local only), worker (health 8111), sim-pos `club-biad` on 4710.
-- Venues: Demo Club Sofia (hand-made), Demo Bar (POS, sim on 4010 by seed design), Club Biad Sofia (POS, has a manager account).
-- Pane signed in as owner@demo-club.test.
-- Code check (Fable, done: `code-check.md`) and security check (Fable, done: `security-check.md`).
-- Fable explorer hit the limit mid-walk (no output kept). Brief now says no Fable (Martin 11-19): a Sonnet explorer was restarted. Worker needs `.env.worker.local` (copied from E:\Restro, ignored).
+- Ledger `findings.md`: explorer (Sonnet) S1–S22, code check (Fable) S23–S26, security check (Fable) S27–S29, manager walk note. Raw check outputs in `code-check.md`, `security-check.md`.
+- Database reset after the explorer (fresh ids: Demo Club Sofia `vn_2Qsr113cDIvfQor8P5yiuO`, Demo Bar `vn_6uS8gzSr8d9y2gUqJODpSh`, Club Biad Sofia `vn_1edUqbUKzDxB2zkrLDzooS`); pane signed in as owner@demo-club.test.
+- Opus reviewer (step 4) started blind with the ledger path and commit 2747bb79.
 
 ## Next
-1. Save the three outputs to `findings.md` here.
-2. Manager walk on Club Biad Sofia (sign in as manager@club-biad.test), resume the explorer with its "Manager checks to walk" list.
-3. Reset the database, sign in again, run the Opus reviewer (step 4) blind with only this ledger path and the commit.
-4. Fix PR(s) into `sr/foundation`, the three PR reviews, re-check pass, final report.
+1. Save the reviewer's verdicts and fix plan into `findings.md`; stop web/worker/sim (shared Postgres process limit).
+2. Code the fix bundles (Opus), PR(s) into `sr/foundation`; `pnpm lint && pnpm typecheck && pnpm deps:check`; changed tests only.
+3. Per PR: Opus `code-review high <PR>`, Opus `security-review`, Opus `pr-review-toolkit:review-pr`; fix; CI green.
+4. Restart services, re-check walker (Opus) → `re-verified`; stop services; rebase; READY; final report with the Skills run table.
+
+## Skills run so far
+| Skill | Target | Model | Result |
+|---|---|---|---|
+| screen-review step 2 | Studio scope, both venues | Sonnet | 22 candidate rows |
+| code-review (high) | Studio paths + core apply | Fable | 10 found, 4 confirmed (S23–S26) |
+| security-review + audit-security.md | Studio paths + core apply | Fable | 3 low (S27–S29), no high/medium |
+| screen-review step 4 | ledger @2747bb79 | Opus | running |
+
+Open question for the lead: the seed's venue «Мениджър» is an organisation member, so it can change nothing in Studio (no sold-out, no hide). Audit-behaviour's manager persona ("sold out, hide, publish") expects otherwise.

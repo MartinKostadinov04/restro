@@ -349,3 +349,65 @@ From `apps/web/src/server/roles.ts` and the composer/publish actions: the org ro
 
 ## Manager walk (lane lead, Opus, before the reset)
 Signed in as manager@club-biad.test (staff role Мениджър; organisation role member) on Club Biad Sofia (POS venue), 1280 px, dark, bg. Studio › Structure offers «Нова секция», «Тагове», every drag handle, the rename pencils, the section and item visibility switches and the "…" menus; no «Публикувай» button and the Guest features panel is disabled with «Само собственици и администратори могат да ги променят.». Flipping «Показва се на гостите: Absolut Vodka 0.7» showed the refusal toast «Само собственик или администратор може да направи това.» and the switch rolled back. This confirms S23 from the screen: the venue's manager, as the seed makes one, can change nothing in Studio but is offered every control.
+
+## Review (step 4: Opus subagent, blind, on a fresh database, commit 2747bb79)
+
+The reviewer walked Demo Bar's Structure, a POS item's sheet and Demo Club's Structure blind, then reproduced each screen row in the pane; S23–S29 by reading the code. Its writes: published Demo Bar (version 1), hid Мохито, renamed Коктейли to «Коктейли на бара», moved «Лимонада на къщата» into Безалкохолни and back. 34 of 35 rows confirmed (S1–S35; none rejected; the explorer's rows all hold, some with corrected causes).
+
+| Row | Verdict and reason | Severity | Effort | Decision | Martin's yes | Fix |
+|---|---|---|---|---|---|---|
+| S1 | confirmed: 320 px page 429 wide, D75 badge `nowrap` 413 px | Before the pilot | S | none | no | L1-F |
+| S2 | confirmed: no toast after hide or move (also in #60) | Before the pilot | M | none | yes | L1-D |
+| S3 | confirmed: (a) sheet contradicts itself, fixed here; (b) the missing POS-venue mark is allowed by D147 (narrows D124 §6) and built in #437 | Before the pilot | S | none for (a) | no | L1-E (a); #437 (b) |
+| S4 | confirmed: «На живо» means default menu (GLOSSARY "Live menu") but reads as "published" | Before the pilot | S | none | yes | L1-E |
+| S5 | confirmed, worse: «1 промяна чака» next to «Версия 1 е на живо / Гостите я виждат вече.» | Before the pilot | S | none | yes | L1-E |
+| S6 | confirmed | Before the pilot | S | none | no | L1-E |
+| S7 | confirmed by code: `row-menus.tsx:186-191` no `onCloseAutoFocus` | Before the pilot | S | none | no | L1-D |
+| S8 | confirmed (also in the patterns table and #60) | Before the pilot | M | none | yes | L1-D |
+| S9 | confirmed at 320 px | Before the pilot | S | none | yes | L1-F |
+| S10 | confirmed by code: `fields/field-row.tsx:66-81`; `size-4`, no `tap-area`; HoverCard never opens on touch; `touch-targets.spec.ts` never opens the sheet | Before the pilot | S | none | yes | L1-F target, L1-E text |
+| S11 | confirmed as wording: D90 allows the rename in Details; Translations (D24) intro says «само за четене» | Polish | S | none | no | L1-E |
+| S12 | confirmed, seed data: `seed-dev.ts` makes a hand-made venue, `seed-demo-menu.ts` attaches an invented barsy integration | Before the pilot | L | contradicts D87/D89 (seed only) | no | L1-H; Q1 |
+| S13 | confirmed: shadcn `ring-ring/50` in `components/ui/button.tsx:7`, `switch.tsx:23` | Before the pilot | S | none | no | L1-G |
+| S14 | confirmed, worse: the reviewer moved «Лимонада на къщата» into a POS section through the UI (5→6 items, Publish 29→30). `core/apply/unplaced.ts` lists unplaced hand-made items on POS venues; `placeItemAction` has no POS-venue check | **Blocking** (CLAUDE.md POS venue rule) | M | none | no | L1-A, seed L1-H |
+| S15 | confirmed: an English name still from the POS keeps the D75 warning; the optimistic view clears it | Polish | S | none | no | L1-E |
+| S16 | confirmed | Polish | S | none | no | L1-E |
+| S17 | confirmed (app-wide divergence; Studio's five dialogs here) | Polish | S | none | yes | L1-E |
+| S18 | confirmed; pickers are tab structure | Polish | M | none | yes | → lane 6 |
+| S19 | confirmed: `bg.json` «Например 4.50.»; `moneyToInput` shows «12.50» in bg | Polish | S | none | no | L1-E |
+| S20 | confirmed: template «{who} премахна {field} (беше {value})» | Polish | S | none | no | L1-E |
+| S21 | confirmed: Publish dialog «Затвори» 15×15 | Polish | S | none | no | L1-F |
+| S22 | confirmed, dev-only?: `app/layout.tsx:32` theme script | Polish | S | none | no | L1-G |
+| S23 | confirmed: offering the controls is the bug; menu writes stay owner/admin (RR-70, Martin 10-31; `menu-editors.test.ts`) | Before the pilot | M | none | yes | L1-B |
+| S24 | confirmed: an unplaced item yields no row in the walk | Polish | S | none | no | L1-A |
+| S25 | confirmed in code; D147 leaves open who unmarks | Polish | S | none | yes | → #437; Q2 |
+| S26 | confirmed | Before the pilot | S | none | no | L1-I |
+| S27 | confirmed; same hole S14 reaches through the UI | Before the pilot | S | none | no | L1-A |
+| S28 | confirmed | Polish | S | none | no | L1-A |
+| S29 | confirmed | Polish | S | none | no | L1-A |
+
+### Reviewer's rows (full format in the reviewer's report; summarised)
+- **S30 (reviewer).** The Manager role's «Маркира изчерпани артикули» (`permissions.ts` `sold_out`) is read nowhere except `settings/staff-roles.tsx:67`; Studio asks only the organisation role (`roles.ts canMarkSoldOut`). D46, D122 §7, D147. Before the pilot, M → #437; Q3.
+- **S31 (reviewer).** Both tab bars show a vertical scrollbar on Windows (`scrollHeight` 37 vs 36 with `overflow-x-auto`). Polish, S → lane 6.
+- **S32 (reviewer).** «1 проблем» on the row vs «1 нещо за проверка» in the sheet; «Създадено тук» vs «Създаден тук». Polish, S → L1-E.
+- **S33 (reviewer).** «с следващото» (→ «със следващото»), «ПОС терминал» (→ «POS терминал»), `bg.json` guest features. Polish, S → L1-E.
+- **S34 (reviewer).** «Изчаква публикуващата част…» / "Waiting for the publisher…" while publishing → «Публикува се…» / "Publishing…". Polish, S → L1-E.
+- **S35 (reviewer).** Menu and section pickers blank for seconds after load (Radix `SelectValue` without children). dev-only?, Polish, S → L1-G.
+
+### Fix plan (reviewer)
+- **L1-A** composer writes stay inside the venue; a POS venue gets no Restro-made item: S14, S27, S28, S24, S29. `core/apply/unplaced.ts`, `composer/actions.ts`, `tag-actions.ts`, `payment-mode-actions.ts`, `core/apply/payment-mode.ts`. Tests: core unplaced read; `server/security/roles-actions.test.ts` RR-72 block; `structure-actions.test.ts`.
+- **L1-B** read-only Studio without `canEditMenu`: S23. `composer-tab.tsx`, `composer.tsx`, row and pane components, item sheet; a menu `not_allowed` message. Test: `structure-ui.test.tsx`.
+- **L1-D** feedback, undo and keyboard: S2, S7, S8 (Undo toasts through an inverse change set, focus after "…" › Преименувай, Move up/down).
+- **L1-E** Studio words: S3(a), S4, S5, S6, S10 text, S11, S15, S16, S17, S19, S20, S32, S33, S34.
+- **L1-F** phone layout and targets: S1, S9, S10 target, S21; `touch-targets.spec.ts` opens the sheet and the Publish dialog.
+- **L1-G** shared UI (cross-lane, lead): S13, S22, S35.
+- **L1-H** seed: S12 and the seed part of S14 (Q1).
+- **L1-I** stock-mark lapse: S26, `core/apply/stock.ts`, `stock.test.ts`.
+- Elsewhere: → lane 6 S18, S31; → #437 S3(b), S25, S30.
+
+### Open questions (reviewer's recommendations)
+- **Q1 (S12):** rewrite Demo Club Sofia as a truly hand-made venue (Demo Bar covers the POS case); L effort, three e2e specs move.
+- **Q2 (S25, D147):** whoever may mark may unmark, every unmark in the Log; Martin confirms through #437.
+- **Q3 (S30):** #437 gates the mark on the venue permission `sold_out` in Tonight and Studio alike; needs Martin's yes (RR-70 kept menu writes to owners and admins).
+
+Out of scope: «Функции за гостите» on Structure vs D129 (designer pages) → lanes 2/6; Demo Bar's «Поръчка от телефона» note depends on the floor read (not checked).
