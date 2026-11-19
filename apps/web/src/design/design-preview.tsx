@@ -118,7 +118,7 @@ export function DesignPreview({
   draft: Draft
   onRetry: () => void
   /** A tap on a marked part of the page (`data-design-part`): click to edit (D129). */
-  onPart?: (marker: string, around: readonly string[]) => void
+  onPart?: (marker: string, opens: string | null) => void
   /** What the frame shows first: a dish while the Dish page is open (D129); the menu otherwise. */
   stage?: Stage
   /** The draft's look, whole. */

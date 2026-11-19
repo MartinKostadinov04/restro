@@ -25,16 +25,7 @@ import { ArrowLeftIcon, Undo2Icon, XIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-} from 'react'
+import { type ReactNode, useEffect, useId, useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -95,7 +86,7 @@ import {
   withStyleValues,
 } from './design-draft'
 import { DesignPreview } from './design-preview'
-import { LogoField } from './logo-field'
+import { LogoField, useLogoUpload } from './logo-field'
 import { isValidLook, type ValidLook } from './look-state'
 import { MyStyles } from './my-styles'
 import { usePreviewDraft } from './preview-draft'
@@ -119,6 +110,9 @@ function PanelSection({
     </section>
   )
 }
+
+/** How much shorter the visible screen gets when a phone's keyboard is up, at the least. */
+const KEYBOARD_PX = 120
 
 /** A box the phone's keyboard comes up for (not a radio, a switch or a colour picker). */
 function isTextBox(target: EventTarget): boolean {
@@ -255,7 +249,6 @@ export function DesignPage({
   const [baseline, setBaseline] = useState<DesignDraft>(draft)
   // The revision this page started from; a save names it (D129).
   const [revision, setRevision] = useState(initial.revision)
-  const [uploading, setUploading] = useState(false)
   const [saving, startSaving] = useTransition()
   const [leaving, setLeaving] = useState(false)
   // Simple or Advanced, and the page open in Advanced. Both look at the one draft.
@@ -268,31 +261,49 @@ export function DesignPage({
   // On a phone the preview sits at the foot of the screen; it steps aside while the keyboard is up.
   const [typing, setTyping] = useState(false)
   useEffect(() => {
-    const onIn = (event: FocusEvent) => setTyping(event.target !== null && isTextBox(event.target))
-    const onOut = (event: FocusEvent) =>
-      setTyping(event.relatedTarget !== null && isTextBox(event.relatedTarget))
+    // A text box has the focus, and the keyboard is up: the visible part of the screen is shorter
+    // than the tallest it has been at this width. A keyboard closed with the box still focused (the
+    // phone's back button) brings the preview back. With no visual viewport, the focus alone counts.
+    const viewport = window.visualViewport
+    let focused = false
+    let wide = viewport?.width ?? 0
+    let tall = viewport?.height ?? 0
+    const keyboardUp = () => {
+      if (!viewport) return true
+      if (viewport.width !== wide) {
+        wide = viewport.width
+        tall = viewport.height
+      }
+      tall = Math.max(tall, viewport.height)
+      return tall - viewport.height > KEYBOARD_PX
+    }
+    const update = () => setTyping(focused && keyboardUp())
+    const onIn = (event: FocusEvent) => {
+      focused = event.target !== null && isTextBox(event.target)
+      update()
+    }
+    const onOut = (event: FocusEvent) => {
+      focused = event.relatedTarget !== null && isTextBox(event.relatedTarget)
+      update()
+    }
     document.addEventListener('focusin', onIn)
     document.addEventListener('focusout', onOut)
+    viewport?.addEventListener('resize', update)
     return () => {
       document.removeEventListener('focusin', onIn)
       document.removeEventListener('focusout', onOut)
+      viewport?.removeEventListener('resize', update)
     }
   }, [])
 
-  // The local links to logo files chosen here: the draft and Undo's steps hold them, so they live as
-  // long as the page, whichever control is on the screen.
-  const pictures = useRef<string[]>([])
-  useEffect(
-    () => () => {
-      for (const url of pictures.current.splice(0)) URL.revokeObjectURL(url)
-    },
-    [],
+  // A logo going up stays with the page whichever control is on the screen; its local links live
+  // while the draft, Undo's steps or the saved design can still show them.
+  const held = useMemo(
+    () => [baseline, history.draft, ...history.past].map((step) => step.logo?.url ?? null),
+    [baseline, history],
   )
-  const pictureOf = useCallback((file: File) => {
-    const url = URL.createObjectURL(file)
-    pictures.current.push(url)
-    return url
-  }, [])
+  const logoUpload = useLogoUpload(held, (logo) => change((current) => withLogo(current, logo)))
+  const uploading = logoUpload.progress !== null
 
   const view = useMemo(() => lookViewOfDraft(draft), [draft])
   // While a box holds half a colour the look has no value; the roles and the preview keep the last
@@ -408,15 +419,15 @@ export function DesignPage({
   }
 
   // Click to edit: a tap on a marked part of the preview opens the page that owns it, unless the
-  // open page is about that part already (a dish tapped open on the Dish page). In Simple the part is
-  // styled in Advanced only, and the panel says so.
-  function onPart(marker: string, around: readonly string[] = []) {
+  // open page is about that part, or what the tap opens (a dish tapped open on the Dish page). In
+  // Simple the part is styled in Advanced only, and the panel says so.
+  function onPart(marker: string, opens: string | null = null) {
     if (mode === 'simple') {
       const owner = pageOfMarker(marker)
       if (owner !== null) setStyledIn(owner)
       return
     }
-    const owner = pageOfTap(marker, around, pageId)
+    const owner = pageOfTap(marker, opens, pageId)
     if (owner !== null) openPage(owner)
   }
 
@@ -489,7 +500,7 @@ export function DesignPage({
       derived={shown.derived}
       issues={shown.issues}
       canEdit={canEdit}
-      scheme={scheme}
+      screen={draft.values.general.screen}
       onChange={(look) => change({ ...draft, look }, 'colours')}
     />
   )
@@ -516,9 +527,8 @@ export function DesignPage({
       logo={draft.logo}
       savedAssetId={baseline.logo?.assetId ?? null}
       canEdit={canEdit}
-      onChange={(logo) => change((current) => withLogo(current, logo))}
-      onBusy={setUploading}
-      pictureOf={pictureOf}
+      upload={logoUpload}
+      onRemove={() => change((current) => withLogo(current, null))}
     />
   )
 

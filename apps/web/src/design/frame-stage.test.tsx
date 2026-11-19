@@ -11,8 +11,8 @@ import { DraftFace } from '@/publish/draft-face'
 import { renderWithIntl } from '@/test-utils'
 
 import { type Stage, tilePlanOf } from './advanced-model'
-import { partsOf } from './design-frame'
-import { closeSheets, drive, stuckTop, WAYS } from './frame-stage'
+import { partOf } from './design-frame'
+import { closeDish, drive, stuckTop, WAYS } from './frame-stage'
 import { previewSnapshot } from './preview-snapshot'
 import { DEMO_ASSET_BASE, specimenOf } from './specimen'
 
@@ -130,37 +130,59 @@ describe('what every option looks at', () => {
 describe('around the stages', () => {
   afterEach(() => {
     document.body.innerHTML = ''
+    Reflect.deleteProperty(document, 'elementsFromPoint')
   })
 
   it('a part scrolled to the top stops under the stuck section rail, not behind it (S2)', () => {
     document.body.innerHTML =
-      '<nav style="position:sticky;top:0" id="rail"></nav><div role="dialog"><header style="position:sticky;top:0" id="own"></header></div>'
+      '<nav style="position:sticky;top:0" id="rail"></nav><div role="dialog"><header style="position:sticky;top:0" id="own"></header></div><p id="text"></p>'
     const rail = document.getElementById('rail') as HTMLElement
     const own = document.getElementById('own') as HTMLElement
+    const text = document.getElementById('text') as HTMLElement
     vi.spyOn(rail, 'getBoundingClientRect').mockReturnValue({ height: 56 } as DOMRect)
     vi.spyOn(own, 'getBoundingClientRect').mockReturnValue({ height: 90 } as DOMRect)
+    // Only the boxes at the top edge of the window are looked at.
+    const atTop = vi.fn(() => [own, rail, text, document.body])
+    Object.defineProperty(document, 'elementsFromPoint', { value: atTop, configurable: true })
     expect(stuckTop()).toBe(56)
+    expect(atTop).toHaveBeenCalledTimes(1)
   })
 
-  it('a tap on the control that opens a dish names the Dish page part too (S6)', () => {
+  it('names the part tapped and what the tap opens, not the parts around it (S6)', () => {
     document.body.innerHTML =
-      '<article data-design-part="item"><button data-slot="item.open"><span data-design-part="item.name" id="name">Ayran</span></button></article>'
-    expect(partsOf(document.getElementById('name') as Element)).toEqual([
-      'item.name',
-      'item',
-      'dish',
-    ])
+      '<section data-design-part="section"><article data-design-part="item"><button data-slot="item.open"><span data-design-part="item.name" id="name">Ayran</span></button><img data-design-part="item.photo" id="photo"></article></section>'
+    expect(partOf(document.getElementById('name') as Element)).toEqual({
+      part: 'item.name',
+      opens: 'dish',
+    })
+    expect(partOf(document.getElementById('photo') as Element)).toEqual({
+      part: 'item.photo',
+      opens: null,
+    })
+    expect(partOf(document.body)).toBeNull()
   })
 
-  it('a frame going back to the menu closes the open sheet, as Escape does for a guest (S10)', () => {
-    const keys: string[] = []
-    const listen = (event: KeyboardEvent) => keys.push(event.key)
-    window.addEventListener('keydown', listen)
-    closeSheets()
-    expect(keys).toEqual([])
-    document.body.innerHTML = '<div role="dialog"></div>'
-    closeSheets()
-    expect(keys).toEqual(['Escape'])
-    window.removeEventListener('keydown', listen)
+  it('closes the dish by its own back button, and leaves a sheet the owner opened (S10)', () => {
+    document.body.innerHTML =
+      '<div role="dialog"><div><button id="back"></button></div><div data-design-part="dish"></div></div><div role="dialog"><button id="bag"></button></div>'
+    const pressed: string[] = []
+    for (const id of ['back', 'bag']) {
+      document.getElementById(id)?.addEventListener('click', () => pressed.push(id))
+    }
+    closeDish()
+    expect(pressed).toEqual(['back'])
+    document.body.innerHTML = '<div role="dialog"><button id="bag"></button></div>'
+    closeDish()
+    expect(pressed).toEqual(['back'])
+  })
+
+  it('closes a dish the renderer opened (S10)', async () => {
+    const { view, stop } = await reach('dish', [])
+    expect(view.container.querySelector('[data-design-part="dish"]')).toBeTruthy()
+    stop()
+    closeDish()
+    await waitFor(() =>
+      expect(view.container.querySelector('[data-design-part="dish"]')).toBeNull(),
+    )
   })
 })

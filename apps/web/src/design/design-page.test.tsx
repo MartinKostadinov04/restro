@@ -96,7 +96,15 @@ function deferred<T>() {
   return { promise, settle }
 }
 
-/** The local links made for chosen files, and the ones released. */
+const realUrls = {
+  createObjectURL: URL.createObjectURL,
+  revokeObjectURL: URL.revokeObjectURL,
+}
+afterEach(() => {
+  Object.assign(URL, realUrls)
+})
+
+/** The local links made for chosen files, and the ones released (the real ones come back after). */
 function fakeObjectUrls() {
   const made: string[] = []
   const revoked: string[] = []
@@ -411,6 +419,36 @@ describe('the Design page', () => {
     expect(urls.revoked).toEqual(['blob:logo-1'])
   })
 
+  it('releases a new logo picture as soon as no step can show it again (C5)', async () => {
+    const urls = fakeObjectUrls()
+    uploadImage.mockResolvedValueOnce({ ok: true, assetId: 'as_0123456789ABCDEFGHIJKL' })
+    setup()
+    await chooseLogo()
+    await waitFor(() => expect(screen.getByTestId('design-logo-image')).toBeTruthy())
+    expect(urls.revoked).toEqual([])
+    await userEvent.click(cancel())
+    expect(screen.queryByTestId('design-logo-image')).toBeNull()
+    expect(urls.revoked).toEqual(['blob:logo-1'])
+  })
+
+  it('a logo going up keeps its progress across Simple and Advanced, and Upload and Done wait', async () => {
+    fakeObjectUrls()
+    const upload = deferred<{ ok: true; assetId: string }>()
+    uploadImage.mockReturnValueOnce(upload.promise)
+    setup()
+    type(brand(), '#16a34a')
+    await chooseLogo()
+    await level('Advanced')
+    await level('Simple')
+    const button = () => screen.getByTestId('design-logo-upload') as HTMLButtonElement
+    expect(button().disabled).toBe(true)
+    expect(button().textContent).toContain('0%')
+    expect(done().disabled).toBe(true)
+    await act(async () => upload.settle({ ok: true, assetId: 'as_0123456789ABCDEFGHIJKL' }))
+    await waitFor(() => expect(button().disabled).toBe(false))
+    expect(done().disabled).toBe(false)
+  })
+
   it('on a phone docks the preview above the bar, with no width switch (S3, S4)', () => {
     setup()
     const dock = screen.getByTestId('design-dock')
@@ -431,10 +469,41 @@ describe('the Design page', () => {
     expect(section().className).not.toContain('max-md:hidden')
   })
 
+  it('the docked preview comes back when the keyboard closes and the box keeps the focus (S3)', () => {
+    const viewport = Object.assign(new EventTarget(), { width: 390, height: 800 })
+    Object.defineProperty(window, 'visualViewport', { value: viewport, configurable: true })
+    try {
+      setup()
+      const hidden = () =>
+        screen.getByTestId('design-preview-section').className.includes('max-md:hidden')
+      fireEvent.focusIn(brand())
+      expect(hidden()).toBe(false)
+      act(() => {
+        viewport.height = 450
+        viewport.dispatchEvent(new Event('resize'))
+      })
+      expect(hidden()).toBe(true)
+      act(() => {
+        viewport.height = 800
+        viewport.dispatchEvent(new Event('resize'))
+      })
+      expect(hidden()).toBe(false)
+    } finally {
+      Reflect.deleteProperty(window, 'visualViewport')
+    }
+  })
+
   it('says the preview is loading while it is built (S5)', () => {
     actions.previewDraftAction.mockReturnValueOnce(new Promise(() => {}))
     setup()
     expect(screen.getByTestId('design-preview-loading').textContent).toBe('Loading the preview…')
+  })
+
+  it('takes the loading note away once the frame has loaded (S5)', async () => {
+    setup()
+    await waitFor(() => expect(screen.getByTestId('design-preview-frame')).toBeTruthy())
+    fireEvent.load(screen.getByTestId('design-preview-frame'))
+    expect(screen.queryByTestId('design-preview-loading')).toBeNull()
   })
 
   it('shows an empty swatch for a brand colour not chosen yet, not a grey one (S9)', () => {
@@ -446,15 +515,29 @@ describe('the Design page', () => {
     expect(within(field()).queryByTestId('hex-field-empty')).toBeNull()
   })
 
-  it('warns of a strong page colour on a light screen only (R2)', async () => {
+  it('warns of a strong page colour when guests can get a light screen, whatever the preview shows (R2)', async () => {
     setup()
     type(pageColour(), '#e11d48')
     expect(screen.getByTestId('design-saturation-warning')).toBeTruthy()
+    // The preview's own switch is for looking; guests still get the design's screen.
     await userEvent.click(
       within(screen.getByRole('group', { name: 'Screen colours' })).getByRole('button', {
         name: 'Dark',
       }),
     )
+    expect(screen.getByTestId('design-saturation-warning')).toBeTruthy()
+  })
+
+  it('says nothing of a strong page colour on a design with a dark screen (R2)', () => {
+    const dark = {
+      ...COLOURED,
+      values: {
+        ...COLOURED.values,
+        general: { ...COLOURED.values.general, screen: 'dark' as const },
+      },
+    }
+    setup({ design: dark, theme: designThemeOf(dark) })
+    type(pageColour(), '#e11d48')
     expect(screen.queryByTestId('design-saturation-warning')).toBeNull()
   })
 

@@ -219,18 +219,19 @@ export function tilePlanOf(
 
 /**
  * The page a tap on the preview opens in Advanced, or null to stay where the panel is. `marker` is
- * the part tapped; `around` the parts it sits in, and the part the tap opens (a dish tapped open is
- * `dish`). The panel stays when the open page owns any of them: a dish tapped open on the Dish page
- * keeps the Dish page's options in view.
+ * the part tapped (the innermost); `opens` the part the tap opens, if any (a dish tapped open is
+ * `dish`). The panel stays when the open page owns either: a dish tapped open on the Dish page keeps
+ * the Dish page's options in view. The parts the tap merely sits in (the section around a dish) play
+ * no part.
  */
 export function pageOfTap(
   marker: string,
-  around: readonly string[],
+  opens: string | null,
   open: DesignPageId,
 ): DesignPageId | null {
   const owner = pageOfMarker(marker)
-  if (owner === null) return null
-  if ([marker, ...around].some((part) => pageOfMarker(part) === open)) return null
+  if (owner === null || owner === open) return null
+  if (opens !== null && pageOfMarker(opens) === open) return null
   return owner
 }
 

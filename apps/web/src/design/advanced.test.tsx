@@ -210,10 +210,15 @@ describe('Advanced on the Design page', () => {
   })
 
   it('a tap on a dish while the Dish page is open stays there, and the preview opens a dish (S6, S10)', async () => {
-    // The tap that opens the dish lands on its name: the open page is about that part already.
-    expect(pageOfTap('item.name', ['dish'], 'dish')).toBeNull()
-    expect(pageOfTap('item.name', [], 'dish')).toBe('items')
-    expect(pageOfTap('item.name', ['dish'], 'header')).toBe('items')
+    // The tap that opens the dish lands on its name: the open page is about what it opens.
+    expect(pageOfTap('item.name', 'dish', 'dish')).toBeNull()
+    expect(pageOfTap('item.name', null, 'dish')).toBe('items')
+    expect(pageOfTap('item.name', 'dish', 'header')).toBe('items')
+    // The section a dish sits in is not the tap's: with Sections open, a dish's parts open theirs.
+    expect(pageOfTap('item.name', 'dish', 'sections')).toBe('items')
+    expect(pageOfTap('item.photo', 'dish', 'items')).toBe('photos')
+    expect(pageOfTap('item.labels', null, 'items')).toBe('labels')
+    expect(pageOfTap('section.title', null, 'sections')).toBeNull()
     expect(previewStageOf('advanced', 'dish')).toBe('dish')
     expect(previewStageOf('advanced', 'items')).toBeUndefined()
     expect(previewStageOf('simple', 'dish')).toBeUndefined()
@@ -223,11 +228,15 @@ describe('Advanced on the Design page', () => {
     await waitFor(() => expect(screen.getByTestId('design-preview-frame')).toBeTruthy())
     const stores = (
       window as unknown as {
-        __restroDesignFrames: Map<string, { tap(m: string, around?: string[]): void }>
+        __restroDesignFrames: Map<string, { tap(m: string, opens?: string | null): void }>
       }
     ).__restroDesignFrames
-    act(() => stores.get('main')?.tap('item.name', ['item', 'dish']))
+    act(() => stores.get('main')?.tap('item.name', 'dish'))
     expect(pageChip('dish').getAttribute('aria-current')).toBe('page')
+    // On Sections, a tap on a dish's photo opens Photos, though the dish sits in a section.
+    await userEvent.click(pageChip('sections'))
+    act(() => stores.get('main')?.tap('item.photo', 'dish'))
+    await waitFor(() => expect(pageChip('photos').getAttribute('aria-current')).toBe('page'))
   })
 
   it('in Simple a tap on an Advanced part says so, and Show Advanced opens its page', async () => {

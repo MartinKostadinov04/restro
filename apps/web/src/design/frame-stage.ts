@@ -41,15 +41,19 @@ const STEP_MS = 120
  * load. A tile's frame keeps `focus()` from scrolling at all (the sheet it opens focuses its close
  * button), and moves the sheet's own scroller by hand.
  */
-export function holdScroll(frame: Window & typeof globalThis): void {
+export function holdScroll(frame: Window & typeof globalThis): () => void {
   const proto = frame.HTMLElement.prototype
-  if ((proto.focus as { held?: true }).held === true) return
+  if ((proto.focus as { held?: true }).held === true) return () => undefined
   const focus = proto.focus
   const held = function (this: HTMLElement, options?: FocusOptions) {
     return focus.call(this, { ...options, preventScroll: true })
   }
   ;(held as { held?: true }).held = true
   proto.focus = held
+  // Let go: `focus()` scrolls again (the live preview, once its stage is over).
+  return () => {
+    if (proto.focus === held) proto.focus = focus
+  }
 }
 
 /** Scrolls the nearest scrolling box inside the sheet so that the part is in its middle. */
@@ -69,17 +73,19 @@ function scrollSheetTo(part: HTMLElement): void {
 }
 
 /**
- * How much of the top of the window a bar stuck to it covers (the renderer's section rail): a part
- * scrolled to the top stops under it, not behind it. A sheet's own bars, and anything as tall as half
- * the window (a sheet's backdrop), do not count.
+ * How much of the top of the window a bar stuck to it covers now (the renderer's section rail): a
+ * part scrolled to the top stops under it, not behind it. Only the boxes at the top edge are looked
+ * at. A sheet's own bars, and anything as tall as half the window (a sheet's backdrop), do not count.
  */
 export function stuckTop(): number {
+  if (typeof document.elementsFromPoint !== 'function') return 0
   let covered = 0
-  for (const element of document.body.querySelectorAll<HTMLElement>('*')) {
+  for (const element of document.elementsFromPoint(window.innerWidth / 2, 1)) {
+    if (!(element instanceof HTMLElement)) continue
+    if (element.closest('[role="dialog"], dialog') !== null) continue
     const style = getComputedStyle(element)
     if (style.position !== 'sticky' && style.position !== 'fixed') continue
     if (Number.parseFloat(style.top) !== 0) continue
-    if (element.closest('[role="dialog"], dialog') !== null) continue
     const height = element.getBoundingClientRect().height
     if (height >= window.innerHeight / 2) continue
     covered = Math.max(covered, height)
@@ -99,8 +105,12 @@ export function reveal(markers: readonly string[]): boolean {
     if (part.closest('[role="dialog"], dialog') !== null) {
       scrollSheetTo(part)
     } else {
-      const top = part.getBoundingClientRect().top + window.scrollY - stuckTop() - 8
+      // Scrolled there first, so the rail that sticks once the page is scrolled is stuck when
+      // looked for; then down by what it covers.
+      const top = part.getBoundingClientRect().top + window.scrollY - 8
       window.scrollTo({ top: Math.max(0, top) })
+      const covered = stuckTop()
+      if (covered > 0) window.scrollTo({ top: Math.max(0, top - covered) })
     }
     return true
   }
@@ -158,10 +168,12 @@ export function drive(stage: Stage, focus: readonly string[], onReached?: () => 
 }
 
 /**
- * Closes the sheet a stage opened (the renderer closes its top sheet on Escape, as for a guest), so a
- * frame that goes back to the menu shows the menu.
+ * Closes the dish the Dish stage opened, by its own back button as a guest would, so a frame that
+ * goes back to the menu shows the menu. The allergen sheet opened from the dish goes with it (the
+ * renderer's rule); a sheet the owner opened (the bag, the bill, the filters) stays. Escape would
+ * close the top sheet only, and a service sheet with it.
  */
-export function closeSheets(): void {
-  if (document.querySelector('[role="dialog"]') === null) return
-  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+export function closeDish(): void {
+  const dish = document.querySelector('[data-design-part="dish"]')?.closest('[role="dialog"]')
+  dish?.querySelector<HTMLButtonElement>('button')?.click()
 }

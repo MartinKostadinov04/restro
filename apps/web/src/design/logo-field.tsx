@@ -3,14 +3,17 @@
 // The venue's logo on the Design page: ported from the old Appearance card unchanged in behaviour.
 // The picture goes up through the same route as the item photos, with the same checks first
 // (`precheckImage`, `uploadImage`); what comes back is an asset id that is attached to the look when
-// "Save look" is pressed. A saved logo is shown from its signed link, a new one from the file just
-// chosen. That file's local link is made and released by the page (`pictureOf`), not here: the draft
-// and Undo's steps hold it, and the field comes and goes with Simple and Advanced.
+// Done is pressed. A saved logo is shown from its signed link, a new one from the file just chosen.
+//
+// The upload lives on the page (`useLogoUpload`), not in the field: the field comes and goes with
+// Simple and Advanced, while a file going up, its error and the local links the draft and Undo's
+// steps hold stay with the page.
 import { useTranslations } from 'next-intl'
-import { type ChangeEvent, useRef, useState } from 'react'
+import { type ChangeEvent, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import type { UploadFailure } from '@/composer/item-sheet-support'
 import { IMAGE_ACCEPT, precheckImage, uploadImage } from '@/composer/item-sheet-upload'
 
 /** The logo in the form: its asset id and what the tab shows of it. */
@@ -20,51 +23,91 @@ export interface LogoState {
   readonly url: string | null
 }
 
+/** A logo file going up, as the page keeps it. */
+export interface LogoUpload {
+  /** 0 to 1 while a file goes up, else null. */
+  readonly progress: number | null
+  /** Why the last file was not taken, or null. */
+  readonly error: UploadFailure | null
+  readonly choose: (file: File) => void
+}
+
+/**
+ * The page's side of a logo upload. `held` are the links the page still shows or can go back to
+ * (the draft, Undo's steps, the saved design): a local link no longer among them is released at
+ * once, and every one when the page goes.
+ */
+export function useLogoUpload(
+  held: readonly (string | null)[],
+  onLogo: (logo: LogoState) => void,
+): LogoUpload {
+  const [progress, setProgress] = useState<number | null>(null)
+  const [error, setError] = useState<UploadFailure | null>(null)
+  const pictures = useRef<string[]>([])
+  const landed = useRef(onLogo)
+  landed.current = onLogo
+
+  useEffect(() => {
+    const kept = new Set(held)
+    pictures.current = pictures.current.filter((url) => {
+      if (kept.has(url)) return true
+      URL.revokeObjectURL(url)
+      return false
+    })
+  }, [held])
+  useEffect(
+    () => () => {
+      for (const url of pictures.current.splice(0)) URL.revokeObjectURL(url)
+    },
+    [],
+  )
+
+  async function choose(file: File) {
+    setError(null)
+    const refused = precheckImage(file)
+    if (refused) {
+      setError(refused)
+      return
+    }
+    setProgress(0)
+    const outcome = await uploadImage(file, { onProgress: setProgress })
+    setProgress(null)
+    if (!outcome.ok) {
+      setError(outcome.error)
+      return
+    }
+    const url = URL.createObjectURL(file)
+    pictures.current.push(url)
+    // The logo lands on the draft as it is now, not as it was when the file was chosen.
+    landed.current({ assetId: outcome.assetId, url })
+  }
+
+  return { progress, error, choose: (file) => void choose(file) }
+}
+
 export function LogoField({
   logo,
   savedAssetId,
   canEdit,
-  onChange,
-  onBusy,
-  pictureOf,
+  upload,
+  onRemove,
 }: {
   logo: LogoState | null
   /** The logo the venue has saved, to tell a new one from it. */
   savedAssetId: string | null
   canEdit: boolean
-  onChange: (logo: LogoState | null) => void
-  /** True while a file is going up, so the tab holds Save back. */
-  onBusy: (busy: boolean) => void
-  /** A local link to a chosen file, kept by the page for as long as the page is open. */
-  pictureOf: (file: File) => string
+  upload: LogoUpload
+  onRemove: () => void
 }) {
   const t = useTranslations('design.logo')
   const tErrors = useTranslations('itemSheet.media.errors')
   const fileInput = useRef<HTMLInputElement>(null)
-  const [progress, setProgress] = useState<number | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { progress, error } = upload
 
-  async function onFile(event: ChangeEvent<HTMLInputElement>) {
+  function onFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     event.target.value = ''
-    if (!file) return
-    setError(null)
-    const refused = precheckImage(file)
-    if (refused) {
-      setError(tErrors(refused))
-      return
-    }
-    setProgress(0)
-    onBusy(true)
-    const outcome = await uploadImage(file, { onProgress: setProgress })
-    setProgress(null)
-    onBusy(false)
-    if (!outcome.ok) {
-      setError(tErrors(outcome.error))
-      return
-    }
-    // `onChange` adds the logo to the draft as it is now, not as it was when the file was chosen.
-    onChange({ assetId: outcome.assetId, url: pictureOf(file) })
+    if (file) upload.choose(file)
   }
 
   return (
@@ -91,6 +134,7 @@ export function LogoField({
               tabIndex={-1}
               aria-label={t('upload')}
               data-testid="design-logo-input"
+              disabled={progress !== null}
               onChange={onFile}
             />
             <Button
@@ -98,6 +142,7 @@ export function LogoField({
               variant="outline"
               disabled={progress !== null}
               onClick={() => fileInput.current?.click()}
+              data-testid="design-logo-upload"
             >
               {progress !== null
                 ? `${t('uploading')} ${Math.round(progress * 100)}%`
@@ -106,7 +151,7 @@ export function LogoField({
                   : t('upload')}
             </Button>
             {logo ? (
-              <Button type="button" variant="ghost" onClick={() => onChange(null)}>
+              <Button type="button" variant="ghost" onClick={onRemove}>
                 {t('remove')}
               </Button>
             ) : null}
@@ -118,7 +163,7 @@ export function LogoField({
       ) : null}
       {error ? (
         <p role="alert" className="text-sm text-destructive" data-testid="design-logo-error">
-          {error}
+          {tErrors(error)}
         </p>
       ) : null}
     </div>

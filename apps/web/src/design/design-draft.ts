@@ -63,8 +63,9 @@ export function draftOf({ design, theme, logo }: SavedDesign): DesignDraft {
   return {
     style: design.style,
     values: design.values,
-    // A logo id whose picture is gone (no asset, or one no longer stored) is not carried: the page
-    // shows no logo, so the draft holds none, and a save does not write the dead id back.
+    // A logo id with no asset behind it is not carried: the view has no logo, so the draft holds
+    // none, and a save does not write the dead id back. An asset that exists but is not stored comes
+    // as a logo with no picture (the view keeps it), so it stays and can be removed.
     look: { ...lookStateOf(theme), logoAssetId: logo?.assetId ?? null },
     logo: logo === null ? null : { assetId: logo.assetId, url: logo.url },
     picked: { kind: 'premade' },

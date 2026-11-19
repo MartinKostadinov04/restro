@@ -58,7 +58,7 @@ export function ColourPanel({
   derived,
   issues,
   canEdit,
-  scheme,
+  screen,
   onChange,
 }: {
   state: LookState
@@ -68,8 +68,8 @@ export function ColourPanel({
   derived: ThemeRoleSet
   issues: readonly PairIssue[]
   canEdit: boolean
-  /** The screen the preview shows: the advice on a strong page colour is for a light screen. */
-  scheme: 'light' | 'dark'
+  /** The design's screen: the advice on a strong page colour is for guests who get a light one. */
+  screen: 'auto' | 'light' | 'dark'
   onChange: (next: LookState) => void
 }) {
   const t = useTranslations('design.colours')
@@ -84,8 +84,8 @@ export function ColourPanel({
         {PICKERS.map((key) => {
           const invalid = view.invalid.includes(key)
           // On a dark screen the page is worked out as a dark shade of this colour (D93), so the
-          // advice to keep it a calm, light tint is for the light screen only.
-          const warn = key === 'primary' && saturated && !invalid && scheme === 'light'
+          // advice to keep it a calm, light tint is for a design guests can see light (light or auto).
+          const warn = key === 'primary' && saturated && !invalid && screen !== 'dark'
           const describedBy = `${id}-${key}-help`
           return (
             <div key={key} className="grid gap-1.5" data-colour={key}>

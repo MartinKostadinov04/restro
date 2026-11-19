@@ -48,14 +48,17 @@ export function ScaledFrame({
   picture?: boolean
   className?: string
   testId?: string
-  /** A tap on a marked part of the frame (`data-design-part`), by the part's name and those around it. */
-  onPart?: (marker: string, around: readonly string[]) => void
+  /** A tap on a marked part of the frame (`data-design-part`), by its name and what the tap opens. */
+  onPart?: (marker: string, opens: string | null) => void
   /** What the placeholder says while the frame loads; a picture's placeholder says nothing. */
   loading?: string
 }) {
   const box = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState<{ width: number; height: number } | null>(null)
-  const [loaded, setLoaded] = useState(false)
+  // The page the frame has loaded: a new address shows the placeholder until it has loaded too.
+  const src = framePath(venueId, slot)
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null)
+  const loaded = loadedSrc === src
   const store = useRef<ReturnType<typeof openFrameStore> | null>(null)
   const latest = useRef(content)
   latest.current = content
@@ -64,7 +67,7 @@ export function ScaledFrame({
 
   // Before the frame is put in, so its page always finds its store.
   useLayoutEffect(() => {
-    const opened = openFrameStore(slot, (marker, around) => tapped.current?.(marker, around))
+    const opened = openFrameStore(slot, (marker, opens) => tapped.current?.(marker, opens))
     opened.set(latest.current)
     store.current = opened
     return () => {
@@ -108,13 +111,13 @@ export function ScaledFrame({
     >
       {size === null ? null : (
         <iframe
-          src={framePath(venueId, slot)}
+          src={src}
           title={title}
           tabIndex={picture ? -1 : undefined}
           scrolling={picture ? 'no' : undefined}
           loading={picture ? 'lazy' : undefined}
           data-testid={testId}
-          onLoad={() => setLoaded(true)}
+          onLoad={() => setLoadedSrc(src)}
           className="absolute top-0 origin-top-left border-0"
           style={{
             left: Math.max(0, (size.width - width * scale) / 2),
