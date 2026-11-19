@@ -15,7 +15,8 @@ import { forgetGuestCodes, guestAct, guestState } from '@restro/core/service'
 import { createPool, type DbPool } from '@restro/db'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { idleOrders, tidyIdleOrders } from '../src/jobs/order-tidy'
+import { idleOrders, orderTidyTick, tidyIdleOrders } from '../src/jobs/order-tidy'
+import type { WorkerContext } from '../src/jobs/types'
 import {
   allowSlowSetup,
   createTestDatabase,
@@ -44,6 +45,23 @@ vi.mock('@restro/core/service', async (original) => {
 allowSlowSetup()
 
 const quiet = { warn: () => undefined }
+
+describe('the minute tick (screen round 11-18, C4)', () => {
+  it('runs every pass when the one before it fails, then fails the tick', async () => {
+    const down = (): never => {
+      throw new Error('the database is down')
+    }
+    const pool = { connect: async () => down(), query: async () => down() } as unknown as DbPool
+    const error = vi.fn()
+    const log = { info: vi.fn(), warn: vi.fn(), error, child: () => log }
+    const context = { pool, log, now: () => new Date() } as unknown as WorkerContext
+    await expect(orderTidyTick.handler([], context)).rejects.toThrow()
+    const passes = error.mock.calls
+      .map((call) => (call[0] as { pass?: string }).pass)
+      .filter((pass) => pass !== undefined)
+    expect(passes).toEqual(['tidy', 'lapse', 'sweep'])
+  })
+})
 
 describe.skipIf(!hasDatabase)('the idle order job', () => {
   let db: TestDatabase
@@ -131,7 +149,9 @@ describe.skipIf(!hasDatabase)('the idle order job', () => {
         where table_id = $1`,
       [idle],
     )
-    expect(await idleOrders(pool, new Date())).toEqual([{ tenantId, venueId, tableId: idle }])
+    expect(await idleOrders(pool, new Date(), quiet)).toEqual([
+      { tenantId, venueId, tableId: idle },
+    ])
     expect(await tidyIdleOrders(pool, new Date(), quiet)).toBe(1)
     expect(await tidyIdleOrders(pool, new Date(), quiet)).toBe(0)
 
@@ -163,7 +183,7 @@ describe.skipIf(!hasDatabase)('the idle order job', () => {
         where table_id = $1 and ended_at is null`,
       [busy],
     )
-    expect(await idleOrders(pool, new Date())).toEqual([])
+    expect(await idleOrders(pool, new Date(), quiet)).toEqual([])
     expect(await tidyIdleOrders(pool, new Date(), quiet)).toBe(0)
   })
 
@@ -183,6 +203,8 @@ describe.skipIf(!hasDatabase)('the idle order job', () => {
     }
     expect(warn).toHaveBeenCalledTimes(1)
     expect(warn.mock.calls[0]?.[0]).toMatchObject({ tableId: broken, err: expect.any(Error) })
-    expect(await idleOrders(pool, new Date())).toEqual([{ tenantId, venueId, tableId: broken }])
+    expect(await idleOrders(pool, new Date(), quiet)).toEqual([
+      { tenantId, venueId, tableId: broken },
+    ])
   })
 })

@@ -135,7 +135,7 @@ describe.skipIf(!hasDatabase)('the waiter-call lapse job', () => {
       `update restro.waiter_calls set called_at = now() - interval '16 minutes', last_called_at = now() - interval '16 minutes' where id = $1`,
       [old],
     )
-    expect(await dueWaiterCalls(pool, new Date())).toEqual([
+    expect(await dueWaiterCalls(pool, new Date(), quiet)).toEqual([
       { tenantId, venueId, waiterCallId: old },
     ])
     expect(await lapseWaiterCalls(pool, new Date(), quiet)).toBe(1)

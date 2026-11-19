@@ -28,35 +28,46 @@ export interface DueWaiterCall {
   readonly waiterCallId: string
 }
 
-/** The open calls whose time has passed or whose sitting has ended at `now`, in every organisation. */
-export async function dueWaiterCalls(pool: DbPool, now: Date): Promise<DueWaiterCall[]> {
+/**
+ * The open calls whose time has passed or whose sitting has ended at `now`, in every organisation.
+ * An organisation whose listing throws is logged and skipped (screen round 11-18, C4).
+ */
+export async function dueWaiterCalls(
+  pool: DbPool,
+  now: Date,
+  log: Pick<Logger, 'warn'>,
+): Promise<DueWaiterCall[]> {
   const organisations = await withSystem(pool, (tx) =>
     tx.select({ id: authOrganization.id }).from(authOrganization),
   )
   const due: DueWaiterCall[] = []
   for (const organisation of organisations) {
-    const open = await withTenant(pool, organisation.id, (tx) =>
-      tx
-        .select({
-          id: waiterCalls.id,
-          venueId: waiterCalls.venueId,
-          lastCalledAt: waiterCalls.lastCalledAt,
-          settings: venues.settings,
-          sittingEndedAt: sittings.endedAt,
-        })
-        .from(waiterCalls)
-        .innerJoin(venues, eq(venues.id, waiterCalls.venueId))
-        .innerJoin(sittings, eq(sittings.id, waiterCalls.sittingId))
-        .where(eq(waiterCalls.state, 'open')),
-    )
-    for (const call of open) {
-      const lapseMinutes = readOrderingSettings(call.settings).callLapseMinutes
-      if (
-        call.sittingEndedAt !== null ||
-        waiterCallLapsesAt(call.lastCalledAt, lapseMinutes).getTime() <= now.getTime()
-      ) {
-        due.push({ tenantId: organisation.id, venueId: call.venueId, waiterCallId: call.id })
+    try {
+      const open = await withTenant(pool, organisation.id, (tx) =>
+        tx
+          .select({
+            id: waiterCalls.id,
+            venueId: waiterCalls.venueId,
+            lastCalledAt: waiterCalls.lastCalledAt,
+            settings: venues.settings,
+            sittingEndedAt: sittings.endedAt,
+          })
+          .from(waiterCalls)
+          .innerJoin(venues, eq(venues.id, waiterCalls.venueId))
+          .innerJoin(sittings, eq(sittings.id, waiterCalls.sittingId))
+          .where(eq(waiterCalls.state, 'open')),
+      )
+      for (const call of open) {
+        const lapseMinutes = readOrderingSettings(call.settings).callLapseMinutes
+        if (
+          call.sittingEndedAt !== null ||
+          waiterCallLapsesAt(call.lastCalledAt, lapseMinutes).getTime() <= now.getTime()
+        ) {
+          due.push({ tenantId: organisation.id, venueId: call.venueId, waiterCallId: call.id })
+        }
       }
+    } catch (error) {
+      log.warn({ tenantId: organisation.id, err: error }, 'the waiter calls could not be listed')
     }
   }
   return due
@@ -69,7 +80,7 @@ export async function lapseWaiterCalls(
   log: Pick<Logger, 'warn'>,
 ): Promise<number> {
   let lapsed = 0
-  for (const call of await dueWaiterCalls(pool, now)) {
+  for (const call of await dueWaiterCalls(pool, now, log)) {
     try {
       const { result } = await applyService(
         pool,
