@@ -269,6 +269,40 @@ describe('a two-column card draws all its parts (D130)', () => {
   })
 })
 
+describe('two columns hold the items without a photo too (S7)', () => {
+  /** The first item with no photo and a price in a scope. */
+  const textCard = (scope: HtmlElement) =>
+    withAttribute(scope, 'data-item').find(
+      (item) =>
+        (item.attrs.class ?? '').includes('is-text') &&
+        withAttribute(item, 'data-design-part', 'item.price').length > 0,
+    ) as HtmlElement
+
+  it('gives a text item one column, wrapping inside it, with the never-list kept', () => {
+    for (const frame of ['rows', 'cards', 'open'] as const) {
+      for (const name_size of ['s', 'm', 'l'] as const) {
+        const page = drawn({ items: { layout: 'two', frame, name_size } })
+        const card = textCard(page.vertical)
+        const where = `${frame} ${name_size}`
+        expect(card, where).toBeDefined()
+        // One cell of the two-column grid: no span across both.
+        expect(page.value(card, 'grid-column'), where).toBeUndefined()
+        expect(page.value(card, 'min-width'), where).toBe('0')
+        // The name wraps inside its column and is never cut (R9).
+        expect(page.value(card, 'overflow-wrap'), where).toBe('anywhere')
+        const heading = headingOf(part(card, 'item.name'))
+        expect(page.value(heading, 'text-overflow'), where).toBeUndefined()
+        const name = page.px(heading) as number
+        const price = page.px(part(card, 'item.price')) as number
+        expect(name, where).toBeGreaterThanOrEqual(12)
+        // The price stays at the body text's size (a text row's description, 14 px), under the name (D130).
+        expect(price, where).toBeGreaterThanOrEqual(14)
+        expect(price, where).toBeLessThan(name)
+      }
+    }
+  })
+})
+
 describe('a section image (D130)', () => {
   it('keeps 16:7 and General’s corners, whatever the Photos page says', () => {
     const sectionImage = (rules: ReturnType<typeof drawn>['rules']) =>

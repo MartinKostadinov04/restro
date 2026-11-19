@@ -71,6 +71,8 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
     fontStacks,
     scheme = 'auto',
     services,
+    layoutMemory = null,
+    onOpenDishChange,
   } = props
   const locale = view.locale
   const strings = stringsFor(locale).guest
@@ -95,8 +97,18 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
   }, [chosen, filterControl, view.filters])
 
   // The menu's layout and guest switch (D92), published with the menu; no face option any more.
-  const [layout, chooseLayout] = useLayout(view.layout.default, view.layout.guestSwitch)
+  const [layout, chooseLayout] = useLayout(
+    view.layout.default,
+    view.layout.guestSwitch,
+    layoutMemory,
+  )
   const dish = useDishRoute()
+  // The host hears of every dish page the address opens or closes (a tap, a link, back and forward).
+  const toldOpenDish = useRef(onOpenDishChange)
+  toldOpenDish.current = onOpenDishChange
+  useEffect(() => {
+    toldOpenDish.current?.(dish.openId)
+  }, [dish.openId])
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [allergens, setAllergens] = useState<AllergenState | null>(null)
   const filterOpener = useRef<HTMLElement | null>(null)

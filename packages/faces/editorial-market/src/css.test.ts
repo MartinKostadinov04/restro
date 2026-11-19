@@ -163,6 +163,27 @@ describe('the audit of the stylesheet (SH-07)', () => {
     expect(EDITORIAL_CSS).not.toContain('.rm-chevron')
   })
 
+  it('keeps the arrow on the line of the name’s last word: inline, never an atomic box (S11)', () => {
+    const arrow = declarationsFor('.rm-item-open::after')
+    expect(arrow).toMatch(/display:\s*inline;/)
+    expect(arrow).not.toMatch(/display:\s*inline-block/)
+    // Its nudge on hover moves it without a transform, which an inline box does not take.
+    expect(declarationsFor('.rm-item:hover .rm-item-open::after')).not.toContain('transform')
+  })
+
+  it('darkens the menu behind a sheet or a dish on both screens: the dark set’s page colour (R3)', () => {
+    for (const selector of ['.rm-overlay', '.rm-overlay:has(.is-detail)']) {
+      const scrims = declarationsFor(selector)
+        .split(/\n/)
+        .filter((line) => /background:\s*color-mix/.test(line))
+      expect(scrims.length, selector).toBeGreaterThan(0)
+      for (const scrim of scrims) {
+        expect(scrim, selector).toContain('var(--rm-d-background)')
+        expect(scrim, selector).not.toContain('var(--rm-text)')
+      }
+    }
+  })
+
   it('has no look for a sold-out or unavailable item, which is not on the menu (D131)', () => {
     expect(EDITORIAL_CSS).not.toMatch(/data-state="(sold_out|unavailable)"/)
   })

@@ -282,7 +282,7 @@
 .rm-overlay { position: fixed }
 .rm-overlay { z-index: 50 }
 .rm-overlay { inset: 0 }
-.rm-overlay { background: color-mix(in srgb, var(--rm-text) 72%, transparent) }
+.rm-overlay { background: color-mix(in srgb, var(--rm-d-background) 72%, transparent) }
 .rm-overlay { display: flex }
 .rm-overlay { justify-content: center }
 .rm-overlay { align-items: flex-end }
@@ -468,14 +468,16 @@
 .rm-item-open::before { z-index: 1 }
 .rm-item-open::after { content: "→" }
 .rm-item-open::after { content: "→" / "" }
-.rm-item-open::after { display: inline-block }
+.rm-item-open::after { display: inline }
+.rm-item-open::after { position: relative }
+.rm-item-open::after { left: 0 }
 .rm-item-open::after { margin-left: 8px }
 .rm-item-open::after { color: var(--rm-muted) }
 .rm-item-open::after { font-weight: 500 }
-.rm-item-open::after { transition: transform 0.2s }
+.rm-item-open::after { transition: left 0.2s }
 .rm-allergens button { position: relative }
 .rm-allergens button { z-index: 2 }
-.rm-item:hover .rm-item-open::after { transform: translateX(4px) }
+.rm-item:hover .rm-item-open::after { left: 4px }
 .rm-item:hover .rm-item-open::after { color: var(--rm-text) }
 .rm-item:hover .rm-photo img { transform: scale(1.02) }
 .rm-photo { overflow: hidden }
@@ -520,6 +522,7 @@
 .rm-detail-copy > p { line-height: 1.6 }
 @media (prefers-reduced-motion: reduce) .rm-photo img, .rm-item-open::after { transition: none !important }
 @media (prefers-reduced-motion: reduce) .rm-photo img, .rm-item-open::after { transform: none !important }
+@media (prefers-reduced-motion: reduce) .rm-photo img, .rm-item-open::after { left: 0 !important }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo, .rm-section.is-feature .rm-photo { background: var(--rm-surface) }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo, .rm-section.is-feature .rm-photo { padding: 0px }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo, .rm-section.is-feature .rm-photo { border-radius: 0px }
@@ -542,7 +545,7 @@
 .rm img { animation: rm-fade 0.5s ease both }
 .rm-sections a:after { transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1) }
 .rm-sections a { transition: color 0.2s }
-.rm-overlay:has(.is-detail) { background: color-mix(in srgb, var(--rm-text) 40%, transparent) }
+.rm-overlay:has(.is-detail) { background: color-mix(in srgb, var(--rm-d-background) 40%, transparent) }
 .rm-overlay:has(.is-detail) { animation: rm-veil 0.32s ease both }
 .rm-overlay-panel.is-detail { animation: rm-sheet 0.38s cubic-bezier(0.16, 1, 0.3, 1) both }
 .rm-overlay-panel.is-detail { overflow: auto }

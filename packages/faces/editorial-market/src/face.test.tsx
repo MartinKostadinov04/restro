@@ -74,6 +74,11 @@ const sectionsOf = (container: HTMLElement) => [
   ...container.querySelectorAll<HTMLElement>('section.rm-section'),
 ]
 
+/** The guest page's key for the venue of these tests (the face is told it as `layoutMemory`). */
+const VENUE = 'k3x9p2m7qa1z'
+const REMEMBERED = `rm-layout:${VENUE}`
+const atVenue = { layoutMemory: VENUE } as const
+
 const openFilterSheet = () => {
   fireEvent.click(screen.getByRole('button', { name: 'Filter the menu' }))
   return screen.getByRole('dialog', { name: 'Filter the menu' })
@@ -81,7 +86,7 @@ const openFilterSheet = () => {
 
 describe('the layout', () => {
   it('starts in two columns and the switch changes it', () => {
-    const { container } = draw()
+    const { container } = draw(atVenue)
     const root = container.querySelector('.rm')
     expect(root?.getAttribute('data-layout')).toBe('two')
     expect(screen.getByRole('radiogroup', { name: 'Menu layout' })).toBeTruthy()
@@ -94,7 +99,7 @@ describe('the layout', () => {
     expect(screen.getByRole('radio', { name: 'List' }).getAttribute('aria-checked')).toBe('true')
     fireEvent.click(screen.getByRole('radio', { name: '1 column' }))
     expect(root?.getAttribute('data-layout')).toBe('one')
-    expect(window.sessionStorage.getItem('rm-layout')).toBe('one')
+    expect(window.sessionStorage.getItem(REMEMBERED)).toBe('one')
   })
 
   it('moves the choice with the arrow keys, and only the chosen button is in the tab order', () => {
@@ -129,16 +134,17 @@ describe('the layout', () => {
   })
 
   it("lets the guest's remembered choice win while the switch is shown", () => {
-    window.sessionStorage.setItem('rm-layout', 'one')
+    window.sessionStorage.setItem(REMEMBERED, 'one')
     const { container } = draw({
+      ...atVenue,
       view: { ...view, layout: { default: 'list', guestSwitch: true } },
     })
     expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('one')
   })
 
   it('ignores a remembered value that is not a layout', () => {
-    window.sessionStorage.setItem('rm-layout', 'banana')
-    const { container } = draw()
+    window.sessionStorage.setItem(REMEMBERED, 'banana')
+    const { container } = draw(atVenue)
     expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('two')
   })
 
@@ -149,19 +155,51 @@ describe('the layout', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('denied')
     })
-    const { container } = draw()
+    const { container } = draw(atVenue)
     fireEvent.click(screen.getByRole('radio', { name: 'List' }))
     expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('list')
   })
 
   it('draws no switch when the menu does not let guests switch, and then the remembered choice does not apply', () => {
-    window.sessionStorage.setItem('rm-layout', 'one')
+    window.sessionStorage.setItem(REMEMBERED, 'one')
     const { container } = draw({
+      ...atVenue,
       view: { ...view, layout: { default: 'list', guestSwitch: false } },
     })
     expect(screen.queryByRole('radiogroup')).toBeNull()
     expect(screen.queryByRole('radio')).toBeNull()
     expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('list')
+  })
+
+  it('keeps each venue’s choice to itself: another venue’s, and the old shared key, do not apply', () => {
+    window.sessionStorage.setItem('rm-layout:zzzzzzzzzzzz', 'one')
+    window.sessionStorage.setItem('rm-layout', 'one')
+    const { container } = draw({
+      ...atVenue,
+      view: { ...view, layout: { default: 'list', guestSwitch: true } },
+    })
+    expect(container.querySelector('.rm')?.getAttribute('data-layout')).toBe('list')
+  })
+
+  it('without a memory (the Design previews) neither reads nor writes the guest’s choice (C6)', () => {
+    window.sessionStorage.setItem(REMEMBERED, 'one')
+    window.sessionStorage.setItem('rm-layout', 'one')
+    const getItem = vi.spyOn(Storage.prototype, 'getItem')
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    const preview = (layout: 'list' | 'one' | 'two') => (
+      <EditorialMarketFace view={{ ...view, layout: { default: layout, guestSwitch: true } }} />
+    )
+    const { container, rerender } = render(preview('list'))
+    const root = () => container.querySelector('.rm')?.getAttribute('data-layout')
+    expect(root()).toBe('list')
+    // The switch still works in the preview, for as long as the frame is drawn …
+    fireEvent.click(screen.getByRole('radio', { name: '2 columns' }))
+    expect(root()).toBe('two')
+    // … and gives way when the owner changes the design's own layout.
+    rerender(preview('one'))
+    expect(root()).toBe('one')
+    expect(getItem).not.toHaveBeenCalled()
+    expect(setItem).not.toHaveBeenCalled()
   })
 
   it('shows the switch under the title of the section after the photo-led strip', () => {
@@ -280,6 +318,27 @@ describe('the dish page', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(window.location.hash).toBe('')
+  })
+
+  it('tells the host every dish page that opens and closes: a tap, back, a shared link (C1)', async () => {
+    const told: (string | null)[] = []
+    const onOpenDishChange = (itemId: string | null) => told.push(itemId)
+    const { unmount } = draw({ onOpenDishChange })
+    fireEvent.click(opener())
+    expect(told.at(-1)).toBe(hummus.id)
+    await act(async () => {
+      window.history.back()
+    })
+    await waitFor(() => expect(told.at(-1)).toBeNull())
+    // Opened again: a second open, told again.
+    fireEvent.click(opener())
+    expect(told.filter((id) => id === hummus.id)).toHaveLength(2)
+    unmount()
+    // A link that arrives on a dish page.
+    told.length = 0
+    window.history.replaceState(null, '', `/#item-${hummus.id}`)
+    draw({ onOpenDishChange })
+    await waitFor(() => expect(told).toContain(hummus.id))
   })
 
   it('draws no dialog for a link that names no dish or is malformed', () => {

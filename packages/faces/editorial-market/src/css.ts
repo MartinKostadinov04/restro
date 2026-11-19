@@ -697,7 +697,8 @@ ${HEAVY_FALLBACK_CSS}
   position: fixed;
   z-index: 50;
   inset: 0;
-  background: color-mix(in srgb, var(--rm-text) 72%, transparent);
+  /* The scrim darkens the menu on both screens: the dark set's page colour, worked out to be dark. */
+  background: color-mix(in srgb, var(--rm-d-background) 72%, transparent);
   display: flex;
   justify-content: center;
   align-items: flex-end;
@@ -1029,18 +1030,21 @@ ${HEAVY_FALLBACK_CSS}
 .rm-item-open::after {
   content: "→";
   content: "→" / "";
-  display: inline-block;
+  /* Inline, so no line can break between the name's last word and the arrow: it never wraps alone. */
+  display: inline;
+  position: relative;
+  left: 0;
   margin-left: 8px;
   color: var(--rm-muted);
   font-weight: 500;
-  transition: transform 0.2s;
+  transition: left 0.2s;
 }
 .rm-allergens button {
   position: relative;
   z-index: 2;
 }
 .rm-item:hover .rm-item-open::after {
-  transform: translateX(4px);
+  left: 4px;
   color: var(--rm-text);
 }
 .rm-item:hover .rm-photo img {
@@ -1125,6 +1129,7 @@ ${HEAVY_FALLBACK_CSS}
   .rm-item-open::after {
     transition: none !important;
     transform: none !important;
+    left: 0 !important;
   }
 }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo,
@@ -1184,7 +1189,7 @@ ${HEAVY_FALLBACK_CSS}
   transition: color 0.2s;
 }
 .rm-overlay:has(.is-detail) {
-  background: color-mix(in srgb, var(--rm-text) 40%, transparent);
+  background: color-mix(in srgb, var(--rm-d-background) 40%, transparent);
   animation: rm-veil 0.32s ease both;
 }
 .rm-overlay-panel.is-detail {
@@ -1421,8 +1426,11 @@ ${HEAVY_FALLBACK_CSS}
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 12px;
 }
+/* An item without a photo takes one column too, as a text card: its name and every other part wrap
+   inside the column, so nothing is cut and nothing widens the page at 320 px. */
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.is-text {
-  grid-column: 1 / -1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo {
   min-width: 0;

@@ -426,4 +426,15 @@ const DEPARTURES: readonly ((line: string, added: boolean) => boolean)[] = [
   // notice that carries its own controls (#295, DA-22). Service lines: no browsing look moves.
   (line, added) => added && line.startsWith('.rm .ro-topline {'),
   (line, added) => added && line.startsWith('.rm .ro-barbox'),
+  // The scrim behind a sheet and a dish darkens the menu on both screens (R3, 11-18 round).
+  (line) =>
+    /^\.rm-overlay(?::has\(\.is-detail\))? \{ background: color-mix\(in srgb, var\(--rm-(?:text|d-background)\) (?:72|40)%, transparent\) \}$/.test(
+      line,
+    ),
+  // The arrow after a name is inline, so it never wraps alone; its hover nudge moves `left` (S11).
+  (line) => /\.rm-item-open::after \{ (?:display|position|left|transition|transform):/.test(line),
+  // Two columns hold the items without a photo too, one column each (S7).
+  (line) =>
+    line.startsWith('.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.is-text {') &&
+    /^(?:grid-column|min-width|overflow-wrap)$/.test(property(line)),
 ]
