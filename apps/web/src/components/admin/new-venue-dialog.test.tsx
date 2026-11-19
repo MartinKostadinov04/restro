@@ -114,7 +114,7 @@ describe('step 1: the source', () => {
     expect((screen.getByTestId('new-venue-source-hand') as HTMLInputElement).checked).toBe(true)
     expect(next().disabled).toBe(false)
     const hint = screen.getByTestId('new-venue-no-instances')
-    expect(hint.textContent).toContain('No point-of-sale system is connected yet.')
+    expect(hint.textContent).toContain('No POS is connected yet.')
     expect(within(hint).getByRole('link').getAttribute('href')).toBe('/settings/integrations')
   })
 
@@ -202,7 +202,10 @@ describe('step 2, from a POS: nothing is typed', () => {
     for (const [error, text] of [
       ['not_allowed', 'Only an owner or admin can create a venue.'],
       ['invalid', 'Check the name, the address and the languages, then try again.'],
-      ['failed', 'Something went wrong. The venue was not created, try again.'],
+      [
+        'failed',
+        'Restro did not answer. The venue was not created: check the connection and try again.',
+      ],
     ] as const) {
       vi.mocked(createVenueAction).mockResolvedValue({ ok: false, error })
       const { user } = dialog()
@@ -218,7 +221,7 @@ describe('step 2, from a POS: nothing is typed', () => {
     await user.click(tillVenue(11))
     await user.click(submit())
     expect((await screen.findByTestId('new-venue-error')).textContent).toContain(
-      'Something went wrong',
+      'Restro did not answer',
     )
   })
 
@@ -457,7 +460,10 @@ describe('creating by hand', () => {
     for (const [error, text] of [
       ['not_allowed', 'Only an owner or admin can create a venue.'],
       ['invalid', 'Check the name, the address and the languages, then try again.'],
-      ['failed', 'Something went wrong. The venue was not created, try again.'],
+      [
+        'failed',
+        'Restro did not answer. The venue was not created: check the connection and try again.',
+      ],
     ] as const) {
       vi.mocked(createVenueAction).mockResolvedValue({ ok: false, error })
       const { user } = dialog()
@@ -472,7 +478,7 @@ describe('creating by hand', () => {
     const { user, onCreated } = dialog()
     await fill(user)
     expect((await screen.findByTestId('new-venue-error')).textContent).toContain(
-      'Something went wrong',
+      'Restro did not answer',
     )
     expect(onCreated).not.toHaveBeenCalled()
   })

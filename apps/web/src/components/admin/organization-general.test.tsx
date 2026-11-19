@@ -192,7 +192,7 @@ describe('Settings › General for an owner', () => {
         'taken',
         'Another organisation has this address name, or had it before. Choose another one.',
       ],
-      ['failed', 'Something went wrong. Nothing was changed, try again.'],
+      ['failed', 'Restro did not answer. Nothing was changed: check the connection and try again.'],
     ] as const) {
       vi.mocked(updateOrganizationAction).mockResolvedValue({ ok: false, error })
       const user = general()
@@ -226,7 +226,7 @@ describe('Settings › General for an owner', () => {
     await user.type(slugInput(), 'day-group')
     await user.click(slugSave())
     expect((await screen.findByTestId('general-slug-error')).textContent).toBe(
-      'Something went wrong. Nothing was changed, try again.',
+      'Restro did not answer. Nothing was changed: check the connection and try again.',
     )
   })
 })

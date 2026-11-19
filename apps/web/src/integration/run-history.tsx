@@ -43,7 +43,10 @@ const STATUS_BADGE = {
 } as const
 
 /** Runs of kinds the platform names itself; every other kind is named by the system's connector. */
-const NEUTRAL_RUN_KINDS = ['places_read'] as const
+const NEUTRAL_RUN_KINDS = ['places_read', 'floor_read'] as const
+
+/** Runs that read a venue's tables, not its menu: a venue's Menu source card never sums up with one. */
+const TABLE_RUN_KINDS: readonly string[] = ['floor_read']
 
 interface HistoryProps {
   readonly runs: readonly RunView[]
@@ -55,6 +58,11 @@ interface HistoryProps {
   readonly source: string
   /** Name the venue of each run (the instance's history); a venue's own history leaves it out. */
   readonly showVenue: boolean
+  /**
+   * What the one line sums up: the latest run of any kind (the instance's history), or the latest
+   * menu run (a venue's Menu source card, which says beside it when the menu was last synced).
+   */
+  readonly summary?: 'latest' | 'menu'
 }
 
 /** The words for a kind of run: a neutral one, else the connector's, else "Other". */
@@ -74,7 +82,7 @@ function RunRow({
   connector,
   source,
   showVenue,
-}: { run: RunView } & Omit<HistoryProps, 'runs'>) {
+}: { run: RunView } & Omit<HistoryProps, 'runs' | 'summary'>) {
   const t = useTranslations('integration.history')
   const kindLabel = useRunKindLabel(connector)
   const moment = useMoment(timeZone)
@@ -206,14 +214,24 @@ function RunRow({
   )
 }
 
-export function RunHistory({ runs, timeZone, connector, source, showVenue }: HistoryProps) {
+export function RunHistory({
+  runs,
+  timeZone,
+  connector,
+  source,
+  showVenue,
+  summary = 'latest',
+}: HistoryProps) {
   const t = useTranslations('integration.history')
   const kindLabel = useRunKindLabel(connector)
   const moment = useMoment(timeZone)
   const [open, setOpen] = useState(false)
-  const last = runs[0]
+  // A table read is not a menu sync: summed up on the venue's card it would sit under "Not synced
+  // yet" as if it were one (screen round 2026-11-18, S4). It stays in the list.
+  const last =
+    summary === 'menu' ? runs.find((run) => !TABLE_RUN_KINDS.includes(run.kind)) : runs[0]
 
-  if (last === undefined) {
+  if (runs.length === 0) {
     return (
       // One line, like the collapsed history: nothing to open yet.
       <p
@@ -230,13 +248,17 @@ export function RunHistory({ runs, timeZone, connector, source, showVenue }: His
   return (
     <Collapsible open={open} onOpenChange={setOpen} data-testid="history">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground" data-testid="history-last">
-          {t('last', {
-            kind: kindLabel(last.kind),
-            status: t(`status.${last.status}`),
-            when: moment(last.startedAt) ?? '—',
-          })}
-        </p>
+        {last === undefined ? (
+          <span />
+        ) : (
+          <p className="text-sm text-muted-foreground" data-testid="history-last">
+            {t('last', {
+              kind: kindLabel(last.kind),
+              status: t(`status.${last.status}`),
+              when: moment(last.startedAt) ?? '—',
+            })}
+          </p>
+        )}
         <CollapsibleTrigger asChild>
           <Button type="button" variant="outline" size="sm" data-testid="history-toggle">
             {open ? <ChevronDownIcon aria-hidden /> : <ChevronRightIcon aria-hidden />}

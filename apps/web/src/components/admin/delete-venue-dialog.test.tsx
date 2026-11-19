@@ -54,7 +54,7 @@ describe('the delete dialog', () => {
     expect(effects).toContain('disappears from the admin')
     expect(effects).toContain('guest page and its table QR codes stop working')
     expect(effects).toContain('not available')
-    expect(effects).toContain('link to the till is released')
+    expect(effects).toContain('link to its venue in the POS is released')
     expect(effects).toContain('Nothing is erased')
     expect(effects).toContain('Settings › Deleted venues')
   })
@@ -112,7 +112,10 @@ describe('the delete dialog', () => {
     ['name_mismatch', 'The name does not match. Type it exactly as shown.'],
     ['venue_archived', 'This venue was deleted.'],
     ['invalid', 'This venue could not be found.'],
-    ['failed', 'Something went wrong. The venue was not deleted, try again.'],
+    [
+      'failed',
+      'Restro did not answer. The venue was not deleted: check the connection and try again.',
+    ],
   ] as const)('shows the answer %s and stays open', async (error, text) => {
     vi.mocked(deleteVenueAction).mockResolvedValue({ ok: false, error })
     const user = zone()
@@ -132,7 +135,7 @@ describe('the delete dialog', () => {
     await user.type(typed(), NAME)
     await user.click(confirm())
     expect((await screen.findByTestId('delete-venue-error')).textContent).toContain(
-      'Something went wrong',
+      'Restro did not answer',
     )
   })
 

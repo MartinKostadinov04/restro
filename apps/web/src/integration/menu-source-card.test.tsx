@@ -32,7 +32,7 @@ describe('the Menu source card of a venue made by hand', () => {
 describe('the Menu source card of a POS venue: the common part', () => {
   it('names the instance and the venue in the system, read-only (a source never changes, D87)', () => {
     card(linkedMenuSource())
-    expect(screen.getByRole('heading', { name: 'Menu source' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Source' })).toBeTruthy()
     expect(screen.getByTestId('menu-source-instance').textContent).toBe('barsy – Sofia')
     expect(screen.getByTestId('menu-source-venue').textContent).toBe('Main bar')
     expect(screen.getByText('Venue in barsy')).toBeTruthy()
@@ -83,6 +83,17 @@ describe('the Menu source card of a POS venue: the common part', () => {
       expect(actions.syncNowAction).not.toHaveBeenCalled()
     })
 
+    it.each(['no_credentials', 'not_connected'] as SyncBlock[])(
+      'links "%s" to Settings → Integrations, one tap away',
+      (reason) => {
+        card(linkedMenuSource({ gate: { enabled: false, reason } }))
+        const link = within(screen.getByTestId('sync-blocked')).getByRole('link', {
+          name: 'Settings → Integrations',
+        })
+        expect(link.getAttribute('href')).toBe('/settings/integrations')
+      },
+    )
+
     it('shows when it last synced, in the venue’s time zone, or that it has not', () => {
       const { unmount } = card(linkedMenuSource())
       // 09:30 UTC is 12:30 in Sofia.
@@ -113,7 +124,7 @@ describe('the Menu source card of a POS venue: the common part', () => {
       card(held('too_many_missing', 61, 65))
       const warning = screen.getByTestId('sync-held')
       expect(warning.getAttribute('data-reason')).toBe('too_many_missing')
-      expect(warning.textContent).toContain('The last full sync was held back')
+      expect(warning.textContent).toContain('The last full read was held back')
       expect(warning.textContent).toContain('it would have hidden 61 of 65 items.')
       expect(warning.textContent).toContain('Check the venue and its menus in barsy.')
       expect(within(warning).queryByRole('button')).toBeNull()
@@ -141,11 +152,32 @@ describe('the Menu source card of a POS venue: the common part', () => {
     it('shows the last run on one line and opens the list under a button, without a venue column', async () => {
       const user = userEvent.setup()
       card(linkedMenuSource({ runs: [run({ id: 'jb_a' }), run({ id: 'jb_b' })] }))
-      expect(screen.getByTestId('history-last').textContent).toMatch(/^Last run: Full sync/)
+      expect(screen.getByTestId('history-last').textContent).toMatch(/^Last run: Full read/)
       expect(screen.queryAllByTestId('run-row')).toHaveLength(0)
       await user.click(screen.getByTestId('history-toggle'))
       expect(screen.getAllByTestId('run-row')).toHaveLength(2)
       expect(screen.queryByTestId('run-venue')).toBeNull()
+    })
+
+    // Screen round 2026-11-18, S4: a table read sat under "Not synced yet" as "Last run: Other".
+    it('sums up with the last menu run, never a table read, which stays in the list', async () => {
+      const user = userEvent.setup()
+      card(
+        linkedMenuSource({
+          lastSyncedAt: null,
+          runs: [run({ id: 'jb_a', kind: 'floor_read' }), run({ id: 'jb_b' })],
+        }),
+      )
+      expect(screen.getByTestId('history-last').textContent).toMatch(/^Last run: Full read/)
+      await user.click(screen.getByTestId('history-toggle'))
+      expect(screen.getAllByTestId('run-row')).toHaveLength(2)
+    })
+
+    it('has no summary line when every run is a table read', () => {
+      card(linkedMenuSource({ lastSyncedAt: null, runs: [run({ kind: 'floor_read' })] }))
+      expect(screen.getByTestId('sync-last').textContent).toBe('Not synced yet.')
+      expect(screen.queryByTestId('history-last')).toBeNull()
+      expect(screen.getByTestId('history-toggle').textContent).toBe('Show the last run')
     })
   })
 
@@ -162,7 +194,7 @@ describe('the Menu source card of a POS venue: the common part', () => {
 
   it('speaks Bulgarian', () => {
     card(linkedMenuSource(), 'bg')
-    expect(screen.getByRole('heading', { name: 'Източник на менюто' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Източник' })).toBeTruthy()
     expect(screen.getByText('Заведение в barsy')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Синхронизирай това заведение' })).toBeTruthy()
     expect(screen.getByRole('radio', { name: /Базова цена/ })).toBeTruthy()
