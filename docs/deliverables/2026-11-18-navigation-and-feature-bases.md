@@ -52,7 +52,7 @@ Vendor help pages, read on 11-18. "(snippet)" means only the search result was r
 
 **The rule: two levels.** The sidebar says where you are; at most one row at the top of a page switches views of that same thing, and no row has more than four choices.
 
-**Words.** A *module* (in code, feature base) is a part of Restro a venue can have or not: ordering, reservations, later song requests. The menu is not a module; every venue has it. The interface word is "Модули / Modules" (K14); the glossary entry comes with the switch's ticket, because tonight's build shows the word nowhere.
+**Words.** A *module* (in code too: `module`) is a part of Restro a venue can have or not: ordering, reservations, later song requests. The menu is not a module; every venue has it. The interface word is "Модули / Modules" (K14); the glossary's "Module" and "Screen" entries land with tonight's build (L4).
 
 ### The sidebar on a venue's page (tonight)
 
@@ -108,7 +108,7 @@ Counted from inside the venue (the Studio open), as the admin map counts: wide /
 
 Tonight's gain is order, not taps: two levels, settings split by module, a title that names the screen, and two settings one tap closer. Switching venue gets one tap longer. The phone's real cut comes with the bottom bar ticket (Tonight and Reservations at 1 tap); D158 takes one more tap off for a one-venue owner.
 
-## Modules (feature bases), later
+## Modules, later
 
 **The menu is what every venue has** (Studio, Tables & QR, Publish). **Ordering, reservations and song requests are modules:** each switched on per venue, each owning one sidebar group, its screens, its settings, its rights and its folder. Off means not drawn and refused: no entry, no settings, and the pages, actions and commands of an off module refuse (K12a). Switching off deletes nothing.
 
@@ -121,7 +121,7 @@ Tonight's gain is order, not taps: two levels, settings split by module, a title
 
 **Today** `venues.settings.guest_features` (published) says what a guest is offered; it is no admin switch. Reservations have no venue switch at all.
 
-**The switch (ticket 2):** `venues.settings.feature_bases = { ordering, reservations, song_requests }` beside it; JSON, so no migration. One writer in `core/apply` (`setFeatureBases`, shaped like `setGuestFeatures`; rule 1), never published (rules 3, 4). No key reads as today; a new venue starts menu-only. Refused: ordering off while the live menu offers ordering, the bill, paying or a waiter call; reservations off while bookings are to come (K12b); ordering on where the integration layer says the source cannot take orders onto a bill, never read from a POS name (K12c). Switched in Venue › Settings › Модули.
+**The switch (ticket 2):** `venues.settings.modules = { ordering, reservations, song_requests }` beside it; JSON, so no migration. One writer in `core/apply` (`setModules`, shaped like `setGuestFeatures`; rule 1), never published (rules 3, 4). No key reads as today; a new venue starts menu-only. Refused: ordering off while the live menu offers ordering, the bill, paying or a waiter call; reservations off while bookings are to come (K12b); ordering on where the integration layer says the source cannot take orders onto a bill, never read from a POS name (K12c). Switched in Venue › Settings › Модули.
 
 **One list in code:** tonight's `venue-nav-defs.ts`. The switch adds one condition per group; a new module is one block plus its pages.
 
@@ -195,16 +195,16 @@ Tonight's gain is order, not taps: two levels, settings split by module, a title
 
 ## Tickets (everything else)
 
-Each ends with the `ship.md` §1 block; branches from and pull requests into `sr/foundation`. "Decision 15x" means the proposal below until its file exists.
+Each ends with the `ship.md` §1 block; branches from and pull requests into `sr/foundation`. Each "D15x" is the proposed decision file of that number.
 
 **1. Path addresses.** `/venues/{v}/studio`, `/tables`, `/tonight`, `/reservations`, `/ordering/settings`, `/reservations/settings`, `/settings`, each rendering today's screen; old `?tab=` links redirect through `canonicalVenueQuery`. One `venuePageGuard()` every venue page calls (tenant 404, device, staff-only, module off) and one test table of every venue address × (other tenant, device, staff-only, no `reservations.tonight`), written before the pages (K1). One `venuePath()` every link calls, including the worker's push link (`apps/worker/src/alerts/deliver.ts:89`) and the provider's return (`apps/web/src/server/settings/paying-addresses.ts:8`). A `loading.tsx` per page; whether the sidebar moves into a venue layout.
 - **Model:** Opus · **Codes it:** agent session · **Branch:** `sr/nav-paths` · **Read:** D97, D122 §7, D141, D154, step 0's S2 · **Stop and ask if:** a link outside `apps/web` names a venue address · **Menu functionality:** none · **Screen:** none (same screens).
 
 **2. The module switch.** The section "Modules" above: writer, reader, defaults, three refusals; an off module's pages, actions and `applyService` commands refuse through ticket 1's guard (K12a); Venue › Settings › Модули; glossary "Module / Модул".
 - **Model:** Opus (core write path) · **Codes it:** agent session · **Branch:** `sr/nav-modules` · **Read:** D64, D71, D100, D122 §7, D155, rules 1 and 5, `packages/core/src/apply/guest-features.ts` · **Stop and ask if:** a default would hide a screen a venue uses today · **Menu functionality:** none · **Screen:** plan below; `operational-screens.md`.
-- *Screen plan.* **Story:** "As an owner I want to switch reservations on for my club, so that its screens appear": 2 wide / 3 phone. **Place:** Venue › Settings › Модули, last. **Pattern:** reversible write with Undo; a refusal is the error toast naming the fix. **Primary action:** none. **States:** all off; each refusal; no right (read-only line); hand-made venue (Ordering says why it is off); longest BG "Заявки за песни". **Strings:** Модули / Modules; Поръчки на масата и Тази вечер / Ordering at the table and Tonight; Резервации, планът и гостите / Reservations, the plan and the guests; Първо изключете функциите за гости и публикувайте. / Turn the guest features off and publish first.; Има резервации за идните вечери. / There are reservations for nights to come.; Това заведение не може да приема поръчки по сметка. / This venue cannot take orders onto a bill.
+- *Screen plan.* **Story:** "As an owner I want to switch reservations on for my club, so that its screens appear": 2 wide / 3 phone. **Place:** the last card of Venue › Settings › Общи, so the Venue row stays at four (L6). **Pattern:** reversible write with Undo; a refusal is the error toast naming the fix. **Primary action:** none. **States:** all off; each refusal; no right (read-only line); hand-made venue (Ordering says why it is off); longest BG "Заявки за песни". **Strings:** Модули / Modules; Поръчки на масата и Тази вечер / Ordering at the table and Tonight; Резервации, планът и гостите / Reservations, the plan and the guests; Първо изключете функциите за гости и публикувайте. / Turn the guest features off and publish first.; Има резервации за идните вечери. / There are reservations for nights to come.; Това заведение не може да приема поръчки по сметка. / This venue cannot take orders onto a bill.
 
-**3. Guest features go to their modules.** Filters stay in Studio; call a waiter, the bill, ordering and paying move to Ordering's settings as "За гостите / For guests", saving at once with Undo.
+**3. Guest features go to their modules.** Filters stay in Studio; call a waiter, the bill, ordering and paying move into Ordering's settings, as a card "За гостите / For guests" inside the Поръчки section (no fifth section, L6), saving at once with Undo.
 - **Model:** Sonnet · **Codes it:** agent session · **Branch:** `sr/nav-guest-features` · **Read:** D71, D72, D129, D155 · **Stop and ask if:** a switch would reach guests without Publish · **Menu functionality:** none · **Screen:** story "switch a guest feature" 2 → 1; place Ordering › Settings; pattern row 1; states as today's card; string За гостите / For guests.
 
 **4. Who opens what (D157).** Staff-only sign-ins see and open only their service screens; the rest refuse through ticket 1's guard (K11). Settings and the Studio need a role at that venue (S4).
@@ -227,13 +227,13 @@ Each ends with the `ship.md` §1 block; branches from and pull requests into `sr
 
 ## Decisions for Martin (154–158)
 
-The lead assigned these numbers. They are written without the "D" until their files exist, because the decisions guard fails CI on a cited number with no file.
+The lead assigned these numbers; their files are `docs/decisions/D154.md`–`D158.md`, indexed, status proposed. **The pull request builds 154 and 156 A before you answer: merging it is your yes to both, and a no closes it.** Ask those two first; 155, 157 and 158 wait with their tickets.
 
 **154. The admin is organised around the open venue** (replaces D74; refines D97's tab list). The sidebar lists the open venue's screens grouped by module; the venue's name at its top switches venue; a page has at most one row of views, four at most. On a phone the same menu opens from ☰ now, and a bottom bar follows (ticket 5). *Recommend yes.* It undoes your 10-11 choice ("bring venues to the sidebar and keep the tabs"): then a venue had three tabs, now five tabs and twenty screens. Cost: switching venue is one tap longer.
 
 **155. Ordering, reservations and song requests are modules, switched on per venue.** Off means not shown and refused; nothing is deleted; switching off is refused while guests can still use it or bookings are to come; existing venues keep what they have, a new venue starts with the menu. Who switches: *recommend the organisation's owner*, with Restro's team able to do it for him. The alternative is Restro's team only, as a paid add-on would be (Square).
 
-**156. Each module has its own Settings.** Ordering: Hours, Ordering, Paying, Alerts. Reservations: rules, closed dates, the plan editor. Venue: General, Staff and roles, Publish, Versioning. *Recommend A, grouped* (built tonight; Toast does this): each group has its screen and its "Настройки". B, flat: one entry per module (Тази вечер, Резервации) with a "Настройки" button on that screen, and one "Настройки" for the venue: six entries instead of seven, no repeated word, but a module's settings hide behind its service screen, which a shared device cannot open. Both are on the mockups.
+**156. Each module has its own Settings.** Ordering: Hours, Ordering, Paying, Alerts. Reservations: rules, closed dates, the plan editor. Venue: General, Staff and roles, Publish, Versioning. *Recommend A, grouped* (built tonight; Toast does this): each group has its screen and its "Настройки". B, flat: one entry per module (Тази вечер, Резервации) with a "Настройки" button on that screen, and one "Настройки" for the venue: five entries instead of seven, no repeated word; its cost is one more tap and Tonight's live load before a module's settings. Both are on the mockups.
 
 **157. A person opens only what their role at that venue works** (refines D141, D97). A staff-only sign-in sees and opens Tonight and/or Reservations and nothing else; the Studio, Tables & QR and every Settings refuse him. The venue's Settings are readable only by people with a role at that venue (step 0's S4: today any member reads any venue's settings). *Recommend yes,* refused rather than hidden: hidden only is cosmetic.
 
@@ -262,6 +262,21 @@ The lead assigned these numbers. They are written without the "D" until their fi
 | K17 | Changed, in ticket 5. |
 | K18 | Changed: a `loading.tsx` and a keyed `Suspense` per screen. |
 | K19 | Accepted, said in ticket 5. |
+
+**The second critique** (`critique-2.md`, Opus, saw only the plan):
+
+| | Answer |
+|---|---|
+| L1 | Changed. The Studio keeps `menu`, `section`, `item` and `sub`; a Settings section is read only with `tab=settings`; the redirect runs only when `tab` is present. Unit row `tab=studio&menu=mn_1&section=nd_9&item=nd_4` stays as it is. The switcher carries `section` only with `tab=settings`. |
+| L2 | Changed. The tapped entry is marked at once (`useOptimistic`); `loading.tsx` at the venue segment; each screen in a `key`ed wrapper so the old one never lingers. |
+| L3 | Changed. The switcher's name is the venue's then ", Switch venue"; the device button's is its name then ", Language, theme and sign out"; staff-only gets the venue's name as plain text; `generateMetadata` titles the tab "Тази вечер · Club Biad". |
+| L4 | Changed. Glossary "Module" and "Screen" in this pull request; code says `module`; D155 and ticket 2's key (`venues.settings.modules`) match. Ticket 2's (c) word is left to its own grilling. |
+| L5 | Left to the copy pass, as Open question 2 says: the section and Tonight's view keep their names tonight. Recommend "Изпратени поръчки" for Tonight's view (the glossary's Sent order). |
+| L6 | Changed. Модули is the last card of Общи (ticket 2); "За гостите" is a card inside Поръчки (ticket 3). |
+| L7 | Changed. D154 and D156 say merging is the yes, each with a scene; D156 B is five entries; the index rows landed with the files. |
+| L8 | Changed. No state under the venue's name. |
+| L9 | Changed. Collapsed to icons, a rule separates the groups (the labels go), so each gear sits under its own module's icons; the tooltip and accessible name still say whose Settings. A different icon per module's Settings is ticket 5's to judge with the bottom bar. |
+| L10 | Changed. The device frame is the layout's (`sharedDeviceOf`, a context), so `/venues` shows no ☰ either; the crumb names the page's venue (a device may open any venue of its organisation today; ticket 8 keeps it to its own). Изход on a paired tablet ends its session: the tablet is no longer the bar tablet, and making it one again takes "Make this the bar tablet" today, the owner's code under D153. |
 
 **Step 0 findings fixed tonight:** C1, C2/S1, C4, C5, C6, C7, C9, S3. **Left to ticket 8:** C3/S2, C8, C10, C11; S4 is D157.
 

@@ -102,7 +102,8 @@ test('venue with no till: create the venue from the list', async () => {
   // The new venue opens, with its menu already made: nothing to set up, and no sections yet.
   await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}$/)
   venueUrl = new URL(page.url()).pathname
-  await expect(page.getByRole('heading', { name: VENUE_NAME, level: 1 })).toBeVisible()
+  await expect(page.getByTestId('venue-switcher')).toContainText(VENUE_NAME)
+  await expect(page.getByRole('heading', { name: 'Studio', level: 1 })).toBeVisible()
   await expect(page.getByTestId('composer')).toBeVisible()
   await expect(page.getByTestId('no-menu')).toHaveCount(0)
   await expect(page.getByTestId('pane-no-sections')).toContainText(
@@ -143,7 +144,7 @@ test('venue with no till: create the venue from the list', async () => {
   await page.getByTestId('new-venue-slug').fill(`${SLUG}-2`)
   await page.getByTestId('new-venue-submit').click()
   await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}$/)
-  await expect(page.getByRole('heading', { name: 'Same address again', level: 1 })).toBeVisible()
+  await expect(page.getByTestId('venue-switcher')).toContainText('Same address again')
   await expect(page.getByTestId('venue-header-address')).toHaveText(`/m/no-till-club/${SLUG}-2`)
 })
 

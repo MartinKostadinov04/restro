@@ -160,12 +160,16 @@ test('a tablet with an owner’s account is not offered what it would be refused
   await tablet.goto('/venues')
   await expect(tablet.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 30_000 })
   await expect(tablet.getByTestId('new-venue')).toHaveCount(0)
-  await tablet.getByRole('button', { name: /sidebar/i }).click()
-  await expect(tablet.getByTestId('venue-nav-item').first()).toBeVisible()
-  await expect(tablet.getByTestId('venue-nav-new')).toHaveCount(0)
+  // A shared device has no sidebar at all (D154, D122 §7): its name in the top bar opens the
+  // language, the theme and Sign out, and nothing to navigate.
+  await expect(tablet.getByRole('button', { name: /sidebar/i })).toHaveCount(0)
+  await expect(tablet.getByTestId('venue-nav-item')).toHaveCount(0)
   await expect(tablet.getByTestId('nav-settings')).toHaveCount(0)
-  await tablet.waitForTimeout(500) // the side sheet slides in
+  await tablet.getByTestId('device-menu').click()
+  await expect(tablet.getByTestId('sign-out')).toBeVisible()
+  await expect(tablet.getByTestId('venue-nav-new')).toHaveCount(0)
   await tablet.screenshot({ path: test.info().outputPath('rr-85-tablet-menu.png') })
+  await tablet.keyboard.press('Escape')
 
   // The old links: the organisation's Settings say what they need, the venue's land on Tonight.
   await tablet.goto('/settings')

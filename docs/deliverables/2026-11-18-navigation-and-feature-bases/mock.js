@@ -5,39 +5,154 @@
 // One list declares every entry once, the way the plan's venue-nav-defs.ts does.
 
 const GROUPS = [
-  { id: 'menu', bg: 'Меню', en: 'Menu', base: null, entries: [
-    { id: 'studio', bg: 'Студио', en: 'Studio', ic: '☰', who: 'personal', views: ['Структура', 'Дизайн ↗'] },
-    { id: 'tables', bg: 'Маси и QR', en: 'Tables & QR', ic: '▦', who: 'personal' },
-  ] },
-  { id: 'ordering', bg: 'Поръчки', en: 'Ordering', base: 'ordering', entries: [
-    { id: 'tonight', bg: 'Тази вечер', en: 'Tonight', ic: '🔔', who: 'all', service: true,
-      views: ['Действия и маси', 'Поръчки', 'Дневник', 'Край на вечерта'] },
-    { id: 'ordering-settings', bg: 'Настройки', title: 'Настройки на поръчките', en: 'Ordering settings', ic: '⚙', who: 'personal',
-      views: ['Работно време', 'Поръчки', 'Плащане', 'Известия'] },
-  ] },
-  { id: 'reservations', bg: 'Резервации', en: 'Reservations', base: 'reservations', entries: [
-    { id: 'night', bg: 'Резервации', en: 'Reservations', ic: '📅', who: 'rsv', service: true, views: ['Списък', 'План', 'Гости'] },
-    { id: 'reservations-settings', bg: 'Настройки', title: 'Настройки на резервациите', en: 'Reservation settings', ic: '⚙', who: 'personal' },
-  ] },
+  {
+    id: 'menu',
+    bg: 'Меню',
+    en: 'Menu',
+    base: null,
+    entries: [
+      {
+        id: 'studio',
+        bg: 'Студио',
+        en: 'Studio',
+        ic: '☰',
+        who: 'personal',
+        views: ['Структура', 'Дизайн ↗'],
+      },
+      { id: 'tables', bg: 'Маси и QR', en: 'Tables & QR', ic: '▦', who: 'personal' },
+    ],
+  },
+  {
+    id: 'ordering',
+    bg: 'Поръчки',
+    en: 'Ordering',
+    base: 'ordering',
+    entries: [
+      {
+        id: 'tonight',
+        bg: 'Тази вечер',
+        en: 'Tonight',
+        ic: '🔔',
+        who: 'all',
+        service: true,
+        views: ['Действия и маси', 'Поръчки', 'Дневник', 'Край на вечерта'],
+      },
+      {
+        id: 'ordering-settings',
+        bg: 'Настройки',
+        title: 'Настройки на поръчките',
+        en: 'Ordering settings',
+        ic: '⚙',
+        who: 'personal',
+        views: ['Работно време', 'Поръчки', 'Плащане', 'Известия'],
+      },
+    ],
+  },
+  {
+    id: 'reservations',
+    bg: 'Резервации',
+    en: 'Reservations',
+    base: 'reservations',
+    entries: [
+      {
+        id: 'night',
+        bg: 'Резервации',
+        en: 'Reservations',
+        ic: '📅',
+        who: 'rsv',
+        service: true,
+        views: ['Списък', 'План', 'Гости'],
+      },
+      {
+        id: 'reservations-settings',
+        bg: 'Настройки',
+        title: 'Настройки на резервациите',
+        en: 'Reservation settings',
+        ic: '⚙',
+        who: 'personal',
+      },
+    ],
+  },
   // Later only (not built): drawn on the "По-късно / Later" page.
-  { id: 'requests', bg: 'Заявки за песни', en: 'Song requests', base: 'requests', later: true, entries: [
-    { id: 'queue', bg: 'Опашка', en: 'Request queue', ic: '♪', who: 'dj', service: true },
-    { id: 'requests-settings', bg: 'Настройки', title: 'Настройки на заявките', en: 'Song request settings', ic: '⚙', who: 'personal' },
-  ] },
-  { id: 'venue', bg: 'Заведение', en: 'Venue', base: null, entries: [
-    { id: 'settings', bg: 'Настройки', title: 'Настройки на заведението', en: 'Venue settings', ic: '⚙', who: 'personal',
-      views: ['Общи', 'Персонал и роли', 'Публикуване', 'Версии'] },
-  ] },
+  {
+    id: 'requests',
+    bg: 'Заявки за песни',
+    en: 'Song requests',
+    base: 'requests',
+    later: true,
+    entries: [
+      { id: 'queue', bg: 'Опашка', en: 'Request queue', ic: '♪', who: 'dj', service: true },
+      {
+        id: 'requests-settings',
+        bg: 'Настройки',
+        title: 'Настройки на заявките',
+        en: 'Song request settings',
+        ic: '⚙',
+        who: 'personal',
+      },
+    ],
+  },
+  {
+    id: 'venue',
+    bg: 'Заведение',
+    en: 'Venue',
+    base: null,
+    entries: [
+      {
+        id: 'settings',
+        bg: 'Настройки',
+        title: 'Настройки на заведението',
+        en: 'Venue settings',
+        ic: '⚙',
+        who: 'personal',
+        views: ['Общи', 'Персонал и роли', 'Публикуване', 'Версии'],
+      },
+    ],
+  },
 ]
 
 // What each persona holds today. `personal`: their own sign-in; `staffOnly`: not an owner or admin,
 // one venue (D141 landing); `rsv`: reservations.tonight; `device`: a shared tablet (D122 §7).
 const PERSONAS = {
-  owner: { bg: 'Собственик', en: 'Owner', personal: true, rsv: true, canCreate: true, publish: true, name: 'Мартин К.' },
-  manager: { bg: 'Управител (свой вход)', en: 'Manager, own sign-in', personal: true, rsv: true, name: 'Елена Д.' },
-  waiter: { bg: 'Сервитьор (свой телефон)', en: 'Waiter, own phone', personal: true, staffOnly: true, rsv: false, name: 'Иво П.' },
-  door: { bg: 'Хост на входа (свой телефон)', en: 'Door host, own phone', personal: true, staffOnly: true, rsv: true, name: 'Мария С.' },
-  shared: { bg: 'Общо устройство', en: 'Shared device', device: true, rsv: true, name: 'Таблет „Вход“' },
+  owner: {
+    bg: 'Собственик',
+    en: 'Owner',
+    personal: true,
+    rsv: true,
+    canCreate: true,
+    publish: true,
+    name: 'Мартин К.',
+  },
+  manager: {
+    bg: 'Управител (свой вход)',
+    en: 'Manager, own sign-in',
+    personal: true,
+    rsv: true,
+    name: 'Елена Д.',
+  },
+  waiter: {
+    bg: 'Сервитьор (свой телефон)',
+    en: 'Waiter, own phone',
+    personal: true,
+    staffOnly: true,
+    rsv: false,
+    name: 'Иво П.',
+  },
+  door: {
+    bg: 'Хост на входа (свой телефон)',
+    en: 'Door host, own phone',
+    personal: true,
+    staffOnly: true,
+    rsv: true,
+    name: 'Мария С.',
+  },
+  shared: {
+    bg: 'Общо устройство',
+    en: 'Shared device',
+    device: true,
+    rsv: true,
+    name: 'Таблет „Вход“',
+  },
 }
 
 const TONIGHT_BASES = ['ordering', 'reservations']
@@ -45,7 +160,9 @@ const q = new URLSearchParams(location.search)
 const state = {
   persona: q.get('persona') || document.body.dataset.persona || 'owner',
   screen: q.get('screen') || '',
-  sheet: false, switcher: false, device: false,
+  sheet: false,
+  switcher: false,
+  device: false,
 }
 
 // opts (later only): bases, staffRule (decision 157), flat (decision 156 B).
@@ -60,8 +177,15 @@ function shows(p, e, opts = {}) {
 function entriesFor(persona, opts = {}) {
   const p = PERSONAS[persona]
   const bases = opts.bases || TONIGHT_BASES
-  return GROUPS.filter((g) => (g.base === null || bases.includes(g.base)) && (!g.later || opts.bases))
-    .map((g) => ({ ...g, entries: g.entries.filter((e) => shows(p, e, opts) && !(opts.flat && e.title && e.id !== 'settings')) }))
+  return GROUPS.filter(
+    (g) => (g.base === null || bases.includes(g.base)) && (!g.later || opts.bases),
+  )
+    .map((g) => ({
+      ...g,
+      entries: g.entries.filter(
+        (e) => shows(p, e, opts) && !(opts.flat && e.title && e.id !== 'settings'),
+      ),
+    }))
     .filter((g) => g.entries.length > 0)
 }
 const flat = (groups) => groups.flatMap((g) => g.entries.map((e) => ({ ...e, group: g })))
@@ -75,7 +199,9 @@ function landing(persona, opts) {
 }
 function current(opts) {
   const all = flat(entriesFor(state.persona, opts))
-  return all.find((e) => e.id === state.screen) || all.find((e) => e.id === landing(state.persona, opts))
+  return (
+    all.find((e) => e.id === state.screen) || all.find((e) => e.id === landing(state.persona, opts))
+  )
 }
 const settingsName = (e) => e.title || e.bg
 
@@ -83,7 +209,7 @@ function switcherHtml(p, interactive) {
   const menu = !p.staffOnly
   return `<div style="position:relative">
     <button class="switcher" ${menu && interactive ? 'data-act="switcher"' : ''} aria-label="Смени заведението / Switch venue">
-      <span class="mark">B</span><span>Club Biad<small>На живо · Live</small></span>${menu ? '<span class="chev">⌄</span>' : ''}
+      <span class="mark">B</span><span>Club Biad</span>${menu ? '<span class="chev">⌄</span>' : ''}
     </button>
     ${state.switcher && menu && interactive ? `<div class="menu"><div><b>Club Biad</b> ✓</div><div>Bar Terasa</div><hr><div>▦ Всички заведения · All venues</div>${p.canCreate ? '<div>＋ Ново заведение · New venue</div>' : ''}</div>` : ''}
   </div>`
@@ -97,8 +223,15 @@ function sidebarHtml(persona, screen, opts = {}) {
     return `<button class="entry ${e.id === screen ? 'on' : ''}" data-go="${e.id}" title="${name}" aria-label="${name}"${e.id === screen ? ' aria-current="page"' : ''}><span class="ic">${e.ic}</span>${e.bg}<span class="en">${e.en}</span></button>`
   }
   const body = opts.flat
-    ? `<div class="group">${flat(groups).map((e) => entry(e, e.group)).join('')}</div>`
-    : groups.map((g) => `<div class="group"><h4>${g.bg} · ${g.en}</h4>${g.entries.map((e) => entry(e, g)).join('')}</div>`).join('')
+    ? `<div class="group">${flat(groups)
+        .map((e) => entry(e, e.group))
+        .join('')}</div>`
+    : groups
+        .map(
+          (g) =>
+            `<div class="group"><h4>${g.bg} · ${g.en}</h4>${g.entries.map((e) => entry(e, g)).join('')}</div>`,
+        )
+        .join('')
   return `<aside class="side ${opts.alone ? 'alone' : ''}" aria-label="Навигация в заведението">
     ${switcherHtml(p, !opts.alone)}
     ${body}
@@ -112,14 +245,16 @@ function sidebarHtml(persona, screen, opts = {}) {
 function viewsHtml(entry, phone) {
   if (!entry || !entry.views || entry.views.length < 2) return ''
   // Tonight a phone keeps today's dropdown; with the bottom bar (ticket 5) it becomes a scrolling row with a fade (K8).
-  if (phone === 'bar') return `<div class="views fade" role="tablist">${entry.views.map((v, i) => `<span class="${i === 0 ? 'on' : ''}">${v}</span>`).join('')}</div>`
+  if (phone === 'bar')
+    return `<div class="views fade" role="tablist">${entry.views.map((v, i) => `<span class="${i === 0 ? 'on' : ''}">${v}</span>`).join('')}</div>`
   if (phone) return `<div class="select" aria-label="Изглед">${entry.views[0]}<span>⌄</span></div>`
   return `<div class="views" role="tablist">${entry.views.map((v, i) => `<span class="${i === 0 ? 'on' : ''}">${v}</span>`).join('')}</div>`
 }
 
 function pageHtml(entry, phone, opts = {}) {
   const p = PERSONAS[opts.persona || state.persona]
-  if (!entry) return '<div class="page"><div class="inside">Тази роля няма екран тук.<br>This role has no screen here.</div></div>'
+  if (!entry)
+    return '<div class="page"><div class="inside">Тази роля няма екран тук.<br>This role has no screen here.</div></div>'
   const publish = p.publish && !p.device && entry.id !== 'tonight'
   const settingsBtn = opts.flat && entry.service ? '<button class="btn">⚙ Настройки</button>' : ''
   return `<div class="page">
@@ -168,7 +303,10 @@ function deviceHtml(wide) {
 function barFor(persona, opts) {
   const all = flat(entriesFor(persona, opts))
   const order = ['night', 'tonight', 'queue', 'studio']
-  return order.map((id) => all.find((e) => e.id === id)).filter(Boolean).slice(0, 4)
+  return order
+    .map((id) => all.find((e) => e.id === id))
+    .filter(Boolean)
+    .slice(0, 4)
 }
 function phoneWithBar(persona, opts, screen, note) {
   const p = PERSONAS[persona]
@@ -176,7 +314,9 @@ function phoneWithBar(persona, opts, screen, note) {
   const entry = flat(entriesFor(persona, opts)).find((e) => e.id === screen) || bar[0]
   const hasBar = bar.length >= 2
   // K10: with fewer than two destinations there is no bar; the top row carries the person's name menu.
-  const head = hasBar ? crumbHtml(p, false) : `<div class="crumb"><b>Club Biad</b><span style="margin-left:auto"><button class="btn">${p.name} ⌄</button></span></div>`
+  const head = hasBar
+    ? crumbHtml(p, false)
+    : `<div class="crumb"><b>Club Biad</b><span style="margin-left:auto"><button class="btn">${p.name} ⌄</button></span></div>`
   return `<div><p class="caption">${note}</p><div class="phone">${head}${pageHtml(entry, hasBar ? 'bar' : true, { persona })}
     ${screen === 'studio' ? '<div class="selbar">3 избрани · Скрий · Изчерпано · ⋯</div>' : ''}
     ${hasBar ? `<nav class="bar">${bar.map((e) => `<button class="${e.id === entry.id ? 'on' : ''}"><span class="ic">${e.ic}</span>${e.bg}</button>`).join('')}<button><span class="ic">⋯</span>Още</button></nav>` : ''}
@@ -184,8 +324,16 @@ function phoneWithBar(persona, opts, screen, note) {
 }
 function laterHtml() {
   const persona = state.persona === 'shared' ? 'owner' : state.persona
-  const sets = [['Само менюто · Menu only', []], ['+ Поръчки · Ordering', ['ordering']], ['+ Резервации · Reservations', ['ordering', 'reservations']], ['+ Заявки за песни · Song requests (not built)', ['ordering', 'reservations', 'requests']]]
-  const modules = { ...GROUPS.find((g) => g.id === 'venue').entries[0], views: ['Общи', 'Персонал и роли', 'Публикуване', 'Версии', 'Модули'] }
+  const sets = [
+    ['Само менюто · Menu only', []],
+    ['+ Поръчки · Ordering', ['ordering']],
+    ['+ Резервации · Reservations', ['ordering', 'reservations']],
+    ['+ Заявки за песни · Song requests (not built)', ['ordering', 'reservations', 'requests']],
+  ]
+  const modules = {
+    ...GROUPS.find((g) => g.id === 'venue').entries[0],
+    views: ['Общи', 'Персонал и роли', 'Публикуване', 'Версии', 'Модули'],
+  }
   return `<section class="later-block"><h2>1 · Модули, включвани за всяко заведение · Modules switched on per venue <small>ticket 2, decision 155</small></h2>
     <p class="caption">Изключен модул не се рисува и не се отваря. Превключва се в Заведение › Настройки › Модули. · An off module is neither drawn nor opened.</p>
     <div class="grid4">${sets.map(([label, bases]) => `<div><p class="caption"><b>${label}</b></p>${sidebarHtml(persona, landing(persona, { bases }), { alone: true, bases })}</div>`).join('')}</div>
@@ -215,9 +363,12 @@ function laterHtml() {
 }
 
 function protoBar() {
-  const opt = (v, cur, label) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${label}</option>`
+  const opt = (v, cur, label) =>
+    `<option value="${v}" ${v === cur ? 'selected' : ''}>${label}</option>`
   return `<div class="proto"><b>МАКЕТ · MOCKUP</b>
-    <label>Кой / who <select data-set="persona">${Object.entries(PERSONAS).map(([k, p]) => opt(k, state.persona, `${p.bg} · ${p.en}`)).join('')}</select></label>
+    <label>Кой / who <select data-set="persona">${Object.entries(PERSONAS)
+      .map(([k, p]) => opt(k, state.persona, `${p.bg} · ${p.en}`))
+      .join('')}</select></label>
     <code>persona=${state.persona} · screen=${state.screen || 'landing'}</code></div>`
 }
 
@@ -226,7 +377,8 @@ function render() {
   const kind = document.body.dataset.kind
   if (kind === 'later') root.innerHTML = laterHtml()
   else if (kind === 'phone') root.innerHTML = phoneHtml()
-  else if (kind === 'shared') root.innerHTML = `<div><p class="caption"><b>Телефон 390 px</b></p>${deviceHtml(false)}</div><div><p class="caption"><b>Таблет на бара или входа</b> · the same, wider</p>${deviceHtml(true)}</div>`
+  else if (kind === 'shared')
+    root.innerHTML = `<div><p class="caption"><b>Телефон 390 px</b></p>${deviceHtml(false)}</div><div><p class="caption"><b>Таблет на бара или входа</b> · the same, wider</p>${deviceHtml(true)}</div>`
   else root.innerHTML = desktopHtml()
   document.getElementById('proto').innerHTML = kind === 'shared' ? '' : protoBar()
 }
@@ -237,12 +389,23 @@ function push() {
   render()
 }
 document.addEventListener('click', (ev) => {
-  const go = ev.target.closest('[data-go]'); const act = ev.target.closest('[data-act]')
-  if (go) { state.screen = go.dataset.go; state.sheet = false; state.switcher = false; push() }
-  else if (act) { state[act.dataset.act] = !state[act.dataset.act]; render() }
+  const go = ev.target.closest('[data-go]')
+  const act = ev.target.closest('[data-act]')
+  if (go) {
+    state.screen = go.dataset.go
+    state.sheet = false
+    state.switcher = false
+    push()
+  } else if (act) {
+    state[act.dataset.act] = !state[act.dataset.act]
+    render()
+  }
 })
 document.addEventListener('change', (ev) => {
-  if (ev.target.dataset.set) { state.persona = ev.target.value; state.screen = '' }
+  if (ev.target.dataset.set) {
+    state.persona = ev.target.value
+    state.screen = ''
+  }
   push()
 })
 render()
