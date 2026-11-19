@@ -245,7 +245,7 @@ Explorer: Sonnet subagent (screen-review step 2). The first explorer pass stoppe
 - Evidence: sentence and menu items read in the DOM at 390; the manager pass saw "Редактирай" in the sheet
 - Proposal: check whether the seeded host role lacks the permission or the screen hides it; if the role is meant to have it, show Edit and Cancel; otherwise say who («Поискай от управителя»).
 - Reviewer: `reservation.edit` / `reservation.cancel` require `reservations.manage` (`commands.ts:373, 384`); the seeded host has the default `staff` role. D135 (Martin, log 13.18, 11-07) says the host on duty edits and cancels a colleague's booking; D141's lead's-call list puts edit and cancel under managing bookings.
-- Status: confirmed · Severity: Blocking · Effort: S · Decision: contradicts D141 (lead's call) → open question · Needs Martin's yes: no · Fix: B3 once settled
+- Status: confirmed · Severity: Blocking · Effort: S · Decision: lead's call 11-19: follow D135 (Martin's 13.18); edit and cancel take `reservations.tonight` (PIN-class), deleting another's and Restore stay `reservations.manage`; that one line of D141's lead's calls is corrected in B3 · Needs Martin's yes: no (reported in the lead's morning report) · Fix: B3
 
 ### S21. Arrival, walk-in and free write several toasts, only some with Undo
 - Kind: simplification
@@ -450,6 +450,10 @@ Polish rows are bundled too (round rule). S8's venue-header part is navigation �
 ## Open questions (reviewer)
 1. **S20 against D141:** follow D135 (Martin's own answer 13.18) and correct the lead's-call permission list in D141? Recommendation: yes; code it in B3 (edit and cancel take `reservations.tonight`, stay PIN-class on a shared device; deleting another's and Restore stay `reservations.manage`) and amend that one line of D141 (lane 6 writes decisions).
 2. **C5 undo semantics:** should an undone arrival get its tables back? Recommendation: yes, re-claim when free, as Restore does; today's test asserts the opposite.
+
+## Lead's calls (11-19, made on Martin's behalf, in the lead's morning report)
+1. **S20:** yes, follow D135 13.18. Edit and cancel take `reservations.tonight` and stay PIN-class; deleting another's booking and Restore stay `reservations.manage`. B3 amends that one line of D141 ("corrected 11-19 in the screen round, S20").
+2. **C5:** yes. Undoing an arrival puts the booking back as it was: it re-claims the spots it held when they are still free; if one was taken since, it comes back Reserved without it and the host is told in one line.
 
 ## Out-of-scope observations (reviewer)
 - The seed's waiting parties carry descriptions as names («Двама на вратата»), so Guests looks wrong; give them person names in `demo-club.ts`.
