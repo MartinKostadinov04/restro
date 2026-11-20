@@ -178,7 +178,7 @@ export function ItemRow({
               : t('noPrice')}
           </span>
 
-          {/* A member reads whether it is hidden from the badge; the switch and the menu are edits. */}
+          {/* A member reads whether it is hidden from the badge; the switch is an edit. */}
           {canEdit ? (
             <>
               <div className="flex shrink-0 flex-col items-end gap-0.5">
@@ -195,10 +195,11 @@ export function ItemRow({
                   </span>
                 ) : null}
               </div>
-
-              <ItemMenu itemId={itemId} sectionId={sectionId} />
             </>
           ) : null}
+
+          {/* For a member it only opens the item, and marks sold out with that right. */}
+          <ItemMenu itemId={itemId} sectionId={sectionId} />
         </li>
       )}
     </Draggable>

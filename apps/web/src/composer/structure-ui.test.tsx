@@ -260,10 +260,9 @@ describe('what each kind of venue may do (D89, D90, D92)', () => {
     // Everything is still there to read: the sections, the items, their names.
     expect(screen.getAllByTestId('section-node').length).toBeGreaterThan(0)
     expect(within(rowOf(state.ids.lager)).getByTestId('item-open')).toBeTruthy()
-    // No control that could only fail (D72): no "…" menu, switch, rename, tick, "New", or drag.
+    // No control that could only fail (D72): no section menu, switch, rename, tick, "New", or drag.
     for (const testId of [
       'section-menu',
-      'item-menu',
       'section-visible',
       'section-layout',
       'item-visible',
@@ -279,6 +278,10 @@ describe('what each kind of venue may do (D89, D90, D92)', () => {
     expect(screen.queryAllByRole('switch')).toHaveLength(0)
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
     expect(container.querySelectorAll('[data-rfd-drag-handle-draggable-id]')).toHaveLength(0)
+    // The item's "…" menu only opens it (the sold-out mark is a right of its own).
+    await userEvent.click(within(rowOf(state.ids.lager)).getByTestId('item-menu'))
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1)
+    await userEvent.keyboard('{Escape}')
     // Opening an item to read it still works.
     await userEvent.click(within(rowOf(state.ids.lager)).getByTestId('item-open'))
     expect(state.openItem).toHaveBeenCalledWith(state.ids.lager)
