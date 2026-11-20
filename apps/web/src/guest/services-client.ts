@@ -696,6 +696,8 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
         cache: 'no-store',
         referrerPolicy: 'no-referrer',
       })
+      // Any answer below 500, a refusal too, means the phone is online (D121, C3).
+      if (response.status < 500) answered()
       if (response.status === 401) {
         retired = true
       } else if (response.status === 404) {
@@ -703,12 +705,10 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
         payment = null
         keepHandle(null)
       } else if (!response.ok) {
-        if (response.status < 500) answered()
         wait = backoff(retryAfterOf(response))
       } else {
         const answer = GuestPaymentAnswerSchema.parse(await readJson(response))
         failures = 0
-        answered()
         payment = answer
         noteRecent(answer)
         if (paymentIsFinal(paymentViewOf(answer, receiptEmail))) schedule(0)

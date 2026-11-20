@@ -7,7 +7,7 @@
 // Skipped without a database.
 import { generateKeyPairSync, randomUUID } from 'node:crypto'
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { hasDatabase } from '../apply/test-database'
 import { PinGuard } from '../pin-guard'
 import { openServiceWorld, type ServiceWorld } from '../testing/service-world'
@@ -438,6 +438,8 @@ describe.skipIf(!hasDatabase)('the people commands (as the restro_app role)', ()
     })
     const pin = pinOf((await memberRow(sm(staffMemberId)))?.pin_hmac)
     const guard = new PinGuard()
+    // The organisation's id reaches the guard, or its backstop would be off unseen (X1).
+    const fail = vi.spyOn(guard, 'fail')
     const identify = (tried: string, sessionId = barSession) =>
       identifyStaffByPin(world.app, {
         tenantId: world.tenantId,
@@ -478,7 +480,10 @@ describe.skipIf(!hasDatabase)('the people commands (as the restro_app role)', ()
     })
     expect(await identify(pin)).toMatchObject({ ok: false, code: 'device_waiting' })
     const trips = await logOf('guard.tripped')
-    expect(trips.at(-1)).toMatchObject({ details: { deviceId, trip: 1, waitSeconds: 60 } })
+    expect(trips.at(-1)).toMatchObject({
+      details: { deviceId, trip: 1, waitSeconds: 60, cause: 'device' },
+    })
+    expect(fail).toHaveBeenCalledWith(deviceId, expect.any(Date), world.tenantId)
     expect(JSON.stringify(trips.at(-1)?.details)).not.toContain(wrong)
 
     // Revoked from another session, the device is an ordinary sign-in again.

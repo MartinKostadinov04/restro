@@ -131,12 +131,15 @@ describe.skipIf(!hasDatabase)('the events of a night (as the restro_app role)', 
       code,
       limiter,
       events: [
-        // Two days old: another night, and before this sitting opened.
-        { kind: 'menu.opened', ageMs: 48 * 60 * 60_000 },
+        // The oldest a phone may report (the API caps it at a day): always the night before, and
+        // before this sitting opened.
+        { kind: 'menu.opened', ageMs: 24 * 60 * 60_000 },
+        // A minute before the sitting opened (beyond the clock's grace): the same night, no sitting.
+        { kind: 'item.opened', itemId: item, ageMs: 60_000 },
         { kind: 'language.chosen', locale: 'en_US', ageMs: 0 },
       ],
     })
-    expect(answer).toEqual({ ok: true, recorded: 2 })
+    expect(answer).toEqual({ ok: true, recorded: 3 })
     const { rows } = await world.owner.query<{
       kind: string
       sitting_id: string | null
@@ -149,6 +152,7 @@ describe.skipIf(!hasDatabase)('the events of a night (as the restro_app role)', 
     const held = rows.find((row) => row.kind === 'menu.opened')
     const fresh = rows.find((row) => row.kind === 'language.chosen')
     expect(held?.sitting_id).toBeNull()
+    expect(rows.find((row) => row.kind === 'item.opened')?.sitting_id).toBeNull()
     expect(fresh?.sitting_id).not.toBeNull()
     expect(held && fresh && held.service_date < fresh.service_date).toBe(true)
   })

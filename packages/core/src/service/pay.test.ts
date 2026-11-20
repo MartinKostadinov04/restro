@@ -805,7 +805,7 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
       paymentIdOf(await start(phone(), ['L1']))
     })
 
-    it('a refused Pay gives the phone its Pay limits back, as a refused Send does (C2)', async () => {
+    it('a refused Pay gives the phone its 15 s gap back, as a refused Send does (C2)', async () => {
       // D122's own limits: one Pay per 15 s. Each refusal below would otherwise hold the gap.
       const payer = phone(new GuestLimiter(GUEST_LIMITS))
       human = async () => 'failed'
@@ -816,6 +816,26 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
       paymentIdOf(await start(payer, ['L2']))
       // An accepted Pay keeps its hit: the gap holds the next one.
       await expect(start(payer, ['L3'])).rejects.toThrow('rate_limited')
+    })
+
+    it('a phone that keeps failing Turnstile stops costing a check; a passed one gives its hit back', async () => {
+      const strict = new GuestLimiter({ ...LOOSE, humanFails: { ...LOOSE.humanFails, max: 1 } })
+      let checks = 0
+      human = async () => {
+        checks += 1
+        return 'failed'
+      }
+      const guesser = phone(strict)
+      expect(await refusal(await start(guesser, ['L1']))).toBe('turnstile')
+      await expect(start(guesser, ['L1'])).rejects.toThrow('rate_limited')
+      expect(checks).toBe(1)
+      human = async () => 'passed'
+      paymentIdOf(await start(phone(strict), ['L1']))
+      const friend = phone(strict)
+      expect(await refusal(await start(friend, ['L1']))).toBe('being_paid')
+      human = async () => 'failed'
+      // Its one allowed failure is still there: the passed check above gave its hit back.
+      expect(await refusal(await start(friend, ['L2']))).toBe('turnstile')
     })
 
     it("rate_limited: the phone's open payment, and the table's three", async () => {

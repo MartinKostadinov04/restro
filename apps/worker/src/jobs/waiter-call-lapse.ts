@@ -30,12 +30,14 @@ export interface DueWaiterCall {
 
 /**
  * The open calls whose time has passed or whose sitting has ended at `now`, in every organisation.
- * An organisation whose listing throws is logged and skipped (screen round 11-18, C4).
+ * An organisation whose listing throws is logged, added to `failed` and skipped (screen round
+ * 11-18, C4); the caller fails once the rest ran.
  */
 export async function dueWaiterCalls(
   pool: DbPool,
   now: Date,
-  log: Pick<Logger, 'warn'>,
+  log: Pick<Logger, 'warn' | 'error'>,
+  failed: unknown[] = [],
 ): Promise<DueWaiterCall[]> {
   const organisations = await withSystem(pool, (tx) =>
     tx.select({ id: authOrganization.id }).from(authOrganization),
@@ -67,20 +69,25 @@ export async function dueWaiterCalls(
         }
       }
     } catch (error) {
-      log.warn({ tenantId: organisation.id, err: error }, 'the waiter calls could not be listed')
+      log.error({ tenantId: organisation.id, err: error }, 'the waiter calls could not be listed')
+      failed.push(error)
     }
   }
   return due
 }
 
-/** Lapses every due call; answers how many lapsed. A call that throws is skipped. */
+/**
+ * Lapses every due call; answers how many lapsed. A call that throws is skipped; an organisation that
+ * could not be listed fails the pass after the others' calls lapsed.
+ */
 export async function lapseWaiterCalls(
   pool: DbPool,
   now: Date,
-  log: Pick<Logger, 'warn'>,
+  log: Pick<Logger, 'warn' | 'error'>,
 ): Promise<number> {
   let lapsed = 0
-  for (const call of await dueWaiterCalls(pool, now, log)) {
+  const failed: unknown[] = []
+  for (const call of await dueWaiterCalls(pool, now, log, failed)) {
     try {
       const { result } = await applyService(
         pool,
@@ -97,6 +104,9 @@ export async function lapseWaiterCalls(
     } catch (error) {
       log.warn({ waiterCallId: call.waiterCallId, err: error }, 'a waiter call could not lapse')
     }
+  }
+  if (failed.length > 0) {
+    throw new AggregateError(failed, `${failed.length} organisation(s) could not list waiter calls`)
   }
   return lapsed
 }

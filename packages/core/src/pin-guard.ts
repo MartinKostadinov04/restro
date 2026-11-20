@@ -6,13 +6,14 @@
 // A correct PIN forgets nothing (screen round 11-18, X1): on a shared tablet the person guessing
 // may hold a PIN of their own, and if their own PIN wiped the count, four guesses and their own PIN,
 // repeated, would walk the 10,000 PINs without a trip and without a Log entry. The wrong PINs leave
-// the window by age alone, and the trips are forgotten only after the device has gone an hour past
-// its last wrong PIN and its last wait.
+// the window by age alone, and the trips are forgotten an hour after the device's last wait ended
+// (a stray typo in between does not keep them, so a busy tablet does not climb to the long waits).
 //
 // The wait always falls on the device that guessed, never on the other tablets: one wrong PIN at the
 // door never makes the bar wait on a busy night. An organisation's devices also share a high
 // backstop against guesses sprayed across tablets: past `PIN_GUARD_SCOPE_FAILURES` wrong PINs in
-// `PIN_GUARD_SCOPE_WINDOW_MS`, each further wrong PIN trips the device it was typed on.
+// `PIN_GUARD_SCOPE_WINDOW_MS`, each further wrong PIN makes the device it was typed on wait the first
+// wait, without climbing that device's own ladder; the Log names the cause.
 //
 // The numbers (screen round 11-18, X1; the lead's call, 11-19): NIST SP 800-63B §5.2.2 asks a
 // verifier to rate-limit failed attempts per account (at most 100) and to prefer growing waits to
@@ -32,7 +33,7 @@ export const PIN_GUARD_FAILURES = 5
 export const PIN_GUARD_WINDOW_MS = 5 * 60_000
 /** How long the device waits after its first, second, third and every later trip. */
 export const PIN_GUARD_WAITS_MS: readonly number[] = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000]
-/** A device this long past its last wrong PIN and its last wait starts again from the first wait. */
+/** A device this long past the end of its last wait starts again from the first wait. */
 export const PIN_GUARD_TRIPS_FORGOTTEN_MS = 60 * 60_000
 /** Wrong PINs across all the devices of one organisation that make each further one trip… */
 export const PIN_GUARD_SCOPE_FAILURES = 20
@@ -44,10 +45,8 @@ const FORGET_AFTER_MS = 24 * 60 * 60_000
 interface DeviceState {
   /** When the wrong PINs of the current window were entered. */
   failures: number[]
-  /** Trips since the device last went an hour without a wrong PIN or a wait. */
+  /** Trips since the device last went an hour past the end of a wait. */
   trips: number
-  /** When the last wrong PIN was entered (ms since the epoch). */
-  lastFailure: number
   /** Until when the device waits (ms since the epoch); 0 when it doesn't. */
   waitUntil: number
   lastSeen: number
@@ -58,10 +57,18 @@ export type PinGuardCheck =
   | { readonly ok: true }
   | { readonly ok: false; readonly retryAfterSeconds: number }
 
-/** What a wrong PIN did: nothing more, or a trip with the wait it started. */
+/**
+ * What a wrong PIN did: nothing more, or a trip with the wait it started. `cause` says whose count
+ * tripped: the device's own five, or the organisation's backstop alone.
+ */
 export type PinGuardFailure =
   | { readonly tripped: false }
-  | { readonly tripped: true; readonly trip: number; readonly waitSeconds: number }
+  | {
+      readonly tripped: true
+      readonly trip: number
+      readonly waitSeconds: number
+      readonly cause: 'device' | 'organisation'
+    }
 
 /** The wrong-PIN counters of every shared device this process has seen. */
 export class PinGuard {
@@ -87,26 +94,30 @@ export class PinGuard {
     const state = this.#devices.get(deviceId) ?? {
       failures: [],
       trips: 0,
-      lastFailure: 0,
       waitUntil: 0,
       lastSeen: at,
     }
-    if (at - Math.max(state.lastFailure, state.waitUntil) >= PIN_GUARD_TRIPS_FORGOTTEN_MS) {
-      state.trips = 0
-    }
+    if (at - state.waitUntil >= PIN_GUARD_TRIPS_FORGOTTEN_MS) state.trips = 0
     state.lastSeen = at
-    state.lastFailure = at
     state.failures = [...state.failures.filter((time) => at - time < PIN_GUARD_WINDOW_MS), at]
     this.#devices.set(deviceId, state)
     const scopeOver =
       scopeId !== undefined && this.#countScope(scopeId, at) > PIN_GUARD_SCOPE_FAILURES
-    if (state.failures.length < PIN_GUARD_FAILURES && !scopeOver) return { tripped: false }
+    const deviceOver = state.failures.length >= PIN_GUARD_FAILURES
+    if (!deviceOver && !scopeOver) return { tripped: false }
+    if (!deviceOver) {
+      // The organisation's backstop alone: this device waits the first wait, and its own ladder does
+      // not climb, so a tablet whose only fault is a typo on a bad night never reaches the hour.
+      const wait = PIN_GUARD_WAITS_MS[0] ?? 60_000
+      state.waitUntil = Math.max(state.waitUntil, at + wait)
+      return { tripped: true, trip: state.trips, waitSeconds: wait / 1000, cause: 'organisation' }
+    }
     const wait =
       PIN_GUARD_WAITS_MS[Math.min(state.trips, PIN_GUARD_WAITS_MS.length - 1)] ?? 60 * 60_000
     state.trips += 1
     state.failures = []
     state.waitUntil = at + wait
-    return { tripped: true, trip: state.trips, waitSeconds: wait / 1000 }
+    return { tripped: true, trip: state.trips, waitSeconds: wait / 1000, cause: 'device' }
   }
 
   /** Adds a wrong PIN to the organisation's window and answers how many it now holds. */

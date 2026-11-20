@@ -37,7 +37,7 @@ vi.mock('@restro/core/service', async (original) => {
 
 allowSlowSetup()
 
-const quiet = { warn: () => undefined }
+const quiet = { warn: () => undefined, error: () => undefined }
 
 describe.skipIf(!hasDatabase)('the waiter-call lapse job', () => {
   let db: TestDatabase
@@ -164,7 +164,7 @@ describe.skipIf(!hasDatabase)('the waiter-call lapse job', () => {
     failing.waiterCallId = broken
     const warn = vi.fn()
     try {
-      expect(await lapseWaiterCalls(pool, new Date(), { warn })).toBe(1)
+      expect(await lapseWaiterCalls(pool, new Date(), { warn, error: () => undefined })).toBe(1)
     } finally {
       failing.waiterCallId = null
     }

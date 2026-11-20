@@ -42,9 +42,32 @@ vi.mock('@restro/core/service', async (original) => {
   }
 })
 
+// A database that answers in memory, for the tests that want one organisation's listing to fail.
+const fake = vi.hoisted(() => ({
+  on: false,
+  organisations: [] as string[],
+  broken: null as string | null,
+  rows: [] as { venueId: string; tableId: string }[],
+}))
+vi.mock('@restro/db', async (original) => {
+  const db = await original<typeof import('@restro/db')>()
+  return {
+    ...db,
+    withSystem: ((...args: Parameters<typeof db.withSystem>) =>
+      fake.on
+        ? Promise.resolve(fake.organisations.map((id) => ({ id })))
+        : db.withSystem(...args)) as typeof db.withSystem,
+    withTenant: ((...args: Parameters<typeof db.withTenant>) => {
+      if (!fake.on) return db.withTenant(...args)
+      if (args[1] === fake.broken) return Promise.reject(new Error('this organisation is down'))
+      return Promise.resolve(fake.rows)
+    }) as typeof db.withTenant,
+  }
+})
+
 allowSlowSetup()
 
-const quiet = { warn: () => undefined }
+const quiet = { warn: () => undefined, error: () => undefined }
 
 describe('the minute tick (screen round 11-18, C4)', () => {
   it('runs every pass when the one before it fails, then fails the tick', async () => {
@@ -55,11 +78,48 @@ describe('the minute tick (screen round 11-18, C4)', () => {
     const error = vi.fn()
     const log = { info: vi.fn(), warn: vi.fn(), error, child: () => log }
     const context = { pool, log, now: () => new Date() } as unknown as WorkerContext
-    await expect(orderTidyTick.handler([], context)).rejects.toThrow()
+    await expect(orderTidyTick.handler([], context)).rejects.toThrow(
+      'order-tidy-tick: tidy, lapse, sweep failed',
+    )
     const passes = error.mock.calls
       .map((call) => (call[0] as { pass?: string }).pass)
       .filter((pass) => pass !== undefined)
     expect(passes).toEqual(['tidy', 'lapse', 'sweep'])
+  })
+
+  it("lists the other organisations' idle orders when one cannot be listed, then fails the pass", async () => {
+    Object.assign(fake, {
+      on: true,
+      organisations: ['tn_down', 'tn_up'],
+      broken: 'tn_down',
+      rows: [{ venueId: 'vn_up', tableId: 'tb_up' }],
+    })
+    failing.tableId = 'tb_up'
+    try {
+      const error = vi.fn()
+      const failed: unknown[] = []
+      const pool = {} as DbPool
+      expect(await idleOrders(pool, new Date(), { warn: vi.fn(), error }, failed)).toEqual([
+        { tenantId: 'tn_up', venueId: 'vn_up', tableId: 'tb_up' },
+      ])
+      expect(failed).toHaveLength(1)
+      expect(error).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: 'tn_down' }),
+        'the idle orders could not be listed',
+      )
+      // The listed table is still tried (here it throws and is skipped); then the pass fails.
+      const warn = vi.fn()
+      await expect(tidyIdleOrders(pool, new Date(), { warn, error })).rejects.toThrow(
+        '1 organisation(s) could not list idle orders',
+      )
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({ tableId: 'tb_up' }),
+        'an idle order could not be set aside',
+      )
+    } finally {
+      fake.on = false
+      failing.tableId = null
+    }
   })
 })
 
@@ -197,7 +257,7 @@ describe.skipIf(!hasDatabase)('the idle order job', () => {
     failing.tableId = broken
     const warn = vi.fn()
     try {
-      expect(await tidyIdleOrders(pool, new Date(), { warn })).toBe(1)
+      expect(await tidyIdleOrders(pool, new Date(), { warn, error: () => undefined })).toBe(1)
     } finally {
       failing.tableId = null
     }

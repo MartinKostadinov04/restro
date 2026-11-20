@@ -41,12 +41,13 @@ export interface IdleOrder {
 
 /**
  * The open tables whose order went idle at or before `now`, in every organisation. An organisation
- * whose listing throws is logged and skipped.
+ * whose listing throws is logged, added to `failed` and skipped; the caller fails once the rest ran.
  */
 export async function idleOrders(
   pool: DbPool,
   now: Date,
-  log: Pick<Logger, 'warn'>,
+  log: Pick<Logger, 'warn' | 'error'>,
+  failed: unknown[] = [],
 ): Promise<IdleOrder[]> {
   const organisations = await withSystem(pool, (tx) =>
     tx.select({ id: authOrganization.id }).from(authOrganization),
@@ -63,20 +64,25 @@ export async function idleOrders(
       )
       for (const row of rows) due.push({ tenantId: organisation.id, ...row })
     } catch (error) {
-      log.warn({ tenantId: organisation.id, err: error }, 'the idle orders could not be listed')
+      log.error({ tenantId: organisation.id, err: error }, 'the idle orders could not be listed')
+      failed.push(error)
     }
   }
   return due
 }
 
-/** Sets aside every idle order; answers how many were set aside. A table that throws is skipped. */
+/**
+ * Sets aside every idle order; answers how many were set aside. A table that throws is skipped; an
+ * organisation that could not be listed fails the pass after the others' orders were set aside.
+ */
 export async function tidyIdleOrders(
   pool: DbPool,
   now: Date,
-  log: Pick<Logger, 'warn'>,
+  log: Pick<Logger, 'warn' | 'error'>,
 ): Promise<number> {
   let tidied = 0
-  for (const order of await idleOrders(pool, now, log)) {
+  const failed: unknown[] = []
+  for (const order of await idleOrders(pool, now, log, failed)) {
     try {
       const { result } = await applyService(
         pool,
@@ -94,7 +100,15 @@ export async function tidyIdleOrders(
       log.warn({ tableId: order.tableId, err: error }, 'an idle order could not be set aside')
     }
   }
+  throwIfAny(failed, 'idle orders')
   return tidied
+}
+
+/** Fails a pass whose organisations could not all be listed, so the tick's record shows it (C4). */
+export function throwIfAny(failed: readonly unknown[], what: string): void {
+  if (failed.length > 0) {
+    throw new AggregateError(failed, `${failed.length} organisation(s) could not list ${what}`)
+  }
 }
 
 /**
@@ -103,8 +117,9 @@ export async function tidyIdleOrders(
  */
 export async function sweepUnconfirmedPauses(
   pool: DbPool,
-  log: Pick<Logger, 'warn'>,
+  log: Pick<Logger, 'warn' | 'error'>,
 ): Promise<number> {
+  const failed: unknown[] = []
   const organisations = await withSystem(pool, (tx) =>
     tx.select({ id: authOrganization.id }).from(authOrganization),
   )
@@ -129,10 +144,11 @@ export async function sweepUnconfirmedPauses(
           ),
       )
     } catch (error) {
-      log.warn(
+      log.error(
         { tenantId: organisation.id, err: error },
         'the unconfirmed pauses could not be listed',
       )
+      failed.push(error)
       continue
     }
     for (const { venueId } of due) {
@@ -154,6 +170,7 @@ export async function sweepUnconfirmedPauses(
       }
     }
   }
+  throwIfAny(failed, 'unconfirmed pauses')
   return lifted
 }
 
@@ -172,13 +189,13 @@ export const orderTidyTick: JobDefinition = defineJob({
   async handler(_jobs, context) {
     // Each pass runs whatever the one before it did (C4); the tick fails only after all three ran,
     // so the error still reaches the queue's record.
-    const failed: unknown[] = []
+    const failed: { readonly pass: string; readonly error: unknown }[] = []
     const pass = async (name: string, run: () => Promise<void>) => {
       try {
         await run()
       } catch (error) {
         context.log.error({ pass: name, err: error }, 'an order-tidy pass failed')
-        failed.push(error)
+        failed.push({ pass: name, error })
       }
     }
     await pass('tidy', async () => {
@@ -193,6 +210,11 @@ export const orderTidyTick: JobDefinition = defineJob({
       const unpaused = await sweepUnconfirmedPauses(context.pool, context.log)
       if (unpaused > 0) context.log.info({ unpaused }, 'unconfirmed table pauses lifted')
     })
-    if (failed.length > 0) throw new AggregateError(failed, 'order-tidy-tick: a pass failed')
+    if (failed.length > 0) {
+      throw new AggregateError(
+        failed.map((each) => each.error),
+        `order-tidy-tick: ${failed.map((each) => each.pass).join(', ')} failed`,
+      )
+    }
   },
 })

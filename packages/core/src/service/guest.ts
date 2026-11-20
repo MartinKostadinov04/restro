@@ -1526,13 +1526,15 @@ async function payAct(
   const subject = `${target.hash}:${input.phone}`
   let handle: string | null = null
   let command: { readonly type: string; readonly actionId: string } & Record<string, unknown>
-  /** When this Pay took `payGap` and `pays`; null when it took none (a repeat, or not a start). */
+  /** When this Pay took `payGap`; null when it took none (a repeat, or not a start). */
   let payTakenAt: number | null = null
-  // A Pay that starts no payment gives its hits back, as a refused Send does (RR-26, D122 §4;
-  // screen round 11-18, C2): a guest refused for a stale bill must not wait out the gap. A request
-  // that throws keeps them: whether a payment started is unknown.
+  // A Pay that starts no payment for a reason the guest can fix (the bill changed, Turnstile) gives
+  // back its 15 s `payGap`, as a refused Send does (RR-26, D122 §4; screen round 11-18, C2), so the
+  // guest retries at once. `pays` (5 in 10 minutes) stays spent: it is the ceiling on Turnstile
+  // checks and engine writes a phone can cause. A Pay refused for the phone's own open payment
+  // keeps both, and a request that throws keeps them too: whether a payment started is unknown.
   const giveBackPay = () => {
-    if (payTakenAt !== null) limits.giveBack(subject, ['payGap', 'pays'], payTakenAt)
+    if (payTakenAt !== null) limits.giveBack(subject, ['payGap'], payTakenAt)
   }
 
   if (type === 'pay.start') {
@@ -1548,10 +1550,7 @@ async function payAct(
       }
       payTakenAt = takenAt
       const open = limits.openPayment(subject)
-      if (open !== null && !(await paymentEnded(pool, target, open))) {
-        giveBackPay()
-        return reject('rate_limited')
-      }
+      if (open !== null && !(await paymentEnded(pool, target, open))) return reject('rate_limited')
       // Turnstile at every Pay (D127 §Limits): fail closed, open only when siteverify is down. Its
       // own limit is taken first, as at Send: the phone that keeps failing stops costing a
       // siteverify once the Pay's hits are given back.
@@ -1937,6 +1936,9 @@ export interface GuestEventsInput {
  * held while it was offline lands at the time it happened. Nothing personal is read or written:
  * there is no field for it, and the phone's own value in `X-Restro-Phone` is not asked for here.
  */
+/** How far apart this server's clock and the database's may be when a held event is placed. */
+const CLOCK_GRACE_MS = 5_000
+
 export async function reportGuestEvents(
   pool: DbPool,
   input: GuestEventsInput,
@@ -1971,10 +1973,14 @@ export async function reportGuestEvents(
         event = { kind: 'language.chosen', locale: report.locale, at }
         break
       default:
+        // A new kind of event fails the build here until it is filed (screen round 11-18, C5).
+        report satisfies never
         continue
     }
     const day = serviceDate(at, guard.timezone, guard.dayEndsAt)
-    const inSitting = guard.sittingOpenedAt !== null && at.getTime() >= guard.sittingOpenedAt
+    // The sitting's start is the database's clock and `at` this server's: a few seconds of grace.
+    const inSitting =
+      guard.sittingOpenedAt !== null && at.getTime() >= guard.sittingOpenedAt - CLOCK_GRACE_MS
     const key = `${day}:${inSitting}`
     const group = groups.get(key) ?? { serviceDate: day, inSitting, batch: [] }
     group.batch.push(event)
@@ -1985,6 +1991,8 @@ export async function reportGuestEvents(
   const jobId = input.jobId ?? `guest-events-${randomUUID()}`
   const written = await withTenantWrite(pool, target.tenantId, async (tx) => {
     let count = 0
+    // A Map keeps its insertion order: the groups go in the order of their first event in the
+    // phone's list, so `seq` follows it except where a day or sitting boundary splits the list.
     for (const group of groups.values()) {
       const seqs = await recordEvents(
         tx,

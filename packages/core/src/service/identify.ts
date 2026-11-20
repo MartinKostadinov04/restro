@@ -127,7 +127,13 @@ export async function identifyStaffByPin(
         {
           kind: 'guard.tripped',
           reason: 'pin_wrong',
-          details: { deviceId: device.id, trip: failure.trip, waitSeconds: failure.waitSeconds },
+          details: {
+            deviceId: device.id,
+            trip: failure.trip,
+            waitSeconds: failure.waitSeconds,
+            // The device's own five wrong PINs, or the organisation's backstop alone.
+            cause: failure.cause,
+          },
         },
       )
     }
