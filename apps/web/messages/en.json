@@ -464,14 +464,14 @@
         "not_allowed": "Only an owner can change the organisation's name or address name.",
         "invalid": "This cannot be used. Check it and try again.",
         "taken": "Another organisation has this address name, or had it before. Choose another one.",
-        "failed": "Something went wrong. Nothing was changed, try again."
+        "failed": "Restro couldn't save this. Nothing changed; try again."
       }
     },
     "integrations": {
       "description": "The systems you use, their connections and how each one is read. Set once for the whole organisation and used by every venue."
     },
     "deletedVenues": {
-      "description": "Venues an owner deleted. Restore one within {days} days and it comes back as a draft with its menu, tables and codes, and its till is linked again unless another venue serves it now. After that, or at once with Delete permanently, a venue is erased for good.",
+      "description": "Venues an owner deleted. Restore one within {days} days and it comes back as a draft with its menu, tables and codes, linked again to its venue in the POS unless another venue uses that one now. After that, or at once with Delete permanently, a venue is erased for good.",
       "empty": {
         "title": "No deleted venues",
         "description": "A venue you delete appears here, and you can restore it."
@@ -488,7 +488,7 @@
           "menus": "Its menus, sections and items, every published version and its change log.",
           "tables": "Its tables and QR codes. The codes never come back: printed codes stop working for good.",
           "address": "Its address name is freed, so another venue can take it. Its public code is never used again.",
-          "kept": "Items that the till or another venue still uses stay."
+          "kept": "Items that the POS or another venue still uses stay."
         },
         "confirmLabel": "Type the venue name to confirm: {name}",
         "cancel": "Cancel",
@@ -501,16 +501,16 @@
           "invalid": "This venue could not be found.",
           "not_deleted": "This venue is not in the deleted venues. Delete it first.",
           "name_mismatch": "The name does not match. Type it exactly as shown.",
-          "failed": "Something went wrong. The venue was not deleted, try again."
+          "failed": "Restro couldn't delete the venue. Nothing changed; try again."
         }
       },
       "restored": "{name} is back as a draft. Publish its menu to put it back on guests' phones; its table codes come back with that publish.",
-      "restoredLinked": "{name} is back as a draft, with its till linked again. Publish its menu to put it back on guests' phones; its table codes come back with that publish.",
+      "restoredLinked": "{name} is back as a draft, linked again to its venue in the POS. Publish its menu to put it back on guests' phones; its table codes come back with that publish.",
       "errors": {
         "not_allowed": "Only an owner can restore a venue.",
         "invalid": "This venue could not be found.",
-        "till_taken": "Not restored: the till venue it served is linked to “{holder}” now.",
-        "failed": "Something went wrong. The venue was not restored, try again."
+        "till_taken": "Not restored: its venue in the POS is linked to “{holder}” now.",
+        "failed": "Restro couldn't restore the venue. Nothing changed; try again."
       }
     }
   },
@@ -551,7 +551,7 @@
           "not_allowed": "Only an owner or admin can unpublish a venue.",
           "invalid": "This venue could not be found.",
           "venue_archived": "This venue was deleted.",
-          "failed": "Something went wrong. The venue was not unpublished, try again."
+          "failed": "Restro couldn't unpublish the venue. Nothing changed; try again."
         }
       }
     },
@@ -565,14 +565,14 @@
       "create": "Create venue",
       "creating": "Creating…",
       "sources": {
-        "legend": "Menu source",
+        "legend": "Source",
         "loading": "Loading…",
         "failed": "The sources could not be loaded. Try again.",
         "retry": "Try again",
         "hand": "By hand",
         "handHelp": "You write the menu yourself: sections, items and prices.",
         "venueCount": "{count, plural, one {# venue} other {# venues}}",
-        "none": "No point-of-sale system is connected yet.",
+        "none": "No POS is connected yet.",
         "connect": "Connect one in Settings › Integrations"
       },
       "instance": {
@@ -603,7 +603,7 @@
         "invalid": "Check the name, the address and the languages, then try again.",
         "taken": "Another venue of yours already has this address. Choose another one.",
         "link_taken": "This venue of {source} was linked to another venue in the meantime. Pick another one.",
-        "failed": "Something went wrong. The venue was not created, try again."
+        "failed": "Restro couldn't create the venue. Nothing changed; try again."
       }
     }
   },
@@ -628,7 +628,7 @@
       },
       "noSections": {
         "title": "No sections yet",
-        "description": "Create a section, or connect a till in Settings → Integrations.",
+        "description": "Create a section to start your menu.",
         "action": "Create a section"
       },
       "noItems": {
@@ -898,7 +898,7 @@
     },
     "settingsSections": {
       "general": "General",
-      "publish": "Publish",
+      "publish": "Sync and publish",
       "versioning": "Versioning"
     },
     "settings": {
@@ -911,7 +911,7 @@
       "languages": "Languages",
       "defaultLanguage": "default",
       "currency": "Currency",
-      "readOnly": "The other settings are read-only for now. Editing them arrives with the Studio.",
+      "readOnly": "The other settings cannot be changed here.",
       "rename": {
         "label": "Venue name",
         "help": "Shown in the admin and on the guest menu. Guests see a new name after the next publish.",
@@ -923,7 +923,7 @@
           "not_allowed": "Only an owner or admin can rename a venue.",
           "invalid": "This name cannot be used. Check it and try again.",
           "venue_archived": "This venue was deleted.",
-          "failed": "Something went wrong. The name was not changed, try again."
+          "failed": "Restro couldn't change the name. Nothing changed; try again."
         }
       },
       "danger": {
@@ -936,7 +936,7 @@
           "effects": {
             "admin": "It disappears from the admin: the sidebar, the venue list and its pages.",
             "guests": "Its guest page and its table QR codes stop working: guests see that the menu is not available.",
-            "till": "Its link to the till is released, so the till venue is free for another venue, and syncing and publishing stop.",
+            "till": "Its link to its venue in the POS is released, so another venue can use that one, and syncing and publishing stop.",
             "kept": "Nothing is erased. Its menu, tables and settings are kept, and you can restore it from Settings › Deleted venues."
           },
           "confirmLabel": "Type the venue name to confirm: {name}",
@@ -951,7 +951,7 @@
             "invalid": "This venue could not be found.",
             "name_mismatch": "The name does not match. Type it exactly as shown.",
             "venue_archived": "This venue was deleted.",
-            "failed": "Something went wrong. The venue was not deleted, try again."
+            "failed": "Restro couldn't delete the venue. Nothing changed; try again."
           }
         }
       },
@@ -971,7 +971,7 @@
           "not_allowed": "Only an owner or admin can change the address.",
           "invalid": "This address cannot be used. Check it and try again.",
           "taken": "Another venue of yours already has this address name. Choose another one.",
-          "failed": "Something went wrong. The address was not changed, try again."
+          "failed": "Restro couldn't change the address. Nothing changed; try again."
         }
       }
     }
@@ -1151,17 +1151,17 @@
       "frame": "Phone preview of the draft"
     },
     "automation": {
-      "title": "Automation",
-      "description": "How this venue reads its menu from {source}, and whether a sync goes live by itself. These settings are for this venue only.",
+      "title": "Sync and publish",
+      "description": "How this venue syncs its menu from {source}, and whether a sync goes live by itself. These settings are for this venue only.",
       "sync": {
-        "legend": "Reading the menu from {source}",
+        "legend": "Sync from {source}",
         "auto": "Automatically",
-        "autoHelp": "Checks {source} for changes on a schedule, and reads the whole menu once a day.",
+        "autoHelp": "Syncs the changes from {source} on a schedule, and does a full read once a day.",
         "manual": "Only when I ask",
-        "manualHelp": "This venue is not read on a schedule: read it with “Sync this venue” in General. Items it shares with other venues can still change when those are read.",
-        "interval": "Check for changes every",
+        "manualHelp": "This venue is not synced on a schedule: sync it with “Sync this venue” in General. Items it shares with other venues can still change when those are synced.",
+        "interval": "Sync the changes every",
         "minutes": "{count, plural, one {# minute} other {# minutes}}",
-        "fullRead": "Read the whole menu daily at",
+        "fullRead": "Full read daily at",
         "timeInvalid": "Enter a time as HH:MM, for example 12:00."
       },
       "afterSync": {
@@ -1171,7 +1171,7 @@
         "manual": "Wait until I press Publish",
         "manualHelp": "Changes from {source} wait until you publish them."
       },
-      "inherited": "These are the settings the connection had before they moved to the venue. Saving makes them this venue’s own.",
+      "inherited": "Saving makes these settings this venue’s own.",
       "save": "Save",
       "saving": "Saving…",
       "saved": "Saved. The settings apply from the next sync of this venue."
@@ -1180,7 +1180,7 @@
   "venueMenus": {
     "title": "Menus",
     "description": "The venue’s menus. The live one is at the venue’s address; an area or a table can show another one (Tables & QR).",
-    "descriptionTill": "The menus come from the till: you can rename them, change their order and choose the live one.",
+    "descriptionTill": "The menus come from {source}: you can rename them, change their order and choose the live one.",
     "live": "Live",
     "venueNameNote": "(the venue’s name)",
     "open": "Open {name} in the Studio",
@@ -1246,11 +1246,11 @@
       "unknown_menu": "That menu was not found. Reload the page.",
       "menu_deleted": "That menu is in Deleted menus. Restore it first.",
       "menu_live": "The live menu cannot be deleted: make another menu live first.",
-      "till_venue": "This venue’s menus come from the till: they cannot be added, deleted or imported here.",
+      "till_venue": "This venue’s menus come from {source}: they cannot be added, deleted or imported here.",
       "unknown_source": "That menu cannot be imported any more. Choose another one.",
       "not_allowed": "Only an owner or admin can change the menus.",
       "invalid": "That request was not understood. Reload the page and try again.",
-      "failed": "Something went wrong. Nothing was changed; try again."
+      "failed": "Restro couldn't save this. Nothing changed; try again."
     }
   },
   "integration": {
@@ -1343,17 +1343,18 @@
       "checkAgain": "Check again",
       "checkQueued": "The connection check is queued.",
       "held": {
-        "title": "The last full sync of {venue} was held back",
-        "titleNoVenue": "The last full sync was held back",
-        "too_many_missing": "The last full sync found fewer items than the menu has and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the venue and its menus in {source}.",
-        "empty_read": "The last full sync found no items at all and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the venue and its menus in {source}."
-      }
+        "title": "The last full read of {venue} was held back",
+        "titleNoVenue": "The last full read was held back",
+        "too_many_missing": "The last full read found fewer items than the menu has and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the venue and its menus in {source}.",
+        "empty_read": "The last full read found no items at all and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the venue and its menus in {source}."
+      },
+      "connection": "Connection"
     },
     "statusDetail": {
       "wrong_credentials": "Wrong user or password.",
       "host_refused": "This {source} address is not allowed.",
       "credentials_unreadable": "The saved credentials cannot be read. Enter them again.",
-      "currency_not_eur": "The till's main currency is not EUR; Restro shows prices in EUR only."
+      "currency_not_eur": "The main currency in {source} is not EUR; Restro shows prices in EUR only."
     },
     "sync": {
       "title": "Sync everything",
@@ -1384,7 +1385,8 @@
       },
       "kind": {
         "other": "Other",
-        "places_read": "Tables read"
+        "places_read": "Tables read",
+        "floor_read": "Tables read"
       },
       "status": {
         "queued": "Queued",
@@ -1410,7 +1412,12 @@
         "refused_writes": "Refused writes",
         "items_held": "Held for review",
         "venues": "{source} venues",
-        "languages": "Languages"
+        "languages": "Languages",
+        "tables_listed": "Tables listed",
+        "tables_created": "Tables added",
+        "tables_updated": "Tables updated",
+        "tables_vanished": "Tables gone from {source}",
+        "tables_returned": "Tables back in {source}"
       },
       "deletionSkipped": "Deletion check skipped",
       "details": {
@@ -1425,7 +1432,7 @@
         "refusedFallback": "Refused"
       },
       "refusedCodes": {
-        "less_cautious": "Would make the menu less cautious than the till",
+        "less_cautious": "Would make the menu less cautious than {source}",
         "layer_not_allowed": "This source may not write this field",
         "unknown_field": "Unknown field",
         "not_linked": "Not linked to {source}",
@@ -1450,13 +1457,13 @@
       "not_ready": "Not ready yet: finish the earlier steps first.",
       "already_running": "A sync is already queued or running.",
       "queue_unavailable": "The sync service could not be reached. Try again in a moment.",
-      "failed": "Something went wrong. Try again."
+      "failed": "Restro couldn't do this. Nothing changed or started; try again."
     }
   },
   "menuSource": {
-    "title": "Menu source",
+    "title": "Source",
     "description": "Where this venue’s menu comes from: the {source} connection and the venue in it. It is chosen when the venue is created and does not change.",
-    "readOnly": "Only owners and admins can change the menu source or start a sync. You can see what is set.",
+    "readOnly": "Only owners and admins can change the source or start a sync. You can see what is set.",
     "instance": {
       "label": "Connection"
     },
@@ -1471,17 +1478,17 @@
       "neverSynced": "Not synced yet.",
       "blocked": {
         "not_manager": "Only owners and admins can start a sync.",
-        "no_credentials": "Save the {source} credentials first, in Settings → Integrations.",
+        "no_credentials": "Save the {source} credentials first, in <link>Settings → Integrations</link>.",
         "checking": "The connection is being checked. Wait until it finishes.",
-        "not_connected": "The connection to {source} has to work first. See Settings → Integrations.",
+        "not_connected": "The connection to {source} has to work first. See <link>Settings → Integrations</link>.",
         "no_till_venue": "This venue has no venue in {source}.",
         "no_menu": "{source} has not reported the menus of this venue yet. Check the connection again.",
         "busy": "A sync is already queued or running."
       },
       "held": {
-        "title": "The last full sync was held back",
-        "too_many_missing": "The last full sync found fewer items than the menu has and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the venue and its menus in {source}.",
-        "empty_read": "The last full sync found no items at all and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the venue and its menus in {source}."
+        "title": "The last full read was held back",
+        "too_many_missing": "The last full read found fewer items than the menu has and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the venue and its menus in {source}.",
+        "empty_read": "The last full read found no items at all and hid nothing: it would have hidden {wouldHide} of {active, plural, one {# item} other {# items}}. Check the venue and its menus in {source}."
       }
     }
   },
@@ -1492,8 +1499,8 @@
       },
       "runKinds": {
         "barsy_connect": "Connection check",
-        "barsy_full_pull": "Full sync",
-        "barsy_incremental": "Quick sync"
+        "barsy_full_pull": "Full read",
+        "barsy_incremental": "Changes read"
       },
       "settings": {
         "title": "How barsy data is read",
@@ -1540,7 +1547,7 @@
     "empty": {
       "title": "No tables yet",
       "description": "Areas and tables come from {source}. They appear at its next read. A venue without a till adds its own areas and tables.",
-      "action": "Go to the Menu source"
+      "action": "Go to Source"
     },
     "emptyHand": {
       "title": "No areas yet",

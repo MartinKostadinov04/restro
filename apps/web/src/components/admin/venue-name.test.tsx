@@ -90,7 +90,7 @@ describe('the venue name', () => {
     ['not_allowed', 'Only an owner or admin can rename a venue.'],
     ['invalid', 'This name cannot be used. Check it and try again.'],
     ['venue_archived', 'This venue was deleted.'],
-    ['failed', 'Something went wrong. The name was not changed, try again.'],
+    ['failed', "Restro couldn't change the name. Nothing changed; try again."],
   ] as const)('shows the answer %s and keeps what was typed', async (error, text) => {
     vi.mocked(renameVenueAction).mockResolvedValue({ ok: false, error })
     const user = name()
@@ -107,7 +107,7 @@ describe('the venue name', () => {
     await user.type(input(), '!')
     await user.click(save())
     expect((await screen.findByTestId('venue-name-error')).textContent).toContain(
-      'Something went wrong',
+      'Nothing changed; try again',
     )
   })
 
