@@ -77,6 +77,7 @@ export function UrlTabs<V extends string>({
   contents,
   label,
   listClassName,
+  selectClassName = 'w-full lg:hidden',
   oneRow = false,
 }: {
   defs: readonly (WorkspaceTabDef & { readonly value: V })[]
@@ -85,6 +86,8 @@ export function UrlTabs<V extends string>({
   contents: Partial<Record<V, ReactNode>>
   label: string
   listClassName?: string
+  /** The select's classes: the width it hides from must be the width `listClassName` shows from. */
+  selectClassName?: string
   /**
    * A list short enough for the narrowest screen — a shared device's Tonight and Reservations
    * (#326, D141). The row is then drawn at every width and there is no select at all, so the tab
@@ -117,7 +120,7 @@ export function UrlTabs<V extends string>({
           </TabsList>
           {oneRow ? null : (
             <Select value={current} onValueChange={select}>
-              <SelectTrigger className="w-full lg:hidden" aria-label={label}>
+              <SelectTrigger className={selectClassName} aria-label={label}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -221,9 +224,12 @@ export function SettingsSections({
       contents={contents}
       label={t('switchSection')}
       // Nine sections on a venue with everything (Reservations made the ninth) do not fit one row
-      // beside their icons below 2xl: the icons go first, and the row scrolls inside itself
-      // rather than the page.
-      listClassName="hidden max-w-full overflow-x-auto overflow-y-hidden lg:inline-flex [&_svg]:hidden 2xl:[&_svg]:block"
+      // beside the sidebar below xl, even without their icons: the select stands in up to 1280 px
+      // (S3). From xl the row is drawn without icons below 2xl, starts at its first tab (a
+      // centred row that overflows cuts its start off), and if a longer label still tips it, it
+      // scrolls inside itself with no visible bar, which would take the tabs' height.
+      listClassName="hidden max-w-full justify-start overflow-x-auto overflow-y-hidden [scrollbar-width:none] group-data-[orientation=horizontal]/tabs:h-auto xl:inline-flex [&::-webkit-scrollbar]:hidden *:min-h-8 [&_svg]:hidden 2xl:[&_svg]:block"
+      selectClassName="w-full xl:hidden"
     />
   )
 }

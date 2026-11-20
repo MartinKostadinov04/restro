@@ -13,9 +13,10 @@ import { DeleteVenueDialog } from './delete-venue-dialog'
 interface VenueDangerZoneProps {
   readonly venueId: string
   readonly venueName: string
+  readonly hasTill: boolean
 }
 
-export function VenueDangerZone({ venueId, venueName }: VenueDangerZoneProps) {
+export function VenueDangerZone({ venueId, venueName, hasTill }: VenueDangerZoneProps) {
   const t = useTranslations('workspace.settings.danger')
   const [open, setOpen] = useState(false)
 
@@ -48,6 +49,7 @@ export function VenueDangerZone({ venueId, venueName }: VenueDangerZoneProps) {
         onOpenChange={setOpen}
         venueId={venueId}
         venueName={venueName}
+        hasTill={hasTill}
       />
     </section>
   )

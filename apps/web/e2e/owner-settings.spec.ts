@@ -227,6 +227,50 @@ test('every section fits a 1024 px screen with the sidebar open (S3)', async ({ 
     )
     expect(fits, `${name} at 1024 px`).toBe(true)
   }
+  // Nine sections do not fit one row beside the sidebar at 1024 px: the select stands in, full
+  // height, and offers the first section and the last (N1).
+  await page.goto(section('general'))
+  await expect(page.getByTestId('settings-general')).toBeVisible()
+  await expect(page.getByRole('tablist', { name: 'Смяна на секцията' })).toBeHidden()
+  const chooser = page.getByRole('combobox', { name: 'Смяна на секцията' })
+  await expect(chooser).toBeVisible()
+  expect((await chooser.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(32)
+  await chooser.click()
+  const options = page.getByRole('option')
+  await expect(options.first()).toHaveText('Общи')
+  await options.last().scrollIntoViewIfNeeded()
+  await expect(options.last()).toBeVisible()
+  await options.last().click()
+  await expect(page).toHaveURL(/[?&]section=versioning(?:&|$)/)
+  await context.close()
+})
+
+test('from 1280 px the section row starts at its first tab and reaches its last (S3, N1)', async ({
+  browser,
+}) => {
+  const { context, page } = await open(browser, { width: 1280, height: 900, colorScheme: 'light' })
+  await page.goto(section('versioning'))
+  await expect(page.getByTestId('settings-versioning')).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Смяна на секцията' })).toBeHidden()
+  const list = page.getByRole('tablist', { name: 'Смяна на секцията' })
+  await expect(list).toBeVisible()
+  const tabs = list.getByRole('tab')
+  for (const tab of [tabs.first(), tabs.last()]) {
+    await tab.scrollIntoViewIfNeeded()
+    await expect(tab).toBeVisible()
+    const [box, row] = [await tab.boundingBox(), await list.boundingBox()]
+    if (box === null || row === null) throw new Error('the section row is not drawn')
+    // Inside the row, not cut off at its start (a centred row that overflows clips it) or end.
+    expect(box.x).toBeGreaterThanOrEqual(row.x)
+    expect(box.x + box.width).toBeLessThanOrEqual(row.x + row.width + 0.5)
+    // No scrollbar takes the tabs' height.
+    expect(box.height).toBeGreaterThanOrEqual(32)
+  }
+  await expect(tabs.first()).toHaveText('Общи')
+  await tabs.first().click()
+  await expect(page).toHaveURL(/[?&]section=general(?:&|$)/)
+  const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
+  expect(fits, 'the page at 1280 px').toBe(true)
   await context.close()
 })
 
