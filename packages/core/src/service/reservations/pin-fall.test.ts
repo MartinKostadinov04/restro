@@ -121,6 +121,39 @@ describe('where the PIN falls', () => {
     expect(edit({ reservationId: 'rs_1', partySize: 6, turnMinutes: 120 })).toBe('edit')
     expect(edit({ reservationId: 'rs_1', partySize: 6, partyLabel: 'Ivo' })).toBe('edit')
     expect(edit({ reservationId: 'rs_1', note: 'by the DJ' })).toBe('edit')
+    // An allow-list (review of #479): the count is a tap only when nothing else is in the payload,
+    // so a field the schema gains later asks for the PIN until somebody decides otherwise.
+    expect(edit({ reservationId: 'rs_1', partySize: 6, guestName: 'Ivo' })).toBe('edit')
+    expect(edit({ reservationId: 'rs_1', partySize: 6, spotIds: ['sp_1'] })).toBe('edit')
+    expect(edit({ reservationId: 'rs_1', partySize: 6, phone: '+359888000000' })).toBe('edit')
+    expect(edit({ reservationId: 'rs_1', partySize: 6, someday: true })).toBe('edit')
+    expect(
+      edit({
+        type: 'reservation.edit',
+        reservationId: 'rs_1',
+        expectedVersion: 'v1',
+        partySize: 6,
+      }),
+    ).toBe('guest_count')
+    // A field the form sends as absent is not there.
+    expect(edit({ reservationId: 'rs_1', partySize: 6, note: undefined })).toBe('guest_count')
+  })
+
+  it('keeps editing and cancelling on the PIN now that whoever works tonight may (S20)', () => {
+    // D135 13.18: the permission is the floor's, so on a shared device the four digits are what
+    // still name the person who changed or called off a colleague's booking.
+    expect(RESERVATION_COMMANDS['reservation.edit'].permission).toBe('reservations.tonight')
+    expect(RESERVATION_COMMANDS['reservation.cancel'].permission).toBe('reservations.tonight')
+    expect(DEFAULT_PIN_FALL.edit).toBe('pin')
+    expect(DEFAULT_PIN_FALL.cancel).toBe('pin')
+    // Restoring stays the manager's (deleting another's is checked by the handler: booking.test).
+    expect(RESERVATION_COMMANDS['reservation.restore'].permission).toBe('reservations.manage')
+    // Calling a party off through the status door is the Cancel button's act, and its line.
+    const status = (to: string) =>
+      pinFallActionOf('reservation.set_status', { reservationId: 'rv_1', status: to })
+    expect(status('cancelled')).toBe('cancel')
+    expect(status('no_show')).toBe('status')
+    expect(status('finished')).toBe('status')
   })
 
   it('takes a venues own choice, and ignores a stored value it cannot read', () => {

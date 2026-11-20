@@ -228,6 +228,32 @@ describe.skipIf(!hasDatabase)('changing tables (as the restro_app role)', () => 
     })
   })
 
+  it('refuses moving a seated party through the booking form, and sends it to Change tables (C6)', async () => {
+    const id = await seated(['C1'])
+    const kept = await openSittingOf('C1')
+    expect(
+      await run({
+        type: 'reservation.edit',
+        reservationId: id,
+        spotIds: ids('C2'),
+      } as ServiceCommand),
+    ).toMatchObject({ status: 'refused', code: 'seated_use_change_tables' })
+    // Nothing moved: the party, its table and its code are where they were.
+    expect(await heldBy(id)).toEqual(ids('C1'))
+    expect(await openSittingOf('C1')).toBe(kept)
+    expect(await openSittingOf('C2')).toBeNull()
+    // The rest of the form still saves, its spots sent back unchanged.
+    await accept({
+      type: 'reservation.edit',
+      reservationId: id,
+      note: 'by the window',
+      spotIds: ids('C1'),
+    } as ServiceCommand)
+    // Change tables is the way.
+    await accept(change(id, ['C1'], ['C2']))
+    expect(await heldBy(id)).toEqual(ids('C2'))
+  })
+
   it('moves a party with no bill as a plain move', async () => {
     const id = await seated(['C1'])
     expect(await accept(change(id, ['C1'], ['C2']))).toMatchObject({ billLeft: '' })

@@ -53,7 +53,7 @@ import { tripOrderRate } from './order-rate'
 import { watchPayingState } from './paying-phones'
 import { isSettingsPermission } from './permissions'
 import { rerollClosedNights } from './reservation-counts'
-import { fallOf, pinFallActionOf, readPinActions } from './reservations/pin-fall'
+import { fallOf, pinFallActionAt, readPinActions } from './reservations/pin-fall'
 import { accepted, refused, type ServiceResult } from './results'
 import { RowLocks } from './rows'
 import type { SendMenu } from './send-menu'
@@ -224,7 +224,7 @@ export async function executeCommand(
       // #324): its stored choice, else D141's default, which is what the flags below say. Read
       // only for a shared device's own account, the one actor whose answer it can change, and
       // only for a reservation action — one primary-key lookup, in this same transaction.
-      const reservationAction = pinFallActionOf(type, parsed.data)
+      const reservationAction = await pinFallActionAt(tx, venue.id, type, parsed.data)
       const quick =
         reservationAction !== null && context.actor.kind === 'user'
           ? fallOf(await readPinActions(tx, venue.id), reservationAction) === 'tap'

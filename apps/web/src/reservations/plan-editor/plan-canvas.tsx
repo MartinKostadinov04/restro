@@ -11,10 +11,16 @@
 // the room the drag is held inside is the one it started in, so nothing jumps while a finger is
 // down. The write happens once, when the finger lifts or the keys rest.
 //
+// The canvas zooms and pans like the plan screen, with the same shared `plan-zoom.ts` (S13): −, +
+// and "whole plan" buttons, a pinch or Ctrl-wheel, and + − 0 on the keys. A press on a spot or on
+// the resize corner is the spot's own drag (`PLAN_GRAB`), so it never pans the room under it; an
+// arrow on a focused spot moves the spot, not the view.
+//
 // Nothing stored becomes markup here either (`plan-markup.test.tsx` scans this folder): a spot's
 // name is a React child, the class comes from the folder's corner name, the style is per cent built
 // from checked whole numbers.
 import { movePlace, type PlanBox, resizePlace, type SpotPlace, type SpotSymbol } from '@restro/core'
+import { MaximizeIcon, MinusIcon, PlusIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import {
   type KeyboardEvent,
@@ -25,9 +31,11 @@ import {
   useState,
 } from 'react'
 
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 import { cornerClassOf, KindSymbol, placeStyle } from '../plan-shape'
+import { PLAN_GRAB, roomStyle, usePlanView } from '../plan-zoom'
 
 /** How far a pointer travels before a press is a drag rather than a tap, in pixels. */
 const DRAG_FROM_PX = 4
@@ -85,11 +93,21 @@ export function PlanCanvas({
   onCommit: (id: string, place: SpotPlace, from: SpotPlace) => void
 }) {
   const t = useTranslations('ownerSettings')
-  const frame = useRef<HTMLElement | null>(null)
+  const words = useTranslations('reservations')
+  const [frameEl, setFrameEl] = useState<HTMLElement | null>(null)
+  /** The room as drawn: zoomed, it is wider than the frame, and a drag is measured on it. */
+  const roomRef = useRef<HTMLDivElement | null>(null)
   const [live, setLive] = useState<{ id: string; place: SpotPlace } | null>(null)
   const liveRef = useRef(live)
   liveRef.current = live
   const gesture = useRef<Gesture | null>(null)
+  // Settings is a long page: a plain wheel scrolls it, Ctrl-wheel zooms; a spot being dragged
+  // holds the room still under it.
+  const { view, zoomIn, zoomOut, fit, onKeyDown } = usePlanView(frameEl, {
+    room,
+    wheelScrollsPage: true,
+    paused: () => gesture.current !== null,
+  })
   /** A drag just ended on this spot: the click the browser fires after it is not a tap. */
   const dragged = useRef<string | null>(null)
   const keys = useRef<{ id: string; from: SpotPlace; timer: number } | null>(null)
@@ -111,7 +129,7 @@ export function PlanCanvas({
 
   function begin(event: PointerEvent<HTMLElement>, spot: CanvasSpot, mode: Gesture['mode']) {
     if (!can || event.button !== 0) return
-    const box = frame.current?.getBoundingClientRect()
+    const box = roomRef.current?.getBoundingClientRect()
     if (box === undefined || box.width === 0) return
     if (mode === 'resize') event.stopPropagation()
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -169,6 +187,8 @@ export function PlanCanvas({
     ]
     if (!can || step === undefined) return
     event.preventDefault()
+    // The arrow moved the spot: the zoom's own arrows, on the frame around it, must not also pan.
+    event.stopPropagation()
     const [dx = 0, dy = 0] = step
     const at = placeOf(spot)
     const place = event.shiftKey ? resizePlace(at, dx, dy, room) : movePlace(at, dx, dy, room)
@@ -188,98 +208,148 @@ export function PlanCanvas({
   const chosenPlace = chosen === null ? null : placeOf(chosen)
   const ratio = room.width / room.height
 
+  const grab = { [PLAN_GRAB]: '' }
+
   return (
     <div className="grid grid-cols-1 gap-2">
+      {spots.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="size-11"
+            aria-label={words('p_zoom_out')}
+            data-testid="pe-zoom-out"
+            onClick={zoomOut}
+          >
+            <MinusIcon aria-hidden />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="size-11"
+            aria-label={words('p_zoom_in')}
+            data-testid="pe-zoom-in"
+            onClick={zoomIn}
+          >
+            <PlusIcon aria-hidden />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11"
+            data-testid="pe-zoom-fit"
+            onClick={fit}
+          >
+            <MaximizeIcon aria-hidden />
+            {words('p_zoom_reset')}
+          </Button>
+        </div>
+      ) : null}
       <section
-        ref={frame}
-        className="relative mx-auto w-full overflow-hidden rounded-lg border bg-muted/40"
+        ref={setFrameEl}
+        className="relative mx-auto w-full touch-pan-y overflow-hidden rounded-lg border bg-muted/40"
         style={{
           aspectRatio: `${room.width} / ${room.height}`,
           maxWidth: `calc(${MAX_HEIGHT_VH}vh * ${ratio.toFixed(4)})`,
         }}
         aria-label={t('pe_canvas')}
         data-testid="pe-canvas"
+        // Plus and minus zoom from a focused spot (2.1.1); its arrows move the spot, not the plan.
+        onKeyDown={onKeyDown}
       >
-        {spots.map((spot) => {
-          const place = placeOf(spot)
-          const style = placeStyle(place, room)
-          const look = cn(
-            'absolute flex min-w-0 items-center justify-center gap-1 overflow-hidden border-2 border-foreground/30 bg-card px-1 text-center text-xs leading-tight font-medium text-foreground',
-            cornerClassOf(place.shape),
-            spot.id === selected && 'border-primary ring-2 ring-primary/30',
-          )
-          const inside = (
-            <>
-              <KindSymbol symbol={spot.symbol} className="size-3.5" />
-              <span className="truncate">{spot.name}</span>
-            </>
-          )
-          if (!can) {
+        <div
+          ref={roomRef}
+          className="absolute left-0 top-0"
+          style={roomStyle(view, room)}
+          data-testid="pe-room"
+          data-scale={view.scale.toFixed(3)}
+        >
+          {spots.map((spot) => {
+            const place = placeOf(spot)
+            const style = placeStyle(place, room)
+            const look = cn(
+              'absolute flex min-w-0 items-center justify-center gap-1 overflow-hidden border-2 border-foreground/30 bg-card px-1 text-center text-xs leading-tight font-medium text-foreground',
+              cornerClassOf(place.shape),
+              spot.id === selected && 'border-primary ring-2 ring-primary/30',
+            )
+            const inside = (
+              <>
+                <KindSymbol symbol={spot.symbol} className="size-3.5" />
+                <span className="truncate">{spot.name}</span>
+              </>
+            )
+            if (!can) {
+              return (
+                <div
+                  key={spot.id}
+                  style={style}
+                  className={look}
+                  title={spot.label}
+                  data-testid="pe-spot"
+                  data-spot={spot.id}
+                >
+                  {inside}
+                </div>
+              )
+            }
             return (
-              <div
+              <button
                 key={spot.id}
+                type="button"
                 style={style}
-                className={look}
+                className={cn(
+                  look,
+                  'cursor-grab touch-none select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:cursor-grabbing',
+                )}
+                aria-label={spot.label}
+                aria-describedby="pe-canvas-keys"
                 title={spot.label}
                 data-testid="pe-spot"
                 data-spot={spot.id}
+                {...grab}
+                data-x={place.x}
+                data-y={place.y}
+                data-w={place.width}
+                data-h={place.height}
+                onPointerDown={(event) => begin(event, spot, 'move')}
+                onPointerMove={follow}
+                onPointerUp={end}
+                onPointerCancel={cancel}
+                onKeyDown={(event) => nudge(event, spot)}
+                onClick={() => {
+                  if (dragged.current === spot.id) {
+                    dragged.current = null
+                    return
+                  }
+                  onOpen(spot.id)
+                }}
               >
                 {inside}
-              </div>
+              </button>
             )
-          }
-          return (
-            <button
-              key={spot.id}
-              type="button"
-              style={style}
-              className={cn(
-                look,
-                'cursor-grab touch-none select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:cursor-grabbing',
-              )}
-              aria-label={spot.label}
-              aria-describedby="pe-canvas-keys"
-              title={spot.label}
-              data-testid="pe-spot"
-              data-spot={spot.id}
-              data-x={place.x}
-              data-y={place.y}
-              data-w={place.width}
-              data-h={place.height}
-              onPointerDown={(event) => begin(event, spot, 'move')}
+          })}
+          {can && chosen !== null && chosenPlace !== null && chosenPlace.rotation === 0 ? (
+            // The chosen spot's corner: drag it to resize. A pointer's handle only — the keys and the
+            // sheet's fields do the same (2.1.1, 2.5.7) — so it is hidden from the reading order.
+            <div
+              aria-hidden
+              className="absolute z-10 size-4 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize touch-none rounded-sm border-2 border-primary bg-background after:absolute after:-inset-3 after:content-['']"
+              style={{
+                left: `${(((chosenPlace.x + chosenPlace.width - room.x) / room.width) * 100).toFixed(4)}%`,
+                top: `${(((chosenPlace.y + chosenPlace.height - room.y) / room.height) * 100).toFixed(4)}%`,
+              }}
+              data-testid="pe-resize"
+              {...grab}
+              onPointerDown={(event) => begin(event, chosen, 'resize')}
               onPointerMove={follow}
               onPointerUp={end}
               onPointerCancel={cancel}
-              onKeyDown={(event) => nudge(event, spot)}
-              onClick={() => {
-                if (dragged.current === spot.id) {
-                  dragged.current = null
-                  return
-                }
-                onOpen(spot.id)
-              }}
-            >
-              {inside}
-            </button>
-          )
-        })}
-        {can && chosen !== null && chosenPlace !== null && chosenPlace.rotation === 0 ? (
-          // The chosen spot's corner: drag it to resize. A pointer's handle only — the keys and the
-          // sheet's fields do the same (2.1.1, 2.5.7) — so it is hidden from the reading order.
-          <div
-            aria-hidden
-            className="absolute z-10 size-4 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize touch-none rounded-sm border-2 border-primary bg-background after:absolute after:-inset-3 after:content-['']"
-            style={{
-              left: `${(((chosenPlace.x + chosenPlace.width - room.x) / room.width) * 100).toFixed(4)}%`,
-              top: `${(((chosenPlace.y + chosenPlace.height - room.y) / room.height) * 100).toFixed(4)}%`,
-            }}
-            data-testid="pe-resize"
-            onPointerDown={(event) => begin(event, chosen, 'resize')}
-            onPointerMove={follow}
-            onPointerUp={end}
-            onPointerCancel={cancel}
-          />
-        ) : null}
+            />
+          ) : null}
+        </div>
         {spots.length === 0 ? (
           <p className="absolute inset-0 flex items-center justify-center p-4 text-center text-sm text-muted-foreground">
             {can ? t('pe_canvas_empty') : t('pe_canvas_empty_ro')}
