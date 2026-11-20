@@ -6,8 +6,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithIntl } from '@/test-utils'
 
 import {
+  FIRST_SECTION_OF,
+  NO_SETTINGS_RIGHTS,
+  SETTINGS_MODULE_OF,
+  type SettingsModule,
   settingsSectionOf,
+  settingsSectionsOf,
   sharedDeviceTabOf,
+  venueQueryRedirect,
   WORKSPACE_TAB_DEFS,
   type WorkspaceTabValue,
   workspaceTabOf,
@@ -177,21 +183,20 @@ describe('WorkspaceTabs: tabs and the URL', () => {
   })
 })
 
-describe('SettingsSections: the sections of the Settings tab in the URL (D97)', () => {
+describe('SettingsSections: one module’s sections in the URL (D97, D156)', () => {
   const sections = {
     general: <p>general section</p>,
+    hours: <p>hours section</p>,
+    paying: <p>paying section</p>,
     publish: <p>publish section</p>,
     versioning: <p>versioning section</p>,
   }
 
-  it('has General, Hours, Ordering, Reservations, Publish and Versioning for a venue with a till; General by default', () => {
+  it('the venue’s own: General, Publish and Versioning with a till; General by default', () => {
     navigation.search = 'tab=settings'
-    renderWithIntl(<SettingsSections hasTill contents={sections} />)
+    renderWithIntl(<SettingsSections hasTill module="venue" contents={sections} />)
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'General',
-      'Hours',
-      'Ordering',
-      'Reservations',
       'Publish',
       'Versioning',
     ])
@@ -201,12 +206,9 @@ describe('SettingsSections: the sections of the Settings tab in the URL (D97)', 
 
   it('has no Publish section without a till, and ?section=publish opens General there', () => {
     navigation.search = 'tab=settings&section=publish'
-    renderWithIntl(<SettingsSections hasTill={false} contents={sections} />)
+    renderWithIntl(<SettingsSections hasTill={false} module="venue" contents={sections} />)
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'General',
-      'Hours',
-      'Ordering',
-      'Reservations',
       'Versioning',
     ])
     expect(screen.getByRole('tab', { name: 'General' }).getAttribute('aria-selected')).toBe('true')
@@ -217,63 +219,165 @@ describe('SettingsSections: the sections of the Settings tab in the URL (D97)', 
     expect(settingsSectionOf('reservations', false)).toBe('reservations')
   })
 
-  it('lists Staff and roles and Alerts only for a role holding their right, in the grouping’s order', () => {
-    navigation.search = 'tab=settings'
-    renderWithIntl(
-      <SettingsSections hasTill rights={{ roles: true, alerts: true }} contents={sections} />,
-    )
-    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'General',
-      'Hours',
-      'Ordering',
-      'Reservations',
-      'Staff and roles',
-      'Alerts',
-      'Publish',
-      'Versioning',
-    ])
-    expect(settingsSectionOf('staff', true)).toBe('general')
-    expect(settingsSectionOf('alerts', true, { roles: false, alerts: true })).toBe('alerts')
-    expect(settingsSectionOf('staff', true, { roles: false, alerts: true })).toBe('general')
-  })
-
-  it('lists Paying between Reservations and Staff and roles, only where the POS can take card payments', () => {
-    navigation.search = 'tab=settings'
+  it('Ordering’s: Hours, Ordering, Paying where the POS takes cards, Alerts with its right', () => {
+    navigation.search = 'tab=settings&section=hours'
     renderWithIntl(
       <SettingsSections
         hasTill
-        rights={{ roles: true, alerts: false, paying: true }}
+        module="ordering"
+        rights={{ roles: true, alerts: true, paying: true }}
         contents={sections}
       />,
     )
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'General',
       'Hours',
       'Ordering',
-      'Reservations',
       'Paying',
-      'Staff and roles',
-      'Publish',
-      'Versioning',
+      'Alerts',
     ])
-    expect(settingsSectionOf('paying', true, { roles: false, alerts: false, paying: true })).toBe(
-      'paying',
-    )
-    // A hand-made venue (nothing offered): the link opens General.
-    expect(settingsSectionOf('paying', false, { roles: true, alerts: true })).toBe('general')
+    expect(screen.getByText('hours section')).toBeTruthy()
   })
 
-  it('opens the section in ?section= and writes a choice to the URL, keeping ?tab=', async () => {
-    navigation.search = 'tab=settings&section=versioning'
-    renderWithIntl(<SettingsSections hasTill contents={sections} />)
-    expect(screen.getByRole('tab', { name: 'Versioning' }).getAttribute('aria-selected')).toBe(
-      'true',
+  it('Reservations’ one section needs no row', () => {
+    navigation.search = 'tab=settings&section=reservations'
+    renderWithIntl(<SettingsSections hasTill module="reservations" contents={sections} />)
+    expect(screen.queryByRole('tab')).toBeNull()
+    expect(screen.queryByRole('combobox')).toBeNull()
+  })
+
+  it('lists every section in module order, Staff, Alerts and Paying only with their right', () => {
+    expect(settingsSectionsOf(true, { roles: true, alerts: true, paying: true })).toEqual([
+      'general',
+      'staff',
+      'publish',
+      'versioning',
+      'hours',
+      'ordering',
+      'paying',
+      'alerts',
+      'reservations',
+    ])
+    expect(settingsSectionsOf(false)).toEqual([
+      'general',
+      'versioning',
+      'hours',
+      'ordering',
+      'reservations',
+    ])
+    expect(settingsSectionsOf(true, { roles: true, alerts: false }, 'venue')).toEqual([
+      'general',
+      'staff',
+      'publish',
+      'versioning',
+    ])
+    expect(settingsSectionOf('staff', true)).toBe('general')
+    expect(settingsSectionOf('alerts', true, { roles: false, alerts: true })).toBe('alerts')
+    expect(settingsSectionOf('paying', false, { roles: true, alerts: true })).toBe('hours')
+    // An unoffered section stays in its own module's Settings (critique L1).
+    expect(settingsSectionOf('alerts', true)).toBe('hours')
+    expect(settingsSectionOf('staff', true)).toBe('general')
+    // Every section has a module, and each module's first section is offered to every role.
+    for (const [module, first] of Object.entries(FIRST_SECTION_OF)) {
+      expect(SETTINGS_MODULE_OF[first]).toBe(module)
+      expect(settingsSectionsOf(false, undefined, module as SettingsModule)).toContain(first)
+    }
+  })
+
+  it('writes a choice to the URL, keeping ?tab= and leaving Paying’s provider return behind', async () => {
+    navigation.search = 'tab=settings&section=paying&connection=return'
+    renderWithIntl(
+      <SettingsSections
+        hasTill
+        module="ordering"
+        rights={{ roles: false, alerts: false, paying: true }}
+        contents={sections}
+      />,
     )
-    await userEvent.click(screen.getByRole('tab', { name: 'Publish' }))
+    expect(screen.getByRole('tab', { name: 'Paying' }).getAttribute('aria-selected')).toBe('true')
+    await userEvent.click(screen.getByRole('tab', { name: 'Hours' }))
     await waitFor(() => expect(navigation.replace).toHaveBeenCalledTimes(1))
-    expect(navigation.replace).toHaveBeenCalledWith(
-      '/venues/vn_demo?tab=settings&section=publish',
-      { scroll: false },
+    expect(navigation.replace).toHaveBeenCalledWith('/venues/vn_demo?tab=settings&section=hours', {
+      scroll: false,
+    })
+  })
+})
+
+describe('venueQueryRedirect: one address per screen (C1, C9)', () => {
+  const everything = { hasTill: true, rights: { roles: true, alerts: true, paying: true } }
+  const nothing = { hasTill: false, rights: NO_SETTINGS_RIGHTS }
+  const owner = { reservations: true }
+  const parse = (search: string) => Object.fromEntries(new URLSearchParams(search))
+
+  it.each([
+    // [link, rights, settings, where it is sent (null: left as it is)]
+    ['', owner, everything, null],
+    ['menu=mn_1', owner, everything, null],
+    ['tab=studio', owner, everything, null],
+    // The Studio's own `section` is a menu section's id: a reload or a shared item link keeps it.
+    ['tab=studio&menu=mn_1&section=nd_9&item=nd_4', owner, everything, null],
+    ['tab=composer&menu=mn_1&section=nd_9', owner, everything, 'tab=studio&menu=mn_1&section=nd_9'],
+    ['tab=composer&sub=structure', owner, everything, 'tab=studio&sub=structure'],
+    ['tab=tables', owner, everything, null],
+    ['tab=tables&view=log', owner, everything, 'tab=tables'],
+    ['tab=tonight&view=log', owner, everything, null],
+    ['tab=tonight&view=log&day=2026-11-18', owner, everything, null],
+    ['tab=tonight&section=hours', owner, everything, 'tab=tonight'],
+    ['tab=reservations&view=plan&guest=gs_1', owner, everything, null],
+    ['tab=reservations', { reservations: false }, everything, 'tab=studio'],
+    ['tab=settings', owner, everything, 'tab=settings&section=general'],
+    ['tab=settings&section=hours', owner, everything, null],
+    ['tab=settings&section=hours&view=log', owner, everything, 'tab=settings&section=hours'],
+    ['tab=settings&section=staff', owner, nothing, 'tab=settings&section=general'],
+    ['tab=settings&section=nonsense', owner, everything, 'tab=settings&section=general'],
+    // Paying carried to a venue no POS serves stays in Ordering settings (critique L1).
+    ['tab=settings&section=paying', owner, nothing, 'tab=settings&section=hours'],
+    // The payment provider's return (#116) and refresh keep their marker on Paying alone.
+    ['tab=settings&section=paying&connection=return', owner, everything, null],
+    [
+      'tab=settings&section=hours&connection=return',
+      owner,
+      everything,
+      'tab=settings&section=hours',
+    ],
+    ['tab=integration', owner, everything, 'tab=settings&section=general'],
+    ['tab=publishing', owner, everything, 'tab=settings&section=publish'],
+    ['tab=publishing', owner, nothing, 'tab=settings&section=general'],
+    ['tab=nonsense', owner, everything, 'tab=studio'],
+  ])('%s → %s', (search, rights, settings, expected) => {
+    expect(venueQueryRedirect(parse(search), rights, settings)).toBe(expected)
+  })
+
+  it('sends every link to an address it leaves as it is: one hop, never a loop', () => {
+    const links = [
+      'tab=composer&menu=mn_1&section=nd_9&view=log',
+      'tab=tables&view=log&day=2026-11-18',
+      'tab=tonight&section=hours&guest=gs_1',
+      'tab=reservations&menu=mn_1',
+      'tab=settings',
+      'tab=settings&section=paying&connection=return',
+      'tab=settings&section=alerts&view=log',
+      'tab=settings&section=staff&menu=mn_1',
+      'tab=settings&section=nonsense&connection=refresh',
+      'tab=integration&section=hours',
+      'tab=publishing',
+      'tab=nonsense&item=nd_4',
+    ]
+    for (const rights of [owner, { reservations: false }]) {
+      for (const settings of [everything, nothing]) {
+        for (const link of links) {
+          const target = venueQueryRedirect(parse(link), rights, settings)
+          if (target === null) continue
+          expect(venueQueryRedirect(parse(target), rights, settings), `${link} → ${target}`).toBe(
+            null,
+          )
+        }
+      }
+    }
+  })
+
+  it('treats a repeated parameter as not the one address', () => {
+    expect(venueQueryRedirect({ tab: 'tonight', view: ['log', 'orders'] }, owner, everything)).toBe(
+      'tab=tonight',
     )
   })
 })

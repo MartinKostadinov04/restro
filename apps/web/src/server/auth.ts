@@ -44,6 +44,9 @@ const DISABLED_HTTP_PATHS = [
   '/organization/remove-member',
   '/organization/update-member-role',
   '/organization/leave',
+  // Switching organisation goes through `switchOrganization` alone, which refuses a shared device
+  // (step 0's S1): over HTTP a tablet could leave its device row behind and become a full sign-in.
+  '/organization/set-active',
 ]
 
 /**

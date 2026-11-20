@@ -113,14 +113,17 @@ test('connect leaves for the provider’s form, and coming back says it needs mo
   const { context, page } = await open(browser, OWNER)
   await page.goto(paying())
   await expect(page.getByRole('heading', { name: 'Плащане', level: 2 })).toBeVisible()
-  // The section sits between Reservations (which follows Ordering) and Staff and roles, asked of
-  // the sections' own list: the venue's tab bar has a Reservations tab of its own now (#326).
+  // Paying is one of Ordering's Settings (D156), right after the Ordering section itself.
+  await expect(page.locator('[data-nav="settings-ordering"]')).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
   const tabs = await page
     .getByRole('tablist', { name: 'Смяна на секцията' })
     .getByRole('tab')
     .allTextContents()
-  expect(tabs.indexOf('Резервации')).toBe(tabs.indexOf('Поръчки') + 1)
-  expect(tabs.indexOf('Плащане')).toBe(tabs.indexOf('Резервации') + 1)
+  expect(tabs.indexOf('Плащане')).toBe(tabs.indexOf('Поръчки') + 1)
+  expect(tabs).not.toContain('Резервации')
   await expect(page.getByTestId('paying-missing-account')).toBeVisible()
   await page.waitForLoadState('networkidle')
   await snapshot(page, 'paying-never-connected.png')
@@ -255,8 +258,8 @@ test('pay first: hidden while card payments are off, 2 taps with Undo once they 
   await expect(page.getByTestId('paying-pay-first')).toHaveCount(0)
 
   runScript('./e2e/paying-account.ts', 'on')
-  // From the Settings tab: tap 1 is the section, tap 2 is the control.
-  await page.goto(`/venues/${venueId}?tab=settings`)
+  // From Ordering's Settings in the sidebar: tap 1 is the section, tap 2 is the control.
+  await page.goto(`/venues/${venueId}?tab=settings&section=hours`)
   await page.getByRole('tab', { name: 'Плащане' }).click()
   const card = page.getByTestId('paying-pay-first')
   await expect(card).toBeVisible()
@@ -341,10 +344,14 @@ test('a POS venue whose POS can’t take payments has no Paying section', async 
     .click()
   await expect(page).toHaveURL(/\/venues\/vn_[^/?]+/)
   const demoVenue = new URL(page.url()).pathname.split('/')[2] ?? ''
+  // An old link to the section stays in Ordering's Settings (its first section), which have no
+  // Paying.
   await page.goto(`/venues/${demoVenue}?tab=settings&section=paying`)
+  await expect(page).toHaveURL(/\?tab=settings&section=hours$/)
+  await expect(page.getByTestId('paying-panel')).toHaveCount(0)
+  await page.getByRole('link', { name: 'Настройки на поръчките' }).click()
   await expect(page.getByRole('tab', { name: 'Поръчки' })).toBeVisible()
   await expect(page.getByRole('tab', { name: 'Плащане' })).toHaveCount(0)
-  await expect(page.getByTestId('paying-panel')).toHaveCount(0)
   await context.close()
 })
 

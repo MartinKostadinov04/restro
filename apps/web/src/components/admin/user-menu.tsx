@@ -48,12 +48,15 @@ function initialOf(name: string): string {
   return ([...name.trim()][0] ?? '?').toUpperCase()
 }
 
-export function UserMenu({ name, email }: UserMenuProps) {
+/**
+ * The language, the colour theme and sign-out: the user menu's items, shared by the sidebar's
+ * footer and a shared device's top bar (D154), which has no sidebar.
+ */
+export function UserMenuItems() {
   const t = useTranslations('user')
   const tLanguage = useTranslations('language')
   const locale = useLocale()
   const router = useRouter()
-  const { isMobile } = useSidebar()
   const [, startTransition] = useTransition()
   const theme = useSyncExternalStore(subscribeToTheme, readThemeChoice, () => 'system' as const)
 
@@ -67,6 +70,55 @@ export function UserMenu({ name, email }: UserMenuProps) {
     router.replace('/login')
     router.refresh()
   }
+
+  return (
+    <>
+      <DropdownMenuGroup>
+        <DropdownMenuLabel className="flex items-center gap-2 text-xs text-muted-foreground">
+          <LanguagesIcon className="size-3.5" aria-hidden />
+          {tLanguage('label')}
+        </DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={locale}
+          onValueChange={(value) => startTransition(() => setAdminLocale(value))}
+        >
+          {ADMIN_LOCALES.map((option) => (
+            <DropdownMenuRadioItem key={option} value={option} lang={option}>
+              {tLanguage(`name.${option}`)}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuGroup>
+        <DropdownMenuLabel className="flex items-center gap-2 text-xs text-muted-foreground">
+          <SunMoonIcon className="size-3.5" aria-hidden />
+          {t('theme')}
+        </DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={theme}
+          onValueChange={(value) => {
+            if (isThemeChoice(value)) setThemeChoice(value)
+          }}
+        >
+          {THEME_CHOICES.map((choice) => (
+            <DropdownMenuRadioItem key={choice} value={choice}>
+              {t(`themes.${choice}`)}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onSelect={signOut} data-testid="sign-out">
+        <LogOutIcon aria-hidden />
+        {t('signOut')}
+      </DropdownMenuItem>
+    </>
+  )
+}
+
+export function UserMenu({ name, email }: UserMenuProps) {
+  const { isMobile } = useSidebar()
 
   return (
     <SidebarMenu>
@@ -106,46 +158,7 @@ export function UserMenu({ name, email }: UserMenuProps) {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="flex items-center gap-2 text-xs text-muted-foreground">
-                <LanguagesIcon className="size-3.5" aria-hidden />
-                {tLanguage('label')}
-              </DropdownMenuLabel>
-              <DropdownMenuRadioGroup
-                value={locale}
-                onValueChange={(value) => startTransition(() => setAdminLocale(value))}
-              >
-                {ADMIN_LOCALES.map((option) => (
-                  <DropdownMenuRadioItem key={option} value={option} lang={option}>
-                    {tLanguage(`name.${option}`)}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="flex items-center gap-2 text-xs text-muted-foreground">
-                <SunMoonIcon className="size-3.5" aria-hidden />
-                {t('theme')}
-              </DropdownMenuLabel>
-              <DropdownMenuRadioGroup
-                value={theme}
-                onValueChange={(value) => {
-                  if (isThemeChoice(value)) setThemeChoice(value)
-                }}
-              >
-                {THEME_CHOICES.map((choice) => (
-                  <DropdownMenuRadioItem key={choice} value={choice}>
-                    {t(`themes.${choice}`)}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={signOut} data-testid="sign-out">
-              <LogOutIcon aria-hidden />
-              {t('signOut')}
-            </DropdownMenuItem>
+            <UserMenuItems />
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>

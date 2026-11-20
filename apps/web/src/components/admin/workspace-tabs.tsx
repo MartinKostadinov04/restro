@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { type ReactNode, useEffect, useOptimistic, useRef, useTransition } from 'react'
+import { type ReactNode, useOptimistic, useTransition } from 'react'
 
 import {
   Select,
@@ -17,6 +17,7 @@ import {
   NO_SETTINGS_RIGHTS,
   NO_WORKSPACE_RIGHTS,
   SETTINGS_SECTION_DEFS,
+  type SettingsModule,
   type SettingsRights,
   type SettingsSectionValue,
   settingsSectionOf,
@@ -34,13 +35,14 @@ import {
 /**
  * The tab a URL parameter names, and the way to choose another. The current tab is *derived* from
  * the URL (the Platform set it while rendering); a choice shows at once (`useOptimistic`) while
- * `router.replace` writes the parameter, keeping the others, and the page catches up. Exported for
- * the composer's subtabs (`?sub=`, brief S6).
+ * `router.replace` writes the parameter, keeping the others but those named in `drop` (another
+ * tab's state, C1), and the page catches up. Exported for Tonight's and Reservations' views.
  */
 export function useUrlTab<V extends string>(
   param: string,
   resolve: (requested: string | null) => V,
   isValue: (value: string) => value is V,
+  drop: readonly string[] = [],
 ): readonly [V, (value: string) => void] {
   const router = useRouter()
   const pathname = usePathname()
@@ -49,17 +51,13 @@ export function useUrlTab<V extends string>(
 
   const fromUrl = resolve(searchParams.get(param))
   const [current, show] = useOptimistic(fromUrl)
-  // The tab last asked for: a click can fire Radix's change event twice (press, then focus) before
-  // the URL has caught up, and the URL should be written once.
-  const asked = useRef<string>(fromUrl)
-  useEffect(() => {
-    asked.current = fromUrl
-  }, [fromUrl])
 
+  // The tabs activate on a click or Enter only (`activationMode="manual"`), so one choice fires
+  // once: no remembered "last asked" to fall out of step with the URL (C6, C7).
   function select(value: string) {
-    if (!isValue(value) || value === asked.current) return
-    asked.current = value
+    if (!isValue(value) || value === current) return
     const params = new URLSearchParams(searchParams.toString())
+    for (const key of drop) params.delete(key)
     params.set(param, value)
     startTransition(() => {
       show(value)
@@ -94,7 +92,7 @@ export function UrlTabs<V extends string>({
 }) {
   const t = useTranslations()
   return (
-    <Tabs value={current} onValueChange={select}>
+    <Tabs value={current} onValueChange={select} activationMode="manual">
       {/* One tab is no choice: a device whose role is off the door has Tonight alone (D141). */}
       {defs.length > 1 ? (
         <>
@@ -144,7 +142,10 @@ export function UrlTabs<V extends string>({
 interface WorkspaceTabsProps {
   /** The content of every tab the person is offered (a tab nobody is offered needs none). */
   contents: Partial<Record<WorkspaceTabValue, ReactNode>>
-  /** A shared device: no composer tab (RR-83). */
+  /**
+   * A shared device: Tonight and Reservations only (RR-83). On a person's own sign-in the sidebar
+   * opens the venue's screens (D154) and this row is not drawn.
+   */
   sharedDevice?: boolean
   /** What the person holds: Reservations shows only with its key (#326). */
   rights?: WorkspaceRights
@@ -154,11 +155,11 @@ const isWorkspaceTabValue = (value: string): value is WorkspaceTabValue =>
   WORKSPACE_TAB_DEFS.some((tab) => tab.value === value)
 
 /**
- * The tabs of a venue workspace, mirrored in the URL (`?tab=settings`). Ported from the
- * Platform's PassportEdit.jsx (27-75, 157-179) with its two defects fixed: the tab list is
- * declared once (workspace-tab-defs.ts) and drawn twice from that list (tab bar on large screens,
- * select below it), and the current tab is *derived* from the URL instead of being set while
- * rendering.
+ * The screens of a shared device's venue page (Tonight, Reservations), mirrored in the URL
+ * (`?tab=tonight`); a person's own sign-in opens screens from the sidebar instead (D154). Ported
+ * from the Platform's PassportEdit.jsx (27-75, 157-179) with its two defects fixed: the tab list is
+ * declared once (workspace-tab-defs.ts), and the current tab is *derived* from the URL instead of
+ * being set while rendering.
  */
 export function WorkspaceTabs({
   contents,
@@ -191,27 +192,33 @@ export function WorkspaceTabs({
 }
 
 /**
- * The sections of the Settings tab (D97), mirrored in the URL as `?section=` beside `?tab=`, the
- * same port as the workspace tabs: General, Publish (only for a venue with a till) and Versioning.
+ * The sections of one module's Settings (D156), mirrored in the URL as `?section=` beside `?tab=`,
+ * the same port as the workspace tabs: the venue's (General, Staff and roles, Publish, Versioning),
+ * Ordering's (Hours, Ordering, Paying, Alerts) or Reservations' one, which needs no row.
  */
 export function SettingsSections({
   hasTill,
   rights = NO_SETTINGS_RIGHTS,
+  module,
   contents,
 }: {
   hasTill: boolean
   /** What the person holds: Staff and roles and Alerts show only with their right. */
   rights?: SettingsRights
+  /** The module whose sections the row offers; the sidebar opens the others. */
+  module: SettingsModule
   /** The content of each section the venue has. */
   contents: Partial<Record<SettingsSectionValue, ReactNode>>
 }) {
   const t = useTranslations('workspace')
-  const sections = settingsSectionsOf(hasTill, rights)
+  const sections = settingsSectionsOf(hasTill, rights, module)
   const defs = SETTINGS_SECTION_DEFS.filter((def) => sections.includes(def.value))
   const [current, select] = useUrlTab<SettingsSectionValue>(
     'section',
     (requested) => settingsSectionOf(requested, hasTill, rights),
     (value): value is SettingsSectionValue => sections.some((section) => section === value),
+    // The payment provider's return (#116) is Paying's: leaving Paying leaves it behind.
+    ['connection'],
   )
   return (
     <UrlTabs
@@ -220,10 +227,6 @@ export function SettingsSections({
       select={select}
       contents={contents}
       label={t('switchSection')}
-      // Nine sections on a venue with everything (Reservations made the ninth) do not fit one row
-      // beside their icons below 2xl: the icons go first, and the row scrolls inside itself
-      // rather than the page.
-      listClassName="hidden max-w-full overflow-x-auto lg:inline-flex [&_svg]:hidden 2xl:[&_svg]:block"
     />
   )
 }

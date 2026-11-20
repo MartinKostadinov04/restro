@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto'
 import type { DbPool } from '@restro/db'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-
+import * as switching from '../actions'
 import { getPool } from '../db'
 import * as design from '../design/actions'
 import * as integration from '../integration/actions'
@@ -37,7 +37,7 @@ vi.mock('@/server/jobs', async () => (await import('./attack-session')).jobsModu
 vi.mock('@/server/log', async () => (await import('./attack-session')).logModule)
 
 /**
- * Every action of these five files: none of them is Tonight's, or the tablet's landing's. The design
+ * Every action of these six files: none of them is Tonight's, or the tablet's landing's. The design
  * ones are here since #177: a Style is the organisation's, not a venue's, so they take no venue to
  * aim at and only the device check can refuse them on a shared tablet.
  */
@@ -47,6 +47,8 @@ const ADMIN_ACTIONS: ReadonlySet<string> = new Set([
   ...Object.keys(venues),
   ...Object.keys(organization),
   ...Object.keys(design),
+  // Switching organisation would turn the tablet into the account's full sign-in elsewhere (S1).
+  ...Object.keys(switching),
 ])
 
 const refused = (answer: unknown) =>
