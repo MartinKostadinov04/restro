@@ -91,15 +91,20 @@ export function missingCodes(view: TablesView): number {
 /**
  * The areas as jump links at the top, each with its table count (S14): one tap to an area. The
  * count is what the summary counts (no payment table), so the areas add up to it; the link's name
- * reads "Terrace, 5 tables", not the two spans run together.
+ * reads "Terrace, 5 tables", not the two spans run together. An area with no table guests sit
+ * at (one that holds only payment tables, or none yet) is left out: its section stays below. With
+ * fewer than two areas to jump to there is no index.
  */
 function AreaIndex({ halls }: { halls: TablesView['halls'] }) {
   const t = useTranslations('tables')
+  const entries = halls
+    .map((hall) => ({ hall, count: hall.tables.filter((row) => !row.isPaymentTable).length }))
+    .filter((entry) => entry.count > 0)
+  if (entries.length < 2) return null
   return (
     <nav aria-label={t('index.label')} data-testid="area-index">
       <ul className="flex flex-wrap gap-2">
-        {halls.map((hall) => {
-          const count = hall.tables.filter((row) => !row.isPaymentTable).length
+        {entries.map(({ hall, count }) => {
           return (
             <li key={hall.id} className="min-w-0 max-w-full">
               <Button
@@ -242,7 +247,7 @@ function Panel({ view: given }: { view: TablesView }) {
         <QrAddressCard view={view} codesUnavailable={codesUnavailable} onRetry={retry} />
       ) : null}
 
-      {view.halls.length > 1 ? <AreaIndex halls={view.halls} /> : null}
+      <AreaIndex halls={view.halls} />
 
       {view.halls.length === 0 ? (
         <div className="space-y-1" data-testid="areas-empty">

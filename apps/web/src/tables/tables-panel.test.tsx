@@ -162,6 +162,37 @@ describe('the Tables & QR tab', () => {
     expect(screen.getByTestId('tables-summary').textContent).toBe('4 tables, 1 with a code')
   })
 
+  it('leaves out of the index an area with no table guests sit at; its section stays', () => {
+    const base = view()
+    const tillOnly = view({
+      halls: base.halls.map((hall) => ({
+        ...hall,
+        tables: hall.tables.map((row) =>
+          row.id === SOLE ? { ...row, isPaymentTable: true } : row,
+        ),
+      })),
+      guestTotal: 4,
+    })
+    renderWithIntl(<TablesPanel view={tillOnly} />)
+    expect(
+      screen.getAllByTestId('area-jump').map((jump) => jump.getAttribute('aria-label')),
+    ).toEqual(['Main hall, 2 tables', 'Terrace, 2 tables'])
+    expect(areaOf(AREA_TABLES)).toBeTruthy()
+  })
+
+  it('has no index when only one area has tables guests sit at', () => {
+    const base = view()
+    const oneArea = view({
+      halls: base.halls.map((hall) => ({
+        ...hall,
+        tables: hall.id === AREA_TERRACE ? hall.tables : [],
+      })),
+    })
+    renderWithIntl(<TablesPanel view={oneArea} />)
+    expect(screen.queryByTestId('area-index')).toBeNull()
+    expect(screen.getAllByTestId('hall')).toHaveLength(3)
+  })
+
   it('has no index when the venue has a single area', () => {
     const base = view()
     renderWithIntl(<TablesPanel view={view({ halls: base.halls.slice(0, 1) })} />)
