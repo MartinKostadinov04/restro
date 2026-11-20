@@ -17,7 +17,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: copy-rules rule 5; copy-rules rule 4; design-critique 2 (a dead end)
 - Evidence: S1-before.jpg; the sheet text and a disabled button 350×48
 - Proposal: if the bill is empty, replace the form with "Няма какво да се плати" / "Nothing to pay yet" and a "Към менюто" / "Back to the menu" button. Alternatively hide the Pay entry while nothing is owed.
-- Status: confirmed (see Review)
+- Status: re-verified (11-20, sr/lane3-walk): empty bill (table 33) opens "Няма какво да се плати" + "Към менюто", no form; from the bill's "Плати" the whole bill comes pre-ticked (see S14)
 
 ### S2. On a phone, Tonight names the same screen three times and stacks two dropdowns above the content
 - Kind: simplification
@@ -28,7 +28,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: operational-screens.md Clean rule 2; screen read 3
 - Evidence: S2-before.jpg
 - Proposal: at 390 px keep only the heading and drop one of the dropdowns, or move the section switch into the heading row. Alerts then sit about 120 px higher.
-- Status: confirmed (see Review)
+- Status: still open (11-20): the section switch now sits in the heading row, but the "Чака вас 1" heading still repeats the "Чака вас 1 / Маси" switch right above it; first alert at y≈440 (was 480)
 
 ### S3. The table sheet on Tonight has no visible close control
 - Kind: bug
@@ -39,7 +39,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: operational-screens.md, "How do I get out" on Tonight; WCAG 2.5.7 (the drawer is dismissed only by drag or tap outside)
 - Evidence: S3-before.jpg; the sheet's buttons are 358×44 each and none is a close control
 - Proposal: add a "Затвори" / "Close" 44 px control in the sheet's top-right corner, as the guest's sheets have.
-- Status: confirmed (see Review)
+- Status: re-verified (11-20, sr/lane3-walk): at 390 px the table drawer has a 358×44 "Затвори" button under its two actions; Esc still closes it
 
 ### S4. A table can be "Отворена" for phones while phones cannot order, and Tonight does not say so
 - Kind: bug
@@ -50,7 +50,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: operational-screens.md screen read 4 (state over normal); copy-rules rule 4 (no fix named); D72
 - Evidence: guest bag text (dialog innerText); Tonight sheet text "Бар 2 · отворена от 09:45"
 - Proposal: on Tonight's header and on each open tile or sheet add a line "Поръчките от телефон започват в 22:00" / "Phone orders start at 22:00". In the guest bag, put the start time on the bar's "Виж поръчката" line instead of "прибл. 205,00 €".
-- Status: confirmed (see Review)
+- Status: re-verified (11-20, sr/lane3-walk), from the code plus a short look: Tonight's header and the table sheet show "Поръчките от телефон започват в {time}" from the venue's hours (server/tonight/load.ts phoneOrdersOf; tonight-panel.tsx:394; table-sheet.tsx:156); not seen live because hours open at 08:00, and nothing shows while ordering runs
 
 ### S5. The Pay sheet names the same three figures differently in Bulgarian and English
 - Kind: bug
@@ -61,7 +61,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: copy-rules rules 3, 8 and 9
 - Evidence: Pay sheet text in both languages (see S1)
 - Proposal: "Selected" / "Избрано" for the second row in both languages, or a matching pair of words.
-- Status: confirmed (see Review)
+- Status: re-verified (11-20, sr/lane3-walk): BG Pay sheet reads "За плащане / Избрано / Общо" live; EN "Selected" from packages/shell/src/strings.ts:691 (EN Pay not opened live)
 
 ### S6. Call a waiter: the first option repeats the dialog's title, and the confirmation is about "it"
 - Kind: simplification
@@ -72,7 +72,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: copy-rules rules 3 and 9; design-critique 4
 - Evidence: Call sheet text in BG and EN (buttons "Повикай сервитьор", "Сметката, моля", "Лед", "Вода", "Чаши", "Почистване на масата", "ПОС терминал")
 - Proposal: rename the first tile "Друго" / "Something else" (or "Просто повикай" / "Just call"). Confirm with "Заявката е изпратена" / "Request sent" and "Чакаме сервитьорът да я потвърди." / "Waiting for a waiter to confirm."
-- Status: confirmed (see Review)
+- Status: re-verified (11-20, sr/lane3-walk): first tile "Друго"; after "Лед" the sheet says "Заявката е изпратена / Чакаме сервитьор да я потвърди." with "Лед" under it; Ice has its own icon; EN "Something else" / "Request sent" (strings.ts:548, 554)
 
 ### S7. Bill sheet has no way to refresh and shows an age that only grows
 - Kind: optimisation
@@ -83,7 +83,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: design-critique 2 (is it obvious?); operational-screens feedback 1
 - Evidence: Bill dialog text (no refresh button in its button list)
 - Proposal: add "Обнови" / "Refresh" next to the age, or say "Обновява се само" / "Refreshes by itself" if it does. A reviewer should confirm the polling first.
-- Status: confirmed (see Review)
+- Status: re-verified (11-20, sr/lane3-walk): the age label ticks every second (17 → 29 s) and resets on a new reading (→ 15 s); once it showed "Последната поръчка още влиза в сметката" in its place
 
 ### S8. Dev-only: the guest table page showed an empty skeleton for several seconds on first load
 - Kind: optimisation
@@ -105,7 +105,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: design-critique 4 (consistency); design-critique 3 (hierarchy)
 - Evidence: S9-before.jpg
 - Proposal: one fixed layout per line: name and price on the first row, then "Remove" on the left and the stepper on the right on the second row, with no alternating band.
-- Status: confirmed (see Review)
+- Status: re-verified (11-20, sr/lane3-walk): four lines in EN, each with name and price, then Remove on the left and the stepper on the right; no bands
 
 ### S10. A €525 Send is refused as "Ordering is paused" and stops table 32 for everyone, and the guest is not told it was the amount
 - Kind: bug
@@ -116,7 +116,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: copy-rules rule 4; operational-screens.md screen read 4; D118 (cap at Send)
 - Evidence: S10-before.jpg; Log rows 14:54
 - Proposal: guest: "This order is too large to send from a phone. Send fewer items or ask your waiter." / "Тази поръчка е твърде голяма за телефон. Изпратете по-малко или повикайте сервитьор." Waiter alert: add the amount and the limit: "Маса 32: поръчка за 525,00 € над лимита …. Прегледайте и пуснете масата."
-- Status: confirmed (see Review)
+- Status: re-verified (11-20, sr/lane3-walk): the €525 Send shows "This order is over the limit for phone orders. Your waiter will take it."; the Tonight alert reads "Поръчка за 525,00 € над лимита от 150,00 €. Прегледайте масата и я пуснете."; the old "Ordering is paused right now…" notice still sits above the new line
 
 ### S11. On Tonight at tablet width, the section tabs, the sheet close and the menu items are under the 44 px floor
 - Kind: bug
@@ -127,7 +127,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: Restro 44 px floor; operational-screens.md "Targets and text"
 - Evidence: S11-before.jpg; measured heights in the DOM
 - Proposal: on Tonight, give the section tabs, the sheet X (a 44 px hit area) and the menu items 44 px; the venue tabs and the sidebar toggle are the admin shell (navigation → lane 6).
-- Status: confirmed (see Review)
+- Status: still open (11-20): section tabs 128×44, order-sheet X 44×44, "…" items 44 laid out (41.8 measured = the menu's 0.95 open animation frozen in the hidden pane), end-night X 44×44; but "Отвори страницата за гости" is 244×37: publish-bar.tsx:39 defines its own WRAPS "h-auto min-h-9" that shadows lib/wrapping's min-h-12, so .min-h-9 (36px) wins and phone:h-11 applies only under 48rem or a coarse pointer
 
 ### S12. "Край на вечерта" is a report tab; the action that ends the night is hidden in a "…" menu on another tab
 - Kind: simplification
@@ -138,7 +138,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: copy-rules rule 3; operational-screens.md wayfinding 2 and Patterns ("secondary actions of a row")
 - Evidence: End of night text and the "…" menu items "Затвори всички…", "Приключи вечерта" (DOM text; no screenshot)
 - Proposal: put a "Приключи вечерта" / "End the night" button on the "Край на вечерта" tab, and call the report "Вечерта в числа" / "The night in numbers" (or the reverse).
-- Status: confirmed (see Review)
+- Status: re-verified (11-20, sr/lane3-walk): a "Приключи вечерта" button (165×48) heads the "Край на вечерта" tab; the tab keeps its name; once the night ended the button is gone
 
 ### S13. The End-the-night dialog is a wall of reservation jargon
 - Kind: bug
@@ -149,7 +149,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: copy-rules rules 4, 8, 11; GLOSSARY ("Party"/reservation words); operational-screens.md Clean rule 1
 - Evidence: S13-before.jpg
 - Proposal: list as lines: "10 маси се затварят за телефони", "3 сметки остават отворени в POS", "3 резервации стават „не дошли“". Show the banner or the alert for open bills, not both.
-- Status: confirmed (see Review)
+- Status: re-verified (11-20, sr/lane3-walk): the dialog lists "9 маси се затварят за телефони", "3 сметки остават отворени в test POS", "Приключени: 1 / Не дошли: 3 / Неседнали: 2"; X 44×44; after confirming only the alert "3 сметки са още отворени" shows (no banner), and "Отвори всички" and "Спри поръчките" are disabled
 
 ### S14. The bill's "Pay €110.00" button opens the Pay sheet at "€0.00" and "Choose at least one line", then a second Pay
 - Kind: simplification
@@ -160,7 +160,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: design-critique 2 (unnecessary steps); copy-rules rule 3
 - Evidence: Pay sheet text at each step
 - Proposal: pre-select the lines the bill's button spoke of, so the Pay sheet opens with "Pay €110.00" ready; show the Tip row only if a tip can be set; the confirmation button says "Confirm €110.00" / "Потвърди 110,00 €".
-- Status: confirmed (see Review)
+- Status: re-verified (11-20, sr/lane3-walk): bill "Плати 95,00 €" → Pay sheet with "Цялата сметка" pre-ticked and "Плати 95,00 €" ready → "Потвърди 95,00 €" (no Tip row) → "Платено" M7HPK; 3 taps, sim-pay
 
 ### S15. Log: one phone order is three rows, and one row says only "настройка"
 - Kind: simplification
@@ -171,7 +171,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: operational-screens.md Clean rule 1; copy-rules rule 4
 - Evidence: Log text at 14:58, 14:53 and 09:54
 - Proposal: collapse an order's steps into one row that shows its latest state ("Поръчка V96: Добавена · 3 стъпки") that opens the steps; say what the setting is: "Променено: часове за поръчки".
-- Status: confirmed (see Review)
+- Status: re-verified (11-20, sr/lane3-walk): order VQH is one row "Поръчка VQH: Добавена · 3 стъпки" that expands; the hours change reads "Променени настройки: часове за поръчки"
 
 ### S16. Tapping a closed table's tile opens it for phones at once, though the tile says "closed"
 - Kind: bug
@@ -182,7 +182,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: WCAG 2.2 4.1.2; operational-screens.md screen read 4
 - Evidence: tile aria-label before and the toast after
 - Proposal: name the control by its action ("Отвори маса 32 за телефони") and keep the Undo. Alternatively always open the sheet first, as with an open table.
-- Status: confirmed (see Review)
+- Status: re-verified (11-20, sr/lane3-walk): tapping the closed tile "Маса 32" opens its sheet with "Отвори за телефони" and a 44 px close; that button opens the table with the toast "Маса 32 е отворена за телефони | Върни"
 
 ### S17. All "Add" buttons stay live on a table that is closed for phones, and the reason comes only after a tap
 - Kind: bug
@@ -193,7 +193,7 @@ Open PR #451 (Not served refunds a paid line) is in flight: rows that touch it a
 - Check: copy-rules rule 4; design-critique 2; D72 (no local success)
 - Evidence: toast text; 29 active Add buttons in the DOM
 - Proposal: one calm line at the top of the page, "Тази маса не приема поръчки от телефон. Повикайте сервитьор." / "This table is not taking phone orders. Call a waiter.", and the Add buttons replaced by the waiter call.
-- Status: confirmed (see Review)
+- Status: re-verified (11-20, sr/lane3-walk): table 33 closed from its sheet; the guest page at 1180 EN has 0 Add buttons and no waiter bell, and shows "This table isn't open for phone orders. Ask a waiter."
 
 ## Code rows (code check, Opus, `code-review high`)
 
@@ -300,7 +300,7 @@ The reviewer walked blind, then reproduced every row on a fresh seed (venue `vn_
 - Check: copy-rules rule 5; design-critique 2
 - Evidence: S18-review.jpg; dialog innerText
 - Proposal: while a sent card is shown, replace the empty line with "Добавете още от менюто." / "Add more from the menu."
-- Status: confirmed
+- Status: re-verified (11-20, sr/lane3-walk): after "Изпрати 1 артикул" the bag shows "Добавете още от менюто." above the "Добавено към сметката ви" card
 - Verdict: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: yes · Fix: F4
 
 ### S19. Call a waiter on a closed table: the bell and Send are offered, and the refusal talks about orders (reviewer)
@@ -312,7 +312,7 @@ The reviewer walked blind, then reproduced every row on a fresh seed (venue `vn_
 - Check: copy-rules rule 4; design-critique 2
 - Evidence: dialog innerText; `packages/shell/src/strings.ts:625` (`table_not_open` is shared by Send and Call)
 - Proposal: hide the bell when the table is not open for phones; give calls their own refusal: "Тази маса не е отворена за телефони. Махнете на сервитьор." / "This table isn't open for phones. Wave to a waiter." Whether calls should outlive the bill is a question for Martin.
-- Status: confirmed
+- Status: re-verified (11-20, sr/lane3-walk): closed table 33 at 390 BG has no bell and no Add, with "Тази маса не е отворена за поръчки от телефон. Попитайте сервитьор."; calls have their own refusal (strings.ts:611); paying the whole bill did not close the table this time, so it was closed from the sheet
 - Verdict: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: yes · Fix: F2 + F4
 
 ### S20. The Log shows "таксувано" (charged) twice for one payment (reviewer)
@@ -324,7 +324,7 @@ The reviewer walked blind, then reproduced every row on a fresh seed (venue `vn_
 - Check: operational-screens Clean rule 1; copy-rules rule 4
 - Evidence: Log text at 15:20; the code above
 - Proposal: render `table_freed` as "Плащане за Маса 32: масата за плащане е освободена" / "Payment for Table 32: payment table freed"; `release_refused` likewise.
-- Status: confirmed
+- Status: re-verified (11-20, sr/lane3-walk): one payment shows "таксувано" once; the freed row reads "Плащане за Маса 33: масата за плащане е освободена" (one payment is still seven rows)
 - Verdict: confirmed · Severity: Before the pilot (a manager could refund a "duplicate") · Effort: S · Decision: none · Needs Martin's yes: no · Fix: F8
 
 ## Fix plan (reviewer)
