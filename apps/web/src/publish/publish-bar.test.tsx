@@ -133,8 +133,98 @@ describe('the Publish bar with one menu', () => {
     expect(screen.getByTestId('guest-link').getAttribute('href')).toBe('/m/demo-org/demo-club')
   })
 
-  it('draws nothing at all for that role when there is no guest page to open (RR-90)', () => {
+  it('tells that role where the venue stands, without the button (S27)', () => {
+    render(barView({ canPublish: false }))
+    expect(reason()).toBe('1 change waiting')
+  })
+
+  const upToDate = () =>
+    barView({
+      canPublish: false,
+      menus: [barMenu({ changes: 0, list: NO_CHANGES, identical: true })],
+    })
+
+  it('tells that role the venue is up to date (S27)', () => {
+    render(upToDate())
+    expect(reason()).toBe('Up to date: guests see the latest version.')
+    expect(screen.queryByTestId('publish-button')).toBeNull()
+  })
+
+  it('tells that role the venue is up to date in Bulgarian (S27)', () => {
+    render(upToDate(), { locale: 'bg' })
+    expect(reason()).toBe('Актуално: гостите виждат последната версия.')
+  })
+
+  describe('the state line for a role that may not publish, branch by branch (S27)', () => {
+    const SAME = { changes: 0, identical: true, list: NO_CHANGES } as const
+    const member = (overrides: Partial<PublishBarView> = {}) =>
+      barView({ canPublish: false, ...overrides })
+    const cases: readonly [string, PublishBarView, BusyView, string][] = [
+      ['no menu', member({ menus: [] }), null, 'This venue has no menu yet.'],
+      ['busy', member(), 'publish', 'Waiting for the publisher…'],
+      [
+        'a draft that cannot go out',
+        member({ menus: [barMenu({ changes: null, list: null, blocked: 'no_visible_items' })] }),
+        null,
+        'Nothing visible to publish: show at least one item in Structure.',
+      ],
+      [
+        'several menus, all up to date',
+        member({ menus: [barMenu(SAME), barMenu({ ...SAME, menuId: 'nd_other', live: false })] }),
+        null,
+        'Up to date: every menu is published as it is.',
+      ],
+      [
+        'never published',
+        member({ menus: [barMenu({ published: false, changes: 2, list: TWO_ADDED })] }),
+        null,
+        'Nothing is published yet.',
+      ],
+      [
+        'nothing new, automatic publishing paused',
+        member({ paused: true, menus: [barMenu(SAME)] }),
+        null,
+        'Nothing new; automatic publishing is paused.',
+      ],
+      [
+        'nothing new, the address switched off',
+        member({ addressServed: false, menus: [barMenu(SAME)] }),
+        null,
+        'Nothing new; the menu address is switched off.',
+      ],
+      [
+        'small changes waiting',
+        member({ menus: [barMenu({ changes: 0, identical: false })] }),
+        null,
+        'Small changes waiting',
+      ],
+    ]
+    for (const [name, view, busy, text] of cases) {
+      it(name, () => {
+        render(view, { busy })
+        expect(reason()).toBe(text)
+        expect(screen.queryByTestId('publish-button')).toBeNull()
+        expect(screen.queryByText('Only an owner or admin can publish.')).toBeNull()
+        // Never what publishing would do: that is for a role that may publish.
+        expect(reason()).not.toMatch(/publishing (resumes|switches)|until you publish/)
+      })
+    }
+
+    it('says the paused state in Bulgarian', () => {
+      render(member({ paused: true, menus: [barMenu(SAME)] }), { locale: 'bg' })
+      expect(reason()).toBe('Нищо ново; автоматичното публикуване е спряно.')
+    })
+  })
+
+  it('keeps the state line for that role when there is no guest page to open (S27)', () => {
     render(barView({ canPublish: false, guestPath: null }))
+    expect(screen.queryByTestId('guest-link')).toBeNull()
+    expect(screen.queryByTestId('publish-button')).toBeNull()
+    expect(reason()).toBe('1 change waiting')
+  })
+
+  it('draws nothing for that role on Tonight’s way with no guest page (RR-80)', () => {
+    render(barView({ canPublish: false, guestPath: null }), { onlyWhatWorks: true })
     expect(screen.queryByTestId('publish-bar')).toBeNull()
   })
 
@@ -147,6 +237,7 @@ describe('the Publish bar with one menu', () => {
     )
     expect(screen.queryByTestId('publish-button')).toBeNull()
     expect(document.querySelector(':disabled')).toBeNull()
+    expect(reason()).toBe('2 changes waiting')
   })
 
   it('before the first publish: everything is new', async () => {

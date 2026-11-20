@@ -19,8 +19,11 @@ vi.mock('next/navigation', () => ({ useRouter: () => router }))
 const VENUE_ID = 'vn_abcdefghijklmnopqrstuv'
 const NAME = 'Neon Cellar'
 
-function zone(locale?: 'bg') {
-  renderWithIntl(<VenueDangerZone venueId={VENUE_ID} venueName={NAME} />, locale ? { locale } : {})
+function zone(locale?: 'bg', hasTill = true) {
+  renderWithIntl(
+    <VenueDangerZone venueId={VENUE_ID} venueName={NAME} hasTill={hasTill} />,
+    locale ? { locale } : {},
+  )
   return userEvent.setup({ delay: null })
 }
 
@@ -57,6 +60,25 @@ describe('the delete dialog', () => {
     expect(effects).toContain('link to the till is released')
     expect(effects).toContain('Nothing is erased')
     expect(effects).toContain('Settings › Deleted venues')
+  })
+
+  it('names the till link it releases only for a venue that has one (N2)', async () => {
+    const user = zone(undefined, true)
+    await user.click(open())
+    const items = screen.getByTestId('delete-venue-effects').querySelectorAll('li')
+    expect(items).toHaveLength(4)
+    expect(screen.getByTestId('delete-venue-effects').textContent).toContain(
+      'link to the till is released',
+    )
+  })
+
+  it('leaves the till link out for a hand-made venue (N2)', async () => {
+    const user = zone(undefined, false)
+    await user.click(open())
+    const effects = screen.getByTestId('delete-venue-effects')
+    expect(effects.querySelectorAll('li')).toHaveLength(3)
+    expect(effects.textContent).not.toContain('till')
+    expect(effects.textContent).toContain('Nothing is erased')
   })
 
   it('keeps the button shut until the venue’s name is typed (spaces around it do not count)', async () => {
@@ -136,11 +158,11 @@ describe('the delete dialog', () => {
     )
   })
 
-  it('starts empty each time it is opened, and Cancel closes it without a call', async () => {
+  it('starts empty each time it is opened, and Keep venue closes it without a call (S20)', async () => {
     const user = zone()
     await user.click(open())
     await user.type(typed(), 'Neon')
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await user.click(screen.getByRole('button', { name: 'Keep venue' }))
     await waitFor(() => expect(screen.queryByTestId('delete-venue-dialog')).toBeNull())
     await user.click(open())
     expect(typed().value).toBe('')
@@ -156,5 +178,7 @@ describe('the delete dialog', () => {
       'Настройки › Изтрити заведения',
     )
     expect(confirm().textContent).toBe('Изтрий заведението')
+    // The way out names what it keeps (copy rule 11, S20).
+    expect(screen.getByRole('button', { name: 'Запази заведението' })).toBeTruthy()
   })
 })

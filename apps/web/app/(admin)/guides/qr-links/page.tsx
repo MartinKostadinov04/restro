@@ -31,15 +31,21 @@ export default async function QrLinksGuidePage({ searchParams }: PageProps<'/gui
   return (
     <>
       <AdminHeader trail={[{ label: tNav('venues'), href: '/venues' }]} current={t('title')} />
-      <div className="mx-auto w-full max-w-3xl flex-1 space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-        <Link
-          href={back}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          data-testid="guide-back"
-        >
-          <ArrowLeftIcon className="size-4" aria-hidden />
-          {t('back')}
-        </Link>
+      <div
+        className="mx-auto w-full max-w-3xl flex-1 space-y-6 px-4 py-6 sm:px-6 lg:px-8"
+        data-testid="guide-page"
+      >
+        {/* On a line of its own, a 44 px row on a phone (D123, S18). */}
+        <div>
+          <Link
+            href={back}
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground phone:min-h-11 hover:text-foreground"
+            data-testid="guide-back"
+          >
+            <ArrowLeftIcon className="size-4" aria-hidden />
+            {t('back')}
+          </Link>
+        </div>
         {text === null ? (
           <p className="text-sm text-muted-foreground" data-testid="guide-missing">
             {t('missing')}

@@ -365,12 +365,13 @@ function SpotLine({ view }: { view: OrderingView }) {
   const format = useFormatter()
   const spot = view.settings.spot
   if (spot === null) return null
+  // `tap-area`: a 44 px hit area on a phone (D123); the link ends its line, with room around it.
   const link = (chunks: React.ReactNode) => (
     <a
       href={mapLink(spot.lat, spot.lng)}
       target="_blank"
       rel="noopener noreferrer"
-      className="underline underline-offset-2"
+      className="tap-area underline underline-offset-2"
     >
       {chunks}
     </a>

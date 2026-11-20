@@ -158,11 +158,11 @@ describe('the Delete permanently dialog', () => {
     expect(purged).not.toHaveBeenCalled()
   })
 
-  it('starts empty each time it is opened, and Cancel closes it without a call', async () => {
+  it('starts empty each time it is opened, and Keep venue closes it without a call (S20)', async () => {
     const user = dialog()
     await user.click(opener())
     await user.type(typed(), 'Neon')
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await user.click(screen.getByRole('button', { name: 'Keep venue' }))
     await waitFor(() => expect(screen.queryByTestId('purge-venue-dialog')).toBeNull())
     await user.click(opener())
     expect(typed().value).toBe('')
@@ -178,5 +178,7 @@ describe('the Delete permanently dialog', () => {
       'Кодовете никога не се връщат',
     )
     expect(confirm().textContent).toBe('Изтрий завинаги')
+    // The way out names what it keeps (copy rule 11, S20).
+    expect(screen.getByRole('button', { name: 'Запази заведението' })).toBeTruthy()
   })
 })
