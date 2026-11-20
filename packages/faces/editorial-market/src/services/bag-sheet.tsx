@@ -252,7 +252,12 @@ export function BagSheet() {
         </p>
       )}
 
-      {order.known && !hasLines ? <p className="ro-empty">{words.emptyOrder}</p> : null}
+      {/* Beside a sent order's card the empty line would contradict it (lane 3 S18): it invites more. */}
+      {order.known && !hasLines ? (
+        <p className="ro-empty" data-slot="order.empty">
+          {o.sentOrders.length > 0 ? words.addMore : words.emptyOrder}
+        </p>
+      ) : null}
       {hasLines ? (
         <ul className="ro-lines">
           {order.resolved.lines.map((entry) => {
@@ -263,7 +268,11 @@ export function BagSheet() {
             return (
               <li
                 key={line.id}
-                className={linePhotos && entry.item?.image != null ? 'has-line-photo' : undefined}
+                className={
+                  linePhotos && entry.item?.image != null
+                    ? 'ro-orderline has-line-photo'
+                    : 'ro-orderline'
+                }
                 data-order-line={line.id}
                 data-item-id={line.itemId}
                 data-qty={line.qty}
@@ -281,9 +290,12 @@ export function BagSheet() {
                   />
                 ) : null}
                 <div className="ro-line-main">
-                  <strong>
-                    {entry.item === null ? name : <Text value={entry.item.name} page={locale} />}
-                  </strong>
+                  <div className="ro-line-head">
+                    <strong>
+                      {entry.item === null ? name : <Text value={entry.item.name} page={locale} />}
+                    </strong>
+                    {entry.total === null ? null : <b>{entry.total.text}</b>}
+                  </div>
                   {entry.options.length > 0 ? (
                     <small>
                       {entry.options.map((option, index) => (
@@ -306,27 +318,24 @@ export function BagSheet() {
                   ) : null}
                   {line.held ? <small>{words.heldLine}</small> : null}
                   {line.held ? null : (
-                    <div className="ro-line-actions">
-                      <button
-                        type="button"
-                        aria-label={`${words.remove}: ${name}`}
-                        onClick={() => void o.remove(line.id)}
-                      >
-                        {words.remove}
-                      </button>
+                    <div className="ro-line-foot">
+                      <div className="ro-line-actions">
+                        <button
+                          type="button"
+                          aria-label={`${words.remove}: ${name}`}
+                          onClick={() => void o.remove(line.id)}
+                        >
+                          {words.remove}
+                        </button>
+                      </div>
+                      <Stepper
+                        size="sm"
+                        value={line.qty}
+                        label={name}
+                        words={words}
+                        onChange={(qty) => void o.change(line.id, qty - line.qty)}
+                      />
                     </div>
-                  )}
-                </div>
-                <div className="ro-line-side">
-                  {entry.total === null ? null : <b>{entry.total.text}</b>}
-                  {line.held ? null : (
-                    <Stepper
-                      size="sm"
-                      value={line.qty}
-                      label={name}
-                      words={words}
-                      onChange={(qty) => void o.change(line.id, qty - line.qty)}
-                    />
                   )}
                 </div>
               </li>

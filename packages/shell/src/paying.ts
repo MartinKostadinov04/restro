@@ -458,6 +458,9 @@ export function refusalText(
     return context.command === 'service.request' ? words.callLost : words.sendLost
   if (code === 'rate_limited' && context.command?.startsWith('pay.'))
     return words.paying.rateLimited
+  // A call on a table not open for phones speaks of the table, not of orders (lane 3 S19).
+  if (code === 'table_not_open' && context.command === 'service.request')
+    return words.callTableNotOpen
   return Object.hasOwn(words.refusals, code)
     ? words.refusals[code as keyof typeof words.refusals]
     : words.refusedOther

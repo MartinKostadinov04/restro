@@ -1752,6 +1752,105 @@ describe('the screen the face has open (RR-52, D121)', () => {
   })
 })
 
+describe('the age of the bill’s reading (lane 3 S7, D121)', () => {
+  /** A table whose bill was read `readAgoSeconds` before the answer. */
+  const withBill = (version: number, readAgoSeconds: number) => ({
+    ...tableState(version),
+    bill: {
+      readAgoSeconds,
+      complete: true,
+      currency: 'EUR' as const,
+      totalMinor: 1000,
+      paidMinor: 0,
+      owedMinor: 1000,
+      parts: [],
+      paidLines: [],
+    },
+  })
+  const quiet = { unchanged: true, version: 1, next: 2_000, location: 'off', night: 'open' }
+
+  it('grows while the answers are unchanged, and resets with the reading a whole answer brings', async () => {
+    let whole = withBill(1, 3)
+    const h = harness((url) => json(200, url.includes('since=') ? quiet : whole))
+    const age = () => h.client.getState().tableBill?.readAgoSeconds
+    h.client.start()
+    await h.tick()
+    expect(age()).toBe(3)
+    h.client.setScreen('bill')
+    h.advance(5_000)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill&since=1')
+    // Not frozen at the age the last changed answer gave.
+    expect(age()).toBe(8)
+
+    // Older than the server keeps a reading: the bill asks for the whole state, and the server's
+    // new reading of the same bill (same version) resets the age.
+    whole = withBill(1, 1)
+    h.advance(10_000)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill')
+    expect(age()).toBe(1)
+    h.advance(4_000)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill&since=1')
+    expect(age()).toBe(5)
+  })
+
+  it('asks for the whole state at most once in 15 s, and never off the bill', async () => {
+    const h = harness((url) => json(200, url.includes('since=') ? quiet : withBill(1, 40)))
+    h.client.start()
+    await h.tick()
+    await h.tick()
+    // An old reading on the menu: the menu's polls never ask for it.
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=menu&since=1')
+    h.client.setScreen('bill')
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill')
+    // The server's reading is still old (it reads again in the background): no second whole ask yet.
+    h.advance(5_000)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill&since=1')
+    h.advance(10_000)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill')
+  })
+
+  it('asks again after a whole ask that failed, with the age still growing, and waits 15 s after one that came', async () => {
+    let fail = false
+    let reading = 20
+    const h = harness((url) => {
+      if (url.includes('since=')) return json(200, quiet)
+      return fail ? json(503, {}) : json(200, withBill(1, reading))
+    })
+    const age = () => h.client.getState().tableBill?.readAgoSeconds
+    h.client.start()
+    await h.tick()
+    fail = true
+    h.client.setScreen('bill')
+    await h.tick()
+    // The whole ask failed: no new reading, and nothing stamped.
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill')
+    expect(age()).toBe(20)
+    const retry = h.nextWait() ?? 0
+    h.advance(retry)
+    await h.tick()
+    // The next poll asks for the whole state again, not `since`; the age has kept growing.
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill')
+    expect(age()).toBe(20 + Math.floor(retry / 1000))
+    // It comes: the server's new reading resets the age, and the next whole ask waits 15 s.
+    fail = false
+    reading = 30
+    h.advance(h.nextWait() ?? 0)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill')
+    expect(age()).toBe(30)
+    h.advance(5_000)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill&since=1')
+    expect(age()).toBe(35)
+  })
+})
+
 describe('the idle back-off (P25)', () => {
   const quiet = (version: number, next = 2_000) => ({
     unchanged: true,

@@ -32,7 +32,15 @@ import {
 } from '@restro/shell'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 
-import { BellIcon, CardIcon, DropletsIcon, HandIcon, ReceiptIcon, UtensilsIcon } from '../icons'
+import {
+  BellIcon,
+  CardIcon,
+  DropletsIcon,
+  HandIcon,
+  IceIcon,
+  ReceiptIcon,
+  UtensilsIcon,
+} from '../icons'
 import { Text } from '../parts'
 import { ChoiceGroup } from './choice'
 import { newActionId, type Outcome } from './command'
@@ -44,7 +52,7 @@ const KIND_ICONS: { readonly [K in ServiceKind]: () => ReactNode } = {
   waiter: () => <BellIcon />,
   bill: () => <ReceiptIcon />,
   terminal: () => <CardIcon />,
-  ice: () => <DropletsIcon />,
+  ice: () => <IceIcon />,
   water: () => <DropletsIcon />,
   glasses: () => <UtensilsIcon />,
   clean_table: () => <HandIcon />,
@@ -399,7 +407,7 @@ export function CallSheet() {
           label: (
             <>
               {KIND_ICONS[option]()}
-              <span>{words.kinds[option]}</span>
+              <span>{option === 'waiter' ? words.kindWaiterTile : words.kinds[option]}</span>
             </>
           ),
         }))}

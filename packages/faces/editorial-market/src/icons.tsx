@@ -131,6 +131,16 @@ export function DropletsIcon() {
   )
 }
 
+/** A cube: ice (its own mark, not water's drops; lane 3 S6). */
+export function IceIcon() {
+  return (
+    <Svg round>
+      <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" />
+      <path d="M4 7.5l8 4.5 8-4.5M12 12v9" />
+    </Svg>
+  )
+}
+
 /** A fork and a knife: cutlery. */
 export function UtensilsIcon() {
   return (

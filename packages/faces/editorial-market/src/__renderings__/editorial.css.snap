@@ -746,9 +746,6 @@
 .rm .ro-plus svg { height: var(--ro-icon) }
 .rm .ro-plus svg { stroke-width: 2.4 }
 .rm .ro-plus:active { transform: scale(0.9) }
-.rm .ro-plus[aria-disabled="true"] { opacity: 0.4 }
-.rm .ro-plus[aria-disabled="true"] { cursor: default }
-.rm .ro-plus[aria-disabled="true"] { transform: none }
 .rm .ro-plus-count { position: absolute }
 .rm .ro-plus-count { top: calc((44px - var(--ro-circle)) / 2 - 4px) }
 .rm .ro-plus-count { right: calc((44px - var(--ro-circle)) / 2 - 4px) }
@@ -1078,9 +1075,6 @@
 .rm .ro-line-actions button { text-underline-offset: 3px }
 .rm .ro-line-actions button { touch-action: manipulation }
 .rm .ro-line-actions button:disabled { opacity: 0.45 }
-.rm .ro-line-side { display: grid }
-.rm .ro-line-side { justify-items: end }
-.rm .ro-line-side { gap: 8px }
 .rm .ro-sum { display: flex }
 .rm .ro-sum { justify-content: space-between }
 .rm .ro-sum { gap: 12px }
@@ -1404,6 +1398,18 @@
 .rm .ro-toast { text-align: center }
 .rm .ro-toast { font-weight: 800 }
 .rm .ro-toast { animation: ro-fade 0.2s }
+.rm .ro-lines li.ro-orderline { grid-template-columns: minmax(0, 1fr) }
+.rm .ro-line-head { display: flex }
+.rm .ro-line-head { justify-content: space-between }
+.rm .ro-line-head { align-items: baseline }
+.rm .ro-line-head { gap: 12px }
+.rm .ro-line-head strong { flex: 1 1 auto }
+.rm .ro-line-head strong { min-width: 0 }
+.rm .ro-line-head b { flex: none }
+.rm .ro-line-foot { display: flex }
+.rm .ro-line-foot { justify-content: space-between }
+.rm .ro-line-foot { align-items: center }
+.rm .ro-line-foot { gap: 12px }
 @media (min-width: 641px) .rm .ro-dish-bar { margin-right: -34px }
 @media (min-width: 641px) .rm .ro-dish-bar { margin-left: -34px }
 @media (min-width: 641px) .rm .ro-dish-bar { padding-right: 34px }

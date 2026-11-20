@@ -13,6 +13,9 @@
 // sheet, calls for Ice, and adds Water to the same open call; the sheet never offers a Cancel,
 // because nothing withdraws a call.
 //
+// A table closed for phones (lane 3 S17, S19): the seed's `close` step ends the sitting, and the
+// page shows the menu read-only, with no Add and no waiter button, and says why once.
+//
 // The venue checks location (#76): a phone sees the order only once it holds a pass. The first
 // phone gets one by adding (the consent screen, Allow, and the add goes through), the second by its
 // own "Allow location"; a phone across town is told the check failed, and offered "Call a waiter"
@@ -155,7 +158,7 @@ for (const style of ORDER_STYLES) {
         await guest.page.locator('button[data-slot="menu.call_waiter"]').click()
         await sheet.getByRole('radio', { name: 'Ice' }).click()
         await sheet.getByRole('button', { name: 'Send', exact: true }).click()
-        await expect(sheet.getByText('Waiter called')).toBeVisible(SEEN)
+        await expect(sheet.getByText('Request sent')).toBeVisible(SEEN)
         await expect(sheet.locator('.ro-kind')).toHaveText('Ice')
         await expect(sheet.getByRole('button', { name: 'Cancel request' })).toHaveCount(0)
         // "Something else": the kind joins the call the server already has open.
@@ -190,6 +193,24 @@ for (const style of ORDER_STYLES) {
         await expect(prompt(far.page, 'none')).toBeVisible()
       } finally {
         await far.context.close()
+      }
+    })
+
+    // Last in the Style: it ends the table's sitting, and the next Style seeds a fresh one.
+    test('a table closed for phones shows the menu read-only: no Add, no waiter button', async ({
+      browser,
+    }) => {
+      runScript('./scripts/seed-order-e2e.ts', 'close')
+      const guest = await phone(browser)
+      try {
+        await expect(guest.page.locator('[data-slot="ordering.closed"]')).toHaveText(
+          'This table isn’t open for phone orders. Ask a waiter.',
+          SEEN,
+        )
+        await expect(guest.page.locator('[data-slot="item.add"]')).toHaveCount(0)
+        await expect(guest.page.locator('[data-slot="menu.call_waiter"]')).toHaveCount(0)
+      } finally {
+        await guest.context.close()
       }
     })
   })

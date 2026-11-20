@@ -85,7 +85,7 @@ import { isFinalPaymentState } from './pay'
 import type { PayFirstState, PayingState } from './pay-first'
 import { paymentNumberOf } from './payment-number'
 import { readTableState, type TableStateRead, type TableStateUnchanged } from './read'
-import type { ServiceResult } from './results'
+import type { Refused, ServiceResult } from './results'
 import { loadSendMenu } from './send-menu'
 
 /** The screens a phone polls from (design §6): the menu polls slower than the order and the bill. */
@@ -801,6 +801,16 @@ function guestContext(
   }
 }
 
+/**
+ * The refusal code a phone gets: a Send over the venue's cap (D118) says so (`over_phone_limit`),
+ * so the guest learns the waiter takes it; past the pace it stays `guard_tripped` (lane 3 S10).
+ */
+function guestCode(result: Refused): string {
+  return result.code === 'guard_tripped' && result.details.guard === 'cap'
+    ? 'over_phone_limit'
+    : result.code
+}
+
 /** The answer a phone gets for a service result. */
 export function guestResult(
   result: ServiceResult,
@@ -818,7 +828,7 @@ export function guestResult(
   return {
     actionId: result.actionId,
     status: result.status === 'accepted' ? 'accepted' : 'rejected',
-    code: result.status === 'refused' ? result.code : null,
+    code: result.status === 'refused' ? guestCode(result) : null,
     subjectId: typeof subject === 'string' ? subject : null,
     ref: result.status === 'accepted' ? result.ref : null,
     // Only an accepted Send carries it: a refused command's own code says everything.
