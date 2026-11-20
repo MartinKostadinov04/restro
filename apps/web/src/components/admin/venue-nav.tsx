@@ -373,12 +373,22 @@ interface VenueNavProps {
   venues: readonly VenueOption[]
   /** Owners and admins add venues; members do not see the item (the action checks again). */
   canCreateVenue: boolean
+  /**
+   * A staff-only sign-in (D141) works one venue: off its page the list shows that venue alone,
+   * with no All venues entry (plan C4).
+   */
+  staffOnly?: boolean
   /** Closes the phone's sheet: a tap that only changes the query does not move the path (C5). */
   onNavigate?: () => void
 }
 
 /** The venue's menu on its page; the list of venues anywhere else. */
-export function VenueNav({ venues, canCreateVenue, onNavigate = () => {} }: VenueNavProps) {
+export function VenueNav({
+  venues,
+  canCreateVenue,
+  staffOnly = false,
+  onNavigate = () => {},
+}: VenueNavProps) {
   const t = useTranslations('nav')
   const pathname = usePathname()
   const sorted = useMemo(() => sortVenuesByName(venues), [venues])
@@ -415,20 +425,22 @@ export function VenueNav({ venues, canCreateVenue, onNavigate = () => {} }: Venu
             </SidebarMenuButton>
           </SidebarMenuItem>
         ))}
-        <SidebarMenuItem>
-          <SidebarMenuButton asChild isActive={pathname === VENUES_PATH} tooltip={t('allVenues')}>
-            <Link
-              href={VENUES_PATH}
-              aria-current={pathname === VENUES_PATH ? 'page' : undefined}
-              data-testid="venue-nav-all"
-              onClick={onNavigate}
-            >
-              <LayoutGridIcon aria-hidden />
-              <span>{t('allVenues')}</span>
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        {canCreateVenue ? <NewVenueItem /> : null}
+        {staffOnly ? null : (
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={pathname === VENUES_PATH} tooltip={t('allVenues')}>
+              <Link
+                href={VENUES_PATH}
+                aria-current={pathname === VENUES_PATH ? 'page' : undefined}
+                data-testid="venue-nav-all"
+                onClick={onNavigate}
+              >
+                <LayoutGridIcon aria-hidden />
+                <span>{t('allVenues')}</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        )}
+        {canCreateVenue && !staffOnly ? <NewVenueItem /> : null}
       </SidebarMenu>
     </SidebarGroup>
   )

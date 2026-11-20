@@ -1,7 +1,7 @@
 'use client'
 
 import { cva, type VariantProps } from 'class-variance-authority'
-import { PanelLeftIcon } from 'lucide-react'
+import { MenuIcon, PanelLeftIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Slot } from 'radix-ui'
 import * as React from 'react'
@@ -250,11 +250,13 @@ function Sidebar({
 }
 
 function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar } = useSidebar()
+  const { toggleSidebar, isMobile, open, openMobile } = useSidebar()
   const t = useTranslations('ui')
 
+  // On a phone the sidebar is a sheet opened from ☰ (D154); on a desktop it folds beside the page.
   return (
     <Button
+      aria-expanded={isMobile ? openMobile : open}
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
       variant="ghost"
@@ -266,7 +268,7 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
       }}
       {...props}
     >
-      <PanelLeftIcon />
+      {isMobile ? <MenuIcon /> : <PanelLeftIcon />}
       <span className="sr-only">{t('toggleSidebar')}</span>
     </Button>
   )
@@ -517,15 +519,17 @@ function SidebarMenuButton({
     }
   }
 
+  // The hint names an entry only while the desktop sidebar is folded to icons. Anywhere else it is
+  // not drawn at all: a hidden but open hint takes the first Esc, which then does not close the
+  // phone's sheet.
+  if (state !== 'collapsed' || isMobile) {
+    return button
+  }
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent
-        side="right"
-        align="center"
-        hidden={state !== 'collapsed' || isMobile}
-        {...tooltip}
-      />
+      <TooltipContent side="right" align="center" {...tooltip} />
     </Tooltip>
   )
 }

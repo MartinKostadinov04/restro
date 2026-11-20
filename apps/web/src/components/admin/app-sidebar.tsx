@@ -89,7 +89,12 @@ export function AppSidebar({
       {/* Many venues: the list scrolls, also when the sidebar is collapsed to icons (where a
           scroll bar would not fit beside the icons, so it is not drawn). */}
       <SidebarContent className="group-data-[collapsible=icon]:overflow-y-auto group-data-[collapsible=icon]:[scrollbar-width:none]">
-        <VenueNav venues={venues} canCreateVenue={canCreateVenue} onNavigate={closeSheet} />
+        <VenueNav
+          venues={venues}
+          canCreateVenue={canCreateVenue}
+          staffOnly={staffOnly}
+          onNavigate={closeSheet}
+        />
         <SidebarGroup>
           <SidebarGroupLabel>{t('organization')}</SidebarGroupLabel>
           <SidebarMenu>

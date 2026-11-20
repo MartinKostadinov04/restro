@@ -319,6 +319,13 @@ describe('on a venue’s page (D154)', () => {
     expect(screen.getByText('Restro')).toBeTruthy()
     expect(screen.queryByRole('link', { name: /Restro/ })).toBeNull()
   })
+
+  it('lists a staff-only sign-in its venue elsewhere, with no All venues and no new venue (C4)', () => {
+    renderSidebar({ pathname: '/settings', staffOnly: true, canCreateVenue: true })
+    expect(screen.getAllByTestId('venue-nav-item').length).toBeGreaterThan(0)
+    expect(screen.queryByTestId('venue-nav-all')).toBeNull()
+    expect(screen.queryByTestId('venue-nav-new')).toBeNull()
+  })
 })
 
 describe('the Organisation group', () => {
