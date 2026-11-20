@@ -23,6 +23,7 @@ test.describe.configure({ mode: 'serial' })
 test.setTimeout(240_000)
 
 const TABLET = { width: 1180, height: 820 }
+const PHONE = { width: 390, height: 844 }
 /** The fixture's only spot with a Table, and the free spot a party is given from the list. */
 const TABLE_SPOT = 'Маса 7'
 const TABLE = 'Table 1'
@@ -33,6 +34,9 @@ const BOOKED = 'Иванова'
 const FIRST = { name: 'Първа Чакаща', phone: '+359 888 777 201' }
 const SECOND = { name: 'Втора Чакаща', phone: '+359 888 777 202' }
 const THIRD = { name: 'Трета Чакаща', phone: '+359 888 777 203' }
+const FOURTH = { name: 'Четвърта Чакаща', phone: '+359 888 777 205' }
+/** A free spot of the fixture with no Table, given from the list on a phone. */
+const PHONE_SPOT = 'Бар 13'
 /** A booking taken with no spot yet (#328): it must stay a booking, not become a waiting line. */
 const NO_SPOT = { name: 'Без Място', phone: '+359 888 777 204' }
 
@@ -290,4 +294,32 @@ test('leaving the queue is the ordinary Cancel, with no status of its own', asyn
   await expect(page.getByTestId('rv-filter-waiting')).toHaveCount(0)
   await page.getByTestId('rv-filter-cancelled').click()
   await expect(rowOf(page, THIRD.name)).toBeVisible()
+})
+
+test('on a phone “Give a spot” opens on the list, and each row is a button that seats', async ({
+  browser,
+}) => {
+  await writeDown(owner.page, FOURTH, 2)
+  const phone = await person(browser, TONIGHT_OWNER_EMAIL, PHONE)
+  try {
+    const page = phone.page
+    await openQueue(page)
+    await rowOf(page, FOURTH.name).getByTestId('rv-row-give').click()
+    await expect(give(page)).toBeVisible()
+    // A thumb cannot hit a plan's tiles, so the named list comes first (S17).
+    await expect(give(page).getByTestId('rv-pick-list')).toBeVisible()
+    // WCAG 3.2.2 (S19): nothing in it is a checkbox that acts the moment it is ticked; each row
+    // is a button that says what it does.
+    await expect(give(page).getByRole('checkbox')).toHaveCount(0)
+    const seat = give(page).getByRole('button', { name: new RegExp(`^Seat at ${PHONE_SPOT}`) })
+    await expect(seat).toHaveCount(1)
+    const box = await seat.boundingBox()
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44)
+    // Still one tap: the row is the choice and the act, with Undo in its notice.
+    await seat.click()
+    await expect(give(page)).toHaveCount(0)
+    await expect(toast(page, FOURTH.name)).toBeVisible()
+  } finally {
+    await phone.context.close()
+  }
 })

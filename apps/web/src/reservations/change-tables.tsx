@@ -10,6 +10,9 @@
 // to the write, which judges it by the same rules as every other path and names the party in the
 // way.
 //
+// On a phone the sheet opens on the named list, in the venue's order (S5, S17): a thumb cannot hit a
+// 130-spot plan's tiles, and the plan is one tap away. Both ways share the same taps.
+//
 // **No bill moves here.** A party that has ordered leaves its bill on the table it left; Restro
 // only closes that table's codes and opens the new ones. The save's result says "the bill stays on
 // that spot, move it at the till" (only a venue with a till has a bill) and no button pretends so
@@ -48,8 +51,8 @@ import type { RvFrame, RvHoldView, RvPlanView, RvSpotView } from '@/server/reser
 import { ConfirmDialog } from './confirm-dialog'
 import { SameGuestsDialog } from './door-dialogs'
 import { NoPlanYet } from './no-plan'
-import { useBlockReasonWord } from './plan-words'
-import { PickWait, SpotPlan, usePickPlan } from './spot-picker'
+import { useBlockReasonWord, useSpotCalled, useSpotsCalled } from './plan-words'
+import { PickWait, SpotList, SpotPlan, usePickPlan } from './spot-picker'
 import type { RvRunSpec } from './use-reservation-run'
 
 /** The party whose tables change. */
@@ -112,6 +115,11 @@ export function ChangeTablesSheet({
   const t = useTranslations('reservations')
   const isMobile = useIsMobile()
   const reasonWord = useBlockReasonWord()
+  const called = useSpotCalled()
+  const spotsCalled = useSpotsCalled()
+  /** The way she chose; until she does, the list on a phone and the plan elsewhere. */
+  const [way, setWay] = useState<'plan' | 'list' | null>(null)
+  const picker = way ?? (isMobile ? 'list' : 'plan')
   const pick = usePickPlan(frame, party.day)
   const plan = pick.plan
   /** No plan, or nothing on it: nothing to change to, and the sheet says why (#397). */
@@ -143,9 +151,12 @@ export function ChangeTablesSheet({
       }
       const block = spot.holds.find((hold) => hold.kind === 'block' && hold.now)
       if (block !== undefined) {
-        toast.error(t('ct_blocked', { spot: spot.name, reason: reasonWord(block.reason) }), {
-          id: `rv-ct-blocked:${spot.id}`,
-        })
+        toast.error(
+          t('ct_blocked', { spot: called(spot.name, 'title'), reason: reasonWord(block.reason) }),
+          {
+            id: `rv-ct-blocked:${spot.id}`,
+          },
+        )
         return
       }
       // Somebody else is on it right now: the swap is offered. A booking later tonight is not in
@@ -163,14 +174,18 @@ export function ChangeTablesSheet({
         }
         // One swap per save: a third party in the way is named and the spot is not taken.
         toast.error(
-          t('ct_taken', { party: nameOf(other.name), spot: spot.name, time: other.time }),
+          t('ct_taken', {
+            party: nameOf(other.name),
+            spot: called(spot.name, 'title'),
+            time: other.time,
+          }),
           { id: `rv-ct-taken:${spot.id}` },
         )
         return
       }
       setPicked([...chosen, spot.id])
     },
-    [chosen, nameOf, party.reservationId, reasonWord, swap, t],
+    [called, chosen, nameOf, party.reservationId, reasonWord, swap, t],
   )
 
   /** She said yes to the swap: this party takes the other's spots and gives it its own. */
@@ -245,8 +260,12 @@ export function ChangeTablesSheet({
           const hold = spot?.holds.find((one) => one.reservationId === details.reservationId)
           if (spot === undefined || hold === undefined) return null
           return hold.kind === 'block'
-            ? t('ct_blocked', { spot: spot.name, reason: reasonWord(hold.reason) })
-            : t('ct_taken', { party: nameOf(hold.name), spot: spot.name, time: hold.time })
+            ? t('ct_blocked', { spot: called(spot.name, 'title'), reason: reasonWord(hold.reason) })
+            : t('ct_taken', {
+                party: nameOf(hold.name),
+                spot: called(spot.name, 'title'),
+                time: hold.time,
+              })
         },
         after: onChanged,
         onDone: (details) => {
@@ -257,7 +276,7 @@ export function ChangeTablesSheet({
             .filter((spot) => was.includes(spot.id) || (other?.from.includes(spot.id) ?? false))
             .map((spot) => spot.name)
           if (spots.length > 0) {
-            toast.message(t('ct_bill_stays', { spot: spots.join(', ') }), {
+            toast.message(t('ct_bill_stays', { spot: spotsCalled(spots) }), {
               id: `rv-ct-bill:${party.reservationId}`,
               duration: Number.POSITIVE_INFINITY,
               closeButton: true,
@@ -270,7 +289,22 @@ export function ChangeTablesSheet({
         },
       })
     },
-    [chosen, from, nameOf, onChanged, onClose, party, plan, reasonWord, run, swap, t, venueId],
+    [
+      called,
+      chosen,
+      from,
+      nameOf,
+      onChanged,
+      onClose,
+      party,
+      plan,
+      reasonWord,
+      run,
+      spotsCalled,
+      swap,
+      t,
+      venueId,
+    ],
   )
 
   /**
@@ -320,6 +354,19 @@ export function ChangeTablesSheet({
       })
   }, [chosen, from, party, plan, swap, venueId, write])
 
+  /**
+   * The swap question's body: which spots each party ends on (S22), so the yes is said to a
+   * picture, not to a verb. This party takes the other's spots; the other takes this party's.
+   */
+  const swapBody = (hold: RvHoldView): string => {
+    const theirs = plan === null ? [] : spotsOf(plan, hold.reservationId).map(spotName)
+    const mine = from.map(spotName)
+    const where = { party: nameOf(party.name), other: nameOf(hold.name), to: spotsCalled(theirs) }
+    return mine.length === 0
+      ? t('ct_swap_b_none', where)
+      : t('ct_swap_b', { ...where, back: spotsCalled(mine) })
+  }
+
   const changed = plan !== null && (!sameSet(chosen, from) || swap !== null)
   const title = `${t('ct_open')} · ${nameOf(party.name)}`
 
@@ -331,12 +378,50 @@ export function ChangeTablesSheet({
         <NoPlanYet frame={frame} noSpots={plan.planId !== null} testId="rv-ct-no-plan" />
       ) : (
         <>
-          <SpotPlan plan={plan} selected={chosen} onChange={(ids) => setPicked(ids)} onTap={tap} />
-          <p data-testid="rv-ct-chosen">
-            <span className="font-medium">{t('ct_chosen')}: </span>
+          <div className="flex min-w-0 flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={picker === 'list' ? 'default' : 'outline'}
+              aria-pressed={picker === 'list'}
+              className={WRAPS}
+              data-testid="rv-ct-list"
+              onClick={() => setWay('list')}
+            >
+              {t('bk_spots_pick')}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={picker === 'plan' ? 'default' : 'outline'}
+              aria-pressed={picker === 'plan'}
+              className={WRAPS}
+              data-testid="rv-ct-plan"
+              onClick={() => setWay('plan')}
+            >
+              {t('bk_spots_plan')}
+            </Button>
+          </div>
+          {picker === 'list' ? (
+            <SpotList
+              plan={plan}
+              selected={chosen}
+              onChange={(ids) => setPicked(ids)}
+              onTap={tap}
+            />
+          ) : (
+            <SpotPlan
+              plan={plan}
+              selected={chosen}
+              onChange={(ids) => setPicked(ids)}
+              onTap={tap}
+            />
+          )}
+          {/* «Избрани места: 9, 10»: the spots by name, so «9» never reads as a count (S5). */}
+          <p data-testid="rv-ct-chosen" className="[overflow-wrap:anywhere]">
             {chosen.length === 0
               ? t('ct_chosen_none')
-              : chosen.map(spotName).filter(Boolean).join(', ')}
+              : t('ct_chosen', { spots: chosen.map(spotName).filter(Boolean).join(', ') })}
           </p>
           {swap === null ? null : (
             <div className="flex flex-wrap items-center gap-2" data-testid="rv-ct-swap">
@@ -344,10 +429,7 @@ export function ChangeTablesSheet({
                 <span className="font-medium">{t('ct_swap')}: </span>
                 {t('ct_swapping', {
                   party: nameOf(swap.name),
-                  spots: from
-                    .filter((id) => !chosen.includes(id))
-                    .map(spotName)
-                    .join(', '),
+                  spots: spotsCalled(from.filter((id) => !chosen.includes(id)).map(spotName)),
                 })}
               </p>
               <Button
@@ -396,8 +478,8 @@ export function ChangeTablesSheet({
     asking === null ? null : asking.step === 'swap' ? (
       <ConfirmDialog
         title={t('ct_swap_t', { party: nameOf(asking.hold.name) })}
-        body={t('ct_swap_b')}
-        doLabel={t('ct_swap_do', { party: nameOf(asking.hold.name) })}
+        body={swapBody(asking.hold)}
+        doLabel={t('ct_swap_do')}
         keepLabel={t('ct_no_swap')}
         testId="rv-ct-swap-dialog"
         busy={false}

@@ -6,8 +6,11 @@
 // itself. There is no Select and no second button: the tap on the spot is the choice and the act
 // (Patterns: "A choice that is also the action"), which is what keeps the story at three taps.
 //
-// The plan opens first, because a hostess looking for a free table is looking at the room; the
-// named list is one tap away for a long plan or a phone in one hand. Every spot is offered, with
+// On a desk the plan opens first, because a hostess looking for a free table is looking at the
+// room; on a phone the named list does (S17), because a phone in one hand cannot hit a 130-spot
+// plan's tiles, and the plan is one tap away. In the list each row is a button that says what it
+// does, «Настани на 9» (S19): a checkbox that seats a party when it is ticked acts on input
+// (WCAG 3.2.2), and a tick while scrolling 118 rows must not seat anybody. Every spot is offered, with
 // its state in words, exactly as the booking form offers them: she may be putting a party onto a
 // table whose own guests are leaving, and the write refuses a spot somebody is on with a sentence
 // that names them (`spot_taken`), rather than the plan hiding it from her now.
@@ -23,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { WRAPS } from '@/lib/wrapping'
 import type { RvFrame, RvWaitingView } from '@/server/reservations/view'
 
@@ -50,10 +54,13 @@ export function GiveSpotDialog({
   onClose: () => void
 }) {
   const t = useTranslations('reservations')
-  const [picker, setPicker] = useState<'plan' | 'list'>('plan')
+  const isMobile = useIsMobile()
+  /** The way she chose; until she does, the list on a phone and the plan elsewhere. */
+  const [chosen, setPicker] = useState<'plan' | 'list' | null>(null)
+  const picker = chosen ?? (isMobile ? 'list' : 'plan')
   const pick = usePickPlan(frame, day)
   const named = party.name ?? t('no_name')
-  // The tap arrives as the list of chosen spots, which was empty: the one it added is the spot.
+  // A tap on the plan arrives as the list of chosen spots, which was empty: the one it added.
   const tapped = (ids: readonly string[]) => {
     const spot = pick.plan?.spots.find((one) => one.id === ids[0])
     if (spot !== undefined) onGive({ id: spot.id, name: spot.name })
@@ -108,7 +115,12 @@ export function GiveSpotDialog({
           ) : pick.plan.planId === null || pick.plan.spots.length === 0 ? (
             <NoPlanYet frame={frame} noSpots={pick.plan.planId !== null} />
           ) : picker === 'list' ? (
-            <SpotList plan={pick.plan} selected={[]} onChange={tapped} />
+            <SpotList
+              plan={pick.plan}
+              selected={[]}
+              onChange={tapped}
+              onSeat={(spot) => onGive({ id: spot.id, name: spot.name })}
+            />
           ) : (
             <SpotPlan plan={pick.plan} selected={[]} onChange={tapped} />
           )}

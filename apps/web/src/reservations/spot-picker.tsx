@@ -8,7 +8,11 @@
 // A spot somebody else holds that night is in the list with its state in words, never greyed out:
 // she may be moving a party onto it with the other booking's blessing, and the form says who holds
 // it before Save (`taken`), while the write path refuses it in the end (D134, log 3.20).
-import { MaximizeIcon, MinusIcon, PlusIcon } from 'lucide-react'
+//
+// The list is in the venue's natural order (1, 2, 10, 11: the read side sorts it, S5). Where a tap
+// on a row *is* the act (Give a spot), each row is a button that says what it does, «Настани на 9»,
+// never a checkbox that acts the moment it is ticked (S19, WCAG 3.2.2).
+import { ChevronRightIcon, MaximizeIcon, MinusIcon, PlusIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -21,9 +25,9 @@ import { WRAPS } from '@/lib/wrapping'
 import { floorPlanAction } from '@/server/reservations/actions'
 import type { RvFrame, RvKindView, RvPlanView, RvSpotView } from '@/server/reservations/view'
 
-import { KindSymbol, SpotTile } from './plan-shape'
-import { useSpotLine, useSpotStateWord } from './plan-words'
-import { usePlanView } from './plan-zoom'
+import { drawnSize, KindSymbol, SpotTile } from './plan-shape'
+import { useSpotCalled, useSpotLine, useSpotStateWord } from './plan-words'
+import { planOpening, roomStyle, usePlanView } from './plan-zoom'
 
 /** More spots than this and the list is searchable by name. */
 const SEARCH_FROM = 12
@@ -110,18 +114,31 @@ function useToggle(selected: readonly string[], onChange: (ids: string[]) => voi
   )
 }
 
-/** The named list: one row per spot, with its kind, seats and what it is tonight in words. */
+/**
+ * The named list: one row per spot, with its kind, seats and what it is tonight in words.
+ *
+ * Ticking spots on and off for a form saved as a whole (the booking form; Change tables with
+ * `onTap` for its swap and block questions), or, with `onSeat`, a row per spot that seats the
+ * party there at once (Give a spot: "A choice that is also the action").
+ */
 export function SpotList({
   plan,
   selected,
   onChange,
+  onTap,
+  onSeat,
 }: {
   plan: RvPlanView
   selected: readonly string[]
   onChange: (ids: string[]) => void
+  /** Replaces the plain toggle where a tap means more (Change tables). */
+  onTap?: (spot: RvSpotView) => void
+  /** Each row is a button that does this; nothing is ticked. */
+  onSeat?: (spot: RvSpotView) => void
 }) {
   const t = useTranslations('reservations')
   const line = useSpotLine()
+  const called = useSpotCalled()
   const toggle = useToggle(selected, onChange)
   const [kindKey, setKindKey] = useState('all')
   const [search, setSearch] = useState('')
@@ -150,33 +167,50 @@ export function SpotList({
         {shown.map((spot) => {
           const kind = kindOf.get(spot.kind)
           const checked = selected.includes(spot.id)
+          const about = [
+            kind?.label,
+            spot.seats === null ? null : `${t('p_seats')} ${spot.seats}`,
+            line(spot),
+          ]
+            .filter((part): part is string => part !== null && part !== undefined && part !== '')
+            .join(' · ')
+          if (onSeat !== undefined) {
+            return (
+              <li key={spot.id}>
+                <button
+                  type="button"
+                  className="flex min-h-11 w-full items-center gap-3 p-3 text-left text-sm hover:bg-muted/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                  data-testid={`rv-seat-${spot.name}`}
+                  onClick={() => onSeat(spot)}
+                >
+                  <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                    <span className="font-medium">
+                      {t('w_seat_at', { spot: called(spot.name) })}
+                    </span>
+                    <span className="block text-muted-foreground">{about}</span>
+                  </span>
+                  <ChevronRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                </button>
+              </li>
+            )
+          }
           return (
             <li key={spot.id}>
+              {/* pl-4 keeps the checkbox's 44 px hit area inside the scrolling list (D123). */}
               <label
                 htmlFor={`rv-pick-id-${spot.id}`}
-                className="flex min-h-11 cursor-pointer items-center gap-3 p-3 text-sm"
+                className="flex min-h-11 cursor-pointer items-center gap-3 py-3 pr-3 pl-4 text-sm"
               >
                 <Checkbox
                   id={`rv-pick-id-${spot.id}`}
                   checked={checked}
-                  onCheckedChange={() => toggle(spot.id)}
+                  onCheckedChange={() => (onTap === undefined ? toggle(spot.id) : onTap(spot))}
                   data-testid={`rv-pick-${spot.name}`}
                   aria-label={spot.name}
                 />
                 <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                   <span className="font-medium">{spot.name}</span>
-                  <span className="block text-muted-foreground">
-                    {[
-                      kind?.label,
-                      spot.seats === null ? null : `${t('p_seats')} ${spot.seats}`,
-                      line(spot),
-                    ]
-                      .filter(
-                        (part): part is string =>
-                          part !== null && part !== undefined && part !== '',
-                      )
-                      .join(' · ')}
-                  </span>
+                  <span className="block text-muted-foreground">{about}</span>
                 </span>
               </label>
             </li>
@@ -215,8 +249,20 @@ export function SpotPlan({
   const line = useSpotLine()
   const toggle = useToggle(selected, onChange)
   const [kindKey, setKindKey] = useState('all')
-  const frameRef = useRef<HTMLDivElement | null>(null)
-  const { view, zoomIn, zoomOut, fit, onKeyDown, dragged } = usePlanView(frameRef)
+  const [frameEl, setFrameEl] = useState<HTMLDivElement | null>(null)
+  const opening = useMemo(
+    () =>
+      planOpening(
+        `${plan.planId ?? ''}:${plan.day}`,
+        plan.spots.map((spot) => spot.place),
+        plan.extent,
+      ),
+    [plan.day, plan.extent, plan.planId, plan.spots],
+  )
+  const { view, frameWidth, zoomIn, zoomOut, fit, onKeyDown, dragged } = usePlanView(
+    frameEl,
+    opening,
+  )
   const kindOf = (spot: RvSpotView) => plan.kinds.find((kind) => kind.key === spot.kind) ?? null
   const shown = kindKey === 'all' ? plan.spots : plan.spots.filter((spot) => spot.kind === kindKey)
   return (
@@ -258,18 +304,16 @@ export function SpotPlan({
         </Button>
       </div>
       <div
-        ref={frameRef}
+        ref={setFrameEl}
         className="relative h-[45vh] min-h-64 w-full touch-none overflow-hidden rounded-lg border bg-muted/40 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring"
         data-testid="rv-pick-plan"
         // On a phone the sheet is a drawer: a drag on the plan pans the plan, never the drawer.
         data-vaul-no-drag=""
       >
         <div
-          className="absolute left-0 top-0 w-full origin-top-left"
-          style={{
-            aspectRatio: `${plan.extent.width} / ${plan.extent.height}`,
-            transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
-          }}
+          className="absolute left-0 top-0"
+          style={roomStyle(view, plan.extent)}
+          data-scale={view.scale.toFixed(3)}
         >
           {shown.map((spot) => {
             const kind = kindOf(spot)
@@ -283,6 +327,11 @@ export function SpotPlan({
                 line={line(spot)}
                 stateWord={stateWord(spot.state)}
                 selected={selected.includes(spot.id)}
+                drawn={
+                  frameWidth > 0
+                    ? drawnSize(spot.place, plan.extent, frameWidth * view.scale)
+                    : null
+                }
                 label={t('p_spot', {
                   name: spot.name,
                   kind: kind?.label ?? '',

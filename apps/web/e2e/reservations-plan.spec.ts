@@ -5,7 +5,8 @@
 //   name, its kind's symbol and its state in a word, the kind filter, a spot's own sheet (with its
 //   Table, or the line that says it has none), blocking with a reason that is required, the
 //   refusal that names the party booked there, unblocking in one tap, the plan moved and zoomed by
-//   keyboard alone, a night that has passed read-only, and the whole thing at 390 px.
+//   keyboard alone, a night that has passed read-only, and the whole thing at 390 px, where the
+//   plan opens at the zoom that makes every spot a 44 px target (S17).
 //
 // The fixture is scripts/seed-tonight-e2e.ts `book` (scripts/e2e/reservations-night.ts): one plan
 // of eight spots with five kinds, a terrace plan beside it, Маса 7 held by a late booking, Сепаре 1
@@ -85,9 +86,11 @@ async function openPlan(page: Page) {
   await expect(spots(page).first()).toBeVisible()
 }
 
-/** The transform the room is drawn with, so a move or a zoom can be seen. */
+/** Where and how wide the room is drawn (its zoom is its width), so a move or a zoom can be seen. */
 const roomTransform = (page: Page) =>
-  page.getByTestId('rv-plan-room').evaluate((node) => node.style.transform)
+  page.getByTestId('rv-plan-room').evaluate((node) => `${node.style.transform} ${node.style.width}`)
+const roomScale = async (page: Page) =>
+  Number(await page.getByTestId('rv-plan-room').getAttribute('data-scale'))
 
 async function openSpot(page: Page, name: string): Promise<Locator> {
   // A sheet left open stands over the plan and would swallow the tap, so it is closed first.
@@ -220,10 +223,15 @@ test('blocking a spot needs a reason, and unblocking it is one tap', async () =>
   const dialog = page.getByTestId('rv-block-dialog')
   await expect(dialog).toBeVisible()
   await expect(dialog).toContainText('Block Маса 9?')
-  // Nothing is chosen for the hostess: the reason is required, so Block cannot be tapped yet.
-  await expect(dialog.getByTestId('rv-block-do')).toBeDisabled()
-  await dialog.getByTestId('rv-reason-repair').click()
+  // Nothing is chosen for the hostess, and Block is never a dead button (Patterns; S9): tapped with
+  // no reason, it names what is missing beside the reasons and the dialog stays (WCAG 3.3.1).
   await expect(dialog.getByTestId('rv-block-do')).toBeEnabled()
+  await dialog.getByTestId('rv-block-do').click()
+  await expect(dialog.getByTestId('rv-block-reason-missing')).toHaveText('Choose a reason.')
+  await expect(dialog).toBeVisible()
+  await expect(spotNamed(page, 'Маса 9').first()).toHaveAttribute('data-state', 'free')
+  await dialog.getByTestId('rv-reason-repair').click()
+  await expect(dialog.getByTestId('rv-block-reason-missing')).toHaveCount(0)
   await dialog.getByTestId('rv-block-do').click()
 
   await expect(page.getByTestId('rv-block-dialog')).toHaveCount(0)
@@ -251,9 +259,10 @@ test('blocking a spot a party has booked is refused, and the refusal names the p
 
   // The notice stays on the screen and says whose booking is in the way (#327, the ticket's own
   // acceptance line), so the hostess knows what to do next.
-  const refusal = page.getByText(/Иванова is booked on Маса 7/)
+  // The sentence names the party and the hour without guessing anyone's gender (S9).
+  const refusal = page.getByText(/Маса 7 is booked for Иванова at/)
   await expect(refusal).toBeVisible()
-  await expect(refusal).toContainText('Move them first')
+  await expect(refusal).toContainText('Move the party first.')
   await expect(spotNamed(page, 'Маса 7').first()).toHaveAttribute('data-state', 'late')
   // The sheet is where it was: a refusal changes nothing, not even the screen the hostess is on.
   await expect(held.getByTestId('rv-block')).toBeVisible()
@@ -275,7 +284,7 @@ test('the plan moves and zooms by keyboard alone, and the buttons do the same', 
   await page.keyboard.press('+')
   const zoomed = await roomTransform(page)
   expect(zoomed).not.toBe(moved)
-  expect(zoomed).toMatch(/scale\(/)
+  expect(await roomScale(page)).toBeGreaterThan(1)
   // Back to the whole room in one key.
   await page.keyboard.press('0')
   expect(await roomTransform(page)).toBe(first)
@@ -335,6 +344,35 @@ test('at 390 px the plan reads, the long name clips, and the sheet holds all of 
     expect(clipped).toBe(true)
     const drawer = await openSpot(phone.page, 'Бар 12 вляво')
     await expect(drawer).toContainText('Бар 12 вляво')
+  } finally {
+    await phone.context.close()
+  }
+})
+
+test('at 390 px the plan opens at the zoom where every spot is a 44 px target', async ({
+  browser,
+}) => {
+  const phone = await person(browser, TONIGHT_OWNER_EMAIL, PHONE)
+  try {
+    await openPlan(phone.page)
+    // Restro's floor (D123; S17): the smallest spot decides the opening zoom, so every spot is at
+    // least 44 px on both sides before the hostess pinches anything.
+    await expect.poll(() => roomScale(phone.page)).toBeGreaterThan(1)
+    const sizes = await spots(phone.page).evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const box = node.getBoundingClientRect()
+        return { name: node.textContent ?? '', width: box.width, height: box.height }
+      }),
+    )
+    expect(sizes).toHaveLength(8)
+    for (const size of sizes) {
+      expect(Math.min(size.width, size.height), size.name).toBeGreaterThanOrEqual(44)
+    }
+    // The keys' hint is for a keyboard: a phone has none to press (S7).
+    await expect(phone.page.getByText(/arrows move the plan/i)).toBeHidden()
+    // «Show the whole plan» is one tap back to the room at a glance.
+    await phone.page.getByTestId('rv-zoom-fit').click()
+    expect(await roomScale(phone.page)).toBe(1)
   } finally {
     await phone.context.close()
   }

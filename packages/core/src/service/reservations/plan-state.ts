@@ -157,3 +157,16 @@ export function leadingHold(
           : covering[0]
   return pick ?? null
 }
+
+/**
+ * The order spots are listed in: the way a hostess counts them, numbers by their value — 1, 2, 10,
+ * 11, 25.1, 101 — and named spots after the numbered ones (S5 of the 11-18 screen round). Done here
+ * rather than in SQL, whose text order puts 101 before 11. The collation is Bulgarian because the
+ * names are the venue's own words; numbers sort the same in any language.
+ */
+const SPOT_NAME_ORDER = new Intl.Collator('bg', { numeric: true, sensitivity: 'base' })
+
+/** Compares two spot names in that order. */
+export function compareSpotNames(a: string, b: string): number {
+  return SPOT_NAME_ORDER.compare(a, b)
+}

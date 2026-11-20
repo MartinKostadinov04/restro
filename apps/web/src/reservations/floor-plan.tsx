@@ -39,9 +39,9 @@ import { BookingForm } from './booking-form'
 import { type ChangeTablesParty, ChangeTablesSheet } from './change-tables'
 import { useDoorActions } from './door-actions'
 import { NoPlanYet } from './no-plan'
-import { KindSymbol, SpotTile, StateMark, stateTileClass } from './plan-shape'
-import { useSpotLine, useSpotStateWord } from './plan-words'
-import { usePlanView } from './plan-zoom'
+import { drawnSize, KindSymbol, SpotTile, StateMark, stateTileClass } from './plan-shape'
+import { useSpotCalled, useSpotLine, useSpotStateWord } from './plan-words'
+import { planOpening, roomStyle, usePlanView } from './plan-zoom'
 import { type ComingParty, SpotSheet } from './spot-sheet'
 import { RV_SPOT_STATES } from './spot-states'
 import { useReservationRun } from './use-reservation-run'
@@ -130,6 +130,7 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
   const t = useTranslations('reservations')
   const stateWord = useSpotStateWord()
   const spotLine = useSpotLine()
+  const called = useSpotCalled()
   const [plan, setPlan] = useState(initial)
   const [day, setDay] = useState(initial.day)
   const [planId, setPlanId] = useState(initial.planId)
@@ -142,8 +143,21 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
   const [moving, setMoving] = useState<ChangeTablesParty | null>(null)
   const [failed, setFailed] = useState(false)
   const [loading, setLoading] = useState(false)
-  const frameRef = useRef<HTMLDivElement | null>(null)
-  const { view, zoomIn, zoomOut, fit, onKeyDown, dragged } = usePlanView(frameRef)
+  const [frameEl, setFrameEl] = useState<HTMLDivElement | null>(null)
+  // Each plan opens once at the zoom a phone needs (S17); a re-read of the same plan keeps the view.
+  const opening = useMemo(
+    () =>
+      planOpening(
+        `${plan.planId ?? ''}:${plan.day}`,
+        plan.spots.map((one) => one.place),
+        plan.extent,
+      ),
+    [plan.day, plan.extent, plan.planId, plan.spots],
+  )
+  const { view, frameWidth, zoomIn, zoomOut, fit, onKeyDown, dragged } = usePlanView(
+    frameEl,
+    opening,
+  )
   const { run, busy, pinSheet } = useReservationRun({ device: frame.device })
 
   /** Only the newest read is believed: a slow answer for last night never replaces tonight. */
@@ -259,20 +273,21 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
         .find((hold) => hold.reservationId === details.reservationId)
       const where = plan.spots.find((one) => one.id === details.spotId)
       if (party === undefined || where === undefined) return null
+      // The sentence names the party and the hour, never a guess at its grammatical gender (S9).
       return t('p_taken', {
         party: party.name ?? t('no_name'),
-        spot: where.name,
+        spot: called(where.name, 'title'),
         time: party.time,
       })
     },
-    [plan.spots, t],
+    [called, plan.spots, t],
   )
 
   const blockWrite = useCallback(
     (which: RvSpotView, choice: BlockChoice) => ({
       id: `rv-block:${which.id}`,
-      done: t('p_blocked_ok', { spot: which.name }),
-      pin: { title: t('p_pin_block', { spot: which.name }), body: t('p_pin_b') },
+      done: t('p_blocked_ok', { spot: called(which.name, 'title') }),
+      pin: { title: t('p_pin_block', { spot: called(which.name) }), body: t('p_pin_b') },
       act: (pin?: string) =>
         blockSpotAction({
           venueId: frame.venueId,
@@ -285,7 +300,7 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
       refusal: takenText,
       after: () => read(true),
     }),
-    [frame.venueId, read, t, takenText],
+    [called, frame.venueId, read, t, takenText],
   )
 
   const block = useCallback(
@@ -301,8 +316,8 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
       setOpenSpot(null)
       run({
         id: `rv-unblock:${which.id}`,
-        done: t('p_unblocked', { spot: which.name }),
-        pin: { title: t('p_pin_unblock', { spot: which.name }), body: t('p_pin_b') },
+        done: t('p_unblocked', { spot: called(which.name, 'title') }),
+        pin: { title: t('p_pin_unblock', { spot: called(which.name) }), body: t('p_pin_b') },
         act: (pin?: string) =>
           unblockSpotAction({
             venueId: frame.venueId,
@@ -312,7 +327,7 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
         // Undo here is the opposite write: the same spot, blocked again for the same reason.
         again: {
           label: t('p_undo'),
-          done: t('p_blocked_ok', { spot: which.name }),
+          done: t('p_blocked_ok', { spot: called(which.name, 'title') }),
           act: (pin?: string) =>
             blockSpotAction({
               venueId: frame.venueId,
@@ -325,7 +340,7 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
         after: () => read(true),
       })
     },
-    [frame.venueId, read, run, t, takenText],
+    [called, frame.venueId, read, run, t, takenText],
   )
 
   const body = (() => {
@@ -374,20 +389,19 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
             <MaximizeIcon aria-hidden />
             {t('p_zoom_reset')}
           </Button>
-          <p className="text-sm text-muted-foreground">{t('p_keys')}</p>
+          {/* The keys are for a keyboard: a touch phone has none to press (S7). */}
+          <p className="hidden text-sm text-muted-foreground pointer-fine:block">{t('p_keys')}</p>
         </div>
         <div
-          ref={frameRef}
+          ref={setFrameEl}
           className="relative h-[60vh] min-h-80 touch-none overflow-hidden rounded-lg border bg-muted/40 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring"
           data-testid="rv-plan"
         >
           <div
-            className="absolute left-0 top-0 w-full origin-top-left"
-            style={{
-              aspectRatio: `${plan.extent.width} / ${plan.extent.height}`,
-              transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
-            }}
+            className="absolute left-0 top-0"
+            style={roomStyle(view, plan.extent)}
             data-testid="rv-plan-room"
+            data-scale={view.scale.toFixed(3)}
           >
             {shown.map((one) => {
               const kind = kindOf(one)
@@ -401,6 +415,11 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
                   line={spotLine(one)}
                   stateWord={stateWord(one.state)}
                   selected={one.id === openSpot}
+                  drawn={
+                    frameWidth > 0
+                      ? drawnSize(one.place, plan.extent, frameWidth * view.scale)
+                      : null
+                  }
                   label={t('p_spot', {
                     name: one.name,
                     kind: kind?.label ?? '',

@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  compareSpotNames,
   holdCoversAt,
   isLateHold,
   LATE_AFTER_MINUTES,
@@ -199,5 +200,25 @@ describe('the hold that explains the state', () => {
   it('names nothing on a free spot', () => {
     expect(leadingHold([hold()], 'free', at(19))).toBeNull()
     expect(leadingHold([], 'free', at(22))).toBeNull()
+  })
+})
+
+describe('the order spots are listed in', () => {
+  it('counts numbers by their value, not as text (S5: never 1, 10, 101, 11, 2)', () => {
+    const names = ['101', '11', '2', '25.1', '10', '1']
+    expect([...names].sort(compareSpotNames)).toEqual(['1', '2', '10', '11', '25.1', '101'])
+  })
+
+  it('keeps a lettered half beside its number, and the named spots after the numbered ones', () => {
+    const names = ['Бар 1 · стол 10', '53 Б', 'Бар 1 · стол 2', '54', '53 А', '0', 'Бар 2 · стол 1']
+    expect([...names].sort(compareSpotNames)).toEqual([
+      '0',
+      '53 А',
+      '53 Б',
+      '54',
+      'Бар 1 · стол 2',
+      'Бар 1 · стол 10',
+      'Бар 2 · стол 1',
+    ])
   })
 })

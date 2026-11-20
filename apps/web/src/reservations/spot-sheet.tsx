@@ -66,7 +66,7 @@ import { READ_FAILED, readAttempt } from '@/tonight/read-attempt'
 import { ReadFailed } from '@/tonight/tab-parts'
 import { useWho } from '@/tonight/who'
 import { KindSymbol, StateMark } from './plan-shape'
-import { useHoldText, useSpotHistoryText, useSpotStateWord } from './plan-words'
+import { useHoldText, useSpotCalled, useSpotHistoryText, useSpotStateWord } from './plan-words'
 import { useGuestsText } from './reservation-words'
 
 /** One party still to come tonight, as the door offers it. */
@@ -173,6 +173,7 @@ export function SpotSheet({
   onClose: () => void
 }) {
   const t = useTranslations('reservations')
+  const called = useSpotCalled()
   const stateWord = useSpotStateWord()
   const duration = useDuration()
   const sentence = useSpotHistoryText()
@@ -272,7 +273,7 @@ export function SpotSheet({
         <p className="text-muted-foreground" data-testid="rv-held-later">
           {t('d_holds', {
             party: later.name ?? t('no_name'),
-            spot: spot.name,
+            spot: called(spot.name, 'title'),
             time: later.time,
           })}
         </p>
@@ -480,6 +481,8 @@ export function SpotSheet({
   )
 
   const isMobile = useIsMobile()
+  // «Място 9», not a bare «9», as the sheet's title (S9); «Сепаре 1» stays as the venue named it.
+  const title = called(spot.name, 'title')
   const sub = [kind?.label, spot.seats === null ? null : `${t('p_seats')} ${spot.seats}`]
     .filter((part): part is string => part !== null && part !== undefined)
     .join(' · ')
@@ -488,7 +491,7 @@ export function SpotSheet({
     <Drawer open onOpenChange={(open) => !open && onClose()}>
       <DrawerContent data-testid="rv-spot-sheet">
         <DrawerHeader>
-          <DrawerTitle className="[overflow-wrap:anywhere]">{spot.name}</DrawerTitle>
+          <DrawerTitle className="[overflow-wrap:anywhere]">{title}</DrawerTitle>
           <DrawerDescription>{sub}</DrawerDescription>
         </DrawerHeader>
         {body}
@@ -499,7 +502,7 @@ export function SpotSheet({
     <Sheet open onOpenChange={(open) => !open && onClose()}>
       <SheetContent data-testid="rv-spot-sheet">
         <SheetHeader>
-          <SheetTitle className="[overflow-wrap:anywhere]">{spot.name}</SheetTitle>
+          <SheetTitle className="[overflow-wrap:anywhere]">{title}</SheetTitle>
           <SheetDescription>{sub}</SheetDescription>
         </SheetHeader>
         {body}
