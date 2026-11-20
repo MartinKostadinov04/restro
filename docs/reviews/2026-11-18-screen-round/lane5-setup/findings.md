@@ -38,7 +38,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: WCAG 1.4.10
 - Evidence: JS `{w:1024, sw:1039}`, offending elements `MAIN.relative.flex.w-full…`, `HEADER`, `DIV.mx-auto.max-w-7xl`
 - Proposal: find what makes the main column 15 px wider than the viewport (a min-width or the section tab list). Below 1280 px the nine section tabs could use the dropdown the phone uses.
-- Status: fix in flight (#471: the section tabs still clip at 1024/1280, N1)
+- Status: fixed after the re-check (#471 29abb689: below 1280 px the section tabs are the dropdown; from 1280 the row starts at the first tab), covered by e2e, not re-walked
 
 ### S4. Settings › General says "Not synced yet" and also shows completed syncs
 - Kind: bug
@@ -752,10 +752,10 @@ Branch `sr/lane5-walk` at ab3e1bfc. Fresh `restro_lane5` (migrate, roles, seed:d
 
 ### New regressions
 
-- N1 (fix in flight, #471): Venue settings section tablist (all 9 sections), at 1024 and 1280. The tablist has `justify-center` plus `overflow-x-auto`, so when it overflows the first tab is clipped on the left and cannot be scrolled to (scrollLeft cannot go negative). Measurements: bg 1024, "Общи" at 150–207 while the list starts at 288; en 1024, "General" starts at 256 while the list is 288–992; bg 1280, the first tab is at 278 against a list start of 288, scrollWidth 958 vs clientWidth 945. The horizontal scrollbar also squeezes the tabs to 14 px tall (clientHeight 21). The longer "Синхронизиране и публикуване" / "Sync and publish" label from S12 likely tipped it over. Fix: justify-start (or `safe center`) and room for the scrollbar.
-- N2 (fix in flight, #471): The delete dialog on a hand-made venue (vn_4bujhu4LTUgY7KUsckJkBL) still lists the bullet about releasing the POS link, which does not apply to a venue with no POS.
+- N1 (fixed, #471 29abb689, covered by e2e): Venue settings section tablist (all 9 sections), at 1024 and 1280. The tablist has `justify-center` plus `overflow-x-auto`, so when it overflows the first tab is clipped on the left and cannot be scrolled to (scrollLeft cannot go negative). Measurements: bg 1024, "Общи" at 150–207 while the list starts at 288; en 1024, "General" starts at 256 while the list is 288–992; bg 1280, the first tab is at 278 against a list start of 288, scrollWidth 958 vs clientWidth 945. The horizontal scrollbar also squeezes the tabs to 14 px tall (clientHeight 21). The longer "Синхронизиране и публикуване" / "Sync and publish" label from S12 likely tipped it over. Fix: justify-start (or `safe center`) and room for the scrollbar.
+- N2 (fixed, #471 29abb689, unit tests): The delete dialog on a hand-made venue (vn_4bujhu4LTUgY7KUsckJkBL) still lists the bullet about releasing the POS link, which does not apply to a venue with no POS.
 - N3 (issue #485): The 429 page on /t/<code> says "Опитайте пак след минута" (try again in a minute), but the block lasts 15 minutes (Retry-After 900, bad-codes.ts blockMs).
-- N4 (fix in flight, #480): The Tables area index lists "Каса 0", an empty POS-till area, at the top of the guest-facing area list.
+- N4 (fixed, #480 358bbef5, unit tests): The Tables area index lists "Каса 0", an empty POS-till area, at the top of the guest-facing area list.
 - N5 (another lane, polish; noted on #475): Studio guest-features text says "с следващото"; Bulgarian needs "със следващото".
 
 ### Servers
