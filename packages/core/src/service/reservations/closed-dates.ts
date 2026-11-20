@@ -17,7 +17,7 @@ import { z } from 'zod'
 
 import type { ServiceTx } from '../definition'
 import { accepted, type ServiceResult } from '../results'
-import { readSettings, refuse } from './rows'
+import { lockSettings, refuse } from './rows'
 
 /** The most closed dates a venue keeps: a few seasons, far more than a club closes. */
 export const CLOSED_DATES_MAX = 500
@@ -60,7 +60,8 @@ export async function addClosedDate(
   stx: ServiceTx,
   command: { readonly date: string },
 ): Promise<ServiceResult> {
-  const existing = await readSettings(stx)
+  // Locked: the list is written back whole, so two changes at once must queue (C7).
+  const existing = await lockSettings(stx)
   if (existing === null) return refuse('settings_missing')
   const dates = closedDatesOf(existing.closedDates)
   if (dates.includes(command.date)) return accepted(null, { details: { date: command.date } })
@@ -82,7 +83,8 @@ export async function removeClosedDate(
   stx: ServiceTx,
   command: { readonly date: string },
 ): Promise<ServiceResult> {
-  const existing = await readSettings(stx)
+  // Locked: the list is written back whole, so two changes at once must queue (C7).
+  const existing = await lockSettings(stx)
   if (existing === null) return refuse('settings_missing')
   const dates = closedDatesOf(existing.closedDates)
   if (!dates.includes(command.date)) return accepted(null, { details: { date: command.date } })

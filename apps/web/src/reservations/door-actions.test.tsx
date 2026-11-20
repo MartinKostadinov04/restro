@@ -5,17 +5,22 @@
 // Now the toast says the party is seated, and the line about the table comes from what the write
 // reported (`tablesOpen`), beside the line for a role that may not open tables.
 //
+// One toast per door write, naming the party, with its Undo (the screen round's S21): the table's
+// line is part of the seating's own sentence, never a second toast, and a walk-in seated from the
+// plan gets an Undo too.
+//
 // Drawn with the real messages in both languages: Bulgarian is the one a hostess reads.
 import { act, renderHook } from '@testing-library/react'
 import { NextIntlClientProvider } from 'next-intl'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { undoArrivalAction } from '@/server/reservations/actions'
 import type { RvFrame } from '@/server/reservations/view'
 import { MESSAGES } from '@/test-utils'
 
 import { type DoorParty, tablesOpenFor, useDoorActions } from './door-actions'
-import type { RvRunSpec } from './use-reservation-run'
+import type { RvAgain, RvDoneDetails, RvRunSpec } from './use-reservation-run'
 
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { message: vi.fn(), error: vi.fn() }))
 vi.mock('sonner', () => ({ toast }))
@@ -43,8 +48,8 @@ const party = (over: Partial<DoorParty> = {}): DoorParty => ({
   ...over,
 })
 
-/** Taps "Arrived" for a party and hands back the write the door asked to run. */
-async function arrive(locale: 'bg' | 'en', who: DoorParty) {
+/** Taps "Arrived" (or seats a walk-in, or "They left") and hands back the write the door ran. */
+async function arrive(locale: 'bg' | 'en', who: DoorParty, tap: 'arrive' | 'free' = 'arrive') {
   const run = vi.fn<(spec: RvRunSpec) => void>()
   const wrapper = ({ children }: { children: ReactNode }) => (
     <NextIntlClientProvider locale={locale} messages={MESSAGES[locale]}>
@@ -55,7 +60,10 @@ async function arrive(locale: 'bg' | 'en', who: DoorParty) {
     wrapper,
   })
   await act(async () => {
-    result.current.arrive(who)
+    if (tap === 'free') result.current.free(who)
+    else if (who.reservationId === null)
+      result.current.walkIn({ ...who, partySize: who.partySize ?? 2 })
+    else result.current.arrive(who)
     // The advice is read first, then the write is handed to `run`.
     await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1))
   })
@@ -64,68 +72,148 @@ async function arrive(locale: 'bg' | 'en', who: DoorParty) {
   return spec
 }
 
-/** Every line the toast said about a table, after the write answered with these details. */
+/** The one toast the write says, after it answered with these details. */
 function told(spec: RvRunSpec, details: Record<string, string | number | boolean | null>) {
   toast.message.mockClear()
+  const text = typeof spec.done === 'string' ? spec.done : spec.done(details)
   spec.onDone?.(details)
-  return toast.message.mock.calls.map((call) => call[0] as string)
+  // Never a second toast beside it.
+  expect(toast.message).not.toHaveBeenCalled()
+  return text
+}
+
+/** The Undo the toast offers once the write reported these details; undefined where it offers none. */
+function undoOf(spec: RvRunSpec, details: RvDoneDetails): RvAgain | undefined {
+  return typeof spec.again === 'function' ? spec.again(details) : spec.again
 }
 
 beforeEach(() => {
   toast.message.mockReset()
+  vi.mocked(undoArrivalAction).mockReset()
 })
 
 describe('the door, after an arrival', () => {
   it('seats a party with no spot without saying a table opened', async () => {
     const spec = await arrive('en', party())
-    // What the write is certain of, said before it answers: nobody is told about a table yet.
-    expect(spec.done).toBe('Seated Ivanova.')
     // The write answered: it opened no table, because the party holds no spot.
-    const lines = told(spec, { status: 'seated', spots: '', opened: '', tablesOpen: 0 })
-    expect(lines).toEqual([])
-    expect(`${spec.done} ${lines.join(' ')}`).not.toMatch(/open for phones/i)
+    const text = told(spec, { status: 'seated', spots: '', opened: '', tablesOpen: 0 })
+    expect(text).toBe('Seated: Ivanova.')
+    expect(text).not.toMatch(/open for phones/i)
   })
 
   it('says the same in Bulgarian, which is the language the hostess reads', async () => {
     const spec = await arrive('bg', party())
-    expect(spec.done).toBe('Настанихме Ivanova.')
-    expect(told(spec, { status: 'seated', opened: '', tablesOpen: 0 })).toEqual([])
-    expect(spec.done).not.toContain('отворена')
+    const text = told(spec, { status: 'seated', opened: '', tablesOpen: 0 })
+    expect(text).toBe('Настанени: Ivanova.')
+    expect(text).not.toContain('отворена')
   })
 
-  it('adds the table line only when a code really opened', async () => {
+  it('adds the table line only when a code really opened, in the same toast', async () => {
     const spec = await arrive('en', party({ spotIds: ['sp_7'] }))
-    expect(spec.done).toBe('Seated Ivanova.')
-    expect(told(spec, { status: 'seated', opened: 'tb_7', tablesOpen: 1 })).toEqual([
-      'The table is open for phones.',
-    ])
+    expect(told(spec, { status: 'seated', opened: 'tb_7', tablesOpen: 1 })).toBe(
+      'Seated: Ivanova. The table is open for phones.',
+    )
   })
 
-  it('adds it in Bulgarian, and names the spot the hostess chose in the main toast', async () => {
+  it('adds it in Bulgarian, and names the spot the hostess chose', async () => {
     const spec = await arrive('bg', party({ onSpot: 'Маса 7', spotIds: ['sp_7'] }))
-    expect(spec.done).toBe('Настанихме Ivanova на Маса 7.')
-    expect(told(spec, { opened: 'tb_7', tablesOpen: 1 })).toEqual([
-      'Масата е отворена за телефони.',
-    ])
+    expect(told(spec, { opened: 'tb_7', tablesOpen: 1 })).toBe(
+      'Настанени: Ivanova на Маса 7. Масата е отворена за телефони.',
+    )
+  })
+
+  it('names a spot that is only a number as a spot, never a bare count', async () => {
+    const spec = await arrive('bg', party({ onSpot: '9', spotIds: ['sp_9'] }))
+    expect(told(spec, { tablesOpen: 0 })).toBe('Настанени: Ivanova на място 9.')
   })
 
   it('counts a table found open and kept ("the same guests") as open for phones', async () => {
     const spec = await arrive('en', party({ spotIds: ['sp_7'] }))
-    expect(told(spec, { opened: '', kept: 'tb_7', tablesOpen: 1 })).toEqual([
-      'The table is open for phones.',
-    ])
+    expect(told(spec, { opened: '', kept: 'tb_7', tablesOpen: 1 })).toBe(
+      'Seated: Ivanova. The table is open for phones.',
+    )
   })
 
-  it('leaves only the closed-table line for a role that may not open tables', async () => {
+  it('says the table stayed closed for a role that may not open tables', async () => {
     const spec = await arrive('en', party({ spotIds: ['sp_7'] }))
-    expect(told(spec, { opened: '', tablesOpen: 0, tableClosed: true })).toEqual([
-      'The table stayed closed for phones. Ask someone who may open it.',
-    ])
+    expect(told(spec, { opened: '', tablesOpen: 0, tableClosed: true })).toBe(
+      'Seated: Ivanova. The table stayed closed for phones. Ask someone who may open it.',
+    )
   })
 
   it('says nothing about a table when the write did not report one at all', async () => {
     const spec = await arrive('en', party({ spotIds: ['sp_7'] }))
-    expect(told(spec, { status: 'seated' })).toEqual([])
+    expect(told(spec, { status: 'seated' })).toBe('Seated: Ivanova.')
+  })
+
+  it('offers the Undo of the arrival on its toast', async () => {
+    const spec = await arrive('en', party())
+    const undo = undoOf(spec, {})
+    expect(undo?.label).toBe('Undo')
+    expect(undo?.done).toBe('The arrival is undone and the table is closed again.')
+    await undo?.act()
+    expect(undoArrivalAction).toHaveBeenCalledWith({ venueId: 'vn_demo', reservationId: 'rv_one' })
+  })
+
+  it('seats a party nobody named as a party, never as "No name"', async () => {
+    const spec = await arrive('en', party({ name: null, onSpot: 'Маса 7', spotIds: ['sp_7'] }))
+    expect(told(spec, { tablesOpen: 0 })).toBe('Party seated at Маса 7.')
+  })
+})
+
+describe('the door, after "They left"', () => {
+  it('names the party that left', async () => {
+    const spec = await arrive('en', party(), 'free')
+    expect(spec.done).toBe('They left: Ivanova. The table is free again.')
+  })
+
+  it('says it without a name for a party nobody named', async () => {
+    expect((await arrive('en', party({ name: null }), 'free')).done).toBe(
+      'They left. The table is free again.',
+    )
+    expect((await arrive('bg', party({ name: null }), 'free')).done).toBe(
+      'Тръгнаха си. Масата е свободна отново.',
+    )
+  })
+})
+
+describe('the door, after a walk-in', () => {
+  const walkIn = (over: Partial<DoorParty> = {}) =>
+    party({ reservationId: null, name: null, spotIds: ['sp_7'], ...over })
+
+  it('says where the party sits, in one toast with the table line', async () => {
+    const spec = await arrive('en', walkIn({ onSpot: 'Маса 7' }))
+    expect(told(spec, { reservationId: 'rv_new', tablesOpen: 1 })).toBe(
+      'Party seated at Маса 7. The table is open for phones.',
+    )
+  })
+
+  it('says it in Bulgarian, and without a spot name when none was given', async () => {
+    expect(told(await arrive('bg', walkIn({ onSpot: 'Маса 7' })), { tablesOpen: 0 })).toBe(
+      'Настанена компания на Маса 7.',
+    )
+    expect(told(await arrive('bg', walkIn()), { tablesOpen: 0 })).toBe('Настанена компания.')
+  })
+
+  it('offers an Undo that takes back the line the seating made', async () => {
+    const spec = await arrive('en', walkIn({ onSpot: 'Маса 7' }))
+    const undo = undoOf(spec, { reservationId: 'rv_new' })
+    expect(undo?.label).toBe('Undo')
+    // Its own sentence: a walk-in had no booking to go back to.
+    expect(undo?.done).toBe('The seating is undone and the spot is free again.')
+    await undo?.act('1234')
+    expect(undoArrivalAction).toHaveBeenCalledWith({
+      venueId: 'vn_demo',
+      reservationId: 'rv_new',
+      pin: '1234',
+    })
+  })
+
+  it('offers no Undo rather than guess when the write reported no line', async () => {
+    const spec = await arrive('en', walkIn())
+    expect(undoOf(spec, {})).toBeUndefined()
+    expect(undoOf(spec, { reservationId: null })).toBeUndefined()
+    expect(undoArrivalAction).not.toHaveBeenCalled()
   })
 })
 

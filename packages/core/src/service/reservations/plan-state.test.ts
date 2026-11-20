@@ -133,6 +133,18 @@ describe('a spot at a moment', () => {
     expect(spotStateAt([dated], at(22))).toBe('free')
   })
 
+  it('shows a dated block on every night it runs over, not only its first (C2)', () => {
+    // From the 20th at 20:00 to the morning of the 26th, read on the night of the 22nd.
+    const long = block({
+      stretch: {
+        from: new Date(Date.UTC(2026, 10, 20, 20, 0)),
+        to: new Date(Date.UTC(2026, 10, 26, 4, 0)),
+      },
+    })
+    expect(spotStateAt([long], new Date(Date.UTC(2026, 10, 22, 23, 0)))).toBe('blocked')
+    expect(spotStateAt([long], new Date(Date.UTC(2026, 10, 26, 22, 0)))).toBe('free')
+  })
+
   it('never calls a block late', () => {
     expect(isLateHold(block({ startsAt: at(20) }), at(23))).toBe(false)
   })

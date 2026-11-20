@@ -331,7 +331,8 @@ export function ReservationSheet({
   busy: boolean
   onEdit: (detail: RvDetailView) => void
   onCopy: (detail: RvDetailView) => void
-  onNoShow: (reservationId: string) => void
+  /** Marks the party as a no-show; the toast names it, so it comes with the reservation. */
+  onNoShow: (reservationId: string, party: string) => void
   /** Puts back one party the night's end closed (#332); the sheet reads it again when it worked. */
   onPutBack: (reservationId: string, party: PartyName, done: () => void) => void
   /** Calls the booking off; the sheet reads it again when it worked. */
@@ -376,7 +377,13 @@ export function ReservationSheet({
         setDetail(fresh)
         const newest = fresh?.history.at(-1)
         if (newest !== undefined) {
-          if (seen.current !== null && newest.seq > seen.current) setChangedBy(newest.by)
+          // Only somebody else's change is news: her own write already said itself in its toast,
+          // so a line she wrote never raises the notice (S18).
+          const theirs =
+            seen.current === null
+              ? undefined
+              : fresh?.history.findLast((line) => line.seq > (seen.current ?? 0) && !line.mine)
+          if (theirs !== undefined) setChangedBy(theirs.by)
           seen.current = newest.seq
         }
       },
@@ -402,14 +409,20 @@ export function ReservationSheet({
   // What this person may do with this booking, drawn or not (a role that may not is told who may).
   const status = detail?.row.status
   const ended = status !== undefined && (ENDED as readonly string[]).includes(status)
+  // Editing and cancelling are whoever works tonight's (D135 13.18); deleting another's booking and
+  // bringing one back stay the manager's (S20 of the 11-18 screen round). A shared device shows
+  // them all and asks for the PIN.
   const mayManage = frame.can.manage || frame.device
   const isBlock = detail?.row.kind === 'block'
-  const mayEdit = detail !== undefined && detail !== null && writable && mayManage && !ended
+  // A block is changed and lifted with the block right (D137), not the booking one: a role
+  // without it is not shown the controls the server would refuse.
+  const mayWork = isBlock ? frame.can.block || frame.device : frame.can.tonight || mayManage
+  const mayEdit = detail !== undefined && detail !== null && writable && mayWork && !ended
   const mayCancel =
     detail !== undefined &&
     detail !== null &&
     writable &&
-    mayManage &&
+    mayWork &&
     (status === 'reserved' || status === 'waiting' || status === 'requested')
   const mayDelete =
     detail !== undefined && detail !== null && writable && !isBlock && (mayManage || detail.mine)
@@ -443,7 +456,7 @@ export function ReservationSheet({
       detail={detail}
       frame={frame}
       changedBy={changedBy}
-      sayWhoManages={writable && !mayManage && !ended}
+      sayWhoManages={writable && !mayManage && !ended && !isBlock && detail.mine !== true}
       busy={busy}
       onPayRule={onPayRule}
       onSettled={load}
@@ -578,7 +591,7 @@ export function ReservationSheet({
               <DropdownMenuItem
                 className="min-h-11"
                 data-testid="rv-noshow"
-                onSelect={() => onNoShow(detail.row.id)}
+                onSelect={() => onNoShow(detail.row.id, detail.row.name ?? t('no_name'))}
               >
                 {t('bk_noshow')}
               </DropdownMenuItem>
