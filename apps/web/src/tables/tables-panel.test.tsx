@@ -467,7 +467,7 @@ describe('the Tables & QR tab', () => {
     renderWithIntl(<TablesPanel view={view({ halls: [], total: 0, coded: 0, sample: null })} />)
     expect(screen.getByText('No tables yet')).toBeTruthy()
     expect(screen.getByText(/Areas and tables come from barsy\./)).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Go to the Menu source' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: 'Go to Source' }).getAttribute('href')).toBe(
       `/venues/${VENUE_ID}?tab=settings#menu-source`,
     )
     expect(screen.queryByTestId('create-all')).toBeNull()

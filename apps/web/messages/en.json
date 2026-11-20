@@ -1547,7 +1547,7 @@
     "empty": {
       "title": "No tables yet",
       "description": "Areas and tables come from {source}. They appear at its next read. A venue without a till adds its own areas and tables.",
-      "action": "Go to the Menu source"
+      "action": "Go to Source"
     },
     "emptyHand": {
       "title": "No areas yet",
