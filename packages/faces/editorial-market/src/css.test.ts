@@ -163,15 +163,19 @@ describe('the audit of the stylesheet (SH-07)', () => {
     expect(EDITORIAL_CSS).not.toContain('.rm-chevron')
   })
 
-  it('keeps the arrow on the line of the name’s last word, and nudges it with a transform on a real hover (S11)', () => {
-    // The span starts with a word joiner (no line breaks before it), and nothing inside it breaks.
-    expect(declarationsFor('.rm-item-arrow::before')).toContain('content: "\\2060"')
-    expect(declarationsFor('.rm-item-arrow')).toMatch(/white-space:\s*nowrap/)
+  it('keeps the arrow with the end of the name, outside the text, and nudges it with a transform on a real hover (S11)', () => {
+    // Out of the text's flow, from an empty span after the last letter, into room every line keeps.
+    expect(declarationsFor('.rm-item-arrow')).toMatch(/position:\s*relative/)
     const arrow = declarationsFor('.rm-item-arrow::after')
-    expect(arrow).toMatch(/display:\s*inline-block/)
+    expect(arrow).toMatch(/position:\s*absolute/)
+    expect(arrow).toMatch(/left:\s*8px/)
     expect(arrow).toMatch(/transition:\s*transform/)
-    expect(arrow).not.toMatch(/(?<![-\w])left:/)
+    expect(declarationsFor('.rm-item-open')).toContain('padding-right: calc(12px + 1em)')
     expect(EDITORIAL_CSS).not.toContain('.rm-item-open::after')
+    // Two columns draw no arrow, and keep no room for one.
+    expect(
+      declarationsFor('.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-open'),
+    ).toContain('padding-right: 0')
     // The nudge only where a pointer can hover: a tap on a phone leaves no sticky hover behind.
     expect(EDITORIAL_CSS).toMatch(
       /@media \(hover: hover\) and \(pointer: fine\) \{\s*\.rm-item:hover \.rm-item-arrow::after \{\s*transform: translateX\(4px\);/,

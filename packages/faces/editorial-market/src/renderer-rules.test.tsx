@@ -288,8 +288,12 @@ describe('two columns hold the items without a photo too (S7)', () => {
         // One cell of the two-column grid: no span across both.
         expect(page.value(card, 'grid-column'), where).toBeUndefined()
         expect(page.value(card, 'min-width'), where).toBe('0')
-        // The name wraps inside its column and is never cut (R9).
-        expect(page.value(card, 'overflow-wrap'), where).toBe('anywhere')
+        // The name wraps inside its column and is never cut (R9): a word breaks only when it cannot
+        // fit the column, at a hyphen where the browser knows the words of the heading's language.
+        expect(page.value(card, 'overflow-wrap'), where).toBe('break-word')
+        expect(page.value(card, 'hyphens'), where).toBe('auto')
+        // (The hyphens follow the name's language: the face's root carries the page's, and a name in
+        // another language carries its own, `langOf`.)
         const heading = headingOf(part(card, 'item.name'))
         expect(page.value(heading, 'text-overflow'), where).toBeUndefined()
         const name = page.px(heading) as number

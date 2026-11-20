@@ -1027,20 +1027,22 @@ ${HEAVY_FALLBACK_CSS}
   inset: 0;
   z-index: 1;
 }
-.rm-item-arrow {
-  white-space: nowrap;
+/* The arrow after a name (S11) stands outside the text, in room the name keeps free at the end of
+   each line: it hangs from an empty span after the last letter, so it is always on the name's last
+   line, even when the name's one word fills the line. */
+.rm-item-open {
+  padding-right: calc(12px + 1em);
 }
-/* The arrow after a name (S11) hangs on the name's last word: its span starts with a word joiner
-   (U+2060), which no line may break before, and nothing inside the span breaks, so the arrow
-   never wraps alone. Drawn by the stylesheet, so the name's text stays the name. */
-.rm-item-arrow::before {
-  content: "\\2060";
+.rm-item-arrow {
+  position: relative;
 }
 .rm-item-arrow::after {
   content: "→";
   content: "→" / "";
-  display: inline-block;
-  margin-left: 8px;
+  position: absolute;
+  top: 0;
+  left: 8px;
+  line-height: normal;
   color: var(--rm-muted);
   font-weight: 500;
   transition: transform 0.2s;
@@ -1434,10 +1436,13 @@ ${HEAVY_FALLBACK_CSS}
   column-gap: 12px;
 }
 /* An item without a photo takes one column too, as a text card: its name and every other part wrap
-   inside the column, so nothing is cut and nothing widens the page at 320 px. */
+   inside the column, so nothing is cut and nothing widens the page at 320 px. A word breaks only
+   when it cannot fit the column at all, and then, where the browser knows the words of the text's
+   language (its lang), at a hyphen. */
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.is-text {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  hyphens: auto;
 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo {
   min-width: 0;
@@ -1475,6 +1480,9 @@ ${HEAVY_FALLBACK_CSS}
 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-arrow::after {
   display: none;
+}
+.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-open {
+  padding-right: 0;
 }
 @media (max-width: 359px) {
   .rm[data-layout="two"] .rm-section:not(.is-feature) > .rm-items {

@@ -647,8 +647,23 @@ describe('the dish page at a table, and the tab’s title', () => {
       vi.fn(async () => new Response(null, { status: 500 })),
     )
     visit('')
-    render(<GuestMenu venue={PARAM} />)
+    const bulgarian = render(<GuestMenu venue={PARAM} />)
     expect(await screen.findByRole('button', { name: /Опитай|Опитайте/ })).toBeTruthy()
     expect(document.title).toBe('Меню')
+    bulgarian.unmount()
+    // In English, even when the server's streamed title lands over the page's own (Next.js puts
+    // the metadata title in after the page has started): the settled page says it again.
+    let fail: (response: Response) => void = () => {}
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>((resolve) => (fail = resolve))),
+    )
+    visit('?lang=en', ['en-GB'])
+    render(<GuestMenu venue={PARAM} />)
+    await waitFor(() => expect(document.title).toBe('Menu'))
+    document.title = 'Меню'
+    await act(async () => fail(new Response(null, { status: 500 })))
+    expect(await screen.findByRole('button', { name: /try again/i })).toBeTruthy()
+    expect(document.title).toBe('Menu')
   })
 })

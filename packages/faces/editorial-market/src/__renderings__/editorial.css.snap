@@ -468,12 +468,14 @@
 .rm-item-open::before { position: absolute }
 .rm-item-open::before { inset: 0 }
 .rm-item-open::before { z-index: 1 }
-.rm-item-arrow { white-space: nowrap }
-.rm-item-arrow::before { content: "\2060" }
+.rm-item-open { padding-right: calc(12px + 1em) }
+.rm-item-arrow { position: relative }
 .rm-item-arrow::after { content: "→" }
 .rm-item-arrow::after { content: "→" / "" }
-.rm-item-arrow::after { display: inline-block }
-.rm-item-arrow::after { margin-left: 8px }
+.rm-item-arrow::after { position: absolute }
+.rm-item-arrow::after { top: 0 }
+.rm-item-arrow::after { left: 8px }
+.rm-item-arrow::after { line-height: normal }
 .rm-item-arrow::after { color: var(--rm-muted) }
 .rm-item-arrow::after { font-weight: 500 }
 .rm-item-arrow::after { transition: transform 0.2s }
@@ -669,7 +671,8 @@
 .rm[data-layout="two"] .rm-section:not(.is-feature) > .rm-items { grid-template-columns: repeat(2, minmax(0, 1fr)) }
 .rm[data-layout="two"] .rm-section:not(.is-feature) > .rm-items { column-gap: 12px }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.is-text { min-width: 0 }
-.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.is-text { overflow-wrap: anywhere }
+.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.is-text { overflow-wrap: break-word }
+.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.is-text { hyphens: auto }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo { min-width: 0 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo { padding: 14px 0 28px }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo { padding: 8px }
@@ -689,6 +692,7 @@
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy > .rm-price { margin: 0 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-description { font-size: 12.5px }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-arrow::after { display: none }
+.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-open { padding-right: 0 }
 @media (max-width: 359px) .rm[data-layout="two"] .rm-section:not(.is-feature) > .rm-items { column-gap: 10px }
 @media (max-width: 359px) .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { font-size: 12.5px }
 @media (max-width: 359px) .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo { padding: 5px }

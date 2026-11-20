@@ -381,12 +381,14 @@ const ARROW_REMOVED: readonly string[] = [
   '.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-open::after { display: none }',
 ]
 const ARROW_ADDED: readonly string[] = [
-  '.rm-item-arrow { white-space: nowrap }',
-  '.rm-item-arrow::before { content: "\\2060" }',
+  '.rm-item-open { padding-right: calc(12px + 1em) }',
+  '.rm-item-arrow { position: relative }',
   '.rm-item-arrow::after { content: "→" }',
   '.rm-item-arrow::after { content: "→" / "" }',
-  '.rm-item-arrow::after { display: inline-block }',
-  '.rm-item-arrow::after { margin-left: 8px }',
+  '.rm-item-arrow::after { position: absolute }',
+  '.rm-item-arrow::after { top: 0 }',
+  '.rm-item-arrow::after { left: 8px }',
+  '.rm-item-arrow::after { line-height: normal }',
   '.rm-item-arrow::after { color: var(--rm-muted) }',
   '.rm-item-arrow::after { font-weight: 500 }',
   '.rm-item-arrow::after { transition: transform 0.2s }',
@@ -395,6 +397,16 @@ const ARROW_ADDED: readonly string[] = [
   '@media (prefers-reduced-motion: reduce) .rm-photo img, .rm-item-arrow::after { transition: none !important }',
   '@media (prefers-reduced-motion: reduce) .rm-photo img, .rm-item-arrow::after { transform: none !important }',
   '.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-arrow::after { display: none }',
+  '.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-open { padding-right: 0 }',
+]
+
+/** Two columns hold an item without a photo in one column, wrapping inside it (S7). */
+const TEXT_CARD = '.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.is-text'
+const TEXT_CARD_REMOVED: readonly string[] = [`${TEXT_CARD} { grid-column: 1 / -1 }`]
+const TEXT_CARD_ADDED: readonly string[] = [
+  `${TEXT_CARD} { min-width: 0 }`,
+  `${TEXT_CARD} { overflow-wrap: break-word }`,
+  `${TEXT_CARD} { hyphens: auto }`,
 ]
 
 /** Each departure of `packages/shell/src/design/styles/editorial.ts`, as the lines it may touch. */
@@ -471,8 +483,7 @@ const DEPARTURES: readonly ((line: string, added: boolean) => boolean)[] = [
   // The arrow after a name is drawn by its own span, tied to the name's last word, and nudges only
   // under a real hover (S11, 11-18 round): exactly these lines.
   (line, added) => (added ? ARROW_ADDED : ARROW_REMOVED).includes(line),
-  // Two columns hold the items without a photo too, one column each (S7).
-  (line) =>
-    line.startsWith('.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.is-text {') &&
-    /^(?:grid-column|min-width|overflow-wrap)$/.test(property(line)),
+  // Two columns hold the items without a photo too, one column each (S7, 11-18 round): exactly
+  // these lines.
+  (line, added) => (added ? TEXT_CARD_ADDED : TEXT_CARD_REMOVED).includes(line),
 ]

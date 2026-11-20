@@ -410,9 +410,13 @@ export function GuestMenu(props: GuestMenuProps) {
   const itemsOfView = useMemo(() => (view === null ? null : itemsById(view)), [view])
   const openDishName =
     openDishId === null ? null : (itemsOfView?.get(openDishId)?.name.text ?? null)
+  // Said again whenever the load settles: Next.js streams the address's first title in after the
+  // page has started, and it may land over this one.
+  const settled = phase.kind
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `settled` only re-runs the effect
   useEffect(() => {
     document.title = openDishName === null ? title : `${openDishName} · ${title}`
-  }, [title, openDishName])
+  }, [title, openDishName, settled])
   if (view === null || snapshot === null) {
     if (phase.kind === 'error') {
       const text =

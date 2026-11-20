@@ -466,12 +466,14 @@
 .rm-item-open::before { position: absolute }
 .rm-item-open::before { inset: 0 }
 .rm-item-open::before { z-index: 1 }
-.rm-item-arrow { white-space: nowrap }
-.rm-item-arrow::before { content: "\2060" }
+.rm-item-open { padding-right: calc(12px + 1em) }
+.rm-item-arrow { position: relative }
 .rm-item-arrow::after { content: "→" }
 .rm-item-arrow::after { content: "→" / "" }
-.rm-item-arrow::after { display: inline-block }
-.rm-item-arrow::after { margin-left: 8px }
+.rm-item-arrow::after { position: absolute }
+.rm-item-arrow::after { top: 0 }
+.rm-item-arrow::after { left: 8px }
+.rm-item-arrow::after { line-height: normal }
 .rm-item-arrow::after { color: var(--rm-muted) }
 .rm-item-arrow::after { font-weight: 500 }
 .rm-item-arrow::after { transition: transform 0.2s }
