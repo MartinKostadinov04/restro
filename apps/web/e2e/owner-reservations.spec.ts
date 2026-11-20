@@ -203,10 +203,14 @@ test('a role without the right sees everything read-only', async ({ browser }) =
   const panel = page.getByTestId('reservations-panel')
   await expect(panel).toBeVisible()
   await expect(page.getByTestId('settings-readonly')).toBeVisible()
-  // No switches, fields or buttons: never disabled ones.
+  // No switches, fields or buttons that change anything: never disabled ones. The only buttons
+  // are for looking (the plan's zoom and the folded spot list, S13), and none is disabled.
   await expect(panel.getByRole('switch')).toHaveCount(0)
   await expect(panel.getByRole('textbox')).toHaveCount(0)
-  await expect(panel.getByRole('button')).toHaveCount(0)
+  const looking = ['pe-zoom-out', 'pe-zoom-in', 'pe-zoom-fit', 'pe-spot-list-toggle']
+  const buttons = panel.getByRole('button')
+  await expect(buttons).toHaveCount(looking.length)
+  for (const id of looking) await expect(panel.getByTestId(id)).toBeEnabled()
   await expect(panel.getByTestId('rs-hold-value')).toHaveText('90 мин')
   await expect(panel.getByTestId('rs-phone-value')).toBeVisible()
   await snapshot(page, 'reservations-read-only-phone.png')
