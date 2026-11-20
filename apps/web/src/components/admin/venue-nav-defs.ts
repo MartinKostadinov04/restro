@@ -104,7 +104,7 @@ export interface VenueNavViewer {
 export function venueNavGroupsOf(viewer: VenueNavViewer): readonly VenueNavGroup[] {
   return VENUE_NAV_GROUPS.map((group) => ({
     ...group,
-    entries: group.entries.filter((entry) => entry.key !== 'reservations' || viewer.reservations),
+    entries: group.entries.filter((entry) => entry.tab !== 'reservations' || viewer.reservations),
   })).filter((group) => group.entries.length > 0)
 }
 

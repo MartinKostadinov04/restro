@@ -6,12 +6,13 @@
 // list to go back to. Set once by the admin layout.
 import { createContext, type ReactNode, useContext } from 'react'
 
-export interface AdminFrame {
-  /** The shared device this session is, by the name its owner gave it; null for a person. */
-  readonly device: { readonly name: string } | null
-  /** Not an owner or admin, and working at one venue only (D141's landing). */
-  readonly staffOnly: boolean
-}
+/**
+ * A shared device (by the name its owner gave it) is always staff-only; a person is staff-only
+ * when not an owner or admin and working at one venue only (D141's landing).
+ */
+export type AdminFrame =
+  | { readonly device: { readonly name: string }; readonly staffOnly: true }
+  | { readonly device: null; readonly staffOnly: boolean }
 
 const AdminFrameContext = createContext<AdminFrame>({ device: null, staffOnly: false })
 

@@ -79,9 +79,9 @@ export default async function VenueWorkspacePage({
   const venue = await getVenue(organization.id, (await params).venueId)
   if (!venue) notFound()
 
-  // The Studio reads the whole menu: only read it while its tab is the open one (the tab bar
-  // shows the skeleton at once when someone switches to it, and the page streams the rest in).
-  // The same holds for the Settings sections (`?section=`, D97).
+  // The Studio reads the whole menu: read it only while it is the open screen (its Suspense
+  // fallback shows the skeleton while the page streams in). The same holds for the Settings
+  // sections (`?section=`, D97).
   const query = await searchParams
   // Old links: the Design tab and subtab are the Design page now, and the composer is the Studio (D129).
   const menu = typeof query.menu === 'string' ? query.menu : null
@@ -153,8 +153,8 @@ export default async function VenueWorkspacePage({
   const tNav = await getTranslations('nav')
 
   // The open screen's name (the venue is in the breadcrumb and the sidebar's switcher, D154) and
-  // the guest address `/m/<organisation>/<venue>` (D84). A shared device has one row of two
-  // screens and no sidebar: its title stays the venue's name.
+  // the guest address `/m/<organisation>/<venue>` (D84). A shared device has no sidebar (Tonight,
+  // and Reservations where it may): its title stays the venue's name.
   const title = (
     <>
       <h1

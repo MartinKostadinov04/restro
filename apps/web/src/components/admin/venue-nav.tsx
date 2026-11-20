@@ -98,8 +98,8 @@ function VenueMark({ name, large = false }: { name: string; large?: boolean }) {
 
 /**
  * Another venue's address from this one: the same screen (`tab`, and Settings' `section`), nothing
- * of this venue's own state (its open menu, item, view or day; C1). The page sends a screen or
- * section that venue does not offer to its default.
+ * of this venue's own state (its open menu, item, view or day; C1). The page sends a screen that
+ * venue does not offer to the Studio, and a section to its module's first.
  */
 function sameScreenAt(venueId: string, search: URLSearchParams | null): string {
   const tab = search?.get('tab') ?? null

@@ -347,6 +347,34 @@ describe('venueQueryRedirect: one address per screen (C1, C9)', () => {
     expect(venueQueryRedirect(parse(search), rights, settings)).toBe(expected)
   })
 
+  it('sends every link to an address it leaves as it is: one hop, never a loop', () => {
+    const links = [
+      'tab=composer&menu=mn_1&section=nd_9&view=log',
+      'tab=tables&view=log&day=2026-11-18',
+      'tab=tonight&section=hours&guest=gs_1',
+      'tab=reservations&menu=mn_1',
+      'tab=settings',
+      'tab=settings&section=paying&connection=return',
+      'tab=settings&section=alerts&view=log',
+      'tab=settings&section=staff&menu=mn_1',
+      'tab=settings&section=nonsense&connection=refresh',
+      'tab=integration&section=hours',
+      'tab=publishing',
+      'tab=nonsense&item=nd_4',
+    ]
+    for (const rights of [owner, { reservations: false }]) {
+      for (const settings of [everything, nothing]) {
+        for (const link of links) {
+          const target = venueQueryRedirect(parse(link), rights, settings)
+          if (target === null) continue
+          expect(venueQueryRedirect(parse(target), rights, settings), `${link} → ${target}`).toBe(
+            null,
+          )
+        }
+      }
+    }
+  })
+
   it('treats a repeated parameter as not the one address', () => {
     expect(venueQueryRedirect({ tab: 'tonight', view: ['log', 'orders'] }, owner, everything)).toBe(
       'tab=tonight',

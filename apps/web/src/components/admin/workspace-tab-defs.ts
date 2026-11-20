@@ -64,7 +64,7 @@ export interface WorkspaceRights {
   readonly reservations: boolean
 }
 
-/** No keys: what the tab bar assumes until the page has read them. */
+/** No keys: what the screens offered assume until the page has read them. */
 export const NO_WORKSPACE_RIGHTS: WorkspaceRights = { reservations: false }
 
 /** The tabs a venue page offers this person. */
@@ -165,7 +165,7 @@ export const FIRST_SECTION_OF: Readonly<Record<SettingsModule, SettingsSectionVa
   reservations: 'reservations',
 }
 
-/** The section shown when `?section=` is absent, unknown, or not the venue's. */
+/** The section shown when `?section=` is absent or unknown (an unoffered one opens its module's first). */
 export const DEFAULT_SETTINGS_SECTION: SettingsSectionValue = 'general'
 
 /** Which permission-gated sections the signed-in person's role holds the right for. */
@@ -238,7 +238,7 @@ export interface SettingsOffer {
 /**
  * The parameters each screen reads, in the order the address writes them. The Studio's `section`
  * is a menu section's id (`item-param.ts`), not a Settings section. Anything else a link carries
- * (another screen's `view`, a Settings section on the Studio) is left behind, so one screen's
+ * (another screen's `view`, Paying's `connection` on the Studio) is left behind, so one screen's
  * state never leaks into another's (lane 6 step 0, C1).
  */
 const KEPT_PARAMS: Readonly<Record<WorkspaceTabValue, readonly string[]>> = {
@@ -246,7 +246,8 @@ const KEPT_PARAMS: Readonly<Record<WorkspaceTabValue, readonly string[]>> = {
   tables: [],
   tonight: ['view', 'day'],
   reservations: ['view', 'day', 'guest'],
-  settings: ['section', 'connection'],
+  // Settings' `section` and Paying's `connection` are resolved in canonicalVenueQuery itself.
+  settings: [],
 }
 
 /**
