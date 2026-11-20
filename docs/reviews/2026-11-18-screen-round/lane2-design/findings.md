@@ -49,7 +49,7 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/design/design-page.tsx:311-313` (`setBaseline(draft); setHistory(historyOf(draft))` inside the async transition); `:620`, `:636`, `:644` (only the three buttons carry `saving`).
 - Proposal: On success set only the baseline and the revision to the saved draft and leave the history alone, or disable the panel while saving.
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): test: design-page.test.tsx "an edit made while Done is saving stays…"
 - Verdict: confirmed — `onDone` resets baseline and history from the draft of the Done render; only three buttons disabled
 - Severity: Before the pilot
 - Effort: S
@@ -66,7 +66,7 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/design/logo-field.tsx:65-73`; `apps/web/src/design/design-page.tsx:452` (`onChange={(logo) => change(withLogo(draft, logo))}`).
 - Proposal: Apply the logo to the current draft with a functional update, or keep `onChange` in a ref.
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): test: design-page.test.tsx "a logo that finishes going up after other edits keeps those edits"
 - Verdict: confirmed — `logo-field.tsx:72` calls a stale onChange; `design-page.tsx:452` builds on the old draft
 - Severity: Before the pilot
 - Effort: S
@@ -83,7 +83,7 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/design/logo-field.tsx:44-50` (revoke on unmount), `:71` (revoke on replace); `apps/web/src/design/design-page.tsx:548` and `:579`.
 - Proposal: Have `DesignPage` own the blob URLs and revoke them on page unmount or after a save, not in the field.
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): test: design-page.test.tsx, both C5 tests (the pane cannot pick a file)
 - Verdict: confirmed — revoke on unmount and replace; `logoControl` mounts in two branches
 - Severity: Before the pilot
 - Effort: S
@@ -117,7 +117,7 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/design/design-draft.ts:140-143`, `:118` (`keyOfDesign = JSON.stringify`), `:217`; `packages/shell/src/design/styles/basic.ts:12-21`.
 - Proposal: Compare with a key-order-independent form in `keyOfDesign` and `changed`.
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): C7-after.jpg
 - Verdict: confirmed in the browser: tapping the current tile (Club) shows 'Незапазено' and enables Undo
 - Severity: Polish
 - Effort: S
@@ -134,7 +134,7 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/design/option-tiles.tsx:89`, `:226`.
 - Proposal: Pass the "does not apply" state to `Tile` separately and base `drawn` on that alone.
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): test: advanced.test.tsx "a role that may not edit sees the pages and every tile off"
 - Verdict: confirmed in code (`option-tiles.tsx:89`, `:226`); not walked, no member sign-in
 - Severity: Polish
 - Effort: S
@@ -151,7 +151,7 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/server/design/service.ts:88`; `apps/web/src/design/design-draft.ts:66`, `:113`; `look-state.ts:163`; `logo-field.tsx:114`; `packages/core/src/apply/apply.ts:1689-1694`.
 - Proposal: In `draftOf`, clear `look.logoAssetId` when the view has no logo.
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): test: design-draft.test.ts "a logo id whose picture is gone is not carried…"; no app path reaches it
 - Verdict: confirmed in code; no app path reaches it today (assets leave `stored` only by purge)
 - Severity: Polish
 - Effort: S
@@ -168,7 +168,7 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/design/option-tiles.tsx:202-217`; `scaled-frame.tsx:56-58`; `design-frame.tsx:43`; `my-styles.tsx:190`.
 - Proposal: Memoize each tile's content in a small per-tile component, as `Specimen` in `style-tiles.tsx` does.
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): test: advanced.test.tsx "builds it again only when something it draws changes… (C10)"; the walk could not time it
 - Verdict: confirmed in code; not timed
 - Severity: Polish
 - Effort: S
@@ -193,7 +193,7 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: `operational-screens.md` wayfinding question 3, design-critique 2
 - Evidence: S1-before.jpg
 - Proposal: make the page list a compact row of tabs or a Select, so the options sit directly under it. "Страница" / "Page".
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): S1-after.png
 - Verdict: confirmed at 1280×800: the 14-row list stays, options start at the fold
 - Severity: Before the pilot
 - Effort: M
@@ -210,7 +210,7 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: design-critique 2, D129/D130
 - Evidence: S2-before.jpg
 - Proposal: crop the tile frame on the item name for name options, or draw a name sample in each value.
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): S2-after.png, S2-after-weight-case.png
 - Verdict: confirmed; cause: each tile scrolls the focused item under the sticky section bar, which hides the name ('Рамка' tiles too)
 - Severity: Before the pilot
 - Effort: M
@@ -227,7 +227,7 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: `operational-screens.md` feedback 1, D129
 - Evidence: S3-before.jpg, S4-before.jpg; DOM `iframe[src*="slot=main"]` y=2290
 - Proposal: on a phone a floating "Преглед" / "Preview" button opening the preview as a bottom drawer, or a docked half-height preview above the sticky Undo/Cancel/Done bar.
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): S3-after.jpg
 - Verdict: confirmed at 390×844: main preview at y=2290 of 2891
 - Severity: Before the pilot
 - Effort: M
@@ -244,7 +244,7 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: `operational-screens.md` Clean rule 2
 - Evidence: S4-before.jpg
 - Proposal: hide the width switcher below 768 px.
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): S4-after.jpg
 - Verdict: confirmed at 390; D129's switcher is a desktop tool, hiding it below 768 px contradicts nothing
 - Severity: Polish
 - Effort: S
@@ -261,7 +261,7 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: ux-copy loading states, `operational-screens.md` feedback 1
 - Evidence: S5-before.jpg (dev server)
 - Proposal: a skeleton with "Зареждане на прегледа…" / "Loading the preview…".
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): S5-after.jpg, S5-after-tiles.jpg (tiles got the placeholder too)
 - Verdict: confirmed (dev server): empty grey box 3–9 s
 - Severity: Polish
 - Effort: S
@@ -278,7 +278,7 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: design-critique 2, `operational-screens.md` question 3
 - Evidence: S6-before.jpg
 - Proposal: only jump when the tapped part belongs to no open page, or never jump from a dish tap.
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): S6-after.png, S6-after-panel.jpg (Panel and Full page)
 - Verdict: confirmed and wider: with Kind Panel too, tapping a dish jumps the panel to 'Артикули'
 - Severity: Before the pilot
 - Effort: S
@@ -312,7 +312,7 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: copy-rules.md rule 8, D128
 - Evidence: S8-before.jpg
 - Proposal: "Външният вид на менюто (стил, цветове, лого)" / "The menu's look (style, colours, logo)".
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): S8-after.png
 - Verdict: confirmed — `messages/bg.json:1055` 'шаблон', en 'template'; copy rule 8, D128
 - Severity: Before the pilot
 - Effort: S
@@ -329,7 +329,7 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: `operational-screens.md` wayfinding question 3
 - Evidence: S9-before.jpg
 - Proposal: an empty striped swatch when no colour is chosen; derived fields show "—" until one is.
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): S9-after.jpg
 - Verdict: confirmed — colour input holds `#6b7280` while the box shows the placeholder
 - Severity: Polish
 - Effort: S
@@ -346,7 +346,7 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: D129, design-critique 2
 - Evidence: S10-before.jpg
 - Proposal: while a dish-related page is open, show a sample dish in the preview; back to the list on any other page.
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): S10-after.png, S10-after-leave.jpg (leaving the page closes the dish)
 - Verdict: confirmed — with Dish page open the main preview stays on the list
 - Severity: Before the pilot
 - Effort: M
@@ -380,7 +380,7 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: design-critique 2
 - Evidence: S12-before.jpg
 - Proposal: outline-button look, "Запази този вид като стил" / "Save this look as a style"; drop the "…" from the dialog title.
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): S12-after.jpg, S12-after-dialog.jpg
 - Verdict: confirmed — `my-styles.tsx:277` ghost sm; dialog title reuses `t('save')` with '…'
 - Severity: Polish
 - Effort: S
@@ -439,7 +439,7 @@ Walked blind first (found S7, S9, S11 and R1–R6), then reproduced every row on
 - Check: copy-rules 3
 - Evidence: `bg.json:1919`, `:1972`; `[data-testid=design-undo]` text
 - Proposal: "Върни" / "Undo" for both keys.
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): R1-after.jpg
 - Verdict: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: no · Fix: F-COPY
 
 ### R2. On a dark Style, the Page and Panels colours barely change the preview, and nothing says why
@@ -451,7 +451,7 @@ Walked blind first (found S7, S9, S11 and R1–R6), then reproduced every row on
 - Check: operational-screens question 3, D129
 - Evidence: `.rm` background before/after in `iframe[src*="slot=main"]`; the warning text
 - Proposal: Page and Panels help adds "На тъмен екран от него се изчислява тъмен нюанс." / "On a dark screen a dark shade is worked out from it."; the saturation hint only on a light preview.
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): R2-after.jpg
 - Verdict: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: no · Fix: F-DPANEL
 
 ### R3. In dark mode the dish and sheet overlay is a near-white wash over the menu
@@ -487,7 +487,7 @@ Walked blind first (found S7, S9, S11 and R1–R6), then reproduced every row on
 - Check: design-critique 4
 - Evidence: `contract.ts:224,231,283,297,330`
 - Proposal: show size values S, M, L, XL for display only; the contract and D130 order stay.
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): R5-after.png, R5-after-lines.jpg (description lines 1, 2, 3, All too)
 - Verdict: confirmed · Severity: Polish · Effort: S · Decision: none · Needs Martin's yes: no · Fix: F-DPANEL
 
 ### R6. Colour help uses words a club owner does not use
@@ -499,7 +499,7 @@ Walked blind first (found S7, S9, S11 and R1–R6), then reproduced every row on
 - Check: copy-rules 2
 - Evidence: `bg.json:1748`, `:1765`
 - Proposal: help "Цветът на марката ви: бутони, значки и акценти." / "Your brand colour: buttons, badges and accents."; button "Предложи цветове от марката" / "Suggest colours from my brand".
-- Status: confirmed
+- Status: re-verified (PR #470 at 2422a859, re-check walk 11-20 by an Opus walker that wrote no fix): R6-after.jpg
 - Verdict: confirmed · Severity: Polish · Effort: S · Decision: none · Needs Martin's yes: no · Fix: F-COPY
 
 ## Fix plan
