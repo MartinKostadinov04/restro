@@ -39,8 +39,8 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         offerSettings={!device}
         user={{ name: user.name, email: user.email }}
       />
-      {/* min-w-0: a wide row inside (the nine Settings section tabs) scrolls in its own box instead
-          of widening the page past the screen at 1024 px (WCAG 1.4.10). */}
+      {/* min-w-0: a wide row inside (the nine Settings section tabs, a long label) scrolls in its
+          own box instead of widening the page past the screen (WCAG 1.4.10, S3, N1). */}
       <SidebarInset className="min-w-0">{children}</SidebarInset>
     </SidebarProvider>
   )

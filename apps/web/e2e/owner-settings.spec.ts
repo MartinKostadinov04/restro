@@ -254,7 +254,24 @@ test('from 1280 px the section row starts at its first tab and reaches its last 
   await expect(page.getByRole('combobox', { name: 'Смяна на секцията' })).toBeHidden()
   const list = page.getByRole('tablist', { name: 'Смяна на секцията' })
   await expect(list).toBeVisible()
+  await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute('data-state', 'expanded')
   const tabs = list.getByRole('tab')
+  // A label longer than any today (a longer wording tipped the row 59 px past a 1280 px page when
+  // a container above it lacked min-w-0): the row scrolls inside itself, the page does not widen.
+  await tabs
+    .nth(1)
+    .evaluate((tab) => tab.append(' Синхронизиране и публикуване на менюто и настройките му'))
+  const row = await list.evaluate((element) => ({
+    scrollWidth: element.scrollWidth,
+    clientWidth: element.clientWidth,
+  }))
+  expect(row.scrollWidth, 'the stretched row overflows its own box').toBeGreaterThan(
+    row.clientWidth,
+  )
+  const contained = await page.evaluate(
+    () => document.documentElement.scrollWidth <= window.innerWidth,
+  )
+  expect(contained, 'the page at 1280 px with a long section label').toBe(true)
   for (const tab of [tabs.first(), tabs.last()]) {
     await tab.scrollIntoViewIfNeeded()
     await expect(tab).toBeVisible()
