@@ -20,5 +20,8 @@ Kept current by the lane 6 session so a restart reuses what exists.
 - pr-review-toolkit:review-pr (4 Opus agents): fixes in 2970b561 (local, push after CI read).
 - CI on dbfddbfb: unit green; e2e still fails at 390 px only: each screen's root (`tables-tab`, `tonight`, `reservations-*`) is found twice, one in `<main>`, one outside it. `loading.tsx` dropped (it also made a deleted venue 200). Cause (trace DOM): the second copy is React's streamed `<div hidden id="S:3">`, orphaned because the sidebar's `isMobile` flipped in its context right after hydration, which makes React client-render the still-pending Suspense boundaries. Fixed by reading `isMobile` per component (`useSyncExternalStore`), not from the provider's context.
 
+- d4479361 pushed: the 390 px duplicate fix (isMobile out of the sidebar context). CI on it was still running when the usage limit hit; read it with `gh pr checks 456`.
+- Persona walk (Opus, Playwright from the scratchpad) stopped at the limit: 9 owner screenshots in `after/` (desktop: settings, studio, studio-en, venues, switcher, ordering-settings; phone: sidebar, tonight, venues). Waiter, door host and tablet are not walked yet, and no critique rows came back. Servers stopped, ports 3160, 8161 and 4760 closed.
+
 ## Next
-CI green on the isMobile fix → persona walk with after screenshots in `after/` (start web, worker and sim-pos only for the walk; the pane's password field takes no typed text, so the walk agent should sign in through Playwright or a cookie) → PR body, ready (never merge) → rebase onto `origin/sr/foundation` → report.
+Read CI on d4479361 and fix it if red → finish the walk for waiter, host and tablet, plus the critique (design-critique, accessibility-review and ux-copy under screen-review's overrides), giving a fresh agent only what's left; servers only while it walks → PR body with before and after, mark ready (never merge) → rebase onto `origin/sr/foundation` → report with the Skills run table.
