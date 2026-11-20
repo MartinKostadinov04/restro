@@ -406,8 +406,10 @@ export function ReservationSheet({
   // bringing one back stay the manager's (S20 of the 11-18 screen round). A shared device shows
   // them all and asks for the PIN.
   const mayManage = frame.can.manage || frame.device
-  const mayWork = frame.can.tonight || mayManage
   const isBlock = detail?.row.kind === 'block'
+  // A block is changed and lifted with the block right (D137), not the booking one: a role
+  // without it is not shown the controls the server would refuse.
+  const mayWork = isBlock ? frame.can.block || frame.device : frame.can.tonight || mayManage
   const mayEdit = detail !== undefined && detail !== null && writable && mayWork && !ended
   const mayCancel =
     detail !== undefined &&

@@ -20,7 +20,7 @@ import {
 import { and, eq, gt, inArray, isNull, lt, max, or, sql } from 'drizzle-orm'
 
 import type { Id } from '../../ids'
-import { localInstant } from '../../service-day'
+import { serviceDayBounds } from '../../service-day'
 import { sortKeyBetween } from '../../sort-keys'
 import type { ServiceTx } from '../definition'
 import type { Permission } from '../permissions'
@@ -396,8 +396,8 @@ export async function heldSpotsOfNight(
 
 /** The instant a service day begins at this venue: the end of the day before (D45). */
 function nightStartsAt(stx: ServiceTx, serviceDate: string): Date {
-  const dayEndsAt = stx.venue.serviceDayEndsAt.slice(0, 5)
-  return localInstant(serviceDate, dayEndsAt, stx.venue.timezone, dayEndsAt)
+  return serviceDayBounds(serviceDate, stx.venue.timezone, stx.venue.serviceDayEndsAt.slice(0, 5))
+    .from
 }
 
 /**

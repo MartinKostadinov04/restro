@@ -121,6 +121,22 @@ describe('where the PIN falls', () => {
     expect(edit({ reservationId: 'rs_1', partySize: 6, turnMinutes: 120 })).toBe('edit')
     expect(edit({ reservationId: 'rs_1', partySize: 6, partyLabel: 'Ivo' })).toBe('edit')
     expect(edit({ reservationId: 'rs_1', note: 'by the DJ' })).toBe('edit')
+    // An allow-list (review of #479): the count is a tap only when nothing else is in the payload,
+    // so a field the schema gains later asks for the PIN until somebody decides otherwise.
+    expect(edit({ reservationId: 'rs_1', partySize: 6, guestName: 'Ivo' })).toBe('edit')
+    expect(edit({ reservationId: 'rs_1', partySize: 6, spotIds: ['sp_1'] })).toBe('edit')
+    expect(edit({ reservationId: 'rs_1', partySize: 6, phone: '+359888000000' })).toBe('edit')
+    expect(edit({ reservationId: 'rs_1', partySize: 6, someday: true })).toBe('edit')
+    expect(
+      edit({
+        type: 'reservation.edit',
+        reservationId: 'rs_1',
+        expectedVersion: 'v1',
+        partySize: 6,
+      }),
+    ).toBe('guest_count')
+    // A field the form sends as absent is not there.
+    expect(edit({ reservationId: 'rs_1', partySize: 6, note: undefined })).toBe('guest_count')
   })
 
   it('keeps editing and cancelling on the PIN now that whoever works tonight may (S20)', () => {

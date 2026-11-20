@@ -2688,6 +2688,7 @@
     "bk_deleted": "Reservation deleted.",
     "bk_restored": "Reservation is back.",
     "bk_restored_lost": "It is back without its spots: someone else took them. Pick new ones.",
+    "bk_restored_nospots": "It is back without its spots. {why}",
     "bk_copy_t": "Copy to another night",
     "bk_copy_b": "Same guest, size and note as {party}. Pick the night, the hour and the spots.",
     "bk_copy_do": "Copy reservation",
@@ -2720,6 +2721,7 @@
     "d_closed": "The table stayed closed for phones. Ask someone who may open it.",
     "d_undone": "The arrival is undone and the table is closed again.",
     "d_undone_lost": "The arrival is undone, but without its spots: someone else took them. Pick new ones.",
+    "d_undone_nospots": "The arrival is undone, but without its spots. {why}",
     "d_taken": "{party} is on {spot} from {time}. Move them first.",
     "d_guests_done": "Now {k, plural, one {# guest} other {# guests}}.",
     "d_freed": "The table is free again.",
@@ -3034,8 +3036,8 @@
         "follow_up": "Follow up payments: stornos and disputes"
       },
       "reservations": {
-        "tonight": "Work tonight's reservations: arrivals, walk-ins, the waiting list",
-        "manage": "Manage reservations: add, change, cancel, delete, put back, copy",
+        "tonight": "Work tonight's reservations: arrivals, walk-ins, the waiting list; take, change, copy and cancel bookings",
+        "manage": "Manage reservations: delete someone else's, bring back, put back what the night's end marked",
         "pay_rule": "Set a reservation's pay rule",
         "block": "Block and unblock spots",
         "edit_past": "Write a night that has passed",

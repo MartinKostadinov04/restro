@@ -17,9 +17,9 @@
 //
 // Pure data and one read; no I/O beyond the select.
 
-import { type DbPool, reservationSettings, withTenant } from '@restro/db'
+import { type DbPool, reservationSettings, reservations, withTenant } from '@restro/db'
 import type { WriteTx } from '@restro/db/write'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 /** The read side of a transaction: this never writes. */
@@ -140,11 +140,23 @@ export function actionsBehindPin(chosen: PinActions): PinFallAction[] {
   return PIN_FALL_ACTIONS.filter((action) => fallOf(chosen, action) === 'pin')
 }
 
-/** True when `reservation.edit` only changes the guest count: the one tap at the door. */
+/** The fields an edit may carry and still be the door's guest count. */
+const GUEST_COUNT_FIELDS: ReadonlySet<string> = new Set([
+  'type',
+  'reservationId',
+  'expectedVersion',
+  'partySize',
+])
+
+/**
+ * True when `reservation.edit` only changes the guest count: the one tap at the door. An allow-list,
+ * not a deny-list: any other field the edit carries (a name, a phone, spots, a reason, one added to
+ * the command later) makes it an edit of the booking, which is four digits.
+ */
 function onlyTheGuestCount(payload: Record<string, unknown>): boolean {
   if (payload.partySize === undefined) return false
-  return !['startsAt', 'endsAt', 'turnMinutes', 'note', 'partyLabel'].some(
-    (field) => payload[field] !== undefined,
+  return Object.entries(payload).every(
+    ([field, value]) => value === undefined || GUEST_COUNT_FIELDS.has(field),
   )
 }
 
@@ -161,7 +173,8 @@ export function pinFallActionOf(type: string, payload: unknown): PinFallAction |
   switch (type) {
     // Calling a party off through the status door is the Cancel button's act, and so its line
     // (S20 of the 11-18 screen round): with cancelling open to whoever works tonight (D135 13.18),
-    // the PIN is what keeps it named on a shared device. Every other move is a tap.
+    // the PIN is what keeps it named on a shared device. Every other move is a tap — and so is a
+    // waiting walk-in leaving the queue, which only the line itself can tell (`pinFallActionAt`).
     case 'reservation.set_status':
       return fields.status === 'cancelled' ? 'cancel' : 'status'
     case 'reservation.arrive':
@@ -203,6 +216,31 @@ export function pinFallActionOf(type: string, payload: unknown): PinFallAction |
     default:
       return null
   }
+}
+
+/**
+ * `pinFallActionOf`, with the one answer the payload alone cannot give: a move to Cancelled is the
+ * Cancel button's act for a booking, but for a walk-in still on the waiting list it is the party
+ * leaving the queue, a tap of the floor as it always was. One primary-key lookup, only for that
+ * move, read without a lock: a walk-in seated in the instant between this read and the handler's
+ * would be called off with a tap. Whether the move is allowed at all is still the handler's, on the
+ * locked line.
+ */
+export async function pinFallActionAt(
+  tx: ReadOnly,
+  venueId: string,
+  type: string,
+  payload: unknown,
+): Promise<PinFallAction | null> {
+  const action = pinFallActionOf(type, payload)
+  if (type !== 'reservation.set_status' || action !== 'cancel') return action
+  const id = (payload as Record<string, unknown>).reservationId
+  if (typeof id !== 'string') return action
+  const [line] = await tx
+    .select({ kind: reservations.kind, status: reservations.status })
+    .from(reservations)
+    .where(and(eq(reservations.id, id), eq(reservations.venueId, venueId)))
+  return line?.kind === 'walk_in' && line.status === 'waiting' ? 'status' : action
 }
 
 /**

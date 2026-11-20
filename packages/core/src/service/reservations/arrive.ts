@@ -604,6 +604,8 @@ export async function arriveReservation(
     reservationId: reservation.id,
     spots: peek.spotIds.join(','),
     heldBefore: [...heldBefore].sort().join(','),
+    // The end it had before it came, which an undo puts back: the arrival may have given it one.
+    endsBefore: reservation.endsAt?.toISOString() ?? null,
     ...workDetails(work.work),
     sameGuests: command.sameGuests ?? null,
   }
@@ -750,6 +752,11 @@ interface Arrival {
   readonly opened: readonly string[]
   /** The spots the party held just before it, which its undo claims again where still free. */
   readonly heldBefore: readonly string[]
+  /**
+   * The end the party had just before it (null: none of its own), which its undo puts back.
+   * Undefined for an entry written before it was recorded: the row's end is then kept.
+   */
+  readonly endsBefore: Date | null | undefined
 }
 
 /**
@@ -788,6 +795,11 @@ async function lastArrival(stx: ServiceTx, reservationId: string): Promise<Arriv
     cameFrom: (entry.fromState as ReservationStatus | null) ?? null,
     opened: list(entry.details.opened),
     heldBefore: list(entry.details.heldBefore),
+    endsBefore: !('endsBefore' in entry.details)
+      ? undefined
+      : typeof entry.details.endsBefore === 'string'
+        ? new Date(entry.details.endsBefore)
+        : null,
   }
 }
 
@@ -797,8 +809,10 @@ async function lastArrival(stx: ServiceTx, reservationId: string): Promise<Arriv
  *
  * As it was (C5 of the 11-18 screen round, the lead's call of 11-19): its own reason is kept, and
  * the spots it held just before the arrival are claimed again where nobody has taken them since,
- * as a restore does. Where one has been taken, it comes back without them and the answer says so
- * (`spotsLost`), for the screen to say in one line — never silently.
+ * as a restore does, for the stretch it had before: the end the arrival gave it is put back too.
+ * Where they cannot be had, it comes back without them and the answer says so (`spotsLost`), with
+ * the refusal (`spotsWhy`: `spot_taken` only where somebody really holds one), for the screen to
+ * say in one line — never silently.
  *
  * The status is `undoArrival`'s decision and nothing else's (`status.ts`): a booking back to
  * Reserved, a walk-in taken off the queue back to Waiting, and a walk-in the seat tap itself
@@ -837,16 +851,20 @@ export async function undoReservationArrival(
   if (!move.ok) return refuse(move.code)
   const to = move.status
   const freed = await releaseHeldSpots(stx, reservation.id)
+  const endsAt = arrival.endsBefore === undefined ? reservation.endsAt : arrival.endsBefore
   // Only a party that goes back to waiting for its table gets its spots back: one the undo ends
   // (a walk-in the seat tap made) never had a place to go back to.
   const spots = isEndStatus(to)
-    ? { back: [] as readonly string[], lost: false }
-    : await reclaimSpots(stx, reservation, arrival.heldBefore, night.settings.turnMinutes)
+    ? { back: [] as readonly string[], lost: false, why: null }
+    : await reclaimSpots(stx, reservation, arrival.heldBefore, night.settings.turnMinutes, {
+        endsAt,
+      })
   await stx.tx
     .update(reservations)
     .set({
       status: to,
       seatedAt: null,
+      endsAt,
       endedAt: isEndStatus(to) ? sql`now()` : null,
       queueKey: to === 'waiting' ? await nextQueueKey(stx, reservation.serviceDate) : null,
       // The reason is the booking's own (a birthday stays a birthday); only a line the undo ends
@@ -869,6 +887,8 @@ export async function undoReservationArrival(
       cameFrom: arrival.cameFrom,
       spots: spots.back.join(','),
       spotsLost: spots.lost,
+      spotsWhy: spots.why,
+      endsAt: endsAt?.toISOString() ?? null,
       ...workDetails(work.work),
     },
   })
@@ -878,6 +898,7 @@ export async function undoReservationArrival(
       status: to,
       spots: spots.back.join(','),
       spotsLost: spots.lost,
+      spotsWhy: spots.why,
       ...workDetails(work.work),
     },
   })

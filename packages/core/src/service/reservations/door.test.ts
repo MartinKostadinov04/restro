@@ -553,11 +553,32 @@ describe.skipIf(!hasDatabase)('the door (as the restro_app role)', () => {
       await accept({ type: 'reservation.arrive', reservationId: id, spotIds: [spotId('D2')] })
       const taker = await book(['D1'])
       const details = await accept({ type: 'reservation.undo_arrival', reservationId: id })
-      expect(details).toMatchObject({ spots: '', spotsLost: true })
+      expect(details).toMatchObject({ spots: '', spotsLost: true, spotsWhy: 'spot_taken' })
       expect(await reservationOf(id)).toMatchObject({ status: 'reserved', reason: 'company' })
       expect(await stillHeldBy(id)).toEqual([])
       expect((await stillHeldBy(taker)).map((held) => held.spot_id)).toEqual([spotId('D1')])
       expect(await openSittingOf(tableOf('D2'))).toBeNull()
+    })
+
+    it('puts back the end it had before it came, and its spot for that stretch (#479)', async () => {
+      // Booked until a late hour, seated until an earlier one: undone, the booking has its own
+      // end again, and its spot is held to that end, not to the hour the arrival gave it.
+      const booked = new Date(Date.now() + 3 * 60 * 60_000)
+      const id = await book(['D3'], { endsAt: booked.toISOString() })
+      await accept({
+        type: 'reservation.arrive',
+        reservationId: id,
+        endsAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+      } as ServiceCommand)
+      const details = await accept({ type: 'reservation.undo_arrival', reservationId: id })
+      expect(details).toMatchObject({ spots: spotId('D3'), spotsLost: false, spotsWhy: null })
+      const back = await reservationOf(id)
+      expect(back?.status).toBe('reserved')
+      expect(back?.ends_at?.getTime()).toBe(booked.getTime())
+      const held = await stillHeldBy(id)
+      expect(held.map((one) => one.spot_id)).toEqual([spotId('D3')])
+      expect(held[0]?.held_to?.getTime()).toBe(booked.getTime())
+      await accept({ type: 'reservation.cancel', reservationId: id })
     })
 
     it('leaves a table the waiter had open before the party sat down alone', async () => {

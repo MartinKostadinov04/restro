@@ -118,6 +118,21 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
     ).rows.map((one) => one.name)
   const setSettings = (values: Record<string, unknown>) =>
     accept({ type: 'reservation_settings.set', ...values } as ServiceCommand)
+  /** A spot of its own for one test, so nothing another test booked is in its way. */
+  const addSpot = async (name: string) => {
+    const details = await accept({
+      type: 'spot.save',
+      planId,
+      name,
+      kind: 'table',
+      shape: 'rect',
+      x: 100 * spots.size,
+      y: 200,
+      width: 80,
+      height: 80,
+    } as ServiceCommand)
+    spots.set(name, details.spotId as string)
+  }
 
   const detailOf = async (id: string) => {
     const read = await readReservationDetail(world.app, {
@@ -527,6 +542,8 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
     })
 
     it('lifts a block with no end made on a night that has passed, as work on tonight (C3)', async () => {
+      // A spot of its own: a block with no end is in the way of every later booking on it.
+      await addSpot('B0')
       const past = addDaysToDay(today, -3)
       await setSettings({ editPastNights: true })
       const block = (
@@ -534,7 +551,7 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
           type: 'block.save',
           serviceDate: past,
           startsAt: hour(past, '20:00'),
-          spotIds: [spotId('T4')],
+          spotIds: [spotId('B0')],
           reason: 'broken',
         } as ServiceCommand)
       ).reservationId as Id<'rv'>
@@ -550,14 +567,112 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
           partySize: 2,
           guestName: 'Behind the block',
           phone: phone(),
-          spotIds: [spotId('T4')],
+          spotIds: [spotId('B0')],
         } as ServiceCommand),
       ).toMatchObject({ status: 'refused', code: 'spot_taken' })
       // Its first night has passed and the venue keeps the past shut; tonight is writable, so the
       // block comes off.
       await accept({ type: 'block.remove', reservationId: block })
       expect((await row(block)).status).toBe('cancelled')
-      await book(night(1), '22:00', ['T4'])
+      await book(night(1), '22:00', ['B0'])
+    })
+
+    it('refuses a dated block over a booking on any night it covers, not only its first (#479)', async () => {
+      await addSpot('B1')
+      const first = night(70)
+      const taken = await book(night(72), '22:00', ['B1'])
+      const block = {
+        type: 'block.save',
+        serviceDate: first,
+        startsAt: hour(first, '20:00'),
+        endsAt: hour(night(74), '04:00'),
+        spotIds: [spotId('B1')],
+        reason: 'broken',
+      }
+      expect(await run(block as ServiceCommand)).toMatchObject({
+        status: 'refused',
+        code: 'spot_taken',
+        details: { reservationId: taken },
+      })
+      // One that ends before the booking's night is a block; stretching it over that night is not.
+      const short = (await accept({ ...block, endsAt: hour(night(71), '04:00') } as ServiceCommand))
+        .reservationId as Id<'rv'>
+      expect(await run({ ...block, reservationId: short } as ServiceCommand)).toMatchObject({
+        status: 'refused',
+        code: 'spot_taken',
+        details: { reservationId: taken },
+      })
+      await accept({ type: 'block.remove', reservationId: short })
+    })
+
+    it('refuses a block with no end over a booking on any later night (#479)', async () => {
+      await addSpot('B2')
+      const first = night(76)
+      const later = await book(night(80), '22:00', ['B2'])
+      const block = {
+        type: 'block.save',
+        serviceDate: first,
+        startsAt: hour(first, '20:00'),
+        spotIds: [spotId('B2')],
+        reason: 'broken',
+      } as ServiceCommand
+      expect(await run(block)).toMatchObject({
+        status: 'refused',
+        code: 'spot_taken',
+        details: { reservationId: later },
+      })
+      await accept({ type: 'reservation.cancel', reservationId: later })
+      const lifted = (await accept(block)).reservationId as Id<'rv'>
+      await accept({ type: 'block.remove', reservationId: lifted })
+    })
+
+    it('changes and lifts a dated block still running from a night that has passed (C3)', async () => {
+      await addSpot('B3')
+      const past = addDaysToDay(today, -3)
+      const save = {
+        type: 'block.save',
+        serviceDate: past,
+        startsAt: hour(past, '20:00'),
+        endsAt: hour(night(3), '04:00'),
+        spotIds: [spotId('B3')],
+        reason: 'broken',
+      }
+      await setSettings({ editPastNights: true })
+      const block = (await accept(save as ServiceCommand)).reservationId as Id<'rv'>
+      await setSettings({ editPastNights: false })
+      // Its first night is shut, but it is still on tonight: changing it is tonight's work.
+      await accept({
+        ...save,
+        reservationId: block,
+        endsAt: hour(night(4), '04:00'),
+        note: 'Paint drying',
+      } as ServiceCommand)
+      expect((await row(block)).note).toBe('Paint drying')
+      await accept({ type: 'block.remove', reservationId: block })
+      expect((await row(block)).status).toBe('cancelled')
+    })
+
+    it('keeps a dated block that ended on a past night as that night’s record (C3)', async () => {
+      await addSpot('B4')
+      const past = addDaysToDay(today, -5)
+      const save = {
+        type: 'block.save',
+        serviceDate: past,
+        startsAt: hour(past, '20:00'),
+        endsAt: hour(past, '04:00'),
+        spotIds: [spotId('B4')],
+        reason: 'broken',
+      }
+      await setSettings({ editPastNights: true })
+      const block = (await accept(save as ServiceCommand)).reservationId as Id<'rv'>
+      await setSettings({ editPastNights: false })
+      expect(
+        await run({ ...save, reservationId: block, note: 'Late' } as ServiceCommand),
+      ).toMatchObject({ status: 'refused', code: 'night_passed' })
+      expect(await run({ type: 'block.remove', reservationId: block })).toMatchObject({
+        status: 'refused',
+        code: 'night_passed',
+      })
     })
 
     it('lets only one of two bookings taken at once hold the same spot (C1)', async () => {

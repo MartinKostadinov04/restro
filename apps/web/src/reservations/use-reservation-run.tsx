@@ -40,6 +40,29 @@ export function useRvFailureText() {
   )
 }
 
+/**
+ * The line said when a write that gives a party its spots back could not (C5 of the 11-18 screen
+ * round, review of #479), chosen by the refusal the core kept (`spotsWhy`): "someone else took
+ * them" only for `spot_taken`; any other reason (a spot taken off the plan) is named as it is.
+ * Null when the spots came back.
+ */
+export function useSpotsLostLine() {
+  const t = useTranslations('reservations')
+  const failureText = useRvFailureText()
+  return useCallback(
+    (
+      details: Extract<RvWriteResult, { ok: true }>['details'],
+      words: { readonly taken: string; readonly other: string },
+    ): string | null => {
+      if (details?.spotsLost !== true) return null
+      const why = typeof details.spotsWhy === 'string' ? details.spotsWhy : null
+      if (why === null || why === 'spot_taken') return t(words.taken)
+      return t(words.other, { why: failureText(why) })
+    },
+    [failureText, t],
+  )
+}
+
 /** One write of the plan. */
 export interface RvRunSpec {
   /** A stable id built from the thing changed, so a second tap updates the same toast. */

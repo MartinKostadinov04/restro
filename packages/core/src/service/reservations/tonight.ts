@@ -201,7 +201,12 @@ export async function putBackReservation(
     fromState: from,
     toState: to,
     reason: PUT_BACK_REASON,
-    details: { spots: spots.back.join(','), spotsLost: spots.lost, nightEnd: byNightEnd },
+    details: {
+      spots: spots.back.join(','),
+      spotsLost: spots.lost,
+      spotsWhy: spots.why,
+      nightEnd: byNightEnd,
+    },
   })
   return accepted(null, {
     details: {
@@ -209,6 +214,7 @@ export async function putBackReservation(
       status: to,
       spots: spots.back.join(','),
       spotsLost: spots.lost,
+      spotsWhy: spots.why,
     },
   })
 }
@@ -368,6 +374,9 @@ export interface BlockSaveCommand {
  * Blocks spots for a stretch of a night, or changes a block already there: a reservation of the
  * block kind, with nobody coming, which the overlap rule keeps everything else off. A block is
  * never seated and never counted as a no-show (its status check in the schema says so).
+ *
+ * A block is checked against every night it covers, not only its first (`claimSpots`' `block`).
+ * Changing one still on from a past night is tonight's work, as lifting it is (`blockNight`).
  */
 export async function saveBlock(stx: ServiceTx, command: BlockSaveCommand): Promise<ServiceResult> {
   if (command.reservationId === undefined) {
@@ -385,7 +394,8 @@ export async function saveBlock(stx: ServiceTx, command: BlockSaveCommand): Prom
   const existing = await lockReservation(stx, command.reservationId)
   if (existing === null || existing.deletedAt !== null) return refuse('reservation_missing')
   if (existing.kind !== 'block') return refuse('kind_not_allowed')
-  const open = await openReservation(stx, existing.id)
+  const nightDate = blockNight(stx, existing)
+  const open = await openReservation(stx, existing.id, { night: () => nightDate })
   if (!open.ok) return refuse(open.code)
   const { reservation, night } = open
   const startsAt = new Date(command.startsAt)
@@ -400,12 +410,15 @@ export async function saveBlock(stx: ServiceTx, command: BlockSaveCommand): Prom
     {
       reservationId: reservation.id,
       spotIds: command.spotIds,
-      serviceDate: reservation.serviceDate,
+      // The night the change is checked from, and locked: later nights' locks then follow it in
+      // date order.
+      serviceDate: nightDate,
       startsAt,
       endsAt,
       turnMinutes: reservation.turnMinutes,
     },
     night.settings.turnMinutes,
+    { block: true },
   )
   if (!grant.ok) return refused(null, grant.code, { ...grant.details })
   await writeHeldSpots(stx, reservation.id, command.spotIds, grant.stretch, endsAt !== null)
@@ -450,14 +463,18 @@ export async function removeBlock(
   return await cancelReservation(
     stx,
     { reservationId: existing.id, reason: command.reason ?? 'block_lifted' },
-    {
-      block: true,
-      night: (line) =>
-        line.serviceDate < stx.serviceDate && blockStillOn(line, stx.now)
-          ? stx.serviceDate
-          : line.serviceDate,
-    },
+    { block: true, night: (line) => blockNight(stx, line) },
   )
+}
+
+/**
+ * The night a change to a block is checked against: tonight's for a block still on from a past
+ * night (C3), its own night otherwise. Shared by changing (`saveBlock`) and lifting (`removeBlock`).
+ */
+function blockNight(stx: ServiceTx, line: Reservation): string {
+  return line.serviceDate < stx.serviceDate && blockStillOn(line, stx.now)
+    ? stx.serviceDate
+    : line.serviceDate
 }
 
 /** A block that still keeps its spots at `now`: not lifted, and with no end or one still ahead. */

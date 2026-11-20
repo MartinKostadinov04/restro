@@ -261,6 +261,19 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
     ).toMatchObject({ code: 'pin_required' })
   })
 
+  it('lets a waiting walk-in leave the queue with a tap, and asks four digits to call a booking off (#479)', async () => {
+    const line = (
+      await accept({ type: 'waiting.add', serviceDate: NIGHT, partySize: 2 } as ServiceCommand)
+    ).reservationId as Id<'rv'>
+    const callOff = (reservationId: Id<'rv'>) =>
+      run(
+        { type: 'reservation.set_status', reservationId, status: 'cancelled' } as ServiceCommand,
+        tablet(),
+      )
+    expect(await callOff(line)).toMatchObject({ status: 'accepted' })
+    expect(await callOff(await book(23, 15))).toMatchObject({ code: 'pin_required' })
+  })
+
   it('obeys the venues own choice, in both directions', async () => {
     const party = await book(23)
     const seat = { type: 'reservation.arrive', reservationId: party } as const

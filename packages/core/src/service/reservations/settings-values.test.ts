@@ -159,17 +159,77 @@ describe.skipIf(!hasDatabase)('closed dates written at once (as the restro_app r
     await world?.close()
   })
 
+  const storedDates = async () =>
+    closedDatesOf(
+      (
+        await world.owner.query<{ closed_dates: unknown }>(
+          'select closed_dates from restro.reservation_settings where venue_id = $1',
+          [world.venueId],
+        )
+      ).rows[0]?.closed_dates,
+    )
+
+  /**
+   * Runs `command` while another transaction holds the settings row and, once the command waits
+   * for it, writes `change` and commits. A command that read the list before the row was free
+   * would save over that change; one that locks the row first (`lockSettings`) reads it after.
+   */
+  const behindAnotherWrite = async (command: ServiceCommand, change: string) => {
+    const holder = await world.owner.connect()
+    try {
+      await holder.query('begin')
+      await holder.query(
+        'select 1 from restro.reservation_settings where venue_id = $1 for update',
+        [world.venueId],
+      )
+      const answer = run(command)
+      const deadline = Date.now() + 10_000
+      for (;;) {
+        const { rows } = await world.owner.query<{ waiting: string }>(
+          `select count(*) as waiting from pg_stat_activity
+            where datname = current_database() and wait_event_type = 'Lock'
+              and application_name = 'restro-core-closed-dates-tests'`,
+        )
+        if (Number(rows[0]?.waiting) >= 1) break
+        if (Date.now() > deadline) throw new Error('the command never waited for the settings row')
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      }
+      await holder.query(
+        `update restro.reservation_settings set closed_dates = ${change} where venue_id = $1`,
+        [world.venueId],
+      )
+      await holder.query('commit')
+      return await answer
+    } finally {
+      holder.release()
+    }
+  }
+
   it('keeps both dates when two are added together: the list is locked before it is read (C7)', async () => {
     const add = (date: string) => () =>
       run({ type: 'reservation_closed_date.add', date } as ServiceCommand)
     const answers = await world.saveTogether([add('2027-01-01'), add('2027-01-02')])
     expect(answers.map((answer) => answer.status)).toEqual(['accepted', 'accepted'])
-    const stored = (
-      await world.owner.query<{ closed_dates: unknown }>(
-        'select closed_dates from restro.reservation_settings where venue_id = $1',
-        [world.venueId],
-      )
-    ).rows[0]?.closed_dates
-    expect(closedDatesOf(stored)).toEqual(['2027-01-01', '2027-01-02'])
+    expect(await storedDates()).toEqual(['2027-01-01', '2027-01-02'])
+  })
+
+  it('adds a date to the list as it is after a write it waited for, not as it was (C7)', async () => {
+    const answer = await behindAnotherWrite(
+      { type: 'reservation_closed_date.add', date: '2027-02-02' } as ServiceCommand,
+      `closed_dates || '["2027-02-01"]'::jsonb`,
+    )
+    expect(answer).toMatchObject({ status: 'accepted' })
+    expect(await storedDates()).toEqual(expect.arrayContaining(['2027-02-01', '2027-02-02']))
+  })
+
+  it('removes a date from the list as it is after a write it waited for, not as it was (C7)', async () => {
+    const answer = await behindAnotherWrite(
+      { type: 'reservation_closed_date.remove', date: '2027-01-01' } as ServiceCommand,
+      `closed_dates || '["2027-03-01"]'::jsonb`,
+    )
+    expect(answer).toMatchObject({ status: 'accepted' })
+    const dates = await storedDates()
+    expect(dates).toContain('2027-03-01')
+    expect(dates).not.toContain('2027-01-01')
   })
 })

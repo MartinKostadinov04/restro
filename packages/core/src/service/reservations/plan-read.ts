@@ -39,7 +39,7 @@ import {
 } from '@restro/db'
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm'
 
-import { localInstant } from '../../service-day'
+import { serviceDayBounds } from '../../service-day'
 import {
   checkSpotPlace,
   planExtent,
@@ -189,24 +189,8 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000)
 }
 
-/** The calendar date after a service day. */
-function nextDay(day: string): string {
-  const at = new Date(`${day}T00:00:00Z`)
-  at.setUTCDate(at.getUTCDate() + 1)
-  return at.toISOString().slice(0, 10)
-}
-
-/** When a service day begins and ends, in the venue's own zone (D45). */
-export function nightBounds(
-  day: string,
-  timezone: string,
-  dayEndsAt: string,
-): { readonly from: Date; readonly to: Date } {
-  return {
-    from: localInstant(day, dayEndsAt, timezone, dayEndsAt),
-    to: localInstant(nextDay(day), dayEndsAt, timezone, dayEndsAt),
-  }
-}
+/** When a service day begins and ends, in the venue's own zone (D45): the write side's rule too. */
+export const nightBounds = serviceDayBounds
 
 /**
  * The stretch one held row covers — the write side's own rule (`heldRowStretch`), with one case
