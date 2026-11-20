@@ -611,6 +611,11 @@ export interface LogLine {
    * of the call in a Handled or lapsed entry; empty for any other entry.
    */
   readonly callKinds: readonly string[]
+  /**
+   * The settings keys a `settings.changed` entry names (its details' `keys`, never their values),
+   * so the Log says which setting changed (S15); empty for any other entry and where none are kept.
+   */
+  readonly settingKeys: readonly string[]
 }
 
 /** A page of the Log for one day. */
@@ -856,6 +861,10 @@ export async function readLog(
                 ? row.details.openBills
                 : null,
             callKinds: callKindsOf(row.kind, row.details),
+            settingKeys:
+              row.kind === 'settings.changed'
+                ? (detailText(row.details, 'keys')?.split(',') ?? [])
+                : [],
           }
         }),
       },

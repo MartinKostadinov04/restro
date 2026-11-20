@@ -50,6 +50,7 @@ import { OfflineLine } from './offline-line'
 import { PauseBanners } from './pause-banners'
 import { PushControl } from './push-control'
 import { RunProvider, useTonightRun, wroteSomething } from './run'
+import { CLOSE_44, TabHeading } from './tab-parts'
 import { useTableName } from './table-name'
 import { TablesGrid } from './tables-grid'
 
@@ -87,6 +88,8 @@ function beep() {
 function PauseMenu({ view }: { view: TonightView }) {
   const t = useTranslations('tonight')
   const { run, busy } = useTonightRun()
+  // A closed night has no ordering left to stop (S13): the page says the night is closed.
+  const off = busy || view.nightEnd !== null
   const named = view.groups.some((group) => group.name !== null)
   const choices = [
     ...(view.canPauseAll ? [{ barId: null as string | null, name: t('p_all') }] : []),
@@ -119,7 +122,7 @@ function PauseMenu({ view }: { view: TonightView }) {
         type="button"
         variant="outline"
         className={WRAPS}
-        disabled={busy}
+        disabled={off}
         onClick={() => only && pause(only.barId, only.name)}
       >
         {label}
@@ -129,7 +132,7 @@ function PauseMenu({ view }: { view: TonightView }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="outline" className={WRAPS} disabled={busy}>
+        <Button type="button" variant="outline" className={WRAPS} disabled={off}>
           {label}
         </Button>
       </DropdownMenuTrigger>
@@ -301,7 +304,8 @@ function Content({
         type="button"
         variant={emptyNight ? 'default' : 'outline'}
         className="h-11"
-        disabled={busy}
+        // A closed night opens no table (S13).
+        disabled={busy || !nightGoing}
         onClick={openAll}
       >
         {t('openall')}
@@ -310,7 +314,8 @@ function Content({
 
   const needs = (
     <section aria-labelledby="needs-title" className="min-w-0 space-y-3">
-      <h2 id="needs-title" className="text-lg font-semibold">
+      {/* Below lg the switch above already says "Needs you" and the count (S2). */}
+      <h2 id="needs-title" className="text-lg font-semibold max-lg:sr-only">
         {t('needs')}
         {view.rows.length > 0 ? (
           <span className="ml-2 text-muted-foreground" data-testid="needs-count">
@@ -386,6 +391,11 @@ function Content({
           <p className="text-sm text-muted-foreground" data-testid="open-count">
             {t('openof', { o: view.openCount, t: view.tableCount })}
           </p>
+          {view.ordersStartAt === null ? null : (
+            <p className="text-sm text-muted-foreground" data-testid="orders-start">
+              {t('orders_start', { time: view.ordersStartAt })}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {emptyNight ? null : openAllButton}
@@ -447,26 +457,20 @@ function Content({
 
   return (
     <div className="space-y-4" data-testid="tonight">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-semibold tracking-tight">
-          {t('title')}
-          <span className="ml-2 text-base font-normal text-muted-foreground">{t('tab_act')}</span>
-        </h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-11"
-            aria-pressed={muted}
-            aria-label={muted ? t('sound_off') : t('sound_on')}
-            onClick={toggleMute}
-          >
-            {muted ? <VolumeXIcon aria-hidden /> : <Volume2Icon aria-hidden />}
-          </Button>
-          <PauseMenu view={view} />
-        </div>
-      </div>
+      <TabHeading name={t('tab_act')}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-11"
+          aria-pressed={muted}
+          aria-label={muted ? t('sound_off') : t('sound_on')}
+          onClick={toggleMute}
+        >
+          {muted ? <VolumeXIcon aria-hidden /> : <Volume2Icon aria-hidden />}
+        </Button>
+        <PauseMenu view={view} />
+      </TabHeading>
       <OfflineLine offline={offline} stoodAt={view.now} timezone={view.timezone} />
       <NightEndedBanner view={view} />
       <PauseBanners view={view} />
@@ -519,8 +523,8 @@ function Content({
       </div>
       <NightEndDialog view={view} open={endNight} onClose={closeEndNight} />
       <Dialog open={closeAll} onOpenChange={setCloseAll}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className={CLOSE_44}>
+          <DialogHeader className="pr-8">
             <DialogTitle>{t('ca_t')}</DialogTitle>
             <DialogDescription>{t('ca_b', { source: view.source })}</DialogDescription>
           </DialogHeader>

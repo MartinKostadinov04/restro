@@ -1,11 +1,18 @@
 import { expect, type Frame, type Page, test } from '@playwright/test'
 
-import { ADMIN_EMAIL, ADMIN_PASSWORD, INTEGRATION_OWNER_EMAIL } from './support'
+import { runScriptWith } from './global-setup'
+import {
+  ADMIN_EMAIL,
+  ADMIN_PASSWORD,
+  INTEGRATION_OWNER_EMAIL,
+  TONIGHT_OWNER_EMAIL,
+  TONIGHT_PIN_PEPPER,
+} from './support'
 
 // D123: the manager's phone is a supported admin device, and a tappable control has a hit area of
 // at least 44 x 44 px (Restro's own floor, docs/guides/operational-screens.md, Accessibility). This
 // walks the Studio's Structure screen, the Design page with the guest template in its preview, and
-// Settings -> Integrations on a 390 px phone and checks
+// Settings -> Integrations on a 390 px phone, and Tonight on a phone and the bar tablet, and checks
 // every control on them, so the floor cannot slip back unseen. A control may look smaller than 44 px
 // if its hit area is extended around it (the `tap-area` utility in globals.css), so the check is
 // not on the element's box: it asks the browser what is under the pointer at the edges of a
@@ -173,7 +180,7 @@ async function expectFloor(page: Page | Frame, where: string, atLeast: number, s
   expect(misses, `${where}: controls under ${FLOOR} x ${FLOOR} px`).toEqual([])
 }
 
-async function signIn(page: Page, email: string) {
+async function signIn(page: Page, email: string, lands = /\/venues$/) {
   // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await page.goto('/venues')
@@ -181,7 +188,7 @@ async function signIn(page: Page, email: string) {
     await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
     await page.getByRole('button', { name: 'Вход' }).click()
     try {
-      await expect(page).toHaveURL(/\/venues$/, { timeout: 5_000 })
+      await expect(page).toHaveURL(lands, { timeout: 5_000 })
       return
     } catch {
       await page.waitForTimeout(10_000)
@@ -301,5 +308,77 @@ test('Settings -> Integrations: every control has a 44 px hit area on a phone', 
     await expectFloor(page, 'integrations, a connection', 10)
   } finally {
     await context.close()
+  }
+})
+
+/** Tonight's fixture (scripts/seed-tonight-e2e.ts): the club, then a night. */
+function seedTonight(...args: string[]): string {
+  return runScriptWith(
+    { STAFF_PIN_PEPPER: TONIGHT_PIN_PEPPER },
+    './scripts/seed-tonight-e2e.ts',
+    ...args,
+  )
+}
+
+/**
+ * Tonight's four screens and what opens over them, each measured inside its own box: the venue's
+ * header around them is another screen's. A busy night, so every kind of row and tile is drawn.
+ */
+async function walkTonight(page: Page, where: string) {
+  seedTonight('seed')
+  seedTonight('night', 'busy')
+  await signIn(page, TONIGHT_OWNER_EMAIL, /\/venues(\/vn_[^/?]+\?tab=\w+)?$/)
+  const venue = /\/venues\/vn_[0-9A-Za-z]+/.exec(page.url())?.[0]
+  if (venue === undefined) {
+    await page.getByTestId('venue-card').first().getByRole('link').first().click()
+    await expect(page).toHaveURL(/\/venues\/vn_[^/?]+/)
+  }
+  const base = /\/venues\/vn_[0-9A-Za-z]+/.exec(page.url())?.[0] ?? ''
+  await page.goto(`${base}?tab=tonight`)
+  const tonight = page.getByTestId('tonight')
+  await expect(tonight).toBeVisible()
+  await expectFloor(page, `${where}: Tonight`, 5, '[data-testid="tonight"]')
+  // On a phone one part shows at a time; Tables is the other one.
+  const tables = tonight.getByRole('button', { name: 'Маси', exact: true })
+  if (await tables.isVisible()) {
+    await tables.click()
+    await expectFloor(page, `${where}: Tonight, the tables`, 6, '[data-testid="tonight"]')
+  }
+  // The tables menu, and a table's sheet (a drawer on a phone).
+  await page.getByRole('button', { name: 'Още действия' }).click()
+  await expectFloor(page, `${where}: the tables menu`, 1, '[role="menu"]')
+  await page.keyboard.press('Escape')
+  await page.getByTestId('table-tile').first().click()
+  await expect(page.getByTestId('table-sheet')).toBeVisible()
+  await expectFloor(page, `${where}: a table's sheet`, 2, '[data-testid="table-sheet"]')
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('table-sheet')).toHaveCount(0)
+  for (const view of ['sent', 'log', 'night']) {
+    await page.goto(`${base}?tab=tonight&view=${view}`)
+    await expect(page.getByTestId(`tonight-${view}`)).toBeVisible()
+    await expectFloor(page, `${where}: Tonight, ${view}`, 2, `[data-testid="tonight-${view}"]`)
+  }
+}
+
+test('Tonight: every control has a 44 px hit area on a phone', async ({ browser }) => {
+  const context = await browser.newContext(phone)
+  const page = await context.newPage()
+  try {
+    await walkTonight(page, '390 px')
+  } finally {
+    await context.close().catch(() => undefined)
+  }
+})
+
+test('Tonight: every control has a 44 px hit area on the bar tablet', async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 1180, height: 820 },
+    hasTouch: true,
+  })
+  const page = await context.newPage()
+  try {
+    await walkTonight(page, '1180 px')
+  } finally {
+    await context.close().catch(() => undefined)
   }
 })

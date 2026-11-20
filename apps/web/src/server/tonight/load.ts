@@ -1,5 +1,6 @@
 // Reads Tonight for the signed-in actor and shapes it for the screen (#85). Reads only: the
 // service read side filters by what the actor holds and calls no POS (rule 3 and 4 of the plan).
+import { guestNight, readOrderingSettings } from '@restro/core'
 import {
   readTableState,
   readTonight,
@@ -53,9 +54,24 @@ export async function loadTonightView(input: {
       provider: providerDisplayName(read.tonight.payingProvider),
       operator,
       remembered: input.remembered === true,
+      ordersStartAt: ordersStartAt(input.venue, now),
       now,
     }),
   }
+}
+
+/**
+ * When phone ordering starts tonight (`HH:mm`, the venue's own zone), from its service hours, while
+ * that is still to come (S4); null once it has started, on a closed night, or with no hours set.
+ */
+function ordersStartAt(venue: Venue, now: Date): string | null {
+  const night = guestNight(
+    readOrderingSettings(venue.settings),
+    venue.timezone,
+    venue.serviceDayEndsAt,
+    now,
+  )
+  return night.state === 'opens_later' ? night.at : null
 }
 
 /** What a table's sheet shows beyond its tile: the bill as last read (plan §3). */

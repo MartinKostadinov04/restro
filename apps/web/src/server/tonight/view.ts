@@ -106,6 +106,8 @@ export interface ActionRow {
   readonly callKinds?: readonly CallWaiterKind[]
   /** The bills still open when the night ended, and when (`HH:mm`, #332): staff close them at the POS. */
   readonly nightEnd?: { readonly openBills: number; readonly at: string }
+  /** A table paused by the cap: the refused sent order's total and the cap, minor units (S10). */
+  readonly cap?: { readonly totalMinor: number; readonly capMinor: number }
 }
 
 /** What a money row asks: a payment question, or one of the alerts that only need acknowledging. */
@@ -256,6 +258,11 @@ export interface TonightView {
    * ended it early. Null while the night is going on.
    */
   readonly nightEnd: { readonly at: string; readonly early: boolean } | null
+  /**
+   * When phones may start ordering tonight (`HH:mm`, the venue's service hours), while that is
+   * still to come; null once it has started, on a night with no ordering, or with no hours set (S4).
+   */
+  readonly ordersStartAt: string | null
   readonly banners: readonly PauseBanner[]
   /**
    * Why card payments in the app are stopped, for every role; null while they flow and while
@@ -399,6 +406,8 @@ export function buildTonightView(input: {
   readonly operator?: boolean
   /** A person's own short session is on this shared device: no write asks for a PIN (#324). */
   readonly remembered?: boolean
+  /** When phone ordering starts tonight (`HH:mm`), while it is still to come (S4). */
+  readonly ordersStartAt?: string | null
   readonly now: Date
 }): TonightView {
   const { tonight, timezone } = input
@@ -539,6 +548,7 @@ export function buildTonightView(input: {
         table: labelOf.get(tableId) ?? '',
         numbered: numberedOf.has(tableId),
         at: pause.startedAt.toISOString(),
+        ...(pause.cap === undefined ? {} : { cap: pause.cap }),
       })
     } else raise(tableId, 'paused')
   }
@@ -725,6 +735,7 @@ export function buildTonightView(input: {
       holdsStaffRightsOnly(held),
     can,
     nightEnd: ended === null ? null : { at: clock(ended.at) ?? '', early: ended.early },
+    ordersStartAt: input.ordersStartAt ?? null,
     banners,
     paying:
       restro.length > 0

@@ -318,7 +318,12 @@ test.describe('the Log', () => {
     // Newest first by the Log's own order (the seed wrote the settings change last).
     expect(kinds[0]).toBe('settings.changed')
     await expect(page.getByTestId('log-list')).toContainText('Sent order K7F2 found on the bill')
-    await expect(page.getByTestId('log-list')).toContainText('Sent order K7F2: Checking')
+    // A sent order is one row at its newest step; the older steps open under it (S15).
+    const k7 = lines.filter({ hasText: 'Sent order K7F2 found on the bill' })
+    await expect(k7.getByTestId('log-steps-count')).toHaveText(' · 5 steps')
+    await k7.getByTestId('log-steps-toggle').click()
+    await expect(k7.getByTestId('log-step')).toHaveCount(4)
+    await expect(k7.getByTestId('log-steps')).toContainText('Sent order K7F2: Checking')
     await expect(page.getByTestId('log-list')).toContainText('Sent order SO05: Found on the bill')
     await expect(page.getByTestId('log-list')).toContainText('Maria · via Telegram')
     await expect(page.getByTestId('log-list')).toContainText('Ordering paused: All bars · by Maria')
@@ -341,7 +346,8 @@ test.describe('the Log', () => {
     await taps.tap(page.getByRole('tab', { name: 'Log' }))
     await expect(page.getByTestId('tonight-log')).toBeVisible()
     await page.getByTestId('tonight-search').fill('k7')
-    await expect(page.getByTestId('log-line')).toHaveCount(5)
+    // Its five lines are one row: the order once, at its newest step (S15).
+    await expect(page.getByTestId('log-line')).toHaveCount(1)
     for (const kind of await page
       .getByTestId('log-line')
       .evaluateAll((els) => els.map((el) => el.getAttribute('data-kind')))) {
@@ -365,7 +371,7 @@ test.describe('the Log', () => {
     await pickKind(page, 'orders')
     await page.getByTestId('tonight-search').fill('SO05')
     await expect(page.getByTestId('log-line').first()).toBeVisible()
-    await page.getByTestId('log-line').first().getByRole('button').click()
+    await page.getByTestId('log-line').first().getByRole('button').first().click()
     await expect(page.getByTestId('sent-sheet')).toContainText('Sent order SO05')
     await page.keyboard.press('Escape')
     await page.getByTestId('tonight-search').fill('')

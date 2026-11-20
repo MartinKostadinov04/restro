@@ -722,6 +722,12 @@ export interface TonightPause extends PauseView {
   readonly targetId: string
   /** Who started a staff pause: a staff member's name, or null when no person is named. */
   readonly startedBy: string | null
+  /**
+   * A table paused by the cap per sent order (D118): the refused sent order's total and the cap,
+   * in minor units, from the trip's `guard.tripped` Log entry (S10). Absent for any other pause,
+   * and where the entry is not found.
+   */
+  readonly cap?: { readonly totalMinor: number; readonly capMinor: number }
 }
 
 /** What Tonight shows the actor. Parts the actor may not see are left out, not emptied. */
@@ -1089,6 +1095,44 @@ export async function readTonight(
       .where(and(pausesOfVenue(venue.id), isNull(pauses.liftedAt)))
       .orderBy(pauses.startedAt)
 
+    // The cap a guard pause tripped on (S10): the trip's Log entry, written in the same
+    // transaction as the pause (`tripGuard`), names the sent order's total and the cap.
+    const guardPauses = active.filter(
+      (pause) => pause.scope === 'table' && pause.cause === 'guard_tripped',
+    )
+    const capOf = new Map<string, { totalMinor: number; capMinor: number }>()
+    if (guardPauses.length > 0) {
+      const earliest = Math.min(...guardPauses.map((pause) => pause.startedAt.getTime()))
+      const trips = await tx
+        .select({ tableId: logEntries.tableId, at: logEntries.at, details: logEntries.details })
+        .from(logEntries)
+        .where(
+          and(
+            eq(logEntries.venueId, venue.id),
+            eq(logEntries.kind, 'guard.tripped'),
+            eq(logEntries.reason, 'order_cap'),
+            inArray(
+              logEntries.tableId,
+              guardPauses.map((pause) => pause.targetId),
+            ),
+            gte(logEntries.at, new Date(earliest - 60_000)),
+          ),
+        )
+        .orderBy(desc(logEntries.at))
+      for (const pause of guardPauses) {
+        const trip = trips.find(
+          (entry) =>
+            entry.tableId === pause.targetId &&
+            entry.at.getTime() >= pause.startedAt.getTime() - 60_000,
+        )
+        const totalMinor = trip?.details.totalMinor
+        const capMinor = trip?.details.capMinor
+        if (typeof totalMinor === 'number' && typeof capMinor === 'number') {
+          capOf.set(pause.id, { totalMinor, capMinor })
+        }
+      }
+    }
+
     const venueBars = await tx
       .select({ id: bars.id, name: bars.name })
       .from(bars)
@@ -1248,10 +1292,14 @@ export async function readTonight(
           ? (connection.readiness.missing[0] ?? null)
           : null,
       payingProvider: connection.providerKind,
-      pauses: active.map(({ actor: starter, ...pause }) => ({
-        ...pause,
-        startedBy: pause.restroStarted ? null : (named.get(starter) ?? null),
-      })),
+      pauses: active.map(({ actor: starter, ...pause }) => {
+        const cap = capOf.get(pause.id)
+        return {
+          ...pause,
+          startedBy: pause.restroStarted ? null : (named.get(starter) ?? null),
+          ...(cap === undefined ? {} : { cap }),
+        }
+      }),
       log,
       nightEnd: await (async () => {
         const [record] = await tx

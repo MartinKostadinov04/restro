@@ -1,16 +1,16 @@
 'use client'
 
 // "Tables" (plan §3, Patterns row "The state of many things at a glance"): a grid of status tiles,
-// each an icon and one word, by bar. A closed tile opens the table for phones with one tap; any
-// other opens its sheet. Colour marks only what needs a person (the info blue) and always comes
+// each an icon and one word, by bar. A tap on any tile opens its sheet (S16); a closed table's
+// sheet holds "Open for phones". Colour marks only what needs a person (the info blue) and always comes
 // with the icon and the word; open is neutral, closed is quiet. A paused bar's heading says so.
 //
 // **One closed table asks before it opens** (#329): the one somebody has booked later tonight, or
-// kept back. The waiter at the tile cannot know that, and the hostess is about to put those guests
-// there, so the tap says who holds it and from when and he decides. He is never stopped — he may
-// open it anyway; the hostess's own seating then asks the same-party question if phones have
-// ordered there. Every other table opens in one tap as it always did, and so does this one when
-// the read does not come back: the question is advice, never a gate.
+// kept back. The waiter at the sheet cannot know that, and the hostess is about to put those guests
+// there, so "Open for phones" says who holds it and from when and he decides. He is never stopped:
+// he may open it anyway; the hostess's own seating then asks the same-party question if phones
+// have ordered there. Every other table opens at once, and so does this one when the read does not
+// come back: the question is advice, never a gate.
 //
 // **A tile of a table with a party seated says the party's name** (walk P20, #419), cut short when
 // it is long, and nothing else: no count, no weight, no colour of its own — the sheet carries the
@@ -47,18 +47,7 @@ const TILE = {
   payment: { Icon: CreditCardIcon, word: 'w_pay' },
 } as const satisfies Record<TileState, unknown>
 
-function Tile({
-  tile,
-  view,
-  onOpen,
-  onLetIn,
-}: {
-  tile: TableTile
-  view: TonightView
-  onOpen: () => void
-  /** Open this table for phones, asking first where a reservation holds it later tonight (#329). */
-  onLetIn: (tile: TableTile, name: string) => void
-}) {
+function Tile({ tile, view, onOpen }: { tile: TableTile; view: TonightView; onOpen: () => void }) {
   const t = useTranslations('tonight')
   const { busy } = useTonightRun()
   const tableName = useTableName()
@@ -70,7 +59,7 @@ function Tile({
   const more = tile.parties.length - 1
   const needs = tile.state !== 'open' && tile.state !== 'closed'
   const closed = tile.state === 'closed'
-  // A closed table opens in one tap; a person without the right opens nothing and sees no sheet.
+  // A closed table's sheet only holds "Open for phones": without the right there is no sheet.
   const tapOpens = closed && view.can.openClose
   const className = cn(
     // w-full: a button is as wide as its content unless told otherwise, and a long status word
@@ -115,7 +104,7 @@ function Tile({
       data-state={tile.state}
       aria-label={
         closed
-          ? t('t_closed', { table: name })
+          ? `${name}, ${t('w_closed')}`
           : tile.state === 'open'
             ? partyName === null
               ? t('t_open', { table: name })
@@ -127,13 +116,7 @@ function Tile({
         className,
         'outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60',
       )}
-      onClick={() => {
-        if (!closed) {
-          onOpen()
-          return
-        }
-        onLetIn(tile, name)
-      }}
+      onClick={onOpen}
     >
       {content}
     </button>
@@ -153,13 +136,11 @@ function Group({
   view,
   named,
   onOpen,
-  onLetIn,
 }: {
   group: BarGroup
   view: TonightView
   named: boolean
   onOpen: (tile: TableTile, bar: string | null) => void
-  onLetIn: (tile: TableTile, name: string) => void
 }) {
   const t = useTranslations('tonight')
   return (
@@ -180,12 +161,7 @@ function Group({
       <ul className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2">
         {group.tables.map((tile) => (
           <li key={tile.id} className="min-w-0">
-            <Tile
-              tile={tile}
-              view={view}
-              onOpen={() => onOpen(tile, group.name)}
-              onLetIn={onLetIn}
-            />
+            <Tile tile={tile} view={view} onOpen={() => onOpen(tile, group.name)} />
           </li>
         ))}
       </ul>
@@ -197,6 +173,7 @@ function Group({
 export function TablesGrid({ view }: { view: TonightView }) {
   const t = useTranslations('tonight')
   const { run } = useTonightRun()
+  const tableName = useTableName()
   const [chosen, setChosen] = useState<{ tile: TableTile; bar: string | null } | null>(null)
   const [asking, setAsking] = useState<Asking | null>(null)
 
@@ -216,7 +193,7 @@ export function TablesGrid({ view }: { view: TonightView }) {
   )
 
   /**
-   * The tap on a closed tile: it asks the night's reservations whether anybody holds this table
+   * "Open for phones" on a closed table's sheet: it asks the night's reservations whether anybody holds this table
    * later, and opens it at once where nobody does — or where the read did not come back, because a
    * table that will not open is worse than a question not asked.
    */
@@ -260,7 +237,6 @@ export function TablesGrid({ view }: { view: TonightView }) {
             view={view}
             named={named}
             onOpen={(tile, bar) => setChosen({ tile, bar })}
-            onLetIn={letIn}
           />
         ))}
       </div>
@@ -272,19 +248,20 @@ export function TablesGrid({ view }: { view: TonightView }) {
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2">
             {view.paymentTables.map((tile) => (
               <li key={tile.id} className="min-w-0">
-                <Tile
-                  tile={tile}
-                  view={view}
-                  onOpen={() => setChosen({ tile, bar: null })}
-                  onLetIn={letIn}
-                />
+                <Tile tile={tile} view={view} onOpen={() => setChosen({ tile, bar: null })} />
               </li>
             ))}
           </ul>
         </section>
       )}
-      {chosen === null || live == null || live.state === 'closed' ? null : (
-        <TableSheet tile={live} bar={chosen.bar} view={view} onClose={() => setChosen(null)} />
+      {chosen === null || live == null ? null : (
+        <TableSheet
+          tile={live}
+          bar={chosen.bar}
+          view={view}
+          onClose={() => setChosen(null)}
+          onOpenForPhones={() => letIn(live, tableName(live.label, live.numbered))}
+        />
       )}
       {asking === null ? null : (
         <ConfirmDialog

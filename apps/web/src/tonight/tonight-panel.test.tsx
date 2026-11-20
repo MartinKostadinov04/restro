@@ -13,8 +13,15 @@ import { TonightPanel } from './tonight-panel'
 
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { error: vi.fn() }))
 const openAll = vi.hoisted(() => vi.fn())
+const openTable = vi.hoisted(() => vi.fn())
+const bookedLater = vi.hoisted(() => vi.fn())
 vi.mock('sonner', () => ({ toast }))
-vi.mock('@/server/tonight/actions', () => ({ openAllTablesAction: openAll }))
+vi.mock('@/server/tonight/actions', () => ({
+  openAllTablesAction: openAll,
+  openTableAction: openTable,
+  tableBookedLaterAction: bookedLater,
+  tableBillAction: vi.fn(async () => ({ ok: false, error: 'failed' })),
+}))
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn() }),
   unstable_rethrow: vi.fn(),
@@ -35,6 +42,8 @@ const draw = (over: Partial<TonightView>) =>
           device: false,
           operator: false,
           can: { openClose: true, resume: true, pause: true, lift: true },
+          nightEnd: null,
+          ordersStartAt: null,
           banners: [],
           paying: null,
           rows: [],
@@ -95,9 +104,7 @@ describe('the payment tables', () => {
     })
     expect(screen.queryByTestId('no-guest-tables')).toBeNull()
     const group = screen.getByRole('region', { name: 'Payment tables' })
-    expect(
-      within(group).getByRole('button', { name: 'Bar till is closed for phones' }),
-    ).toBeTruthy()
+    expect(within(group).getByRole('button', { name: 'Bar till, Closed' })).toBeTruthy()
     expect(screen.getAllByTestId('table-tile')).toHaveLength(2)
   })
 
@@ -218,5 +225,129 @@ describe('Open all', () => {
       tableCount: 0,
     })
     expect(screen.queryByRole('button', { name: 'Open all' })).toBeNull()
+  })
+})
+
+describe('a closed table (S16)', () => {
+  beforeEach(() => {
+    openTable.mockReset()
+    bookedLater.mockReset()
+  })
+
+  const closedTable = (over: Partial<TonightView> = {}) =>
+    draw({
+      groups: [{ barId: null, name: null, paused: false, tables: [tile('tb_2', 'Table 2')] }],
+      tableCount: 1,
+      ...over,
+    })
+
+  it('opens its sheet on a tap, and opens for phones only from the sheet, with Undo', async () => {
+    bookedLater.mockResolvedValue({ ok: true, booked: null })
+    openTable.mockResolvedValue({ ok: true, details: {} })
+    closedTable()
+    await userEvent.click(screen.getByRole('button', { name: 'Table 2, Closed' }))
+    const sheet = await screen.findByTestId('table-sheet')
+    expect(openTable).not.toHaveBeenCalled()
+    expect(within(sheet).getByText('Closed for phones')).toBeTruthy()
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Open for phones' }))
+    await waitFor(() =>
+      expect(openTable).toHaveBeenCalledWith({
+        venueId: 'vn_0123456789ABCDEFGHIJKL',
+        tableId: 'tb_2',
+      }),
+    )
+  })
+
+  it('offers no open once the night is closed', async () => {
+    closedTable({ nightEnd: { at: '03:10', early: true } })
+    await userEvent.click(screen.getByRole('button', { name: 'Table 2, Closed' }))
+    const sheet = await screen.findByTestId('table-sheet')
+    expect(
+      (within(sheet).getByRole('button', { name: 'Open for phones' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true)
+    for (const button of screen.getAllByRole('button', { name: 'Open all', hidden: true })) {
+      expect((button as HTMLButtonElement).disabled).toBe(true)
+    }
+  })
+})
+
+describe('before phone ordering starts (S4)', () => {
+  it('says when on the Tables header', () => {
+    draw({
+      groups: [{ barId: null, name: null, paused: false, tables: [tile('tb_2', 'Table 2')] }],
+      tableCount: 1,
+      ordersStartAt: '22:00',
+    })
+    expect(screen.getByTestId('orders-start').textContent).toBe('Phone orders start at 22:00')
+  })
+
+  it('says nothing once it has started', () => {
+    draw({ ordersStartAt: null })
+    expect(screen.queryByTestId('orders-start')).toBeNull()
+  })
+})
+
+describe('a table paused by the cap (S10)', () => {
+  const paused = (cap?: { totalMinor: number; capMinor: number }) =>
+    draw({
+      groups: [
+        {
+          barId: null,
+          name: null,
+          paused: false,
+          tables: [tile('tb_32', 'Table 32', { state: 'paused' })],
+        },
+      ],
+      tableCount: 1,
+      openCount: 1,
+      rows: [
+        {
+          id: 'pa_1',
+          kind: 'paused',
+          tableId: 'tb_32',
+          table: 'Table 32',
+          numbered: false,
+          at: '2026-11-06T19:55:00.000Z',
+          ...(cap === undefined ? {} : { cap }),
+        },
+      ],
+    })
+
+  it('names the order and the limit', () => {
+    paused({ totalMinor: 52_500, capMinor: 30_000 })
+    const row = screen.getByTestId('action-row')
+    expect(row.textContent).toContain('An order of €525.00 is over the €300.00 limit.')
+  })
+
+  it('says the rule where the amount is not known', () => {
+    paused()
+    expect(screen.getByTestId('action-row').textContent).toContain('The order limit was reached.')
+  })
+})
+
+describe('the end of the night (S13)', () => {
+  it('says the night is closed once: the open bills row, not a banner as well', () => {
+    draw({
+      nightEnd: { at: '03:10', early: true },
+      rows: [
+        {
+          id: 'ne_1',
+          kind: 'night_end',
+          tableId: '',
+          table: '',
+          numbered: false,
+          at: '2026-11-07T01:10:00.000Z',
+          nightEnd: { openBills: 3, at: '03:10' },
+        },
+      ],
+    })
+    expect(screen.queryByTestId('night-ended')).toBeNull()
+    expect(screen.getByTestId('action-row').textContent).toContain('3 bills are still open.')
+  })
+
+  it('shows the banner when no bill was left open', () => {
+    draw({ nightEnd: { at: '03:10', early: false } })
+    expect(screen.getByTestId('night-ended').textContent).toBe('This night is closed.')
   })
 })

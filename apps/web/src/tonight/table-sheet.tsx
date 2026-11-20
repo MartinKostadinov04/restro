@@ -3,8 +3,11 @@
 // One table's details (Patterns: "Everything about one thing"; plan §3): a side sheet on the
 // tablet, a bottom drawer on a phone. It shows how long the sitting has been open, its sent orders
 // and its bill as last read, and holds "Close for phones" (no dialog, the Undo toast) and "New
-// guests" (a dialog that names the consequence, rule 11). Reached by tapping an open tile, so
-// closing is two taps (plan §10 Q5).
+// guests" (a dialog that names the consequence, rule 11). Reached by tapping a tile, so closing is
+// two taps (plan §10 Q5); a closed table's sheet holds "Open for phones" instead (S16: a tap on a
+// status tile opens the thing, never acts at once), with the Undo toast the open always had. The
+// phone's drawer closes with a visible "Close" like the other Tonight drawers, the tablet's sheet
+// with its X at 44 px (S3). Before phone ordering starts, the sheet says when it does (S4).
 //
 // Who is seated is the first thing it says (walk P20, #419): the party's name and its guests, one
 // line each, in the ordinary text colour and weight — the sheet is a list of facts, and none of them
@@ -55,6 +58,7 @@ import type { TableTile, TonightView } from '@/server/tonight/view'
 import { useMoney } from './money'
 import { readAttempt } from './read-attempt'
 import { useTonightRun, wroteSomething } from './run'
+import { CLOSE_44 } from './tab-parts'
 import { useTableName } from './table-name'
 
 /**
@@ -76,11 +80,14 @@ export function TableSheet({
   bar,
   view,
   onClose,
+  onOpenForPhones,
 }: {
   tile: TableTile
   bar: string | null
   view: TonightView
   onClose: () => void
+  /** A closed table's one action: open it for phones (the grid asks first where it is booked). */
+  onOpenForPhones: () => void
 }) {
   const t = useTranslations('tonight')
   const isMobile = useIsMobile()
@@ -108,8 +115,15 @@ export function TableSheet({
     const who = party.name ?? t('sh_party_noname')
     return party.size === null ? who : t('sh_party', { name: who, k: party.size })
   }
+  const closed = tile.state === 'closed'
   const since = tile.since ?? ''
-  const sub = bar === null ? t('sh_sub_nobar', { since }) : t('sh_sub', { bar, since })
+  const sub = closed
+    ? bar === null
+      ? t('sh_sub_closed_nobar')
+      : t('sh_sub_closed', { bar })
+    : bar === null
+      ? t('sh_sub_nobar', { since })
+      : t('sh_sub', { bar, since })
   const details = (
     <dl className="space-y-1 px-4 text-base">
       {tile.parties.map((party) => (
@@ -136,9 +150,30 @@ export function TableSheet({
           </dt>
         </div>
       )}
+      {view.ordersStartAt === null ? null : (
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted-foreground" data-testid="sh-orders-start">
+            {t('orders_start', { time: view.ordersStartAt })}
+          </dt>
+        </div>
+      )}
     </dl>
   )
-  const actions = view.can.openClose ? (
+  const actions = !view.can.openClose ? null : closed ? (
+    <Button
+      type="button"
+      className={WRAPS}
+      // A closed night opens nothing: the page says so (S13).
+      disabled={busy || view.nightEnd !== null}
+      data-testid="sh-open"
+      onClick={() => {
+        onClose()
+        onOpenForPhones()
+      }}
+    >
+      {t('sh_open')}
+    </Button>
+  ) : (
     <>
       <Button
         type="button"
@@ -168,7 +203,7 @@ export function TableSheet({
         {t('sh_new')}
       </Button>
     </>
-  ) : null
+  )
 
   return (
     <>
@@ -180,13 +215,18 @@ export function TableSheet({
               <DrawerDescription>{sub}</DrawerDescription>
             </DrawerHeader>
             {details}
-            <DrawerFooter>{actions}</DrawerFooter>
+            <DrawerFooter>
+              {actions}
+              <Button type="button" variant="ghost" className={WRAPS} onClick={onClose}>
+                {t('close')}
+              </Button>
+            </DrawerFooter>
           </DrawerContent>
         </Drawer>
       ) : (
         <Sheet open onOpenChange={(open) => !open && onClose()}>
-          <SheetContent data-testid="table-sheet">
-            <SheetHeader>
+          <SheetContent data-testid="table-sheet" className={CLOSE_44}>
+            <SheetHeader className="pr-14">
               <SheetTitle className="[overflow-wrap:anywhere]">{name}</SheetTitle>
               <SheetDescription>{sub}</SheetDescription>
             </SheetHeader>
@@ -196,8 +236,8 @@ export function TableSheet({
         </Sheet>
       )}
       <Dialog open={newGuests} onOpenChange={setNewGuests}>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className={CLOSE_44}>
+          <DialogHeader className="pr-8">
             <DialogTitle>{t('ng_t', { table: name })}</DialogTitle>
             <DialogDescription>{t('ng_b', { source: view.source })}</DialogDescription>
           </DialogHeader>

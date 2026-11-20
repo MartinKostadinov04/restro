@@ -10,16 +10,18 @@
 import { CheckIcon, DownloadIcon } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { useTimedRefresh } from '@/hooks/use-timed-refresh'
+import { WRAPS } from '@/lib/wrapping'
 import { sentOrdersAction } from '@/server/tonight/night-actions'
 import type { Frame, NightView, SentListView } from '@/server/tonight/night-view'
 
 import { ActionRowItem } from './action-rows'
 import { DayPicker, useDateText } from './day-picker'
 import { useMoney } from './money'
+import { NightEndDialog } from './night-end'
 import { type NightSlots, visibleSections } from './night-slots'
 import { clockAt, OfflineLine } from './offline-line'
 import { PAGE } from './pages'
@@ -68,6 +70,8 @@ function Content({ view, frame, slots }: { view: NightView; frame: Frame; slots:
   const tableName = useTableName()
   const dateText = useDateText()
   const [open, setOpen] = useState<string | null>(null)
+  const [ending, setEnding] = useState(false)
+  const stopEnding = useCallback(() => setEnding(false), [])
   // "Show all {n}" expands the full list in place, in pages of 100.
   const [all, setAll] = useState<{
     limit: number
@@ -146,7 +150,22 @@ function Content({ view, frame, slots }: { view: NightView; frame: Frame; slots:
 
   return (
     <div className="mx-auto w-full max-w-[840px] space-y-6" data-testid="tonight-night">
-      <TabHeading name={t('tab_night')} />
+      <TabHeading name={t('tab_night')}>
+        {/* The page's own action (S12, D122: the tab keeps its name, the menu item stays): whoever
+            may end the night, and a shared device, whose confirm asks a manager's PIN (D141). */}
+        {view.today && (frame.can.endNight || frame.device) ? (
+          <Button
+            type="button"
+            variant="outline"
+            className={WRAPS}
+            data-testid="night-end-page"
+            onClick={() => setEnding(true)}
+          >
+            {t('ne_open')}
+          </Button>
+        ) : null}
+      </TabHeading>
+      <NightEndDialog view={frame} open={ending} onClose={stopEnding} />
       <OfflineLine offline={offline} stoodAt={frame.now} timezone={frame.timezone} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
