@@ -138,7 +138,10 @@ test('on Tonight what an owner can press follows the night’s work (RR-80)', as
   await expect(section).toBeVisible({ timeout: 30_000 })
   await expect(section.getByRole('button').or(section.getByRole('link')).first()).toBeVisible()
   await expect(section.locator(':disabled')).toHaveCount(0)
-  await expect(demo.getByRole('combobox').nth(1)).toContainText('Actions and tables')
+  // The venue's own tab bar is gone (D154): Tonight's views are the page's only dropdown.
+  await expect(demo.locator('[aria-label="Sections of Tonight"]:visible').first()).toContainText(
+    'Actions and tables',
+  )
   const workBox = await work.boundingBox()
   const sectionBox = await section.boundingBox()
   expect(sectionBox?.y ?? 0).toBeGreaterThanOrEqual((workBox?.y ?? 0) + (workBox?.height ?? 0))

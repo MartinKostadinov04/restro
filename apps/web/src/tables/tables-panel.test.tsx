@@ -468,7 +468,7 @@ describe('the Tables & QR tab', () => {
     expect(screen.getByText('No tables yet')).toBeTruthy()
     expect(screen.getByText(/Areas and tables come from barsy\./)).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Go to the Menu source' }).getAttribute('href')).toBe(
-      `/venues/${VENUE_ID}?tab=settings#menu-source`,
+      `/venues/${VENUE_ID}?tab=settings&section=general#menu-source`,
     )
     expect(screen.queryByTestId('create-all')).toBeNull()
   })

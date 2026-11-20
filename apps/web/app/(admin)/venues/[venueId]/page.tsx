@@ -404,7 +404,8 @@ export default async function VenueWorkspacePage({
           />
         ) : (
           // On a person's own sign-in the sidebar opens the screens (D154): only the open one is
-          // drawn, its skeleton shown at once while it streams in.
+          // drawn, its skeleton shown while it streams in. No `loading.tsx` above it: that answers
+          // a deleted venue with 200, not 404, and leaves a hidden copy of the screen (CI, 11-19).
           <div key={openTab}>{screens[openTab]}</div>
         )}
         {tonightOpen && !sharedDevice && canPublishMenu(organization.role) ? (

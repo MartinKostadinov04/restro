@@ -344,9 +344,10 @@ test('a POS venue whose POS can’t take payments has no Paying section', async 
     .click()
   await expect(page).toHaveURL(/\/venues\/vn_[^/?]+/)
   const demoVenue = new URL(page.url()).pathname.split('/')[2] ?? ''
-  // An old link to the section is sent to the venue's General; Ordering's Settings have no Paying.
+  // An old link to the section stays in Ordering's Settings (its first section), which have no
+  // Paying.
   await page.goto(`/venues/${demoVenue}?tab=settings&section=paying`)
-  await expect(page).toHaveURL(/\?tab=settings&section=general$/)
+  await expect(page).toHaveURL(/\?tab=settings&section=hours$/)
   await expect(page.getByTestId('paying-panel')).toHaveCount(0)
   await page.getByRole('link', { name: 'Настройки на поръчките' }).click()
   await expect(page.getByRole('tab', { name: 'Поръчки' })).toBeVisible()

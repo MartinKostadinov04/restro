@@ -141,7 +141,7 @@ Tonight's gain is order, not taps: two levels, settings split by module, a title
 | 4 | `src/components/admin/app-sidebar.tsx` | Header: the switcher on a venue page, today's Restro link elsewhere (no link for staff-only, C4). Every entry's click closes the phone sheet (C5). Organisation Settings tooltip "Настройки на организацията". |
 | 5 | `app/(admin)/layout.tsx` | Shared device: no sidebar, no venue or organisation list (S1, S3, C2); the device's name and venue go to the top bar. Otherwise: each venue with `reservations` (`reservationsOffered`) and the staff-only landing venue (`staffLandingVenue`), in one `Promise.all`. Here, not a venue layout, because this layout draws the sidebar and a child cannot hand it data without moving the sidebar into three layouts (ticket 1 revisits). A rights change shows after a reload; the page still refuses. |
 | 6 | `app/(admin)/venues/[venueId]/page.tsx` | Redirect to `canonicalVenueQuery` when `tab` or `section` is present and differs. Personal sign-in: only the open screen, no `WorkspaceTabs`, in a `Suspense` keyed by screen; title = the screen's name; breadcrumb `Заведения › {venue}` (`{venue}` alone for staff-only); Settings' row filtered to the open section's module. Shared device: unchanged (`WorkspaceTabs` device mode). |
-| 7 | new `app/(admin)/venues/[venueId]/loading.tsx` | The frame's skeleton, so a sidebar tap answers at once (K18). |
+| 7 | ~~new `app/(admin)/venues/[venueId]/loading.tsx`~~ | Dropped in the build: a segment `loading.tsx` streams the page before `notFound()`, so a deleted venue answered 200, and it left a hidden second copy of the screen. The tapped entry's mark answers the tap instead (K18). |
 | 8 | `src/components/admin/workspace-tabs.tsx` | `SettingsSections` takes `module`; `useUrlTab` takes parameters to drop (the section row drops `connection`); `activationMode="manual"` (C6, C7); `WorkspaceTabs` kept for the device only. |
 | 9 | `src/components/admin/admin-header.tsx` | On a device: no ☰; the device's name on the right opens the user menu's items (K2). |
 | 10 | `src/components/admin/user-menu.tsx` | Items (language, theme, sign out) become `UserMenuItems`, used by the sidebar foot and the device's top bar. |
@@ -197,7 +197,7 @@ Tonight's gain is order, not taps: two levels, settings split by module, a title
 
 Each ends with the `ship.md` §1 block; branches from and pull requests into `sr/foundation`. Each "D15x" is the proposed decision file of that number.
 
-**1. Path addresses.** `/venues/{v}/studio`, `/tables`, `/tonight`, `/reservations`, `/ordering/settings`, `/reservations/settings`, `/settings`, each rendering today's screen; old `?tab=` links redirect through `canonicalVenueQuery`. One `venuePageGuard()` every venue page calls (tenant 404, device, staff-only, module off) and one test table of every venue address × (other tenant, device, staff-only, no `reservations.tonight`), written before the pages (K1). One `venuePath()` every link calls, including the worker's push link (`apps/worker/src/alerts/deliver.ts:89`) and the provider's return (`apps/web/src/server/settings/paying-addresses.ts:8`). A `loading.tsx` per page; whether the sidebar moves into a venue layout.
+**1. Path addresses.** `/venues/{v}/studio`, `/tables`, `/tonight`, `/reservations`, `/ordering/settings`, `/reservations/settings`, `/settings`, each rendering today's screen; old `?tab=` links redirect through `canonicalVenueQuery`. One `venuePageGuard()` every venue page calls (tenant 404, device, staff-only, module off) and one test table of every venue address × (other tenant, device, staff-only, no `reservations.tonight`), written before the pages (K1). One `venuePath()` every link calls, including the worker's push link (`apps/worker/src/alerts/deliver.ts:89`) and the provider's return (`apps/web/src/server/settings/paying-addresses.ts:8`). No segment `loading.tsx` (it turns a 404 into 200, tonight's build row 7); whether the sidebar moves into a venue layout.
 - **Model:** Opus · **Codes it:** agent session · **Branch:** `sr/nav-paths` · **Read:** D97, D122 §7, D141, D154, step 0's S2 · **Stop and ask if:** a link outside `apps/web` names a venue address · **Menu functionality:** none · **Screen:** none (same screens).
 
 **2. The module switch.** The section "Modules" above: writer, reader, defaults, three refusals; an off module's pages, actions and `applyService` commands refuse through ticket 1's guard (K12a); Venue › Settings › Модули; glossary "Module / Модул".
@@ -260,7 +260,7 @@ The lead assigned these numbers; their files are `docs/decisions/D154.md`–`D15
 | K15 | Changed: the old 157 split into the staff and Settings rights (D157), the bar (into D154); the device frame is fixed tonight as defects (S1, S3). "Who switches" is in D155. Numbers per the lead. |
 | K16 | Changed: no group line; crumb names the venue, the title the screen. |
 | K17 | Changed, in ticket 5. |
-| K18 | Changed: a `loading.tsx` and a keyed `Suspense` per screen. |
+| K18 | Changed: the tapped entry is marked at once and a keyed `Suspense` per screen (the `loading.tsx` was dropped in the build, row 7). |
 | K19 | Accepted, said in ticket 5. |
 
 **The second critique** (`critique-2.md`, Opus, saw only the plan):
@@ -268,7 +268,7 @@ The lead assigned these numbers; their files are `docs/decisions/D154.md`–`D15
 | | Answer |
 |---|---|
 | L1 | Changed. The Studio keeps `menu`, `section`, `item` and `sub`; a Settings section is read only with `tab=settings`; the redirect runs only when `tab` is present. Unit row `tab=studio&menu=mn_1&section=nd_9&item=nd_4` stays as it is. The switcher carries `section` only with `tab=settings`. |
-| L2 | Changed. The tapped entry is marked at once (`useOptimistic`); `loading.tsx` at the venue segment; each screen in a `key`ed wrapper so the old one never lingers. |
+| L2 | Changed. The tapped entry is marked at once (`useOptimistic`); each screen in a `key`ed wrapper so the old one never lingers. |
 | L3 | Changed. The switcher's name is the venue's then ", Switch venue"; the device button's is its name then ", Language, theme and sign out"; staff-only gets the venue's name as plain text; `generateMetadata` titles the tab "Тази вечер · Club Biad". |
 | L4 | Changed. Glossary "Module" and "Screen" in this pull request; code says `module`; D155 and ticket 2's key (`venues.settings.modules`) match. Ticket 2's (c) word is left to its own grilling. |
 | L5 | Left to the copy pass, as Open question 2 says: the section and Tonight's view keep their names tonight. Recommend "Изпратени поръчки" for Tonight's view (the glossary's Sent order). |

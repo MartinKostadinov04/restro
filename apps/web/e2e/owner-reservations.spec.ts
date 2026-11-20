@@ -87,13 +87,12 @@ test('asks for the hold time first, then opens the switches', async ({ browser }
   const { context, page } = await open(browser, OWNER)
   await page.goto(reservations())
   await expect(page.getByRole('heading', { name: 'Резервации', level: 2 })).toBeVisible()
-  // The section sits right after Ordering, asked of the sections' own list: the venue's tab bar
-  // has a Reservations tab of its own now (#326).
-  const sections = await page
-    .getByRole('tablist', { name: 'Смяна на секцията' })
-    .getByRole('tab')
-    .allTextContents()
-  expect(sections.indexOf('Резервации')).toBe(sections.indexOf('Поръчки') + 1)
+  // Reservations' Settings are their own (D156): the sidebar marks them, with no row of sections.
+  await expect(page.getByRole('link', { name: 'Настройки на резервациите' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  await expect(page.getByRole('tablist', { name: 'Смяна на секцията' })).toHaveCount(0)
   // One line links to Hours instead of repeating the working hours.
   await expect(page.getByTestId('rs-hours-link')).toHaveAttribute(
     'href',

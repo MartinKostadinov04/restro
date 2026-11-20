@@ -300,7 +300,9 @@ test('collapsed to icons, each venue shows its initial and, hovered, its name', 
   // the first from far away, and the test's mouse jumps; the first tooltip may still be fading
   // out, so look for the one that names Settings.)
   await settingsItem(page).focus()
-  await expect(page.getByRole('tooltip').filter({ hasText: 'Settings' })).toHaveText('Settings')
+  await expect(page.getByRole('tooltip').filter({ hasText: 'Organisation settings' })).toHaveText(
+    'Organisation settings',
+  )
 
   // Open again for the tests that follow (the sidebar keeps its state in a cookie).
   await page.locator('[data-sidebar="trigger"]').click()
