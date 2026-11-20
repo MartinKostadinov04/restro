@@ -15,7 +15,7 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/guest/guest-menu.tsx:356-358` (`look(); addEventListener('hashchange', look)`); `packages/faces/editorial-market/src/use-dish-route.ts:116` (`window.history[replace ? 'replaceState' : 'pushState']`), which itself listens on `popstate` (:71).
 - Proposal: Have the renderer's dish route tell the host when it opens a dish (a callback), or have the host also listen to `popstate` and the open call; drop the duplicated address parsing.
-- Status: confirmed
+- Status: re-verified (PR #477 at 825355eb, re-check walk 11-20 by an Opus walker that wrote no fix): C1-after.jpg (one item.opened per tap at a table; none on a sheet close or back)
 - Verdict: confirmed — `use-dish-route.ts:116` opens with pushState; host listens only to hashchange (`guest-menu.tsx:357`)
 - Severity: Before the pilot
 - Effort: S
@@ -32,7 +32,7 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `apps/web/src/guest/load.ts:292-305` (`catch { return null }`); `apps/web/src/guest/load.ts:357-358`; `apps/web/src/guest/guest-menu.tsx:179` (`rememberTable(storage, menu.publicId, menu.table?.token ?? null)`).
 - Proposal: Make `loadTableFile` tell "not found or other venue" from "could not be read", and leave the remembered code alone on the second.
-- Status: confirmed
+- Status: re-verified (PR #477 at 825355eb, re-check walk 11-20 by an Opus walker that wrote no fix): test: load.test.ts, guest-menu.test.tsx (an unreadable file keeps only the code it checked)
 - Verdict: confirmed — `load.ts:302` turns any error into null and `guest-menu.tsx:179` forgets the table
 - Severity: Before the pilot
 - Effort: S
@@ -100,7 +100,7 @@ Row ids: `S<n>` from the explorer, `R<n>` the reviewer's own, `C<n>` the code ch
 - Check: code (code-review high)
 - Evidence: `packages/faces/editorial-market/src/use-layout.ts:13-20`, `:32` (`switchShown && chosen !== null ? chosen : start`); `face.tsx:98`; `packages/shell/src/build.ts:471`.
 - Proposal: Let the host say whether to remember the choice (the Design frames pass "no"), or scope the key to the venue and skip storage in the preview.
-- Status: confirmed
+- Status: re-verified (PR #477 at 825355eb, re-check walk 11-20 by an Opus walker that wrote no fix): C6-after.jpg
 - Verdict: confirmed in the browser at 1280 px: panel 'Две колони' pressed, preview stayed `data-layout="one"`, `sessionStorage['rm-layout']` shared
 - Severity: Before the pilot
 - Effort: M
@@ -295,7 +295,7 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: D130 (Items › Layout), design-critique 2
 - Evidence: S7-before.jpg, `getComputedStyle` of `.rm-items` and `.rm-item`
 - Proposal: disable the option with "Две колони се виждат само при артикули със снимка" / "Two columns show only for items with a photo", or lay out text items in two columns.
-- Status: confirmed
+- Status: re-verified (PR #477 at 825355eb, re-check walk 11-20 by an Opus walker that wrote no fix): S7-after.jpg, S7-after-320.jpg, S7-after-names-fixed.jpg (two columns; no mid-word breaks at 320 and 390)
 - Verdict: confirmed, also found blind: Editorial sets two columns, text items span both (`css.ts:1424`); the pilot club's items have no photos
 - Severity: Before the pilot
 - Effort: M
@@ -363,7 +363,7 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: `template-review` step 4
 - Evidence: S11-before.jpg
 - Proposal: tie the arrow to the last word of the name (nowrap on the final word and the arrow).
-- Status: confirmed
+- Status: re-verified (PR #477 at 825355eb, re-check walk 11-20 by an Opus walker that wrote no fix): S11-after.jpg, S11-after-320-fixed.jpg, S11-after-list-fixed.jpg
 - Verdict: confirmed at 375 px on Club ('ABSOLUT VODKA 0.7'); also found blind
 - Severity: Polish
 - Effort: S
@@ -397,7 +397,7 @@ The explorer changed the venue's design three times (Classic with cards and capi
 - Check: WCAG 2.4.2
 - Evidence: tab title before and after the tap (no screenshot)
 - Proposal: "<dish name> · <venue>" while a dish is open.
-- Status: confirmed
+- Status: re-verified (PR #477 at 825355eb, re-check walk 11-20 by an Opus walker that wrote no fix): tab title read in the walk (bg and en), no screenshot
 - Verdict: confirmed with the sheet open; host sets the title at `guest-menu.tsx:417`
 - Severity: Polish
 - Effort: S
@@ -463,7 +463,7 @@ Walked blind first (found S7, S9, S11 and R1–R6), then reproduced every row on
 - Check: template-review step 4 (design-critique 3)
 - Evidence: `getComputedStyle('.rm-overlay').backgroundColor`, `data-scheme=dark`
 - Proposal: the scrim takes a dark ink in both schemes.
-- Status: confirmed
+- Status: re-verified (PR #477 at 825355eb, re-check walk 11-20 by an Opus walker that wrote no fix): R3-after.jpg, R3-after-light.jpg
 - Verdict: confirmed · Severity: Before the pilot · Effort: S · Decision: none · Needs Martin's yes: no · Fix: F-FACE
 
 ### R4. The guest tab is titled "Menu", in English, until the menu loads, and stays so if it fails
@@ -475,7 +475,7 @@ Walked blind first (found S7, S9, S11 and R1–R6), then reproduced every row on
 - Check: copy-rules 9, WCAG 2.4.2
 - Evidence: the tab title right after `navigate`
 - Proposal: "Меню" / "Menu" by the page's language.
-- Status: confirmed
+- Status: re-verified (PR #477 at 825355eb, re-check walk 11-20 by an Opus walker that wrote no fix): tab title read in the walk: Меню, and Menu with ?lang=en, before the load and on failure
 - Verdict: confirmed · Severity: Polish · Effort: S · Decision: none · Needs Martin's yes: no · Fix: F-HOST
 
 ### R5. Size options are listed Medium, Small, Large
@@ -533,3 +533,28 @@ Tests named by the reviewer: `design-page.test.tsx`, `design-draft.test.ts`, `ad
 | R6 | Colour jargon | F-COPY |
 
 Reviewer could not see: C8 as a real member; C1 and C2 at a table (code only); S3's docked preview on a real device.
+
+## Re-check (11-20)
+
+All 29 rows are `re-verified`. Two PRs into `sr/foundation`:
+- **#470** (Design page): F-DSTATE, F-DPANEL, F-COPY; head 2422a859.
+- **#477** (guest page and renderer): F-FACE, F-HOST; head 825355eb.
+
+The walkers were Opus subagents that wrote no fix. They re-walked each row's Steps on the row's viewport. Rows a browser cannot settle (C2, C3, C4, C5, C8, C9, C10) name the test that pins them. The after screenshots sit beside the before ones.
+
+Defects the fixes introduced, caught by the reviews or the walks and fixed in the same PR:
+- a preview tap kept the page whenever any surrounding part matched;
+- leaving the Dish page left the dish open (history went back in another frame);
+- the X on the dish panel jumped the editor to Panels;
+- an unreadable new table code brought back the old table;
+- `item.opened` fired again after a sheet closed;
+- the English pre-load title was overwritten by the metadata;
+- two-column names broke mid-word with no hyphen;
+- the arrow pulled the last letter down with it;
+- a two-column card grew past 320 px (caught by the e2e guards).
+
+Also fixed alongside: the option tiles' loading word, and "Description lines" listed 1, 2, 3, All.
+
+Filed: #499 (`walkthrough`): with the cards frame on Club or Editorial, a long name can still break mid-word at 320 px. This is a look call for the Style.
+
+Lane setup note: a walk at a table needs `REVEAL_SERVICE_TOKEN` in the lane's `.env.local`, or the QR sheet shows no codes. `.env.example` lists it; the round brief's setup steps don't.
