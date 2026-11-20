@@ -23,5 +23,7 @@ Kept current by the lane 6 session so a restart reuses what exists.
 - d4479361 pushed: the 390 px duplicate fix (isMobile out of the sidebar context). CI on it was still running when the usage limit hit; read it with `gh pr checks 456`.
 - Persona walk (Opus, Playwright from the scratchpad) stopped at the limit: 9 owner screenshots in `after/` (desktop: settings, studio, studio-en, venues, switcher, ordering-settings; phone: sidebar, tonight, venues). Waiter, door host and tablet are not walked yet, and no critique rows came back. Servers stopped, ports 3160, 8161 and 4760 closed.
 
+- Walk finished (11-20): rows in `walk.md`. S1, S4, S8 and S10 are fixed in c43f97e6; the rest wait for Martin's pick. Rebased onto `origin/sr/foundation` 4fa0ae3a.
+
 ## Next
-Read CI on d4479361 and fix it if red → finish the walk for waiter, host and tablet, plus the critique (design-critique, accessibility-review and ux-copy under screen-review's overrides), giving a fresh agent only what's left; servers only while it walks → PR body with before and after, mark ready (never merge) → rebase onto `origin/sr/foundation` → report with the Skills run table.
+CI green on the rebased branch → mark #456 ready (never merge) → report `READY #456`.
