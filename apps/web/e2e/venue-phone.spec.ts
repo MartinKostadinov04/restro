@@ -220,13 +220,20 @@ test('Tonight and the Settings screens wrap at 200% text inside a 390 px phone (
   }
 })
 
-test('a menu row on a 390 px phone puts its name and badge above its buttons (S1)', async () => {
-  await owner.evaluate(() => {
-    document.documentElement.style.fontSize = ''
-  })
-  await owner.goto(`${venuePath}?tab=settings&section=general`)
-  const rows = onScreen(owner, 'menu-row')
+test('a menu row on a 390 px phone puts its name and badge above its buttons (S1)', async ({
+  browser,
+}) => {
+  // The Tonight fixture's venue has no menu; the demo venue has its live one, and its owner gets
+  // the buttons the row stacks under its name.
+  const demo = await signIn(browser, ADMIN_EMAIL)
+  await demo.goto('/venues')
+  const open = demo.getByRole('link', { name: 'Open' }).first()
+  await demo.goto(`${(await open.getAttribute('href')) ?? ''}?tab=settings&section=general`)
+  const rows = onScreen(demo, 'menu-row')
   await expect(rows.first()).toBeVisible({ timeout: 30_000 })
+  await expect(rows.first().getByTestId('menu-rename')).toBeVisible()
+  // The live menu's badge is there to be checked against the buttons.
+  await expect(onScreen(demo, 'menu-live-badge').first()).toBeVisible()
   for (const row of await rows.all()) {
     const name = await row.locator('span').first().boundingBox()
     const actions = await row.getByTestId('menu-actions').boundingBox()
@@ -250,4 +257,5 @@ test('a menu row on a 390 px phone puts its name and badge above its buttons (S1
       expect(overlaps, 'the Live badge and a button overlap').toBe(false)
     }
   }
+  await demo.context().close()
 })

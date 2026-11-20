@@ -207,19 +207,21 @@ test('every section fits a 1024 px screen with the sidebar open (S3)', async ({ 
   })
   // The sections every owner has. Publish (a till) and Paying (a card-taking POS) depend on the
   // venue, and a missing one would land on General (S26), so they are left out.
-  for (const name of [
-    'general',
-    'hours',
-    'ordering',
-    'reservations',
-    'staff',
-    'alerts',
-    'versioning',
-  ]) {
+  // Each with what it draws once its data is in (General and Versioning have no h2 of their own:
+  // their cards' titles are h3).
+  for (const [name, drawn] of [
+    ['general', 'settings-general'],
+    ['hours', 'hours-panel'],
+    ['ordering', 'ordering-panel'],
+    ['reservations', 'reservations-panel'],
+    ['staff', 'staff-panel'],
+    ['alerts', 'alerts-panel'],
+    ['versioning', 'settings-versioning'],
+  ] as const) {
     await page.goto(section(name))
     // The section asked for, not General after a redirect.
     await expect(page).toHaveURL(new RegExp(`[?&]section=${name}(?:&|$)`))
-    await expect(page.getByRole('heading', { level: 2 }).first()).toBeVisible()
+    await expect(page.getByTestId(drawn)).toBeVisible()
     const fits = await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
     )
