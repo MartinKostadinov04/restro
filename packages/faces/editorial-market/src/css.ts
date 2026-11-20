@@ -47,6 +47,44 @@ const HEAVY_FALLBACK_CSS = HEAVY_FALLBACKS.flatMap(({ font, heaviest }) =>
   ),
 ).join('\n')
 
+/**
+ * How wide, in ems, the longest word of a real menu runs in each heading font, as written and in
+ * capitals (S7): the widest of the seed's longest names (КОСМОПОЛИТЪН, ЙЕГЕРМАЙСТЕР, JÄGERMEISTER),
+ * measured in Chromium at the font's heaviest name weight, with the capitals' tracking, rounded up.
+ * A name's size steps down until a word this wide fits its line (never under the 12 px floor), so
+ * a name wraps between its words; only a word wider than its line at the floor still breaks.
+ */
+export const NAME_FIT: Readonly<
+  Record<
+    (typeof THEME_FONTS)[number]['id'],
+    { readonly written: number; readonly capitals: number }
+  >
+> = {
+  inter: { written: 7.9, capitals: 9.4 },
+  manrope: { written: 7.9, capitals: 8.8 },
+  montserrat: { written: 8.8, capitals: 9.9 },
+  'playfair-display': { written: 7.7, capitals: 9.7 },
+  lora: { written: 7.8, capitals: 9.3 },
+  unbounded: { written: 10.5, capitals: 11.8 },
+}
+
+/** The widest of the table: the width a font without a row of its own is given. */
+const NAME_FIT_WIDEST = Math.max(...Object.values(NAME_FIT).map((fit) => fit.capitals))
+
+const NAME_FIT_CSS = THEME_FONTS.flatMap((font) =>
+  [
+    `[data-heading-font="${font.id}"]`,
+    `[data-heading-font="same"][data-body-font="${font.id}"]`,
+  ].flatMap((drawn) => [
+    `.rm${drawn} {
+  --rm-name-fit: ${NAME_FIT[font.id].written};
+}`,
+    `.rm[data-items-name-case="capitals"]${drawn} {
+  --rm-name-fit: ${NAME_FIT[font.id].capitals};
+}`,
+  ]),
+).join('\n')
+
 export const EDITORIAL_CSS = `
 /* The page: the venue's variables, the light set by default. */
 .rm {
@@ -99,6 +137,7 @@ export const EDITORIAL_CSS = `
   --rm-name-weight: 700;
   --rm-name-case: none;
   --rm-name-tracking: normal;
+  --rm-name-fit: ${NAME_FIT_WIDEST};
   --rm-price-photo: calc(15px * var(--rm-type));
   --rm-price-strip: calc(14.5px * var(--rm-type));
   --rm-photo-shape: 4 / 3;
@@ -200,8 +239,9 @@ export const EDITORIAL_CSS = `
 .rm[data-items-frame="open"] {
   --rm-item-rule: 0;
 }
-/* A name's size is one option and five places. The price stays a step under it and never under the
-   description (14 px, and 12.5 px in two columns), which is why it hardly moves. */
+/* A name's size is one option and five places; a narrow line steps it down (see the name's rule). The
+   price stays a step under it and never under the description (14 px, and 12.5 px in two columns),
+   which is why it hardly moves. */
 .rm[data-items-name-size="s"] {
   --rm-name-text: calc(16px * var(--rm-type));
   --rm-name-list: calc(15px * var(--rm-type));
@@ -233,6 +273,7 @@ ${HEAVY_FALLBACK_CSS}
   --rm-name-case: uppercase;
   --rm-name-tracking: 0.005em;
 }
+${NAME_FIT_CSS}
 .rm[data-photos-shape="square"] {
   --rm-photo-shape: 1 / 1;
 }
@@ -510,6 +551,12 @@ ${HEAVY_FALLBACK_CSS}
   grid-row: 1;
   min-width: 0;
 }
+/* A name may shrink below its longest word wherever the copy is a flex row (a two-column card): a
+   word wider than the column then breaks inside it instead of widening the page. A price at the end
+   asks for the longest word back (below). */
+.rm-item-copy > [data-slot="item.name"] {
+  min-width: 0;
+}
 .rm-item-open {
   display: block;
   width: 100%;
@@ -519,10 +566,22 @@ ${HEAVY_FALLBACK_CSS}
   background: transparent;
   text-align: left;
 }
+/* A name keeps its words whole (S7): its size is its place's own, stepped down when its line is too
+   narrow for the longest word of a real menu (--rm-name-fit ems, with the arrow's room after it),
+   never under the 12 px floor. The line is the item's width (each item is a size container) less
+   what stands beside the name: --rm-name-inset. A word still too wide at the floor breaks at the
+   line's end, never sooner (break-word, not anywhere, so the name's narrowest is its longest word). */
+.rm-item {
+  container-type: inline-size;
+  --rm-name-inset: 0px;
+}
 .rm-item :is(h3, h4) {
-  font-size: var(--rm-name-text);
+  --rm-name-size: var(--rm-name-text);
+  --rm-name-fits: calc((100cqi - var(--rm-name-inset) - 12px) / (var(--rm-name-fit) + 1));
+  font-size: clamp(12px, var(--rm-name-fits), var(--rm-name-size));
   line-height: 1.12;
   font-weight: var(--rm-name-weight);
+  overflow-wrap: break-word;
 }
 .rm-price {
   margin-top: 7px;
@@ -650,7 +709,7 @@ ${HEAVY_FALLBACK_CSS}
   padding-top: 17px;
 }
 .rm-section.is-feature .rm-item :is(h3, h4) {
-  font-size: var(--rm-name-strip);
+  --rm-name-size: var(--rm-name-strip);
 }
 .rm-section.is-feature .rm-price {
   font-size: var(--rm-price-strip);
@@ -697,7 +756,8 @@ ${HEAVY_FALLBACK_CSS}
   position: fixed;
   z-index: 50;
   inset: 0;
-  background: color-mix(in srgb, var(--rm-text) 72%, transparent);
+  /* The scrim darkens the menu on both screens: the dark set's page colour, worked out to be dark. */
+  background: color-mix(in srgb, var(--rm-d-background) 72%, transparent);
   display: flex;
   justify-content: center;
   align-items: flex-end;
@@ -1015,7 +1075,8 @@ ${HEAVY_FALLBACK_CSS}
   position: relative;
 }
 /* The button sits inside the item's heading and carries its name; its ::before is the item-wide tap
-   area, its ::after the arrow (a picture: the second content value is its empty alternative text). */
+   area. The arrow is its own span's ::after (a picture: the second content value is its empty
+   alternative text). */
 .rm-item-open {
   text-transform: inherit;
   letter-spacing: inherit;
@@ -1026,11 +1087,22 @@ ${HEAVY_FALLBACK_CSS}
   inset: 0;
   z-index: 1;
 }
-.rm-item-open::after {
+/* The arrow after a name (S11) stands outside the text, in room the name keeps free at the end of
+   each line: it hangs from an empty span after the last letter, so it is always on the name's last
+   line, even when the name's one word fills the line. */
+.rm-item-open {
+  padding-right: calc(12px + 1em);
+}
+.rm-item-arrow {
+  position: relative;
+}
+.rm-item-arrow::after {
   content: "→";
   content: "→" / "";
-  display: inline-block;
-  margin-left: 8px;
+  position: absolute;
+  top: 0;
+  left: 8px;
+  line-height: normal;
   color: var(--rm-muted);
   font-weight: 500;
   transition: transform 0.2s;
@@ -1039,9 +1111,11 @@ ${HEAVY_FALLBACK_CSS}
   position: relative;
   z-index: 2;
 }
-.rm-item:hover .rm-item-open::after {
-  transform: translateX(4px);
-  color: var(--rm-text);
+@media (hover: hover) and (pointer: fine) {
+  .rm-item:hover .rm-item-arrow::after {
+    transform: translateX(4px);
+    color: var(--rm-text);
+  }
 }
 .rm-item:hover .rm-photo img {
   transform: scale(1.02);
@@ -1068,7 +1142,7 @@ ${HEAVY_FALLBACK_CSS}
   padding-top: 18px;
 }
 .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) {
-  font-size: var(--rm-name-one);
+  --rm-name-size: var(--rm-name-one);
   line-height: 1.1;
 }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-price {
@@ -1122,7 +1196,7 @@ ${HEAVY_FALLBACK_CSS}
 }
 @media (prefers-reduced-motion: reduce) {
   .rm-photo img,
-  .rm-item-open::after {
+  .rm-item-arrow::after {
     transition: none !important;
     transform: none !important;
   }
@@ -1184,7 +1258,7 @@ ${HEAVY_FALLBACK_CSS}
   transition: color 0.2s;
 }
 .rm-overlay:has(.is-detail) {
-  background: color-mix(in srgb, var(--rm-text) 40%, transparent);
+  background: color-mix(in srgb, var(--rm-d-background) 40%, transparent);
   animation: rm-veil 0.32s ease both;
 }
 .rm-overlay-panel.is-detail {
@@ -1421,8 +1495,18 @@ ${HEAVY_FALLBACK_CSS}
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: 12px;
 }
+/* An item without a photo takes one column too, as a text card: its name and every other part wrap
+   inside the column, so nothing is cut and nothing widens the page at 320 px. */
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.is-text {
-  grid-column: 1 / -1;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+/* A column has no arrow, so a name has the whole line; its price goes under it, at every width. */
+.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item :is(h3, h4) {
+  --rm-name-fits: calc((100cqi - var(--rm-name-inset)) / var(--rm-name-fit));
+}
+.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-copy > [data-slot="item.name"] {
+  flex-basis: 100%;
 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo {
   min-width: 0;
@@ -1435,10 +1519,8 @@ ${HEAVY_FALLBACK_CSS}
   aspect-ratio: var(--rm-photo-shape);
 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) {
-  font-size: var(--rm-name-two);
+  --rm-name-size: var(--rm-name-two);
   line-height: 1.15;
-  overflow-wrap: anywhere;
-  hyphens: auto;
 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy {
   display: flex;
@@ -1458,15 +1540,18 @@ ${HEAVY_FALLBACK_CSS}
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-description {
   font-size: calc(12.5px * var(--rm-type));
 }
-.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-open::after {
+.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-arrow::after {
   display: none;
+}
+.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-open {
+  padding-right: 0;
 }
 @media (max-width: 359px) {
   .rm[data-layout="two"] .rm-section:not(.is-feature) > .rm-items {
     column-gap: 10px;
   }
   .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) {
-    font-size: var(--rm-name-two-narrow);
+    --rm-name-size: var(--rm-name-two-narrow);
   }
   .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo {
     padding: var(--rm-photo-pad-two-narrow);
@@ -1474,6 +1559,7 @@ ${HEAVY_FALLBACK_CSS}
 }
 /* Layout: list (one column of one-line rows with a small photo). One column is the base look. */
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo {
+  --rm-name-inset: 110px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 96px;
   gap: 14px;
@@ -1513,7 +1599,7 @@ ${HEAVY_FALLBACK_CSS}
   padding-top: 0;
 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) {
-  font-size: var(--rm-name-list);
+  --rm-name-size: var(--rm-name-list);
 }
 /* The narrowest phones. The page around the face (no sideways scroll, no scrollbar) is the guest
    page's, not the face's: apps/web styles html[data-guest-page]. */
@@ -1813,6 +1899,8 @@ ${HEAVY_FALLBACK_CSS}
 }
 .rm[data-items-price-place="end"] .rm-item-copy > [data-slot="item.name"] {
   flex: 1 1 7em;
+  min-width: auto;
+  max-width: 100%;
 }
 .rm[data-items-price-place="end"] .rm-item-copy > .rm-price {
   margin-top: 0;
@@ -1887,9 +1975,11 @@ ${HEAVY_FALLBACK_CSS}
   padding: 14px;
 }
 .rm[data-items-frame="cards"][data-layout="one"] .rm-section:not(.is-feature) .rm-item.has-photo {
+  --rm-name-inset: 32px;
   padding: 0 0 16px;
 }
 .rm[data-items-frame="cards"][data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo {
+  --rm-name-inset: 20px;
   padding: 0 0 12px;
 }
 .rm[data-items-frame="cards"][data-layout="one"]
@@ -1908,6 +1998,7 @@ ${HEAVY_FALLBACK_CSS}
   padding-top: 8px;
 }
 .rm[data-items-frame="cards"] .rm-section.is-feature .rm-item {
+  --rm-name-inset: 32px;
   padding: 0 0 16px;
 }
 .rm[data-items-frame="cards"] .rm-section.is-feature .rm-item-copy {

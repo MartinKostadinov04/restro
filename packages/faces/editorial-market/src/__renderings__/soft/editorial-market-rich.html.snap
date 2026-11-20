@@ -36,7 +36,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Hummus</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Hummus<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">€7.00</div>
@@ -63,7 +65,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Olives</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Olives<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">€4.00</div>
@@ -85,7 +89,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Halloumi</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Halloumi<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">€8.00</div>
@@ -144,7 +150,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Burger</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Burger<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">€14.00</div>
@@ -172,7 +180,9 @@
 </div>
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Tofu bowl</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Tofu bowl<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">€12.00</div>
@@ -194,7 +204,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Cheesecake</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Cheesecake<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">€7.00</div>

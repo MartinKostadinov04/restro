@@ -1,6 +1,7 @@
 {
   "meta": {
-    "description": "Venue admin for QR menus and ordering in nightclubs."
+    "description": "Venue admin for QR menus and ordering in nightclubs.",
+    "guestMenu": "Menu"
   },
   "common": {
     "yes": "Yes",

@@ -96,7 +96,7 @@ export const LAYOUTS = ['list', 'one', 'two'] as const
 /** One layout. */
 export type Layout = (typeof LAYOUTS)[number]
 
-/** Where the guest's choice is remembered for the visit (`sessionStorage`). */
+/** Where the guest's choice is remembered for the visit (`sessionStorage`), followed by the venue's code. */
 export const LAYOUT_STORAGE_KEY = 'rm-layout'
 
 /** True for the name of a layout. */

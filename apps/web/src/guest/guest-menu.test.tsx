@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 import type { MenuSnapshot } from '@restro/core'
 import * as shell from '@restro/shell'
 import { fixture } from '@restro/shell/testing'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -22,6 +22,21 @@ import { files } from './load'
 beforeAll(async () => {
   await faceEntry(DEFAULT_FACE_ID).load()
 }, 60_000)
+
+/** What the page reported for the night (D142), by table code: the events client is not what these tests are about. */
+const reported = vi.hoisted(() => [] as { code: string; fact: { kind: string; itemId?: string } }[])
+vi.mock('./use-guest-events', async () => {
+  const { useCallback } = await import('react')
+  return {
+    useGuestEvents: (code: string | null) =>
+      useCallback(
+        (fact: { kind: string; itemId?: string }) => {
+          if (code !== null) reported.push({ code, fact })
+        },
+        [code],
+      ),
+  }
+})
 
 // The real shell, watched: what the page tells it about the table is what these tests are about.
 vi.mock('@restro/shell', async (importOriginal) => {
@@ -76,6 +91,7 @@ function serve(bodies: Map<string, unknown>) {
     vi.fn(async (url: string) => {
       requested.push(url)
       const body = bodies.get(url)
+      if (body instanceof Response) return body
       return body === undefined ? new Response(null, { status: 404 }) : Response.json(body)
     }),
   )
@@ -94,6 +110,7 @@ function visit(search: string, languages = ['bg-BG'], param = PARAM) {
 }
 
 beforeEach(() => {
+  reported.length = 0
   document.title = ''
   document.cookie = `${languageCookieName(CODE)}=; Path=/m; Max-Age=0`
 })
@@ -516,5 +533,137 @@ describe('the template the venue chose (SH-04)', () => {
     await faceRoot('editorial-market')
     expect(await screen.findByText('Маса 12')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'EN' })).toBeTruthy()
+  })
+})
+
+describe('the dish page at a table, and the tab’s title', () => {
+  /** The tab's title once the page has named it after the menu (its heading). */
+  const titleOfMenu = async () => {
+    const heading = (await screen.findByRole('heading', { level: 1 })).textContent ?? ''
+    expect(heading).not.toBe('')
+    await waitFor(() => expect(document.title).toBe(heading))
+    return heading
+  }
+  const openedItems = () =>
+    reported.filter(({ fact }) => fact.kind === 'item.opened').map(({ fact }) => fact.itemId)
+
+  it('reports a dish the guest taps open, and names the tab after it while it is open (C1, S13)', async () => {
+    serve(published())
+    visit(`#t=${TOKEN}`)
+    render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Маса 12')).toBeTruthy()
+    const menuTitle = await titleOfMenu()
+    await userEvent.click(screen.getByRole('button', { name: /^Негрони/ }))
+    const itemId = decodeURIComponent(window.location.hash.replace(/^#item-/, ''))
+    expect(itemId).toMatch(/^nd_/)
+    await waitFor(() => expect(openedItems()).toEqual([itemId]))
+    expect(reported.every(({ code }) => code === TOKEN)).toBe(true)
+    await waitFor(() => expect(document.title).toBe(`Негрони · ${menuTitle}`))
+    // Back to the menu: the title follows; a second open is a second report.
+    await act(async () => {
+      window.history.back()
+    })
+    await waitFor(() => expect(document.title).toBe(menuTitle))
+    await userEvent.click(screen.getByRole('button', { name: /^Негрони/ }))
+    await waitFor(() => expect(openedItems()).toEqual([itemId, itemId]))
+  })
+
+  it('reports nothing without a table, but still names the tab after the dish', async () => {
+    serve(published())
+    visit('')
+    render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Негрони')).toBeTruthy()
+    const menuTitle = await titleOfMenu()
+    await userEvent.click(screen.getByRole('button', { name: /^Негрони/ }))
+    await waitFor(() => expect(document.title).toBe(`Негрони · ${menuTitle}`))
+    expect(reported).toEqual([])
+  })
+
+  it('keeps the table through a reload whose table file could not be read (C2)', async () => {
+    serve(published())
+    visit(`#t=${TOKEN}`)
+    const first = render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Маса 12')).toBeTruthy()
+    first.unmount()
+    // A reload on a dish page while the table's file fails once: no table this time …
+    const failing = published()
+    failing.set(files.table('/cdn', sha(TOKEN)), new Response('x', { status: 503 }))
+    serve(failing)
+    visit('#item-nd_anything')
+    const unreadable = render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Негрони')).toBeTruthy()
+    await waitFor(() => expect(requested).toContain(files.table('/cdn', sha(TOKEN))))
+    expect(screen.queryByText(/Маса/)).toBeNull()
+    unreadable.unmount()
+    // … but the tab did not forget it: the next reload finds the table again.
+    serve(published())
+    visit('')
+    render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Маса 12')).toBeTruthy()
+  })
+
+  it('forgets the old table when a new code in the address cannot be read', async () => {
+    const other = 'tb_ZZZZZZZZZZZZZZZZZZZZZZ'
+    serve(published())
+    visit(`#t=${TOKEN}`)
+    const first = render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Маса 12')).toBeTruthy()
+    first.unmount()
+    // The guest scans another table's code, and its file fails: no table now …
+    const failing = published()
+    failing.set(files.table('/cdn', sha(other)), new Response('x', { status: 503 }))
+    serve(failing)
+    visit(`#t=${other}`)
+    const scanned = render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Негрони')).toBeTruthy()
+    await waitFor(() => expect(requested).toContain(files.table('/cdn', sha(other))))
+    scanned.unmount()
+    // … and a reload on a dish page (no code in the address) does not bring the first table back.
+    serve(published())
+    visit('#item-nd_anything')
+    render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Негрони')).toBeTruthy()
+    expect(screen.queryByText(/Маса/)).toBeNull()
+    expect(requested).not.toContain(files.table('/cdn', sha(TOKEN)))
+  })
+
+  it('names the tab in the page’s language before the menu loads and when it fails (R4)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    )
+    visit('')
+    const bulgarian = render(<GuestMenu venue={PARAM} />)
+    await waitFor(() => expect(document.title).toBe('Меню'))
+    bulgarian.unmount()
+    visit('?lang=en', ['en-GB'])
+    render(<GuestMenu venue={PARAM} />)
+    await waitFor(() => expect(document.title).toBe('Menu'))
+  })
+
+  it('keeps the word in the page’s language when the load fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 500 })),
+    )
+    visit('')
+    const bulgarian = render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByRole('button', { name: /Опитай|Опитайте/ })).toBeTruthy()
+    expect(document.title).toBe('Меню')
+    bulgarian.unmount()
+    // In English, even when the server's streamed title lands over the page's own (Next.js puts
+    // the metadata title in after the page has started): the settled page says it again.
+    let fail: (response: Response) => void = () => {}
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>((resolve) => (fail = resolve))),
+    )
+    visit('?lang=en', ['en-GB'])
+    render(<GuestMenu venue={PARAM} />)
+    await waitFor(() => expect(document.title).toBe('Menu'))
+    document.title = 'Меню'
+    await act(async () => fail(new Response(null, { status: 500 })))
+    expect(await screen.findByRole('button', { name: /try again/i })).toBeTruthy()
+    expect(document.title).toBe('Menu')
   })
 })

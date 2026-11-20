@@ -185,9 +185,8 @@ export function rememberedTable(storage: TabStorage | null, publicId: string): s
 }
 
 /**
- * Keeps the venue's confirmed table code for this tab, or forgets it (`code` null): after each
- * load the tab holds exactly the table that load confirmed, so a new code in the address replaces
- * the old one and an unknown one clears it. Without storage nothing is kept and nothing breaks.
+ * Keeps the venue's table code for this tab, or forgets it (`code` null); `tableToKeep` says
+ * which. Without storage nothing is kept and nothing breaks.
  */
 export function rememberTable(
   storage: TabStorage | null,
@@ -215,6 +214,23 @@ export interface ConfirmedTable {
  * code is unknown, belongs to another venue or could not be read); an answer for another code,
  * left over from before the address changed, counts for nothing.
  */
+/**
+ * The code the tab should hold after a load, from what the load checked and the code the tab held
+ * before it. A confirmed code is kept (a new one in the address replaces the old); an unknown one
+ * is forgotten. A file that could not be read concludes nothing, so it keeps the code only when
+ * that read was checking the very code the tab held: a different code from the address that
+ * could not be read still drops the old one, which would otherwise come back on the next reload
+ * (a dish page takes the fragment) as a table the guest never scanned.
+ */
+export function tableToKeep(
+  checked: { readonly kind: 'found' | 'unknown' | 'unreadable'; readonly token: string } | null,
+  kept: string | null,
+): string | null {
+  if (checked === null) return null
+  if (checked.kind === 'found') return checked.token
+  return checked.kind === 'unreadable' && checked.token === kept ? kept : null
+}
+
 export function confirmedTable(
   requested: string | null,
   found: ConfirmedTable | null,
