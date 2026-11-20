@@ -352,8 +352,8 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
         <NothingHere
           text={
             // Tonight may still fill, a night to come has none "yet", and a night that has passed
-            // has none, full stop: nothing can come to it any more (S23).
-            night.passed
+            // or whose book is closed has none, full stop: nothing can come to it any more (S23).
+            night.passed || night.closed
               ? t('empty_passed', { date: dateText(night.day) })
               : night.day === frame.today
                 ? t('empty')

@@ -115,8 +115,9 @@ export function useDoorActions({
   const named = useCallback((party: DoorParty) => party.name ?? t('no_name'), [t])
 
   /**
-   * The one write, with the answer the hostess gave (or none, where nothing was asked). The toast
-   * says in a second line that the table stayed closed, where the role could not open it.
+   * The one write, with the answer the hostess gave (or none, where nothing was asked). Its one
+   * toast names the party and, in the same sentence, what became of its table: open for phones, or
+   * closed because the role could not open it.
    */
   const seat = useCallback(
     (party: DoorParty, sameGuests: boolean | undefined) => {
@@ -132,8 +133,9 @@ export function useDoorActions({
         // not open them. Never guessed before the answer (#396).
         done: (details) => {
           const spot = party.onSpot === undefined ? null : spotsText([party.onSpot])
+          // A party nobody named reads as a party, never as "Seated: No name."
           const seated =
-            reservationId === null
+            reservationId === null || party.name === null
               ? spot === null
                 ? t('d_seated_walk_in_bare')
                 : t('d_seated_walk_in', { spot })
@@ -172,22 +174,24 @@ export function useDoorActions({
                 ...answer,
                 ...(pin === undefined ? {} : { pin }),
               }),
-        // The arrival is undone by its own command, which closes the codes it opened (#329); a
-        // walk-in the seat tap itself created is cancelled with its own reason, by the same command,
-        // on the line the write reports it made (S21: every door write offers its Undo).
-        again: {
-          label: t('p_undo'),
-          done: t('d_undone'),
-          act: (pin, details) => {
-            const made = details?.reservationId
-            const id = reservationId ?? (typeof made === 'string' ? made : null)
-            if (id === null) return Promise.resolve({ ok: false, error: 'failed' } as const)
-            return undoArrivalAction({
-              venueId,
-              reservationId: id,
-              ...(pin === undefined ? {} : { pin }),
-            })
-          },
+        // The arrival is undone by its own command, which closes the codes it opened (#329). A
+        // walk-in the seat tap itself created is cancelled by the same command, on the line the
+        // write reports it made, and says so in its own words (S21: every door write offers its
+        // Undo). A walk-in whose write reported no line offers none rather than guess.
+        again: (details) => {
+          const made = details.reservationId
+          const id = reservationId ?? (typeof made === 'string' ? made : null)
+          if (id === null) return undefined
+          return {
+            label: t('p_undo'),
+            done: reservationId === null ? t('d_walk_in_undone') : t('d_undone'),
+            act: (pin?: string) =>
+              undoArrivalAction({
+                venueId,
+                reservationId: id,
+                ...(pin === undefined ? {} : { pin }),
+              }),
+          }
         },
         // Somebody is on the spot right now (`holdsSpotNow`, not the booking rule): the sentence
         // names them and their hour, which is the whole point of it. `spot_taken` carries only
@@ -304,7 +308,7 @@ export function useDoorActions({
       const asked = party.spotIds
       run({
         id: `rv-free:${reservationId}`,
-        done: t('d_freed', { party: named(party) }),
+        done: party.name === null ? t('d_freed_bare') : t('d_freed', { party: party.name }),
         pin: { title: t('d_pin_free', { party: named(party) }), body: t('d_pin_b') },
         act: (pin) =>
           freeSpotsAction({

@@ -115,11 +115,12 @@ export function ReservationRow({
     >
       <button
         type="button"
-        className="grid min-h-11 min-w-0 flex-1 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 p-3 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring md:grid-cols-[2.75rem_minmax(0,1fr)_auto_auto]"
+        className="grid min-h-11 min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 p-3 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring md:grid-cols-[auto_minmax(0,1fr)_auto_auto]"
         onClick={onOpen}
+        data-testid="rv-row-open"
       >
         <span
-          className="col-start-1 row-start-1 pt-0.5 text-sm tabular-nums text-muted-foreground"
+          className="col-start-1 row-start-1 min-w-11 whitespace-nowrap pt-0.5 text-sm tabular-nums text-muted-foreground"
           data-testid="rv-row-time"
         >
           {time}

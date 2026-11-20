@@ -519,7 +519,7 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
     })
 
     it('marks the lines of the history the reader wrote, and only for that reader', async () => {
-      const id = await book(night(9), '22:00', ['T1'])
+      const id = await book(night(23), '22:00', ['T1'])
       // The owner took it: every line is the owner's own, so the sheet tells them nothing new.
       expect((await detailOf(id)).history.map((line) => line.mine)).toEqual([true])
       // A colleague reads the same booking: the owner's line is news to her.
@@ -531,6 +531,49 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
       })
       if (!read.ok || read.detail === null) throw new Error('detail not read')
       expect(read.detail.history.map((line) => line.mine)).toEqual([false])
+    })
+
+    it('counts the person a shared device remembers as the reader (S18)', async () => {
+      // A shared device writes as the person its PIN named, while the device account reads.
+      const asHostess: ServiceContext = {
+        ...staff(ownerId),
+        actor: {
+          kind: 'staff',
+          staffMemberId: hostessStaffId,
+          sessionId: `sess-${randomUUID()}`,
+        } satisfies ServiceActor,
+      }
+      const id = (
+        await accept(
+          {
+            type: 'reservation.create',
+            serviceDate: night(23),
+            startsAt: hour(night(23), '23:00'),
+            kind: 'booking',
+            status: 'reserved',
+            partySize: 2,
+            guestName: `Guest ${randomUUID().slice(0, 6)}`,
+            phone: phone(),
+            spotIds: [spotId('T2')],
+          } as ServiceCommand,
+          asHostess,
+        )
+      ).reservationId as Id<'rv'>
+      const readAs = async (deviceStaffMemberId?: string) => {
+        const read = await readReservationDetail(world.app, {
+          tenantId: world.tenantId,
+          venueId: world.venueId,
+          actor: staff(ownerId).actor,
+          reservationId: id,
+          ...(deviceStaffMemberId === undefined ? {} : { deviceStaffMemberId }),
+        })
+        if (!read.ok || read.detail === null) throw new Error('detail not read')
+        return read.detail.history.map((line) => line.mine)
+      }
+      // The account alone did not write it: the hostess's line is news to it.
+      expect(await readAs()).toEqual([false])
+      // The device remembers her: her own line is the reader's own.
+      expect(await readAs(hostessStaffId)).toEqual([true])
     })
 
     it('refuses an edit whose spot a colleague took first, by name, and writes nothing', async () => {

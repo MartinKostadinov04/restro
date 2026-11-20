@@ -20,6 +20,7 @@ import { BOOKING_REASONS } from '@/reservations/booking-reasons'
 
 import { logError } from '../log'
 import { requireTenant } from '../session'
+import { personAtSharedDevice } from '../staff/service'
 import { getVenue } from '../venues'
 import {
   loadArrivalChecks,
@@ -109,7 +110,18 @@ export async function reservationDetailAction(
   return answer('reservation_detail_failed', async () => {
     const scope = await scopeOf(parsed.data.venueId)
     if (scope === null) return FAILED
-    return loadReservationDetail(scope, parsed.data.reservationId)
+    // On a shared device the account reads but the person its PIN named writes: their lines are
+    // this reader's own, so their own write raises no "changed by" notice (S18). Only a notice
+    // rides on it, so a failed lookup reads as nobody remembered rather than failing the sheet.
+    const person =
+      scope.actor.kind === 'user'
+        ? await personAtSharedDevice({
+            tenantId: scope.tenantId,
+            venueId: scope.venue.id,
+            sessionId: scope.actor.sessionId,
+          }).catch(() => null)
+        : null
+    return loadReservationDetail(scope, parsed.data.reservationId, person?.staffMemberId ?? null)
   })
 }
 

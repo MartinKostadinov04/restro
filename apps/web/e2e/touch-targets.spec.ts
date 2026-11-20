@@ -316,59 +316,68 @@ test('Settings -> Integrations: every control has a 44 px hit area on a phone', 
 
 // The screen round's 44 px rows for Reservations: the night's list (its row actions and "…"), a
 // reservation's sheet, and Guests with a row's "…" open. Scoped to the tab itself: the venue's
-// header and navigation are checked with their own screens.
-test('Venue › Reservations: every control has a 44 px hit area on a phone', async ({ browser }) => {
-  const fixture = (...args: string[]) =>
-    runScriptWith(
-      { STAFF_PIN_PEPPER: TONIGHT_PIN_PEPPER },
-      './scripts/seed-tonight-e2e.ts',
-      ...args,
-    )
-  fixture('seed')
-  fixture('night', 'empty')
-  fixture('book', 'book')
-  const context = await browser.newContext(phone)
-  const page = await context.newPage()
-  try {
-    await signIn(page, TONIGHT_OWNER_EMAIL)
-    if (!/\/venues\/vn_/.test(page.url())) {
-      await page
-        .getByRole('link', { name: new RegExp(TONIGHT_VENUE_NAME) })
-        .first()
-        .click()
-      await expect(page).toHaveURL(/\/venues\/vn_[^/?]+/)
-    }
-    const venueId = new URL(page.url()).pathname.split('/')[2] ?? ''
+// header and navigation are checked with their own screens. The night is written before the test,
+// in its own hook: seeding it inside the test spent most of the test's two minutes.
+test.describe('Venue › Reservations', () => {
+  test.beforeAll(() => {
+    test.setTimeout(240_000)
+    const fixture = (...args: string[]) =>
+      runScriptWith(
+        { STAFF_PIN_PEPPER: TONIGHT_PIN_PEPPER },
+        './scripts/seed-tonight-e2e.ts',
+        ...args,
+      )
+    fixture('seed')
+    fixture('night', 'empty')
+    fixture('book', 'book')
+  })
 
-    await page.goto(`/venues/${venueId}?tab=reservations`)
-    const night = page.getByTestId('reservations-night')
-    await expect(night.getByTestId('rv-row').first()).toBeVisible()
-    await expectFloor(page, 'reservations, the night', 6, '[data-testid="reservations-night"]')
+  test('every control has a 44 px hit area on a phone', async ({ browser }) => {
+    const context = await browser.newContext(phone)
+    const page = await context.newPage()
+    try {
+      await signIn(page, TONIGHT_OWNER_EMAIL)
+      if (!/\/venues\/vn_/.test(page.url())) {
+        await page
+          .getByRole('link', { name: new RegExp(TONIGHT_VENUE_NAME) })
+          .first()
+          .click()
+        await expect(page).toHaveURL(/\/venues\/vn_[^/?]+/)
+      }
+      const venueId = new URL(page.url()).pathname.split('/')[2] ?? ''
 
-    const more = night.getByTestId('rv-row-more').first()
-    if ((await more.count()) > 0) {
+      await page.goto(`/venues/${venueId}?tab=reservations`)
+      const night = page.getByTestId('reservations-night')
+      await expect(night.getByTestId('rv-row').first()).toBeVisible()
+      await expectFloor(page, 'reservations, the night', 6, '[data-testid="reservations-night"]')
+
+      // The fixture's night has rows with a "…" (Иванова's, still coming): it is there to check.
+      const more = night.getByTestId('rv-row-more').first()
+      await expect(more).toBeVisible()
       await more.click()
       await expectFloor(page, 'reservations, a row’s "…" open', 1, '[role="menu"]')
       await page.keyboard.press('Escape')
-    }
+      await expect(page.getByRole('menu')).toHaveCount(0)
 
-    await night.getByTestId('rv-row').first().click()
-    const sheet = page.getByTestId('rv-sheet')
-    await expect(sheet).toBeVisible()
-    await expect(sheet).toHaveAttribute('aria-busy', 'false')
-    await expectFloor(page, 'reservations, a reservation', 2, '[data-testid="rv-sheet"]')
-    await page.keyboard.press('Escape')
+      // The row's own button opens the sheet; its centre may be one of the row's actions on a phone.
+      await night.getByTestId('rv-row-open').first().click()
+      const sheet = page.getByTestId('rv-sheet')
+      await expect(sheet).toBeVisible()
+      await expect(sheet).toHaveAttribute('aria-busy', 'false')
+      await expectFloor(page, 'reservations, a reservation', 2, '[data-testid="rv-sheet"]')
+      await page.keyboard.press('Escape')
 
-    await page.goto(`/venues/${venueId}?tab=reservations&view=guests`)
-    const guests = page.getByTestId('reservations-guests')
-    await expect(guests).toBeVisible()
-    await expectFloor(page, 'reservations, guests', 2, '[data-testid="reservations-guests"]')
-    const guestMore = guests.getByTestId('rv-g-row-more').first()
-    if ((await guestMore.count()) > 0) {
+      await page.goto(`/venues/${venueId}?tab=reservations&view=guests`)
+      const guests = page.getByTestId('reservations-guests')
+      await expect(guests).toBeVisible()
+      await expectFloor(page, 'reservations, guests', 2, '[data-testid="reservations-guests"]')
+      // The fixture's bookings carry guest records, so Guests has rows with a "…".
+      const guestMore = guests.getByTestId('rv-g-row-more').first()
+      await expect(guestMore).toBeVisible()
       await guestMore.click()
       await expectFloor(page, 'reservations, a guest’s "…" open', 1, '[role="menu"]')
+    } finally {
+      await context.close()
     }
-  } finally {
-    await context.close()
-  }
+  })
 })

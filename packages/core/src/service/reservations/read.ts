@@ -522,7 +522,14 @@ const HISTORY_KINDS = [
  */
 export async function readReservationDetail(
   pool: DbPool,
-  input: ReadInput & { readonly reservationId: string },
+  input: ReadInput & {
+    readonly reservationId: string
+    /**
+     * The person a shared device remembers (D141 12.11), where the reader is that device's account:
+     * the device reads as itself but writes as them, so the lines they wrote are the reader's own.
+     */
+    readonly deviceStaffMemberId?: string | null
+  },
 ): Promise<
   | {
       readonly ok: true
@@ -630,11 +637,14 @@ export async function readReservationDetail(
       .select({ settings: venues.settings })
       .from(venues)
       .where(eq(venues.id, reader.venue.id))
-    // Who the reader is in the Log's own words, so their own lines are known as theirs.
+    // Who the reader is in the Log's own words, so their own lines are known as theirs: the
+    // account, its staff member, and on a shared device the person it remembers.
     const me = await staffMemberFor(tx, input)
+    const device = input.deviceStaffMemberId ?? null
     const myActors = new Set<string>([
       ...(input.actor.kind === 'user' ? [`user:${input.actor.userId}`] : []),
       ...(me === null ? [] : [`staff:${me}`]),
+      ...(device === null ? [] : [`staff:${device}`]),
     ])
     const beaten = await payRuleBeatenAt(tx, {
       reservationId: row.id,

@@ -359,7 +359,7 @@ export function BookingForm({
         ? t('b_passed', { date: dateText(values.day) })
         : checks.night === 'settings_missing'
           ? t('b_settings')
-          : t('errors.past_night_denied')
+          : t('bk_past_denied', { date: dateText(values.day) })
 
   const errorText: Record<FieldError, string> = {
     name: t('bk_e_name'),

@@ -141,6 +141,44 @@ test.afterAll(async () => {
   await owner?.context.close()
 })
 
+// The screen round's S16 (WCAG 1.4.10, reflow): at a phone's width the night's row stacks — the
+// name and the party, the state under them, the row's action full width below — so a name is never
+// squeezed to a letter a line and nothing pushes the page sideways.
+for (const width of [320, 390]) {
+  test(`the night's list reflows at ${width} px: whole names, no sideways scroll`, async ({
+    browser,
+  }) => {
+    const phone = await person(browser, TONIGHT_OWNER_EMAIL, { width, height: 844 })
+    try {
+      await openList(phone.page)
+      const all = rows(phone.page)
+      await expect(all.first()).toBeVisible()
+      const overflow = await phone.page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+      expect(overflow).toBeLessThanOrEqual(1)
+      const count = await all.count()
+      for (let at = 0; at < count; at += 1) {
+        const row = all.nth(at)
+        const name = await row.getByTestId('rv-row-name').boundingBox()
+        expect(name?.width ?? 0).toBeGreaterThanOrEqual(120)
+        const box = await row.boundingBox()
+        expect(box?.height ?? 0).toBeLessThan(160)
+        expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width)
+      }
+      // The row's one action is full width under it, and a thumb can hit it. These run before the
+      // door's own tests, while Иванова is still coming, so her row has its "Arrived".
+      const arrive = phone.page.getByTestId('rv-row-arrive').first()
+      await expect(arrive).toBeVisible()
+      const action = await arrive.boundingBox()
+      expect(action?.height ?? 0).toBeGreaterThanOrEqual(44)
+      expect(action?.width ?? 0).toBeGreaterThanOrEqual(width / 2)
+    } finally {
+      await phone.context.close()
+    }
+  })
+}
+
 test('a table nobody holds later opens in one tap, as Tonight always did', async () => {
   const { page } = owner
   expect(await readTile(page, TABLE)).toBe('closed')
@@ -307,11 +345,15 @@ test('a walk-in off a free spot is two taps, with the hour the door offered', as
   // One toast naming the spot, with its Undo (S21).
   const seated = toast(page, 'Party seated at Маса 9.')
   await expect(seated).toBeVisible()
-  await expect(seated.getByRole('button', { name: 'Undo' })).toBeVisible()
   // Маса 9 has no Table, so no code opened and the toast must not say one did (#396).
   await expect(page.getByText('The table is open for phones.')).toHaveCount(0)
-  await openPlan(page)
   await expect(spotNamed(page, 'Маса 9').first()).toHaveAttribute('data-state', 'sitting')
+
+  // Its Undo takes back the line the seating made, in its own words, and the spot is free again.
+  await seated.getByRole('button', { name: 'Undo' }).click()
+  await expect(toast(page, 'The seating is undone and the spot is free again.')).toBeVisible()
+  await openPlan(page)
+  await expect(spotNamed(page, 'Маса 9').first()).toHaveAttribute('data-state', 'free')
 })
 
 test('the door reads whole at 390 px, with every tap a thumb can hit', async ({ browser }) => {
@@ -337,41 +379,3 @@ test('the door reads whole at 390 px, with every tap a thumb can hit', async ({ 
     await phone.context.close()
   }
 })
-
-// The screen round's S16 (WCAG 1.4.10, reflow): at a phone's width the night's row stacks — the
-// name and the party, the state under them, the row's action full width below — so a name is never
-// squeezed to a letter a line and nothing pushes the page sideways.
-for (const width of [320, 390]) {
-  test(`the night's list reflows at ${width} px: whole names, no sideways scroll`, async ({
-    browser,
-  }) => {
-    const phone = await person(browser, TONIGHT_OWNER_EMAIL, { width, height: 844 })
-    try {
-      await openList(phone.page)
-      const all = rows(phone.page)
-      await expect(all.first()).toBeVisible()
-      const overflow = await phone.page.evaluate(
-        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-      )
-      expect(overflow).toBeLessThanOrEqual(1)
-      const count = await all.count()
-      for (let at = 0; at < count; at += 1) {
-        const row = all.nth(at)
-        const name = await row.getByTestId('rv-row-name').boundingBox()
-        expect(name?.width ?? 0).toBeGreaterThanOrEqual(120)
-        const box = await row.boundingBox()
-        expect(box?.height ?? 0).toBeLessThan(160)
-        expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(width)
-      }
-      // The row's one action is full width under it, and a thumb can hit it.
-      const arrive = phone.page.getByTestId('rv-row-arrive').first()
-      if ((await arrive.count()) > 0) {
-        const box = await arrive.boundingBox()
-        expect(box?.height ?? 0).toBeGreaterThanOrEqual(44)
-        expect(box?.width ?? 0).toBeGreaterThanOrEqual(width / 2)
-      }
-    } finally {
-      await phone.context.close()
-    }
-  })
-}
