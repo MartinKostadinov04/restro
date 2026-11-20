@@ -45,7 +45,7 @@ import {
 import type { RvFrame } from '@/server/reservations/view'
 import { ConfirmDialog } from './confirm-dialog'
 import { SameGuestsDialog } from './door-dialogs'
-import type { RvRunSpec } from './use-reservation-run'
+import { type RvRunSpec, useSpotsLostLine } from './use-reservation-run'
 
 /** The party at the door: what a seating needs to know about it. */
 export interface DoorParty {
@@ -106,6 +106,7 @@ export function useDoorActions({
   onChanged: () => void
 }) {
   const t = useTranslations('reservations')
+  const spotsLostLine = useSpotsLostLine()
   const venueId = frame.venueId
   const [asking, setAsking] = useState<Asking | null>(null)
   const [reading, setReading] = useState(false)
@@ -164,12 +165,16 @@ export function useDoorActions({
               }),
         // The arrival is undone by its own command, which closes the codes it opened (#329); a
         // walk-in the seat tap itself created is cancelled with its own reason, by the same command.
+        // The party goes back to the spots it held before; where one was taken since, it comes back
+        // without them and she reads it in one line (C5 of the 11-18 screen round).
         ...(reservationId === null
           ? {}
           : {
               again: {
                 label: t('p_undo'),
                 done: t('d_undone'),
+                notice: (details) =>
+                  spotsLostLine(details, { taken: 'd_undone_lost', other: 'd_undone_nospots' }),
                 act: (pin?: string) =>
                   undoArrivalAction({
                     venueId,
@@ -211,7 +216,7 @@ export function useDoorActions({
         },
       })
     },
-    [named, onChanged, run, t, venueId],
+    [named, onChanged, run, spotsLostLine, t, venueId],
   )
 
   /** Asks first where the advice says a question is due, and writes where it does not. */

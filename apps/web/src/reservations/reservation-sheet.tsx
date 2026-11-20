@@ -402,14 +402,20 @@ export function ReservationSheet({
   // What this person may do with this booking, drawn or not (a role that may not is told who may).
   const status = detail?.row.status
   const ended = status !== undefined && (ENDED as readonly string[]).includes(status)
+  // Editing and cancelling are whoever works tonight's (D135 13.18); deleting another's booking and
+  // bringing one back stay the manager's (S20 of the 11-18 screen round). A shared device shows
+  // them all and asks for the PIN.
   const mayManage = frame.can.manage || frame.device
   const isBlock = detail?.row.kind === 'block'
-  const mayEdit = detail !== undefined && detail !== null && writable && mayManage && !ended
+  // A block is changed and lifted with the block right (D137), not the booking one: a role
+  // without it is not shown the controls the server would refuse.
+  const mayWork = isBlock ? frame.can.block || frame.device : frame.can.tonight || mayManage
+  const mayEdit = detail !== undefined && detail !== null && writable && mayWork && !ended
   const mayCancel =
     detail !== undefined &&
     detail !== null &&
     writable &&
-    mayManage &&
+    mayWork &&
     (status === 'reserved' || status === 'waiting' || status === 'requested')
   const mayDelete =
     detail !== undefined && detail !== null && writable && !isBlock && (mayManage || detail.mine)
@@ -443,7 +449,7 @@ export function ReservationSheet({
       detail={detail}
       frame={frame}
       changedBy={changedBy}
-      sayWhoManages={writable && !mayManage && !ended}
+      sayWhoManages={writable && !mayManage && !ended && !isBlock && detail.mine !== true}
       busy={busy}
       onPayRule={onPayRule}
       onSettled={load}
