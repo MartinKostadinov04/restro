@@ -263,8 +263,6 @@ test.afterAll(async () => {
   // The area test's own `finally` cannot run once its page is gone (a timeout): put the areas back
   // here, from the database, so the other specs see the demo venue as the till has it.
   runScript('./scripts/seed-tables-e2e.ts', 'areas-restore')
-  // The plain member belongs to this spec only.
-  runScript('./scripts/seed-tables-e2e.ts', 'member-remove')
   await context.close()
 })
 
@@ -885,6 +883,5 @@ test('a plain member reads the tables, is told the codes are for owners and admi
     await expect(member.getByTestId('print-card')).toHaveCount(0)
   } finally {
     await memberContext.close()
-    runScript('./scripts/seed-tables-e2e.ts', 'member-remove')
   }
 })

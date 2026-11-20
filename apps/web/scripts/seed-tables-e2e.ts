@@ -28,7 +28,8 @@
 //                       for them, alone), for the test's `afterAll`.
 //   member              the demo organisation gets a plain member (`tables-member@demo-club.test`,
 //                       the demo password), to read the tab as someone who may not see the codes.
-//   member-remove       takes that membership away again, for the test's `afterAll`.
+//                       Idempotent, and left in place: the seed's role may not delete a membership,
+//                       and no other spec counts the demo organisation's people.
 //
 // Like the other seeds it refuses to run unless NODE_ENV is development and the database is on
 // this machine.
@@ -61,7 +62,6 @@ import {
 import {
   authMember,
   authOrganization,
-  authUser,
   barsyVenues,
   integrations,
   venues,
@@ -147,8 +147,8 @@ const MEMBER = { email: 'tables-member@demo-club.test', name: 'Tables Member' }
 /**
  * `member`: the demo organisation gets a plain member (organisation role `member`, so neither owner
  * nor admin) with the demo password, for the test of what a person who may not see the codes gets.
- * Idempotent. `member-remove` takes the membership away again (the account stays, in no
- * organisation), so the other specs see the demo organisation with its owner alone.
+ * Idempotent; the membership stays (no row is deleted), and no other spec counts the demo
+ * organisation's people.
  */
 async function member(): Promise<void> {
   assertDevEnvironment(process.env)
@@ -189,21 +189,6 @@ async function member(): Promise<void> {
     await db.update(authMember).set({ role: 'member' }).where(eq(authMember.id, membership.id))
   }
   console.log(JSON.stringify({ member: MEMBER.email }))
-}
-
-async function memberRemove(): Promise<void> {
-  assertDevEnvironment(process.env)
-  const { tenantId } = await demo()
-  const db = getAuthDb()
-  const [user] = await db
-    .select({ id: authUser.id })
-    .from(authUser)
-    .where(eq(authUser.email, MEMBER.email))
-    .limit(1)
-  if (!user) return
-  await db
-    .delete(authMember)
-    .where(and(eq(authMember.organizationId, tenantId), eq(authMember.userId, user.id)))
 }
 
 async function areasRestore(): Promise<void> {
@@ -561,13 +546,12 @@ const commands = {
   'second-menu-remove': secondMenuRemove,
   'areas-restore': areasRestore,
   member,
-  'member-remove': memberRemove,
 } as const
 const command = process.argv[2] as keyof typeof commands | undefined
 
 if (command === undefined || !(command in commands)) {
   console.error(
-    'usage: seed-tables-e2e.ts seed|worker|serve|second-menu|second-menu-remove|areas-restore|member|member-remove',
+    'usage: seed-tables-e2e.ts seed|worker|serve|second-menu|second-menu-remove|areas-restore|member',
   )
   process.exit(2)
 }
