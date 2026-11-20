@@ -26,12 +26,14 @@ export function useRun() {
     ) {
       startTransition(async () => {
         const result = await action()
+        // The password first: the confirm dialog stays open behind it, so cancelling shows that
+        // nothing changed (C1 review).
+        if (!result.ok && result.error === 'sign_in_again') {
+          ask(() => go(action, done, after))
+          return
+        }
         after?.(result.ok)
         if (!result.ok) {
-          if (result.error === 'sign_in_again') {
-            ask(() => go(action, done, after))
-            return
-          }
           toast.error(failureText(result))
           return
         }

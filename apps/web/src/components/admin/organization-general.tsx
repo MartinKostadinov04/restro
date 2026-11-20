@@ -47,7 +47,9 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
   const [slugError, setSlugError] = useState<UpdateOrganizationError | null>(null)
   const [namePending, startName] = useTransition()
   const [slugPending, startSlug] = useTransition()
-  const again = useSignInAgain()
+  // One per form: a pending name change and a pending address change are retried apart.
+  const againName = useSignInAgain()
+  const againSlug = useSignInAgain()
 
   const trimmedName = nameValue.trim()
   const nameValid = trimmedName !== '' && [...trimmedName].length <= MAX_NAME_LENGTH
@@ -76,7 +78,7 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
         toast.success(t('name.saved'))
       } else {
         if (result.error === 'sign_in_again') {
-          again.ask(() => submitName(event))
+          againName.ask(() => submitName(event))
           return
         }
         setNameError(result.error)
@@ -99,7 +101,7 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
         else toast.warning(t('address.savedLate'))
       } else {
         if (result.error === 'sign_in_again') {
-          again.ask(() => submitSlug(event))
+          againSlug.ask(() => submitSlug(event))
           return
         }
         setSlugError(result.error)
@@ -109,7 +111,8 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
 
   return (
     <div className="grid gap-8" data-testid="organization-general">
-      {again.dialog}
+      {againName.dialog}
+      {againSlug.dialog}
       <form onSubmit={submitName} noValidate data-testid="general-name-form">
         <FormSection
           title={t('name.title')}

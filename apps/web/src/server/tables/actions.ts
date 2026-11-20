@@ -106,7 +106,8 @@ async function perform(
     const { organization, user, sessionId, signedInAt } = await requireTenant()
     // A shared tablet works Tonight; tables and codes need the person's own sign-in (RR-84).
     if (await onSharedDevice({ tenantId: organization.id, sessionId })) return FORBIDDEN
-    // A code (new, again, or off) asks for the password after 15 minutes (D122 §7).
+    // A code (new, again, off, or gone with its table or area) asks for the password after
+    // 15 minutes (D122 §7).
     if (fresh && signInTooOld(signedInAt)) return { ok: false, error: 'sign_in_again' }
     const venueOfAction =
       'venue' in target
@@ -254,8 +255,10 @@ export async function moveAreaAction(input: unknown): Promise<TablesActionResult
 export async function deleteAreaAction(input: unknown): Promise<TablesActionResult> {
   const parsed = OnArea.safeParse(input)
   if (!parsed.success) return INVALID
-  return perform({ venue: parsed.data.venueId }, (scope) =>
-    removeArea(scope, services(), parsed.data.areaId),
+  return perform(
+    { venue: parsed.data.venueId },
+    (scope) => removeArea(scope, services(), parsed.data.areaId),
+    FRESH,
   )
 }
 
@@ -304,8 +307,10 @@ export async function moveTableAction(input: unknown): Promise<TablesActionResul
 export async function deleteTableAction(input: unknown): Promise<TablesActionResult> {
   const parsed = OnVenueTable.safeParse(input)
   if (!parsed.success) return INVALID
-  return perform({ venue: parsed.data.venueId }, (scope) =>
-    removeTable(scope, services(), parsed.data.tableId),
+  return perform(
+    { venue: parsed.data.venueId },
+    (scope) => removeTable(scope, services(), parsed.data.tableId),
+    FRESH,
   )
 }
 

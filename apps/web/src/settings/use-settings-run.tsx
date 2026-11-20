@@ -7,7 +7,7 @@
 // does the change: the existing sign-in (Better Auth's `signIn.email`), not a new form.
 import { unstable_rethrow } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { type ReactNode, useCallback, useRef, useState, useTransition } from 'react'
+import { type ReactNode, useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -166,16 +166,25 @@ export function useSettingsRun(email: string) {
  * action answers `sign_in_again`; after a fresh sign-in `retry` runs. Render `dialog` once.
  */
 export function useSignInAgain() {
+  const t = useTranslations('ownerSettings')
   const [email, setEmail] = useState<string | null>(null)
   const again = useRef<(() => void) | null>(null)
-  const ask = useCallback((retry: () => void) => {
-    again.current = retry
-    // The address to sign in with is the signed-in person's own; read it only when needed.
-    authClient.getSession().then(
-      ({ data }) => setEmail(data?.user.email ?? ''),
-      () => setEmail(''),
-    )
-  }, [])
+  const ask = useCallback(
+    (retry: () => void) => {
+      again.current = retry
+      // The address to sign in with is the signed-in person's own; read it only when needed. When
+      // it cannot be read the dialog would never accept a password: say the change failed instead.
+      const failed = () => {
+        again.current = null
+        toast.error(t('err.failed'), STAYS)
+      }
+      authClient.getSession().then(({ data }) => {
+        if (data?.user.email) setEmail(data.user.email)
+        else failed()
+      }, failed)
+    },
+    [t],
+  )
   const dialog = (
     <PasswordAgain
       open={email !== null}
@@ -212,15 +221,29 @@ function PasswordAgain({
   const [password, setPassword] = useState('')
   const [wrong, setWrong] = useState<'invalid' | 'tooMany' | 'unknown' | null>(null)
   const [busy, setBusy] = useState(false)
+  // The organisation the change is for, read once per opening: after a sign-in whose switch back
+  // failed, the session reads the first organisation, so a second press must not read it again.
+  const kept = useRef<string | null | undefined>(undefined)
+  useEffect(() => {
+    if (!open) kept.current = undefined
+  }, [open])
 
   async function submit() {
     setBusy(true)
     setWrong(null)
     try {
       // A new session starts in the person's first organisation (auth.ts), so note the one in
-      // use now and put the new session back there before the change is retried (C1).
-      const { data: before } = await authClient.getSession()
-      const organizationId = before?.session.activeOrganizationId ?? null
+      // use now and put the new session back there before the change is retried (C1). Without
+      // it the change could land in another organisation: stop instead.
+      if (kept.current === undefined) {
+        const { data: before } = await authClient.getSession()
+        if (!before) {
+          setWrong('unknown')
+          return
+        }
+        kept.current = before.session.activeOrganizationId ?? null
+      }
+      const organizationId = kept.current
       const { error } = await authClient.signIn.email({ email, password })
       if (error) {
         setWrong(error.status === 429 ? 'tooMany' : error.status === 401 ? 'invalid' : 'unknown')

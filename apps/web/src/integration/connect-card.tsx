@@ -140,12 +140,13 @@ export function ConnectCard({ instance, canManage, sealReady }: ConnectCardProps
     const send = () =>
       startTransition(async () => {
         const result = await saveConnectionAction(sent)
+        if (!result.ok && result.error === 'sign_in_again') {
+          // The API user stays in the form if the dialog is closed; the password does not.
+          again.ask(send)
+          return
+        }
         setUser('')
         if (!result.ok) {
-          if (result.error === 'sign_in_again') {
-            again.ask(send)
-            return
-          }
           setError(result.error)
           return
         }

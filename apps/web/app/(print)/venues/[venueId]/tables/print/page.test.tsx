@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 // The print sheet's page says why it is empty (#441): "no table has a code yet" only for a venue
 // with no coded table; when the venue has codes the worker could not reveal, it says so instead.
+// A shared tablet never gets the sheet (lane 5 C3).
 import { screen } from '@testing-library/react'
 import { createTranslator } from 'next-intl'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { onSharedDevice } from '@/server/staff/shared-device'
 import { loadTablesView } from '@/server/tables/service'
 import type { TablesView } from '@/server/tables/view'
 import { SVG, TOKEN_A, VENUE_ID, view } from '@/tables/test-view'
@@ -21,7 +23,11 @@ vi.mock('next/navigation', () => ({
   notFound: () => {
     throw new Error('not found')
   },
+  redirect: (to: string) => {
+    throw new Error(`redirect ${to}`)
+  },
 }))
+vi.mock('@/server/staff/shared-device', () => ({ onSharedDevice: vi.fn(async () => false) }))
 vi.mock('@/server/assets', () => ({ getAssetStore: vi.fn() }))
 vi.mock('@/server/db', () => ({ getPool: vi.fn(() => ({})) }))
 vi.mock('@/server/design/service', () => ({ loadVenueLogo: vi.fn(async () => null) }))
@@ -85,6 +91,17 @@ function unrevealed(): TablesView {
 
 beforeEach(() => {
   vi.mocked(loadTablesView).mockReset()
+  vi.mocked(onSharedDevice).mockResolvedValue(false)
+})
+
+describe('the print page on a shared tablet (C3)', () => {
+  it('sends the tablet to Tonight and reads no codes', async () => {
+    vi.mocked(onSharedDevice).mockResolvedValue(true)
+    await expect(renderPage(revealed())).rejects.toThrow(
+      'redirect /venues/vn_0123456789ABCDEFGHIJKL?tab=tonight',
+    )
+    expect(loadTablesView).not.toHaveBeenCalled()
+  })
 })
 
 describe('the print page when it has nothing to print (#441)', () => {
