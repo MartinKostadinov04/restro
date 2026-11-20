@@ -25,6 +25,7 @@ import {
   Drawer,
   DrawerContent,
   DrawerDescription,
+  DrawerFooter,
   DrawerHeader,
   DrawerTitle,
 } from '@/components/ui/drawer'
@@ -61,6 +62,7 @@ import { PaymentSheet } from './payment-sheet'
 import { PinSheet } from './pin-sheet'
 import { useTonightRun, wroteSomething } from './run'
 import { SentOrderAnswers } from './sent-order-answers'
+import { CLOSE_44 } from './tab-parts'
 import { useTableName } from './table-name'
 
 const ICONS = {
@@ -391,7 +393,17 @@ export function ActionRowItem({
     }
   } else if (row.kind === 'paused') {
     title = t('g_t', { table: name })
-    body = <p className="text-sm text-muted-foreground">{t('g_d')}</p>
+    // The cap names the refused order's total and the limit (S10); any other trip says the rule.
+    body = (
+      <p className="text-sm text-muted-foreground">
+        {row.cap === undefined
+          ? t('g_d')
+          : t('g_d_cap', {
+              amt: money(row.cap.totalMinor, view.currency),
+              cap: money(row.cap.capMinor, view.currency),
+            })}
+      </p>
+    )
     // Resuming names a person: their own PIN on a shared device.
     if (view.can.resume || view.device) {
       answer = (
@@ -557,12 +569,17 @@ export function OutOfStockNotice({ names, source }: { names: readonly string[]; 
               <DrawerTitle>{t('oos_t', { source })}</DrawerTitle>
               <DrawerDescription>{t('oos_d', { items: names.join(', ') })}</DrawerDescription>
             </DrawerHeader>
+            <DrawerFooter>
+              <Button type="button" variant="ghost" className="h-12" onClick={() => setAll(false)}>
+                {t('close')}
+              </Button>
+            </DrawerFooter>
           </DrawerContent>
         </Drawer>
       ) : (
         <Sheet open={all} onOpenChange={setAll}>
-          <SheetContent data-testid="stock-sheet">
-            <SheetHeader>
+          <SheetContent data-testid="stock-sheet" className={CLOSE_44}>
+            <SheetHeader className="pr-14">
               <SheetTitle>{t('oos_t', { source })}</SheetTitle>
               <SheetDescription>{t('oos_d', { items: names.join(', ') })}</SheetDescription>
             </SheetHeader>
