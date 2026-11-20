@@ -29,7 +29,8 @@ interface Miss {
 }
 
 /**
- * Every tappable control now on the page whose 44 x 44 px square is not all its own. Controls
+ * Every tappable control now on the page whose `floorPx` x `floorPx` square (44 px by default,
+ * 24 px for a mouse on a laptop) is not all its own. Controls
  * drawn but out of reach (hidden, disabled-by-attribute inside inert parts) are skipped. A link
  * inside a sentence is skipped too (WCAG 2.5.8 exempts inline links).
  */
@@ -155,7 +156,10 @@ async function floorMisses(
       }
       return { checked, misses }
     },
-    // A 24 px square has no room for an 8 px corner inset: there the corners are probed 4 px in.
+    // The inset scales with the square, capped at CORNER_INSET: 8 px in a 44 px square (unchanged),
+    // 4 px in a 24 px one. An 8 px inset there would leave only the middle 8 px of the square to
+    // probe, and a 24 px control with rounded corners passes or fails on its centre alone; at 4 px
+    // the probes still sit inside a rounded corner but test most of the square's edge.
     { floor: floorPx, inset: Math.min(CORNER_INSET, floorPx / 6), scopeSelector: scope ?? null },
   )
 }
@@ -227,7 +231,8 @@ async function checkItemSheet(page: Page, floorPx: number = FLOOR) {
 
 /**
  * Opens the Publish dialog and measures it, without publishing. With nothing to publish the button is
- * off, so one item is hidden first and shown again after: the draft ends as it began.
+ * off, so one item is hidden first and shown again after, even when the measure fails: the draft
+ * ends as it began, and the later tests of this serial file see the menu they expect.
  */
 async function checkPublishDialog(page: Page, floorPx: number = FLOOR) {
   const button = page.getByTestId('publish-button')
@@ -242,22 +247,30 @@ async function checkPublishDialog(page: Page, floorPx: number = FLOOR) {
     await row.getByTestId('item-visible').click()
     await expect(button).toBeEnabled()
   }
-  const several = (await button.getAttribute('aria-haspopup')) === 'menu'
-  await button.click()
-  // Several menus: the button opens a list of them first (a disabled row carries data-disabled).
-  if (several) {
-    await page.locator('[data-testid="publish-menu-row"]:not([data-disabled])').first().click()
-  }
   const dialog = page.getByTestId('publish-confirm-dialog')
-  await expect(dialog).toBeVisible()
-  await expectFloor(page, 'Publish dialog', 2, '[data-testid="publish-confirm-dialog"]', floorPx)
-  await page.keyboard.press('Escape')
-  await expect(dialog).toHaveCount(0)
-  if (toggled !== null) {
-    await page
-      .locator(`[data-testid="item-row"][data-item-id="${toggled}"]`)
-      .getByTestId('item-visible')
-      .click()
+  try {
+    const several = (await button.getAttribute('aria-haspopup')) === 'menu'
+    await button.click()
+    // Several menus: the button opens a list of them first (a disabled row carries data-disabled).
+    if (several) {
+      await page.locator('[data-testid="publish-menu-row"]:not([data-disabled])').first().click()
+    }
+    await expect(dialog).toBeVisible()
+    await expectFloor(page, 'Publish dialog', 2, '[data-testid="publish-confirm-dialog"]', floorPx)
+  } finally {
+    // Close whatever is open (the dialog, or the menu list) before the row can be reached.
+    if ((await dialog.count()) > 0 || (await page.getByRole('menu').count()) > 0) {
+      await page.keyboard.press('Escape')
+    }
+    await expect(dialog).toHaveCount(0)
+    if (toggled !== null) {
+      // Show the item again, and wait until the switch says it is shown before the next test runs.
+      const visible = page
+        .locator(`[data-testid="item-row"][data-item-id="${toggled}"]`)
+        .getByTestId('item-visible')
+      await visible.click()
+      await expect(visible).toBeChecked()
+    }
   }
 }
 

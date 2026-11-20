@@ -69,17 +69,20 @@ function NewItemButton({
 
 function ItemList({ sectionId, ids }: { sectionId: NodeId | null; ids: readonly NodeId[] }) {
   const t = useTranslations('composer')
-  const { view, tagFilter, clearTagFilter, canCreateItem, hasTill } = useComposer()
+  const { view, tagFilter, clearTagFilter, canEdit, canCreateItem, hasTill } = useComposer()
   const empty = sectionId === null ? 'noUnsorted' : 'noItems'
-  // What an empty section says depends on where its items come from: the till, or this screen.
+  // What an empty section says depends on where its items come from: the POS, or this screen. A
+  // member (RR-70) has no drag or "New item": the line says who fills the section instead.
   const emptyDescription =
     sectionId === null
       ? 'empty.noUnsorted.description'
-      : hasTill
-        ? 'empty.noItems.descriptionTill'
-        : canCreateItem
-          ? 'empty.noItems.description'
-          : 'empty.noItems.descriptionReadOnly'
+      : !canEdit
+        ? 'empty.noItems.descriptionMember'
+        : hasTill
+          ? 'empty.noItems.descriptionTill'
+          : canCreateItem
+            ? 'empty.noItems.description'
+            : 'empty.noItems.descriptionReadOnly'
   // The tag filter shows only some of the items; the order is the list's.
   const visible = filterByTags(view, ids, tagFilter)
   return (
@@ -192,7 +195,7 @@ function SectionHeader({ sectionId }: { sectionId: NodeId }) {
         )}
         <div className="flex flex-wrap items-center gap-1.5">
           <OriginBadge origin={section.origin} />
-          {section.nameFromTill ? <NameFromTillBadge target="section" /> : null}
+          {section.nameFromTill ? <NameFromTillBadge target="section" readOnly={!canEdit} /> : null}
           {section.hidden ? <HiddenBadge hiddenBy="status" /> : null}
           <IssuesBadge issues={section.issues} />
           <span className="text-sm text-muted-foreground">{t('itemCount', { count })}</span>
@@ -257,7 +260,9 @@ export function ItemPane() {
               <LayoutListIcon aria-hidden />
             </EmptyMedia>
             <EmptyTitle>{t('empty.noSections.title')}</EmptyTitle>
-            <EmptyDescription>{t('empty.noSections.description')}</EmptyDescription>
+            <EmptyDescription>
+              {t(canEdit ? 'empty.noSections.description' : 'empty.noSections.descriptionReadOnly')}
+            </EmptyDescription>
           </EmptyHeader>
           {canEdit ? (
             <EmptyContent>
@@ -303,7 +308,8 @@ export function ItemPane() {
               <Badge variant="secondary">
                 {t('itemCount', { count: view.unsortedIds.length })}
               </Badge>
-              {t('unsortedHint')}
+              {/* A member has no drag or "Move to…": only what the list is. */}
+              {t(canEdit ? 'unsortedHint' : 'unsortedHintReadOnly')}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

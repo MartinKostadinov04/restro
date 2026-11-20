@@ -161,9 +161,9 @@ export function ItemRow({
             )}
             <div className="flex flex-wrap items-center gap-1.5">
               <OriginBadge origin={item.origin} />
-              {item.nameFromTill ? <NameFromTillBadge /> : null}
+              {item.nameFromTill ? <NameFromTillBadge readOnly={!canEdit} /> : null}
               {item.reviewFields.length > 0 ? (
-                <ReviewBadge count={item.reviewFields.length} />
+                <ReviewBadge count={item.reviewFields.length} readOnly={!canEdit} />
               ) : null}
               {item.hiddenBy !== null ? <HiddenBadge hiddenBy={item.hiddenBy} /> : null}
               <SaleBadge soldOutTonight={item.soldOutTonight} offSale={item.offSale} />

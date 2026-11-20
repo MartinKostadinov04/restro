@@ -287,6 +287,7 @@
         "tillStockNote": "Stock comes from {source}: mark it sold out there."
       },
       "conflict": "{source} and this venue disagree. Choose the right value.",
+      "conflictReadOnly": "{source} and this venue disagree. An owner or admin chooses the right value.",
       "staleHint": "{source} changed this after you replaced it. {source} now says:",
       "tillValueHint": "{source}'s value:",
       "keep": "Keep mine",
@@ -298,6 +299,7 @@
     },
     "translations": {
       "intro": "Every language of this venue. The text in languages {source} already holds comes from {source}; you can rename the item in Details. Languages you add are saved as your own translations.",
+      "introReadOnly": "Every language of this venue. The text in languages {source} already holds comes from {source}; the other languages are the venue’s own translations.",
       "missing": "Missing",
       "review": "Review",
       "reviewHint": "{source}'s text changed after this translation was written. It stays live; edit it to clear this flag.",
@@ -372,7 +374,8 @@
     },
     "review": {
       "title": "Overrides to review",
-      "text": "{source} changed {fields} after you replaced it here. In Details, keep yours or take {source}’s."
+      "text": "{source} changed {fields} after you replaced it here. In Details, keep yours or take {source}’s.",
+      "textReadOnly": "{source} changed {fields} after it was replaced here. An owner or admin decides whether to keep the replacement or take {source}’s."
     }
   },
   "devItemSheet": {
@@ -634,6 +637,7 @@
     "newSection": "New section",
     "unsorted": "Unsorted",
     "unsortedHint": "Items that are in no section yet. Drag one onto a section, or use “Move to…”.",
+    "unsortedHintReadOnly": "Items that are in no section yet.",
     "itemCount": "{count, plural, one {# item} other {# items}}",
     "chooseSection": "Choose a section",
     "readOnly": "You can look at the menu here. Only an owner or admin can change it.",
@@ -652,13 +656,15 @@
       "noSections": {
         "title": "No sections yet",
         "description": "Create a section, or connect a till in Settings → Integrations.",
+        "descriptionReadOnly": "An owner or admin can create one.",
         "action": "Create a section"
       },
       "noItems": {
         "title": "No items in this section",
         "description": "Create an item with New item, or drag items here from another section or from Unsorted.",
         "descriptionTill": "Items come from the till. Drag them here from Unsorted or another section; photos, descriptions and tags are added here.",
-        "descriptionReadOnly": "Drag items here from another section or from Unsorted."
+        "descriptionReadOnly": "Drag items here from another section or from Unsorted.",
+        "descriptionMember": "An owner or admin puts items in this section."
       },
       "noUnsorted": {
         "title": "Every item has a section",
@@ -683,12 +689,14 @@
       "nameFromTill": "Menu name missing in {source}: its own name is shown",
       "nameFromTillHelp": "Fill in the public name in {source}, or type a name here.",
       "nameFromTillHelpSection": "Fill in the public name in {source}, or rename the section here.",
+      "nameFromTillHelpReadOnly": "An owner or admin can fill in the public name in {source}, or rename it here.",
       "soldOutTonight": "Sold out tonight",
       "offSaleTill": "Not on sale in {source}",
       "offSaleOther": "Not on sale",
       "issues": "{count, plural, one {# thing to check} other {# things to check}}",
       "review": "{count, plural, one {# override to review} other {# overrides to review}}",
-      "reviewHelp": "{source} changed this value after you replaced it here. Open the item to keep yours or take {source}’s."
+      "reviewHelp": "{source} changed this value after you replaced it here. Open the item to keep yours or take {source}’s.",
+      "reviewHelpReadOnly": "{source} changed this value after it was replaced here. An owner or admin decides whether to keep the replacement or take {source}’s."
     },
     "soldOut": {
       "mark": "Sold out tonight",

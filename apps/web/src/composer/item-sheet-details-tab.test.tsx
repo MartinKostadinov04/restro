@@ -127,6 +127,28 @@ describe('the Details tab', () => {
     expect(within(row('abv')).queryByText(/barsy|Owned|Overridden/)).toBeNull()
   })
 
+  it('sends a member (RR-70) to no control they lack: no Structure switch, no rename, no choice', () => {
+    setup(
+      sheetData({
+        nameFromTill: true,
+        fields: {
+          visible: {
+            value: true,
+            provenance: 'till',
+            access: { kind: 'readonly', reason: 'composer_toggle' },
+          },
+          abv: { value: 30, provenance: 'overridden', conflict: true, canRevert: true },
+        },
+      }),
+      { readOnly: true },
+    )
+    expect(within(row('visible')).queryByTestId('read-only-note')).toBeNull()
+    expect(within(row('abv')).getByText(/An owner or admin chooses the right value/)).toBeTruthy()
+    const notice = screen.getByTestId('name-from-till-notice')
+    expect(notice.textContent).toContain('An owner or admin can fill in the public name')
+    expect(notice.textContent).not.toContain('type a name here')
+  })
+
   it('shows read-only reasons for the flags and sends the image to the Media tab', async () => {
     const { onOpenMedia } = setup(
       sheetData({

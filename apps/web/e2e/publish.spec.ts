@@ -286,7 +286,10 @@ test('a price changes behind the page: the bar counts 1 change, the confirmation
   await bar.button().click()
   const dialog = page.getByTestId('publish-confirm-dialog')
   await expect(dialog.getByTestId('changes-count')).toHaveText('1 change waiting')
-  await expect(dialog.getByTestId('change-summary')).toHaveCount(0)
+  // Said once: the count above, then the named list under its heading (S6).
+  await expect(
+    dialog.getByTestId('change-list-prices').getByRole('heading', { name: 'New price' }),
+  ).toBeVisible()
   await expect(dialog.getByTestId('change-list-prices')).toContainText(
     `Negroni: ${PRICE_BEFORE} → ${PRICE_AFTER}`,
   )

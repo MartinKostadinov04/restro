@@ -114,7 +114,8 @@ function TranslationCellEditor({ fieldKey, locale, cell, busy, readOnly, onSave 
             lang={langTag}
             className="rounded-md bg-muted/50 px-3 py-2 text-sm whitespace-pre-line"
           >
-            {cell.editable ? (cell.ourText ?? cell.text) : cell.text}
+            {/* What guests see today, as the provenance badge below says. */}
+            {cell.text}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             {cell.provenance !== 'none' ? (
@@ -190,7 +191,9 @@ export function ItemSheetTranslationsTab({
   const source = useTillLabel()
   return (
     <div className="grid gap-4" data-testid="item-sheet-translations">
-      <p className="text-sm text-muted-foreground">{t('intro', { source })}</p>
+      <p className="text-sm text-muted-foreground">
+        {t(readOnly ? 'introReadOnly' : 'intro', { source })}
+      </p>
       {data.translations.map((row) => (
         <TranslationFieldCard
           key={row.fieldKey}

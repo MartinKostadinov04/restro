@@ -168,6 +168,42 @@ describe('the History tab', () => {
     ])
   })
 
+  it('keeps the generic sentence for the POS\'s first read of a flag, not "showed the item"', async () => {
+    setup([
+      {
+        entries: [
+          entry(2, {
+            fieldKey: 'visible',
+            definition: definition('visible'),
+            layer: 'till',
+            source: 'till:in_x',
+            actor: { kind: 'integration', name: null },
+            kind: 'set',
+            oldValue: null,
+            newValue: true,
+          }),
+          entry(1, {
+            fieldKey: 'for_sale',
+            definition: definition('for_sale'),
+            layer: 'till',
+            source: 'till:in_x',
+            actor: { kind: 'integration', name: null },
+            kind: 'set',
+            oldValue: null,
+            newValue: true,
+          }),
+        ],
+        nextBefore: null,
+      },
+    ])
+    const lines = await screen.findAllByTestId('history-sentence')
+    for (const line of lines) {
+      expect(line.textContent).not.toMatch(/showed the item|back on sale/)
+    }
+    expect(lines[0]?.textContent).toContain('Visible')
+    expect(lines[1]?.textContent).toContain('For sale')
+  })
+
   it('shows a field the template no longer has as plain text', async () => {
     setup([
       {

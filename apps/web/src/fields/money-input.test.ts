@@ -63,4 +63,15 @@ describe('parseMoneyInput (the money editor: major units in, integer minor units
       }),
     )
   })
+
+  it('round-trips every amount in Bulgarian too: the decimal comma, the same digits (property)', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 100_000_000 }), (minor) => {
+        const text = moneyToInput({ amount_minor: minor, currency: 'EUR' }, 'bg_BG')
+        expect(text).toBe(minorToDecimal(minor).replace('.', ','))
+        expect(text).not.toContain('.')
+        expect(parseMoneyInput(text, 'EUR')).toEqual({ amount_minor: minor, currency: 'EUR' })
+      }),
+    )
+  })
 })

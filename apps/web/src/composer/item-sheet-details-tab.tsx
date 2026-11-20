@@ -80,8 +80,11 @@ function RowExtras({ field, busy, readOnly, markable, onRevert, onKeep }: RowExt
   const label = useFieldLabel(field.definition)
   const stale = field.provenance === 'stale' || field.canKeep
   // Without a mark button the sale card says why; a note pointing at the button would contradict it.
+  // A member has no show / hide switch in Structure either: no note sends them there.
   const note =
-    field.access.kind === 'readonly' && (field.access.reason !== 'sold_out_control' || markable)
+    field.access.kind === 'readonly' &&
+    (field.access.reason !== 'sold_out_control' || markable) &&
+    !(readOnly && field.access.reason === 'composer_toggle')
   return (
     <>
       <LocaleProvenance field={field} />
@@ -96,7 +99,7 @@ function RowExtras({ field, busy, readOnly, markable, onRevert, onKeep }: RowExt
       {field.conflict ? (
         <p className="flex items-start gap-1.5 text-xs text-warning">
           <TriangleAlertIcon className="mt-0.5 size-3 shrink-0" aria-hidden />
-          <span>{t('conflict', { source })}</span>
+          <span>{t(readOnly ? 'conflictReadOnly' : 'conflict', { source })}</span>
         </p>
       ) : null}
       {field.canRevert ? (
@@ -166,7 +169,7 @@ export function ItemSheetDetailsTab({
     <div className="grid gap-4" data-testid="item-sheet-details">
       <ItemSheetIssues data={data} />
       {/* The name is the till's own, for want of a public one (D75): says so, never blocks. */}
-      {data.nameFromTill ? <NameFromTillNotice /> : null}
+      {data.nameFromTill ? <NameFromTillNotice readOnly={readOnly} /> : null}
       <ItemSheetSale sale={data.sale} busy={busy} onChange={onSoldOut} />
       {/* One <dl> per group, with the group label outside it, so every dl holds only row
           wrappers around dt/dd pairs. */}

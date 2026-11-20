@@ -9,7 +9,7 @@ import type { BusyView, PublishBarView } from '@/server/publish/view'
 import { renderWithIntl } from '@/test-utils'
 import { PublishBar } from './publish-bar'
 import { PublisherProvider, PublisherStateSync, PublishOutcome } from './publisher-context'
-import { barMenu, barView, NO_CHANGES, VENUE_ID } from './test-view'
+import { barMenu, barView, NO_CHANGES, ONE_PRICE_CHANGE, VENUE_ID } from './test-view'
 
 const actions = vi.hoisted(() => ({
   publishNowAction: vi.fn(),
@@ -364,6 +364,42 @@ describe('"Version N is live" after a publish (S5)', () => {
 
     rerender(page(barView(), run))
     expect(reason()).toBe('1 change waiting')
+    expect(screen.queryByTestId('publish-outcome')).toBeNull()
+  })
+
+  it('stays when only another menu of the venue gets a change', async () => {
+    const user = userEvent.setup()
+    const brunch = (changes: number) =>
+      barMenu({
+        menuId: 'nd_brunchMenuForTests',
+        name: 'Brunch',
+        live: false,
+        changes,
+        identical: changes === 0,
+        list: changes === 0 ? NO_CHANGES : TWO_ADDED,
+      })
+    const main = (changes: number) =>
+      barMenu({
+        changes,
+        identical: changes === 0,
+        list: changes === 0 ? NO_CHANGES : ONE_PRICE_CHANGE,
+      })
+    const { rerender } = renderWithIntl(page(barView({ menus: [main(1), brunch(0)] }), null))
+    await user.click(button())
+    const [live] = await screen.findAllByTestId('publish-menu-row')
+    if (live === undefined) throw new Error('the live menu row is missing')
+    await user.click(live)
+    await user.click(await screen.findByTestId('publish-confirm'))
+
+    rerender(page(barView({ menus: [main(0), brunch(0)] }), run))
+    expect((await screen.findByTestId('publish-outcome-title')).textContent).toBe(
+      'Version 1 is live',
+    )
+    // Someone changes the Brunch menu: the live menu's version is still the latest.
+    rerender(page(barView({ menus: [main(0), brunch(2)] }), run))
+    expect(screen.getByTestId('publish-outcome-title').textContent).toBe('Version 1 is live')
+    // Then the live menu itself: the note goes.
+    rerender(page(barView({ menus: [main(1), brunch(2)] }), run))
     expect(screen.queryByTestId('publish-outcome')).toBeNull()
   })
 })

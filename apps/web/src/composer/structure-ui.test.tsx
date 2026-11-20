@@ -260,7 +260,8 @@ describe('what each kind of venue may do (D89, D90, D92)', () => {
     // Everything is still there to read: the sections, the items, their names.
     expect(screen.getAllByTestId('section-node').length).toBeGreaterThan(0)
     expect(within(rowOf(state.ids.lager)).getByTestId('item-open')).toBeTruthy()
-    // No control that could only fail (D72): no section menu, switch, rename, tick, "New", or drag.
+    // No control a member could only fail with (operational-screens.md, a role that may not act):
+    // no section menu, switch, rename, tick, "New", or drag.
     for (const testId of [
       'section-menu',
       'section-visible',
@@ -285,6 +286,35 @@ describe('what each kind of venue may do (D89, D90, D92)', () => {
     // Opening an item to read it still works.
     await userEvent.click(within(rowOf(state.ids.lager)).getByTestId('item-open'))
     expect(state.openItem).toHaveBeenCalledWith(state.ids.lager)
+  })
+
+  it('a member is pointed at no drag, "Move to…" or "New" they do not have', () => {
+    const member = { canEdit: false, canCreateItem: false, canDelete: false }
+    const unsorted = venue('till', member)
+    unsorted.selection = 'unsorted'
+    const first = inComposer(unsorted, <ItemPane />)
+    expect(screen.getByTestId('item-pane').textContent).toContain(
+      'Items that are in no section yet.',
+    )
+    expect(screen.getByTestId('item-pane').textContent).not.toMatch(/Drag|Move to/)
+    first.unmount()
+
+    const empty = venue('hand', member)
+    empty.view = { ...empty.view, placements: { ...empty.view.placements, [empty.ids.beer]: [] } }
+    empty.selection = empty.ids.beer
+    const second = inComposer(empty, <ItemPane />)
+    expect(screen.getByTestId('item-list-empty').textContent).toContain(
+      'An owner or admin puts items in this section.',
+    )
+    second.unmount()
+
+    const none = venue('hand', member)
+    none.view = { ...none.view, rootIds: [] }
+    none.selection = null
+    inComposer(none, <ItemPane />)
+    expect(screen.getByTestId('pane-no-sections').textContent).toContain(
+      'An owner or admin can create one.',
+    )
   })
 
   it('someone who is not an owner or admin deletes nothing', async () => {

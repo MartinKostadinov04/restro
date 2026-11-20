@@ -76,20 +76,31 @@ export function PublishBar({
         : (single?.block ?? 'up_to_date')
   const total = open.reduce((sum, row) => sum + countOf(row.menu), 0)
 
-  // "Version N is live" answers the press; once something new waits it no longer holds, so it
-  // goes rather than stand beside "1 change waiting" (S5).
-  const published = publisher.outcome?.kind === 'published'
-  const waitingNow = open.length + total
-  const waitingAtPublish = useRef<number | null>(null)
+  // "Version N is live" answers the press; once the published menu's draft changes again it no
+  // longer holds, so it goes rather than stand beside "1 change waiting" (S5). Only that menu
+  // counts: a change to another menu of the venue leaves it. After an Approve the menu is not
+  // known here: the note stays until the person closes it.
+  const outcome = publisher.outcome
+  const publishedMenu = outcome?.kind === 'published' ? outcome.menu : undefined
+  const publishedRow =
+    publishedMenu === undefined
+      ? undefined
+      : rows.find((row) =>
+          publishedMenu.menuId === null ? row.menu.live : row.menu.menuId === publishedMenu.menuId,
+        )
+  const draftCount = publishedRow === undefined ? null : countOf(publishedRow.menu)
+  const draftSame = publishedRow === undefined ? null : publishedRow.menu.identical
+  const draftAtPublish = useRef<{ readonly count: number; readonly same: boolean } | null>(null)
   const { dismiss } = publisher
   useEffect(() => {
-    if (!published) {
-      waitingAtPublish.current = null
+    if (draftCount === null || draftSame === null) {
+      draftAtPublish.current = null
       return
     }
-    if (waitingAtPublish.current === null) waitingAtPublish.current = waitingNow
-    else if (waitingNow > waitingAtPublish.current) dismiss()
-  }, [published, waitingNow, dismiss])
+    const before = draftAtPublish.current
+    if (before === null) draftAtPublish.current = { count: draftCount, same: draftSame }
+    else if (draftCount > before.count || (before.same && !draftSame)) dismiss()
+  }, [draftCount, draftSame, dismiss])
 
   const reason = ((): string => {
     if (single === undefined) return t('reason.noMenu')

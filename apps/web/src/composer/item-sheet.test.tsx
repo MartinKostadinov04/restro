@@ -143,6 +143,32 @@ describe('ItemSheet', () => {
           canRemove: true,
         },
         fields: { abv: { value: 30, provenance: 'owned', layer: 'manual', canRevert: true } },
+        translations: [
+          {
+            fieldKey: 'description',
+            definition: sheetData().fields.find((f) => f.key === 'description')
+              ?.definition as never,
+            cells: {
+              bg_BG: {
+                text: 'Горчив',
+                provenance: 'till',
+                ourText: null,
+                editable: false,
+                missing: false,
+                review: false,
+              },
+              // Our text is held back here; guests see the override.
+              en_US: {
+                text: 'Bitter and fresh',
+                provenance: 'overridden',
+                ourText: 'Bitter',
+                editable: true,
+                missing: false,
+                review: false,
+              },
+            },
+          },
+        ],
       }),
     )
     renderWithIntl(<ItemSheet itemId={ITEM} venueId="vn_x" readOnly />)
@@ -152,19 +178,34 @@ describe('ItemSheet', () => {
     )
     const abv = document.querySelector('[data-field-key="abv"]') as HTMLElement
     expect(within(abv).getByText('Owned here')).toBeTruthy()
-    // The only buttons left are the sheet's own (close, tabs) and the field help.
+    // The only buttons left are the sheet's own (close, tabs) and the field help: on every tab,
+    // hidden panels included (they stay mounted).
     const sheet = screen.getByTestId('item-sheet')
-    const offered = within(sheet)
-      .queryAllByRole('button')
-      .filter((button) => !/^About the field|^Close$/.test(button.getAttribute('aria-label') ?? ''))
-      .filter((button) => button.textContent !== 'Close')
-    expect(
-      offered.map((button) => button.getAttribute('aria-label') ?? button.textContent),
-    ).toEqual([])
+    const offered = () =>
+      within(sheet)
+        .queryAllByRole('button', { hidden: true })
+        .filter(
+          (button) => !/^About the field|^Close$/.test(button.getAttribute('aria-label') ?? ''),
+        )
+        .filter((button) => button.textContent !== 'Close')
+        .map((button) => button.getAttribute('aria-label') ?? button.textContent)
+    for (const tab of ['Details', 'Translations', 'Media']) {
+      await userEvent.click(screen.getByRole('tab', { name: tab }))
+      expect(offered(), tab).toEqual([])
+      expect(screen.queryAllByRole('textbox', { hidden: true }), tab).toHaveLength(0)
+    }
     expect(screen.queryByTestId('sale-mark')).toBeNull()
     expect(screen.queryByTestId('photo-drop')).toBeNull()
     expect(screen.queryByTestId('image-details')).toBeNull()
-    expect(screen.queryAllByRole('textbox')).toHaveLength(0)
+
+    // Translations: what guests see, and no pointer to a rename the member cannot do.
+    const translations = screen.getByTestId('item-sheet-translations')
+    expect(within(translations).queryByText(/rename the item/)).toBeNull()
+    const en = document.querySelector(
+      '[data-testid="translation-cell"][data-locale="en_US"]',
+    ) as HTMLElement
+    expect(within(en).getByText('Bitter and fresh')).toBeTruthy()
+    expect(within(en).queryByText('Bitter')).toBeNull()
   })
 
   it('says why a save did not happen and keeps what it showed', async () => {

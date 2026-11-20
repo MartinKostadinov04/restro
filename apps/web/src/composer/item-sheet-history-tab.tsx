@@ -50,8 +50,11 @@ const STRUCTURE_OPS = new Set([
 ])
 
 /**
- * The item's on/off flags in the owner's words (S20): "hid the item", not "set Visible to No". Our
- * layers only ever say false for them, so a removed value means the item is shown or on sale again.
+ * The item's on/off flags in the owner's words (S20): "hid the item", not "set Visible to No".
+ * Only for a change in our own layers (rule 5: they only ever say false): false written is "hid" or
+ * "sold out"; a false removed, or a false turned true, is "showed" or "back on sale". The POS
+ * layer writes `true` on its first read, which is no change for the guest: that, and anything
+ * else, keeps the generic sentence.
  */
 const FLAGS: Readonly<Record<string, { readonly off: string; readonly on: string }>> = {
   visible: { off: 'flags.hid', on: 'flags.showed' },
@@ -61,9 +64,12 @@ const FLAGS: Readonly<Record<string, { readonly off: string; readonly on: string
 /** The message key of a flag's sentence, or null for any other field. */
 function flagSentence(entry: HistoryEntry): string | null {
   const flag = entry.kind === 'structure' ? undefined : FLAGS[entry.fieldKey]
-  if (flag === undefined) return null
-  const on = entry.kind === 'cleared' || entry.newValue !== false
-  return on ? flag.on : flag.off
+  if (flag === undefined || entry.layer === 'till') return null
+  if (entry.kind !== 'cleared' && entry.newValue === false) return flag.off
+  if (entry.oldValue === false && (entry.kind === 'cleared' || entry.newValue === true)) {
+    return flag.on
+  }
+  return null
 }
 
 /** A value drawn by its field type's Display; a field the template no longer has, as plain text. */

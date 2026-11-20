@@ -3,9 +3,10 @@
 import type { FieldDefinition } from '@restro/core'
 // One field of a node as a row: label with a help popover, the value drawn by the
 // field type's Display, a provenance badge and an edit button. Ported from the Platform's
-// ValueField.jsx (43-165), whose 5-column layout and hover card it keeps. Changed: the value is
-// rendered by the registry instead of a type switch, the row has a provenance slot, and the
-// divider pill is its own component (FieldGroupDivider).
+// ValueField.jsx (43-165), whose 5-column layout it keeps. Changed: the help is a popover (opens on
+// tap or click, so it works on a phone) where the Platform had a hover card, the value is rendered
+// by the registry instead of a type switch, the row has a provenance slot, and the divider pill is
+// its own component (FieldGroupDivider).
 import { InfoIcon, PencilIcon, PlusIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import type { ReactNode } from 'react'
