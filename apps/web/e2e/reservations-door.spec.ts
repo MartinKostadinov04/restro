@@ -261,7 +261,7 @@ test('freeing the table closes its codes, and its Undo gives them back', async (
   await seven.getByTestId('rv-spot-free').click()
   // Their round is on the table, so the door says so before it frees it (the open-bill warning).
   await page.getByTestId('rv-free-bill-do').click()
-  await expect(toast(page, 'They left: Иванова. The table is free again.')).toBeVisible()
+  await expect(toast(page, "Иванова's table is free again.")).toBeVisible()
 
   // The toast's Undo is the same party claiming the same spots again, which opens the codes again.
   await page.getByRole('button', { name: 'Undo' }).first().click()
@@ -273,7 +273,7 @@ test('freeing the table closes its codes, and its Undo gives them back', async (
   // Freed for good this time, so the next party can be put down here.
   const back = await openSpot(page, 'Маса 7')
   await back.getByTestId('rv-spot-free').click()
-  await expect(page.getByText('The table is free again.')).toBeVisible()
+  await expect(page.getByText(/table is free again\./)).toBeVisible()
   expect(await readTile(page, TABLE)).toBe('closed')
   await openPlan(page)
   await expect(spotNamed(page, 'Маса 7').first()).toHaveAttribute('data-state', 'free')
@@ -304,7 +304,7 @@ test('a table open for phones that nobody ordered from is not busy, and seating 
   await openPlan(page)
   const seven = await openSpot(page, 'Маса 7')
   await seven.getByTestId('rv-spot-free').click()
-  await expect(page.getByText('The table is free again.')).toBeVisible()
+  await expect(page.getByText(/table is free again\./)).toBeVisible()
   expect(await readTile(page, TABLE)).toBe('closed')
 
   // A waiter lets phones in ("Open all" does this for the whole house); nobody orders.
