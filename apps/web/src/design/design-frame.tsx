@@ -27,8 +27,12 @@ const nothing = (): FrameContent | null => null
  * are not the tap's.
  */
 export function partOf(target: Element): { part: string; opens: string | null } | null {
-  const part = target.closest<HTMLElement>('[data-design-part]')?.dataset.designPart
-  if (part === undefined) return null
+  const marked = target.closest<HTMLElement>('[data-design-part]')
+  let part = marked?.dataset.designPart
+  if (marked === null || part === undefined) return null
+  // The dish shown as a sheet sits in the renderer's sheet panel (marked `sheet`), with its close
+  // button outside the dish's own part: a tap anywhere in it is the dish's, not the sheets'.
+  if (part === 'sheet' && marked.querySelector('[data-design-part="dish"]') !== null) part = 'dish'
   return { part, opens: target.closest('[data-slot="item.open"]') !== null ? 'dish' : null }
 }
 

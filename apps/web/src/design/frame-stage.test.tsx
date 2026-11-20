@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DraftFace } from '@/publish/draft-face'
 import { renderWithIntl } from '@/test-utils'
 
-import { type Stage, tilePlanOf } from './advanced-model'
+import { pageOfTap, type Stage, tilePlanOf } from './advanced-model'
 import { partOf } from './design-frame'
 import { closeDish, drive, keepHistoryInside, stuckTop, WAYS } from './frame-stage'
 import { previewSnapshot } from './preview-snapshot'
@@ -160,6 +160,23 @@ describe('around the stages', () => {
       opens: null,
     })
     expect(partOf(document.body)).toBeNull()
+  })
+
+  it('a tap anywhere in the dish shown as a sheet, its close button too, is the dish (S6)', async () => {
+    // Basic shows the dish as a sheet: the renderer's sheet panel holds the dish.
+    const { view, stop } = await reach('dish', [])
+    stop()
+    const dish = view.container.querySelector('[data-design-part="dish"]') as HTMLElement
+    const panel = dish.closest('[data-design-part="sheet"]') as HTMLElement
+    expect(panel).toBeTruthy()
+    const close = panel.querySelector('button') as HTMLButtonElement
+    expect(close.closest('[data-design-part="dish"]')).toBeNull()
+    expect(partOf(close)).toEqual({ part: 'dish', opens: null })
+    expect(pageOfTap(partOf(close)?.part ?? '', null, 'dish')).toBeNull()
+    // A part of its own inside the dish keeps its name.
+    const photo = view.container.querySelector('[data-design-part="dish.photo"]')
+    if (photo !== null) expect(partOf(photo)?.part).toBe('dish.photo')
+    view.unmount()
   })
 
   it('closes the dish the stage opened by its address, with no step through the history (S10)', async () => {
