@@ -84,7 +84,7 @@ const StyleStatusInput = z.strictObject({
   status: StyleStatusSchema,
 })
 
-/** Saves a Style of the organisation: "Save as a style…", or "Update with this design". */
+/** Saves a Style of the organisation: "Save this look as a style", or "Update with this design". */
 export async function saveStyleAction(input: unknown): Promise<StyleSaveResult> {
   const parsed = StyleInput.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'invalid' }

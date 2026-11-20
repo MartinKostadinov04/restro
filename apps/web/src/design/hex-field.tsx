@@ -3,11 +3,15 @@
 // A colour box: the browser's colour picker beside a text box for the hex code. The text is what
 // the person typed (`#3366cc`, `3366CC` and `#36c` all work), so half a colour stays on screen
 // and is marked, rather than snapping back. Used for the three colours, the brand colour and the
-// roles set by hand.
+// roles set by hand. An empty box (no colour chosen yet) shows an empty, striped swatch: the
+// picker's own swatch would show its fallback grey as if it were chosen.
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
 import { normaliseHex } from './hex'
+
+/** The swatch of a colour not chosen yet: thin stripes, no colour. */
+const NONE_CHOSEN = 'repeating-linear-gradient(135deg, var(--border) 0 2px, transparent 2px 7px)'
 
 export function HexField({
   id,
@@ -38,16 +42,27 @@ export function HexField({
   className?: string
   placeholder?: string
 }) {
+  const empty = value.trim() === ''
   return (
     <div className={cn('flex items-center gap-2', className)}>
-      <input
-        type="color"
-        aria-label={pickerLabel}
-        className="h-10 w-12 shrink-0 phone:h-11 phone:w-12 cursor-pointer rounded-md border bg-transparent p-1 disabled:cursor-not-allowed disabled:opacity-50"
-        value={normaliseHex(value) ?? fallback}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-      />
+      <span className="relative shrink-0" data-empty={empty ? 'true' : undefined}>
+        <input
+          type="color"
+          aria-label={pickerLabel}
+          className="block h-10 w-12 phone:h-11 phone:w-12 cursor-pointer rounded-md border bg-transparent p-1 disabled:cursor-not-allowed disabled:opacity-50"
+          value={normaliseHex(value) ?? fallback}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        {empty ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-1 rounded-sm border bg-background"
+            style={{ backgroundImage: NONE_CHOSEN }}
+            data-testid="hex-field-empty"
+          />
+        ) : null}
+      </span>
       <Input
         id={id}
         value={value}

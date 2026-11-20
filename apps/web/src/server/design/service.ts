@@ -74,18 +74,26 @@ export async function loadVenueLogo(
   return logoOf(pool, tenantId, readDesignToShow(venue.settings).design.logo_asset_id, store)
 }
 
-/** A logo with a signed link to it: null when there is none, or the asset is not stored. */
+/**
+ * A logo with a signed link to it: null when there is none, or the asset is not stored. With
+ * `unstored: 'keep'` (the Design page) an asset that exists but is not stored is still the venue's
+ * logo, with no picture, so it can be removed and a save keeps it; only a missing row is no logo.
+ */
 async function logoOf(
   pool: DbPool,
   tenantId: string,
   logoId: string | null,
   store: () => Promise<Pick<AssetStore, 'getUrl'>>,
+  unstored: 'drop' | 'keep' = 'drop',
 ): Promise<DesignLogo | null> {
   if (logoId === null) return null
   const [row] = await withTenant(pool, tenantId, (tx) =>
     tx.select().from(assets).where(eq(assets.id, logoId)),
   )
-  if (row === undefined || row.status !== 'stored') return null
+  if (row === undefined) return null
+  if (row.status !== 'stored') {
+    return unstored === 'keep' ? { assetId: row.id, url: null, width: 0, height: 0 } : null
+  }
   let url: string | null = null
   try {
     url = row.storageKey ? await (await store()).getUrl(row.storageKey, LINK_SECONDS) : null
@@ -118,7 +126,7 @@ async function designView(
     revision,
     design: designContentOf(design),
     theme: designThemeOf(design),
-    logo: await logoOf(pool, tenantId, design.logo_asset_id, store),
+    logo: await logoOf(pool, tenantId, design.logo_asset_id, store, 'keep'),
     canEdit: canManageIntegration(role),
     ...(repair ? { repair: true } : {}),
   }
