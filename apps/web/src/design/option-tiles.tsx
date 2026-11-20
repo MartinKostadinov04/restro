@@ -23,8 +23,6 @@ import type {
 import { useTranslations } from 'next-intl'
 import { useDeferredValue, useEffect, useId, useMemo, useState } from 'react'
 
-import { Skeleton } from '@/components/ui/skeleton'
-
 import {
   type RowState,
   shownValues,
@@ -37,7 +35,7 @@ import { themeWithValues } from './design-draft'
 import type { Draft } from './preview-draft'
 import type { FrameContent } from './preview-frames'
 import { previewSnapshot } from './preview-snapshot'
-import { ScaledFrame } from './scaled-frame'
+import { ScaledFrame, TileLoading } from './scaled-frame'
 import { DEMO_ASSET_BASE, specimenOf } from './specimen'
 
 /** The width a tile's picture is laid out at: the narrowest phone the renderer holds for. */
@@ -74,7 +72,7 @@ function useNear(): [(element: HTMLDivElement | null) => void, boolean] {
 }
 
 /** What a tile's picture draws: the specimen with this tile's value swapped into the draft's look. */
-function useTileContent({
+export function useTileContent({
   specimen,
   overlay,
   look,
@@ -152,11 +150,11 @@ function Tile({
       {drawn ? (
         <div
           ref={box}
-          className="h-28 overflow-hidden rounded-sm bg-muted/40"
+          className="relative h-28 overflow-hidden rounded-sm bg-muted/40"
           data-testid="design-tile-picture"
         >
           {content === null || !near ? (
-            <Skeleton className="size-full rounded-none" />
+            <TileLoading />
           ) : (
             <ScaledFrame
               venueId={venueId}

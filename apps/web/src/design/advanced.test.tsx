@@ -12,7 +12,7 @@ import {
   THEME_FONTS,
 } from '@restro/core'
 import { fixture } from '@restro/shell/testing'
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { NextIntlClientProvider } from 'next-intl'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -20,9 +20,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DesignView } from '@/server/design/service'
 import { MESSAGES, renderWithIntl } from '@/test-utils'
 
-import { pageOfTap, previewStageOf, shownValues } from './advanced-model'
+import { pageOfTap, previewStageOf, shownValues, tilePlanOf } from './advanced-model'
 import { AdvancedPanel } from './advanced-panel'
 import { DesignPage as Page } from './design-page'
+import { useTileContent } from './option-tiles'
+import { specimenOf } from './specimen'
 
 const actions = vi.hoisted(() => ({
   saveDesignAction: vi.fn(),
@@ -202,6 +204,9 @@ describe('Advanced on the Design page', () => {
     expect(shownValues(sizes).map((v) => v.id)).toEqual(['s', 'm', 'l', 'xl'])
     const words = [{ id: 'rows' }, { id: 'cards' }]
     expect(shownValues(words)).toBe(words)
+    // Counts read upwards, "all" last.
+    const lines = [{ id: '2' }, { id: '1' }, { id: '3' }, { id: 'all' }]
+    expect(shownValues(lines).map((v) => v.id)).toEqual(['1', '2', '3', 'all'])
     setup()
     await advanced()
     await userEvent.click(pageChip('items'))
@@ -333,6 +338,32 @@ describe('Advanced on the Design page', () => {
     await userEvent.click(pageChip('items'))
     expect(within(row('items', 'portion_place')).getByText('Място на порцията')).toBeTruthy()
     expect(within(row('items', 'portion_place')).getByText('На отделен ред')).toBeTruthy()
+  })
+})
+
+describe('a tile keeps its picture', () => {
+  it('builds it again only when something it draws changes, not on every render of the page (C10)', () => {
+    const look = { theme: designThemeOf(DEFAULT_DESIGN), values: DEFAULT_DESIGN.values }
+    const props = {
+      specimen: specimenOf(fixture('with-images').snapshot, { services: false, strip: false }),
+      overlay: { version: 1, items: {} },
+      look,
+      pageId: 'items',
+      optionId: 'frame',
+      value: 'cards',
+      scheme: 'light' as const,
+      services: false,
+      plan: tilePlanOf('items', 'frame'),
+    }
+    const { result, rerender } = renderHook((p: typeof props) => useTileContent(p), {
+      initialProps: props,
+    })
+    const first = result.current
+    expect(first).not.toBeNull()
+    rerender({ ...props })
+    expect(result.current).toBe(first)
+    rerender({ ...props, value: 'rows' })
+    expect(result.current).not.toBe(first)
   })
 })
 

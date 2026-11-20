@@ -4,7 +4,7 @@
 // specimen a tile draws, so a control the renderer renames or a screen it stops drawing fails here.
 import { DEFAULT_DESIGN, DESIGN_PAGES } from '@restro/core'
 import { fixture } from '@restro/shell/testing'
-import { waitFor } from '@testing-library/react'
+import { act, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DraftFace } from '@/publish/draft-face'
@@ -12,7 +12,7 @@ import { renderWithIntl } from '@/test-utils'
 
 import { type Stage, tilePlanOf } from './advanced-model'
 import { partOf } from './design-frame'
-import { closeDish, drive, stuckTop, WAYS } from './frame-stage'
+import { closeDish, drive, keepHistoryInside, stuckTop, WAYS } from './frame-stage'
 import { previewSnapshot } from './preview-snapshot'
 import { DEMO_ASSET_BASE, specimenOf } from './specimen'
 
@@ -162,27 +162,45 @@ describe('around the stages', () => {
     expect(partOf(document.body)).toBeNull()
   })
 
-  it('closes the dish by its own back button, and leaves a sheet the owner opened (S10)', () => {
-    document.body.innerHTML =
-      '<div role="dialog"><div><button id="back"></button></div><div data-design-part="dish"></div></div><div role="dialog"><button id="bag"></button></div>'
-    const pressed: string[] = []
-    for (const id of ['back', 'bag']) {
-      document.getElementById(id)?.addEventListener('click', () => pressed.push(id))
+  it('closes the dish the stage opened by its address, with no step through the history (S10)', async () => {
+    const release = keepHistoryInside(window)
+    try {
+      const steps = window.history.length
+      const dishOf = (view: { container: HTMLElement }) =>
+        view.container.querySelector('[data-design-part="dish"]')
+      const first = await reach('dish', [])
+      expect(window.location.hash).toMatch(/^#item-/)
+      first.stop()
+      closeDish()
+      await waitFor(() => expect(dishOf(first.view)).toBeNull())
+      expect(window.location.hash).toBe('')
+      first.view.unmount()
+
+      // The dish's own back button still closes it afterwards: one step back inside the frame.
+      const again = await reach('dish', [])
+      again.stop()
+      const back = dishOf(again.view)?.closest('[role="dialog"]')?.querySelector('button')
+      act(() => back?.click())
+      await waitFor(() => expect(dishOf(again.view)).toBeNull())
+      expect(window.location.hash).toBe('')
+      // No step was added to the history the Design page shares with its frames.
+      expect(window.history.length).toBe(steps)
+      again.view.unmount()
+    } finally {
+      release()
     }
-    closeDish()
-    expect(pressed).toEqual(['back'])
-    document.body.innerHTML = '<div role="dialog"><button id="bag"></button></div>'
-    closeDish()
-    expect(pressed).toEqual(['back'])
   })
 
-  it('closes a dish the renderer opened (S10)', async () => {
-    const { view, stop } = await reach('dish', [])
-    expect(view.container.querySelector('[data-design-part="dish"]')).toBeTruthy()
-    stop()
-    closeDish()
-    await waitFor(() =>
-      expect(view.container.querySelector('[data-design-part="dish"]')).toBeNull(),
-    )
+  it('a step back with nothing of the frame to go back to does nothing', () => {
+    const release = keepHistoryInside(window)
+    try {
+      const popped = vi.fn()
+      window.addEventListener('popstate', popped)
+      window.history.back()
+      expect(popped).not.toHaveBeenCalled()
+      window.removeEventListener('popstate', popped)
+    } finally {
+      release()
+    }
   })
 })

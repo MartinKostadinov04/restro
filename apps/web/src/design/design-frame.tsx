@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'r
 import { DraftFace } from '@/publish/draft-face'
 
 import type { Stage } from './advanced-model'
-import { closeDish, drive, holdScroll } from './frame-stage'
+import { closeDish, drive, holdScroll, keepHistoryInside } from './frame-stage'
 import { type FrameContent, frameStoreOf } from './preview-frames'
 
 const nothing = (): FrameContent | null => null
@@ -87,6 +87,7 @@ export function DesignFrame({ slot }: { slot: string }) {
     return () => document.removeEventListener('click', tapped, true)
   }, [slot])
 
+  useEffect(() => keepHistoryInside(window), [])
   useStage(content !== null, content?.stage, content?.focus?.join(' ') ?? '')
 
   return (

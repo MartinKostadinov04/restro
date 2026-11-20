@@ -499,6 +499,15 @@ describe('the Design page', () => {
     expect(screen.getByTestId('design-preview-loading').textContent).toBe('Loading the preview…')
   })
 
+  it('says quietly that a Style tile is loading while its picture is drawn', () => {
+    actions.previewDraftAction.mockReturnValueOnce(new Promise(() => {}))
+    setup()
+    const tile = screen.getAllByTestId('design-style-tile')[0] as HTMLElement
+    const loading = within(tile).getByTestId('design-tile-loading')
+    expect(loading.textContent).toBe('Loading…')
+    expect(loading.getAttribute('aria-hidden')).toBe('true')
+  })
+
   it('takes the loading note away once the frame has loaded (S5)', async () => {
     setup()
     await waitFor(() => expect(screen.getByTestId('design-preview-frame')).toBeTruthy())

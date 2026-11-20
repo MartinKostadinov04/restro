@@ -5,6 +5,7 @@
 // its store (`preview-frames.ts`). With `picture`, it is a picture and not a control (a Style tile):
 // nothing in it can be focused, clicked or read twice. Until the frame's page has loaded, the box
 // shows a placeholder, with `loading` written on it when given (the live preview).
+import { useTranslations } from 'next-intl'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { Skeleton } from '@/components/ui/skeleton'
@@ -22,6 +23,21 @@ export function PreviewLoading({ label }: { label: string }) {
     >
       <Skeleton className="absolute inset-0 rounded-none" />
       <p className="relative text-sm text-muted-foreground">{label}</p>
+    </div>
+  )
+}
+
+/** The quiet placeholder of a tile's picture while it is drawn: a word, no announcement. */
+export function TileLoading() {
+  const t = useTranslations('design.preview')
+  return (
+    <div
+      aria-hidden
+      className="absolute inset-0 grid place-items-center"
+      data-testid="design-tile-loading"
+    >
+      <Skeleton className="absolute inset-0 rounded-none" />
+      <p className="relative text-xs text-muted-foreground">{t('tileLoading')}</p>
     </div>
   )
 }
@@ -127,11 +143,7 @@ export function ScaledFrame({
           }}
         />
       )}
-      {loaded ? null : loading === undefined ? (
-        <Skeleton className="absolute inset-0 rounded-none" data-testid="design-frame-loading" />
-      ) : (
-        <PreviewLoading label={loading} />
-      )}
+      {loaded ? null : loading === undefined ? <TileLoading /> : <PreviewLoading label={loading} />}
     </div>
   )
 }

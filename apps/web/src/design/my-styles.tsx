@@ -53,6 +53,7 @@ import type { MyStyles as MyStylesData, VenueStyle } from '@/server/design/style
 import type { PickedStyle } from './design-draft'
 import type { Draft } from './preview-draft'
 import { specimenSnapshot } from './preview-snapshot'
+import { TileLoading } from './scaled-frame'
 import { StyleSpecimen } from './style-tiles'
 
 /** One tile of the group: a Style of the organisation, or the design in use at one of its venues. */
@@ -236,7 +237,7 @@ export function MyStyles({
                 data-venue-id={entry.kind === 'venue' ? entry.venue.venueId : undefined}
                 className="grid cursor-pointer gap-2 rounded-md border p-2 has-checked:border-primary has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50 has-disabled:cursor-not-allowed has-disabled:opacity-70"
               >
-                <div className="h-32 overflow-hidden rounded-sm bg-muted/40">
+                <div className="relative h-32 overflow-hidden rounded-sm bg-muted/40">
                   {specimen !== null && draft.state === 'ready' ? (
                     <MySpecimen
                       venueId={venueId}
@@ -248,7 +249,9 @@ export function MyStyles({
                       styleValues={from.values}
                       bodyFont={look.values.general.body_font}
                     />
-                  ) : null}
+                  ) : (
+                    <TileLoading />
+                  )}
                 </div>
                 <span className="flex min-h-8 min-w-0 items-center gap-2 pl-2 text-sm font-medium">
                   <input

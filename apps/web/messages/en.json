@@ -1912,7 +1912,8 @@
         "tablet": "Tablet",
         "pc": "PC"
       },
-      "loading": "Loading the preview…"
+      "loading": "Loading the preview…",
+      "tileLoading": "Loading…"
     },
     "title": "Design",
     "back": "Back to the Studio",

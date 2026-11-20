@@ -250,9 +250,17 @@ const SIZE_ORDER = ['s', 'm', 'l', 'xl']
 
 /**
  * The values of an option in the order the row shows them. A row of sizes reads as a scale, small to
- * large; the contract keeps Basic's value first (D130), which is the stored order and stays so.
+ * large, and a row of counts upwards; the contract keeps Basic's value first (D130), which is the
+ * stored order and stays so.
  */
 export function shownValues<T extends { readonly id: string }>(values: readonly T[]): readonly T[] {
-  if (!values.every((value) => SIZE_ORDER.includes(value.id))) return values
-  return [...values].sort((a, b) => SIZE_ORDER.indexOf(a.id) - SIZE_ORDER.indexOf(b.id))
+  if (values.every((value) => SIZE_ORDER.includes(value.id))) {
+    return [...values].sort((a, b) => SIZE_ORDER.indexOf(a.id) - SIZE_ORDER.indexOf(b.id))
+  }
+  // A row of counts (description lines: 1, 2, 3, all) reads up, "all" last.
+  const count = (id: string) => (id === 'all' ? Number.POSITIVE_INFINITY : Number(id))
+  if (values.every((value) => value.id === 'all' || /^\d+$/.test(value.id))) {
+    return [...values].sort((a, b) => count(a.id) - count(b.id))
+  }
+  return values
 }

@@ -168,12 +168,40 @@ export function drive(stage: Stage, focus: readonly string[], onReached?: () => 
 }
 
 /**
- * Closes the dish the Dish stage opened, by its own back button as a guest would, so a frame that
- * goes back to the menu shows the menu. The allergen sheet opened from the dish goes with it (the
- * renderer's rule); a sheet the owner opened (the bag, the bill, the filters) stays. Escape would
- * close the top sheet only, and a service sheet with it.
+ * Keeps a frame's history inside the frame. The renderer puts an open dish or sheet in the address
+ * (a pushed step) and closes it by going one step back; but the frames of the Design page share one
+ * history with the page and each other, so a step back from one frame could land in another, and
+ * the owner's own Back would step through frames. Here a pushed step only replaces the address, and
+ * a step back returns to the frame's own last address and tells the renderer, as the browser would.
+ * Returns the way to undo it (for tests).
+ */
+export function keepHistoryInside(frame: Window & typeof globalThis): () => void {
+  const { history } = frame
+  const replace = history.replaceState.bind(history)
+  const steps: { readonly state: unknown; readonly url: string }[] = []
+  history.pushState = (state, unused, url) => {
+    steps.push({ state: history.state, url: frame.location.href })
+    replace(state, unused, url)
+  }
+  history.back = () => {
+    const step = steps.pop()
+    if (step === undefined) return
+    replace(step.state, '', step.url)
+    frame.dispatchEvent(new frame.PopStateEvent('popstate', { state: step.state }))
+  }
+  return () => {
+    Reflect.deleteProperty(history, 'pushState')
+    Reflect.deleteProperty(history, 'back')
+  }
+}
+
+/**
+ * Closes the dish the Dish stage opened, so a frame that goes back to the menu shows the menu: the
+ * dish's address is taken off and the renderer told, as the browser's Back would. The allergen sheet
+ * opened from the dish goes with it (the renderer's rule); a sheet the owner opened stays.
  */
 export function closeDish(): void {
-  const dish = document.querySelector('[data-design-part="dish"]')?.closest('[role="dialog"]')
-  dish?.querySelector<HTMLButtonElement>('button')?.click()
+  if (!/^#item-/.test(window.location.hash)) return
+  window.history.replaceState(null, '', window.location.pathname + window.location.search)
+  window.dispatchEvent(new PopStateEvent('popstate', { state: null }))
 }
