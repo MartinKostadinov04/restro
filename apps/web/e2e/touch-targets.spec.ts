@@ -338,9 +338,12 @@ test.describe('Venue › Reservations', () => {
     try {
       await signIn(page, TONIGHT_OWNER_EMAIL)
       if (!/\/venues\/vn_/.test(page.url())) {
+        // On a phone the sidebar that names the venue is folded away: the list's card is the way
+        // in, and its one link is «Отвори».
         await page
-          .getByRole('link', { name: new RegExp(TONIGHT_VENUE_NAME) })
-          .first()
+          .getByTestId('venue-card')
+          .filter({ hasText: TONIGHT_VENUE_NAME })
+          .getByRole('link', { name: 'Отвори' })
           .click()
         await expect(page).toHaveURL(/\/venues\/vn_[^/?]+/)
       }

@@ -534,13 +534,16 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
     })
 
     it('counts the person a shared device remembers as the reader (S18)', async () => {
-      // A shared device writes as the person its PIN named, while the device account reads.
+      // A shared device writes as the person its PIN named, while the device account reads. A PIN
+      // is good only on a shared device of this venue, so the session is registered as one.
+      const sessionId = `shared-${randomUUID()}`
+      await world.addSharedDevice(sessionId)
       const asHostess: ServiceContext = {
         ...staff(ownerId),
         actor: {
           kind: 'staff',
           staffMemberId: hostessStaffId,
-          sessionId: `sess-${randomUUID()}`,
+          sessionId,
         } satisfies ServiceActor,
       }
       const id = (
