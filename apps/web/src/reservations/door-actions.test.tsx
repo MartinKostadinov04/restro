@@ -48,7 +48,7 @@ const party = (over: Partial<DoorParty> = {}): DoorParty => ({
   ...over,
 })
 
-/** Taps "Arrived" (or seats a walk-in, or "They left") and hands back the write the door ran. */
+/** Taps "Arrived" (or seats a walk-in, or "Free the table") and hands back the write the door ran. */
 async function arrive(locale: 'bg' | 'en', who: DoorParty, tap: 'arrive' | 'free' = 'arrive') {
   const run = vi.fn<(spec: RvRunSpec) => void>()
   const wrapper = ({ children }: { children: ReactNode }) => (
@@ -161,18 +161,18 @@ describe('the door, after an arrival', () => {
   })
 })
 
-describe('the door, after "They left"', () => {
-  it('names the party that left', async () => {
+describe('the door, after "Free the table"', () => {
+  it('names the party whose table is free', async () => {
     const spec = await arrive('en', party(), 'free')
-    expect(spec.done).toBe('They left: Ivanova. The table is free again.')
+    expect(spec.done).toBe("Ivanova's table is free again.")
   })
 
   it('says it without a name for a party nobody named', async () => {
     expect((await arrive('en', party({ name: null }), 'free')).done).toBe(
-      'They left. The table is free again.',
+      'The table is free again.',
     )
     expect((await arrive('bg', party({ name: null }), 'free')).done).toBe(
-      'Тръгнаха си. Масата е свободна отново.',
+      'Масата е свободна отново.',
     )
   })
 })

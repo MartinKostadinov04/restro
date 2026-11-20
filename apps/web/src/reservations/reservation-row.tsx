@@ -84,7 +84,7 @@ export function ReservationRow({
     onNoShow === null || row.status !== 'reserved'
       ? null
       : { testId: 'rv-row-noshow', label: t('bk_noshow'), act: onNoShow },
-    onFree === null || row.status !== 'seated'
+    onFree === null || row.status !== 'seated' || row.spots.length === 0
       ? null
       : { testId: 'rv-row-free', label: t('d_free'), act: onFree },
   ].filter((item): item is { testId: string; label: string; act: () => void } => item !== null)

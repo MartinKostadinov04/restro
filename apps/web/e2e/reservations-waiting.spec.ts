@@ -233,7 +233,7 @@ test('a freed table is given to the party that waited longest, and its codes ope
   await openPlan(page)
   const sitting = await openSpot(page, TABLE_SPOT)
   await sitting.getByTestId('rv-spot-free').click()
-  await expect(toast(page, `They left: ${BOOKED}. The table is free again.`)).toBeVisible()
+  await expect(toast(page, `${BOOKED}'s table is free again.`)).toBeVisible()
   expect(await readTile(page, TABLE)).toBe('closed')
 
   // Two taps from the plan: the freed spot, then the party at the top of the queue. One move —

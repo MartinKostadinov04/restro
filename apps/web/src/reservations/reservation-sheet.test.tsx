@@ -137,3 +137,55 @@ describe('the sheet, while it is open', () => {
     await waitFor(() => expect(screen.getByTestId('rv-stale').textContent).toContain('Petar'))
   })
 })
+
+describe('the sheet, for a party sitting down', () => {
+  // A walk-in another hostess seated, read by someone who may not manage: "Free the table" is the
+  // only thing under "…", so the "…" itself shows whether it is offered.
+  async function openSeated(spots: readonly string[]) {
+    const base = detail([])
+    vi.mocked(reservationDetailAction).mockResolvedValue({
+      ok: true,
+      frame: { ...frame, can: { ...frame.can, manage: false } },
+      detail: {
+        ...base,
+        row: { ...base.row, kind: 'walk_in', status: 'seated', spots },
+        spotIds: spots.map((_, i) => `sp_${i}`),
+        mine: false,
+      },
+    })
+    renderWithIntl(
+      <ReservationSheet
+        frame={{ ...frame, can: { ...frame.can, manage: false } }}
+        reservationId="rv_one"
+        writable
+        busy={false}
+        onEdit={vi.fn()}
+        onCopy={vi.fn()}
+        onNoShow={vi.fn()}
+        onPutBack={vi.fn()}
+        onCancel={vi.fn()}
+        onDelete={vi.fn()}
+        onArrive={null}
+        onGuests={null}
+        onFree={vi.fn()}
+        onChangeTables={null}
+        onPayRule={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    await waitFor(() => expect(vi.mocked(reservationDetailAction)).toHaveBeenCalled())
+  }
+
+  it('offers to free the table while the party holds one', async () => {
+    await openSeated(['Маса 7'])
+    await waitFor(() => expect(screen.getByTestId('rv-more')).toBeTruthy())
+  })
+
+  // Freeing returns the spots and leaves the party seated (D134), so once they are back there is
+  // nothing left to free (the screen round's R4).
+  it('does not offer it once the party holds no spot', async () => {
+    await openSeated([])
+    await waitFor(() => expect(screen.getByText('None yet')).toBeTruthy())
+    expect(screen.queryByTestId('rv-more')).toBeNull()
+  })
+})

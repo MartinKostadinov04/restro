@@ -437,7 +437,9 @@ export function ReservationSheet({
     onArrive !== null
   const maySeated = detail != null && !isBlock && status === 'seated'
   const mayGuests = maySeated && onGuests !== null
-  const mayFree = maySeated && onFree !== null
+  // Freeing returns the spots and does not end the party (D134), so a party that holds none has
+  // nothing to free (R4).
+  const mayFree = maySeated && onFree !== null && (detail?.row.spots.length ?? 0) > 0
   // A party still coming or already sitting changes tables; a block, a waiting line (it has no
   // table yet: seating it is the door's) and an ended party do not (#331).
   const mayChangeTables =
