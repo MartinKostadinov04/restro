@@ -125,7 +125,12 @@ export function ItemRow({
             </>
           ) : null}
 
-          <div className={cn('grid min-w-0 flex-1 gap-1', hidden && 'opacity-70')}>
+          <div
+            className={cn(
+              'grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)] gap-1',
+              hidden && 'opacity-70',
+            )}
+          >
             {editing ? (
               <RenameField
                 initial={item.name}
@@ -159,7 +164,8 @@ export function ItemRow({
                 ) : null}
               </div>
             )}
-            <div className="flex flex-wrap items-center gap-1.5">
+            {/* A badge may wrap its own words, or the widest one sets the row's width (S1, 320 px). */}
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5 [&_[data-slot=badge]]:max-w-full [&_[data-slot=badge]]:shrink [&_[data-slot=badge]]:whitespace-normal">
               <OriginBadge origin={item.origin} />
               {item.nameFromTill ? <NameFromTillBadge readOnly={!canEdit} /> : null}
               {item.reviewFields.length > 0 ? (
