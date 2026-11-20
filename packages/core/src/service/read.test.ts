@@ -397,3 +397,98 @@ describe.skipIf(!hasDatabase)('the service read side (as the restro_app role)', 
     }
   })
 })
+
+// S10: a table paused by the cap per sent order names the order's amount and the cap, from the
+// trip's own Log entry. Only an exact match counts: the entry the same transaction wrote, at the
+// pause's own start, and no trip of another guard since.
+describe.skipIf(!hasDatabase)('the amount a cap pause names (S10)', () => {
+  let world: ServiceWorld
+  let ownerId: string
+  let day: string
+  const pauseOf: Record<string, string> = {}
+
+  beforeAll(async () => {
+    world = await openServiceWorld('read-cap')
+    ownerId = await world.addUser('owner')
+    const first = await readTonight(world.app, {
+      tenantId: world.tenantId,
+      venueId: world.venueId,
+      actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
+    })
+    if (!first.ok) throw new Error(`owner refused: ${first.code}`)
+    day = first.tonight.serviceDate
+    const startedAt = new Date(Date.now() - 10 * 60_000)
+    const at = (seconds: number) => new Date(startedAt.getTime() + seconds * 1000).toISOString()
+    // Four tables, one story each: the trip is [reason, seconds from the pause's start] pairs.
+    const stories: Record<string, readonly (readonly [string, number])[]> = {
+      cap: [['order_cap', 0]],
+      paceAfter: [
+        ['order_cap', 0],
+        ['order_pace', 30],
+      ],
+      minuteBefore: [['order_cap', -90]],
+      notExact: [['order_cap', -30]],
+    }
+    for (const [index, [name, trips]] of Object.entries(stories).entries()) {
+      const tableId = world.tables[index] as string
+      pauseOf[name] = newId('pa')
+      await world.owner.query(
+        `insert into restro.pauses
+           (id, tenant_id, venue_id, service_date, scope, target_id, cause, restro_started,
+            started_at, details, source, actor, job_id)
+         values ($1, $2, $3, $4, 'table', $5, 'guard_tripped', true, $6,
+                 '{"guard": "cap"}'::jsonb, 'restro', 'system', 'test-seed')`,
+        [pauseOf[name], world.tenantId, world.venueId, day, tableId, at(0)],
+      )
+      for (const [reason, seconds] of trips) {
+        await world.owner.query(
+          `insert into restro.log_entries
+             (tenant_id, venue_id, service_date, kind, table_id, reason, details, at, retention,
+              source, actor, job_id)
+           values ($1, $2, $3, 'guard.tripped', $4, $5, $6::jsonb, $7, 'night', 'restro',
+                   'system', 'test-seed')`,
+          [
+            world.tenantId,
+            world.venueId,
+            day,
+            tableId,
+            reason,
+            JSON.stringify(
+              reason === 'order_cap' ? { capMinor: 5000, totalMinor: 7200 } : { perMinute: 3 },
+            ),
+            at(seconds),
+          ],
+        )
+      }
+    }
+  })
+
+  afterAll(async () => {
+    await world?.close()
+  })
+
+  async function capOf(name: string) {
+    const read = await readTonight(world.app, {
+      tenantId: world.tenantId,
+      venueId: world.venueId,
+      actor: { kind: 'user', userId: ownerId, sessionId: `sess-${randomUUID()}` },
+    })
+    if (!read.ok) throw new Error(`refused: ${read.code}`)
+    const pause = read.tonight.pauses.find((each) => each.id === pauseOf[name])
+    if (pause === undefined) throw new Error(`no pause ${name}`)
+    return pause.cap
+  }
+
+  it('names the amount and the cap of the trip that started the pause', async () => {
+    expect(await capOf('cap')).toEqual({ totalMinor: 7200, capMinor: 5000 })
+  })
+
+  it('names nothing once a trip of another guard came after it', async () => {
+    expect(await capOf('paceAfter')).toBeUndefined()
+  })
+
+  it('names nothing for a trip that is not the pause’s own, a minute and a half or half a minute off', async () => {
+    expect(await capOf('minuteBefore')).toBeUndefined()
+    expect(await capOf('notExact')).toBeUndefined()
+  })
+})

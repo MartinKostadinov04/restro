@@ -2081,6 +2081,7 @@
     "sh_open": "Open for phones",
     "sh_sub_closed": "{bar} · closed for phones",
     "sh_sub_closed_nobar": "Closed for phones",
+    "orders_none": "No phone orders tonight",
     "orders_start": "Phone orders start at {time}",
     "g_d_cap": "An order of {amt} is over the {cap} limit. Check the table, then resume it.",
     "ne_after": "No phone can order after that.",

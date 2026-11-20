@@ -12,26 +12,29 @@ import { cn } from '@/lib/utils'
 
 /**
  * The X of a Tonight side sheet or dialog, as a 44 px target at every width (S3, S11): shadcn's is
- * a 16 px icon from 768 px on. Passed as the content's className; the header keeps clear of it.
+ * a 16 px icon on a wide screen with a fine pointer. Passed as the content's className; the header
+ * keeps clear of it.
  */
 export const CLOSE_44 =
   '[&>button:last-child]:top-1 [&>button:last-child]:right-1 [&>button:last-child]:flex [&>button:last-child]:size-11 [&>button:last-child]:items-center [&>button:last-child]:justify-center'
 
 /**
  * The section switch of a phone (S2): Tonight's tabs pass it down and each section draws it in its
- * heading row, in place of the section's name. Null where there is one section only.
+ * heading row, in place of the section's name. Null where there is one section only. A section
+ * with no heading gets it on a row of its own from the tabs (`data-tonight-heading` tells them).
  */
 export const SectionSwitch = createContext<ReactNode>(null)
 
 /**
- * "Tonight" and the tab's own name, as screen 1 heads its panel; below 1024 px the name is the
- * section switch itself, and `children` stand on the right of the same row.
+ * "Tonight" and the tab's own name, as screen 1 heads its panel. Below 1024 px, where Tonight has
+ * more than one section, the section switch stands in for the name; `children` stand on the right
+ * of the same row.
  */
 export function TabHeading({ name, children }: { name: string; children?: ReactNode }) {
   const t = useTranslations('tonight')
   const switcher = useContext(SectionSwitch)
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="flex flex-wrap items-center justify-between gap-2" data-tonight-heading="">
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         <h2 className="text-xl font-semibold tracking-tight">
           {t('title')}

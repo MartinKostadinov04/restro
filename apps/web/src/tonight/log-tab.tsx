@@ -3,10 +3,11 @@
 // Tonight, screen 3: the Log (#86; plan `docs/deliverables/2026-10-27-tonight-log-plan.md`), only
 // for roles holding `log.view`. One line per entry, newest first, for any service day the Log
 // still holds: the time, one sentence, the table and the reference where there are some, and who.
-// It only reads; nothing is answered here. No state colours. A line about a sent order opens that
-// order's sheet (screen 2's); any other line does nothing and carries no chevron. A sent order is
-// one row with its latest step, its older steps folded under it (S15, `log-groups.ts`). Search and
-// the Kind filter cover the whole day, not only the lines loaded.
+// It only reads; nothing is answered here. No state colours. A line about a sent order or a payment
+// opens its sheet and carries a chevron; any other line does nothing and carries none. A sent order
+// is one row with its latest step, its older steps folded under it (S15, `log-groups.ts`); a row
+// stays unfolded while new steps arrive. Search and the Kind filter cover the whole day, not only
+// the lines loaded.
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -71,7 +72,8 @@ function Content({ initial, frame }: { initial: LogView; frame: Frame }) {
   const [limit, setLimit] = useState(PAGE)
   const [open, setOpen] = useState<string | null>(null)
   const [payment, setPayment] = useState<string | null>(null)
-  const [unfolded, setUnfolded] = useState<ReadonlySet<number>>(new Set())
+  /** The sent orders whose steps are open, by sent order: a new step keeps them open. */
+  const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(new Set())
   const day = initial.day
 
   const feed = useLiveFeed<LogView>({
@@ -142,101 +144,106 @@ function Content({ initial, frame }: { initial: LogView; frame: Frame }) {
     )
     return (
       <ul className="divide-y rounded-lg border" data-testid="log-list">
-        {foldOrderSteps(shown.rows).map(({ line, steps }) => {
-          const words = sentence(line)
-          if (words === null) return null
-          const opens = line.sentOrderId ?? line.paymentId
-          const open = unfolded.has(line.seq)
-          const content = (
-            <>
-              <span className="w-12 shrink-0 text-sm tabular-nums text-muted-foreground">
-                {line.time}
-              </span>
-              <span className="min-w-0 flex-1 space-y-0.5">
-                <span className="block text-sm [overflow-wrap:anywhere]">
-                  {words}
-                  {steps.length === 0 ? null : (
-                    <span className="text-muted-foreground" data-testid="log-steps-count">
-                      {` · ${t('lg_steps', { n: steps.length + 1 })}`}
-                    </span>
-                  )}
+        {/* Only lines with a sentence are folded, so a sent order's row always heads with one. */}
+        {foldOrderSteps(shown.rows.filter((each) => sentence(each) !== null)).map(
+          ({ line, steps }) => {
+            const words = sentence(line)
+            if (words === null) return null
+            const opens = line.sentOrderId ?? line.paymentId
+            const order = line.sentOrderId
+            const expanded = order !== null && unfolded.has(order)
+            const content = (
+              <>
+                <span className="w-12 shrink-0 text-sm tabular-nums text-muted-foreground">
+                  {line.time}
                 </span>
-                {meta(line)}
-              </span>
-              {opens === null ? null : (
-                <ChevronRightIcon
-                  aria-hidden
-                  className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-                />
-              )}
-            </>
-          )
-          const row =
-            opens === null ? (
-              <div className="flex min-h-11 flex-1 items-start gap-3 p-3">{content}</div>
-            ) : (
-              <button
-                type="button"
-                className="flex min-h-11 w-full min-w-0 flex-1 items-start gap-3 p-3 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => (line.sentOrderId === null ? setPayment(opens) : setOpen(opens))}
-              >
-                {content}
-              </button>
+                <span className="min-w-0 flex-1 space-y-0.5">
+                  <span className="block text-sm [overflow-wrap:anywhere]">
+                    {words}
+                    {steps.length === 0 ? null : (
+                      <span className="text-muted-foreground" data-testid="log-steps-count">
+                        {` · ${t('lg_steps', { n: steps.length + 1 })}`}
+                      </span>
+                    )}
+                  </span>
+                  {meta(line)}
+                </span>
+                {opens === null ? null : (
+                  <ChevronRightIcon
+                    aria-hidden
+                    className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                  />
+                )}
+              </>
             )
-          return (
-            <li key={line.seq} data-testid="log-line" data-kind={line.kind}>
-              {steps.length === 0 ? (
-                row
+            const row =
+              opens === null ? (
+                <div className="flex min-h-11 flex-1 items-start gap-3 p-3">{content}</div>
               ) : (
-                <>
-                  <div className="flex items-start">
-                    {row}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="m-0.5 size-11 shrink-0"
-                      aria-expanded={open}
-                      aria-label={t(open ? 'lg_steps_hide' : 'lg_steps_show')}
-                      data-testid="log-steps-toggle"
-                      onClick={() =>
-                        setUnfolded((before) => {
-                          const next = new Set(before)
-                          if (next.has(line.seq)) next.delete(line.seq)
-                          else next.add(line.seq)
-                          return next
-                        })
-                      }
-                    >
-                      {open ? <ChevronUpIcon aria-hidden /> : <ChevronDownIcon aria-hidden />}
-                    </Button>
-                  </div>
-                  {open ? (
-                    <ul className="border-t bg-muted/40" data-testid="log-steps">
-                      {steps.map((step) => (
-                        <li
-                          key={step.seq}
-                          className="flex items-start gap-3 py-2 pr-3 pl-6"
-                          data-testid="log-step"
-                        >
-                          <span className="w-12 shrink-0 text-sm tabular-nums text-muted-foreground">
-                            {step.time}
-                          </span>
-                          <span className="min-w-0 flex-1 space-y-0.5">
-                            <span className="block text-sm [overflow-wrap:anywhere]">
-                              {sentence(step)}
+                <button
+                  type="button"
+                  className="flex min-h-11 w-full min-w-0 flex-1 items-start gap-3 p-3 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => (line.sentOrderId === null ? setPayment(opens) : setOpen(opens))}
+                >
+                  {content}
+                </button>
+              )
+            return (
+              <li key={line.seq} data-testid="log-line" data-kind={line.kind}>
+                {steps.length === 0 ? (
+                  row
+                ) : (
+                  <>
+                    <div className="flex items-start">
+                      {row}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="m-0.5 size-11 shrink-0"
+                        aria-expanded={expanded}
+                        aria-label={t(expanded ? 'lg_steps_hide' : 'lg_steps_show')}
+                        data-testid="log-steps-toggle"
+                        onClick={() =>
+                          setUnfolded((before) => {
+                            if (order === null) return before
+                            const next = new Set(before)
+                            if (next.has(order)) next.delete(order)
+                            else next.add(order)
+                            return next
+                          })
+                        }
+                      >
+                        {expanded ? <ChevronUpIcon aria-hidden /> : <ChevronDownIcon aria-hidden />}
+                      </Button>
+                    </div>
+                    {expanded ? (
+                      <ul className="border-t bg-muted/40" data-testid="log-steps">
+                        {steps.map((step) => (
+                          <li
+                            key={step.seq}
+                            className="flex items-start gap-3 py-2 pr-3 pl-6"
+                            data-testid="log-step"
+                          >
+                            <span className="w-12 shrink-0 text-sm tabular-nums text-muted-foreground">
+                              {step.time}
                             </span>
-                            {meta(step)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </>
-              )}
-            </li>
-          )
-        })}
+                            <span className="min-w-0 flex-1 space-y-0.5">
+                              <span className="block text-sm [overflow-wrap:anywhere]">
+                                {sentence(step)}
+                              </span>
+                              {meta(step)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </>
+                )}
+              </li>
+            )
+          },
+        )}
       </ul>
     )
   })()

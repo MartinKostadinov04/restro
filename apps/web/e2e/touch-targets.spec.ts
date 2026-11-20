@@ -338,6 +338,16 @@ async function walkTonight(page: Page, where: string) {
   const tonight = page.getByTestId('tonight')
   await expect(tonight).toBeVisible()
   await expectFloor(page, `${where}: Tonight`, 5, '[data-testid="tonight"]')
+  // The sections: the tab bar from 1024 px (it sits outside each section's box), the switch below.
+  const tabBar = page.getByTestId('tonight-section-tabs')
+  if (await tabBar.isVisible()) {
+    await expectFloor(page, `${where}: the section tabs`, 4, '[data-testid="tonight-section-tabs"]')
+  } else {
+    const box = await page.locator('[data-testid="tonight-section-switch"]:visible').boundingBox()
+    expect(box, `${where}: the section switch is drawn`).not.toBeNull()
+    expect(box?.height ?? 0, `${where}: the section switch's height`).toBeGreaterThanOrEqual(44)
+    expect(box?.width ?? 0, `${where}: the section switch's width`).toBeGreaterThanOrEqual(44)
+  }
   // On a phone one part shows at a time; Tables is the other one.
   const tables = tonight.getByRole('button', { name: 'Маси', exact: true })
   if (await tables.isVisible()) {

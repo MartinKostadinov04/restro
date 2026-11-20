@@ -3,7 +3,10 @@
 // The tabs of Tonight (#86): Actions and tables, Sent orders, Log, End of night, mirrored in the
 // URL as `?view=` beside `?tab=tonight`. From 1024 px a tab bar; below it the section switch is a
 // dropdown drawn in the open section's own heading row ("Tonight [Actions and tables ▾]", S2), so
-// a phone spends no row on a chooser of its own. Every tab and the switch are 44 px high (S11). The
+// a phone spends no row on a chooser of its own. A section drawn without that heading (a failed
+// read, no access, the loading skeleton) still gets the switch, on a row above it, so a phone is
+// never stuck in one section: the row hides itself by CSS wherever a heading holds the switch, so
+// nothing moves when the page hydrates. Every tab and the switch are 44 px high (S11). The
 // Log and the end of the night are listed only for roles that may open them (the server passes the
 // list), so a role never sees a tab it cannot use.
 import { ClipboardListIcon, ConciergeBellIcon, HistoryIcon, MoonIcon } from 'lucide-react'
@@ -79,6 +82,7 @@ export function TonightTabs({
           <TabsList
             className="hidden max-w-full overflow-x-auto group-data-[orientation=horizontal]/tabs:h-auto lg:inline-flex"
             aria-label={t('tabs_label')}
+            data-testid="tonight-section-tabs"
           >
             {views.map((value) => {
               const { labelKey, icon: Icon } = TABS[value]
@@ -92,7 +96,15 @@ export function TonightTabs({
           </TabsList>
         ) : null}
         {views.map((value) => (
-          <TabsContent key={value} value={value} className="pt-2">
+          <TabsContent key={value} value={value} className="group/section pt-2">
+            {switcher === null ? null : (
+              <div
+                className="mb-3 lg:hidden group-has-[[data-tonight-heading]]/section:hidden"
+                data-testid="tonight-switch-row"
+              >
+                {switcher}
+              </div>
+            )}
             {contents[value] ?? <TonightSkeleton />}
           </TabsContent>
         ))}

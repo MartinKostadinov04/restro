@@ -152,8 +152,9 @@ function Content({ view, frame, slots }: { view: NightView; frame: Frame; slots:
     <div className="mx-auto w-full max-w-[840px] space-y-6" data-testid="tonight-night">
       <TabHeading name={t('tab_night')}>
         {/* The page's own action (S12, D122: the tab keeps its name, the menu item stays): whoever
-            may end the night, and a shared device, whose confirm asks a manager's PIN (D141). */}
-        {view.today && (frame.can.endNight || frame.device) ? (
+            may end the night, and a shared device, whose confirm asks a manager's PIN (D141).
+            Once the night has ended it is gone: nothing ends it twice (S13). */}
+        {view.today && !view.ended && (frame.can.endNight || frame.device) ? (
           <Button
             type="button"
             variant="outline"

@@ -7,7 +7,8 @@
 // two taps (plan §10 Q5); a closed table's sheet holds "Open for phones" instead (S16: a tap on a
 // status tile opens the thing, never acts at once), with the Undo toast the open always had. The
 // phone's drawer closes with a visible "Close" like the other Tonight drawers, the tablet's sheet
-// with its X at 44 px (S3). Before phone ordering starts, the sheet says when it does (S4).
+// with its X at 44 px (S3). Before phone ordering starts, the sheet says when it does, and on a
+// night phones cannot order it says so (S4).
 //
 // Who is seated is the first thing it says (walk P20, #419): the party's name and its guests, one
 // line each, in the ordinary text colour and weight — the sheet is a list of facts, and none of them
@@ -150,10 +151,12 @@ export function TableSheet({
           </dt>
         </div>
       )}
-      {view.ordersStartAt === null ? null : (
+      {view.phoneOrders === null ? null : (
         <div className="flex justify-between gap-3">
           <dt className="text-muted-foreground" data-testid="sh-orders-start">
-            {t('orders_start', { time: view.ordersStartAt })}
+            {view.phoneOrders.state === 'later'
+              ? t('orders_start', { time: view.phoneOrders.at })
+              : t('orders_none')}
           </dt>
         </div>
       )}

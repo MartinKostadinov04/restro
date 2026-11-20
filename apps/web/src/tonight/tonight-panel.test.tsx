@@ -43,7 +43,7 @@ const draw = (over: Partial<TonightView>) =>
           operator: false,
           can: { openClose: true, resume: true, pause: true, lift: true },
           nightEnd: null,
-          ordersStartAt: null,
+          phoneOrders: null,
           banners: [],
           paying: null,
           rows: [],
@@ -258,6 +258,32 @@ describe('a closed table (S16)', () => {
     )
   })
 
+  it('asks first where somebody holds the table later, and opens it only on "Open it anyway"', async () => {
+    bookedLater.mockResolvedValue({
+      ok: true,
+      booked: { block: false, name: 'Иванова', time: '23:30' },
+    })
+    openTable.mockResolvedValue({ ok: true, details: {} })
+    closedTable()
+    await userEvent.click(screen.getByRole('button', { name: 'Table 2, Closed' }))
+    const sheet = await screen.findByTestId('table-sheet')
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Open for phones' }))
+    const question = await screen.findByTestId('tonight-booked')
+    expect(question.textContent).toContain('Иванова is booked on this table at 23:30.')
+    expect(bookedLater).toHaveBeenCalledWith({
+      venueId: 'vn_0123456789ABCDEFGHIJKL',
+      tableId: 'tb_2',
+    })
+    expect(openTable).not.toHaveBeenCalled()
+    await userEvent.click(within(question).getByRole('button', { name: 'Open it anyway' }))
+    await waitFor(() =>
+      expect(openTable).toHaveBeenCalledWith({
+        venueId: 'vn_0123456789ABCDEFGHIJKL',
+        tableId: 'tb_2',
+      }),
+    )
+  })
+
   it('offers no open once the night is closed', async () => {
     closedTable({ nightEnd: { at: '03:10', early: true } })
     await userEvent.click(screen.getByRole('button', { name: 'Table 2, Closed' }))
@@ -277,14 +303,19 @@ describe('before phone ordering starts (S4)', () => {
     draw({
       groups: [{ barId: null, name: null, paused: false, tables: [tile('tb_2', 'Table 2')] }],
       tableCount: 1,
-      ordersStartAt: '22:00',
+      phoneOrders: { state: 'later', at: '22:00' },
     })
     expect(screen.getByTestId('orders-start').textContent).toBe('Phone orders start at 22:00')
   })
 
   it('says nothing once it has started', () => {
-    draw({ ordersStartAt: null })
+    draw({ phoneOrders: null })
     expect(screen.queryByTestId('orders-start')).toBeNull()
+  })
+
+  it('says there are none on a night phones cannot order', () => {
+    draw({ phoneOrders: { state: 'none' } })
+    expect(screen.getByTestId('orders-start').textContent).toBe('No phone orders tonight')
   })
 })
 

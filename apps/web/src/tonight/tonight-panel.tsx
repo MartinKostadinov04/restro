@@ -314,8 +314,7 @@ function Content({
 
   const needs = (
     <section aria-labelledby="needs-title" className="min-w-0 space-y-3">
-      {/* Below lg the switch above already says "Needs you" and the count (S2). */}
-      <h2 id="needs-title" className="text-lg font-semibold max-lg:sr-only">
+      <h2 id="needs-title" className="text-lg font-semibold">
         {t('needs')}
         {view.rows.length > 0 ? (
           <span className="ml-2 text-muted-foreground" data-testid="needs-count">
@@ -391,9 +390,11 @@ function Content({
           <p className="text-sm text-muted-foreground" data-testid="open-count">
             {t('openof', { o: view.openCount, t: view.tableCount })}
           </p>
-          {view.ordersStartAt === null ? null : (
+          {view.phoneOrders === null ? null : (
             <p className="text-sm text-muted-foreground" data-testid="orders-start">
-              {t('orders_start', { time: view.ordersStartAt })}
+              {view.phoneOrders.state === 'later'
+                ? t('orders_start', { time: view.phoneOrders.at })
+                : t('orders_none')}
             </p>
           )}
         </div>

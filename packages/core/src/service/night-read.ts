@@ -22,6 +22,7 @@ import {
   pauses,
   payments,
   type ReadTx,
+  reservationNights,
   reservationSettings,
   sentOrderNotes,
   sentOrders,
@@ -863,7 +864,9 @@ export async function readLog(
             callKinds: callKindsOf(row.kind, row.details),
             settingKeys:
               row.kind === 'settings.changed'
-                ? (detailText(row.details, 'keys')?.split(',') ?? [])
+                ? (detailText(row.details, 'keys')
+                    ?.split(',')
+                    .filter((key) => key !== '') ?? [])
                 : [],
           }
         }),
@@ -917,6 +920,8 @@ export interface NightRead {
   readonly dayEndsAt: string
   /** When the day was closed (`service_days`), or null while it runs or before the worker closes it. */
   readonly closedAt: Date | null
+  /** Staff ended this night (`reservation_nights.closed_at`): nothing ends it again. */
+  readonly ended: boolean
   /** `night.view_full`: tips, the CSV and part 2's manager sections. */
   readonly full: boolean
   readonly fix: readonly NightFixRow[]
@@ -1012,6 +1017,10 @@ export async function readNight(
     const { venue } = reader
 
     const { totals, closedAt, written } = await totalsOfDay(tx, venue.id, day)
+    const [record] = await tx
+      .select({ closedAt: reservationNights.closedAt })
+      .from(reservationNights)
+      .where(and(eq(reservationNights.venueId, venue.id), eq(reservationNights.serviceDate, day)))
     const reservations = await reservationsOfDay(tx, venue.id, day, written)
     const sent = await sentOrderPage(tx, reader, {
       day,
@@ -1162,6 +1171,7 @@ export async function readNight(
           0,
         dayEndsAt: venue.dayEndsAt,
         closedAt,
+        ended: record?.closedAt != null,
         full: reader.held.has('night.view_full'),
         fix,
         sent: { counts: sent.counts, notAdded: sent },

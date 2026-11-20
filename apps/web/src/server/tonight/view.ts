@@ -229,6 +229,12 @@ export interface Can {
 }
 
 /** Everything the Tonight screen draws. */
+/** Phone ordering tonight where it is not running: when it starts, or that it does not (S4). */
+export type PhoneOrders =
+  | { readonly state: 'later'; readonly at: string }
+  | { readonly state: 'none' }
+  | null
+
 export interface TonightView {
   readonly venueId: string
   /** The POS' name for `{source}`. */
@@ -259,10 +265,11 @@ export interface TonightView {
    */
   readonly nightEnd: { readonly at: string; readonly early: boolean } | null
   /**
-   * When phones may start ordering tonight (`HH:mm`, the venue's service hours), while that is
-   * still to come; null once it has started, on a night with no ordering, or with no hours set (S4).
+   * Phone ordering tonight by the venue's service hours (S4): `later` with the hour it starts
+   * (`HH:mm`) while that is still to come, `none` on a night phones cannot order (a closed night,
+   * after last orders, or an opening with no hour); null while it runs and with no hours set.
    */
-  readonly ordersStartAt: string | null
+  readonly phoneOrders: PhoneOrders
   readonly banners: readonly PauseBanner[]
   /**
    * Why card payments in the app are stopped, for every role; null while they flow and while
@@ -406,8 +413,8 @@ export function buildTonightView(input: {
   readonly operator?: boolean
   /** A person's own short session is on this shared device: no write asks for a PIN (#324). */
   readonly remembered?: boolean
-  /** When phone ordering starts tonight (`HH:mm`), while it is still to come (S4). */
-  readonly ordersStartAt?: string | null
+  /** Phone ordering tonight by the service hours, where it is not running (S4). */
+  readonly phoneOrders?: PhoneOrders
   readonly now: Date
 }): TonightView {
   const { tonight, timezone } = input
@@ -735,7 +742,7 @@ export function buildTonightView(input: {
       holdsStaffRightsOnly(held),
     can,
     nightEnd: ended === null ? null : { at: clock(ended.at) ?? '', early: ended.early },
-    ordersStartAt: input.ordersStartAt ?? null,
+    phoneOrders: input.phoneOrders ?? null,
     banners,
     paying:
       restro.length > 0

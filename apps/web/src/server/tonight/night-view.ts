@@ -371,10 +371,8 @@ const ORDERING_KEY_WORDS: Readonly<Record<string, SettingWord>> = {
 /** The word of each `settings.changed` reason that names one part whatever its keys. */
 const SETTING_REASON_WORDS: Readonly<Record<string, SettingWord>> = {
   payment_table: 'pay_table',
-  alerts: 'alerts',
   telegram_linked: 'telegram',
   telegram_left: 'telegram',
-  telegram_unlinked: 'telegram',
   pay_first: 'pay_rule',
   paying: 'paying',
   payments_connect: 'payments',
@@ -385,15 +383,27 @@ const SETTING_REASON_WORDS: Readonly<Record<string, SettingWord>> = {
 }
 
 /**
+ * The word of a reason whose entry keeps its keys, for an entry that kept none (written before
+ * keys were kept): the alerts form saves recipients and the Telegram chat, so its keys say which.
+ */
+const KEYED_REASON_WORDS: Readonly<Record<string, SettingWord>> = {
+  alerts: 'alerts',
+  telegram_unlinked: 'telegram',
+}
+
+/**
  * Which settings a `settings.changed` line changed, by the part of Settings they sit in (S15): the
- * reason where it names one part, else the ordering keys the entry kept. An entry with neither
- * (written before keys were kept) is "a setting".
+ * reason where it names one part, else the keys the entry kept, each by its part. A key with no
+ * part of its own adds "a setting" after the named ones, so nothing changed goes unsaid. An entry
+ * with no keys says its reason's part, or "a setting".
  */
 export function settingWordsOf(reason: string | null, keys: readonly string[]): SettingWord[] {
   const named = SETTING_REASON_WORDS[reason ?? '']
   if (named !== undefined) return [named]
+  if (keys.length === 0) return [KEYED_REASON_WORDS[reason ?? ''] ?? 'setting']
   const words = [...new Set(keys.flatMap((key) => ORDERING_KEY_WORDS[key] ?? []))]
-  return words.length === 0 ? ['setting'] : words
+  const unnamed = keys.some((key) => ORDERING_KEY_WORDS[key] === undefined)
+  return unnamed ? [...words, 'setting'] : words
 }
 
 /** The words of a guard (`lg_g_*`). */
@@ -646,6 +656,8 @@ export interface NightView {
   readonly today: boolean
   readonly hasService: boolean
   readonly dayEndsAt: string
+  /** Staff ended this night: the page offers no "End the night" (S13). */
+  readonly ended: boolean
   readonly full: boolean
   readonly days: readonly string[]
   /** Section 1: problems that still wait for an answer, as screen 1's rows. */
@@ -686,6 +698,7 @@ export function nightView(night: NightRead, timezone: string): NightView {
     today: night.today,
     hasService: night.hasService,
     dayEndsAt: night.dayEndsAt,
+    ended: night.ended,
     full: night.full,
     days: night.days,
     fix: night.fix.filter((row) => row.answer === null).map((row) => fixRow(row, clock)),

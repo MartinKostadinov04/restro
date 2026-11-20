@@ -730,6 +730,9 @@ export interface TonightPause extends PauseView {
   readonly cap?: { readonly totalMinor: number; readonly capMinor: number }
 }
 
+/** The Log reason of a trip of the cap per sent order (`send-guards.ts`). */
+const CAP_TRIP = 'order_cap'
+
 /** What Tonight shows the actor. Parts the actor may not see are left out, not emptied. */
 export interface Tonight {
   readonly serviceDate: string
@@ -1095,36 +1098,43 @@ export async function readTonight(
       .where(and(pausesOfVenue(venue.id), isNull(pauses.liftedAt)))
       .orderBy(pauses.startedAt)
 
-    // The cap a guard pause tripped on (S10): the trip's Log entry, written in the same
-    // transaction as the pause (`tripGuard`), names the sent order's total and the cap.
+    // The cap a guard pause tripped on (S10). `tripGuard` writes the pause and its trip's Log entry
+    // in one transaction, so both carry that transaction's time: the entry of this pause is the
+    // `order_cap` trip at the pause's own start. Nothing is named when no entry matches exactly
+    // (the Log keeps one trip a minute, so a later pause can have none of its own), nor when a trip
+    // of another guard came after it: the amount would no longer be the reason.
     const guardPauses = active.filter(
       (pause) => pause.scope === 'table' && pause.cause === 'guard_tripped',
     )
     const capOf = new Map<string, { totalMinor: number; capMinor: number }>()
     if (guardPauses.length > 0) {
-      const earliest = Math.min(...guardPauses.map((pause) => pause.startedAt.getTime()))
+      const earliest = new Date(Math.min(...guardPauses.map((pause) => pause.startedAt.getTime())))
       const trips = await tx
-        .select({ tableId: logEntries.tableId, at: logEntries.at, details: logEntries.details })
+        .select({
+          tableId: logEntries.tableId,
+          at: logEntries.at,
+          reason: logEntries.reason,
+          details: logEntries.details,
+        })
         .from(logEntries)
         .where(
           and(
             eq(logEntries.venueId, venue.id),
             eq(logEntries.kind, 'guard.tripped'),
-            eq(logEntries.reason, 'order_cap'),
             inArray(
               logEntries.tableId,
               guardPauses.map((pause) => pause.targetId),
             ),
-            gte(logEntries.at, new Date(earliest - 60_000)),
+            gte(logEntries.at, earliest),
           ),
         )
-        .orderBy(desc(logEntries.at))
       for (const pause of guardPauses) {
-        const trip = trips.find(
+        const since = trips.filter(
           (entry) =>
-            entry.tableId === pause.targetId &&
-            entry.at.getTime() >= pause.startedAt.getTime() - 60_000,
+            entry.tableId === pause.targetId && entry.at.getTime() >= pause.startedAt.getTime(),
         )
+        if (since.some((entry) => entry.reason !== CAP_TRIP)) continue
+        const trip = since.find((entry) => entry.at.getTime() === pause.startedAt.getTime())
         const totalMinor = trip?.details.totalMinor
         const capMinor = trip?.details.capMinor
         if (typeof totalMinor === 'number' && typeof capMinor === 'number') {

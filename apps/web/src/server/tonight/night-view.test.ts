@@ -322,6 +322,7 @@ const night = (fields: Partial<NightRead> = {}): NightRead => ({
   hasService: true,
   dayEndsAt: '07:00',
   closedAt: new Date('2026-10-27T05:05:00Z'),
+  ended: false,
   full: true,
   fix: [
     {
@@ -501,6 +502,16 @@ describe('the screen round Log lines (S15, S20)', () => {
     expect(changed('telegram_linked')).toEqual(['telegram'])
     expect(changed('ordering')).toEqual(['setting'])
     expect(settingWordsOf(null, ['unknownKey'])).toEqual(['setting'])
+    // A key with no part of its own is still said, after the parts that are named.
+    expect(changed('ordering', ['unknownKey', 'capMinor'])).toEqual(['limits', 'setting'])
+    // The alerts form saves the Telegram chat too: its keys say which part changed.
+    expect(changed('alerts', ['telegramChatId'])).toEqual(['telegram'])
+    expect(changed('alerts', ['alertRecipientUserIds', 'telegramChatId'])).toEqual([
+      'alerts',
+      'telegram',
+    ])
+    expect(changed('alerts')).toEqual(['alerts'])
+    expect(changed('telegram_unlinked')).toEqual(['telegram'])
     expect(logLineView(line(), input).setting).toEqual([])
   })
 
