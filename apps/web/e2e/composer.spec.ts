@@ -199,8 +199,8 @@ test('the Studio holds Structure and the guest features; Design is a page of its
     await expect(page, old).toHaveURL(new RegExp(`${venue}/design`))
   }
   await page.goto(`${venue}?tab=composer&sub=structure`)
-  await expect(page).toHaveURL(/[?&]tab=studio/)
-  await expect(page).not.toHaveURL(/sub=/)
+  // The Studio's own `sub` is kept (D154's one address per screen keeps a screen's parameters).
+  await expect(page).toHaveURL(/[?&]tab=studio&sub=structure$/)
   await expect(page.getByTestId('composer')).toBeVisible()
   await page.goto(`${venue}?tab=composer`)
   await expect(page).toHaveURL(/[?&]tab=studio/)

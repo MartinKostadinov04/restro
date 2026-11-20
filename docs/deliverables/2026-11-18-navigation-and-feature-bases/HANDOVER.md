@@ -17,5 +17,8 @@ Kept current by the lane 6 session so a restart reuses what exists.
 - Step 5 reviews: code-review high (Opus) on #456, 3 fixed in 9509581f, 2 skipped to ticket 8 (#467); security-review (Opus): one medium (Better Auth's `/organization/set-active` over HTTP let a device switch organisation), fixed by disabling the path.
 - Step 6: tickets 1–9 filed `needs-triage`: #460–#468.
 
+- pr-review-toolkit:review-pr (4 Opus agents): fixes in 2970b561 (local, push after CI read).
+- CI on dbfddbfb: unit green; e2e still fails at 390 px only: each screen's root (`tables-tab`, `tonight`, `reservations-*`) is found twice, one in `<main>`, one outside it. `loading.tsx` dropped (it also made a deleted venue 200). Cause (trace DOM): the second copy is React's streamed `<div hidden id="S:3">`, orphaned because the sidebar's `isMobile` flipped in its context right after hydration, which makes React client-render the still-pending Suspense boundaries. Fixed by reading `isMobile` per component (`useSyncExternalStore`), not from the provider's context.
+
 ## Next
-pr-review-toolkit:review-pr (Opus) → persona walk with after screenshots in `after/` (start web, worker and sim-pos only for the walk, stop them after) → PR body with screenshots, ready (never merge) → rebase onto `origin/sr/foundation` → report.
+CI green on the isMobile fix → persona walk with after screenshots in `after/` (start web, worker and sim-pos only for the walk; the pane's password field takes no typed text, so the walk agent should sign in through Playwright or a cookie) → PR body, ready (never merge) → rebase onto `origin/sr/foundation` → report.
