@@ -16,7 +16,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: Restro 44 px floor; design-critique 3 (reading order and hierarchy)
 - Evidence: JS rects, badge left 141 width 67.5; Rename left 145 width 44, top 386; Move up 193, Move down 241, Open 293
 - Proposal: stack the name and badge above the action row below 640 px. Bulgarian: drop the "(името на заведението)" suffix from the row; the heading already says it.
-- Status: candidate
+- Status: re-verified (#471, re-check 2026-11-20)
 
 ### S2. Every tab bar draws a stray vertical scrollbar next to the tabs
 - Kind: bug
@@ -27,7 +27,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: design-critique 4 (consistency); Restro Clean rule 2
 - Evidence: `document.querySelector('[role=tablist]')`: height 36, scrollHeight 37, overflow auto
 - Proposal: `overflow-y: hidden`, or fix the 1 px height mismatch.
-- Status: candidate
+- Status: re-verified (#471, re-check 2026-11-20)
 
 ### S3. At 1024 px the venue Settings page scrolls sideways, and the last section tab (Versions) is clipped
 - Kind: bug
@@ -38,7 +38,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: WCAG 1.4.10
 - Evidence: JS `{w:1024, sw:1039}`, offending elements `MAIN.relative.flex.w-full…`, `HEADER`, `DIV.mx-auto.max-w-7xl`
 - Proposal: find what makes the main column 15 px wider than the viewport (a min-width or the section tab list). Below 1280 px the nine section tabs could use the dropdown the phone uses.
-- Status: candidate
+- Status: fix in flight (#471: the section tabs still clip at 1024/1280, N1)
 
 ### S4. Settings › General says "Not synced yet" and also shows completed syncs
 - Kind: bug
@@ -49,7 +49,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: ux-copy (clear, consistent); operational-screens screen read Q3 (what is here, and its state)
 - Evidence: body text of the section; Integrations page shows "Свързано"
 - Proposal: derive the sentence from the connection state. Bulgarian "Синхронизирано за последно: 14:51"; show "Първо запазете данните…" only when the connection has none.
-- Status: candidate
+- Status: re-verified (#469, re-check 2026-11-20)
 
 ### S5. The sync history is twenty identical rows, each "Друго · 0 с · Завършено", one every five minutes
 - Kind: simplification
@@ -60,7 +60,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: operational-screens Patterns (list of records); ux-copy rule 8
 - Evidence: expanded list text
 - Proposal: hide kind `other` rows (or name the real kind), and show "N items changed" instead of "0 с".
-- Status: candidate
+- Status: re-verified (#469, re-check 2026-11-20)
 
 ### S6. The connection page says "Connected" yet "Last checked: Never", and shows no sign of a saved username or password
 - Kind: bug
@@ -71,7 +71,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: operational-screens screen read Q3; ux-copy (empty states and errors say state and next step)
 - Evidence: input values `[host=localhost:4750, user="", password len0]`
 - Proposal: show the user name, and give the password field a placeholder "Запазена — въведете нова, за да я смените" / "Saved — type a new one to replace it". Make Status "Not checked yet" until a check has run.
-- Status: candidate
+- Status: re-verified (#469: Connected and Last check agree); the demo's disabled Sync is #486
 
 ### S7. The New venue dialog offers "test POS · 1 venue", then step 2 says everything is already linked and Create is dead
 - Kind: simplification
@@ -82,7 +82,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: design-critique 2 (unnecessary steps); ux-copy (empty state: what, why, how to start)
 - Evidence: dialog text
 - Proposal: on step 1, mark a POS with no free venue as "Няма свободни заведения / No free venues" and disable it, with one line saying where its venues are linked.
-- Status: candidate
+- Status: re-verified (#471, re-check 2026-11-20)
 
 ### S8. In the hours dialog the "Same hours on" checkboxes are 16 px
 - Kind: bug
@@ -93,7 +93,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: Restro 44 px floor
 - Evidence: dialog `getBoundingClientRect`: `INPUT:checkbox 16x16`, `LABEL:Вт 40x16`
 - Proposal: the `tap-area` class on each checkbox plus label, one per row or at least 44 px tall.
-- Status: candidate
+- Status: rejected by the reviewer (tap-area gives 44 px)
 
 ### S9. The reservation plan editor on a phone draws spots 12 px wide with no zoom
 - Kind: bug (in another lane's area, logged for lane 4's reviewer)
@@ -104,7 +104,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: Restro 44 px floor; WCAG 2.5.7 (the list is the alternative)
 - Evidence: `__small()` list of 120 under-44 controls
 - Proposal: let lane 4 decide. For example, on a phone show only the list, or add pinch zoom.
-- Status: candidate
+- Status: → lane 4
 
 ### S10. Copy says "till / касата" for the POS, which the glossary forbids
 - Kind: simplification
@@ -115,7 +115,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: ux-copy rule 8 and GLOSSARY.md
 - Evidence: Menus card text; en HTML fetch of `…section=general`
 - Proposal: "Менютата идват от POS системата" / "The menus come from the POS". Heading "Източник / Source". Check "Archived" against D-numbers before renaming.
-- Status: candidate
+- Status: re-verified (#469, strings); the Deleted-venues rename is #473
 
 ### S11. A hand-made venue is told to connect a POS, which cannot be done
 - Kind: bug
@@ -126,7 +126,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: D64, D87 (source fixed at creation); ux-copy (empty state)
 - Evidence: screenshot of the new venue's Studio, text of the empty state
 - Proposal: for a hand-made venue only "Create a section to start your menu." / «Създайте секция, за да започне менюто.»
-- Status: candidate
+- Status: re-verified (#469, re-check 2026-11-20)
 
 ### S12. "Publishing" is a settings section that holds POS sync scheduling, and it uses "reading" for what other screens call "sync"
 - Kind: simplification
@@ -137,7 +137,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: ux-copy rule 8
 - Evidence: section text
 - Proposal: name the section "Синхронизация / Sync", use "Sync" throughout, and cut the footer to "Saving makes these settings this venue's own."
-- Status: candidate
+- Status: re-verified (#469, re-check 2026-11-20)
 
 ### S13. The venue-legal-details form appears in both Ordering and Paying
 - Kind: simplification
@@ -148,7 +148,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: operational-screens Patterns (one job, one place)
 - Evidence: section texts
 - Proposal: keep it in one place (Paying) and link to it from Ordering.
-- Status: candidate
+- Status: rejected by the reviewer (one component on purpose, #288, RR-O15)
 
 ### S14. The tables screen is a wall of 76 near-identical cards on a phone
 - Kind: optimisation
@@ -159,7 +159,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: design-critique 3 (hierarchy); screen-read Q3; B7 (never truncate a name)
 - Evidence: 76 `Действия за маса …` buttons; per-card text in the page dump
 - Proposal: collapse each area by default, and show the two selects only when they differ from the venue ("Own menu" chip). Cut the intro to one sentence.
-- Status: candidate
+- Status: re-verified (#480, re-check 2026-11-20)
 
 ### S15. navigation → lane 6: organisation settings use wrapping tabs while a venue uses a dropdown
 - Kind: simplification
@@ -170,7 +170,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: design-critique 4; Patterns
 - Evidence: screenshot of `/settings/integrations` at 390
 - Proposal: lane 6 decides.
-- Status: candidate
+- Status: navigation → lane 6
 
 ### S16. navigation → lane 6: nothing links to the QR guide, and the guide describes controls the screen does not have
 - Kind: simplification
@@ -181,7 +181,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: design-critique 2 (obvious path); ux-copy
 - Evidence: Tables body text vs guide text
 - Proposal: lane 6: a link "Как да използвам собствен линк?" in the address card. Edit the guide to the controls that exist.
-- Status: candidate
+- Status: navigation → lane 6
 
 ### S17. navigation → lane 6: on a phone a venue's Settings needs two stacked dropdowns, placed above its title
 - Kind: simplification
@@ -192,7 +192,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: operational-screens screen read Q2/Q3
 - Evidence: screenshots at 390
 - Proposal: lane 6 decides.
-- Status: candidate
+- Status: navigation → lane 6
 
 ### S18. Several tap targets are under 44 px on a phone
 - Kind: bug
@@ -203,7 +203,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: Restro 44 px floor
 - Evidence: `a,button…` rect scan on `/venues`, `?section=ordering`, `/guides/qr-links`, `?section=staff`
 - Proposal: pad links with `tap-area`; make the PIN segmented controls 44 px tall.
-- Status: candidate
+- Status: re-verified (#471, re-check 2026-11-20)
 
 ### S19. Long names are cut with an ellipsis in the sidebar
 - Kind: bug
@@ -214,7 +214,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: B7 / §7.5 (never truncate a name)
 - Evidence: sidebar screenshots, `/venues` and `/venues/<id>` at 390
 - Proposal: let sidebar items wrap to two lines.
-- Status: candidate
+- Status: re-verified (#471, re-check 2026-11-20)
 
 ### S20. Deleting a venue means typing its whole name, although it can be restored for 30 days
 - Kind: simplification
@@ -225,7 +225,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: Patterns (the two Remove rows); copy-rules rule 11 (dismiss wording)
 - Evidence: dialog screenshots at 390
 - Proposal: since the glossary calls it recoverable ("Archived"), use the one-tap-plus-Undo pattern, or keep the typed name only for "Delete forever". The dialog's dismiss button becomes "Запази заведението / Keep venue".
-- Status: candidate
+- Status: re-verified (#471, re-check 2026-11-20)
 
 ### S21. Page titles and headings repeat themselves
 - Kind: simplification
@@ -236,7 +236,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: Clean rule 2; ux-copy (concise)
 - Evidence: page text
 - Proposal: drop the duplicate h1 or breadcrumb; title "Интеграции · Club Biad · Restro".
-- Status: candidate
+- Status: re-verified (#469, re-check 2026-11-20)
 
 ### S22. The print sheet is 794 px wide on a phone
 - Kind: bug
@@ -247,7 +247,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: WCAG 1.4.10
 - Evidence: JS `{sw:794}`
 - Proposal: A4 width only under `@media print`; on a screen let the cards flow to the viewport.
-- Status: candidate
+- Status: re-verified (#480, re-check 2026-11-20)
 
 ### S23. The "Restore" button is "Върни", right beside "Изтрий завинаги"
 - Kind: simplification
@@ -258,7 +258,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: ux-copy (CTAs, confirmation); Patterns
 - Evidence: screenshot
 - Proposal: "Възстанови / Restore" as the filled button, and "Изтрий завинаги" as a "…" item. Shorten the intro to two sentences.
-- Status: candidate
+- Status: re-verified (#471, re-check 2026-11-20)
 
 ### S24. Several copy lines are unclear
 - Kind: simplification
@@ -269,7 +269,7 @@ Scope also re-checks the trial's S1, S2 and S19 (`../../2026-11-18-screens-trial
 - Check: ux-copy; copy-rules rule 8
 - Evidence: section texts
 - Proposal: Versions "Публикувана ръчно от Мартин" or just "Публикувана ръчно"; one quote style („…“ in Bulgarian); "Menu: venue default (Club Biad Sofia)".
-- Status: candidate
+- Status: re-verified (#469, re-check 2026-11-20)
 
 ### Works
 - **Venues list:** the cards show state, source and address. The long name wraps, and the draft's disabled Preview explains itself. The list refreshes after delete and restore.
@@ -314,7 +314,7 @@ Waiting for Phase B.
 - Check: operational-screens feedback 2 (what failed says what to do); ux-copy error messages
 - Evidence: JS `imgs=0 loading=true testlink=BUTTON disabled`; the print sheet screenshot text. I found no 4xx or log line.
 - Proposal: if a manager is meant to read codes, load them for that role. If not, drop the "look at and print" sentence and the Print button, and say "Only owners and admins can see the codes." / «Само собственици и администратори виждат кодовете.»
-- Status: candidate
+- Status: re-verified (#480, re-check 2026-11-20)
 
 ### S26. A manager gets a different silent fallback for pages they may not open
 - Kind: bug
@@ -325,7 +325,7 @@ Waiting for Phase B.
 - Check: operational-screens wayfinding Q1 (where am I); ux-copy
 - Evidence: `fetch` of the three addresses: staff and alerts → 200 with Menus/Venue settings text; deleted-venues → 404
 - Proposal: show a one-line "Only owners and admins can open this" page, or redirect with a toast. «Само собственици и администратори имат достъп до това.»
-- Status: candidate
+- Status: re-verified (#471, re-check 2026-11-20)
 
 ### S27. The manager gets no explanation for the missing Publish button, and the Publish settings section has six disabled controls with no read-only line
 - Kind: simplification
@@ -336,7 +336,7 @@ Waiting for Phase B.
 - Check: operational-screens "A role that may not act" (never a disabled control without the reason); ux-copy rule 8
 - Evidence: header text compared with the owner's (no "Publish", no "Up to date" line); `button[disabled],input[disabled]` count 6 on `…section=publish`
 - Proposal: one shared line at the top of each read-only section, «Само собственици и администратори могат да променят това.» / "Only owners and admins can change this." Show the venue state ("Up to date") in the header even without the button.
-- Status: candidate
+- Status: re-verified (#471, re-check 2026-11-20)
 
 ### Works (manager)
 - General: name and address as plain text, with a clear owners-and-admins line for the menu source and sync.
@@ -356,7 +356,7 @@ Waiting for Phase C.
 - Check: ux-copy empty states; operational-screens wayfinding Q4
 - Evidence: page text; `fetch` of the three admin addresses → final URL `/no-organization`
 - Proposal: add a contact line and the BG/EN switch. Bulgarian: «Още нямате организация. Поискайте покана от екипа на Restro: <контакт>.»
-- Status: candidate
+- Status: re-verified (#472, language switch); the contact line is #474
 
 ### S29. The sign-in error is not tied to the fields it concerns
 - Kind: bug
@@ -367,7 +367,7 @@ Waiting for Phase C.
 - Check: WCAG 3.3.1; ux-copy error messages (what, why, how to fix)
 - Evidence: JS: `role="alert"`, `aria-invalid`/`aria-describedby` both null on both inputs
 - Proposal: set `aria-invalid` on both fields and `aria-describedby` to the error. Add «Ако сте забравили паролата, поискайте нова от собственика си.» if that is the intended route.
-- Status: candidate
+- Status: re-verified (#472, re-check 2026-11-20)
 
 ### Works (Phase C)
 - **`/no-organization`:** short and calm, names the signed-in account, one 44 px Sign out, and no horizontal scroll at 390 px.
@@ -396,7 +396,7 @@ Waiting for Phase C.
 - Check: code-review (high)
 - Evidence: `auth.ts:89` `activeOrganizationId: first?.organizationId ?? null`; `use-settings-run.tsx:183`
 - Proposal: in `onSignedIn`, `authClient.organization.setActive({ organizationId })` for the page's organisation, then retry.
-- Status: candidate
+- Status: fixed, covered by tests (#472)
 
 ### C2. The password dialog gets stuck if the connection drops during sign-in
 - Kind: code
@@ -407,7 +407,7 @@ Waiting for Phase C.
 - Check: code-review (high)
 - Evidence: `use-settings-run.tsx:181-184`; compare `src/components/auth/sign-out.ts:6-11`
 - Proposal: try/catch/finally; on a throw show the unknown-error text; always `setBusy(false)`.
-- Status: candidate
+- Status: fixed, covered by tests (#472)
 
 ### C3. The print sheet and the QR download skip the shared-device guard every other tables path has (RR-84)
 - Kind: code
@@ -418,7 +418,7 @@ Waiting for Phase C.
 - Check: code-review (high)
 - Evidence: `route.ts:24` builds the actor with no shared-device check
 - Proposal: add the `onSharedDevice` check to both: 404 from the route, the own-sign-in notice on the print page.
-- Status: candidate
+- Status: fixed, covered by tests (#472)
 
 Rejected from the skill: old session not revoked after re-auth (normal Better Auth, D122 §7 doesn't ask); tables actor `operator` flag (unreachable); `addPersonAction` empty id (cannot happen); `startPlanAction` revalidate (correct, idempotent); three efficiency points (sequential reads, double scope, sequential reveal batches) outside the focus.
 
@@ -438,7 +438,7 @@ The skill's false-positive filter scored both rows below 8 (reports nothing); th
 - Evidence: as in Saw
 - Proposal: one guard `isFreshSignIn(signedInAt)` answering `sign_in_again` on these (not create, restore or read-only check/sync); or `freshSignIn: true` on `table_code.reissue`. Tests: a 16-minute-old `signedInAt` gets `sign_in_again` and nothing moves (`organization-actions.test.ts`, `venue-lifecycle-actions.test.ts`).
 - Severity guess: medium
-- Status: candidate
+- Status: fixed, covered by tests (#472)
 
 ### X2. Any signed-in account can rename itself, which changes the name on past Log entries
 - Kind: security
@@ -450,7 +450,7 @@ The skill's false-positive filter scored both rows below 8 (reports nothing); th
 - Evidence: as in Saw
 - Proposal: add `'/update-user'` to `DISABLED_HTTP_PATHS` and to the 404 list in `auth.test.ts:146-151`.
 - Severity guess: low
-- Status: candidate
+- Status: fixed, covered by tests (#472)
 
 Rejected: RR-75 (already logged, red test on purpose); print/QR shared-device check (core refuses `settings.codes`; test gap only — conflicts with C3, reviewer decides); settings layout on a shared device (readable data only); Better Auth org endpoints (check membership); open redirect via `next` (`safeNextPath` holds); POS credentials (sealed, never returned); POS host SSRF (worker host policy, outside area); purge (worker re-checks, web never uses `restro_purge`).
 
@@ -534,7 +534,7 @@ I walked as the owner, mainly at 390 px and 1280 px in English. The pane drew pa
 - Check: design-critique 2; Clean rule 2
 - Evidence: `tables-panel.tsx:161-166` shows it whenever `total > 0`; JS `disabled:false` with summary "76 tables, 76 with a code"
 - Proposal: show it only when `coded < guestTotal`, as «Създай липсващите N кода» / "Create the N missing codes". When every table has a code, Print sheet becomes the primary button.
-- Status: confirmed · Before the pilot · S · none · no · Fix E
+- Status: re-verified (#480, re-check 2026-11-20)
 
 ### R2. The disabled Print sheet gives its reason only on hover
 - Kind: bug (reviewer's row)
@@ -545,7 +545,7 @@ I walked as the owner, mainly at 390 px and 1280 px in English. The pane drew pa
 - Check: operational-screens Patterns (nothing hover-only)
 - Evidence: `tables-panel.tsx:180-189`
 - Proposal: hide the button until a code exists, or show the `printNone` text as a line under it.
-- Status: confirmed · Polish · S · none · no · Fix E
+- Status: re-verified (#480, re-check 2026-11-20)
 
 ### R3. The QR guide describes controls that do not exist and gives developer-only steps
 - Kind: bug (reviewer's row)
@@ -556,7 +556,7 @@ I walked as the owner, mainly at 390 px and 1280 px in English. The pane drew pa
 - Check: ux-copy (clear, accurate); design-critique 2
 - Evidence: page text of `/guides/qr-links`
 - Proposal: rewrite Option 1 to the existing card ("Codes lead to …", Create codes, Print sheet). Drop the developer paragraph. Keep Option 2 as "comes later" until a domain setting exists.
-- Status: confirmed · Before the pilot · S · none · no · Fix F
+- Status: re-verified (#471, re-check 2026-11-20)
 
 ### R4. The print sheet's browser tab title is "Restro", so a saved PDF is called Restro.pdf
 - Kind: simplification (reviewer's row)
@@ -567,7 +567,7 @@ I walked as the owner, mainly at 390 px and 1280 px in English. The pane drew pa
 - Check: ux-copy (clear)
 - Evidence: JS `title=Restro`
 - Proposal: «QR кодове · Club Biad Sofia» / "QR codes · Club Biad Sofia".
-- Status: confirmed · Polish · S · none · no · Fix E
+- Status: re-verified (#480, re-check 2026-11-20)
 
 ### R5. Lane 5 error messages say "Something went wrong"
 - Kind: simplification (reviewer's row)
@@ -578,7 +578,7 @@ I walked as the owner, mainly at 390 px and 1280 px in English. The pane drew pa
 - Check: copy-rules rule 4
 - Evidence: en.json lines above
 - Proposal: «Връзката прекъсна. Нищо не е променено: проверете връзката и опитайте пак.» / "The connection dropped. Nothing was changed: check the connection and try again."
-- Status: confirmed · Polish · S · none · no · Fix D
+- Status: re-verified (#469, re-check 2026-11-20)
 
 ### R6. Venue Settings' section tabs grow from 6 to 9 after the page loads
 - Kind: bug (reviewer's row)
@@ -589,7 +589,7 @@ I walked as the owner, mainly at 390 px and 1280 px in English. The pane drew pa
 - Check: design-critique 4 (consistency)
 - Evidence: blind-walk screenshot during the skeleton vs after load
 - Proposal: compute the visible sections before the skeleton draws, or render the skeleton from the same `visibleSettingsSections`.
-- Status: confirmed · Polish · S · none · no · Fix A
+- Status: re-verified (#471, re-check 2026-11-20)
 
 ### R7. "In Settings → Integrations" is plain text, not a link
 - Kind: optimisation (reviewer's row)
@@ -600,7 +600,7 @@ I walked as the owner, mainly at 390 px and 1280 px in English. The pane drew pa
 - Check: operational-screens wayfinding Q4
 - Evidence: en.json:1474-1476
 - Proposal: render "Settings → Integrations" as a link to `/settings/integrations`.
-- Status: confirmed · Polish · S · none · no · Fix B
+- Status: re-verified (#469, re-check 2026-11-20)
 
 ### R8. Integrations history names barsy runs "Full sync" / "Quick sync"; the glossary says "Full read"
 - Kind: simplification (reviewer's row)
@@ -611,7 +611,7 @@ I walked as the owner, mainly at 390 px and 1280 px in English. The pane drew pa
 - Check: copy rule 8
 - Evidence: en.json:1493-1497
 - Proposal: «Пълно четене» / "Full read". "Quick sync" becomes "Changes read", if the glossary has no term; add one.
-- Status: confirmed · Polish · S · none · no · Fix D
+- Status: re-verified (#469, re-check 2026-11-20)
 
 ## Fix plan
 
@@ -709,3 +709,55 @@ Each bundle is one ticket in `ship.md` §1's format: model Sonnet unless noted; 
 - **S28's contact line:** needs the real contact address or link (a fact Martin holds). My recommendation is a support e-mail from config, with the line hidden until one is set.
 - **"till"/"каса" strings outside this lane** (Studio 637, 746, 1108, 1428; Tonight 2332–2413): a note to the lanes that own those screens; Tonight's staff wording may be intended.
 - **The Next.js upgrade:** already #202.
+
+## Re-check (D146 step 6, Opus, 2026-11-20)
+
+Branch `sr/lane5-walk` at ab3e1bfc. Fresh `restro_lane5` (migrate, roles, seed:dev, seed:demo); web on lane5.localhost:3150, worker on 8151, sim-pos on 4750 (club-biad). Accounts: owner@club-biad.test, manager@club-biad.test, noorg@lane5.test (created with no organisation by a scratchpad script).
+
+- S1: re-verified. bg at 390 px, hand-made venue with a long name: the badge is at 53,401–121,423; Rename, Move up, Move down and Delete sit at y 431–475 and Open at 479–523, each 44×44. Nothing overlaps and scrollWidth is 390. en at 390 px, Club Biad: name and badge share one line (369–391) and the buttons are at 400–444 with no overlap.
+- S2: re-verified. Both tablists have overflowY hidden (venue tablist clientHeight 36, scrollHeight 37), so no vertical scrollbar appears.
+- S3: still-open. The page no longer scrolls sideways (1024: scrollWidth 1024), but the venue section tablist still overflows at 1024 and 1280 (details in N1).
+- S4: re-verified. A venue that has not synced shows "Още не е синхронизирано" and no "Last run: Other". The history shows "Прочетени маси".
+- S5: re-verified. The run is named "Прочетени маси" with counters (Изброени 79, Добавени 79, …). Integrations reads "Последно изпълнение: Прочетени маси · Завършено".
+- S6: still-open, then split: the original row is fixed; the disabled Sync is issue #486. /settings/integrations now shows Status "Свързано" and Last check 20.11.2026 13:05, which agree. But the seed still stores no POS credentials: the API user is empty and the password field is empty with no placeholder. Because of that, "Синхронизирай всичко сега" is disabled under "Първо запазете данните за достъп до test POS", and the venue's "Синхронизирай това заведение" is disabled too, so the demo cannot sync.
+- S7: re-verified. Step 1 of the new-venue flow shows "test POS / Няма свободни заведения", disabled.
+- S10: re-verified (strings). bg reads "Менютата идват от test POS" and en "The menus come from test POS". The headings are "Източник" / "Source", and no walked page says "till". Note: messages key `tables.empty.description` still says till/каса; it is allowlisted in messages.test.ts lines 52 and 67.
+- S11: re-verified. A hand-made venue's Studio shows "Още няма секции / Създайте секция, за да започне менюто."
+- S12: re-verified. The section is named "Синхронизиране и публикуване", with "Синхронизиране от test POS". Footer: "Запазването прави тези настройки собствени на заведението."
+- S14: re-verified (Fix plan E). The area index jump links are 44 px tall. The intro is one sentence and the card is 254 px (it was about 330). The selects read "Менюто на заведението" and "Предварително плащане: Като на заведението (Включено)" and are not clipped; en reads "The venue's menu". Caveat: the page is still 23,048 px tall at 390 px (see also N4).
+- S18: re-verified. The staff segmented controls are 110×44 and 44×44. "Виж на картата" and the Reservations „Работно време“ link both have a tap area (::after max(100%, 44px)). The guide's back link is 182×44.
+- S19: re-verified. The sidebar item wraps instead of being cut off: at 1280 it is 96 px tall with white-space normal; at 390 it takes 3 lines, 76 px.
+- S20: re-verified. The dismiss button reads "Запази заведението" and the typed name is kept (D76).
+- S21: re-verified. Page titles: "Общи · Restro", "Интеграции · Restro", "Изтрити заведения · Restro", "QR кодове · Club Biad Sofia · Restro". "Състояние" appears once (the other label is now "Връзка").
+- S22: re-verified. The print page at 390 has scrollWidth 390, 76 codes, and reads "76 кода на 13 страници".
+- S23: re-verified. "Възстанови" is the filled button (variant default, bg-primary); "Изтрий завинаги" is outline.
+- S24: re-verified. Versions reads "Публикувана ръчно". General reads "Останалите настройки не се променят оттук." Alerts uses „…“ (U+201E/U+201C) and no «». en reads "The venue's menu".
+- S25: re-verified (manager, en, 390). The page reads "Only owners and admins can see the codes. They also change the areas, tables and menus." It shows no Print or test-link button and 0 QR images. The print page also says "Only owners and admins can see the codes."
+- S26: re-verified. The staff and alerts addresses redirect to ?section=general. /settings/deleted-venues redirects to /settings/general (200).
+- S27: re-verified (manager). The Publish section shows "Only owners and admins can change this." with 8 disabled controls. The header shows "Up to date: guests see the latest version." with no Publish button.
+- S28: re-verified (language switch only). /no-organization has BG/EN buttons at 44×44; switching gives "Още няма организация"; scrollWidth is 390.
+- S29: re-verified. After a wrong sign-in both inputs have aria-invalid="true" and aria-describedby="login-error", and p#login-error has role=alert.
+- R1: re-verified. With 76 of 76 tables coded there is no Create button, and "Print sheet" is the filled button (variant default).
+- R2: re-verified. A hand-made venue with 0 tables shows no Print button.
+- R3: re-verified. The guide no longer mentions "Base address", "Our link" or 192.168, and it quotes the existing card.
+- R4: re-verified. The print page title is "QR кодове · Club Biad Sofia · Restro".
+- R5: re-verified. This lane's error strings now read "Restro couldn't … Nothing changed; try again." The 5 "Something went wrong" strings that remain belong to other lanes' keys (en.json lines 749, 826, 1710, 1752, 1990).
+- R6: re-verified. A MutationObserver saw the section tabs go from the Studio subtabs straight to all 9 sections, with no 6-tab skeleton.
+- R7: re-verified. The "Настройки → Интеграции" link opens /settings/integrations.
+- R8: re-verified (strings only). The run kinds read "Пълно четене / Full read" and "Четене на промените / Changes read". The seed has no barsy connection, so the screen itself could not be walked.
+- C3: covered by tests. The seed has no shared-device account to walk with.
+- Trial S1: re-verified. With the worker stopped, the print page shows "Кодовете не се показват в момента." instead of "create codes first"; with the worker up it shows 76 codes. Caveat: the print page gives no try-again hint (the card does, see trial S2).
+- Trial S2: re-verified. With the worker down, the card shows "Кодовете не се показват в момента.", an "Опитай пак" button and a disabled test link. After the worker restarted, "Опитай пак" brought back 76 QR codes and a working test-link <a>.
+- Trial S19: re-verified. A wrong code returns 404 with the "not active" page. After 52 wrong codes, even a valid code returns 429 with Retry-After 900 and "Менюто не може да се отвори в момента. Опитайте пак след минута." (see N3). The 503 case was checked only in code (table-token.ts inactivePage).
+
+### New regressions
+
+- N1 (fix in flight, #471): Venue settings section tablist (all 9 sections), at 1024 and 1280. The tablist has `justify-center` plus `overflow-x-auto`, so when it overflows the first tab is clipped on the left and cannot be scrolled to (scrollLeft cannot go negative). Measurements: bg 1024, "Общи" at 150–207 while the list starts at 288; en 1024, "General" starts at 256 while the list is 288–992; bg 1280, the first tab is at 278 against a list start of 288, scrollWidth 958 vs clientWidth 945. The horizontal scrollbar also squeezes the tabs to 14 px tall (clientHeight 21). The longer "Синхронизиране и публикуване" / "Sync and publish" label from S12 likely tipped it over. Fix: justify-start (or `safe center`) and room for the scrollbar.
+- N2 (fix in flight, #471): The delete dialog on a hand-made venue (vn_4bujhu4LTUgY7KUsckJkBL) still lists the bullet about releasing the POS link, which does not apply to a venue with no POS.
+- N3 (issue #485): The 429 page on /t/<code> says "Опитайте пак след минута" (try again in a minute), but the block lasts 15 minutes (Retry-After 900, bad-codes.ts blockMs).
+- N4 (fix in flight, #480): The Tables area index lists "Каса 0", an empty POS-till area, at the top of the guest-facing area list.
+- N5 (another lane, polish; noted on #475): Studio guest-features text says "с следващото"; Bulgarian needs "със следващото".
+
+### Servers
+
+The web server (preview_stop), worker and sim-pos were stopped along with their process trees. Afterwards nothing listened on 3150, 8151 or 4750, and no sr-setup-78027c node process was left.
