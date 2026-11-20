@@ -678,11 +678,6 @@ export const SERVICES_CSS = `
 .rm .ro-line-actions button:disabled {
   opacity: 0.45;
 }
-.rm .ro-line-side {
-  display: grid;
-  justify-items: end;
-  gap: 8px;
-}
 .rm .ro-sum {
   display: flex;
   justify-content: space-between;

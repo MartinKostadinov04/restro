@@ -1814,6 +1814,41 @@ describe('the age of the bill’s reading (lane 3 S7, D121)', () => {
     await h.tick()
     expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill')
   })
+
+  it('asks again after a whole ask that failed, with the age still growing, and waits 15 s after one that came', async () => {
+    let fail = false
+    let reading = 20
+    const h = harness((url) => {
+      if (url.includes('since=')) return json(200, quiet)
+      return fail ? json(503, {}) : json(200, withBill(1, reading))
+    })
+    const age = () => h.client.getState().tableBill?.readAgoSeconds
+    h.client.start()
+    await h.tick()
+    fail = true
+    h.client.setScreen('bill')
+    await h.tick()
+    // The whole ask failed: no new reading, and nothing stamped.
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill')
+    expect(age()).toBe(20)
+    const retry = h.nextWait() ?? 0
+    h.advance(retry)
+    await h.tick()
+    // The next poll asks for the whole state again, not `since`; the age has kept growing.
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill')
+    expect(age()).toBe(20 + Math.floor(retry / 1000))
+    // It comes: the server's new reading resets the age, and the next whole ask waits 15 s.
+    fail = false
+    reading = 30
+    h.advance(h.nextWait() ?? 0)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill')
+    expect(age()).toBe(30)
+    h.advance(5_000)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill&since=1')
+    expect(age()).toBe(35)
+  })
 })
 
 describe('the idle back-off (P25)', () => {

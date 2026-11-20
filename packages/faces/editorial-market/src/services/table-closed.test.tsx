@@ -129,6 +129,16 @@ describe('S10, S17 and S19: a table closed for phones shows the menu read-only',
     expect(within(page).queryByRole('button', { name: /Add to bag/ })).toBeNull()
   })
 
+  it('says why the waiter button went where the venue takes calls but no orders', () => {
+    const callsOnly = { ...view, features: { ...view.features, ordering: false } }
+    drawFace(fakeHost({ ordering: { state: 'closed', notesAndOptions: true } }), callsOnly)
+    expect(document.querySelector('[data-slot="menu.call_waiter"]')).toBeNull()
+    expect(document.querySelector('[data-slot="ordering.closed"]')?.textContent).toBe(
+      W.callTableNotOpen,
+    )
+    expect(document.body.textContent).not.toContain(W.orderingClosed)
+  })
+
   it('leaves "Add" and the waiter button where the table takes orders', () => {
     drawFace(orderHost())
     expect(screen.getByRole('button', { name: 'Add Hummus' }).hasAttribute('disabled')).toBe(false)

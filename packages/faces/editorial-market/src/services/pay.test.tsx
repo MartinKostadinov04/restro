@@ -1062,6 +1062,53 @@ describe('the 11-18 screen round (lane 3 S1, S14)', () => {
     expect(payButton(sheet, 'Pay €22.50').hasAttribute('disabled')).toBe(false)
   })
 
+  it('says nothing is to pay only on a complete reading: a failed or offline one keeps its own line (D72, D121)', () => {
+    const failed = openPay(
+      fakeHost({ ...base(), tableBill: tableBillOf([], { complete: false }) }),
+    ).sheet
+    expect(failed.querySelector('[data-slot="pay.empty"]')).toBeNull()
+    expect(failed.querySelector('[data-slot="pay.blocked"]')?.textContent).toBe(
+      'We can’t read the bill right now. We keep trying.',
+    )
+    expect(failed.textContent).not.toContain('Nothing to pay yet')
+    cleanup()
+    resetPage()
+    const offline = openPay(
+      fakeHost({ ...base(), tableBill: tableBillOf([]), offline: true }),
+    ).sheet
+    expect(offline.querySelector('[data-slot="pay.empty"]')).toBeNull()
+    expect(offline.querySelector('[data-slot="pay.blocked"]')?.textContent).toBe(
+      'Weak connection. Nothing new was sent yet, we keep trying.',
+    )
+    cleanup()
+    resetPage()
+    const none = openPay(fakeHost({ ...base(), tableBill: null, offline: true })).sheet
+    expect(none.querySelector('[data-slot="pay.offline"]')?.textContent).toBe(
+      'Weak connection. Nothing new was sent yet, we keep trying.',
+    )
+    expect(none.textContent).not.toContain('Nothing to pay yet')
+  })
+
+  it('leaves a line another phone is paying unticked when it opens from the bill’s Pay', () => {
+    drawFace(
+      fakeHost({
+        ...base(),
+        tableBill: tableBillOf([
+          tableLine(1, 'Wine', 900),
+          tableLine(2, 'Gin', 700, { beingPaid: true }),
+        ]),
+      }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Your table’s bill' }))
+    const bill = screen.getByRole('dialog', { name: 'Your table’s bill' })
+    fireEvent.click(within(bill).getByRole('button', { name: /^Pay/ }))
+    const sheet = screen.getByRole('dialog', { name: 'Pay' })
+    // The one free line is ticked; the Gin has no box, and Pay covers the Wine alone.
+    const boxes = within(sheet).getAllByRole('checkbox') as HTMLInputElement[]
+    expect(boxes.map((box) => box.checked)).toEqual([true])
+    expect(payButton(sheet, 'Pay €9.00').hasAttribute('disabled')).toBe(false)
+  })
+
   it('ticks nothing when the pay sheet opens any other way', () => {
     const { sheet } = openPay(fakeHost(base()))
     for (const box of within(sheet).getAllByRole('checkbox') as HTMLInputElement[]) {

@@ -358,12 +358,15 @@ export function PaySheet() {
   useEffect(() => {
     if (bill !== null && payment === null) setPicks((current) => reconcilePicks(current, bill))
   }, [bill, payment])
-  // Opened from the bill's "Pay N" (lane 3 S14): the whole bill is ticked, so this sheet's Pay reads
-  // the amount the bill's button spoke of. Once, as the sheet opens; a reloaded `#pay` ticks nothing.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: taken once, as the sheet opens
+  // Opened from the bill's "Pay N" (lane 3 S14): every free line is ticked; a line another phone is
+  // paying stays unticked, so Pay can read less than the bill's button. The armed tap is taken only
+  // when the ticks are set, so a bill that arrives a moment later still gets them; a reloaded `#pay`
+  // or the header's Pay ticks nothing.
+  const offered = offersPay(state)
   useEffect(() => {
-    if (o.takeWholeBill() && bill !== null && offersPay(state)) setPicks(pickWhole(new Map(), bill))
-  }, [])
+    if (bill === null || payment !== null || !offered || freeLines(bill).length === 0) return
+    if (o.takeWholeBill()) setPicks(pickWhole(new Map(), bill))
+  }, [bill, payment, offered, o.takeWholeBill])
 
   const nameOf = (line: TableBillLineView) => lineNameText(line.name, locale, words.otherItem)
 
@@ -422,10 +425,24 @@ export function PaySheet() {
       </div>
     )
   }
+  const offline = state.offline === true
+  // Offline with no bill yet: the offline line, never "Nothing to pay yet" (D72, D121).
+  if (bill === null && offline) {
+    return (
+      <div className="ro-sheet" data-slot="pay.offline">
+        <p className="ro-notice">{words.offline}</p>
+      </div>
+    )
+  }
   const hasLines = bill?.parts.some((part) => part.lines.length > 0) === true
   // Nothing on the bill and nothing paid (lane 3 S1): say so and lead back to the menu, never a
-  // form with a dead "Pay 0,00".
-  if (bill === null || paying === null || (!hasLines && bill.paidLines.length === 0)) {
+  // form with a dead "Pay 0,00". Only on a complete reading while online: a failed or offline
+  // reading keeps the form with its own not-up-to-date or offline line (D72, D121).
+  if (
+    bill === null ||
+    paying === null ||
+    (bill.complete && !offline && !hasLines && bill.paidLines.length === 0)
+  ) {
     return (
       <div className="ro-sheet" data-slot="pay.empty">
         <p className="ro-empty">{words.nothingToPay}</p>
@@ -449,7 +466,7 @@ export function PaySheet() {
     tip,
     tipsOffered,
     receiptEmail,
-    state.offline === true,
+    offline,
     // D120: while ordering is paused Pay is greyed, with the pause's own line.
     state.ordering?.state === 'paused',
   )

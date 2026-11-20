@@ -69,12 +69,16 @@ export function ServiceBar() {
   // the bill stayed, and shows no amount (P22).
   const ordering = o.state.ordering ?? null
   const tableClosed = ordering?.state === 'closed'
+  // A venue with calls but no ordering hides the waiter button here too, so it says why in the
+  // call's own words (lane 3 review).
   const closedText =
-    !features.ordering || ordering === null || ordering.state !== 'closed'
+    ordering === null || ordering.state !== 'closed'
       ? null
       : ordering.movedAway === true && o.tableLabel !== null && o.tableLabel.trim() !== ''
         ? words.billStayed(o.guest.table(o.tableLabel))
-        : orderingClosedText(ordering, words)
+        : features.ordering || ordering.retired === true
+          ? orderingClosedText(ordering, words)
+          : words.callTableNotOpen
   // While a sheet is open the bar is hidden, not removed: the button that opened the sheet gets the
   // focus back when it closes.
   return (

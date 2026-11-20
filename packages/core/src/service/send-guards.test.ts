@@ -350,6 +350,8 @@ describe.skipIf(!hasDatabase)("Send's guards (as the restro_app role)", () => {
       code: 'guard_tripped',
       details: { guard: 'cap', capMinor: 1000, totalMinor: 1350 },
     })
+    // The phone hears the cap as its own reason (lane 3 S10).
+    expect(guestResult(tripped).code).toBe('over_phone_limit')
     expect(await sentOrdersOfTable()).toBe(0)
     expect(await orderLines()).toEqual([{ itemId: beer, optionIds: [], qty: 3, note: '' }])
     expect(await activePauses()).toMatchObject([

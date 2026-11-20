@@ -253,8 +253,8 @@ export interface Services {
   readonly takeCall: () => boolean
   /**
    * The bill's "Pay N" (lane 3 S14): the tap arms the whole bill, so the Pay sheet opens with every
-   * free line ticked and its Pay reads the amount the bill's button spoke of. Armed by a tap alone,
-   * so a reloaded `#pay` address ticks nothing.
+   * free line ticked; a line another phone is paying stays unticked, so Pay can read less than the
+   * bill's button. Armed by a tap alone, so a reloaded `#pay` address ticks nothing.
    */
   readonly armWholeBill: () => void
   /** Takes the armed whole bill (true once), as the Pay sheet opens. */
@@ -741,6 +741,10 @@ function ActiveServices({
     wholeBillArmed.current = false
     return was
   }, [])
+  // A Pay sheet closed before its bill came leaves nothing armed for the next one.
+  useEffect(() => {
+    if (sheet !== 'pay') wholeBillArmed.current = false
+  }, [sheet])
   const setTip = useCallback((choice: TipChoice) => setTipChoice(choice), [])
 
   // A table not open for phones shows the menu read-only (lane 3 S17): no Add, no dish order.

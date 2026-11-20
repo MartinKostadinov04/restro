@@ -1194,9 +1194,6 @@
 .rm .ro-line-actions button { text-underline-offset: 3px }
 .rm .ro-line-actions button { touch-action: manipulation }
 .rm .ro-line-actions button:disabled { opacity: 0.45 }
-.rm .ro-line-side { display: grid }
-.rm .ro-line-side { justify-items: end }
-.rm .ro-line-side { gap: 8px }
 .rm .ro-sum { display: flex }
 .rm .ro-sum { justify-content: space-between }
 .rm .ro-sum { gap: 12px }

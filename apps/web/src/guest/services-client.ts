@@ -107,7 +107,8 @@ export const OFFLINE_AFTER_MS = 10_000
  * On the bill, a reading older than this is read again by the server (core's `FRESH_READING_MS`,
  * #74); a reading that finds the same bill leaves the version, so it comes back `unchanged` with no
  * age. The phone then asks for the whole state at most this often, so the age it shows resets with
- * each new reading (lane 3 S7, D121).
+ * each new reading (lane 3 S7, D121): a new reading shows at the next whole request, up to 15 s
+ * after the server took it.
  */
 export const BILL_AGE_REFRESH_MS = 15_000
 
@@ -842,17 +843,17 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
 
   /**
    * On the bill, whether this poll asks for the whole state for the reading's age (lane 3 S7): the
-   * reading shown is older than the server keeps it, and the bill has not asked so for as long. An
-   * `unchanged` answer carries no age, so without it a new reading of the same bill never shows.
+   * reading shown is older than core's `FRESH_READING_MS`, past which the server reads the bill
+   * again, and no whole answer came for it in as long. An `unchanged` answer carries no age, so
+   * without it a new reading of the same bill never shows. A failed ask leaves nothing stamped,
+   * so the next poll asks again.
    */
   function ageDue(asked: GuestApiView): boolean {
     if (asked !== 'bill' || server?.bill == null) return false
     const now = deps.now()
     const age = now - (serverAt - server.bill.readAgoSeconds * 1000)
     if (age <= BILL_AGE_REFRESH_MS) return false
-    if (ageAskedAt !== null && now - ageAskedAt < BILL_AGE_REFRESH_MS) return false
-    ageAskedAt = now
-    return true
+    return ageAskedAt === null || now - ageAskedAt >= BILL_AGE_REFRESH_MS
   }
 
   async function poll(): Promise<void> {
@@ -862,7 +863,8 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     const asked = view()
     const born = generation
     try {
-      const since = server === null || whole || ageDue(asked) ? '' : `&since=${server.version}`
+      const forAge = server !== null && !whole && ageDue(asked)
+      const since = server === null || whole || forAge ? '' : `&since=${server.version}`
       whole = false
       const response = await request(`${base}/api/guest/state?view=${asked}${since}`, {
         method: 'GET',
@@ -881,6 +883,8 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
         const answer = GuestStateAnswerSchema.parse(await readJson(response))
         failures = 0
         answered()
+        // Stamped only once the whole answer came: a failed ask is asked again at the next poll.
+        if (forAge) ageAskedAt = deps.now()
         if (born !== generation) {
           // The location check was stopped while this poll was out: its answer is of the old pass,
           // so it is dropped and the whole state is asked for again at once.

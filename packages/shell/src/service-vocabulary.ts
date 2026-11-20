@@ -78,7 +78,8 @@ export const GUEST_REFUSAL_CODES = [
   'guard_tripped',
   /**
    * Send (#78, D118): the order is over the venue's cap for phone orders; the table pauses and the
-   * waiter takes it. Never "send fewer items": a smaller order would trip the pause too.
+   * waiter takes it. Never "send fewer items": the table is paused already, so any later Send is
+   * refused until staff resume it.
    */
   'over_phone_limit',
   /** Pay (#110, D127): paying in the app is not offered here: "Ask your waiter to pay." */
