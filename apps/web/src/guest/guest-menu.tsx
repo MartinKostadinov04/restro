@@ -24,7 +24,7 @@ import {
   menuPath,
   parseMenuParam,
 } from '@restro/core'
-import { buildViewModel, stringsFor, type ViewItem, type ViewSection } from '@restro/shell'
+import { buildViewModel, itemsById, stringsFor } from '@restro/shell'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ChosenFace, preloadFace } from '@/faces/chosen-face'
@@ -45,6 +45,7 @@ import {
   readTableToken,
   rememberedTable,
   rememberTable,
+  tableToKeep,
   tabStorage,
   withCodeInFragment,
 } from './context'
@@ -117,15 +118,6 @@ export type GuestMenuProps = { readonly address: GuestAddress } | { readonly ven
 /** The one face (D128): a venue's look is the snapshot's design block, not another face. */
 const RENDERER = faceEntry(null)
 
-/** The item of the menu with this id, in any section or sub-section, or undefined. */
-function findItem(sections: readonly ViewSection[], id: string): ViewItem | undefined {
-  for (const section of sections) {
-    const found = section.items.find((item) => item.id === id) ?? findItem(section.sections, id)
-    if (found !== undefined) return found
-  }
-  return undefined
-}
-
 export function GuestMenu(props: GuestMenuProps) {
   const address = 'address' in props ? props.address : null
   // The code of the address of before; null for one that names no venue.
@@ -185,8 +177,8 @@ export function GuestMenu(props: GuestMenuProps) {
         : loadMenu(deps, publicId ?? '', token, remembered)
     loading.then(
       (menu) => {
-        // A table file that could not be read concludes nothing: the code the tab kept stays.
-        if (!menu.tableUnreadable) rememberTable(storage, menu.publicId, menu.table?.token ?? null)
+        const kept = rememberedTable(storage, menu.publicId)
+        rememberTable(storage, menu.publicId, tableToKeep(menu.table, kept))
         if (!cancelled) setPhase({ kind: 'ready', menu })
       },
       (error: unknown) => {
@@ -227,8 +219,9 @@ export function GuestMenu(props: GuestMenuProps) {
   // (the loader asked). The banner and the shell's context use the confirmed table only: an
   // unknown code is no code.
   // Without a code in the address, the claim is the one the tab kept, which the load checked.
-  const requestedToken = readTableToken(search, fragment) ?? loaded?.table?.token ?? null
-  const table = confirmedTable(requestedToken, loaded?.table ?? null)
+  const found = loaded?.table?.kind === 'found' ? loaded.table : null
+  const requestedToken = readTableToken(search, fragment) ?? found?.token ?? null
+  const table = confirmedTable(requestedToken, found)
   const tableToken = table?.token ?? null
   const tableLabel = table?.label ?? null
 
@@ -343,15 +336,15 @@ export function GuestMenu(props: GuestMenuProps) {
     report({ kind: 'menu.opened' })
   }, [ready, tableToken, report])
   // The template tells the page which dish page is open (a tap, a shared link, back and forward;
-  // `onOpenDishChange`): each open is reported, and the tab is named after the dish while it is
-  // open. A template with no dish page reports none. The item is our own node id; a crafted
-  // address is dropped by the client's own check, not by the server. Without a table, `report`
-  // sends nothing.
+  // `onOpenDishChange`): each open the guest makes is reported (not a dish showing again from
+  // under a sheet), and the tab is named after the dish while it is open. A template with no dish
+  // page reports none. The item is our own node id; a crafted address is dropped by the client's
+  // own check, not by the server. Without a table, `report` sends nothing.
   const [openDishId, setOpenDishId] = useState<string | null>(null)
   const onOpenDishChange = useCallback(
-    (itemId: string | null) => {
+    (itemId: string | null, opened: boolean) => {
       setOpenDishId(itemId)
-      if (itemId !== null) report({ kind: 'item.opened', itemId })
+      if (itemId !== null && opened) report({ kind: 'item.opened', itemId })
     },
     [report],
   )
@@ -414,10 +407,9 @@ export function GuestMenu(props: GuestMenuProps) {
   // The tab's title (WCAG 2.4.2): the menu's own title once it is loaded, the word "Menu" in the
   // page's language before that or when it fails, and "<dish> · <menu>" while a dish page is open.
   const title = view?.menu.title?.text ?? strings.menu
+  const itemsOfView = useMemo(() => (view === null ? null : itemsById(view)), [view])
   const openDishName =
-    view === null || openDishId === null
-      ? null
-      : (findItem(view.sections, openDishId)?.name.text ?? null)
+    openDishId === null ? null : (itemsOfView?.get(openDishId)?.name.text ?? null)
   useEffect(() => {
     document.title = openDishName === null ? title : `${openDishName} · ${title}`
   }, [title, openDishName])

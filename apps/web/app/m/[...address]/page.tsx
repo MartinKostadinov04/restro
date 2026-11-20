@@ -8,13 +8,18 @@
 // two parts names no venue. The sign-in gate in proxy.ts leaves this path alone.
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { createTranslator } from 'next-intl'
 
 import { GuestMenu } from '@/guest/guest-menu'
+import bg from '../../../messages/bg.json'
+
+// Bulgarian first: the guest's language is known only in the browser, and the shell is static (no
+// request locale to read). The page names the tab in its own language at once, and after the
+// menu's own title once it is loaded.
+const t = createTranslator({ locale: 'bg', messages: bg, namespace: 'meta' })
 
 export const metadata: Metadata = {
-  // Bulgarian first (the page's language is known only in the browser): the page names the tab in
-  // its own language at once, and after the menu's own title once it is loaded.
-  title: { absolute: 'Меню' },
+  title: { absolute: t('guestMenu') },
   robots: { index: false, follow: false },
 }
 

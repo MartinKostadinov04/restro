@@ -321,24 +321,57 @@ describe('the dish page', () => {
   })
 
   it('tells the host every dish page that opens and closes: a tap, back, a shared link (C1)', async () => {
-    const told: (string | null)[] = []
-    const onOpenDishChange = (itemId: string | null) => told.push(itemId)
+    const told: [string | null, boolean][] = []
+    const onOpenDishChange = (itemId: string | null, opened: boolean) => told.push([itemId, opened])
     const { unmount } = draw({ onOpenDishChange })
     fireEvent.click(opener())
-    expect(told.at(-1)).toBe(hummus.id)
+    expect(told.at(-1)).toEqual([hummus.id, true])
     await act(async () => {
       window.history.back()
     })
-    await waitFor(() => expect(told.at(-1)).toBeNull())
-    // Opened again: a second open, told again.
+    await waitFor(() => expect(told.at(-1)).toEqual([null, false]))
+    // Opened again from the menu: a second open, told again.
     fireEvent.click(opener())
-    expect(told.filter((id) => id === hummus.id)).toHaveLength(2)
+    expect(told.filter(([id, opened]) => id === hummus.id && opened)).toHaveLength(2)
+    // Gone (the page fell back to a notice, or drew a new menu): no dish page is open.
     unmount()
+    expect(told.at(-1)).toEqual([null, false])
     // A link that arrives on a dish page.
     told.length = 0
     window.history.replaceState(null, '', `/#item-${hummus.id}`)
     draw({ onOpenDishChange })
-    await waitFor(() => expect(told).toContain(hummus.id))
+    await waitFor(() => expect(told).toContainEqual([hummus.id, true]))
+  })
+
+  it('does not count a dish that shows again from under a sheet as an open (D142)', async () => {
+    const told: [string | null, boolean][] = []
+    draw({ onOpenDishChange: (itemId, opened) => told.push([itemId, opened]) })
+    fireEvent.click(opener())
+    const go = async (move: () => void) => {
+      await act(async () => {
+        move()
+        window.dispatchEvent(new PopStateEvent('popstate'))
+      })
+    }
+    // A sheet opens over the dish page, and another dish opens from the sheet …
+    window.history.pushState({ rmSheet: 'bag' }, '', '#bag')
+    const other = 'nd_from_the_bag'
+    await go(() => window.history.pushState({ rmItem: other }, '', `#item-${other}`))
+    expect(told.at(-1)).toEqual([other, true])
+    // … back to the sheet, and the sheet closes: the first dish shows again, which is no new look.
+    await go(() => window.history.replaceState({ rmSheet: 'bag' }, '', '#bag'))
+    expect(told.at(-1)).toEqual([null, false])
+    await go(() => window.history.replaceState({ rmItem: hummus.id }, '', `#item-${hummus.id}`))
+    expect(told.at(-1)).toEqual([hummus.id, false])
+    // Back on the menu itself, then forward to the dish: that is a look again.
+    await go(() => window.history.replaceState(null, '', '/'))
+    await go(() => window.history.replaceState({ rmItem: hummus.id }, '', `#item-${hummus.id}`))
+    expect(told.at(-1)).toEqual([hummus.id, true])
+    expect(told.filter(([, opened]) => opened)).toEqual([
+      [hummus.id, true],
+      [other, true],
+      [hummus.id, true],
+    ])
   })
 
   it('draws no dialog for a link that names no dish or is malformed', () => {

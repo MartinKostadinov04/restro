@@ -602,6 +602,31 @@ describe('the dish page at a table, and the tab’s title', () => {
     expect(await screen.findByText('Маса 12')).toBeTruthy()
   })
 
+  it('forgets the old table when a new code in the address cannot be read', async () => {
+    const other = 'tb_ZZZZZZZZZZZZZZZZZZZZZZ'
+    serve(published())
+    visit(`#t=${TOKEN}`)
+    const first = render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Маса 12')).toBeTruthy()
+    first.unmount()
+    // The guest scans another table's code, and its file fails: no table now …
+    const failing = published()
+    failing.set(files.table('/cdn', sha(other)), new Response('x', { status: 503 }))
+    serve(failing)
+    visit(`#t=${other}`)
+    const scanned = render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Негрони')).toBeTruthy()
+    await waitFor(() => expect(requested).toContain(files.table('/cdn', sha(other))))
+    scanned.unmount()
+    // … and a reload on a dish page (no code in the address) does not bring the first table back.
+    serve(published())
+    visit('#item-nd_anything')
+    render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Негрони')).toBeTruthy()
+    expect(screen.queryByText(/Маса/)).toBeNull()
+    expect(requested).not.toContain(files.table('/cdn', sha(TOKEN)))
+  })
+
   it('names the tab in the page’s language before the menu loads and when it fails (R4)', async () => {
     vi.stubGlobal(
       'fetch',

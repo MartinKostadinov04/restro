@@ -163,12 +163,19 @@ describe('the audit of the stylesheet (SH-07)', () => {
     expect(EDITORIAL_CSS).not.toContain('.rm-chevron')
   })
 
-  it('keeps the arrow on the line of the name’s last word: inline, never an atomic box (S11)', () => {
-    const arrow = declarationsFor('.rm-item-open::after')
-    expect(arrow).toMatch(/display:\s*inline;/)
-    expect(arrow).not.toMatch(/display:\s*inline-block/)
-    // Its nudge on hover moves it without a transform, which an inline box does not take.
-    expect(declarationsFor('.rm-item:hover .rm-item-open::after')).not.toContain('transform')
+  it('keeps the arrow on the line of the name’s last word, and nudges it with a transform on a real hover (S11)', () => {
+    // The span starts with a word joiner (no line breaks before it), and nothing inside it breaks.
+    expect(declarationsFor('.rm-item-arrow::before')).toContain('content: "\\2060"')
+    expect(declarationsFor('.rm-item-arrow')).toMatch(/white-space:\s*nowrap/)
+    const arrow = declarationsFor('.rm-item-arrow::after')
+    expect(arrow).toMatch(/display:\s*inline-block/)
+    expect(arrow).toMatch(/transition:\s*transform/)
+    expect(arrow).not.toMatch(/(?<![-\w])left:/)
+    expect(EDITORIAL_CSS).not.toContain('.rm-item-open::after')
+    // The nudge only where a pointer can hover: a tap on a phone leaves no sticky hover behind.
+    expect(EDITORIAL_CSS).toMatch(
+      /@media \(hover: hover\) and \(pointer: fine\) \{\s*\.rm-item:hover \.rm-item-arrow::after \{\s*transform: translateX\(4px\);/,
+    )
   })
 
   it('darkens the menu behind a sheet or a dish on both screens: the dark set’s page colour (R3)', () => {

@@ -39,8 +39,10 @@ export interface FaceHostProps {
   readonly layoutMemory?: string
   /**
    * Told the dish page the guest has open (its item id, as the address names it) each time it
-   * changes, and null once it closes: a tap, a shared link and the phone's back and forward
-   * buttons alike. The guest page reports the open and names the tab after the dish.
+   * changes, and null once it closes or the template goes away. `opened` is true only for a dish
+   * the guest opens (a tap, a shared link, back or forward to it from the menu), not for one that
+   * shows again from under a sheet: the guest page reports those opens (D142) and names the tab
+   * after whatever dish is open.
    */
-  readonly onOpenDishChange?: (itemId: string | null) => void
+  readonly onOpenDishChange?: (itemId: string | null, opened: boolean) => void
 }

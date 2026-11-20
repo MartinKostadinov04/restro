@@ -335,6 +335,11 @@ export async function loadTableLabel(
   return lookup.kind === 'found' ? lookup.table.label : null
 }
 
+/** The table code a load checked, and what the published files said about it. */
+export type TableCheck =
+  | ({ readonly kind: 'found' } & ConfirmedTable)
+  | { readonly kind: 'unknown' | 'unreadable'; readonly token: string }
+
 /** What a loaded menu consists of. */
 export interface LoadedMenu {
   /** The venue and the MENU SHOWN (a table's own menu when its code names one, D95). */
@@ -345,15 +350,11 @@ export interface LoadedMenu {
   /** The venue's public code (what a table's file is matched against). */
   readonly publicId: string
   /**
-   * The table of the code in the address (or, without one, of the code this tab kept), once its
-   * file answered for this venue; else null.
+   * What this load found for the table code it checked (the address's, or without one the code
+   * this tab kept), or null when it checked none. Only `found` is a table; `unreadable` says
+   * nothing either way about the code it tried.
    */
-  readonly table: ConfirmedTable | null
-  /**
-   * True when the table's file could not be read: this load says nothing about the code, so the
-   * code the tab kept stays kept (only a code the files call unknown is forgotten).
-   */
-  readonly tableUnreadable: boolean
+  readonly table: TableCheck | null
   /** The address the page should show (D84), or null when the files do not know the organisation. */
   readonly canonical: GuestAddress | null
 }
@@ -383,6 +384,12 @@ async function loadMenuFrom(
   const claim = token ?? remembered(resolved.publicId)
   const lookup = claim === null ? null : await loadTableFile(deps, claim, resolved.publicId)
   const table = lookup?.kind === 'found' ? lookup.table : null
+  const check: TableCheck | null =
+    claim === null || lookup === null
+      ? null
+      : lookup.kind === 'found'
+        ? { kind: 'found', token: lookup.table.token, label: lookup.table.label }
+        : { kind: lookup.kind, token: claim }
   const index: VenueIndex =
     table?.menuId == null ? resolved.index : { ...resolved.index, menu_id: table.menuId }
   const pointer = await loadPointer(deps, index)
@@ -396,8 +403,7 @@ async function loadMenuFrom(
     snapshot,
     live,
     publicId: resolved.publicId,
-    table: table === null ? null : { token: table.token, label: table.label },
-    tableUnreadable: lookup?.kind === 'unreadable',
+    table: check,
     canonical,
   }
 }

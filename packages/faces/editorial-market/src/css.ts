@@ -1027,25 +1027,33 @@ ${HEAVY_FALLBACK_CSS}
   inset: 0;
   z-index: 1;
 }
-.rm-item-open::after {
+.rm-item-arrow {
+  white-space: nowrap;
+}
+/* The arrow after a name (S11) hangs on the name's last word: its span starts with a word joiner
+   (U+2060), which no line may break before, and nothing inside the span breaks, so the arrow
+   never wraps alone. Drawn by the stylesheet, so the name's text stays the name. */
+.rm-item-arrow::before {
+  content: "\\2060";
+}
+.rm-item-arrow::after {
   content: "→";
   content: "→" / "";
-  /* Inline, so no line can break between the name's last word and the arrow: it never wraps alone. */
-  display: inline;
-  position: relative;
-  left: 0;
+  display: inline-block;
   margin-left: 8px;
   color: var(--rm-muted);
   font-weight: 500;
-  transition: left 0.2s;
+  transition: transform 0.2s;
 }
 .rm-allergens button {
   position: relative;
   z-index: 2;
 }
-.rm-item:hover .rm-item-open::after {
-  left: 4px;
-  color: var(--rm-text);
+@media (hover: hover) and (pointer: fine) {
+  .rm-item:hover .rm-item-arrow::after {
+    transform: translateX(4px);
+    color: var(--rm-text);
+  }
 }
 .rm-item:hover .rm-photo img {
   transform: scale(1.02);
@@ -1126,10 +1134,9 @@ ${HEAVY_FALLBACK_CSS}
 }
 @media (prefers-reduced-motion: reduce) {
   .rm-photo img,
-  .rm-item-open::after {
+  .rm-item-arrow::after {
     transition: none !important;
     transform: none !important;
-    left: 0 !important;
   }
 }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo,
@@ -1466,7 +1473,7 @@ ${HEAVY_FALLBACK_CSS}
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-description {
   font-size: calc(12.5px * var(--rm-type));
 }
-.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-open::after {
+.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-arrow::after {
   display: none;
 }
 @media (max-width: 359px) {

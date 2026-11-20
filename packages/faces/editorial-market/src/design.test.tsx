@@ -296,6 +296,11 @@ describe("Editorial against today's look (D128)", () => {
   const asToday = (html: string) =>
     storedRendering(html, {})
       .replace(/ data-design-part="[^"]*"/g, '')
+      // The arrow's own span after a name (S11): today the arrow was the button's ::after.
+      .replace(
+        /<span class="rm-item-arrow" aria-hidden="true">\n<\/span>\n<\/button>/g,
+        '</button>',
+      )
       .replace(/<div [^>]*data-face=[^>]*>/, (root) =>
         designAttributeNames.reduce(
           (text, attribute) => text.replace(new RegExp(` ${attribute}="[^"]*"`), ''),
@@ -359,6 +364,38 @@ function unlisted(lines: readonly string[], added: boolean): readonly string[] {
 }
 
 const property = (line: string) => /\{ ([\w-]+):/.exec(line)?.[1] ?? ''
+
+/** The arrow's lines of today that go, and the ones that replace them (S11). */
+const ARROW_REMOVED: readonly string[] = [
+  '.rm-item-open::after { content: "→" }',
+  '.rm-item-open::after { content: "→" / "" }',
+  '.rm-item-open::after { margin-left: 8px }',
+  '.rm-item-open::after { color: var(--rm-muted) }',
+  '.rm-item-open::after { font-weight: 500 }',
+  '.rm-item:hover .rm-item-open::after { color: var(--rm-text) }',
+  '.rm-item-open::after { display: inline-block }',
+  '.rm-item-open::after { transition: transform 0.2s }',
+  '.rm-item:hover .rm-item-open::after { transform: translateX(4px) }',
+  '@media (prefers-reduced-motion: reduce) .rm-photo img, .rm-item-open::after { transition: none !important }',
+  '@media (prefers-reduced-motion: reduce) .rm-photo img, .rm-item-open::after { transform: none !important }',
+  '.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-open::after { display: none }',
+]
+const ARROW_ADDED: readonly string[] = [
+  '.rm-item-arrow { white-space: nowrap }',
+  '.rm-item-arrow::before { content: "\\2060" }',
+  '.rm-item-arrow::after { content: "→" }',
+  '.rm-item-arrow::after { content: "→" / "" }',
+  '.rm-item-arrow::after { display: inline-block }',
+  '.rm-item-arrow::after { margin-left: 8px }',
+  '.rm-item-arrow::after { color: var(--rm-muted) }',
+  '.rm-item-arrow::after { font-weight: 500 }',
+  '.rm-item-arrow::after { transition: transform 0.2s }',
+  '@media (hover: hover) and (pointer: fine) .rm-item:hover .rm-item-arrow::after { transform: translateX(4px) }',
+  '@media (hover: hover) and (pointer: fine) .rm-item:hover .rm-item-arrow::after { color: var(--rm-text) }',
+  '@media (prefers-reduced-motion: reduce) .rm-photo img, .rm-item-arrow::after { transition: none !important }',
+  '@media (prefers-reduced-motion: reduce) .rm-photo img, .rm-item-arrow::after { transform: none !important }',
+  '.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-arrow::after { display: none }',
+]
 
 /** Each departure of `packages/shell/src/design/styles/editorial.ts`, as the lines it may touch. */
 const DEPARTURES: readonly ((line: string, added: boolean) => boolean)[] = [
@@ -431,8 +468,9 @@ const DEPARTURES: readonly ((line: string, added: boolean) => boolean)[] = [
     /^\.rm-overlay(?::has\(\.is-detail\))? \{ background: color-mix\(in srgb, var\(--rm-(?:text|d-background)\) (?:72|40)%, transparent\) \}$/.test(
       line,
     ),
-  // The arrow after a name is inline, so it never wraps alone; its hover nudge moves `left` (S11).
-  (line) => /\.rm-item-open::after \{ (?:display|position|left|transition|transform):/.test(line),
+  // The arrow after a name is drawn by its own span, tied to the name's last word, and nudges only
+  // under a real hover (S11, 11-18 round): exactly these lines.
+  (line, added) => (added ? ARROW_ADDED : ARROW_REMOVED).includes(line),
   // Two columns hold the items without a photo too, one column each (S7).
   (line) =>
     line.startsWith('.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.is-text {') &&
