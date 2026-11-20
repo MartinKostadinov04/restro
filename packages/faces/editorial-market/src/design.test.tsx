@@ -406,7 +406,41 @@ const TEXT_CARD_REMOVED: readonly string[] = [`${TEXT_CARD} { grid-column: 1 / -
 const TEXT_CARD_ADDED: readonly string[] = [
   `${TEXT_CARD} { min-width: 0 }`,
   `${TEXT_CARD} { overflow-wrap: break-word }`,
-  `${TEXT_CARD} { hyphens: auto }`,
+]
+
+/**
+ * A name keeps its words whole (S7): each item is a size container, and a name's own size steps down
+ * when its line is too narrow for the longest word of a real menu, never under 12 px; a break only at
+ * the line's end, with no hyphen. Editorial draws Inter as its heading font (`same`).
+ */
+const NAME = ':is(h3, h4)'
+const TWO = '.rm[data-layout="two"] .rm-section:not(.is-feature)'
+const NARROW = '@media (max-width: 359px) '
+const NAME_FIT_REMOVED: readonly string[] = [
+  `.rm-item ${NAME} { font-size: 19px }`,
+  `.rm-section.is-feature .rm-item ${NAME} { font-size: 22px }`,
+  `.rm-section:not(.is-feature) .rm-item.has-photo ${NAME} { font-size: 24px }`,
+  `${TWO} .rm-item.has-photo ${NAME} { font-size: 14px }`,
+  `${TWO} .rm-item.has-photo ${NAME} { overflow-wrap: anywhere }`,
+  `${TWO} .rm-item.has-photo ${NAME} { hyphens: auto }`,
+  `${NARROW}${TWO} .rm-item.has-photo ${NAME} { font-size: 12.5px }`,
+]
+const NAME_FIT_ADDED: readonly string[] = [
+  '.rm { --rm-name-fit: 11.8 }',
+  '.rm[data-heading-font="same"][data-body-font="inter"] { --rm-name-fit: 7.9 }',
+  '.rm[data-items-name-case="capitals"][data-heading-font="same"][data-body-font="inter"] { --rm-name-fit: 9.4 }',
+  '.rm-item { container-type: inline-size }',
+  '.rm-item { --rm-name-inset: 0px }',
+  `.rm-item ${NAME} { --rm-name-size: 19px }`,
+  `.rm-item ${NAME} { --rm-name-fits: calc((100cqi - var(--rm-name-inset) - 12px) / (var(--rm-name-fit) + 1)) }`,
+  `.rm-item ${NAME} { font-size: clamp(12px, var(--rm-name-fits), var(--rm-name-size)) }`,
+  `.rm-item ${NAME} { overflow-wrap: break-word }`,
+  `.rm-section.is-feature .rm-item ${NAME} { --rm-name-size: 22px }`,
+  `.rm-section:not(.is-feature) .rm-item.has-photo ${NAME} { --rm-name-size: 24px }`,
+  `${TWO} .rm-item ${NAME} { --rm-name-fits: calc((100cqi - var(--rm-name-inset)) / var(--rm-name-fit)) }`,
+  `${TWO} .rm-item-copy > [data-slot="item.name"] { flex-basis: 100% }`,
+  `${TWO} .rm-item.has-photo ${NAME} { --rm-name-size: 14px }`,
+  `${NARROW}${TWO} .rm-item.has-photo ${NAME} { --rm-name-size: 12.5px }`,
 ]
 
 /** Each departure of `packages/shell/src/design/styles/editorial.ts`, as the lines it may touch. */
@@ -480,10 +514,13 @@ const DEPARTURES: readonly ((line: string, added: boolean) => boolean)[] = [
     /^\.rm-overlay(?::has\(\.is-detail\))? \{ background: color-mix\(in srgb, var\(--rm-(?:text|d-background)\) (?:72|40)%, transparent\) \}$/.test(
       line,
     ),
-  // The arrow after a name is drawn by its own span, tied to the name's last word, and nudges only
-  // under a real hover (S11, 11-18 round): exactly these lines.
+  // The arrow after a name is drawn by its own span after the last letter, in room the name keeps
+  // free, and nudges only under a real hover (S11, 11-18 round): exactly these lines.
   (line, added) => (added ? ARROW_ADDED : ARROW_REMOVED).includes(line),
   // Two columns hold the items without a photo too, one column each (S7, 11-18 round): exactly
   // these lines.
   (line, added) => (added ? TEXT_CARD_ADDED : TEXT_CARD_REMOVED).includes(line),
+  // A name keeps its words whole, its size stepping down on a narrow line (S7, 11-18 round):
+  // exactly these lines.
+  (line, added) => (added ? NAME_FIT_ADDED : NAME_FIT_REMOVED).includes(line),
 ]

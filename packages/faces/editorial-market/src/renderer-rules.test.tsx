@@ -91,6 +91,8 @@ function drawn(change: Change, edit: (view: ViewModel) => ViewModel = (view) => 
     vertical: vertical as HtmlElement,
     strip: strip as HtmlElement,
     px: (element: HtmlElement) => fontSizePx(value(element, 'font-size', true) ?? '', {}),
+    /** A name heading's own size: what it draws at whenever its line has room for its words (S7). */
+    namePx: (heading: HtmlElement) => fontSizePx(value(heading, '--rm-name-size') ?? '', {}),
   }
 }
 
@@ -128,7 +130,7 @@ describe('the price follows the name (D130)', () => {
       for (const name_size of NAMES) {
         const page = drawn({ items: { layout, name_size } })
         const card = photoCard(page.vertical)
-        const name = page.px(headingOf(part(card, 'item.name'))) as number
+        const name = page.namePx(headingOf(part(card, 'item.name'))) as number
         const price = page.px(part(card, 'item.price')) as number
         const description = page.px(part(card, 'item.description')) as number
         expect(price, `${layout} ${name_size}`).toBeLessThan(name)
@@ -141,7 +143,7 @@ describe('the price follows the name (D130)', () => {
     for (const name_size of ['s', 'm'] as const) {
       const page = drawn({ items: { layout: 'two', name_size } })
       const card = photoCard(page.vertical)
-      const name = page.px(headingOf(part(card, 'item.name'))) as number
+      const name = page.namePx(headingOf(part(card, 'item.name'))) as number
       const price = page.px(part(card, 'item.price')) as number
       const description = page.px(part(card, 'item.description')) as number
       expect(price, name_size).toBeLessThan(name)
@@ -150,7 +152,7 @@ describe('the price follows the name (D130)', () => {
     const page = drawn({ items: { layout: 'two', name_size: 'l' } })
     const card = photoCard(page.vertical)
     // 14 px name over a 16 px price is today's look, which Editorial must keep: reported on #172.
-    expect(page.px(headingOf(part(card, 'item.name')))).toBe(14)
+    expect(page.namePx(headingOf(part(card, 'item.name')))).toBe(14)
     expect(page.px(part(card, 'item.price'))).toBe(16)
   })
 
@@ -159,7 +161,7 @@ describe('the price follows the name (D130)', () => {
       for (const strip_card_size of ['s', 'm', 'l'] as const) {
         const page = drawn({ items: { name_size }, sections: { strip_card_size } })
         const card = photoCard(page.strip)
-        const name = page.px(headingOf(part(card, 'item.name'))) as number
+        const name = page.namePx(headingOf(part(card, 'item.name'))) as number
         const price = page.px(part(card, 'item.price')) as number
         const where = `${name_size} on a ${strip_card_size} card`
         expect(price, where).toBeLessThanOrEqual(name)
@@ -288,18 +290,21 @@ describe('two columns hold the items without a photo too (S7)', () => {
         // One cell of the two-column grid: no span across both.
         expect(page.value(card, 'grid-column'), where).toBeUndefined()
         expect(page.value(card, 'min-width'), where).toBe('0')
-        // The name wraps inside its column and is never cut (R9): a word breaks only when it cannot
-        // fit the column, at a hyphen where the browser knows the words of the heading's language.
+        // The card's parts wrap inside the column and are never cut (R9).
         expect(page.value(card, 'overflow-wrap'), where).toBe('break-word')
-        expect(page.value(card, 'hyphens'), where).toBe('auto')
-        // (The hyphens follow the name's language: the face's root carries the page's, and a name in
-        // another language carries its own, `langOf`.)
         const heading = headingOf(part(card, 'item.name'))
         expect(page.value(heading, 'text-overflow'), where).toBeUndefined()
-        const name = page.px(heading) as number
+        // Its name keeps its words whole: no hyphenation, and a break only at the line's end.
+        expect(page.value(heading, 'overflow-wrap'), where).toBe('break-word')
+        expect(page.value(heading, 'hyphens', true), where).toBeUndefined()
+        // Never under the floor, however narrow the column steps it down.
+        expect(page.px(heading), where).toBe(12)
+        // The price goes under the name, at the body text's size (a text row's description, 14 px),
+        // a step under the name's own size (D130).
+        const nameSlot = part(card, 'item.name')
+        expect(['100%', undefined], where).toContain(page.value(nameSlot, 'flex-basis'))
+        const name = page.namePx(heading) as number
         const price = page.px(part(card, 'item.price')) as number
-        expect(name, where).toBeGreaterThanOrEqual(12)
-        // The price stays at the body text's size (a text row's description, 14 px), under the name (D130).
         expect(price, where).toBeGreaterThanOrEqual(14)
         expect(price, where).toBeLessThan(name)
       }
