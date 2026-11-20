@@ -1557,7 +1557,8 @@
       "count": "{count, plural, one {# маса} other {# маси}}"
     },
     "index": {
-      "label": "Зони"
+      "label": "Зони",
+      "jump": "{name}, {count, plural, one {# маса} other {# маси}}"
     },
     "area": {
       "nameLabel": "Име на зоната",
@@ -1653,6 +1654,7 @@
       "label": "Меню за {target}",
       "value": "Меню: {menu}",
       "inheritVenue": "Менюто на заведението",
+      "inheritVenueNamed": "Менюто на заведението ({menu})",
       "inheritArea": "Като зоната ({menu})",
       "inheritNone": "още няма публикувано",
       "sameAsVenue": "Менюто на заведението",

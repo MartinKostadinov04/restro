@@ -181,8 +181,9 @@ describe('the menu picker', () => {
   it('is plain text for a member who may not choose', () => {
     renderWithIntl(picker({ canManage: false, effective: FROM_VENUE }))
     expect(screen.queryByTestId('route-select')).toBeNull()
+    // The open list names the live menu; whoever cannot open it reads the name here.
     expect(within(screen.getByTestId('route-picker')).getByTestId('route-text').textContent).toBe(
-      "The venue's menu",
+      "The venue's menu (Main menu)",
     )
   })
 

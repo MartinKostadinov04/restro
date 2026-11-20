@@ -52,8 +52,9 @@ export function RoutePicker({
   const isArea = 'areaId' in target
 
   const own = value === null ? undefined : menus.find((menu) => menu.id === value)
-  // Short on purpose (S14): "The venue's menu" without its name, which is the venue's own name
-  // more often than not and was cut on every card; the list marks the live menu by name.
+  // On the picker short on purpose (S14): "The venue's menu" without its name, which is the
+  // venue's own name more often than not and was cut on every card; the open list marks the live
+  // menu by name. Someone who cannot open the list reads the name in the text (review of #480).
   const label =
     own !== undefined
       ? t('value', { menu: own.name })
@@ -61,7 +62,9 @@ export function RoutePicker({
         ? t('value', { menu: t('inheritNone') })
         : effective.level === 'area'
           ? t('inheritArea', { menu: effective.name })
-          : t('inheritVenue')
+          : canManage
+            ? t('inheritVenue')
+            : t('inheritVenueNamed', { menu: effective.name })
   // The target chose a menu that is not published yet: guests get the next level up meanwhile.
   const fallback =
     own !== undefined && (effective === null || effective.id !== own.id)

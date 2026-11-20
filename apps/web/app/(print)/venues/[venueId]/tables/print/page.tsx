@@ -89,9 +89,12 @@ export default async function PrintTablesPage({
           <h1 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>
             {t('print.title', { venue: venue.name })}
           </h1>
-          <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: '#52525b' }}>
-            {t('print.intro')}
-          </p>
+          {/* Only an owner or admin has a sheet and the Print button the intro speaks of (S25). */}
+          {view.canManage ? (
+            <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: '#52525b' }}>
+              {t('print.intro')}
+            </p>
+          ) : null}
           {cards.length > 0 ? (
             <p
               style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: '#52525b' }}

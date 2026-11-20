@@ -132,12 +132,34 @@ describe('the Tables & QR tab', () => {
     renderWithIntl(<TablesPanel view={view()} />)
     const index = screen.getByRole('navigation', { name: 'Areas' })
     const jumps = within(index).getAllByTestId('area-jump')
-    expect(jumps.map((jump) => jump.textContent)).toEqual(['Main hall2', 'Terrace2', 'Tables1'])
+    // Read out as a name and a count, not "Main hall2".
+    expect(jumps.map((jump) => jump.getAttribute('aria-label'))).toEqual([
+      'Main hall, 2 tables',
+      'Terrace, 2 tables',
+      'Tables, 1 table',
+    ])
+    expect(screen.getByRole('link', { name: 'Terrace, 2 tables' })).toBe(jumps[1])
     for (const jump of jumps) {
       const target = jump.getAttribute('href')?.slice(1) ?? ''
       expect(document.getElementById(target)?.getAttribute('data-testid')).toBe('hall')
     }
     expect(jumps[1]?.getAttribute('href')).toBe(`#area-${AREA_TERRACE}`)
+  })
+
+  it('counts in the index what the summary counts: no payment table', () => {
+    const base = view()
+    const withPayment = view({
+      halls: base.halls.map((hall) => ({
+        ...hall,
+        tables: hall.tables.map((row) =>
+          row.id === PLAIN ? { ...row, isPaymentTable: true } : row,
+        ),
+      })),
+      guestTotal: 4,
+    })
+    renderWithIntl(<TablesPanel view={withPayment} />)
+    expect(screen.getByRole('link', { name: 'Terrace, 1 table' })).toBeTruthy()
+    expect(screen.getByTestId('tables-summary').textContent).toBe('4 tables, 1 with a code')
   })
 
   it('has no index when the venue has a single area', () => {
@@ -891,7 +913,10 @@ describe('a member who may not manage codes', () => {
       'Terrace',
       'Tables',
     ])
-    expect(within(cardOf(CODED)).getByTestId('route-text').textContent).toBe("The venue's menu")
+    // Who cannot open the picker reads the menu's name.
+    expect(within(cardOf(CODED)).getByTestId('route-text').textContent).toBe(
+      "The venue's menu (Main menu)",
+    )
   })
 
   it('keeps the area index, which changes nothing', () => {
@@ -920,5 +945,6 @@ describe('in Bulgarian', () => {
     expect(screen.getByTestId('tables-codes-hidden').textContent).toBe(
       'Само собственици и администратори виждат кодовете.',
     )
+    expect(screen.getByRole('link', { name: 'Terrace, 2 маси' })).toBeTruthy()
   })
 })

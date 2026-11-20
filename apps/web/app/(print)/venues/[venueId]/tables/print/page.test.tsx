@@ -105,6 +105,13 @@ describe('the print page when it has nothing to print (#441)', () => {
 
   it('prints the cards when the codes were revealed', async () => {
     await renderPage(revealed())
+    expect(loadTablesView).toHaveBeenCalledWith(
+      expect.objectContaining({ canManage: true }),
+      expect.anything(),
+      undefined,
+      expect.anything(),
+    )
+    expect(screen.getByText(/Click Print \/ Save as PDF/)).toBeTruthy()
     expect(screen.getByTestId('print-pages').textContent).toBe('1 code on 1 page')
     expect(screen.queryByText(LINE)).toBeNull()
     expect(screen.queryByText(EMPTY)).toBeNull()
@@ -115,6 +122,15 @@ describe('the print page for someone who may not see the codes (S25)', () => {
   it('says the codes are for owners and admins, not that none exist or that they failed', async () => {
     vi.mocked(canManageIntegration).mockReturnValue(false)
     await renderPage({ ...unrevealed(), canManage: false })
+    // The page asks for the view as someone who may not manage: the reveal is refused upstream.
+    expect(loadTablesView).toHaveBeenCalledWith(
+      expect.objectContaining({ canManage: false }),
+      expect.anything(),
+      undefined,
+      expect.anything(),
+    )
+    // No sheet and no Print button, so no "click Print" either.
+    expect(screen.queryByText(/Click Print \/ Save as PDF/)).toBeNull()
     expect(screen.getByTestId('print-codes-hidden').textContent).toBe(
       'Only owners and admins can see the codes.',
     )

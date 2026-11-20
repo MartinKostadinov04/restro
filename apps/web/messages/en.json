@@ -1557,7 +1557,8 @@
       "count": "{count, plural, one {# table} other {# tables}}"
     },
     "index": {
-      "label": "Areas"
+      "label": "Areas",
+      "jump": "{name}, {count, plural, one {# table} other {# tables}}"
     },
     "area": {
       "nameLabel": "Name of the area",
@@ -1653,6 +1654,7 @@
       "label": "Menu for {target}",
       "value": "Menu: {menu}",
       "inheritVenue": "The venue's menu",
+      "inheritVenueNamed": "The venue's menu ({menu})",
       "inheritArea": "Same as the area ({menu})",
       "inheritNone": "none published yet",
       "sameAsVenue": "The venue's menu",

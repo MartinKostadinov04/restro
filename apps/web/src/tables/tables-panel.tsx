@@ -88,27 +88,38 @@ export function missingCodes(view: TablesView): number {
     .filter((row) => row.isPublic && !row.isPaymentTable && !row.hasCode).length
 }
 
-/** The areas as jump links at the top, each with its table count (S14): one tap to an area. */
+/**
+ * The areas as jump links at the top, each with its table count (S14): one tap to an area. The
+ * count is what the summary counts (no payment table), so the areas add up to it; the link's name
+ * reads "Terrace, 5 tables", not the two spans run together.
+ */
 function AreaIndex({ halls }: { halls: TablesView['halls'] }) {
   const t = useTranslations('tables')
   return (
     <nav aria-label={t('index.label')} data-testid="area-index">
       <ul className="flex flex-wrap gap-2">
-        {halls.map((hall) => (
-          <li key={hall.id} className="min-w-0 max-w-full">
-            <Button
-              asChild
-              variant="outline"
-              size="sm"
-              className="h-auto min-h-8 max-w-full py-1.5 text-left whitespace-normal phone:h-auto phone:min-h-11"
-            >
-              <a href={`#${areaAnchor(hall.id)}`} data-testid="area-jump">
-                <span className="[overflow-wrap:anywhere]">{hall.name}</span>
-                <span className="text-muted-foreground">{hall.tables.length}</span>
-              </a>
-            </Button>
-          </li>
-        ))}
+        {halls.map((hall) => {
+          const count = hall.tables.filter((row) => !row.isPaymentTable).length
+          return (
+            <li key={hall.id} className="min-w-0 max-w-full">
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="h-auto min-h-8 max-w-full py-1.5 text-left whitespace-normal phone:h-auto phone:min-h-11"
+              >
+                <a
+                  href={`#${areaAnchor(hall.id)}`}
+                  aria-label={t('index.jump', { name: hall.name, count })}
+                  data-testid="area-jump"
+                >
+                  <span className="[overflow-wrap:anywhere]">{hall.name}</span>
+                  <span className="text-muted-foreground">{count}</span>
+                </a>
+              </Button>
+            </li>
+          )
+        })}
       </ul>
     </nav>
   )

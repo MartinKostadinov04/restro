@@ -87,7 +87,7 @@ const hallNames = () =>
     .getByTestId('hall-name')
     .evaluateAll((all) => all.map((element) => (element as HTMLInputElement).value))
 
-/** Signs in on a fresh page; Better Auth allows a few sign-ins per 10 seconds. */
+/** Signs in on a fresh page; Better Auth allows a few sign-ins per 10 seconds. Fails after three. */
 async function signIn(target: Page, email: string) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await target.goto('/venues')
@@ -101,6 +101,7 @@ async function signIn(target: Page, email: string) {
       await target.waitForTimeout(10_000)
     }
   }
+  throw new Error(`could not sign in as ${email} in three attempts`)
 }
 
 /**
@@ -865,7 +866,15 @@ test('a plain member reads the tables, is told the codes are for owners and admi
     await expect(member.getByTestId('qr-address-card')).toHaveCount(0)
     await expect(member.getByTestId('qr-thumb')).toHaveCount(0)
     await expect(member.getByTestId('route-select')).toHaveCount(0)
-    await expect(member.getByTestId('route-text').first()).toBeVisible()
+    // Who cannot open the picker reads which menu, by name.
+    await expect(member.getByTestId('route-text').first()).toContainText('Менюто на заведението (')
+    // Nor can a member fetch a code's picture by its address.
+    const tableId =
+      (await member
+        .locator('[data-testid="table-card"][data-number="1"]')
+        .getAttribute('data-table-id')) ?? ''
+    expect(tableId).toMatch(/^tb_/)
+    expect((await member.request.get(`/api/tables/${tableId}/qr?format=png`)).status()).toBe(404)
     await member.screenshot({ path: shot('tables-member-bg'), fullPage: true })
 
     // The print page, opened by its address, says the same and prints nothing.
