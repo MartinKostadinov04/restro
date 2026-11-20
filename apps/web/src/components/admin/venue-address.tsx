@@ -19,6 +19,7 @@ import { suggestSlug } from '@/lib/slug'
 import { WRAPS_FORM } from '@/lib/wrapping'
 import { renameVenueSlugAction } from '@/server/venues-actions'
 import type { RenameVenueSlugError } from '@/server/venues-result'
+import { useSignInAgain } from '@/settings/use-settings-run'
 
 interface VenueAddressProps {
   readonly venueId: string
@@ -52,6 +53,7 @@ export function VenueAddress({
   const [value, setValue] = useState(slug)
   const [error, setError] = useState<RenameVenueSlugError | null>(null)
   const [pending, startTransition] = useTransition()
+  const again = useSignInAgain()
 
   const valid = isVenueSlug(value)
   const dirty = value !== saved
@@ -76,6 +78,10 @@ export function VenueAddress({
         if (result.filesQueued) toast.success(t('slug.saved'))
         else toast.warning(t('slug.savedLate'))
       } else {
+        if (result.error === 'sign_in_again') {
+          again.ask(() => submit(event))
+          return
+        }
         setError(result.error)
       }
     })
@@ -83,6 +89,7 @@ export function VenueAddress({
 
   return (
     <div className="grid grid-cols-1 gap-3">
+      {again.dialog}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <code
           className="break-all rounded-md bg-muted px-2 py-0.5 font-mono text-xs"

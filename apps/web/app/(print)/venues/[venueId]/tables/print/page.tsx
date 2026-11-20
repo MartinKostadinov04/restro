@@ -6,7 +6,7 @@
 import { ArrowLeftIcon } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { getAssetStore } from '@/server/assets'
 import { getPool } from '@/server/db'
@@ -15,6 +15,7 @@ import { defaultQrBaseUrl } from '@/server/env'
 import { revealConfig, revealFor } from '@/server/reveal'
 import { canManageIntegration } from '@/server/roles'
 import { requireTenant } from '@/server/session'
+import { onSharedDevice } from '@/server/staff/shared-device'
 import { loadTablesView } from '@/server/tables/service'
 import { getVenue } from '@/server/venues'
 import { PrintButton } from '@/tables/print-button'
@@ -29,6 +30,11 @@ export default async function PrintTablesPage({
   // Another tenant's venue and a made-up id both come back as null (row-level security).
   const venue = await getVenue(organization.id, (await params).venueId)
   if (!venue) notFound()
+  // A shared tablet works Tonight; the codes need the person's own sign-in (RR-84), as on the
+  // design page.
+  if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+    redirect(`/venues/${venue.id}?tab=tonight`)
+  }
 
   const t = await getTranslations('tables')
   // The sheet prints the codes the worker reveals for the signed-in owner or admin (#70).
