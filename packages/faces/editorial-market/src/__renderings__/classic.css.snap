@@ -171,6 +171,7 @@
 .rm-item-copy { grid-column: 1 }
 .rm-item-copy { grid-row: 1 }
 .rm-item-copy { min-width: 0 }
+.rm-item-copy > [data-slot="item.name"] { min-width: 0 }
 .rm-item-open { display: block }
 .rm-item-open { width: 100% }
 .rm-item-open { min-height: 44px }

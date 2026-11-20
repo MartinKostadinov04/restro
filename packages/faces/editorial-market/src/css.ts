@@ -551,6 +551,12 @@ ${NAME_FIT_CSS}
   grid-row: 1;
   min-width: 0;
 }
+/* A name may shrink below its longest word wherever the copy is a flex row (a two-column card): a
+   word wider than the column then breaks inside it instead of widening the page. A price at the end
+   asks for the longest word back (below). */
+.rm-item-copy > [data-slot="item.name"] {
+  min-width: 0;
+}
 .rm-item-open {
   display: block;
   width: 100%;

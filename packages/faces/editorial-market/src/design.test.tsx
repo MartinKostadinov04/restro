@@ -429,6 +429,7 @@ const NAME_FIT_ADDED: readonly string[] = [
   '.rm { --rm-name-fit: 11.8 }',
   '.rm[data-heading-font="same"][data-body-font="inter"] { --rm-name-fit: 7.9 }',
   '.rm[data-items-name-case="capitals"][data-heading-font="same"][data-body-font="inter"] { --rm-name-fit: 9.4 }',
+  '.rm-item-copy > [data-slot="item.name"] { min-width: 0 }',
   '.rm-item { container-type: inline-size }',
   '.rm-item { --rm-name-inset: 0px }',
   `.rm-item ${NAME} { --rm-name-size: 19px }`,
