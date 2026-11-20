@@ -108,7 +108,7 @@ A service control is drawn only when its `view.features` field is on, and carrie
   - a removed line stays for 10 seconds with Undo (`removed`, `undoSeconds`), and an order left idle for 30 minutes is set aside as the "Earlier order" with Restore (`earlier`);
   - when the host says ordering is paused (`ordering.state` `paused`, #79: staff paused all bars or this table's bar, Restro paused the venue's connection to its POS, or this table is paused after an order it could not confirm), the template says "Ordering is paused right now, please order from a waiter" (`orderingPaused`) and keeps the order as it is: the lines stay and can still be edited, Send and Pay are greyed (D120), and no cause or countdown is shown. A sent order waiting to go when the pause starts comes back Not sent with its lines back on the order; one already being sent finishes and shows its own state. When the pause lifts the template offers Send again with nothing to do on the phone;
   - the venue's night (#82, D122 §4): the host's `ordering.night` says where the night stands. From 10 minutes before last orders (`last_orders`) the template shows "Last orders at 04:30" (`lastOrdersAt`, the time the host names in `at`) and Send still works. After last orders, and all night on a weekday the venue is closed (`closed`), it shows "Ordering from phones has closed for tonight" (`orderingClosedTonight`); before the venue opens (`opens_later`) it shows "Ordering from phones opens at 22:00" (`orderingOpensAt`). In both of those Send is not offered and the order is kept as it is; a Send that still arrives is refused `ordering_closed`. The bill, Call a waiter and paying are not touched. At the venue's closing hour every table closes (the template's usual "table is not taking orders" state, and its order is emptied). A venue that has not set its hours is never gated, and the host says `open`;
-  - when the table is closed (`ordering.state` `closed`), the template says so with the shell's words (`orderingClosedText(ordering, strings)`): where the host adds `retired: true` the table's code is no longer in use (D121), no wait will end it, and the words say so and to scan the code on the table again;
+  - when the table is closed (`ordering.state` `closed`), the menu is read-only: no Add on a card or a dish page and no waiter button, since the host refuses both (11-18 screen round, lane 3). The template says so once with the shell's words (`orderingClosedText(ordering, strings)`): where the host adds `retired: true` the table's code is no longer in use (D121), no wait will end it, and the words say so and to scan the code on the table again;
   - when the phone has a weak signal (`services.state.offline`, which the host turns on after about 10 seconds without an answer, also when a request is stalled and nothing ends), the template says "Weak connection. Nothing new was sent yet, we keep trying." (`offline`) **on the menu as well as in the bag and the pay screen** (DA-23: a guest who never opened the bag saw nothing), claims no success, and **greys Send and Pay** (`payBlock` returns `offline` first; Send is never queued: the host refuses it `offline` and makes no request); the order stays editable (D120, D121). The host keeps retrying quietly, and the state clears when a request answers;
   - **a Send whose answer was lost** (`services.state.sendLost`, set by the host when the Send's request threw, timed out or came back unusable; the command answer is `pending` with the code `answer_lost`): the template says "We can't reach Restro right now. If your order isn't on your bill in a few minutes, please call a waiter." (`sendLost`, with the reference when `sendLost.ref` is not null: `reference`) **in place of** the weak-signal line, never "Try again" and never "Nothing new was sent" (the order may already be in the POS, D120), and offers no re-send. The host has no reference on the phone after a lost answer, so the line has none; a landed order's own row speaks beside it, with its reference under "Show this to your waiter". The table's sent orders carry no action id, so this phone's order can't be told from another phone's: the host lets go only by the time limit, after 3 minutes and an answer since;
   - **the screen the template has open** (`services.setScreen`, D121): the host asks for the table's state every 2 seconds on the bag and the bill and every 10 seconds on the menu, and asks for a fresh reading of a bill older than 15 seconds when the bill is open. A template calls `setScreen('menu' | 'bag' | 'bill')` when its screen changes and once at mount (the bill covers paying from it); a template that never calls it gets the order's cadence while the order has lines, else the menu's. The server's guard on the reading (the bill is read again only when older than 15 seconds, one reading job per table) is unchanged;
@@ -184,7 +184,7 @@ Decided in #45 (D127, "The guest's bill screen"; Martin read them in the prototy
 | `qty_all` | Choosing: quantity | всички ({n}) | all ({n}) |
 | `tip_label` | Tip | Бакшиш: отива за заведението | Tip: goes to the venue |
 | `tip_other` | Tip | Друга сума | Other amount |
-| `your_items` | Totals | Избрано | Your items |
+| `your_items` | Totals | Избрано | Selected |
 | `tip` | Totals | Бакшиш | Tip |
 | `total` | Totals | Общо | Total |
 | `pay_x` | Pay button | Плати {x} | Pay {x} |
@@ -197,6 +197,8 @@ Decided in #45 (D127, "The guest's bill screen"; Martin read them in the prototy
 | `cards_paused` | Pay greyed; ended: paying_paused | Плащането с карта е спряно в момента. Попитайте сервитьора. | Card payments are paused right now. Ask your waiter. |
 | `ordering_paused` | Banner; Send and Pay greyed | Поръчването е спряно в момента. Моля, поръчайте от сервитьор. | Ordering is paused right now. Please order from a waiter. |
 | `nothing_picked` | Pay greyed | Изберете поне един ред. | Choose at least one line. |
+| `nothing_to_pay` | Pay: an empty bill, with a button back (`done`) (lane 3) | Няма какво да се плати / Към менюто | Nothing to pay yet / Back to the menu |
+| `confirm_x` | Pay: the card form's button, the second step (lane 3) | Потвърди {amount} | Confirm {amount} |
 | `paying_not_offered` | Refusal | За да платите, попитайте сервитьора. | Ask your waiter to pay. |
 | `being_paid_refused` | Refusal: ticking a greyed line | Някой вече плаща този ред. | Someone is already paying for this line. |
 | `bill_changed` | Refusal | Сметката ви се промени, откакто я отворихте. | Your bill changed since you opened it. |
@@ -264,19 +266,23 @@ Decided in #45 (D127, "The guest's bill screen"; Martin read them in the prototy
 | `pay_in_progress` | Menu: a payment that has not settled (Martin 11-06, #293) | Има текущо плащане, докоснете за да го видите | Payment in progress, tap to see |
 | `nothing_owed` | Pay greyed: a discount takes the ticked lines to zero or less (#293) | По тези редове няма нищо за плащане. Попитайте сервитьора. | There is nothing to pay on these lines. Ask your waiter. |
 | `order_empty` | Order | Поръчката е празна | Your order is empty |
+| `add_more` | Order: the empty line beside a sent order (lane 3) | Добавете още от менюто. | Add more from the menu. |
+| `over_phone_limit` | Refusal at Send: the order is over the phone cap (D118, lane 3) | Тази поръчка е над лимита за поръчки от телефон. Сервитьорът ще я приеме. | This order is over the limit for phone orders. Your waiter will take it. |
 | `call_btn` | Call a waiter | Повикай сервитьор | Call a waiter |
 | `call_sheet` | Call a waiter: options | Какво ви трябва? | What do you need? |
 | `call_lost` | Call a waiter, Pay cash: the answer was lost (#296) | В момента не можем да се свържем с Restro. Ако никой не дойде след няколко минути, моля, обърнете се към сервитьор. | We can’t reach Restro right now. If nobody comes in a few minutes, please ask a waiter in person. |
 | `calls_off` | Refusal: the venue has not switched calls on (#296) | Повикването на сервитьор от телефона е изключено тук. Попитайте сервитьора. | Calling a waiter from your phone is off here. Ask your waiter. |
 | `kind_not_offered` | Refusal: the venue's list lacks the kind (#296) | Това не може да се поиска от телефона тук. Попитайте сервитьора. | This can’t be asked for from your phone here. Ask your waiter. |
-| `k_waiter` | Call option | Повикай сервитьора | Call the waiter |
+| `k_waiter` | Call option (the listing of a call) | Повикай сервитьора | Call the waiter |
+| `k_waiter_tile` | Call option: the plain call's choice in the sheet (11-18 screen round, lane 3) | Друго | Something else |
 | `k_bill` | Call option | Донесете сметката | Bring the bill |
 | `k_ice` | Call option | Лед | Ice |
 | `k_water` | Call option | Вода | Water |
 | `k_glasses` | Call option | Чаши | Glasses |
 | `k_clean_table` | Call option | Почистете масата | Clean the table |
 | `k_terminal` | Call option | ПОС терминал | Card terminal |
-| `call_sent` | Call a waiter: sent; also Pay cash (#296: the shell now says this, it said "Request sent") | Сервитьорът е повикан | Waiter called |
+| `call_sent` | Call a waiter: sent; also Pay cash (11-18 screen round, lane 3: back to "Request sent", a waiter has not confirmed it yet) | Заявката е изпратена / Чакаме сервитьор да я потвърди. | Request sent / Waiting for a waiter to confirm. |
+| `call_table_not_open` | Refusal: a call at a table closed for phones (lane 3) | Тази маса не е отворена за телефони. Махнете на сервитьор. | This table isn’t open for phones. Wave to a waiter. |
 | `call_more` | Call a waiter: sent | Още нещо | Something else |
 | `call_done` | Call a waiter: handled | Повикването е прието. | Your call was handled. |
 | `call_rejected` | Call a waiter: the panel for a call that could not be taken. One title and hint (the shell's `requestStates.rejected`) cover two causes: a refusal of the command (`calls_off`, `kind_not_offered`, `table_not_open`), where the hint is the refusal's own word, and a table call nobody answered in the venue's time. Splitting the title by cause is a later designer pass | Екипът не можа да приеме заявката / Попитайте сервитьора. | The team could not take this request / Ask your waiter. |

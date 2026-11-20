@@ -251,6 +251,14 @@ export interface Services {
   readonly armCall: () => void
   /** Takes the armed call (true once), as the sheet opens. */
   readonly takeCall: () => boolean
+  /**
+   * The bill's "Pay N" (lane 3 S14): the tap arms the whole bill, so the Pay sheet opens with every
+   * free line ticked and its Pay reads the amount the bill's button spoke of. Armed by a tap alone,
+   * so a reloaded `#pay` address ticks nothing.
+   */
+  readonly armWholeBill: () => void
+  /** Takes the armed whole bill (true once), as the Pay sheet opens. */
+  readonly takeWholeBill: () => boolean
 }
 
 const ServicesContext = createContext<Services | null>(null)
@@ -723,11 +731,23 @@ function ActiveServices({
     armed.current = false
     return was
   }, [])
+  // The bill's "Pay N" (lane 3 S14): its tap arms the whole bill for the Pay sheet it opens.
+  const wholeBillArmed = useRef(false)
+  const armWholeBill = useCallback(() => {
+    wholeBillArmed.current = true
+  }, [])
+  const takeWholeBill = useCallback(() => {
+    const was = wholeBillArmed.current
+    wholeBillArmed.current = false
+    return was
+  }, [])
   const setTip = useCallback((choice: TipChoice) => setTipChoice(choice), [])
 
+  // A table not open for phones shows the menu read-only (lane 3 S17): no Add, no dish order.
+  const tableClosed = state.ordering?.state === 'closed'
   const canOrder = useCallback(
-    (item: ViewItem) => features.ordering && item.order.controls,
-    [features.ordering],
+    (item: ViewItem) => features.ordering && !tableClosed && item.order.controls,
+    [features.ordering, tableClosed],
   )
 
   const value = useMemo<Services>(
@@ -776,6 +796,8 @@ function ActiveServices({
       closeSheet,
       armCall,
       takeCall,
+      armWholeBill,
+      takeWholeBill,
     }),
     [
       view,
@@ -818,6 +840,8 @@ function ActiveServices({
       closeSheet,
       armCall,
       takeCall,
+      armWholeBill,
+      takeWholeBill,
     ],
   )
 

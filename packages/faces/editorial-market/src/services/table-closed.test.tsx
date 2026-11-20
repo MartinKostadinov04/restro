@@ -2,11 +2,12 @@
 
 // The walk's findings on the guest's phone at a table (#420): P15 (a round the guests sent that is
 // not on the bill yet is not shown as a fresh total), P22 (staff moved the party: the bill stayed
-// at this table, no amount), P23 ("Add" is greyed at a table closed for phones) and S10 (the closed
-// sentence is printed once). No local success (D72): nothing here adds a round to a total.
+// at this table, no amount), and a table closed for phones: the menu read-only, with no Add and no
+// waiter button, and the closed sentence printed once (S10, lane 3 S17, S19). No local success
+// (D72): nothing here adds a round to a total.
 
 import { stringsFor } from '@restro/shell'
-import { cleanup, fireEvent, screen } from '@testing-library/react'
+import { cleanup, fireEvent, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -108,25 +109,30 @@ describe('P15: a round on its way to the bill', () => {
   })
 })
 
-describe('P23 and S10: a table closed for phones', () => {
+describe('S10, S17 and S19: a table closed for phones shows the menu read-only', () => {
   const closed = () => orderHost({ ordering: { state: 'closed', notesAndOptions: true } })
 
-  it('greys "Add" on the item card, keeping its name', () => {
+  it('draws no Add and no waiter button, and says why once', () => {
     drawFace(closed())
-    const add = screen.getByRole('button', { name: 'Add Hummus' })
-    // Focusable, so its name and the reason stay reachable: aria-disabled and a click guard (P23).
-    expect(add.hasAttribute('disabled')).toBe(false)
-    expect(add.getAttribute('aria-disabled')).toBe('true')
-  })
-
-  it('prints the closed sentence once', () => {
-    drawFace(closed())
+    expect(document.querySelectorAll('[data-slot="item.add"]')).toHaveLength(0)
+    expect(screen.queryByRole('button', { name: 'Add Hummus' })).toBeNull()
+    // A call is refused at a closed table too (S19): no bell to tap.
+    expect(document.querySelector('[data-slot="menu.call_waiter"]')).toBeNull()
     expect(screen.getAllByText(W.orderingClosed)).toHaveLength(1)
+    expect(W.orderingClosed).toBe('This table isn’t open for phone orders. Ask a waiter.')
   })
 
-  it('leaves "Add" live where the table takes orders', () => {
+  it('draws no order on the dish page either', () => {
+    drawFace(closed())
+    fireEvent.click(screen.getByRole('button', { name: /^Hummus/ }))
+    const page = screen.getByRole('dialog', { name: 'Hummus' })
+    expect(within(page).queryByRole('button', { name: /Add to bag/ })).toBeNull()
+  })
+
+  it('leaves "Add" and the waiter button where the table takes orders', () => {
     drawFace(orderHost())
     expect(screen.getByRole('button', { name: 'Add Hummus' }).hasAttribute('disabled')).toBe(false)
+    expect(document.querySelector('[data-slot="menu.call_waiter"]')).not.toBeNull()
   })
 })
 

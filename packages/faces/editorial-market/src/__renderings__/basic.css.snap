@@ -830,9 +830,6 @@
 .rm .ro-plus svg { height: var(--ro-icon) }
 .rm .ro-plus svg { stroke-width: 2.4 }
 .rm .ro-plus:active { transform: scale(0.9) }
-.rm .ro-plus[aria-disabled="true"] { opacity: 0.4 }
-.rm .ro-plus[aria-disabled="true"] { cursor: default }
-.rm .ro-plus[aria-disabled="true"] { transform: none }
 .rm .ro-plus-count { position: absolute }
 .rm .ro-plus-count { top: calc((44px - var(--ro-circle)) / 2 - 4px) }
 .rm .ro-plus-count { right: calc((44px - var(--ro-circle)) / 2 - 4px) }
@@ -1507,6 +1504,18 @@
 .rm[data-call-kinds="tiles"] .ro-choicegrid button { padding: 10px 6px }
 .rm[data-call-kinds="tiles"] .ro-choicegrid button { text-align: center }
 .rm[data-call-kinds="tiles"] .ro-choicegrid button { overflow-wrap: anywhere }
+.rm .ro-lines li.ro-orderline { grid-template-columns: minmax(0, 1fr) }
+.rm .ro-line-head { display: flex }
+.rm .ro-line-head { justify-content: space-between }
+.rm .ro-line-head { align-items: baseline }
+.rm .ro-line-head { gap: 12px }
+.rm .ro-line-head strong { flex: 1 1 auto }
+.rm .ro-line-head strong { min-width: 0 }
+.rm .ro-line-head b { flex: none }
+.rm .ro-line-foot { display: flex }
+.rm .ro-line-foot { justify-content: space-between }
+.rm .ro-line-foot { align-items: center }
+.rm .ro-line-foot { gap: 12px }
 @media (min-width: 641px) .rm .ro-dish-bar { margin-right: -34px }
 @media (min-width: 641px) .rm .ro-dish-bar { margin-left: -34px }
 @media (min-width: 641px) .rm .ro-dish-bar { padding-right: 34px }

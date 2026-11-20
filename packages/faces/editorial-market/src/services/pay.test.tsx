@@ -336,7 +336,7 @@ describe("this phone's payment", () => {
     const { page, sheet } = openPay(host)
     expect(within(sheet).getByText(/House wine · €12\.50/)).toBeTruthy()
     expect(host.forms).toHaveLength(1)
-    expect(host.forms[0]).toMatchObject({ label: 'Pay €22.50', mounted: true })
+    expect(host.forms[0]).toMatchObject({ label: 'Confirm €22.50', mounted: true })
     expect(sheet.querySelector('[data-slot="pay.form"]')).toBe(host.forms[0]?.target)
     // The poll brings a new state: the form stays mounted, it is not made again.
     page.update({ payment: paymentOf({ tipMinor: 0 }) })
@@ -1034,5 +1034,53 @@ describe('a payment that has not settled while its sheet is closed (#293, DA-24)
     expect(line()).toBeNull()
     page.update({ payment: null })
     expect(line()).toBeNull()
+  })
+})
+
+describe('the 11-18 screen round (lane 3 S1, S14)', () => {
+  it('says there is nothing to pay on an empty bill, with the way back to the menu, never "Pay €0.00"', async () => {
+    const host = fakeHost({ ...base(), tableBill: tableBillOf([]) })
+    const { sheet } = openPay(host)
+    expect(sheet.querySelector('[data-slot="pay.empty"]')?.textContent).toContain(
+      'Nothing to pay yet',
+    )
+    expect(within(sheet).queryByRole('button', { name: /^Pay/ })).toBeNull()
+    expect(within(sheet).queryByRole('checkbox')).toBeNull()
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Back to the menu' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
+  it('opens from the bill’s "Pay €22.50" with the whole bill ticked and Pay ready for that amount', () => {
+    drawFace(fakeHost(base()))
+    fireEvent.click(screen.getByRole('button', { name: 'Your table’s bill' }))
+    const bill = screen.getByRole('dialog', { name: 'Your table’s bill' })
+    fireEvent.click(within(bill).getByRole('button', { name: /^Pay/ }))
+    const sheet = screen.getByRole('dialog', { name: 'Pay' })
+    for (const box of within(sheet).getAllByRole('checkbox') as HTMLInputElement[]) {
+      expect(box.checked).toBe(true)
+    }
+    expect(payButton(sheet, 'Pay €22.50').hasAttribute('disabled')).toBe(false)
+  })
+
+  it('ticks nothing when the pay sheet opens any other way', () => {
+    const { sheet } = openPay(fakeHost(base()))
+    for (const box of within(sheet).getAllByRole('checkbox') as HTMLInputElement[]) {
+      expect(box.checked).toBe(false)
+    }
+  })
+
+  it('draws the second step’s Tip row only where a tip can be set or was, and its button says Confirm', () => {
+    const noTips = fakeHost({
+      ...base(),
+      ordering: { state: 'on', tips: false },
+      payment: paymentOf(),
+    })
+    const { sheet } = openPay(noTips)
+    expect(sheet.textContent).not.toContain('Tip€')
+    expect(noTips.forms[0]).toMatchObject({ label: 'Confirm €22.50' })
+    cleanup()
+    resetPage()
+    const tipped = openPay(fakeHost({ ...base(), payment: paymentOf({ tipMinor: 250 }) }))
+    expect(tipped.sheet.textContent).toContain('Tip€2.50')
   })
 })

@@ -876,9 +876,6 @@
 .rm .ro-plus svg { height: var(--ro-icon) }
 .rm .ro-plus svg { stroke-width: 2.4 }
 .rm .ro-plus:active { transform: scale(0.9) }
-.rm .ro-plus[aria-disabled="true"] { opacity: 0.4 }
-.rm .ro-plus[aria-disabled="true"] { cursor: default }
-.rm .ro-plus[aria-disabled="true"] { transform: none }
 .rm .ro-plus-count { position: absolute }
 .rm .ro-plus-count { top: calc((44px - var(--ro-circle)) / 2 - 4px) }
 .rm .ro-plus-count { right: calc((44px - var(--ro-circle)) / 2 - 4px) }
@@ -1585,6 +1582,24 @@
 .rm[data-order-order-bar="docked"] .ro-bagbar[data-bag="false"] .ro-waiter { flex: 1 1 auto }
 .rm[data-order-order-bar="docked"] .ro-bagbar[data-bag="false"] .ro-waiter { width: 100% }
 .rm[data-order-order-bar="docked"] .ro-bagbar[data-bag="true"] .ro-waiter { border-right: 1px solid color-mix(in srgb, var(--rm-on-accent) 30%, transparent) }
+.rm .ro-lines li.ro-orderline { grid-template-columns: minmax(0, 1fr) }
+.rm[data-bill-rows="zebra"] .ro-lines li.ro-orderline { padding-inline: 0 }
+.rm[data-bill-rows="zebra"] .ro-lines li.ro-orderline { border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent) }
+.rm[data-bill-rows="zebra"] .ro-lines li.ro-orderline { border-radius: 0 }
+.rm[data-bill-rows="zebra"] .ro-lines li.ro-orderline { background: none }
+.rm[data-bill-lines="compact"] .ro-orderline .ro-line-main { display: grid }
+.rm[data-bill-lines="compact"] .ro-orderline .ro-line-main { gap: 4px }
+.rm .ro-line-head { display: flex }
+.rm .ro-line-head { justify-content: space-between }
+.rm .ro-line-head { align-items: baseline }
+.rm .ro-line-head { gap: 12px }
+.rm .ro-line-head strong { flex: 1 1 auto }
+.rm .ro-line-head strong { min-width: 0 }
+.rm .ro-line-head b { flex: none }
+.rm .ro-line-foot { display: flex }
+.rm .ro-line-foot { justify-content: space-between }
+.rm .ro-line-foot { align-items: center }
+.rm .ro-line-foot { gap: 12px }
 .rm[data-receipt-venue-block="logo"] .ro-confirm-logo { justify-self: start }
 .rm[data-receipt-venue-block="logo"] .ro-confirm-logo { width: auto }
 .rm[data-receipt-venue-block="logo"] .ro-confirm-logo { max-width: 144px }

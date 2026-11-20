@@ -358,6 +358,12 @@ export function PaySheet() {
   useEffect(() => {
     if (bill !== null && payment === null) setPicks((current) => reconcilePicks(current, bill))
   }, [bill, payment])
+  // Opened from the bill's "Pay N" (lane 3 S14): the whole bill is ticked, so this sheet's Pay reads
+  // the amount the bill's button spoke of. Once, as the sheet opens; a reloaded `#pay` ticks nothing.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: taken once, as the sheet opens
+  useEffect(() => {
+    if (o.takeWholeBill() && bill !== null && offersPay(state)) setPicks(pickWhole(new Map(), bill))
+  }, [])
 
   const nameOf = (line: TableBillLineView) => lineNameText(line.name, locale, words.otherItem)
 
@@ -416,7 +422,24 @@ export function PaySheet() {
       </div>
     )
   }
-  if (bill === null || paying === null) return <p className="ro-empty">{words.nothingToPay}</p>
+  const hasLines = bill?.parts.some((part) => part.lines.length > 0) === true
+  // Nothing on the bill and nothing paid (lane 3 S1): say so and lead back to the menu, never a
+  // form with a dead "Pay 0,00".
+  if (bill === null || paying === null || (!hasLines && bill.paidLines.length === 0)) {
+    return (
+      <div className="ro-sheet" data-slot="pay.empty">
+        <p className="ro-empty">{words.nothingToPay}</p>
+        <button
+          type="button"
+          className="ro-primary is-wide"
+          data-design-part="button"
+          onClick={o.closeSheet}
+        >
+          <span>{words.done}</span>
+        </button>
+      </div>
+    )
+  }
 
   const totals = choosePay(picks, tip, tipsOffered)
   const block = payBlock(
@@ -439,7 +462,6 @@ export function PaySheet() {
   // Everything is paid: nothing is free to pay and the sitting has paid lines, so the choosing, the
   // totals and Pay go, and the bill shows what was paid (D127 1.2).
   const settled = free.length === 0 && bill.paidLines.length > 0
-  const hasLines = bill.parts.some((part) => part.lines.length > 0)
   const everything = free.length > 0 && free.every((line) => picks.has(line.id))
 
   return (
@@ -695,10 +717,13 @@ export function PaymentScreen({
           </li>
         ))}
       </ul>
-      <div className="ro-sum">
-        <span>{w.tip}</span>
-        <b>{money(payment.tipMinor)}</b>
-      </div>
+      {/* The Tip row only where a tip can be set, or one was (lane 3 S14): never a dead "Tip 0,00". */}
+      {o.state.ordering?.tips === true || payment.tipMinor > 0 ? (
+        <div className="ro-sum">
+          <span>{w.tip}</span>
+          <b>{money(payment.tipMinor)}</b>
+        </div>
+      ) : null}
       {payment.amountMinor === null ? null : (
         <div className="ro-sum is-big">
           <span>{w.total}</span>
@@ -722,7 +747,7 @@ export function PaymentScreen({
               {binding.payForm === undefined || payment.amountMinor === null ? null : (
                 <FormSlot
                   slot={binding.payForm}
-                  label={w.payX(money(payment.amountMinor))}
+                  label={w.confirmX(money(payment.amountMinor))}
                   locale={o.locale}
                   failedText={w.cardFormFailed}
                 />
