@@ -74,8 +74,13 @@ export const GUEST_REFUSAL_CODES = [
   'needs_first_item',
   /** Send (#78): the same round went in the last 15 minutes (`subjectId` names it); ask first. */
   'duplicate_order',
-  /** Send (#78): over the venue's cap or past its pace; the table pauses for "ask your waiter". */
+  /** Send (#78): past the venue's pace; the table pauses for "ask your waiter". */
   'guard_tripped',
+  /**
+   * Send (#78, D118): the order is over the venue's cap for phone orders; the table pauses and the
+   * waiter takes it. Never "send fewer items": a smaller order would trip the pause too.
+   */
+  'over_phone_limit',
   /** Pay (#110, D127): paying in the app is not offered here: "Ask your waiter to pay." */
   'paying_not_offered',
   /** Pay: card payments are paused while ordering goes on. */

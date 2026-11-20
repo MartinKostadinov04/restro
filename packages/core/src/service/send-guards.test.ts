@@ -59,6 +59,23 @@ describe("a duplicate Send's answer to the phone", () => {
   })
 })
 
+describe("a tripped guard's answer to the phone (D118, lane 3 S10)", () => {
+  it('says the order is over the phone limit when the cap tripped', () => {
+    expect(
+      guestResult(
+        refused('a1', 'guard_tripped', { guard: 'cap', capMinor: 30000, totalMinor: 52500 }),
+      ),
+    ).toMatchObject({ status: 'rejected', code: 'over_phone_limit' })
+  })
+
+  it('keeps guard_tripped when the pace tripped', () => {
+    expect(guestResult(refused('a1', 'guard_tripped', { guard: 'pace' }))).toMatchObject({
+      status: 'rejected',
+      code: 'guard_tripped',
+    })
+  })
+})
+
 describe.skipIf(!hasDatabase)("Send's guards (as the restro_app role)", () => {
   let world: ServiceWorld
   let tableId: string
