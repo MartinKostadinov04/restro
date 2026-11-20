@@ -52,7 +52,7 @@ import { ConfirmDialog } from './confirm-dialog'
 import { SameGuestsDialog } from './door-dialogs'
 import { NoPlanYet } from './no-plan'
 import { useBlockReasonWord, useSpotCalled, useSpotsCalled } from './plan-words'
-import { PickWait, SpotList, SpotPlan, usePickPlan } from './spot-picker'
+import { PickWait, SpotList, SpotPlan, usePickerWay, usePickPlan } from './spot-picker'
 import type { RvRunSpec } from './use-reservation-run'
 
 /** The party whose tables change. */
@@ -117,9 +117,7 @@ export function ChangeTablesSheet({
   const reasonWord = useBlockReasonWord()
   const called = useSpotCalled()
   const spotsCalled = useSpotsCalled()
-  /** The way she chose; until she does, the list on a phone and the plan elsewhere. */
-  const [way, setWay] = useState<'plan' | 'list' | null>(null)
-  const picker = way ?? (isMobile ? 'list' : 'plan')
+  const [picker, setWay] = usePickerWay()
   const pick = usePickPlan(frame, party.day)
   const plan = pick.plan
   /** No plan, or nothing on it: nothing to change to, and the sheet says why (#397). */
@@ -152,7 +150,7 @@ export function ChangeTablesSheet({
       const block = spot.holds.find((hold) => hold.kind === 'block' && hold.now)
       if (block !== undefined) {
         toast.error(
-          t('ct_blocked', { spot: called(spot.name, 'title'), reason: reasonWord(block.reason) }),
+          t('ct_blocked', { spot: called(spot.name), reason: reasonWord(block.reason) }),
           {
             id: `rv-ct-blocked:${spot.id}`,
           },
@@ -176,7 +174,7 @@ export function ChangeTablesSheet({
         toast.error(
           t('ct_taken', {
             party: nameOf(other.name),
-            spot: called(spot.name, 'title'),
+            spot: called(spot.name),
             time: other.time,
           }),
           { id: `rv-ct-taken:${spot.id}` },
@@ -260,10 +258,10 @@ export function ChangeTablesSheet({
           const hold = spot?.holds.find((one) => one.reservationId === details.reservationId)
           if (spot === undefined || hold === undefined) return null
           return hold.kind === 'block'
-            ? t('ct_blocked', { spot: called(spot.name, 'title'), reason: reasonWord(hold.reason) })
+            ? t('ct_blocked', { spot: called(spot.name), reason: reasonWord(hold.reason) })
             : t('ct_taken', {
                 party: nameOf(hold.name),
-                spot: called(spot.name, 'title'),
+                spot: called(spot.name),
                 time: hold.time,
               })
         },
@@ -359,9 +357,12 @@ export function ChangeTablesSheet({
    * picture, not to a verb. This party takes the other's spots; the other takes this party's.
    */
   const swapBody = (hold: RvHoldView): string => {
-    const theirs = plan === null ? [] : spotsOf(plan, hold.reservationId).map(spotName)
+    const theirs = plan === null ? [] : spotsOf(plan, hold.reservationId)
+    // Where the party ends up: what she chose beyond its own spots, and the other party's (as
+    // `onSwap` writes it).
+    const to = [...new Set([...chosen.filter((id) => !from.includes(id)), ...theirs])].map(spotName)
     const mine = from.map(spotName)
-    const where = { party: nameOf(party.name), other: nameOf(hold.name), to: spotsCalled(theirs) }
+    const where = { party: nameOf(party.name), other: nameOf(hold.name), to: spotsCalled(to) }
     return mine.length === 0
       ? t('ct_swap_b_none', where)
       : t('ct_swap_b', { ...where, back: spotsCalled(mine) })

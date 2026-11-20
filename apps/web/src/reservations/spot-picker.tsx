@@ -14,7 +14,7 @@
 // never a checkbox that acts the moment it is ticked (S19, WCAG 3.2.2).
 import { ChevronRightIcon, MaximizeIcon, MinusIcon, PlusIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -31,6 +31,31 @@ import { planOpening, roomStyle, usePlanView } from './plan-zoom'
 
 /** More spots than this and the list is searchable by name. */
 const SEARCH_FROM = 12
+
+/** A phone, as `useIsMobile` reads it. */
+const PHONE_QUERY = '(max-width: 767px)'
+
+function watchPhone(onChange: () => void) {
+  if (typeof window.matchMedia !== 'function') return () => {}
+  const query = window.matchMedia(PHONE_QUERY)
+  query.addEventListener('change', onChange)
+  return () => query.removeEventListener('change', onChange)
+}
+
+const isPhone = () =>
+  typeof window.matchMedia === 'function' && window.matchMedia(PHONE_QUERY).matches
+
+/**
+ * Which picker a dialog shows (S17): the one she chose, else the named list on a phone and the
+ * plan elsewhere. The screen is read on the first render (`useIsMobile` answers only after it), so
+ * a phone never draws the plan for a frame; with no screen to read, the list.
+ */
+export function usePickerWay() {
+  const phone = useSyncExternalStore(watchPhone, isPhone, () => true)
+  const [chosen, setChosen] = useState<'plan' | 'list' | null>(null)
+  const picker: 'plan' | 'list' = chosen ?? (phone ? 'list' : 'plan')
+  return [picker, setChosen] as const
+}
 
 /** The plan of one night, read for choosing spots: the current plan, or the one asked for. */
 export function usePickPlan(frame: RvFrame, day: string) {
@@ -259,10 +284,10 @@ export function SpotPlan({
       ),
     [plan.day, plan.extent, plan.planId, plan.spots],
   )
-  const { view, frameWidth, zoomIn, zoomOut, fit, onKeyDown, dragged } = usePlanView(
-    frameEl,
+  const { view, frameWidth, zoomIn, zoomOut, fit, onKeyDown, dragged } = usePlanView(frameEl, {
     opening,
-  )
+    room: plan.extent,
+  })
   const kindOf = (spot: RvSpotView) => plan.kinds.find((kind) => kind.key === spot.kind) ?? null
   const shown = kindKey === 'all' ? plan.spots : plan.spots.filter((spot) => spot.kind === kindKey)
   return (

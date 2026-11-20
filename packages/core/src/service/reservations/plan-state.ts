@@ -159,14 +159,28 @@ export function leadingHold(
 }
 
 /**
- * The order spots are listed in: the way a hostess counts them, numbers by their value — 1, 2, 10,
- * 11, 25.1, 101 — and named spots after the numbered ones (S5 of the 11-18 screen round). Done here
+ * The order spots are listed in: the way a hostess counts them — each run of digits compares as a
+ * whole number (2 before 10, and «25.1» as 25, then 1), letters as the venue's words — so 1, 2, 10,
+ * 11, 101, and named spots after the numbered ones (S5 of the 11-18 screen round). Done here
  * rather than in SQL, whose text order puts 101 before 11. The collation is Bulgarian because the
  * names are the venue's own words; numbers sort the same in any language.
  */
 const SPOT_NAME_ORDER = new Intl.Collator('bg', { numeric: true, sensitivity: 'base' })
 
-/** Compares two spot names in that order. */
+const byCodeUnits = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+
+/**
+ * Compares two spot names in that order. Names the collation counts as equal («маса 1» and
+ * «Маса 1», «01» and «1») fall back to the exact name, so the order is the same on every read.
+ */
 export function compareSpotNames(a: string, b: string): number {
-  return SPOT_NAME_ORDER.compare(a, b)
+  return SPOT_NAME_ORDER.compare(a, b) || byCodeUnits(a, b)
+}
+
+/** Spots in that order, and two of the very same name by their id: one order, every read. */
+export function compareSpots(
+  a: { readonly name: string; readonly id: string },
+  b: { readonly name: string; readonly id: string },
+): number {
+  return compareSpotNames(a.name, b.name) || byCodeUnits(a.id, b.id)
 }

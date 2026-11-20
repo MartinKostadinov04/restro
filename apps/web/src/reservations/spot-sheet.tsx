@@ -273,7 +273,7 @@ export function SpotSheet({
         <p className="text-muted-foreground" data-testid="rv-held-later">
           {t('d_holds', {
             party: later.name ?? t('no_name'),
-            spot: called(spot.name, 'title'),
+            spot: called(spot.name),
             time: later.time,
           })}
         </p>

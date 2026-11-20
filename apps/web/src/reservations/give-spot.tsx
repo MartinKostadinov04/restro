@@ -15,7 +15,6 @@
 // table whose own guests are leaving, and the write refuses a spot somebody is on with a sentence
 // that names them (`spot_taken`), rather than the plan hiding it from her now.
 import { useTranslations } from 'next-intl'
-import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -26,12 +25,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { WRAPS } from '@/lib/wrapping'
 import type { RvFrame, RvWaitingView } from '@/server/reservations/view'
 
 import { NoPlanYet } from './no-plan'
-import { PickWait, SpotList, SpotPlan, usePickPlan } from './spot-picker'
+import { PickWait, SpotList, SpotPlan, usePickerWay, usePickPlan } from './spot-picker'
 
 export function GiveSpotDialog({
   frame,
@@ -54,10 +52,7 @@ export function GiveSpotDialog({
   onClose: () => void
 }) {
   const t = useTranslations('reservations')
-  const isMobile = useIsMobile()
-  /** The way she chose; until she does, the list on a phone and the plan elsewhere. */
-  const [chosen, setPicker] = useState<'plan' | 'list' | null>(null)
-  const picker = chosen ?? (isMobile ? 'list' : 'plan')
+  const [picker, setPicker] = usePickerWay()
   const pick = usePickPlan(frame, day)
   const named = party.name ?? t('no_name')
   // A tap on the plan arrives as the list of chosen spots, which was empty: the one it added.

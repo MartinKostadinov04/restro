@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  holdInFrame,
   openingScale,
   openingView,
   PLAN_TOUCH_FLOOR_PX,
@@ -62,5 +63,36 @@ describe('where a plan opens', () => {
     const opening = planOpening('k', [spot(0, 0, 40, 40)], ROOM)
     if (opening === null) throw new Error('no opening')
     expect(openingView(opening, { width: 358, height: 500 })).toMatchObject({ x: 0, y: 0 })
+  })
+})
+
+describe('the opening view and the frame', () => {
+  const frame = { width: 358, height: 500 }
+  // A tall room is drawn taller than the frame, a wide one shorter: the hold measures the room.
+  const rooms: readonly (readonly [string, typeof ROOM])[] = [
+    ['a tall room', { x: 0, y: 0, width: 400, height: 1200 }],
+    ['a wide room', { x: 0, y: 0, width: 4000, height: 600 }],
+  ]
+  for (const [what, room] of rooms) {
+    it(`is already held in the frame, for ${what}`, () => {
+      for (const at of [
+        spot(0, 0, 20, 20),
+        spot(180, 560, 20, 20),
+        spot(room.width - 20, room.height - 20, 20, 20),
+      ]) {
+        const opening = planOpening('k', [at], room)
+        if (opening === null) throw new Error('no opening')
+        const view = openingView(opening, frame)
+        expect(holdInFrame(view, frame, room)).toEqual(view)
+      }
+    })
+  }
+
+  it('lets a room drawn shorter than the frame go no further than its own height allows', () => {
+    // A 4,000 × 600 room on a 358 px frame at 1× is 53.7 px tall: pushed up, its bottom edge stops
+    // at the frame's middle.
+    const room = { width: 4000, height: 600 }
+    const held = holdInFrame({ scale: 1, x: 0, y: -1000 }, frame, room)
+    expect(held.y).toBeCloseTo(frame.height / 2 - (358 * 600) / 4000)
   })
 })

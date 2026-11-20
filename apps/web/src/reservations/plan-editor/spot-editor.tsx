@@ -227,7 +227,8 @@ export function SpotEditor({
                 onSave(
                   { tableId: value === NO_TABLE ? null : value },
                   value === NO_TABLE
-                    ? t('pe_saved_table_none', { name: which })
+                    ? // The sentence opens with the spot: «Място 9 вече няма свързана маса.»
+                      t('pe_saved_table_none', { name: called(spot.name, 'title') })
                     : t('pe_saved_table', {
                         name: which,
                         table: (() => {

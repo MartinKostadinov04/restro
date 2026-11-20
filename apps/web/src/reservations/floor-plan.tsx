@@ -154,10 +154,10 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
       ),
     [plan.day, plan.extent, plan.planId, plan.spots],
   )
-  const { view, frameWidth, zoomIn, zoomOut, fit, onKeyDown, dragged } = usePlanView(
-    frameEl,
+  const { view, frameWidth, zoomIn, zoomOut, fit, onKeyDown, dragged } = usePlanView(frameEl, {
     opening,
-  )
+    room: plan.extent,
+  })
   const { run, busy, pinSheet } = useReservationRun({ device: frame.device })
 
   /** Only the newest read is believed: a slow answer for last night never replaces tonight. */
@@ -276,7 +276,7 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
       // The sentence names the party and the hour, never a guess at its grammatical gender (S9).
       return t('p_taken', {
         party: party.name ?? t('no_name'),
-        spot: called(where.name, 'title'),
+        spot: called(where.name),
         time: party.time,
       })
     },
@@ -286,7 +286,7 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
   const blockWrite = useCallback(
     (which: RvSpotView, choice: BlockChoice) => ({
       id: `rv-block:${which.id}`,
-      done: t('p_blocked_ok', { spot: called(which.name, 'title') }),
+      done: t('p_blocked_ok', { spot: called(which.name) }),
       pin: { title: t('p_pin_block', { spot: called(which.name) }), body: t('p_pin_b') },
       act: (pin?: string) =>
         blockSpotAction({
@@ -316,7 +316,7 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
       setOpenSpot(null)
       run({
         id: `rv-unblock:${which.id}`,
-        done: t('p_unblocked', { spot: called(which.name, 'title') }),
+        done: t('p_unblocked', { spot: called(which.name) }),
         pin: { title: t('p_pin_unblock', { spot: called(which.name) }), body: t('p_pin_b') },
         act: (pin?: string) =>
           unblockSpotAction({
@@ -327,7 +327,7 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
         // Undo here is the opposite write: the same spot, blocked again for the same reason.
         again: {
           label: t('p_undo'),
-          done: t('p_blocked_ok', { spot: called(which.name, 'title') }),
+          done: t('p_blocked_ok', { spot: called(which.name) }),
           act: (pin?: string) =>
             blockSpotAction({
               venueId: frame.venueId,

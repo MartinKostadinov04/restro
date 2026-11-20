@@ -62,8 +62,13 @@ async function person(
   browser: import('@playwright/test').Browser,
   email: string,
   viewport: { width: number; height: number },
+  /** A touch phone, not a narrow desk window: what the opening zoom is for. */
+  touch = false,
 ): Promise<{ context: BrowserContext; page: Page }> {
-  const context = await browser.newContext({ viewport })
+  const context = await browser.newContext({
+    viewport,
+    ...(touch ? { hasTouch: true, isMobile: true } : {}),
+  })
   const page = await context.newPage()
   await signIn(page, email)
   await context.addCookies([{ name: 'NEXT_LOCALE', value: 'en', url: new URL(page.url()).origin }])
@@ -235,7 +240,7 @@ test('blocking a spot needs a reason, and unblocking it is one tap', async () =>
   await dialog.getByTestId('rv-block-do').click()
 
   await expect(page.getByTestId('rv-block-dialog')).toHaveCount(0)
-  await expect(page.getByText('Маса 9 is blocked.')).toBeVisible()
+  await expect(page.getByText('Blocked: Маса 9.')).toBeVisible()
   await expect(spotNamed(page, 'Маса 9').first()).toHaveAttribute('data-state', 'blocked')
   await expect(spotNamed(page, 'Маса 9').first()).toContainText('Blocked · repair')
 
@@ -244,7 +249,7 @@ test('blocking a spot needs a reason, and unblocking it is one tap', async () =>
   const blocked = sheet(page)
   await expect(blocked).toContainText('until somebody lifts it')
   await blocked.getByTestId('rv-unblock').click()
-  await expect(page.getByText('Маса 9 is free again.')).toBeVisible()
+  await expect(page.getByText('Free again: Маса 9.')).toBeVisible()
   await expect(spotNamed(page, 'Маса 9').first()).toHaveAttribute('data-state', 'free')
 })
 
@@ -260,7 +265,7 @@ test('blocking a spot a party has booked is refused, and the refusal names the p
   // The notice stays on the screen and says whose booking is in the way (#327, the ticket's own
   // acceptance line), so the hostess knows what to do next.
   // The sentence names the party and the hour without guessing anyone's gender (S9).
-  const refusal = page.getByText(/Маса 7 is booked for Иванова at/)
+  const refusal = page.getByText(/^Booked for Иванова at .*: Маса 7./)
   await expect(refusal).toBeVisible()
   await expect(refusal).toContainText('Move the party first.')
   await expect(spotNamed(page, 'Маса 7').first()).toHaveAttribute('data-state', 'late')
@@ -352,7 +357,7 @@ test('at 390 px the plan reads, the long name clips, and the sheet holds all of 
 test('at 390 px the plan opens at the zoom where every spot is a 44 px target', async ({
   browser,
 }) => {
-  const phone = await person(browser, TONIGHT_OWNER_EMAIL, PHONE)
+  const phone = await person(browser, TONIGHT_OWNER_EMAIL, PHONE, true)
   try {
     await openPlan(phone.page)
     // Restro's floor (D123; S17): the smallest spot decides the opening zoom, so every spot is at

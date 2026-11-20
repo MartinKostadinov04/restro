@@ -97,11 +97,17 @@ export function PlanCanvas({
   const [frameEl, setFrameEl] = useState<HTMLElement | null>(null)
   /** The room as drawn: zoomed, it is wider than the frame, and a drag is measured on it. */
   const roomRef = useRef<HTMLDivElement | null>(null)
-  const { view, zoomIn, zoomOut, fit, onKeyDown } = usePlanView(frameEl)
   const [live, setLive] = useState<{ id: string; place: SpotPlace } | null>(null)
   const liveRef = useRef(live)
   liveRef.current = live
   const gesture = useRef<Gesture | null>(null)
+  // Settings is a long page: a plain wheel scrolls it, Ctrl-wheel zooms; a spot being dragged
+  // holds the room still under it.
+  const { view, zoomIn, zoomOut, fit, onKeyDown } = usePlanView(frameEl, {
+    room,
+    wheelScrollsPage: true,
+    paused: () => gesture.current !== null,
+  })
   /** A drag just ended on this spot: the click the browser fires after it is not a tap. */
   const dragged = useRef<string | null>(null)
   const keys = useRef<{ id: string; from: SpotPlace; timer: number } | null>(null)
@@ -244,7 +250,7 @@ export function PlanCanvas({
       ) : null}
       <section
         ref={setFrameEl}
-        className="relative mx-auto w-full touch-none overflow-hidden rounded-lg border bg-muted/40"
+        className="relative mx-auto w-full touch-pan-y overflow-hidden rounded-lg border bg-muted/40"
         style={{
           aspectRatio: `${room.width} / ${room.height}`,
           maxWidth: `calc(${MAX_HEIGHT_VH}vh * ${ratio.toFixed(4)})`,

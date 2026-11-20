@@ -215,8 +215,8 @@ test('a spot somebody booked later is refused by their name, and a blocked one b
 
   await tap(sheet, 'Бар 12 вляво')
   await sheet.getByTestId('rv-ct-save').click()
-  await expect(toast(page, 'Бар 12 вляво is held for Колев from')).toBeVisible()
-  await expect(toast(page, 'Pick another spot.')).toBeVisible()
+  await expect(toast(page, 'Held for Колев from')).toBeVisible()
+  await expect(toast(page, ': Бар 12 вляво. Pick another spot.')).toBeVisible()
   // Never half-moved: the sheet stays open and the party still has no spot.
   await expect(changing(page)).toBeVisible()
   await changing(page).getByTestId('rv-ct-close').click()

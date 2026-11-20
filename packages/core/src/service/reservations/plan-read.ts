@@ -49,7 +49,7 @@ import {
 } from '../../spot-shapes'
 import { type ReadInput, type Who, whoOf } from '../night-read'
 import {
-  compareSpotNames,
+  compareSpots,
   holdCoversAt,
   leadingHold,
   type SpotHoldFact,
@@ -500,7 +500,7 @@ export async function readFloorPlan(
         ),
       )
     // Natural order (1, 2, 10, 11, 101), in code: SQL's text order puts 101 before 11 (S5).
-    found.sort((a, b) => compareSpotNames(a.name, b.name))
+    found.sort(compareSpots)
     if (found.length === 0) return { ok: true, access, plan: { ...bare, kinds } } as const
 
     const holds = await holdsOfNight(

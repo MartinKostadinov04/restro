@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   compareSpotNames,
+  compareSpots,
   holdCoversAt,
   isLateHold,
   LATE_AFTER_MINUTES,
@@ -220,5 +221,20 @@ describe('the order spots are listed in', () => {
       'Бар 1 · стол 10',
       'Бар 2 · стол 1',
     ])
+  })
+
+  it('orders names the collation counts as equal by the exact name, then by id', () => {
+    expect(['маса 1', 'Маса 1', '1', '01'].sort(compareSpotNames)).toEqual([
+      '01',
+      '1',
+      'Маса 1',
+      'маса 1',
+    ])
+    const twins = [
+      { id: 'sp_b', name: 'Маса 1' },
+      { id: 'sp_a', name: 'Маса 1' },
+      { id: 'sp_c', name: '10' },
+    ]
+    expect([...twins].sort(compareSpots).map((one) => one.id)).toEqual(['sp_c', 'sp_a', 'sp_b'])
   })
 })

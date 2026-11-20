@@ -156,10 +156,26 @@ export function zoomAbout(view: PlanView, factor: number, at: { x: number; y: nu
   return { scale, x: at.x - (at.x - view.x) * real, y: at.y - (at.y - view.y) * real }
 }
 
-/** Keeps the plan from being pushed out of its frame: a corner may reach the middle, no further. */
-export function holdInFrame(view: PlanView, frame: { width: number; height: number }): PlanView {
+/**
+ * Keeps the plan from being pushed out of its frame: a corner may reach the middle, no further.
+ * The room is drawn `frame.width × scale` wide and as tall as its own proportions make it
+ * (`roomStyle`), so its height comes from `room`, not from the frame's; without a room the frame's
+ * own proportions stand in.
+ */
+export function holdInFrame(
+  view: PlanView,
+  frame: { readonly width: number; readonly height: number },
+  room: { readonly width: number; readonly height: number } | null = null,
+): PlanView {
   const half = { x: frame.width / 2, y: frame.height / 2 }
-  const span = { x: frame.width * view.scale, y: frame.height * view.scale }
+  const drawnWidth = frame.width * view.scale
+  const span = {
+    x: drawnWidth,
+    y:
+      room === null || room.width <= 0
+        ? frame.height * view.scale
+        : (drawnWidth * room.height) / room.width,
+  }
   return {
     scale: view.scale,
     x: clamp(view.x, half.x - span.x, half.x),
@@ -175,13 +191,31 @@ function pinchOf(points: readonly { x: number; y: number }[]) {
   return { gap, middle: { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 } }
 }
 
+/** How a screen uses the plan's view. */
+export interface PlanViewOptions {
+  /** Where the plan opens on a touch screen (`planOpening`); without one it opens whole. */
+  readonly opening?: PlanOpening | null
+  /** The room's size in grid units: how tall it is drawn, so it is held in its frame. */
+  readonly room?: { readonly width: number; readonly height: number } | null
+  /**
+   * A plain wheel scrolls the page and only Ctrl/Meta-wheel (or a trackpad pinch) zooms: for a plan
+   * inside a long page, such as the editor in Settings.
+   */
+  readonly wheelScrollsPage?: boolean
+  /** True while the screen drags something of its own (the editor's spots): the plan holds still. */
+  readonly paused?: () => boolean
+}
+
 /**
  * The plan's view, with every way of changing it. `frame` is the element the plan is drawn in (held
  * in state through a callback ref, so a frame drawn again after a skeleton is followed too): the
  * hook puts its own wheel and pointer listeners on it, because a wheel that zooms must be able to
  * refuse the page's own scroll, which React's own `onWheel` cannot do.
  */
-export function usePlanView(frame: HTMLElement | null, opening: PlanOpening | null = null) {
+export function usePlanView(frame: HTMLElement | null, options: PlanViewOptions = {}) {
+  const opening = options.opening ?? null
+  const optionsRef = useRef(options)
+  optionsRef.current = options
   const [view, setView] = useState<PlanView>(FIT)
   const viewRef = useRef(view)
   viewRef.current = view
@@ -202,9 +236,11 @@ export function usePlanView(frame: HTMLElement | null, opening: PlanOpening | nu
 
   const change = useCallback(
     (next: (view: PlanView) => PlanView) => {
-      setView((before) => holdInFrame(next(before), sizeOf()))
+      setView((before) =>
+        holdInFrame(next(before), sizeOf(), optionsRef.current.room ?? opening?.room ?? null),
+      )
     },
-    [sizeOf],
+    [opening, sizeOf],
   )
 
   const middle = useCallback(() => {
@@ -256,7 +292,8 @@ export function usePlanView(frame: HTMLElement | null, opening: PlanOpening | nu
       return
     openedFor.current = openKey
     const touch = typeof window.matchMedia === 'function' && window.matchMedia(TOUCH_QUERY).matches
-    setView(touch ? openingView(now, frameSize) : FIT)
+    // Through the same hold as every gesture, so the first drag never jumps.
+    setView(touch ? holdInFrame(openingView(now, frameSize), frameSize, now.room) : FIT)
   }, [frameSize, openKey])
 
   /** True while the last gesture was a drag, so the tap that ends it opens nothing. */
@@ -310,9 +347,12 @@ export function usePlanView(frame: HTMLElement | null, opening: PlanOpening | nu
     }
 
     const onWheel = (event: WheelEvent) => {
+      const zooms = event.ctrlKey || event.metaKey
+      // Inside a long page a plain wheel is the page's scroll.
+      if (!zooms && optionsRef.current.wheelScrollsPage === true) return
       event.preventDefault()
       // A trackpad pinch arrives as a wheel with Ctrl held; a plain wheel moves the plan.
-      if (event.ctrlKey || event.metaKey) {
+      if (zooms) {
         const factor = Math.exp(-event.deltaY / 200)
         change((before) => zoomAbout(before, factor, pointOf(event)))
         return
@@ -340,6 +380,11 @@ export function usePlanView(frame: HTMLElement | null, opening: PlanOpening | nu
     const onPointerMove = (event: PointerEvent) => {
       const before = pointers.current.get(event.pointerId)
       if (before === undefined) return
+      // A spot being dragged moves alone: the room under it holds still.
+      if (optionsRef.current.paused?.() === true) {
+        pointers.current.set(event.pointerId, pointOf(event))
+        return
+      }
       const now = pointOf(event)
       pointers.current.set(event.pointerId, now)
       moved.current += Math.hypot(now.x - before.x, now.y - before.y)
