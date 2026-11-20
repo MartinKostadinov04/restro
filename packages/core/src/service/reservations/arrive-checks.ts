@@ -244,7 +244,9 @@ export async function readArrivalChecks(
         ? ('settings_missing' as const)
         : nightWritable({ serviceDate: reader.today, permissions: reader.held }, day, settings)
 
-    // The spots this advice is about: the ones tapped, else the party's own.
+    // The spots this advice is about: the ones tapped, else the party's own. A party is read only
+    // within the venue the reader opened: an id from another venue of the organization gives
+    // nothing back (X1 of the 11-18 screen round; RLS keeps the organization, this keeps the venue).
     const asked = input.spotIds ?? []
     const spotIds =
       asked.length > 0 || input.reservationId === undefined
@@ -253,9 +255,11 @@ export async function readArrivalChecks(
             await tx
               .select({ spotId: reservationSpots.spotId })
               .from(reservationSpots)
+              .innerJoin(reservations, eq(reservations.id, reservationSpots.reservationId))
               .where(
                 and(
                   eq(reservationSpots.reservationId, input.reservationId),
+                  eq(reservations.venueId, reader.venue.id),
                   isNull(reservationSpots.releasedAt),
                 ),
               )
@@ -271,7 +275,12 @@ export async function readArrivalChecks(
               await tx
                 .select({ payRule: reservations.payRule })
                 .from(reservations)
-                .where(eq(reservations.id, input.reservationId))
+                .where(
+                  and(
+                    eq(reservations.id, input.reservationId),
+                    eq(reservations.venueId, reader.venue.id),
+                  ),
+                )
             )[0]?.payRule ?? null,
           )
 
@@ -300,7 +309,7 @@ export async function readArrivalChecks(
         : await tx
             .select({ id: spots.id, name: spots.name })
             .from(spots)
-            .where(inArray(spots.id, [...spotIds]))
+            .where(and(inArray(spots.id, [...spotIds]), eq(spots.venueId, reader.venue.id)))
       ).map((row) => [row.id, row.name]),
     )
     let onTheSpot: OnTheSpot | null = null

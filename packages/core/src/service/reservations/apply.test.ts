@@ -210,10 +210,11 @@ describe.skipIf(!hasDatabase)('the reservations (as the restro_app role)', () =>
 
   it('refuses a role that does not hold the command, with its own code, and writes nothing', async () => {
     const night = nightOf(10)
-    // The hostess works tonight's floor and takes bookings; changing one is the booking book's.
+    // The hostess works tonight's floor, takes, edits and cancels bookings (D135 13.18); bringing a
+    // deleted one back is the manager's.
     expect(
       await run(
-        { type: 'reservation.cancel', reservationId: newId('rv') } as ServiceCommand,
+        { type: 'reservation.restore', reservationId: newId('rv') } as ServiceCommand,
         staff(hostessId),
       ),
     ).toMatchObject({ status: 'refused', code: 'permission_denied' })
