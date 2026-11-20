@@ -16,6 +16,7 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: leaf `<span>` with `white-space: nowrap`, text "Липсва име за менюто в test POS…", width 413, right edge 429; on Demo Club (no badge) `scrollWidth` equals 390; screenshot taken.
 - Proposal: let the badge wrap (`whitespace-normal`, `min-w-0`) and shorten it. bg «Няма име в test POS: показва се собственото му» / en "No name in test POS: our own name is shown".
 - Status: candidate
+- **Re-check (11-20, Opus walker):** re-verified (after the row fix) — Demo Bar at 320 px: `scrollWidth` 320 = `clientWidth` 320; item rows span 16–304 px, and the checkbox, handle, switch and "…" are all 44×44 px within the screen; the «От test POS» and «1 нещо за проверка» badges wrap. Rows stay usable, but long names truncate («Аперо…», «Марга…») and the price is not shown on a phone. S1-after.png.
 
 ### S2. Hide, rename, move, row sold-out and delete give no word and no Undo
 - Kind: bug
@@ -38,6 +39,7 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: `[data-testid=item-sheet-sale]` shows `tillStockNote` and no `sale-mark` button; the "В продажба" field note is a different string.
 - Proposal: remove the second note on POS venues. The lead should confirm that "no tonight-only sold-out on a POS venue" is intended: rule 5 allows our layer to mark sold out, and the Studio sold-out sheet is missing there.
 - Status: candidate
+- **Re-check (11-20, Opus walker):** re-verified (a) — Негрони's sheet: the sale card says only «Наличността идва от test POS: отбележете го като изчерпан там.»; the «В продажба» field shows «Да / От test POS» with no note about a button. S3-after.png.
 
 ### S4. The menu says «На живо» before anything has been published
 - Kind: bug
@@ -49,6 +51,7 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: `[data-testid=menu-live]` text "На живо"; banner text above it; screenshot taken.
 - Proposal: show «Чернова» / "Draft" until the first publish.
 - Status: candidate
+- **Re-check (11-20, Opus walker):** re-verified — the Menu picker badge reads «Отваря се по подразбиране» on Demo Club (unpublished) and Demo Bar; no «На живо». S4-after.png.
 
 ### S5. The publish state is stated twice, before and after publishing
 - Kind: simplification
@@ -60,6 +63,7 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: `main` innerText (both strings).
 - Proposal: keep one line next to Publish and keep the banner only after a publish. bg «Нищо не е публикувано» / en "Nothing published yet".
 - Status: candidate
+- **Re-check (11-20, Opus walker):** re-verified — unpublished Demo Club shows one line, «Още не е публикувано: …» (no «Още нищо не е публикувано.»); Demo Bar with changes shows only «2 промени чакат»; after publishing: «Актуално: …» plus the banner «Версия 2 е на живо» alone. S5-after.png.
 
 ### S6. The Publish dialog lists the same change under three headings, with a plural error
 - Kind: bug
@@ -71,6 +75,7 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: `[role=dialog]` innerText after opening.
 - Proposal: «Скрит от менюто: Мохито» (en "Hidden from the menu: Mojito"); one count only («1 скрит» / «2 скрити»).
 - Status: candidate
+- **Re-check (11-20, Opus walker):** re-verified — Publish dialog on Demo Bar: «2 промени чакат / Скрит или махнат от менюто / Мохито / Извън артикулите / Разделите и редът им»; one count, no «1 скрити». S6-after.png.
 
 ### S7. Rename from a section's "…" menu does not focus the name field
 - Kind: bug
@@ -104,6 +109,7 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: span text "Секцията се показва на гостите", computed `display:none`, width 0; screenshot taken.
 - Proposal: show short labels on a phone, bg «Видима» / «Ред» (en "Visible" / "Row"), or move the layout switch into the "…" menu where it already is.
 - Status: candidate
+- **Re-check (11-20, Opus walker):** re-verified — at 375 px the section header has one switch with the visible label «Секцията се показва на гостите» (44×44) and the "…"; the layout switch is no longer in the header. S9-after.png.
 
 ### S10. The item-sheet help buttons show an internal field key; on a phone there are 14 of them at 16 px
 - Kind: bug
@@ -115,6 +121,7 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: hover-card content "Ключ на полето name"; the 14 triggers at 16×16 with no `::after` hit area.
 - Proposal: show only the plain-language help sentence (drop key and type). Give the trigger a `tap-area` of 44 px.
 - Status: candidate
+- **Re-check (11-20, Opus walker):** re-verified — at 375 px the 14 ⓘ triggers are 24×24 popover triggers with a 44×44 `::after` hit area; a tap opens «Името, което гостите виждат в менюто, на всеки език.» with no field key or type. S10-after.png.
 
 ### S11. Translations says a POS name is read-only; Details lets the owner rename it
 - Kind: bug
@@ -126,6 +133,7 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: Translations `Име` region has two lock rows; Details `button[aria-label="Редактирай Име"]` exists and opens «Редакция: Име».
 - Proposal: say in Translations «Преименувайте в Детайли» (en "Rename it in Details"), or make both behave the same.
 - Status: candidate
+- **Re-check (11-20, Opus walker):** re-verified — Translations intro now reads «…Текстът на езиците, които test POS вече има, идва от test POS; името можете да смените в „Детайли“.»; the name rows keep the lock. S11-after.png.
 
 ### S12. "Demo Club Sofia" is described as hand-made, but its items say «От barsy» and behave as POS items
 - Kind: bug
@@ -159,6 +167,7 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: row text above; `[role=menuitem]` list is Отвори, Премести в….
 - Proposal: lead to confirm whether this item is seed data; if so remove it from the seed, otherwise allow deleting what Restro itself created.
 - Status: candidate
+- **Re-check (11-20, Opus walker):** re-verified — Demo Bar's «Неподредени» is empty («0 артикула», «Всеки артикул е в секция»); «Лимонада на къщата» shows only in Demo Club's Unsorted, nowhere in Demo Bar, so the UI offers nothing to place. Placing by a forged call was not tried; `placeItemAction` checks every key with `allOfVenue`. S14-after.png.
 
 ### S15. The "missing POS name" warning disappears after a rename and comes back after the next write
 - Kind: bug
@@ -170,6 +179,7 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: screenshot taken after the rename (badge absent), then after the hide (badge present).
 - Proposal: decide whether a renamed section should keep the D75 warning, and show the same in both states.
 - Status: candidate
+- **Re-check (11-20, Opus walker):** re-verified — renamed «Коктейли на бара» to «… 2» on Demo Bar: the D75 badge and the ⚠ 8 stayed right after the rename and after the next refresh; renamed back. S15-after.png.
 
 ### S16. Hand-made items show «Няма зададена стойност» for "В продажба" and "Видим"
 - Kind: simplification
@@ -181,6 +191,7 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: dialog innerText of the new item.
 - Proposal: show the default («Да» / "Yes"); in en call «График» "Schedule".
 - Status: candidate
+- **Re-check (11-20, Opus walker):** re-verified — «Лимонада на къщата» (hand-made, Demo Club): «В продажба: Да» and «Видим: Да». The en label of «График» is still "Availability" (`core/templates/venue-menu.ts`), minor. S16-after.png.
 
 ### S17. Dialogs dismiss with «Отказ» (no verb for the way out)
 - Kind: simplification
@@ -192,6 +203,7 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: dialog button lists («Отказ», «Създай», «Изтрий артикула»).
 - Proposal: «Остави я» / "Keep it" for deletes; «Не публикувай» / "Don't publish" for Publish.
 - Status: candidate
+- **Re-check (11-20, Opus walker):** re-verified — «Не създавай» (Нов артикул, Нова секция) and «Не публикувай» (Publish); the Tags pane would not open in the pane, so «Нов таг» and the delete dialogs were not seen. S17-after.png.
 
 ### S18. On a phone the first item is 1023 px down a 3015 px page
 - Kind: optimisation
@@ -214,6 +226,7 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: dialog text above.
 - Proposal: bg «Например 4,50»; check the parser accepts the comma.
 - Status: candidate
+- **Re-check (11-20, Opus walker):** re-verified — «Нов артикул» hint «Например 4,50.», placeholder «0,00»; «4,50» typed without an error (not submitted; `money-input.ts` reads the comma). S19-after.png.
 
 ### S20. History describes changes in field-key words
 - Kind: simplification
@@ -225,6 +238,7 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: screenshot taken of the History list.
 - Proposal: «скри артикула» / «показа артикула» (en "hid the item" / "showed the item").
 - Status: candidate
+- **Re-check (11-20, Opus walker):** re-verified — Мохито › История: «Demo Owner скри артикула»; the sync's own rows still read «зададе Видим: Да» (out of this row). S20-after.png.
 
 ### S21. Desktop tap targets under 24 px
 - Kind: bug
@@ -236,6 +250,7 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: Publish dialog `Затвори:16`; row buttons "Плъзни …:32x32", "Преименувай…:28x28".
 - Proposal: pad the small icons with `tap-area` to 24 px or more.
 - Status: candidate
+- **Re-check (11-20, Opus walker):** re-verified — at 1280 px: dialog × 28×28 (Publish, Нов артикул), ⓘ 24×24, item handles 32×32, section handles 28×28, rename pencil 32×32, "…" 32×32; sheet × 44×44 at 375 px. S21-after.png.
 
 ### S22. A React "script tag" error is logged on every page load
 - Kind: bug
@@ -258,6 +273,7 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: `apps/web/src/composer/composer-tab.tsx:176-179`; `apps/web/src/server/item-sheet/actions.ts:92,121`; `apps/web/messages/en.json:205`, `bg.json:205`.
 - Proposal: one `canEdit` (`canEditMenu(role)`) into the composer and the sheet, read-only without it; message en "Only an owner or admin can change the menu." / bg «Само собственик или администратор може да променя менюто.»
 - Status: candidate
+- **Re-check (11-20, Opus walker):** re-verified — as «Мениджър» (manager@club-biad.test) on Club Biad Sofia: no Publish, «Нова секция», «Тагове», drag handles, pencils or row switches; the note «Тук можете да разглеждате менюто. Само собственик или администратор може да го променя.»; the item "…" holds only «Отвори …»; the sheet has no edit button or field in Details or Translations. Refusal text in `bg.json`/`en.json` is «Само собственик или администратор може да променя менюто.» (no control left to force it on screen). S23-after.png.
 
 ### S24. Payment mode can be set on another venue's unplaced item (code check)
 - Kind: bug
@@ -269,6 +285,8 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: `packages/core/src/apply/payment-mode.ts:115-153`; `apps/web/src/composer/payment-mode-actions.ts:48`.
 - Proposal: check with `itemsOfVenue` in the action and drop the duplicate SQL.
 - Status: candidate
+
+**Re-check (11-20, by test):** re-verified — `roles-actions.test.ts` RR-72 block: payment mode on a hand-made item at a POS venue is refused and nothing changes; CI green on #457.
 
 ### S25. On a POS venue a manual sold-out mark cannot be taken off (code check)
 - Kind: bug
@@ -292,6 +310,8 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Proposal: for the lapse pass, build slots from the stored till rows whatever the link state.
 - Status: candidate
 
+**Re-check (11-20, by test):** re-verified — `stock.test.ts` 'lapses a mark whose link went missing since'; CI green on #457.
+
 ### S27. Reorder keys carry unchecked item and section ids (security check, low)
 - Kind: bug
 - Screen: server actions `placeItemAction`, `moveSectionAction`, owner/admin
@@ -302,6 +322,8 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: `apps/web/src/composer/actions.ts:232-252`; `apps/web/src/composer/ops.ts:27-34`.
 - Proposal: every key id through `itemsOfVenue()` (items) or `inMenu` (sections), else `not_found`.
 - Status: candidate
+
+**Re-check (11-20, by test):** re-verified — `attack-table.ts` MIXED rows for `placeItemAction` (foreign item in the keys, refused by the new check) and `moveSectionAction` (refused by apply()'s root check); CI green on #457.
 
 ### S28. `createSectionAction` accepts an existing node id (security check, low)
 - Kind: bug
@@ -314,6 +336,8 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Proposal: refuse when `getNodeBasics(tenantId, id)` finds a node.
 - Status: candidate
 
+**Re-check (11-20, by test):** re-verified — `roles-actions.test.ts` 'an existing section id is refused, its own or the other venue's'; CI green on #457.
+
 ### S29. `setItemTagsAction` does not check items belong to the venue (security check, low)
 - Kind: bug
 - Screen: server action `setItemTagsAction`, owner/admin
@@ -324,6 +348,8 @@ Explorer's walk: 1280, 390 and 320 px; bg dark by default, en light on Demo Bar 
 - Evidence: `apps/web/src/composer/tag-actions.ts:149-171`; `packages/core/src/apply/tags.ts:432-480`.
 - Proposal: `itemsOfVenue(pool, tenantId, venueId, itemIds)` in the action.
 - Status: candidate
+
+**Re-check (11-20, by test):** re-verified — `roles-actions.test.ts` RR-72 block: tags on a hand-made item at a POS venue answer not_found, the hand-made venue as control; CI green on #457.
 
 ## Works
 - **Studio › Structure (hand-made, Demo Club)**: on desktop the screen shows where you are, the section tree, items with state chips and a hide switch per row; creating a section and an item with validation, the delete dialog naming its consequence, Tags (empty state, create, add to several, selection bar), Sold-out sheet and Publish (diff, preview, banner) all work.
@@ -390,8 +416,11 @@ The reviewer walked Demo Bar's Structure, a POS item's sheet and Demo Club's Str
 - **S30 (reviewer).** The Manager role's «Маркира изчерпани артикули» (`permissions.ts` `sold_out`) is read nowhere except `settings/staff-roles.tsx:67`; Studio asks only the organisation role (`roles.ts canMarkSoldOut`). D46, D122 §7, D147. Before the pilot, M → #437; Q3.
 - **S31 (reviewer).** Both tab bars show a vertical scrollbar on Windows (`scrollHeight` 37 vs 36 with `overflow-x-auto`). Polish, S → lane 6.
 - **S32 (reviewer).** «1 проблем» on the row vs «1 нещо за проверка» in the sheet; «Създадено тук» vs «Създаден тук». Polish, S → L1-E.
+  - **Re-check (11-20, Opus walker):** re-verified — row and sheet both say «1 нещо за проверка» (Demo Bar) and «2 неща за проверка» / «Създадено тук» (Demo Club, row and sheet). S32-after.png.
 - **S33 (reviewer).** «с следващото» (→ «със следващото»), «ПОС терминал» (→ «POS терминал»), `bg.json` guest features. Polish, S → L1-E.
+  - **Re-check (11-20, Opus walker):** re-verified — Guest features read «…със следващото публикуване.» and «POS терминал». S33-after.png.
 - **S34 (reviewer).** «Изчаква публикуващата част…» / "Waiting for the publisher…" while publishing → «Публикува се…» / "Publishing…". Polish, S → L1-E.
+  - **Re-check (11-20, Opus walker):** re-verified in the strings only — «Изчаква публикуващата част…» is gone; bg `bar.publishing` «Публикуване…», `reason.busy` «Публикува се. …»; the in-flight state passed too fast to catch while publishing Demo Bar (version 2). S34-after.png shows the result.
 - **S35 (reviewer).** Menu and section pickers blank for seconds after load (Radix `SelectValue` without children). dev-only?, Polish, S → L1-G.
 
 ### Fix plan (reviewer)

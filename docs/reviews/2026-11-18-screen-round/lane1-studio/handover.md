@@ -1,24 +1,16 @@
-# Lane 1 (Studio) hand-over
-
-Updated 2026-11-19. Branch `sr/lane1-studio` (local, ledger committed at 2747bb79, not pushed yet).
+# Lane 1 hand-over (updated 2026-11-19, evening)
 
 ## Done
-- Ledger `findings.md`: explorer (Sonnet) S1–S22, code check (Fable) S23–S26, security check (Fable) S27–S29, manager walk note. Raw check outputs in `code-check.md`, `security-check.md`.
-- Database reset after the explorer (fresh ids: Demo Club Sofia `vn_2Qsr113cDIvfQor8P5yiuO`, Demo Bar `vn_6uS8gzSr8d9y2gUqJODpSh`, Club Biad Sofia `vn_1edUqbUKzDxB2zkrLDzooS`); pane signed in as owner@demo-club.test.
-- Opus reviewer (step 4) started blind with the ledger path and commit 2747bb79.
+- Ledger S1–S35 confirmed by the Opus reviewer (findings.md); code check and security check in their files.
+- PR #457 (`sr/lane1-studio` → `sr/foundation`): L1-A (S14, S24, S27, S28, S29) and L1-I (S26), commit ba148c75. Core tests 30/30 locally; web security tests pass except `saveInstanceSettingsAction`'s own-ids control (integration code, not this diff; likely local env).
+- PR reviews of #457 launched as Opus subagents: code-review high, security-review, pr-review-toolkit:review-pr.
+- Routed: #437 comment (S3(b), S25, S30). Filed #458 (S12 seed, Q1) and #459 (S13, S22, S35 shared UI).
+
+## In progress
+- PR 2 on the same branch, uncommitted: L1-E words (one Opus agent), L1-B read-only Studio + L1-F phone layout (another Opus agent).
 
 ## Next
-1. Save the reviewer's verdicts and fix plan into `findings.md`; stop web/worker/sim (shared Postgres process limit).
-2. Code the fix bundles (Opus), PR(s) into `sr/foundation`; `pnpm lint && pnpm typecheck && pnpm deps:check`; changed tests only.
-3. Per PR: Opus `code-review high <PR>`, Opus `security-review`, Opus `pr-review-toolkit:review-pr`; fix; CI green.
-4. Restart services, re-check walker (Opus) → `re-verified`; stop services; rebase; READY; final report with the Skills run table.
-
-## Skills run so far
-| Skill | Target | Model | Result |
-|---|---|---|---|
-| screen-review step 2 | Studio scope, both venues | Sonnet | 22 candidate rows |
-| code-review (high) | Studio paths + core apply | Fable | 10 found, 4 confirmed (S23–S26) |
-| security-review + audit-security.md | Studio paths + core apply | Fable | 3 low (S27–S29), no high/medium |
-| screen-review step 4 | ledger @2747bb79 | Opus | running |
-
-Open question for the lead: the seed's venue «Мениджър» is an organisation member, so it can change nothing in Studio (no sold-out, no hide). Audit-behaviour's manager persona ("sold out, hide, publish") expects otherwise.
+- Gate (`pnpm lint && pnpm typecheck && pnpm deps:check`), commit, push; reviews of the new commit.
+- L1-D (S2, S7, S8): do S7 if cheap, else file all three as a `walkthrough` issue.
+- Lane 6 rows S18, S31: name them to the lead in the report.
+- Re-check walk (Opus, wrote none of the fixes), rebase on origin/sr/foundation, READY line, final report.
