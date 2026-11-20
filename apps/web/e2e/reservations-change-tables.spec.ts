@@ -210,7 +210,7 @@ test('a spot somebody booked later is refused by their name, and a blocked one b
 
   // A blocked spot is refused at the tap, by the reason the club gave.
   await tap(sheet, 'Маса 8')
-  await expect(toast(page, 'Маса 8 is blocked: repair.')).toBeVisible()
+  await expect(toast(page, 'Blocked (repair): Маса 8.')).toBeVisible()
   await expect(sheet.getByTestId('rv-ct-chosen')).not.toContainText('Маса 8')
 
   await tap(sheet, 'Бар 12 вляво')
