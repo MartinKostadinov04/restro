@@ -32,8 +32,16 @@ export function ItemToolbar({
   totalCount: number
 }) {
   const t = useTranslations('composer.toolbar')
-  const { view, selected, tagFilter, selectItems, toggleTagFilter, clearTagFilter, openTagsPanel } =
-    useComposer()
+  const {
+    view,
+    canEdit,
+    selected,
+    tagFilter,
+    selectItems,
+    toggleTagFilter,
+    clearTagFilter,
+    openTagsPanel,
+  } = useComposer()
   const checkbox = useRef<HTMLInputElement>(null)
   const tickedHere = visibleIds.filter((id) => selected.has(id)).length
   const all = visibleIds.length > 0 && tickedHere === visibleIds.length
@@ -51,64 +59,70 @@ export function ItemToolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2" data-testid="item-toolbar">
-      <label className="flex items-center gap-2 text-sm text-muted-foreground phone:gap-0">
-        {/* A native checkbox takes no pseudo-element: on a phone it sits in a 44 px box, as in an item row (D123). */}
-        <span className="flex shrink-0 items-center justify-center phone:size-11">
-          <input
-            ref={checkbox}
-            type="checkbox"
-            className="size-4 accent-primary"
-            checked={all}
-            disabled={visibleIds.length === 0}
-            onChange={() => selectItems(visibleIds, !all)}
-            data-testid="select-all"
-          />
-        </span>
-        {t('selectAll')}
-      </label>
+      {/* Ticking leads only to bulk changes: not for a member, who changes nothing (RR-70). */}
+      {canEdit ? (
+        <label className="flex items-center gap-2 text-sm text-muted-foreground phone:gap-0">
+          {/* A native checkbox takes no pseudo-element: on a phone it sits in a 44 px box, as in an item row (D123). */}
+          <span className="flex shrink-0 items-center justify-center phone:size-11">
+            <input
+              ref={checkbox}
+              type="checkbox"
+              className="size-4 accent-primary"
+              checked={all}
+              disabled={visibleIds.length === 0}
+              onChange={() => selectItems(visibleIds, !all)}
+              data-testid="select-all"
+            />
+          </span>
+          {t('selectAll')}
+        </label>
+      ) : null}
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button type="button" variant="outline" size="sm" data-testid="tag-filter">
-            <FilterIcon aria-hidden />
-            {t('filter')}
+      {/* With no tag there is nothing to filter by; only an owner or admin can make the first one. */}
+      {!canEdit && tags.length === 0 ? null : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="outline" size="sm" data-testid="tag-filter">
+              <FilterIcon aria-hidden />
+              {t('filter')}
+              {chosen.length > 0 ? (
+                <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
+                  {chosen.length}
+                </span>
+              ) : null}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="max-h-80 min-w-56 overflow-y-auto">
+            <DropdownMenuLabel>{t('filterBy')}</DropdownMenuLabel>
+            {tags.length === 0 ? (
+              <DropdownMenuItem onSelect={openTagsPanel}>
+                <TagsIcon aria-hidden />
+                {t('noTags')}
+              </DropdownMenuItem>
+            ) : (
+              tags.map((tag) => (
+                <DropdownMenuCheckboxItem
+                  key={tag.id}
+                  checked={tagFilter.has(tag.id)}
+                  // Stay open, so several tags can be ticked in a row.
+                  onSelect={(event) => event.preventDefault()}
+                  onCheckedChange={() => toggleTagFilter(tag.id)}
+                  data-testid="tag-filter-option"
+                  data-tag-id={tag.id}
+                >
+                  <TagChip color={tag.color}>{tag.name}</TagChip>
+                </DropdownMenuCheckboxItem>
+              ))
+            )}
             {chosen.length > 0 ? (
-              <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
-                {chosen.length}
-              </span>
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={clearTagFilter}>{t('clearFilter')}</DropdownMenuItem>
+              </>
             ) : null}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="max-h-80 min-w-56 overflow-y-auto">
-          <DropdownMenuLabel>{t('filterBy')}</DropdownMenuLabel>
-          {tags.length === 0 ? (
-            <DropdownMenuItem onSelect={openTagsPanel}>
-              <TagsIcon aria-hidden />
-              {t('noTags')}
-            </DropdownMenuItem>
-          ) : (
-            tags.map((tag) => (
-              <DropdownMenuCheckboxItem
-                key={tag.id}
-                checked={tagFilter.has(tag.id)}
-                // Stay open, so several tags can be ticked in a row.
-                onSelect={(event) => event.preventDefault()}
-                onCheckedChange={() => toggleTagFilter(tag.id)}
-                data-testid="tag-filter-option"
-                data-tag-id={tag.id}
-              >
-                <TagChip color={tag.color}>{tag.name}</TagChip>
-              </DropdownMenuCheckboxItem>
-            ))
-          )}
-          {chosen.length > 0 ? (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={clearTagFilter}>{t('clearFilter')}</DropdownMenuItem>
-            </>
-          ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       {chosen.length > 0 ? (
         <div className="flex flex-wrap items-center gap-1.5" data-testid="active-filter">

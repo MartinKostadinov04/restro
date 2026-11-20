@@ -77,9 +77,21 @@ export type ComposerOp =
       readonly layout: SectionLayout
     }
   /** A section's title in the interface language changes. */
-  | { readonly type: 'renameSection'; readonly sectionId: NodeId; readonly title: string }
+  | {
+      readonly type: 'renameSection'
+      readonly sectionId: NodeId
+      readonly title: string
+      /** The language the title is written in. */
+      readonly locale: Locale
+    }
   /** An item's name in the interface language changes. */
-  | { readonly type: 'renameItem'; readonly itemId: NodeId; readonly name: string }
+  | {
+      readonly type: 'renameItem'
+      readonly itemId: NodeId
+      readonly name: string
+      /** The language the name is written in. */
+      readonly locale: Locale
+    }
   /**
    * A section and the sections under it leave the menu; their items leave them too, and an item
    * that is then placed nowhere goes to Unsorted (the end of the list until the server sorts it).
@@ -295,11 +307,22 @@ function setSectionLayout(
   }
 }
 
+/**
+ * A name typed in one language replaces the till's own there (D75). The warning goes only when no
+ * other language still shows the till's own name, as the server's view will say (S15).
+ */
+function namedOver(
+  node: { readonly nameFromTill: boolean; readonly nameFromTillIn?: readonly Locale[] },
+  locale: Locale,
+) {
+  const left = (node.nameFromTillIn ?? []).filter((other) => other !== locale)
+  return { nameFromTill: node.nameFromTill && left.length > 0, nameFromTillIn: left }
+}
+
 function renameSection(view: ComposerView, op: Extract<ComposerOp, { type: 'renameSection' }>) {
   const section = view.sections[op.sectionId]
   if (!section) return view
-  // A name typed here replaces the till's own (D75): the warning goes with it.
-  const next: ComposerSection = { ...section, title: op.title, nameFromTill: false }
+  const next: ComposerSection = { ...section, title: op.title, ...namedOver(section, op.locale) }
   return { ...view, sections: { ...view.sections, [op.sectionId]: next } }
 }
 
@@ -308,7 +331,10 @@ function renameItem(view: ComposerView, op: Extract<ComposerOp, { type: 'renameI
   if (!item) return view
   return {
     ...view,
-    items: { ...view.items, [op.itemId]: { ...item, name: op.name, nameFromTill: false } },
+    items: {
+      ...view.items,
+      [op.itemId]: { ...item, name: op.name, ...namedOver(item, op.locale) },
+    },
   }
 }
 

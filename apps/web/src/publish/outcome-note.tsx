@@ -31,14 +31,13 @@ export function OutcomeNote({
   const good = outcome.kind === 'published' || outcome.kind === 'returned'
   const Icon = good ? CheckCircle2Icon : InfoIcon
   let title: string
-  let text: string | null = null
   switch (outcome.kind) {
     case 'published':
+      // The line beside Publish says guests see the latest version: the note does not repeat it.
       title =
         outcome.version === null
           ? t('outcome.publishedText')
           : t('outcome.published', { version: outcome.version })
-      text = outcome.version === null ? null : t('outcome.publishedText')
       break
     case 'unchanged':
       title =
@@ -74,7 +73,6 @@ export function OutcomeNote({
         <p className="font-medium" data-testid="publish-outcome-title">
           {title}
         </p>
-        {text !== null ? <p className="text-muted-foreground">{text}</p> : null}
       </div>
       <Button type="button" variant="ghost" size="icon-xs" onClick={onDismiss}>
         <XIcon aria-hidden />

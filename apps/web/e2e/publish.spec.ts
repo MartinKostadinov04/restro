@@ -214,7 +214,8 @@ test('before the first publish: the bar counts the whole menu; no versions; the 
   await expect(bar.count()).toHaveText('5')
   await expect(bar.reason()).toHaveText('Not published yet: guests see nothing until you publish.')
   await expect(page.getByTestId('guest-link')).toBeDisabled()
-  await expect(page.getByTestId('guest-link-hint')).toHaveText('Nothing is published yet.')
+  // The reason line says it; the guest link's hint does not repeat it (S5).
+  await expect(page.getByTestId('guest-link-hint')).toHaveCount(0)
   expect(await snapshotRows()).toEqual([])
   // The guest page has nothing to show yet.
   const guest = await page.context().newPage()
@@ -285,7 +286,10 @@ test('a price changes behind the page: the bar counts 1 change, the confirmation
   await bar.button().click()
   const dialog = page.getByTestId('publish-confirm-dialog')
   await expect(dialog.getByTestId('changes-count')).toHaveText('1 change waiting')
-  await expect(dialog.getByTestId('change-summary')).toHaveText('1 with a new price')
+  // Said once: the count above, then the named list under its heading (S6).
+  await expect(
+    dialog.getByTestId('change-list-prices').getByRole('heading', { name: 'New price' }),
+  ).toBeVisible()
   await expect(dialog.getByTestId('change-list-prices')).toContainText(
     `Negroni: ${PRICE_BEFORE} → ${PRICE_AFTER}`,
   )
@@ -313,7 +317,7 @@ test('a price changes behind the page: the bar counts 1 change, the confirmation
   )
   await page.keyboard.press('Escape')
   await expect(preview).toHaveCount(0)
-  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await dialog.getByRole('button', { name: 'Don’t publish' }).click()
   await expect(dialog).toHaveCount(0)
 
   // Nothing was published by looking: the guest page keeps the old price, no new row.

@@ -103,6 +103,13 @@ export interface ComposerState extends ComposerActions {
   readonly selected: ReadonlySet<NodeId>
   /** The tags the list is filtered by (an item with any of them shows); empty = no filter. */
   readonly tagFilter: ReadonlySet<TagId>
+  /**
+   * The person may change the menu here (owner or admin, `canEditMenu`; RR-70). Without it the
+   * Structure is read-only: no drag handle, switch, section "…" menu, rename, ticking or "New" is
+   * drawn, and an item's "…" menu only opens the item (docs/guides/operational-screens.md: a role
+   * that may not act is never shown a disabled control; RR-90).
+   */
+  readonly canEdit: boolean
   /** The person may mark items sold out tonight and take the mark off (owner or admin). */
   readonly canMarkSoldOut: boolean
   /**

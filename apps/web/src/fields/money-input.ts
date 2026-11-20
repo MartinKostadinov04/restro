@@ -1,4 +1,11 @@
-import { type Currency, decimalToMinor, type Money, MoneyError, minorToDecimal } from '@restro/core'
+import {
+  type Currency,
+  decimalToMinor,
+  type Locale,
+  type Money,
+  MoneyError,
+  minorToDecimal,
+} from '@restro/core'
 
 /**
  * What the money editor makes of what a person typed (a price in major units, `12.50`):
@@ -20,7 +27,13 @@ export function parseMoneyInput(text: string, currency: Currency): Money | undef
   }
 }
 
-/** The text the editor shows for a stored amount: `1250` becomes `12.50`. */
-export function moneyToInput(value: Money | undefined): string {
-  return value === undefined ? '' : minorToDecimal(value.amount_minor)
+/**
+ * The text the editor shows for a stored amount: `1250` becomes `12.50` in English and `12,50` in
+ * every other language of ours, which all write a decimal comma (S19). Only the separator changes:
+ * the digits are core's exact decimal string, never a float.
+ */
+export function moneyToInput(value: Money | undefined, locale: Locale = 'en_US'): string {
+  if (value === undefined) return ''
+  const text = minorToDecimal(value.amount_minor)
+  return locale === 'en_US' ? text : text.replace('.', ',')
 }

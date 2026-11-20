@@ -26,6 +26,8 @@ export interface ItemSheetTranslationsTabProps {
   data: ItemSheetData
   /** True while a save is under way. */
   busy: boolean
+  /** The person may not change the menu (RR-70): every language is shown as text, nothing to save. */
+  readOnly?: boolean
   /** Saves one language of a field (`null` = removed); resolves true when it was saved. */
   onSave: (fieldKey: string, locale: Locale, text: string | null) => Promise<boolean>
 }
@@ -35,10 +37,11 @@ interface CellProps {
   locale: Locale
   cell: TranslationCell
   busy: boolean
+  readOnly: boolean
   onSave: ItemSheetTranslationsTabProps['onSave']
 }
 
-function TranslationCellEditor({ fieldKey, locale, cell, busy, onSave }: CellProps) {
+function TranslationCellEditor({ fieldKey, locale, cell, busy, readOnly, onSave }: CellProps) {
   const t = useTranslations('itemSheet.translations')
   const source = useTillLabel()
   const uiLanguage = useLocale()
@@ -73,7 +76,7 @@ function TranslationCellEditor({ fieldKey, locale, cell, busy, onSave }: CellPro
         {cell.missing ? <Badge variant="warning">{t('missing')}</Badge> : null}
         {cell.review ? <Badge variant="warning">{t('review')}</Badge> : null}
       </div>
-      {cell.editable ? (
+      {cell.editable && !readOnly ? (
         <>
           <Textarea
             id={id}
@@ -111,16 +114,22 @@ function TranslationCellEditor({ fieldKey, locale, cell, busy, onSave }: CellPro
             lang={langTag}
             className="rounded-md bg-muted/50 px-3 py-2 text-sm whitespace-pre-line"
           >
+            {/* What guests see today, as the provenance badge below says. */}
             {cell.text}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             {cell.provenance !== 'none' ? (
-              <ProvenanceBadge provenance={badgeProvenance(cell.provenance) ?? 'till'} />
+              <ProvenanceBadge
+                provenance={badgeProvenance(cell.provenance) ?? (cell.editable ? 'owned' : 'till')}
+              />
             ) : null}
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <LockIcon className="size-3" aria-hidden />
-              {t('heldByTill', { source })}
-            </span>
+            {/* A member reading a language that is ours to write: no lock, it is not the till's. */}
+            {cell.editable ? null : (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <LockIcon className="size-3" aria-hidden />
+                {t('heldByTill', { source })}
+              </span>
+            )}
           </div>
         </>
       )}
@@ -132,11 +141,13 @@ function TranslationFieldCard({
   row,
   data,
   busy,
+  readOnly,
   onSave,
 }: {
   row: TranslationRow
   data: ItemSheetData
   busy: boolean
+  readOnly: boolean
   onSave: ItemSheetTranslationsTabProps['onSave']
 }) {
   const label = useFieldLabel(row.definition)
@@ -160,6 +171,7 @@ function TranslationFieldCard({
               locale={locale}
               cell={cell}
               busy={busy}
+              readOnly={readOnly}
               onSave={onSave}
             />
           )
@@ -169,18 +181,26 @@ function TranslationFieldCard({
   )
 }
 
-export function ItemSheetTranslationsTab({ data, busy, onSave }: ItemSheetTranslationsTabProps) {
+export function ItemSheetTranslationsTab({
+  data,
+  busy,
+  readOnly = false,
+  onSave,
+}: ItemSheetTranslationsTabProps) {
   const t = useTranslations('itemSheet.translations')
   const source = useTillLabel()
   return (
     <div className="grid gap-4" data-testid="item-sheet-translations">
-      <p className="text-sm text-muted-foreground">{t('intro', { source })}</p>
+      <p className="text-sm text-muted-foreground">
+        {t(readOnly ? 'introReadOnly' : 'intro', { source })}
+      </p>
       {data.translations.map((row) => (
         <TranslationFieldCard
           key={row.fieldKey}
           row={row}
           data={data}
           busy={busy}
+          readOnly={readOnly}
           onSave={onSave}
         />
       ))}

@@ -1,8 +1,8 @@
 'use client'
 
-// The confirmation before a publish (D96): which menu, what guests will see change (the counts and
-// the named lists, as the old "Changes waiting" card listed them), and for a menu that is not the
-// live one where guests see it. "Preview" opens the draft in a phone frame; "Publish" queues it.
+// The confirmation before a publish (D96): which menu, what guests will see change (one count and
+// the named lists; each change is said once, S6), and for a menu that is not the live one where
+// guests see it. "Preview" opens the draft in a phone frame; "Publish" queues it.
 import { EyeIcon, RocketIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/dialog'
 import type { PublishBarMenu } from '@/server/publish/view'
 
-import { ChangeLists, ChangeSummary } from './change-lists'
+import { ChangeLists } from './change-lists'
 import { PreviewDialog } from './preview-dialog'
 
 /** What the dialog says the publish changes. */
@@ -65,7 +65,6 @@ function WhatChanges({
       <p className="font-medium" data-testid="changes-count">
         {t('waiting', { count: changes.total })}
       </p>
-      <ChangeSummary changes={changes} />
       <ChangeLists changes={changes} />
     </div>
   )
