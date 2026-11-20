@@ -79,7 +79,8 @@ export function TonightTabs({
     <SectionSwitch.Provider value={switcher}>
       <Tabs value={current} onValueChange={select}>
         {views.length > 1 ? (
-          // Start-aligned so a row wider than the screen scrolls from the first tab; no vertical scroll for the triggers' hidden underline.
+          // Each tab sizes to its own name (no equal split that squeezes a long one). Start-aligned so a row
+          // wider than the screen scrolls from the first tab; no vertical scroll for the triggers' hidden underline.
           <TabsList
             className="hidden max-w-full justify-start overflow-x-auto overflow-y-hidden group-data-[orientation=horizontal]/tabs:h-auto lg:inline-flex"
             aria-label={t('tabs_label')}
@@ -88,7 +89,7 @@ export function TonightTabs({
             {views.map((value) => {
               const { labelKey, icon: Icon } = TABS[value]
               return (
-                <TabsTrigger key={value} value={value} className="h-11 min-w-11">
+                <TabsTrigger key={value} value={value} className="h-11 min-w-11 flex-none">
                   <Icon aria-hidden />
                   {t(labelKey)}
                 </TabsTrigger>
