@@ -45,7 +45,7 @@ import type { RvFrame } from '@/server/reservations/view'
 import { ConfirmDialog } from './confirm-dialog'
 import { SameGuestsDialog } from './door-dialogs'
 import { useSpotsText } from './reservation-words'
-import type { RvRunSpec } from './use-reservation-run'
+import { type RvRunSpec, useSpotsLostLine } from './use-reservation-run'
 
 /** The party at the door: what a seating needs to know about it. */
 export interface DoorParty {
@@ -106,6 +106,7 @@ export function useDoorActions({
   onChanged: () => void
 }) {
   const t = useTranslations('reservations')
+  const spotsLostLine = useSpotsLostLine()
   const venueId = frame.venueId
   const [asking, setAsking] = useState<Asking | null>(null)
   const [reading, setReading] = useState(false)
@@ -177,7 +178,9 @@ export function useDoorActions({
         // The arrival is undone by its own command, which closes the codes it opened (#329). A
         // walk-in the seat tap itself created is cancelled by the same command, on the line the
         // write reports it made, and says so in its own words (S21: every door write offers its
-        // Undo). A walk-in whose write reported no line offers none rather than guess.
+        // Undo). A walk-in whose write reported no line offers none rather than guess. The party
+        // goes back to the spots it held before; where one was taken since, it comes back without
+        // them and she reads it in one line (C5 of the 11-18 screen round).
         again: (details) => {
           const made = details.reservationId
           const id = reservationId ?? (typeof made === 'string' ? made : null)
@@ -185,6 +188,8 @@ export function useDoorActions({
           return {
             label: t('p_undo'),
             done: reservationId === null ? t('d_walk_in_undone') : t('d_undone'),
+            notice: (undone) =>
+              spotsLostLine(undone, { taken: 'd_undone_lost', other: 'd_undone_nospots' }),
             act: (pin?: string) =>
               undoArrivalAction({
                 venueId,
@@ -216,7 +221,7 @@ export function useDoorActions({
         onDone: () => setAsking(null),
       })
     },
-    [named, onChanged, run, spotsText, t, venueId],
+    [named, onChanged, run, spotsLostLine, spotsText, t, venueId],
   )
 
   /** Asks first where the advice says a question is due, and writes where it does not. */

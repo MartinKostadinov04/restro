@@ -341,8 +341,8 @@ const withPin = (typed: string | undefined) => (typed === undefined ? {} : { pin
  * Takes a booking, or changes one the form was opened on. The phone and the name are the guest's
  * when there is a number (the record holds them, D140) and the booking's own when there is none;
  * the service path decides which, and refuses a missing phone where the venue requires one. Taking
- * a booking is `reservations.tonight`; changing one is `reservations.manage` — both checked
- * inside the transaction, never here.
+ * a booking and changing one are both `reservations.tonight`, whoever took it — checked inside
+ * the transaction, never here.
  *
  * A booking with no spot chosen is a booking (#328): a real one the hostess gives a table later,
  * and #329 marks such a party present on the spots she then picks. The waiting list has its own
