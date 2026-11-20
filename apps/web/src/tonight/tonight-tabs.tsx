@@ -79,8 +79,9 @@ export function TonightTabs({
     <SectionSwitch.Provider value={switcher}>
       <Tabs value={current} onValueChange={select}>
         {views.length > 1 ? (
+          // Start-aligned so a row wider than the screen scrolls from the first tab; no vertical scroll for the triggers' hidden underline.
           <TabsList
-            className="hidden max-w-full overflow-x-auto group-data-[orientation=horizontal]/tabs:h-auto lg:inline-flex"
+            className="hidden max-w-full justify-start overflow-x-auto overflow-y-hidden group-data-[orientation=horizontal]/tabs:h-auto lg:inline-flex"
             aria-label={t('tabs_label')}
             data-testid="tonight-section-tabs"
           >
