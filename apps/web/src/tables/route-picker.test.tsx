@@ -150,6 +150,10 @@ describe('the menu picker', () => {
       ),
     )
     vi.mocked(setMenuRouteAction).mockResolvedValueOnce({ ok: true, queued: false })
+    // The picker is disabled until the first save has finished.
+    await waitFor(() =>
+      expect(screen.getByTestId('route-select').hasAttribute('disabled')).toBe(false),
+    )
     await user.click(screen.getByTestId('route-select'))
     await user.click(await screen.findByRole('option', { name: 'Cocktails' }))
     await waitFor(() =>

@@ -41,6 +41,7 @@ import { z } from 'zod'
 import { suggestSlug } from '@/lib/slug'
 
 import { getPool } from './db'
+import { signInTooOld } from './fresh-sign-in'
 import { enqueueJob } from './jobs'
 import { logError } from './log'
 import { menuOfVenue } from './publish/load'
@@ -241,11 +242,12 @@ export async function renameVenueSlugAction(input: unknown): Promise<RenameVenue
   if (!parsed.success) return { ok: false, error: 'invalid' }
   const { venueId, slug } = parsed.data
   try {
-    const { organization, sessionId } = await requireTenant()
+    const { organization, sessionId, signedInAt } = await requireTenant()
     if (!canManageIntegration(organization.role)) return { ok: false, error: 'not_allowed' }
     if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
       return { ok: false, error: 'not_allowed' }
     }
+    if (signInTooOld(signedInAt)) return { ok: false, error: 'sign_in_again' }
     const pool = getPool()
     const renamed = await renameVenueSlug(pool, organization.id, venueId, slug)
 
@@ -310,11 +312,12 @@ export async function renameVenueAction(input: unknown): Promise<RenameVenueResu
   if (!parsed.success) return { ok: false, error: 'invalid' }
   const { venueId, name } = parsed.data
   try {
-    const { organization, sessionId } = await requireTenant()
+    const { organization, sessionId, signedInAt } = await requireTenant()
     if (!canManageIntegration(organization.role)) return { ok: false, error: 'not_allowed' }
     if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
       return { ok: false, error: 'not_allowed' }
     }
+    if (signInTooOld(signedInAt)) return { ok: false, error: 'sign_in_again' }
     const renamed = await renameVenue(getPool(), organization.id, venueId, name)
     revalidatePath('/', 'layout')
     return { ok: true, name: renamed.name, changed: renamed.changed }
@@ -352,11 +355,12 @@ export async function deleteVenueAction(input: unknown): Promise<DeleteVenueResu
   if (!parsed.success) return { ok: false, error: 'invalid' }
   const { venueId, confirmName } = parsed.data
   try {
-    const { organization, sessionId } = await requireTenant()
+    const { organization, sessionId, signedInAt } = await requireTenant()
     if (!canDeleteVenue(organization.role)) return { ok: false, error: 'not_allowed' }
     if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
       return { ok: false, error: 'not_allowed' }
     }
+    if (signInTooOld(signedInAt)) return { ok: false, error: 'sign_in_again' }
     const pool = getPool()
     const venue = await getVenueInAnyState(organization.id, venueId)
     if (venue === null) return { ok: false, error: 'invalid' }
@@ -454,11 +458,12 @@ export async function unpublishVenueAction(input: unknown): Promise<UnpublishVen
   if (!parsed.success) return { ok: false, error: 'invalid' }
   const { venueId } = parsed.data
   try {
-    const { organization, sessionId } = await requireTenant()
+    const { organization, sessionId, signedInAt } = await requireTenant()
     if (!canManageIntegration(organization.role)) return { ok: false, error: 'not_allowed' }
     if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
       return { ok: false, error: 'not_allowed' }
     }
+    if (signInTooOld(signedInAt)) return { ok: false, error: 'sign_in_again' }
     const pool = getPool()
     const venue = await getVenueInAnyState(organization.id, venueId)
     if (venue === null) return { ok: false, error: 'invalid' }
@@ -516,11 +521,12 @@ export async function purgeVenueAction(input: unknown): Promise<PurgeVenueResult
   if (!parsed.success) return { ok: false, error: 'invalid' }
   const { venueId, confirmName } = parsed.data
   try {
-    const { organization, sessionId } = await requireTenant()
+    const { organization, sessionId, signedInAt } = await requireTenant()
     if (!canDeleteVenue(organization.role)) return { ok: false, error: 'not_allowed' }
     if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
       return { ok: false, error: 'not_allowed' }
     }
+    if (signInTooOld(signedInAt)) return { ok: false, error: 'sign_in_again' }
     const venue = await getVenueInAnyState(organization.id, venueId)
     if (venue === null) return { ok: false, error: 'invalid' }
     if (venue.archivedAt === null) return { ok: false, error: 'not_deleted' }

@@ -279,6 +279,7 @@ export function MenusCard({
   venueId,
   venueName,
   hasTill,
+  source,
   canManage,
   menus,
   deleted,
@@ -289,6 +290,8 @@ export function MenusCard({
   venueName: string
   /** A till feeds the venue: its menus are the till's (no add, delete or import, D88). */
   hasTill: boolean
+  /** The name of that POS (`{source}`, D82); empty for a hand-made venue. */
+  source: string
   /** Owner or admin. */
   canManage: boolean
   /** The menus in use, in order. */
@@ -357,7 +360,10 @@ export function MenusCard({
   const purgeDate = (deletedAt: string) => day(new Date(Date.parse(deletedAt) + binDays * DAY_MS))
 
   return (
-    <FormSection title={t('title')} description={hasTill ? t('descriptionTill') : t('description')}>
+    <FormSection
+      title={t('title')}
+      description={hasTill ? t('descriptionTill', { source }) : t('description')}
+    >
       <ol className="divide-y rounded-md border" data-testid="menus-list">
         {menus.map((menu, index) => (
           <li
@@ -533,7 +539,7 @@ export function MenusCard({
 
       {error !== null ? (
         <p role="alert" className="text-sm text-destructive" data-testid="menus-error">
-          {t(`errors.${error}`)}
+          {t(`errors.${error}`, { source })}
         </p>
       ) : null}
       {note !== null ? (

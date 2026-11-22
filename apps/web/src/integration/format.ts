@@ -17,6 +17,12 @@ export const COUNTER_KEYS = [
   'items_held',
   'venues',
   'languages',
+  // A table read (`floor_read`).
+  'tables_listed',
+  'tables_created',
+  'tables_updated',
+  'tables_vanished',
+  'tables_returned',
 ] as const
 
 export type CounterKey = (typeof COUNTER_KEYS)[number]

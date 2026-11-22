@@ -11,15 +11,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { hasDatabase } from '../../apply/test-database'
 import type { Id } from '../../ids'
+import { addDaysToDay, localInstant, serviceDate as serviceDateOf } from '../../service-day'
 import { openServiceWorld, type ServiceWorld } from '../../testing/service-world'
 import { applyService } from '../apply-service'
 import type { ServiceActor, ServiceContext } from '../context'
 import type { ServiceCommand } from '../index'
 import { phoneKeyOf } from './guests'
 import { readGuestCard, readGuestList, readGuestSuggestions, readPrivateList } from './guests-read'
-
-const at = (day: number, hour: number, minute = 0) =>
-  new Date(Date.UTC(2026, 10, day, hour, minute, 0)).toISOString()
 
 describe('phoneKeyOf: one key for one number, however it is written', () => {
   it('reads a national number in the venue country, and 00 as +', () => {
@@ -54,19 +52,37 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
   let colleagueId: string
   const spots = new Map<string, string>()
   const contact = { phones: new Set<string>(), emails: new Set<string>() }
+  let timezone = 'UTC'
+  let dayEndsAt = '07:00:00'
+  let today: string
+  /**
+   * The nth night after today, and an hour of it in the venue's own clock. Every booking here is
+   * weeks ahead, so a night never passes under the test whatever the date it runs on.
+   */
+  const night = (ahead: number) => addDaysToDay(today, ahead)
+  const at = (ahead: number, time: string) =>
+    localInstant(night(ahead), time, timezone, dayEndsAt.slice(0, 5)).toISOString()
 
   const staff = (userId: string, signedInAt = new Date()): ServiceContext => ({
     tenantId: world.tenantId,
     venueId: world.venueId,
     origin: 'staff',
-    actor: { kind: 'user', userId, sessionId: `sess-${randomUUID()}` } satisfies ServiceActor,
+    actor: {
+      kind: 'user',
+      userId,
+      sessionId: `sess-${randomUUID()}`,
+    } satisfies ServiceActor,
     jobId: `req-${randomUUID()}`,
     signedInAt,
   })
   const reader = (userId: string) => ({
     tenantId: world.tenantId,
     venueId: world.venueId,
-    actor: { kind: 'user', userId, sessionId: `sess-${randomUUID()}` } satisfies ServiceActor,
+    actor: {
+      kind: 'user',
+      userId,
+      sessionId: `sess-${randomUUID()}`,
+    } satisfies ServiceActor,
   })
 
   const run = async (command: ServiceCommand, context: ServiceContext = staff(ownerId)) =>
@@ -146,6 +162,15 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
 
   beforeAll(async () => {
     world = await openServiceWorld('guests')
+    const venue = (
+      await world.owner.query<{ timezone: string; ends_at: string }>(
+        'select timezone, service_day_ends_at::text as ends_at from restro.venues where id = $1',
+        [world.venueId],
+      )
+    ).rows[0]
+    timezone = venue?.timezone ?? 'UTC'
+    dayEndsAt = venue?.ends_at ?? '07:00:00'
+    today = serviceDateOf(new Date(), timezone, dayEndsAt)
     ownerId = await world.addUser('owner')
     hostessId = await world.addUser('member')
     await world.addStaff(['reservations.tonight'], hostessId)
@@ -168,7 +193,12 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
     } as ServiceCommand)
     const planId = (await accept({ type: 'plan.save', name: 'Hall', makeCurrent: true }))
       .planId as string
-    await accept({ type: 'spot_kind.save', key: 'table', label: 'Table', defaultSeats: 4 })
+    await accept({
+      type: 'spot_kind.save',
+      key: 'table',
+      label: 'Table',
+      defaultSeats: 4,
+    })
     for (const [index, name] of ['T1', 'T2', 'T3', 'T4'].entries()) {
       const details = await accept({
         type: 'spot.save',
@@ -190,11 +220,11 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
   })
 
   it('keeps one guest for one number: two bookings written two ways link to one row', async () => {
-    const first = await book('2026-11-20', at(20, 21), 'T1', {
+    const first = await book(night(30), at(30, '21:00'), 'T1', {
       phone: '+359 887 555 001',
       guestName: 'Mira Ivanova',
     })
-    const second = await book('2026-11-21', at(21, 21), 'T1', {
+    const second = await book(night(31), at(31, '21:00'), 'T1', {
       phone: '0887 555 001',
       guestName: 'Mira',
     })
@@ -214,27 +244,50 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
     )
     expect(keyed.rows).toHaveLength(1)
     // The record keeps the name it had: the second booking's own name is the booking's label.
-    expect(await guestRow(rows[0]?.guest_id ?? '')).toMatchObject({ name: 'Mira Ivanova' })
+    expect(await guestRow(rows[0]?.guest_id ?? '')).toMatchObject({
+      name: 'Mira Ivanova',
+    })
   })
 
   it('lets a hostess add, change, archive and restore a regular (reservations.tonight)', async () => {
     const phone = freshPhone()
     const guestId = (
       await accept(
-        { type: 'guest.save', phone, name: 'Boris', isRegular: true } as ServiceCommand,
+        {
+          type: 'guest.save',
+          phone,
+          name: 'Boris',
+          isRegular: true,
+        } as ServiceCommand,
         staff(hostessId),
       )
     ).guestId as string
-    expect(await guestRow(guestId)).toMatchObject({ name: 'Boris', is_regular: true })
+    expect(await guestRow(guestId)).toMatchObject({
+      name: 'Boris',
+      is_regular: true,
+    })
     // The same number again is refused and names the guest who has it.
     expect(
       await run(
-        { type: 'guest.save', phone: phone.replace(/ /g, ''), name: 'Bobby' } as ServiceCommand,
+        {
+          type: 'guest.save',
+          phone: phone.replace(/ /g, ''),
+          name: 'Bobby',
+        } as ServiceCommand,
         staff(hostessId),
       ),
-    ).toMatchObject({ status: 'refused', code: 'guest_exists', details: { guestId } })
+    ).toMatchObject({
+      status: 'refused',
+      code: 'guest_exists',
+      details: { guestId },
+    })
     await accept(
-      { type: 'guest.save', guestId, name: 'Boris Kolev', note: 'likes T2' } as ServiceCommand,
+      {
+        type: 'guest.save',
+        guestId,
+        name: 'Boris Kolev',
+        note: 'likes T2',
+      } as ServiceCommand,
       staff(hostessId),
     )
     await accept(
@@ -252,11 +305,20 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
       { type: 'guest.save', guestId, archived: false } as ServiceCommand,
       staff(hostessId),
     )
-    expect(await guestRow(guestId)).toMatchObject({ archived_at: null, name: 'Boris Kolev' })
+    expect(await guestRow(guestId)).toMatchObject({
+      archived_at: null,
+      name: 'Boris Kolev',
+    })
     // Three letters suggest him; two do not.
-    const three = await readGuestSuggestions(world.app, { ...reader(hostessId), query: 'bor' })
+    const three = await readGuestSuggestions(world.app, {
+      ...reader(hostessId),
+      query: 'bor',
+    })
     expect(three.ok && three.suggestions.map((one) => one.id)).toContain(guestId)
-    const two = await readGuestSuggestions(world.app, { ...reader(hostessId), query: 'bo' })
+    const two = await readGuestSuggestions(world.app, {
+      ...reader(hostessId),
+      query: 'bo',
+    })
     expect(two.ok && two.suggestions).toEqual([])
     // Erasing is settings-class: the hostess's role does not reach it.
     expect(
@@ -266,7 +328,7 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
 
   it('saves a booking’s guest to the regulars when the form’s tick says so, and needs a phone for it', async () => {
     const phone = freshPhone()
-    const id = await book('2026-11-22', at(22, 22), 'T2', {
+    const id = await book(night(32), at(32, '22:00'), 'T2', {
       phone,
       guestName: 'Ana',
       saveAsRegular: true,
@@ -277,13 +339,16 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
         [id],
       )
     ).rows[0]?.guest_id as string
-    expect(await guestRow(guestId)).toMatchObject({ is_regular: true, name: 'Ana' })
+    expect(await guestRow(guestId)).toMatchObject({
+      is_regular: true,
+      name: 'Ana',
+    })
     expect(
       await run(
         {
           type: 'reservation.create',
-          serviceDate: '2026-11-22',
-          startsAt: at(22, 23),
+          serviceDate: night(32),
+          startsAt: at(32, '23:00'),
           kind: 'booking',
           status: 'reserved',
           partySize: 2,
@@ -302,19 +367,38 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
       await accept({ type: 'guest.save', phone, name: 'Pavel' } as ServiceCommand, staff(hostessId))
     ).guestId as string
     await accept(
-      { type: 'guest.private_note', guestId, note: 'tips well' } as ServiceCommand,
+      {
+        type: 'guest.private_note',
+        guestId,
+        note: 'tips well',
+      } as ServiceCommand,
       staff(managerId),
     )
     const own = await readPrivateList(world.app, reader(managerId))
-    expect(own).toMatchObject({ ok: true, entries: [{ guestId, note: 'tips well' }] })
-    const ownCard = await readGuestCard(world.app, { ...reader(managerId), guestId })
-    expect(ownCard.ok && ownCard.card?.mine).toEqual({ onList: true, note: 'tips well' })
+    expect(own).toMatchObject({
+      ok: true,
+      entries: [{ guestId, note: 'tips well' }],
+    })
+    const ownCard = await readGuestCard(world.app, {
+      ...reader(managerId),
+      guestId,
+    })
+    expect(ownCard.ok && ownCard.card?.mine).toEqual({
+      onList: true,
+      note: 'tips well',
+    })
 
     // The colleague keeps a list of his own, and it does not hold the first one's note.
     const colleague = await readPrivateList(world.app, reader(colleagueId))
     expect(colleague).toMatchObject({ ok: true, entries: [] })
-    const colleagueCard = await readGuestCard(world.app, { ...reader(colleagueId), guestId })
-    expect(colleagueCard.ok && colleagueCard.card?.mine).toEqual({ onList: false, note: null })
+    const colleagueCard = await readGuestCard(world.app, {
+      ...reader(colleagueId),
+      guestId,
+    })
+    expect(colleagueCard.ok && colleagueCard.card?.mine).toEqual({
+      onList: false,
+      note: null,
+    })
     expect(JSON.stringify(colleagueCard)).not.toContain('tips well')
 
     // The hostess keeps none: the read refuses her, and her card and list carry nothing of it.
@@ -322,7 +406,10 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
       ok: false,
       code: 'permission_denied',
     })
-    const hostessCard = await readGuestCard(world.app, { ...reader(hostessId), guestId })
+    const hostessCard = await readGuestCard(world.app, {
+      ...reader(hostessId),
+      guestId,
+    })
     expect(hostessCard.ok && hostessCard.card?.mine).toBeNull()
     const hostessList = await readGuestList(world.app, reader(hostessId))
     expect(hostessList.ok && hostessList.list.privateList).toBe(false)
@@ -331,23 +418,39 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
     const device = {
       tenantId: world.tenantId,
       venueId: world.venueId,
-      actor: { kind: 'staff', staffMemberId: managerStaffId, sessionId: 'sess-device' } as const,
+      actor: {
+        kind: 'staff',
+        staffMemberId: managerStaffId,
+        sessionId: 'sess-device',
+      } as const,
     }
-    expect(await readPrivateList(world.app, device)).toMatchObject({ ok: false })
+    expect(await readPrivateList(world.app, device)).toMatchObject({
+      ok: false,
+    })
 
     // The owner's switch turns the lists off: the read and the write both refuse.
-    await accept({ type: 'reservation_settings.set', privateNotesOn: false } as ServiceCommand)
+    await accept({
+      type: 'reservation_settings.set',
+      privateNotesOn: false,
+    } as ServiceCommand)
     expect(await readPrivateList(world.app, reader(managerId))).toEqual({
       ok: false,
       code: 'private_notes_off',
     })
     expect(
       await run(
-        { type: 'guest.private_note', guestId, note: 'again' } as ServiceCommand,
+        {
+          type: 'guest.private_note',
+          guestId,
+          note: 'again',
+        } as ServiceCommand,
         staff(managerId),
       ),
     ).toMatchObject({ status: 'refused', code: 'private_notes_off' })
-    await accept({ type: 'reservation_settings.set', privateNotesOn: true } as ServiceCommand)
+    await accept({
+      type: 'reservation_settings.set',
+      privateNotesOn: true,
+    } as ServiceCommand)
   })
 
   it('erases a guest as an UPDATE: details and both lists go, the bookings stay, the Log keeps who and when', async () => {
@@ -369,11 +472,15 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
     ).guestId as string
     for (const keeper of [managerId, colleagueId]) {
       await accept(
-        { type: 'guest.private_note', guestId, note: `note of ${keeper}` } as ServiceCommand,
+        {
+          type: 'guest.private_note',
+          guestId,
+          note: `note of ${keeper}`,
+        } as ServiceCommand,
         staff(keeper),
       )
     }
-    const kept = await book('2026-11-23', at(23, 22), 'T4', {
+    const kept = await book(night(33), at(33, '22:00'), 'T4', {
       phone,
       guestName: 'Elena',
       note: 'birthday, cake at midnight',
@@ -388,7 +495,11 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
     expect(
       await run({ type: 'guest.erase', guestId } as ServiceCommand, {
         ...staff(managerId),
-        actor: { kind: 'staff', staffMemberId: managerStaffId, sessionId: 'sess-device' },
+        actor: {
+          kind: 'staff',
+          staffMemberId: managerStaffId,
+          sessionId: 'sess-device',
+        },
       }),
     ).toMatchObject({ status: 'refused' })
     const before = (
@@ -415,10 +526,10 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
     })
     expect((await guestRow(guestId))?.erased_at).not.toBeNull()
     const notes = (
-      await world.owner.query<{ note: string | null; erased_at: Date | null }>(
-        'select note, erased_at from restro.guest_private_notes where guest_id = $1',
-        [guestId],
-      )
+      await world.owner.query<{
+        note: string | null
+        erased_at: Date | null
+      }>('select note, erased_at from restro.guest_private_notes where guest_id = $1', [guestId])
     ).rows
     expect(notes).toHaveLength(2)
     for (const note of notes) {
@@ -453,7 +564,10 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
     // Nobody reads him back: not on the list, no card.
     const list = await readGuestList(world.app, reader(managerId))
     expect(list.ok && list.list.rows.some((row) => row.id === guestId)).toBe(false)
-    const card = await readGuestCard(world.app, { ...reader(managerId), guestId })
+    const card = await readGuestCard(world.app, {
+      ...reader(managerId),
+      guestId,
+    })
     expect(card.ok && card.card).toBeNull()
     const ownList = await readPrivateList(world.app, reader(managerId))
     expect(ownList.ok && ownList.entries.some((entry) => entry.guestId === guestId)).toBe(false)
@@ -477,9 +591,18 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
 
   it('counts came and did-not-come from this venue’s nights, and never adds them up', async () => {
     const phone = freshPhone()
-    const first = await book('2026-11-24', at(24, 21), 'T1', { phone, guestName: 'Kalin' })
-    const second = await book('2026-11-25', at(25, 21), 'T1', { phone, guestName: 'Kalin' })
-    await book('2026-11-26', at(26, 21), 'T1', { phone, guestName: 'Kalin' })
+    const first = await book(night(34), at(34, '21:00'), 'T1', {
+      phone,
+      guestName: 'Kalin',
+    })
+    const second = await book(night(35), at(35, '21:00'), 'T1', {
+      phone,
+      guestName: 'Kalin',
+    })
+    await book(night(36), at(36, '21:00'), 'T1', {
+      phone,
+      guestName: 'Kalin',
+    })
     // Seating is #329's; the counts only read the state, so the test sets it as the night left it.
     await world.owner.query(`update restro.reservations set status = 'finished' where id = $1`, [
       first,
@@ -498,7 +621,10 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
         [first],
       )
     ).rows[0]?.guest_id as string
-    const card = await readGuestCard(world.app, { ...reader(hostessId), guestId })
+    const card = await readGuestCard(world.app, {
+      ...reader(hostessId),
+      guestId,
+    })
     expect(card.ok && card.card).toMatchObject({ came: 1, missed: 1 })
     expect(card.ok && card.card?.bookings).toHaveLength(3)
     expect(card.ok && card.card && 'total' in card.card).toBe(false)
@@ -534,16 +660,19 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
           )
         ).guestId as string
         await accept(
-          { type: 'guest.save', guestId, email: `x${email}` } as ServiceCommand,
+          {
+            type: 'guest.save',
+            guestId,
+            email: `x${email}`,
+          } as ServiceCommand,
           staff(hostessId),
         )
         const day = 1 + (counter % 27)
-        await book(
-          `2026-12-${String(day).padStart(2, '0')}`,
-          new Date(Date.UTC(2026, 11, day, 20, 0, 0)).toISOString(),
-          'T3',
-          { phone, guestName: 'Prop', saveAsRegular: !regular },
-        )
+        await book(night(40 + day), at(40 + day, '20:00'), 'T3', {
+          phone,
+          guestName: 'Prop',
+          saveAsRegular: !regular,
+        })
         const text = (await logText()).join('\n')
         for (const key of contact.phones) expect(text).not.toContain(national(key))
         for (const known of contact.emails) expect(text).not.toContain(known)

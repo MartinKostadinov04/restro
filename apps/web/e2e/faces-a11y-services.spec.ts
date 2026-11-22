@@ -91,6 +91,24 @@ test.describe('the dialogs', () => {
     // The paid screen, reached from the pay sheet: the focus goes back to where the guest began.
     await exerciseDialog(view, opener(view, 'pay'), 'Pay', () => payTheBill(view))
   })
+
+  test('the bill’s "Pay N" opens Pay with the whole bill ticked, two taps from the menu (lane 3 S14)', async () => {
+    view = await openPreview(here(), 390)
+    // Tap 1: the bill. Tap 2: its Pay. Pay is then ready for the whole bill, with no third tap.
+    await opener(view, 'bill').click()
+    const bill = view.getByRole('dialog', { name: 'Your table’s bill' })
+    await bill.getByRole('button', { name: /^Pay/ }).click()
+    const pay = view.getByRole('dialog', { name: 'Pay' })
+    await expect(pay.locator('[data-slot="pay.whole"]')).toHaveAttribute('aria-pressed', 'true')
+    await expect(pay.locator('[data-slot="pay.start"]')).toBeEnabled()
+    await page.keyboard.press('Escape')
+    await expect(dialogs(view)).toHaveCount(0)
+    // From the header's Pay nothing is ticked.
+    await opener(view, 'pay').click()
+    await expect(
+      view.getByRole('dialog', { name: 'Pay' }).locator('[data-slot="pay.whole"]'),
+    ).toHaveAttribute('aria-pressed', 'false')
+  })
 })
 
 test.describe('the screen width', () => {

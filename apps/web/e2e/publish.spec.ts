@@ -483,7 +483,7 @@ test('Settings › Publish: the Automation settings save the sync mode and "publ
 }) => {
   await open(page, AUTOMATION)
   const form = page.getByTestId('automation-form')
-  await expect(form).toContainText('Reading the menu from barsy')
+  await expect(form).toContainText('Sync from barsy')
   // D96: the "new items from the till" rule is gone.
   await expect(form).not.toContainText('New items')
   await expect(page.getByTestId('automation-zone')).toHaveText('Europe/Sofia')

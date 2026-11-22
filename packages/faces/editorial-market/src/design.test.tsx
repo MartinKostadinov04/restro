@@ -446,11 +446,14 @@ const NAME_FIT_ADDED: readonly string[] = [
 
 /** Each departure of `packages/shell/src/design/styles/editorial.ts`, as the lines it may touch. */
 const DEPARTURES: readonly ((line: string, added: boolean) => boolean)[] = [
-  // A dish page with no photo starts under the back button (P14, #420), and the "Add" button of a
-  // table closed for phones greys (P23, #420): each is its own new rule.
+  // A dish page with no photo starts under the back button (P14, #420): its own new rule.
   (line, added) =>
     added && line.startsWith('.rm-overlay-panel.is-detail .rm-detail-copy:first-child {'),
-  (line, added) => added && line.startsWith('.rm .ro-plus[aria-disabled="true"] {'),
+  // One layout for a line of the Order, with no band (lane 3 S9): its own new rules, and the old
+  // price-and-stepper column's rule, which nothing draws any more. Service lines: no browsing look
+  // moves.
+  (line, added) => added && /\.ro-orderline|\.ro-line-head|\.ro-line-foot/.test(line),
+  (line, added) => !added && line.startsWith('.rm .ro-line-side {'),
   // The confirmation's note states its size in pixels: 0.9 of the page's 16 px (no departure in look).
   (line) => /\.ro-confirm-note/.test(line) && property(line) === 'font-size',
   // The Privacy link of the location consent is drawn as a link in the sheet's writing (#173, D121).
