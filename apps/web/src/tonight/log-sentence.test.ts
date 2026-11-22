@@ -88,6 +88,7 @@ const SETTING_WORDS = [
   'pay_rule',
   'paying',
   'payments',
+  'refunds',
   'setting',
 ] as const satisfies readonly LogLineView['setting'][number][]
 

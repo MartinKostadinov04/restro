@@ -350,6 +350,7 @@ export type SettingWord =
   | 'pay_rule'
   | 'paying'
   | 'payments'
+  | 'refunds'
   | 'setting'
 
 /** The part of the ordering settings each key belongs to, as Settings groups them. */
@@ -380,6 +381,8 @@ const SETTING_REASON_WORDS: Readonly<Record<string, SettingWord>> = {
   payments_disconnect: 'payments',
   payments_check: 'payments',
   payments_lost: 'payments',
+  // An owner switching Restro's own refunds back on after the tripwire stopped them (#451).
+  refund_route: 'refunds',
 }
 
 /**

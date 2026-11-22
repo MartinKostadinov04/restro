@@ -521,7 +521,7 @@ const OnNotServed = z.strictObject({
   /** For part of a line (1 of 2): the quantity not served, a decimal text; all of it when left out. */
   quantity: z
     .string()
-    .regex(/^d{1,12}(?:.d{1,6})?$/)
+    .regex(/^\d{1,12}(?:\.\d{1,6})?$/)
     .optional(),
   pin,
 })

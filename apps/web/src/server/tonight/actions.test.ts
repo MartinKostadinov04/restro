@@ -48,6 +48,7 @@ import {
   doneAlertAction,
   liftOrderingAction,
   liftRestroPauseAction,
+  notServedAction,
   openAllTablesAction,
   openTableAction,
   pauseOrderingAction,
@@ -215,6 +216,30 @@ describe('marking a paper receipt Brought (#200)', () => {
       { venueId: VENUE },
     ]) {
       expect(await receiptBroughtAction(input)).toEqual({ ok: false, error: 'invalid' })
+    }
+    expect(runTableCommand).not.toHaveBeenCalled()
+  })
+})
+
+describe('Not served on a paid line (#451)', () => {
+  it('sends a whole or a decimal quantity on to the refund', async () => {
+    for (const quantity of ['1', '0.5']) {
+      runTableCommand.mockResolvedValueOnce({ ok: true, details: {} })
+      expect(
+        await notServedAction({ venueId: VENUE, paymentId: PAYMENT, position: 1, quantity }),
+      ).toEqual({ ok: true, details: {} })
+    }
+    expect(runTableCommand.mock.calls.map((call) => call[1])).toEqual([
+      { type: 'payment.refund_line', paymentId: PAYMENT, position: 1, quantity: '1' },
+      { type: 'payment.refund_line', paymentId: PAYMENT, position: 1, quantity: '0.5' },
+    ])
+  })
+
+  it('refuses a quantity that is not a decimal number, before any command', async () => {
+    for (const quantity of ['d', '1x5', '.5', '1.']) {
+      expect(
+        await notServedAction({ venueId: VENUE, paymentId: PAYMENT, position: 1, quantity }),
+      ).toEqual({ ok: false, error: 'invalid' })
     }
     expect(runTableCommand).not.toHaveBeenCalled()
   })

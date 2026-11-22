@@ -2380,6 +2380,7 @@
     "lg_w_pay_rule": "pay rule",
     "lg_w_paying": "paying from the phone",
     "lg_w_payments": "payments connection",
+    "lg_w_refunds": "refunds from Restro",
     "lg_pay_freed": "Payment for {table}: payment table freed",
     "lg_pay_release_refused": "Payment for {table}: the release of the hold was refused",
     "lg_steps": "{n, plural, one {# step} other {# steps}}",

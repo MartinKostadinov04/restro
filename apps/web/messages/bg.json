@@ -2380,6 +2380,7 @@
     "lg_w_pay_rule": "правило за плащане",
     "lg_w_paying": "плащане от телефона",
     "lg_w_payments": "връзка за плащания",
+    "lg_w_refunds": "връщания от Restro",
     "lg_pay_freed": "Плащане за {table}: масата за плащане е освободена",
     "lg_pay_release_refused": "Плащане за {table}: освобождаването на задържаната сума е отказано",
     "lg_steps": "{n, plural, one {# стъпка} other {# стъпки}}",
