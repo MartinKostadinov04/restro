@@ -244,3 +244,20 @@ to supply (`technical-tuning-from-best-practice`).
 | Blocked artists and title words | empty | Screening (1.13). Genre pending the metadata research. |
 | Show guests' names | on, and each guest may still ask not to be named | 1.3; TouchTunes' "Anonymous" is the same idea. |
 | Who may open and close requests | the roles that already hold the ordering pause | Reuses what exists rather than inventing a role. |
+
+## Still to do before the spec
+
+1. **Row 1.13**, genre blocking, waits on the metadata research (`sr/metadata` branch, PR into
+   `sr/ingestion`). It is the only open row.
+2. **A review of every decision above by a different model** — Martin's instruction on 2026-11-22,
+   to run once the research lands: does the set as a whole fit the most robust and optimal picture,
+   and where it does not, what is the proposal? Run with Fable (`claude-fable-5-2`), reading this
+   file, the [map](2026-11-19-song-requests-port-map.md), the
+   [inventory](2026-11-18-song-requests-port-inventory.md) and the
+   [research](2026-11-18-song-requests-how-others-do-it.md). Its findings are answered here before
+   any decision file is written.
+3. **Then the decisions themselves**, which **cannot be written on this branch**: `sr/ingestion`
+   carries D1–D123, the next free number is 154, and the guard forbids a gap at the top. They need a
+   branch cut from something carrying D1–D153 — today that means `or/foundation` plus
+   `docs/pos-support-answers`. Flagged early because it decides where the spec branch is cut, not
+   just where the files land.
