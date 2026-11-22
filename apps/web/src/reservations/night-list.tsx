@@ -161,6 +161,9 @@ function Bin({
 /** The one banner that says what the whole night is (Patterns: "A state of the whole page"). */
 function Banner({ night, frame }: { night: RvNightView; frame: RvFrame }) {
   const t = useTranslations('reservations')
+  // The night by its date, never «тази вечер»: on a night other than today that word is the button
+  // for today, and a past night is not "this" one (S23).
+  const date = useDateText()(night.day)
   const kind = night.closed
     ? 'closed'
     : night.settingsMissing
@@ -173,15 +176,15 @@ function Banner({ night, frame }: { night: RvNightView; frame: RvFrame }) {
   if (kind === null) return null
   const text =
     kind === 'closed'
-      ? t('b_closed')
+      ? t('b_closed', { date })
       : kind === 'settings'
         ? t('b_settings')
         : kind === 'open'
-          ? t('b_passed_open')
+          ? t('b_passed_open', { date })
           : // The club allows corrections but this role may not make them: say which it is.
             frame.editPastNights
-            ? t('b_passed_denied')
-            : t('b_passed')
+            ? t('b_passed_denied', { date })
+            : t('b_passed', { date })
   const Icon = kind === 'settings' ? CircleAlertIcon : LockIcon
   return (
     <div
@@ -347,7 +350,15 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
     if (night.rows.length === 0) {
       return (
         <NothingHere
-          text={t('empty')}
+          text={
+            // Tonight may still fill, a night to come has none "yet", and a night that has passed
+            // or whose book is closed has none, full stop: nothing can come to it any more (S23).
+            night.passed || night.closed
+              ? t('empty_passed', { date: dateText(night.day) })
+              : night.day === frame.today
+                ? t('empty')
+                : t('empty_ahead', { date: dateText(night.day) })
+          }
           action={mayTake ? <NewButton onClick={() => setForm({ kind: 'new', day })} /> : undefined}
         />
       )
@@ -361,7 +372,11 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
             row={row}
             busy={busy || door.reading}
             onOpen={() => setOpen(row.id)}
-            onNoShow={writable && frame.can.tonight ? () => actions.noShow(row.id) : null}
+            onNoShow={
+              writable && frame.can.tonight
+                ? () => actions.noShow(row.id, row.name ?? t('no_name'))
+                : null
+            }
             onArrive={
               mayTake
                 ? () =>
@@ -388,15 +403,21 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
 
   return (
     <div className="space-y-4" data-testid="reservations-night">
+      {/* On a phone the list is the job (S8): the title is read out but not drawn — the view tabs
+          above already say where she is — and the two doors share one row, so the first booking is
+          on the first screen. */}
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <h2 className="text-xl font-semibold tracking-tight">
+        <h2 className="text-xl font-semibold tracking-tight max-md:sr-only">
           {t('title')}
           <span className="ml-2 text-base font-normal text-muted-foreground">
             {day === frame.today ? t('tab_list') : dateText(day)}
           </span>
         </h2>
         {mayTake ? (
-          <div className="flex min-w-0 flex-wrap gap-2">
+          <div
+            className="grid w-full min-w-0 auto-cols-fr grid-flow-col gap-2 md:flex md:w-auto md:flex-wrap"
+            data-testid="rv-doors"
+          >
             {/* The two ways a party enters the night: a booking, or a party with no spot. The
                 queue's own filter is only drawn once somebody waits, so the list's door cannot
                 live behind it — it is here, except on the empty queue, whose one line carries it
@@ -419,7 +440,8 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
         onPick={setDay}
       />
       {reading ? null : (
-        <fieldset className="flex min-w-0 flex-wrap gap-2">
+        // One row of chips on a phone, which scrolls sideways rather than taking three lines (S8).
+        <fieldset className="flex min-w-0 flex-wrap gap-2 max-md:-mx-1 max-md:flex-nowrap max-md:overflow-x-auto max-md:px-1 max-md:pb-1">
           <legend className="sr-only">{t('filters')}</legend>
           {chips.map((value) => (
             <Button
@@ -428,7 +450,7 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
               size="sm"
               variant={filter === value ? 'default' : 'outline'}
               aria-pressed={filter === value}
-              className="min-h-11"
+              className="min-h-11 shrink-0"
               data-testid={`rv-filter-${value}`}
               onClick={() => setFilter(value)}
             >
@@ -444,7 +466,11 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
         </p>
       ) : null}
       {!reading && night.counts.late > 0 ? (
-        <p className="text-sm text-muted-foreground" data-testid="rv-late-note">
+        // On a phone the legend of "Late" waits behind its own chip, where it is the question.
+        <p
+          className={`text-sm text-muted-foreground ${filter === 'late' ? '' : 'max-md:hidden'}`}
+          data-testid="rv-late-note"
+        >
           {t('late_note')}
         </p>
       ) : null}

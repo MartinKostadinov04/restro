@@ -392,10 +392,45 @@ describe('reduceView: the structure edits of S6 (D89, D92)', () => {
       type: 'renameSection',
       sectionId: ids.beer,
       title: 'Beers',
+      locale: 'bg_BG',
     })
     expect(renamed.sections[ids.beer]).toMatchObject({ title: 'Beers', nameFromTill: false })
-    const item = reduceView(view, { type: 'renameItem', itemId: ids.water, name: 'Still water' })
+    const item = reduceView(view, {
+      type: 'renameItem',
+      itemId: ids.water,
+      name: 'Still water',
+      locale: 'bg_BG',
+    })
     expect(item.items[ids.water]?.name).toBe('Still water')
+  })
+
+  it('keeps the till-name warning while another language still shows the till’s own name (S15)', () => {
+    const { view, ids } = makeTestView()
+    const before = {
+      ...view,
+      items: {
+        ...view.items,
+        [ids.water]: {
+          ...(view.items[ids.water] as ComposerItem),
+          nameFromTill: true,
+          nameFromTillIn: ['bg_BG', 'en_US'] as const,
+        },
+      },
+    }
+    const once = reduceView(before, {
+      type: 'renameItem',
+      itemId: ids.water,
+      name: 'Вода',
+      locale: 'bg_BG',
+    })
+    expect(once.items[ids.water]).toMatchObject({ nameFromTill: true, nameFromTillIn: ['en_US'] })
+    const twice = reduceView(once, {
+      type: 'renameItem',
+      itemId: ids.water,
+      name: 'Water',
+      locale: 'en_US',
+    })
+    expect(twice.items[ids.water]).toMatchObject({ nameFromTill: false, nameFromTillIn: [] })
   })
 
   it('deletes a section with the sections inside it; their items go to Unsorted', () => {

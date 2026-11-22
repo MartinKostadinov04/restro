@@ -305,7 +305,8 @@ describe('Call a waiter, Kinds (D130)', () => {
       expect(page.attrs['data-call-kinds']).toBe(kinds)
       const radios = [...page.sheet.querySelectorAll('[role="radiogroup"] [role="radio"]')]
       expect(radios.map((radio) => radio.textContent)).toEqual(
-        SERVICE_KINDS.map((kind) => WORDS.kinds[kind]),
+        // The plain call's choice reads "Something else" (lane 3 S6).
+        SERVICE_KINDS.map((kind) => (kind === 'waiter' ? WORDS.kindWaiterTile : WORDS.kinds[kind])),
       )
       expect(radios.every((radio) => radio.querySelector('svg') !== null)).toBe(true)
       page.unmount()

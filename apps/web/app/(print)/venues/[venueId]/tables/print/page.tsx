@@ -1,12 +1,12 @@
 // /venues/<id>/tables/print: the print sheet of a venue's table codes (briefs S3-07, S5). A page of its
 // own, outside the admin frame (no sidebar), so what the browser prints is only the cards. It is
 // behind the sign-in like the rest of the admin: the proxy sends a visitor without a session to
-// /login, and this page checks the session and the venue itself. Read-only: any member of the
-// organisation may print.
+// /login, and this page checks the session and the venue itself. Read-only: the codes are revealed
+// only for an owner or admin; anyone else is told so (S25).
 import { ArrowLeftIcon } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { getAssetStore } from '@/server/assets'
 import { getPool } from '@/server/db'
@@ -15,12 +15,26 @@ import { defaultQrBaseUrl } from '@/server/env'
 import { revealConfig, revealFor } from '@/server/reveal'
 import { canManageIntegration } from '@/server/roles'
 import { requireTenant } from '@/server/session'
+import { onSharedDevice } from '@/server/staff/shared-device'
 import { loadTablesView } from '@/server/tables/service'
 import { getVenue } from '@/server/venues'
 import { PrintButton } from '@/tables/print-button'
 import { CARDS_PER_SHEET, chunkCards, PRINT_CSS, PrintSheets } from '@/tables/print-sheet'
 
-export const metadata: Metadata = { robots: { index: false, follow: false } }
+/**
+ * The tab's title names what the sheet holds, so "Save as PDF" offers a file named after it
+ * ("QR codes · <venue> · Restro") instead of "Restro" (screen round 11-18, R4).
+ */
+export async function generateMetadata({
+  params,
+}: PageProps<'/venues/[venueId]/tables/print'>): Promise<Metadata> {
+  const { organization } = await requireTenant()
+  const venue = await getVenue(organization.id, (await params).venueId)
+  const robots = { index: false, follow: false }
+  if (!venue) return { robots }
+  const t = await getTranslations('tables.print')
+  return { title: t('documentTitle', { venue: venue.name }), robots }
+}
 
 export default async function PrintTablesPage({
   params,
@@ -29,6 +43,11 @@ export default async function PrintTablesPage({
   // Another tenant's venue and a made-up id both come back as null (row-level security).
   const venue = await getVenue(organization.id, (await params).venueId)
   if (!venue) notFound()
+  // A shared tablet works Tonight; the codes need the person's own sign-in (RR-84), as on the
+  // design page.
+  if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+    redirect(`/venues/${venue.id}?tab=tonight`)
+  }
 
   const t = await getTranslations('tables')
   // The sheet prints the codes the worker reveals for the signed-in owner or admin (#70).
@@ -76,9 +95,12 @@ export default async function PrintTablesPage({
           <h1 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600 }}>
             {t('print.title', { venue: venue.name })}
           </h1>
-          <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: '#52525b' }}>
-            {t('print.intro')}
-          </p>
+          {/* Only an owner or admin has a sheet and the Print button the intro speaks of (S25). */}
+          {view.canManage ? (
+            <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: '#52525b' }}>
+              {t('print.intro')}
+            </p>
+          ) : null}
           {cards.length > 0 ? (
             <p
               style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: '#52525b' }}
@@ -109,6 +131,11 @@ export default async function PrintTablesPage({
       </header>
       {cards.length > 0 ? (
         <PrintSheets venueName={venue.name} logoUrl={logo?.url ?? null} cards={cards} />
+      ) : !view.canManage ? (
+        // Only owners and admins are given the codes (#70; S25): say so, not "try again".
+        <p style={{ padding: '16px', textAlign: 'center' }} data-testid="print-codes-hidden">
+          {t('codesOwnersOnly')}
+        </p>
       ) : (
         // Codes exist but the worker gave none: say that, not "create the codes first" (#441).
         <p

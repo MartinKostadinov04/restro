@@ -21,7 +21,7 @@ import { availableStyles, themeWithValues, valuesOfStyle } from './design-draft'
 import type { Draft } from './preview-draft'
 import type { FrameContent } from './preview-frames'
 import { previewSnapshot, specimenSnapshot } from './preview-snapshot'
-import { ScaledFrame } from './scaled-frame'
+import { ScaledFrame, TileLoading } from './scaled-frame'
 
 /** The width a tile's picture is laid out at: a phone's. */
 export const SPECIMEN_WIDTH = 390
@@ -165,7 +165,7 @@ export function StyleTiles({
               data-style={id}
               className="grid cursor-pointer gap-2 rounded-md border p-2 has-checked:border-primary has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50 has-disabled:cursor-not-allowed has-disabled:opacity-70"
             >
-              <div className="h-32 overflow-hidden rounded-sm bg-muted/40">
+              <div className="relative h-32 overflow-hidden rounded-sm bg-muted/40">
                 {specimen !== null && draft.state === 'ready' ? (
                   <Specimen
                     venueId={venueId}
@@ -176,7 +176,9 @@ export function StyleTiles({
                     theme={look.theme}
                     values={look.values}
                   />
-                ) : null}
+                ) : (
+                  <TileLoading />
+                )}
               </div>
               <span className="flex min-h-8 min-w-0 items-center gap-2 pl-2 text-sm font-medium">
                 <input

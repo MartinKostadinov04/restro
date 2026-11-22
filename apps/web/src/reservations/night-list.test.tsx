@@ -157,6 +157,64 @@ describe('the night as it opens', () => {
     expect(screen.getByText('No reservations for this night yet.')).toBeTruthy()
     expect(screen.queryByTestId('rv-list')).toBeNull()
   })
+
+  // S23: a night other than tonight is named by its date, and a night that has passed has none,
+  // not none "yet" — nothing can come to it any more.
+  it('names another night by its date when it holds nothing', () => {
+    draw(night({ rows: [], day: '2026-11-12', today: false, days: ['2026-11-12'] }))
+    expect(screen.getByText('No reservations for 12 November yet.')).toBeTruthy()
+  })
+
+  it('says a past night holds nothing, without a "yet"', () => {
+    draw(
+      night({
+        rows: [],
+        day: '2026-11-08',
+        today: false,
+        passed: true,
+        refusal: 'night_passed',
+        days: ['2026-11-08'],
+      }),
+    )
+    expect(screen.getByText('No reservations for 8 November.')).toBeTruthy()
+  })
+
+  it('says a closed night holds nothing, without a "yet", even where it has not passed', () => {
+    draw(night({ rows: [], day: '2026-11-12', today: false, closed: true, days: ['2026-11-12'] }))
+    expect(screen.getByText('No reservations for 12 November.')).toBeTruthy()
+    expect(screen.queryByText(/yet/)).toBeNull()
+  })
+
+  // S1: a spot named only by a number reads as a spot, never as a second count beside the party.
+  it('names a spot that is only a number as a spot', () => {
+    draw(night({ rows: [row({ spots: ['9'] }), row({ id: 'rv_two', spots: ['9', '10'] })] }))
+    const rows = screen.getAllByTestId('rv-row')
+    expect(rows[0]?.textContent).toContain('4 guests · spot 9')
+    expect(rows[1]?.textContent).toContain('spots 9, 10')
+  })
+
+  it('leaves a spot whose name carries words as the owner wrote it', () => {
+    draw(night({ rows: [row({ spots: ['2 VIP'] }), row({ id: 'rv_two', spots: ['Маса 7'] })] }))
+    const rows = screen.getAllByTestId('rv-row')
+    expect(rows[0]?.textContent).toContain('4 guests · 2 VIP')
+    expect(rows[0]?.textContent).not.toContain('spot 2 VIP')
+    expect(rows[1]?.textContent).toContain('4 guests · Маса 7')
+  })
+
+  // R2: the hour column means "expected at"; a waiting party's hour is when it was written down.
+  it('says a waiting party has waited since its hour, under "All" too', () => {
+    draw(
+      night({
+        rows: [row({ id: 'rv_w', status: 'waiting', kind: 'walk_in', time: '23:10', spots: [] })],
+      }),
+    )
+    expect(screen.getByTestId('rv-row-time').textContent).toBe('since 23:10')
+  })
+
+  it('keeps the hour of a booking as it is', () => {
+    draw()
+    expect(screen.getByTestId('rv-row-time').textContent).toBe('23:30')
+  })
 })
 
 describe('the filters', () => {
@@ -200,6 +258,8 @@ describe('what the whole night is', () => {
     const banner = screen.getByTestId('rv-banner')
     expect(banner.getAttribute('data-kind')).toBe('passed')
     expect(banner.textContent).toContain('It can be read, not changed.')
+    // The night by its date, never "this night" (S23).
+    expect(banner.textContent).toContain('The night of 8 November has passed.')
   })
 
   it('says the club allows corrections where it does and this role may make them', () => {

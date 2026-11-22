@@ -24,6 +24,7 @@ import { FormSection } from '@/components/ui/form-section'
 import { connectorUi } from '@/connectors/ui'
 import { removeInstanceAction } from '@/server/integration/actions'
 import type { InstanceView, IntegrationErrorCode } from '@/server/integration/view'
+import { useSignInAgain } from '@/settings/use-settings-run'
 
 import { ConnectCard } from './connect-card'
 import { ErrorNote } from './error-note'
@@ -35,6 +36,7 @@ import { SyncCard } from './sync-card'
 function RemoveButton({ instance }: { instance: InstanceView }) {
   const t = useTranslations('integration.instance.remove')
   const [open, setOpen] = useState(false)
+  const again = useSignInAgain()
   const [error, setError] = useState<IntegrationErrorCode | null>(null)
   const [pending, startTransition] = useTransition()
 
@@ -49,6 +51,10 @@ function RemoveButton({ instance }: { instance: InstanceView }) {
     startTransition(async () => {
       const result = await removeInstanceAction({ integrationId: instance.id })
       if (!result.ok) {
+        if (result.error === 'sign_in_again') {
+          again.ask(confirm)
+          return
+        }
         setError(result.error)
         return
       }
@@ -58,6 +64,7 @@ function RemoveButton({ instance }: { instance: InstanceView }) {
 
   return (
     <>
+      {again.dialog}
       <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
         <Trash2Icon aria-hidden />
         {t('button')}

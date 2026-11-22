@@ -197,7 +197,7 @@ describe('SettingsSections: one module’s sections in the URL (D97, D156)', () 
     renderWithIntl(<SettingsSections hasTill module="venue" contents={sections} />)
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       'General',
-      'Publish',
+      'Sync and publish',
       'Versioning',
     ])
     expect(screen.getByRole('tab', { name: 'General' }).getAttribute('aria-selected')).toBe('true')

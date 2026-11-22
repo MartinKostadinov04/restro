@@ -3,19 +3,56 @@
 // Parts the Tonight tabs share (#86): the heading, the still "{k} new · show" line, the "Show
 // earlier" button, the failed-to-load block and the loading rows.
 import { useTranslations } from 'next-intl'
+import { createContext, type ReactNode, useContext } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 
-/** "Tonight" and the tab's own name, as screen 1 heads its panel. */
-export function TabHeading({ name }: { name: string }) {
+/**
+ * The X of a Tonight side sheet or dialog, as a 44 px target at every width (S3, S11): shadcn's is
+ * a 16 px icon on a wide screen with a fine pointer. Passed as the content's className; the header
+ * keeps clear of it.
+ */
+export const CLOSE_44 =
+  '[&>button:last-child]:top-1 [&>button:last-child]:right-1 [&>button:last-child]:flex [&>button:last-child]:size-11 [&>button:last-child]:items-center [&>button:last-child]:justify-center'
+
+/**
+ * The section switch of a phone (S2): Tonight's tabs pass it down and each section draws it in its
+ * heading row, in place of the section's name. Null where there is one section only. A section
+ * with no heading gets it on a row of its own from the tabs (`data-tonight-heading` tells them).
+ */
+export const SectionSwitch = createContext<ReactNode>(null)
+
+/**
+ * "Tonight" and the tab's own name, as screen 1 heads its panel. Below 1024 px, where Tonight has
+ * more than one section, the section switch stands in for the name; `children` stand on the right
+ * of the same row.
+ */
+export function TabHeading({ name, children }: { name: string; children?: ReactNode }) {
   const t = useTranslations('tonight')
+  const switcher = useContext(SectionSwitch)
   return (
-    <h2 className="text-xl font-semibold tracking-tight">
-      {t('title')}
-      <span className="ml-2 text-base font-normal text-muted-foreground">{name}</span>
-    </h2>
+    <div className="flex flex-wrap items-center justify-between gap-2" data-tonight-heading="">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <h2 className="text-xl font-semibold tracking-tight">
+          {t('title')}
+          <span
+            className={cn(
+              'ml-2 text-base font-normal text-muted-foreground',
+              switcher === null ? '' : 'max-lg:sr-only',
+            )}
+          >
+            {name}
+          </span>
+        </h2>
+        {switcher}
+      </div>
+      {children === undefined ? null : (
+        <div className="flex flex-wrap items-center gap-2">{children}</div>
+      )}
+    </div>
   )
 }
 
@@ -94,7 +131,7 @@ export function NothingHere({
 }: {
   title?: string
   text: string
-  action?: React.ReactNode
+  action?: ReactNode
 }) {
   return (
     <Empty className="p-6 md:p-6" data-testid="nothing-here">

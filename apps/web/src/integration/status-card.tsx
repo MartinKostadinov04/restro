@@ -94,7 +94,7 @@ export function StatusCard({
   return (
     <FormSection title={t('status.title')} description={t('status.description', { source })}>
       <dl className="grid gap-4" data-testid="status-details">
-        <Row label={t('status.title')}>
+        <Row label={t('status.connection')}>
           <span className="flex flex-wrap items-center gap-2">
             <Badge variant={badge.variant} data-testid="status-badge" data-status={instance.status}>
               <Icon aria-hidden />

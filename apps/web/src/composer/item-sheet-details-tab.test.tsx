@@ -127,6 +127,28 @@ describe('the Details tab', () => {
     expect(within(row('abv')).queryByText(/barsy|Owned|Overridden/)).toBeNull()
   })
 
+  it('sends a member (RR-70) to no control they lack: no Structure switch, no rename, no choice', () => {
+    setup(
+      sheetData({
+        nameFromTill: true,
+        fields: {
+          visible: {
+            value: true,
+            provenance: 'till',
+            access: { kind: 'readonly', reason: 'composer_toggle' },
+          },
+          abv: { value: 30, provenance: 'overridden', conflict: true, canRevert: true },
+        },
+      }),
+      { readOnly: true },
+    )
+    expect(within(row('visible')).queryByTestId('read-only-note')).toBeNull()
+    expect(within(row('abv')).getByText(/An owner or admin chooses the right value/)).toBeTruthy()
+    const notice = screen.getByTestId('name-from-till-notice')
+    expect(notice.textContent).toContain('An owner or admin can fill in the public name')
+    expect(notice.textContent).not.toContain('type a name here')
+  })
+
   it('shows read-only reasons for the flags and sends the image to the Media tab', async () => {
     const { onOpenMedia } = setup(
       sheetData({
@@ -152,6 +174,47 @@ describe('the Details tab', () => {
     expect(within(row('visible')).queryByRole('button', { name: /edit/i })).toBeNull()
     await userEvent.click(within(row('image')).getByRole('button', { name: /^(edit|set) image/i }))
     expect(onOpenMedia).toHaveBeenCalledTimes(1)
+  })
+
+  it('points "For sale" at no button when the sale card has none (POS stock, S3)', () => {
+    setup(
+      sheetData({
+        sale: { soldOutTonight: false, offSale: null, canMark: false, stockFromTill: true },
+        fields: {
+          for_sale: {
+            value: true,
+            provenance: 'till',
+            access: { kind: 'readonly', reason: 'sold_out_control' },
+          },
+        },
+      }),
+    )
+    expect(within(row('for_sale')).queryByTestId('read-only-note')).toBeNull()
+    expect(screen.queryByTestId('sale-mark')).toBeNull()
+    expect(screen.getByTestId('sale-note').textContent).toContain('barsy')
+  })
+
+  it('shows Yes for an item’s flags that nothing set, not "No value" (hand-made item, S16)', () => {
+    setup(
+      sheetData({
+        fields: {
+          visible: { value: null, access: { kind: 'readonly', reason: 'composer_toggle' } },
+          for_sale: { value: null, access: { kind: 'readonly', reason: 'sold_out_control' } },
+        },
+      }),
+    )
+    for (const key of ['visible', 'for_sale']) {
+      expect(row(key).textContent).toContain('Yes')
+      expect(row(key).textContent).not.toContain('No value')
+    }
+  })
+
+  it('explains a field in plain words, never by its key (S10)', async () => {
+    setup()
+    await userEvent.click(within(row('name')).getByTestId('field-help'))
+    const help = await screen.findByTestId('field-help-text')
+    expect(help.textContent).toBe('The name guests see on the menu, in each language.')
+    expect(document.body.textContent).not.toContain('Field key')
   })
 
   it("an overridden value shows barsy's value beside it and Revert", async () => {

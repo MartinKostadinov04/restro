@@ -73,6 +73,10 @@ _Avoid_: import, pull (on its own)
 A sync that reads everything the POS holds. Only a complete full read can conclude that an item was deleted in the POS.
 _Avoid_: full pull, full sync
 
+**Changes read**:
+A sync that reads only what changed in the POS since the last read. It never concludes that an item was deleted; only a full read can.
+_Avoid_: quick sync, incremental sync
+
 **Layer**:
 One origin of a stored value: the POS, a user's manual edit, an override, or an edition. Restro's layers can only make the menu more cautious than the POS.
 

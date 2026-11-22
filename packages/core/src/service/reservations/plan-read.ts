@@ -39,7 +39,7 @@ import {
 } from '@restro/db'
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm'
 
-import { localInstant } from '../../service-day'
+import { serviceDayBounds } from '../../service-day'
 import {
   checkSpotPlace,
   planExtent,
@@ -49,6 +49,7 @@ import {
 } from '../../spot-shapes'
 import { type ReadInput, type Who, whoOf } from '../night-read'
 import {
+  compareSpots,
   holdCoversAt,
   leadingHold,
   type SpotHoldFact,
@@ -189,24 +190,8 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000)
 }
 
-/** The calendar date after a service day. */
-function nextDay(day: string): string {
-  const at = new Date(`${day}T00:00:00Z`)
-  at.setUTCDate(at.getUTCDate() + 1)
-  return at.toISOString().slice(0, 10)
-}
-
-/** When a service day begins and ends, in the venue's own zone (D45). */
-export function nightBounds(
-  day: string,
-  timezone: string,
-  dayEndsAt: string,
-): { readonly from: Date; readonly to: Date } {
-  return {
-    from: localInstant(day, dayEndsAt, timezone, dayEndsAt),
-    to: localInstant(nextDay(day), dayEndsAt, timezone, dayEndsAt),
-  }
-}
+/** When a service day begins and ends, in the venue's own zone (D45): the write side's rule too. */
+export const nightBounds = serviceDayBounds
 
 /**
  * The stretch one held row covers — the write side's own rule (`heldRowStretch`), with one case
@@ -302,9 +287,9 @@ function holdsFrom(tx: ReadTx) {
  * What holds each of these spots on one night, by spot id.
  *
  * Two queries, because a hold reaches the plan two ways. The night's own holds are the rows of that
- * service day; a block with no end is kept on by D137 until somebody lifts it, and it carries the
- * service day it was made on, so the still-open blocks of earlier nights are read by their time
- * instead. Nothing else crosses a night: a party's hold ends with the turn time, with its own end
+ * service day; a block is kept on by D137 until somebody lifts it or its dates run out, and it
+ * carries the service day it was made on, so the still-open blocks of earlier nights are read by
+ * their time instead. Nothing else crosses a night: a party's hold ends with the turn time, with its own end
  * time, or with the night's sweep.
  */
 export async function holdsOfNight(
@@ -331,9 +316,11 @@ export async function holdsOfNight(
     // released rows and all — by the morning, a party that came and left has released its spots.
     night.passed ? undefined : isNull(reservationSpots.releasedAt),
   )
-  // The open blocks of the nights before this one (D137): still reserved, still holding, with no
-  // end of any kind, and begun by the time this night ended. A block somebody has lifted since is
-  // not among them: the Log says it was there, and a past night's plan does not re-draw it.
+  // The blocks of the nights before this one that are still on (D137): still reserved, still
+  // holding, begun by the time this night ended, and either with no end of any kind or with dates
+  // that run past this night's start (C2 of the 11-18 screen round: a dated block was drawn on its
+  // first night only). A block somebody has lifted since is not among them: the Log says it was
+  // there, and a past night's plan does not re-draw it.
   const openBlocks = and(
     eq(reservations.venueId, venueId),
     lt(reservations.serviceDate, night.day),
@@ -341,8 +328,8 @@ export async function holdsOfNight(
     onTheseSpots,
     eq(reservations.kind, 'block'),
     eq(reservations.status, 'reserved'),
-    isNull(reservations.endsAt),
-    isNull(reservationSpots.heldTo),
+    or(isNull(reservations.endsAt), gt(reservations.endsAt, night.from)),
+    or(isNull(reservationSpots.heldTo), gt(reservationSpots.heldTo, night.from)),
     isNull(reservationSpots.releasedAt),
     lte(reservationSpots.heldFrom, night.to),
   )
@@ -498,7 +485,8 @@ export async function readFloorPlan(
             : isNull(spots.removedAt),
         ),
       )
-      .orderBy(asc(spots.name))
+    // Natural order (1, 2, 10, 11, 101), in code: SQL's text order puts 101 before 11 (S5).
+    found.sort(compareSpots)
     if (found.length === 0) return { ok: true, access, plan: { ...bare, kinds } } as const
 
     const holds = await holdsOfNight(

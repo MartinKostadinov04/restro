@@ -170,6 +170,8 @@ export interface LinkedMenuSource {
 /** What a server action answers. Never carries a password or a sealed value. */
 export type IntegrationErrorCode =
   | 'not_allowed'
+  /** The password again: the sign-in is older than 15 minutes (D122 §7). */
+  | 'sign_in_again'
   | 'not_found'
   | 'invalid'
   | 'invalid_host'

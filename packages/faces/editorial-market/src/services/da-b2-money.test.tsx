@@ -85,7 +85,7 @@ describe('DA-B2-1: below the smallest card payment, the bill lines go on their o
     await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
     expect(host.of('service.request')[0]?.command.request).toBe('bill')
     await act(async () => host.of('service.request')[0]?.answer())
-    await waitFor(() => expect(blocked()?.textContent).toContain('Waiter called'))
+    await waitFor(() => expect(blocked()?.textContent).toContain('Request sent'))
   })
 
   it('never claims "Request sent" when the "Pay cash" answer was lost (D72, DA-2 again)', async () => {
@@ -102,7 +102,7 @@ describe('DA-B2-1: below the smallest card payment, the bill lines go on their o
     await act(async () =>
       host.of('service.request')[0]?.answer({ status: 'pending', code: ANSWER_LOST_CODE }),
     )
-    expect(blocked().textContent).not.toContain('Waiter called')
+    expect(blocked().textContent).not.toContain('Request sent')
     expect(within(blocked()).getByRole('alert').textContent).toContain('reach Restro right now')
     // D120: no "Try again" for a request that may have landed.
     expect(cash.disabled).toBe(true)
@@ -163,14 +163,14 @@ describe('DA-B2-2: Call a waiter never claims "Request sent" when the answer was
     const host = fakeHost()
     drawFace(host)
     const sheet = openCall()
-    fireEvent.click(within(sheet).getByRole('radio', { name: 'Call the waiter' }))
+    fireEvent.click(within(sheet).getByRole('radio', { name: 'Something else' }))
     fireEvent.click(within(sheet).getByRole('button', { name: 'Send' }))
     await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
     // services-client.ts unknown(): what the page's host answers for a lost request of any kind.
     await act(async () =>
       host.of('service.request')[0]?.answer({ status: 'pending', code: ANSWER_LOST_CODE }),
     )
-    expect(within(sheet).queryByText('Waiter called')).toBeNull()
+    expect(within(sheet).queryByText('Request sent')).toBeNull()
     expect(within(sheet).getByRole('alert').textContent).toContain('reach Restro right now')
     // A retry is safe for a call: it carries the same action id and a repeat of a kind adds nothing.
     const retry = within(sheet).getByRole('button', { name: 'Try again' })
@@ -183,7 +183,7 @@ describe('DA-B2-2: Call a waiter never claims "Request sent" when the answer was
     const said: Record<string, string> = {
       calls_off: 'Calling a waiter from your phone is off here. Ask your waiter.',
       kind_not_offered: 'This can’t be asked for from your phone here. Ask your waiter.',
-      table_not_open: 'This table is not taking orders from phones right now.',
+      table_not_open: 'This table isn’t open for phones. Wave to a waiter.',
     }
     for (const code of Object.keys(said)) {
       const host = fakeHost()
@@ -237,7 +237,7 @@ describe('DA-B2-3: Call a waiter on the paying screens shows what became of it',
     await act(async () =>
       host.of('service.request')[0]?.answer({ status: 'pending', code: ANSWER_LOST_CODE }),
     )
-    expect(sheet.textContent).not.toContain('Waiter called')
+    expect(sheet.textContent).not.toContain('Request sent')
     expect(within(sheet).getByRole('alert').textContent).toContain('reach Restro right now')
     expect(call.disabled).toBe(true)
   })
@@ -255,7 +255,7 @@ describe('DA-B2-3: Call a waiter on the paying screens shows what became of it',
     fireEvent.click(call)
     await waitFor(() => expect(host.of('service.request')).toHaveLength(1))
     await act(async () => host.of('service.request')[0]?.answer())
-    expect(sheet.textContent).toContain('Waiter called')
+    expect(sheet.textContent).toContain('Request sent')
     expect(call.disabled).toBe(true)
   })
 })

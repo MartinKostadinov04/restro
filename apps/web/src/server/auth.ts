@@ -33,6 +33,8 @@ const DISABLED_HTTP_PATHS = [
   '/delete-user',
   '/delete-user/callback',
   '/change-email',
+  // A rename would change the name on past Log entries (names are read at display time, D122 §7).
+  '/update-user',
   '/organization/create',
   '/organization/update',
   '/organization/delete',

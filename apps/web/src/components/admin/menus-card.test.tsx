@@ -55,6 +55,7 @@ function render(
       venueId={VENUE}
       venueName="Demo Club"
       hasTill={options.hasTill ?? false}
+      source={options.hasTill ? 'test POS' : ''}
       canManage={options.canManage ?? true}
       menus={options.menus ?? [MAIN, BRUNCH, LATE]}
       deleted={options.deleted ?? [OLD]}
@@ -226,7 +227,7 @@ describe('the Menus card', () => {
     })
   })
 
-  it('a POS venue’s menus are the till’s: no add, delete, import or bin; rename, order and set live stay', () => {
+  it('a POS venue’s menus are the POS’s: no add, delete, import or bin; rename, order and set live stay', () => {
     render({ hasTill: true })
     expect(screen.queryByTestId('menu-add')).toBeNull()
     expect(screen.queryByTestId('menu-import')).toBeNull()
@@ -235,6 +236,9 @@ describe('the Menus card', () => {
     expect(within(row(1)).getByTestId('menu-rename')).toBeTruthy()
     expect(within(row(1)).getByTestId('menu-up')).toBeTruthy()
     expect(within(row(1)).getByTestId('menu-set-live')).toBeTruthy()
+    // The POS is named by its system (D82), never "the till".
+    expect(document.body.textContent).toContain('The menus come from test POS:')
+    expect(document.body.textContent).not.toMatch(/\btill\b/i)
   })
 
   it('shows the list but no buttons to anyone who may not manage menus', () => {

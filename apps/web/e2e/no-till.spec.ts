@@ -85,7 +85,7 @@ test('venue with no till: create the venue from the list', async () => {
 
   // Step 1 (D85): no POS is connected here, so the only way is by hand (and it is chosen).
   await expect(dialog.getByTestId('new-venue-no-instances')).toContainText(
-    'No point-of-sale system is connected yet.',
+    'No POS is connected yet.',
   )
   await expect(dialog.getByTestId('new-venue-source-hand')).toBeChecked()
   await dialog.getByTestId('new-venue-next').click()
@@ -107,7 +107,7 @@ test('venue with no till: create the venue from the list', async () => {
   await expect(page.getByTestId('composer')).toBeVisible()
   await expect(page.getByTestId('no-menu')).toHaveCount(0)
   await expect(page.getByTestId('pane-no-sections')).toContainText(
-    'Create a section, or connect a till in Settings → Integrations.',
+    'Create a section to start your menu.',
   )
 
   // The page shows the guest address of D84, `/m/<organisation>/<venue>`; the address of before,

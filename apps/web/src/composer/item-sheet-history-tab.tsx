@@ -49,6 +49,29 @@ const STRUCTURE_OPS = new Set([
   'setLinkState',
 ])
 
+/**
+ * The item's on/off flags in the owner's words (S20): "hid the item", not "set Visible to No".
+ * Only for a change in our own layers (rule 5: they only ever say false): false written is "hid" or
+ * "sold out"; a false removed, or a false turned true, is "showed" or "back on sale". The POS
+ * layer writes `true` on its first read, which is no change for the guest: that, and anything
+ * else, keeps the generic sentence.
+ */
+const FLAGS: Readonly<Record<string, { readonly off: string; readonly on: string }>> = {
+  visible: { off: 'flags.hid', on: 'flags.showed' },
+  for_sale: { off: 'flags.soldOut', on: 'flags.backOnSale' },
+}
+
+/** The message key of a flag's sentence, or null for any other field. */
+function flagSentence(entry: HistoryEntry): string | null {
+  const flag = entry.kind === 'structure' ? undefined : FLAGS[entry.fieldKey]
+  if (flag === undefined || entry.layer === 'till') return null
+  if (entry.kind !== 'cleared' && entry.newValue === false) return flag.off
+  if (entry.oldValue === false && (entry.kind === 'cleared' || entry.newValue === true)) {
+    return flag.on
+  }
+  return null
+}
+
 /** A value drawn by its field type's Display; a field the template no longer has, as plain text. */
 function EntryValue({ entry, value }: { entry: HistoryEntry; value: unknown }) {
   if (entry.definition) {
@@ -79,6 +102,7 @@ function EntryLine({ entry, last }: { entry: HistoryEntry; last: boolean }) {
         ? t('tillSync', { source })
         : t('system')
   const provenance = layerProvenance(entry.layer)
+  const flag = flagSentence(entry)
   const Icon = ICON[entry.kind]
   // What goes where the message has {who}, {field}, {value}, {from} and {to}.
   const pieces: Record<string, ReactNode> = {
@@ -119,7 +143,9 @@ function EntryLine({ entry, last }: { entry: HistoryEntry; last: boolean }) {
                     ...marks('who'),
                     source,
                   })
-                : t(entry.kind, marks('who', 'field', 'value', 'from', 'to')),
+                : flag !== null
+                  ? t(flag, marks('who'))
+                  : t(entry.kind, marks('who', 'field', 'value', 'from', 'to')),
             ).map((part, index) => {
               const key = `${index}:${part.kind === 'text' ? part.text : part.name}`
               if (part.kind === 'text') return <Fragment key={key}>{part.text}</Fragment>

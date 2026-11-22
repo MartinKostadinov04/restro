@@ -115,10 +115,26 @@ export function placeStyle(place: SpotPlace, box: PlanBox): CSSProperties {
   }
 }
 
+/** How large a spot must be drawn, in pixels, before its name and then its state line show. */
+const NAME_FROM = { width: 32, height: 20 } as const
+const LINE_FROM = { width: 44, height: 40 } as const
+
+/** A spot's size on screen: its share of the room times the room's drawn width. */
+export function drawnSize(
+  place: SpotPlace,
+  box: PlanBox,
+  roomPx: number,
+): { readonly width: number; readonly height: number } {
+  const unit = box.width > 0 ? roomPx / box.width : 0
+  return { width: place.width * unit, height: place.height * unit }
+}
+
 /**
  * One spot on the plan: its name, its kind's symbol and its state in a word — the three things the
- * ticket asks a tile to carry. A button, so Tab reaches every spot and Enter opens it (2.1.1), at
- * least 44 px tall wherever the shape allows it. The whole of a clipped line is in the sheet.
+ * ticket asks a tile to carry. A button, so Tab reaches every spot and Enter opens it (2.1.1). The
+ * name shows once the spot is drawn large enough to hold it, and the state line once it can hold
+ * two lines (S7); smaller than that, the words stay for a screen reader and the tile is its shape,
+ * its state's surface and symbol. The whole of a clipped line is in the sheet.
  */
 export function SpotTile({
   spot,
@@ -130,9 +146,12 @@ export function SpotTile({
   selected,
   onOpen,
   label,
+  drawn = null,
 }: {
   spot: RvSpotView
   box: PlanBox
+  /** Its size on screen in pixels; unknown (null) before the frame is measured. */
+  drawn?: { readonly width: number; readonly height: number } | null
   symbol: SpotSymbol
   kindLabel: string
   /** The state line as the words module writes it ("Blocked · repair"). */
@@ -144,6 +163,10 @@ export function SpotTile({
   label: string
 }) {
   const corner = cornerClassOf(spot.place.shape)
+  const named =
+    drawn === null || (drawn.width >= NAME_FROM.width && drawn.height >= NAME_FROM.height)
+  const lined =
+    drawn === null || (drawn.width >= LINE_FROM.width && drawn.height >= LINE_FROM.height)
   return (
     <button
       type="button"
@@ -162,16 +185,25 @@ export function SpotTile({
       data-spot={spot.id}
       data-state={spot.state}
       data-shape={spot.place.shape}
+      data-labelled={named ? 'true' : 'false'}
       onClick={onOpen}
     >
-      <span className="flex max-w-full items-center gap-1 text-xs font-medium">
+      <span
+        className={cn(
+          'flex max-w-full items-center gap-1 text-xs font-medium',
+          !named && 'sr-only',
+        )}
+      >
         <KindSymbol symbol={symbol} className="size-3.5" />
         <span className="truncate">{spot.name}</span>
       </span>
-      <span className="flex max-w-full items-center gap-1 text-[0.6875rem]">
+      <span
+        className={cn('flex max-w-full items-center gap-1 text-[0.6875rem]', !lined && 'sr-only')}
+      >
         <StateMark state={spot.state} className="size-3" />
         <span className="truncate">{line}</span>
       </span>
+      {named ? null : <StateMark state={spot.state} className="size-3 max-h-full max-w-full" />}
     </button>
   )
 }

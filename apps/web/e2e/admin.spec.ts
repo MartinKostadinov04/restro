@@ -69,7 +69,7 @@ test('sign in, open a venue, switch tabs (the URL follows), switch language, sig
   await expect(page).toHaveURL(/\?tab=tables$/)
   await expect(page.getByRole('heading', { name: 'Маси и QR', level: 1 })).toBeVisible()
   // No Publishing screen (D97): the Publish button heads every screen (its own spec tests it).
-  await expect(page.getByRole('link', { name: 'Публикуване' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Публикуване', exact: true })).toHaveCount(0)
   await expect(page.getByTestId('publish-button')).toBeVisible()
 
   await page.getByRole('link', { name: 'Настройки на заведението' }).click()

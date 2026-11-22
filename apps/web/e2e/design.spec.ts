@@ -25,7 +25,7 @@ import { ADMIN_PASSWORD } from './support'
 //   the layout for all menus is part of the draft
 //   Publish -> the guest page carries the design
 //   a member sees it read-only, with no Done and no Cancel
-//   at phone width the preview sits under the panel, Done and Cancel in reach (screenshot)
+//   at phone width the preview is docked above Done and Cancel, a Style shows at once (screenshot)
 //   My styles (#177): the draft saved under a name, Update, Delete with Undo
 //   My styles at the other venue: its Styles, a name twice, this venue's design as a tile
 //   in Bulgarian
@@ -642,7 +642,7 @@ test('a member whose role forbids it sees the page read-only, with no Done and n
   }
 })
 
-test('at phone width the preview sits under the panel, scrolls inside, and Done and Cancel stay in reach', async ({
+test('at phone width the preview is docked above the bar, scrolls inside, and a Style shows with no scroll', async ({
   browser,
 }) => {
   const phone = await browser.newContext({
@@ -660,9 +660,13 @@ test('at phone width the preview sits under the panel, scrolls inside, and Done 
       view: document.documentElement.clientWidth,
     }))
     expect(widths.page).toBeLessThanOrEqual(widths.view)
-    const form = await target.getByTestId('design-panel').boundingBox()
-    const preview = await target.getByTestId('design-preview').boundingBox()
-    expect((preview?.y ?? 0) >= (form?.y ?? 0) + (form?.height ?? 0)).toBe(true)
+    // The Style tiles and the preview share the first screen: one tap, no scroll (S3).
+    await expect(target.getByTestId('design-preview-frame')).toBeInViewport()
+    await expect(target.getByTestId('design-style-tile').first()).toBeInViewport()
+    // On a phone the preview is a phone: no width switch (S4).
+    await expect(
+      target.getByTestId('design-preview').getByRole('button', { name: 'PC', exact: true }),
+    ).toBeHidden()
     await target.screenshot({ path: shotPath('phone') })
 
     // Done and Cancel are on the screen wherever the page is scrolled to.
@@ -713,7 +717,7 @@ test('My styles: the draft saved under a name, Update, Delete with Undo', async 
   await expect(myTile('In use at Design Club Sofia')).toHaveCount(0)
   const brand = await brandBox().inputValue()
 
-  // Three taps and the name: Design is open, "Save as a style…", the name, Save.
+  // Three taps and the name: Design is open, "Save this look as a style", the name, Save.
   await tile('classic').getByRole('radio').click()
   await page.getByTestId('design-save-style').click()
   await page.getByTestId('design-save-style-name').fill('Our classic')
@@ -804,10 +808,11 @@ test('in Bulgarian, the long names fit a tile at 390 px', async ({ browser }) =>
     await expect(target.getByLabel('Цветът на вашата марка', { exact: true })).toHaveValue(BRAND)
     await expect(done(target)).toHaveText('Готово')
     await expect(cancel(target)).toHaveText('Отказ')
-    await expect(undo(target)).toHaveText('Отмени')
+    await expect(undo(target)).toHaveText('Върни')
+    // At 390 px the preview is a phone, with no width switch (S4).
     await expect(
       target.getByTestId('design-preview').getByRole('button', { name: 'Компютър', exact: true }),
-    ).toBeVisible()
+    ).toBeHidden()
     // The label of a tile stays inside the tile.
     for (const item of await target.getByTestId('design-style-tile').all()) {
       const overflow = await item.evaluate((element) => element.scrollWidth > element.clientWidth)

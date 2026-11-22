@@ -302,14 +302,14 @@ test('the worker finishes: the run is in the history, one line first, the list u
   await openSettings(page)
   const e2e = instance(page, 'barsy – E2E')
   // Collapsed: one line with the last run, no list.
-  await expect(e2e.getByTestId('history-last')).toContainText('Пълна синхронизация', {
+  await expect(e2e.getByTestId('history-last')).toContainText('Пълно четене', {
     timeout: 15_000,
   })
   await expect(e2e.getByTestId('history-last')).toContainText('Завършено')
   await expect(e2e.getByTestId('run-row')).toHaveCount(0)
   await e2e.getByTestId('history-toggle').click()
 
-  const row = e2e.getByTestId('run-row').filter({ hasText: 'Пълна синхронизация' })
+  const row = e2e.getByTestId('run-row').filter({ hasText: 'Пълно четене' })
   await expect(row).toBeVisible()
   await expect(row.getByTestId('run-status')).toHaveText('Завършено')
   // The instance's history is every venue's: the run names the venue it was for.
@@ -342,7 +342,7 @@ test('the worker finishes: the run is in the history, one line first, the list u
   await expect(details.getByTestId('refused-write')).toHaveCount(2)
   await expect(details.getByTestId('refused-write').first()).toContainText('for_sale')
   await expect(details.getByTestId('refused-write').first()).toContainText(
-    'Би направило менюто по-малко предпазливо от касата',
+    'Би направило менюто по-малко предпазливо от barsy',
   )
   // No id of ours or of the till anywhere in the history.
   expect(await e2e.getByTestId('run-history').innerText()).not.toMatch(
@@ -351,7 +351,7 @@ test('the worker finishes: the run is in the history, one line first, the list u
 
   // The venue's own history is the same run, one line, without the venue column.
   await page.goto(`${venueUrl}?tab=settings`)
-  await expect(page.getByTestId('history-last')).toContainText('Пълна синхронизация')
+  await expect(page.getByTestId('history-last')).toContainText('Пълно четене')
   await page.getByTestId('history-toggle').click()
   await expect(page.getByTestId('run-row')).toHaveCount(1)
   await expect(page.getByTestId('run-venue')).toHaveCount(0)

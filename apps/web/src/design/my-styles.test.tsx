@@ -164,7 +164,12 @@ describe('My styles', () => {
   it('saves the draft under a name in three taps and typing, and reloads the list', async () => {
     setup()
     await userEvent.click(premade('editorial'))
+    // A button that says what it saves, and a box titled with no "…" (S12).
+    expect(screen.getByTestId('design-save-style').textContent).toBe('Save this look as a style')
     await userEvent.click(screen.getByTestId('design-save-style'))
+    expect(
+      within(screen.getByTestId('design-save-style-dialog')).getByRole('heading').textContent,
+    ).toBe('Save as a style')
     await userEvent.type(screen.getByTestId('design-save-style-name'), '  Editorial ours  ')
     await userEvent.click(screen.getByTestId('design-save-style-confirm'))
     await waitFor(() => expect(actions.saveStyleAction).toHaveBeenCalledTimes(1))

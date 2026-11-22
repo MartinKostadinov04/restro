@@ -9,7 +9,7 @@
 // address is switched off.
 import { ChevronDownIcon, ExternalLinkIcon, RocketIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -76,6 +76,32 @@ export function PublishBar({
         : (single?.block ?? 'up_to_date')
   const total = open.reduce((sum, row) => sum + countOf(row.menu), 0)
 
+  // "Version N is live" answers the press; once the published menu's draft changes again it no
+  // longer holds, so it goes rather than stand beside "1 change waiting" (S5). Only that menu
+  // counts: a change to another menu of the venue leaves it. After an Approve the menu is not
+  // known here: the note stays until the person closes it.
+  const outcome = publisher.outcome
+  const publishedMenu = outcome?.kind === 'published' ? outcome.menu : undefined
+  const publishedRow =
+    publishedMenu === undefined
+      ? undefined
+      : rows.find((row) =>
+          publishedMenu.menuId === null ? row.menu.live : row.menu.menuId === publishedMenu.menuId,
+        )
+  const draftCount = publishedRow === undefined ? null : countOf(publishedRow.menu)
+  const draftSame = publishedRow === undefined ? null : publishedRow.menu.identical
+  const draftAtPublish = useRef<{ readonly count: number; readonly same: boolean } | null>(null)
+  const { dismiss } = publisher
+  useEffect(() => {
+    if (draftCount === null || draftSame === null) {
+      draftAtPublish.current = null
+      return
+    }
+    const before = draftAtPublish.current
+    if (before === null) draftAtPublish.current = { count: draftCount, same: draftSame }
+    else if (draftCount > before.count || (before.same && !draftSame)) dismiss()
+  }, [draftCount, draftSame, dismiss])
+
   const reason = ((): string => {
     if (single === undefined) return t('reason.noMenu')
     if (block === 'role' || block === 'busy') return reasonOf(block, null)
@@ -109,12 +135,16 @@ export function PublishBar({
   const offerPublish = !onlyWhatWorks || block === null
   const offerReason = offerPublish || block === 'busy'
   if (!offerGuest && !offerReason) return null
+  // Before the first publish of a single menu, the reason line already says guests see nothing:
+  // the guest link's hint would say it twice (S5).
+  const saysFirstPublish =
+    !several && block === null && single !== undefined && !single.menu.published
   const guestHint =
     view.guestPath === null
       ? null
       : !view.addressServed
         ? t('guestOff')
-        : liveMenu?.published !== true
+        : liveMenu?.published !== true && !saysFirstPublish
           ? t('guestNothing')
           : null
 

@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto'
 import type { DbPool } from '@restro/db'
 import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { GET as qrFile } from '../../../app/api/tables/[tableId]/qr/route'
 import * as switching from '../actions'
 import { getPool } from '../db'
 import * as design from '../design/actions'
@@ -35,6 +36,18 @@ vi.mock('next/headers', async () => (await import('./attack-session')).headersMo
 vi.mock('next-intl/server', async () => (await import('./attack-session')).intlModule)
 vi.mock('@/server/jobs', async () => (await import('./attack-session')).jobsModule)
 vi.mock('@/server/log', async () => (await import('./attack-session')).logModule)
+// Counts the QR route's way into the codes, so the test sees the tablet stopped before it (C3).
+const qrBuilt = vi.hoisted(() => ({ calls: 0 }))
+vi.mock('@/server/tables/download', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/server/tables/download')>()
+  return {
+    ...real,
+    buildQrDownload: (...args: Parameters<typeof real.buildQrDownload>) => {
+      qrBuilt.calls += 1
+      return real.buildQrDownload(...args)
+    },
+  }
+})
 
 /**
  * Every action of these six files: none of them is Tonight's, or the tablet's landing's. The design
@@ -132,6 +145,63 @@ describe.skipIf(!hasDatabase)('the shared tablet and the admin writes (RR-84)', 
     }
   })
 
+  // D122 §7 (lane 5 X1): settings that change who can reach the venue or what its codes are ask
+  // for the password again 15 minutes after it was typed, on the person's own sign-in too.
+  describe('on a personal sign-in older than 15 minutes', () => {
+    const FRESH_ACTIONS: ReadonlySet<string> = new Set([
+      'createAllCodesAction',
+      'issueCodeAction',
+      'turnOffCodeAction',
+      'deleteAreaAction',
+      'deleteTableAction',
+      'saveSystemsAction',
+      'addInstanceAction',
+      'saveConnectionAction',
+      'removeInstanceAction',
+      'renameVenueSlugAction',
+      'renameVenueAction',
+      'deleteVenueAction',
+      'unpublishVenueAction',
+      'purgeVenueAction',
+      'updateOrganizationAction',
+    ])
+    let org: SeededOrg
+
+    beforeAll(async () => {
+      org = await seedOrg(app, owner, 'ADMSTALE')
+    }, 120_000)
+
+    afterAll(async () => {
+      await removeOrgs(owner, [org])
+    }, 60_000)
+
+    it('every such action has an attack in the table', () => {
+      const attacked = new Set(ATTACKS.map((attack) => attack.action))
+      expect([...FRESH_ACTIONS].filter((action) => !attacked.has(action))).toEqual([])
+    })
+
+    for (const entry of ATTACKS.filter(
+      (attack) => attack.ownOrganisation !== true && FRESH_ACTIONS.has(attack.action),
+    )) {
+      it(`${entry.action}${entry.how === undefined ? '' : ` (${entry.how})`}: asks again, nothing moved`, async () => {
+        asked.person = {
+          userId: org.ownerId,
+          tenantId: org.tenantId,
+          role: 'owner',
+          sessionId: `personal-${randomUUID()}`,
+          signedInAt: new Date(Date.now() - 16 * 60_000),
+        }
+        seen.reset()
+        const before = await fingerprint(owner, org.tenantId)
+        const answer = await entry.call(org, org)
+        expect(changedTables(before, await fingerprint(owner, org.tenantId))).toEqual([])
+        expect(answer).toEqual({ ok: false, error: 'sign_in_again' })
+        expect(seen.jobs).toEqual([])
+        expect(seen.revalidated).toEqual([])
+      }, 60_000)
+    }
+  })
+
   describe('what must keep working', () => {
     let org: SeededOrg
 
@@ -154,6 +224,24 @@ describe.skipIf(!hasDatabase)('the shared tablet and the admin writes (RR-84)', 
       const before = await fingerprint(owner, org.tenantId)
       expect(await attack('createAreaAction').call(org, org)).toMatchObject({ ok: true })
       expect(changedTables(before, await fingerprint(owner, org.tenantId))).toContain('areas')
+    }, 60_000)
+
+    it('the QR download looks for the code on a personal sign-in, and never from the tablet (C3)', async () => {
+      const table = org.venues[0].table
+      const download = () =>
+        qrFile(new Request(`http://localhost/api/tables/${table}/qr?format=svg`), {
+          params: Promise.resolve({ tableId: table }),
+        })
+      asOwner(org, `personal-${randomUUID()}`)
+      qrBuilt.calls = 0
+      await download()
+      expect(qrBuilt.calls).toBe(1)
+      asOwner(org, org.venues[0].deviceSession)
+      qrBuilt.calls = 0
+      seen.reset()
+      expect((await download()).status).toBe(404)
+      expect(qrBuilt.calls).toBe(0)
+      expect(seen.fetches).toEqual([])
     }, 60_000)
 
     it("the tablet still reads its own venue's Tonight", async () => {

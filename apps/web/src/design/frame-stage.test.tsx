@@ -4,14 +4,15 @@
 // specimen a tile draws, so a control the renderer renames or a screen it stops drawing fails here.
 import { DEFAULT_DESIGN, DESIGN_PAGES } from '@restro/core'
 import { fixture } from '@restro/shell/testing'
-import { waitFor } from '@testing-library/react'
+import { act, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DraftFace } from '@/publish/draft-face'
 import { renderWithIntl } from '@/test-utils'
 
-import { type Stage, tilePlanOf } from './advanced-model'
-import { drive, WAYS } from './frame-stage'
+import { pageOfTap, type Stage, tilePlanOf } from './advanced-model'
+import { partOf } from './design-frame'
+import { closeDish, drive, keepHistoryInside, stuckTop, WAYS } from './frame-stage'
 import { previewSnapshot } from './preview-snapshot'
 import { DEMO_ASSET_BASE, specimenOf } from './specimen'
 
@@ -124,4 +125,99 @@ describe('what every option looks at', () => {
       stop()
     }, 30_000)
   }
+})
+
+describe('around the stages', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+    Reflect.deleteProperty(document, 'elementsFromPoint')
+  })
+
+  it('a part scrolled to the top stops under the stuck section rail, not behind it (S2)', () => {
+    document.body.innerHTML =
+      '<nav style="position:sticky;top:0" id="rail"></nav><div role="dialog"><header style="position:sticky;top:0" id="own"></header></div><p id="text"></p>'
+    const rail = document.getElementById('rail') as HTMLElement
+    const own = document.getElementById('own') as HTMLElement
+    const text = document.getElementById('text') as HTMLElement
+    vi.spyOn(rail, 'getBoundingClientRect').mockReturnValue({ height: 56 } as DOMRect)
+    vi.spyOn(own, 'getBoundingClientRect').mockReturnValue({ height: 90 } as DOMRect)
+    // Only the boxes at the top edge of the window are looked at.
+    const atTop = vi.fn(() => [own, rail, text, document.body])
+    Object.defineProperty(document, 'elementsFromPoint', { value: atTop, configurable: true })
+    expect(stuckTop()).toBe(56)
+    expect(atTop).toHaveBeenCalledTimes(1)
+  })
+
+  it('names the part tapped and what the tap opens, not the parts around it (S6)', () => {
+    document.body.innerHTML =
+      '<section data-design-part="section"><article data-design-part="item"><button data-slot="item.open"><span data-design-part="item.name" id="name">Ayran</span></button><img data-design-part="item.photo" id="photo"></article></section>'
+    expect(partOf(document.getElementById('name') as Element)).toEqual({
+      part: 'item.name',
+      opens: 'dish',
+    })
+    expect(partOf(document.getElementById('photo') as Element)).toEqual({
+      part: 'item.photo',
+      opens: null,
+    })
+    expect(partOf(document.body)).toBeNull()
+  })
+
+  it('a tap anywhere in the dish shown as a sheet, its close button too, is the dish (S6)', async () => {
+    // Basic shows the dish as a sheet: the renderer's sheet panel holds the dish.
+    const { view, stop } = await reach('dish', [])
+    stop()
+    const dish = view.container.querySelector('[data-design-part="dish"]') as HTMLElement
+    const panel = dish.closest('[data-design-part="sheet"]') as HTMLElement
+    expect(panel).toBeTruthy()
+    const close = panel.querySelector('button') as HTMLButtonElement
+    expect(close.closest('[data-design-part="dish"]')).toBeNull()
+    expect(partOf(close)).toEqual({ part: 'dish', opens: null })
+    expect(pageOfTap(partOf(close)?.part ?? '', null, 'dish')).toBeNull()
+    // A part of its own inside the dish keeps its name.
+    const photo = view.container.querySelector('[data-design-part="dish.photo"]')
+    if (photo !== null) expect(partOf(photo)?.part).toBe('dish.photo')
+    view.unmount()
+  })
+
+  it('closes the dish the stage opened by its address, with no step through the history (S10)', async () => {
+    const release = keepHistoryInside(window)
+    try {
+      const steps = window.history.length
+      const dishOf = (view: { container: HTMLElement }) =>
+        view.container.querySelector('[data-design-part="dish"]')
+      const first = await reach('dish', [])
+      expect(window.location.hash).toMatch(/^#item-/)
+      first.stop()
+      closeDish()
+      await waitFor(() => expect(dishOf(first.view)).toBeNull())
+      expect(window.location.hash).toBe('')
+      first.view.unmount()
+
+      // The dish's own back button still closes it afterwards: one step back inside the frame.
+      const again = await reach('dish', [])
+      again.stop()
+      const back = dishOf(again.view)?.closest('[role="dialog"]')?.querySelector('button')
+      act(() => back?.click())
+      await waitFor(() => expect(dishOf(again.view)).toBeNull())
+      expect(window.location.hash).toBe('')
+      // No step was added to the history the Design page shares with its frames.
+      expect(window.history.length).toBe(steps)
+      again.view.unmount()
+    } finally {
+      release()
+    }
+  })
+
+  it('a step back with nothing of the frame to go back to does nothing', () => {
+    const release = keepHistoryInside(window)
+    try {
+      const popped = vi.fn()
+      window.addEventListener('popstate', popped)
+      window.history.back()
+      expect(popped).not.toHaveBeenCalled()
+      window.removeEventListener('popstate', popped)
+    } finally {
+      release()
+    }
+  })
 })

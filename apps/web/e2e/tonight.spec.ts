@@ -198,14 +198,16 @@ test('on a personal session: Handled and Resume are one tap with no PIN', async 
   expect(resume.count).toBe(1)
 })
 
-test('a table opens in one tap with Undo, and closes in two', async () => {
+test('a table opens and closes from its sheet, two taps each, opening with Undo', async () => {
   const { page } = waiter
   await openTonight(page, 'busy')
   await expect(page.getByTestId('open-count')).toHaveText('4 of 6 open for phones')
   const open = new Taps()
+  // The tile opens the sheet, never acts at once (S16); the sheet's one action opens the table.
   await open.tap(tile(page, 'Table 5'))
+  await open.tap(page.getByTestId('table-sheet').getByRole('button', { name: 'Open for phones' }))
   await expect(page.getByTestId('open-count')).toHaveText('5 of 6 open for phones')
-  expect(open.count).toBe(1)
+  expect(open.count).toBe(2)
   // Undo is the toast's own button: the table is closed again.
   await toast(page, 'Table 5 is open for phones').getByRole('button', { name: 'Undo' }).click()
   await expect(page.getByTestId('open-count')).toHaveText('4 of 6 open for phones')
