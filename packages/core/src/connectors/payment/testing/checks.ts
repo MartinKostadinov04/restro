@@ -4,7 +4,7 @@
 // is wrong on purpose. Every answer is parsed with the seam's schemas, and the provider's own
 // ledger is asked after each step whether money moved: only `capture` may move it.
 
-import { newId, type PaymentId } from '../../../ids'
+import { newId, type PaymentId, type RefundId } from '../../../ids'
 import { addMinor, subtractMinor } from '../../../money'
 import type { Reading } from '../../service/schemas'
 import { paymentCapabilitiesProblems } from '../capabilities'
@@ -176,6 +176,26 @@ class Run {
       idempotencyKey,
     })
     return this.parse('release', answer) as PaymentWriteOutcome<ProviderPayment>
+  }
+
+  async lineRefund(
+    paymentRef: ProviderRef,
+    paymentId: PaymentId,
+    refundId: RefundId,
+    amountMinor: number,
+    idempotencyKey: string = refundId,
+  ): Promise<PaymentWriteOutcome<ProviderRefund>> {
+    const lineRefund = this.h.lineRefund
+    if (lineRefund === undefined) this.fail('the harness cannot refund a line')
+    const answer = await lineRefund({
+      accountRef: this.account,
+      paymentRef,
+      paymentId,
+      refundId,
+      amountMinor,
+      idempotencyKey,
+    })
+    return this.parse('refundLine', answer) as PaymentWriteOutcome<ProviderRefund>
   }
 
   /** The payment a notice is about, read back on `account` (this run's own by default). */
@@ -853,4 +873,55 @@ export const otherAccountCheck = check(async (run) => {
   const unknown = { ...notice, objectRef: providerRef(`${notice.objectRef.provider}x9`) }
   const nothing = run.complete('a read of an unknown object', await run.subject(unknown))
   run.expect(nothing === null, 'an object the provider does not have reads a payment')
+})
+
+/**
+ * `refundLine` (the 11-18 refund decision, 148): a part of a captured payment goes back once, by
+ * key, stamped with our refund row, and reads back in the provider's list; more than is left,
+ * another payment's id, a payment never captured and a key reused with another amount are refused,
+ * and none of them moves money.
+ */
+export const refundLineCheck = check(async (run) => {
+  const { paymentId, ref } = await run.captured()
+  const part = 300
+  const refundId = newId('rf')
+  const first = run.done('refundLine', await run.lineRefund(ref, paymentId, refundId, part))
+  run.expect(first.amountMinor === part, `the refund is ${first.amountMinor}, not ${part}`)
+  run.expect(first.restroRefundId === refundId, 'the refund does not carry our refund row')
+  run.expect(!first.failed, 'a refund just made reads failed')
+  const again = run.done('the same key again', await run.lineRefund(ref, paymentId, refundId, part))
+  run.expect(sameProviderRef(again.ref, first.ref), 'the same key made a second refund')
+  const listed = run.complete('the refunds', await run.refundList(ref))
+  run.expect(listed.length === 1, `the payment lists ${listed.length} refunds, not 1`)
+  run.expect(
+    listed[0]?.restroRefundId === refundId && listed[0]?.amountMinor === part,
+    'the listed refund is not ours, or not for the amount asked',
+  )
+  const read = run.complete('the payment', await run.read(ref))
+  run.expect(read.refundedMinor === part, `the payment reads ${read.refundedMinor} refunded`)
+  const before = await run.moved()
+  run.refused(
+    'a refund of more than is left',
+    await run.lineRefund(ref, paymentId, newId('rf'), run.amount),
+    ['amount_above_remaining'],
+  )
+  run.refused(
+    'the same key with another amount',
+    await run.lineRefund(ref, paymentId, refundId, part + 50, refundId),
+    ['key_reused'],
+  )
+  run.refused(
+    'a refund naming another payment',
+    await run.lineRefund(ref, newId('py'), newId('rf'), part),
+    ['not_eligible'],
+  )
+  const held = await run.held()
+  run.refused(
+    'a refund of a payment never captured',
+    await run.lineRefund(held.ref, held.paymentId, newId('rf'), part),
+    ['not_eligible'],
+  )
+  await run.expectMoved('the refused refunds', before)
+  const after = run.complete('the refunds, read again', await run.refundList(ref))
+  run.expect(after.length === 1, `a refused refund was listed (${after.length} refunds)`)
 })

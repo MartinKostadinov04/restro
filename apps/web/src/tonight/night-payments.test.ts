@@ -130,6 +130,39 @@ describe('refunds and disputes in the CSV (#222)', () => {
       reason: 'd_due{"provider":"Stripe","date":"2026-11-04 11:00"}',
     })
   })
+  it('carries a refund Restro sent for a line marked Not served: its amount, who asked and that it is being sent (148)', () => {
+    const sent: MoneySectionsView = {
+      ...money,
+      refunds: [
+        {
+          refundId: 'rf_5',
+          paymentId: 'py_4',
+          paymentNumber: 'QW3ER',
+          table: '7',
+          numbered: true,
+          amountMinor: 1200,
+          currency: 'EUR',
+          receiptNumber: 'R-000125',
+          serviceDate: '2026-11-18',
+          earlier: false,
+          failed: false,
+          storno: null,
+          seen: null,
+          requestedBy: { who: { kind: 'person', name: 'Ivan' }, telegram: false },
+          sending: true,
+        },
+      ],
+    }
+    expect(moneyCsvRows(sent, { say, provider: 'Stripe' })[0]).toMatchObject({
+      section: 'nt_refunds',
+      what: 'refund',
+      reference: 'py_4',
+      state: 'py_refund_sending',
+      reason: expect.stringMatching(/^py_not_served: .*Ivan/),
+      amountMinor: 1200,
+      detail: 'R-000125',
+    })
+  })
   it('says a failed refund was seen, and who, in the state and the who column (#234)', () => {
     const seen: MoneySectionsView = {
       ...money,

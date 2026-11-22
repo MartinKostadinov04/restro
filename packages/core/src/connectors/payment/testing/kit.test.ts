@@ -77,6 +77,7 @@ function toyHarness(bug?: Bug): PaymentHarness {
       partialCapture: true,
       wallets: [],
       refundNotices: false,
+      lineRefund: false,
       minimumMinor: () => 50,
     },
     startConnection: async () => ({
@@ -181,6 +182,11 @@ function toyHarness(bug?: Bug): PaymentHarness {
           result: update(payment.ref.provider, { status: 'released', heldMinor: 0 }),
         }
       }),
+    // The toy offers no line refund (`lineRefund: false`): the step only refuses.
+    refundLine: async () => ({
+      kind: 'refused',
+      refusal: { code: 'not_supported', scope: 'payment', detail: null },
+    }),
   }
   if (bug === 'refundMethod') provider.refund = () => undefined
 

@@ -269,6 +269,8 @@ export const GuestTableStateSchema = z.strictObject({
             name: LocalizedTextSchema.nullable(),
             quantity: z.string().max(32),
             amountMinor: minor,
+            /** Restro's own refund of the line (148): being sent, refunded, or did not go through. */
+            refund: z.enum(['sending', 'refunded', 'failed']).optional(),
           }),
         )
         .max(PAID_LINES_MAX),

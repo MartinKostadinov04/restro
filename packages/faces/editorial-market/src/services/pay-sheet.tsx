@@ -188,6 +188,16 @@ export function PaidInApp({
           <li key={index} data-paid-in-app="">
             {lineNameText(line.name, locale, words.otherItem)}
             {mark(line.quantity)} · {money(line.amountMinor)}
+            {line.refund === undefined ? null : (
+              <>
+                {' · '}
+                {line.refund === 'sending'
+                  ? words.paying.paidRefundSending
+                  : line.refund === 'refunded'
+                    ? words.paying.paidRefunded
+                    : words.paying.paidRefundFailed}
+              </>
+            )}
           </li>
         ))}
       </ul>

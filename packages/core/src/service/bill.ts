@@ -233,7 +233,16 @@ export interface PaidLineView {
   /** Decimal text ("2", "0.5"). */
   readonly quantity: string
   readonly amountMinor: number
+  /**
+   * Restro's own refund of the line (the 11-18 refund decision, 148): `sending` until the provider's
+   * list shows it, `refunded` once it does (D72: no local success), `failed` when it did not go
+   * through. Absent for a line with none.
+   */
+  readonly refund?: LineRefundState
 }
+
+/** Where Restro's own refund of a paid line stands, as a guest is told. */
+export type LineRefundState = 'sending' | 'refunded' | 'failed'
 
 /** The table's bill as a phone sees it. */
 export interface BillView {

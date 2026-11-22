@@ -29,6 +29,9 @@ import type {
 /** The metadata key that carries our payment id on the PaymentIntent (design §10). */
 export const PAYMENT_METADATA_KEY = 'restro_payment'
 
+/** The metadata key that carries our refund row on a refund Restro made (`refundLine`). */
+export const REFUND_METADATA_KEY = 'restro_refund'
+
 /** A mapping that worked, or why it did not. */
 export type Mapped<T> = { ok: true; value: T } | { ok: false; reason: string }
 
@@ -51,10 +54,12 @@ export function providerRefund(refund: StripeRefund): Mapped<ProviderRefund> {
   if (failed === undefined) {
     return { ok: false, reason: `unknown refund status ${refund.status ?? 'none'}` }
   }
+  const stamp = refund.metadata?.[REFUND_METADATA_KEY]
   const parsed = ProviderRefundSchema.safeParse({
     ref: providerRef(refund.id),
     amountMinor: refund.amount,
     failed,
+    ...(stamp === undefined ? {} : { restroRefundId: stamp }),
   })
   if (!parsed.success) return { ok: false, reason: 'the refund does not fit the seam' }
   return { ok: true, value: parsed.data }

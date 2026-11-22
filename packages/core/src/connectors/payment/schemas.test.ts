@@ -158,6 +158,7 @@ describe('the capabilities', () => {
     partialCapture: true,
     wallets: ['apple_pay'] as const,
     refundNotices: false,
+    lineRefund: false,
     minimumMinor: () => 50,
   }
 

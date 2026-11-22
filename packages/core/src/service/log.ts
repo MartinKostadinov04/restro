@@ -68,6 +68,9 @@ export const LOG_KINDS = {
   // A refund the venue made in its provider's dashboard, read back (lg_pay_refund), its storno
   // done or put back (lg_pay_storno), and a dispute opened or closed (lg_pay_dispute) (#222).
   'payment.refund_seen': 'record',
+  // Restro's own refund of a line staff marked "Not served" (148): asked by a person, then sent.
+  'payment.refund_requested': 'record',
+  'payment.refund_sent': 'record',
   'payment.storno': 'record',
   // A refund that did not go through, seen by a manager or owner, or put back (#234).
   'payment.refund_failed_seen': 'record',

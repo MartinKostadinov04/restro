@@ -272,6 +272,8 @@ export interface GuestTableState {
       readonly name: LocalizedText | null
       readonly quantity: string
       readonly amountMinor: number
+      /** Restro's own refund of the line (148): being sent, refunded, or did not go through. */
+      readonly refund?: 'sending' | 'refunded' | 'failed'
     }[]
   } | null
 }
@@ -659,6 +661,7 @@ export function projectGuestState(
               name: line.name,
               quantity: shownQuantity(line.quantity),
               amountMinor: line.amountMinor,
+              ...(line.refund === undefined ? {} : { refund: line.refund }),
             })),
           },
   }

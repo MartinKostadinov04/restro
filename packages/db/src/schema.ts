@@ -3005,12 +3005,35 @@ export const paymentRefunds = restro.table(
     /** When staff said the storno was made at the till, and the account that said so. */
     stornoAt: timestamp('storno_at', { withTimezone: true }),
     stornoBy: text('storno_by'),
+    /**
+     * How the refund came to be (the 11-18 refund decision, 148): `provider`, the venue made it in
+     * its own dashboard and Restro read it back; `line`, staff marked a paid line "Not served" and
+     * Restro sent it. A `line` row is written first, with the staff's actor, and is the worker's job:
+     * it has no provider id until `refundLine` answers.
+     */
+    origin: text('origin').notNull().default('provider'),
+    /** The payment line (`payment_lines.position`) a `line` refund is for; null otherwise. */
+    linePosition: integer('line_position'),
+    /**
+     * When Restro read a `line` refund back in the provider's list and it had not failed: the guest's
+     * bill says "refunded" only from then (D72). Null for a `provider` row, which is read by definition.
+     */
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     ...serviceProvenance(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     unique('payment_refunds_tenant_id_id_unique').on(t.tenantId, t.id),
+    // A line is refunded once: a second row for it only after the first did not go through.
+    uniqueIndex('payment_refunds_line_unique')
+      .on(t.paymentId, t.linePosition)
+      .where(sql`${t.origin} = 'line' and ${t.failedAt} is null`),
+    check('payment_refunds_origin', sql`${t.origin} in ('provider', 'line')`),
+    check(
+      'payment_refunds_line',
+      sql`(${t.origin} = 'line') = (${t.linePosition} is not null) and (${t.linePosition} is null or ${t.linePosition} >= 1) and (${t.confirmedAt} is null or ${t.origin} = 'line')`,
+    ),
     venueFk('payment_refunds', t),
     foreignKey({
       name: 'payment_refunds_payment_fk',
@@ -3214,6 +3237,15 @@ export const paymentAccounts = restro.table(
      * null while paying flows. Ordering never stops for it.
      */
     payingPausedAt: timestamp('paying_paused_at', { withTimezone: true }),
+    /**
+     * Since when Restro's own refunds ("Not served", `refundLine`) are stopped at the venue, or null
+     * while they flow: a refund made with Restro's key that has no row of ours stopped them (a leaked
+     * key or a bug, never a busy night), and an owner switches them back on (the 11-18 refund
+     * decision, 148). A refund staff already confirmed is never held back by it.
+     */
+    refundRouteOffAt: timestamp('refund_route_off_at', { withTimezone: true }),
+    /** Why it was stopped: `stray` (a refund made with Restro's key that has no row of ours). */
+    refundRouteOffReason: text('refund_route_off_reason'),
     /** The breaker's state (core's `BreakerStateSchema`), so a restarted worker restores it. */
     breaker: jsonb('breaker').$type<Record<string, unknown>>(),
     ...serviceProvenance(),
@@ -3246,6 +3278,10 @@ export const paymentAccounts = restro.table(
       sql`${t.state} not in ('connected', 'lost_access') or ${t.accountRef} is not null`,
     ),
     check('payment_accounts_checks_object', sql`jsonb_typeof(${t.checks}) = 'object'`),
+    check(
+      'payment_accounts_refund_route',
+      sql`(${t.refundRouteOffAt} is null) = (${t.refundRouteOffReason} is null) and (${t.refundRouteOffReason} is null or ${t.refundRouteOffReason} in ('stray'))`,
+    ),
     ...provenanceChecks('payment_accounts', t),
   ],
 )
