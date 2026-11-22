@@ -62,22 +62,22 @@ describe('the delete dialog', () => {
     expect(effects).toContain('Settings › Deleted venues')
   })
 
-  it('names the till link it releases only for a venue that has one (N2)', async () => {
+  it('names the POS link it releases only for a venue that has one (N2)', async () => {
     const user = zone(undefined, true)
     await user.click(open())
     const items = screen.getByTestId('delete-venue-effects').querySelectorAll('li')
     expect(items).toHaveLength(4)
     expect(screen.getByTestId('delete-venue-effects').textContent).toContain(
-      'link to the till is released',
+      'link to its venue in the POS is released',
     )
   })
 
-  it('leaves the till link out for a hand-made venue (N2)', async () => {
+  it('leaves the POS link out for a hand-made venue (N2)', async () => {
     const user = zone(undefined, false)
     await user.click(open())
     const effects = screen.getByTestId('delete-venue-effects')
     expect(effects.querySelectorAll('li')).toHaveLength(3)
-    expect(effects.textContent).not.toContain('till')
+    expect(effects.textContent).not.toContain('in the POS is released')
     expect(effects.textContent).toContain('Nothing is erased')
   })
 
