@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { authClient } from '@/lib/auth-client'
+import { returnToOrganization } from '@/server/actions'
 import { renameVenueAction } from '@/server/venues-actions'
 import { renderWithIntl } from '@/test-utils'
 
@@ -18,9 +19,9 @@ vi.mock('@/lib/auth-client', () => ({
   authClient: {
     getSession: vi.fn(),
     signIn: { email: vi.fn() },
-    organization: { setActive: vi.fn() },
   },
 }))
+vi.mock('@/server/actions', () => ({ returnToOrganization: vi.fn() }))
 
 const VENUE_ID = 'vn_abcdefghijklmnopqrstuv'
 
@@ -49,10 +50,7 @@ beforeEach(() => {
     error: null,
   } as never)
   vi.mocked(authClient.signIn.email).mockResolvedValue({ data: {}, error: null } as never)
-  vi.mocked(authClient.organization.setActive).mockResolvedValue({
-    data: {},
-    error: null,
-  } as never)
+  vi.mocked(returnToOrganization).mockResolvedValue({ ok: true })
 })
 
 describe('the venue name', () => {
