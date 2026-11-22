@@ -1124,6 +1124,13 @@ export const ATTACKS: readonly Attack[] = [
       })
     },
   },
+  {
+    action: 'notServedAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return tonight.notServedAction({ venueId: x.id, paymentId: x.paidPayment, position: 1 })
+    },
+  },
 
   // Night reads.
   { action: 'sentOrdersAction', call: (v) => night.sentOrdersAction({ venueId: v.venues[0].id }) },
@@ -2379,6 +2386,15 @@ export const MIXED: readonly Attack[] = [
         paymentId: v.venues[0].payment,
         answering: 'close',
         answer: 'receipt_printed',
+      }),
+  },
+  {
+    action: 'notServedAction',
+    call: (v, a) =>
+      tonight.notServedAction({
+        venueId: a.venues[0].id,
+        paymentId: v.venues[0].paidPayment,
+        position: 1,
       }),
   },
   {

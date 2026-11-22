@@ -350,6 +350,7 @@ export type SettingWord =
   | 'pay_rule'
   | 'paying'
   | 'payments'
+  | 'refunds'
   | 'setting'
 
 /** The part of the ordering settings each key belongs to, as Settings groups them. */
@@ -380,6 +381,8 @@ const SETTING_REASON_WORDS: Readonly<Record<string, SettingWord>> = {
   payments_disconnect: 'payments',
   payments_check: 'payments',
   payments_lost: 'payments',
+  // An owner switching Restro's own refunds back on after the tripwire stopped them (#451).
+  refund_route: 'refunds',
 }
 
 /**
@@ -463,6 +466,11 @@ export interface LogLineView {
   readonly stornoUndone: boolean
   /** A "Got it" line taken back by Undo (#234). */
   readonly refundSeenUndone: boolean
+  /**
+   * Where a refund Restro sent for a line marked "Not served" stands (148): asked by a person, sent
+   * to the provider, confirmed by its list, or did not go through. Only on those entries.
+   */
+  readonly refundStep?: 'requested' | 'sent' | 'confirmed' | 'failed'
   readonly sentOrdersOfDay: number | null
   /** The bills still open when the night ended (#332); null for any other entry. */
   readonly openBills: number | null
@@ -595,6 +603,14 @@ export function logLineView(
     refundFailed: line.kind === 'payment.refund_seen' && line.toState === 'failed',
     stornoUndone: line.kind === 'payment.storno' && line.toState === 'open',
     refundSeenUndone: line.kind === 'payment.refund_failed_seen' && line.toState === 'open',
+    ...(line.kind === 'payment.refund_requested' || line.kind === 'payment.refund_sent'
+      ? {
+          refundStep:
+            line.toState === 'sent' || line.toState === 'confirmed' || line.toState === 'failed'
+              ? line.toState
+              : ('requested' as const),
+        }
+      : {}),
     sentOrdersOfDay: line.sentOrdersOfDay,
     openBills: line.openBills,
     endedEarly: line.kind === 'night.closed' && line.reason === 'ended_early',

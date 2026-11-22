@@ -408,6 +408,11 @@ export interface TableBillLineView {
  * until the sitting ends.
  */
 export interface PaidLineView {
+  /**
+   * Restro's own refund of the line (the 11-18 refund decision, 148): `sending` until the provider
+   * says it is made, `refunded` then (D72: no local success), `failed` when it did not go through.
+   */
+  readonly refund?: 'sending' | 'refunded' | 'failed'
   /** The line's name per language; null is "Other item", worded by the shell. */
   readonly name: LocalizedText | null
   /** The quantity as decimal text ("2", "0.5"). */

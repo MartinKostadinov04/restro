@@ -200,6 +200,12 @@ export const JOB_NAMES = {
    * that stays stuck, and probes a paused payment provider. Not sent by anyone else.
    */
   paymentRecoveryTick: 'payment-recovery-tick',
+  /**
+   * Scheduled, every minute (the 11-18 refund decision, 148): sends the refunds Restro owes for lines
+   * staff marked "Not served" (`payment.refund_line`), and reads each back from the provider, which
+   * is the only thing that makes one "refunded". Not sent by anyone else.
+   */
+  paymentRefundTick: 'payment-refund-tick',
 } as const
 
 /** One of the queue names. */

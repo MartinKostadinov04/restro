@@ -53,7 +53,7 @@ export function VenueAddress({
   const [value, setValue] = useState(slug)
   const [error, setError] = useState<RenameVenueSlugError | null>(null)
   const [pending, startTransition] = useTransition()
-  const again = useSignInAgain()
+  const again = useSignInAgain(() => submit())
 
   const valid = isVenueSlug(value)
   const dirty = value !== saved
@@ -64,8 +64,8 @@ export function VenueAddress({
   const preview = addressOf(organizationSlug, value)
   const canOpen = isOrganizationSlug(organizationSlug) && valid && !dirty
 
-  function submit(event: FormEvent) {
-    event.preventDefault()
+  function submit(event?: FormEvent) {
+    event?.preventDefault()
     if (!canEdit || !valid || !dirty || pending) return
     setError(null)
     startTransition(async () => {
@@ -79,7 +79,7 @@ export function VenueAddress({
         else toast.warning(t('slug.savedLate'))
       } else {
         if (result.error === 'sign_in_again') {
-          again.ask(() => submit(event))
+          again.ask()
           return
         }
         setError(result.error)

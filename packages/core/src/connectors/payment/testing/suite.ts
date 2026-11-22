@@ -30,6 +30,7 @@ import {
   type PaymentCheck,
   partialCaptureCheck,
   reconnectCheck,
+  refundLineCheck,
   refundListCheck,
   refundReadBackCheck,
   refusedCheck,
@@ -67,7 +68,7 @@ export function paymentProviderSuite(harness: PaymentHarness): void {
   const { faults, guest } = harness
   const outside = harness.outside ?? {}
   describe(`${harness.name}: payment provider conformance`, () => {
-    check('offers the interface steps and nothing else: no refund', operationsCheck, harness)
+    check('offers the interface steps and nothing else', operationsCheck, harness)
     check('declares its kind and every capability', capabilitiesCheck, harness)
     check('connecting and reading the connection move no money', connectionCheck, harness)
     check('an unfinished account gets a fresh link for the same account', reconnectCheck, harness)
@@ -87,6 +88,13 @@ export function paymentProviderSuite(harness: PaymentHarness): void {
     )
     check('a release ends a hold, moves nothing and blocks a capture', releaseCheck, harness)
     check('no step but capture moves money', moneyOnlyByCaptureCheck, harness)
+    checkIf(
+      harness.provider.capabilities.lineRefund && harness.lineRefund !== undefined,
+      'refundLine refunds a part of a captured payment once, and refuses every other refund',
+      refundLineCheck,
+      harness,
+      'refund a line (the provider declares no line refund)',
+    )
     checkIf(
       faults.nextHoldNeedsStep !== undefined && guest.completeStep !== undefined,
       'a hold whose bank asks the guest waits on the guest and cannot be captured',

@@ -165,14 +165,22 @@ export function useSettingsRun(email: string) {
  * The same password dialog for a screen that runs its actions itself (the organisation, POS
  * instances, a venue's name, address, deletion and purge, table codes): `ask(retry)` when an
  * action answers `sign_in_again`; after a fresh sign-in `retry` runs. Render `dialog` once.
+ *
+ * A form passes its submit as `latest` and calls `ask()`: the retry then runs the submit of the
+ * latest render, so it sends what the form holds after the sign-in, not what it held when the
+ * dialog opened (a closure from that render would save a value the person has since changed).
  */
-export function useSignInAgain() {
+export function useSignInAgain(latest?: () => void) {
   const t = useTranslations('ownerSettings')
   const [email, setEmail] = useState<string | null>(null)
   const again = useRef<(() => void) | null>(null)
+  const current = useRef(latest)
+  useEffect(() => {
+    current.current = latest
+  })
   const ask = useCallback(
-    (retry: () => void) => {
-      again.current = retry
+    (retry?: () => void) => {
+      again.current = retry ?? (() => current.current?.())
       // The address to sign in with is the signed-in person's own; read it only when needed. When
       // it cannot be read the dialog would never accept a password: say the change failed instead.
       const failed = () => {

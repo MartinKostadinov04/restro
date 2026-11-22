@@ -216,7 +216,8 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
       phone: '+359888765432',
     } as const
     // Taking and changing a booking are the hostess's key (#328; D135 13.18, S20 of the 11-18
-    // screen round); the book's key alone is the manager's acts, and takes or changes none.
+    // screen round). The book's key alone is the manager's acts: it takes no booking, and as the
+    // wider key it changes one too.
     const edit = {
       type: 'reservation.edit',
       reservationId: party,
@@ -235,7 +236,7 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
       code: 'permission_denied',
     })
     expect(await run(edit, person(bookOnly))).toMatchObject({
-      code: 'permission_denied',
+      status: 'accepted',
     })
     // Blocking a spot and ending the night are keys of their own again.
     expect(

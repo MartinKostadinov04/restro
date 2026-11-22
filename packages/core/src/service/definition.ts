@@ -118,6 +118,12 @@ export interface CommandDefinition<S extends z.ZodType = z.ZodType> {
    */
   permissionOf?(command: z.infer<S>): Permission
   /**
+   * Wider rights that let a staff actor run the command too: any one of them is enough in place of
+   * the needed permission (`reservation.edit` and `.cancel` are tonight's work, and the booking
+   * book's key covers them, D135 13.18). Never a settings-class permission. Left out: none.
+   */
+  readonly alsoPermittedBy?: readonly Permission[]
+  /**
    * How hard the engine locks the venue row for the command. `update` is for a command that
    * rewrites `venues.settings` (a read-modify-write): two of them queue instead of both holding
    * the shared lock and deadlocking on the upgrade. Left out: `share`.

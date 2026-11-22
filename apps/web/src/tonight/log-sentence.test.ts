@@ -88,6 +88,7 @@ const SETTING_WORDS = [
   'pay_rule',
   'paying',
   'payments',
+  'refunds',
   'setting',
 ] as const satisfies readonly LogLineView['setting'][number][]
 
@@ -334,6 +335,29 @@ describe('the sentences of refunds, stornos and disputes (#222)', () => {
     )
     expect(en(line('payment.refund_seen', { amountMinor: 500, refundFailed: true }))).toBe(
       "The refund didn't go through at the payment provider",
+    )
+  })
+
+  it('words the refund Restro sends for a line marked Not served, step by step, with who asked', () => {
+    const base = {
+      amountMinor: 1200,
+      provider: 'Stripe',
+      by: { who: { kind: 'person', name: 'Ivan' }, telegram: false },
+    } as Partial<LogLineView>
+    expect(en(line('payment.refund_requested', base))).toBe(
+      'Ivan: not served, refund of €12.00 asked (Table 7)',
+    )
+    expect(en(line('payment.refund_sent', { ...base, refundStep: 'sent' }))).toBe(
+      'Refund of €12.00 sent to Stripe',
+    )
+    expect(en(line('payment.refund_sent', { ...base, refundStep: 'confirmed' }))).toBe(
+      'Refund of €12.00 confirmed by Stripe',
+    )
+    expect(en(line('payment.refund_sent', { ...base, refundStep: 'failed' }))).toBe(
+      "Refund of €12.00 didn't go through at Stripe",
+    )
+    expect(bgText(line('payment.refund_sent', { ...base, refundStep: 'confirmed' }))).toBe(
+      'Връщане на €12.00 е потвърдено от Stripe',
     )
   })
 
