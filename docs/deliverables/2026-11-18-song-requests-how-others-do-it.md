@@ -247,3 +247,72 @@ What the sources say; much of it is anecdote, and no source measures any of it.
 - Two Requestify products' terms conflict on refunds (non-refundable vs 7-day guarantee); Special Request's store text and website disagree on whether tips are Free or Premium; both noted above.
 - Several App Store pages could not be read directly; the iTunes lookup record of a listing is the vendor's own text (primary), but four records were returned only as a model summary of a truncated response and are marked as summary.
 - Search-snippet-only items (Comparably Rockbot FAQ, Moodby cancel/block, DJ Request pricing, ClubVibe, GrooveWish, One28, Spinfire, Playmysong caps) are leads, not facts.
+
+## 9. Who leads the market, and how (added 2026-11-22, at Martin's question)
+
+**The leader is TouchTunes — and it leads the jukebox market, not ours.**
+
+Scale, with each figure's source and age, because they do not agree:
+
+- **65,000+ digital jukeboxes** in bar and restaurant locations across North America and Europe
+  (`https://www.ta.com/portfolio/investments/touchtunes/` 11-22; an investor's portfolio page, so
+  marketing — fallback, and undated). The most recent count found.
+- **64 % of the digital jukebox market**, and separately **25 % of all jukeboxes** (digital and not)
+  in North America, the latter against a 2008 Handshake Marketing survey of about 150,000 bars —
+  both from the 2009 SEC filings for the Victory Acquisition Corp. merger
+  (`https://www.sec.gov/Archives/edgar/data/0001386787/000119312509061862/ds4.htm` 11-22). These are
+  company-friendly claims in a merger document and they are 17 years old; the two numbers measure
+  different things. **Current share: unknown.**
+- **About $9,000 gross revenue per jukebox a year, of which TouchTunes took about 20 %**, and
+  **700 million songs played a year** (same 2009 filing).
+- **25 years in business** as of 2023 (`https://www.replaymag.com/touchtunes-celebrates-25th-anniversary-0423/`
+  11-22, trade press — fallback).
+- An aggregator's $80.5 m revenue estimate (`https://www.zoominfo.com/c/touchtunes-corp/38584410`
+  11-22) is unverified and not used here.
+
+**How they did it**, in the order that matters to us:
+
+1. **They never sold to venues.** Local amusement **operators** own and service the machines,
+   install them at no upfront cost to the bar, and hold the venue relationship. TouchTunes sells
+   boxes to operators and distributors and takes a percentage of what each box earns: "The way we
+   make money is by selling Jukes to operators and distributors, and then taking a percentage of
+   the money the Jukes generate" (`https://www.touchtunes.com/about/careers` 11-22, primary).
+2. **The split pays everyone who touches it.** Three ways — TouchTunes, the operator, the venue. An
+   older trade article puts the operator at about 40 % of the patron's dollar with another 40 % to
+   the music programming provider (`https://www.barandrestaurant.com/operations/digital-beats`
+   11-22, undated, fallback); one US operator advertises 50/50 with the venue
+   (`https://socialamusements.com/jukeboxes` 11-22); in the UK the company charged a set percentage
+   of the box's monthly take, reported as an 18 % revenue-sharing option in 2021
+   (`https://coinslot.co.uk/2021/11/22/touchtunes-are-we-getting-better-at-sharing/` 11-22). The
+   percentages differ by source, era and country; the **structure** is the constant, not the number.
+3. **They gave up the hardware margin to own the stream.** At the 25th anniversary the model is
+   described as the operator buying the hardware at cost, "and we share the revenue as it's spent
+   over time" (Replay, 11-22).
+4. **Credits are a network, not a wallet.** Credits never expire and work at **any** TouchTunes
+   location nationwide (`https://www.oreateai.com/blog/the-touchtunes-jukebox-more-than-just-music-its-an-experience-and-how-to-get-one/fb650d37f597b84423a36e077516fdb8`
+   11-22, a third-party guide — fallback). Buying credits once makes every other TouchTunes bar
+   worth slightly more than the bar next door. The phone app is what turned a wall box into a phone
+   product; the claim that it raises play frequency and revenue per visit is vendor-side and
+   unverified. No dated launch for the app was found.
+
+**What the leader's own pricing looks like** (detail in 1.1): a venue-priced Fast Pass, a Hyper Pass
+limited to one song at a time with a timer, and a platform-set Dynamic Fast Pass surcharge capped at
+three credits above base. Tiers the platform controls — **not** one guest bidding against another.
+Its one unforced error is the no-refund term for a song that never played (1.1 §3, 6).
+
+**In the DJ category there is no leader.** Searched again 11-22: **no source ranks paid-request DJ
+apps by users, venues or revenue.** Every comparison found is written by one of the vendors —
+Rekwest's own blog rating Rekwest 5/5 for clubs
+(`https://rekwest.app/articles/blog/the-best-song-request-apps-for-event-venues-in-2026/` 11-22),
+VibeQueue's guide calling VibeQueue best overall
+(`https://vibequeue.com/blog/best-dj-song-request-apps-2026/` 11-22). The largest concrete figure
+anywhere is one Enjoy the Club venue claiming "more than 340 requests a month", on the vendor's own
+page (`https://enjoytheclub.es/en/solutions/venues/` 11-22). Two products not in sections 1–2
+surfaced: **AUXHILARY** (`https://auxhilary.com/`) and **YouDJNow** (`https://www.youdjnow.com/`,
+which names a single venue, Flight Club, as its reference). **DJ Request** states a **15 % app fee
+on the base request amount, not on tips or boosts** (`https://www.djrequest.net/` 11-22).
+
+**The honest read.** The category Restro would enter has no incumbent of any size, and the one giant
+next door earns through a channel we have no part of — amusement operators and a hardware fleet —
+in rooms that have a jukebox instead of a DJ. Nothing found measures the DJ-side market at all, so
+any claim about its size, ours included, is a guess.
