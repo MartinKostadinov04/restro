@@ -25,7 +25,8 @@ are written on a branch that carries the numbers below it.
 | 1.7 | How many songs does the DJ lock, and does a guest see them? | — | open | round 1 |
 | 1.8 | Does asking for a song need a table code? | — | open | round 1, D100 |
 | 1.9 | The venue's settings and their defaults | — | open | round 1 |
-| 1.10 | A standard price for a request instead of a free-text bid? | — | open | asked by Martin, answered in round 1b |
+| 1.10 | A standard price for a request instead of a free-text bid? | Yes, and further: release 1 ships **one price**, a single setting. Several price steps, and even bidding, stay possible but are not built. | firm | asked by Martin; carried into the decision file at the next free number |
+| 1.10a | Is "one price now, tiers or bidding later" actually reachable, or does it paint us into a corner? | — | open | answered in round 1b against D122 §9 |
 | 1.11 | The DJ beat matches, so a paid place in a queue cannot mean "this is your next track" | — | open | raised by Martin, round 1b |
 | 1.12 | The DJ can agree or disagree with a song that does not fit the theme or the mood | — | open | raised by Martin, round 1b |
 | 1.13 | Does the venue screen requests before the DJ sees them at all? | — | open | round 1b |
@@ -43,3 +44,38 @@ refund if an approved song has not played within 45 minutes, and the DJ's veto, 
 product in [the research](2026-11-18-song-requests-how-others-do-it.md) gives a human. It also gives
 row 1.6 (when the money is taken) its natural shape — captured when he starts the song, released
 when the window runs out — and answers "what if it never plays" without a new rule.
+
+## One price now, more later: what has to be true (row 1.10a)
+
+Reachable, and most of it is already how the service layer is built. The
+[service data design](2026-10-21-service-data-design.md) keeps `payments` as **their own rows** with
+an append-only `payment_steps` beside them, separate from the thing being paid for, all written
+through `applyService` (D122 §9). That one existing shape is what makes all three futures reachable
+without a migration: one price is one payment row per request, bidding is the same row with a
+varying amount, chip-ins are more than one row against the same request.
+
+Five things have to be got right while building the single-price version. Each is cheap now and
+expensive to retrofit:
+
+1. **Store the amount on every request, always**, in integer minor units through the `money` module
+   (rule 8) — never infer it from the venue's current setting. Bidding later is then a policy
+   change, not a backfill.
+2. **Order by (priority, asked-at), never by a stored position.** With one price every request's
+   priority is equal, so the order is arrival order and nothing has to change later.
+3. **A pricing policy that is a list with one row today, not a `price` column on the venue.** The
+   single most important of the five, and it costs a table instead of a column.
+4. **Record which policy priced each request** (rule 2's provenance). A venue that changes its
+   prices mid-night must not re-price the requests already waiting.
+5. **A request has payments, plural, from the start** — one today, no chip-in screen, no succession,
+   no partial capture. This is the one that cannot be retrofitted cheaply, because it turns a
+   request from having a payer into having backers.
+
+Point 5 is why row 1.5 (two guests, one song) stops being urgent: the structure keeps it open either
+way, so it becomes a product question for a later release rather than something this one must settle.
+
+What stays a redesign rather than a migration: the guest screen. Bidding brings back amounts on
+screen and row 1.3 with them. That is a screen plan under D123, not an architecture problem.
+
+Worth saying plainly: bidding is something **no product in the research does**, and the market
+leader deliberately prices in tiers it controls instead. Keeping the door open is right; walking
+through it is not a plan.
