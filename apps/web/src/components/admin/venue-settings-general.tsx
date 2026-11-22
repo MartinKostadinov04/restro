@@ -61,7 +61,9 @@ export async function VenueSettingsGeneral({
         <MenuSourceTab tenantId={tenantId} role={role} venue={venue} />
       </Suspense>
       {/* The end of the tab (D76): only an owner deletes a venue; the action checks again. */}
-      {canDeleteVenue(role) ? <VenueDangerZone venueId={venue.id} venueName={venue.name} /> : null}
+      {canDeleteVenue(role) ? (
+        <VenueDangerZone venueId={venue.id} venueName={venue.name} hasTill={hasTill} />
+      ) : null}
     </div>
   )
 }

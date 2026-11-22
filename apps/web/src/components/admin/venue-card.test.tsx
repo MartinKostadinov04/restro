@@ -151,10 +151,10 @@ describe('Unpublish', () => {
     expect(unpublishVenueAction).not.toHaveBeenCalled()
   })
 
-  it('does nothing when it is cancelled', async () => {
+  it('does nothing when Keep venue is pressed (S20)', async () => {
     const user = card(LIVE)
     await user.click(screen.getByTestId('unpublish-venue-open'))
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await user.click(screen.getByRole('button', { name: 'Keep venue' }))
     await waitFor(() => expect(screen.queryByTestId('unpublish-venue-dialog')).toBeNull())
     expect(unpublishVenueAction).not.toHaveBeenCalled()
   })

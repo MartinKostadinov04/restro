@@ -75,6 +75,7 @@ export function UrlTabs<V extends string>({
   contents,
   label,
   listClassName,
+  selectClassName = 'w-full lg:hidden',
   oneRow = false,
 }: {
   defs: readonly (WorkspaceTabDef & { readonly value: V })[]
@@ -83,6 +84,8 @@ export function UrlTabs<V extends string>({
   contents: Partial<Record<V, ReactNode>>
   label: string
   listClassName?: string
+  /** The select's classes: the width it hides from must be the width `listClassName` shows from. */
+  selectClassName?: string
   /**
    * A list short enough for the narrowest screen — a shared device's Tonight and Reservations
    * (#326, D141). The row is then drawn at every width and there is no select at all, so the tab
@@ -101,8 +104,8 @@ export function UrlTabs<V extends string>({
             className={
               listClassName ??
               (oneRow
-                ? 'inline-flex max-w-full overflow-x-auto'
-                : 'hidden max-w-full overflow-x-auto lg:inline-flex')
+                ? 'inline-flex max-w-full overflow-x-auto overflow-y-hidden'
+                : 'hidden max-w-full overflow-x-auto overflow-y-hidden lg:inline-flex')
             }
             aria-label={label}
           >
@@ -115,7 +118,7 @@ export function UrlTabs<V extends string>({
           </TabsList>
           {oneRow ? null : (
             <Select value={current} onValueChange={select}>
-              <SelectTrigger className="w-full lg:hidden" aria-label={label}>
+              <SelectTrigger className={selectClassName} aria-label={label}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -227,6 +230,11 @@ export function SettingsSections({
       select={select}
       contents={contents}
       label={t('switchSection')}
+      // A module's few sections fit one row beside the sidebar from lg (D156). If a longer label
+      // still tips it, the row starts at its first tab (a centred row that overflows cuts its
+      // start off) and scrolls inside itself with no visible bar, which would take the tabs'
+      // height (lane 5 S3, N1).
+      listClassName="hidden max-w-full justify-start overflow-x-auto overflow-y-hidden [scrollbar-width:none] group-data-[orientation=horizontal]/tabs:h-auto lg:inline-flex [&::-webkit-scrollbar]:hidden *:min-h-8"
     />
   )
 }

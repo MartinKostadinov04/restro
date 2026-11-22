@@ -13,10 +13,10 @@ import {
 // D123: the manager's phone is a supported admin device, and a tappable control has a hit area of
 // at least 44 x 44 px (Restro's own floor, docs/guides/operational-screens.md, Accessibility). This
 // walks the Studio's Structure screen, the item sheet and the Publish dialog over it, the Design page
-// with the guest template in its preview, Settings -> Integrations and Venue › Reservations (the
-// night's list, a reservation's sheet, Guests, and the spot pickers Change tables and Give a spot on
-// the list a phone opens them on: S17 of the 11-18 screen round) on a 390 px phone, and Tonight on a
-// phone and the bar tablet, and checks
+// with the guest template in its preview, Settings -> Integrations, Staff and Ordering, the QR links
+// guide, and Venue › Reservations (the night's list, a reservation's sheet, Guests, and the spot
+// pickers Change tables and Give a spot on the list a phone opens them on: S17 of the 11-18 screen
+// round) on a 390 px phone, and Tonight on a phone and the bar tablet, and checks
 // every control on them, so the floor cannot slip back unseen. A control may look smaller than 44 px
 // if its hit area is extended around it (the `tap-area` utility in globals.css), so the check is
 // not on the element's box: it asks the browser what is under the pointer at the edges of a
@@ -349,6 +349,31 @@ test('the same screens on a tablet-wide touch screen', async ({ browser }) => {
     ).toBe(true)
     await openComposer(page)
     await walkComposer(page)
+  } finally {
+    await context.close().catch(() => undefined)
+  }
+})
+
+test('Settings › Staff, Settings › Ordering and the QR links guide: a 44 px hit area on a phone (S18)', async ({
+  browser,
+}) => {
+  const context = await browser.newContext(phone)
+  const page = await context.newPage()
+  try {
+    await signIn(page, ADMIN_EMAIL)
+    await page.getByTestId('venue-card').first().getByRole('link', { name: 'Отвори' }).click()
+    await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]+/)
+    const venueId = /\/venues\/(vn_[0-9A-Za-z]+)/.exec(page.url())?.[1]
+    // The screens' own controls; the header and its trail are measured with the navigation.
+    await page.goto(`/venues/${venueId}?tab=settings&section=staff`)
+    await expect(page.getByTestId('staff-panel')).toBeVisible()
+    await expectFloor(page, 'Settings › Staff', 3, '[data-testid="staff-panel"]')
+    await page.goto(`/venues/${venueId}?tab=settings&section=ordering`)
+    await expect(page.getByTestId('ordering-panel')).toBeVisible()
+    await expectFloor(page, 'Settings › Ordering', 3, '[data-testid="ordering-panel"]')
+    await page.goto(`/guides/qr-links?venue=${venueId}`)
+    await expect(page.getByTestId('guide-back')).toBeVisible()
+    await expectFloor(page, 'the QR links guide', 1, '[data-testid="guide-page"]')
   } finally {
     await context.close().catch(() => undefined)
   }

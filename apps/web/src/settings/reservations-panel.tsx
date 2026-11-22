@@ -117,7 +117,7 @@ export function ReservationsPanel({ view }: { view: ReservationsView }) {
             hours: (chunks) => (
               <Link
                 href={`/venues/${view.venueId}?tab=settings&section=hours`}
-                className="underline underline-offset-2"
+                className="tap-area underline underline-offset-2"
                 data-testid="rs-hours-link"
               >
                 {chunks}

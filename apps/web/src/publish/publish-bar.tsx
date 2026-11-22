@@ -46,8 +46,9 @@ export function PublishBar({
   /**
    * Tonight's way (RR-80, operational-screens.md): never a disabled control, so what can't be
    * pressed now isn't drawn, nor the words on why. With nothing to press the bar is not there.
-   * A role that may not publish always gets it (RR-90): never a disabled control for a role that
-   * may not act.
+   * A role that may not publish gets it too (RR-90): never a disabled control for a role that may
+   * not act. Outside Tonight that role still gets the line on where the venue stands, without the
+   * button and without a reason (S27, D146).
    */
   onlyWhatWorks?: boolean
 }) {
@@ -59,21 +60,23 @@ export function PublishBar({
   const [asking, setAsking] = useState<PublishBarMenu | null>(null)
 
   const busy = publisher.busy
+  // Where each menu stands, whoever looks: the role decides only whether the button is drawn.
+  const venueState = { ...view, canPublish: true }
   const rows: Row[] = view.menus.map((menu) => ({
     menu,
-    block: publishBlock(targetOf(menu, view), busy || menu.busy !== null),
+    block: publishBlock(targetOf(menu, venueState), busy || menu.busy !== null),
   }))
   const several = rows.length > 1
   const open = rows.filter((row) => row.block === null)
   const single = rows[0]
-  // The button itself: off for the role, while something is busy, or when no menu has anything.
-  const block: PublishBlock | null = !view.canPublish
-    ? 'role'
-    : busy
-      ? 'busy'
-      : open.length > 0
-        ? null
-        : (single?.block ?? 'up_to_date')
+  // The venue: busy, or nothing any menu has to publish, or (null) something waiting.
+  const state: PublishBlock | null = busy
+    ? 'busy'
+    : open.length > 0
+      ? null
+      : (single?.block ?? 'up_to_date')
+  // The button itself: off for the role, or for the venue's state.
+  const block: PublishBlock | null = view.canPublish ? state : 'role'
   const total = open.reduce((sum, row) => sum + countOf(row.menu), 0)
 
   // "Version N is live" answers the press; once the published menu's draft changes again it no
@@ -102,15 +105,21 @@ export function PublishBar({
     else if (draftCount > before.count || (before.same && !draftSame)) dismiss()
   }, [draftCount, draftSame, dismiss])
 
+  // One line on where the venue stands (S27). The words differ by role only where they would
+  // tell someone who may not publish what publishing does (RR-90: never a reason to a role that
+  // may not act, so never "Only an owner or admin can publish").
   const reason = ((): string => {
     if (single === undefined) return t('reason.noMenu')
-    if (block === 'role' || block === 'busy') return reasonOf(block, null)
-    if (block !== null) {
-      return several ? t('reason.allUpToDate') : reasonOf(block, single.menu.blocked)
+    if (state === 'busy') return reasonOf('busy', null)
+    if (state !== null) {
+      return several ? t('reason.allUpToDate') : reasonOf(state, single.menu.blocked)
     }
-    if (!several && !single.menu.published) return t('firstPublish')
+    if (!several && !single.menu.published) {
+      return view.canPublish ? t('firstPublish') : t('guestNothing')
+    }
     if (!several && single.menu.identical) {
-      return view.addressServed ? t('pausedSame') : t('addressOffSame')
+      if (view.canPublish) return view.addressServed ? t('pausedSame') : t('addressOffSame')
+      return view.addressServed ? t('state.paused') : t('state.addressOff')
     }
     return total > 0 ? t('waiting', { count: total }) : t('minor')
   })()
@@ -119,6 +128,10 @@ export function PublishBar({
     setAsking(null)
     publisher.publish(menu.live ? undefined : menu.menuId)
   }
+
+  // A role that may not publish, in the page header (S27): the state line without the button.
+  // Tonight's way draws nothing it cannot act on, so it has no such line.
+  const stateOnly = !view.canPublish && !tonightWay
 
   const label = busy ? t('publishing') : t('publish')
   const icon = <RocketIcon aria-hidden className={busy ? 'animate-pulse' : undefined} />
@@ -133,7 +146,7 @@ export function PublishBar({
   const guestOff = view.guestPath === null || !view.addressServed || liveMenu?.published !== true
   const offerGuest = !onlyWhatWorks || !guestOff
   const offerPublish = !onlyWhatWorks || block === null
-  const offerReason = offerPublish || block === 'busy'
+  const offerReason = offerPublish || block === 'busy' || stateOnly
   if (!offerGuest && !offerReason) return null
   // Before the first publish of a single menu, the reason line already says guests see nothing:
   // the guest link's hint would say it twice (S5).

@@ -41,6 +41,16 @@ describe('the Settings sections', () => {
     ])
   })
 
+  it('send someone a section is kept from to General, the first section they do see (S26)', () => {
+    // /settings/deleted-venues redirects a non-owner here instead of a 404.
+    const first = visibleSettingsSections(false)[0]
+    expect(first?.value).toBe('general')
+    expect(settingsSectionPath(SETTINGS_SECTIONS[0])).toBe('/settings/general')
+    expect(first === undefined ? null : settingsSectionPath(first)).toBe(
+      settingsSectionPath(SETTINGS_SECTIONS[0]),
+    )
+  })
+
   it('own their path and anything below it, and nothing else', () => {
     expect(settingsSectionOf('/settings/general')?.value).toBe('general')
     expect(settingsSectionOf('/settings/integrations')?.value).toBe('integrations')

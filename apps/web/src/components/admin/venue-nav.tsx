@@ -130,7 +130,7 @@ function SwitcherVenueItems({ venues, openId, search, onNavigate }: SwitcherItem
           onClick={onNavigate}
         >
           <VenueMark name={venue.name} />
-          <span className="truncate">{venue.name}</span>
+          <span className="[overflow-wrap:anywhere]">{venue.name}</span>
           {open ? <CheckIcon aria-hidden className="ml-auto" /> : null}
         </Link>
       </DropdownMenuItem>
@@ -171,8 +171,8 @@ export function VenueSwitcher({
   const name = (
     <>
       <VenueMark name={venue.name} large />
-      <span className="grid flex-1 text-left leading-tight">
-        <span className="truncate font-semibold" data-testid="venue-switcher-name">
+      <span className="grid flex-1 text-left leading-tight whitespace-normal!">
+        <span className="font-semibold [overflow-wrap:anywhere]" data-testid="venue-switcher-name">
           {venue.name}
         </span>
       </span>
@@ -184,7 +184,7 @@ export function VenueSwitcher({
       <SidebarMenu>
         <SidebarMenuItem>
           <div
-            className="flex h-12 items-center gap-2 px-2 text-sm group-data-[collapsible=icon]:px-0"
+            className="flex min-h-12 items-center gap-2 px-2 py-2 text-sm group-data-[collapsible=icon]:px-0"
             data-testid="venue-switcher"
           >
             {name}
@@ -203,7 +203,8 @@ export function VenueSwitcher({
               size="lg"
               tooltip={venue.name}
               data-testid="venue-switcher"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              // A long name wraps instead of being cut (lane 5 S19); folded to icons it stays the square.
+              className="h-auto min-h-12 group-data-[collapsible=icon]:min-h-0! data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               {name}
               {/* The name read out is the visible one, then what the button does (WCAG 2.5.3). */}
@@ -412,7 +413,14 @@ export function VenueNav({
       <SidebarMenu data-testid="venue-nav">
         {sorted.map((venue) => (
           <SidebarMenuItem key={venue.id}>
-            <SidebarMenuButton asChild tooltip={venue.name}>
+            <SidebarMenuButton
+              asChild
+              tooltip={venue.name}
+              // A long name wraps instead of being cut (lane 5 S19): the row grows from its usual
+              // height. Folded to icons, the button stays the sidebar's square, a touch screen's too
+              // (`!`: the `phone` floor would otherwise win).
+              className="h-auto min-h-8 phone:h-auto phone:min-h-11 group-data-[collapsible=icon]:min-h-8!"
+            >
               <Link
                 href={`${VENUES_PATH}/${venue.id}`}
                 data-testid="venue-nav-item"
@@ -420,7 +428,8 @@ export function VenueNav({
                 onClick={onNavigate}
               >
                 <VenueMark name={venue.name} />
-                <span>{venue.name}</span>
+                {/* `!`: the button's own rule cuts its last span to one line. */}
+                <span className="whitespace-normal! [overflow-wrap:anywhere]">{venue.name}</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

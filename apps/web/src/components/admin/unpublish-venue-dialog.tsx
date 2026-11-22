@@ -107,7 +107,7 @@ function UnpublishVenueForm({
 
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
-          {t('cancel')}
+          {t('keep')}
         </Button>
         <Button
           type="button"

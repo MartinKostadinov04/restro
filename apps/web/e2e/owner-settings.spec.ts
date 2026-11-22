@@ -198,3 +198,107 @@ for (const scheme of ['light', 'dark'] as const) {
     })
   }
 }
+
+test('every section fits a 1024 px screen with the sidebar open (S3)', async ({ browser }) => {
+  const { context, page } = await open(browser, {
+    width: 1024,
+    height: 768,
+    colorScheme: 'light',
+  })
+  // The sections every owner has. Publish (a till) and Paying (a card-taking POS) depend on the
+  // venue, and a missing one would land on General (S26), so they are left out.
+  // Each with what it draws once its data is in (General and Versioning have no h2 of their own:
+  // their cards' titles are h3).
+  for (const [name, drawn] of [
+    ['general', 'settings-general'],
+    ['hours', 'hours-panel'],
+    ['ordering', 'ordering-panel'],
+    ['reservations', 'reservations-panel'],
+    ['staff', 'staff-panel'],
+    ['alerts', 'alerts-panel'],
+    ['versioning', 'settings-versioning'],
+  ] as const) {
+    await page.goto(section(name))
+    // The section asked for, not General after a redirect.
+    await expect(page).toHaveURL(new RegExp(`[?&]section=${name}(?:&|$)`))
+    await expect(page.getByTestId(drawn)).toBeVisible()
+    const fits = await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    )
+    expect(fits, `${name} at 1024 px`).toBe(true)
+  }
+  // Each module's Settings holds its own few sections (D156), so at 1024 px the Venue's fit one
+  // row beside the sidebar: full height, from its first section to its last (N1).
+  await page.goto(section('general'))
+  await expect(page.getByTestId('settings-general')).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Смяна на секцията' })).toBeHidden()
+  const list = page.getByRole('tablist', { name: 'Смяна на секцията' })
+  await expect(list).toBeVisible()
+  const tabs = list.getByRole('tab')
+  await expect(tabs.first()).toHaveText('Общи')
+  for (const tab of [tabs.first(), tabs.last()]) {
+    await tab.scrollIntoViewIfNeeded()
+    await expect(tab).toBeVisible()
+    const [box, row] = [await tab.boundingBox(), await list.boundingBox()]
+    if (box === null || row === null) throw new Error('the section row is not drawn')
+    expect(box.x).toBeGreaterThanOrEqual(row.x)
+    expect(box.x + box.width).toBeLessThanOrEqual(row.x + row.width + 0.5)
+    expect(box.height).toBeGreaterThanOrEqual(32)
+  }
+  await tabs.last().click()
+  await expect(page).toHaveURL(/[?&]section=versioning(?:&|$)/)
+  await context.close()
+})
+
+test('from 1280 px the section row starts at its first tab and reaches its last (S3, N1)', async ({
+  browser,
+}) => {
+  const { context, page } = await open(browser, { width: 1280, height: 900, colorScheme: 'light' })
+  await page.goto(section('versioning'))
+  await expect(page.getByTestId('settings-versioning')).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Смяна на секцията' })).toBeHidden()
+  const list = page.getByRole('tablist', { name: 'Смяна на секцията' })
+  await expect(list).toBeVisible()
+  await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute('data-state', 'expanded')
+  const tabs = list.getByRole('tab')
+  // A label longer than any today (a longer wording tipped the row 59 px past a 1280 px page when
+  // a container above it lacked min-w-0): the row scrolls inside itself, the page does not widen.
+  await tabs
+    .nth(1)
+    .evaluate((tab) => tab.append(' Синхронизиране и публикуване на менюто и настройките му'))
+  const row = await list.evaluate((element) => ({
+    scrollWidth: element.scrollWidth,
+    clientWidth: element.clientWidth,
+  }))
+  expect(row.scrollWidth, 'the stretched row overflows its own box').toBeGreaterThan(
+    row.clientWidth,
+  )
+  const contained = await page.evaluate(
+    () => document.documentElement.scrollWidth <= window.innerWidth,
+  )
+  expect(contained, 'the page at 1280 px with a long section label').toBe(true)
+  for (const tab of [tabs.first(), tabs.last()]) {
+    await tab.scrollIntoViewIfNeeded()
+    await expect(tab).toBeVisible()
+    const [box, row] = [await tab.boundingBox(), await list.boundingBox()]
+    if (box === null || row === null) throw new Error('the section row is not drawn')
+    // Inside the row, not cut off at its start (a centred row that overflows clips it) or end.
+    expect(box.x).toBeGreaterThanOrEqual(row.x)
+    expect(box.x + box.width).toBeLessThanOrEqual(row.x + row.width + 0.5)
+    // No scrollbar takes the tabs' height.
+    expect(box.height).toBeGreaterThanOrEqual(32)
+  }
+  await expect(tabs.first()).toHaveText('Общи')
+  await tabs.first().click()
+  await expect(page).toHaveURL(/[?&]section=general(?:&|$)/)
+  const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
+  expect(fits, 'the page at 1280 px').toBe(true)
+  await context.close()
+})
+
+test('a section this venue does not have opens General instead (S26)', async ({ browser }) => {
+  const { context, page } = await open(browser, { width: 1280, height: 900, colorScheme: 'light' })
+  await page.goto(section('no-such-section'))
+  await expect(page).toHaveURL(/[?&]section=general(?:&|$)/)
+  await context.close()
+})

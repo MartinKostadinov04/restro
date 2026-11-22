@@ -27,7 +27,9 @@ export const metadata: Metadata = {
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const { user, organization, organizations, sessionId } = await requireTenant()
   const device = await sharedDeviceOf(organization.id, sessionId)
-  // The sidebar keeps its open/collapsed state in a cookie (see components/ui/sidebar.tsx).
+  // The sidebar keeps its open/collapsed state in a cookie (see components/ui/sidebar.tsx). The
+  // page's frame is min-w-0: a wide row inside (a long label) scrolls in its own box instead of
+  // widening the page past the screen (WCAG 1.4.10, lane 5 S3, N1).
   const defaultOpen = (await cookies()).get('sidebar_state')?.value !== 'false'
 
   // A shared device works its venue's night and nothing else (D122 §7): no sidebar, so no venue
@@ -37,7 +39,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     return (
       <AdminFrameProvider value={{ device: { name: device.name }, staffOnly: true }}>
         <SidebarProvider defaultOpen={false}>
-          <SidebarInset>{children}</SidebarInset>
+          <SidebarInset className="min-w-0">{children}</SidebarInset>
         </SidebarProvider>
       </AdminFrameProvider>
     )
@@ -70,7 +72,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           staffOnly={staffOnly}
           user={{ name: user.name, email: user.email }}
         />
-        <SidebarInset>{children}</SidebarInset>
+        <SidebarInset className="min-w-0">{children}</SidebarInset>
       </SidebarProvider>
     </AdminFrameProvider>
   )

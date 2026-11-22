@@ -116,33 +116,34 @@ export default async function VenueWorkspacePage({
   const tablesOpen = openTab === 'tables'
   const tonightOpen = openTab === 'tonight'
   const reservationsOpen = openTab === 'reservations'
-  const [hasTill, guestPath] = await Promise.all([
+  // What the person holds here decides which Settings sections they see (#87); every command
+  // checks it again. Read on every tab but a shared device's (which never opens Settings), so the
+  // section row is drawn whole before Settings opens and does not grow from 6 to 9 (R6). All four
+  // reads go out together.
+  const [hasTill, guestPath, access, payingHere] = await Promise.all([
     venueHasTill(organization.id, venue.id),
     guestPathOf(getPool(), organization.id, venue.slug),
+    sharedDevice
+      ? null
+      : loadSettingsAccess({
+          tenantId: organization.id,
+          venueId: venue.id,
+          userId: user.id,
+          sessionId,
+        }),
+    // Paying is listed only where a POS serving the venue can take card payments (D122 §3, #116).
+    sharedDevice ? false : payingOffered(organization.id, venue.id),
   ])
-  // What the person holds here decides which Settings sections they see (#87); every command
-  // checks it again. Read only while Settings is open, which a shared device never does.
-  const access = settingsOpen
-    ? await loadSettingsAccess({
-        tenantId: organization.id,
-        venueId: venue.id,
-        userId: user.id,
-        sessionId,
-      })
-    : null
   const held = access?.held ?? []
-  // Paying is listed only where a POS serving the venue can take card payments (D122 §3, #116).
-  const paying =
-    settingsOpen && access !== null && !access.sharedDevice
-      ? await payingOffered(organization.id, venue.id)
-      : false
+  const paying = access !== null && !access.sharedDevice && payingHere
   const rights: SettingsRights =
     access === null
       ? NO_SETTINGS_RIGHTS
       : { roles: held.includes('settings.roles'), alerts: held.includes('settings.alerts'), paying }
   // One address per screen (C9): an old tab (the composer, Integration, Publishing), a section the
   // person is not offered, or another screen's parameters (C1) are sent to the address the
-  // sidebar marks. The composer's old links were redirected here before (D129).
+  // sidebar marks: an unoffered section lands on its module's first, an unknown one on General,
+  // with the address saying so (lane 5 S26). The composer's old links were redirected here before (D129).
   if (!sharedDevice) {
     const target = venueQueryRedirect(query, tabRights, { hasTill, rights })
     if (target !== null) redirect(`/venues/${venue.id}?${target}`)

@@ -137,6 +137,12 @@ export function AutomationSettings({
   return (
     <FormSection title={t('title')} description={t('description', { source })}>
       <form onSubmit={submit} className="grid gap-5" data-testid="automation-form">
+        {/* A role that may read but not change: one line says so before the greyed choices (S27). */}
+        {canManage ? null : (
+          <p className="text-sm text-muted-foreground" data-testid="automation-readonly">
+            {t('readOnly')}
+          </p>
+        )}
         <fieldset className="grid gap-2" disabled={!canManage}>
           <legend className="mb-1 text-sm font-medium">{t('sync.legend', { source })}</legend>
           {SYNC_MODES.map((value) => (
