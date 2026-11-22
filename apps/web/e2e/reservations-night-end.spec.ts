@@ -204,8 +204,9 @@ test('ending it closes the night: the banner on Tonight and Reservations, and th
   await expect(page.getByRole('button', { name: 'More actions' })).toHaveCount(0)
 
   await openReservations(page)
+  // The banner names the night by its date (S23), never "this night".
   await expect(page.locator('[data-testid="rv-banner"][data-kind="closed"]')).toContainText(
-    'This night is closed.',
+    /The night of \d{1,2} [A-Z][a-z]+ is closed\./,
   )
   await expect(rows(page).filter({ hasText: 'Иванова' })).toContainText('No-show')
   await expect(rows(page).filter({ hasText: 'Димитров' })).toContainText('No-show')

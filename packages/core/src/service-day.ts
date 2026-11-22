@@ -202,6 +202,22 @@ export function addDaysToDay(day: string, days: number): string {
 }
 
 /**
+ * When service day `day` begins and ends at a venue: from the end of the day before to its own end,
+ * in the venue's zone (D45). `dayEndsAt` is the venue's `HH:MM`. One rule for the read side (the
+ * plan's `nightBounds`) and the write side (the overlap rule's nights), so the two never disagree.
+ */
+export function serviceDayBounds(
+  day: string,
+  timeZone: string,
+  dayEndsAt: string,
+): { readonly from: Date; readonly to: Date } {
+  return {
+    from: localInstant(day, dayEndsAt, timeZone, dayEndsAt),
+    to: localInstant(addDaysToDay(day, 1), dayEndsAt, timeZone, dayEndsAt),
+  }
+}
+
+/**
  * The instant the service day of `at` began (to the second): the end of the day before. What a
  * connector compares a bill's opening with, so a bill left open from last night is never joined
  * (#77). Found by halving the 26 hours before `at`, so a daylight-saving change needs no rule.

@@ -7,15 +7,12 @@
 // read side checks the permission again. The answers to a sent order are `answerSentOrderAction`
 // (actions.ts), not here.
 import { idSchema } from '@restro/core'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale } from 'next-intl/server'
 import { z } from 'zod'
 
-import { logError } from '../log'
-import { requireTenant } from '../session'
-import { rememberedAtSharedDevice } from '../staff/service'
-import { getVenue } from '../venues'
-import { loadLog, loadSentOrderDetail, loadSentOrders, type NightScope } from './night-load'
-import type { Frame, LogView, SentDetailView, SentListView } from './night-view'
+import { loadLog, loadSentOrderDetail, loadSentOrders } from './night-load'
+import type { LogView, SentDetailView, SentListView } from './night-view'
+import { answer, FAILED, type ReadAnswer, scopeOf } from './read-scope'
 
 const venueId = idSchema('vn')
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -37,46 +34,6 @@ const Log = z.strictObject({
   group: z.string().max(20).optional(),
   limit: limit.optional(),
 })
-
-/** What a read answers: the data and the frame, or that it could not be read. */
-export type ReadAnswer<T> =
-  | ({ readonly ok: true; readonly frame: Frame } & T)
-  | { readonly ok: false }
-
-const FAILED = { ok: false } as const
-
-/** The scope of the signed-in account for one of its venues, or null. */
-async function scopeOf(id: string): Promise<NightScope | null> {
-  const { organization, user, sessionId } = await requireTenant()
-  const venue = await getVenue(organization.id, id)
-  if (!venue) return null
-  return {
-    tenantId: organization.id,
-    venue,
-    actor: { kind: 'user', userId: user.id, sessionId },
-    remembered: await rememberedAtSharedDevice({
-      tenantId: organization.id,
-      venueId: venue.id,
-      sessionId,
-    }),
-    sourceNone: (await getTranslations('tonight'))('source_none'),
-  }
-}
-
-async function answer<T>(
-  event: string,
-  run: () => Promise<ReadAnswer<T> | { readonly ok: false; readonly code: string }>,
-): Promise<ReadAnswer<T>> {
-  try {
-    const result = await run()
-    return result.ok ? result : FAILED
-  } catch (error) {
-    // redirect() and notFound() are control flow, not failures.
-    if (error instanceof Error && 'digest' in error) throw error
-    logError(event, error)
-    return FAILED
-  }
-}
 
 /** The service day's sent orders (screen 2), or a day's for the end of the night. */
 export async function sentOrdersAction(

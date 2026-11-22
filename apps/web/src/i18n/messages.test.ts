@@ -157,6 +157,28 @@ describe('interface messages (BG and EN)', () => {
     expect(found).toEqual([])
   })
 
+  it('call a Style a Style, never a template (glossary)', () => {
+    // The developers' field list names the item schema's template, and a table's link has a
+    // pattern ("Шаблон на линка"): neither is a Style.
+    const allowed = new Set(['devFields.description', 'tables.address.pattern'])
+    for (const tree of [bg, en]) {
+      for (const [key, text] of leaves(tree as Tree)) {
+        if (allowed.has(key)) continue
+        expect(text, key).not.toMatch(/шаблон|template/i)
+      }
+    }
+  })
+
+  it('name Undo on the Design page as everywhere else, apart from Cancel (one name per action)', () => {
+    for (const tree of [bg, en]) {
+      const all = leaves(tree as Tree)
+      const undo = all.get('tonight.undo')
+      expect(all.get('design.undo')).toBe(undo)
+      expect(all.get('design.myStyles.undo')).toBe(undo)
+      expect(all.get('design.undo')).not.toBe(all.get('design.cancel'))
+    }
+  })
+
   it('translate the 14 EU allergens and the interface language names', () => {
     expect(Object.keys((bg as Tree).options as Tree)).toEqual(
       expect.arrayContaining(['allergens', 'dietary', 'order_mode']),

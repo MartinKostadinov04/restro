@@ -25,7 +25,7 @@ import {
 import type { TablesView } from '@/server/tables/view'
 import { renderWithIntl } from '@/test-utils'
 
-import { TablesPanel } from './tables-panel'
+import { missingCodes, TablesPanel } from './tables-panel'
 import { SVG, TOKEN_A, VENUE_ID, view } from './test-view'
 
 vi.mock('@/server/tables/actions', () => ({
@@ -122,17 +122,97 @@ describe('the Tables & QR tab', () => {
     expect(screen.getByTestId('tables-summary').textContent).toBe('5 tables, 1 with a code')
     expect(
       within(areaOf(AREA_TERRACE))
-        .getAllByTestId('table-number')
-        .map((e) => e.textContent),
-    ).toEqual(['from barsy: 2', 'from barsy: 10'])
+        .getAllByTestId('table-card')
+        .map((e) => e.getAttribute('data-number')),
+    ).toEqual(['2', '10'])
     expect(within(areaOf(AREA_TERRACE)).getByTestId('hall-count').textContent).toBe('2 tables')
   })
 
-  it('says the venue’s live menu is the default, and where it is chosen', () => {
+  it('opens with an index of the areas, each a link to its section with its table count (S14)', () => {
     renderWithIntl(<TablesPanel view={view()} />)
-    expect(screen.getByTestId('venue-menu').textContent).toContain('Main menu')
-    expect(screen.getByTestId('tables-source-note').textContent).toContain('come from barsy')
-    expect(screen.getByTestId('venue-menu').textContent).toContain('Settings')
+    const index = screen.getByRole('navigation', { name: 'Areas' })
+    const jumps = within(index).getAllByTestId('area-jump')
+    // Read out as a name and a count, not "Main hall2".
+    expect(jumps.map((jump) => jump.getAttribute('aria-label'))).toEqual([
+      'Main hall, 2 tables',
+      'Terrace, 2 tables',
+      'Tables, 1 table',
+    ])
+    expect(screen.getByRole('link', { name: 'Terrace, 2 tables' })).toBe(jumps[1])
+    for (const jump of jumps) {
+      const target = jump.getAttribute('href')?.slice(1) ?? ''
+      expect(document.getElementById(target)?.getAttribute('data-testid')).toBe('hall')
+    }
+    expect(jumps[1]?.getAttribute('href')).toBe(`#area-${AREA_TERRACE}`)
+  })
+
+  it('counts in the index what the summary counts: no payment table', () => {
+    const base = view()
+    const withPayment = view({
+      halls: base.halls.map((hall) => ({
+        ...hall,
+        tables: hall.tables.map((row) =>
+          row.id === PLAIN ? { ...row, isPaymentTable: true } : row,
+        ),
+      })),
+      guestTotal: 4,
+    })
+    renderWithIntl(<TablesPanel view={withPayment} />)
+    expect(screen.getByRole('link', { name: 'Terrace, 1 table' })).toBeTruthy()
+    expect(screen.getByTestId('tables-summary').textContent).toBe('4 tables, 1 with a code')
+  })
+
+  it('leaves out of the index an area with no table guests sit at; its section stays', () => {
+    const base = view()
+    const tillOnly = view({
+      halls: base.halls.map((hall) => ({
+        ...hall,
+        tables: hall.tables.map((row) =>
+          row.id === SOLE ? { ...row, isPaymentTable: true } : row,
+        ),
+      })),
+      guestTotal: 4,
+    })
+    renderWithIntl(<TablesPanel view={tillOnly} />)
+    expect(
+      screen.getAllByTestId('area-jump').map((jump) => jump.getAttribute('aria-label')),
+    ).toEqual(['Main hall, 2 tables', 'Terrace, 2 tables'])
+    expect(areaOf(AREA_TABLES)).toBeTruthy()
+  })
+
+  it('has no index when only one area has tables guests sit at', () => {
+    const base = view()
+    const oneArea = view({
+      halls: base.halls.map((hall) => ({
+        ...hall,
+        tables: hall.id === AREA_TERRACE ? hall.tables : [],
+      })),
+    })
+    renderWithIntl(<TablesPanel view={oneArea} />)
+    expect(screen.queryByTestId('area-index')).toBeNull()
+    expect(screen.getAllByTestId('hall')).toHaveLength(3)
+  })
+
+  it('has no index when the venue has a single area', () => {
+    const base = view()
+    renderWithIntl(<TablesPanel view={view({ halls: base.halls.slice(0, 1) })} />)
+    expect(screen.queryByTestId('area-index')).toBeNull()
+  })
+
+  it('keeps the header to one sentence, and names the venue’s menu only when there is none (S14)', () => {
+    const { unmount } = renderWithIntl(<TablesPanel view={view()} />)
+    expect(
+      screen.getByText('Each table can have a QR code: a guest scans it and sees the menu.'),
+    ).toBeTruthy()
+    expect(screen.queryByTestId('venue-menu')).toBeNull()
+    expect(screen.queryByTestId('tables-source-note')).toBeNull()
+    unmount()
+    renderWithIntl(
+      <TablesPanel
+        view={view({ menus: [{ id: 'nd_0000000000000000000002', name: 'Draft', live: false }] })}
+      />,
+    )
+    expect(screen.getByTestId('venue-menu').textContent).toContain('no menu yet')
   })
 
   it('shows for each table its number, hidden or not, and the state of its code', () => {
@@ -149,15 +229,30 @@ describe('the Tables & QR tab', () => {
     expect(within(cardOf(NAMELESS)).getByText('from barsy: no number')).toBeTruthy()
   })
 
-  it('labels the name field as the name guests see, with the till’s number beside it', () => {
+  it('labels the name field as the name guests see, naming the till’s number only once (S14)', () => {
     renderWithIntl(<TablesPanel view={view()} />)
     const card = cardOf(CODED)
-    expect(within(card).getByLabelText('Name guests see')).toBe(
-      within(card).getByTestId('table-name'),
-    )
-    expect(within(card).getByTestId('table-number').textContent).toBe('from barsy: 2')
+    const box = within(card).getByLabelText('Name guests see') as HTMLInputElement
+    expect(box).toBe(within(card).getByTestId('table-name'))
+    // Not renamed: the empty box says what guests see, and no line repeats the number.
+    expect(box.placeholder).toBe('Same as in barsy (2)')
+    expect(within(card).queryByTestId('table-number')).toBeNull()
     // A till’s number cannot be typed over.
     expect(within(card).queryByTestId('table-number-input')).toBeNull()
+  })
+
+  it('names the till’s number under a table that guests see by another name', () => {
+    const base = view()
+    const renamed = view({
+      halls: base.halls.map((hall) => ({
+        ...hall,
+        tables: hall.tables.map((row) =>
+          row.id === CODED ? { ...row, label: 'Window', shownAs: 'Window' } : row,
+        ),
+      })),
+    })
+    renderWithIntl(<TablesPanel view={renamed} />)
+    expect(within(cardOf(CODED)).getByTestId('table-number').textContent).toBe('from barsy: 2')
   })
 
   it('a code of a hidden table or of a table in a hidden area is paused: no picture, no address', () => {
@@ -423,7 +518,7 @@ describe('the Tables & QR tab', () => {
     const user = userEvent.setup({ delay: null })
     renderWithIntl(<TablesPanel view={view()} />)
     const box = within(cardOf(PLAIN)).getByTestId('table-name') as HTMLInputElement
-    expect(box.placeholder).toBe('10')
+    expect(box.placeholder).toBe('Same as in barsy (10)')
     await user.type(box, 'VIP corner')
     await user.tab()
     await waitFor(() =>
@@ -451,16 +546,64 @@ describe('the Tables & QR tab', () => {
     expect(box.value).toBe('')
   })
 
-  it('links to the print sheet in a new tab once there is a code, and not before', () => {
+  it('links to the print sheet in a new tab once there is a code, and shows nothing before (R2)', () => {
     const { unmount } = renderWithIntl(<TablesPanel view={view()} />)
     const link = screen.getByTestId('print-sheet-link') as HTMLAnchorElement
     expect(link.getAttribute('href')).toBe(`/venues/${VENUE_ID}/tables/print`)
     expect(link.target).toBe('_blank')
     unmount()
     renderWithIntl(<TablesPanel view={view({ coded: 0 })} />)
-    const none = screen.getByTestId('print-sheet-link') as HTMLButtonElement
-    expect(none.tagName).toBe('BUTTON')
-    expect(none.disabled).toBe(true)
+    expect(screen.queryByTestId('print-sheet-link')).toBeNull()
+  })
+
+  it('counts the missing codes as core picks them: shown tables in shown areas, no payment table', () => {
+    const base = view()
+    // VIP is hidden and 2 has a code: the nameless table, 10 and 1 are missing.
+    expect(missingCodes(base)).toBe(3)
+    const withPayment = view({
+      halls: base.halls.map((hall) => ({
+        ...hall,
+        isPublic: hall.id !== AREA_MAIN,
+        tables: hall.tables.map((row) =>
+          row.id === SOLE ? { ...row, isPaymentTable: true } : row,
+        ),
+      })),
+    })
+    expect(missingCodes(withPayment)).toBe(1)
+  })
+
+  it('makes creating the missing codes the one main action, then the print sheet (R1)', () => {
+    const { unmount } = renderWithIntl(<TablesPanel view={view()} />)
+    expect(screen.getByTestId('create-all').textContent).toBe('Create the 3 missing codes')
+    expect(screen.getByTestId('print-sheet-link').getAttribute('data-primary')).toBe('false')
+    unmount()
+
+    const base = view()
+    const allCoded = view({
+      halls: base.halls.map((hall) => ({
+        ...hall,
+        tables: hall.tables.map((row) => (row.isPublic ? { ...row, hasCode: true } : row)),
+      })),
+      coded: 4,
+    })
+    renderWithIntl(<TablesPanel view={allCoded} />)
+    expect(screen.queryByTestId('create-all')).toBeNull()
+    expect(screen.getByTestId('print-sheet-link').getAttribute('data-primary')).toBe('true')
+  })
+
+  it('names a single missing code in the singular', () => {
+    const base = view()
+    const one = view({
+      halls: base.halls.map((hall) => ({
+        ...hall,
+        tables: hall.tables.map((row) =>
+          row.isPublic && row.id !== PLAIN ? { ...row, hasCode: true } : row,
+        ),
+      })),
+      coded: 3,
+    })
+    renderWithIntl(<TablesPanel view={one} />)
+    expect(screen.getByTestId('create-all').textContent).toBe('Create the missing code')
   })
 
   it('has an empty state that sends the manager to the venue’s Menu source, naming the till', () => {
@@ -634,7 +777,6 @@ describe('a venue made by hand', () => {
   it('adds and removes areas and tables, and says that the owner makes them', async () => {
     const user = userEvent.setup({ delay: null })
     renderWithIntl(<TablesPanel view={hand()} />)
-    expect(screen.getByTestId('tables-source-note').textContent).toContain('You make the areas')
     expect(screen.getByTestId('add-area-form')).toBeTruthy()
     expect(within(areaOf(AREA_TERRACE)).getByTestId('add-table')).toBeTruthy()
 
@@ -773,11 +915,19 @@ describe('a venue made by hand', () => {
 })
 
 describe('a member who may not manage codes', () => {
-  it('can read and print, with no control that changes anything', () => {
+  it('reads the areas and tables, is told the codes are for owners and admins, and gets none (S25)', () => {
     renderWithIntl(<TablesPanel view={view({ canManage: false })} />)
-    expect(screen.getByTestId('tables-read-only')).toBeTruthy()
+    expect(screen.getByTestId('tables-codes-hidden').textContent).toBe(
+      'Only owners and admins can see the codes.',
+    )
+    expect(screen.getByTestId('tables-read-only').textContent).toBe(
+      'Only owners and admins can see the codes. They also change the areas, tables and menus.',
+    )
     for (const id of [
       'create-all',
+      'print-sheet-link',
+      'qr-address-card',
+      'qr-thumb',
       'table-menu',
       'hall-menu',
       'table-name',
@@ -787,7 +937,6 @@ describe('a member who may not manage codes', () => {
     ]) {
       expect(screen.queryByTestId(id)).toBeNull()
     }
-    expect(screen.getByTestId('print-sheet-link')).toBeTruthy()
     expect(within(cardOf(CODED)).getByTestId('table-name-text').textContent).toBe('2')
     // The name of an area is text, and the menu each shows is read out.
     expect(screen.getAllByTestId('hall-name').map((e) => e.textContent)).toEqual([
@@ -795,11 +944,15 @@ describe('a member who may not manage codes', () => {
       'Terrace',
       'Tables',
     ])
+    // Who cannot open the picker reads the menu's name.
     expect(within(cardOf(CODED)).getByTestId('route-text').textContent).toBe(
-      "Menu: Venue's (Main menu)",
+      "The venue's menu (Main menu)",
     )
-    // The picture can still be enlarged and downloaded.
-    expect(within(cardOf(CODED)).getByTestId('qr-thumb')).toBeTruthy()
+  })
+
+  it('keeps the area index, which changes nothing', () => {
+    renderWithIntl(<TablesPanel view={view({ canManage: false })} />)
+    expect(screen.getAllByTestId('area-jump')).toHaveLength(3)
   })
 })
 
@@ -808,9 +961,21 @@ describe('in Bulgarian', () => {
     renderWithIntl(<TablesPanel view={view()} />, { locale: 'bg' })
     expect(screen.getByText('Маси и QR кодове')).toBeTruthy()
     expect(screen.getByTestId('tables-summary').textContent).toBe('5 маси, 1 с код')
-    expect(screen.getByTestId('create-all').textContent).toBe('Създай кодове за всички маси')
-    expect(within(cardOf(CODED)).getByTestId('table-number').textContent).toBe('от barsy: 2')
-    expect(screen.getByTestId('tables-source-note').textContent).toContain('идват от barsy')
+    expect(screen.getByTestId('create-all').textContent).toBe('Създай липсващите 3 кода')
+    const box = within(cardOf(CODED)).getByTestId('table-name') as HTMLInputElement
+    expect(box.placeholder).toBe('Като в barsy (2)')
+    expect(within(cardOf(CODED)).getByTestId('route-select').textContent).toBe(
+      'Менюто на заведението',
+    )
+    expect(screen.getByRole('navigation', { name: 'Зони' })).toBeTruthy()
     expect(hallNames().at(-1)).toBe('Tables')
+  })
+
+  it('tells a member in Bulgarian that the codes are for owners and admins', () => {
+    renderWithIntl(<TablesPanel view={view({ canManage: false })} />, { locale: 'bg' })
+    expect(screen.getByTestId('tables-codes-hidden').textContent).toBe(
+      'Само собственици и администратори виждат кодовете.',
+    )
+    expect(screen.getByRole('link', { name: 'Terrace, 2 маси' })).toBeTruthy()
   })
 })

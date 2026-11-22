@@ -49,6 +49,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { WRAPS } from '@/lib/wrapping'
 
 import { KindSymbol } from '../plan-shape'
+import { useSpotCalled } from '../plan-words'
 import type { EditorKind, EditorSpot, EditorTable } from './editor-types'
 import { useShapeWord } from './editor-words'
 
@@ -89,6 +90,9 @@ export function SpotEditor({
 }) {
   const t = useTranslations('ownerSettings')
   const shapeWord = useShapeWord()
+  const called = useSpotCalled()
+  /** The spot as the toasts name it: «място 9», «Сепаре 1» (S14: a toast says what changed). */
+  const which = called(spot.name)
   const isMobile = useIsMobile()
   const kind = kinds.find((one) => one.key === spot.kind) ?? null
   const turnable = spotShapeOf(place.shape)?.turnable ?? false
@@ -96,7 +100,7 @@ export function SpotEditor({
     table.numbered ? t('pe_table_n', { n: table.label }) : table.label
 
   const setPlace = (next: Partial<SpotPlace>) =>
-    onSave({ place: fitPlace({ ...place, ...next }) }, t('pe_spot_saved'))
+    onSave({ place: fitPlace({ ...place, ...next }) }, t('pe_saved_place', { name: which }))
 
   const number = (text: string) => {
     const value = Number(text)
@@ -121,7 +125,7 @@ export function SpotEditor({
         problem={t('pe_name_bad')}
         testId="pe-spot-name"
         parse={(text) => (text === '' ? undefined : text)}
-        onCommit={(name) => onSave({ name }, t('pe_spot_saved'))}
+        onCommit={(name) => onSave({ name }, t('pe_saved_name', { name }))}
       />
 
       <div className="grid grid-cols-1 gap-2">
@@ -129,7 +133,15 @@ export function SpotEditor({
         <Select
           value={spot.kind}
           disabled={busy}
-          onValueChange={(key) => onSave({ kind: key }, t('pe_spot_saved'))}
+          onValueChange={(key) =>
+            onSave(
+              { kind: key },
+              t('pe_saved_kind', {
+                name: which,
+                kind: kinds.find((one) => one.key === key)?.label ?? key,
+              }),
+            )
+          }
         >
           <SelectTrigger id="pe-spot-kind" className="w-full" data-testid="pe-spot-kind">
             <SelectValue />
@@ -159,7 +171,10 @@ export function SpotEditor({
               data-testid={`pe-shape-${shape}`}
               onClick={() => {
                 if (place.shape === shape) return
-                onSave({ place: reshapePlace(place, shape) }, t('pe_spot_saved'))
+                onSave(
+                  { place: reshapePlace(place, shape) },
+                  t('pe_saved_shape', { name: which, shape: shapeWord(shape) }),
+                )
               }}
             >
               {shapeWord(shape)}
@@ -187,7 +202,14 @@ export function SpotEditor({
             ? seats
             : undefined
         }}
-        onCommit={(seats) => onSave({ seats }, t('pe_spot_saved'))}
+        onCommit={(seats) =>
+          onSave(
+            { seats },
+            seats === null
+              ? t('pe_saved_seats_kind', { name: which })
+              : t('pe_saved_seats', { name: which, n: seats }),
+          )
+        }
       />
 
       <div className="grid grid-cols-1 gap-2">
@@ -202,7 +224,19 @@ export function SpotEditor({
               value={spot.tableId ?? NO_TABLE}
               disabled={busy}
               onValueChange={(value) =>
-                onSave({ tableId: value === NO_TABLE ? null : value }, t('pe_spot_saved'))
+                onSave(
+                  { tableId: value === NO_TABLE ? null : value },
+                  value === NO_TABLE
+                    ? // The sentence opens with the spot: «Място 9 вече няма свързана маса.»
+                      t('pe_saved_table_none', { name: called(spot.name, 'title') })
+                    : t('pe_saved_table', {
+                        name: which,
+                        table: (() => {
+                          const table = tables.find((one) => one.id === value)
+                          return table === undefined ? value : tableLabel(table)
+                        })(),
+                      }),
+                )
               }
             >
               <SelectTrigger id="pe-spot-table" className="w-full" data-testid="pe-spot-table">

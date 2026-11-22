@@ -55,6 +55,7 @@ import {
   receiptUnbroughtAction,
   stornoDoneAction,
   stornoUndoAction,
+  subscribePushAction,
   undoOpenAllAction,
   undoPauseAction,
   undoWaiterCallAction,
@@ -479,5 +480,22 @@ describe('the person a shared device remembers (D141 12.11, #324)', () => {
     await liftRestroPauseAction({ venueId: VENUE, pauseId: PAUSE })
     expect(personAtSharedDevice).not.toHaveBeenCalled()
     expect(runTableCommand.mock.calls[0]?.[0]).toMatchObject({ actor: { kind: 'operator' } })
+  })
+
+  it("registers the tablet's push address as its account, not the person it remembers (C1)", async () => {
+    runTableCommand.mockResolvedValue({ ok: true, details: {} })
+    personAtSharedDevice.mockResolvedValue(maria)
+    const push = {
+      venueId: VENUE,
+      endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
+      p256dh: `B${'p'.repeat(86)}`,
+      auth: 'a'.repeat(22),
+    }
+    expect(await subscribePushAction(push)).toEqual({ ok: true, details: {} })
+    expect(personAtSharedDevice).not.toHaveBeenCalled()
+    expect(runTableCommand.mock.calls[0]?.[0]).toMatchObject({
+      actor: { kind: 'user', userId: 'us_1', sessionId: 'sess-1' },
+    })
+    expect(runTableCommand.mock.calls[0]?.[1]).toMatchObject({ type: 'push.subscribe' })
   })
 })

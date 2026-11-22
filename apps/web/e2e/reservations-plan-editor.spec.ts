@@ -69,7 +69,7 @@ test('the hold time is set first, as on any venue', async () => {
   const hold = page.getByLabel('Мястото се пази')
   await hold.fill('120')
   await hold.press('Enter')
-  await expect(page.getByText('Запазено').first()).toBeVisible()
+  await expect(page.getByText('Мястото се пази 120 мин.').first()).toBeVisible()
 })
 
 test('with no plan, the plan screens say so and lead to the editor', async () => {
@@ -128,7 +128,7 @@ test('lays a plan out from nothing, and keeps it after a reload', async () => {
   await expect(sheet).toBeVisible()
   await sheet.getByTestId('pe-spot-seats').fill('6')
   await sheet.getByTestId('pe-spot-seats').press('Enter')
-  await expect(page.getByText('Запазено').first()).toBeVisible()
+  await expect(page.getByText(`Седящи на ${first}: 6.`).first()).toBeVisible()
   await sheet.getByTestId('pe-spot-done').click()
 
   await page.reload()
