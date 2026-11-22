@@ -14,8 +14,9 @@
 // A system's own numbers are only handed back to the server actions; they are never drawn. Owners
 // and admins change things; everyone else sees what is set.
 import { AlertTriangleIcon, RefreshCwIcon } from 'lucide-react'
+import Link from 'next/link'
 import { useTranslations } from 'next-intl'
-import { useState, useTransition } from 'react'
+import { type ReactNode, useState, useTransition } from 'react'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -33,6 +34,15 @@ import { LiveRefresh } from './live-refresh'
 import { RunHistory } from './run-history'
 import { useClearWhenIdle } from './use-clear-when-idle'
 import { useMoment } from './use-moment'
+
+/** "Settings → Integrations" in a blocked line, as a link: the way out is one tap. */
+function integrationsLink(chunks: ReactNode) {
+  return (
+    <Link href="/settings/integrations" className="tap-area underline underline-offset-4">
+      {chunks}
+    </Link>
+  )
+}
 
 /** The last sync, the held warning and "Sync this venue". */
 function SyncBlock({ venueId, view }: { venueId: string; view: LinkedMenuSource }) {
@@ -77,7 +87,7 @@ function SyncBlock({ venueId, view }: { venueId: string; view: LinkedMenuSource 
         </Button>
         {!gate.enabled ? (
           <p className="text-sm text-muted-foreground" data-testid="sync-blocked">
-            {t(`blocked.${gate.reason}`, { source })}
+            {t.rich(`blocked.${gate.reason}`, { source, link: integrationsLink })}
           </p>
         ) : null}
       </div>
@@ -121,6 +131,7 @@ function Linked({ venueId, view }: { venueId: string; view: LinkedMenuSource }) 
           connector={view.connector.kind}
           source={view.source}
           showVenue={false}
+          summary="menu"
         />
       </div>
     </div>
