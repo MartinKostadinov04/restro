@@ -9,7 +9,8 @@
 //   **taking** a booking (create, copy), **working** any booking whoever took it (edit, cancel:
 //   D135 13.18, S20 of the 11-18 screen round) and taking out one she made herself (#328);
 // - `reservations.manage` — the manager's acts on the booking book (D135: "stays the manager's"):
-//   take out another's, restore, and put back what the night's end closed;
+//   take out another's, restore, and put back what the night's end closed; being the wider key,
+//   it also edits and cancels (`alsoPermittedBy`);
 // - `reservations.block` — blocking and unblocking spots;
 // - `reservations.end_night` — ending the night (D138);
 // - `reservations.edit_past` — not a command's own key: the handler reads it when the night it is
@@ -371,9 +372,10 @@ export const RESERVATION_COMMANDS = {
       spotIds: spotIds.optional(),
     }),
     origins: ['staff'],
-    // Whoever works tonight edits a booking, whoever took it (D135 13.18); four digits on a shared
-    // device (D141, `pin-fall.ts`).
+    // Whoever works tonight edits a booking, whoever took it (D135 13.18), and the booking book's
+    // wider key does too; four digits on a shared device (D141, `pin-fall.ts`).
     permission: 'reservations.tonight',
+    alsoPermittedBy: ['reservations.manage'],
     idempotency: 'by_nature',
     handle: editReservation,
   }),
@@ -384,8 +386,10 @@ export const RESERVATION_COMMANDS = {
       reason: code.nullable().optional(),
     }),
     origins: ['staff'],
-    // The hostess on duty cancels a colleague's booking (D135 13.18); four digits on a shared device.
+    // The hostess on duty cancels a colleague's booking (D135 13.18), and so does whoever holds the
+    // booking book's key; four digits on a shared device.
     permission: 'reservations.tonight',
+    alsoPermittedBy: ['reservations.manage'],
     idempotency: 'by_nature',
     handle: cancelReservation,
   }),

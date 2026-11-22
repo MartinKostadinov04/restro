@@ -32,6 +32,7 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
   let otherHostessId: string
   /** Holds the booking book. */
   let managerId: string
+  let bookKeeperId: string
   let planId: string
   let timezone = 'UTC'
   let dayEndsAt = '07:00:00'
@@ -184,6 +185,9 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
       ['reservations.manage', 'reservations.tonight', 'settings.guests'],
       managerId,
     )
+    // A role given the booking book's key without tonight's (a venue may tick it alone).
+    bookKeeperId = await world.addUser('member')
+    await world.addStaff(['reservations.manage'], bookKeeperId)
     const venue = (
       await world.owner.query<{ timezone: string; ends_at: string }>(
         'select timezone, service_day_ends_at::text as ends_at from restro.venues where id = $1',
@@ -277,6 +281,20 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
         await run({ type: 'reservation.restore', reservationId: kept }, staff(hostessId)),
       ).toMatchObject({ status: 'refused', code: 'permission_denied' })
       expect((await row(kept)).deleted_at).not.toBeNull()
+    })
+
+    it('lets the booking book’s key alone edit and cancel a colleague’s booking', async () => {
+      // The wider key covers tonight's work on the book (D135 13.18): before S20 it was the only
+      // key that did, and a role holding it without tonight's is still offered Edit and Cancel.
+      const day = night(3)
+      const theirs = await book(day, '20:30', [])
+      await accept(
+        { type: 'reservation.edit', reservationId: theirs, partySize: 5 },
+        staff(bookKeeperId),
+      )
+      expect((await row(theirs)).party_size).toBe(5)
+      await accept({ type: 'reservation.cancel', reservationId: theirs }, staff(bookKeeperId))
+      expect((await row(theirs)).status).toBe('cancelled')
     })
 
     it('lets a hostess take out a line she made, and keeps another’s for a manager', async () => {
