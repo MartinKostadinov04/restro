@@ -818,6 +818,23 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
       await expect(start(payer, ['L3'])).rejects.toThrow('rate_limited')
     })
 
+    it('a Pay refused for what only a waiter can fix keeps its 15 s gap (#502)', async () => {
+      const payer = phone(new GuestLimiter(GUEST_LIMITS))
+      const first = (await bill())[0] as BillLine
+      const part = await payer.act({
+        type: 'pay.start',
+        pick: { kind: 'lines', lines: [{ lineId: first.id, quantity: '1' }] },
+        seen: [{ lineId: first.id, quantity: first.quantity, amountMinor: first.amountMinor }],
+        tipMinor: null,
+        tipPercent: null,
+      })
+      expect(await refusal(part)).toBe('ask_waiter_to_split')
+      // The same phone's next Pay inside the 15 s waits, as after an accepted one.
+      await expect(start(payer, ['L2'])).rejects.toThrow('rate_limited')
+      // Another phone at the table is not held by it.
+      paymentIdOf(await start(phone(), ['L2']))
+    })
+
     it('a phone that keeps failing Turnstile stops costing a check; a passed one gives its hit back', async () => {
       const strict = new GuestLimiter({ ...LOOSE, humanFails: { ...LOOSE.humanFails, max: 1 } })
       let checks = 0

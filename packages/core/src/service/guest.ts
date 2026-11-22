@@ -81,7 +81,7 @@ import {
   passHolds,
   sealLocationPass,
 } from './location-pass'
-import { isFinalPaymentState } from './pay'
+import { isFinalPaymentState, type PAY_REFUSALS } from './pay'
 import type { PayFirstState, PayingState } from './pay-first'
 import { paymentNumberOf } from './payment-number'
 import { readTableState, type TableStateRead, type TableStateUnchanged } from './read'
@@ -1041,6 +1041,17 @@ const SEND_SPENDS: ReadonlySet<GuestLimitName> = new Set(['sendGap', 'sends', 'p
 /** The limits that belong to the Pay inside a Send, not to the Send itself (#293, DA-1). */
 const PAY_LIMITS: ReadonlySet<GuestLimitName> = new Set(['payGap', 'pays'])
 
+/**
+ * The Pay refusals the guest fixes on the phone and sends again at once, so they give back the
+ * 15 s `payGap`: the bill moved under the phone (a line changed, or another phone is paying it),
+ * or the pick is below the venue's smallest card payment. Every other refusal keeps the gap.
+ */
+const PAY_GAP_GIVEN_BACK: ReadonlySet<string> = new Set<(typeof PAY_REFUSALS)[number]>([
+  'bill_changed',
+  'being_paid',
+  'below_minimum',
+])
+
 /** Whether a Send also carries on-the-bill lines, which can go without its pay-first part. */
 function sendsOnBill(command: GuestActInput['command']): boolean {
   return Array.isArray(command.lines) && command.lines.length > 0
@@ -1541,11 +1552,14 @@ async function payAct(
   let command: { readonly type: string; readonly actionId: string } & Record<string, unknown>
   /** When this Pay took `payGap`; null when it took none (a repeat, or not a start). */
   let payTakenAt: number | null = null
-  // A Pay that starts no payment for a reason the guest can fix (the bill changed, Turnstile) gives
-  // back its 15 s `payGap`, as a refused Send does (RR-26, D122 §4; screen round 11-18, C2), so the
-  // guest retries at once. `pays` (5 in 10 minutes) stays spent: it is the ceiling on Turnstile
-  // checks and engine writes a phone can cause. A Pay refused for the phone's own open payment
-  // keeps both, and a request that throws keeps them too: whether a payment started is unknown.
+  // A Pay that starts no payment for a reason the guest can fix (Turnstile, or one of
+  // PAY_GAP_GIVEN_BACK) gives back its 15 s `payGap`, as a refused Send does (RR-26, D122 §4; screen
+  // round 11-18, C2), so the guest retries at once. Any other refusal keeps the gap: a stale or
+  // crafted Pay sent again and again waits like a real one (#502's review). `pays` (5 in 10 minutes)
+  // stays spent either way: it is the ceiling on Turnstile checks and engine writes a phone can
+  // cause. A Pay refused for the phone's own open payment keeps both, and a request that throws
+  // keeps them too: whether a payment started is unknown. A declined card is not a refusal here:
+  // that Pay was accepted, and the guest's next Pay comes well after its gap.
   const giveBackPay = () => {
     if (payTakenAt !== null) limits.giveBack(subject, ['payGap'], payTakenAt)
   }
@@ -1620,7 +1634,7 @@ async function payAct(
     command,
     guestContext(target, input.jobId, null),
   )
-  if (result.status !== 'accepted') giveBackPay()
+  if (result.status === 'refused' && PAY_GAP_GIVEN_BACK.has(result.code)) giveBackPay()
   if (result.status === 'refused' && result.code === 'code_retired') {
     return { ok: false, code: 'code_retired' }
   }
