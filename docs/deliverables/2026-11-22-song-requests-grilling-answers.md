@@ -30,7 +30,7 @@ are written on a branch that carries the numbers below it.
 | 1.19 | Guest accounts | Not now. Plug them in later, "once we become a recognisable solution". | later | needs its own decision, since D9 says guests need no account |
 | 1.11 | The DJ beat matches, so a paid place in a queue cannot mean "this is your next track" | **The lead had this backwards and Martin corrected it in round 3.** Restro's own queue is real and timestamped, so a request's place in it is a fact, not a guess. What cannot be stated is a *time*, since the DJ's own tracks run between ours. So: show the place, never invent a clock. Beat matching is absorbed by 1.7's unordered awaiting-play set, not by replacing the queue. | firm | round 3, correcting round 2 |
 | 1.12 | The DJ can agree or disagree with a song that does not fit the theme or the mood | Agreed: a short fixed reason list, one tap, money released at once, the guest told in plain words. No appeal and no re-queue. | firm | round 2 |
-| 1.13 | Does the venue screen requests before the DJ sees them at all? | Yes. Blocked **artists and title words** are certain. On **genre**, the lead asserted it was undeliverable without reading the API; Martin pushed back (the demo already restricts to music and excludes podcasts) and asked for research before the question is closed. | open | round 3, pending the metadata research |
+| 1.13 | Does the venue screen requests before the DJ sees them at all? | Yes: **blocked artists and title words, and no genre control at all.** Martin was right that the demo restricts to music and excludes podcasts, and the lead's stated reason was wrong — there *is* a category and there *are* tags. But nothing in them names a genre, so the conclusion survives its own bad argument. | firm | closed by [the metadata research](2026-11-22-song-request-metadata.md), PR #509 |
 | 1.14 | What does the guest see while he waits? | **His place in the queue**, which is a fact, and *"with the DJ now"* once the request reaches the awaiting-play set — **not a time**, unless it is measured from this venue's own history. Identity across a refresh or a closed browser, with no profile and no table, is D121's guest session. | firm | round 3; a time estimate only once measured, never invented |
 | 1.15 | Can a guest take his money back before the song plays? | Yes — while the request is still waiting, not once the DJ has accepted it. | firm | round 2, map Q7 |
 | 1.16 | When does the venue stop taking requests for the night? | The venue setting is only the **automatic** stop. The **DJ opens and closes requests himself** during the night. | firm | round 2; same shape as the existing ordering pause |
@@ -129,11 +129,26 @@ simply **not offered** — the guest sees no result rather than a refusal.
 
 Two limits, both worth saying in the venue's own words on the setting itself:
 
-- **Genre blocking: open, pending research (round 3).** The lead wrote here that the search metadata
-  gives only titles, artists, durations and thumbnails, so a genre switch could not be honoured.
-  That was asserted without reading the API. Martin pushed back — the MVP's demo already restricts
-  results to music and excludes podcasts, which means *some* classification is in reach — and asked
-  for the question researched before it is closed. Row 1.13 stays open until then.
+- **Genre blocking: closed, no genre control (round 3).** The lead first wrote here that the search
+  metadata gives only titles, artists, durations and thumbnails. That was asserted without reading
+  the API and it was **wrong**: there is a `Music` category (id `10`), there are uploader-set
+  `tags`, and the demo stacks three music filters, exactly as Martin said. The
+  [research](2026-11-22-song-request-metadata.md) settles the real reason, which is narrower and
+  harder: **YouTube's entire music vocabulary is 15 coarse curated topics** — Electronic, Rock, Pop,
+  Hip hop and so on, with **no sub-genre anywhere** — the two topic-id read fields have been
+  deprecated since 2016, and `topicId` filters *to* a topic and cannot exclude one, which is the
+  opposite shape to a venue's "no X". Approximating it by whitelisting the other 14 topics costs 14
+  searches per search against a quota that is already the binding constraint. Discogs `styles` do
+  carry the grain, and would stop most drum and bass that exists as a release, **near none** of the
+  mixes, bootlegs and streaming-only tracks a club actually gets — and **cannot name chalga at all**,
+  which for a Bulgarian club is the genre most likely to be blocked (Discogs answers `Vocal, Folk`
+  for Preslava, which would block every ballad in the building). So: **no genre setting**, and the
+  blocked-list screen says why in the venue's own words. §5 of the research has the wording.
+- **One fact is still unresolved and worth settling cheaply:** what `topicCategories[]` actually
+  returns for a music video today — Wikipedia URLs that reach a genre page, or stop at `/wiki/Music`.
+  The docs give no examples. One `videos.list` call with `part=topicDetails` against twenty known
+  tracks answers it. The research session had the prototype's API key available in a git-ignored file
+  and deliberately did not spend it, which was the right call.
 - **"Already played tonight" can only mean "played through Restro".** By 1.14(b) we cannot see the
   DJ's own software, so a song he played off his own laptop is invisible to us and can still be
   asked for.
@@ -241,7 +256,7 @@ to supply (`technical-tuning-from-best-practice`).
 | Same song again, not within | 30 minutes | The club's answer as amended (1.17). |
 | Tied greetings | off, with their own price | Greetings are a venue's choice, not a default (1.4). |
 | Free-standing greetings | off, with their own price | Separately switchable; a venue may want tied ones only. |
-| Blocked artists and title words | empty | Screening (1.13). Genre pending the metadata research. |
+| Blocked artists and title words | empty | Screening (1.13). **No genre control** — the research shows it cannot be kept. |
 | Show guests' names | on, and each guest may still ask not to be named | 1.3; TouchTunes' "Anonymous" is the same idea. |
 | Who may open and close requests | the roles that already hold the ordering pause | Reuses what exists rather than inventing a role. |
 
