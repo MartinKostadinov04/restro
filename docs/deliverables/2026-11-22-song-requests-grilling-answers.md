@@ -272,7 +272,9 @@ to supply (`technical-tuning-from-best-practice`).
    [research](2026-11-18-song-requests-how-others-do-it.md). Its findings are answered here before
    any decision file is written.
 3. **Then the decisions themselves**, which **cannot be written on this branch**: `sr/ingestion`
-   carries D1–D123, the next free number is 154, and the guard forbids a gap at the top. They need a
-   branch cut from something carrying decisions 1 to 153 — today that means `or/foundation` plus
-   `docs/pos-support-answers`. Flagged early because it decides where the spec branch is cut, not
-   just where the files land.
+   carries decisions 1 to 123, the next free number is 154, and the guard forbids a gap at the top.
+   They need a branch cut from something that already carries 1 to 153. Measured on 2026-11-22,
+   `or/foundation` and `docs/pos-support-answers` each carry the full gapless set on their own, so
+   either can serve as the base; `docs/pos-support-answers` is docs-only and therefore the cheaper
+   one. Flagged early because it decides where the spec branch is cut, not just where the files
+   land.
