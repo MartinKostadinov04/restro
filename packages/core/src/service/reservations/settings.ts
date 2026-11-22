@@ -22,7 +22,7 @@ import type { ServiceTx } from '../definition'
 import { accepted, type ServiceResult } from '../results'
 import { DEFAULT_ONLINE_SETTINGS } from './online-settings'
 import { actionsBehindPin, type PinActions, storedPinActions } from './pin-fall'
-import { readSettings, refuse } from './rows'
+import { lockSettings, refuse } from './rows'
 
 /** What the settings are set with; a value left out keeps what the venue had. */
 export interface ReservationSettingsCommand {
@@ -39,7 +39,7 @@ export interface ReservationSettingsCommand {
  * falls, is plain "changed".
  */
 function changedSetting(
-  existing: NonNullable<Awaited<ReturnType<typeof readSettings>>>,
+  existing: NonNullable<Awaited<ReturnType<typeof lockSettings>>>,
   next: {
     readonly turnMinutes: number
     readonly editPastNights: boolean
@@ -66,7 +66,9 @@ export async function setReservationSettings(
   stx: ServiceTx,
   command: ReservationSettingsCommand,
 ): Promise<ServiceResult> {
-  const existing = await readSettings(stx)
+  // Locked before it is read: the PIN list and the rest are written back merged with what was there,
+  // so two saves at once must queue, as the closed dates do (C7).
+  const existing = await lockSettings(stx)
   const turnMinutes = command.turnMinutes ?? existing?.turnMinutes
   if (turnMinutes === undefined) return refuse('settings_missing')
   const editPastNights = command.editPastNights ?? existing?.editPastNights ?? false

@@ -126,6 +126,37 @@ describe.skipIf(!hasDatabase)('the events of a night (as the restro_app role)', 
     expect(rows[2]?.locale).toBe('en_US')
   })
 
+  it('files a held event under its own service day, and outside a sitting it came before (C5)', async () => {
+    const answer = await reportGuestEvents(world.app, {
+      code,
+      limiter,
+      events: [
+        // The oldest a phone may report (the API caps it at a day): always the night before, and
+        // before this sitting opened.
+        { kind: 'menu.opened', ageMs: 24 * 60 * 60_000 },
+        // A minute before the sitting opened (beyond the clock's grace): the same night, no sitting.
+        { kind: 'item.opened', itemId: item, ageMs: 60_000 },
+        { kind: 'language.chosen', locale: 'en_US', ageMs: 0 },
+      ],
+    })
+    expect(answer).toEqual({ ok: true, recorded: 3 })
+    const { rows } = await world.owner.query<{
+      kind: string
+      sitting_id: string | null
+      service_date: string
+    }>(
+      `select kind, sitting_id, service_date::text from restro.guest_events
+        where venue_id = $1 order by seq`,
+      [world.venueId],
+    )
+    const held = rows.find((row) => row.kind === 'menu.opened')
+    const fresh = rows.find((row) => row.kind === 'language.chosen')
+    expect(held?.sitting_id).toBeNull()
+    expect(rows.find((row) => row.kind === 'item.opened')?.sitting_id).toBeNull()
+    expect(fresh?.sitting_id).not.toBeNull()
+    expect(held && fresh && held.service_date < fresh.service_date).toBe(true)
+  })
+
   it('writes nothing for a code that is not a table’s', async () => {
     expect(
       await reportGuestEvents(world.app, {

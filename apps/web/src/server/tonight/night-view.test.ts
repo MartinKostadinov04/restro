@@ -24,6 +24,7 @@ import {
   REASON_WORD_CODES,
   reasonWordOf,
   sentRowView,
+  settingWordsOf,
   stateWord,
   unknownReasons,
 } from './night-view'
@@ -207,6 +208,7 @@ const line = (fields: Partial<LogLine> = {}): LogLine => ({
   sentOrdersOfDay: null,
   openBills: null,
   callKinds: [],
+  settingKeys: [],
   ...fields,
 })
 
@@ -298,10 +300,10 @@ describe('a Log line', () => {
     )
     expect(
       logLineView(line({ kind: 'settings.changed', reason: 'payment_table' }), input).setting,
-    ).toBe('pay_table')
-    expect(logLineView(line({ kind: 'settings.changed', reason: 'x' }), input).setting).toBe(
+    ).toEqual(['pay_table'])
+    expect(logLineView(line({ kind: 'settings.changed', reason: 'x' }), input).setting).toEqual([
       'setting',
-    )
+    ])
   })
 
   it('words a pause cause only when it has a word', () => {
@@ -320,6 +322,7 @@ const night = (fields: Partial<NightRead> = {}): NightRead => ({
   hasService: true,
   dayEndsAt: '07:00',
   closedAt: new Date('2026-10-27T05:05:00Z'),
+  ended: false,
   full: true,
   fix: [
     {
@@ -478,5 +481,46 @@ describe('the reservation group of the end of the night (#408, D144)', () => {
     expect(view.money).toBeNull()
     expect(door(csv(view))).toHaveLength(9)
     expect(JSON.stringify(csv(view))).not.toMatch(/captured|tip/i)
+  })
+})
+
+describe('the screen round Log lines (S15, S20)', () => {
+  const input = {
+    clock: clockIn('Europe/Sofia'),
+    locale: 'en' as const,
+    source: 'Mistral',
+    venueName: 'Club',
+  }
+
+  it('names a changed setting by its part of Settings', () => {
+    const changed = (reason: string, keys: string[] = []) =>
+      logLineView(line({ kind: 'settings.changed', reason, settingKeys: keys }), input).setting
+    expect(changed('ordering', ['serviceHours', 'closedDayHours'])).toEqual(['hours'])
+    expect(changed('ordering', ['capMinor', 'spot'])).toEqual(['limits', 'location'])
+    expect(changed('payment_table')).toEqual(['pay_table'])
+    expect(changed('pay_first')).toEqual(['pay_rule'])
+    expect(changed('refund_route')).toEqual(['refunds'])
+    expect(changed('telegram_linked')).toEqual(['telegram'])
+    expect(changed('ordering')).toEqual(['setting'])
+    expect(settingWordsOf(null, ['unknownKey'])).toEqual(['setting'])
+    // A key with no part of its own is still said, after the parts that are named.
+    expect(changed('ordering', ['unknownKey', 'capMinor'])).toEqual(['limits', 'setting'])
+    // The alerts form saves the Telegram chat too: its keys say which part changed.
+    expect(changed('alerts', ['telegramChatId'])).toEqual(['telegram'])
+    expect(changed('alerts', ['alertRecipientUserIds', 'telegramChatId'])).toEqual([
+      'alerts',
+      'telegram',
+    ])
+    expect(changed('alerts')).toEqual(['alerts'])
+    expect(changed('telegram_unlinked')).toEqual(['telegram'])
+    expect(logLineView(line(), input).setting).toEqual([])
+  })
+
+  it('keeps why a payment step was logged, for the freed table and the refused release', () => {
+    const step = (reason: string | null) =>
+      logLineView(line({ kind: 'payment.state', toState: 'captured', reason }), input).paymentReason
+    expect(step('table_freed')).toBe('table_freed')
+    expect(step('release_refused')).toBe('release_refused')
+    expect(step(null)).toBeNull()
   })
 })

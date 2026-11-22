@@ -134,13 +134,13 @@ describe('the Status card of an instance', () => {
     expect(screen.getByTestId('status-badge').getAttribute('data-status')).toBe('connected')
     const detail = screen.getByTestId('status-detail')
     expect(detail.textContent).toBe(
-      "The till's main currency is not EUR; Restro shows prices in EUR only.",
+      'The main currency in barsy is not EUR; Restro shows prices in EUR only.',
     )
     expect(detail.getAttribute('data-level')).toBe('warning')
     unmount()
     renderWithIntl(<StatusCard instance={view} canManage />, { locale: 'bg' })
     expect(screen.getByTestId('status-detail').textContent).toBe(
-      'Основната валута на касата не е EUR; Restro показва цените само в EUR.',
+      'Основната валута в barsy не е EUR; Restro показва цените само в EUR.',
     )
   })
 
@@ -170,18 +170,18 @@ describe('the Status card of an instance', () => {
       })
       const warnings = screen.getAllByTestId('sync-held')
       expect(warnings).toHaveLength(2)
-      expect(warnings[0]?.textContent).toContain('The last full sync of Main bar was held back')
+      expect(warnings[0]?.textContent).toContain('The last full read of Main bar was held back')
       expect(warnings[0]?.textContent).toContain('it would have hidden 61 of 65 items')
       expect(warnings[0]?.textContent).toContain('Check the venue and its menus in barsy.')
       expect(warnings[0]?.getAttribute('data-reason')).toBe('too_many_missing')
-      expect(warnings[1]?.textContent).toContain('The last full sync of Roof was held back')
+      expect(warnings[1]?.textContent).toContain('The last full read of Roof was held back')
       expect(warnings[1]?.getAttribute('data-reason')).toBe('empty_read')
     })
 
     it('says so without a venue for an older run that names none, and shows nothing when none was held', () => {
       const { unmount } = card({ heldSyncs: [held(null)] })
       expect(screen.getByTestId('sync-held').textContent).toContain(
-        'The last full sync was held back',
+        'The last full read was held back',
       )
       unmount()
       card()
@@ -197,7 +197,7 @@ describe('the Status card of an instance', () => {
         { locale: 'bg' },
       )
       expect(screen.getByTestId('sync-held').textContent).toContain(
-        'Последната пълна синхронизация на Main bar е задържана',
+        'Последното пълно четене на Main bar е задържано',
       )
     })
   })

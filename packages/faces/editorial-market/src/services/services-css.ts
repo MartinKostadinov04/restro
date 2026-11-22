@@ -79,11 +79,6 @@ export const SERVICES_CSS = `
 .rm .ro-plus:active {
   transform: scale(0.9);
 }
-.rm .ro-plus[aria-disabled="true"] {
-  opacity: 0.4;
-  cursor: default;
-  transform: none;
-}
 .rm .ro-plus-count {
   position: absolute;
   top: calc((44px - var(--ro-circle)) / 2 - 4px);
@@ -682,11 +677,6 @@ export const SERVICES_CSS = `
 }
 .rm .ro-line-actions button:disabled {
   opacity: 0.45;
-}
-.rm .ro-line-side {
-  display: grid;
-  justify-items: end;
-  gap: 8px;
 }
 .rm .ro-sum {
   display: flex;
@@ -1353,6 +1343,45 @@ export const SERVICES_CSS = `
   height: 48px;
   object-fit: cover;
   border-radius: calc(var(--rm-radius) * 0.6);
+}
+
+/* A line of the Order (lane 3 S9): one layout on every line, whatever the Bill's Rows and Lines.
+   The name and the amount on the first row, the options and notes under them, then Remove on the
+   left and the stepper on the right. No band: a guest reads one line at a time, not a ledger. */
+.rm .ro-lines li.ro-orderline {
+  grid-template-columns: minmax(0, 1fr);
+}
+.rm[data-order-line-photos="shown"] .ro-lines li.ro-orderline.has-line-photo {
+  grid-template-columns: 48px minmax(0, 1fr);
+}
+.rm[data-bill-rows="zebra"] .ro-lines li.ro-orderline {
+  padding-inline: 0;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 0;
+  background: none;
+}
+.rm[data-bill-lines="compact"] .ro-orderline .ro-line-main {
+  display: grid;
+  gap: 4px;
+}
+.rm .ro-line-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.rm .ro-line-head strong {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.rm .ro-line-head b {
+  flex: none;
+}
+.rm .ro-line-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
 
 /* Pay, Tip: rows. Each percent on a row of its own with what it comes to. */

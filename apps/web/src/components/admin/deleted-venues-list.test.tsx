@@ -58,6 +58,16 @@ describe('the deleted venues', () => {
     expect(within(first).getByTestId('purge-venue-open').textContent).toBe('Delete permanently')
   })
 
+  it('fills Restore, the one thing the list is for, and keeps Delete permanently outlined after it (S23)', () => {
+    list()
+    const first = items()[0] as HTMLElement
+    const restore = within(first).getByTestId('restore-venue')
+    const purge = within(first).getByTestId('purge-venue-open')
+    expect(restore.getAttribute('data-variant')).toBe('default')
+    expect(purge.getAttribute('data-variant')).toBe('outline')
+    expect(restore.compareDocumentPosition(purge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('says when the bin erases each one: 30 days after the deletion, in Sofia time', () => {
     list()
     // 22:30 UTC on 10 October + 30 days = 22:30 UTC on 9 November, which is the 10th in Sofia
@@ -79,14 +89,14 @@ describe('the deleted venues', () => {
     expect(toasts.success).toHaveBeenCalledTimes(1)
     const message = toasts.success.mock.calls[0]?.[0] as string
     expect(message).toContain('Neon Cellar is back')
-    expect(message).not.toContain('till')
+    expect(message).not.toContain('linked again')
     expect(message).toContain('Publish its menu')
     expect(within(items()[0] as HTMLElement).getByTestId('deleted-venue-name').textContent).toBe(
       'Roof Terrace',
     )
   })
 
-  it('says the till is linked again when the restore linked it (adjustments V1)', async () => {
+  it('says the POS link is back when the restore linked it (adjustments V1)', async () => {
     vi.mocked(restoreVenueAction).mockResolvedValue({
       ok: true,
       name: 'Neon Cellar',
@@ -95,7 +105,7 @@ describe('the deleted venues', () => {
     const user = list()
     await user.click(within(items()[0] as HTMLElement).getByTestId('restore-venue'))
     await waitFor(() => expect(toasts.success).toHaveBeenCalledTimes(1))
-    expect(toasts.success.mock.calls[0]?.[0]).toContain('with its till linked again')
+    expect(toasts.success.mock.calls[0]?.[0]).toContain('linked again to its venue in the POS')
   })
 
   it('names the venue that holds the till when the restore is refused for it', async () => {
@@ -107,7 +117,7 @@ describe('the deleted venues', () => {
     const user = list()
     await user.click(within(items()[0] as HTMLElement).getByTestId('restore-venue'))
     expect((await screen.findByTestId('restore-error')).textContent).toBe(
-      'Not restored: the till venue it served is linked to “Roof Terrace” now.',
+      'Not restored: its venue in the POS is linked to “Roof Terrace” now.',
     )
     expect(items()).toHaveLength(2)
     expect(toasts.success).not.toHaveBeenCalled()
@@ -116,7 +126,7 @@ describe('the deleted venues', () => {
   it.each([
     ['not_allowed', 'Only an owner can restore a venue.'],
     ['invalid', 'This venue could not be found.'],
-    ['failed', 'Something went wrong. The venue was not restored, try again.'],
+    ['failed', "Restro couldn't restore the venue. Nothing changed; try again."],
   ] as const)('shows the answer %s and keeps the venue in the list', async (error, text) => {
     vi.mocked(restoreVenueAction).mockResolvedValue({ ok: false, error })
     const user = list()
@@ -131,7 +141,7 @@ describe('the deleted venues', () => {
     const user = list()
     await user.click(within(items()[0] as HTMLElement).getByTestId('restore-venue'))
     expect((await screen.findByTestId('restore-error')).textContent).toContain(
-      'Something went wrong',
+      'Nothing changed; try again',
     )
   })
 
@@ -186,7 +196,7 @@ describe('the deleted venues', () => {
   it('is in Bulgarian when the interface is', () => {
     list('bg')
     const first = items()[0] as HTMLElement
-    expect(within(first).getByTestId('restore-venue').textContent).toBe('Върни')
+    expect(within(first).getByTestId('restore-venue').textContent).toBe('Възстанови')
     expect(within(first).getByTestId('purge-venue-open').textContent).toBe('Изтрий завинаги')
     expect(within(first).getByTestId('deleted-venue-date').textContent).toContain('Изтрито на')
     expect(within(first).getByTestId('deleted-venue-date').textContent).toContain(

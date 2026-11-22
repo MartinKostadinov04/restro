@@ -2,8 +2,8 @@
 
 // "Delete venue" (brief CF-18, D76): the dialog an owner confirms by typing the venue's name. It
 // says in plain words what happens (the venue leaves the admin, its guest page and QR codes stop
-// working, its till link is released, nothing is erased, it can be restored from Settings >
-// Deleted venues). The dialog only collects and shows; the rules are the server action's
+// working, a venue with a till link has it released, nothing is erased, it can be restored from
+// Settings > Deleted venues). The dialog only collects and shows; the rules are the server action's
 // (`deleteVenueAction`, which checks the owner and the typed name again). On success it opens the
 // venue list, and the toast carries a link to the list a venue is restored from.
 import { useRouter } from 'next/navigation'
@@ -24,6 +24,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { deleteVenueAction } from '@/server/venues-actions'
 import type { DeleteVenueError } from '@/server/venues-result'
+import { useSignInAgain } from '@/settings/use-settings-run'
 
 const VENUES_PATH = '/venues'
 const DELETED_VENUES_PATH = '/settings/deleted-venues'
@@ -33,6 +34,8 @@ interface DeleteVenueDialogProps {
   readonly onOpenChange: (open: boolean) => void
   readonly venueId: string
   readonly venueName: string
+  /** The venue has a till link: only then does deleting release one (N2). */
+  readonly hasTill: boolean
 }
 
 export function DeleteVenueDialog(props: DeleteVenueDialogProps) {
@@ -44,19 +47,20 @@ export function DeleteVenueDialog(props: DeleteVenueDialogProps) {
   )
 }
 
-function DeleteVenueForm({ onOpenChange, venueId, venueName }: DeleteVenueDialogProps) {
+function DeleteVenueForm({ onOpenChange, venueId, venueName, hasTill }: DeleteVenueDialogProps) {
   const t = useTranslations('workspace.settings.danger.dialog')
   const router = useRouter()
   const formId = useId()
   const [pending, startTransition] = useTransition()
+  const again = useSignInAgain(() => submit())
   const [typed, setTyped] = useState('')
   const [error, setError] = useState<DeleteVenueError | null>(null)
 
   // The server compares the trimmed text with the venue's name; the button waits for the same.
   const matches = typed.trim() === venueName
 
-  function submit(event: FormEvent) {
-    event.preventDefault()
+  function submit(event?: FormEvent) {
+    event?.preventDefault()
     if (!matches || pending) return
     setError(null)
     startTransition(async () => {
@@ -64,6 +68,10 @@ function DeleteVenueForm({ onOpenChange, venueId, venueName }: DeleteVenueDialog
         () => ({ ok: false, error: 'failed' }) as const,
       )
       if (!result.ok) {
+        if (result.error === 'sign_in_again') {
+          again.ask()
+          return
+        }
         setError(result.error)
         return
       }
@@ -80,6 +88,7 @@ function DeleteVenueForm({ onOpenChange, venueId, venueName }: DeleteVenueDialog
 
   return (
     <DialogContent data-testid="delete-venue-dialog">
+      {again.dialog}
       <form onSubmit={submit} className="grid gap-4" noValidate>
         <DialogHeader>
           <DialogTitle>{t('title', { name: venueName })}</DialogTitle>
@@ -89,7 +98,7 @@ function DeleteVenueForm({ onOpenChange, venueId, venueName }: DeleteVenueDialog
         <ul className="grid list-disc gap-1.5 pl-5 text-sm" data-testid="delete-venue-effects">
           <li>{t('effects.admin')}</li>
           <li>{t('effects.guests')}</li>
-          <li>{t('effects.till')}</li>
+          {hasTill ? <li>{t('effects.till')}</li> : null}
           <li>{t('effects.kept')}</li>
         </ul>
 
@@ -119,7 +128,7 @@ function DeleteVenueForm({ onOpenChange, venueId, venueName }: DeleteVenueDialog
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            {t('cancel')}
+            {t('keep')}
           </Button>
           <Button
             type="submit"

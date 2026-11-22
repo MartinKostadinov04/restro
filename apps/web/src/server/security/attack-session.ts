@@ -11,6 +11,8 @@ export interface AskedPerson {
   readonly role: string
   /** The Better Auth session id: what a shared device is known by. */
   readonly sessionId: string
+  /** When the password was typed; now unless a test asks for an older sign-in (D122 §7). */
+  readonly signedInAt?: Date
 }
 
 export const asked: { person: AskedPerson | null } = { person: null }
@@ -41,7 +43,7 @@ function access() {
       email: `${person.userId}@example.test`,
     },
     sessionId: person.sessionId,
-    signedInAt: new Date(),
+    signedInAt: person.signedInAt ?? new Date(),
     organizations: [],
     organization: {
       id: person.tenantId,

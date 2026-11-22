@@ -1,9 +1,10 @@
 import { VENUE_BIN_DAYS } from '@restro/core'
 import { ArchiveRestoreIcon } from 'lucide-react'
-import { notFound } from 'next/navigation'
+import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 
 import { DeletedVenuesList } from '@/components/admin/deleted-venues-list'
+import { SETTINGS_SECTIONS, settingsSectionPath } from '@/components/admin/settings-sections'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { canDeleteVenue } from '@/server/roles'
 import { requireTenant } from '@/server/session'
@@ -15,12 +16,13 @@ export async function generateMetadata() {
 }
 
 // Settings -> Deleted venues (D76, D83): the venues an owner deleted, each with the day it was
-// deleted, the day the bin erases it, a Restore button and "Delete permanently". Owners only: for
-// anyone else the page does not exist. Restoring brings a venue back unpublished, with its till
+// deleted, the day the bin erases it, a Restore button and "Delete permanently". Owners only: anyone
+// else lands on General, the first section, with the address saying so, as a venue's Settings
+// section they may not open does (S26). Restoring brings a venue back unpublished, with its till
 // linked again when that is still free.
 export default async function SettingsDeletedVenuesPage() {
   const { organization } = await requireTenant()
-  if (!canDeleteVenue(organization.role)) notFound()
+  if (!canDeleteVenue(organization.role)) redirect(settingsSectionPath(SETTINGS_SECTIONS[0]))
   const t = await getTranslations('settings')
   const archived = await listArchivedVenues(organization.id)
 

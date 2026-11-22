@@ -144,15 +144,14 @@ test('the preview counts the open bills and warns before the closing hour; Keep 
 
   const dialog = await openDialog(page)
   await expect(dialog.getByRole('heading')).toHaveText('End the night now?')
-  // The consequence in the preview's numbers: Петров finishes, the two booked parties become
-  // No-show, and the open tables' codes close.
-  await expect(dialog.getByTestId('night-end-preview')).toContainText(
-    /1 party becomes Finished, 2 become No-show, and \d+ table codes? closes?\./,
-  )
-  // The open bills, counted, and the closing hour that has not come yet.
-  await expect(dialog.getByTestId('night-end-bills')).toHaveText(
-    /^\d+ bills? (is|are) still open\.$/,
-  )
+  // The consequence, one line each (S13): the open tables close for phones, the open bills stay
+  // in the POS, Петров finishes and the two booked parties become No-show.
+  await expect(dialog.getByTestId('night-end-preview')).toHaveText('No phone can order after that.')
+  await expect(dialog.getByTestId('night-end-codes')).toHaveText(/^\d+ tables? closes? for phones$/)
+  await expect(dialog.getByTestId('night-end-bills')).toHaveText(/^\d+ bills? stays? open in .+$/)
+  await expect(dialog.getByTestId('night-end-finished')).toHaveText('Finished: 1')
+  await expect(dialog.getByTestId('night-end-noshows')).toHaveText('No-shows: 2')
+  // The closing hour that has not come yet.
   await expect(dialog.getByTestId('night-end-early')).toContainText('Your club closes at 06:59.')
   await expect(dialog.getByTestId('night-end-confirm')).toHaveText('End the night early')
 
@@ -193,19 +192,21 @@ test('ending it closes the night: the banner on Tonight and Reservations, and th
 
   await dialog.getByTestId('night-end-confirm').click()
   await expect(toast(page, 'The night is ended')).toBeVisible()
-  await expect(page.getByTestId('night-ended')).toHaveText('This night is closed.')
-  // The bills the close left open are one alert row, with the hour and where to close them.
+  // The bills the close left open are one alert row, with the hour and where to close them; it
+  // says the night ended, so the banner that says it too stays away (S13: the notice once).
   const row = page.locator('[data-testid="action-row"][data-kind="night_end"]')
   await expect(row).toHaveCount(1)
   await expect(row).toContainText(`${count} bill`)
   await expect(row).toContainText('The night ended at')
+  await expect(page.getByTestId('night-ended')).toHaveCount(0)
   // The night has ended and every table closed with it (no card is held in this night), so the
   // tables menu has nothing left to offer: neither Close all nor ending the night again.
   await expect(page.getByRole('button', { name: 'More actions' })).toHaveCount(0)
 
   await openReservations(page)
+  // The banner names the night by its date (S23), never "this night".
   await expect(page.locator('[data-testid="rv-banner"][data-kind="closed"]')).toContainText(
-    'This night is closed.',
+    /The night of \d{1,2} [A-Z][a-z]+ is closed\./,
   )
   await expect(rows(page).filter({ hasText: 'Иванова' })).toContainText('No-show')
   await expect(rows(page).filter({ hasText: 'Димитров' })).toContainText('No-show')

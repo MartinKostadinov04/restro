@@ -48,7 +48,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Red wine</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Red wine<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">€8.00</div>
@@ -65,7 +67,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">White wine</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">White wine<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">€7.50</div>
@@ -89,7 +93,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Lemonade</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Lemonade<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">€4.50</div>

@@ -3,8 +3,11 @@
 // page). Each card has the venue's logo (else its name), the table's name and its area, the code,
 // the address as text and "Сканирайте за менюто / Scan for the menu". No PDF library: the page is plain HTML with a
 // print stylesheet (`@page` A4, a page break after every sheet), and the browser's "Print / Save as
-// PDF" turns it into the file. The cards are always black on white (a code must scan whatever the
-// admin's theme is) and always in both languages (it is printed matter, not interface).
+// PDF" turns it into the file. The A4 page (210 × 296 mm, two across, three down) is the print
+// layout only: on a screen a sheet is at most A4 wide and its cards flow to the window, so a phone
+// never scrolls sideways (WCAG 1.4.10; screen round 11-18, S22). The cards are always black on
+// white (a code must scan whatever the admin's theme is) and always in both languages (it is
+// printed matter, not interface).
 import bg from '../../messages/bg.json'
 import en from '../../messages/en.json'
 
@@ -52,21 +55,21 @@ export const PRINT_CSS = `
 body { background: #fff; color: #000; }
 .pc-root { background: #fff; color: #000; color-scheme: light; min-height: 100vh; padding: 0 0 16px; }
 .pc-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; box-sizing: border-box; width: 210mm; max-width: 100%; margin: 0 auto; padding: 16px; }
-.pc-sheet { box-sizing: border-box; width: 210mm; height: 296mm; padding: 10mm; margin: 0 auto 12px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, 1fr); background: #fff; break-after: page; break-inside: avoid; overflow: hidden; box-shadow: 0 0 0 1px #d4d4d8, 0 6px 16px rgba(0, 0, 0, 0.08); }
+.pc-sheet { box-sizing: border-box; width: 100%; max-width: 210mm; padding: 4mm; margin: 0 auto 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 75mm), 1fr)); gap: 3mm; background: #fff; break-after: page; break-inside: avoid; overflow: hidden; box-shadow: 0 0 0 1px #d4d4d8, 0 6px 16px rgba(0, 0, 0, 0.08); }
 .pc-card { box-sizing: border-box; min-width: 0; min-height: 0; border: 0.25mm dashed #9ca3af; padding: 4mm; display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 1.5mm; text-align: center; break-inside: avoid; overflow: hidden; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .pc-venue { display: flex; align-items: center; justify-content: center; height: 8mm; max-width: 100%; font: 700 13pt/1.1 system-ui, sans-serif; overflow: hidden; }
-.pc-venue img { max-height: 8mm; max-width: 70mm; object-fit: contain; }
+.pc-venue img { max-height: 8mm; max-width: min(70mm, 100%); object-fit: contain; }
 .pc-table { display: grid; gap: 0.5mm; justify-items: center; max-width: 100%; }
 .pc-caption { font: 600 8pt/1 system-ui, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #52525b; }
-.pc-label { font: 800 30pt/1.05 system-ui, sans-serif; overflow-wrap: anywhere; max-width: 85mm; }
-.pc-area { font: 600 9pt/1.1 system-ui, sans-serif; color: #52525b; overflow-wrap: anywhere; max-width: 85mm; }
+.pc-label { font: 800 30pt/1.05 system-ui, sans-serif; overflow-wrap: anywhere; max-width: min(85mm, 100%); }
+.pc-area { font: 600 9pt/1.1 system-ui, sans-serif; color: #52525b; overflow-wrap: anywhere; max-width: min(85mm, 100%); }
 .pc-qr { width: 42mm; height: 42mm; display: block; background: #fff; }
-.pc-address { font: 6.5pt/1.25 ui-monospace, Consolas, monospace; color: #3f3f46; overflow-wrap: anywhere; max-width: 86mm; max-height: 9mm; overflow: hidden; }
+.pc-address { font: 6.5pt/1.25 ui-monospace, Consolas, monospace; color: #3f3f46; overflow-wrap: anywhere; max-width: min(86mm, 100%); max-height: 9mm; overflow: hidden; }
 .pc-scan { margin: 0; font: 600 10pt/1.15 system-ui, sans-serif; }
 @media print {
   .pc-toolbar { display: none; }
   .pc-root { padding: 0; min-height: 0; }
-  .pc-sheet { margin: 0; box-shadow: none; }
+  .pc-sheet { width: 210mm; max-width: none; height: 296mm; padding: 10mm; gap: 0; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, 1fr); margin: 0; box-shadow: none; }
   .pc-sheet:last-child { break-after: auto; }
 }
 `

@@ -1,19 +1,33 @@
 import { expect, type Frame, type Page, test } from '@playwright/test'
 
-import { ADMIN_EMAIL, ADMIN_PASSWORD, INTEGRATION_OWNER_EMAIL } from './support'
+import { runScriptWith } from './global-setup'
+import {
+  ADMIN_EMAIL,
+  ADMIN_PASSWORD,
+  INTEGRATION_OWNER_EMAIL,
+  TONIGHT_OWNER_EMAIL,
+  TONIGHT_PIN_PEPPER,
+  TONIGHT_VENUE_NAME,
+} from './support'
 
 // D123: the manager's phone is a supported admin device, and a tappable control has a hit area of
 // at least 44 x 44 px (Restro's own floor, docs/guides/operational-screens.md, Accessibility). This
-// walks the Studio's Structure screen, the Design page with the guest template in its preview, and
-// Settings -> Integrations on a 390 px phone and checks
+// walks the Studio's Structure screen, the item sheet and the Publish dialog over it, the Design page
+// with the guest template in its preview, Settings -> Integrations, Staff and Ordering, the QR links
+// guide, and Venue › Reservations (the night's list, a reservation's sheet, Guests, and the spot
+// pickers Change tables and Give a spot on the list a phone opens them on: S17 of the 11-18 screen
+// round) on a 390 px phone, and Tonight on a phone and the bar tablet, and checks
 // every control on them, so the floor cannot slip back unseen. A control may look smaller than 44 px
 // if its hit area is extended around it (the `tap-area` utility in globals.css), so the check is
 // not on the element's box: it asks the browser what is under the pointer at the edges of a
-// 44 x 44 px square centred on the control.
+// 44 x 44 px square centred on the control. On a laptop (no touch) the item sheet and the Publish
+// dialog are held to WCAG 2.5.8's 24 x 24 px the same way.
 test.describe.configure({ mode: 'serial' })
 test.setTimeout(120_000)
 
 const FLOOR = 44
+/** WCAG 2.5.8 (target size, minimum): a mouse target on a wide screen. */
+const DESKTOP_FLOOR = 24
 /** How far inside the square's corners the probe sits, so a control's rounded corner still counts. */
 const CORNER_INSET = 8
 
@@ -26,13 +40,15 @@ interface Miss {
 }
 
 /**
- * Every tappable control now on the page whose 44 x 44 px square is not all its own. Controls
+ * Every tappable control now on the page whose `floorPx` x `floorPx` square (44 px by default,
+ * 24 px for a mouse on a laptop) is not all its own. Controls
  * drawn but out of reach (hidden, disabled-by-attribute inside inert parts) are skipped. A link
  * inside a sentence is skipped too (WCAG 2.5.8 exempts inline links).
  */
 async function floorMisses(
   page: Page | Frame,
   scope?: string,
+  floorPx: number = FLOOR,
 ): Promise<{ checked: number; misses: Miss[] }> {
   return (page as Frame).evaluate(
     ({ floor, inset, scopeSelector }) => {
@@ -151,12 +167,22 @@ async function floorMisses(
       }
       return { checked, misses }
     },
-    { floor: FLOOR, inset: CORNER_INSET, scopeSelector: scope ?? null },
+    // The inset scales with the square, capped at CORNER_INSET: 8 px in a 44 px square (unchanged),
+    // 4 px in a 24 px one. An 8 px inset there would leave only the middle 8 px of the square to
+    // probe, and a 24 px control with rounded corners passes or fails on its centre alone; at 4 px
+    // the probes still sit inside a rounded corner but test most of the square's edge.
+    { floor: floorPx, inset: Math.min(CORNER_INSET, floorPx / 6), scopeSelector: scope ?? null },
   )
 }
 
 /** `atLeast`: how many controls the screen has, so a page that failed to draw cannot pass. */
-async function expectFloor(page: Page | Frame, where: string, atLeast: number, scope?: string) {
+async function expectFloor(
+  page: Page | Frame,
+  where: string,
+  atLeast: number,
+  scope?: string,
+  floorPx: number = FLOOR,
+) {
   // A menu opens with a zoom, and a box measured half-way is smaller than it will be.
   await (page as Frame).evaluate(() =>
     Promise.all(
@@ -168,12 +194,12 @@ async function expectFloor(page: Page | Frame, where: string, atLeast: number, s
         .map((animation) => animation.finished.catch(() => undefined)),
     ),
   )
-  const { checked, misses } = await floorMisses(page, scope)
+  const { checked, misses } = await floorMisses(page, scope, floorPx)
   expect(checked, `${where}: controls found`).toBeGreaterThanOrEqual(atLeast)
-  expect(misses, `${where}: controls under ${FLOOR} x ${FLOOR} px`).toEqual([])
+  expect(misses, `${where}: controls under ${floorPx} x ${floorPx} px`).toEqual([])
 }
 
-async function signIn(page: Page, email: string) {
+async function signIn(page: Page, email: string, lands = /\/venues(\/vn_[^/?]+\?tab=\w+)?$/) {
   // Better Auth allows a few sign-ins per 10 seconds, and other specs signed in just before.
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await page.goto('/venues')
@@ -181,7 +207,8 @@ async function signIn(page: Page, email: string) {
     await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
     await page.getByRole('button', { name: 'Вход' }).click()
     try {
-      await expect(page).toHaveURL(/\/venues$/, { timeout: 5_000 })
+      // A person with one venue may land on it straight away.
+      await expect(page).toHaveURL(lands, { timeout: 5_000 })
       return
     } catch {
       await page.waitForTimeout(10_000)
@@ -205,6 +232,60 @@ async function openComposer(page: Page) {
   await expect(page.getByTestId('section-picker')).toContainText('Коктейли')
 }
 
+/** Opens the first item's sheet, measures its controls (Details tab) and closes it. */
+async function checkItemSheet(page: Page, floorPx: number = FLOOR) {
+  await page.getByTestId('item-open').first().click()
+  await expect(page.getByTestId('item-sheet-details')).toBeVisible()
+  await expectFloor(page, 'item sheet', 5, '[data-testid="item-sheet"]', floorPx)
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('item-sheet')).toHaveCount(0)
+}
+
+/**
+ * Opens the Publish dialog and measures it, without publishing. With nothing to publish the button is
+ * off, so one item is hidden first and shown again after, even when the measure fails: the draft
+ * ends as it began, and the later tests of this serial file see the menu they expect.
+ */
+async function checkPublishDialog(page: Page, floorPx: number = FLOOR) {
+  const button = page.getByTestId('publish-button')
+  await expect(button).toBeVisible()
+  let toggled: string | null = null
+  if (await button.isDisabled()) {
+    const row = page
+      .getByTestId('item-row')
+      .filter({ has: page.locator('[data-testid="item-visible"]:not([disabled])') })
+      .first()
+    toggled = await row.getAttribute('data-item-id')
+    await row.getByTestId('item-visible').click()
+    await expect(button).toBeEnabled()
+  }
+  const dialog = page.getByTestId('publish-confirm-dialog')
+  try {
+    const several = (await button.getAttribute('aria-haspopup')) === 'menu'
+    await button.click()
+    // Several menus: the button opens a list of them first (a disabled row carries data-disabled).
+    if (several) {
+      await page.locator('[data-testid="publish-menu-row"]:not([data-disabled])').first().click()
+    }
+    await expect(dialog).toBeVisible()
+    await expectFloor(page, 'Publish dialog', 2, '[data-testid="publish-confirm-dialog"]', floorPx)
+  } finally {
+    // Close whatever is open (the dialog, or the menu list) before the row can be reached.
+    if ((await dialog.count()) > 0 || (await page.getByRole('menu').count()) > 0) {
+      await page.keyboard.press('Escape')
+    }
+    await expect(dialog).toHaveCount(0)
+    if (toggled !== null) {
+      // Show the item again, and wait until the switch says it is shown before the next test runs.
+      const visible = page
+        .locator(`[data-testid="item-row"][data-item-id="${toggled}"]`)
+        .getByTestId('item-visible')
+      await visible.click()
+      await expect(visible).toBeChecked()
+    }
+  }
+}
+
 /** The Studio's Structure, what opens over it, and the Design page, on the screen's own controls. */
 async function walkComposer(page: Page) {
   // Guest features is on Structure, under the menu (stacked switches and checkboxes).
@@ -223,6 +304,9 @@ async function walkComposer(page: Page) {
   // are measured here; the rows were measured above.
   await expectFloor(page, 'one item selected', 2, '[data-testid="selection-bar"]')
   await page.getByTestId('clear-selection').click()
+  // The item sheet and the Publish dialog, over Structure.
+  await checkItemSheet(page)
+  await checkPublishDialog(page)
   // The Design page, and the guest template in its preview. The template is measured once it is
   // mounted, in its own document at the frame's width (RR-87): the real screen, not the moment before.
   const venueId = /\/venues\/(vn_[0-9A-Za-z]+)/.exec(page.url())?.[1]
@@ -270,6 +354,51 @@ test('the same screens on a tablet-wide touch screen', async ({ browser }) => {
   }
 })
 
+test('Settings › Staff, Settings › Ordering and the QR links guide: a 44 px hit area on a phone (S18)', async ({
+  browser,
+}) => {
+  const context = await browser.newContext(phone)
+  const page = await context.newPage()
+  try {
+    await signIn(page, ADMIN_EMAIL)
+    await page.getByTestId('venue-card').first().getByRole('link', { name: 'Отвори' }).click()
+    await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]+/)
+    const venueId = /\/venues\/(vn_[0-9A-Za-z]+)/.exec(page.url())?.[1]
+    // The screens' own controls; the header and its trail are measured with the navigation.
+    await page.goto(`/venues/${venueId}?tab=settings&section=staff`)
+    await expect(page.getByTestId('staff-panel')).toBeVisible()
+    await expectFloor(page, 'Settings › Staff', 3, '[data-testid="staff-panel"]')
+    await page.goto(`/venues/${venueId}?tab=settings&section=ordering`)
+    await expect(page.getByTestId('ordering-panel')).toBeVisible()
+    await expectFloor(page, 'Settings › Ordering', 3, '[data-testid="ordering-panel"]')
+    await page.goto(`/guides/qr-links?venue=${venueId}`)
+    await expect(page.getByTestId('guide-back')).toBeVisible()
+    await expectFloor(page, 'the QR links guide', 1, '[data-testid="guide-page"]')
+  } finally {
+    await context.close().catch(() => undefined)
+  }
+})
+
+// A laptop with a mouse: no `tap-area`, so the drawn size is the target. WCAG 2.5.8 asks 24 px
+// (the dialog's close button was 15 px, S21).
+test('the item sheet and the Publish dialog: every control is at least 24 px on a laptop', async ({
+  browser,
+}) => {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
+  const page = await context.newPage()
+  try {
+    expect(
+      await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches),
+      'the context reports a fine pointer',
+    ).toBe(false)
+    await openComposer(page)
+    await checkItemSheet(page, DESKTOP_FLOOR)
+    await checkPublishDialog(page, DESKTOP_FLOOR)
+  } finally {
+    await context.close().catch(() => undefined)
+  }
+})
+
 test('Settings -> Integrations: every control has a 44 px hit area on a phone', async ({
   browser,
 }) => {
@@ -302,4 +431,213 @@ test('Settings -> Integrations: every control has a 44 px hit area on a phone', 
   } finally {
     await context.close()
   }
+})
+
+/** Tonight's fixture (scripts/seed-tonight-e2e.ts): the club, then a night. */
+function seedTonight(...args: string[]): string {
+  return runScriptWith(
+    { STAFF_PIN_PEPPER: TONIGHT_PIN_PEPPER },
+    './scripts/seed-tonight-e2e.ts',
+    ...args,
+  )
+}
+
+/**
+ * Tonight's four screens and what opens over them, each measured inside its own box: the venue's
+ * header around them is another screen's. A busy night, so every kind of row and tile is drawn.
+ */
+async function walkTonight(page: Page, where: string) {
+  seedTonight('seed')
+  seedTonight('night', 'busy')
+  await signIn(page, TONIGHT_OWNER_EMAIL, /\/venues(\/vn_[^/?]+\?tab=\w+)?$/)
+  const venue = /\/venues\/vn_[0-9A-Za-z]+/.exec(page.url())?.[0]
+  if (venue === undefined) {
+    await page.getByTestId('venue-card').first().getByRole('link').first().click()
+    await expect(page).toHaveURL(/\/venues\/vn_[^/?]+/)
+  }
+  const base = /\/venues\/vn_[0-9A-Za-z]+/.exec(page.url())?.[0] ?? ''
+  await page.goto(`${base}?tab=tonight`)
+  const tonight = page.getByTestId('tonight')
+  await expect(tonight).toBeVisible()
+  await expectFloor(page, `${where}: Tonight`, 5, '[data-testid="tonight"]')
+  // The sections: the tab bar from 1024 px (it sits outside each section's box), the switch below.
+  const tabBar = page.getByTestId('tonight-section-tabs')
+  if (await tabBar.isVisible()) {
+    await expectFloor(page, `${where}: the section tabs`, 4, '[data-testid="tonight-section-tabs"]')
+  } else {
+    const box = await page.locator('[data-testid="tonight-section-switch"]:visible').boundingBox()
+    expect(box, `${where}: the section switch is drawn`).not.toBeNull()
+    expect(box?.height ?? 0, `${where}: the section switch's height`).toBeGreaterThanOrEqual(44)
+    expect(box?.width ?? 0, `${where}: the section switch's width`).toBeGreaterThanOrEqual(44)
+  }
+  // On a phone one part shows at a time; Tables is the other one.
+  const tables = tonight.getByRole('button', { name: 'Маси', exact: true })
+  if (await tables.isVisible()) {
+    await tables.click()
+    await expectFloor(page, `${where}: Tonight, the tables`, 6, '[data-testid="tonight"]')
+  }
+  // The tables menu, and a table's sheet (a drawer on a phone).
+  await page.getByRole('button', { name: 'Още действия' }).click()
+  await expectFloor(page, `${where}: the tables menu`, 1, '[role="menu"]')
+  await page.keyboard.press('Escape')
+  await page.getByTestId('table-tile').first().click()
+  await expect(page.getByTestId('table-sheet')).toBeVisible()
+  await expectFloor(page, `${where}: a table's sheet`, 2, '[data-testid="table-sheet"]')
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('table-sheet')).toHaveCount(0)
+  for (const view of ['sent', 'log', 'night']) {
+    await page.goto(`${base}?tab=tonight&view=${view}`)
+    await expect(page.getByTestId(`tonight-${view}`)).toBeVisible()
+    await expectFloor(page, `${where}: Tonight, ${view}`, 2, `[data-testid="tonight-${view}"]`)
+  }
+}
+
+test('Tonight: every control has a 44 px hit area on a phone', async ({ browser }) => {
+  const context = await browser.newContext(phone)
+  const page = await context.newPage()
+  try {
+    await walkTonight(page, '390 px')
+  } finally {
+    await context.close().catch(() => undefined)
+  }
+})
+
+test('Tonight: every control has a 44 px hit area on the bar tablet', async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 1180, height: 820 },
+    hasTouch: true,
+  })
+  const page = await context.newPage()
+  try {
+    await walkTonight(page, '1180 px')
+  } finally {
+    await context.close().catch(() => undefined)
+  }
+})
+
+// The screen round's 44 px rows for Reservations: the night's list (its row actions and "…"), a
+// reservation's sheet, and Guests with a row's "…" open. Scoped to the tab itself: the venue's
+// header and navigation are checked with their own screens. The night is written before the test,
+// in its own hook: seeding it inside the test spent most of the test's two minutes.
+test.describe('Venue › Reservations', () => {
+  test.beforeAll(() => {
+    test.setTimeout(240_000)
+    const fixture = (...args: string[]) =>
+      runScriptWith(
+        { STAFF_PIN_PEPPER: TONIGHT_PIN_PEPPER },
+        './scripts/seed-tonight-e2e.ts',
+        ...args,
+      )
+    fixture('seed')
+    fixture('night', 'empty')
+    fixture('book', 'book')
+  })
+
+  test('every control has a 44 px hit area on a phone', async ({ browser }) => {
+    const context = await browser.newContext(phone)
+    const page = await context.newPage()
+    try {
+      await signIn(page, TONIGHT_OWNER_EMAIL)
+      if (!/\/venues\/vn_/.test(page.url())) {
+        // On a phone the sidebar that names the venue is folded away: the list's card is the way
+        // in, and its one link is «Отвори».
+        await page
+          .getByTestId('venue-card')
+          .filter({ hasText: TONIGHT_VENUE_NAME })
+          .getByRole('link', { name: 'Отвори' })
+          .click()
+        await expect(page).toHaveURL(/\/venues\/vn_[^/?]+/)
+      }
+      const venueId = new URL(page.url()).pathname.split('/')[2] ?? ''
+
+      await page.goto(`/venues/${venueId}?tab=reservations`)
+      const night = page.getByTestId('reservations-night')
+      await expect(night.getByTestId('rv-row').first()).toBeVisible()
+      await expectFloor(page, 'reservations, the night', 6, '[data-testid="reservations-night"]')
+
+      // The fixture's night has rows with a "…" (Иванова's, still coming): it is there to check.
+      const more = night.getByTestId('rv-row-more').first()
+      await expect(more).toBeVisible()
+      await more.click()
+      await expectFloor(page, 'reservations, a row’s "…" open', 1, '[role="menu"]')
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('menu')).toHaveCount(0)
+
+      // The row's own button opens the sheet; its centre may be one of the row's actions on a phone.
+      await night.getByTestId('rv-row-open').first().click()
+      const sheet = page.getByTestId('rv-sheet')
+      await expect(sheet).toBeVisible()
+      await expect(sheet).toHaveAttribute('aria-busy', 'false')
+      await expectFloor(page, 'reservations, a reservation', 2, '[data-testid="rv-sheet"]')
+      await page.keyboard.press('Escape')
+
+      await page.goto(`/venues/${venueId}?tab=reservations&view=guests`)
+      const guests = page.getByTestId('reservations-guests')
+      await expect(guests).toBeVisible()
+      await expectFloor(page, 'reservations, guests', 2, '[data-testid="reservations-guests"]')
+      // The fixture's bookings carry guest records, so Guests has rows with a "…".
+      const guestMore = guests.getByTestId('rv-g-row-more').first()
+      await expect(guestMore).toBeVisible()
+      await guestMore.click()
+      await expectFloor(page, 'reservations, a guest’s "…" open', 1, '[role="menu"]')
+    } finally {
+      await context.close()
+    }
+  })
+
+  // The spot pickers a phone opens on their list (S17 of the 11-18 screen round): Change tables and
+  // Give a spot, each row a 44 px target. On the night the hook wrote: Иванова booked on Маса 7.
+  test('Change tables and Give a spot on the list have 44 px hit areas on a phone', async ({
+    browser,
+  }) => {
+    const context = await browser.newContext(phone)
+    const page = await context.newPage()
+    try {
+      await signIn(page, TONIGHT_OWNER_EMAIL)
+      if (!/\/venues\/vn_/.test(page.url())) {
+        await page
+          .getByTestId('venue-card')
+          .filter({ hasText: TONIGHT_VENUE_NAME })
+          .getByRole('link', { name: 'Отвори' })
+          .click()
+        await expect(page).toHaveURL(/\/venues\/vn_[^/?]+/)
+      }
+      const venueId = new URL(page.url()).pathname.split('/')[2] ?? ''
+      await page.goto(`/venues/${venueId}?tab=reservations`)
+      await expect(page.getByTestId('reservations-night')).toBeVisible()
+
+      // Change tables opens on the named list on a phone; every row's checkbox is a 44 px target.
+      await page
+        .getByTestId('rv-row')
+        .filter({ hasText: 'Иванова' })
+        .first()
+        .getByTestId('rv-row-open')
+        .click()
+      await page.getByTestId('rv-sheet').getByTestId('rv-sheet-change-tables').click()
+      const changing = page.getByTestId('rv-ct-sheet')
+      await expect(changing.getByTestId('rv-pick-list')).toBeVisible()
+      await expectFloor(page, 'Change tables, the list', 8, '[data-testid="rv-ct-sheet"]')
+      await changing.getByTestId('rv-ct-close').click()
+      await expect(changing).toHaveCount(0)
+
+      // Give a spot, from a party written onto the waiting list: each row is a 44 px button.
+      await page.goto(`/venues/${venueId}?tab=reservations`)
+      await page.getByTestId('rv-wl-add').click()
+      await page.getByTestId('rv-wl-name').fill('Чакаща 44')
+      await page.getByTestId('rv-wl-phone').fill('+359 888 777 244')
+      await page.getByTestId('rv-wl-guests').fill('2')
+      await page.getByTestId('rv-wl-save').click()
+      await expect(page.getByTestId('rv-waiting-note')).toBeVisible()
+      await page
+        .getByTestId('rv-row')
+        .filter({ hasText: 'Чакаща 44' })
+        .first()
+        .getByTestId('rv-row-give')
+        .click()
+      await expect(page.getByTestId('rv-give').getByTestId('rv-pick-list')).toBeVisible()
+      await expectFloor(page, 'Give a spot, the list', 8, '[data-testid="rv-give"]')
+    } finally {
+      await context.close()
+    }
+  })
 })

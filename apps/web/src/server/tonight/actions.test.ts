@@ -48,6 +48,7 @@ import {
   doneAlertAction,
   liftOrderingAction,
   liftRestroPauseAction,
+  notServedAction,
   openAllTablesAction,
   openTableAction,
   pauseOrderingAction,
@@ -55,6 +56,7 @@ import {
   receiptUnbroughtAction,
   stornoDoneAction,
   stornoUndoAction,
+  subscribePushAction,
   undoOpenAllAction,
   undoPauseAction,
   undoWaiterCallAction,
@@ -214,6 +216,30 @@ describe('marking a paper receipt Brought (#200)', () => {
       { venueId: VENUE },
     ]) {
       expect(await receiptBroughtAction(input)).toEqual({ ok: false, error: 'invalid' })
+    }
+    expect(runTableCommand).not.toHaveBeenCalled()
+  })
+})
+
+describe('Not served on a paid line (#451)', () => {
+  it('sends a whole or a decimal quantity on to the refund', async () => {
+    for (const quantity of ['1', '0.5']) {
+      runTableCommand.mockResolvedValueOnce({ ok: true, details: {} })
+      expect(
+        await notServedAction({ venueId: VENUE, paymentId: PAYMENT, position: 1, quantity }),
+      ).toEqual({ ok: true, details: {} })
+    }
+    expect(runTableCommand.mock.calls.map((call) => call[1])).toEqual([
+      { type: 'payment.refund_line', paymentId: PAYMENT, position: 1, quantity: '1' },
+      { type: 'payment.refund_line', paymentId: PAYMENT, position: 1, quantity: '0.5' },
+    ])
+  })
+
+  it('refuses a quantity that is not a decimal number, before any command', async () => {
+    for (const quantity of ['d', '1x5', '.5', '1.']) {
+      expect(
+        await notServedAction({ venueId: VENUE, paymentId: PAYMENT, position: 1, quantity }),
+      ).toEqual({ ok: false, error: 'invalid' })
     }
     expect(runTableCommand).not.toHaveBeenCalled()
   })
@@ -479,5 +505,22 @@ describe('the person a shared device remembers (D141 12.11, #324)', () => {
     await liftRestroPauseAction({ venueId: VENUE, pauseId: PAUSE })
     expect(personAtSharedDevice).not.toHaveBeenCalled()
     expect(runTableCommand.mock.calls[0]?.[0]).toMatchObject({ actor: { kind: 'operator' } })
+  })
+
+  it("registers the tablet's push address as its account, not the person it remembers (C1)", async () => {
+    runTableCommand.mockResolvedValue({ ok: true, details: {} })
+    personAtSharedDevice.mockResolvedValue(maria)
+    const push = {
+      venueId: VENUE,
+      endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
+      p256dh: `B${'p'.repeat(86)}`,
+      auth: 'a'.repeat(22),
+    }
+    expect(await subscribePushAction(push)).toEqual({ ok: true, details: {} })
+    expect(personAtSharedDevice).not.toHaveBeenCalled()
+    expect(runTableCommand.mock.calls[0]?.[0]).toMatchObject({
+      actor: { kind: 'user', userId: 'us_1', sessionId: 'sess-1' },
+    })
+    expect(runTableCommand.mock.calls[0]?.[1]).toMatchObject({ type: 'push.subscribe' })
   })
 })

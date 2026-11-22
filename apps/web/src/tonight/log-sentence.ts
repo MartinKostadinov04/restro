@@ -171,9 +171,12 @@ export const SENTENCES = {
       : c.say('lg_receipt_brought', { table: c.table(l) }),
   'service_day.closed': (l, c) => c.say('lg_day_closed', { n: l.sentOrdersOfDay ?? 0 }),
   'guard.tripped': (l, c) => c.say('lg_guard', { what: c.say(`lg_g_${l.guard ?? 'other'}`) }),
+  // Which settings changed, by their part of Settings (S15): "Settings changed: ordering hours".
   'settings.changed': (l, c) =>
     c.say('lg_settings', {
-      what: c.say(l.setting === 'pay_table' ? 'lg_w_pay_table' : 'lg_w_setting'),
+      what: (l.setting.length === 0 ? ['setting'] : l.setting)
+        .map((word) => c.say(`lg_w_${word}`))
+        .join(', '),
     }),
   // A role change names the role and how many abilities it holds now (#366): a default role the
   // venue ticked is read in the Log like any other, and the keys themselves are in the entry.
@@ -195,6 +198,12 @@ export const SENTENCES = {
       ? c.say('lg_code_seen_many', { count: l.codeCount })
       : c.say('lg_code_seen', { table: c.table(l) }),
   'payment.state': (l, c) => {
+    // A step that is no new state of the money says what it was, never the charge again (S20).
+    if (l.paymentReason !== null) {
+      return c.say(l.paymentReason === 'table_freed' ? 'lg_pay_freed' : 'lg_pay_release_refused', {
+        table: c.table(l),
+      })
+    }
     const word = l.paymentState === null ? undefined : c.paymentStates[l.paymentState]
     return word === undefined || l.amountMinor === null
       ? c.say('lg_pay_plain', { table: c.table(l) })

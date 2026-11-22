@@ -5,9 +5,10 @@
 // the reason, as a segmented pick of five words — no free text, because the reason is stored as a
 // code and read back in whichever language the next person works in.
 //
-// Nothing is chosen for the person: a reason nobody picked would be a reason nobody meant, so the
-// confirming button stays off until one is picked. That is the ticket's budget exactly — the sheet's
-// "Block…", the reason, "Block spot".
+// Nothing is chosen for the person: a reason nobody picked would be a reason nobody meant. The
+// confirming button is never off (Patterns: a write the person must accept the consequence of): a
+// tap with no reason says «Изберете причина.» beside the reasons and keeps the dialog open (WCAG
+// 3.3.1; S9). That is the ticket's budget exactly: the sheet's "Block…", the reason, "Block spot".
 //
 // The nights are optional and plain date fields, so the keyboard reaches them like any other form
 // (2.1.1). Left empty, the block starts now; the night the plan is showing is filled in when it is
@@ -29,7 +30,7 @@ import { Label } from '@/components/ui/label'
 import { useFieldValidity } from '@/lib/use-field-validity'
 import { WRAPS } from '@/lib/wrapping'
 import { BLOCK_REASONS, type BlockReason } from './block-reasons'
-import { useBlockReasonWord } from './plan-words'
+import { useBlockReasonWord, useSpotCalled } from './plan-words'
 
 /** What the dialog asks for: the reason, and the nights where somebody set them. */
 export interface BlockChoice {
@@ -57,7 +58,10 @@ export function BlockDialog({
 }) {
   const t = useTranslations('reservations')
   const word = useBlockReasonWord()
+  const called = useSpotCalled()
   const [reason, setReason] = useState<BlockReason | null>(null)
+  /** Set by a tap on Block with no reason; gone once one is picked. */
+  const [missing, setMissing] = useState(false)
   const [from, setFrom] = useState(day === today ? '' : day)
   const [until, setUntil] = useState('')
   const validity = useFieldValidity()
@@ -67,11 +71,14 @@ export function BlockDialog({
       <DialogContent className="max-w-md" data-testid="rv-block-dialog">
         <DialogHeader>
           <DialogTitle className="[overflow-wrap:anywhere]">
-            {t('p_block_t', { spot: spotName })}
+            {t('p_block_t', { spot: called(spotName) })}
           </DialogTitle>
           <DialogDescription>{t('p_block_b')}</DialogDescription>
         </DialogHeader>
-        <fieldset className="flex min-w-0 flex-wrap gap-2">
+        <fieldset
+          className="flex min-w-0 flex-wrap gap-2"
+          aria-describedby={missing && reason === null ? 'rv-block-reason-missing' : undefined}
+        >
           <legend className="mb-2 text-sm font-medium">{t('p_reason')}</legend>
           {BLOCK_REASONS.map((value) => (
             <Button
@@ -87,6 +94,16 @@ export function BlockDialog({
               {word(value)}
             </Button>
           ))}
+          {missing && reason === null ? (
+            <p
+              id="rv-block-reason-missing"
+              role="alert"
+              className="w-full text-sm text-destructive"
+              data-testid="rv-block-reason-missing"
+            >
+              {t('p_reason_missing')}
+            </p>
+          ) : null}
         </fieldset>
         <div className="space-y-2">
           <p className="text-sm font-medium">{t('p_block_dates')}</p>
@@ -118,10 +135,14 @@ export function BlockDialog({
           <Button
             type="button"
             className={WRAPS}
-            disabled={reason === null || busy}
+            disabled={busy}
             data-testid="rv-block-do"
             onClick={() => {
-              if (reason === null || validity.blocked()) return
+              if (reason === null) {
+                setMissing(true)
+                return
+              }
+              if (validity.blocked()) return
               onBlock({
                 reason,
                 ...(from === '' ? {} : { from }),

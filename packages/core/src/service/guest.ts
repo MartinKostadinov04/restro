@@ -81,11 +81,11 @@ import {
   passHolds,
   sealLocationPass,
 } from './location-pass'
-import { isFinalPaymentState } from './pay'
+import { isFinalPaymentState, type PAY_REFUSALS } from './pay'
 import type { PayFirstState, PayingState } from './pay-first'
 import { paymentNumberOf } from './payment-number'
 import { readTableState, type TableStateRead, type TableStateUnchanged } from './read'
-import type { ServiceResult } from './results'
+import type { Refused, ServiceResult } from './results'
 import { loadSendMenu } from './send-menu'
 
 /** The screens a phone polls from (design §6): the menu polls slower than the order and the bill. */
@@ -380,6 +380,8 @@ interface GuardRead {
   readonly dayEndsAt: string
   /** The table's open sitting, or null. */
   readonly sittingId: string | null
+  /** When that sitting opened (ms since the epoch), or null with no sitting. */
+  readonly sittingOpenedAt: number | null
 }
 
 async function readGuard(pool: DbPool, target: CodeTarget): Promise<GuardRead | null> {
@@ -395,7 +397,7 @@ async function readGuard(pool: DbPool, target: CodeTarget): Promise<GuardRead | 
       .where(eq(venues.id, target.venueId))
     if (venue === undefined) return null
     const [open] = await tx
-      .select({ id: sittings.id })
+      .select({ id: sittings.id, openedAt: sittings.openedAt })
       .from(sittings)
       .where(and(eq(sittings.tableId, target.tableId), isNull(sittings.endedAt)))
     return {
@@ -405,6 +407,7 @@ async function readGuard(pool: DbPool, target: CodeTarget): Promise<GuardRead | 
       timezone: venue.timezone,
       dayEndsAt: venue.dayEndsAt,
       sittingId: open?.id ?? null,
+      sittingOpenedAt: open?.openedAt.getTime() ?? null,
     }
   })
 }
@@ -804,6 +807,16 @@ function guestContext(
   }
 }
 
+/**
+ * The refusal code a phone gets: a Send over the venue's cap (D118) says so (`over_phone_limit`),
+ * so the guest learns the waiter takes it; past the pace it stays `guard_tripped` (lane 3 S10).
+ */
+function guestCode(result: Refused): string {
+  return result.code === 'guard_tripped' && result.details.guard === 'cap'
+    ? 'over_phone_limit'
+    : result.code
+}
+
 /** The answer a phone gets for a service result. */
 export function guestResult(
   result: ServiceResult,
@@ -821,7 +834,7 @@ export function guestResult(
   return {
     actionId: result.actionId,
     status: result.status === 'accepted' ? 'accepted' : 'rejected',
-    code: result.status === 'refused' ? result.code : null,
+    code: result.status === 'refused' ? guestCode(result) : null,
     subjectId: typeof subject === 'string' ? subject : null,
     ref: result.status === 'accepted' ? result.ref : null,
     // Only an accepted Send carries it: a refused command's own code says everything.
@@ -1027,6 +1040,17 @@ const SEND_SPENDS: ReadonlySet<GuestLimitName> = new Set(['sendGap', 'sends', 'p
 
 /** The limits that belong to the Pay inside a Send, not to the Send itself (#293, DA-1). */
 const PAY_LIMITS: ReadonlySet<GuestLimitName> = new Set(['payGap', 'pays'])
+
+/**
+ * The Pay refusals the guest fixes on the phone and sends again at once, so they give back the
+ * 15 s `payGap`: the bill moved under the phone (a line changed, or another phone is paying it),
+ * or the pick is below the venue's smallest card payment. Every other refusal keeps the gap.
+ */
+const PAY_GAP_GIVEN_BACK: ReadonlySet<string> = new Set<(typeof PAY_REFUSALS)[number]>([
+  'bill_changed',
+  'being_paid',
+  'below_minimum',
+])
 
 /** Whether a Send also carries on-the-bill lines, which can go without its pay-first part. */
 function sendsOnBill(command: GuestActInput['command']): boolean {
@@ -1526,29 +1550,54 @@ async function payAct(
   const subject = `${target.hash}:${input.phone}`
   let handle: string | null = null
   let command: { readonly type: string; readonly actionId: string } & Record<string, unknown>
+  /** When this Pay took `payGap`; null when it took none (a repeat, or not a start). */
+  let payTakenAt: number | null = null
+  // A Pay that starts no payment for a reason the guest can fix (Turnstile, or one of
+  // PAY_GAP_GIVEN_BACK) gives back its 15 s `payGap`, as a refused Send does (RR-26, D122 §4; screen
+  // round 11-18, C2), so the guest retries at once. Any other refusal keeps the gap: a stale or
+  // crafted Pay sent again and again waits like a real one (#502's review). `pays` (5 in 10 minutes)
+  // stays spent either way: it is the ceiling on Turnstile checks and engine writes a phone can
+  // cause. A Pay refused for the phone's own open payment keeps both, and a request that throws
+  // keeps them too: whether a payment started is unknown. A declined card is not a refusal here:
+  // that Pay was accepted, and the guest's next Pay comes well after its gap.
+  const giveBackPay = () => {
+    if (payTakenAt !== null) limits.giveBack(subject, ['payGap'], payTakenAt)
+  }
 
   if (type === 'pay.start') {
     // A repeat of the same tap (its answer was lost) skips the guards: its Turnstile token is
     // spent, and the payment is already counted. The engine gives it a fresh handle.
     const repeat = await paymentByAction(pool, target, actionId)
     if (repeat === null) {
-      const phoneLimit = limits.take(subject, ['payGap', 'pays'], Date.now())
+      const takenAt = Date.now()
+      const phoneLimit = limits.take(subject, ['payGap', 'pays'], takenAt)
       if (!phoneLimit.ok) {
         count('phone_limited')
         return limited(phoneLimit)
       }
+      payTakenAt = takenAt
       const open = limits.openPayment(subject)
       if (open !== null && !(await paymentEnded(pool, target, open))) return reject('rate_limited')
-      // Turnstile at every Pay (D127 §Limits): fail closed, open only when siteverify is down.
+      // Turnstile at every Pay (D127 §Limits): fail closed, open only when siteverify is down. Its
+      // own limit is taken first, as at Send: the phone that keeps failing stops costing a
+      // siteverify once the Pay's hits are given back.
+      const humanFail = limits.take(subject, ['humanFails'], takenAt)
+      if (!humanFail.ok) {
+        giveBackPay()
+        count('phone_limited')
+        return limited(humanFail)
+      }
       const token = input.check?.humanToken
       const verdict =
         token === undefined || input.humanCheck === undefined
           ? 'failed'
           : await input.humanCheck(token, actionId, 'pay')
       if (verdict === 'failed') {
+        giveBackPay()
         count('human_check_failed')
         return reject('turnstile')
       }
+      limits.giveBack(subject, ['humanFails'], takenAt)
       if (verdict === 'unavailable') count('human_check_open')
     }
     handle = randomBytes(16).toString('base64url')
@@ -1585,6 +1634,7 @@ async function payAct(
     command,
     guestContext(target, input.jobId, null),
   )
+  if (result.status === 'refused' && PAY_GAP_GIVEN_BACK.has(result.code)) giveBackPay()
   if (result.status === 'refused' && result.code === 'code_retired') {
     return { ok: false, code: 'code_retired' }
   }
@@ -1913,6 +1963,9 @@ export interface GuestEventsInput {
  * held while it was offline lands at the time it happened. Nothing personal is read or written:
  * there is no field for it, and the phone's own value in `X-Restro-Phone` is not asked for here.
  */
+/** How far apart this server's clock and the database's may be when a held event is placed. */
+const CLOCK_GRACE_MS = 5_000
+
 export async function reportGuestEvents(
   pool: DbPool,
   input: GuestEventsInput,
@@ -1925,39 +1978,66 @@ export async function reportGuestEvents(
   if (guard === null) return { ok: false, code: 'code_retired' }
 
   const now = Date.now()
-  const batch: GuestEventInput[] = []
+  // Each event is filed under the service day of its own time, and under the open sitting only when
+  // it happened in it: a tap held over 07:00, or from before the table was opened, is not tonight's
+  // or this sitting's (screen round 11-18, C5).
+  const groups = new Map<
+    string,
+    { serviceDate: string; inSitting: boolean; batch: GuestEventInput[] }
+  >()
   for (const report of input.events) {
     // The phone's own tap, placed back by the age it reported; never ahead of the server's clock.
     const at = new Date(now - Math.max(0, report.ageMs))
+    let event: GuestEventInput
     switch (report.kind) {
       case 'menu.opened':
-        batch.push({ kind: 'menu.opened', at })
+        event = { kind: 'menu.opened', at }
         break
       case 'item.opened':
-        batch.push({ kind: 'item.opened', itemId: report.itemId, at })
+        event = { kind: 'item.opened', itemId: report.itemId, at }
         break
       case 'language.chosen':
-        batch.push({ kind: 'language.chosen', locale: report.locale, at })
+        event = { kind: 'language.chosen', locale: report.locale, at }
         break
+      default:
+        // A new kind of event fails the build here until it is filed (screen round 11-18, C5).
+        report satisfies never
+        continue
     }
+    const day = serviceDate(at, guard.timezone, guard.dayEndsAt)
+    // The sitting's start is the database's clock and `at` this server's: a few seconds of grace.
+    const inSitting =
+      guard.sittingOpenedAt !== null && at.getTime() >= guard.sittingOpenedAt - CLOCK_GRACE_MS
+    const key = `${day}:${inSitting}`
+    const group = groups.get(key) ?? { serviceDate: day, inSitting, batch: [] }
+    group.batch.push(event)
+    groups.set(key, group)
   }
-  if (batch.length === 0) return { ok: true, recorded: 0 }
+  if (groups.size === 0) return { ok: true, recorded: 0 }
 
-  const written = await withTenantWrite(pool, target.tenantId, (tx) =>
-    recordEvents(
-      tx,
-      {
-        tenantId: target.tenantId,
-        venueId: target.venueId,
-        tableId: target.tableId,
-        serviceDate: serviceDate(new Date(now), guard.timezone, guard.dayEndsAt),
-        sittingId: guard.sittingId,
-        source: 'guest',
-        actor: 'guest',
-        jobId: input.jobId ?? `guest-events-${randomUUID()}`,
-      },
-      batch,
-    ),
-  )
-  return { ok: true, recorded: written.length }
+  const jobId = input.jobId ?? `guest-events-${randomUUID()}`
+  const written = await withTenantWrite(pool, target.tenantId, async (tx) => {
+    let count = 0
+    // A Map keeps its insertion order: the groups go in the order of their first event in the
+    // phone's list, so `seq` follows it except where a day or sitting boundary splits the list.
+    for (const group of groups.values()) {
+      const seqs = await recordEvents(
+        tx,
+        {
+          tenantId: target.tenantId,
+          venueId: target.venueId,
+          tableId: target.tableId,
+          serviceDate: group.serviceDate,
+          sittingId: group.inSitting ? guard.sittingId : null,
+          source: 'guest',
+          actor: 'guest',
+          jobId,
+        },
+        group.batch,
+      )
+      count += seqs.length
+    }
+    return count
+  })
+  return { ok: true, recorded: written }
 }

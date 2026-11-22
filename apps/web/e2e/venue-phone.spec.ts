@@ -219,3 +219,43 @@ test('Tonight and the Settings screens wrap at 200% text inside a 390 px phone (
       .toBeLessThanOrEqual(0)
   }
 })
+
+test('a menu row on a 390 px phone puts its name and badge above its buttons (S1)', async ({
+  browser,
+}) => {
+  // The Tonight fixture's venue has no menu; the demo venue has its live one, and its owner gets
+  // the buttons the row stacks under its name.
+  const demo = await signIn(browser, ADMIN_EMAIL)
+  await demo.goto('/venues')
+  const open = demo.getByRole('link', { name: 'Open' }).first()
+  await demo.goto(`${(await open.getAttribute('href')) ?? ''}?tab=settings&section=general`)
+  const rows = onScreen(demo, 'menu-row')
+  await expect(rows.first()).toBeVisible({ timeout: 30_000 })
+  await expect(rows.first().getByTestId('menu-rename')).toBeVisible()
+  // The live menu's badge is there to be checked against the buttons.
+  await expect(onScreen(demo, 'menu-live-badge').first()).toBeVisible()
+  for (const row of await rows.all()) {
+    const name = await row.locator('span').first().boundingBox()
+    const actions = await row.getByTestId('menu-actions').boundingBox()
+    expect(name).not.toBeNull()
+    expect(actions).not.toBeNull()
+    if (name === null || actions === null) continue
+    // Stacked: the buttons start below the name and its badge, so nothing covers either.
+    expect(actions.y).toBeGreaterThanOrEqual(name.y + name.height - 1)
+    const badge = row.getByTestId('menu-live-badge')
+    if ((await badge.count()) === 0) continue
+    const box = await badge.boundingBox()
+    if (box === null) continue
+    for (const control of await row.getByTestId('menu-actions').locator('button, a').all()) {
+      const other = await control.boundingBox()
+      if (other === null) continue
+      const overlaps =
+        box.x < other.x + other.width &&
+        other.x < box.x + box.width &&
+        box.y < other.y + other.height &&
+        other.y < box.y + box.height
+      expect(overlaps, 'the Live badge and a button overlap').toBe(false)
+    }
+  }
+  await demo.context().close()
+})

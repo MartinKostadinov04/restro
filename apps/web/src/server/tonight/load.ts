@@ -1,5 +1,6 @@
 // Reads Tonight for the signed-in actor and shapes it for the screen (#85). Reads only: the
 // service read side filters by what the actor holds and calls no POS (rule 3 and 4 of the plan).
+import { guestNight, readOrderingSettings } from '@restro/core'
 import {
   readTableState,
   readTonight,
@@ -13,7 +14,7 @@ import { providerDisplayName } from '@/connectors/notices'
 import { getPool } from '../db'
 import { isOperator } from '../staff/service'
 import { tillLabelOfVenue } from '../tables/service'
-import { buildTonightView, type TonightView } from './view'
+import { buildTonightView, type PhoneOrders, type TonightView } from './view'
 
 /** Tonight for the venue, or why it can't be shown. */
 export async function loadTonightView(input: {
@@ -53,9 +54,27 @@ export async function loadTonightView(input: {
       provider: providerDisplayName(read.tonight.payingProvider),
       operator,
       remembered: input.remembered === true,
+      phoneOrders: phoneOrdersOf(input.venue, now),
       now,
     }),
   }
+}
+
+/**
+ * Phone ordering tonight by the venue's service hours, as a guest's phone is told it (S4): when it
+ * starts (`HH:mm`, the venue's own zone) while that is still to come, or that phones cannot order
+ * tonight (a closed night, after last orders, an opening with no hour); null while it runs.
+ */
+function phoneOrdersOf(venue: Venue, now: Date): PhoneOrders {
+  const night = guestNight(
+    readOrderingSettings(venue.settings),
+    venue.timezone,
+    venue.serviceDayEndsAt,
+    now,
+  )
+  if (night.state === 'opens_later' && night.at !== null) return { state: 'later', at: night.at }
+  if (night.state === 'opens_later' || night.state === 'closed') return { state: 'none' }
+  return null
 }
 
 /** What a table's sheet shows beyond its tile: the bill as last read (plan §3). */

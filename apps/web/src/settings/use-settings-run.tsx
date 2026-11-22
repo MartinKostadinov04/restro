@@ -7,7 +7,7 @@
 // does the change: the existing sign-in (Better Auth's `signIn.email`), not a new form.
 import { unstable_rethrow } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { type ReactNode, useCallback, useRef, useState, useTransition } from 'react'
+import { type ReactNode, useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { authClient } from '@/lib/auth-client'
+import { returnToOrganization } from '@/server/actions'
 
 /** An error toast stays until it is closed. */
 const STAYS = { duration: Number.POSITIVE_INFINITY, closeButton: true }
@@ -160,6 +161,59 @@ export function useSettingsRun(email: string) {
   return { pending, run, dialog, sentence }
 }
 
+/**
+ * The same password dialog for a screen that runs its actions itself (the organisation, POS
+ * instances, a venue's name, address, deletion and purge, table codes): `ask(retry)` when an
+ * action answers `sign_in_again`; after a fresh sign-in `retry` runs. Render `dialog` once.
+ *
+ * A form passes its submit as `latest` and calls `ask()`: the retry then runs the submit of the
+ * latest render, so it sends what the form holds after the sign-in, not what it held when the
+ * dialog opened (a closure from that render would save a value the person has since changed).
+ */
+export function useSignInAgain(latest?: () => void) {
+  const t = useTranslations('ownerSettings')
+  const [email, setEmail] = useState<string | null>(null)
+  const again = useRef<(() => void) | null>(null)
+  const current = useRef(latest)
+  useEffect(() => {
+    current.current = latest
+  })
+  const ask = useCallback(
+    (retry?: () => void) => {
+      again.current = retry ?? (() => current.current?.())
+      // The address to sign in with is the signed-in person's own; read it only when needed. When
+      // it cannot be read the dialog would never accept a password: say the change failed instead.
+      const failed = () => {
+        again.current = null
+        toast.error(t('err.failed'), STAYS)
+      }
+      authClient.getSession().then(({ data }) => {
+        if (data?.user.email) setEmail(data.user.email)
+        else failed()
+      }, failed)
+    },
+    [t],
+  )
+  const dialog = (
+    <PasswordAgain
+      open={email !== null}
+      email={email ?? ''}
+      onOpenChange={(open) => {
+        if (open) return
+        setEmail(null)
+        again.current = null
+      }}
+      onSignedIn={() => {
+        setEmail(null)
+        const retry = again.current
+        again.current = null
+        retry?.()
+      }}
+    />
+  )
+  return { ask, dialog }
+}
+
 /** "Enter your password to change settings": a fresh sign-in, then the change goes through. */
 function PasswordAgain({
   open,
@@ -176,15 +230,48 @@ function PasswordAgain({
   const [password, setPassword] = useState('')
   const [wrong, setWrong] = useState<'invalid' | 'tooMany' | 'unknown' | null>(null)
   const [busy, setBusy] = useState(false)
+  // The organisation the change is for, read once per opening: after a sign-in whose switch back
+  // failed, the session reads the first organisation, so a second press must not read it again.
+  const kept = useRef<string | null | undefined>(undefined)
+  useEffect(() => {
+    if (!open) kept.current = undefined
+  }, [open])
 
   async function submit() {
     setBusy(true)
     setWrong(null)
-    const { error } = await authClient.signIn.email({ email, password })
-    setBusy(false)
-    if (error) {
-      setWrong(error.status === 429 ? 'tooMany' : error.status === 401 ? 'invalid' : 'unknown')
+    try {
+      // A new session starts in the person's first organisation (auth.ts), so note the one in
+      // use now and put the new session back there before the change is retried (C1). Without
+      // it the change could land in another organisation: stop instead.
+      if (kept.current === undefined) {
+        const { data: before } = await authClient.getSession()
+        if (!before) {
+          setWrong('unknown')
+          return
+        }
+        kept.current = before.session.activeOrganizationId ?? null
+      }
+      const organizationId = kept.current
+      const { error } = await authClient.signIn.email({ email, password })
+      if (error) {
+        setWrong(error.status === 429 ? 'tooMany' : error.status === 401 ? 'invalid' : 'unknown')
+        return
+      }
+      if (organizationId !== null) {
+        // Through our action: Better Auth's own route is closed over HTTP (auth.ts).
+        const kept = await returnToOrganization(organizationId)
+        if (!kept.ok) {
+          setWrong('unknown')
+          return
+        }
+      }
+    } catch {
+      // The connection dropped: say so and let the button be pressed again (C2, as RR-88).
+      setWrong('unknown')
       return
+    } finally {
+      setBusy(false)
     }
     setPassword('')
     onSignedIn()
@@ -197,6 +284,8 @@ function PasswordAgain({
           method="post"
           onSubmit={(event) => {
             event.preventDefault()
+            // The dialog may sit inside a screen's own form (a portal still bubbles in React).
+            event.stopPropagation()
             void submit()
           }}
           className="grid grid-cols-1 gap-4"
