@@ -52,15 +52,15 @@ function DeleteVenueForm({ onOpenChange, venueId, venueName, hasTill }: DeleteVe
   const router = useRouter()
   const formId = useId()
   const [pending, startTransition] = useTransition()
-  const again = useSignInAgain()
+  const again = useSignInAgain(() => submit())
   const [typed, setTyped] = useState('')
   const [error, setError] = useState<DeleteVenueError | null>(null)
 
   // The server compares the trimmed text with the venue's name; the button waits for the same.
   const matches = typed.trim() === venueName
 
-  function submit(event: FormEvent) {
-    event.preventDefault()
+  function submit(event?: FormEvent) {
+    event?.preventDefault()
     if (!matches || pending) return
     setError(null)
     startTransition(async () => {
@@ -69,7 +69,7 @@ function DeleteVenueForm({ onOpenChange, venueId, venueName, hasTill }: DeleteVe
       )
       if (!result.ok) {
         if (result.error === 'sign_in_again') {
-          again.ask(() => submit(event))
+          again.ask()
           return
         }
         setError(result.error)
