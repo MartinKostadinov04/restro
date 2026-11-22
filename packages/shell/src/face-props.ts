@@ -29,4 +29,20 @@ export interface FaceHostProps {
    * view model's `features` has the service on (R15). Not bound in Stage 3.
    */
   readonly services?: ServiceBinding
+  /**
+   * Where the guest's own choice of layout is kept for the visit: a key of the venue's own (its
+   * public code), so one venue's choice never reaches another. Only the guest page passes it.
+   * Without it (the admin's previews) the layout switch still works, but the choice lasts only
+   * while the face is drawn, gives way when the menu's own layout changes, and never reads or
+   * writes what a guest's tab kept.
+   */
+  readonly layoutMemory?: string
+  /**
+   * Told the dish page the guest has open (its item id, as the address names it) each time it
+   * changes, and null once it closes or the template goes away. `opened` is true only for a dish
+   * the guest opens (a tap, a shared link, back or forward to it from the menu), not for one that
+   * shows again from under a sheet: the guest page reports those opens (D142) and names the tab
+   * after whatever dish is open.
+   */
+  readonly onOpenDishChange?: (itemId: string | null, opened: boolean) => void
 }
