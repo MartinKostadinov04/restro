@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { authClient } from '@/lib/auth-client'
+import { returnToOrganization } from '@/server/actions'
 import {
   addPersonAction,
   assignRoleAction,
@@ -41,9 +42,9 @@ vi.mock('@/lib/auth-client', () => ({
   authClient: {
     getSession: vi.fn(),
     signIn: { email: vi.fn() },
-    organization: { setActive: vi.fn() },
   },
 }))
+vi.mock('@/server/actions', () => ({ returnToOrganization: vi.fn() }))
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), message: vi.fn() },
 }))
@@ -181,11 +182,8 @@ beforeEach(() => {
     data: { session: { activeOrganizationId: 'tn_second' } },
     error: null,
   } as never)
-  vi.mocked(authClient.organization.setActive).mockReset()
-  vi.mocked(authClient.organization.setActive).mockResolvedValue({
-    data: {},
-    error: null,
-  } as never)
+  vi.mocked(returnToOrganization).mockReset()
+  vi.mocked(returnToOrganization).mockResolvedValue({ ok: true })
 })
 
 afterEach(() => {
@@ -308,9 +306,9 @@ describe('Settings › Staff and roles', () => {
       order.push('sign-in')
       return { data: {}, error: null } as never
     })
-    vi.mocked(authClient.organization.setActive).mockImplementation(async () => {
+    vi.mocked(returnToOrganization).mockImplementation(async () => {
       order.push('set-active')
-      return { data: {}, error: null } as never
+      return { ok: true }
     })
     const user = userEvent.setup()
     renderWithIntl(<StaffPanel view={view()} />)
@@ -319,7 +317,7 @@ describe('Settings › Staff and roles', () => {
     await user.type(await screen.findByLabelText('Password'), 'secret-pass')
     await user.click(screen.getByRole('button', { name: 'Confirm' }))
     expect((await screen.findByTestId('pin-result')).textContent).toContain('1234')
-    expect(authClient.organization.setActive).toHaveBeenCalledWith({ organizationId: 'tn_second' })
+    expect(returnToOrganization).toHaveBeenCalledWith('tn_second')
     expect(order).toEqual(['sign-in', 'set-active', 'retry'])
   })
 
@@ -353,9 +351,9 @@ describe('Settings › Staff and roles', () => {
         data: { session: { activeOrganizationId: 'tn_first' } },
         error: null,
       } as never)
-    vi.mocked(authClient.organization.setActive)
-      .mockResolvedValueOnce({ data: null, error: { status: 500 } } as never)
-      .mockResolvedValue({ data: {}, error: null } as never)
+    vi.mocked(returnToOrganization)
+      .mockResolvedValueOnce({ ok: false })
+      .mockResolvedValue({ ok: true })
     const user = userEvent.setup()
     renderWithIntl(<StaffPanel view={view()} />)
     await user.click(screen.getByRole('button', { name: 'Ana' }))
@@ -368,10 +366,7 @@ describe('Settings › Staff and roles', () => {
     await waitFor(() => expect(confirm.disabled).toBe(false))
     await user.click(confirm)
     expect((await screen.findByTestId('pin-result')).textContent).toContain('1234')
-    expect(vi.mocked(authClient.organization.setActive).mock.calls).toEqual([
-      [{ organizationId: 'tn_second' }],
-      [{ organizationId: 'tn_second' }],
-    ])
+    expect(vi.mocked(returnToOrganization).mock.calls).toEqual([['tn_second'], ['tn_second']])
   })
 
   it('signs nobody in when the organisation in use cannot be read (C1)', async () => {
