@@ -258,6 +258,6 @@ to supply (`technical-tuning-from-best-practice`).
    any decision file is written.
 3. **Then the decisions themselves**, which **cannot be written on this branch**: `sr/ingestion`
    carries D1–D123, the next free number is 154, and the guard forbids a gap at the top. They need a
-   branch cut from something carrying D1–D153 — today that means `or/foundation` plus
+   branch cut from something carrying decisions 1 to 153 — today that means `or/foundation` plus
    `docs/pos-support-answers`. Flagged early because it decides where the spec branch is cut, not
    just where the files land.
