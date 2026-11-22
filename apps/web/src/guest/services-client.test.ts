@@ -330,20 +330,44 @@ describe('the services client', () => {
     expect(h.nextWait()).toBe(0)
   })
 
-  it('answers a 429 as rate_limited and waits its Retry-After before polling', async () => {
+  it('answers a 429 as rate_limited, an answer: the phone stays online and the poll keeps its pace (C3)', async () => {
     const h = harness((url) =>
       url.endsWith('/actions')
-        ? json(429, { code: 'rate_limited' }, { 'Retry-After': '10' })
+        ? json(429, { code: 'rate_limited' }, { 'Retry-After': '600' })
         : json(200, tableState(1)),
     )
     h.client.start()
     await h.tick()
+    const pay: GuestCommand = {
+      kind: 'pay.start',
+      actionId: crypto.randomUUID(),
+      pick: { kind: 'whole' },
+      seen: [{ lineId: `bn_${'0'.repeat(21)}1`, quantity: '1', amountMinor: 100 }],
+      tipMinor: null,
+      tipPercent: null,
+    }
+    expect(await h.client.dispatch(pay)).toMatchObject({
+      status: 'rejected',
+      code: 'rate_limited',
+    })
+    // A Pay's 10-minute limit does not hold the table's state back for 10 minutes.
+    expect(h.nextWait()).toBeLessThanOrEqual(10_000)
+    await h.elapse(OFFLINE_AFTER_MS + 1)
+    expect(h.client.getState().offline).toBe(false)
     expect(await h.client.dispatch(add())).toMatchObject({
       status: 'rejected',
       code: 'rate_limited',
     })
     expect(h.client.getState().order?.lines).toEqual([])
-    expect(h.nextWait()).toBe(10_000)
+  })
+
+  it('answers a poll refused 429 by waiting its Retry-After, still online', async () => {
+    const h = harness(() => json(429, { code: 'rate_limited' }, { 'Retry-After': '30' }))
+    h.client.start()
+    await h.tick()
+    expect(h.nextWait()).toBeGreaterThanOrEqual(30_000)
+    await h.elapse(OFFLINE_AFTER_MS + 1)
+    expect(h.client.getState().offline).toBe(false)
   })
 
   it('stops for good on a 401: the table is closed and no edit is sent', async () => {
@@ -1749,6 +1773,105 @@ describe('the screen the face has open (RR-52, D121)', () => {
     await h.client.dispatch(add())
     const body = JSON.parse(String(h.calls.at(-1)?.init.body))
     expect(body.view).toBe('bill')
+  })
+})
+
+describe('the age of the bill’s reading (lane 3 S7, D121)', () => {
+  /** A table whose bill was read `readAgoSeconds` before the answer. */
+  const withBill = (version: number, readAgoSeconds: number) => ({
+    ...tableState(version),
+    bill: {
+      readAgoSeconds,
+      complete: true,
+      currency: 'EUR' as const,
+      totalMinor: 1000,
+      paidMinor: 0,
+      owedMinor: 1000,
+      parts: [],
+      paidLines: [],
+    },
+  })
+  const quiet = { unchanged: true, version: 1, next: 2_000, location: 'off', night: 'open' }
+
+  it('grows while the answers are unchanged, and resets with the reading a whole answer brings', async () => {
+    let whole = withBill(1, 3)
+    const h = harness((url) => json(200, url.includes('since=') ? quiet : whole))
+    const age = () => h.client.getState().tableBill?.readAgoSeconds
+    h.client.start()
+    await h.tick()
+    expect(age()).toBe(3)
+    h.client.setScreen('bill')
+    h.advance(5_000)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill&since=1')
+    // Not frozen at the age the last changed answer gave.
+    expect(age()).toBe(8)
+
+    // Older than the server keeps a reading: the bill asks for the whole state, and the server's
+    // new reading of the same bill (same version) resets the age.
+    whole = withBill(1, 1)
+    h.advance(10_000)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill')
+    expect(age()).toBe(1)
+    h.advance(4_000)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill&since=1')
+    expect(age()).toBe(5)
+  })
+
+  it('asks for the whole state at most once in 15 s, and never off the bill', async () => {
+    const h = harness((url) => json(200, url.includes('since=') ? quiet : withBill(1, 40)))
+    h.client.start()
+    await h.tick()
+    await h.tick()
+    // An old reading on the menu: the menu's polls never ask for it.
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=menu&since=1')
+    h.client.setScreen('bill')
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill')
+    // The server's reading is still old (it reads again in the background): no second whole ask yet.
+    h.advance(5_000)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill&since=1')
+    h.advance(10_000)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill')
+  })
+
+  it('asks again after a whole ask that failed, with the age still growing, and waits 15 s after one that came', async () => {
+    let fail = false
+    let reading = 20
+    const h = harness((url) => {
+      if (url.includes('since=')) return json(200, quiet)
+      return fail ? json(503, {}) : json(200, withBill(1, reading))
+    })
+    const age = () => h.client.getState().tableBill?.readAgoSeconds
+    h.client.start()
+    await h.tick()
+    fail = true
+    h.client.setScreen('bill')
+    await h.tick()
+    // The whole ask failed: no new reading, and nothing stamped.
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill')
+    expect(age()).toBe(20)
+    const retry = h.nextWait() ?? 0
+    h.advance(retry)
+    await h.tick()
+    // The next poll asks for the whole state again, not `since`; the age has kept growing.
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill')
+    expect(age()).toBe(20 + Math.floor(retry / 1000))
+    // It comes: the server's new reading resets the age, and the next whole ask waits 15 s.
+    fail = false
+    reading = 30
+    h.advance(h.nextWait() ?? 0)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill')
+    expect(age()).toBe(30)
+    h.advance(5_000)
+    await h.tick()
+    expect(h.calls.at(-1)?.url).toBe('/api/guest/state?view=bill&since=1')
+    expect(age()).toBe(35)
   })
 })
 

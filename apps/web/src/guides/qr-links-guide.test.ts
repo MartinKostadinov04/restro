@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
+import { createTranslator } from 'next-intl'
 import { describe, expect, it } from 'vitest'
 
 import bg from '../../messages/bg.json'
@@ -16,6 +17,12 @@ const GUIDE = readFileSync(
   'utf8',
 )
 const languages = splitLanguages(GUIDE)
+/** The tab's "Create the N missing codes" button as the guide quotes it, for eight tables. */
+const createMissing = (locale: 'bg' | 'en') =>
+  createTranslator({ locale, messages: locale === 'bg' ? bg : en, namespace: 'tables' })(
+    'createMissing',
+    { count: 8 },
+  )
 const headingsOf = (text: string) =>
   parseBlocks(text).filter((block) => block.type === 'heading').length
 
@@ -57,16 +64,35 @@ describe('docs/guides/qr-links.md', () => {
     },
   )
 
-  it('never hard-codes a domain: addresses are placeholders, or the network address of a PC', () => {
+  it('never hard-codes a domain or a machine: addresses are placeholders', () => {
     const urls = GUIDE.match(/https?:\/\/[^\s`"')]+/g) ?? []
     expect(urls.length).toBeGreaterThan(0)
     for (const url of urls) {
       const rest = url.replace(/^https?:\/\//, '')
-      // `<your-domain>`, `<our-address>`, `menu.<your-domain>`, `192.168.1.20` or `localhost`,
-      // followed by the end, a path, a port or a variable of the server's own syntax.
-      expect(rest, url).toMatch(
-        /^(?:[a-z.]*<[^>]+>|\d{1,3}(?:\.\d{1,3}){3}|localhost)(?:$|[/:$;?])/i,
-      )
+      // `<your-domain>`, `<our-address>` or `menu.<your-domain>`, followed by the end, a path, a
+      // port or a variable of the server's own syntax.
+      expect(rest, url).toMatch(/^[a-z.]*<[^>]+>(?:$|[/:$;?])/i)
+    }
+  })
+
+  // R3 (screen round 2026-11-18, lane 5): the card is read-only ("Codes lead to"), so the guide
+  // names no control the card lacks, and no developer step (a computer's network address).
+  it('describes only the controls the card has, and no developer step', () => {
+    for (const gone of [
+      'Base address',
+      'Our link',
+      'Link pattern',
+      'Save address',
+      "The venue's own link",
+      'Основен адрес',
+      'Нашият линк',
+      'Шаблон на линка',
+      'Запиши адреса',
+      'Собствен линк на заведението',
+      '192.168',
+      'localhost',
+    ]) {
+      expect(GUIDE, gone).not.toContain(gone)
     }
   })
 
@@ -74,26 +100,20 @@ describe('docs/guides/qr-links.md', () => {
     const quoted = {
       bg: [
         bg.tables.address.title,
-        bg.tables.address.ours,
-        bg.tables.address.own,
-        bg.tables.address.baseUrl,
-        bg.tables.address.pattern,
+        bg.tables.address.leads,
+        bg.tables.address.domainLater,
         bg.tables.address.testLink,
-        bg.tables.address.save,
-        bg.tables.createAll,
+        createMissing('bg'),
         bg.tables.printSheet,
         bg.tables.print.button,
         bg.workspace.tabs.tables,
       ],
       en: [
         en.tables.address.title,
-        en.tables.address.ours,
-        en.tables.address.own,
-        en.tables.address.baseUrl,
-        en.tables.address.pattern,
+        en.tables.address.leads,
+        en.tables.address.domainLater,
         en.tables.address.testLink,
-        en.tables.address.save,
-        en.tables.createAll,
+        createMissing('en'),
         en.tables.printSheet,
         en.tables.print.button,
         en.workspace.tabs.tables,

@@ -296,6 +296,11 @@ describe("Editorial against today's look (D128)", () => {
   const asToday = (html: string) =>
     storedRendering(html, {})
       .replace(/ data-design-part="[^"]*"/g, '')
+      // The arrow's own span after a name (S11): today the arrow was the button's ::after.
+      .replace(
+        /<span class="rm-item-arrow" aria-hidden="true">\n<\/span>\n<\/button>/g,
+        '</button>',
+      )
       .replace(/<div [^>]*data-face=[^>]*>/, (root) =>
         designAttributeNames.reduce(
           (text, attribute) => text.replace(new RegExp(` ${attribute}="[^"]*"`), ''),
@@ -360,13 +365,95 @@ function unlisted(lines: readonly string[], added: boolean): readonly string[] {
 
 const property = (line: string) => /\{ ([\w-]+):/.exec(line)?.[1] ?? ''
 
+/** The arrow's lines of today that go, and the ones that replace them (S11). */
+const ARROW_REMOVED: readonly string[] = [
+  '.rm-item-open::after { content: "→" }',
+  '.rm-item-open::after { content: "→" / "" }',
+  '.rm-item-open::after { margin-left: 8px }',
+  '.rm-item-open::after { color: var(--rm-muted) }',
+  '.rm-item-open::after { font-weight: 500 }',
+  '.rm-item:hover .rm-item-open::after { color: var(--rm-text) }',
+  '.rm-item-open::after { display: inline-block }',
+  '.rm-item-open::after { transition: transform 0.2s }',
+  '.rm-item:hover .rm-item-open::after { transform: translateX(4px) }',
+  '@media (prefers-reduced-motion: reduce) .rm-photo img, .rm-item-open::after { transition: none !important }',
+  '@media (prefers-reduced-motion: reduce) .rm-photo img, .rm-item-open::after { transform: none !important }',
+  '.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-open::after { display: none }',
+]
+const ARROW_ADDED: readonly string[] = [
+  '.rm-item-open { padding-right: calc(12px + 1em) }',
+  '.rm-item-arrow { position: relative }',
+  '.rm-item-arrow::after { content: "→" }',
+  '.rm-item-arrow::after { content: "→" / "" }',
+  '.rm-item-arrow::after { position: absolute }',
+  '.rm-item-arrow::after { top: 0 }',
+  '.rm-item-arrow::after { left: 8px }',
+  '.rm-item-arrow::after { line-height: normal }',
+  '.rm-item-arrow::after { color: var(--rm-muted) }',
+  '.rm-item-arrow::after { font-weight: 500 }',
+  '.rm-item-arrow::after { transition: transform 0.2s }',
+  '@media (hover: hover) and (pointer: fine) .rm-item:hover .rm-item-arrow::after { transform: translateX(4px) }',
+  '@media (hover: hover) and (pointer: fine) .rm-item:hover .rm-item-arrow::after { color: var(--rm-text) }',
+  '@media (prefers-reduced-motion: reduce) .rm-photo img, .rm-item-arrow::after { transition: none !important }',
+  '@media (prefers-reduced-motion: reduce) .rm-photo img, .rm-item-arrow::after { transform: none !important }',
+  '.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-arrow::after { display: none }',
+  '.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-open { padding-right: 0 }',
+]
+
+/** Two columns hold an item without a photo in one column, wrapping inside it (S7). */
+const TEXT_CARD = '.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.is-text'
+const TEXT_CARD_REMOVED: readonly string[] = [`${TEXT_CARD} { grid-column: 1 / -1 }`]
+const TEXT_CARD_ADDED: readonly string[] = [
+  `${TEXT_CARD} { min-width: 0 }`,
+  `${TEXT_CARD} { overflow-wrap: break-word }`,
+]
+
+/**
+ * A name keeps its words whole (S7): each item is a size container, and a name's own size steps down
+ * when its line is too narrow for the longest word of a real menu, never under 12 px; a break only at
+ * the line's end, with no hyphen. Editorial draws Inter as its heading font (`same`).
+ */
+const NAME = ':is(h3, h4)'
+const TWO = '.rm[data-layout="two"] .rm-section:not(.is-feature)'
+const NARROW = '@media (max-width: 359px) '
+const NAME_FIT_REMOVED: readonly string[] = [
+  `.rm-item ${NAME} { font-size: 19px }`,
+  `.rm-section.is-feature .rm-item ${NAME} { font-size: 22px }`,
+  `.rm-section:not(.is-feature) .rm-item.has-photo ${NAME} { font-size: 24px }`,
+  `${TWO} .rm-item.has-photo ${NAME} { font-size: 14px }`,
+  `${TWO} .rm-item.has-photo ${NAME} { overflow-wrap: anywhere }`,
+  `${TWO} .rm-item.has-photo ${NAME} { hyphens: auto }`,
+  `${NARROW}${TWO} .rm-item.has-photo ${NAME} { font-size: 12.5px }`,
+]
+const NAME_FIT_ADDED: readonly string[] = [
+  '.rm { --rm-name-fit: 11.8 }',
+  '.rm[data-heading-font="same"][data-body-font="inter"] { --rm-name-fit: 7.9 }',
+  '.rm[data-items-name-case="capitals"][data-heading-font="same"][data-body-font="inter"] { --rm-name-fit: 9.4 }',
+  '.rm-item-copy > [data-slot="item.name"] { min-width: 0 }',
+  '.rm-item { container-type: inline-size }',
+  '.rm-item { --rm-name-inset: 0px }',
+  `.rm-item ${NAME} { --rm-name-size: 19px }`,
+  `.rm-item ${NAME} { --rm-name-fits: calc((100cqi - var(--rm-name-inset) - 12px) / (var(--rm-name-fit) + 1)) }`,
+  `.rm-item ${NAME} { font-size: clamp(12px, var(--rm-name-fits), var(--rm-name-size)) }`,
+  `.rm-item ${NAME} { overflow-wrap: break-word }`,
+  `.rm-section.is-feature .rm-item ${NAME} { --rm-name-size: 22px }`,
+  `.rm-section:not(.is-feature) .rm-item.has-photo ${NAME} { --rm-name-size: 24px }`,
+  `${TWO} .rm-item ${NAME} { --rm-name-fits: calc((100cqi - var(--rm-name-inset)) / var(--rm-name-fit)) }`,
+  `${TWO} .rm-item-copy > [data-slot="item.name"] { flex-basis: 100% }`,
+  `${TWO} .rm-item.has-photo ${NAME} { --rm-name-size: 14px }`,
+  `${NARROW}${TWO} .rm-item.has-photo ${NAME} { --rm-name-size: 12.5px }`,
+]
+
 /** Each departure of `packages/shell/src/design/styles/editorial.ts`, as the lines it may touch. */
 const DEPARTURES: readonly ((line: string, added: boolean) => boolean)[] = [
-  // A dish page with no photo starts under the back button (P14, #420), and the "Add" button of a
-  // table closed for phones greys (P23, #420): each is its own new rule.
+  // A dish page with no photo starts under the back button (P14, #420): its own new rule.
   (line, added) =>
     added && line.startsWith('.rm-overlay-panel.is-detail .rm-detail-copy:first-child {'),
-  (line, added) => added && line.startsWith('.rm .ro-plus[aria-disabled="true"] {'),
+  // One layout for a line of the Order, with no band (lane 3 S9): its own new rules, and the old
+  // price-and-stepper column's rule, which nothing draws any more. Service lines: no browsing look
+  // moves.
+  (line, added) => added && /\.ro-orderline|\.ro-line-head|\.ro-line-foot/.test(line),
+  (line, added) => !added && line.startsWith('.rm .ro-line-side {'),
   // The confirmation's note states its size in pixels: 0.9 of the page's 16 px (no departure in look).
   (line) => /\.ro-confirm-note/.test(line) && property(line) === 'font-size',
   // The Privacy link of the location consent is drawn as a link in the sheet's writing (#173, D121).
@@ -426,4 +513,18 @@ const DEPARTURES: readonly ((line: string, added: boolean) => boolean)[] = [
   // notice that carries its own controls (#295, DA-22). Service lines: no browsing look moves.
   (line, added) => added && line.startsWith('.rm .ro-topline {'),
   (line, added) => added && line.startsWith('.rm .ro-barbox'),
+  // The scrim behind a sheet and a dish darkens the menu on both screens (R3, 11-18 round).
+  (line) =>
+    /^\.rm-overlay(?::has\(\.is-detail\))? \{ background: color-mix\(in srgb, var\(--rm-(?:text|d-background)\) (?:72|40)%, transparent\) \}$/.test(
+      line,
+    ),
+  // The arrow after a name is drawn by its own span after the last letter, in room the name keeps
+  // free, and nudges only under a real hover (S11, 11-18 round): exactly these lines.
+  (line, added) => (added ? ARROW_ADDED : ARROW_REMOVED).includes(line),
+  // Two columns hold the items without a photo too, one column each (S7, 11-18 round): exactly
+  // these lines.
+  (line, added) => (added ? TEXT_CARD_ADDED : TEXT_CARD_REMOVED).includes(line),
+  // A name keeps its words whole, its size stepping down on a narrow line (S7, 11-18 round):
+  // exactly these lines.
+  (line, added) => (added ? NAME_FIT_ADDED : NAME_FIT_REMOVED).includes(line),
 ]

@@ -192,7 +192,7 @@ describe('SettingsSections: the sections of the Settings tab in the URL (D97)', 
       'Hours',
       'Ordering',
       'Reservations',
-      'Publish',
+      'Sync and publish',
       'Versioning',
     ])
     expect(screen.getByRole('tab', { name: 'General' }).getAttribute('aria-selected')).toBe('true')
@@ -229,7 +229,7 @@ describe('SettingsSections: the sections of the Settings tab in the URL (D97)', 
       'Reservations',
       'Staff and roles',
       'Alerts',
-      'Publish',
+      'Sync and publish',
       'Versioning',
     ])
     expect(settingsSectionOf('staff', true)).toBe('general')
@@ -253,7 +253,7 @@ describe('SettingsSections: the sections of the Settings tab in the URL (D97)', 
       'Reservations',
       'Paying',
       'Staff and roles',
-      'Publish',
+      'Sync and publish',
       'Versioning',
     ])
     expect(settingsSectionOf('paying', true, { roles: false, alerts: false, paying: true })).toBe(
@@ -269,7 +269,7 @@ describe('SettingsSections: the sections of the Settings tab in the URL (D97)', 
     expect(screen.getByRole('tab', { name: 'Versioning' }).getAttribute('aria-selected')).toBe(
       'true',
     )
-    await userEvent.click(screen.getByRole('tab', { name: 'Publish' }))
+    await userEvent.click(screen.getByRole('tab', { name: 'Sync and publish' }))
     await waitFor(() => expect(navigation.replace).toHaveBeenCalledTimes(1))
     expect(navigation.replace).toHaveBeenCalledWith(
       '/venues/vn_demo?tab=settings&section=publish',

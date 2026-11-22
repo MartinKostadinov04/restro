@@ -34,7 +34,7 @@ import { READ_FAILED, readAttempt } from './read-attempt'
 import { SentOrderAnswers } from './sent-order-answers'
 import { useReasonWord, useStateWord } from './sent-row'
 import { SoldOutLine } from './sold-out-line'
-import { ReadFailed } from './tab-parts'
+import { CLOSE_44, ReadFailed } from './tab-parts'
 import { useTableName } from './table-name'
 import { useWho } from './who'
 
@@ -218,8 +218,8 @@ export function SentOrderSheet({
     </Drawer>
   ) : (
     <Sheet open onOpenChange={(open) => !open && onClose()}>
-      <SheetContent data-testid="sent-sheet" aria-busy={detail === undefined}>
-        <SheetHeader>
+      <SheetContent data-testid="sent-sheet" aria-busy={detail === undefined} className={CLOSE_44}>
+        <SheetHeader className="pr-14">
           <SheetTitle className="font-mono [overflow-wrap:anywhere]">{title}</SheetTitle>
           <SheetDescription>{sub}</SheetDescription>
         </SheetHeader>

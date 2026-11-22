@@ -30,6 +30,8 @@ export interface ItemSheetDetailsTabProps {
   data: ItemSheetData
   /** True while a save is under way. */
   busy: boolean
+  /** The person may not change the menu (RR-70): no edit, Revert, keep or payment-mode cards. */
+  readOnly?: boolean
   /** Saves a field's whole value (`null` = cleared); resolves true when it was saved. */
   onSave: (fieldKey: string, value: unknown | null) => Promise<boolean>
   /** Removes our override (revert, or take the till's value); resolves true when done. */
@@ -63,20 +65,30 @@ function LocaleProvenance({ field }: { field: SheetField }) {
 interface RowExtrasProps {
   field: SheetField
   busy: boolean
+  /** No Revert or keep / take buttons (a member, RR-70); the values are still shown. */
+  readOnly: boolean
+  /** The sale card above has a mark button: "For sale" may point at it (S3). */
+  markable: boolean
   onRevert: () => void
   onKeep: () => void
 }
 
 /** What goes under a row's value and badge: why it is read-only, the conflict, Revert, keep / take. */
-function RowExtras({ field, busy, onRevert, onKeep }: RowExtrasProps) {
+function RowExtras({ field, busy, readOnly, markable, onRevert, onKeep }: RowExtrasProps) {
   const t = useTranslations('itemSheet.details')
   const source = useTillLabel()
   const label = useFieldLabel(field.definition)
   const stale = field.provenance === 'stale' || field.canKeep
+  // Without a mark button the sale card says why; a note pointing at the button would contradict it.
+  // A member has no show / hide switch in Structure either: no note sends them there.
+  const note =
+    field.access.kind === 'readonly' &&
+    (field.access.reason !== 'sold_out_control' || markable) &&
+    !(readOnly && field.access.reason === 'composer_toggle')
   return (
     <>
       <LocaleProvenance field={field} />
-      {field.access.kind === 'readonly' ? (
+      {note && field.access.kind === 'readonly' ? (
         <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
           <LockIcon className="mt-0.5 size-3 shrink-0" aria-hidden />
           <span data-testid="read-only-note">
@@ -87,7 +99,7 @@ function RowExtras({ field, busy, onRevert, onKeep }: RowExtrasProps) {
       {field.conflict ? (
         <p className="flex items-start gap-1.5 text-xs text-warning">
           <TriangleAlertIcon className="mt-0.5 size-3 shrink-0" aria-hidden />
-          <span>{t('conflict', { source })}</span>
+          <span>{t(readOnly ? 'conflictReadOnly' : 'conflict', { source })}</span>
         </p>
       ) : null}
       {field.canRevert ? (
@@ -100,34 +112,36 @@ function RowExtras({ field, busy, onRevert, onKeep }: RowExtrasProps) {
               <FieldValueView definition={field.definition} value={field.tillValue} />
             </div>
           ) : null}
-          <div className="flex flex-wrap gap-2">
-            {stale && field.canKeep ? (
+          {readOnly ? null : (
+            <div className="flex flex-wrap gap-2">
+              {stale && field.canKeep ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  aria-label={t('keepFor', { field: label })}
+                  onClick={onKeep}
+                >
+                  {t('keep')}
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
+                variant={stale ? 'default' : 'outline'}
                 disabled={busy}
-                aria-label={t('keepFor', { field: label })}
-                onClick={onKeep}
+                aria-label={
+                  stale
+                    ? t('takeTillFor', { field: label, source })
+                    : t('revertFor', { field: label, source })
+                }
+                onClick={onRevert}
               >
-                {t('keep')}
+                {stale ? t('takeTill', { source }) : t('revert')}
               </Button>
-            ) : null}
-            <Button
-              type="button"
-              size="sm"
-              variant={stale ? 'default' : 'outline'}
-              disabled={busy}
-              aria-label={
-                stale
-                  ? t('takeTillFor', { field: label, source })
-                  : t('revertFor', { field: label, source })
-              }
-              onClick={onRevert}
-            >
-              {stale ? t('takeTill', { source }) : t('revert')}
-            </Button>
-          </div>
+            </div>
+          )}
         </div>
       ) : null}
     </>
@@ -137,6 +151,7 @@ function RowExtras({ field, busy, onRevert, onKeep }: RowExtrasProps) {
 export function ItemSheetDetailsTab({
   data,
   busy,
+  readOnly = false,
   onSave,
   onRevert,
   onKeep,
@@ -148,12 +163,13 @@ export function ItemSheetDetailsTab({
   const [editing, setEditing] = useState<string | null>(null)
   const byKey = new Map(data.fields.map((field) => [field.key, field]))
   const editingField = editing === null ? undefined : byKey.get(editing)
+  const markable = data.sale.canMark && data.sale.offSale === null
 
   return (
     <div className="grid gap-4" data-testid="item-sheet-details">
       <ItemSheetIssues data={data} />
       {/* The name is the till's own, for want of a public one (D75): says so, never blocks. */}
-      {data.nameFromTill ? <NameFromTillNotice /> : null}
+      {data.nameFromTill ? <NameFromTillNotice readOnly={readOnly} /> : null}
       <ItemSheetSale sale={data.sale} busy={busy} onChange={onSoldOut} />
       {/* One <dl> per group, with the group label outside it, so every dl holds only row
           wrappers around dt/dd pairs. */}
@@ -165,7 +181,7 @@ export function ItemSheetDetailsTab({
               {group.keys.map((key) => {
                 const field = byKey.get(key)
                 if (!field) return null
-                const editable = field.access.kind === 'edit'
+                const editable = !readOnly && field.access.kind === 'edit'
                 // Radio cards instead of the generic editor: one tap, saved at once (#218).
                 if (key === 'payment_mode' && editable && data.payFirstDefault !== null) {
                   return (
@@ -182,12 +198,15 @@ export function ItemSheetDetailsTab({
                   <FieldRow
                     key={key}
                     definition={field.definition}
-                    value={field.value ?? undefined}
+                    value={
+                      // A flag nothing set is true: no layer says otherwise (S16).
+                      field.value ?? (field.definition.combinator === 'all_true' ? true : undefined)
+                    }
                     provenance={badgeProvenance(field.provenance)}
                     onEdit={
                       editable
                         ? () => setEditing(key)
-                        : field.access.kind === 'media'
+                        : field.access.kind === 'media' && !readOnly
                           ? onOpenMedia
                           : undefined
                     }
@@ -195,6 +214,8 @@ export function ItemSheetDetailsTab({
                       <RowExtras
                         field={field}
                         busy={busy}
+                        readOnly={readOnly}
+                        markable={markable}
                         onRevert={() => void onRevert(key)}
                         onKeep={() => void onKeep(key)}
                       />

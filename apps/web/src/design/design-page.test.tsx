@@ -5,7 +5,7 @@
 // the navigation are the only fakes. The frames' own drawing is the Playwright spec's (design.spec.ts).
 import { DEFAULT_DESIGN, designThemeOf } from '@restro/core'
 import { fixture } from '@restro/shell/testing'
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -22,6 +22,11 @@ const actions = vi.hoisted(() => ({
   setStyleStatusAction: vi.fn(),
 }))
 const push = vi.hoisted(() => vi.fn())
+const uploadImage = vi.hoisted(() => vi.fn())
+vi.mock('@/composer/item-sheet-upload', async (original) => ({
+  ...(await original<typeof import('@/composer/item-sheet-upload')>()),
+  uploadImage,
+}))
 vi.mock('@/server/design/actions', () => ({
   saveDesignAction: actions.saveDesignAction,
   saveStyleAction: actions.saveStyleAction,
@@ -74,6 +79,52 @@ const radio = (style: string) =>
       .getAllByTestId('design-style-tile')
       .find((tile) => tile.getAttribute('data-style') === style) as HTMLElement,
   ).getByRole('radio') as HTMLInputElement
+
+const pageColour = () =>
+  document.querySelector('[data-colour="primary"] input:not([type="color"])') as HTMLInputElement
+const level = (name: 'Simple' | 'Advanced') =>
+  userEvent.click(
+    within(screen.getByRole('group', { name: 'Level of detail' })).getByRole('button', { name }),
+  )
+
+/** A promise the test settles by hand. */
+function deferred<T>() {
+  let settle: (value: T) => void = () => {}
+  const promise = new Promise<T>((resolve) => {
+    settle = resolve
+  })
+  return { promise, settle }
+}
+
+const realUrls = {
+  createObjectURL: URL.createObjectURL,
+  revokeObjectURL: URL.revokeObjectURL,
+}
+afterEach(() => {
+  Object.assign(URL, realUrls)
+})
+
+/** The local links made for chosen files, and the ones released (the real ones come back after). */
+function fakeObjectUrls() {
+  const made: string[] = []
+  const revoked: string[] = []
+  Object.assign(URL, {
+    createObjectURL: (_file: Blob) => {
+      const url = `blob:logo-${made.length + 1}`
+      made.push(url)
+      return url
+    },
+    revokeObjectURL: (url: string) => {
+      revoked.push(url)
+    },
+  })
+  return { made, revoked }
+}
+
+async function chooseLogo() {
+  const file = new File([new Uint8Array(64)], 'logo.png', { type: 'image/png' })
+  await userEvent.upload(screen.getByTestId('design-logo-input') as HTMLInputElement, file)
+}
 
 /** The design the last save sent. */
 const sent = () => actions.saveDesignAction.mock.lastCall?.[0]
@@ -301,6 +352,202 @@ describe('the Design page', () => {
       within(screen.getByTestId('design-leave')).getByRole('button', { name: 'Leave' }),
     )
     expect(push).toHaveBeenCalledWith(`/venues/${VENUE}?tab=studio&menu=${MENU}`)
+  })
+
+  it('picking the Style the venue is on changes nothing: no step, nothing unsaved (C7)', async () => {
+    setup()
+    await userEvent.click(radio('basic'))
+    expect(radio('basic').checked).toBe(true)
+    expect(undo().disabled).toBe(true)
+    expect(done().disabled).toBe(true)
+    expect(screen.queryByTestId('design-unsaved')).toBeNull()
+  })
+
+  it('an edit made while Done is saving stays, as an unsaved change (C3)', async () => {
+    const save = deferred<{ ok: true; revision: number }>()
+    actions.saveDesignAction.mockReturnValueOnce(save.promise)
+    setup()
+    await userEvent.click(radio('editorial'))
+    await userEvent.click(done())
+    type(brand(), '#16a34a')
+    await act(async () => save.settle({ ok: true, revision: 4 }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    expect(brand().value).toBe('#16a34a')
+    expect(radio('editorial').checked).toBe(true)
+    expect(screen.getByTestId('design-unsaved')).toBeTruthy()
+    expect(done().disabled).toBe(false)
+    // Undo still takes back the colour; the Style was saved.
+    expect(undo().disabled).toBe(false)
+  })
+
+  it('a logo that finishes going up after other edits keeps those edits (C4)', async () => {
+    fakeObjectUrls()
+    const upload = deferred<{ ok: true; assetId: string }>()
+    uploadImage.mockReturnValueOnce(upload.promise)
+    setup()
+    await chooseLogo()
+    type(brand(), '#16a34a')
+    await userEvent.click(radio('editorial'))
+    await act(async () => upload.settle({ ok: true, assetId: 'as_0123456789ABCDEFGHIJKL' }))
+    await waitFor(() =>
+      expect(screen.getByTestId('design-logo-image').getAttribute('src')).toBe('blob:logo-1'),
+    )
+    expect(brand().value).toBe('#16a34a')
+    expect(radio('editorial').checked).toBe(true)
+    await userEvent.click(done())
+    await waitFor(() => expect(actions.saveDesignAction).toHaveBeenCalledTimes(1))
+    expect(sent().design).toMatchObject({
+      style: 'editorial',
+      logo_asset_id: 'as_0123456789ABCDEFGHIJKL',
+    })
+    expect(sent().design.colors.tertiary).toBe('#16a34a')
+  })
+
+  it('keeps a new logo picture across Simple, Advanced and Undo, until the page goes (C5)', async () => {
+    const urls = fakeObjectUrls()
+    uploadImage.mockResolvedValueOnce({ ok: true, assetId: 'as_0123456789ABCDEFGHIJKL' })
+    const { unmount } = setup()
+    await chooseLogo()
+    await waitFor(() => expect(screen.getByTestId('design-logo-image')).toBeTruthy())
+    await level('Advanced')
+    await level('Simple')
+    type(brand(), '#16a34a')
+    await userEvent.click(undo())
+    expect(screen.getByTestId('design-logo-image').getAttribute('src')).toBe('blob:logo-1')
+    expect(urls.revoked).toEqual([])
+    unmount()
+    expect(urls.revoked).toEqual(['blob:logo-1'])
+  })
+
+  it('releases a new logo picture as soon as no step can show it again (C5)', async () => {
+    const urls = fakeObjectUrls()
+    uploadImage.mockResolvedValueOnce({ ok: true, assetId: 'as_0123456789ABCDEFGHIJKL' })
+    setup()
+    await chooseLogo()
+    await waitFor(() => expect(screen.getByTestId('design-logo-image')).toBeTruthy())
+    expect(urls.revoked).toEqual([])
+    await userEvent.click(cancel())
+    expect(screen.queryByTestId('design-logo-image')).toBeNull()
+    expect(urls.revoked).toEqual(['blob:logo-1'])
+  })
+
+  it('a logo going up keeps its progress across Simple and Advanced, and Upload and Done wait', async () => {
+    fakeObjectUrls()
+    const upload = deferred<{ ok: true; assetId: string }>()
+    uploadImage.mockReturnValueOnce(upload.promise)
+    setup()
+    type(brand(), '#16a34a')
+    await chooseLogo()
+    await level('Advanced')
+    await level('Simple')
+    const button = () => screen.getByTestId('design-logo-upload') as HTMLButtonElement
+    expect(button().disabled).toBe(true)
+    expect(button().textContent).toContain('0%')
+    expect(done().disabled).toBe(true)
+    await act(async () => upload.settle({ ok: true, assetId: 'as_0123456789ABCDEFGHIJKL' }))
+    await waitFor(() => expect(button().disabled).toBe(false))
+    expect(done().disabled).toBe(false)
+  })
+
+  it('on a phone docks the preview above the bar, with no width switch (S3, S4)', () => {
+    setup()
+    const dock = screen.getByTestId('design-dock')
+    expect(dock.className).toContain('sticky')
+    expect(dock.className).toContain('md:contents')
+    expect(within(dock).getByTestId('design-preview-section')).toBeTruthy()
+    expect(within(dock).getByTestId('design-bar')).toBeTruthy()
+    expect(screen.getByTestId('design-preview-devices').className).toContain('hidden md:block')
+  })
+
+  it('the docked preview steps aside while a text box has the keyboard (S3)', () => {
+    setup()
+    const section = () => screen.getByTestId('design-preview-section')
+    expect(section().className).not.toContain('max-md:hidden')
+    fireEvent.focusIn(brand())
+    expect(section().className).toContain('max-md:hidden')
+    fireEvent.focusOut(brand())
+    expect(section().className).not.toContain('max-md:hidden')
+  })
+
+  it('the docked preview comes back when the keyboard closes and the box keeps the focus (S3)', () => {
+    const viewport = Object.assign(new EventTarget(), { width: 390, height: 800 })
+    Object.defineProperty(window, 'visualViewport', { value: viewport, configurable: true })
+    try {
+      setup()
+      const hidden = () =>
+        screen.getByTestId('design-preview-section').className.includes('max-md:hidden')
+      fireEvent.focusIn(brand())
+      expect(hidden()).toBe(false)
+      act(() => {
+        viewport.height = 450
+        viewport.dispatchEvent(new Event('resize'))
+      })
+      expect(hidden()).toBe(true)
+      act(() => {
+        viewport.height = 800
+        viewport.dispatchEvent(new Event('resize'))
+      })
+      expect(hidden()).toBe(false)
+    } finally {
+      Reflect.deleteProperty(window, 'visualViewport')
+    }
+  })
+
+  it('says the preview is loading while it is built (S5)', () => {
+    actions.previewDraftAction.mockReturnValueOnce(new Promise(() => {}))
+    setup()
+    expect(screen.getByTestId('design-preview-loading').textContent).toBe('Loading the preview…')
+  })
+
+  it('says quietly that a Style tile is loading while its picture is drawn', () => {
+    actions.previewDraftAction.mockReturnValueOnce(new Promise(() => {}))
+    setup()
+    const tile = screen.getAllByTestId('design-style-tile')[0] as HTMLElement
+    const loading = within(tile).getByTestId('design-tile-loading')
+    expect(loading.textContent).toBe('Loading…')
+    expect(loading.getAttribute('aria-hidden')).toBe('true')
+  })
+
+  it('takes the loading note away once the frame has loaded (S5)', async () => {
+    setup()
+    await waitFor(() => expect(screen.getByTestId('design-preview-frame')).toBeTruthy())
+    fireEvent.load(screen.getByTestId('design-preview-frame'))
+    expect(screen.queryByTestId('design-preview-loading')).toBeNull()
+  })
+
+  it('shows an empty swatch for a brand colour not chosen yet, not a grey one (S9)', () => {
+    setup({ design: DEFAULT_DESIGN, theme: designThemeOf(DEFAULT_DESIGN) })
+    expect(brand().value).toBe('')
+    const field = () => brand().closest('div') as HTMLElement
+    expect(within(field()).getByTestId('hex-field-empty')).toBeTruthy()
+    type(brand(), '#16a34a')
+    expect(within(field()).queryByTestId('hex-field-empty')).toBeNull()
+  })
+
+  it('warns of a strong page colour when guests can get a light screen, whatever the preview shows (R2)', async () => {
+    setup()
+    type(pageColour(), '#e11d48')
+    expect(screen.getByTestId('design-saturation-warning')).toBeTruthy()
+    // The preview's own switch is for looking; guests still get the design's screen.
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Screen colours' })).getByRole('button', {
+        name: 'Dark',
+      }),
+    )
+    expect(screen.getByTestId('design-saturation-warning')).toBeTruthy()
+  })
+
+  it('says nothing of a strong page colour on a design with a dark screen (R2)', () => {
+    const dark = {
+      ...COLOURED,
+      values: {
+        ...COLOURED.values,
+        general: { ...COLOURED.values.general, screen: 'dark' as const },
+      },
+    }
+    setup({ design: dark, theme: designThemeOf(dark) })
+    type(pageColour(), '#e11d48')
+    expect(screen.queryByTestId('design-saturation-warning')).toBeNull()
   })
 
   it('is read-only for someone who may not change it: no Done, no Cancel, no Undo', () => {

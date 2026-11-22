@@ -8,10 +8,9 @@ import { requireTenant } from '@/server/session'
 import { onSharedDevice } from '@/server/staff/shared-device'
 import { OwnSignInNotice } from '@/settings/section-notices'
 
-export async function generateMetadata() {
-  const t = await getTranslations('settings')
-  return { title: t('title') }
-}
+// No title of its own: a plain title here would drop the root's "%s · Restro" template for the
+// sections below it, whose browser tabs would then read only "General" (screen round 2026-11-18,
+// S21). `/settings` itself only redirects.
 
 // The frame of the organisation's Settings (D73, D74): a title, the sections to move between, and
 // a slot for the open section. Everyone in the organisation may open it; who may change what is

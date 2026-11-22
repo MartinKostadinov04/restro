@@ -25,6 +25,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { purgeVenueAction } from '@/server/venues-actions'
 import type { PurgeVenueError } from '@/server/venues-result'
+import { useSignInAgain } from '@/settings/use-settings-run'
 
 interface PurgeVenueDialogProps {
   readonly open: boolean
@@ -56,14 +57,15 @@ function PurgeVenueForm({
   const t = useTranslations('settings.deletedVenues.purgeDialog')
   const formId = useId()
   const [pending, startTransition] = useTransition()
+  const again = useSignInAgain(() => submit())
   const [typed, setTyped] = useState('')
   const [error, setError] = useState<PurgeVenueError | null>(null)
 
   // The server compares the trimmed text with the venue's name; the button waits for the same.
   const matches = typed.trim() === venueName
 
-  function submit(event: FormEvent) {
-    event.preventDefault()
+  function submit(event?: FormEvent) {
+    event?.preventDefault()
     if (!matches || pending) return
     setError(null)
     startTransition(async () => {
@@ -71,6 +73,10 @@ function PurgeVenueForm({
         () => ({ ok: false, error: 'failed' }) as const,
       )
       if (!result.ok) {
+        if (result.error === 'sign_in_again') {
+          again.ask()
+          return
+        }
         setError(result.error)
         return
       }
@@ -83,6 +89,7 @@ function PurgeVenueForm({
 
   return (
     <DialogContent data-testid="purge-venue-dialog">
+      {again.dialog}
       <form onSubmit={submit} className="grid gap-4" noValidate>
         <DialogHeader>
           <DialogTitle>{t('title', { name: venueName })}</DialogTitle>
@@ -122,7 +129,7 @@ function PurgeVenueForm({
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            {t('cancel')}
+            {t('keep')}
           </Button>
           <Button
             type="submit"

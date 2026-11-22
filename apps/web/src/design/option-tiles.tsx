@@ -8,25 +8,34 @@
 //
 // A row that does not apply is switched off with its hint under it, and its tiles draw nothing: a
 // radio with the value word is all it needs. A tile that cannot draw keeps its value word and radio,
-// so the value can always be picked.
+// so the value can always be picked. A member who may not edit still sees every picture.
+//
+// Each tile works out its own picture and keeps it until something it draws changes: a re-render of
+// the page (a keystroke in another box) redraws no frame.
 import type {
   DesignChoiceOption,
   DesignPage,
   DesignValues,
+  LiveOverlay,
   MenuSnapshot,
   VenueTheme,
 } from '@restro/core'
 import { useTranslations } from 'next-intl'
 import { useDeferredValue, useEffect, useId, useMemo, useState } from 'react'
 
-import { Skeleton } from '@/components/ui/skeleton'
-
-import { type RowState, tilePlanOf, valueIn, withOptionValue } from './advanced-model'
+import {
+  type RowState,
+  shownValues,
+  type TilePlan,
+  tilePlanOf,
+  valueIn,
+  withOptionValue,
+} from './advanced-model'
 import { themeWithValues } from './design-draft'
 import type { Draft } from './preview-draft'
 import type { FrameContent } from './preview-frames'
 import { previewSnapshot } from './preview-snapshot'
-import { ScaledFrame } from './scaled-frame'
+import { ScaledFrame, TileLoading } from './scaled-frame'
 import { DEMO_ASSET_BASE, specimenOf } from './specimen'
 
 /** The width a tile's picture is laid out at: the narrowest phone the renderer holds for. */
@@ -62,6 +71,46 @@ function useNear(): [(element: HTMLDivElement | null) => void, boolean] {
   return [box, near]
 }
 
+/** What a tile's picture draws: the specimen with this tile's value swapped into the draft's look. */
+export function useTileContent({
+  specimen,
+  overlay,
+  look,
+  pageId,
+  optionId,
+  value,
+  scheme,
+  services,
+  plan,
+}: {
+  specimen: MenuSnapshot | null
+  overlay: LiveOverlay | null
+  look: { readonly theme: VenueTheme; readonly values: DesignValues }
+  pageId: string
+  optionId: string
+  value: string
+  scheme: 'light' | 'dark'
+  services: boolean
+  plan: TilePlan
+}): FrameContent | null {
+  return useMemo(() => {
+    if (specimen === null || overlay === null) return null
+    const own = withOptionValue(look.values, pageId, optionId, value)
+    return {
+      snapshot: previewSnapshot(specimen, themeWithValues(look.theme, own), own),
+      overlay,
+      scheme:
+        pageId === 'general' && optionId === 'screen' && value !== 'auto'
+          ? (value as 'light' | 'dark')
+          : scheme,
+      services,
+      stage: plan.stage,
+      focus: plan.focus,
+      assetBase: DEMO_ASSET_BASE,
+    }
+  }, [specimen, overlay, look, pageId, optionId, value, scheme, services, plan])
+}
+
 function Tile({
   venueId,
   slot,
@@ -70,6 +119,7 @@ function Tile({
   loading,
   checked,
   disabled,
+  blank,
   groupName,
   value,
   onPick,
@@ -81,12 +131,15 @@ function Tile({
   content: FrameContent | null
   loading: boolean
   checked: boolean
+  /** The radio cannot be picked: the row does not apply, or the person may not edit. */
   disabled: boolean
+  /** The row does not apply: the tile draws no picture. */
+  blank: boolean
   groupName: string
   value: string
   onPick: () => void
 }) {
-  const drawn = !disabled && (content !== null || loading)
+  const drawn = !blank && (content !== null || loading)
   const [box, near] = useNear()
   return (
     <label
@@ -95,9 +148,13 @@ function Tile({
       className="grid min-w-0 cursor-pointer content-start gap-2 rounded-md border p-2 has-checked:border-primary has-checked:bg-accent/40 has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50 has-disabled:cursor-not-allowed has-disabled:opacity-70 phone:min-h-11"
     >
       {drawn ? (
-        <div ref={box} className="h-28 overflow-hidden rounded-sm bg-muted/40">
+        <div
+          ref={box}
+          className="relative h-28 overflow-hidden rounded-sm bg-muted/40"
+          data-testid="design-tile-picture"
+        >
           {content === null || !near ? (
-            <Skeleton className="size-full rounded-none" />
+            <TileLoading />
           ) : (
             <ScaledFrame
               venueId={venueId}
@@ -199,40 +256,95 @@ export function OptionTiles({
         </p>
       )}
       <div className="grid grid-cols-2 gap-2">
-        {option.values.map((entry) => {
-          const own = withOptionValue(look.values, page.id, option.id, entry.id)
-          const content: FrameContent | null =
-            specimen === null || draft.state !== 'ready'
-              ? null
-              : {
-                  snapshot: previewSnapshot(specimen, themeWithValues(look.theme, own), own),
-                  overlay: draft.overlay,
-                  scheme:
-                    page.id === 'general' && option.id === 'screen' && entry.id !== 'auto'
-                      ? (entry.id as 'light' | 'dark')
-                      : scheme,
-                  services,
-                  stage: plan.stage,
-                  focus: plan.focus,
-                  assetBase: DEMO_ASSET_BASE,
-                }
-          return (
-            <Tile
-              key={entry.id}
-              venueId={venueId}
-              slot={`tile-${page.id}-${option.id}-${entry.id}`}
-              label={entry[locale]}
-              content={content}
-              loading={draft.state === 'loading'}
-              checked={current === entry.id}
-              disabled={!canEdit || state.disabled}
-              groupName={group}
-              value={entry.id}
-              onPick={() => onPick(entry.id)}
-            />
-          )
-        })}
+        {shownValues(option.values).map((entry) => (
+          <OptionTile
+            key={entry.id}
+            venueId={venueId}
+            pageId={page.id}
+            optionId={option.id}
+            value={entry.id}
+            label={entry[locale]}
+            specimen={specimen}
+            overlay={draft.state === 'ready' ? draft.overlay : null}
+            look={look}
+            scheme={scheme}
+            services={services}
+            plan={plan}
+            loading={draft.state === 'loading'}
+            checked={current === entry.id}
+            disabled={!canEdit || state.disabled}
+            blank={state.disabled}
+            groupName={group}
+            onPick={onPick}
+          />
+        ))}
       </div>
     </fieldset>
+  )
+}
+
+/** One value's tile, with its own picture (`useTileContent`). */
+function OptionTile({
+  venueId,
+  pageId,
+  optionId,
+  value,
+  label,
+  specimen,
+  overlay,
+  look,
+  scheme,
+  services,
+  plan,
+  loading,
+  checked,
+  disabled,
+  blank,
+  groupName,
+  onPick,
+}: {
+  venueId: string
+  pageId: string
+  optionId: string
+  value: string
+  label: string
+  specimen: MenuSnapshot | null
+  overlay: LiveOverlay | null
+  look: { readonly theme: VenueTheme; readonly values: DesignValues }
+  scheme: 'light' | 'dark'
+  services: boolean
+  plan: TilePlan
+  loading: boolean
+  checked: boolean
+  disabled: boolean
+  blank: boolean
+  groupName: string
+  onPick: (value: string) => void
+}) {
+  const content = useTileContent({
+    specimen,
+    overlay,
+    look,
+    pageId,
+    optionId,
+    value,
+    scheme,
+    services,
+    plan,
+  })
+  return (
+    <Tile
+      venueId={venueId}
+      slot={`tile-${pageId}-${optionId}-${value}`}
+      label={label}
+      content={content}
+      loading={loading}
+      checked={checked}
+      disabled={disabled}
+      blank={blank}
+      groupName={groupName}
+      value={value}
+      onPick={() => onPick(value)}
+    />
   )
 }

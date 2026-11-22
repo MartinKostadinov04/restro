@@ -123,6 +123,11 @@ export interface ServiceStrings {
   /** The label of the waiter button before the bag has anything in it. */
   readonly bell: string
   readonly kinds: { readonly [K in ServiceKind]: string }
+  /**
+   * The tile of the plain `waiter` kind in Call a waiter's options: "Something else", so it does
+   * not repeat the sheet's title (lane 3 S6). `kinds.waiter` still names the call once sent.
+   */
+  readonly kindWaiterTile: string
   readonly otherPlaceholder: string
   readonly send: string
   readonly requesting: string
@@ -136,12 +141,16 @@ export interface ServiceStrings {
   readonly payTitle: string
   readonly tip: string
   readonly total: string
+  /** The Pay sheet on a bill with nothing to pay (lane 3 S1), above the `done` button. */
   readonly nothingToPay: string
+  /** Closes a sheet back to the menu: "Back to the menu". */
   readonly done: string
   readonly table: string
   // The table's shared order (#75).
   readonly tableOrder: string
   readonly emptyOrder: string
+  /** In place of `emptyOrder` while a sent order's card shows under it (lane 3 S18). */
+  readonly addMore: string
   /** A line drawn before the server answered. */
   readonly saving: string
   /** "Burger removed", with its Undo. */
@@ -162,6 +171,7 @@ export interface ServiceStrings {
   readonly heldLine: string
   /** Ordering is paused (staff, Restro, the connection, the table; #79): the order is kept. */
   readonly orderingPaused: string
+  /** The table is not open for phones: the menu shows read-only under this line (lane 3 S17). */
   readonly orderingClosed: string
   /** The last-orders notice, shown 10 minutes before them (#82): "Last orders at 04:30". */
   readonly lastOrdersAt: (time: string) => string
@@ -211,6 +221,11 @@ export interface ServiceStrings {
    * a waiter in person.
    */
   readonly callLost: string
+  /**
+   * A call (Call a waiter) refused because the table is not open for phones (`table_not_open` on
+   * `service.request`): it speaks of the table, not of orders (lane 3 S19).
+   */
+  readonly callTableNotOpen: string
   // Send and its states (#77, D116, D122 §5).
   /** The Send button: "Send 3 items". */
   readonly sendItems: (count: number) => string
@@ -281,6 +296,8 @@ export interface PayingStrings {
   readonly tip: string
   readonly total: string
   readonly payX: (amount: string) => string
+  /** The second step's button, once the bill is prepared: "Confirm 27,50 EUR" (lane 3 S14). */
+  readonly confirmX: (amount: string) => string
   readonly legalPrices: string
   readonly legalProcessor: (processor: string, venue: string) => string
   /** The link that opens the venue's legal details (#198, D127 log 1.6; guide `legal_links`). */
@@ -532,12 +549,13 @@ const EN: Strings = {
       clean_table: 'Clean the table',
       terminal: 'Card terminal',
     },
+    kindWaiterTile: 'Something else',
     otherPlaceholder: 'Tell us what you need',
     send: 'Send',
     requesting: 'Sending your request',
     requestFailed: 'Your request did not go through. Try again, or call a waiter over.',
     requestStates: {
-      sent: { title: 'Waiter called', hint: 'We are waiting for the team to confirm it.' },
+      sent: { title: 'Request sent', hint: 'Waiting for a waiter to confirm.' },
       accepted: { title: 'The team has your request', hint: 'You can keep browsing.' },
       on_the_way: {
         title: 'A waiter is on the way',
@@ -552,11 +570,12 @@ const EN: Strings = {
     payTitle: 'Pay',
     tip: 'Tip for the team',
     total: 'Total',
-    nothingToPay: 'There is nothing to pay yet.',
-    done: 'Back to menu',
+    nothingToPay: 'Nothing to pay yet',
+    done: 'Back to the menu',
     table: 'Table',
     tableOrder: 'Table order',
     emptyOrder: 'Nothing on the table order yet.',
+    addMore: 'Add more from the menu.',
     saving: 'Saving…',
     removedNamed: (name) => `${name} removed`,
     undo: 'Undo',
@@ -568,7 +587,7 @@ const EN: Strings = {
     otherItem: 'Other item',
     heldLine: 'Being paid',
     orderingPaused: 'Ordering is paused right now, please order from a waiter.',
-    orderingClosed: 'This table is not taking orders from phones right now.',
+    orderingClosed: 'This table isn’t open for phone orders. Ask a waiter.',
     lastOrdersAt: (time) => `Last orders at ${time}`,
     orderingClosedTonight: 'Ordering from phones has closed for tonight',
     billStayed: (table) =>
@@ -593,6 +612,7 @@ const EN: Strings = {
       'We can’t reach Restro right now. If your order isn’t on your bill in a few minutes, please call a waiter.',
     callLost:
       'We can’t reach Restro right now. If nobody comes in a few minutes, please ask a waiter in person.',
+    callTableNotOpen: 'This table isn’t open for phones. Wave to a waiter.',
     sendItems: (count) => (count === 1 ? 'Send 1 item' : `Send ${count} items`),
     sendingNow: 'Sending…',
     beingSent: 'Being sent',
@@ -626,7 +646,7 @@ const EN: Strings = {
       quantity_limit: 'That is as many as one line can hold.',
       stale_action: 'That took too long to arrive. Try again.',
       rate_limited: 'Slow down a moment.',
-      table_not_open: 'This table is not taking orders from phones right now.',
+      table_not_open: 'This table isn’t open for phone orders. Ask a waiter.',
       calls_off: 'Calling a waiter from your phone is off here. Ask your waiter.',
       kind_not_offered: 'This can’t be asked for from your phone here. Ask your waiter.',
       code_retired: 'This table code is no longer in use. Scan the code on your table again.',
@@ -642,6 +662,7 @@ const EN: Strings = {
       needs_first_item: 'Ask your waiter to put your first item on, then send again.',
       duplicate_order: 'Your table sent the same order a few minutes ago.',
       guard_tripped: 'Ask your waiter to take this order.',
+      over_phone_limit: 'This order is over the limit for phone orders. Your waiter will take it.',
       paying_not_offered: 'Ask your waiter to pay.',
       paying_paused: 'Card payments are paused right now. Ask your waiter.',
       being_paid: 'Someone is already paying for this line.',
@@ -671,10 +692,11 @@ const EN: Strings = {
       wholeBill: 'The whole bill',
       tipLabel: 'Tip: goes to the venue',
       tipOther: 'Other amount',
-      yourItems: 'Your items',
+      yourItems: 'Selected',
       tip: 'Tip',
       total: 'Total',
       payX: (amount) => `Pay ${amount}`,
+      confirmX: (amount) => `Confirm ${amount}`,
       legalPrices: 'Prices in EUR incl. VAT. Complaints and refunds: the venue.',
       legalProcessor: (processor, venue) => `Payment processed by ${processor} for ${venue}.`,
       legalDetailsLink: 'About the venue',
@@ -897,12 +919,13 @@ const BG: Strings = {
       clean_table: 'Почистване на масата',
       terminal: 'ПОС терминал',
     },
+    kindWaiterTile: 'Друго',
     otherPlaceholder: 'Напишете от какво имате нужда',
     send: 'Изпрати',
     requesting: 'Заявката се изпраща',
     requestFailed: 'Заявката не стигна до екипа. Опитайте отново или повикайте сервитьора.',
     requestStates: {
-      sent: { title: 'Сервитьорът е повикан', hint: 'Чакаме екипът да я потвърди.' },
+      sent: { title: 'Заявката е изпратена', hint: 'Чакаме сервитьор да я потвърди.' },
       accepted: { title: 'Екипът получи заявката', hint: 'Може да продължите да разглеждате.' },
       on_the_way: {
         title: 'Сервитьор идва',
@@ -917,11 +940,12 @@ const BG: Strings = {
     payTitle: 'Плащане',
     tip: 'Бакшиш за екипа',
     total: 'Общо',
-    nothingToPay: 'Все още няма какво да се плати.',
-    done: 'Обратно към менюто',
+    nothingToPay: 'Няма какво да се плати',
+    done: 'Към менюто',
     table: 'Маса',
     tableOrder: 'Поръчка на масата',
     emptyOrder: 'В поръчката на масата още няма нищо.',
+    addMore: 'Добавете още от менюто.',
     saving: 'Записване…',
     removedNamed: (name) => `${name} е премахнато`,
     undo: 'Отмени',
@@ -933,7 +957,7 @@ const BG: Strings = {
     otherItem: 'Друг артикул',
     heldLine: 'Плаща се',
     orderingPaused: 'Поръчките са спрени в момента, моля, поръчайте от сервитьор.',
-    orderingClosed: 'Тази маса не приема поръчки от телефон в момента.',
+    orderingClosed: 'Тази маса не е отворена за поръчки от телефон. Попитайте сервитьор.',
     lastOrdersAt: (time) => `Последни поръчки в ${time}`,
     orderingClosedTonight: 'Поръчките от телефон приключиха за тази вечер',
     billStayed: (table) =>
@@ -959,6 +983,7 @@ const BG: Strings = {
       'В момента не можем да се свържем с Restro. Ако поръчката ви не се появи в сметката след няколко минути, моля, повикайте сервитьор.',
     callLost:
       'В момента не можем да се свържем с Restro. Ако никой не дойде след няколко минути, моля, обърнете се към сервитьор.',
+    callTableNotOpen: 'Тази маса не е отворена за телефони. Махнете на сервитьор.',
     sendItems: (count) => (count === 1 ? 'Изпрати 1 артикул' : `Изпрати ${count} артикула`),
     sendingNow: 'Изпраща се…',
     beingSent: 'Изпраща се',
@@ -994,7 +1019,7 @@ const BG: Strings = {
       quantity_limit: 'Един ред не може да побере повече.',
       stale_action: 'Това пристигна твърде късно. Опитайте отново.',
       rate_limited: 'Малко по-бавно, моля.',
-      table_not_open: 'Тази маса не приема поръчки от телефон в момента.',
+      table_not_open: 'Тази маса не е отворена за поръчки от телефон. Попитайте сервитьор.',
       calls_off: 'Повикването на сервитьор от телефона е изключено тук. Попитайте сервитьора.',
       kind_not_offered: 'Това не може да се поиска от телефона тук. Попитайте сервитьора.',
       code_retired: 'Този код на маса вече не се използва. Сканирайте отново кода на масата.',
@@ -1010,6 +1035,7 @@ const BG: Strings = {
       needs_first_item: 'Помолете сервитьора да маркира първия ви артикул, после изпратете отново.',
       duplicate_order: 'Масата ви изпрати същата поръчка преди малко.',
       guard_tripped: 'Помолете сервитьора да приеме тази поръчка.',
+      over_phone_limit: 'Тази поръчка е над лимита за поръчки от телефон. Сервитьорът ще я приеме.',
       paying_not_offered: 'За да платите, попитайте сервитьора.',
       paying_paused: 'Плащането с карта е спряно в момента. Попитайте сервитьора.',
       being_paid: 'Някой вече плаща този ред.',
@@ -1043,6 +1069,7 @@ const BG: Strings = {
       tip: 'Бакшиш',
       total: 'Общо',
       payX: (amount) => `Плати ${amount}`,
+      confirmX: (amount) => `Потвърди ${amount}`,
       legalPrices: 'Цените са в EUR с ДДС. Рекламации и връщане на пари: заведението.',
       legalProcessor: (processor, venue) => `Плащането се обработва от ${processor} за ${venue}.`,
       legalDetailsLink: 'Данни за заведението',

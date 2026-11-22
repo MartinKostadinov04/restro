@@ -65,7 +65,10 @@ export type RvSpotState = EverySpotState<typeof RV_SPOT_STATES>[number]
 export interface RvCan {
   /** `reservations.tonight`: work the night, and take a booking (#328). */
   readonly tonight: boolean
-  /** `reservations.manage`: change, cancel and bring back a booking, whoever took it. */
+  /**
+   * `reservations.manage`: delete a booking somebody else took, bring one back, and put back a
+   * party the night's end marked (D138). Changing and cancelling one is `tonight`'s.
+   */
   readonly manage: boolean
   /** `reservations.block`: keep a spot back from booking (#327). */
   readonly block: boolean
@@ -207,6 +210,8 @@ export interface RvHistoryView {
   readonly toState: string | null
   readonly reason: string | null
   readonly by: WhoView
+  /** The person reading wrote it: never "changed by" news to them (the sheet's stale notice). */
+  readonly mine: boolean
 }
 
 /** Everything about one reservation, for its sheet. */
@@ -314,6 +319,7 @@ export function rvDetailView(detail: ReservationDetail, timezone: string): RvDet
       toState: line.toState,
       reason: line.reason,
       by: whoView(line.who, line.via),
+      mine: line.mine,
     })),
   }
 }

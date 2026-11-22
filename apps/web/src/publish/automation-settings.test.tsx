@@ -39,7 +39,7 @@ const radio = (id: string) => screen.getByTestId(id) as HTMLInputElement
 describe('the Automation settings', () => {
   it('shows the sync mode with its schedule in the venue’s time zone, and the rule after a sync, naming the POS', () => {
     render()
-    expect(screen.getByText('Reading the menu from TillOne')).toBeTruthy()
+    expect(screen.getByText('Sync from TillOne')).toBeTruthy()
     expect(radio('automation-sync-auto').checked).toBe(true)
     expect((screen.getByTestId('automation-time') as HTMLInputElement).value).toBe('12:00')
     expect(screen.getByTestId('automation-zone').textContent).toBe('Europe/Sofia')
@@ -98,7 +98,7 @@ describe('the Automation settings', () => {
     const user = userEvent.setup()
     render({ ...own, syncInherited: true })
     expect(screen.getByTestId('automation-inherited').textContent).toContain(
-      'before they moved to the venue',
+      'Saving makes these settings this venue’s own.',
     )
     expect(save().disabled).toBe(false)
     await user.click(save())
@@ -121,9 +121,32 @@ describe('the Automation settings', () => {
     expect(radio('automation-sync-auto').disabled).toBe(true)
   })
 
+  it('says in one line, before the greyed choices, that only owners and admins change them (S27)', () => {
+    render(own, false)
+    const line = screen.getByTestId('automation-readonly')
+    expect(line.textContent).toBe('Only owners and admins can change this.')
+    // Read first: it comes before the first choice it explains.
+    expect(
+      line.compareDocumentPosition(radio('automation-sync-auto')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it('has no read-only line for an owner or admin', () => {
+    render(own, true)
+    expect(screen.queryByTestId('automation-readonly')).toBeNull()
+  })
+
+  it('says the read-only line in Bulgarian', () => {
+    render(own, false, 'bg')
+    expect(screen.getByTestId('automation-readonly').textContent).toBe(
+      'Само собственици и администратори могат да променят това.',
+    )
+  })
+
   it('speaks Bulgarian', () => {
     render(own, true, 'bg')
-    expect(screen.getByText('Четене на менюто от TillOne')).toBeTruthy()
+    expect(screen.getByText('Синхронизиране от TillOne')).toBeTruthy()
     expect(screen.getByText('Публикувай автоматично')).toBeTruthy()
   })
 })

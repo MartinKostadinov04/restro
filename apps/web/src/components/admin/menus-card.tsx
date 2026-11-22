@@ -279,6 +279,7 @@ export function MenusCard({
   venueId,
   venueName,
   hasTill,
+  source,
   canManage,
   menus,
   deleted,
@@ -289,6 +290,8 @@ export function MenusCard({
   venueName: string
   /** A till feeds the venue: its menus are the till's (no add, delete or import, D88). */
   hasTill: boolean
+  /** The name of that POS (`{source}`, D82); empty for a hand-made venue. */
+  source: string
   /** Owner or admin. */
   canManage: boolean
   /** The menus in use, in order. */
@@ -357,12 +360,21 @@ export function MenusCard({
   const purgeDate = (deletedAt: string) => day(new Date(Date.parse(deletedAt) + binDays * DAY_MS))
 
   return (
-    <FormSection title={t('title')} description={hasTill ? t('descriptionTill') : t('description')}>
+    <FormSection
+      title={t('title')}
+      description={hasTill ? t('descriptionTill', { source }) : t('description')}
+    >
       <ol className="divide-y rounded-md border" data-testid="menus-list">
         {menus.map((menu, index) => (
           <li
             key={menu.id}
-            className="flex flex-wrap items-center gap-2 px-3 py-2"
+            // Below 640 px the name and its badge sit above the buttons, never beside them (S1).
+            // Someone who only reads has the chevron alone: it stays at the end of the line.
+            className={
+              canManage
+                ? 'flex flex-col gap-2 px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center'
+                : 'flex flex-wrap items-center gap-2 px-3 py-2'
+            }
             data-testid="menu-row"
             data-menu={menu.id}
             data-live={menu.live ? 'true' : 'false'}
@@ -383,7 +395,9 @@ export function MenusCard({
               />
             ) : (
               <>
-                <span className="flex min-w-0 flex-1 items-center gap-2 font-medium">
+                <span
+                  className={`flex min-w-0 flex-wrap items-center gap-2 font-medium ${canManage ? 'sm:flex-1' : 'flex-1'}`}
+                >
                   <MenuName name={menu.name} venueName={venueName} />
                   {menu.live ? (
                     <Badge variant="success" data-testid="menu-live-badge">
@@ -391,81 +405,83 @@ export function MenusCard({
                     </Badge>
                   ) : null}
                 </span>
-                {canManage ? (
-                  <span className="flex flex-wrap items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      disabled={pending}
-                      onClick={() => setRenaming(menu.id)}
-                      data-testid="menu-rename"
-                    >
-                      <PencilIcon aria-hidden />
-                      <span className="sr-only">{t('rename.open')}</span>
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      disabled={pending || index === 0}
-                      onClick={() => move(menu, -1)}
-                      data-testid="menu-up"
-                    >
-                      <ArrowUpIcon aria-hidden />
-                      <span className="sr-only">{t('up')}</span>
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      disabled={pending || index === menus.length - 1}
-                      onClick={() => move(menu, 1)}
-                      data-testid="menu-down"
-                    >
-                      <ArrowDownIcon aria-hidden />
-                      <span className="sr-only">{t('down')}</span>
-                    </Button>
-                    {menu.live ? null : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={pending}
-                        onClick={() => setSettingLive(menu)}
-                        data-testid="menu-set-live"
-                      >
-                        <RadioIcon aria-hidden />
-                        {t('setLive.open')}
-                      </Button>
-                    )}
-                    {handMade ? (
+                <span className="flex flex-wrap items-center gap-1" data-testid="menu-actions">
+                  {canManage ? (
+                    <>
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
-                        disabled={pending || menu.live}
-                        title={menu.live ? t('deleteLive') : undefined}
-                        onClick={() =>
-                          act(() => deleteMenuAction({ venueId, menuId: menu.id }), t('deleted'))
-                        }
-                        data-testid="menu-delete"
+                        size="icon-sm"
+                        disabled={pending}
+                        onClick={() => setRenaming(menu.id)}
+                        data-testid="menu-rename"
                       >
-                        <Trash2Icon aria-hidden />
-                        {t('delete')}
+                        <PencilIcon aria-hidden />
+                        <span className="sr-only">{t('rename.open')}</span>
                       </Button>
-                    ) : null}
-                  </span>
-                ) : null}
-                <Button asChild variant="ghost" size="icon-sm">
-                  <Link
-                    href={composerMenuHref(venueId, menu.id)}
-                    aria-label={t('open', { name: menu.name ?? venueName })}
-                    data-testid="menu-open"
-                  >
-                    <ChevronRightIcon aria-hidden />
-                  </Link>
-                </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        disabled={pending || index === 0}
+                        onClick={() => move(menu, -1)}
+                        data-testid="menu-up"
+                      >
+                        <ArrowUpIcon aria-hidden />
+                        <span className="sr-only">{t('up')}</span>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        disabled={pending || index === menus.length - 1}
+                        onClick={() => move(menu, 1)}
+                        data-testid="menu-down"
+                      >
+                        <ArrowDownIcon aria-hidden />
+                        <span className="sr-only">{t('down')}</span>
+                      </Button>
+                      {menu.live ? null : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={pending}
+                          onClick={() => setSettingLive(menu)}
+                          data-testid="menu-set-live"
+                        >
+                          <RadioIcon aria-hidden />
+                          {t('setLive.open')}
+                        </Button>
+                      )}
+                      {handMade ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={pending || menu.live}
+                          title={menu.live ? t('deleteLive') : undefined}
+                          onClick={() =>
+                            act(() => deleteMenuAction({ venueId, menuId: menu.id }), t('deleted'))
+                          }
+                          data-testid="menu-delete"
+                        >
+                          <Trash2Icon aria-hidden />
+                          {t('delete')}
+                        </Button>
+                      ) : null}
+                    </>
+                  ) : null}
+                  <Button asChild variant="ghost" size="icon-sm">
+                    <Link
+                      href={composerMenuHref(venueId, menu.id)}
+                      aria-label={t('open', { name: menu.name ?? venueName })}
+                      data-testid="menu-open"
+                    >
+                      <ChevronRightIcon aria-hidden />
+                    </Link>
+                  </Button>
+                </span>
               </>
             )}
           </li>
@@ -533,7 +549,7 @@ export function MenusCard({
 
       {error !== null ? (
         <p role="alert" className="text-sm text-destructive" data-testid="menus-error">
-          {t(`errors.${error}`)}
+          {t(`errors.${error}`, { source })}
         </p>
       ) : null}
       {note !== null ? (

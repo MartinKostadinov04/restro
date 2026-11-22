@@ -214,3 +214,53 @@ export function tilePlanOf(
   const page = pageById(pageId, pages)
   return { stage, focus: page === undefined ? [] : page.markers.slice(0, 2) }
 }
+
+// --- A tap on the preview ------------------------------------------------------------------------
+
+/**
+ * The page a tap on the preview opens in Advanced, or null to stay where the panel is. `marker` is
+ * the part tapped (the innermost); `opens` the part the tap opens, if any (a dish tapped open is
+ * `dish`). The panel stays when the open page owns either: a dish tapped open on the Dish page keeps
+ * the Dish page's options in view. The parts the tap merely sits in (the section around a dish) play
+ * no part.
+ */
+export function pageOfTap(
+  marker: string,
+  opens: string | null,
+  open: DesignPageId,
+): DesignPageId | null {
+  const owner = pageOfMarker(marker)
+  if (owner === null || owner === open) return null
+  if (opens !== null && pageOfMarker(opens) === open) return null
+  return owner
+}
+
+/**
+ * What the live preview shows first while a page is open: a dish, while the Dish page is open in
+ * Advanced, so its options are seen at work (D129); the menu otherwise.
+ */
+export function previewStageOf(mode: PanelMode, pageId: DesignPageId): Stage | undefined {
+  return mode === 'advanced' && pageId === 'dish' ? 'dish' : undefined
+}
+
+// --- How a row lists its values ------------------------------------------------------------------
+
+/** The sizes, smallest first. */
+const SIZE_ORDER = ['s', 'm', 'l', 'xl']
+
+/**
+ * The values of an option in the order the row shows them. A row of sizes reads as a scale, small to
+ * large, and a row of counts upwards; the contract keeps Basic's value first (D130), which is the
+ * stored order and stays so.
+ */
+export function shownValues<T extends { readonly id: string }>(values: readonly T[]): readonly T[] {
+  if (values.every((value) => SIZE_ORDER.includes(value.id))) {
+    return [...values].sort((a, b) => SIZE_ORDER.indexOf(a.id) - SIZE_ORDER.indexOf(b.id))
+  }
+  // A row of counts (description lines: 1, 2, 3, all) reads up, "all" last.
+  const count = (id: string) => (id === 'all' ? Number.POSITIVE_INFINITY : Number(id))
+  if (values.every((value) => value.id === 'all' || /^\d+$/.test(value.id))) {
+    return [...values].sort((a, b) => count(a.id) - count(b.id))
+  }
+  return values
+}

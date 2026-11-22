@@ -12,6 +12,7 @@
 // A spot's history is the Log's own sentences (`useHistoryText`), not a second set of words for
 // the same events (copy rules §3: one name per action).
 import { useTranslations } from 'next-intl'
+import { useCallback } from 'react'
 
 import type {
   RvHoldView,
@@ -21,7 +22,37 @@ import type {
 } from '@/server/reservations/view'
 
 import { isBlockReason } from './block-reasons'
-import { useHistoryText } from './reservation-words'
+import { isBareSpotNumber, useHistoryText } from './reservation-words'
+
+/**
+ * A spot as a sentence names it. A venue names its spots (D134): «Сепаре 1» or «2 VIP» says what it
+ * is, but a bare «9» or «25.1» in a sentence reads as a count or an hour (S5, S9), so a name that is
+ * only a number gets the word for a spot in front: «място 9» mid-sentence, «Място 9» as a title.
+ * Stable from render to render, so it can sit in a hook's dependencies.
+ */
+export function useSpotCalled() {
+  const t = useTranslations('reservations')
+  return useCallback(
+    (name: string, at: 'mid' | 'title' = 'mid'): string =>
+      isBareSpotNumber(name) ? t(at === 'title' ? 'p_spot_t' : 'p_spot_mid', { spot: name }) : name,
+    [t],
+  )
+}
+
+/**
+ * Several spots as a sentence names them: «Сепаре 1, Сепаре 2» as they are; «място 9» for one
+ * numbered spot, «места 9, 10» for several where any is numbered.
+ */
+export function useSpotsCalled() {
+  const t = useTranslations('reservations')
+  const called = useSpotCalled()
+  return (names: readonly string[]): string => {
+    const [only] = names
+    if (names.length === 1 && only !== undefined) return called(only)
+    const listed = names.join(', ')
+    return names.some(isBareSpotNumber) ? t('p_spots_mid', { spots: listed }) : listed
+  }
+}
 
 /** One state of a spot, as the legend and the tile say it. */
 export function useSpotStateWord() {

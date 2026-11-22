@@ -214,7 +214,8 @@ test('before the first publish: the bar counts the whole menu; no versions; the 
   await expect(bar.count()).toHaveText('5')
   await expect(bar.reason()).toHaveText('Not published yet: guests see nothing until you publish.')
   await expect(page.getByTestId('guest-link')).toBeDisabled()
-  await expect(page.getByTestId('guest-link-hint')).toHaveText('Nothing is published yet.')
+  // The reason line says it; the guest link's hint does not repeat it (S5).
+  await expect(page.getByTestId('guest-link-hint')).toHaveCount(0)
   expect(await snapshotRows()).toEqual([])
   // The guest page has nothing to show yet.
   const guest = await page.context().newPage()
@@ -285,7 +286,10 @@ test('a price changes behind the page: the bar counts 1 change, the confirmation
   await bar.button().click()
   const dialog = page.getByTestId('publish-confirm-dialog')
   await expect(dialog.getByTestId('changes-count')).toHaveText('1 change waiting')
-  await expect(dialog.getByTestId('change-summary')).toHaveText('1 with a new price')
+  // Said once: the count above, then the named list under its heading (S6).
+  await expect(
+    dialog.getByTestId('change-list-prices').getByRole('heading', { name: 'New price' }),
+  ).toBeVisible()
   await expect(dialog.getByTestId('change-list-prices')).toContainText(
     `Negroni: ${PRICE_BEFORE} → ${PRICE_AFTER}`,
   )
@@ -313,7 +317,7 @@ test('a price changes behind the page: the bar counts 1 change, the confirmation
   )
   await page.keyboard.press('Escape')
   await expect(preview).toHaveCount(0)
-  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await dialog.getByRole('button', { name: 'Don’t publish' }).click()
   await expect(dialog).toHaveCount(0)
 
   // Nothing was published by looking: the guest page keeps the old price, no new row.
@@ -479,7 +483,7 @@ test('Settings › Publish: the Automation settings save the sync mode and "publ
 }) => {
   await open(page, AUTOMATION)
   const form = page.getByTestId('automation-form')
-  await expect(form).toContainText('Reading the menu from barsy')
+  await expect(form).toContainText('Sync from barsy')
   // D96: the "new items from the till" rule is gone.
   await expect(form).not.toContainText('New items')
   await expect(page.getByTestId('automation-zone')).toHaveText('Europe/Sofia')
@@ -629,9 +633,13 @@ test('a plain member sees the page and can change nothing', async ({ browser }) 
   await context.addCookies([{ name: 'NEXT_LOCALE', value: 'en', url: new URL(page.url()).origin }])
   const member = await context.newPage()
   await open(member)
-  // Never a greyed Publish for a role that may not publish (RR-90): it is not drawn, nor a sentence.
+  // Never a greyed Publish for a role that may not publish (RR-90): it is not drawn, nor a sentence
+  // on why. Where the venue stands is still said (S27).
   await expect(member.getByTestId('publish-button')).toHaveCount(0)
-  await expect(member.getByTestId('publish-block-reason')).toHaveCount(0)
+  await expect(member.getByText('Only an owner or admin can publish.')).toHaveCount(0)
+  await expect(member.getByTestId('publish-block-reason')).toHaveText(
+    /Up to date|waiting|Nothing is published yet|Publishing. It usually takes/,
+  )
   // The guest page is anyone's to open.
   await expect(member.getByTestId('guest-link')).toHaveAttribute('href', GUEST_ADDRESS)
   await open(member, VERSIONING)
@@ -641,6 +649,12 @@ test('a plain member sees the page and can change nothing', async ({ browser }) 
   await open(member, AUTOMATION)
   await expect(member.getByTestId('automation-form')).toBeVisible()
   await expect(member.getByTestId('automation-save')).toHaveCount(0)
+  await expect(member.getByTestId('automation-readonly')).toHaveText(
+    'Only owners and admins can change this.',
+  )
+  // A section the member may not open lands on General, never on a 404 (S26).
+  await open(member, '?tab=settings&section=staff')
+  await expect(member).toHaveURL(/[?&]section=general(?:&|$)/)
   await context.close()
 })
 

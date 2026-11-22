@@ -12,6 +12,7 @@ import {
   ApplyError,
   archiveTag,
   createTag,
+  itemsOfVenue,
   moveTag,
   restoreTag,
   SetItemTagsError,
@@ -151,6 +152,9 @@ export async function setItemTagsAction(input: unknown): Promise<ActionResult> {
   if (!parsed.success) return INVALID
   const { venueId: venue, ...change } = parsed.data
   return perform(venue, async ({ tenantId, userId, venueId: id }) => {
+    // Only this venue's items (RR-72; screen round 11-18, S29), as the sold-out action checks.
+    const ours = await itemsOfVenue(getPool(), tenantId, id, change.itemIds)
+    if (change.itemIds.some((itemId) => !ours.has(itemId))) return NOT_FOUND
     try {
       await setItemTags(getPool(), tenantId, {
         venueId: id,

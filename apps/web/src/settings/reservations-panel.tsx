@@ -29,6 +29,13 @@ const MAX_HOLD = 1440
 /** The three switches of the rules card, by the key the command takes. */
 type Rule = 'phoneRequired' | 'editPastNights' | 'privateNotesOn'
 
+/** What a switch's toast says it did, on and off: the setting by name, never «Запазено» (S14). */
+const RULE_DONE = {
+  phoneRequired: { on: 'rs_done_phone_on', off: 'rs_done_phone_off' },
+  editPastNights: { on: 'rs_done_past_on', off: 'rs_done_past_off' },
+  privateNotesOn: { on: 'rs_done_private_on', off: 'rs_done_private_off' },
+} as const
+
 export function ReservationsPanel({ view }: { view: ReservationsView }) {
   const t = useTranslations('ownerSettings')
   const runner = useSettingsRun(view.email)
@@ -59,7 +66,7 @@ export function ReservationsPanel({ view }: { view: ReservationsView }) {
     const previous = settings[rule]
     setShown((now) => ({ ...now, [rule]: next }))
     run(() => saveReservationRulesAction({ venueId: view.venueId, [rule]: next }), {
-      done: t('st_saved'),
+      done: t(RULE_DONE[rule][next ? 'on' : 'off']),
       onFail: () => setShown(savedRules),
       undo: () => saveReservationRulesAction({ venueId: view.venueId, [rule]: previous }),
     })
@@ -89,7 +96,7 @@ export function ReservationsPanel({ view }: { view: ReservationsView }) {
     setHoldProblem(false)
     const previous = settings.turnMinutes
     run(() => saveReservationRulesAction({ venueId: view.venueId, turnMinutes: minutes }), {
-      done: t('st_saved'),
+      done: t('rs_done_hold', { n: minutes }),
       onFail: () => setHoldText(saved),
       // The first time there is nothing to go back to: the settings row did not exist.
       ...(previous === null
@@ -110,7 +117,7 @@ export function ReservationsPanel({ view }: { view: ReservationsView }) {
             hours: (chunks) => (
               <Link
                 href={`/venues/${view.venueId}?tab=settings&section=hours`}
-                className="underline underline-offset-2"
+                className="tap-area underline underline-offset-2"
                 data-testid="rs-hours-link"
               >
                 {chunks}

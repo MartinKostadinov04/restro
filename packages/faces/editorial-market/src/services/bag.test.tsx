@@ -409,6 +409,34 @@ describe('the order sheet: the lines the host has', () => {
     expect(host.of('order.remove')[0]?.command).toMatchObject({ lineId: line.id })
   })
 
+  it('draws every line the same way: name and amount, then Remove and the stepper (lane 3 S9)', () => {
+    const host = orderHost({ order: orderOf([orderLine(hummus, 2), orderLine(mojito)]) })
+    drawFace(host)
+    const sheet = openBag()
+    const lines = [...sheet.querySelectorAll<HTMLElement>('[data-order-line]')]
+    expect(lines).toHaveLength(2)
+    for (const line of lines) {
+      expect(line.classList.contains('ro-orderline')).toBe(true)
+      expect(line.querySelector('.ro-line-head strong')).not.toBeNull()
+      expect(line.querySelector('.ro-line-head b')?.textContent).toMatch(/€/)
+      const foot = line.querySelector('.ro-line-foot')
+      expect(foot?.firstElementChild?.classList.contains('ro-line-actions')).toBe(true)
+      expect(foot?.lastElementChild?.classList.contains('ro-stepper')).toBe(true)
+    }
+  })
+
+  it('beside a sent order’s card it invites more instead of calling the order empty (lane 3 S18)', () => {
+    const host = orderHost({
+      order: orderOf([]),
+      sentOrders: [sentOrderOf('so_1', 'added', [{ item: hummus, qty: 1 }])],
+    })
+    drawFace(host)
+    const sheet = openBag()
+    expect(sheet.textContent).toContain(W.sentAdded)
+    expect(sheet.querySelector('[data-slot="order.empty"]')?.textContent).toBe(W.addMore)
+    expect(sheet.textContent).not.toContain(W.emptyOrder)
+  })
+
   it('shows a removed line with its Undo, and Undo sends order.undo', async () => {
     const gone = { ...orderLine(mojito, 1), undoSeconds: 9 }
     const host = orderHost({ order: orderOf([orderLine(hummus)], { removed: [gone] }) })

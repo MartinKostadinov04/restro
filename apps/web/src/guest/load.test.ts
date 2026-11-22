@@ -17,6 +17,7 @@ import {
   rememberedTable,
   rememberTable,
   type TabStorage,
+  tableToKeep,
   withCodeInFragment,
 } from './context'
 import {
@@ -325,6 +326,48 @@ describe('the table banner', () => {
     expect(await loadTableLabel(f.deps(broken), token, CODE)).toBeNull()
   })
 
+  it('tells a code the files do not know from a file that could not be read (C2)', async () => {
+    const f = publishedFiles()
+    const found = await loadTableFile(f.deps(), token, CODE)
+    expect(found).toEqual({ kind: 'found', table: { token, label: '12', menuId: null } })
+    // Unknown: no such file, another venue's code, a malformed code.
+    expect(await loadTableFile(f.deps(), 'tb_ZZZZZZZZZZZZZZZZZZZZZZ', CODE)).toEqual({
+      kind: 'unknown',
+    })
+    expect(await loadTableFile(f.deps(), token, 'zzzzzzzzzzzz')).toEqual({ kind: 'unknown' })
+    expect(await loadTableFile(f.deps(), '../x', CODE)).toEqual({ kind: 'unknown' })
+    // Unreadable: a server error, a broken file, a file that is not a table's, a lost connection.
+    const tableUrl = files.table(BASE, sha(token))
+    for (const body of [
+      new Response('x', { status: 500 }),
+      new Response('not json', { status: 200 }),
+      Response.json({ nothing: true }),
+    ]) {
+      const broken = new Map<string, unknown>([[tableUrl, body]])
+      expect(await loadTableFile(f.deps(broken), token, CODE)).toEqual({ kind: 'unreadable' })
+    }
+    const offline: LoadDeps = {
+      base: BASE,
+      fetch: async () => {
+        throw new TypeError('offline')
+      },
+    }
+    expect(await loadTableFile(offline, token, CODE)).toEqual({ kind: 'unreadable' })
+  })
+
+  it('says when the table could not be read, so the code the tab kept is not forgotten (C2)', async () => {
+    const f = publishedFiles()
+    const broken = new Map<string, unknown>([
+      [files.table(BASE, sha(token)), new Response('x', { status: 503 })],
+    ])
+    const failed = await loadMenu(f.deps(broken), CODE, null, () => token)
+    expect(failed.table).toEqual({ kind: 'unreadable', token })
+    const unknown = await loadMenu(f.deps(), CODE, 'tb_ZZZZZZZZZZZZZZZZZZZZZZ')
+    expect(unknown.table).toEqual({ kind: 'unknown', token: 'tb_ZZZZZZZZZZZZZZZZZZZZZZ' })
+    expect((await loadMenu(f.deps(), CODE)).table).toBeNull()
+    expect((await loadMenu(f.deps(), CODE, token)).table?.kind).toBe('found')
+  })
+
   it('checks the code this tab kept when the address has none, and the address code before it', async () => {
     const f = publishedFiles()
     const asked: string[] = []
@@ -334,17 +377,17 @@ describe('the table banner', () => {
     }
     // A reload on a dish page: no code in the address, the tab's copy is checked like any code.
     const menu = await loadMenu(f.deps(), CODE, null, remembered)
-    expect(menu.table).toEqual({ token, label: '12' })
+    expect(menu.table).toEqual({ kind: 'found', token, label: '12' })
     expect(asked).toEqual([CODE])
     expect(f.asked).toContain(files.table(BASE, sha(token)))
     // A code in the address wins: the tab's copy is not even asked for.
     const other = await loadMenu(f.deps(), CODE, 'tb_ZZZZZZZZZZZZZZZZZZZZZZ', remembered)
-    expect(other.table).toBeNull()
+    expect(other.table).toEqual({ kind: 'unknown', token: 'tb_ZZZZZZZZZZZZZZZZZZZZZZ' })
     expect(asked).toEqual([CODE])
     // A kept code the files no longer know is no table.
     expect(
-      (await loadMenu(f.deps(), CODE, null, () => 'tb_ZZZZZZZZZZZZZZZZZZZZZZ')).table,
-    ).toBeNull()
+      (await loadMenu(f.deps(), CODE, null, () => 'tb_ZZZZZZZZZZZZZZZZZZZZZZ')).table?.kind,
+    ).toBe('unknown')
   })
 })
 
@@ -372,6 +415,19 @@ describe('the table code a tab keeps', () => {
     rememberTable(storage, CODE, null)
     expect(rememberedTable(storage, CODE)).toBeNull()
     expect(storage.items.size).toBe(0)
+  })
+
+  it('after a load, keeps a confirmed code, forgets an unknown one, and keeps the old one only through a failed read of that same code', () => {
+    const other = 'tb_ZZZZZZZZZZZZZZZZZZZZZZ'
+    expect(tableToKeep(null, code)).toBeNull()
+    expect(tableToKeep({ kind: 'found', token: other }, code)).toBe(other)
+    expect(tableToKeep({ kind: 'unknown', token: code }, code)).toBeNull()
+    // A reload on a dish page whose table's file failed: the code it checked is the one kept.
+    expect(tableToKeep({ kind: 'unreadable', token: code }, code)).toBe(code)
+    // A new code from the address whose file failed: the old table is not kept, or a later reload
+    // (a dish page takes the fragment) would put the guest back at a table they never scanned.
+    expect(tableToKeep({ kind: 'unreadable', token: other }, code)).toBeNull()
+    expect(tableToKeep({ kind: 'unreadable', token: other }, null)).toBeNull()
   })
 
   it('reads only a well-formed code back', () => {
@@ -613,7 +669,7 @@ describe('the address /m/<organisation>/<venue> (D84) and the menu a table opens
     const f = organizationFiles()
     const menu = await loadMenuAt(f.deps(), { organization: ORG, venue: 'demo-club' }, TABLE_CODE)
     expect(menu.index.menu_id).toBe(SECOND_MENU)
-    expect(menu.table).toEqual({ token: TABLE_CODE, label: '7' })
+    expect(menu.table).toEqual({ kind: 'found', token: TABLE_CODE, label: '7' })
     expect(f.asked).toContain(files.table(BASE, sha(TABLE_CODE)))
     expect(f.asked).toContain(
       files.current(BASE, { venue_id: f.index.venue_id, menu_id: SECOND_MENU }),
@@ -621,7 +677,7 @@ describe('the address /m/<organisation>/<venue> (D84) and the menu a table opens
     // The address of before honours the table's menu too.
     const legacy = await loadMenu(f.deps(), CODE, TABLE_CODE)
     expect(legacy.index.menu_id).toBe(SECOND_MENU)
-    expect(legacy.table).toEqual({ token: TABLE_CODE, label: '7' })
+    expect(legacy.table).toEqual({ kind: 'found', token: TABLE_CODE, label: '7' })
     // A code of another venue, or one with no menu, leaves the live menu.
     const foreign = new Map<string, unknown>([
       [
@@ -635,8 +691,8 @@ describe('the address /m/<organisation>/<venue> (D84) and the menu a table opens
       TABLE_CODE,
     )
     expect(stranger.index.menu_id).toBe(f.index.menu_id)
-    expect(stranger.table).toBeNull()
-    expect(await loadTableFile(f.deps(foreign), TABLE_CODE, CODE)).toBeNull()
+    expect(stranger.table).toEqual({ kind: 'unknown', token: TABLE_CODE })
+    expect(await loadTableFile(f.deps(foreign), TABLE_CODE, CODE)).toEqual({ kind: 'unknown' })
   })
 
   it('the address of before moves to the new one when the venue’s file names the organisation', async () => {

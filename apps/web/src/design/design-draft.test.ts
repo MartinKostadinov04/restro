@@ -131,6 +131,23 @@ describe('the design Done saves', () => {
 })
 
 describe('what counts as changed', () => {
+  it('nothing, when the Style the venue is on is picked again (C7)', () => {
+    // A Style's file lists the body font last in General; a stored design lists it elsewhere.
+    const onBasic = draftOf({ ...saved, design: { ...design, style: 'basic' } })
+    const repicked = withStyle(onBasic, 'basic')
+    expect(Object.keys(repicked.values.general)).not.toEqual(Object.keys(onBasic.values.general))
+    expect(keyOfDraft(repicked)).toBe(keyOfDraft(onBasic))
+    const start = historyOf(onBasic)
+    expect(changed(start, repicked, { now: 0 })).toBe(start)
+  })
+
+  it('a logo id whose picture is gone is not carried, so a save does not write it back (C9)', () => {
+    const gone = draftOf({ ...saved, logo: null })
+    expect(gone.logo).toBeNull()
+    expect(designOf(gone, wholeTheme(gone)).logo_asset_id).toBeNull()
+    expect(designOf(opened, wholeTheme(opened)).logo_asset_id).toBe(LOGO)
+  })
+
   it('nothing, on the page as it opened', () => {
     expect(keyOfDraft(draftOf(saved))).toBe(keyOfDraft(opened))
   })

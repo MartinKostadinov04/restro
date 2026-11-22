@@ -25,6 +25,7 @@ import {
   claimSpots,
   createReservation,
   openReservation,
+  reclaimSpots,
   releaseHeldSpots,
   writeHeldSpots,
 } from './book'
@@ -80,16 +81,10 @@ export async function setReservationStatus(
   const move = moveStatus(from, command.status)
   if (!move.ok) return refuse(move.code)
   const to = move.status
-  // Calling a booking off is "managing bookings" whichever door it comes through (D141, #328): the
-  // Cancel button and this status move are one act. A walk-in leaving the queue is not a booking
-  // and stays a tap of the floor.
-  if (
-    to === 'cancelled' &&
-    reservation.kind === 'booking' &&
-    !stx.permissions.has('reservations.manage')
-  ) {
-    return refuse('permission_denied')
-  }
+  // Calling a booking off is the Cancel button's act whichever door it comes through: whoever works
+  // tonight's reservations may (D135 13.18, S20 of the 11-18 screen round), and on a shared device
+  // it takes the PIN, because a move to Cancelled is the venue's `cancel` line, not a tap
+  // (`pinFallActionOf`).
   const freed = isEndStatus(to) ? await releaseHeldSpots(stx, reservation.id) : []
   await stx.tx
     .update(reservations)
@@ -154,31 +149,6 @@ async function statusLines(
   })
 }
 
-/** Claims again the spots a party had, where nobody has taken them since; the rest are lost. */
-async function reclaimSpots(
-  stx: ServiceTx,
-  reservation: Reservation,
-  spotIds: readonly string[],
-  turnMinutes: number,
-): Promise<{ readonly back: readonly string[]; readonly lost: boolean }> {
-  if (spotIds.length === 0) return { back: [], lost: false }
-  const grant = await claimSpots(
-    stx,
-    {
-      reservationId: reservation.id,
-      spotIds,
-      serviceDate: reservation.serviceDate,
-      startsAt: reservation.startsAt,
-      endsAt: reservation.endsAt,
-      turnMinutes: reservation.turnMinutes,
-    },
-    turnMinutes,
-  )
-  if (!grant.ok) return { back: [], lost: true }
-  await writeHeldSpots(stx, reservation.id, spotIds, grant.stretch, reservation.endsAt !== null)
-  return { back: spotIds, lost: false }
-}
-
 /**
  * Puts one party back (D135, D138): a no-show back to Reserved, a party nobody seated back onto the
  * waiting list. A party going back to the queue joins its end, because the place he had is gone —
@@ -231,7 +201,12 @@ export async function putBackReservation(
     fromState: from,
     toState: to,
     reason: PUT_BACK_REASON,
-    details: { spots: spots.back.join(','), spotsLost: spots.lost, nightEnd: byNightEnd },
+    details: {
+      spots: spots.back.join(','),
+      spotsLost: spots.lost,
+      spotsWhy: spots.why,
+      nightEnd: byNightEnd,
+    },
   })
   return accepted(null, {
     details: {
@@ -239,6 +214,7 @@ export async function putBackReservation(
       status: to,
       spots: spots.back.join(','),
       spotsLost: spots.lost,
+      spotsWhy: spots.why,
     },
   })
 }
@@ -398,6 +374,9 @@ export interface BlockSaveCommand {
  * Blocks spots for a stretch of a night, or changes a block already there: a reservation of the
  * block kind, with nobody coming, which the overlap rule keeps everything else off. A block is
  * never seated and never counted as a no-show (its status check in the schema says so).
+ *
+ * A block is checked against every night it covers, not only its first (`claimSpots`' `block`).
+ * Changing one still on from a past night is tonight's work, as lifting it is (`blockNight`).
  */
 export async function saveBlock(stx: ServiceTx, command: BlockSaveCommand): Promise<ServiceResult> {
   if (command.reservationId === undefined) {
@@ -415,7 +394,8 @@ export async function saveBlock(stx: ServiceTx, command: BlockSaveCommand): Prom
   const existing = await lockReservation(stx, command.reservationId)
   if (existing === null || existing.deletedAt !== null) return refuse('reservation_missing')
   if (existing.kind !== 'block') return refuse('kind_not_allowed')
-  const open = await openReservation(stx, existing.id)
+  const nightDate = blockNight(stx, existing)
+  const open = await openReservation(stx, existing.id, { night: () => nightDate })
   if (!open.ok) return refuse(open.code)
   const { reservation, night } = open
   const startsAt = new Date(command.startsAt)
@@ -430,12 +410,15 @@ export async function saveBlock(stx: ServiceTx, command: BlockSaveCommand): Prom
     {
       reservationId: reservation.id,
       spotIds: command.spotIds,
-      serviceDate: reservation.serviceDate,
+      // The night the change is checked from, and locked: later nights' locks then follow it in
+      // date order.
+      serviceDate: nightDate,
       startsAt,
       endsAt,
       turnMinutes: reservation.turnMinutes,
     },
     night.settings.turnMinutes,
+    { block: true },
   )
   if (!grant.ok) return refused(null, grant.code, { ...grant.details })
   await writeHeldSpots(stx, reservation.id, command.spotIds, grant.stretch, endsAt !== null)
@@ -461,7 +444,15 @@ export async function saveBlock(stx: ServiceTx, command: BlockSaveCommand): Prom
   return accepted(null, { details: { reservationId: reservation.id } })
 }
 
-/** Lifts a block: the spots are free again, and the line ends as a cancellation of the block. */
+/**
+ * Lifts a block: the spots are free again, and the line ends as a cancellation of the block.
+ *
+ * A block still on outlives the night it was made on (D137: "on until removed"), so lifting it is
+ * work on tonight's floor, and the night whose writability is checked is tonight's — not the
+ * block's own first night, which has passed and would refuse `night_passed` for ever (C3 of the
+ * 11-18 screen round). A block whose dates ran out on a past night is that night's record and
+ * stays as the past is kept (D135).
+ */
 export async function removeBlock(
   stx: ServiceTx,
   command: { readonly reservationId: string; readonly reason?: string | null },
@@ -472,6 +463,21 @@ export async function removeBlock(
   return await cancelReservation(
     stx,
     { reservationId: existing.id, reason: command.reason ?? 'block_lifted' },
-    { block: true },
+    { block: true, night: (line) => blockNight(stx, line) },
   )
+}
+
+/**
+ * The night a change to a block is checked against: tonight's for a block still on from a past
+ * night (C3), its own night otherwise. Shared by changing (`saveBlock`) and lifting (`removeBlock`).
+ */
+function blockNight(stx: ServiceTx, line: Reservation): string {
+  return line.serviceDate < stx.serviceDate && blockStillOn(line, stx.now)
+    ? stx.serviceDate
+    : line.serviceDate
+}
+
+/** A block that still keeps its spots at `now`: not lifted, and with no end or one still ahead. */
+function blockStillOn(line: Reservation, now: Date): boolean {
+  return line.status === 'reserved' && (line.endsAt === null || line.endsAt > now)
 }

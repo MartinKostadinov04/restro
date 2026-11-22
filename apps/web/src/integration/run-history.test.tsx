@@ -8,10 +8,15 @@ import { RunHistory } from './run-history'
 
 type Options = { locale?: 'en' | 'bg'; showVenue?: boolean; source?: string; connector?: string }
 
-function renderHistory(runs: ReturnType<typeof run>[], options: Options = {}) {
+function renderHistory(
+  runs: ReturnType<typeof run>[],
+  options: Options = {},
+  summary?: 'latest' | 'menu',
+) {
   return renderWithIntl(
     <RunHistory
       runs={runs}
+      summary={summary}
       timeZone="Europe/Sofia"
       connector={options.connector ?? 'barsy'}
       source={options.source ?? 'barsy'}
@@ -41,7 +46,7 @@ describe('the run history (collapsed: one line, the list under a button)', () =>
     ])
     // 10:00 UTC is 13:00 in Sofia.
     expect(screen.getByTestId('history-last').textContent).toMatch(
-      /^Last run: Full sync · Completed · .*13:00/,
+      /^Last run: Full read · Completed · .*13:00/,
     )
     expect(screen.queryByTestId('run-history')).toBeNull()
     expect(screen.queryAllByTestId('run-row')).toHaveLength(0)
@@ -78,9 +83,9 @@ describe('the run history (collapsed: one line, the list under a button)', () =>
     await open(user)
     const rows = screen.getAllByTestId('run-row')
     expect(rows).toHaveLength(3)
-    expect(within(rows[0] as HTMLElement).getByText('Full sync')).toBeTruthy()
+    expect(within(rows[0] as HTMLElement).getByText('Full read')).toBeTruthy()
     expect(within(rows[1] as HTMLElement).getByText('Connection check')).toBeTruthy()
-    expect(within(rows[2] as HTMLElement).getByText('Quick sync')).toBeTruthy()
+    expect(within(rows[2] as HTMLElement).getByText('Changes read')).toBeTruthy()
     // 10:00 UTC is 13:00 in Sofia; 1 minute 12 seconds.
     expect(within(rows[0] as HTMLElement).getByTestId('run-started').textContent).toMatch(/13:00/)
     expect(within(rows[0] as HTMLElement).getByTestId('run-duration').textContent).toBe(
@@ -177,7 +182,7 @@ describe('the run history (collapsed: one line, the list under a button)', () =>
     const refused = within(details).getAllByTestId('refused-write')
     expect(refused).toHaveLength(3)
     expect(refused[0]?.textContent).toContain('for_sale')
-    expect(refused[0]?.textContent).toContain('Would make the menu less cautious than the till')
+    expect(refused[0]?.textContent).toContain('Would make the menu less cautious than barsy')
     expect(refused[1]?.textContent).toContain('This source may not write this field')
     // A code without words shows as "Refused" plus the code; a write with no field is "(structure)".
     expect(refused[2]?.textContent).toContain('(structure)')
@@ -243,7 +248,7 @@ describe('the run history (collapsed: one line, the list under a button)', () =>
     const user = userEvent.setup()
     renderHistory([run()], { locale: 'bg' })
     expect(screen.getByTestId('history-last').textContent).toMatch(
-      /^Последно изпълнение: Пълна синхронизация · Завършено/,
+      /^Последно изпълнение: Пълно четене · Завършено/,
     )
     await open(user)
     expect(screen.getByTestId('run-duration').textContent).toBe('1 мин 12 с')
@@ -324,11 +329,62 @@ describe('the run history (collapsed: one line, the list under a button)', () =>
     expect(screen.getByText('Other')).toBeTruthy()
   })
 
+  it('names a floor read of the simulated POS "Tables read" with its table counters, in both languages', async () => {
+    const user = userEvent.setup()
+    const floor = run({
+      kind: 'floor_read',
+      counters: {
+        tables_listed: 12,
+        tables_created: 2,
+        tables_updated: 1,
+        tables_vanished: 1,
+        tables_returned: 0,
+      },
+    })
+    const { unmount } = renderHistory([floor], { connector: 'sim', source: 'test POS' })
+    expect(screen.getByTestId('history-last').textContent).toMatch(/^Last run: Tables read ·/)
+    await open(user)
+    expect(screen.queryByText('Other')).toBeNull()
+    const counters = screen.getByTestId('run-counters')
+    for (const [label, value] of [
+      ['Tables listed', '12'],
+      ['Tables added', '2'],
+      ['Tables updated', '1'],
+      ['Tables gone from test POS', '1'],
+      ['Tables back in test POS', '0'],
+    ]) {
+      expect(within(counters).getByText(label as string).nextElementSibling?.textContent).toBe(
+        value,
+      )
+    }
+    unmount()
+    renderHistory([floor], { connector: 'sim', source: 'test POS', locale: 'bg' })
+    expect(screen.getByTestId('history-last').textContent).toMatch(
+      /^Последно изпълнение: Прочетени маси ·/,
+    )
+  })
+
+  it('sums up with the last menu run when asked to, never with a tables read', async () => {
+    const user = userEvent.setup()
+    renderHistory(
+      [
+        run({ id: 'jb_floor', kind: 'floor_read' }),
+        run({ id: 'jb_menu', kind: 'barsy_full_pull' }),
+      ],
+      { showVenue: false },
+      'menu',
+    )
+    expect(screen.getByTestId('history-last').textContent).toMatch(/^Last run: Full read ·/)
+    // The list still holds every run, the tables read included.
+    await open(user)
+    expect(screen.getAllByTestId('run-row')).toHaveLength(2)
+  })
+
   it('does not borrow another connector’s names for its runs', async () => {
     const user = userEvent.setup()
     renderHistory([run({ kind: 'barsy_full_pull' })], { connector: 'some_other_pos' })
     await open(user)
-    expect(screen.queryByText('Full sync')).toBeNull()
+    expect(screen.queryByText('Full read')).toBeNull()
     expect(screen.getByText('Other')).toBeTruthy()
   })
 })

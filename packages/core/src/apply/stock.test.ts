@@ -286,6 +286,31 @@ describe.skipIf(!hasDatabase)('stock from the POS (as the restro_app role)', () 
     expect(await listStockMarks(app, tenant)).toEqual([])
   })
 
+  it('lapses a mark whose link went missing since (screen round 11-18, S26)', async () => {
+    await record([[negroni, false]], night)
+    // A later read no longer finds the article: the link is missing, the mark is still there.
+    await owner.query(
+      `update restro.source_links set state = 'missing' where tenant_id = $1 and node_id = $2`,
+      [tenant, negroni],
+    )
+    try {
+      expect(
+        await lapseStockMarks(
+          app,
+          tenant,
+          { integrationId: integration, venueId, itemIds: [negroni] },
+          { now: morning },
+        ),
+      ).toEqual({ marked: [], cleared: [negroni] })
+      expect(await listStockMarks(app, tenant)).toEqual([])
+    } finally {
+      await owner.query(
+        `update restro.source_links set state = 'active' where tenant_id = $1 and node_id = $2`,
+        [tenant, negroni],
+      )
+    }
+  })
+
   it("names the venue's live menu as the scope to republish", async () => {
     expect(await liveScopesOfVenue(app, tenant, venueId)).toEqual([{ menuId: menu.id, venueId }])
   })

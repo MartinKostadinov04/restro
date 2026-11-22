@@ -62,12 +62,14 @@ const NOT_FOUND: TonightResult = { ok: false, error: 'venue_missing' }
 
 /**
  * Runs one action for a venue of the signed-in person's organisation, as the account or as the
- * person a PIN names, then refreshes the venue's pages.
+ * person a PIN names, then refreshes the venue's pages. `asDevice` keeps the account acting even
+ * while a shared device remembers a person: the device's own work (its push address) is never
+ * that person's.
  */
 async function perform(
   input: { readonly venueId: string; readonly pin?: string | undefined },
   act: (scope: TonightScope) => Promise<TonightResult>,
-  options: { readonly asOperator?: boolean } = {},
+  options: { readonly asOperator?: boolean; readonly asDevice?: boolean } = {},
 ): Promise<TonightResult> {
   try {
     const { organization, user, sessionId, signedInAt } = await requireTenant()
@@ -93,7 +95,7 @@ async function perform(
       }
       actor = { kind: 'staff', staffMemberId: identity.staffMemberId, sessionId }
       named = identity.name
-    } else if (options.asOperator !== true) {
+    } else if (options.asOperator !== true && options.asDevice !== true) {
       // No PIN with this action: on a shared device the person who typed one a moment ago is
       // still on it, and their own short session acts (D141 12.11). Elsewhere there is no such
       // person and the account acts, exactly as before.
@@ -542,7 +544,7 @@ const OnNotServed = z.strictObject({
   /** For part of a line (1 of 2): the quantity not served, a decimal text; all of it when left out. */
   quantity: z
     .string()
-    .regex(/^d{1,12}(?:.d{1,6})?$/)
+    .regex(/^\d{1,12}(?:\.\d{1,6})?$/)
     .optional(),
   pin,
 })
@@ -697,8 +699,12 @@ export async function subscribePushAction(input: unknown): Promise<TonightResult
     return INVALID
   }
   const { endpoint, p256dh, auth } = parsed.data
-  return perform(parsed.data, (scope) =>
-    command(scope, { type: 'push.subscribe', endpoint, p256dh, auth }),
+  // The device's account, never the person it remembers after a PIN (screen round 11-18, C1):
+  // core takes a push address only from an account, so that person would turn the alerts off.
+  return perform(
+    parsed.data,
+    (scope) => command(scope, { type: 'push.subscribe', endpoint, p256dh, auth }),
+    { asDevice: true },
   )
 }
 

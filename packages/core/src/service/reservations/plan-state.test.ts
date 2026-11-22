@@ -11,6 +11,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  compareSpotNames,
+  compareSpots,
   holdCoversAt,
   isLateHold,
   LATE_AFTER_MINUTES,
@@ -131,6 +133,18 @@ describe('a spot at a moment', () => {
     expect(spotStateAt([dated], at(22))).toBe('free')
   })
 
+  it('shows a dated block on every night it runs over, not only its first (C2)', () => {
+    // From the 20th at 20:00 to the morning of the 26th, read on the night of the 22nd.
+    const long = block({
+      stretch: {
+        from: new Date(Date.UTC(2026, 10, 20, 20, 0)),
+        to: new Date(Date.UTC(2026, 10, 26, 4, 0)),
+      },
+    })
+    expect(spotStateAt([long], new Date(Date.UTC(2026, 10, 22, 23, 0)))).toBe('blocked')
+    expect(spotStateAt([long], new Date(Date.UTC(2026, 10, 26, 22, 0)))).toBe('free')
+  })
+
   it('never calls a block late', () => {
     expect(isLateHold(block({ startsAt: at(20) }), at(23))).toBe(false)
   })
@@ -199,5 +213,40 @@ describe('the hold that explains the state', () => {
   it('names nothing on a free spot', () => {
     expect(leadingHold([hold()], 'free', at(19))).toBeNull()
     expect(leadingHold([], 'free', at(22))).toBeNull()
+  })
+})
+
+describe('the order spots are listed in', () => {
+  it('counts numbers by their value, not as text (S5: never 1, 10, 101, 11, 2)', () => {
+    const names = ['101', '11', '2', '25.1', '10', '1']
+    expect([...names].sort(compareSpotNames)).toEqual(['1', '2', '10', '11', '25.1', '101'])
+  })
+
+  it('keeps a lettered half beside its number, and the named spots after the numbered ones', () => {
+    const names = ['Бар 1 · стол 10', '53 Б', 'Бар 1 · стол 2', '54', '53 А', '0', 'Бар 2 · стол 1']
+    expect([...names].sort(compareSpotNames)).toEqual([
+      '0',
+      '53 А',
+      '53 Б',
+      '54',
+      'Бар 1 · стол 2',
+      'Бар 1 · стол 10',
+      'Бар 2 · стол 1',
+    ])
+  })
+
+  it('orders names the collation counts as equal by the exact name, then by id', () => {
+    expect(['маса 1', 'Маса 1', '1', '01'].sort(compareSpotNames)).toEqual([
+      '01',
+      '1',
+      'Маса 1',
+      'маса 1',
+    ])
+    const twins = [
+      { id: 'sp_b', name: 'Маса 1' },
+      { id: 'sp_a', name: 'Маса 1' },
+      { id: 'sp_c', name: '10' },
+    ]
+    expect([...twins].sort(compareSpots).map((one) => one.id)).toEqual(['sp_c', 'sp_a', 'sp_b'])
   })
 })

@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { hasDatabase } from '../../apply/test-database'
 import type { Id } from '../../ids'
 import { PinGuard } from '../../pin-guard'
+import { addDaysToDay, serviceDate } from '../../service-day'
 import { openServiceWorld, type ServiceWorld } from '../../testing/service-world'
 import { applyService } from '../apply-service'
 import type { ServiceActor, ServiceContext } from '../context'
@@ -29,10 +30,15 @@ const OPTIONS = { sealPublicKey: publicKey, pinPepper: PEPPER }
 /** The venue's turn time, as a club's would be. */
 const TURN = 90
 
-/** The night these tests work on, and an hour of it as an instant. */
-const NIGHT = '2026-12-12'
+/**
+ * The night these tests work on, and an hour of it as an instant. Weeks ahead of the day the tests
+ * run, so the night never passes under them.
+ */
+const NIGHT = addDaysToDay(serviceDate(new Date(), 'UTC', '07:00'), 40)
 const at = (hour: number, minute = 0) =>
-  new Date(Date.UTC(2026, 11, 12, hour, minute, 0)).toISOString()
+  new Date(
+    `${NIGHT}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00Z`,
+  ).toISOString()
 
 describe.skipIf(!hasDatabase)('reservations: the permissions and the shared device', () => {
   let world: ServiceWorld
@@ -68,7 +74,12 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
     // One spot, so seating a walk-in has somewhere to go (#329).
     const planId = (await accept({ type: 'plan.save', name: 'Hall', makeCurrent: true }))
       .planId as string
-    await accept({ type: 'spot_kind.save', key: 'table', label: 'Table', defaultSeats: 4 })
+    await accept({
+      type: 'spot_kind.save',
+      key: 'table',
+      label: 'Table',
+      defaultSeats: 4,
+    })
     spotT1 = (
       await accept({
         type: 'spot.save',
@@ -102,7 +113,11 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
     sessionId: `sess-${randomUUID()}`,
   })
   /** The tablet's own account on the shared device: nobody has typed a PIN. */
-  const tablet = (): ServiceActor => ({ kind: 'user', userId: tabletId, sessionId: tabletSession })
+  const tablet = (): ServiceActor => ({
+    kind: 'user',
+    userId: tabletId,
+    sessionId: tabletSession,
+  })
   /** A person named by their PIN on the device. */
   const person = (staffMemberId: string): ServiceActor => ({
     kind: 'staff',
@@ -141,7 +156,10 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
 
   /** Gives a person a PIN and finds it, as the staff tests do (the seal is never opened). */
   async function givePin(staffMemberId: string): Promise<string> {
-    await accept({ type: 'pin.reset', staffMemberId: staffMemberId as Id<'sm'> })
+    await accept({
+      type: 'pin.reset',
+      staffMemberId: staffMemberId as Id<'sm'>,
+    })
     const { rows } = await world.owner.query<{ pin_hmac: string | null }>(
       'select pin_hmac from restro.staff_members where id = $1',
       [staffMemberId],
@@ -155,12 +173,19 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
 
   /** Moves one line of "Where the PIN falls" at this venue. */
   const move = async (action: string, fall: 'tap' | 'pin') =>
-    accept({ type: 'reservation_settings.set', pinActions: { [action]: fall } } as ServiceCommand)
+    accept({
+      type: 'reservation_settings.set',
+      pinActions: { [action]: fall },
+    } as ServiceCommand)
 
   /** Who the device has on it now, through the read the web app uses. */
   const personOn = (now = new Date()) =>
     withTenant(world.app, world.tenantId, (tx) =>
-      devicePersonOf(tx, { venueId: world.venueId, sessionId: tabletSession, now }),
+      devicePersonOf(tx, {
+        venueId: world.venueId,
+        sessionId: tabletSession,
+        now,
+      }),
     )
 
   /** When the device last saw its person act. */
@@ -176,7 +201,10 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
     const tonightOnly = await world.addStaff(['reservations.tonight'])
     const bookOnly = await world.addStaff(['reservations.manage'])
     const party = await book(21)
-    const seat = { type: 'reservation.arrive', reservationId: party } as const
+    const seat = {
+      type: 'reservation.arrive',
+      reservationId: party,
+    } as const
     const newBooking = {
       type: 'reservation.create',
       serviceDate: NIGHT,
@@ -187,14 +215,29 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
       partyLabel: 'Another',
       phone: '+359888765432',
     } as const
-    // Taking a booking is the hostess's key (#328); changing one is the booking book's, and the
-    // book's key does not take one.
-    const edit = { type: 'reservation.edit', reservationId: party, partySize: 5 } as const
-    expect(await run(edit, person(tonightOnly))).toMatchObject({ code: 'permission_denied' })
-    expect(await run(seat, person(tonightOnly))).toMatchObject({ status: 'accepted' })
-    expect(await run(newBooking, person(tonightOnly))).toMatchObject({ status: 'accepted' })
-    expect(await run(newBooking, person(bookOnly))).toMatchObject({ code: 'permission_denied' })
-    expect(await run(edit, person(bookOnly))).toMatchObject({ status: 'accepted' })
+    // Taking and changing a booking are the hostess's key (#328; D135 13.18, S20 of the 11-18
+    // screen round). The book's key alone is the manager's acts: it takes no booking, and as the
+    // wider key it changes one too.
+    const edit = {
+      type: 'reservation.edit',
+      reservationId: party,
+      partySize: 5,
+    } as const
+    expect(await run(edit, person(tonightOnly))).toMatchObject({
+      status: 'accepted',
+    })
+    expect(await run(seat, person(tonightOnly))).toMatchObject({
+      status: 'accepted',
+    })
+    expect(await run(newBooking, person(tonightOnly))).toMatchObject({
+      status: 'accepted',
+    })
+    expect(await run(newBooking, person(bookOnly))).toMatchObject({
+      code: 'permission_denied',
+    })
+    expect(await run(edit, person(bookOnly))).toMatchObject({
+      status: 'accepted',
+    })
     // Blocking a spot and ending the night are keys of their own again.
     expect(
       await run({ type: 'block.remove', reservationId: party }, person(bookOnly)),
@@ -205,7 +248,10 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
     // A PIN never reaches the settings-class two, whoever's PIN it is (`isSettingsPermission`).
     expect(
       await run(
-        { type: 'reservation_settings.set', turnMinutes: 120 } as ServiceCommand,
+        {
+          type: 'reservation_settings.set',
+          turnMinutes: 120,
+        } as ServiceCommand,
         person(hostessStaffId),
       ),
     ).toMatchObject({ code: 'own_sign_in_required' })
@@ -219,7 +265,11 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
     )
     expect(
       await run(
-        { type: 'waiting.add', serviceDate: NIGHT, partySize: 3 } as ServiceCommand,
+        {
+          type: 'waiting.add',
+          serviceDate: NIGHT,
+          partySize: 3,
+        } as ServiceCommand,
         tablet(),
       ),
     ).toMatchObject({ status: 'accepted' })
@@ -229,7 +279,9 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
         code: 'pin_required',
       },
     )
-    expect(await run({ type: 'night.end' }, tablet())).toMatchObject({ code: 'pin_required' })
+    expect(await run({ type: 'night.end' }, tablet())).toMatchObject({
+      code: 'pin_required',
+    })
     // Seating a walk-in is a tap in D141, and the hostess's key in the code (#328): the tablet's
     // own account holds it, so the tap goes through. Taking a booking is four digits.
     expect(
@@ -261,13 +313,41 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
     ).toMatchObject({ code: 'pin_required' })
   })
 
+  it('lets a waiting walk-in leave the queue with a tap, and asks four digits to call a booking off (#479)', async () => {
+    const line = (
+      await accept({
+        type: 'waiting.add',
+        serviceDate: NIGHT,
+        partySize: 2,
+      } as ServiceCommand)
+    ).reservationId as Id<'rv'>
+    const callOff = (reservationId: Id<'rv'>) =>
+      run(
+        {
+          type: 'reservation.set_status',
+          reservationId,
+          status: 'cancelled',
+        } as ServiceCommand,
+        tablet(),
+      )
+    expect(await callOff(line)).toMatchObject({ status: 'accepted' })
+    expect(await callOff(await book(23, 15))).toMatchObject({
+      code: 'pin_required',
+    })
+  })
+
   it('obeys the venues own choice, in both directions', async () => {
     const party = await book(23)
-    const seat = { type: 'reservation.arrive', reservationId: party } as const
+    const seat = {
+      type: 'reservation.arrive',
+      reservationId: party,
+    } as const
     await move('status', 'pin')
     expect(await run(seat, tablet())).toMatchObject({ code: 'pin_required' })
     // The person's PIN still does it, and their own role decides as always.
-    expect(await run(seat, person(hostessStaffId))).toMatchObject({ status: 'accepted' })
+    expect(await run(seat, person(hostessStaffId))).toMatchObject({
+      status: 'accepted',
+    })
     await move('status', 'tap')
     const next = await book(23, 30)
     expect(await run({ type: 'reservation.arrive', reservationId: next }, tablet())).toMatchObject({
@@ -277,12 +357,18 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
     await move('waiting', 'pin')
     expect(
       await run(
-        { type: 'waiting.add', serviceDate: NIGHT, partySize: 5 } as ServiceCommand,
+        {
+          type: 'waiting.add',
+          serviceDate: NIGHT,
+          partySize: 5,
+        } as ServiceCommand,
         tablet(),
       ),
     ).toMatchObject({ code: 'pin_required' })
     // What the night's record says about where the PIN fell while it was being kept.
-    const { rows } = await world.owner.query<{ details: Record<string, unknown> }>(
+    const { rows } = await world.owner.query<{
+      details: Record<string, unknown>
+    }>(
       `select details from restro.log_entries
        where venue_id = $1 and kind = 'reservation_settings.changed' order by seq desc limit 1`,
       [world.venueId],
@@ -308,7 +394,10 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
       })
     const party = await book(20)
 
-    expect(await identify(hostessPin)).toMatchObject({ ok: true, staffMemberId: hostessStaffId })
+    expect(await identify(hostessPin)).toMatchObject({
+      ok: true,
+      staffMemberId: hostessStaffId,
+    })
     expect(await personOn()).toMatchObject({ staffMemberId: hostessStaffId })
     // A write of hers pushes the session forward: a run of record work is typed once, not once per
     // action, and nobody is cut off mid-task.
@@ -323,10 +412,16 @@ describe.skipIf(!hasDatabase)('reservations: the permissions and the shared devi
     // A few idle minutes and the device has nobody on it again.
     expect(await personOn(new Date(Date.now() + 10 * 60_000))).toBeNull()
     // Another PIN takes the device over; a device holds one person at a time.
-    expect(await identify(barmanPin)).toMatchObject({ ok: true, staffMemberId: barmanStaffId })
+    expect(await identify(barmanPin)).toMatchObject({
+      ok: true,
+      staffMemberId: barmanStaffId,
+    })
     expect(await personOn()).toMatchObject({ staffMemberId: barmanStaffId })
     // Someone who has left has no session, even inside the window.
-    await accept({ type: 'staff.archive', staffMemberId: barmanStaffId as Id<'sm'> })
+    await accept({
+      type: 'staff.archive',
+      staffMemberId: barmanStaffId as Id<'sm'>,
+    })
     expect(await personOn()).toBeNull()
   })
 })

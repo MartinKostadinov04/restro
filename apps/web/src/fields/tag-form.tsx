@@ -33,6 +33,8 @@ export interface TagFormProps {
   readonly enabledLocales: readonly Locale[]
   readonly initial?: TagFormValue
   readonly submitLabel: string
+  /** The way out; "Don't create" when not given (S17). */
+  readonly cancelLabel?: string
   /** True while the save is under way: the buttons wait. */
   readonly busy?: boolean
   readonly onSubmit: (value: TagFormValue) => void
@@ -46,6 +48,7 @@ export function TagForm({
   enabledLocales,
   initial,
   submitLabel,
+  cancelLabel,
   busy = false,
   onSubmit,
   onCancel,
@@ -172,7 +175,7 @@ export function TagForm({
       <div className="flex flex-wrap justify-end gap-2">
         {onCancel ? (
           <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={busy}>
-            {t('cancel')}
+            {cancelLabel ?? t('cancel')}
           </Button>
         ) : null}
         <Button

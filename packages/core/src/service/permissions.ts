@@ -35,9 +35,15 @@ export const PERMISSIONS = [
   // Reservations (D141, the lead's calls; ticket #323). Any role a venue makes can be given each
   // of them, and no role has one because of its name: there is no reservations-only account and
   // no job title anywhere in this list.
-  /** Working tonight's reservations: arrivals, walk-ins, the waiting list, the plan's taps. */
+  /**
+   * Working tonight's reservations: arrivals, walk-ins, the waiting list, the plan's taps, and
+   * taking, copying, editing and cancelling a booking, whoever took it (D135 13.18).
+   */
   'reservations.tonight',
-  /** The booking book: create, edit, cancel, delete another's, restore, copy to another night. */
+  /**
+   * The manager's acts on the booking book: delete another's, restore (D135), and put back what
+   * the night's end marked (D138).
+   */
   'reservations.manage',
   /** Set a reservation's pay rule (D136; ticket #334 uses it). */
   'reservations.pay_rule',

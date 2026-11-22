@@ -207,8 +207,14 @@ async function inMenu(context: Context, ...ids: readonly (NodeId | null)[]): Pro
 
 /** True when the item is one of this venue's: the tenant's rows are all the database hides (RR-72). */
 async function ofVenue(context: Context, itemId: NodeId): Promise<boolean> {
-  const ours = await itemsOfVenue(getPool(), context.tenantId, context.venueId, [itemId])
-  return ours.has(itemId)
+  return allOfVenue(context, [itemId])
+}
+
+/** True when every item given is one of this venue's (RR-72; a forged reorder key included). */
+async function allOfVenue(context: Context, itemIds: readonly NodeId[]): Promise<boolean> {
+  const unique = [...new Set(itemIds)]
+  const ours = await itemsOfVenue(getPool(), context.tenantId, context.venueId, unique)
+  return unique.every((id) => ours.has(id))
 }
 
 /** A live (not deleted) section of this menu, or false. */
@@ -235,7 +241,10 @@ export async function placeItemAction(input: unknown): Promise<ActionResult> {
   const { venueId, menuId, ...move } = parsed.data
   return perform({ venueId, menuId }, async (context) => {
     if (!(await inMenu(context, move.fromSectionId, move.toSectionId))) return null
-    if (!(await ofVenue(context, move.itemId))) return NOT_FOUND
+    // Every key is written as a placement, so every key's item must be this venue's, not only
+    // the one being moved (screen round 11-18, S27).
+    const itemIds = [move.itemId, ...move.keys.map((entry) => entry.id)]
+    if (!(await allOfVenue(context, itemIds))) return NOT_FOUND
     return placeItemOps(move)
   })
 }
@@ -247,6 +256,7 @@ export async function moveSectionAction(input: unknown): Promise<ActionResult> {
   const { venueId, menuId, ...move } = parsed.data
   return perform({ venueId, menuId }, async (context) => {
     if (!(await inMenu(context, move.sectionId, move.parentId))) return null
+    // A key from another menu is refused by apply()'s own root check (S27; attack-table).
     return moveSectionOps({ ...move, menuId: context.menuId })
   })
 }
@@ -264,6 +274,11 @@ export async function createSectionAction(input: unknown): Promise<ActionResult>
     if (!title[context.defaultLocale as keyof LocalizedText]) return null
     if (keys.some((locale) => !context.enabledLocales.includes(locale))) return null
     if (!(await inMenu(context, section.parentId))) return null
+    // The id is the client's: a new section, never an existing node. apply() treats a repeated
+    // createNode under the same parent as done, and the title after it would overwrite that
+    // section's (screen round 11-18, S28). Another organisation's id is hidden by RLS here and
+    // stopped by the nodes primary key in apply().
+    if (await getNodeBasics(context.tenantId, section.id)) return null
     return createSectionOps({ ...section, menuId: context.menuId, title })
   })
 }

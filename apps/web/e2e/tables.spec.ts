@@ -18,12 +18,16 @@ import { runScript, startScript } from './global-setup'
 import { addressOfVenue, type VenueAddress } from './menu-path'
 import { ADMIN_EMAIL, ADMIN_PASSWORD, GUEST_SLUG } from './support'
 
+/** The plain member `seed-tables-e2e.ts member` adds to the demo organisation. */
+const MEMBER_EMAIL = 'tables-member@demo-club.test'
+
 // The Tables & QR tab on a production build (briefs S3-07 and S5; D94, D95), in Bulgarian, against
 // the demo venue with eight barsy tables (scripts/seed-tables-e2e.ts):
 //
-//   1. the areas as sections, their tables as cards; "Create codes for all tables"; the code in a
-//      card IS the address <base>/t/<token> (the SVG is compared with what the `qrcode` library
-//      makes for that text, error correction M, margin 2, black on white);
+//   1. the areas as sections (an index of them at the top), their tables as cards; "Create the N
+//      missing codes" is the main action until every table has one, then "Print sheet" is; the
+//      code in a card IS the address <base>/t/<token> (the SVG is compared with what the `qrcode`
+//      library makes for that text, error correction M, margin 2, black on white);
 //   2. nothing is public until the worker has run (the web app never writes the publish store):
 //      before it, /t/<token> says "not active"; after it, it leads to the menu with "Маса 1";
 //   3. a new name reaches the guest page; an area is renamed and moved; a table is hidden (its file
@@ -31,9 +35,12 @@ import { ADMIN_EMAIL, ADMIN_PASSWORD, GUEST_SLUG } from './support'
 //   4. a menu chosen for a table, then for an area, reaches the table files after the job (the
 //      most specific wins), and taking the choice away goes back to the venue's live menu;
 //   5. the address card only says where the codes lead; its test link is opened by the browser;
-//   6. the print sheet has six cards on an A4 page (counted on the screen and in a real PDF) and
-//      leaves a hidden table out;
-//   7. downloads, turning a code off, and the picture in both languages and themes.
+//   6. the print sheet has six cards on an A4 page (counted when printed and in a real PDF), leaves
+//      a hidden table out, is named after the venue, and fits a phone's screen;
+//   7. downloads, turning a code off, and the picture in both languages and themes;
+//   8. a plain member reads the areas and tables but is told the codes are for owners and admins
+//      (no codes, no "create", no print sheet), on the tab and on the print page (screen round
+//      11-18, S25).
 //
 // The worker does not run here: `seed-tables-e2e.ts worker` takes the queued jobs and runs the
 // worker's own `writeTableTokenFiles` for them. Screenshots go to `.local/screenshots/s5/`
@@ -70,16 +77,32 @@ const GUEST_PATH = `/m/demo-club/${GUEST_SLUG}`
 
 // --- helpers ---------------------------------------------------------------------------------
 const rows = () => page.getByTestId('table-card')
+/** A card by the till's number (the card says it only when the table is called otherwise, S14). */
 const rowOf = (number: string): Locator =>
-  rows().filter({
-    has: page.getByTestId('table-number').filter({ hasText: new RegExp(`^от barsy: ${number}$`) }),
-  })
+  page.locator(`[data-testid="table-card"][data-number="${number}"]`)
 /** The area section a locator is in. */
 const areaOfRow = (row: Locator): Locator => row.locator('xpath=ancestor::*[@data-testid="hall"]')
 const hallNames = () =>
   page
     .getByTestId('hall-name')
     .evaluateAll((all) => all.map((element) => (element as HTMLInputElement).value))
+
+/** Signs in on a fresh page; Better Auth allows a few sign-ins per 10 seconds. Fails after three. */
+async function signIn(target: Page, email: string) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await target.goto('/venues')
+    await target.getByLabel('Имейл').fill(email)
+    await target.getByLabel('Парола').fill(ADMIN_PASSWORD)
+    await target.getByRole('button', { name: 'Вход' }).click()
+    try {
+      await expect(target).toHaveURL(/\/venues$/, { timeout: 5_000 })
+      return
+    } catch {
+      await target.waitForTimeout(10_000)
+    }
+  }
+  throw new Error(`could not sign in as ${email} in three attempts`)
+}
 
 /**
  * Does something in the tab that calls a server action, and waits until the action has answered
@@ -217,19 +240,8 @@ test.beforeAll(async ({ browser }) => {
   venue = await addressOfVenue({ slug: GUEST_SLUG })
   context = await browser.newContext({ viewport: { width: 1280, height: 1100 }, locale: 'bg-BG' })
   page = await context.newPage()
-  // Better Auth allows a few sign-ins per 10 seconds, and the other specs signed in just before.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await page.goto('/venues')
-    await page.getByLabel('Имейл').fill(ADMIN_EMAIL)
-    await page.getByLabel('Парола').fill(ADMIN_PASSWORD)
-    await page.getByRole('button', { name: 'Вход' }).click()
-    try {
-      await expect(page).toHaveURL(/\/venues$/, { timeout: 5_000 })
-      break
-    } catch {
-      await page.waitForTimeout(10_000)
-    }
-  }
+  // The other specs signed in just before: `signIn` waits out Better Auth's limit.
+  await signIn(page, ADMIN_EMAIL)
   // By name: a database seeded with `pnpm db:seed:dev` also lists a Demo Bar, and it sorts first.
   await page
     .getByTestId('venue-card')
@@ -254,7 +266,7 @@ test.afterAll(async () => {
   await context.close()
 })
 
-test('lists the barsy areas as sections and their tables as cards, and creates a code for every one', async () => {
+test('lists the barsy areas as sections and their tables as cards, and creates the missing codes', async () => {
   await expect(page.getByTestId('hall-name')).toHaveCount(4)
   const names = await hallNames()
   // Tables the till puts in no hall land in an area called "Tables", last (D95).
@@ -263,15 +275,27 @@ test('lists the barsy areas as sections and their tables as cards, and creates a
   await expect(rows()).toHaveCount(8)
   await expect(page.getByTestId('code-status').filter({ hasText: 'Няма код' })).toHaveCount(8)
   await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 0 с код')
-  // The name field says it is the name guests see, with the till's number beside it.
-  await expect(rowOf('5').getByLabel('Име, което виждат гостите')).toBeVisible()
-  // The hidden table is marked, and the print sheet waits for a code.
+  // The name field says it is the name guests see; until one is given it shows the till's number,
+  // which the card then does not repeat (S14).
+  await expect(rowOf('5').getByLabel('Име, което виждат гостите')).toHaveAttribute(
+    'placeholder',
+    'Като в barsy (5)',
+  )
+  await expect(rowOf('5').getByTestId('table-number')).toHaveCount(0)
+  // The hidden table is marked. Nothing to print before there is a code (R2): no link at all.
   await expect(rowOf('4').getByTestId('table-hidden')).toHaveText('Скрита')
-  await expect(page.getByTestId('print-sheet-link')).toBeDisabled()
+  await expect(page.getByTestId('print-sheet-link')).toHaveCount(0)
   // Each area and table says which menu its code opens: the venue's live one, nobody chose another.
-  await expect(page.getByTestId('venue-menu')).toContainText('Менюто на заведението на живо')
-  await expect(rowOf('5').getByTestId('route-select')).toContainText('На заведението')
+  await expect(page.getByTestId('venue-menu')).toHaveCount(0)
+  await expect(rowOf('5').getByTestId('route-select')).toContainText('Менюто на заведението')
   await expect(page.getByTestId('menu-overrides')).toHaveCount(0)
+
+  // An index of the areas at the top: one link per area, each to its section.
+  const jumps = page.getByTestId('area-index').getByTestId('area-jump')
+  await expect(jumps).toHaveCount(4)
+  const target = (await jumps.first().getAttribute('href')) ?? ''
+  expect(target).toMatch(/^#area-/)
+  await expect(page.locator(target)).toHaveAttribute('data-testid', 'hall')
 
   // The address card only says where the codes lead: this installation's address. Nothing to type.
   const card = page.getByTestId('qr-address-card')
@@ -282,17 +306,20 @@ test('lists the barsy areas as sections and their tables as cards, and creates a
   )
   await expect(page.getByTestId('open-test-link')).toBeDisabled()
 
-  // The hidden table (4) gets no code (D95): seven of the eight.
-  await act(() => page.getByTestId('create-all').click())
+  // The hidden table (4) gets no code (D95): the main action says how many are missing (R1).
+  const createAll = page.getByTestId('create-all')
+  await expect(createAll).toHaveText('Създай липсващите 7 кода')
+  await act(() => createAll.click())
   await toast('Създадени са 7 кода.')
   await expect(page.getByTestId('code-status').filter({ hasText: 'Кодът е активен' })).toHaveCount(
     7,
   )
   await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 7 с код')
-  await expect(page.getByTestId('print-sheet-link')).toHaveAttribute(
-    'href',
-    `${new URL(venueUrl).pathname}/tables/print`,
-  )
+  // Every table that can have a code has one: "create" goes, and the print sheet is the main action.
+  await expect(createAll).toHaveCount(0)
+  const print = page.getByTestId('print-sheet-link')
+  await expect(print).toHaveAttribute('href', `${new URL(venueUrl).pathname}/tables/print`)
+  await expect(print).toHaveAttribute('data-primary', 'true')
   await page.screenshot({ path: shot('tables-bg-light'), fullPage: true })
 })
 
@@ -365,7 +392,7 @@ test('the worker publishes the codes; then /t/<token> leads to the menu with the
 test('a name given in the tab reaches the guest page, shown as it is', async () => {
   const row = rowOf('5')
   const input = row.getByTestId('table-name')
-  await expect(input).toHaveAttribute('placeholder', '5')
+  await expect(input).toHaveAttribute('placeholder', 'Като в barsy (5)')
   await input.fill('Тераса Е5')
   await act(() => input.press('Enter'))
   await expect(input).toHaveValue('Тераса Е5')
@@ -461,11 +488,14 @@ test('an area is renamed and moved; a table is hidden (its file goes), shown aga
     expect(await fileOf(token)).toMatchObject({ table_label: '6' })
 
     // Within its area a table moves up and down by one place.
-    const order = () => areaOfRow(rowOf('6')).getByTestId('table-number').allTextContents()
+    const order = () =>
+      areaOfRow(rowOf('6'))
+        .getByTestId('table-card')
+        .evaluateAll((all) => all.map((card) => (card as HTMLElement).dataset.number))
     const numbers = await order()
-    expect(numbers).toEqual(['от barsy: 5', 'от barsy: 6'])
+    expect(numbers).toEqual(['5', '6'])
     await menuAction(rowOf('6'), 'table-menu', 'move-up')
-    await expect.poll(order).toEqual(['от barsy: 6', 'от barsy: 5'])
+    await expect.poll(order).toEqual(['6', '5'])
     await menuAction(rowOf('6'), 'table-menu', 'move-down')
     await expect.poll(order).toEqual(numbers)
   } finally {
@@ -501,7 +531,7 @@ test('a menu chosen for an area or a table reaches the files of the codes after 
   // The venue's menus are offered by name, the live one marked; the others by their own name.
   await three.getByTestId('route-select').click()
   const offered = await page.getByRole('option').allTextContents()
-  expect(offered[0]).toBe('Като на зоната')
+  expect(offered[0]).toBe('Като зоната')
   expect(offered).toContain('Late night')
   expect(offered.some((text) => text.endsWith('(на живо)'))).toBe(true)
   await page.keyboard.press('Escape')
@@ -534,9 +564,9 @@ test('a menu chosen for an area or a table reaches the files of the codes after 
 
   // Taking the choices away: every code goes back to the venue's live menu.
   await three.getByTestId('route-select').click()
-  await act(() => page.getByRole('option', { name: 'Като на зоната' }).click())
+  await act(() => page.getByRole('option', { name: 'Като зоната', exact: true }).click())
   await hall.getByTestId('route-select').first().click()
-  await act(() => page.getByRole('option', { name: 'Като на заведението' }).click())
+  await act(() => page.getByRole('option', { name: 'Менюто на заведението', exact: true }).click())
   await expect(page.getByTestId('menu-overrides')).toHaveCount(0)
   await runWorker()
   expect((await fileOf(tokens.one)).menu_id).toBe(live)
@@ -618,6 +648,8 @@ test('the print sheet has six cards on an A4 page, in a real PDF too, and stays 
   await sheetPage.setViewportSize({ width: 1100, height: 1300 })
   await sheetPage.goto(`${venueUrl}/tables/print`)
   await expect(sheetPage.getByTestId('print-page')).toBeVisible()
+  // The tab's title names the sheet, so "Save as PDF" offers a file named after it (R4).
+  await expect(sheetPage).toHaveTitle('QR кодове · Demo Club Sofia · Restro')
 
   const sheets = sheetPage.getByTestId('print-sheet')
   await expect(sheets).toHaveCount(2)
@@ -658,7 +690,10 @@ test('the print sheet has six cards on an A4 page, in a real PDF too, and stays 
   }
   const firstSvg = (await cards.first().getByTestId('print-qr').getAttribute('src')) ?? ''
 
-  // On the screen a sheet is an A4 page (210 × 296 mm at 96 dpi), laid out two across, three down.
+  await sheetPage.screenshot({ path: shot('print-sheet-bg'), fullPage: true })
+
+  // Printed, a sheet is an A4 page (210 × 296 mm at 96 dpi), laid out two across, three down.
+  await sheetPage.emulateMedia({ media: 'print' })
   const box = await sheets.first().boundingBox()
   expect(Math.round(box?.width ?? 0)).toBe(Math.round((210 / 25.4) * 96))
   expect(Math.round(box?.height ?? 0)).toBe(Math.round((296 / 25.4) * 96))
@@ -670,10 +705,8 @@ test('the print sheet has six cards on an A4 page, in a real PDF too, and stays 
   )
   expect(new Set(positions.map(([x]) => x)).size).toBe(2)
   expect(new Set(positions.map(([, y]) => y)).size).toBe(3)
-  await sheetPage.screenshot({ path: shot('print-sheet-bg'), fullPage: true })
 
   // A real PDF, as the browser's "Save as PDF" makes it: two A4 pages.
-  await sheetPage.emulateMedia({ media: 'print' })
   const pdf = await sheetPage.pdf({ format: 'A4', preferCSSPageSize: true, printBackground: true })
   expect(pdf.toString('latin1').match(/\/Type\s*\/Page(?![s\w])/g) ?? []).toHaveLength(2)
   writeFileSync(`${SHOTS}/s5-print-sheet.pdf`, pdf)
@@ -692,6 +725,16 @@ test('the print sheet has six cards on an A4 page, in a real PDF too, and stays 
   ).toBe('rgb(255, 255, 255)')
   expect(await cards.first().getByTestId('print-qr').getAttribute('src')).toBe(firstSvg)
   await sheetPage.screenshot({ path: shot('print-sheet-dark') })
+  await sheetPage.emulateMedia({ colorScheme: 'light' })
+
+  // On a phone the sheet is as wide as the screen and its cards stack: nothing scrolls sideways (S22).
+  await sheetPage.setViewportSize({ width: 390, height: 844 })
+  await sheetPage.reload()
+  await expect(sheetPage.getByTestId('print-page')).toBeVisible()
+  expect(
+    await sheetPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+  ).toBe(true)
+  await sheetPage.screenshot({ path: shot('print-sheet-phone'), fullPage: true })
   await sheetPage.close()
 })
 
@@ -770,7 +813,10 @@ test('screenshots: English, dark, and a phone', async () => {
   await page.goto(tabUrl)
   await expect(page.getByTestId('tables-summary')).toHaveText('8 tables, 7 with a code')
   await expect(page.getByText('Address in the codes')).toBeVisible()
-  await expect(page.getByTestId('table-number').filter({ hasText: 'from barsy: 5' })).toBeVisible()
+  await expect(rowOf('5').getByTestId('table-name')).toHaveAttribute(
+    'placeholder',
+    'Same as in barsy (5)',
+  )
   await page.screenshot({ path: shot('tables-en-light'), fullPage: true })
 
   await page.emulateMedia({ colorScheme: 'dark' })
@@ -793,4 +839,49 @@ test('screenshots: English, dark, and a phone', async () => {
   await page.setViewportSize({ width: 1280, height: 1100 })
   await page.reload()
   await expect(page.getByTestId('tables-summary')).toHaveText('8 маси, 7 с код')
+})
+
+test('a plain member reads the tables, is told the codes are for owners and admins, and gets none', async ({
+  browser,
+}) => {
+  runScript('./scripts/seed-tables-e2e.ts', 'member')
+  const memberContext = await browser.newContext({
+    viewport: { width: 1280, height: 1100 },
+    locale: 'bg-BG',
+  })
+  try {
+    const member = await memberContext.newPage()
+    await signIn(member, MEMBER_EMAIL)
+    await member.goto(tabUrl)
+    await expect(member.getByTestId('tables-tab')).toBeVisible()
+    // The areas and tables are there to read; the codes are not, and the tab says why (S25).
+    await expect(member.getByTestId('table-card')).toHaveCount(8)
+    await expect(member.getByTestId('tables-codes-hidden')).toHaveText(
+      'Само собственици и администратори виждат кодовете.',
+    )
+    await expect(member.getByTestId('create-all')).toHaveCount(0)
+    await expect(member.getByTestId('print-sheet-link')).toHaveCount(0)
+    await expect(member.getByTestId('qr-address-card')).toHaveCount(0)
+    await expect(member.getByTestId('qr-thumb')).toHaveCount(0)
+    await expect(member.getByTestId('route-select')).toHaveCount(0)
+    // Who cannot open the picker reads which menu, by name.
+    await expect(member.getByTestId('route-text').first()).toContainText('Менюто на заведението (')
+    // Nor can a member fetch a code's picture by its address.
+    const tableId =
+      (await member
+        .locator('[data-testid="table-card"][data-number="1"]')
+        .getAttribute('data-table-id')) ?? ''
+    expect(tableId).toMatch(/^tb_/)
+    expect((await member.request.get(`/api/tables/${tableId}/qr?format=png`)).status()).toBe(404)
+    await member.screenshot({ path: shot('tables-member-bg'), fullPage: true })
+
+    // The print page, opened by its address, says the same and prints nothing.
+    await member.goto(`${venueUrl}/tables/print`)
+    await expect(member.getByTestId('print-codes-hidden')).toHaveText(
+      'Само собственици и администратори виждат кодовете.',
+    )
+    await expect(member.getByTestId('print-card')).toHaveCount(0)
+  } finally {
+    await memberContext.close()
+  }
 })

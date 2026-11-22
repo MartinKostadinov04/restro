@@ -106,7 +106,8 @@ function EntryRow({
           {[
             moment(entry.at),
             entry.reason === 'rollback' ? null : tLive(`reason.${entry.reason}`),
-            actorLabel(entry.actor),
+            // "· the system" says nothing a person can act on (screen round 2026-11-18, S24).
+            entry.actor.kind === 'system' ? null : actorLabel(entry.actor),
           ]
             .filter(Boolean)
             .join(' · ')}

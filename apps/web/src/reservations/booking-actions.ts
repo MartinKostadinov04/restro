@@ -30,7 +30,10 @@ import {
 import type { RvFrame } from '@/server/reservations/view'
 
 import { usePayRuleWord } from './reservation-words'
-import type { RvRunSpec } from './use-reservation-run'
+import { type RvRunSpec, useSpotsLostLine } from './use-reservation-run'
+
+/** The lines a restore says when the booking comes back without its spots. */
+const RESTORED_WITHOUT_SPOTS = { taken: 'bk_restored_lost', other: 'bk_restored_nospots' } as const
 
 /** The party named in a sentence: its name, or "No name" for a walk-in nobody named. */
 export type PartyName = string
@@ -61,13 +64,15 @@ export function useBookingActions({
 }) {
   const t = useTranslations('reservations')
   const ruleWord = usePayRuleWord()
+  const spotsLostLine = useSpotsLostLine()
   const venueId = frame.venueId
 
   const noShow = useCallback(
-    (reservationId: string) =>
+    (reservationId: string, party: PartyName) =>
       run({
         id: `rv-noshow:${reservationId}`,
-        done: t('bk_noshow_done'),
+        // The toast names whom it marked, as every door write does (S21).
+        done: t('bk_noshow_done', { party }),
         act: () => noShowAction({ venueId, reservationId }),
         again: {
           label: t('p_undo'),
@@ -104,13 +109,12 @@ export function useBookingActions({
         after: onChanged,
         onDone: (details) => {
           // Its table was given away while it was out: it is back, and she is told it has no spot.
-          if (details.spotsLost === true) {
-            toast.message(t('bk_restored_lost'), { id: `rv-restore-lost:${reservationId}` })
-          }
+          const lost = spotsLostLine(details, RESTORED_WITHOUT_SPOTS)
+          if (lost !== null) toast.message(lost, { id: `rv-restore-lost:${reservationId}` })
           onDone?.()
         },
       }),
-    [onChanged, run, t, venueId],
+    [onChanged, run, spotsLostLine, t, venueId],
   )
 
   const remove = useCallback(
@@ -127,6 +131,7 @@ export function useBookingActions({
               again: {
                 label: t('p_undo'),
                 done: t('bk_restored'),
+                notice: (details) => spotsLostLine(details, RESTORED_WITHOUT_SPOTS),
                 act: (pin?: string) =>
                   restoreBookingAction({
                     venueId,
@@ -139,7 +144,7 @@ export function useBookingActions({
         after: onChanged,
         onDone,
       }),
-    [frame.can.manage, frame.device, onChanged, run, t, venueId],
+    [frame.can.manage, frame.device, onChanged, run, spotsLostLine, t, venueId],
   )
 
   /**

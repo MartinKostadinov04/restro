@@ -3,8 +3,10 @@
 // `identifyStaffByPin` before it hands the staff write to `applyService` with a `staff` actor.
 // - The session must be a live shared device of the venue; elsewhere a PIN means nothing.
 // - The PIN is looked up by `HMAC(pepper, tenant ‖ pin)`, unique in the organisation.
-// - A wrong PIN counts against the device (`PinGuard`, in the web process's memory); the fifth in
-//   five minutes makes the device wait and writes a `guard.tripped` entry, kept 18 months.
+// - A wrong PIN counts against the device and its organisation (`PinGuard`, in the web process's
+//   memory); the fifth in five minutes on the device, or any past the organisation's ceiling, makes
+//   the device wait and writes a `guard.tripped` entry, kept 18 months. A right PIN clears nothing,
+//   so a person's own PIN cannot reset someone's guesses (screen round 11-18, X1).
 // - A right PIN starts that person's own short session on the device (D141 12.11, #324): the next
 //   write is taken from the device and asks for nothing, until the device has been idle a few
 //   minutes (`shared-device.ts`).
@@ -81,7 +83,6 @@ export async function identifyStaffByPin(
           ),
         )
       if (member !== undefined) {
-        input.guard.succeed(device.id)
         // D141 12.11: the PIN starts this person's own short session on the device, so the next
         // write of theirs is taken from the device and asks nothing.
         await keepDevicePerson(tx, {
@@ -103,7 +104,7 @@ export async function identifyStaffByPin(
       }
     }
 
-    const failure = input.guard.fail(device.id, now)
+    const failure = input.guard.fail(device.id, now, input.tenantId)
     if (!failure.tripped) return { ok: false, code: 'pin_wrong' }
     const [venue] = await tx
       .select({ timezone: venues.timezone, serviceDayEndsAt: venues.serviceDayEndsAt })
@@ -126,7 +127,13 @@ export async function identifyStaffByPin(
         {
           kind: 'guard.tripped',
           reason: 'pin_wrong',
-          details: { deviceId: device.id, trip: failure.trip, waitSeconds: failure.waitSeconds },
+          details: {
+            deviceId: device.id,
+            trip: failure.trip,
+            waitSeconds: failure.waitSeconds,
+            // The device's own five wrong PINs, or the organisation's backstop alone.
+            cause: failure.cause,
+          },
         },
       )
     }

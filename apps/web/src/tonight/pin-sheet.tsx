@@ -18,9 +18,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { cn } from '@/lib/utils'
 import type { TonightResult } from '@/server/tonight/tables'
 
 import { useFailureText } from './failure'
+import { CLOSE_44 } from './tab-parts'
 
 /** The PIN a write asks for on a shared device: a person's own, or a manager's. */
 export type PinLevel = 'own' | 'manager'
@@ -123,8 +125,8 @@ export function PinSheet({
   const key = 'h-14 w-full text-xl tabular-nums'
   return (
     <Dialog open onOpenChange={(open) => !open && onLeave()}>
-      <DialogContent className="max-w-sm" data-testid="pin-sheet">
-        <DialogHeader>
+      <DialogContent className={cn('max-w-sm', CLOSE_44)} data-testid="pin-sheet">
+        <DialogHeader className="pr-8">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{body}</DialogDescription>
         </DialogHeader>

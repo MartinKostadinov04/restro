@@ -32,6 +32,7 @@ import {
 import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
 
 import type { Reader, ReadInput } from '../night-read'
+import { compareSpotNames } from './plan-state'
 import {
   accessOf,
   openReservations,
@@ -339,9 +340,10 @@ export async function readGuestCard(
             recent.map((one) => one.id),
           ),
         )
-        .orderBy(asc(spots.name))
       for (const row of rows)
         held.set(row.reservationId, [...(held.get(row.reservationId) ?? []), row.name])
+      // Natural order (1, 2, 10), in code (S5).
+      for (const names of held.values()) names.sort(compareSpotNames)
     }
 
     const owner = await privateListOwner(tx, reader, input)

@@ -227,6 +227,12 @@ describe.skipIf(!hasDatabase)(
         actor: 'guest',
       })
       await addLog({ kind: 'pause.started', reason: 'staff', details: { scope: 'venue' } })
+      await addLog({
+        kind: 'settings.changed',
+        reason: 'ordering',
+        details: { keys: 'capMinor,spot' },
+        retention: 'record',
+      })
       await addLog({ kind: 'settings.changed', reason: 'payment_table', retention: 'record' })
       await addLog({ kind: 'waiter_call.called', serviceDate: yesterday, actor: 'guest' })
     })
@@ -366,6 +372,16 @@ describe.skipIf(!hasDatabase)(
         const seqs = read.page.rows.map((row) => row.seq)
         expect(seqs).toEqual([...seqs].sort((a, b) => b - a))
         expect(read.page.days).toContain(yesterday)
+      })
+
+      it('keeps the keys a settings change named, one by one (S15)', async () => {
+        const read = await readLog(world.app, input(user(managerUser)))
+        if (!read.ok) throw new Error(read.code)
+        const changes = read.page.rows.filter((row) => row.kind === 'settings.changed')
+        expect(changes.map((row) => [row.reason, row.settingKeys])).toEqual([
+          ['payment_table', []],
+          ['ordering', ['capMinor', 'spot']],
+        ])
       })
 
       it('filters by kind group and searches by reference or table', async () => {

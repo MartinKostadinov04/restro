@@ -259,6 +259,11 @@ export const ATTACKS: readonly Attack[] = [
     how: 'to the victim',
     call: (v) => switching.switchOrganization(v.tenantId),
   },
+  {
+    action: 'returnToOrganization',
+    how: 'to the victim',
+    call: (v) => switching.returnToOrganization(v.tenantId),
+  },
 
   // Guest features and design.
   {
@@ -1606,6 +1611,45 @@ export const MIXED: readonly Attack[] = [
         fromSectionId: x.section,
         toSectionId: null,
         keys: [],
+      })
+    },
+  },
+  {
+    action: 'placeItemAction',
+    how: "my item, the victim's item smuggled into the keys",
+    // Every key becomes a placement: the victim's item would land in my section (S27).
+    call: (v, a) => {
+      const x = v.venues[0]
+      const m = a.venues[0]
+      return composer.placeItemAction({
+        venueId: m.id,
+        menuId: m.menu,
+        itemId: m.item,
+        fromSectionId: null,
+        toSectionId: m.section,
+        keys: [
+          { id: m.item, key: 'a1' },
+          { id: x.item, key: 'a2' },
+        ],
+      })
+    },
+  },
+  {
+    action: 'moveSectionAction',
+    how: "my section, the victim's section smuggled into the keys",
+    // Every key is moved under the parent; apply()'s root check refuses one from another menu (S27).
+    call: (v, a) => {
+      const x = v.venues[0]
+      const m = a.venues[0]
+      return composer.moveSectionAction({
+        venueId: m.id,
+        menuId: m.menu,
+        sectionId: m.section,
+        parentId: null,
+        keys: [
+          { id: m.section, key: 'a1' },
+          { id: x.section, key: 'a2' },
+        ],
       })
     },
   },

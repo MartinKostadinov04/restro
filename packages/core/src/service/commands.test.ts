@@ -28,6 +28,23 @@ describe('the service commands', () => {
     }
   })
 
+  it('lets the booking book’s key edit and cancel, and widens no other command (S20)', () => {
+    const widened = Object.entries(SERVICE_COMMANDS)
+      .filter(([, definition]) => 'alsoPermittedBy' in definition)
+      .map(([type, definition]) => [
+        type,
+        (definition as { alsoPermittedBy: readonly Permission[] }).alsoPermittedBy,
+      ])
+    expect(widened).toEqual([
+      ['reservation.edit', ['reservations.manage']],
+      ['reservation.cancel', ['reservations.manage']],
+    ])
+    // A wider key never reaches past the person's own sign-in.
+    for (const [, keys] of widened) {
+      for (const key of keys as readonly Permission[]) expect(isSettingsPermission(key)).toBe(false)
+    }
+  })
+
   it('lets a shared device run only the quick answers, never a settings change (#85)', () => {
     // A shared device's own account holds what Staff hold for exactly these commands; every other
     // staff command asks the person's PIN (`pin_required`), and a PIN never unlocks settings.

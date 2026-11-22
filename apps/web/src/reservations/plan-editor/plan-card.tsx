@@ -25,11 +25,12 @@ import {
   type SpotPlace,
   type SpotSymbol,
 } from '@restro/core'
-import { EllipsisIcon, PlusIcon } from 'lucide-react'
+import { ChevronDownIcon, EllipsisIcon, PlusIcon } from 'lucide-react'
 import { useLocale, useTranslations } from 'next-intl'
 import { useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -71,6 +72,12 @@ import { KindDialog, type KindFields, NewSpotDialog, PlanNameDialog } from './pl
 import { SpotEditor, type SpotFields } from './spot-editor'
 
 type Runner = ReturnType<typeof useSettingsRun>
+
+/**
+ * From this many spots the named list starts folded (S13): it repeats the canvas for the keyboard,
+ * and 130 buttons put the spot kinds 7,000 px down. A short list stays open, nothing to unfold.
+ */
+const LIST_FOLD_FROM = 12
 
 /** The kinds a venue with none begins with, by symbol, with their usual seats. */
 const STARTER_KINDS: readonly { symbol: SpotSymbol; seats: number | null }[] = [
@@ -239,7 +246,10 @@ export function PlanCard({ view, runner }: { view: ReservationsView; runner: Run
         kinds.map((one) => one.key),
       )
     run(() => saveSpotKindAction({ venueId, key, ...fields }), {
-      done: kind === null ? t('pe_kind_added', { name: fields.label }) : t('pe_kind_saved'),
+      done:
+        kind === null
+          ? t('pe_kind_added', { name: fields.label })
+          : t('pe_kind_saved', { name: fields.label }),
       words,
       undo:
         kind === null
@@ -392,49 +402,7 @@ export function PlanCard({ view, runner }: { view: ReservationsView; runner: Run
         }}
       />
 
-      {spots.length > 0 ? (
-        <ul
-          className="grid grid-cols-1 divide-y rounded-lg border bg-card"
-          aria-label={t('pe_list')}
-          data-testid="pe-spot-list"
-        >
-          {[...spots]
-            .sort((a, b) => collator.compare(a.name, b.name))
-            .map((spot) => {
-              const kind = kindOf(spot.kind)
-              const seats = spot.seats ?? kind?.defaultSeats ?? null
-              const inside = (
-                <>
-                  <KindSymbol symbol={kind?.symbol ?? 'dot'} />
-                  <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{spot.name}</span>
-                  <span className="text-sm text-muted-foreground">
-                    {kind?.label ?? spot.kind}
-                    {seats === null ? '' : ` · ${t('pe_seats_n', { n: seats })}`}
-                  </span>
-                </>
-              )
-              return (
-                <li key={spot.id} data-testid="pe-spot-row" data-spot={spot.id}>
-                  {can ? (
-                    <button
-                      type="button"
-                      className="flex min-h-11 w-full items-center gap-3 p-3 text-left hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-ring"
-                      onClick={() => {
-                        setSelected(spot.id)
-                        setOpenId(spot.id)
-                      }}
-                    >
-                      {inside}
-                    </button>
-                  ) : (
-                    <div className="flex min-h-11 items-center gap-3 p-3">{inside}</div>
-                  )}
-                </li>
-              )
-            })}
-        </ul>
-      ) : null}
-
+      {/* The kinds come before the spot list: naming the kinds is a job of its own (S13). */}
       <KindsList
         kinds={kinds}
         can={can}
@@ -443,6 +411,70 @@ export function PlanCard({ view, runner }: { view: ReservationsView; runner: Run
         onEdit={(kind) => setAsking({ step: 'kind', kind })}
         onRemove={removeKind}
       />
+
+      {spots.length > 0 ? (
+        <Collapsible
+          defaultOpen={spots.length < LIST_FOLD_FROM}
+          className="group/list grid grid-cols-1 gap-2"
+        >
+          <CollapsibleTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              className={`justify-between ${WRAPS}`}
+              data-testid="pe-spot-list-toggle"
+            >
+              {t('pe_list_n', { n: spots.length })}
+              <ChevronDownIcon
+                aria-hidden
+                className="transition-transform group-data-[state=open]/list:rotate-180"
+              />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <ul
+              className="grid grid-cols-1 divide-y rounded-lg border bg-card"
+              aria-label={t('pe_list')}
+              data-testid="pe-spot-list"
+            >
+              {[...spots]
+                .sort((a, b) => collator.compare(a.name, b.name))
+                .map((spot) => {
+                  const kind = kindOf(spot.kind)
+                  const seats = spot.seats ?? kind?.defaultSeats ?? null
+                  const inside = (
+                    <>
+                      <KindSymbol symbol={kind?.symbol ?? 'dot'} />
+                      <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{spot.name}</span>
+                      <span className="text-sm text-muted-foreground">
+                        {kind?.label ?? spot.kind}
+                        {seats === null ? '' : ` · ${t('pe_seats_n', { n: seats })}`}
+                      </span>
+                    </>
+                  )
+                  return (
+                    <li key={spot.id} data-testid="pe-spot-row" data-spot={spot.id}>
+                      {can ? (
+                        <button
+                          type="button"
+                          className="flex min-h-11 w-full items-center gap-3 p-3 text-left hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-ring"
+                          onClick={() => {
+                            setSelected(spot.id)
+                            setOpenId(spot.id)
+                          }}
+                        >
+                          {inside}
+                        </button>
+                      ) : (
+                        <div className="flex min-h-11 items-center gap-3 p-3">{inside}</div>
+                      )}
+                    </li>
+                  )
+                })}
+            </ul>
+          </CollapsibleContent>
+        </Collapsible>
+      ) : null}
 
       {open === null ? null : (
         <SpotEditor
@@ -473,7 +505,7 @@ export function PlanCard({ view, runner }: { view: ReservationsView; runner: Run
             setAsking(null)
             const before = plan.name
             run(() => savePlanAction({ venueId, planId: plan.id, name }), {
-              done: t('pe_renamed'),
+              done: t('pe_renamed', { name }),
               words,
               undo: () => savePlanAction({ venueId, planId: plan.id, name: before }),
             })
