@@ -7,9 +7,9 @@ open row of the song-requests grilling (T82). Research only: no code, no depende
 already does, and Martin was right that it does — but the API exposes nothing that names a musical genre at
 search time, and only 15 coarse topics (`Rock music`, `Electronic music`, `Pop music`…) anywhere. A block on
 a named sub-genre such as "no drum and bass" is deliverable only by adding Discogs, whose release `styles` do
-carry that grain. Measured against real titles it would stop roughly **half to two thirds** of clearly
-released drum-and-bass, **almost none** of the mixes, bootlegs and streaming-only tracks a club actually
-gets, and it **cannot name chalga at all** — the one genre a Bulgarian club is most likely to want blocked.
+carry that grain. Probed against real titles it would stop **most** drum-and-bass that exists as a release,
+**almost none** of the mixes, bootlegs and streaming-only tracks a club actually gets, and it **cannot name
+chalga at all** — the one genre a Bulgarian club is most likely to want blocked.
 Recommendation: ship blocked artists and title words only, as decided in 1.13, and tell the venue plainly why
 there is no genre switch. A genre list is a setting we could not keep.
 
@@ -223,12 +223,16 @@ That is what 1.13 settled for artists and words, and it is the right shape.
 | "no spoken word / no mixes over N minutes" | works — duration is reliable from `contentDetails` | high | — |
 | "nothing by these artists" / "nothing with these words" | **exact**, no third party | ~100% of what is named | only what the venue mis-types |
 | "no electronic music" (a YouTube curated topic) | possible as a whitelist of the other 14 topics, but costs 14 searches per search against a 100-search day — **not viable** (§2) | moderate | heavy — "Electronic music" is most of a club's floor |
-| **"no drum and bass"** (a sub-genre) | only via Discogs + a title normaliser | **roughly half to two thirds** of clearly released tracks; **near zero** of mixes, bootlegs, remixes, live edits and streaming-only tracks | compilation tracks sharing a release's styles; cross-language name collisions (`Azis Hop` → a US hip-hop record) |
+| **"no drum and bass"** (a sub-genre) | only via Discogs + a title normaliser | **most** tracks with a Discogs release, once titles are normalised (5 of the 6 probed, counting the two that match with the decoration stripped); **near zero** of mixes, bootlegs, remixes, live edits and streaming-only tracks — which on a drum-and-bass floor is a large share of what is actually requested | compilation tracks sharing a release's styles; cross-language name collisions (`Azis Hop` → a US hip-hop record) |
 | **"no chalga"** | **nothing.** No vocabulary in any source names it | ~0% | — |
 
-Those shares are reasoned from the matching evidence above, not measured over a real night: the three clean
-drum-and-bass titles resolved, the two decorated ones and the streaming-only one did not. Treat them as the
-right order of magnitude, and as the reason not to build it rather than a target to tune.
+Those shares are reasoned from the matching evidence above, not measured over a real night, and the two kinds
+of failure are worth keeping apart because only one of them is fixable. The three clean drum-and-bass titles
+resolved; the two decorated ones failed on the decoration alone and would resolve once a normaliser strips
+`(Official Video)` and `[…]`; the streaming-only one has no Discogs release and never will. So **matching is
+an engineering problem and coverage is not** — build the normaliser and you still miss every track that was
+never pressed or sold as a release, plus every DJ mix and bootleg edit. Treat the figures as the right order
+of magnitude, and as the reason not to build it rather than a target to tune.
 
 **What the venue should be told, on the setting itself.** A setting we cannot keep is worse than no setting —
 the venue trusts it, a blocked song arrives anyway, and the guest has already paid. So the screen should
