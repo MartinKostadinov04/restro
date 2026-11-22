@@ -142,7 +142,7 @@ export function useHashRoute(route: HashRoute) {
     setOpenId(null)
   }, [])
 
-  return { isOpen: openId !== null, shownId: shown?.id ?? null, leaving, open, close, hide }
+  return { isOpen: openId !== null, openId, shownId: shown?.id ?? null, leaving, open, close, hide }
 }
 
 /** The dish page as a route: `#item-<id>`. */

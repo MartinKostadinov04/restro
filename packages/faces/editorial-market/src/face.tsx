@@ -45,7 +45,7 @@ import type { PageContext } from './parts'
 import { SectionBlock } from './section'
 import { ConnectionLine, PaymentProgress, ServiceBar } from './services/bag-bar'
 import { HeaderTools } from './services/header-tools'
-import { ServicesProvider, serviceBarShown, servicesShown } from './services/provider'
+import { ServicesProvider, SHEETS, serviceBarShown, servicesShown } from './services/provider'
 import { SERVICES_CSS } from './services/services-css'
 import { ServiceSheets } from './services/sheets'
 import { useDishRoute } from './use-dish-route'
@@ -71,6 +71,8 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
     fontStacks,
     scheme = 'auto',
     services,
+    layoutMemory = null,
+    onOpenDishChange,
   } = props
   const locale = view.locale
   const strings = stringsFor(locale).guest
@@ -95,8 +97,31 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
   }, [chosen, filterControl, view.filters])
 
   // The menu's layout and guest switch (D92), published with the menu; no face option any more.
-  const [layout, chooseLayout] = useLayout(view.layout.default, view.layout.guestSwitch)
+  const [layout, chooseLayout] = useLayout(
+    view.layout.default,
+    view.layout.guestSwitch,
+    layoutMemory,
+  )
   const dish = useDishRoute()
+  // The host hears of every dish page the address opens or closes (a tap, a link, back and
+  // forward), and whether the guest opened it: a dish already looked at since the guest was last on
+  // the menu itself only shows again (a sheet over it closed), which is no new look (D142).
+  const toldOpenDish = useRef(onOpenDishChange)
+  toldOpenDish.current = onOpenDishChange
+  const lookedAt = useRef(new Set<string>())
+  useEffect(() => {
+    const id = dish.openId
+    if (id === null) {
+      if (!SHEETS.some((sheet) => window.location.hash === `#${sheet}`)) lookedAt.current.clear()
+      toldOpenDish.current?.(null, false)
+      return
+    }
+    const opened = !lookedAt.current.has(id)
+    lookedAt.current.add(id)
+    toldOpenDish.current?.(id, opened)
+  }, [dish.openId])
+  // Gone (a new menu, or the page fell back to a notice): no dish page is open any more.
+  useEffect(() => () => toldOpenDish.current?.(null, false), [])
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [allergens, setAllergens] = useState<AllergenState | null>(null)
   const filterOpener = useRef<HTMLElement | null>(null)

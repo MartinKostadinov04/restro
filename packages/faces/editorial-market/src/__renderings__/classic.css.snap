@@ -7,6 +7,7 @@
 .rm { --rm-muted: var(--rm-l-muted) }
 .rm { --rm-accent-text: var(--rm-l-accentText) }
 .rm { --rm-border: var(--rm-l-border) }
+.rm { --rm-name-fit: 11.8 }
 .rm { min-height: 100vh }
 .rm { background: var(--rm-bg) }
 .rm { color: var(--rm-text) }
@@ -14,6 +15,7 @@
 .rm { font-size: 16px }
 .rm { line-height: 1.45 }
 .rm { letter-spacing: 0 }
+.rm[data-heading-font="playfair-display"] { --rm-name-fit: 7.7 }
 .rm[data-buttons="ink"] .rm-overlay-panel:not(.is-detail) { --rm-button: var(--rm-bg) }
 .rm[data-buttons="ink"] .rm-overlay-panel:not(.is-detail) { --rm-on-button: var(--rm-text) }
 .rm * { box-sizing: border-box }
@@ -169,6 +171,7 @@
 .rm-item-copy { grid-column: 1 }
 .rm-item-copy { grid-row: 1 }
 .rm-item-copy { min-width: 0 }
+.rm-item-copy > [data-slot="item.name"] { min-width: 0 }
 .rm-item-open { display: block }
 .rm-item-open { width: 100% }
 .rm-item-open { min-height: 44px }
@@ -176,9 +179,14 @@
 .rm-item-open { border: 0 }
 .rm-item-open { background: transparent }
 .rm-item-open { text-align: left }
-.rm-item :is(h3, h4) { font-size: 17px }
+.rm-item { container-type: inline-size }
+.rm-item { --rm-name-inset: 0px }
+.rm-item :is(h3, h4) { --rm-name-size: 17px }
+.rm-item :is(h3, h4) { --rm-name-fits: calc((100cqi - var(--rm-name-inset) - 12px) / (var(--rm-name-fit) + 1)) }
+.rm-item :is(h3, h4) { font-size: clamp(12px, var(--rm-name-fits), var(--rm-name-size)) }
 .rm-item :is(h3, h4) { line-height: 1.12 }
 .rm-item :is(h3, h4) { font-weight: 400 }
+.rm-item :is(h3, h4) { overflow-wrap: break-word }
 .rm-price { margin-top: 7px }
 .rm-price { font-size: 14px }
 .rm-price { font-weight: 850 }
@@ -257,7 +265,7 @@
 .rm-section.is-feature .rm-photo img { aspect-ratio: 4 / 3 }
 .rm-section.is-feature .rm-photo img { border-radius: calc(var(--rm-radius) * 1.15) }
 .rm-section.is-feature .rm-item-copy { padding-top: 17px }
-.rm-section.is-feature .rm-item :is(h3, h4) { font-size: 20px }
+.rm-section.is-feature .rm-item :is(h3, h4) { --rm-name-size: 20px }
 .rm-section.is-feature .rm-price { font-size: 14.5px }
 .rm-footer { margin-top: 78px }
 .rm-footer { padding: 42px 20px calc(42px + env(safe-area-inset-bottom)) }
@@ -284,7 +292,7 @@
 .rm-overlay { position: fixed }
 .rm-overlay { z-index: 50 }
 .rm-overlay { inset: 0 }
-.rm-overlay { background: color-mix(in srgb, var(--rm-text) 72%, transparent) }
+.rm-overlay { background: color-mix(in srgb, var(--rm-d-background) 72%, transparent) }
 .rm-overlay { display: flex }
 .rm-overlay { justify-content: center }
 .rm-overlay { align-items: flex-end }
@@ -468,17 +476,21 @@
 .rm-item-open::before { position: absolute }
 .rm-item-open::before { inset: 0 }
 .rm-item-open::before { z-index: 1 }
-.rm-item-open::after { content: "→" }
-.rm-item-open::after { content: "→" / "" }
-.rm-item-open::after { display: inline-block }
-.rm-item-open::after { margin-left: 8px }
-.rm-item-open::after { color: var(--rm-muted) }
-.rm-item-open::after { font-weight: 500 }
-.rm-item-open::after { transition: transform 0.2s }
+.rm-item-open { padding-right: calc(12px + 1em) }
+.rm-item-arrow { position: relative }
+.rm-item-arrow::after { content: "→" }
+.rm-item-arrow::after { content: "→" / "" }
+.rm-item-arrow::after { position: absolute }
+.rm-item-arrow::after { top: 0 }
+.rm-item-arrow::after { left: 8px }
+.rm-item-arrow::after { line-height: normal }
+.rm-item-arrow::after { color: var(--rm-muted) }
+.rm-item-arrow::after { font-weight: 500 }
+.rm-item-arrow::after { transition: transform 0.2s }
 .rm-allergens button { position: relative }
 .rm-allergens button { z-index: 2 }
-.rm-item:hover .rm-item-open::after { transform: translateX(4px) }
-.rm-item:hover .rm-item-open::after { color: var(--rm-text) }
+@media (hover: hover) and (pointer: fine) .rm-item:hover .rm-item-arrow::after { transform: translateX(4px) }
+@media (hover: hover) and (pointer: fine) .rm-item:hover .rm-item-arrow::after { color: var(--rm-text) }
 .rm-item:hover .rm-photo img { transform: scale(1.02) }
 .rm-photo { overflow: hidden }
 .rm-photo { border-radius: calc(var(--rm-radius) * 1.2) }
@@ -491,7 +503,7 @@
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo img { aspect-ratio: 4 / 3 }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo img { border-radius: calc(var(--rm-radius) * 1.2) }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy { padding-top: 18px }
-.rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { font-size: 21px }
+.rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { --rm-name-size: 21px }
 .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { line-height: 1.1 }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-price { font-size: 15px }
 .rm-item.is-text { display: block }
@@ -520,8 +532,8 @@
 .rm-detail-title h2 { font-size: 34px }
 .rm-detail-copy > p { font-size: 16px }
 .rm-detail-copy > p { line-height: 1.6 }
-@media (prefers-reduced-motion: reduce) .rm-photo img, .rm-item-open::after { transition: none !important }
-@media (prefers-reduced-motion: reduce) .rm-photo img, .rm-item-open::after { transform: none !important }
+@media (prefers-reduced-motion: reduce) .rm-photo img, .rm-item-arrow::after { transition: none !important }
+@media (prefers-reduced-motion: reduce) .rm-photo img, .rm-item-arrow::after { transform: none !important }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo, .rm-section.is-feature .rm-photo { background: var(--rm-surface) }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo, .rm-section.is-feature .rm-photo { padding: 0px }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo, .rm-section.is-feature .rm-photo { border-radius: 0px }
@@ -544,7 +556,7 @@
 .rm img { animation: rm-fade 0.5s ease both }
 .rm-sections a:after { transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1) }
 .rm-sections a { transition: color 0.2s }
-.rm-overlay:has(.is-detail) { background: color-mix(in srgb, var(--rm-text) 40%, transparent) }
+.rm-overlay:has(.is-detail) { background: color-mix(in srgb, var(--rm-d-background) 40%, transparent) }
 .rm-overlay:has(.is-detail) { animation: rm-veil 0.32s ease both }
 .rm-overlay-panel.is-detail { animation: rm-sheet 0.38s cubic-bezier(0.16, 1, 0.3, 1) both }
 .rm-overlay-panel.is-detail { overflow: auto }
@@ -664,6 +676,7 @@
 .rm .rm-language button[aria-pressed="true"] { color: var(--rm-text) }
 .rm .rm-language button[aria-pressed="true"]::before { background: var(--rm-bg) }
 @media (max-width: 380px) .rm .rm-layout { margin-left: 14px }
+.rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo { --rm-name-inset: 110px }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo { display: grid }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo { grid-template-columns: minmax(0, 1fr) 96px }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo { gap: 14px }
@@ -691,7 +704,7 @@
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy { grid-row: 1 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy { min-width: 0 }
 .rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy { padding-top: 0 }
-.rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { font-size: 16px }
+.rm[data-layout="list"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { --rm-name-size: 16px }
 .rm { overflow-x: clip }
 .rm { max-width: 100vw }
 .rm .rm-brandline > :first-child { min-width: 0 }
@@ -752,6 +765,8 @@
 .rm[data-items-price-place="end"] .rm-item-copy > .rm-price, .rm[data-items-portion-place="beside"] .rm-item-copy > .rm-price { flex: 0 0 auto }
 .rm[data-items-price-place="end"] .rm-item-copy > .rm-price, .rm[data-items-portion-place="beside"] .rm-item-copy > .rm-price { order: 2 }
 .rm[data-items-price-place="end"] .rm-item-copy > [data-slot="item.name"] { flex: 1 1 7em }
+.rm[data-items-price-place="end"] .rm-item-copy > [data-slot="item.name"] { min-width: auto }
+.rm[data-items-price-place="end"] .rm-item-copy > [data-slot="item.name"] { max-width: 100% }
 .rm[data-items-price-place="end"] .rm-item-copy > .rm-price { margin-top: 0 }
 .rm[data-items-portion-place="beside"] .rm-item-copy > .rm-portion { flex: 0 1 auto }
 .rm[data-items-portion-place="beside"] .rm-item-copy > .rm-portion { order: 3 }

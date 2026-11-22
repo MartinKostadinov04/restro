@@ -76,8 +76,8 @@ export function Item({
       <div className="rm-item-copy">
         {image === null && hasBadges ? <Badges item={item} ctx={ctx} /> : null}
         {/* The name is the item's heading, and the button inside it opens the dish page: a button may
-            not hold a heading, a heading may hold a button. The arrow after the name is the
-            button's ::after. */}
+            not hold a heading, a heading may hold a button. The arrow after the name is drawn by
+            its own span after the last letter, in room the name keeps free (S11). */}
         <Slot name="item.name" part="item.name">
           <Name lang={langOf(item.name, locale)}>
             <button
@@ -88,6 +88,7 @@ export function Item({
               onClick={(event) => ctx.openDish(item.id, event.currentTarget)}
             >
               {item.name.text}
+              <span className="rm-item-arrow" aria-hidden="true" />
             </button>
           </Name>
         </Slot>

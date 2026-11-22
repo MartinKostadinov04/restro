@@ -330,20 +330,44 @@ describe('the services client', () => {
     expect(h.nextWait()).toBe(0)
   })
 
-  it('answers a 429 as rate_limited and waits its Retry-After before polling', async () => {
+  it('answers a 429 as rate_limited, an answer: the phone stays online and the poll keeps its pace (C3)', async () => {
     const h = harness((url) =>
       url.endsWith('/actions')
-        ? json(429, { code: 'rate_limited' }, { 'Retry-After': '10' })
+        ? json(429, { code: 'rate_limited' }, { 'Retry-After': '600' })
         : json(200, tableState(1)),
     )
     h.client.start()
     await h.tick()
+    const pay: GuestCommand = {
+      kind: 'pay.start',
+      actionId: crypto.randomUUID(),
+      pick: { kind: 'whole' },
+      seen: [{ lineId: `bn_${'0'.repeat(21)}1`, quantity: '1', amountMinor: 100 }],
+      tipMinor: null,
+      tipPercent: null,
+    }
+    expect(await h.client.dispatch(pay)).toMatchObject({
+      status: 'rejected',
+      code: 'rate_limited',
+    })
+    // A Pay's 10-minute limit does not hold the table's state back for 10 minutes.
+    expect(h.nextWait()).toBeLessThanOrEqual(10_000)
+    await h.elapse(OFFLINE_AFTER_MS + 1)
+    expect(h.client.getState().offline).toBe(false)
     expect(await h.client.dispatch(add())).toMatchObject({
       status: 'rejected',
       code: 'rate_limited',
     })
     expect(h.client.getState().order?.lines).toEqual([])
-    expect(h.nextWait()).toBe(10_000)
+  })
+
+  it('answers a poll refused 429 by waiting its Retry-After, still online', async () => {
+    const h = harness(() => json(429, { code: 'rate_limited' }, { 'Retry-After': '30' }))
+    h.client.start()
+    await h.tick()
+    expect(h.nextWait()).toBeGreaterThanOrEqual(30_000)
+    await h.elapse(OFFLINE_AFTER_MS + 1)
+    expect(h.client.getState().offline).toBe(false)
   })
 
   it('stops for good on a 401: the table is closed and no edit is sent', async () => {

@@ -11,14 +11,51 @@
 //   - a tile of a screen's page asks for a stage: the frame opens the sheet the tile is about by
 //     tapping the renderer's own controls, as a person would, and scrolls to the part the option
 //     styles. The demo host behind the sheets is the preview's (`useDemoServices`).
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 
 import { DraftFace } from '@/publish/draft-face'
 
-import { drive, holdScroll } from './frame-stage'
+import type { Stage } from './advanced-model'
+import { closeDish, drive, holdScroll, keepHistoryInside } from './frame-stage'
 import { type FrameContent, frameStoreOf } from './preview-frames'
 
 const nothing = (): FrameContent | null => null
+
+/**
+ * The marked part a tap landed on (the innermost), and the part the tap opens: the control that
+ * opens a dish (`item.open`) opens the Dish page's part. The parts around it (the dish's section)
+ * are not the tap's.
+ */
+export function partOf(target: Element): { part: string; opens: string | null } | null {
+  const marked = target.closest<HTMLElement>('[data-design-part]')
+  let part = marked?.dataset.designPart
+  if (marked === null || part === undefined) return null
+  // The dish shown as a sheet sits in the renderer's sheet panel (marked `sheet`), with its close
+  // button outside the dish's own part: a tap anywhere in it is the dish's, not the sheets'.
+  if (part === 'sheet' && marked.querySelector('[data-design-part="dish"]') !== null) part = 'dish'
+  return { part, opens: target.closest('[data-slot="item.open"]') !== null ? 'dish' : null }
+}
+
+/**
+ * Reaches the frame's stage, once per stage and focus: a change of value redraws the same frame. A
+ * frame with a stage keeps `focus()` from scrolling (a tile never scrolls the panel it sits in)
+ * while the stage lasts. A frame whose stage is taken away (the live preview, once the Dish page is
+ * left) goes back to the menu: the dish it opened is closed.
+ */
+export function useStage(ready: boolean, stage: Stage | undefined, focus: string): void {
+  const staged = useRef(false)
+  useEffect(() => {
+    if (!ready) return undefined
+    if (staged.current && stage === undefined) closeDish()
+    staged.current = stage !== undefined
+    const release = stage === undefined ? undefined : holdScroll(window)
+    const stop = drive(stage ?? 'menu', focus === '' ? [] : focus.split(' '))
+    return () => {
+      stop()
+      release?.()
+    }
+  }, [ready, stage, focus])
+}
 
 /** A phone's scrollbar lies over the page and takes no width: the same here, on any computer. */
 const FRAME_CSS = 'html{scrollbar-width:none}html::-webkit-scrollbar{display:none}'
@@ -42,28 +79,20 @@ export function DesignFrame({ slot }: { slot: string }) {
   // The objects were made in the page's window: the frame draws its own copy.
   const content = useMemo(() => (shared === null ? null : structuredClone(shared)), [shared])
 
-  // A tap on a marked part names the part to the Design page. Captured before the renderer's own
-  // handler, which still runs.
+  // A tap on a marked part names the part to the Design page, with what the tap opens. Captured
+  // before the renderer's own handler, which still runs.
   useEffect(() => {
     const tapped = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target : null
-      const part = target?.closest<HTMLElement>('[data-design-part]')?.dataset.designPart
-      if (part !== undefined) frameStoreOf(slot)?.tap(part)
+      const tap = target === null ? null : partOf(target)
+      if (tap !== null) frameStoreOf(slot)?.tap(tap.part, tap.opens)
     }
     document.addEventListener('click', tapped, true)
     return () => document.removeEventListener('click', tapped, true)
   }, [slot])
 
-  // The stage is reached once per frame and stage: a change of value redraws the same frame.
-  const stage = content?.stage
-  const focus = content?.focus?.join(' ') ?? ''
-  const ready = content !== null
-  useEffect(() => {
-    if (!ready) return undefined
-    // A tile's frame (it names a stage) never scrolls the panel it sits in.
-    if (stage !== undefined) holdScroll(window)
-    return drive(stage ?? 'menu', focus === '' ? [] : focus.split(' '))
-  }, [ready, stage, focus])
+  useEffect(() => keepHistoryInside(window), [])
+  useStage(content !== null, content?.stage, content?.focus?.join(' ') ?? '')
 
   return (
     <>

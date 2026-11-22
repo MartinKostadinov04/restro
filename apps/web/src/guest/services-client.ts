@@ -714,6 +714,8 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
         cache: 'no-store',
         referrerPolicy: 'no-referrer',
       })
+      // Any answer below 500, a refusal too, means the phone is online (D121, C3).
+      if (response.status < 500) answered()
       if (response.status === 401) {
         retired = true
       } else if (response.status === 404) {
@@ -725,7 +727,6 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       } else {
         const answer = GuestPaymentAnswerSchema.parse(await readJson(response))
         failures = 0
-        answered()
         payment = answer
         noteRecent(answer)
         if (paymentIsFinal(paymentViewOf(answer, receiptEmail))) schedule(0)
@@ -878,6 +879,8 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
         return
       }
       if (!response.ok) {
+        // A refusal is an answer; only a 5xx or no answer at all counts toward offline (C3).
+        if (response.status < 500) answered()
         wait = backoff(retryAfterOf(response))
       } else {
         const answer = GuestStateAnswerSchema.parse(await readJson(response))
@@ -1010,13 +1013,19 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       retired = true
       return settle(answer('rejected', 'code_retired'))
     }
+    // A refusal below 500 is an answer (D121: offline means no answer; screen round 11-18, C3): the
+    // phone is not offline, and Send and Pay stay open.
     if (response.status === 429) {
-      schedule(backoff(retryAfterOf(response)))
+      answered()
+      // The limit is this command's (a Pay's lasts up to 10 minutes): the poll keeps its own pace,
+      // and a poll the table's own rate refuses waits out its own Retry-After.
       return settle(answer('rejected', 'rate_limited'))
     }
     if (!response.ok) {
       schedule(0)
-      return response.status >= 500 ? unknown() : settle(answer('rejected', null))
+      if (response.status >= 500) return unknown()
+      answered()
+      return settle(answer('rejected', null))
     }
     let body: GuestActionAnswer
     try {

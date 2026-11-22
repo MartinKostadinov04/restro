@@ -103,14 +103,15 @@ test('asks for the hold time first, then opens the switches', async ({ browser }
   await expect(page.getByTestId('rs-hold-first')).toBeVisible()
   await expect(page.getByRole('switch')).toHaveCount(0)
   await expect(page.getByTestId('rs-closed-empty')).toContainText(
-    'Добави вечерите, в които клубът е затворен',
+    'Добавете вечерите, в които клубът е затворен',
   )
   await expect(page.getByTestId('rs-closed-add')).toHaveCount(0)
 
   const hold = page.getByLabel('Мястото се пази')
   await hold.fill('120')
   await hold.press('Enter')
-  await expect(page.getByText('Запазено').first()).toBeVisible()
+  // The toast says what changed (S14 of the 11-18 screen round).
+  await expect(page.getByText('Мястото се пази 120 мин.').first()).toBeVisible()
   await page.reload()
   await expect(page.getByLabel('Мястото се пази')).toHaveValue('120')
   await expect(page.getByTestId('rs-hold-first')).toHaveCount(0)
@@ -129,8 +130,8 @@ test('a switch saves at once and Undo puts it back', async ({ browser }) => {
   await expect(phone).toHaveAttribute('aria-checked', 'true')
   await phone.click()
   await expect(phone).toHaveAttribute('aria-checked', 'false')
-  await expect(toastOf('Запазено')).toBeVisible()
-  await toastOf('Запазено').getByRole('button', { name: 'Отмяна' }).click()
+  await expect(toastOf('Телефонът вече не е задължителен.')).toBeVisible()
+  await toastOf('Телефонът вече не е задължителен.').getByRole('button', { name: 'Отмяна' }).click()
   await expect(phone).toHaveAttribute('aria-checked', 'true')
   // Editing the past is off by default and says what it lets people do.
   const past = page.getByRole('switch', { name: 'Разреши редакция на минала вечер' })
@@ -142,7 +143,7 @@ test('a switch saves at once and Undo puts it back', async ({ browser }) => {
   // The hold time is changed in place and kept after a reload.
   await page.getByLabel('Мястото се пази').fill('90')
   await page.getByLabel('Мястото се пази').press('Enter')
-  await expect(toastOf('Запазено')).toBeVisible()
+  await expect(toastOf('Мястото се пази 90 мин.')).toBeVisible()
   await page.reload()
   await expect(page.getByLabel('Мястото се пази')).toHaveValue('90')
   await context.close()
@@ -189,7 +190,7 @@ test('changes a spot’s seats in the plan editor and keeps them after a reload'
   await expect(seats).toHaveAttribute('placeholder', '8')
   await seats.fill('10')
   await seats.press('Enter')
-  await expect(page.getByText('Запазено').first()).toBeVisible()
+  await expect(page.getByText('Седящи на Sofa: 10.').first()).toBeVisible()
   await page.reload()
   await page.getByTestId('pe-spot-row').filter({ hasText: 'Sofa' }).click()
   await expect(page.getByTestId('pe-spot-seats')).toHaveValue('10')
@@ -202,10 +203,14 @@ test('a role without the right sees everything read-only', async ({ browser }) =
   const panel = page.getByTestId('reservations-panel')
   await expect(panel).toBeVisible()
   await expect(page.getByTestId('settings-readonly')).toBeVisible()
-  // No switches, fields or buttons: never disabled ones.
+  // No switches, fields or buttons that change anything: never disabled ones. The only buttons
+  // are for looking (the plan's zoom and the folded spot list, S13), and none is disabled.
   await expect(panel.getByRole('switch')).toHaveCount(0)
   await expect(panel.getByRole('textbox')).toHaveCount(0)
-  await expect(panel.getByRole('button')).toHaveCount(0)
+  const looking = ['pe-zoom-out', 'pe-zoom-in', 'pe-zoom-fit', 'pe-spot-list-toggle']
+  const buttons = panel.getByRole('button')
+  await expect(buttons).toHaveCount(looking.length)
+  for (const id of looking) await expect(panel.getByTestId(id)).toBeEnabled()
   await expect(panel.getByTestId('rs-hold-value')).toHaveText('90 мин')
   await expect(panel.getByTestId('rs-phone-value')).toBeVisible()
   await snapshot(page, 'reservations-read-only-phone.png')
