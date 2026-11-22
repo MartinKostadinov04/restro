@@ -61,6 +61,11 @@ export interface SpotClaim {
   readonly endsAt: Date | null
   /** Its own turn time, when it carries one; null reads the venue's. */
   readonly turnMinutes: number | null
+  /**
+   * A block with no end (D137): it keeps the spot from its start until somebody lifts it, so it is
+   * in the way of everything after its start, not only of its turn time's stretch.
+   */
+  readonly openEnded?: boolean
 }
 
 /** The spot a claim could not have, and the reservation already holding it. */
@@ -134,13 +139,15 @@ export function spotConflict(
 ): SpotConflict | { readonly code: SpotClaimRefusal } | null {
   const claimed = heldStretch(claim, venueTurnMinutes)
   if (!claimed.ok) return { code: claimed.code }
+  const reach: Stretch =
+    claim.openEnded === true ? { from: claimed.stretch.from, to: FOREVER } : claimed.stretch
   const wanted = new Set(claim.spotIds)
   const inTheWay = held.filter(
     (hold) =>
       hold.reservationId !== claim.reservationId &&
       wanted.has(hold.spotId) &&
       holdsSpots(hold.status) &&
-      overlaps(claimed.stretch, coveredBy(hold)),
+      overlaps(reach, coveredBy(hold)),
   )
   for (const spotId of claim.spotIds) {
     const hold = inTheWay.find((candidate) => candidate.spotId === spotId)
