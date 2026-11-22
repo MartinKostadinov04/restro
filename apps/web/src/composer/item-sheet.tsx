@@ -65,6 +65,11 @@ export interface ItemSheetProps {
   venueId?: string
   /** The menu the composer has open (brief S6); absent = the venue's live menu. */
   menuId?: string
+  /**
+   * The person may not change the menu (a plain member, RR-70): the sheet shows the item and
+   * offers no edit, Revert, upload or save. The server refuses such a write anyway.
+   */
+  readOnly?: boolean
   /** Open or closed; open when omitted. */
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -90,9 +95,10 @@ function isTab(value: string): value is TabId {
 /**
  * "Overrides to review" (V12, brief S6: the badge on the item's row, and this note): the till
  * changed a value since our override of it was made. The fields are named; Details offers "Keep
- * mine" or the till's value for each. Nothing when there is none.
+ * mine" or the till's value for each; a member (RR-70), who has neither, is told who decides.
+ * Nothing when there is none.
  */
-function ReviewNotice({ data }: { data: ItemSheetData }) {
+function ReviewNotice({ data, readOnly }: { data: ItemSheetData; readOnly: boolean }) {
   const t = useTranslations('itemSheet.review')
   const uiLanguage = useLocale()
   const dataLocale: Locale = toDataLocale(isAdminLocale(uiLanguage) ? uiLanguage : 'bg')
@@ -118,7 +124,10 @@ function ReviewNotice({ data }: { data: ItemSheetData }) {
       <div className="grid gap-0.5">
         <p className="font-medium">{t('title')}</p>
         <p className="text-muted-foreground">
-          {t('text', { source: data.tillLabel, fields: fields.join(', ') })}
+          {t(readOnly ? 'textReadOnly' : 'text', {
+            source: data.tillLabel,
+            fields: fields.join(', '),
+          })}
         </p>
       </div>
     </section>
@@ -129,12 +138,14 @@ export function ItemSheet({
   itemId,
   venueId: venueIdProp,
   menuId,
+  readOnly = false,
   open = true,
   onOpenChange,
   tags,
   onCreateTag,
 }: ItemSheetProps) {
   const t = useTranslations('itemSheet')
+  const composer = useTranslations('composer')
   const owner = useTranslations('ownerSettings')
   const inSentence = useModeInSentence()
   const uiLocale = useLocale()
@@ -338,7 +349,12 @@ export function ItemSheet({
           </p>
         ) : null}
 
-        {data ? <ReviewNotice data={data} /> : null}
+        {data && readOnly ? (
+          <p className="mx-4 mt-3 text-sm text-muted-foreground" data-testid="item-sheet-read-only">
+            {composer('readOnly')}
+          </p>
+        ) : null}
+        {data ? <ReviewNotice data={data} readOnly={readOnly} /> : null}
 
         {data ? (
           <TillLabelProvider label={data.tillLabel}>
@@ -376,6 +392,7 @@ export function ItemSheet({
                       <ItemSheetDetailsTab
                         data={data}
                         busy={busy}
+                        readOnly={readOnly}
                         onSave={saveField}
                         onRevert={revertField}
                         onKeep={keepField}
@@ -387,7 +404,12 @@ export function ItemSheet({
                   </TabsContent>
                   <TabsContent value="translations" forceMount>
                     <div hidden={tab !== 'translations'}>
-                      <ItemSheetTranslationsTab data={data} busy={busy} onSave={saveTranslation} />
+                      <ItemSheetTranslationsTab
+                        data={data}
+                        busy={busy}
+                        readOnly={readOnly}
+                        onSave={saveTranslation}
+                      />
                     </div>
                   </TabsContent>
                   <TabsContent value="media" forceMount>
@@ -396,6 +418,7 @@ export function ItemSheet({
                         key={`${data.revision}:${data.image?.assetId ?? ''}`}
                         data={data}
                         busy={busy}
+                        readOnly={readOnly}
                         onAttach={attachImage}
                         onSaveDetails={saveImageDetails}
                         onRemove={removeImage}

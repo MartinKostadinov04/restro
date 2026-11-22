@@ -15,9 +15,19 @@ import { approveHeldAction, publishNowAction, rejectHeldAction } from '@/server/
 import type { PublishActionError, PublishActionResult } from '@/server/publish/service'
 import type { BusyView, PublishRunView, RefusalCode } from '@/server/publish/view'
 
+/** The menu a Publish press named: a menu of the venue, or (`menuId` null) the live one. */
+export interface PublishedMenu {
+  readonly menuId: string | null
+}
+
 /** How the last thing the person did turned out. */
 export type Outcome =
-  | { readonly kind: 'published'; readonly version: number | null }
+  | {
+      readonly kind: 'published'
+      readonly version: number | null
+      /** The menu that was published; absent after an Approve, whose menu this hook does not know. */
+      readonly menu?: PublishedMenu
+    }
   | { readonly kind: 'unchanged'; readonly version: number | null }
   | { readonly kind: 'refused'; readonly refusal: RefusalCode }
   | { readonly kind: 'failed' }
@@ -65,8 +75,12 @@ export interface PublisherState {
 
 export function usePublisher(venueId: string, view: PublisherState): Publisher {
   const [pending, startTransition] = useTransition()
-  // Set once a publish is queued: the run that was the latest then, so a newer one is the answer.
-  const [waiting, setWaiting] = useState<{ readonly baseline: string | null } | null>(null)
+  // Set once a publish is queued: the run that was the latest then, so a newer one is the answer,
+  // and the menu a Publish press named.
+  const [waiting, setWaiting] = useState<{
+    readonly baseline: string | null
+    readonly menu?: PublishedMenu
+  } | null>(null)
   const [outcome, setOutcome] = useState<Outcome | null>(null)
   const [slow, setSlow] = useState(false)
 
@@ -78,7 +92,11 @@ export function usePublisher(venueId: string, view: PublisherState): Publisher {
     if (result === null) return
     setWaiting(null)
     setSlow(false)
-    setOutcome(result)
+    setOutcome(
+      result.kind === 'published' && waiting.menu !== undefined
+        ? { ...result, menu: waiting.menu }
+        : result,
+    )
   }, [waiting, view.lastRun])
 
   useEffect(() => {
@@ -87,13 +105,13 @@ export function usePublisher(venueId: string, view: PublisherState): Publisher {
     return () => clearTimeout(timer)
   }, [waiting])
 
-  const queue = (action: () => Promise<PublishActionResult>) => {
+  const queue = (action: () => Promise<PublishActionResult>, menu?: PublishedMenu) => {
     setOutcome(null)
     setSlow(false)
     const baseline = view.lastRun?.id ?? null
     startTransition(async () => {
       const result = await action()
-      if (result.ok) setWaiting({ baseline })
+      if (result.ok) setWaiting(menu === undefined ? { baseline } : { baseline, menu })
       else setOutcome({ kind: 'error', error: result.error })
     })
   }
@@ -103,8 +121,10 @@ export function usePublisher(venueId: string, view: PublisherState): Publisher {
     slow,
     outcome,
     publish: (menuId) =>
-      queue(() =>
-        menuId === undefined ? publishNowAction(venueId) : publishNowAction(venueId, menuId),
+      queue(
+        () =>
+          menuId === undefined ? publishNowAction(venueId) : publishNowAction(venueId, menuId),
+        { menuId: menuId ?? null },
       ),
     approve: (snapshotId) => queue(() => approveHeldAction(venueId, snapshotId)),
     reject: (snapshotId) => {

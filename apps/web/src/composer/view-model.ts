@@ -61,6 +61,8 @@ export interface ComposerSection {
   readonly issues: readonly ComposerIssue[]
   /** The title shown is the till's own name: it has no public one (D75). Warns; never blocks. */
   readonly nameFromTill: boolean
+  /** The languages whose title is still the till's own (D75); a rename takes its language out. */
+  readonly nameFromTillIn?: readonly Locale[]
   /**
    * How guests see its items (D92): a vertical list, or a horizontal row (the guest page's strip).
    * Ours on every venue, set in the composer.
@@ -112,6 +114,8 @@ export interface ComposerItem {
   readonly offSale: ItemOffSale | null
   /** The name shown is the till's own name: it has no public one (D75). Warns; never blocks. */
   readonly nameFromTill: boolean
+  /** The languages whose name is still the till's own (D75); a rename takes its language out. */
+  readonly nameFromTillIn?: readonly Locale[]
   /**
    * "Overrides to review" (V12): the fields whose override the till's value has outgrown since it
    * was made (`stale_override`), waiting for a person to keep ours or take the till's. Empty = none.
@@ -231,6 +235,18 @@ function ownNameShown(
   return fallbackIds.has(id) && tillTextShown(field)
 }
 
+/** The languages in which guests are shown the till's own name for this node (D75). */
+function ownNameLocales(
+  id: NodeId,
+  fallbackIds: ReadonlySet<NodeId>,
+  field: ResolvedField | undefined,
+): Locale[] {
+  if (!fallbackIds.has(id)) return []
+  return Object.entries(field?.locales ?? {})
+    .filter(([, locale]) => locale?.provenance === 'till')
+    .map(([locale]) => locale as Locale)
+}
+
 /** What `buildComposerView` reads: the document (unplaced items merged in), its resolution. */
 export interface BuildViewInput {
   readonly doc: MenuDocument
@@ -296,6 +312,7 @@ export function buildComposerView({
       childIds: section.children.map((child) => child.id),
       issues: issuesOf(section.issues),
       nameFromTill: ownNameShown(section.id, ownNames, section.fields.title),
+      nameFromTillIn: ownNameLocales(section.id, ownNames, section.fields.title),
       layout: layoutOf(section.fields.layout),
     }
     for (const child of section.children) addSection(child, section.id)
@@ -345,6 +362,7 @@ export function buildComposerView({
       dietary: listOf(item.fields.dietary),
       ...saleStateOf(item.fields.for_sale),
       nameFromTill: ownNameShown(id, ownNames, item.fields.name),
+      nameFromTillIn: ownNameLocales(id, ownNames, item.fields.name),
       reviewFields: reviewFieldsOf(item.issues),
     }
   }

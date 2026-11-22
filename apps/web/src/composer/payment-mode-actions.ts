@@ -6,7 +6,7 @@
 // theirs, parses its input with Zod and hands it to core's `setItemPaymentMode`,
 // one atomic change set for `apply()` (rule 1). Then it revalidates the venue page.
 import { idSchema, PAYMENT_MODES } from '@restro/core'
-import { ApplyError, PaymentModeError, setItemPaymentMode } from '@restro/core/apply'
+import { ApplyError, itemsOfVenue, PaymentModeError, setItemPaymentMode } from '@restro/core/apply'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -40,6 +40,9 @@ export async function setItemPaymentModeAction(input: unknown): Promise<ActionRe
     }
     const venue = await getVenue(organization.id, venueId)
     if (!venue) return { ok: false, error: 'not_found' }
+    // Only this venue's items (RR-72): an unplaced item of another venue is refused too (S24).
+    const ours = await itemsOfVenue(getPool(), organization.id, venue.id, itemIds)
+    if (itemIds.some((itemId) => !ours.has(itemId))) return { ok: false, error: 'not_found' }
     // Where pay first can't take effect the row isn't on the screen: refuse a request that made it up.
     if ((await readItemPayFirstDefault(getPool(), organization.id, venue)) === null) {
       return { ok: false, error: 'invalid' }

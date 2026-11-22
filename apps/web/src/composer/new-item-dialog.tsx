@@ -136,7 +136,7 @@ function NewItemForm({
             onChange={(event) => setPrice(event.target.value)}
             inputMode="decimal"
             maxLength={12}
-            placeholder="0.00"
+            placeholder={t('pricePlaceholder')}
             aria-invalid={(touched && priceInvalid) || undefined}
             data-testid="new-item-price"
           />
