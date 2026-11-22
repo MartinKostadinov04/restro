@@ -2,8 +2,8 @@
 
 // "Delete venue" (brief CF-18, D76): the dialog an owner confirms by typing the venue's name. It
 // says in plain words what happens (the venue leaves the admin, its guest page and QR codes stop
-// working, its till link is released, nothing is erased, it can be restored from Settings >
-// Deleted venues). The dialog only collects and shows; the rules are the server action's
+// working, a venue with a till link has it released, nothing is erased, it can be restored from
+// Settings > Deleted venues). The dialog only collects and shows; the rules are the server action's
 // (`deleteVenueAction`, which checks the owner and the typed name again). On success it opens the
 // venue list, and the toast carries a link to the list a venue is restored from.
 import { useRouter } from 'next/navigation'
@@ -34,6 +34,8 @@ interface DeleteVenueDialogProps {
   readonly onOpenChange: (open: boolean) => void
   readonly venueId: string
   readonly venueName: string
+  /** The venue has a till link: only then does deleting release one (N2). */
+  readonly hasTill: boolean
 }
 
 export function DeleteVenueDialog(props: DeleteVenueDialogProps) {
@@ -45,7 +47,7 @@ export function DeleteVenueDialog(props: DeleteVenueDialogProps) {
   )
 }
 
-function DeleteVenueForm({ onOpenChange, venueId, venueName }: DeleteVenueDialogProps) {
+function DeleteVenueForm({ onOpenChange, venueId, venueName, hasTill }: DeleteVenueDialogProps) {
   const t = useTranslations('workspace.settings.danger.dialog')
   const router = useRouter()
   const formId = useId()
@@ -96,7 +98,7 @@ function DeleteVenueForm({ onOpenChange, venueId, venueName }: DeleteVenueDialog
         <ul className="grid list-disc gap-1.5 pl-5 text-sm" data-testid="delete-venue-effects">
           <li>{t('effects.admin')}</li>
           <li>{t('effects.guests')}</li>
-          <li>{t('effects.till')}</li>
+          {hasTill ? <li>{t('effects.till')}</li> : null}
           <li>{t('effects.kept')}</li>
         </ul>
 
@@ -126,7 +128,7 @@ function DeleteVenueForm({ onOpenChange, venueId, venueName }: DeleteVenueDialog
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            {t('cancel')}
+            {t('keep')}
           </Button>
           <Button
             type="submit"

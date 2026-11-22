@@ -633,9 +633,13 @@ test('a plain member sees the page and can change nothing', async ({ browser }) 
   await context.addCookies([{ name: 'NEXT_LOCALE', value: 'en', url: new URL(page.url()).origin }])
   const member = await context.newPage()
   await open(member)
-  // Never a greyed Publish for a role that may not publish (RR-90): it is not drawn, nor a sentence.
+  // Never a greyed Publish for a role that may not publish (RR-90): it is not drawn, nor a sentence
+  // on why. Where the venue stands is still said (S27).
   await expect(member.getByTestId('publish-button')).toHaveCount(0)
-  await expect(member.getByTestId('publish-block-reason')).toHaveCount(0)
+  await expect(member.getByText('Only an owner or admin can publish.')).toHaveCount(0)
+  await expect(member.getByTestId('publish-block-reason')).toHaveText(
+    /Up to date|waiting|Nothing is published yet|Publishing. It usually takes/,
+  )
   // The guest page is anyone's to open.
   await expect(member.getByTestId('guest-link')).toHaveAttribute('href', GUEST_ADDRESS)
   await open(member, VERSIONING)
@@ -645,6 +649,12 @@ test('a plain member sees the page and can change nothing', async ({ browser }) 
   await open(member, AUTOMATION)
   await expect(member.getByTestId('automation-form')).toBeVisible()
   await expect(member.getByTestId('automation-save')).toHaveCount(0)
+  await expect(member.getByTestId('automation-readonly')).toHaveText(
+    'Only owners and admins can change this.',
+  )
+  // A section the member may not open lands on General, never on a 404 (S26).
+  await open(member, '?tab=settings&section=staff')
+  await expect(member).toHaveURL(/[?&]section=general(?:&|$)/)
   await context.close()
 })
 

@@ -121,6 +121,29 @@ describe('the Automation settings', () => {
     expect(radio('automation-sync-auto').disabled).toBe(true)
   })
 
+  it('says in one line, before the greyed choices, that only owners and admins change them (S27)', () => {
+    render(own, false)
+    const line = screen.getByTestId('automation-readonly')
+    expect(line.textContent).toBe('Only owners and admins can change this.')
+    // Read first: it comes before the first choice it explains.
+    expect(
+      line.compareDocumentPosition(radio('automation-sync-auto')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it('has no read-only line for an owner or admin', () => {
+    render(own, true)
+    expect(screen.queryByTestId('automation-readonly')).toBeNull()
+  })
+
+  it('says the read-only line in Bulgarian', () => {
+    render(own, false, 'bg')
+    expect(screen.getByTestId('automation-readonly').textContent).toBe(
+      'Само собственици и администратори могат да променят това.',
+    )
+  })
+
   it('speaks Bulgarian', () => {
     render(own, true, 'bg')
     expect(screen.getByText('Синхронизиране от TillOne')).toBeTruthy()

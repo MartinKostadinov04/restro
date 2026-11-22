@@ -103,31 +103,36 @@ export default async function VenueWorkspacePage({
   const tablesOpen = openTab === 'tables'
   const tonightOpen = openTab === 'tonight'
   const reservationsOpen = openTab === 'reservations'
-  const [hasTill, guestPath] = await Promise.all([
+  // What the person holds here decides which Settings sections they see (#87); every command
+  // checks it again. Read on every tab but a shared device's (which never opens Settings), so the
+  // section row is drawn whole before Settings opens and does not grow from 6 to 9 (R6). All four
+  // reads go out together.
+  const [hasTill, guestPath, access, payingHere] = await Promise.all([
     venueHasTill(organization.id, venue.id),
     guestPathOf(getPool(), organization.id, venue.slug),
+    sharedDevice
+      ? null
+      : loadSettingsAccess({
+          tenantId: organization.id,
+          venueId: venue.id,
+          userId: user.id,
+          sessionId,
+        }),
+    // Paying is listed only where a POS serving the venue can take card payments (D122 §3, #116).
+    sharedDevice ? false : payingOffered(organization.id, venue.id),
   ])
-  // What the person holds here decides which Settings sections they see (#87); every command
-  // checks it again. Read only while Settings is open, which a shared device never does.
-  const access = settingsOpen
-    ? await loadSettingsAccess({
-        tenantId: organization.id,
-        venueId: venue.id,
-        userId: user.id,
-        sessionId,
-      })
-    : null
   const held = access?.held ?? []
-  // Paying is listed only where a POS serving the venue can take card payments (D122 §3, #116).
-  const paying =
-    settingsOpen && access !== null && !access.sharedDevice
-      ? await payingOffered(organization.id, venue.id)
-      : false
+  const paying = access !== null && !access.sharedDevice && payingHere
   const rights: SettingsRights =
     access === null
       ? NO_SETTINGS_RIGHTS
       : { roles: held.includes('settings.roles'), alerts: held.includes('settings.alerts'), paying }
   const openSection = settingsSectionOf(query.section, hasTill, rights)
+  // A section the person may not open, or the venue does not have, lands on General with the
+  // address saying so, never General under another section's address (S26).
+  if (settingsOpen && typeof query.section === 'string' && query.section !== openSection) {
+    redirect(`/venues/${venue.id}?tab=settings&section=${openSection}`)
+  }
   const sectionOpen = (section: typeof openSection) => settingsOpen && openSection === section
 
   const tNav = await getTranslations('nav')
