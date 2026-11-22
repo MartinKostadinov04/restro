@@ -26,9 +26,20 @@ are written on a branch that carries the numbers below it.
 | 1.8 | Does asking for a song need a table code? | — | open | round 1, D100 |
 | 1.9 | The venue's settings and their defaults | — | open | round 1 |
 | 1.10 | A standard price for a request instead of a free-text bid? | — | open | asked by Martin, answered in round 1b |
+| 1.11 | The DJ beat matches, so a paid place in a queue cannot mean "this is your next track" | — | open | raised by Martin, round 1b |
+| 1.12 | The DJ can agree or disagree with a song that does not fit the theme or the mood | — | open | raised by Martin, round 1b |
+| 1.13 | Does the venue screen requests before the DJ sees them at all? | — | open | round 1b |
 
 ## Where this leaves the map
 
 The fourteen product questions in the map collapse further than round 1 assumed. Row 1.10 — Martin's
 own question — decides whether the ranking machinery (order by total, chip-in, succession, partial
 capture) is built at all, so the rows it reshapes wait for it rather than being asked again.
+
+Rows 1.11 and 1.12, also Martin's, move the whole model off "position in a queue". A DJ mixing a set
+cannot be handed a next track by a price, so a paid step has to promise a **window** he works inside,
+not a slot. That is a synthesis, not a found product rule: the one published neighbour is TipTunez's
+refund if an approved song has not played within 45 minutes, and the DJ's veto, which almost every
+product in [the research](2026-11-18-song-requests-how-others-do-it.md) gives a human. It also gives
+row 1.6 (when the money is taken) its natural shape — captured when he starts the song, released
+when the window runs out — and answers "what if it never plays" without a new rule.
