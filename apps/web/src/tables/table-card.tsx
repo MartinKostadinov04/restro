@@ -1,11 +1,11 @@
 'use client'
 
 // One table in the Tables & QR tab (briefs S3-07, S5): a card with its code as a picture (click to
-// enlarge), the name guests see (editable by owners and admins; "from {source}: <number>" beside it
-// when a till gave the table, a number field of its own when the owner made it), whether its code
-// is active, and the menu its code opens (marked when it is the table's own choice). The card's
-// menu holds every action: create a code, make a new one or turn it off (the last two stop the
-// printed sticker, so they ask first), hide or show the table, move it up or down (and to another
+// enlarge; owners and admins only), the name guests see (editable by owners and admins; "from
+// {source}: <number>" beside it when a till gave the table and the name is another one, a number
+// field of its own when the owner made it), whether its code is active, and the menu its code
+// opens (marked when it is the table's own choice). The card's menu holds every action: create a
+// code, make a new one or turn it off (the last two stop the printed sticker, so they ask first), hide or show the table, move it up or down (and to another
 // area, and delete it, on a venue made by hand). Where a connector takes payments the menu also
 // marks the table as its bar's payment table (it asks first: the table is hidden and its code stops
 // for good) or takes the mark away (one tap, with Undo); a payment table shows its badge and its
@@ -124,6 +124,15 @@ export function TableCard({
 
   const hasCode = row.hasCode
   const active = row.isPublic && areaPublic
+  // The number line ("from {source}: 12") only says something when the name guests see is another
+  // one; otherwise the name already is the number (S14). The empty name box says where it comes from.
+  // A table with neither keeps the line: it says why the table gets no code.
+  const renamed = (row.label !== null && row.label !== row.number) || row.shownAs === null
+  const namePlaceholder = !fromTill
+    ? (row.number ?? t('row.namePlaceholder'))
+    : row.number === null
+      ? t('row.namePlaceholder')
+      : t('row.sameAsSource', { source, number: row.number })
   const codeStatus = hasCode ? (active ? 'codeActive' : 'codePaused') : 'codeNone'
 
   function saveName() {
@@ -162,34 +171,38 @@ export function TableCard({
       className="grid min-w-0 gap-3 rounded-lg border bg-card p-4 text-card-foreground shadow-xs"
       data-testid="table-card"
       data-table-id={row.id}
+      data-number={row.number ?? undefined}
       data-has-code={hasCode}
       data-hidden={!row.isPublic}
     >
       <div className="flex items-start gap-3">
-        <div className="size-16 shrink-0">
-          {row.qrSvg !== null ? (
-            <button
-              type="button"
-              className="block size-16 overflow-hidden rounded-md border bg-white focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-              aria-label={t('row.enlarge', { table: shown })}
-              onClick={() => setEnlarged(true)}
-              data-testid="qr-thumb"
-            >
-              <QrPicture
-                svg={row.qrSvg}
-                alt={t('row.qrAlt', { table: shown })}
-                className="size-full"
-              />
-            </button>
-          ) : (
-            <div
-              className="grid size-16 place-items-center rounded-md border border-dashed text-muted-foreground"
-              aria-hidden
-            >
-              <QrCodeIcon className="size-6" />
-            </div>
-          )}
-        </div>
+        {/* Only owners and admins are given the codes (#70): no empty picture for anyone else. */}
+        {canManage ? (
+          <div className="size-16 shrink-0">
+            {row.qrSvg !== null ? (
+              <button
+                type="button"
+                className="block size-16 overflow-hidden rounded-md border bg-white focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                aria-label={t('row.enlarge', { table: shown })}
+                onClick={() => setEnlarged(true)}
+                data-testid="qr-thumb"
+              >
+                <QrPicture
+                  svg={row.qrSvg}
+                  alt={t('row.qrAlt', { table: shown })}
+                  className="size-full"
+                />
+              </button>
+            ) : (
+              <div
+                className="grid size-16 place-items-center rounded-md border border-dashed text-muted-foreground"
+                aria-hidden
+              >
+                <QrCodeIcon className="size-6" />
+              </div>
+            )}
+          </div>
+        ) : null}
 
         <div className="grid min-w-0 flex-1 gap-1.5">
           <Label htmlFor={nameId} className="text-xs text-muted-foreground">
@@ -205,7 +218,7 @@ export function TableCard({
                 if (event.key === 'Enter') event.currentTarget.blur()
                 if (event.key === 'Escape') setName(row.label ?? '')
               }}
-              placeholder={row.number ?? t('row.namePlaceholder')}
+              placeholder={namePlaceholder}
               maxLength={40}
               disabled={pending}
               autoComplete="off"
@@ -217,9 +230,11 @@ export function TableCard({
             </p>
           )}
           {fromTill ? (
-            <span className="text-xs text-muted-foreground" data-testid="table-number">
-              {t('row.fromSource', { source, number: row.number ?? t('row.noNumber') })}
-            </span>
+            renamed ? (
+              <span className="text-xs text-muted-foreground" data-testid="table-number">
+                {t('row.fromSource', { source, number: row.number ?? t('row.noNumber') })}
+              </span>
+            ) : null
           ) : canManage ? (
             <div className="flex items-center gap-2">
               <Label htmlFor={numberId} className="text-xs text-muted-foreground">
@@ -241,11 +256,11 @@ export function TableCard({
                 data-testid="table-number-input"
               />
             </div>
-          ) : (
+          ) : renamed ? (
             <span className="text-xs text-muted-foreground" data-testid="table-number">
               {t('row.numberLabel')}: {row.number ?? t('row.noNumber')}
             </span>
-          )}
+          ) : null}
         </div>
 
         {canManage || canMark ? (

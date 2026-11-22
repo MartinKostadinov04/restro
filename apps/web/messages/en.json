@@ -1531,12 +1531,10 @@
   },
   "tables": {
     "title": "Tables & QR codes",
-    "intro": "Each table can have a QR code. A guest who scans it opens this venue's menu with the table's name at the top. Every area is a section and every table a card; the card's menu holds its actions.",
-    "introTill": "Areas and tables come from {source}. Here you can rename, reorder and hide them; {source} creates and removes them.",
-    "introHand": "You make the areas and tables of this venue yourself: add them here.",
+    "intro": "Each table can have a QR code: a guest scans it and sees the menu.",
     "summary": "{total, plural, one {# table} other {# tables}}, {coded} with a code",
-    "readOnly": "Only owners and admins can change codes, areas, tables and menus. You can look at the codes and print them.",
-    "venueMenu": "The venue's live menu is the default: {menu}. An area or a table can show another menu instead. You choose the live menu in the venue's Settings.",
+    "readOnly": "They also change the areas, tables and menus.",
+    "codesOwnersOnly": "Only owners and admins can see the codes.",
     "venueMenuNone": "This venue has no menu yet. An area or a table shows the live menu once the venue has one.",
     "empty": {
       "title": "No tables yet",
@@ -1547,18 +1545,21 @@
       "title": "No areas yet",
       "description": "Add an area (for example Terrace or Main hall), then add its tables."
     },
-    "createAll": "Create codes for all tables",
+    "createMissing": "{count, plural, one {Create the missing code} other {Create the # missing codes}}",
     "createAllWorking": "Creating codes…",
     "created": "{count, plural, one {# code created.} other {# codes created.}}",
     "createdNone": "Every table already has a code.",
     "skipped": "{count, plural, one {# table was left out: it has no number and no name.} other {# tables were left out: they have no number and no name.}}",
     "printSheet": "Print sheet",
-    "printNone": "Create a code first, then print.",
     "codesUnavailable": "The codes can't be shown right now.",
     "codesRetry": "Try again",
     "queuedLate": "Saved, but the public page of the code could not be refreshed yet. If a scanned code says it is not active, wait a minute or ask your administrator.",
     "halls": {
       "count": "{count, plural, one {# table} other {# tables}}"
+    },
+    "index": {
+      "label": "Areas",
+      "jump": "{name}, {count, plural, one {# table} other {# tables}}"
     },
     "area": {
       "nameLabel": "Name of the area",
@@ -1601,6 +1602,7 @@
       "nameLabel": "Name guests see",
       "namePlaceholder": "Name (optional)",
       "fromSource": "from {source}: {number}",
+      "sameAsSource": "Same as in {source} ({number})",
       "numberLabel": "Number",
       "noNumber": "no number",
       "hidden": "Hidden",
@@ -1652,10 +1654,11 @@
     "route": {
       "label": "Menu for {target}",
       "value": "Menu: {menu}",
-      "inheritVenue": "Venue's ({menu})",
-      "inheritArea": "Area's ({menu})",
+      "inheritVenue": "The venue's menu",
+      "inheritVenueNamed": "The venue's menu ({menu})",
+      "inheritArea": "Same as the area ({menu})",
       "inheritNone": "none published yet",
-      "sameAsVenue": "Same as the venue",
+      "sameAsVenue": "The venue's menu",
       "sameAsArea": "Same as the area",
       "liveMark": "{name} (live)",
       "notPublished": "Not published yet: guests see {menu} for now.",
@@ -1701,6 +1704,7 @@
     },
     "print": {
       "title": "Print sheet: tables of {venue}",
+      "documentTitle": "QR codes · {venue}",
       "intro": "Six codes on each A4 page, area by area. Hidden areas and tables are left out. Click Print / Save as PDF, choose A4 and switch headers and footers off.",
       "button": "Print / Save as PDF",
       "back": "Back to Tables & QR",

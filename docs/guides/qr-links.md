@@ -17,7 +17,7 @@
 
 1. Отворете раздел „Маси и QR“.
 2. В картата „Адрес в кодовете“ изберете „Нашият линк“.
-3. Натиснете „Създай кодове за всички маси“.
+3. Натиснете „Създай липсващите 8 кода“ (числото е колко маси още нямат код).
 4. Натиснете „Лист за печат“, после „Печат / Запиши като PDF“.
 
 Докато изграждаме системата, „Основен адрес“ е адресът на компютъра, на който работи приложението. За да сканирате от телефон в същата Wi-Fi мрежа, въведете мрежовия адрес на този компютър, например `http://192.168.1.20:3000`. Когато системата получи постоянен адрес, ще го зададем тук и ще отпечатаме стикерите отново.
@@ -114,7 +114,7 @@ If you are not sure, start with Option 1. You can move to Option 2 later, but st
 
 1. Open the Tables & QR tab.
 2. In the "Address in the codes" card choose "Our link".
-3. Click "Create codes for all tables".
+3. Click "Create the 8 missing codes" (the number is how many tables have no code yet).
 4. Click "Print sheet", then "Print / Save as PDF".
 
 While we build the system, the "Base address" is the address of the computer the app runs on. To scan from a phone on the same Wi-Fi, type this computer's network address, for example `http://192.168.1.20:3000`. When the system has its permanent address we will set it here and print the stickers again.
