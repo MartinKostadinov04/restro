@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // The venue's name in its Settings tab (CF-18, D76): a field for owners and admins, the name as
 // text for everyone else, the validation while typing, and what happens with the server's answers.
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -43,6 +43,7 @@ beforeEach(() => {
     changed: true,
   }))
   toasts.success.mockReset()
+  toasts.error.mockReset()
   vi.mocked(authClient.getSession).mockResolvedValue({
     data: { user: { email: 'owner@example.com' }, session: { activeOrganizationId: 'tn_one' } },
     error: null,
@@ -134,13 +135,21 @@ describe('the venue name', () => {
   })
 
   it('after the password again, saves the name the field holds then, not the one first sent', async () => {
-    vi.mocked(renameVenueAction).mockResolvedValueOnce({ ok: false, error: 'sign_in_again' })
+    let refuse: (value: { ok: false; error: 'sign_in_again' }) => void = () => undefined
+    vi.mocked(renameVenueAction).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          refuse = resolve
+        }),
+    )
     const user = name()
     await user.type(input(), ' Two')
     await user.click(save())
+    // The field stays open while the first save is on its way: the owner types on.
+    await user.clear(input())
+    await user.type(input(), 'Demo Club Three')
+    refuse({ ok: false, error: 'sign_in_again' })
     expect(await screen.findByText('Enter your password to change settings')).toBeTruthy()
-    // The name changes while the dialog is open (the field sits behind it).
-    fireEvent.change(input(), { target: { value: 'Demo Club Three' } })
     await user.type(screen.getByLabelText('Password'), 'secret-pass')
     await user.click(screen.getByRole('button', { name: 'Confirm' }))
     await waitFor(() => expect(renameVenueAction).toHaveBeenCalledTimes(2))
