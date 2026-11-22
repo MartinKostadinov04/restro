@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
+import { createTranslator } from 'next-intl'
 import { describe, expect, it } from 'vitest'
 
 import bg from '../../messages/bg.json'
@@ -16,6 +17,12 @@ const GUIDE = readFileSync(
   'utf8',
 )
 const languages = splitLanguages(GUIDE)
+/** The tab's "Create the N missing codes" button as the guide quotes it, for eight tables. */
+const createMissing = (locale: 'bg' | 'en') =>
+  createTranslator({ locale, messages: locale === 'bg' ? bg : en, namespace: 'tables' })(
+    'createMissing',
+    { count: 8 },
+  )
 const headingsOf = (text: string) =>
   parseBlocks(text).filter((block) => block.type === 'heading').length
 
@@ -96,7 +103,7 @@ describe('docs/guides/qr-links.md', () => {
         bg.tables.address.leads,
         bg.tables.address.domainLater,
         bg.tables.address.testLink,
-        bg.tables.createAll,
+        createMissing('bg'),
         bg.tables.printSheet,
         bg.tables.print.button,
         bg.workspace.tabs.tables,
@@ -106,7 +113,7 @@ describe('docs/guides/qr-links.md', () => {
         en.tables.address.leads,
         en.tables.address.domainLater,
         en.tables.address.testLink,
-        en.tables.createAll,
+        createMissing('en'),
         en.tables.printSheet,
         en.tables.print.button,
         en.workspace.tabs.tables,

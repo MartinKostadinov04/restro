@@ -11,12 +11,11 @@ import { z } from 'zod'
 
 import { logError } from '../log'
 import { requireTenant } from '../session'
-import { identifyAtSharedDevice, rememberedAtSharedDevice } from '../staff/service'
+import { identifyAtSharedDevice } from '../staff/service'
 import { getVenue } from '../venues'
-import type { NightScope } from './night-load'
-import type { Frame } from './night-view'
 import { loadNightPayments, loadPaymentDetail } from './payment-load'
 import type { PaymentDetailView, PaymentsView } from './payment-view'
+import { answer, FAILED, type ReadAnswer, scopeOf } from './read-scope'
 import type { TonightResult } from './tables'
 
 const venueId = idSchema('vn')
@@ -29,45 +28,6 @@ const Payments = z.strictObject({
     .optional(),
   all: z.int().min(1).max(2000),
 })
-
-type ReadAnswer<T> = ({ readonly ok: true; readonly frame: Frame } & T) | { readonly ok: false }
-
-const FAILED = { ok: false } as const
-
-async function scopeOf(id: string): Promise<NightScope | null> {
-  const { organization, user, sessionId } = await requireTenant()
-  const venue = await getVenue(organization.id, id)
-  if (!venue) return null
-  return {
-    tenantId: organization.id,
-    venue,
-    actor: { kind: 'user', userId: user.id, sessionId },
-    remembered: await rememberedAtSharedDevice({
-      tenantId: organization.id,
-      venueId: venue.id,
-      sessionId,
-    }),
-    sourceNone: (await getTranslations('tonight'))('source_none'),
-  }
-}
-
-async function answer<T>(
-  event: string,
-  read: () => Promise<
-    | ({ readonly ok: true; readonly frame: Frame } & T)
-    | { readonly ok: false; readonly code?: string }
-  >,
-): Promise<ReadAnswer<T>> {
-  try {
-    const result = await read()
-    return result.ok ? (result as ReadAnswer<T>) : FAILED
-  } catch (error) {
-    // redirect() and notFound() are control flow, not failures.
-    if (error instanceof Error && 'digest' in error) throw error
-    logError(event, error)
-    return FAILED
-  }
-}
 
 /** The night's payments, every one of them (the end of the night's "Show all {n}"). */
 export async function nightPaymentsAction(

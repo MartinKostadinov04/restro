@@ -44,7 +44,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Bottle of vodka</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Bottle of vodka<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">€120.00</div>
@@ -57,7 +59,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Vodka shot</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Vodka shot<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">€4.00</div>

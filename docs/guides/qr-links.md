@@ -17,7 +17,7 @@
 
 1. Отворете раздел „Маси и QR“.
 2. В картата „Адрес в кодовете“, под „Кодовете водят до“, е адресът, който носи всеки код.
-3. Натиснете „Създай кодове за всички маси“.
+3. Натиснете „Създай липсващите 8 кода“ (числото е колко маси още нямат код).
 4. Натиснете „Отвори тестовия линк“: в нов раздел на браузъра трябва да се отвори менюто с името на една маса най-отгоре.
 5. Натиснете „Лист за печат“, после „Печат / Запиши като PDF“.
 
@@ -112,7 +112,7 @@ Stickers that are already printed keep the address they were printed with.
 
 1. Open the Tables & QR tab.
 2. In the "Address in the codes" card, under "Codes lead to", is the address every code carries.
-3. Click "Create codes for all tables".
+3. Click "Create the 8 missing codes" (the number is how many tables have no code yet).
 4. Click "Open test link": in a new browser tab the menu should open, with a table's name at the top.
 5. Click "Print sheet", then "Print / Save as PDF".
 

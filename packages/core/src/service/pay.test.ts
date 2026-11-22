@@ -116,8 +116,8 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
     if (result.status !== 'accepted') throw new Error(`refused: ${JSON.stringify(result)}`)
   }
 
-  /** One phone at the table. */
-  function phone() {
+  /** One phone at the table; `limits` replaces the loose limiter (a test of the phone's own). */
+  function phone(limits: GuestLimiter = limiter) {
     const id = randomUUID()
     let handle: string | null = null
     const act = async (command: Record<string, unknown>, view: 'bill' | 'order' = 'bill') => {
@@ -127,7 +127,7 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
         ageMs: 50,
         view,
         phone: id,
-        limiter,
+        limiter: limits,
         check: { humanToken: 'XXXX.DUMMY.TOKEN.XXXX' },
         humanCheck: (...args) => human(...args),
         ...(handle === null ? {} : { handle }),
@@ -803,6 +803,39 @@ describe.skipIf(!hasDatabase)('paying on the bill (as the restro_app role)', () 
       expect(await refusal(await start(phone(), ['L1']))).toBe('turnstile')
       human = async () => 'unavailable'
       paymentIdOf(await start(phone(), ['L1']))
+    })
+
+    it('a refused Pay gives the phone its 15 s gap back, as a refused Send does (C2)', async () => {
+      // D122's own limits: one Pay per 15 s. Each refusal below would otherwise hold the gap.
+      const payer = phone(new GuestLimiter(GUEST_LIMITS))
+      human = async () => 'failed'
+      expect(await refusal(await start(payer, ['L1']))).toBe('turnstile')
+      human = async () => 'passed'
+      paymentIdOf(await start(phone(), ['L1']))
+      expect(await refusal(await start(payer, ['L1']))).toBe('being_paid')
+      paymentIdOf(await start(payer, ['L2']))
+      // An accepted Pay keeps its hit: the gap holds the next one.
+      await expect(start(payer, ['L3'])).rejects.toThrow('rate_limited')
+    })
+
+    it('a phone that keeps failing Turnstile stops costing a check; a passed one gives its hit back', async () => {
+      const strict = new GuestLimiter({ ...LOOSE, humanFails: { ...LOOSE.humanFails, max: 1 } })
+      let checks = 0
+      human = async () => {
+        checks += 1
+        return 'failed'
+      }
+      const guesser = phone(strict)
+      expect(await refusal(await start(guesser, ['L1']))).toBe('turnstile')
+      await expect(start(guesser, ['L1'])).rejects.toThrow('rate_limited')
+      expect(checks).toBe(1)
+      human = async () => 'passed'
+      paymentIdOf(await start(phone(strict), ['L1']))
+      const friend = phone(strict)
+      expect(await refusal(await start(friend, ['L1']))).toBe('being_paid')
+      human = async () => 'failed'
+      // Its one allowed failure is still there: the passed check above gave its hit back.
+      expect(await refusal(await start(friend, ['L2']))).toBe('turnstile')
     })
 
     it("rate_limited: the phone's open payment, and the table's three", async () => {

@@ -22,7 +22,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Blonde</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Blonde<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">5,00 €</div>
@@ -42,7 +44,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3 lang="bg-BG">
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Тъмна бира</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Тъмна бира<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">5,00 €</div>
@@ -62,7 +66,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3 lang="de-DE">
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Weizen</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Weizen<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">5,00 €</div>
@@ -86,7 +92,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3 lang="en-US">
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">House red</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">House red<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">5,00 €</div>

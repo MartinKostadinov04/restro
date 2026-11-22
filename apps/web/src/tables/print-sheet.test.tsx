@@ -44,6 +44,22 @@ describe('the print sheet', () => {
     expect(PRINT_CSS).toMatch(/@media print \{[^}]*\.pc-toolbar \{ display: none; \}/)
   })
 
+  it('is A4 only when printed: on a screen a sheet is at most A4 wide and fits a phone (S22)', () => {
+    const [screenCss, printCss = ''] = PRINT_CSS.split('@media print')
+    const sheetRule = (css: string | undefined) => css?.match(/\.pc-sheet \{[^}]*\}/)?.[0] ?? ''
+    // On the screen: as wide as the window, never wider than A4, the cards flowing to fit.
+    expect(sheetRule(screenCss)).toContain('width: 100%')
+    expect(sheetRule(screenCss)).toContain('max-width: 210mm')
+    expect(sheetRule(screenCss)).toContain('minmax(min(100%, 75mm), 1fr)')
+    expect(sheetRule(screenCss)).not.toContain('height: 296mm')
+    expect(sheetRule(screenCss)).not.toMatch(/(^|[^-])width: 210mm/)
+    // Printed: the A4 page, two across and three down.
+    expect(sheetRule(printCss)).toContain('width: 210mm')
+    expect(sheetRule(printCss)).toContain('height: 296mm')
+    expect(sheetRule(printCss)).toContain('grid-template-columns: 1fr 1fr')
+    expect(sheetRule(printCss)).toContain('grid-template-rows: repeat(3, 1fr)')
+  })
+
   it('draws one card per code, at most six to a sheet', () => {
     const cards = Array.from({ length: 8 }, (_, i) => card(i + 1))
     render(<PrintSheets venueName="Demo Club" logoUrl={null} cards={cards} />)

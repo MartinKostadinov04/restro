@@ -117,6 +117,44 @@ describe('spotConflict', () => {
     expect(conflict).toBeNull()
   })
 
+  it('refuses a booking on any night a dated block runs over, not only its first (C2)', () => {
+    // A block from the 20th at 20:00 to the morning of the 26th: its stretch covers five nights.
+    const block = hold({
+      reservationId: 'rv_block',
+      stretch: {
+        from: new Date(Date.UTC(2026, 10, 20, 20, 0)),
+        to: new Date(Date.UTC(2026, 10, 26, 4, 0)),
+      },
+    })
+    const onThe22nd = claim({ startsAt: new Date(Date.UTC(2026, 10, 22, 22, 0)) })
+    expect(spotConflict(onThe22nd, [block], TURN)).toEqual({
+      spotId: 'sp_a',
+      reservationId: 'rv_block',
+    })
+    const onThe26th = claim({ startsAt: new Date(Date.UTC(2026, 10, 26, 22, 0)) })
+    expect(spotConflict(onThe26th, [block], TURN)).toBeNull()
+  })
+
+  it('keeps a block with no end in the way of everything after its start (#479)', () => {
+    const later = hold({
+      reservationId: 'rv_later',
+      stretch: {
+        from: new Date(Date.UTC(2026, 11, 24, 22, 0)),
+        to: new Date(Date.UTC(2026, 11, 25, 0, 0)),
+      },
+    })
+    const block = claim({ startsAt: new Date(Date.UTC(2026, 10, 20, 20, 0)), endsAt: null })
+    // As a claim with a turn time it would end that night and miss the booking a month later.
+    expect(spotConflict(block, [later], TURN)).toBeNull()
+    expect(spotConflict({ ...block, openEnded: true }, [later], TURN)).toEqual({
+      spotId: 'sp_a',
+      reservationId: 'rv_later',
+    })
+    // A booking before its start is not in its way.
+    const before = claim({ startsAt: new Date(Date.UTC(2026, 11, 25, 1, 0)), endsAt: null })
+    expect(spotConflict({ ...before, openEnded: true }, [later], TURN)).toBeNull()
+  })
+
   it('never puts a reservation in its own way, so an edit keeps its spot', () => {
     const mine = hold({ reservationId: 'rv_candidate' })
     expect(spotConflict(claim({ startsAt: at(22, 30) }), [mine], TURN)).toBeNull()
