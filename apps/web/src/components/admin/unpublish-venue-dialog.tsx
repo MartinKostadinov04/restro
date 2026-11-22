@@ -61,7 +61,7 @@ function UnpublishVenueForm({
 }: UnpublishVenueProps & { readonly onClose: () => void }) {
   const t = useTranslations('venues.unpublish.dialog')
   const [pending, startTransition] = useTransition()
-  const again = useSignInAgain()
+  const again = useSignInAgain(() => confirm())
   const [error, setError] = useState<UnpublishVenueError | null>(null)
 
   function confirm() {
@@ -73,7 +73,7 @@ function UnpublishVenueForm({
       )
       if (!result.ok) {
         if (result.error === 'sign_in_again') {
-          again.ask(confirm)
+          again.ask()
           return
         }
         setError(result.error)

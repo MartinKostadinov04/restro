@@ -48,8 +48,8 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
   const [namePending, startName] = useTransition()
   const [slugPending, startSlug] = useTransition()
   // One per form: a pending name change and a pending address change are retried apart.
-  const againName = useSignInAgain()
-  const againSlug = useSignInAgain()
+  const againName = useSignInAgain(() => submitName())
+  const againSlug = useSignInAgain(() => submitSlug())
 
   const trimmedName = nameValue.trim()
   const nameValid = trimmedName !== '' && [...trimmedName].length <= MAX_NAME_LENGTH
@@ -64,8 +64,8 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
     ? guestMenuPath({ organization: shownSlug, venue: EXAMPLE_VENUE })
     : `/m/${shownSlug}/${EXAMPLE_VENUE}`
 
-  function submitName(event: FormEvent) {
-    event.preventDefault()
+  function submitName(event?: FormEvent) {
+    event?.preventDefault()
     if (!canEdit || !nameValid || !nameDirty || namePending) return
     setNameError(null)
     startName(async () => {
@@ -78,7 +78,7 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
         toast.success(t('name.saved'))
       } else {
         if (result.error === 'sign_in_again') {
-          againName.ask(() => submitName(event))
+          againName.ask()
           return
         }
         setNameError(result.error)
@@ -86,8 +86,8 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
     })
   }
 
-  function submitSlug(event: FormEvent) {
-    event.preventDefault()
+  function submitSlug(event?: FormEvent) {
+    event?.preventDefault()
     if (!canEdit || !slugValid || !slugDirty || slugPending) return
     setSlugError(null)
     startSlug(async () => {
@@ -101,7 +101,7 @@ export function OrganizationGeneral({ name, slug, canEdit }: OrganizationGeneral
         else toast.warning(t('address.savedLate'))
       } else {
         if (result.error === 'sign_in_again') {
-          againSlug.ask(() => submitSlug(event))
+          againSlug.ask()
           return
         }
         setSlugError(result.error)

@@ -33,7 +33,7 @@ export function VenueName({ venueId, name, canEdit }: VenueNameProps) {
   const [value, setValue] = useState(name)
   const [error, setError] = useState<RenameVenueError | null>(null)
   const [pending, startTransition] = useTransition()
-  const again = useSignInAgain()
+  const again = useSignInAgain(() => submit())
 
   if (!canEdit) return <span data-testid="venue-name">{name}</span>
 
@@ -41,8 +41,8 @@ export function VenueName({ venueId, name, canEdit }: VenueNameProps) {
   const valid = trimmed.length > 0 && trimmed.length <= MAX_NAME_LENGTH
   const dirty = trimmed !== saved
 
-  function submit(event: FormEvent) {
-    event.preventDefault()
+  function submit(event?: FormEvent) {
+    event?.preventDefault()
     if (!valid || !dirty || pending) return
     setError(null)
     startTransition(async () => {
@@ -55,7 +55,7 @@ export function VenueName({ venueId, name, canEdit }: VenueNameProps) {
         toast.success(t('saved'))
       } else {
         if (result.error === 'sign_in_again') {
-          again.ask(() => submit(event))
+          again.ask()
           return
         }
         setError(result.error)

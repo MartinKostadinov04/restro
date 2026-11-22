@@ -1,18 +1,26 @@
 // @vitest-environment jsdom
 // The venue's name in its Settings tab (CF-18, D76): a field for owners and admins, the name as
 // text for everyone else, the validation while typing, and what happens with the server's answers.
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { authClient } from '@/lib/auth-client'
 import { renameVenueAction } from '@/server/venues-actions'
 import { renderWithIntl } from '@/test-utils'
 
 import { VenueName } from './venue-name'
 
 vi.mock('@/server/venues-actions', () => ({ renameVenueAction: vi.fn() }))
-const toasts = vi.hoisted(() => ({ success: vi.fn(), warning: vi.fn() }))
+const toasts = vi.hoisted(() => ({ success: vi.fn(), warning: vi.fn(), error: vi.fn() }))
 vi.mock('sonner', () => ({ toast: toasts }))
+vi.mock('@/lib/auth-client', () => ({
+  authClient: {
+    getSession: vi.fn(),
+    signIn: { email: vi.fn() },
+    organization: { setActive: vi.fn() },
+  },
+}))
 
 const VENUE_ID = 'vn_abcdefghijklmnopqrstuv'
 
@@ -35,6 +43,15 @@ beforeEach(() => {
     changed: true,
   }))
   toasts.success.mockReset()
+  vi.mocked(authClient.getSession).mockResolvedValue({
+    data: { user: { email: 'owner@example.com' }, session: { activeOrganizationId: 'tn_one' } },
+    error: null,
+  } as never)
+  vi.mocked(authClient.signIn.email).mockResolvedValue({ data: {}, error: null } as never)
+  vi.mocked(authClient.organization.setActive).mockResolvedValue({
+    data: {},
+    error: null,
+  } as never)
 })
 
 describe('the venue name', () => {
@@ -114,5 +131,23 @@ describe('the venue name', () => {
   it('is in Bulgarian when the interface is', () => {
     name(true, 'bg')
     expect(save().textContent).toBe('Запиши името')
+  })
+
+  it('after the password again, saves the name the field holds then, not the one first sent', async () => {
+    vi.mocked(renameVenueAction).mockResolvedValueOnce({ ok: false, error: 'sign_in_again' })
+    const user = name()
+    await user.type(input(), ' Two')
+    await user.click(save())
+    expect(await screen.findByText('Enter your password to change settings')).toBeTruthy()
+    // The name changes while the dialog is open (the field sits behind it).
+    fireEvent.change(input(), { target: { value: 'Demo Club Three' } })
+    await user.type(screen.getByLabelText('Password'), 'secret-pass')
+    await user.click(screen.getByRole('button', { name: 'Confirm' }))
+    await waitFor(() => expect(renameVenueAction).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(renameVenueAction).mock.calls.map(([raw]) => raw)).toEqual([
+      { venueId: VENUE_ID, name: 'Demo Club Two' },
+      { venueId: VENUE_ID, name: 'Demo Club Three' },
+    ])
+    await waitFor(() => expect(input().value).toBe('Demo Club Three'))
   })
 })
