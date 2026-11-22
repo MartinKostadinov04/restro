@@ -38,6 +38,7 @@ import { PAYMENT_MODES } from '../../templates/venue-menu'
 import type { ServiceTx } from '../definition'
 import { accepted, type ServiceResult } from '../results'
 import { openReservation } from './book'
+import { compareSpotNames } from './plan-state'
 import { refuse, versionOf } from './rows'
 import { isEndStatus, type ReservationStatus } from './status'
 
@@ -218,7 +219,8 @@ export async function payRuleBeatenAt(
         isNull(reservationSpots.releasedAt),
       ),
     )
-    .orderBy(spots.name)
+  // Natural order (1, 2, 10), in code (S5).
+  rows.sort((a, b) => compareSpotNames(a.name, b.name))
   return rows.flatMap((row) => {
     if (row.tableId === null) return []
     const own = input.settings.tables[row.tableId as keyof typeof input.settings.tables]

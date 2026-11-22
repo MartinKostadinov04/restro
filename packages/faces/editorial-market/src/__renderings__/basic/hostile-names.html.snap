@@ -44,7 +44,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">ЙОГУРТЕН ЩРУДЕЛ ЦЕЛИНА Ѝ</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">ЙОГУРТЕН ЩРУДЕЛ ЦЕЛИНА Ѝ<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">5,00 €</div>
@@ -62,7 +64,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">ЩАСТЛИВИЯТ ЦАР ЙОРДАН ЯЖДЕ ЙОГУРТ И ЩРУДЕЛ ЦЯЛА ЩЕДРОСТ НОЩИ</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">ЩАСТЛИВИЯТ ЦАР ЙОРДАН ЯЖДЕ ЙОГУРТ И ЩРУДЕЛ ЦЯЛА ЩЕДРОСТ НОЩИ<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">11,50 €</div>
@@ -79,7 +83,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">🍸 Мартини</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">🍸 Мартини<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">9,00 €</div>
@@ -96,7 +102,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">👨‍👩‍👧 Семейно плато</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">👨‍👩‍👧 Семейно плато<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">36,00 €</div>
@@ -113,7 +121,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Мо‍хито</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Мо‍хито<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">10,00 €</div>
@@ -125,7 +135,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Негрони</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Негрони<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">12,50 €</div>
@@ -142,7 +154,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Негрони</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Негрони<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">14,50 €</div>
@@ -160,7 +174,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3>
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Бира   тъмна   нефилтрирана</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Бира   тъмна   нефилтрирана<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">6,50 €</div>
@@ -177,7 +193,9 @@
 <div class="rm-item-copy">
 <div data-slot="item.name" data-design-part="item.name">
 <h3 lang="en-US">
-<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Only the English name</button>
+<button type="button" class="rm-item-open" data-slot="item.open" aria-haspopup="dialog">Only the English name<span class="rm-item-arrow" aria-hidden="true">
+</span>
+</button>
 </h3>
 </div>
 <div data-slot="item.price" data-design-part="item.price" class="rm-price">5,00 €</div>

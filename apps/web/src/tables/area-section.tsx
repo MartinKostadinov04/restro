@@ -43,6 +43,9 @@ import { RoutePicker } from './route-picker'
 import { type PaymentTableAccess, TableCard } from './table-card'
 import { useRun } from './use-run'
 
+/** The anchor of an area's section, for the jump links of the tab's area index (S14). */
+export const areaAnchor = (areaId: string) => `area-${areaId}`
+
 export function AreaSection({
   hall,
   index,
@@ -122,7 +125,8 @@ export function AreaSection({
 
   return (
     <section
-      className="space-y-3"
+      id={areaAnchor(hall.id)}
+      className="scroll-mt-4 space-y-3"
       data-testid="hall"
       data-area-id={hall.id}
       data-hidden={!hall.isPublic}

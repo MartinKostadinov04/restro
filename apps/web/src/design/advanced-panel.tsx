@@ -22,7 +22,10 @@ import { rowStateOf } from './advanced-model'
 import { OptionTiles } from './option-tiles'
 import type { Draft } from './preview-draft'
 
-/** The page list: chips in a row that scrolls sideways on a phone, a list from 820 px. */
+/**
+ * The page list: chips in a row that scrolls sideways on a phone, and that wraps from 820 px, so the
+ * open page's options start right under it (a list of fourteen rows pushed them below the fold).
+ */
 function PageList({
   pages,
   open,
@@ -43,11 +46,11 @@ function PageList({
   }, [open])
   return (
     <nav aria-label={t('pages')} data-testid="design-pages">
-      <ul className="m-0 flex list-none gap-1 overflow-x-auto p-0 pb-1 min-[820px]:flex-col min-[820px]:overflow-visible min-[820px]:pb-0">
+      <ul className="m-0 flex list-none gap-1 overflow-x-auto p-0 pb-1 min-[820px]:flex-wrap min-[820px]:overflow-visible min-[820px]:pb-0">
         {pages.map((page) => {
           const isOpen = page.id === open
           return (
-            <li key={page.id} className="shrink-0 min-[820px]:shrink">
+            <li key={page.id} className="shrink-0">
               <button
                 ref={isOpen ? opened : undefined}
                 type="button"
@@ -56,7 +59,7 @@ function PageList({
                 onClick={() => onOpen(page.id as DesignPageId)}
                 className={cn(
                   'inline-flex min-h-11 items-center rounded-full border px-3 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
-                  'min-[820px]:min-h-8 min-[820px]:w-full min-[820px]:rounded-md min-[820px]:border-transparent min-[820px]:whitespace-normal min-[820px]:text-left',
+                  'min-[820px]:min-h-8 min-[820px]:px-2.5',
                   isOpen && 'border-primary bg-accent/40 text-foreground',
                 )}
               >

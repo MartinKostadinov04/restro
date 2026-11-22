@@ -26,6 +26,10 @@
 //                       does the removal too and clears the venue's menu routes.
 //   areas-restore       puts the areas back under the till's names and shows them (what `seed` does
 //                       for them, alone), for the test's `afterAll`.
+//   member              the demo organisation gets a plain member (`tables-member@demo-club.test`,
+//                       the demo password), to read the tab as someone who may not see the codes.
+//                       Idempotent, and left in place: the seed's role may not delete a membership,
+//                       and no other spec counts the demo organisation's people.
 //
 // Like the other seeds it refuses to run unless NODE_ENV is development and the database is on
 // this machine.
@@ -55,14 +59,23 @@ import {
   upsertBarsyVenues,
   upsertPlaces,
 } from '@restro/core/apply'
-import { authOrganization, barsyVenues, integrations, venues, withTenant } from '@restro/db'
-import { eq } from 'drizzle-orm'
+import {
+  authMember,
+  authOrganization,
+  barsyVenues,
+  integrations,
+  venues,
+  withTenant,
+} from '@restro/db'
+import { and, eq } from 'drizzle-orm'
 import pg from 'pg'
 import { PgBoss } from 'pg-boss'
 
 import { writeTableTokenFiles } from '../../worker/src/publish/table-tokens'
+import { createAuth } from '../src/server/auth'
 import { getAuthDb, getPool } from '../src/server/db'
-import { assertDevEnvironment } from './lib/guard'
+import { authModelId } from '../src/server/ids'
+import { assertDevEnvironment, readAdminCredentials } from './lib/guard'
 
 const BID = 77
 const PLACES = [
@@ -128,6 +141,56 @@ async function restoreAreas(owner: pg.Pool, venueId: string): Promise<void> {
 }
 
 /** `areas-restore`: only that, for the test's `afterAll` (the test's own page may be gone by then). */
+/** The plain member of the demo organisation the tab is read as (S25): an account, no venue role. */
+const MEMBER = { email: 'tables-member@demo-club.test', name: 'Tables Member' }
+
+/**
+ * `member`: the demo organisation gets a plain member (organisation role `member`, so neither owner
+ * nor admin) with the demo password, for the test of what a person who may not see the codes gets.
+ * Idempotent; the membership stays (no row is deleted), and no other spec counts the demo
+ * organisation's people.
+ */
+async function member(): Promise<void> {
+  assertDevEnvironment(process.env)
+  const { password } = readAdminCredentials(process.env)
+  const { tenantId } = await demo()
+  const auth = createAuth({ scripts: true })
+  const context = await auth.$context
+  const hash = await context.password.hash(password)
+  const existing = await context.internalAdapter.findUserByEmail(MEMBER.email)
+  let userId: string
+  if (existing) {
+    await context.internalAdapter.updatePassword(existing.user.id, hash)
+    userId = existing.user.id
+  } else {
+    const user = await context.internalAdapter.createUser(
+      { email: MEMBER.email, name: MEMBER.name, emailVerified: true },
+      { method: 'admin' },
+    )
+    await context.internalAdapter.linkAccount({
+      userId: user.id,
+      providerId: 'credential',
+      accountId: user.id,
+      password: hash,
+    })
+    userId = user.id
+  }
+  const db = getAuthDb()
+  const [membership] = await db
+    .select({ id: authMember.id, role: authMember.role })
+    .from(authMember)
+    .where(and(eq(authMember.organizationId, tenantId), eq(authMember.userId, userId)))
+    .limit(1)
+  if (!membership) {
+    await db
+      .insert(authMember)
+      .values({ id: authModelId('member'), organizationId: tenantId, userId, role: 'member' })
+  } else if (membership.role !== 'member') {
+    await db.update(authMember).set({ role: 'member' }).where(eq(authMember.id, membership.id))
+  }
+  console.log(JSON.stringify({ member: MEMBER.email }))
+}
+
 async function areasRestore(): Promise<void> {
   assertDevEnvironment(process.env)
   const ownerUrl = process.env.DATABASE_URL_OWNER
@@ -482,12 +545,13 @@ const commands = {
   'second-menu': secondMenu,
   'second-menu-remove': secondMenuRemove,
   'areas-restore': areasRestore,
+  member,
 } as const
 const command = process.argv[2] as keyof typeof commands | undefined
 
 if (command === undefined || !(command in commands)) {
   console.error(
-    'usage: seed-tables-e2e.ts seed|worker|serve|second-menu|second-menu-remove|areas-restore',
+    'usage: seed-tables-e2e.ts seed|worker|serve|second-menu|second-menu-remove|areas-restore|member',
   )
   process.exit(2)
 }

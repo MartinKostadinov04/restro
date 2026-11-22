@@ -2,8 +2,9 @@
 
 // The Tables & QR tab (briefs S3-07, S5; D94, D95): the venue's areas as sections, each with its
 // tables as a grid of cards, the menu each area and table shows, and the card that says where the
-// codes lead. Owners and admins create, change and turn off codes and edit areas, tables and
-// menus; everyone else reads and prints. On a venue with a till the areas and tables are the
+// codes lead. An index of the areas at the top jumps to each (screen round 11-18, S14). Owners and
+// admins see, create, change, turn off and print codes and edit areas, tables and menus; everyone
+// else reads the tables and menus, without codes (S25). On a venue with a till the areas and tables are the
 // till's (renamed, reordered and hidden here); on a venue made by hand the owner makes them. The
 // data comes from the server component (tables-tab.tsx); every change is a server action that
 // refreshes it. The codes themselves come from the worker once the page is up (use-revealed-codes).
@@ -31,7 +32,7 @@ import { type TablesView, withRevealed } from '@/server/tables/view'
 import { useSignInAgain } from '@/settings/use-settings-run'
 
 import { AddAreaForm } from './add-area-form'
-import { AreaSection } from './area-section'
+import { AreaSection, areaAnchor } from './area-section'
 import { QrAddressCard } from './qr-address-card'
 import { useFailureText } from './use-failure-text'
 import { useRevealedCodes } from './use-revealed-codes'
@@ -74,6 +75,59 @@ function PaymentTablesBanner({
         {t('pt_banner', { bars })}
       </AlertDescription>
     </Alert>
+  )
+}
+
+/**
+ * The tables "Create the missing codes" would give a code: shown, in a shown area, not a payment
+ * table, and without one yet (as core's `issueAllTableTokens` picks them).
+ */
+export function missingCodes(view: TablesView): number {
+  return view.halls
+    .filter((hall) => hall.isPublic)
+    .flatMap((hall) => hall.tables)
+    .filter((row) => row.isPublic && !row.isPaymentTable && !row.hasCode).length
+}
+
+/**
+ * The areas as jump links at the top, each with its table count (S14): one tap to an area. The
+ * count is what the summary counts (no payment table), so the areas add up to it; the link's name
+ * reads "Terrace, 5 tables", not the two spans run together. An area with no table guests sit
+ * at (one that holds only payment tables, or none yet) is left out: its section stays below. With
+ * fewer than two areas to jump to there is no index.
+ */
+function AreaIndex({ halls }: { halls: TablesView['halls'] }) {
+  const t = useTranslations('tables')
+  const entries = halls
+    .map((hall) => ({ hall, count: hall.tables.filter((row) => !row.isPaymentTable).length }))
+    .filter((entry) => entry.count > 0)
+  if (entries.length < 2) return null
+  return (
+    <nav aria-label={t('index.label')} data-testid="area-index">
+      <ul className="flex flex-wrap gap-2">
+        {entries.map(({ hall, count }) => {
+          return (
+            <li key={hall.id} className="min-w-0 max-w-full">
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="h-auto min-h-8 max-w-full py-1.5 text-left whitespace-normal phone:h-auto phone:min-h-11"
+              >
+                <a
+                  href={`#${areaAnchor(hall.id)}`}
+                  aria-label={t('index.jump', { name: hall.name, count })}
+                  data-testid="area-jump"
+                >
+                  <span className="[overflow-wrap:anywhere]">{hall.name}</span>
+                  <span className="text-muted-foreground">{count}</span>
+                </a>
+              </Button>
+            </li>
+          )
+        })}
+      </ul>
+    </nav>
   )
 }
 
@@ -137,6 +191,12 @@ function Panel({ view: given }: { view: TablesView }) {
   }))
   const live = view.menus.find((menu) => menu.live)
   const canAddAreas = view.canManage && !view.fromTill
+  // Codes are drawn only for owners and admins (#70): everyone else gets no code, no print sheet
+  // and no address card, and one line that says so (S25).
+  const seesCodes = view.canManage
+  const missing = missingCodes(view)
+  // One primary action: the missing codes while there are any, else the print sheet (R1).
+  const printPrimary = seesCodes && missing === 0
 
   const payment =
     view.paying === null ? null : { canMark: view.paying.canMark, email: view.paying.email }
@@ -149,56 +209,52 @@ function Panel({ view: given }: { view: TablesView }) {
         <div className="max-w-2xl">
           <h2 className="text-lg font-medium">{t('title')}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{t('intro')}</p>
-          <p className="mt-1 text-sm text-muted-foreground" data-testid="tables-source-note">
-            {view.fromTill ? t('introTill', { source: view.sourceLabel }) : t('introHand')}
-          </p>
-          <p className="mt-2 text-sm text-muted-foreground" data-testid="venue-menu">
-            {live === undefined ? t('venueMenuNone') : t('venueMenu', { menu: live.name })}
-          </p>
+          {live === undefined ? (
+            <p className="mt-2 text-sm text-muted-foreground" data-testid="venue-menu">
+              {t('venueMenuNone')}
+            </p>
+          ) : null}
           <p className="mt-2 text-sm font-medium" data-testid="tables-summary">
             {t('summary', { total: view.guestTotal, coded: view.coded })}
           </p>
-          {view.canManage ? null : (
+          {seesCodes ? null : (
             <p className="mt-2 text-sm text-muted-foreground" data-testid="tables-read-only">
-              {t('readOnly')}
+              <span data-testid="tables-codes-hidden">{t('codesOwnersOnly')}</span> {t('readOnly')}
             </p>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {view.canManage && view.total > 0 ? (
-            <Button type="button" disabled={pending} onClick={createAll} data-testid="create-all">
-              <QrCodeIcon aria-hidden />
-              {pending ? t('createAllWorking') : t('createAll')}
-            </Button>
-          ) : null}
-          {view.coded > 0 ? (
-            <Button asChild variant="outline">
-              <a
-                href={`/venues/${view.venueId}/tables/print`}
-                target="_blank"
-                rel="noopener noreferrer"
-                data-testid="print-sheet-link"
-              >
-                <PrinterIcon aria-hidden />
-                {t('printSheet')}
-              </a>
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="outline"
-              disabled
-              title={t('printNone')}
-              data-testid="print-sheet-link"
-            >
-              <PrinterIcon aria-hidden />
-              {t('printSheet')}
-            </Button>
-          )}
-        </div>
+        {seesCodes && (missing > 0 || view.coded > 0) ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {missing > 0 ? (
+              <Button type="button" disabled={pending} onClick={createAll} data-testid="create-all">
+                <QrCodeIcon aria-hidden />
+                {pending ? t('createAllWorking') : t('createMissing', { count: missing })}
+              </Button>
+            ) : null}
+            {/* No sheet to print before a code exists, so no button either (R2). */}
+            {view.coded > 0 ? (
+              <Button asChild variant={printPrimary ? 'default' : 'outline'}>
+                <a
+                  href={`/venues/${view.venueId}/tables/print`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="print-sheet-link"
+                  data-primary={printPrimary}
+                >
+                  <PrinterIcon aria-hidden />
+                  {t('printSheet')}
+                </a>
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
-      <QrAddressCard view={view} codesUnavailable={codesUnavailable} onRetry={retry} />
+      {seesCodes ? (
+        <QrAddressCard view={view} codesUnavailable={codesUnavailable} onRetry={retry} />
+      ) : null}
+
+      <AreaIndex halls={view.halls} />
 
       {view.halls.length === 0 ? (
         <div className="space-y-1" data-testid="areas-empty">

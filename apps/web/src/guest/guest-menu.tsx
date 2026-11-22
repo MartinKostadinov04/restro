@@ -24,7 +24,7 @@ import {
   menuPath,
   parseMenuParam,
 } from '@restro/core'
-import { buildViewModel, stringsFor } from '@restro/shell'
+import { buildViewModel, itemsById, stringsFor } from '@restro/shell'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ChosenFace, preloadFace } from '@/faces/chosen-face'
@@ -45,6 +45,7 @@ import {
   readTableToken,
   rememberedTable,
   rememberTable,
+  tableToKeep,
   tabStorage,
   withCodeInFragment,
 } from './context'
@@ -176,7 +177,8 @@ export function GuestMenu(props: GuestMenuProps) {
         : loadMenu(deps, publicId ?? '', token, remembered)
     loading.then(
       (menu) => {
-        rememberTable(storage, menu.publicId, menu.table?.token ?? null)
+        const kept = rememberedTable(storage, menu.publicId)
+        rememberTable(storage, menu.publicId, tableToKeep(menu.table, kept))
         if (!cancelled) setPhase({ kind: 'ready', menu })
       },
       (error: unknown) => {
@@ -217,8 +219,9 @@ export function GuestMenu(props: GuestMenuProps) {
   // (the loader asked). The banner and the shell's context use the confirmed table only: an
   // unknown code is no code.
   // Without a code in the address, the claim is the one the tab kept, which the load checked.
-  const requestedToken = readTableToken(search, fragment) ?? loaded?.table?.token ?? null
-  const table = confirmedTable(requestedToken, loaded?.table ?? null)
+  const found = loaded?.table?.kind === 'found' ? loaded.table : null
+  const requestedToken = readTableToken(search, fragment) ?? found?.token ?? null
+  const table = confirmedTable(requestedToken, found)
   const tableToken = table?.token ?? null
   const tableLabel = table?.label ?? null
 
@@ -332,31 +335,19 @@ export function GuestMenu(props: GuestMenuProps) {
     openedFor.current = tableToken
     report({ kind: 'menu.opened' })
   }, [ready, tableToken, report])
-  // A dish page lives in the address (`#item-<id>`), so the page sees it open without a template
-  // telling it. A template with no dish page reports none. The item is our own node id; a crafted
-  // address is dropped by the client's own check, not by the server.
-  useEffect(() => {
-    if (!ready || tableToken === null) return
-    let last: string | null = null
-    const look = () => {
-      const match = /^#item-(.+)$/.exec(window.location.hash)
-      let itemId: string | null = null
-      try {
-        itemId = match === null ? null : decodeURIComponent(match[1] ?? '')
-      } catch {
-        itemId = null
-      }
-      if (itemId === null || itemId === last) {
-        last = itemId
-        return
-      }
-      last = itemId
-      report({ kind: 'item.opened', itemId })
-    }
-    look()
-    window.addEventListener('hashchange', look)
-    return () => window.removeEventListener('hashchange', look)
-  }, [ready, tableToken, report])
+  // The template tells the page which dish page is open (a tap, a shared link, back and forward;
+  // `onOpenDishChange`): each open the guest makes is reported (not a dish showing again from
+  // under a sheet), and the tab is named after the dish while it is open. A template with no dish
+  // page reports none. The item is our own node id; a crafted address is dropped by the client's
+  // own check, not by the server. Without a table, `report` sends nothing.
+  const [openDishId, setOpenDishId] = useState<string | null>(null)
+  const onOpenDishChange = useCallback(
+    (itemId: string | null, opened: boolean) => {
+      setOpenDishId(itemId)
+      if (itemId !== null && opened) report({ kind: 'item.opened', itemId })
+    },
+    [report],
+  )
   const view = useMemo(
     () =>
       snapshot === null
@@ -412,12 +403,20 @@ export function GuestMenu(props: GuestMenuProps) {
       root.lang = previous
     }
   }, [shownLocale])
-  const title = view?.menu.title?.text
-  useEffect(() => {
-    if (title !== undefined) document.title = title
-  }, [title])
-
   const strings = stringsFor(shownLocale).guest
+  // The tab's title (WCAG 2.4.2): the menu's own title once it is loaded, the word "Menu" in the
+  // page's language before that or when it fails, and "<dish> · <menu>" while a dish page is open.
+  const title = view?.menu.title?.text ?? strings.menu
+  const itemsOfView = useMemo(() => (view === null ? null : itemsById(view)), [view])
+  const openDishName =
+    openDishId === null ? null : (itemsOfView?.get(openDishId)?.name.text ?? null)
+  // Said again whenever the load settles: Next.js streams the address's first title in after the
+  // page has started, and it may land over this one.
+  const settled = phase.kind
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `settled` only re-runs the effect
+  useEffect(() => {
+    document.title = openDishName === null ? title : `${openDishName} · ${title}`
+  }, [title, openDishName, settled])
   if (view === null || snapshot === null) {
     if (phase.kind === 'error') {
       const text =
@@ -450,6 +449,8 @@ export function GuestMenu(props: GuestMenuProps) {
       tableLabel={tableLabel}
       fontStacks={FONT_STACKS}
       scheme={view.theme.scheme}
+      {...(loadedPublicId === null ? {} : { layoutMemory: loadedPublicId })}
+      onOpenDishChange={onOpenDishChange}
       {...(services === undefined ? {} : { services })}
     />
   )

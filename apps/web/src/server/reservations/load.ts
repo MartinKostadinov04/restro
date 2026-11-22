@@ -107,8 +107,14 @@ export async function loadReservationNight(
 export async function loadReservationDetail(
   scope: RvScope,
   reservationId: string,
+  /** The person a shared device remembers, whose lines are this reader's own (S18). */
+  deviceStaffMemberId: string | null = null,
 ): Promise<RvResult<{ detail: RvDetailView | null }>> {
-  const read = await readReservationDetail(getPool(), { ...inputOf(scope), reservationId })
+  const read = await readReservationDetail(getPool(), {
+    ...inputOf(scope),
+    reservationId,
+    deviceStaffMemberId,
+  })
   if (!read.ok) return read
   return {
     ok: true,
