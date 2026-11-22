@@ -37,7 +37,13 @@ vi.mock('@/server/settings/staff-actions', () => ({
   revokeSharedDeviceAction: vi.fn(),
   setPinFallAction: vi.fn(),
 }))
-vi.mock('@/lib/auth-client', () => ({ authClient: { signIn: { email: vi.fn() } } }))
+vi.mock('@/lib/auth-client', () => ({
+  authClient: {
+    getSession: vi.fn(),
+    signIn: { email: vi.fn() },
+    organization: { setActive: vi.fn() },
+  },
+}))
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), message: vi.fn() },
 }))
@@ -170,6 +176,16 @@ beforeEach(() => {
   vi.mocked(toast.success).mockReset()
   vi.mocked(toast.error).mockReset()
   vi.mocked(authClient.signIn.email).mockReset()
+  vi.mocked(authClient.getSession).mockReset()
+  vi.mocked(authClient.getSession).mockResolvedValue({
+    data: { session: { activeOrganizationId: 'tn_second' } },
+    error: null,
+  } as never)
+  vi.mocked(authClient.organization.setActive).mockReset()
+  vi.mocked(authClient.organization.setActive).mockResolvedValue({
+    data: {},
+    error: null,
+  } as never)
 })
 
 afterEach(() => {
@@ -278,6 +294,101 @@ describe('Settings › Staff and roles', () => {
     )
     expect((await screen.findByTestId('pin-result')).textContent).toContain('1234')
     expect(newPinAction).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the organisation in use across the fresh sign-in before retrying (C1)', async () => {
+    const order: string[] = []
+    vi.mocked(newPinAction)
+      .mockResolvedValueOnce({ ok: false, error: 'sign_in_again' })
+      .mockImplementationOnce(async () => {
+        order.push('retry')
+        return { ok: true, details: {}, staffMemberId: ANA, pin: '1234' }
+      })
+    vi.mocked(authClient.signIn.email).mockImplementation(async () => {
+      order.push('sign-in')
+      return { data: {}, error: null } as never
+    })
+    vi.mocked(authClient.organization.setActive).mockImplementation(async () => {
+      order.push('set-active')
+      return { data: {}, error: null } as never
+    })
+    const user = userEvent.setup()
+    renderWithIntl(<StaffPanel view={view()} />)
+    await user.click(screen.getByRole('button', { name: 'Ana' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'New PIN' }))
+    await user.type(await screen.findByLabelText('Password'), 'secret-pass')
+    await user.click(screen.getByRole('button', { name: 'Confirm' }))
+    expect((await screen.findByTestId('pin-result')).textContent).toContain('1234')
+    expect(authClient.organization.setActive).toHaveBeenCalledWith({ organizationId: 'tn_second' })
+    expect(order).toEqual(['sign-in', 'set-active', 'retry'])
+  })
+
+  it('lets the password be sent again when the connection drops (C2)', async () => {
+    vi.mocked(newPinAction).mockResolvedValue({ ok: false, error: 'sign_in_again' })
+    vi.mocked(authClient.signIn.email).mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    const user = userEvent.setup()
+    renderWithIntl(<StaffPanel view={view()} />)
+    await user.click(screen.getByRole('button', { name: 'Ana' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'New PIN' }))
+    await user.type(await screen.findByLabelText('Password'), 'secret-pass')
+    await user.click(screen.getByRole('button', { name: 'Confirm' }))
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    const confirm = screen.getByRole('button', { name: 'Confirm' }) as HTMLButtonElement
+    await waitFor(() => expect(confirm.disabled).toBe(false))
+    expect(newPinAction).toHaveBeenCalledTimes(1)
+  })
+
+  it('switches back to the same organisation on a second press after the switch failed (C1)', async () => {
+    vi.mocked(newPinAction)
+      .mockResolvedValueOnce({ ok: false, error: 'sign_in_again' })
+      .mockResolvedValueOnce({ ok: true, details: {}, staffMemberId: ANA, pin: '1234' })
+    vi.mocked(authClient.signIn.email).mockResolvedValue({ data: {}, error: null } as never)
+    // After the first sign-in the session sits in the first organisation; it must not be read.
+    vi.mocked(authClient.getSession)
+      .mockResolvedValueOnce({
+        data: { session: { activeOrganizationId: 'tn_second' } },
+        error: null,
+      } as never)
+      .mockResolvedValue({
+        data: { session: { activeOrganizationId: 'tn_first' } },
+        error: null,
+      } as never)
+    vi.mocked(authClient.organization.setActive)
+      .mockResolvedValueOnce({ data: null, error: { status: 500 } } as never)
+      .mockResolvedValue({ data: {}, error: null } as never)
+    const user = userEvent.setup()
+    renderWithIntl(<StaffPanel view={view()} />)
+    await user.click(screen.getByRole('button', { name: 'Ana' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'New PIN' }))
+    await user.type(await screen.findByLabelText('Password'), 'secret-pass')
+    await user.click(screen.getByRole('button', { name: 'Confirm' }))
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(newPinAction).toHaveBeenCalledTimes(1)
+    const confirm = screen.getByRole('button', { name: 'Confirm' }) as HTMLButtonElement
+    await waitFor(() => expect(confirm.disabled).toBe(false))
+    await user.click(confirm)
+    expect((await screen.findByTestId('pin-result')).textContent).toContain('1234')
+    expect(vi.mocked(authClient.organization.setActive).mock.calls).toEqual([
+      [{ organizationId: 'tn_second' }],
+      [{ organizationId: 'tn_second' }],
+    ])
+  })
+
+  it('signs nobody in when the organisation in use cannot be read (C1)', async () => {
+    vi.mocked(newPinAction).mockResolvedValue({ ok: false, error: 'sign_in_again' })
+    vi.mocked(authClient.getSession).mockResolvedValue({
+      data: null,
+      error: { status: 500 },
+    } as never)
+    const user = userEvent.setup()
+    renderWithIntl(<StaffPanel view={view()} />)
+    await user.click(screen.getByRole('button', { name: 'Ana' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'New PIN' }))
+    await user.type(await screen.findByLabelText('Password'), 'secret-pass')
+    await user.click(screen.getByRole('button', { name: 'Confirm' }))
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(authClient.signIn.email).not.toHaveBeenCalled()
+    expect(newPinAction).toHaveBeenCalledTimes(1)
   })
 
   it('words a refusal and keeps the toast', async () => {

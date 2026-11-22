@@ -22,7 +22,16 @@ import {
 
 import { createMenuAction } from '@/server/menus-actions'
 
-export function NoMenu({ venueId, canCreate }: { venueId: string; canCreate: boolean }) {
+export function NoMenu({
+  venueId,
+  canCreate,
+  source,
+}: {
+  venueId: string
+  canCreate: boolean
+  /** The name of the POS the venue's menus come from (`{source}`, D82); empty for a hand-made venue. */
+  source: string
+}) {
   const t = useTranslations('composer')
   const tMenus = useTranslations('venueMenus.errors')
   const [pending, startTransition] = useTransition()
@@ -32,7 +41,7 @@ export function NoMenu({ venueId, canCreate }: { venueId: string; canCreate: boo
       const result = await createMenuAction({ venueId }).catch(
         () => ({ ok: false, error: 'failed' }) as const,
       )
-      if (!result.ok) toast.error(tMenus(result.error))
+      if (!result.ok) toast.error(tMenus(result.error, { source }))
     })
   }
 

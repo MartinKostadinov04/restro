@@ -394,7 +394,9 @@ test('Settings > Deleted venues lists it with the day it was deleted, and Restor
   await row.getByTestId('restore-venue').click()
   // Its till venue was free, so the restore linked it again (adjustments V1).
   await expect(
-    page.getByText(`${RENAMED} is back as a draft, with its till linked again`, { exact: false }),
+    page.getByText(`${RENAMED} is back as a draft, linked again to its venue in the POS`, {
+      exact: false,
+    }),
   ).toBeVisible()
   await expect(page.getByTestId('deleted-venue')).toHaveCount(0)
   await expect(page.getByTestId('deleted-venues-empty')).toBeVisible()

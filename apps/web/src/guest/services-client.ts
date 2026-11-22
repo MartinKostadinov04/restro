@@ -104,6 +104,15 @@ export const POLL_BACKOFF_MS = [4_000, 8_000, 16_000, 30_000] as const
 export const OFFLINE_AFTER_MS = 10_000
 
 /**
+ * On the bill, a reading older than this is read again by the server (core's `FRESH_READING_MS`,
+ * #74); a reading that finds the same bill leaves the version, so it comes back `unchanged` with no
+ * age. The phone then asks for the whole state at most this often, so the age it shows resets with
+ * each new reading (lane 3 S7, D121): a new reading shows at the next whole request, up to 15 s
+ * after the server took it.
+ */
+export const BILL_AGE_REFRESH_MS = 15_000
+
+/**
  * A request that has not answered after this long is aborted (D121: "about 10 seconds"), and the
  * command is answered `pending` with `answer_lost`. It is the shell's own number, so a face's wait
  * for the host can be set from it and stay longer than it (DA-2).
@@ -255,12 +264,17 @@ export interface PayFormValues {
   readonly values: Readonly<Record<string, string>>
 }
 
-/** The table's bill as the face draws it (our ids and the POS's own amounts). */
-function tableBillOf(bill: GuestTableState['bill'], now: number): TableBillView | null {
+/**
+ * The table's bill as the face draws it (our ids and the POS's own amounts). `at` is when the answer
+ * that carried it came: the reading's time is fixed from it, so its age grows on every later draw
+ * rather than staying at the age the answer gave (lane 3 S7).
+ */
+function tableBillOf(bill: GuestTableState['bill'], at: number, now: number): TableBillView | null {
   if (bill === null) return null
+  const readAt = at - bill.readAgoSeconds * 1000
   return {
-    readAgoSeconds: bill.readAgoSeconds,
-    readAt: now - bill.readAgoSeconds * 1000,
+    readAgoSeconds: Math.max(bill.readAgoSeconds, Math.floor((now - readAt) / 1000)),
+    readAt,
     complete: bill.complete,
     currency: 'EUR',
     totalMinor: bill.totalMinor,
@@ -469,6 +483,10 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
   const base = deps.base ?? ''
   const listeners = new Set<() => void>()
   let server: GuestTableState | null = null
+  /** When `server` came: its bill's `readAgoSeconds` was the age then, so the age grows from it. */
+  let serverAt = 0
+  /** When the bill screen last asked for the whole state for its reading's age, or null. */
+  let ageAskedAt: number | null = null
   let pending: Pending[] = []
   let retired = false
   let lastAnswerAt = deps.now()
@@ -730,7 +748,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     state = {
       ...EMPTY_SERVICE_STATE,
       revision: server?.version ?? 0,
-      tableBill: server === null ? null : tableBillOf(server.bill, now),
+      tableBill: server === null ? null : tableBillOf(server.bill, serverAt, now),
       paying: server === null || retired ? null : payingView(server),
       payment: payment === null || isHidden(payment) ? null : paymentViewOf(payment, receiptEmail),
       order: server?.order == null ? null : orderView(server.order, pending, now),
@@ -797,6 +815,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
   function accept(next: GuestTableState): void {
     if (server !== null && next.version < server.version) return
     server = next
+    serverAt = deps.now()
     // The server saw no pass that holds: the one kept is dead (its sitting ended, or the code).
     if (next.location.state === 'needed' && pass !== null) keepPass(null)
   }
@@ -823,6 +842,21 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     return Math.max(jittered, (retryAfterSeconds ?? 0) * 1000)
   }
 
+  /**
+   * On the bill, whether this poll asks for the whole state for the reading's age (lane 3 S7): the
+   * reading shown is older than core's `FRESH_READING_MS`, past which the server reads the bill
+   * again, and no whole answer came for it in as long. An `unchanged` answer carries no age, so
+   * without it a new reading of the same bill never shows. A failed ask leaves nothing stamped,
+   * so the next poll asks again.
+   */
+  function ageDue(asked: GuestApiView): boolean {
+    if (asked !== 'bill' || server?.bill == null) return false
+    const now = deps.now()
+    const age = now - (serverAt - server.bill.readAgoSeconds * 1000)
+    if (age <= BILL_AGE_REFRESH_MS) return false
+    return ageAskedAt === null || now - ageAskedAt >= BILL_AGE_REFRESH_MS
+  }
+
   async function poll(): Promise<void> {
     if (!running || retired || polling) return
     polling = true
@@ -830,7 +864,8 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     const asked = view()
     const born = generation
     try {
-      const since = server === null || whole ? '' : `&since=${server.version}`
+      const forAge = server !== null && !whole && ageDue(asked)
+      const since = server === null || whole || forAge ? '' : `&since=${server.version}`
       whole = false
       const response = await request(`${base}/api/guest/state?view=${asked}${since}`, {
         method: 'GET',
@@ -851,6 +886,8 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
         const answer = GuestStateAnswerSchema.parse(await readJson(response))
         failures = 0
         answered()
+        // Stamped only once the whole answer came: a failed ask is asked again at the next poll.
+        if (forAge) ageAskedAt = deps.now()
         if (born !== generation) {
           // The location check was stopped while this poll was out: its answer is of the old pass,
           // so it is dropped and the whole state is asked for again at once.

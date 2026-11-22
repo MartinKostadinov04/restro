@@ -29,6 +29,7 @@ import {
 import { TillLabelProvider } from '@/fields/till-label'
 import { createAllCodesAction } from '@/server/tables/actions'
 import { type TablesView, withRevealed } from '@/server/tables/view'
+import { useSignInAgain } from '@/settings/use-settings-run'
 
 import { AddAreaForm } from './add-area-form'
 import { AreaSection, areaAnchor } from './area-section'
@@ -134,6 +135,7 @@ function Panel({ view: given }: { view: TablesView }) {
   const t = useTranslations('tables')
   const failureText = useFailureText()
   const [pending, startTransition] = useTransition()
+  const again = useSignInAgain()
   const { revealed, failed, retry } = useRevealedCodes(given)
   const view = withRevealed(given, revealed)
   // A wait that ends without a single code says so (#441); once one code is drawn, there is none.
@@ -166,6 +168,10 @@ function Panel({ view: given }: { view: TablesView }) {
     startTransition(async () => {
       const result = await createAllCodesAction({ venueId: view.venueId })
       if (!result.ok) {
+        if (result.error === 'sign_in_again') {
+          again.ask(createAll)
+          return
+        }
         toast.error(failureText(result))
         return
       }
@@ -197,6 +203,7 @@ function Panel({ view: given }: { view: TablesView }) {
 
   return (
     <div className="space-y-8" data-testid="tables-tab">
+      {again.dialog}
       {view.paying === null ? null : <PaymentTablesBanner missing={view.paying.missing} />}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-2xl">

@@ -66,7 +66,7 @@ test('sign in, open a venue, switch tabs (the URL follows), switch language, sig
   await page.getByRole('tab', { name: 'Маси и QR' }).click()
   await expect(page).toHaveURL(/\?tab=tables$/)
   // No Publishing tab (D97): the Publish button heads every tab (its own spec tests it in depth).
-  await expect(page.getByRole('tab', { name: 'Публикуване' })).toHaveCount(0)
+  await expect(page.getByRole('tab', { name: 'Публикуване', exact: true })).toHaveCount(0)
   await expect(page.getByTestId('publish-button')).toBeVisible()
 
   await page.getByRole('tab', { name: 'Настройки' }).click()

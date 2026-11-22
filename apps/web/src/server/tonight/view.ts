@@ -106,6 +106,8 @@ export interface ActionRow {
   readonly callKinds?: readonly CallWaiterKind[]
   /** The bills still open when the night ended, and when (`HH:mm`, #332): staff close them at the POS. */
   readonly nightEnd?: { readonly openBills: number; readonly at: string }
+  /** A table paused by the cap: the refused sent order's total and the cap, minor units (S10). */
+  readonly cap?: { readonly totalMinor: number; readonly capMinor: number }
 }
 
 /** What a money row asks: a payment question, or one of the alerts that only need acknowledging. */
@@ -227,6 +229,12 @@ export interface Can {
 }
 
 /** Everything the Tonight screen draws. */
+/** Phone ordering tonight where it is not running: when it starts, or that it does not (S4). */
+export type PhoneOrders =
+  | { readonly state: 'later'; readonly at: string }
+  | { readonly state: 'none' }
+  | null
+
 export interface TonightView {
   readonly venueId: string
   /** The POS' name for `{source}`. */
@@ -256,6 +264,12 @@ export interface TonightView {
    * ended it early. Null while the night is going on.
    */
   readonly nightEnd: { readonly at: string; readonly early: boolean } | null
+  /**
+   * Phone ordering tonight by the venue's service hours (S4): `later` with the hour it starts
+   * (`HH:mm`) while that is still to come, `none` on a night phones cannot order (a closed night,
+   * after last orders, or an opening with no hour); null while it runs and with no hours set.
+   */
+  readonly phoneOrders: PhoneOrders
   readonly banners: readonly PauseBanner[]
   /**
    * Why card payments in the app are stopped, for every role; null while they flow and while
@@ -399,6 +413,8 @@ export function buildTonightView(input: {
   readonly operator?: boolean
   /** A person's own short session is on this shared device: no write asks for a PIN (#324). */
   readonly remembered?: boolean
+  /** Phone ordering tonight by the service hours, where it is not running (S4). */
+  readonly phoneOrders?: PhoneOrders
   readonly now: Date
 }): TonightView {
   const { tonight, timezone } = input
@@ -539,6 +555,7 @@ export function buildTonightView(input: {
         table: labelOf.get(tableId) ?? '',
         numbered: numberedOf.has(tableId),
         at: pause.startedAt.toISOString(),
+        ...(pause.cap === undefined ? {} : { cap: pause.cap }),
       })
     } else raise(tableId, 'paused')
   }
@@ -725,6 +742,7 @@ export function buildTonightView(input: {
       holdsStaffRightsOnly(held),
     can,
     nightEnd: ended === null ? null : { at: clock(ended.at) ?? '', early: ended.early },
+    phoneOrders: input.phoneOrders ?? null,
     banners,
     paying:
       restro.length > 0

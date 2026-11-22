@@ -205,6 +205,8 @@ export type TablesErrorCode =
   | 'payment_table'
   /** The menu is not one of the venue's, or it is in the bin. */
   | 'unknown_menu'
+  /** A code change after 15 minutes: the password again (D122 §7); the tab asks for it. */
+  | 'sign_in_again'
   | 'failed'
 
 /** What an action answers. */

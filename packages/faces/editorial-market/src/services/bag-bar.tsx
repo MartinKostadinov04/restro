@@ -63,16 +63,22 @@ export function ServiceBar() {
   const { features, words, order } = o
   if (features.callWaiter === null && !features.ordering) return null
   const filled = orderBusy(o)
-  // The one line that says why a table closed for phones takes nothing (S10, P23): its "Add"
-  // buttons are greyed, and this is the only place the sentence is printed. After staff moved the
-  // party away it says where the bill stayed, and shows no amount (P22).
+  // The one line that says why a table closed for phones takes nothing (S10, P23): the menu shows
+  // read-only, with no Add and no waiter button (lane 3 S17, S19: a call is refused there too), and
+  // this is the only place the sentence is printed. After staff moved the party away it says where
+  // the bill stayed, and shows no amount (P22).
   const ordering = o.state.ordering ?? null
+  const tableClosed = ordering?.state === 'closed'
+  // A venue with calls but no ordering hides the waiter button here too, so it says why in the
+  // call's own words (lane 3 review).
   const closedText =
-    !features.ordering || ordering === null || ordering.state !== 'closed'
+    ordering === null || ordering.state !== 'closed'
       ? null
       : ordering.movedAway === true && o.tableLabel !== null && o.tableLabel.trim() !== ''
         ? words.billStayed(o.guest.table(o.tableLabel))
-        : orderingClosedText(ordering, words)
+        : features.ordering || ordering.retired === true
+          ? orderingClosedText(ordering, words)
+          : words.callTableNotOpen
   // While a sheet is open the bar is hidden, not removed: the button that opened the sheet gets the
   // focus back when it closes.
   return (
@@ -102,7 +108,7 @@ export function ServiceBar() {
         </div>
       ) : null}
       <div className="ro-bagbar" data-bag={filled ? 'true' : 'false'} hidden={o.sheet !== null}>
-        {features.callWaiter === null ? null : (
+        {features.callWaiter === null || tableClosed ? null : (
           <button
             type="button"
             className="ro-waiter"

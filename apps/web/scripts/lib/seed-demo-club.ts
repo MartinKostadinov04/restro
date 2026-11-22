@@ -333,10 +333,30 @@ async function seedFloor(
     reading: { complete: true, value: clubFloorReading(floor) },
     capabilities: DEMO_CAPABILITIES,
   })
-  await finishJobRun(pool, tenantId, run.id, { status: 'completed', venueId })
+  await finishJobRun(pool, tenantId, run.id, {
+    status: 'completed',
+    venueId,
+    // The counters the worker's floor read records, so the run reads as one in the history.
+    ...(applied.kind === 'applied'
+      ? {
+          counters: {
+            tables_listed: applied.listed,
+            tables_created: applied.tablesCreated,
+            tables_updated: applied.tablesUpdated,
+            tables_vanished: applied.vanished.length,
+            tables_returned: applied.returned.length,
+          },
+        }
+      : {}),
+  })
   if (applied.kind !== 'applied') {
     throw new Error(`the club's floor was not written: ${applied.kind}`)
   }
+  // The simulated POS has no login to check: its floor reading stands for the connection check
+  // (`apps/web/src/connectors/sim/server.ts`). This reading is the instance's last check, so
+  // Integrations never shows "Connected" beside "Last checked: Never" (screen round 2026-11-18,
+  // S6). Only our own database is written; no POS is asked (rule 7).
+  await updateIntegration(pool, tenantId, integrationId, { lastCheckedAt: new Date() })
 }
 
 /** The ported paper plan: the venue's spot kinds, the plan, and a spot per place on the floor. */

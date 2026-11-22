@@ -105,7 +105,7 @@ describe('the deleted venues', () => {
     const user = list()
     await user.click(within(items()[0] as HTMLElement).getByTestId('restore-venue'))
     await waitFor(() => expect(toasts.success).toHaveBeenCalledTimes(1))
-    expect(toasts.success.mock.calls[0]?.[0]).toContain('with its till linked again')
+    expect(toasts.success.mock.calls[0]?.[0]).toContain('linked again to its venue in the POS')
   })
 
   it('names the venue that holds the till when the restore is refused for it', async () => {
@@ -117,7 +117,7 @@ describe('the deleted venues', () => {
     const user = list()
     await user.click(within(items()[0] as HTMLElement).getByTestId('restore-venue'))
     expect((await screen.findByTestId('restore-error')).textContent).toBe(
-      'Not restored: the till venue it served is linked to “Roof Terrace” now.',
+      'Not restored: its venue in the POS is linked to “Roof Terrace” now.',
     )
     expect(items()).toHaveLength(2)
     expect(toasts.success).not.toHaveBeenCalled()
@@ -126,7 +126,7 @@ describe('the deleted venues', () => {
   it.each([
     ['not_allowed', 'Only an owner can restore a venue.'],
     ['invalid', 'This venue could not be found.'],
-    ['failed', 'Something went wrong. The venue was not restored, try again.'],
+    ['failed', "Restro couldn't restore the venue. Nothing changed; try again."],
   ] as const)('shows the answer %s and keeps the venue in the list', async (error, text) => {
     vi.mocked(restoreVenueAction).mockResolvedValue({ ok: false, error })
     const user = list()
@@ -141,7 +141,7 @@ describe('the deleted venues', () => {
     const user = list()
     await user.click(within(items()[0] as HTMLElement).getByTestId('restore-venue'))
     expect((await screen.findByTestId('restore-error')).textContent).toContain(
-      'Something went wrong',
+      'Nothing changed; try again',
     )
   })
 

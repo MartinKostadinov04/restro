@@ -53,12 +53,13 @@ const line = (kind: LogLineView['kind'], fields: Partial<LogLineView> = {}): Log
   cause: null,
   alertTitle: null,
   guard: null,
-  setting: 'setting',
+  setting: [],
   subject: null,
   heldCount: null,
   codeCount: null,
   amountMinor: null,
   paymentState: null,
+  paymentReason: null,
   paymentAnswer: null,
   provider: null,
   disputeState: null,
@@ -74,6 +75,21 @@ const line = (kind: LogLineView['kind'], fields: Partial<LogLineView> = {}): Log
   callUndone: false,
   ...fields,
 })
+
+/** Every word a changed setting can be named by (S15). */
+const SETTING_WORDS = [
+  'pay_table',
+  'hours',
+  'limits',
+  'location',
+  'calls',
+  'alerts',
+  'telegram',
+  'pay_rule',
+  'paying',
+  'payments',
+  'setting',
+] as const satisfies readonly LogLineView['setting'][number][]
 
 const SHOWN = (Object.keys(SENTENCES) as LogLineView['kind'][]).filter(
   (kind) => kind !== 'lease.taken_over' && kind !== 'payment.hold_unread',
@@ -123,7 +139,7 @@ describe("the Log's sentences", () => {
         }),
         line(kind, {
           guard: 'pin',
-          setting: 'pay_table',
+          setting: ['pay_table'],
           scope: { kind: 'connection', name: null },
           paymentAnswer: 'no_receipt',
         }),
@@ -134,6 +150,8 @@ describe("the Log's sentences", () => {
           paymentAnswer: 'receipt_printed',
         }),
         line(kind, { scope: { kind: 'table', name: null }, cause: 'unreachable', guard: 'other' }),
+        line(kind, { setting: [...SETTING_WORDS], paymentReason: 'table_freed' }),
+        line(kind, { paymentReason: 'release_refused' }),
       ]) {
         logSentence(variant, context('en', used))
         logSentence(variant, context('bg', used))
@@ -261,7 +279,7 @@ describe("the Log's sentences", () => {
     expect(logSentence(line('device.changed', { subject: 'Bar tablet' }), en)).toBe(
       'Device changed: Bar tablet',
     )
-    expect(logSentence(line('settings.changed', { setting: 'pay_table' }), en)).toBe(
+    expect(logSentence(line('settings.changed', { setting: ['pay_table'] }), en)).toBe(
       'Settings changed: a payment table',
     )
     expect(logSentence(line('guard.tripped', { guard: 'cap' }), en)).toBe(
@@ -362,6 +380,37 @@ describe('the sentences of refunds, stornos and disputes (#222)', () => {
     expect(en(line('spot.changed', { reservationStatus: 'seats' }))).toBe('Seats of a spot changed')
     expect(bgText(line('spot.changed', { reservationStatus: 'seats' }))).toBe(
       'Променени места на маса',
+    )
+  })
+})
+
+describe('the screen round lines (S15, S20)', () => {
+  const en = context('en', new Set())
+  const bgSay = context('bg', new Set())
+
+  it('names the settings that changed, not "a setting"', () => {
+    expect(logSentence(line('settings.changed', { setting: ['hours'] }), bgSay)).toBe(
+      'Променени настройки: часове за поръчки',
+    )
+    expect(logSentence(line('settings.changed', { setting: ['hours', 'limits'] }), en)).toBe(
+      'Settings changed: ordering hours, order limits',
+    )
+    expect(logSentence(line('settings.changed', { setting: [] }), en)).toBe(
+      'Settings changed: a setting',
+    )
+  })
+
+  it('words a freed payment table and a refused release, never a second charge', () => {
+    const charged = { ...en, paymentStates: { captured: 'captured' } }
+    const base = { paymentState: 'captured', amountMinor: 9500 }
+    expect(
+      logSentence(line('payment.state', { ...base, paymentReason: 'table_freed' }), charged),
+    ).toBe('Payment for Table 7: payment table freed')
+    expect(
+      logSentence(line('payment.state', { ...base, paymentReason: 'release_refused' }), charged),
+    ).toBe('Payment for Table 7: the release of the hold was refused')
+    expect(logSentence(line('payment.state', base), charged)).toBe(
+      'Payment for Table 7, €95.00: captured',
     )
   })
 })

@@ -88,6 +88,11 @@ const toast = (page: Page, text: string) =>
   page.locator('[data-sonner-toast]').filter({ hasText: text })
 const tile = (page: Page, name: string) =>
   page.locator(`[data-testid="table-tile"][aria-label^="${name}"]`)
+/** A closed table opens for phones from its sheet: the tile opens the sheet (S16). */
+async function openForPhones(page: Page, name: string): Promise<void> {
+  await tile(page, name).click()
+  await page.getByTestId('table-sheet').getByRole('button', { name: 'Open for phones' }).click()
+}
 
 let venueId = ''
 let owner: { context: BrowserContext; page: Page }
@@ -179,12 +184,12 @@ for (const width of [320, 390]) {
   })
 }
 
-test('a table nobody holds later opens in one tap, as Tonight always did', async () => {
+test('a table nobody holds later opens from its sheet, with no question in the way', async () => {
   const { page } = owner
   expect(await readTile(page, TABLE)).toBe('closed')
   // Иванова is booked on this table but her hour has passed, so there is nothing to warn about:
-  // the tap opens it, with no question in the way.
-  await tile(page, TABLE).click()
+  // "Open for phones" on its sheet opens it, with no question in the way.
+  await openForPhones(page, TABLE)
   await expect(toast(page, `${TABLE} is open for phones`)).toBeVisible()
   await expect(tile(page, TABLE)).toHaveAttribute('data-state', 'open')
   await expect(page.getByTestId('tonight-booked')).toHaveCount(0)
@@ -283,7 +288,7 @@ test('“New guests” is reached only as the answer to that question', async ()
   const { page } = owner
   // The waiter opens the table again, with yesterday's party gone, and its phones order.
   expect(await readTile(page, TABLE)).toBe('closed')
-  await tile(page, TABLE).click()
+  await openForPhones(page, TABLE)
   await expect(tile(page, TABLE)).toHaveAttribute('data-state', 'open')
   seed('round', '1')
 
@@ -308,7 +313,7 @@ test('a table open for phones that nobody ordered from is not busy, and seating 
   expect(await readTile(page, TABLE)).toBe('closed')
 
   // A waiter lets phones in ("Open all" does this for the whole house); nobody orders.
-  await tile(page, TABLE).click()
+  await openForPhones(page, TABLE)
   await expect(tile(page, TABLE)).toHaveAttribute('data-state', 'open')
   await openPlan(page)
   // Open for phones is not occupied (#419): only a party sitting makes a spot busy.

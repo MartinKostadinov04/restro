@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { unpublishVenueAction } from '@/server/venues-actions'
 import type { UnpublishVenueError } from '@/server/venues-result'
+import { useSignInAgain } from '@/settings/use-settings-run'
 
 interface UnpublishVenueProps {
   readonly venueId: string
@@ -60,6 +61,7 @@ function UnpublishVenueForm({
 }: UnpublishVenueProps & { readonly onClose: () => void }) {
   const t = useTranslations('venues.unpublish.dialog')
   const [pending, startTransition] = useTransition()
+  const again = useSignInAgain()
   const [error, setError] = useState<UnpublishVenueError | null>(null)
 
   function confirm() {
@@ -70,6 +72,10 @@ function UnpublishVenueForm({
         () => ({ ok: false, error: 'failed' }) as const,
       )
       if (!result.ok) {
+        if (result.error === 'sign_in_again') {
+          again.ask(confirm)
+          return
+        }
         setError(result.error)
         return
       }
@@ -81,6 +87,7 @@ function UnpublishVenueForm({
 
   return (
     <DialogContent data-testid="unpublish-venue-dialog">
+      {again.dialog}
       <DialogHeader>
         <DialogTitle>{t('title', { name: venueName })}</DialogTitle>
         <DialogDescription>{t('description')}</DialogDescription>
