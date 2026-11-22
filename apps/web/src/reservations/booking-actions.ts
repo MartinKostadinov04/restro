@@ -68,10 +68,11 @@ export function useBookingActions({
   const venueId = frame.venueId
 
   const noShow = useCallback(
-    (reservationId: string) =>
+    (reservationId: string, party: PartyName) =>
       run({
         id: `rv-noshow:${reservationId}`,
-        done: t('bk_noshow_done'),
+        // The toast names whom it marked, as every door write does (S21).
+        done: t('bk_noshow_done', { party }),
         act: () => noShowAction({ venueId, reservationId }),
         again: {
           label: t('p_undo'),

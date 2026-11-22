@@ -13,7 +13,7 @@
 //
 // Working the list is "working tonight's reservations" (`reservations.tonight`), so a shared
 // device asks for a PIN: it touches a guest's details, and the Log names who did (D141).
-import { UserPlusIcon } from 'lucide-react'
+import { ChevronRightIcon, EllipsisIcon, UserPlusIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -28,6 +28,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { WRAPS } from '@/lib/wrapping'
@@ -248,33 +254,53 @@ function GuestRow({
   onArchive: (archived: boolean) => void
 }) {
   const t = useTranslations('reservations')
+  const name = row.name ?? t('no_name')
+  // Opening the card is the row's tap; archiving is a secondary action of the row and sits under
+  // "…" (Patterns: the secondary actions of a row; R1), never as the one button on every line.
   return (
     <li className="flex items-center gap-2 p-2" data-testid="rv-g-row" data-guest={row.id}>
       <button
         type="button"
-        className="min-h-11 min-w-0 flex-1 rounded-md px-2 py-1 text-left hover:bg-accent focus-visible:outline-2"
+        className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-accent focus-visible:outline-2"
         data-testid="rv-g-open"
         onClick={onOpen}
       >
-        <span className="flex flex-wrap items-center gap-2">
-          <span className="font-medium [overflow-wrap:anywhere]">{row.name ?? t('no_name')}</span>
-          {row.regular ? <Badge variant="outline">{t('g_regular')}</Badge> : null}
-          {row.mine ? <Badge variant="secondary">{t('g_mine_badge')}</Badge> : null}
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="min-w-0 font-medium break-words">{name}</span>
+            {row.regular ? <Badge variant="outline">{t('g_regular')}</Badge> : null}
+            {row.mine ? <Badge variant="secondary">{t('g_mine_badge')}</Badge> : null}
+          </span>
+          {row.phone === null ? null : (
+            <span className="block text-sm text-muted-foreground tabular-nums">{row.phone}</span>
+          )}
         </span>
-        {row.phone === null ? null : (
-          <span className="block text-sm text-muted-foreground tabular-nums">{row.phone}</span>
-        )}
+        <ChevronRightIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
       </button>
       {mayWork ? (
-        <Button
-          type="button"
-          variant="outline"
-          className="shrink-0"
-          data-testid={row.archived ? 'rv-g-row-restore' : 'rv-g-row-archive'}
-          onClick={() => onArchive(!row.archived)}
-        >
-          {row.archived ? t('g_restore') : t('g_archive')}
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-11 shrink-0"
+              aria-label={t('bk_row_more', { party: name })}
+              data-testid="rv-g-row-more"
+            >
+              <EllipsisIcon aria-hidden />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              className="min-h-11"
+              data-testid={row.archived ? 'rv-g-row-restore' : 'rv-g-row-archive'}
+              onSelect={() => onArchive(!row.archived)}
+            >
+              {row.archived ? t('g_restore') : t('g_archive')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       ) : null}
     </li>
   )

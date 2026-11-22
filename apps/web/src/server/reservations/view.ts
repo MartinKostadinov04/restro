@@ -210,6 +210,8 @@ export interface RvHistoryView {
   readonly toState: string | null
   readonly reason: string | null
   readonly by: WhoView
+  /** The person reading wrote it: never "changed by" news to them (the sheet's stale notice). */
+  readonly mine: boolean
 }
 
 /** Everything about one reservation, for its sheet. */
@@ -317,6 +319,7 @@ export function rvDetailView(detail: ReservationDetail, timezone: string): RvDet
       toState: line.toState,
       reason: line.reason,
       by: whoView(line.who, line.via),
+      mine: line.mine,
     })),
   }
 }

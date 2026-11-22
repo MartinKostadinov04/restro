@@ -331,7 +331,8 @@ export function ReservationSheet({
   busy: boolean
   onEdit: (detail: RvDetailView) => void
   onCopy: (detail: RvDetailView) => void
-  onNoShow: (reservationId: string) => void
+  /** Marks the party as a no-show; the toast names it, so it comes with the reservation. */
+  onNoShow: (reservationId: string, party: string) => void
   /** Puts back one party the night's end closed (#332); the sheet reads it again when it worked. */
   onPutBack: (reservationId: string, party: PartyName, done: () => void) => void
   /** Calls the booking off; the sheet reads it again when it worked. */
@@ -376,7 +377,13 @@ export function ReservationSheet({
         setDetail(fresh)
         const newest = fresh?.history.at(-1)
         if (newest !== undefined) {
-          if (seen.current !== null && newest.seq > seen.current) setChangedBy(newest.by)
+          // Only somebody else's change is news: her own write already said itself in its toast,
+          // so a line she wrote never raises the notice (S18).
+          const theirs =
+            seen.current === null
+              ? undefined
+              : fresh?.history.findLast((line) => line.seq > (seen.current ?? 0) && !line.mine)
+          if (theirs !== undefined) setChangedBy(theirs.by)
           seen.current = newest.seq
         }
       },
@@ -430,7 +437,9 @@ export function ReservationSheet({
     onArrive !== null
   const maySeated = detail != null && !isBlock && status === 'seated'
   const mayGuests = maySeated && onGuests !== null
-  const mayFree = maySeated && onFree !== null
+  // Freeing returns the spots and does not end the party (D134), so a party that holds none has
+  // nothing to free (R4).
+  const mayFree = maySeated && onFree !== null && (detail?.row.spots.length ?? 0) > 0
   // A party still coming or already sitting changes tables; a block, a waiting line (it has no
   // table yet: seating it is the door's) and an ended party do not (#331).
   const mayChangeTables =
@@ -584,7 +593,7 @@ export function ReservationSheet({
               <DropdownMenuItem
                 className="min-h-11"
                 data-testid="rv-noshow"
-                onSelect={() => onNoShow(detail.row.id)}
+                onSelect={() => onNoShow(detail.row.id, detail.row.name ?? t('no_name'))}
               >
                 {t('bk_noshow')}
               </DropdownMenuItem>

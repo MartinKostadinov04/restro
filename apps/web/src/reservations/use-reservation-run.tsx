@@ -40,6 +40,21 @@ export function useRvFailureText() {
   )
 }
 
+/** What a write that worked reports: the reservation it made or changed, and what it did. */
+export type RvDoneDetails = Extract<RvWriteResult, { ok: true }>['details']
+
+/** The opposite write a toast offers. */
+export interface RvAgain {
+  readonly label: string
+  readonly done: string
+  readonly act: (pin?: string) => Promise<RvWriteResult>
+  /**
+   * A line to say instead of `done` when the answer carries something she must know (an undone
+   * arrival that came back without its spots): it stays until she closes it, never silent.
+   */
+  readonly notice?: (details: RvDoneDetails) => string | null
+}
+
 /**
  * The line said when a write that gives a party its spots back could not (C5 of the 11-18 screen
  * round, review of #479), chosen by the refusal the core kept (`spotsWhy`): "someone else took
@@ -51,7 +66,7 @@ export function useSpotsLostLine() {
   const failureText = useRvFailureText()
   return useCallback(
     (
-      details: Extract<RvWriteResult, { ok: true }>['details'],
+      details: RvDoneDetails,
       words: { readonly taken: string; readonly other: string },
     ): string | null => {
       if (details?.spotsLost !== true) return null
@@ -68,21 +83,19 @@ export interface RvRunSpec {
   /** A stable id built from the thing changed, so a second tap updates the same toast. */
   readonly id: string
   readonly act: (pin?: string) => Promise<RvWriteResult>
-  /** The toast after it worked. */
-  readonly done: string
+  /**
+   * The toast after it worked: one sentence, or one built from what the write reports, so a write
+   * that did two things (seated, and opened the table) still says both in its one toast (S21).
+   */
+  readonly done: string | ((details: RvDoneDetails) => string)
   /** Present when a shared device must name a person first. */
   readonly pin?: { readonly title: string; readonly body: string }
-  /** The write that puts it back, offered on the toast (lifting a block offers to block again). */
-  readonly again?: {
-    readonly label: string
-    readonly done: string
-    readonly act: (pin?: string) => Promise<RvWriteResult>
-    /**
-     * A line to say instead of `done` when the answer carries something she must know (an undone
-     * arrival that came back without its spots): it stays until she closes it, never silent.
-     */
-    readonly notice?: (details: Extract<RvWriteResult, { ok: true }>['details']) => string | null
-  }
+  /**
+   * The write that puts it back, offered on the toast (lifting a block offers to block again). It
+   * may be built from what the write reported — a walk-in's Undo needs the line it made — and is
+   * then left out where the report does not carry what it needs.
+   */
+  readonly again?: RvAgain | ((details: RvDoneDetails) => RvAgain | undefined)
   /**
    * This screen's own sentence for a refusal it can say more about, given the code and whatever
    * the service path sent with it; null falls back to the general wording.
@@ -92,7 +105,7 @@ export interface RvRunSpec {
     details: Readonly<Record<string, unknown>> | undefined,
   ) => string | null | Promise<string | null>
   /** It worked: the screen that asked closes its form, and reads again. */
-  readonly onDone?: (details: Extract<RvWriteResult, { ok: true }>['details']) => void
+  readonly onDone?: (details: RvDoneDetails) => void
   /** Read the plan again, whatever the answer was: the screen never keeps a guess. */
   readonly after?: () => void
 }
@@ -113,6 +126,7 @@ export function useReservationRun({ device }: { device: boolean }): {
   readonly busy: boolean
   readonly pinSheet: ReactNode
 } {
+  const t = useTranslations('reservations')
   const failureText = useRvFailureText()
   const [asking, setAsking] = useState<RvRunSpec | null>(null)
   const [busy, setBusy] = useState(false)
@@ -128,9 +142,18 @@ export function useReservationRun({ device }: { device: boolean }): {
   )
 
   const accept = useCallback(
-    (spec: RvRunSpec, who: string | undefined, pin: string | undefined) => {
-      const { again } = spec
-      toast.success(who === undefined ? spec.done : `${spec.done} · ${who}`, {
+    (spec: RvRunSpec, who: string | undefined, pin: string | undefined, details: RvDoneDetails) => {
+      // The write is done whatever its sentence does: a sentence that cannot be built from what
+      // the write reported says the plain one, and the Undo is then left off rather than guessed.
+      let done = typeof spec.done === 'string' ? spec.done : t('run_done')
+      let again: RvAgain | undefined
+      try {
+        if (typeof spec.done === 'function') done = spec.done(details)
+        again = typeof spec.again === 'function' ? spec.again(details) : spec.again
+      } catch (error) {
+        unstable_rethrow(error)
+      }
+      toast.success(who === undefined ? done : `${done} · ${who}`, {
         id: spec.id,
         duration: DONE_MS,
         ...(again === undefined
@@ -165,7 +188,7 @@ export function useReservationRun({ device }: { device: boolean }): {
             }),
       })
     },
-    [failureText],
+    [failureText, t],
   )
 
   const go = useCallback(
@@ -175,7 +198,7 @@ export function useReservationRun({ device }: { device: boolean }): {
       setBusy(false)
       spec.after?.()
       if (result.ok) {
-        accept(spec, result.who, pin)
+        accept(spec, result.who, pin, result.details)
         spec.onDone?.(result.details)
       }
       return result
