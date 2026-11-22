@@ -18,8 +18,21 @@ import type { ServiceCommand } from '../index'
 import { phoneKeyOf } from './guests'
 import { readGuestCard, readGuestList, readGuestSuggestions, readPrivateList } from './guests-read'
 
-const at = (day: number, hour: number, minute = 0) =>
-  new Date(Date.UTC(2026, 10, day, hour, minute, 0)).toISOString()
+/**
+ * A night this test books: `offset` days from today, never a fixed date. A booking for a night
+ * that has gone is refused `night_passed`, so fixed dates turn green tests red once the clock
+ * passes them (they did, on 2026-11-22). Each test keeps its own offsets, which is all the old
+ * November day numbers were doing.
+ */
+const night = (offset: number) => {
+  const date = new Date(Date.now() + offset * 24 * 60 * 60_000).toISOString().slice(0, 10)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return {
+    date,
+    /** That evening, as the venue works it: 21:00 to 23:00 UTC is one service day in Sofia. */
+    at: (hour: number, minute = 0) => `${date}T${pad(hour)}:${pad(minute)}:00.000Z`,
+  }
+}
 
 describe('phoneKeyOf: one key for one number, however it is written', () => {
   it('reads a national number in the venue country, and 00 as +', () => {
@@ -190,11 +203,13 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
   })
 
   it('keeps one guest for one number: two bookings written two ways link to one row', async () => {
-    const first = await book('2026-11-20', at(20, 21), 'T1', {
+    const one = night(1)
+    const two = night(2)
+    const first = await book(one.date, one.at(21), 'T1', {
       phone: '+359 887 555 001',
       guestName: 'Mira Ivanova',
     })
-    const second = await book('2026-11-21', at(21, 21), 'T1', {
+    const second = await book(two.date, two.at(21), 'T1', {
       phone: '0887 555 001',
       guestName: 'Mira',
     })
@@ -266,7 +281,8 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
 
   it('saves a booking’s guest to the regulars when the form’s tick says so, and needs a phone for it', async () => {
     const phone = freshPhone()
-    const id = await book('2026-11-22', at(22, 22), 'T2', {
+    const evening = night(3)
+    const id = await book(evening.date, evening.at(22), 'T2', {
       phone,
       guestName: 'Ana',
       saveAsRegular: true,
@@ -282,8 +298,8 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
       await run(
         {
           type: 'reservation.create',
-          serviceDate: '2026-11-22',
-          startsAt: at(22, 23),
+          serviceDate: evening.date,
+          startsAt: evening.at(23),
           kind: 'booking',
           status: 'reserved',
           partySize: 2,
@@ -373,7 +389,8 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
         staff(keeper),
       )
     }
-    const kept = await book('2026-11-23', at(23, 22), 'T4', {
+    const evening = night(4)
+    const kept = await book(evening.date, evening.at(22), 'T4', {
       phone,
       guestName: 'Elena',
       note: 'birthday, cake at midnight',
@@ -477,9 +494,16 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
 
   it('counts came and did-not-come from this venue’s nights, and never adds them up', async () => {
     const phone = freshPhone()
-    const first = await book('2026-11-24', at(24, 21), 'T1', { phone, guestName: 'Kalin' })
-    const second = await book('2026-11-25', at(25, 21), 'T1', { phone, guestName: 'Kalin' })
-    await book('2026-11-26', at(26, 21), 'T1', { phone, guestName: 'Kalin' })
+    const nights = [night(5), night(6), night(7)] as const
+    const first = await book(nights[0].date, nights[0].at(21), 'T1', {
+      phone,
+      guestName: 'Kalin',
+    })
+    const second = await book(nights[1].date, nights[1].at(21), 'T1', {
+      phone,
+      guestName: 'Kalin',
+    })
+    await book(nights[2].date, nights[2].at(21), 'T1', { phone, guestName: 'Kalin' })
     // Seating is #329's; the counts only read the state, so the test sets it as the night left it.
     await world.owner.query(`update restro.reservations set status = 'finished' where id = $1`, [
       first,
@@ -537,13 +561,12 @@ describe.skipIf(!hasDatabase)('guests and regulars (as the restro_app role)', ()
           { type: 'guest.save', guestId, email: `x${email}` } as ServiceCommand,
           staff(hostessId),
         )
-        const day = 1 + (counter % 27)
-        await book(
-          `2026-12-${String(day).padStart(2, '0')}`,
-          new Date(Date.UTC(2026, 11, day, 20, 0, 0)).toISOString(),
-          'T3',
-          { phone, guestName: 'Prop', saveAsRegular: !regular },
-        )
+        const evening = night(8 + (counter % 27))
+        await book(evening.date, evening.at(20), 'T3', {
+          phone,
+          guestName: 'Prop',
+          saveAsRegular: !regular,
+        })
         const text = (await logText()).join('\n')
         for (const key of contact.phones) expect(text).not.toContain(national(key))
         for (const known of contact.emails) expect(text).not.toContain(known)
