@@ -231,7 +231,11 @@ export async function executeCommand(
           : definition.quickOnSharedDevice === true
       const grants = await resolveGrants(tx, context.tenantId, venue.id, context.actor, { quick })
       if (!grants.ok) throw new Refusal(refused(actionId, grants.code))
-      if (needed !== null && !grants.permissions.has(needed)) {
+      const permitted =
+        needed === null ||
+        grants.permissions.has(needed) ||
+        (definition.alsoPermittedBy ?? []).some((wider) => grants.permissions.has(wider))
+      if (!permitted) {
         // A reservation action the venue put on one tap, from a device with nobody on it: the
         // device's own account holds only what Staff hold, and two of D141's taps (seating a
         // walk-in, changing the guest count) are the booking book's permission. So the door is

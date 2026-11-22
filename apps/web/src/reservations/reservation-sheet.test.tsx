@@ -4,6 +4,7 @@
 // said itself in its toast, so a line she wrote — on her own sign-in, or as the person a shared
 // device remembers, which the read marks `mine` — never raises the notice.
 import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { reservationDetailAction } from '@/server/reservations/actions'
@@ -187,5 +188,54 @@ describe('the sheet, for a party sitting down', () => {
     await openSeated([])
     await waitFor(() => expect(screen.getByText('None yet')).toBeTruthy())
     expect(screen.queryByTestId('rv-more')).toBeNull()
+  })
+})
+
+describe('the sheet, on a colleague’s booking', () => {
+  // The buttons are the ones the server lets the role run (S20 of the 11-18 screen round):
+  // editing and cancelling take tonight's key or the booking book's; deleting another's booking
+  // takes the booking book's alone.
+  async function openTheirs(can: { tonight: boolean; manage: boolean }) {
+    const roleFrame = { ...frame, can: { ...frame.can, ...can } }
+    vi.mocked(reservationDetailAction).mockResolvedValue({
+      ok: true,
+      frame: roleFrame,
+      detail: { ...detail([]), mine: false },
+    })
+    renderWithIntl(
+      <ReservationSheet
+        frame={roleFrame}
+        reservationId="rv_one"
+        writable
+        busy={false}
+        onEdit={vi.fn()}
+        onCopy={vi.fn()}
+        onNoShow={vi.fn()}
+        onPutBack={vi.fn()}
+        onCancel={vi.fn()}
+        onDelete={vi.fn()}
+        onArrive={null}
+        onGuests={null}
+        onFree={null}
+        onChangeTables={null}
+        onPayRule={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    )
+    await waitFor(() => expect(screen.getByTestId('rv-edit')).toBeTruthy())
+    expect(screen.getByTestId('rv-cancel')).toBeTruthy()
+  }
+
+  it('lets the booking book’s key alone edit, cancel and delete it', async () => {
+    await openTheirs({ tonight: false, manage: true })
+    await userEvent.setup().click(screen.getByTestId('rv-more'))
+    expect(await screen.findByTestId('rv-delete')).toBeTruthy()
+  })
+
+  it('lets tonight’s key alone edit and cancel it, and not delete it', async () => {
+    await openTheirs({ tonight: true, manage: false })
+    await userEvent.setup().click(screen.getByTestId('rv-more'))
+    expect(await screen.findByTestId('rv-copy-open')).toBeTruthy()
+    expect(screen.queryByTestId('rv-delete')).toBeNull()
   })
 })
