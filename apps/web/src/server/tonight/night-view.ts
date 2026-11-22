@@ -338,6 +338,74 @@ const CAUSE_WORDS: Readonly<Record<string, CauseWord>> = {
   pos_unreachable: 'unreachable',
 }
 
+/** The words of a changed setting (`lg_w_*`, S15): which part of the settings it was. */
+export type SettingWord =
+  | 'pay_table'
+  | 'hours'
+  | 'limits'
+  | 'location'
+  | 'calls'
+  | 'alerts'
+  | 'telegram'
+  | 'pay_rule'
+  | 'paying'
+  | 'payments'
+  | 'setting'
+
+/** The part of the ordering settings each key belongs to, as Settings groups them. */
+const ORDERING_KEY_WORDS: Readonly<Record<string, SettingWord>> = {
+  serviceHours: 'hours',
+  closedDayHours: 'hours',
+  preOpeningCheck: 'hours',
+  capMinor: 'limits',
+  pacePer15Minutes: 'limits',
+  locationCheck: 'location',
+  spot: 'location',
+  radiusMetres: 'location',
+  passMinutes: 'location',
+  callLapseMinutes: 'calls',
+  alertRecipientUserIds: 'alerts',
+  telegramChatId: 'telegram',
+}
+
+/** The word of each `settings.changed` reason that names one part whatever its keys. */
+const SETTING_REASON_WORDS: Readonly<Record<string, SettingWord>> = {
+  payment_table: 'pay_table',
+  telegram_linked: 'telegram',
+  telegram_left: 'telegram',
+  pay_first: 'pay_rule',
+  paying: 'paying',
+  payments_connect: 'payments',
+  payments_connected: 'payments',
+  payments_disconnect: 'payments',
+  payments_check: 'payments',
+  payments_lost: 'payments',
+}
+
+/**
+ * The word of a reason whose entry keeps its keys, for an entry that kept none (written before
+ * keys were kept): the alerts form saves recipients and the Telegram chat, so its keys say which.
+ */
+const KEYED_REASON_WORDS: Readonly<Record<string, SettingWord>> = {
+  alerts: 'alerts',
+  telegram_unlinked: 'telegram',
+}
+
+/**
+ * Which settings a `settings.changed` line changed, by the part of Settings they sit in (S15): the
+ * reason where it names one part, else the keys the entry kept, each by its part. A key with no
+ * part of its own adds "a setting" after the named ones, so nothing changed goes unsaid. An entry
+ * with no keys says its reason's part, or "a setting".
+ */
+export function settingWordsOf(reason: string | null, keys: readonly string[]): SettingWord[] {
+  const named = SETTING_REASON_WORDS[reason ?? '']
+  if (named !== undefined) return [named]
+  if (keys.length === 0) return [KEYED_REASON_WORDS[reason ?? ''] ?? 'setting']
+  const words = [...new Set(keys.flatMap((key) => ORDERING_KEY_WORDS[key] ?? []))]
+  const unnamed = keys.some((key) => ORDERING_KEY_WORDS[key] === undefined)
+  return unnamed ? [...words, 'setting'] : words
+}
+
 /** The words of a guard (`lg_g_*`). */
 export type GuardWord = 'cap' | 'pace' | 'rate' | 'pin' | 'other'
 
@@ -367,7 +435,8 @@ export interface LogLineView {
   /** The alert's own title, in the admin's language. */
   readonly alertTitle: string | null
   readonly guard: GuardWord | null
-  readonly setting: 'pay_table' | 'setting'
+  /** Which settings a `settings.changed` line changed, as words (S15); empty for other lines. */
+  readonly setting: readonly SettingWord[]
   readonly subject: string | null
   /** What a role holds now, as a count (#366): the Log line says it in words. */
   readonly heldCount: number | null
@@ -376,6 +445,11 @@ export interface LogLineView {
   readonly amountMinor: number | null
   /** Part 2's payment state word key (empty until #115 fills `PAYMENT_STATE_WORDS`). */
   readonly paymentState: string | null
+  /**
+   * Why a payment step was logged where it is not a new state of the money (S20): the payment
+   * table freed after the charge, or the hold's release refused. Null for every other line.
+   */
+  readonly paymentReason: 'table_freed' | 'release_refused' | null
   /** The answer a manager gave, by its own words: never a receipt word for a till answer. */
   readonly paymentAnswer: PaymentAnswerCode | null
   /** The payment a line is about, for its sheet. */
@@ -498,12 +572,17 @@ export function logLineView(
         ).title
       : null,
     guard: line.kind === 'guard.tripped' ? (GUARD_WORDS[line.reason ?? ''] ?? 'other') : null,
-    setting: line.reason === 'payment_table' ? 'pay_table' : 'setting',
+    setting: line.kind === 'settings.changed' ? settingWordsOf(line.reason, line.settingKeys) : [],
     subject: line.subject,
     heldCount: line.heldCount,
     codeCount: line.codeCount,
     amountMinor: line.amountMinor,
     paymentState: line.kind === 'payment.state' ? line.toState : null,
+    paymentReason:
+      line.kind === 'payment.state' &&
+      (line.reason === 'table_freed' || line.reason === 'release_refused')
+        ? line.reason
+        : null,
     paymentAnswer: line.kind === 'payment.answered' ? answerCodeOf(line.toState) : null,
     paymentId: line.paymentId,
     provider: providerDisplayName(line.providerKind),
@@ -577,6 +656,8 @@ export interface NightView {
   readonly today: boolean
   readonly hasService: boolean
   readonly dayEndsAt: string
+  /** Staff ended this night: the page offers no "End the night" (S13). */
+  readonly ended: boolean
   readonly full: boolean
   readonly days: readonly string[]
   /** Section 1: problems that still wait for an answer, as screen 1's rows. */
@@ -617,6 +698,7 @@ export function nightView(night: NightRead, timezone: string): NightView {
     today: night.today,
     hasService: night.hasService,
     dayEndsAt: night.dayEndsAt,
+    ended: night.ended,
     full: night.full,
     days: night.days,
     fix: night.fix.filter((row) => row.answer === null).map((row) => fixRow(row, clock)),
