@@ -20,13 +20,11 @@ export interface ResolveContext {
   readonly edition?: readonly string[]
   /** The menu's enabled languages; the first is the default language (V3). */
   readonly locales: readonly Locale[]
-  /** The resolution time (ISO 8601 with offset); only the `new` badge reads it. */
-  readonly now: string
   /**
-   * When each item was first published (ISO 8601), from the publisher's history. Without an
-   * entry an item never gets the `new` badge: the document itself holds no publish dates.
+   * The resolution time (ISO 8601 with offset). It is checked for validity, but no rule reads
+   * it since Restro stopped adding the `new` badge itself (D152).
    */
-  readonly firstPublishedAt?: Readonly<Record<NodeId, string>>
+  readonly now: string
 }
 
 /**
@@ -132,7 +130,7 @@ export interface ComputedItemFields {
   readonly orderable: boolean
   /** Price plus the cheapest choice of every required modifier group, when that differs. */
   readonly priceFrom: Money | null
-  /** `new` (first published under 14 days ago), then dietary labels and tags. */
+  /** The dietary labels and tags the composer set. Restro adds none of its own (D152). */
   readonly badges: readonly string[]
 }
 
