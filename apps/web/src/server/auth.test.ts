@@ -148,6 +148,7 @@ describe.skipIf(!hasDatabase)('organisation = tenant (Better Auth over the app r
     '/api/auth/organization/create',
     '/api/auth/organization/invite-member',
     '/api/auth/organization/remove-member',
+    '/api/auth/organization/set-active',
     '/api/auth/delete-user',
     '/api/auth/update-user',
   ])('does not answer %s over HTTP', async (path) => {
