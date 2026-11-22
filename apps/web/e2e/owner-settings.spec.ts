@@ -263,9 +263,12 @@ test('from 1280 px the section row starts at its first tab and reaches its last 
   const tabs = list.getByRole('tab')
   // Labels longer than any today (a longer wording tipped the row 59 px past a 1280 px page when
   // a container above it lacked min-w-0): the row scrolls inside itself, the page does not widen.
-  // Each module's row holds its own few sections (D156), so every label is stretched to overflow it.
+  // Each module's row holds its own few sections (D156), so every label after the first (checked
+  // below) is stretched to overflow it.
   await tabs.evaluateAll((all) => {
-    for (const tab of all) tab.append(' Синхронизиране и публикуване на менюто и настройките му')
+    for (const tab of all.slice(1)) {
+      tab.append(' Синхронизиране и публикуване на менюто и настройките му')
+    }
   })
   const row = await list.evaluate((element) => ({
     scrollWidth: element.scrollWidth,
