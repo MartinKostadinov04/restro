@@ -499,6 +499,7 @@ describe('the screen round Log lines (S15, S20)', () => {
     expect(changed('ordering', ['capMinor', 'spot'])).toEqual(['limits', 'location'])
     expect(changed('payment_table')).toEqual(['pay_table'])
     expect(changed('pay_first')).toEqual(['pay_rule'])
+    expect(changed('refund_route')).toEqual(['refunds'])
     expect(changed('telegram_linked')).toEqual(['telegram'])
     expect(changed('ordering')).toEqual(['setting'])
     expect(settingWordsOf(null, ['unknownKey'])).toEqual(['setting'])

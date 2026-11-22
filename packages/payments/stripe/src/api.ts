@@ -71,6 +71,8 @@ export const RefundSchema = z.looseObject({
   amount: z.int(),
   /** "`pending`, `requires_action`, `succeeded`, `failed`, or `canceled`"; nullable. */
   status: z.string().nullish(),
+  /** Our refund row on a refund Restro made (`refundLine`); none on a dashboard refund. */
+  metadata: z.record(z.string(), z.string()).nullish(),
 })
 export type StripeRefund = z.output<typeof RefundSchema>
 

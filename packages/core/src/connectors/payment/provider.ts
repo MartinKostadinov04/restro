@@ -6,9 +6,10 @@
 //
 // Every provider id crosses inside a `ProviderRef` (rule 3); money is whole minor units (rule 8);
 // a timeout is `unknown` and is read back by our payment id (D125 3.9); a partial reading
-// concludes nothing. Only `capture` moves money. There is no refund (D125 3.5, D127 4.4): a
-// refund or a dispute is only read back, after a notice (`readNoticeSubject`, #108; `readRefunds`,
-// #261).
+// concludes nothing. Only `capture` and `refundLine` move money. The one refund Restro makes is
+// `refundLine` (the 11-18 refund decision, 148): a line staff mark "Not served", called only by the
+// worker's refund job. Every other refund or dispute is the venue's own, only read back after a
+// notice (`readNoticeSubject`, #108; `readRefunds`, #261).
 
 import type { PaymentId } from '../../ids'
 import type { EmptyResult, Reading, WriteOutcome } from '../service/schemas'
@@ -24,6 +25,7 @@ import type {
   ProviderNotice,
   ProviderPayment,
   ProviderRefund,
+  RefundLineRequest,
   ReleaseRequest,
   StartConnectionRequest,
   StartConnectionResult,
@@ -44,16 +46,18 @@ export const PAYMENT_PROVIDER_STEPS = [
   'readRefunds',
   'capture',
   'release',
+  'refundLine',
 ] as const
 export type PaymentProviderStep = (typeof PAYMENT_PROVIDER_STEPS)[number]
 
-/** The steps that change something at the provider; only `capture` moves money. */
+/** The steps that change something at the provider; only `capture` and `refundLine` move money. */
 export const PAYMENT_WRITE_STEPS: readonly PaymentProviderStep[] = [
   'startConnection',
   'prepareDomain',
   'createHold',
   'capture',
   'release',
+  'refundLine',
 ]
 
 export interface PaymentProvider {
@@ -104,6 +108,14 @@ export interface PaymentProvider {
   capture(request: CaptureRequest): Promise<PaymentWriteOutcome<ProviderPayment>>
   /** Release a payment that is not captured, idempotent by key; nothing moves. */
   release(request: ReleaseRequest): Promise<PaymentWriteOutcome<ProviderPayment>>
+  /**
+   * Refund part of a payment Restro captured, once, idempotent by key (the refund decision, 148):
+   * the second step that moves money, and the only refund Restro makes. It refunds only a payment
+   * Restro made and captured, never more than is left of it, to the card it came from. The answer
+   * is the refund as the provider made it; it is "refunded" for the guest only once
+   * `readRefunds` lists it (D72: no local success).
+   */
+  refundLine(request: RefundLineRequest): Promise<PaymentWriteOutcome<ProviderRefund>>
 }
 
 /**

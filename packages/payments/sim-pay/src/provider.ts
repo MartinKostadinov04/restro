@@ -11,6 +11,7 @@ import {
   PrepareDomainRequestSchema,
   ProviderNoticeSchema,
   ProviderRefSchema,
+  RefundLineRequestSchema,
   ReleaseRequestSchema,
   StartConnectionRequestSchema,
 } from '@restro/core'
@@ -38,6 +39,7 @@ export function createSimPayProvider(options: SimPayProviderOptions): PaymentPro
       partialCapture: switches.partialCapture,
       wallets: switches.wallets,
       refundNotices: switches.refundNotices,
+      lineRefund: switches.lineRefund,
       minimumMinor: (currency) => switches.minimumMinor[currency],
     },
     startConnection: async (request) =>
@@ -60,5 +62,14 @@ export function createSimPayProvider(options: SimPayProviderOptions): PaymentPro
       engine.readRefunds(ProviderRefSchema.parse(accountRef), ProviderRefSchema.parse(paymentRef)),
     capture: async (request) => engine.capture(CaptureRequestSchema.parse(request)),
     release: async (request) => engine.release(ReleaseRequestSchema.parse(request)),
+    refundLine: async (request) => {
+      if (!switches.lineRefund) {
+        return {
+          kind: 'refused',
+          refusal: { code: 'not_supported', scope: 'payment', detail: null },
+        }
+      }
+      return engine.giveBackLine(RefundLineRequestSchema.parse(request))
+    },
   }
 }

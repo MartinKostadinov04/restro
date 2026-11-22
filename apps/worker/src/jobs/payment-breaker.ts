@@ -309,5 +309,7 @@ export function watchedProvider(
     readRefunds: watch(provider.readRefunds.bind(provider), read),
     capture: watch(provider.capture.bind(provider), wrote),
     release: watch(provider.release.bind(provider), wrote),
+    // Passed through, never fed to the breaker: a refund key that fails must not pause paying (148).
+    refundLine: provider.refundLine.bind(provider),
   }
 }

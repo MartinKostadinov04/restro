@@ -92,6 +92,8 @@ export interface ObservedRefund {
   readonly ref: string
   readonly amountMinor: number
   readonly failed: boolean
+  /** Our refund row stamped on a refund Restro made (`refundLine`); none on the venue's own. */
+  readonly restroRefundId?: string | undefined
 }
 
 /** What the provider says was refunded: its refunds that did not fail. */
@@ -136,6 +138,10 @@ export async function reconcileRefunds(
   readonly failed: number
   readonly named: number
   readonly unmatched: number
+  /** Restro's own refunds the provider's list now shows (a line refund read back). */
+  readonly confirmed: number
+  /** Refunds that carry our stamp and have no row of ours: made with Restro's key, not by Restro. */
+  readonly stray: number
 }> {
   const { payment } = locked
   const rows = await stx.tx
@@ -150,12 +156,36 @@ export async function reconcileRefunds(
   for (const row of rows) {
     if (row.providerRefundRef !== null) byRef.set(row.providerRefundRef, row)
     if (row.failedAt !== null) continue
+    // A refund Restro sent that has no provider id yet is not in the provider's total.
+    if (row.origin === 'line' && row.providerRefundRef === null) continue
     rowsMinor = addMinor(rowsMinor, row.amountMinor)
     if (row.providerRefundRef !== null) recorded = lessMinor(recorded, row.amountMinor)
   }
 
   let named = 0
-  const unnamed = rows.filter((row) => row.providerRefundRef === null && row.failedAt === null)
+  // A refund Restro made carries its row's id: the row is named by it even when the answer of the
+  // call was lost, and never by an amount.
+  for (const refund of refunds) {
+    if (refund.restroRefundId === undefined || byRef.has(refund.ref)) continue
+    const row = rows.find((r) => r.id === refund.restroRefundId && r.origin === 'line')
+    if (
+      row === undefined ||
+      row.providerRefundRef !== null ||
+      row.amountMinor !== refund.amountMinor
+    ) {
+      continue
+    }
+    await stx.tx
+      .update(paymentRefunds)
+      .set({ providerRefundRef: refund.ref, ...stx.provenance, updatedAt: sql`now()` })
+      .where(eq(paymentRefunds.id, row.id))
+    row.providerRefundRef = refund.ref
+    byRef.set(refund.ref, row)
+    named += 1
+  }
+  const unnamed = rows.filter(
+    (row) => row.providerRefundRef === null && row.failedAt === null && row.origin === 'provider',
+  )
   const activeFirst = [...refunds.filter((r) => !r.failed), ...refunds.filter((r) => r.failed)]
   for (const refund of activeFirst) {
     if (byRef.has(refund.ref)) continue
@@ -175,10 +205,13 @@ export async function reconcileRefunds(
   let added = 0
   let failed = 0
   let unmatched = 0
+  let confirmed = 0
+  let stray = 0
   for (const refund of refunds) {
     const row = byRef.get(refund.ref)
     if (row === undefined) {
       if (refund.failed) continue
+      if (refund.restroRefundId !== undefined) stray += 1
       if (refund.amountMinor <= recorded) {
         recorded = subtractMinor(recorded, refund.amountMinor)
         continue
@@ -190,6 +223,15 @@ export async function reconcileRefunds(
       await markRefundFailed(stx, locked, row)
       rowsMinor = subtractMinor(rowsMinor, row.amountMinor)
       failed += 1
+    } else if (
+      !refund.failed &&
+      row.failedAt === null &&
+      row.origin === 'line' &&
+      row.confirmedAt === null
+    ) {
+      // Read back: only now is the refund "refunded" for the guest (D72).
+      await confirmRefund(stx, locked, row)
+      confirmed += 1
     } else if (!refund.failed && row.failedAt !== null) {
       // Back after failing: not documented, and the row stays marked. The total counts it, so it
       // must not count as `recorded` for a later refund.
@@ -198,7 +240,28 @@ export async function reconcileRefunds(
     }
   }
   if (rowsMinor > totalMinor) unmatched += 1
-  return { added, failed, named, unmatched }
+  return { added, failed, named, unmatched, confirmed, stray }
+}
+
+/** A refund Restro sent, read back in the provider's list and not failed: its row is confirmed. */
+async function confirmRefund(stx: ServiceTx, locked: Locked, row: RefundRow): Promise<void> {
+  const { payment } = locked
+  await stx.tx
+    .update(paymentRefunds)
+    .set({ confirmedAt: sql`now()`, ...stx.provenance, updatedAt: sql`now()` })
+    .where(eq(paymentRefunds.id, row.id))
+  await stx.log({
+    kind: 'payment.refund_sent',
+    paymentId: payment.id,
+    tableId: payment.tableId,
+    sittingId: payment.sittingId,
+    toState: 'confirmed',
+    details: {
+      refundId: row.id,
+      amountMinor: row.amountMinor,
+      providerKind: payment.providerKind,
+    },
+  })
 }
 
 /** A refund the provider says did not go through: its row is marked and its alert closes. */
@@ -246,7 +309,18 @@ async function addRefundRow(stx: ServiceTx, locked: Locked, refund: ObservedRefu
     toState: 'seen',
     details: { refundId: id, amountMinor: refund.amountMinor, providerKind: payment.providerKind },
   })
-  // The group is told once, with the table and the payment's day and no amount (decision log 5.8).
+  await insertRefundAlert(stx, payment, id)
+}
+
+/**
+ * The venue's group is told once, with the table and the payment's day and no amount (decision log
+ * 5.8): the storno itself is the to-do read from the refund row.
+ */
+export async function insertRefundAlert(
+  stx: ServiceTx,
+  payment: Locked['payment'],
+  refundId: string,
+): Promise<void> {
   await stx.tx.insert(alerts).values({
     id: newId('al'),
     tenantId: stx.tenantId,
@@ -258,7 +332,7 @@ async function addRefundRow(stx: ServiceTx, locked: Locked, refund: ObservedRefu
     permission: FOLLOW_UP_ALERT_PERMISSION,
     details: {
       paymentId: payment.id,
-      refundId: id,
+      refundId,
       tableId: payment.tableId,
       paymentDate: payment.serviceDate,
       providerKind: payment.providerKind,

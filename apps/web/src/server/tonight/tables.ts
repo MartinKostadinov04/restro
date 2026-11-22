@@ -55,6 +55,12 @@ export type TableCommand =
   | { readonly type: 'waiter_call.undone'; readonly waiterCallId: string; readonly undo: UndoToken }
   | { readonly type: 'receipt.brought'; readonly paymentId: string }
   | { readonly type: 'receipt.unbrought'; readonly paymentId: string; readonly undo?: UndoToken }
+  | {
+      readonly type: 'payment.refund_line'
+      readonly paymentId: string
+      readonly position: number
+      readonly quantity?: string
+    }
   | { readonly type: 'payment.storno_done'; readonly refundId: string }
   | { readonly type: 'payment.storno_undo'; readonly refundId: string; readonly undo: UndoToken }
   | { readonly type: 'payment.refund_failed_seen'; readonly refundId: string }

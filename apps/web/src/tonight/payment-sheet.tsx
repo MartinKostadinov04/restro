@@ -26,6 +26,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { notServedAction } from '@/server/tonight/actions'
 import type { Frame } from '@/server/tonight/night-view'
 import { paymentDetailAction } from '@/server/tonight/payment-actions'
 import type { PaymentDetailView } from '@/server/tonight/payment-view'
@@ -35,13 +36,131 @@ import { DisputeEvidence } from './dispute-evidence'
 import { useMoney } from './money'
 import { PAYMENT_ANSWER_WORDS, PAYMENT_STATE_WORDS, releaseReasonWord } from './payment-state-words'
 import { READ_FAILED, readAttempt } from './read-attempt'
+import { useOptionalTonightRun } from './run'
 import { ReadFailed } from './tab-parts'
 import { useTableName } from './table-name'
 import { useWho } from './who'
 
-type SheetFrame = Pick<Frame, 'venueId' | 'currency'>
+/**
+ * What the sheet needs of the screen: `can` and `device` decide whether "Not served" is offered and
+ * whether the person's PIN is asked (a shared device); a caller that gives neither shows none.
+ */
+type SheetFrame = Pick<Frame, 'venueId' | 'currency'> & Partial<Pick<Frame, 'can' | 'device'>>
 
-function Body({ detail, frame }: { detail: PaymentDetailView; frame: SheetFrame }) {
+/**
+ * "Not served" on a paid line (the 11-18 refund decision, 148): the line's refund is asked once and
+ * its state is told in the words of what is true: "being sent" until the provider's list shows it,
+ * then "refunded" (D72: no local success). A person on their own phone confirms in the sheet; a
+ * shared device asks the person's own PIN, which is the confirmation.
+ */
+function NotServed({
+  detail,
+  line,
+  frame,
+  onChanged,
+}: {
+  detail: PaymentDetailView
+  line: PaymentDetailView['lines'][number]
+  frame: SheetFrame
+  onChanged: () => void
+}) {
+  const t = useTranslations('tonight')
+  const money = useMoney()
+  const runner = useOptionalTonightRun()
+  const [confirming, setConfirming] = useState(false)
+  const { refund, position, closedMinor } = line
+  if (refund?.state === 'sending')
+    return <span className="text-muted-foreground">{t('py_refund_sending')}</span>
+  if (refund?.state === 'refunded') {
+    return (
+      <span className="text-muted-foreground">
+        {t('py_refund_done', { amt: money(refund.amountMinor, frame.currency) })}
+      </span>
+    )
+  }
+  const failed = refund?.state === 'failed'
+  const offered =
+    runner !== null &&
+    frame.can?.answer === true &&
+    detail.row.state === 'captured' &&
+    detail.refundRouteOff !== true &&
+    position !== undefined &&
+    closedMinor !== undefined &&
+    closedMinor !== null
+  if (!offered) {
+    return failed ? <span className="text-destructive">{t('py_refund_none')}</span> : null
+  }
+  const amt = money(closedMinor, frame.currency)
+  const ask = () => {
+    runner.run({
+      id: `refund:${detail.row.id}:${position}`,
+      ...(frame.device === true
+        ? {
+            pin: {
+              level: 'own' as const,
+              title: t('py_not_served_title'),
+              body: t('py_not_served_body', { qty: Number(line.quantity), name: line.name, amt }),
+              // Money goes back on this tap: the sheet confirms it, a remembered person or not.
+              confirm: true,
+            },
+          }
+        : {}),
+      act: async (pin) => {
+        const result = await notServedAction({
+          venueId: frame.venueId,
+          paymentId: detail.row.id,
+          position,
+          pin,
+        })
+        onChanged()
+        return result
+      },
+      done: t('py_refund_sending'),
+    })
+    setConfirming(false)
+  }
+  return (
+    <span className="flex flex-wrap items-center justify-end gap-2">
+      {failed ? <span className="text-destructive">{t('py_refund_none')}</span> : null}
+      {confirming && frame.device !== true ? (
+        <>
+          <Button
+            type="button"
+            size="sm"
+            variant="destructive"
+            onClick={ask}
+            data-testid="not-served-yes"
+          >
+            {t('py_not_served_yes', { amt })}
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => setConfirming(false)}>
+            {t('py_not_served_no')}
+          </Button>
+        </>
+      ) : (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={frame.device === true ? ask : () => setConfirming(true)}
+          data-testid="not-served"
+        >
+          {t('py_not_served')}
+        </Button>
+      )}
+    </span>
+  )
+}
+
+function Body({
+  detail,
+  frame,
+  onChanged,
+}: {
+  detail: PaymentDetailView
+  frame: SheetFrame
+  onChanged: () => void
+}) {
   const t = useTranslations('tonight')
   const money = useMoney()
   const who = useWho()
@@ -74,13 +193,18 @@ function Body({ detail, frame }: { detail: PaymentDetailView; frame: SheetFrame 
           <ul className="space-y-1" data-testid="payment-lines">
             {detail.lines.map((line, index) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: the lines of a fixed list
-              <li key={index} className="flex justify-between gap-3 [overflow-wrap:anywhere]">
-                <span>
-                  {Number(line.quantity)} × {line.name}
-                </span>
-                <span className="shrink-0 tabular-nums">
-                  {money(line.amountMinor, frame.currency)}
-                </span>
+              <li key={index} className="space-y-1 [overflow-wrap:anywhere]">
+                <div className="flex justify-between gap-3">
+                  <span>
+                    {Number(line.quantity)} × {line.name}
+                  </span>
+                  <span className="shrink-0 tabular-nums">
+                    {money(line.amountMinor, frame.currency)}
+                  </span>
+                </div>
+                <div className="flex justify-end text-xs" data-testid="payment-line-refund">
+                  <NotServed detail={detail} line={line} frame={frame} onChanged={onChanged} />
+                </div>
               </li>
             ))}
           </ul>
@@ -120,9 +244,14 @@ function Body({ detail, frame }: { detail: PaymentDetailView; frame: SheetFrame 
                 {' · '}
                 {refund.failed
                   ? t('py_refund_failed', { provider })
-                  : refund.storno === null
-                    ? t('nt_fix_storno')
-                    : t('py_storno', { who: who(refund.storno.by), time: refund.storno.time })}
+                  : refund.sending
+                    ? t('py_refund_sending')
+                    : refund.storno === null
+                      ? t('nt_fix_storno')
+                      : t('py_storno', { who: who(refund.storno.by), time: refund.storno.time })}
+                {refund.requestedBy === null || refund.requestedBy === undefined
+                  ? null
+                  : ` · ${t('py_not_served')}: ${who(refund.requestedBy)}`}
               </li>
             ))}
           </ul>
@@ -221,7 +350,7 @@ export function PaymentSheet({
       : t('loading')
   const sub = detail ? t('py_number', { ref: detail.number }) : ''
   const body = detail ? (
-    <Body detail={detail} frame={frame} />
+    <Body detail={detail} frame={frame} onChanged={load} />
   ) : failed ? (
     <ReadFailed onRetry={load} />
   ) : null

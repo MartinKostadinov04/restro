@@ -320,6 +320,30 @@ describe("the table's bill as the POS reads it (state.tableBill, D127)", () => {
     expect(within(sheet).queryByRole('button', { name: /^Pay/ })).toBeNull()
   })
 
+  it('says the refund is being sent, then refunded, then to see the bar; nothing for a line with none', () => {
+    for (const [refund, words] of [
+      ['sending', w.paying.paidRefundSending],
+      ['refunded', w.paying.paidRefunded],
+      ['failed', w.paying.paidRefundFailed],
+    ] as const) {
+      drawFace(
+        own({
+          tableBill: tableBillOf([], {
+            owedMinor: 0,
+            paidLines: [
+              { name: { en_US: 'Jägermeister' }, quantity: '2', amountMinor: 1200, refund },
+              { name: { en_US: 'House wine' }, quantity: '1', amountMinor: 1250 },
+            ],
+          }),
+        }),
+      )
+      const lines = openBill().querySelectorAll('[data-paid-in-app]')
+      expect(lines[0]?.textContent).toContain(words)
+      expect(lines[1]?.textContent).not.toContain('Not served')
+      cleanup()
+    }
+  })
+
   it('keeps the lines paid in the app on the bill, greyed, and offers no Pay once everything is paid', () => {
     drawFace(
       own({
