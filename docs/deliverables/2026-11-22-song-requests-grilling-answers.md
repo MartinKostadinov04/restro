@@ -260,6 +260,74 @@ to supply (`technical-tuning-from-best-practice`).
 | Show guests' names | on, and each guest may still ask not to be named | 1.3; TouchTunes' "Anonymous" is the same idea. |
 | Who may open and close requests | the roles that already hold the ordering pause | Reuses what exists rather than inventing a role. |
 
+## What the demo already settles (read 2026-11-22, after the cross-review)
+
+Martin sent the lead back into the pinned prototype rather than answering review questions the code had
+already answered. Read directly: `lib/dj-domain.mjs`, `lib/dj-api.mjs`, `lib/dj-youtube.mjs`,
+`drizzle/0003_locked_window.sql`, `modules/demo/dj/commands.mjs`, `YOUTUBE-SETUP.md`, `STRIPE.md`. The
+prototype has **two** implementations of the queue — a Cloudflare/D1 one in `lib/` and a richer state
+machine in `modules/` — and the richer one answers more.
+
+- **The working set fills itself.** `dj_locked` is topped back up to three by database triggers, on every
+  payment and on every departure, and `fill(s)` runs after a start and after a refusal. No DJ action puts
+  a request in it. This settles the review's finding 2 in favour of automatic: **drop "accept" as the gate
+  into the set.** In the prototype `accept` is moderation only.
+- **Inside the set the prototype is strictly ordered**, by an autoincrement `sequence`, and only
+  `locked[0]` can be prepared or started. So row 1.7's "no order at all" is confirmed as a **new design**,
+  not a keep — and it is exactly what leaves the play-mark with no card to attach to (finding 3).
+- **The play-mark already works as a by-product**, as row 1.6 proposed: `start` on the head marks the
+  previously playing request `played` and stamps `finishedAt`, with a 60-second `undoStart` that restores
+  the heads, the locks and the cooldown. `finish` exists separately. The mechanism is a keep, with its
+  undo; the obstacle to porting it is only the unordered set above.
+- **Refusing a greeting without refusing the song already exists.** `approveGreeting` / `rejectGreeting`,
+  and at `prepare` an unapproved greeting payment is **released** while the song's payment is captured.
+  Review finding 6 is therefore a keep, not an addition — and `greetingRevision` is the revision loop
+  Martin dropped in round 3.
+- **Capture happens at `prepare`**, one step before the song starts, on the head of the set only.
+  Row 1.6's capture at the play-mark is one step later and more generous; the direction is the same.
+- **The night's end already releases everything.** `closeDJ` returns every active request's money, marks
+  whatever is playing as played, and closes the session; `newNight` refuses to start until it has run.
+  Row 1.6's sweep is a keep.
+- **A same-song cooldown already exists** (`s.cooldowns[r.family] = now + COOLDOWN`), set when a song
+  starts. Row 1.17 is a keep with a venue setting over it.
+- **Opening and closing intake is a DJ action** (`intake`), and it refuses to re-open within 30 minutes of
+  the planned end (`planEnd`). Row 1.16 is a keep, and the 30-minute guard is a detail worth porting.
+- **A guest's report already has a staff side**: `issueReply` moves an issue to `reviewing` or `closed`
+  and requires a written reply to close it. Row 1.18's "few buttons" report has a precedent.
+- **A DJ handover is already an audited event** (`handover`), so the review's "one sentence settles it" is
+  a keep rather than a new rule.
+- **There are no free requests.** The minimum is €5 (`MIN_REQUEST = 500`), the greeting a fixed €3
+  add-on the server alone computes, and the queue filter drops anything under €3. Row 1.2's free requests
+  are a Restro addition with no precedent in the prototype — which is the strongest argument for
+  defaulting them off.
+- **Supporting someone else's request is proven machinery**: `kind: "boost"`, a €3 minimum, idempotency
+  keys, and a `requireFirst` option that either guarantees first place inside the write transaction or
+  fails with `FIRST_PLACE_CHANGED` and takes no money. The prototype orders by money
+  (`ORDER BY SUM(amount) DESC, created_at`), so what row 1.5 changes is the **ordering rule**, not the
+  gesture or its plumbing. Release 1 can carry popularity cheaply.
+- **The search ceiling is already rationed, and the prototype degrades instead of dying.**
+  `limit(db, "youtube-global", 80, 86400000)` caps the whole venue at **80 uncached searches a day**,
+  deliberately under the API's own ceiling; results are cached for 10 minutes; every song ever returned is
+  kept in `dj_songs`; and when the quota does run out the guest is told to pick from the saved songs. So
+  the review's finding 1 is real but overstated: the feature does not go dark, it narrows to what the
+  venue has already seen. The honest fix is smaller than importing a catalogue — **keep the search for
+  discovery and let our own song table accumulate permanently rather than for 24 hours**, so the ration is
+  spent only on songs nobody has ever asked for.
+
+**Two claims in our own documents did not survive the read, and the map's verdicts rest on them:**
+
+1. **Name screening.** The inventory records a display-name rule with a hard-coded Bulgarian and English
+   profanity list (SR-175), and the cross-review treats it as a control we dropped. No word list of any
+   kind exists in the prototype's code. A name is `cleanText(value, 24, "Гост")` — control characters and
+   angle brackets stripped, 24 characters — and a greeting is the same at 180. The gap is therefore
+   **wider** than the review thought: there was never any screening to carry forward.
+2. **Guest identity.** The inventory records a cookie the server never stores, so that any 64-character
+   hex string is an identity (SR-142). `identify()` hashes the cookie with SHA-256 and looks the hash up
+   in `dj_devices` with a 12-hour expiry, and every endpoint but `POST /api/session` answers 401 without a
+   match. The rebuild verdict still holds for other reasons, but not for that one.
+
+Both need a re-read of the rows they came from before the spec cites them.
+
 ## Still to do before the spec
 
 1. **Row 1.13**, genre blocking, waits on the metadata research (`sr/metadata` branch, PR into
