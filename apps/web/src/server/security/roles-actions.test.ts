@@ -55,6 +55,7 @@ export const MEMBER_MAY_AT_THE_PIN: ReadonlySet<string> = new Set([
   // On one's own session.
   'setAdminLocale',
   'switchOrganization',
+  'returnToOrganization',
 ])
 
 /** These ask the worker, which checks the person itself; see apps/worker's attack test. */

@@ -1,6 +1,6 @@
 // switchOrganization (lane 6 step 0, S1): a shared device stays its own organisation's device, and
 // a person's own sign-in still switches. Better Auth's `/organization/set-active` is closed over
-// HTTP (auth.ts), so this server action is the one way to switch.
+// HTTP (auth.ts), so these server actions are the only ways to switch.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const world = vi.hoisted(() => ({
@@ -22,7 +22,7 @@ vi.mock('next/headers', () => ({ headers: async () => new Headers() }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('next/navigation', () => ({ redirect: world.redirect }))
 
-import { switchOrganization } from './actions'
+import { returnToOrganization, switchOrganization } from './actions'
 
 describe('switchOrganization', () => {
   beforeEach(() => {
@@ -49,6 +49,34 @@ describe('switchOrganization', () => {
   it('refuses an organisation the person does not belong to', async () => {
     world.device = false
     await switchOrganization('tn_C')
+    expect(world.setActive).not.toHaveBeenCalled()
+  })
+})
+
+describe('returnToOrganization', () => {
+  beforeEach(() => {
+    world.setActive.mockReset()
+    world.redirect.mockReset()
+  })
+
+  it("puts a person's fresh sign-in back in their organisation, where they are", async () => {
+    world.device = false
+    expect(await returnToOrganization('tn_B')).toEqual({ ok: true })
+    expect(world.setActive).toHaveBeenCalledWith(
+      expect.objectContaining({ body: { organizationId: 'tn_B' } }),
+    )
+    expect(world.redirect).not.toHaveBeenCalled()
+  })
+
+  it('refuses a shared device', async () => {
+    world.device = true
+    expect(await returnToOrganization('tn_B')).toEqual({ ok: false })
+    expect(world.setActive).not.toHaveBeenCalled()
+  })
+
+  it('refuses an organisation the person does not belong to', async () => {
+    world.device = false
+    expect(await returnToOrganization('tn_C')).toEqual({ ok: false })
     expect(world.setActive).not.toHaveBeenCalled()
   })
 })
