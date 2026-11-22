@@ -30,6 +30,16 @@ are written on a branch that carries the numbers below it.
 | 1.11 | The DJ beat matches, so a paid place in a queue cannot mean "this is your next track" | — | open | raised by Martin, round 1b |
 | 1.12 | The DJ can agree or disagree with a song that does not fit the theme or the mood | — | open | raised by Martin, round 1b |
 | 1.13 | Does the venue screen requests before the DJ sees them at all? | — | open | round 1b |
+| 1.14 | What does the guest see while he waits? | — | open | round 2 |
+| 1.15 | Can a guest take his money back before the song plays? | — | open | round 2, map Q7 |
+| 1.16 | When does the venue stop taking requests for the night? | — | open | round 2, map Q8 |
+| 1.17 | Can the same song be asked for again, and how soon? | — | open | round 2, map Q9 |
+| 1.18 | Who answers a guest whose song never played? | — | open | round 2, map Q12, decision 148 |
+
+**Rows the earlier answers killed outright.** Map Q6 (one backer's card fails while others succeed)
+is gone with chip-ins — there is one payer in release 1. Map Q13 (whose account, who is the seller)
+Martin answered on 2026-11-19: the venue's own, D98 unchanged. Map Q14 (Restro's charge) belongs to
+the platform's charging model, not to this feature. Map Q2 is down to one word: names.
 
 ## Where this leaves the map
 
