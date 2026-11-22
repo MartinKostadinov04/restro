@@ -29,6 +29,7 @@ import { getVenue } from '../venues'
 import { loadTableBill, type TableSheetBill } from './load'
 import { clockIn } from './night-view'
 import {
+  markItemSoldOut,
   markPaymentTable,
   runTableCommand,
   type TableCommand,
@@ -112,6 +113,8 @@ async function perform(
       tenantId: organization.id,
       venueId: venue.id,
       actor,
+      // A menu change's actor can only be the account, whoever tapped (#437).
+      account: `user:${user.id}`,
       signedInAt,
     })
     if (result.ok) revalidatePath(`/venues/${venue.id}`)
@@ -288,6 +291,7 @@ const OnSentOrder = z.strictObject({
   answer: z.enum(['found', 'not_found']),
   pin,
 })
+const OnItemSoldOut = z.strictObject({ venueId, itemId: idSchema('nd'), soldOut: z.boolean(), pin })
 const UndoOpenAll = z.strictObject({ venueId, pin, undo: undo.unwrap() })
 const OnTableRead = z.strictObject({ venueId, tableId })
 
@@ -412,6 +416,25 @@ export async function answerSentOrderAction(input: unknown): Promise<TonightResu
       sentOrderId: parsed.data.sentOrderId,
       answer: parsed.data.answer,
     }),
+  )
+}
+
+/**
+ * Marks one item sold out for the night, or puts it back on sale, from the sheet of a sent order
+ * (D147, #437). Whoever may review orders may mark: on a shared device the tablet’s own account
+ * does it without a PIN, as it answers an Unconfirmed order. The menu change is queued for the
+ * guest pages at once; the Log keeps who tapped.
+ */
+export async function markSoldOutAction(input: unknown): Promise<TonightResult> {
+  const parsed = OnItemSoldOut.safeParse(input)
+  if (!parsed.success) return INVALID
+  const { itemId, soldOut } = parsed.data
+  return perform(parsed.data, (scope) =>
+    markItemSoldOut(
+      scope,
+      { enqueue: (name, data) => enqueueJob(name, data) },
+      { itemId, soldOut },
+    ),
   )
 }
 

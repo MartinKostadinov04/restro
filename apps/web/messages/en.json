@@ -2515,7 +2515,14 @@
     "sh_pr_f_table": "Pay first · the table's own rule",
     "sh_pr_f_party": "Pay first · this party's rule",
     "sh_pr_f_club": "Pay first · the club's rule",
-    "sh_pr_b_party": "Everything on the bill · this party's rule"
+    "sh_pr_b_party": "Everything on the bill · this party's rule",
+    "sold_mark": "Sold out tonight",
+    "sold_back": "Back on sale",
+    "sold_is": "Sold out tonight",
+    "sold_mark_t": "Sold out tonight: {name}",
+    "sold_back_t": "Back on sale: {name}",
+    "lg_sold_out": "Marked sold out tonight",
+    "lg_back_on_sale": "Put back on sale"
   },
   "reservations": {
     "title": "Reservations",

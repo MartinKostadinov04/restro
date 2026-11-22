@@ -299,6 +299,10 @@ export const SENTENCES = {
   'guest.erased': (_l, c) => c.say('lg_guest_erased'),
   // The sweep of the parties nobody seated, which the worker does when a night ends unclosed.
   'night.swept': (_l, c) => c.say('lg_rv_night_swept'),
+  // An item marked sold out for the night where orders are reviewed, or put back on sale
+  // (D147, #437). The Log has no field for the item, so the line says what was done, not what.
+  'sold_out.marked': (_l, c) => c.say('lg_sold_out'),
+  'sold_out.cleared': (_l, c) => c.say('lg_back_on_sale'),
   'lease.taken_over': null,
   'payment.hold_unread': null,
 } as const satisfies Record<LogKind, Sentence | null>

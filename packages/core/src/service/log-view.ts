@@ -69,6 +69,10 @@ export const LOG_KIND_GROUP = {
   // the only line that says why the waiting list was closed off, and the hidden kinds are the
   // engine's own bookkeeping (D120), which this is not.
   'night.swept': 'orders',
+  // An item marked sold out where orders are reviewed, and a mark taken off (D147, #437):
+  // shown with the orders, which is where it was made and what it changes.
+  'sold_out.marked': 'orders',
+  'sold_out.cleared': 'orders',
   // A lease changing hands is the engine's bookkeeping, not something that happened at the venue.
   'lease.taken_over': null,
   // A hold read that said nothing: the route's own count of its tries. A manager's alert says what

@@ -63,6 +63,11 @@ describe('the service commands', () => {
       'reservation.set_guests',
       'reservation.set_status',
       'reservation.undo_arrival',
+      // D147, #437: "sold out tonight" is a tap of the same kind — the bartender holding the
+      // empty bottle marks it where they are already reviewing orders. It changes no setting,
+      // it only takes an item off tonight’s menu, the same tap takes the mark off again, and
+      // every one of them is in the Log under the device’s account.
+      'sold_out.mark',
       'table.close',
       'table.new_guests',
       'table.open',

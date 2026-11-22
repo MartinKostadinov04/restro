@@ -33,6 +33,7 @@ import { useMoney } from './money'
 import { READ_FAILED, readAttempt } from './read-attempt'
 import { SentOrderAnswers } from './sent-order-answers'
 import { useReasonWord, useStateWord } from './sent-row'
+import { SoldOutLine } from './sold-out-line'
 import { ReadFailed } from './tab-parts'
 import { useTableName } from './table-name'
 import { useWho } from './who'
@@ -92,6 +93,13 @@ function Body({
                 {t('sh_note', { note: line.note })}
               </span>
             )}
+            <SoldOutLine
+              frame={frame}
+              itemId={line.itemId}
+              name={line.name}
+              soldOut={line.soldOut}
+              onDone={onAnswered}
+            />
           </li>
         ))}
       </ul>

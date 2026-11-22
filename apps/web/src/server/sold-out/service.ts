@@ -2,7 +2,9 @@
 // database pool so a test can run it against Postgres without a request. The server actions of the
 // composer and of the item sheet wrap it.
 //
-// Who may: owners and admins (D46: waiters never use our admin). What it writes: core's
+// Who may: through the composer, owners and admins (D46: waiters never use our admin); from
+// Tonight, whoever reviews orders (D147, #437, which gates it on the venue permission before
+// calling this). Any venue, a POS venue included (D147). What it writes: core's
 // `setSoldOutTonight`, one atomic change set through `apply()` that sets `for_sale = false` in the
 // venue's service edition, or clears that row. It has no way to write `true`: "back on sale" only
 // removes OUR mark, so an item barsy has off sale stays off sale. What it queues afterwards:
@@ -92,8 +94,6 @@ export async function setItemsSoldOut(
     changed = result.applied
   } catch (error) {
     if (error instanceof SoldOutError) {
-      // A POS venue's stock is the POS's (D124 §6): marking there is not allowed.
-      if (error.code === 'pos_venue') return fail('not_allowed')
       return fail(error.code === 'invalid_input' ? 'invalid' : 'not_found')
     }
     if (error instanceof ApplyError) {

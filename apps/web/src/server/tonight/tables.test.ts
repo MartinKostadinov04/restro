@@ -8,25 +8,31 @@ import type { DbPool } from '@restro/db'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const applyService = vi.hoisted(() => vi.fn())
+const itemsOfVenue = vi.hoisted(() => vi.fn())
+const setItemsSoldOut = vi.hoisted(() => vi.fn())
 vi.mock('@restro/core/service', () => ({ applyService }))
+vi.mock('@restro/core/apply', () => ({ itemsOfVenue }))
+vi.mock('../sold-out/service', () => ({ setItemsSoldOut }))
 vi.mock('../log', () => ({ logError: vi.fn() }))
 
-import { markPaymentTable, runTableCommand, type TonightScope } from './tables'
+import { markItemSoldOut, markPaymentTable, runTableCommand, type TonightScope } from './tables'
 
 const TENANT = 'tn_0123456789ABCDEFGHIJKL'
 const VENUE = 'vn_0123456789ABCDEFGHIJKL'
 const TABLE = 'tb_0123456789ABCDEFGHIJKL'
+const ITEM = 'nd_0123456789ABCDEFGHIJKL'
 const signedInAt = new Date('2026-10-24T20:00:00Z')
 const scope: TonightScope = {
   pool: {} as DbPool,
   tenantId: TENANT,
   venueId: VENUE,
   actor: { kind: 'staff', staffMemberId: 'sm_0123456789ABCDEFGHIJKL', sessionId: 's1' },
+  account: 'user:u1',
   signedInAt,
 }
 const answers = (
   result:
-    | { readonly status: 'accepted'; readonly details: Record<string, string | boolean> }
+    | { readonly status: 'accepted'; readonly details: Record<string, string | number | boolean> }
     | { readonly status: 'refused'; readonly code: string },
 ) => {
   const full: ServiceResult =
@@ -38,6 +44,8 @@ const answers = (
 
 afterEach(() => {
   applyService.mockReset()
+  itemsOfVenue.mockReset()
+  setItemsSoldOut.mockReset()
 })
 
 describe("Tonight's table commands", () => {
@@ -115,5 +123,57 @@ describe('the payment-table mark', () => {
     const result = await markPaymentTable(scope, services, { tableId: TABLE, isPaymentTable: true })
     expect(result).toEqual({ ok: false, error: 'table_open' })
     expect(sent).toEqual([])
+  })
+})
+
+// The sold-out mark (D147, #437): the item must be this venue's, the service command is the gate
+// and writes the Log, and only then does the menu change go through apply().
+describe('the sold-out mark from where orders are reviewed', () => {
+  const ok = { ok: true as const, changed: 1, liveQueued: true }
+  const services = { enqueue: vi.fn(async () => 'job-1') }
+
+  it("refuses an item that is not the venue's, before anything is written", async () => {
+    itemsOfVenue.mockResolvedValueOnce(new Set())
+    const result = await markItemSoldOut(scope, services, { itemId: ITEM, soldOut: true })
+    expect(result).toEqual({ ok: false, error: 'venue_missing' })
+    expect(applyService).not.toHaveBeenCalled()
+    expect(setItemsSoldOut).not.toHaveBeenCalled()
+  })
+
+  it("logs the tap, then marks the item, with the account as the menu row's actor", async () => {
+    itemsOfVenue.mockResolvedValueOnce(new Set([ITEM]))
+    answers({ status: 'accepted', details: { items: 1, soldOut: true } })
+    setItemsSoldOut.mockResolvedValueOnce(ok)
+    const result = await markItemSoldOut(scope, services, { itemId: ITEM, soldOut: true })
+    expect(result).toEqual({ ok: true, details: { items: 1, soldOut: true } })
+    const [, command] = applyService.mock.calls[0] ?? []
+    expect(command).toEqual({ type: 'sold_out.mark', itemIds: [ITEM], soldOut: true })
+    const [soldOutScope, , input] = setItemsSoldOut.mock.calls[0] ?? []
+    expect(soldOutScope).toMatchObject({ tenantId: TENANT, venueId: VENUE, actor: 'user:u1' })
+    expect(input).toEqual({ itemIds: [ITEM], soldOut: true })
+  })
+
+  it('writes no menu change when the person may not mark', async () => {
+    itemsOfVenue.mockResolvedValueOnce(new Set([ITEM]))
+    answers({ status: 'refused', code: 'permission_denied' })
+    const result = await markItemSoldOut(scope, services, { itemId: ITEM, soldOut: true })
+    expect(result).toEqual({ ok: false, error: 'permission_denied' })
+    expect(setItemsSoldOut).not.toHaveBeenCalled()
+  })
+
+  it('says the guest menu was not queued, so the screen can say it follows later', async () => {
+    itemsOfVenue.mockResolvedValueOnce(new Set([ITEM]))
+    answers({ status: 'accepted', details: { items: 1, soldOut: false } })
+    setItemsSoldOut.mockResolvedValueOnce({ ...ok, liveQueued: false })
+    const result = await markItemSoldOut(scope, services, { itemId: ITEM, soldOut: false })
+    expect(result).toMatchObject({ ok: true, queued: false })
+  })
+
+  it('passes a failed menu change on as the failure it is', async () => {
+    itemsOfVenue.mockResolvedValueOnce(new Set([ITEM]))
+    answers({ status: 'accepted', details: {} })
+    setItemsSoldOut.mockResolvedValueOnce({ ok: false, error: 'rejected' })
+    const result = await markItemSoldOut(scope, services, { itemId: ITEM, soldOut: true })
+    expect(result).toEqual({ ok: false, error: 'rejected' })
   })
 })

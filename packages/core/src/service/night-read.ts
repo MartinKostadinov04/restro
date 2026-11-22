@@ -35,6 +35,7 @@ import {
 } from '@restro/db'
 import { and, asc, desc, eq, ilike, inArray, isNull, notInArray, or, sql } from 'drizzle-orm'
 
+import { soldOutTonightOf } from '../apply/sold-out'
 import { serviceDate } from '../service-day'
 import { TEAM_ALERT_KINDS } from './alert-rules'
 import type { ServiceActor } from './context'
@@ -476,11 +477,15 @@ export interface SentOrderStep {
 export interface SentOrderDetail {
   readonly order: SentOrderRow
   readonly lines: readonly {
+    /** Our own item id (rule 3), so the screen can mark the item sold out (#437). */
+    readonly itemId: string
     readonly qty: number
     readonly name: string
     readonly optionNames: readonly string[]
     readonly unitMinor: number
     readonly note: string | null
+    /** The item carries tonight's sold-out mark, whatever night this order is from. */
+    readonly soldOut: boolean
   }[]
   readonly sentAt: Date | null
   /** The POS bill it joined, as staff know it there (rule 3: staff screens only). */
@@ -546,17 +551,25 @@ export async function readSentOrderDetail(
       tx,
       stepRows.map((step) => step.actor),
     )
+    // Tonight's marks, not the order's night: the tap on a line says where the item stands now.
+    const lines = sentOrderLinesOf(row.lines)
+    const markedTonight = await soldOutTonightOf(tx, {
+      itemIds: lines.map((line) => line.itemId),
+      day: reader.today,
+    })
     return {
       ok: true,
       access: accessOf(reader),
       detail: {
         order,
-        lines: sentOrderLinesOf(row.lines).map((line) => ({
+        lines: lines.map((line) => ({
+          itemId: line.itemId,
           qty: line.qty,
           name: line.name,
           optionNames: line.optionNames,
           unitMinor: line.unitMinor,
           note: notes.get(line.id) ?? null,
+          soldOut: markedTonight.has(line.itemId),
         })),
         sentAt: row.sentAt,
         posBillRef: row.posBillRef,
