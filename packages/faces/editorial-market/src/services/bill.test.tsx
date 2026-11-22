@@ -271,6 +271,24 @@ describe("the table's bill as the POS reads it (state.tableBill, D127)", () => {
     )
   })
 
+  it('counts the reading’s age on by the second, and starts again from the host’s next age (lane 3 S7)', () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+    try {
+      const page = drawFace(own())
+      const updated = () => document.querySelector('[data-slot="bill.updated"]')?.textContent
+      openBill()
+      expect(updated()).toBe(w.paying.updated(4))
+      act(() => vi.advanceTimersByTime(3_000))
+      expect(updated()).toBe(w.paying.updated(7))
+      page.update({ tableBill: tableBillOf(undefined, { readAgoSeconds: 1 }) })
+      expect(updated()).toBe(w.paying.updated(1))
+      act(() => vi.advanceTimersByTime(2_000))
+      expect(updated()).toBe(w.paying.updated(3))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('greys a line in a payment that is not final with "Being paid"', () => {
     drawFace(
       own({
@@ -359,7 +377,7 @@ describe("a waiter's discount on the POS's bill (#293, DA-8)", () => {
     expect(
       [...sheet.querySelectorAll('.ro-lines li')].map((line) => line.textContent?.trim()),
     ).toEqual(['House wine · €12.50', 'Discount · -€4.00', 'Tap water ×0.5 · €0.00'])
-    fireEvent.click(sheet.querySelector('[data-slot="pay.whole"]') as Element)
+    // Opened from the bill's Pay, the whole bill is already ticked (lane 3 S14).
     expect(sheet.querySelector('[data-slot="pay.start"]')?.textContent).toContain('€8.50')
   })
 

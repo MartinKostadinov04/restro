@@ -82,6 +82,45 @@ describe('the guest strings', () => {
     expect(bg.duplicateAsk(4)).not.toBe(en.duplicateAsk(4))
   })
 
+  it('words the service screens as the 11-18 screen round settled (lane 3, F1, F2, F4)', () => {
+    const en = stringsFor('en_US').services
+    const bg = stringsFor('bg_BG').services
+    // F1: an empty Pay sheet, and the second step's button.
+    expect([en.nothingToPay, en.done]).toEqual(['Nothing to pay yet', 'Back to the menu'])
+    expect([bg.nothingToPay, bg.done]).toEqual(['Няма какво да се плати', 'Към менюто'])
+    expect(en.paying.confirmX('110.00 EUR')).toBe('Confirm 110.00 EUR')
+    expect(bg.paying.confirmX('110,00 EUR')).toBe('Потвърди 110,00 EUR')
+    // F2: one name per figure, a tile that does not repeat the title, a call that names itself.
+    expect([en.paying.yourItems, bg.paying.yourItems]).toEqual(['Selected', 'Избрано'])
+    expect([en.kindWaiterTile, bg.kindWaiterTile]).toEqual(['Something else', 'Друго'])
+    expect(en.requestStates.sent).toEqual({
+      title: 'Request sent',
+      hint: 'Waiting for a waiter to confirm.',
+    })
+    expect(bg.requestStates.sent).toEqual({
+      title: 'Заявката е изпратена',
+      hint: 'Чакаме сервитьор да я потвърди.',
+    })
+    // A cap trip says the waiter takes it, and never to send fewer items (D118).
+    expect(en.refusals.over_phone_limit).toBe(
+      'This order is over the limit for phone orders. Your waiter will take it.',
+    )
+    for (const words of [en.refusals.over_phone_limit, bg.refusals.over_phone_limit]) {
+      expect(words).not.toMatch(/fewer|по-малко/i)
+    }
+    // F2 and F4: a closed table, for orders and for calls.
+    expect(en.orderingClosed).toBe('This table isn’t open for phone orders. Ask a waiter.')
+    expect(bg.orderingClosed).toBe(
+      'Тази маса не е отворена за поръчки от телефон. Попитайте сервитьор.',
+    )
+    expect(en.refusals.table_not_open).toBe(en.orderingClosed)
+    expect(bg.refusals.table_not_open).toBe(bg.orderingClosed)
+    expect(en.callTableNotOpen).toBe('This table isn’t open for phones. Wave to a waiter.')
+    expect(bg.callTableNotOpen).toBe('Тази маса не е отворена за телефони. Махнете на сервитьор.')
+    // F4: beside a sent order's card the bag invites more instead of calling itself empty.
+    expect([en.addMore, bg.addMore]).toEqual(['Add more from the menu.', 'Добавете още от менюто.'])
+  })
+
   it('reads English for every language but Bulgarian', () => {
     expect(stringsFor('de_DE').guest.back).toBe('Back to menu')
     expect(stringsFor('bg_BG').guest.back).toBe('Обратно към менюто')

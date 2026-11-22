@@ -6,7 +6,8 @@
 // round the guest just sent appears here when the host's state has it), and a guest round that the
 // state lists twice is drawn once.
 
-import { lineNameText, paySignedMoney } from '@restro/shell'
+import { lineNameText, type PayingStrings, paySignedMoney } from '@restro/shell'
+import { useEffect, useState } from 'react'
 
 import { Text } from '../parts'
 import { distinctRounds, keyed } from './bill'
@@ -15,6 +16,34 @@ import { useServicesRequired } from './provider'
 
 /** "×2" for a line of more than one. */
 const mark = (quantity: string) => (quantity === '1' ? '' : ` ×${quantity}`)
+
+/**
+ * "Updated 12 s ago" (lane 3 S7, D121): the host's age of the reading, counted on by the second
+ * until the host says another, so the line never stands still between two polls. A new age from
+ * the host starts it again (the caller keys it by the age).
+ */
+function ReadingAge({
+  seconds,
+  complete,
+  w,
+}: {
+  readonly seconds: number
+  readonly complete: boolean
+  readonly w: PayingStrings
+}) {
+  const [since, setSince] = useState(0)
+  useEffect(() => {
+    const start = Date.now()
+    const timer = setInterval(() => setSince(Math.floor((Date.now() - start) / 1000)), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  const age = seconds + since
+  return (
+    <p className="ro-allergy" data-slot="bill.updated">
+      {complete ? w.updated(age) : w.stale(age)}
+    </p>
+  )
+}
 
 export function BillSheet() {
   const o = useServicesRequired()
@@ -86,9 +115,12 @@ export function BillSheet() {
           ) : null}
           {/* A failed reading keeps its warning, with the pending line beside it, never instead. */}
           {roundPending && table.complete ? null : (
-            <p className="ro-allergy" data-slot="bill.updated">
-              {table.complete ? w.updated(table.readAgoSeconds) : w.stale(table.readAgoSeconds)}
-            </p>
+            <ReadingAge
+              key={`${table.readAgoSeconds}:${table.readAt ?? ''}`}
+              seconds={table.readAgoSeconds}
+              complete={table.complete}
+              w={w}
+            />
           )}
         </>
       )}
@@ -170,7 +202,11 @@ export function BillSheet() {
           type="button"
           className="ro-primary is-wide"
           data-design-part="button"
-          onClick={(event) => o.openSheet('pay', event.currentTarget)}
+          onClick={(event) => {
+            // The Pay sheet opens with the whole bill ticked: its Pay reads this amount (S14).
+            o.armWholeBill()
+            o.openSheet('pay', event.currentTarget)
+          }}
         >
           <span>{words.pay}</span>
           <b>{owed}</b>

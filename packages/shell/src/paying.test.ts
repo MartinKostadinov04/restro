@@ -228,6 +228,18 @@ describe('choosing what to pay (#45, D127)', () => {
     }
   })
 
+  it('words a call on a table not open for phones about the table, not about orders (lane 3 S19)', () => {
+    for (const lang of ['en_US', 'bg_BG'] as const) {
+      const words = stringsFor(lang).services
+      const call = refusalText(words, 'table_not_open', { command: 'service.request' })
+      expect(call).toBe(words.callTableNotOpen)
+      expect(call).not.toMatch(/order|поръч/i)
+      expect(refusalText(words, 'table_not_open', { command: 'order.send' })).toBe(
+        words.refusals.table_not_open,
+      )
+    }
+  })
+
   it("keeps the ticks across a friend's new round and clears only a line that changed or went", () => {
     const picks = pickWhole(new Map(), b)
     const friendAdded = bill([
