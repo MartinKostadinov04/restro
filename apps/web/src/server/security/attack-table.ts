@@ -259,6 +259,11 @@ export const ATTACKS: readonly Attack[] = [
     how: 'to the victim',
     call: (v) => switching.switchOrganization(v.tenantId),
   },
+  {
+    action: 'returnToOrganization',
+    how: 'to the victim',
+    call: (v) => switching.returnToOrganization(v.tenantId),
+  },
 
   // Guest features and design.
   {

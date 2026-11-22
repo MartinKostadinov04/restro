@@ -22,6 +22,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { authClient } from '@/lib/auth-client'
+import { returnToOrganization } from '@/server/actions'
 
 /** An error toast stays until it is closed. */
 const STAYS = { duration: Number.POSITIVE_INFINITY, closeButton: true }
@@ -258,8 +259,9 @@ function PasswordAgain({
         return
       }
       if (organizationId !== null) {
-        const kept = await authClient.organization.setActive({ organizationId })
-        if (kept.error) {
+        // Through our action: Better Auth's own route is closed over HTTP (auth.ts).
+        const kept = await returnToOrganization(organizationId)
+        if (!kept.ok) {
           setWrong('unknown')
           return
         }
