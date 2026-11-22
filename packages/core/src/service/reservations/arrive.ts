@@ -64,6 +64,7 @@ import {
   createReservation,
   openReservation,
   peekSeatTaken,
+  reclaimSpots,
   releaseHeldSpots,
   writeHeldSpots,
 } from './book'
@@ -582,8 +583,9 @@ export async function arriveReservation(
   // The booking's own hold ran from the hour it was booked for; the seating's runs from now. The
   // old rows are released first, exactly as an edit does it, so the party holds each spot once —
   // otherwise a party seated early would hold its table to the end of a turn counted from the
-  // booked hour as well as to the hour the hostess gave it.
-  await releaseHeldSpots(stx, reservation.id)
+  // booked hour as well as to the hour the hostess gave it. What it held before is kept in the
+  // arrival's Log entry, so its Undo can put the party back where it was (C5).
+  const heldBefore = await releaseHeldSpots(stx, reservation.id)
   await writeHeldSpots(stx, reservation.id, peek.spotIds, grant.stretch, endsAt !== null)
   await stx.tx
     .update(reservations)
@@ -601,6 +603,9 @@ export async function arriveReservation(
   const details: ResultDetails = {
     reservationId: reservation.id,
     spots: peek.spotIds.join(','),
+    heldBefore: [...heldBefore].sort().join(','),
+    // The end it had before it came, which an undo puts back: the arrival may have given it one.
+    endsBefore: reservation.endsAt?.toISOString() ?? null,
     ...workDetails(work.work),
     sameGuests: command.sameGuests ?? null,
   }
@@ -745,6 +750,13 @@ interface Arrival {
   readonly cameFrom: ReservationStatus | null
   /** The tables the arrival itself opened, as its own details recorded them. */
   readonly opened: readonly string[]
+  /** The spots the party held just before it, which its undo claims again where still free. */
+  readonly heldBefore: readonly string[]
+  /**
+   * The end the party had just before it (null: none of its own), which its undo puts back.
+   * Undefined for an entry written before it was recorded: the row's end is then kept.
+   */
+  readonly endsBefore: Date | null | undefined
 }
 
 /**
@@ -775,18 +787,32 @@ async function lastArrival(stx: ServiceTx, reservationId: string): Promise<Arriv
     .orderBy(desc(logEntries.seq))
     .limit(1)
   if (entry === undefined) return null
-  const opened = entry.details.opened
+  const list = (value: unknown) =>
+    typeof value === 'string' && value !== '' ? value.split(',') : []
   return {
     seq: entry.seq,
     at: entry.at,
     cameFrom: (entry.fromState as ReservationStatus | null) ?? null,
-    opened: typeof opened === 'string' && opened !== '' ? opened.split(',') : [],
+    opened: list(entry.details.opened),
+    heldBefore: list(entry.details.heldBefore),
+    endsBefore: !('endsBefore' in entry.details)
+      ? undefined
+      : typeof entry.details.endsBefore === 'string'
+        ? new Date(entry.details.endsBefore)
+        : null,
   }
 }
 
 /**
- * Undoes an arrival: a party marked present by mistake goes back where it came from, and the codes
- * that arrival opened close again.
+ * Undoes an arrival: a party marked present by mistake goes back as it was before the arrival, and
+ * the codes that arrival opened close again.
+ *
+ * As it was (C5 of the 11-18 screen round, the lead's call of 11-19): its own reason is kept, and
+ * the spots it held just before the arrival are claimed again where nobody has taken them since,
+ * as a restore does, for the stretch it had before: the end the arrival gave it is put back too.
+ * Where they cannot be had, it comes back without them and the answer says so (`spotsLost`), with
+ * the refusal (`spotsWhy`: `spot_taken` only where somebody really holds one), for the screen to
+ * say in one line — never silently.
  *
  * The status is `undoArrival`'s decision and nothing else's (`status.ts`): a booking back to
  * Reserved, a walk-in taken off the queue back to Waiting, and a walk-in the seat tap itself
@@ -816,7 +842,7 @@ export async function undoReservationArrival(
 
   const open = await openReservation(stx, peek.reservation.id)
   if (!open.ok) return refuse(open.code)
-  const { reservation } = open
+  const { reservation, night } = open
   const move = undoArrival(
     reservation.status as ReservationStatus,
     reservation.kind as ReservationKind,
@@ -825,14 +851,25 @@ export async function undoReservationArrival(
   if (!move.ok) return refuse(move.code)
   const to = move.status
   const freed = await releaseHeldSpots(stx, reservation.id)
+  const endsAt = arrival.endsBefore === undefined ? reservation.endsAt : arrival.endsBefore
+  // Only a party that goes back to waiting for its table gets its spots back: one the undo ends
+  // (a walk-in the seat tap made) never had a place to go back to.
+  const spots = isEndStatus(to)
+    ? { back: [] as readonly string[], lost: false, why: null }
+    : await reclaimSpots(stx, reservation, arrival.heldBefore, night.settings.turnMinutes, {
+        endsAt,
+      })
   await stx.tx
     .update(reservations)
     .set({
       status: to,
       seatedAt: null,
+      endsAt,
       endedAt: isEndStatus(to) ? sql`now()` : null,
       queueKey: to === 'waiting' ? await nextQueueKey(stx, reservation.serviceDate) : null,
-      reason: UNDONE_ARRIVAL_REASON,
+      // The reason is the booking's own (a birthday stays a birthday); only a line the undo ends
+      // is given the undo's, so the list can tell it from a guest's cancellation.
+      reason: isEndStatus(to) ? UNDONE_ARRIVAL_REASON : reservation.reason,
       ...stx.provenance,
       updatedAt: sql`now()`,
     })
@@ -845,10 +882,25 @@ export async function undoReservationArrival(
     fromState: reservation.status,
     toState: to,
     reason: UNDONE_ARRIVAL_REASON,
-    details: { freed: freed.join(','), cameFrom: arrival.cameFrom, ...workDetails(work.work) },
+    details: {
+      freed: freed.join(','),
+      cameFrom: arrival.cameFrom,
+      spots: spots.back.join(','),
+      spotsLost: spots.lost,
+      spotsWhy: spots.why,
+      endsAt: endsAt?.toISOString() ?? null,
+      ...workDetails(work.work),
+    },
   })
   return accepted(null, {
-    details: { reservationId: reservation.id, status: to, ...workDetails(work.work) },
+    details: {
+      reservationId: reservation.id,
+      status: to,
+      spots: spots.back.join(','),
+      spotsLost: spots.lost,
+      spotsWhy: spots.why,
+      ...workDetails(work.work),
+    },
   })
 }
 

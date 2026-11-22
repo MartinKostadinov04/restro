@@ -10,6 +10,7 @@
 // sheet therefore always read the same.
 import type { PayRule } from '@restro/core'
 import { useTranslations } from 'next-intl'
+import { useCallback } from 'react'
 import type { RvHistoryView, RvRowView, RvStatus } from '@/server/reservations/view'
 
 /** The state of one reservation, as its row and its sheet say it. */
@@ -29,6 +30,41 @@ export function useGuestsText() {
   const t = useTranslations('reservations')
   return (party: number | null): string | null =>
     party === null ? null : t('guests', { k: party })
+}
+
+/**
+ * A spot name that is only a number: "9", "25.1", "40/41", "7,8". Anything with a word in it
+ * ("2 VIP", "53 А", "Маса 7") is the venue's own name and is never rewritten (D134). The one test
+ * for it, here and in the plan's words (`useSpotCalled`), so a row and a toast name a spot alike.
+ */
+const BARE_NUMBER = /^\d+(?:[.,/]\d+)*$/
+
+/** Whether a spot's name is only a number, and so needs the word "spot" before it in a sentence. */
+export const isBareSpotNumber = (name: string): boolean => BARE_NUMBER.test(name)
+
+/**
+ * The spots a party holds, as a row says them (the screen round's S1): a name that is only a number
+ * gets the word "spot" before it — «място 9», «места 9, 10» — so "5 guests · 9" never reads as two
+ * counts. A name that already says what it is ("Бар 1 · стол 1", "Маса 7") is left as the venue
+ * wrote it (D134: spot names are the venue's). Null for a party holding none. The function is
+ * stable from render to render, so it can sit in a hook's dependencies.
+ */
+export function useSpotsText() {
+  const t = useTranslations('reservations')
+  return useCallback(
+    (names: readonly string[]): string | null => {
+      if (names.length === 0) return null
+      if (names.every((name) => BARE_NUMBER.test(name))) {
+        return names.length === 1
+          ? t('p_spot_mid', { spot: names.join('') })
+          : t('p_spots_mid', { spots: names.join(', ') })
+      }
+      return names
+        .map((name) => (BARE_NUMBER.test(name) ? t('p_spot_mid', { spot: name }) : name))
+        .join(', ')
+    },
+    [t],
+  )
 }
 
 /**
@@ -76,7 +112,7 @@ const PAY_RULE_LOG_WORDS: Readonly<Record<string, string>> = {
  */
 export function useHistoryText() {
   const t = useTranslations('tonight')
-  return (line: RvHistoryView): string | null => {
+  return (line: Pick<RvHistoryView, 'kind' | 'toState'>): string | null => {
     const state = t(LOG_STATE_WORDS[line.toState ?? ''] ?? 'lg_rv_s_other')
     switch (line.kind) {
       case 'reservation.created':

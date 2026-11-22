@@ -41,15 +41,19 @@ const STEP_MS = 120
  * load. A tile's frame keeps `focus()` from scrolling at all (the sheet it opens focuses its close
  * button), and moves the sheet's own scroller by hand.
  */
-export function holdScroll(frame: Window & typeof globalThis): void {
+export function holdScroll(frame: Window & typeof globalThis): () => void {
   const proto = frame.HTMLElement.prototype
-  if ((proto.focus as { held?: true }).held === true) return
+  if ((proto.focus as { held?: true }).held === true) return () => undefined
   const focus = proto.focus
   const held = function (this: HTMLElement, options?: FocusOptions) {
     return focus.call(this, { ...options, preventScroll: true })
   }
   ;(held as { held?: true }).held = true
   proto.focus = held
+  // Let go: `focus()` scrolls again (the live preview, once its stage is over).
+  return () => {
+    if (proto.focus === held) proto.focus = focus
+  }
 }
 
 /** Scrolls the nearest scrolling box inside the sheet so that the part is in its middle. */
@@ -69,6 +73,27 @@ function scrollSheetTo(part: HTMLElement): void {
 }
 
 /**
+ * How much of the top of the window a bar stuck to it covers now (the renderer's section rail): a
+ * part scrolled to the top stops under it, not behind it. Only the boxes at the top edge are looked
+ * at. A sheet's own bars, and anything as tall as half the window (a sheet's backdrop), do not count.
+ */
+export function stuckTop(): number {
+  if (typeof document.elementsFromPoint !== 'function') return 0
+  let covered = 0
+  for (const element of document.elementsFromPoint(window.innerWidth / 2, 1)) {
+    if (!(element instanceof HTMLElement)) continue
+    if (element.closest('[role="dialog"], dialog') !== null) continue
+    const style = getComputedStyle(element)
+    if (style.position !== 'sticky' && style.position !== 'fixed') continue
+    if (Number.parseFloat(style.top) !== 0) continue
+    const height = element.getBoundingClientRect().height
+    if (height >= window.innerHeight / 2) continue
+    covered = Math.max(covered, height)
+  }
+  return covered
+}
+
+/**
  * Scrolls to the first part that exists: the page for a part of the menu, the sheet for one in a
  * sheet. True when one was found (or none was asked for).
  */
@@ -80,7 +105,12 @@ export function reveal(markers: readonly string[]): boolean {
     if (part.closest('[role="dialog"], dialog') !== null) {
       scrollSheetTo(part)
     } else {
-      window.scrollTo({ top: Math.max(0, part.getBoundingClientRect().top + window.scrollY - 8) })
+      // Scrolled there first, so the rail that sticks once the page is scrolled is stuck when
+      // looked for; then down by what it covers.
+      const top = part.getBoundingClientRect().top + window.scrollY - 8
+      window.scrollTo({ top: Math.max(0, top) })
+      const covered = stuckTop()
+      if (covered > 0) window.scrollTo({ top: Math.max(0, top - covered) })
     }
     return true
   }
@@ -135,4 +165,43 @@ export function drive(stage: Stage, focus: readonly string[], onReached?: () => 
     stopped = true
     if (timer !== undefined) clearTimeout(timer)
   }
+}
+
+/**
+ * Keeps a frame's history inside the frame. The renderer puts an open dish or sheet in the address
+ * (a pushed step) and closes it by going one step back; but the frames of the Design page share one
+ * history with the page and each other, so a step back from one frame could land in another, and
+ * the owner's own Back would step through frames. Here a pushed step only replaces the address, and
+ * a step back returns to the frame's own last address and tells the renderer, as the browser would.
+ * Returns the way to undo it (for tests).
+ */
+export function keepHistoryInside(frame: Window & typeof globalThis): () => void {
+  const { history } = frame
+  const replace = history.replaceState.bind(history)
+  const steps: { readonly state: unknown; readonly url: string }[] = []
+  history.pushState = (state, unused, url) => {
+    steps.push({ state: history.state, url: frame.location.href })
+    replace(state, unused, url)
+  }
+  history.back = () => {
+    const step = steps.pop()
+    if (step === undefined) return
+    replace(step.state, '', step.url)
+    frame.dispatchEvent(new frame.PopStateEvent('popstate', { state: step.state }))
+  }
+  return () => {
+    Reflect.deleteProperty(history, 'pushState')
+    Reflect.deleteProperty(history, 'back')
+  }
+}
+
+/**
+ * Closes the dish the Dish stage opened, so a frame that goes back to the menu shows the menu: the
+ * dish's address is taken off and the renderer told, as the browser's Back would. The allergen sheet
+ * opened from the dish goes with it (the renderer's rule); a sheet the owner opened stays.
+ */
+export function closeDish(): void {
+  if (!/^#item-/.test(window.location.hash)) return
+  window.history.replaceState(null, '', window.location.pathname + window.location.search)
+  window.dispatchEvent(new PopStateEvent('popstate', { state: null }))
 }

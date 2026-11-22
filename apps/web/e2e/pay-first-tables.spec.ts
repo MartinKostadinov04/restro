@@ -147,7 +147,7 @@ test('PF4: an area to pay first or not in 2 taps, with Undo; its tables follow i
   // The area's tables now follow the area.
   await page.waitForLoadState('networkidle')
   await expect(tableCard(page).getByTestId('pay-first-select')).toHaveText(
-    `Предварително плащане: Като на зоната (${OFF})`,
+    `Предварително плащане: Като зоната (${OFF})`,
   )
   // The choice is kept across a reload.
   await page.reload()
@@ -221,7 +221,7 @@ test('the longest words wrap on a phone, with no sideways scroll', async ({ brow
     `Предварително плащане: ${OFF}`,
   )
   await expect(tableCard(page).getByTestId('pay-first-select')).toHaveText(
-    `Предварително плащане: Като на зоната (${OFF})`,
+    `Предварително плащане: Като зоната (${OFF})`,
   )
   await snapshot(page, 'tables-pay-first-phone.png')
   await noSidewaysScroll(page)

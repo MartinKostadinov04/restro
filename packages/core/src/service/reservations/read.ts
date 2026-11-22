@@ -36,7 +36,7 @@ import { open, type Reader, type ReadInput, type Who, whoOf } from '../night-rea
 import type { Permission } from '../permissions'
 import type { TonightRefusal } from '../read'
 import { type PayRuleBeaten, payRuleBeatenAt, storedPayRule } from './pay-rule'
-import { LATE_AFTER_MINUTES } from './plan-state'
+import { compareSpotNames, LATE_AFTER_MINUTES } from './plan-state'
 import { nightWritable, type ReservationRefusal } from './rows'
 import {
   endedByNightEnd,
@@ -160,6 +160,11 @@ export interface ReservationHistoryLine {
   readonly reason: string | null
   readonly who: Who
   readonly via: string | null
+  /**
+   * The person reading wrote this line themselves (their own account or their own staff record):
+   * the sheet never tells someone that they changed the reservation under their own eyes.
+   */
+  readonly mine: boolean
 }
 
 /** One reservation and everything about it, for its sheet. */
@@ -311,12 +316,13 @@ async function spotsOf(
         isNull(reservationSpots.releasedAt),
       ),
     )
-    .orderBy(asc(spots.name))
   for (const row of rows) {
     const names = held.get(row.reservationId)
     if (names === undefined) held.set(row.reservationId, [row.name])
     else names.push(row.name)
   }
+  // Natural order (1, 2, 10), in code: SQL's text order puts 10 before 2 (S5).
+  for (const names of held.values()) names.sort(compareSpotNames)
   return held
 }
 
@@ -517,7 +523,14 @@ const HISTORY_KINDS = [
  */
 export async function readReservationDetail(
   pool: DbPool,
-  input: ReadInput & { readonly reservationId: string },
+  input: ReadInput & {
+    readonly reservationId: string
+    /**
+     * The person a shared device remembers (D141 12.11), where the reader is that device's account:
+     * the device reads as itself but writes as them, so the lines they wrote are the reader's own.
+     */
+    readonly deviceStaffMemberId?: string | null
+  },
 ): Promise<
   | {
       readonly ok: true
@@ -625,6 +638,15 @@ export async function readReservationDetail(
       .select({ settings: venues.settings })
       .from(venues)
       .where(eq(venues.id, reader.venue.id))
+    // Who the reader is in the Log's own words, so their own lines are known as theirs: the
+    // account, its staff member, and on a shared device the person it remembers.
+    const me = await staffMemberFor(tx, input)
+    const device = input.deviceStaffMemberId ?? null
+    const myActors = new Set<string>([
+      ...(input.actor.kind === 'user' ? [`user:${input.actor.userId}`] : []),
+      ...(me === null ? [] : [`staff:${me}`]),
+      ...(device === null ? [] : [`staff:${device}`]),
+    ])
     const beaten = await payRuleBeatenAt(tx, {
       reservationId: row.id,
       settings: readPayFirstSettings(venue?.settings ?? {}),
@@ -646,7 +668,7 @@ export async function readReservationDetail(
             null,
           ),
         ),
-        mine: row.madeBy !== null && row.madeBy === (await staffMemberFor(tx, input)),
+        mine: row.madeBy !== null && row.madeBy === me,
         payRule: { rule: storedPayRule(row.payRule), beaten },
         endedByNightEnd: endedByNightEnd(
           entries
@@ -667,6 +689,7 @@ export async function readReservationDetail(
           reason: entry.reason,
           who: named.get(entry.actor) ?? { kind: 'restro' },
           via: entry.via,
+          mine: myActors.has(entry.actor),
         })),
       },
     } as const

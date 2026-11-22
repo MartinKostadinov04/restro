@@ -7,7 +7,7 @@
 // brand colour again" hands it back. One set of three pickers: no presets, no swatch palette, no
 // "where a look starts" choice. A page that is strongly saturated gets a warning. When the
 // highlight stands out less than 3:1 against the page it stays as chosen and the card says so
-// (D93 point 2). "Suggest with colour theory" is a small link that
+// (D93 point 2). "Suggest colours from my brand" is a small link that
 // fills the page and the panels by a harmony rule. The colours worked out from these three are
 // under "Advanced" (role-panel.tsx).
 //
@@ -58,6 +58,7 @@ export function ColourPanel({
   derived,
   issues,
   canEdit,
+  screen,
   onChange,
 }: {
   state: LookState
@@ -67,6 +68,8 @@ export function ColourPanel({
   derived: ThemeRoleSet
   issues: readonly PairIssue[]
   canEdit: boolean
+  /** The design's screen: the advice on a strong page colour is for guests who get a light one. */
+  screen: 'auto' | 'light' | 'dark'
   onChange: (next: LookState) => void
 }) {
   const t = useTranslations('design.colours')
@@ -80,7 +83,9 @@ export function ColourPanel({
       <div className="grid gap-4" data-testid="design-three-colours">
         {PICKERS.map((key) => {
           const invalid = view.invalid.includes(key)
-          const warn = key === 'primary' && saturated && !invalid
+          // On a dark screen the page is worked out as a dark shade of this colour (D93), so the
+          // advice to keep it a calm, light tint is for a design guests can see light (light or auto).
+          const warn = key === 'primary' && saturated && !invalid && screen !== 'dark'
           const describedBy = `${id}-${key}-help`
           return (
             <div key={key} className="grid gap-1.5" data-colour={key}>
