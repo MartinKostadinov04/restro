@@ -130,6 +130,10 @@ describe('the sold-out tap on a line of the sheet', () => {
     markSoldOutAction.mockResolvedValue({ ok: true, details: {} })
     await openWithLine(true)
     expect(screen.getByTestId('sold-out-state').textContent).toBe('Sold out tonight')
+    // #437: the money is not handled, and the screen says so instead of implying it is.
+    expect(screen.getByTestId('sold-out-paid').textContent).toBe(
+      'A line already paid for is still refunded by hand.',
+    )
     await userEvent.click(screen.getByTestId('sold-out-back'))
     await waitFor(() =>
       expect(markSoldOutAction).toHaveBeenCalledWith({
@@ -144,5 +148,41 @@ describe('the sold-out tap on a line of the sheet', () => {
     await openWithLine(false, { soldOut: false })
     expect(screen.queryByTestId('sold-out-mark')).toBeNull()
     expect(screen.getByText('2 × Mojito')).toBeTruthy()
+  })
+
+  it("asks the person's own PIN on a shared device, and writes nothing before it", async () => {
+    // RR-83: the mark writes the menu, so the tablet gets nowhere without a PIN — and the PIN is
+    // what makes the night's Log name the bartender rather than the device.
+    markSoldOutAction.mockResolvedValue({ ok: true, details: {} })
+    sentOrderDetailAction.mockResolvedValue({
+      ok: true,
+      detail: {
+        ...detail('1042'),
+        lines: [{ itemId: ITEM, qty: 2, name: 'Mojito', options: [], note: null, soldOut: false }],
+      },
+    })
+    renderWithIntl(
+      <RunProvider>
+        <SentOrderSheet
+          frame={{ ...frame, device: true, can: { soldOut: true } } as unknown as Frame}
+          sentOrderId="so_1"
+          onClose={vi.fn()}
+          onChanged={vi.fn()}
+        />
+      </RunProvider>,
+    )
+    await screen.findByTestId('sent-sheet-body')
+    await userEvent.click(screen.getByTestId('sold-out-mark'))
+    expect(await screen.findByTestId('pin-sheet')).toBeTruthy()
+    expect(markSoldOutAction).not.toHaveBeenCalled()
+    await userEvent.keyboard('1234')
+    await waitFor(() =>
+      expect(markSoldOutAction).toHaveBeenCalledWith({
+        venueId: frame.venueId,
+        itemId: ITEM,
+        soldOut: true,
+        pin: '1234',
+      }),
+    )
   })
 })

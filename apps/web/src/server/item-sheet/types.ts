@@ -111,13 +111,8 @@ export interface SheetSale {
    * only add caution (rule 5), so there is no "Back on sale" for it.
    */
   readonly offSale: 'till' | 'other' | null
-  /** The person may mark and unmark (owner or admin) and the venue has no POS saying what ran out. */
+  /** The person may mark and unmark (owner or admin), on a POS venue as well (D147). */
   readonly canMark: boolean
-  /**
-   * The venue's stock comes from its POS (D124 §6): nobody marks sold out here, whatever the role.
-   * Tells "mark it there" apart from "your role may not" when `canMark` is false.
-   */
-  readonly stockFromTill: boolean
 }
 
 /** Everything the item sheet needs to draw its four tabs. */

@@ -2,8 +2,8 @@
 
 // "Sold out tonight" on one line of a sent order (D147, #437): the tap where the bartender is
 // already standing. Whoever may review orders may mark, so this is not a manager's control; on a
-// shared device the tablet's own account does it without a PIN, exactly as it answers an
-// Unconfirmed order (the mark is cautious and can be taken back by the same tap).
+// shared device it asks for the person’s own PIN, because the mark takes an item off every
+// guest’s phone and the night’s line should name whoever holds the empty bottle (RR-83).
 //
 // One button, which says what it will do: "Sold out tonight" on an item on sale, "Back on sale" on
 // one already marked, with the state beside it so nobody has to read the button to know. Taking a
@@ -12,6 +12,10 @@
 //
 // The mark is the whole venue's, not this table's: the item goes off the guest menu for everyone
 // until the service day ends. Guests see it on their next look at the menu (every 15 s).
+//
+// A marked line says in so many words that money already taken for it is still put right by
+// hand. #437 asks for that: Restro refunding a paid line of a sold-out item is #435, which is
+// not built, and a screen that says nothing would imply it was handled.
 import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
@@ -49,11 +53,21 @@ export function SoldOutLine({
   const tap = () =>
     run({
       id: `sold_out:${itemId}`,
-      act: async () => {
+      ...(frame.device
+        ? {
+            pin: {
+              level: 'own' as const,
+              title: t(soldOut ? 'sold_back' : 'sold_mark'),
+              body: t(soldOut ? 'sold_back_b' : 'sold_mark_b', { name }),
+            },
+          }
+        : {}),
+      act: async (pin) => {
         const result = await markSoldOutAction({
           venueId: frame.venueId,
           itemId,
           soldOut: !soldOut,
+          pin,
         })
         if (result.ok) onDone?.()
         return result
@@ -62,22 +76,29 @@ export function SoldOutLine({
     })
 
   return (
-    <span className="mt-1 flex flex-wrap items-center gap-2">
+    <span className="mt-1 flex flex-col gap-1">
+      <span className="flex flex-wrap items-center gap-2">
+        {soldOut ? (
+          <span className="text-muted-foreground" data-testid="sold-out-state">
+            {t('sold_is')}
+          </span>
+        ) : null}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          onClick={tap}
+          data-testid={soldOut ? 'sold-out-back' : 'sold-out-mark'}
+        >
+          {t(soldOut ? 'sold_back' : 'sold_mark')}
+        </Button>
+      </span>
       {soldOut ? (
-        <span className="text-muted-foreground" data-testid="sold-out-state">
-          {t('sold_is')}
+        <span className="text-xs text-muted-foreground" data-testid="sold-out-paid">
+          {t('sold_paid')}
         </span>
       ) : null}
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={busy}
-        onClick={tap}
-        data-testid={soldOut ? 'sold-out-back' : 'sold-out-mark'}
-      >
-        {t(soldOut ? 'sold_back' : 'sold_mark')}
-      </Button>
     </span>
   )
 }

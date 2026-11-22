@@ -4,9 +4,13 @@
 // the Jaegermeister gone and when.
 //
 // Whoever reviews sent orders may mark (`sold_out`, a Staff permission since D147): at 01:00 that
-// is the bartender holding the empty bottle, not a manager. On a shared device it is a quick
-// answer like the two answers to an Unconfirmed order, so the tap is one tap; the Log then names
-// the device's account (D122 Section 7).
+// is the bartender holding the empty bottle, not a manager.
+//
+// It is NOT a quick answer on a shared device, unlike the answers to an Unconfirmed order. Every
+// other quick answer writes service data; this one writes the menu, and RR-83 (D122 Section 7)
+// holds the tablet back from a menu change until somebody types their PIN. The PIN is also what
+// makes the entry worth reading: the night’s line then names the bartender, not the tablet, which
+// is what D147’s 01:00 scene asks of it.
 //
 // The entry names our own item id and nothing else: no POS id (rule 3), no free text, and not the
 // item's name either, which the Log has no field for. Taking a mark off is the same command with
@@ -49,7 +53,6 @@ export function soldOutMark() {
     schema: MarkSchema,
     origins: ['staff'],
     permission: 'sold_out',
-    quickOnSharedDevice: true,
     // Repeating it says the same thing again: the mark is a state, not a count.
     idempotency: 'by_nature',
     handle: recordSoldOutMark,

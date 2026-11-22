@@ -63,11 +63,6 @@ describe('the service commands', () => {
       'reservation.set_guests',
       'reservation.set_status',
       'reservation.undo_arrival',
-      // D147, #437: "sold out tonight" is a tap of the same kind — the bartender holding the
-      // empty bottle marks it where they are already reviewing orders. It changes no setting,
-      // it only takes an item off tonight’s menu, the same tap takes the mark off again, and
-      // every one of them is in the Log under the device’s account.
-      'sold_out.mark',
       'table.close',
       'table.new_guests',
       'table.open',
@@ -77,6 +72,10 @@ describe('the service commands', () => {
       'waiting.reorder',
     ])
     expect(quick).not.toContain('push.revoke')
+    // D147, #437: "sold out tonight" is a tap of the same shape as the ones above, but it writes
+    // the menu and takes an item off every guest’s phone. RR-83 keeps the tablet out of the menu
+    // without a PIN, and the PIN is what makes the Log name the bartender.
+    expect(quick).not.toContain('sold_out.mark')
     for (const type of quick) {
       const definition = SERVICE_COMMANDS[type as keyof typeof SERVICE_COMMANDS]
       expect(definition.origins, type).toEqual(['staff'])

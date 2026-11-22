@@ -172,8 +172,8 @@ async function StructureSubtab({ tenantId, role, venue, menu: requested }: Compo
         defaultLocale={defaultLocale}
         enabledLocales={enabledLocales}
         currency={currency}
-        // On a POS venue the POS says what ran out: no sold-out switch here (D124 §6, #80).
-        canMarkSoldOut={canMarkSoldOut(role) && !hasTill}
+        // A POS venue marks too (D147): marking sold out only makes the menu more cautious.
+        canMarkSoldOut={canMarkSoldOut(role)}
         canCreateItem={manager}
         hasTill={hasTill}
         canDelete={manager}
