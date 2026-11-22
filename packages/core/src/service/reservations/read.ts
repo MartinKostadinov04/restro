@@ -36,7 +36,7 @@ import { open, type Reader, type ReadInput, type Who, whoOf } from '../night-rea
 import type { Permission } from '../permissions'
 import type { TonightRefusal } from '../read'
 import { type PayRuleBeaten, payRuleBeatenAt, storedPayRule } from './pay-rule'
-import { LATE_AFTER_MINUTES } from './plan-state'
+import { compareSpotNames, LATE_AFTER_MINUTES } from './plan-state'
 import { nightWritable, type ReservationRefusal } from './rows'
 import {
   endedByNightEnd,
@@ -316,12 +316,13 @@ async function spotsOf(
         isNull(reservationSpots.releasedAt),
       ),
     )
-    .orderBy(asc(spots.name))
   for (const row of rows) {
     const names = held.get(row.reservationId)
     if (names === undefined) held.set(row.reservationId, [row.name])
     else names.push(row.name)
   }
+  // Natural order (1, 2, 10), in code: SQL's text order puts 10 before 2 (S5).
+  for (const names of held.values()) names.sort(compareSpotNames)
   return held
 }
 

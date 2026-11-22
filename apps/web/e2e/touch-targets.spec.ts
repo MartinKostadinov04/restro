@@ -13,8 +13,9 @@ import {
 // D123: the manager's phone is a supported admin device, and a tappable control has a hit area of
 // at least 44 x 44 px (Restro's own floor, docs/guides/operational-screens.md, Accessibility). This
 // walks the Studio's Structure screen, the Design page with the guest template in its preview, and
-// Settings -> Integrations and Venue › Reservations (the night's list, a reservation's sheet and
-// Guests) on a 390 px phone and checks
+// Settings -> Integrations and Venue › Reservations (the night's list, a reservation's sheet,
+// Guests, and the spot pickers Change tables and Give a spot on the list a phone opens them on: S17
+// of the 11-18 screen round) on a 390 px phone and checks
 // every control on them, so the floor cannot slip back unseen. A control may look smaller than 44 px
 // if its hit area is extended around it (the `tap-area` utility in globals.css), so the check is
 // not on the element's box: it asks the browser what is under the pointer at the edges of a
@@ -379,6 +380,62 @@ test.describe('Venue › Reservations', () => {
       await expect(guestMore).toBeVisible()
       await guestMore.click()
       await expectFloor(page, 'reservations, a guest’s "…" open', 1, '[role="menu"]')
+    } finally {
+      await context.close()
+    }
+  })
+
+  // The spot pickers a phone opens on their list (S17 of the 11-18 screen round): Change tables and
+  // Give a spot, each row a 44 px target. On the night the hook wrote: Иванова booked on Маса 7.
+  test('Change tables and Give a spot on the list have 44 px hit areas on a phone', async ({
+    browser,
+  }) => {
+    const context = await browser.newContext(phone)
+    const page = await context.newPage()
+    try {
+      await signIn(page, TONIGHT_OWNER_EMAIL)
+      if (!/\/venues\/vn_/.test(page.url())) {
+        await page
+          .getByTestId('venue-card')
+          .filter({ hasText: TONIGHT_VENUE_NAME })
+          .getByRole('link', { name: 'Отвори' })
+          .click()
+        await expect(page).toHaveURL(/\/venues\/vn_[^/?]+/)
+      }
+      const venueId = new URL(page.url()).pathname.split('/')[2] ?? ''
+      await page.goto(`/venues/${venueId}?tab=reservations`)
+      await expect(page.getByTestId('reservations-night')).toBeVisible()
+
+      // Change tables opens on the named list on a phone; every row's checkbox is a 44 px target.
+      await page
+        .getByTestId('rv-row')
+        .filter({ hasText: 'Иванова' })
+        .first()
+        .getByTestId('rv-row-open')
+        .click()
+      await page.getByTestId('rv-sheet').getByTestId('rv-sheet-change-tables').click()
+      const changing = page.getByTestId('rv-ct-sheet')
+      await expect(changing.getByTestId('rv-pick-list')).toBeVisible()
+      await expectFloor(page, 'Change tables, the list', 8, '[data-testid="rv-ct-sheet"]')
+      await changing.getByTestId('rv-ct-close').click()
+      await expect(changing).toHaveCount(0)
+
+      // Give a spot, from a party written onto the waiting list: each row is a 44 px button.
+      await page.goto(`/venues/${venueId}?tab=reservations`)
+      await page.getByTestId('rv-wl-add').click()
+      await page.getByTestId('rv-wl-name').fill('Чакаща 44')
+      await page.getByTestId('rv-wl-phone').fill('+359 888 777 244')
+      await page.getByTestId('rv-wl-guests').fill('2')
+      await page.getByTestId('rv-wl-save').click()
+      await expect(page.getByTestId('rv-waiting-note')).toBeVisible()
+      await page
+        .getByTestId('rv-row')
+        .filter({ hasText: 'Чакаща 44' })
+        .first()
+        .getByTestId('rv-row-give')
+        .click()
+      await expect(page.getByTestId('rv-give').getByTestId('rv-pick-list')).toBeVisible()
+      await expectFloor(page, 'Give a spot, the list', 8, '[data-testid="rv-give"]')
     } finally {
       await context.close()
     }

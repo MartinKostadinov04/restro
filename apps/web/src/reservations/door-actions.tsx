@@ -44,7 +44,7 @@ import {
 import type { RvFrame } from '@/server/reservations/view'
 import { ConfirmDialog } from './confirm-dialog'
 import { SameGuestsDialog } from './door-dialogs'
-import { useSpotsText } from './reservation-words'
+import { useSpotCalled } from './plan-words'
 import { type RvRunSpec, useSpotsLostLine } from './use-reservation-run'
 
 /** The party at the door: what a seating needs to know about it. */
@@ -110,7 +110,7 @@ export function useDoorActions({
   const venueId = frame.venueId
   const [asking, setAsking] = useState<Asking | null>(null)
   const [reading, setReading] = useState(false)
-  const spotsText = useSpotsText()
+  const called = useSpotCalled()
 
   /** The party in a sentence: its name, or "No name" for a walk-in nobody named. */
   const named = useCallback((party: DoorParty) => party.name ?? t('no_name'), [t])
@@ -133,7 +133,7 @@ export function useDoorActions({
         // what the write reports of its tables — open for phones, or closed because this role may
         // not open them. Never guessed before the answer (#396).
         done: (details) => {
-          const spot = party.onSpot === undefined ? null : spotsText([party.onSpot])
+          const spot = party.onSpot === undefined ? null : called(party.onSpot)
           // A party nobody named reads as a party, never as "Seated: No name."
           const seated =
             reservationId === null || party.name === null
@@ -213,7 +213,7 @@ export function useDoorActions({
           const on = read.checks.onTheSpot
           return t('d_taken', {
             party: on.name ?? t('no_name'),
-            spot: on.spotName,
+            spot: called(on.spotName),
             time: on.time,
           })
         },
@@ -221,7 +221,7 @@ export function useDoorActions({
         onDone: () => setAsking(null),
       })
     },
-    [named, onChanged, run, spotsLostLine, spotsText, t, venueId],
+    [called, named, onChanged, run, spotsLostLine, t, venueId],
   )
 
   /** Asks first where the advice says a question is due, and writes where it does not. */

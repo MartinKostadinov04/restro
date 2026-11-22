@@ -210,13 +210,13 @@ test('a spot somebody booked later is refused by their name, and a blocked one b
 
   // A blocked spot is refused at the tap, by the reason the club gave.
   await tap(sheet, 'Маса 8')
-  await expect(toast(page, 'Маса 8 is blocked: repair.')).toBeVisible()
+  await expect(toast(page, 'Blocked (repair): Маса 8.')).toBeVisible()
   await expect(sheet.getByTestId('rv-ct-chosen')).not.toContainText('Маса 8')
 
   await tap(sheet, 'Бар 12 вляво')
   await sheet.getByTestId('rv-ct-save').click()
-  await expect(toast(page, 'Колев holds Бар 12 вляво from')).toBeVisible()
-  await expect(toast(page, 'Pick another spot.')).toBeVisible()
+  await expect(toast(page, 'Held for Колев from')).toBeVisible()
+  await expect(toast(page, ': Бар 12 вляво. Pick another spot.')).toBeVisible()
   // Never half-moved: the sheet stays open and the party still has no spot.
   await expect(changing(page)).toBeVisible()
   await changing(page).getByTestId('rv-ct-close').click()
@@ -232,9 +232,11 @@ test('the swap is one save: both seated parties end on the other’s spots, code
   await tap(sheet, 'Сепаре 1')
   const ask = page.getByTestId('rv-ct-swap-dialog')
   await expect(ask).toBeVisible()
-  await expect(ask).toContainText('Swap with Петров?')
-  await expect(ask).toContainText('Both parties change tables and all their codes follow.')
-  await ask.getByRole('button', { name: 'Swap with Петров' }).click()
+  await expect(ask).toContainText('Swap spots with Петров?')
+  // The question says where each party ends, not just the verb (S22).
+  await expect(ask).toContainText('Иванова goes to Сепаре 1, and Петров to')
+  await expect(ask).toContainText('The table codes follow each party.')
+  await ask.getByRole('button', { name: 'Swap spots' }).click()
   await expect(ask).toHaveCount(0)
 
   await expect(sheet.getByTestId('rv-ct-chosen')).toContainText('Сепаре 1')
@@ -273,6 +275,13 @@ test('the sheet reads whole at 390 px, with the plan’s own zoom and nothing pu
     const sheet = changing(page)
     await expect(sheet).toBeVisible()
     await expect(sheet).toContainText('Иванова')
+
+    // On a phone the sheet opens on the named list, in the venue's order (S17, S5); the plan is
+    // one tap away.
+    await expect(sheet.getByTestId('rv-pick-list')).toBeVisible()
+    await expect(sheet.getByTestId('rv-pick-plan')).toHaveCount(0)
+    await expect(sheet.getByTestId('rv-ct-chosen')).toContainText('Chosen spots: ')
+    await sheet.getByTestId('rv-ct-plan').click()
 
     const frame = sheet.getByTestId('rv-pick-plan')
     await expect(frame).toBeVisible()

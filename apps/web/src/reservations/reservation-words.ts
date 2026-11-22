@@ -34,9 +34,13 @@ export function useGuestsText() {
 
 /**
  * A spot name that is only a number: "9", "25.1", "40/41", "7,8". Anything with a word in it
- * ("2 VIP", "53 А", "Маса 7") is the venue's own name and is never rewritten (D134).
+ * ("2 VIP", "53 А", "Маса 7") is the venue's own name and is never rewritten (D134). The one test
+ * for it, here and in the plan's words (`useSpotCalled`), so a row and a toast name a spot alike.
  */
 const BARE_NUMBER = /^\d+(?:[.,/]\d+)*$/
+
+/** Whether a spot's name is only a number, and so needs the word "spot" before it in a sentence. */
+export const isBareSpotNumber = (name: string): boolean => BARE_NUMBER.test(name)
 
 /**
  * The spots a party holds, as a row says them (the screen round's S1): a name that is only a number
@@ -52,11 +56,11 @@ export function useSpotsText() {
       if (names.length === 0) return null
       if (names.every((name) => BARE_NUMBER.test(name))) {
         return names.length === 1
-          ? t('spot_one', { spot: names.join('') })
-          : t('spot_many', { spots: names.join(', ') })
+          ? t('p_spot_mid', { spot: names.join('') })
+          : t('p_spots_mid', { spots: names.join(', ') })
       }
       return names
-        .map((name) => (BARE_NUMBER.test(name) ? t('spot_one', { spot: name }) : name))
+        .map((name) => (BARE_NUMBER.test(name) ? t('p_spot_mid', { spot: name }) : name))
         .join(', ')
     },
     [t],

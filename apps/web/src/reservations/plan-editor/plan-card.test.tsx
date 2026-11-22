@@ -240,6 +240,24 @@ describe('a plan being edited', () => {
     ])
   })
 
+  it('puts the kinds above the spot list, and folds a long list behind its count (S13)', async () => {
+    const many = Array.from({ length: 12 }, (_, n) => ({
+      ...(SPOTS[0] as Plan['spots'][number]),
+      id: `sp_00000000000000000000${String(n + 10).padStart(2, '0')}`,
+      name: `Table ${n + 1}`,
+      place: { shape: 'rect' as const, x: 2 + n * 4, y: 10, width: 3, height: 3, rotation: 0 },
+    }))
+    const user = userEvent.setup()
+    renderWithIntl(<Card of={view({ ...WITH_PLAN, spots: many })} />)
+    const kinds = screen.getByText('Spot kinds')
+    const toggle = screen.getByTestId('pe-spot-list-toggle')
+    expect(kinds.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(toggle.textContent).toContain('12 spots on the plan')
+    expect(screen.queryAllByTestId('pe-spot-row')).toHaveLength(0)
+    await user.click(toggle)
+    expect(screen.getAllByTestId('pe-spot-row')).toHaveLength(12)
+  })
+
   it('saves a spot moved by the keys once they rest, with the whole spot and Undo', async () => {
     renderWithIntl(<Card of={view(WITH_PLAN)} />)
     const tile = screen
@@ -324,6 +342,8 @@ describe('a plan being edited', () => {
       ),
     )
     await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    // The toast says what changed (S14).
+    expect(vi.mocked(toast.success).mock.calls[0]?.[0]).toBe('Seats at Sofa: 10.')
     undoOfLast()()
     await waitFor(() =>
       expect(saveSpotAction).toHaveBeenLastCalledWith(
