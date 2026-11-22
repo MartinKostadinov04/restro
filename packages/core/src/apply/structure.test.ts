@@ -563,6 +563,66 @@ describe.skipIf(!hasDatabase)('structure: moveNode, structural events, atomic, u
       expect((await loadUnplacedItems(app, tenant, secondMenu.id)).itemIds).not.toContain(item)
     })
 
+    it('never lists a hand-made item in a POS venue, nor counts it as that venue’s (S14, D87)', async () => {
+      // A POS venue: a till venue of the integration serves it (the integration layer's link).
+      const posVenueId = (await provisionVenue(app, tenant, { name: 'POS', slug: testSlug('pos') }))
+        .id
+      await owner.query(
+        'insert into restro.barsy_venues (tenant_id, integration_id, bid, name, venue_id) values ($1, $2, 7, $3, $4)',
+        [tenant, integration, 'Till', posVenueId],
+      )
+      try {
+        const posMenu = await provisionMenu(app, tenant, posVenueId)
+        const item = await makeItem('Лимонада на къщата')
+        // A hand-made venue may take it; the POS venue's menu comes from its POS only.
+        expect((await loadUnplacedItems(app, tenant, menu.id)).itemIds).toContain(item)
+        expect((await loadUnplacedItems(app, tenant, posMenu.id)).itemIds).not.toContain(item)
+        expect([...(await itemsOfVenue(app, tenant, posVenueId, [item]))]).toEqual([])
+        expect([...(await itemsOfVenue(app, tenant, venueId, [item]))]).toEqual([item])
+
+        // The control: the POS venue's own till item is still its, unplaced and counted.
+        const tillItem = newId('nd')
+        const articleId = `s14-${Date.now()}`
+        const record = newId('sr')
+        await withTenantWrite(app, tenant, (tx) =>
+          tx.execute(sql`
+            insert into restro.source_records
+              (id, tenant_id, integration_id, external_type, external_id, scope, content_hash, raw,
+               payload)
+            values (${record}, ${tenant}, ${integration}, 'article', ${articleId}, 'master',
+                    ${sha256Hex(record)}, '{}', '{}'::jsonb)`),
+        )
+        const result = await apply(
+          app,
+          tenant,
+          changeSet(`till:${integration}`, [
+            { op: 'createNode', id: tillItem, nodeType: 'item', parent: null, status: 'active' },
+            {
+              op: 'linkSource',
+              node: { id: tillItem },
+              link: { integration, externalType: 'article', externalId: articleId },
+            },
+            {
+              op: 'setField',
+              node: { id: tillItem },
+              fieldKey: 'price',
+              layer: 'till',
+              scope: `venue:${posVenueId}`,
+              value: { amount_minor: 450, currency: 'EUR' },
+              sourceRecordId: record,
+              mappingVersion: 1,
+            },
+          ]),
+        )
+        expect(result.rejected).toEqual([])
+        expect((await loadUnplacedItems(app, tenant, posMenu.id)).itemIds).toContain(tillItem)
+        expect([...(await itemsOfVenue(app, tenant, posVenueId, [tillItem]))]).toEqual([tillItem])
+      } finally {
+        // The link would make later tests of this integration see one more till venue.
+        await owner.query('delete from restro.barsy_venues where venue_id = $1', [posVenueId])
+      }
+    })
+
     it('lists a till item only in the venue the till read it for (T72)', async () => {
       // As a pull leaves it: linked to the till, a price for the second venue only, placed nowhere.
       const item = newId('nd')

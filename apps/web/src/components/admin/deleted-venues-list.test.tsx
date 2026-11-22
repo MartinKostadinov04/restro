@@ -89,14 +89,14 @@ describe('the deleted venues', () => {
     expect(toasts.success).toHaveBeenCalledTimes(1)
     const message = toasts.success.mock.calls[0]?.[0] as string
     expect(message).toContain('Neon Cellar is back')
-    expect(message).not.toContain('till')
+    expect(message).not.toContain('linked again')
     expect(message).toContain('Publish its menu')
     expect(within(items()[0] as HTMLElement).getByTestId('deleted-venue-name').textContent).toBe(
       'Roof Terrace',
     )
   })
 
-  it('says the till is linked again when the restore linked it (adjustments V1)', async () => {
+  it('says the POS link is back when the restore linked it (adjustments V1)', async () => {
     vi.mocked(restoreVenueAction).mockResolvedValue({
       ok: true,
       name: 'Neon Cellar',

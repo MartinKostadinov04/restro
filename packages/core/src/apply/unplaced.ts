@@ -15,12 +15,14 @@
 // menu's sections" alone lists every other venue's items too. An unplaced item is listed when:
 //   - the till read it for this venue: it has a value scoped to this venue (its pull writes
 //     price, for sale or a venue-only hide there; brief CF-16), or
-//   - it is hand-made and placed nowhere yet (no till link, no placement in any menu): once a
-//     venue places it, it belongs to that venue's menu and leaves the others' Unsorted.
+//   - it is hand-made and placed nowhere yet (no till link, no placement in any menu), and the
+//     venue is hand-made: once a venue places it, it belongs to that venue's menu and leaves the
+//     others' Unsorted. A POS venue never lists it: its items come from its POS only (D87, D89),
+//     so a hand-made item must not reach its menu through Unsorted (screen round 11-18, S14).
 
 import { type DbPool, withTenant } from '@restro/db'
 import { sql } from 'drizzle-orm'
-
+import { tillVenueLinks } from '../connectors/till-venues'
 import type { DocumentParts } from '../document/merge'
 import { isId, type NodeId } from '../ids'
 import { ApplyError } from './apply'
@@ -75,7 +77,9 @@ export async function loadUnplacedItems(
               where v.node_id = n.id and v.scope = 'venue:' || (select venue_id from menu))
             or (
               not exists (select 1 from restro.source_links l where l.node_id = n.id)
-              and not exists (select 1 from restro.placements p where p.item_id = n.id))
+              and not exists (select 1 from restro.placements p where p.item_id = n.id)
+              and not exists (
+                select 1 from ${tillVenueLinks} t where t.venue_id = (select venue_id from menu)))
           )
       ),
       reach (id) as (
@@ -127,7 +131,8 @@ export async function loadUnplacedItems(
  * Which of these items are the venue's (RR-72): items belong to the organisation, so the tenant's
  * rows are all row-level security hides. An item is the venue's when it is placed in a section of
  * one of its menus, or when `loadUnplacedItems` would list it there: the till read it for this
- * venue, or it is hand-made and placed nowhere yet. So everything the composer shows passes.
+ * venue, or it is hand-made, placed nowhere yet and the venue is hand-made (a POS venue's items
+ * come from its POS only, D87). So everything the composer shows passes, and nothing else.
  */
 export async function itemsOfVenue(
   pool: DbPool,
@@ -161,7 +166,8 @@ export async function itemsOfVenue(
             where v.node_id = n.id and v.scope = 'venue:' || ${venueId})
           or (
             not exists (select 1 from restro.source_links l where l.node_id = n.id)
-            and not exists (select 1 from restro.placements p where p.item_id = n.id))
+            and not exists (select 1 from restro.placements p where p.item_id = n.id)
+            and not exists (select 1 from ${tillVenueLinks} t where t.venue_id = ${venueId}))
         )`),
   )
   return new Set(result.rows.map((row) => row.id))

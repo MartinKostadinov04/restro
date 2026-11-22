@@ -12,19 +12,22 @@ import {
 
 // D123: the manager's phone is a supported admin device, and a tappable control has a hit area of
 // at least 44 x 44 px (Restro's own floor, docs/guides/operational-screens.md, Accessibility). This
-// walks the Studio's Structure screen, the Design page with the guest template in its preview, and
-// Settings -> Integrations, Staff and Ordering, the QR links guide, and Venue › Reservations (the
-// night's list, a reservation's sheet, Guests, and the spot pickers Change tables and Give a spot
-// on the list a phone opens them on: S17 of the 11-18 screen round) on a 390 px phone, and Tonight
-// on a phone and the bar tablet, and checks
+// walks the Studio's Structure screen, the item sheet and the Publish dialog over it, the Design page
+// with the guest template in its preview, Settings -> Integrations, Staff and Ordering, the QR links
+// guide, and Venue › Reservations (the night's list, a reservation's sheet, Guests, and the spot
+// pickers Change tables and Give a spot on the list a phone opens them on: S17 of the 11-18 screen
+// round) on a 390 px phone, and Tonight on a phone and the bar tablet, and checks
 // every control on them, so the floor cannot slip back unseen. A control may look smaller than 44 px
 // if its hit area is extended around it (the `tap-area` utility in globals.css), so the check is
 // not on the element's box: it asks the browser what is under the pointer at the edges of a
-// 44 x 44 px square centred on the control.
+// 44 x 44 px square centred on the control. On a laptop (no touch) the item sheet and the Publish
+// dialog are held to WCAG 2.5.8's 24 x 24 px the same way.
 test.describe.configure({ mode: 'serial' })
 test.setTimeout(120_000)
 
 const FLOOR = 44
+/** WCAG 2.5.8 (target size, minimum): a mouse target on a wide screen. */
+const DESKTOP_FLOOR = 24
 /** How far inside the square's corners the probe sits, so a control's rounded corner still counts. */
 const CORNER_INSET = 8
 
@@ -37,13 +40,15 @@ interface Miss {
 }
 
 /**
- * Every tappable control now on the page whose 44 x 44 px square is not all its own. Controls
+ * Every tappable control now on the page whose `floorPx` x `floorPx` square (44 px by default,
+ * 24 px for a mouse on a laptop) is not all its own. Controls
  * drawn but out of reach (hidden, disabled-by-attribute inside inert parts) are skipped. A link
  * inside a sentence is skipped too (WCAG 2.5.8 exempts inline links).
  */
 async function floorMisses(
   page: Page | Frame,
   scope?: string,
+  floorPx: number = FLOOR,
 ): Promise<{ checked: number; misses: Miss[] }> {
   return (page as Frame).evaluate(
     ({ floor, inset, scopeSelector }) => {
@@ -162,12 +167,22 @@ async function floorMisses(
       }
       return { checked, misses }
     },
-    { floor: FLOOR, inset: CORNER_INSET, scopeSelector: scope ?? null },
+    // The inset scales with the square, capped at CORNER_INSET: 8 px in a 44 px square (unchanged),
+    // 4 px in a 24 px one. An 8 px inset there would leave only the middle 8 px of the square to
+    // probe, and a 24 px control with rounded corners passes or fails on its centre alone; at 4 px
+    // the probes still sit inside a rounded corner but test most of the square's edge.
+    { floor: floorPx, inset: Math.min(CORNER_INSET, floorPx / 6), scopeSelector: scope ?? null },
   )
 }
 
 /** `atLeast`: how many controls the screen has, so a page that failed to draw cannot pass. */
-async function expectFloor(page: Page | Frame, where: string, atLeast: number, scope?: string) {
+async function expectFloor(
+  page: Page | Frame,
+  where: string,
+  atLeast: number,
+  scope?: string,
+  floorPx: number = FLOOR,
+) {
   // A menu opens with a zoom, and a box measured half-way is smaller than it will be.
   await (page as Frame).evaluate(() =>
     Promise.all(
@@ -179,9 +194,9 @@ async function expectFloor(page: Page | Frame, where: string, atLeast: number, s
         .map((animation) => animation.finished.catch(() => undefined)),
     ),
   )
-  const { checked, misses } = await floorMisses(page, scope)
+  const { checked, misses } = await floorMisses(page, scope, floorPx)
   expect(checked, `${where}: controls found`).toBeGreaterThanOrEqual(atLeast)
-  expect(misses, `${where}: controls under ${FLOOR} x ${FLOOR} px`).toEqual([])
+  expect(misses, `${where}: controls under ${floorPx} x ${floorPx} px`).toEqual([])
 }
 
 async function signIn(page: Page, email: string, lands = /\/venues(\/vn_[^/?]+\?tab=\w+)?$/) {
@@ -217,6 +232,60 @@ async function openComposer(page: Page) {
   await expect(page.getByTestId('section-picker')).toContainText('Коктейли')
 }
 
+/** Opens the first item's sheet, measures its controls (Details tab) and closes it. */
+async function checkItemSheet(page: Page, floorPx: number = FLOOR) {
+  await page.getByTestId('item-open').first().click()
+  await expect(page.getByTestId('item-sheet-details')).toBeVisible()
+  await expectFloor(page, 'item sheet', 5, '[data-testid="item-sheet"]', floorPx)
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('item-sheet')).toHaveCount(0)
+}
+
+/**
+ * Opens the Publish dialog and measures it, without publishing. With nothing to publish the button is
+ * off, so one item is hidden first and shown again after, even when the measure fails: the draft
+ * ends as it began, and the later tests of this serial file see the menu they expect.
+ */
+async function checkPublishDialog(page: Page, floorPx: number = FLOOR) {
+  const button = page.getByTestId('publish-button')
+  await expect(button).toBeVisible()
+  let toggled: string | null = null
+  if (await button.isDisabled()) {
+    const row = page
+      .getByTestId('item-row')
+      .filter({ has: page.locator('[data-testid="item-visible"]:not([disabled])') })
+      .first()
+    toggled = await row.getAttribute('data-item-id')
+    await row.getByTestId('item-visible').click()
+    await expect(button).toBeEnabled()
+  }
+  const dialog = page.getByTestId('publish-confirm-dialog')
+  try {
+    const several = (await button.getAttribute('aria-haspopup')) === 'menu'
+    await button.click()
+    // Several menus: the button opens a list of them first (a disabled row carries data-disabled).
+    if (several) {
+      await page.locator('[data-testid="publish-menu-row"]:not([data-disabled])').first().click()
+    }
+    await expect(dialog).toBeVisible()
+    await expectFloor(page, 'Publish dialog', 2, '[data-testid="publish-confirm-dialog"]', floorPx)
+  } finally {
+    // Close whatever is open (the dialog, or the menu list) before the row can be reached.
+    if ((await dialog.count()) > 0 || (await page.getByRole('menu').count()) > 0) {
+      await page.keyboard.press('Escape')
+    }
+    await expect(dialog).toHaveCount(0)
+    if (toggled !== null) {
+      // Show the item again, and wait until the switch says it is shown before the next test runs.
+      const visible = page
+        .locator(`[data-testid="item-row"][data-item-id="${toggled}"]`)
+        .getByTestId('item-visible')
+      await visible.click()
+      await expect(visible).toBeChecked()
+    }
+  }
+}
+
 /** The Studio's Structure, what opens over it, and the Design page, on the screen's own controls. */
 async function walkComposer(page: Page) {
   // Guest features is on Structure, under the menu (stacked switches and checkboxes).
@@ -235,6 +304,9 @@ async function walkComposer(page: Page) {
   // are measured here; the rows were measured above.
   await expectFloor(page, 'one item selected', 2, '[data-testid="selection-bar"]')
   await page.getByTestId('clear-selection').click()
+  // The item sheet and the Publish dialog, over Structure.
+  await checkItemSheet(page)
+  await checkPublishDialog(page)
   // The Design page, and the guest template in its preview. The template is measured once it is
   // mounted, in its own document at the frame's width (RR-87): the real screen, not the moment before.
   const venueId = /\/venues\/(vn_[0-9A-Za-z]+)/.exec(page.url())?.[1]
@@ -302,6 +374,26 @@ test('Settings › Staff, Settings › Ordering and the QR links guide: a 44 px 
     await page.goto(`/guides/qr-links?venue=${venueId}`)
     await expect(page.getByTestId('guide-back')).toBeVisible()
     await expectFloor(page, 'the QR links guide', 1, '[data-testid="guide-page"]')
+  } finally {
+    await context.close().catch(() => undefined)
+  }
+})
+
+// A laptop with a mouse: no `tap-area`, so the drawn size is the target. WCAG 2.5.8 asks 24 px
+// (the dialog's close button was 15 px, S21).
+test('the item sheet and the Publish dialog: every control is at least 24 px on a laptop', async ({
+  browser,
+}) => {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
+  const page = await context.newPage()
+  try {
+    expect(
+      await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches),
+      'the context reports a fine pointer',
+    ).toBe(false)
+    await openComposer(page)
+    await checkItemSheet(page, DESKTOP_FLOOR)
+    await checkPublishDialog(page, DESKTOP_FLOOR)
   } finally {
     await context.close().catch(() => undefined)
   }
