@@ -27,6 +27,7 @@ const asked = vi.hoisted(() => ({
   tenantId: '',
   role: 'owner',
   headers: new Headers(),
+  signedInAt: undefined as Date | undefined,
 }))
 const revalidated = vi.hoisted(() => [] as { path: string; type: string | undefined }[])
 const queue = vi.hoisted(() => ({
@@ -38,6 +39,7 @@ const logged = vi.hoisted(() => [] as string[])
 vi.mock('@/server/session', () => ({
   requireTenant: async () => ({
     sessionId: 'session-personal',
+    signedInAt: asked.signedInAt ?? new Date(),
     user: { id: 'us_s3tester', name: 'Tester', email: 'tester@example.test' },
     organizations: [],
     organization: { id: asked.tenantId, name: 'S3 club', slug: 's3-club', role: asked.role },
@@ -359,6 +361,20 @@ describe.skipIf(!hasDatabase)('updateOrganizationAction (as the restro_app role)
     }
     expect(await row(orgA)).toEqual(before)
     expect(await history(orgA)).not.toContain(before?.slug)
+    expect(queue.jobs).toEqual([])
+  })
+
+  it('asks for the password again 15 minutes after it was typed (D122 §7), and nothing changes', async () => {
+    const before = await row(orgA)
+    asked.signedInAt = new Date(Date.now() - 16 * 60_000)
+    try {
+      expect(
+        await updateOrganizationAction({ name: 'Too late', slug: `s3-late-${suffix}` }),
+      ).toEqual({ ok: false, error: 'sign_in_again' })
+    } finally {
+      asked.signedInAt = undefined
+    }
+    expect(await row(orgA)).toEqual(before)
     expect(queue.jobs).toEqual([])
   })
 

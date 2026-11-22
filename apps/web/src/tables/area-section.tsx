@@ -74,7 +74,7 @@ export function AreaSection({
   payFirst: PayFirstTabView | null
 }) {
   const t = useTranslations('tables')
-  const { pending, run } = useRun()
+  const { pending, run, dialog: passwordAgain } = useRun()
   const nameId = useId()
   const [name, setName] = useState(hall.name)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -373,6 +373,7 @@ export function AreaSection({
           )
         }
       />
+      {passwordAgain}
     </section>
   )
 }

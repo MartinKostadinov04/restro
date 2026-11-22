@@ -83,7 +83,7 @@ export interface VenueCard {
  * - `taken`: another venue of the organisation holds this address name (D84);
  * - `failed`: something broke on the server (logged there).
  */
-export type RenameVenueSlugError = 'not_allowed' | 'invalid' | 'taken' | 'failed'
+export type RenameVenueSlugError = 'not_allowed' | 'invalid' | 'taken' | 'failed' | 'sign_in_again'
 
 /**
  * The answer of `renameVenueSlugAction`. On success the new slug and the new menu path (the code
@@ -107,7 +107,12 @@ export type RenameVenueSlugResult =
  * - `venue_archived`: the venue was deleted (in another tab, say);
  * - `failed`: something broke on the server (logged there).
  */
-export type RenameVenueError = 'not_allowed' | 'invalid' | 'venue_archived' | 'failed'
+export type RenameVenueError =
+  | 'not_allowed'
+  | 'invalid'
+  | 'venue_archived'
+  | 'failed'
+  | 'sign_in_again'
 
 /** The answer of `renameVenueAction`: the name as stored (trimmed), and whether it changed. */
 export type RenameVenueResult =
@@ -129,6 +134,7 @@ export type DeleteVenueError =
   | 'name_mismatch'
   | 'venue_archived'
   | 'failed'
+  | 'sign_in_again'
 
 /**
  * The answer of `deleteVenueAction`. `filesQueued` is false when the jobs that take the venue's
@@ -166,7 +172,12 @@ export type RestoreVenueResult =
  * - `venue_archived`: the venue is in the bin;
  * - `failed`: something broke on the server (logged there).
  */
-export type UnpublishVenueError = 'not_allowed' | 'invalid' | 'venue_archived' | 'failed'
+export type UnpublishVenueError =
+  | 'not_allowed'
+  | 'invalid'
+  | 'venue_archived'
+  | 'failed'
+  | 'sign_in_again'
 
 /**
  * The answer of `unpublishVenueAction` (D86): the venue's name, for the message. `filesQueued` is
@@ -185,7 +196,13 @@ export type UnpublishVenueResult =
  * - `name_mismatch`: the typed name is not the venue's;
  * - `failed`: something broke on the server (logged there).
  */
-export type PurgeVenueError = 'not_allowed' | 'invalid' | 'not_deleted' | 'name_mismatch' | 'failed'
+export type PurgeVenueError =
+  | 'not_allowed'
+  | 'invalid'
+  | 'not_deleted'
+  | 'name_mismatch'
+  | 'failed'
+  | 'sign_in_again'
 
 /**
  * The answer of `purgeVenueAction`: the venue's name, for the message. The erasing itself is the

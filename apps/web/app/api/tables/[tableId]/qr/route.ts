@@ -8,6 +8,7 @@ import { defaultQrBaseUrl } from '@/server/env'
 import { revealConfig, revealFor } from '@/server/reveal'
 import { canManageIntegration } from '@/server/roles'
 import { getAccess } from '@/server/session'
+import { onSharedDevice } from '@/server/staff/shared-device'
 import { buildQrDownload, parseFormat } from '@/server/tables/download'
 
 export async function GET(
@@ -21,6 +22,10 @@ export async function GET(
   }
   if (!canManageIntegration(organization.role)) return new Response('Not found', { status: 404 })
   const tenantId = organization.id
+  // A shared tablet works Tonight; a code needs the person's own sign-in (RR-84).
+  if (await onSharedDevice({ tenantId, sessionId: access.sessionId })) {
+    return new Response('Not found', { status: 404 })
+  }
   const actor = { userId: access.user.id, sessionId: access.sessionId }
   const { tableId } = await params
   const format = parseFormat(new URL(request.url).searchParams.get('format'))

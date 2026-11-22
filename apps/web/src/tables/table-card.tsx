@@ -97,7 +97,7 @@ export function TableCard({
   const t = useTranslations('tables')
   const tp = useTranslations('ownerSettings')
   const source = useTillLabel()
-  const { pending: running, run } = useRun()
+  const { pending: running, run, dialog: passwordAgain } = useRun()
   const nameId = useId()
   const numberId = useId()
   const [name, setName] = useState(row.label ?? '')
@@ -175,6 +175,7 @@ export function TableCard({
       data-has-code={hasCode}
       data-hidden={!row.isPublic}
     >
+      {passwordAgain}
       <div className="flex items-start gap-3">
         {/* Only owners and admins are given the codes (#70): no empty picture for anyone else. */}
         {canManage ? (
