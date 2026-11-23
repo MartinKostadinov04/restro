@@ -47,6 +47,10 @@ export const LOG_KINDS = {
   'waiter_call.lapsed': 'night',
   // A paid receipt marked Brought, or put back by Undo (#200).
   'receipt.brought': 'night',
+  // An item marked sold out for the night, or put back on sale, by whoever reviews orders
+  // (D147, #437). The mark lapses with the service day, so its entry is the night’s.
+  'sold_out.marked': 'night',
+  'sold_out.cleared': 'night',
   'lease.taken_over': 'night',
   'service_day.closed': 'night',
   'guard.tripped': 'record',

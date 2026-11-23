@@ -70,6 +70,9 @@ describe.skipIf(!hasDatabase)(
       const id = newId('so')
       ids[name] = id
       const lineId = newId('ol')
+      // The line’s item, kept so a read can be held to naming the right one (D147, #437).
+      const lineItemId = newId('nd')
+      ids[`${name}.item`] = lineItemId
       await world.owner.query(
         `insert into restro.sent_orders
          (id, tenant_id, venue_id, table_id, sitting_id, service_date, kind, reference, state, reason,
@@ -89,7 +92,7 @@ describe.skipIf(!hasDatabase)(
           JSON.stringify([
             {
               id: lineId,
-              itemId: newId('nd'),
+              itemId: lineItemId,
               optionIds: [],
               qty: fields.qty ?? 2,
               unitMinor: 250,
@@ -323,13 +326,17 @@ describe.skipIf(!hasDatabase)(
         })
         if (!read.ok) throw new Error(read.code)
         const detail = read.detail
+        // Each line names its item and says whether it is marked sold out tonight (D147,
+        // #437), so the sheet can offer the tap without a second read.
         expect(detail?.lines).toEqual([
           {
+            itemId: ids['found.item'],
             qty: 2,
             name: 'Gin tonic',
             optionNames: ['no mint'],
             unitMinor: 250,
             note: 'extra ice',
+            soldOut: false,
           },
         ])
         expect(detail?.steps.map((step) => step.toState)).toEqual(['unconfirmed', 'added'])

@@ -176,10 +176,12 @@ describe('the Details tab', () => {
     expect(onOpenMedia).toHaveBeenCalledTimes(1)
   })
 
-  it('points "For sale" at no button when the sale card has none (POS stock, S3)', () => {
+  it('points "For sale" at no button when the sale card has none (off sale in the POS, S3)', () => {
+    // A POS venue is markable since D147; an item the POS itself has off sale is not, because
+    // rule 5 forbids putting it back — that is the state with no button on the card.
     setup(
       sheetData({
-        sale: { soldOutTonight: false, offSale: null, canMark: false, stockFromTill: true },
+        sale: { soldOutTonight: false, offSale: 'till', canMark: true },
         fields: {
           for_sale: {
             value: true,

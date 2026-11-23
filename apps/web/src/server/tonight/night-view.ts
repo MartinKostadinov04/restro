@@ -195,6 +195,7 @@ export function frameOf(
       pause: held.has('ordering.pause'),
       lift: held.has('ordering.lift'),
       answer: held.has('alerts.answer'),
+      soldOut: held.has('sold_out'),
       followUp: held.has('money.follow_up'),
       endNight: held.has('reservations.end_night'),
     },
@@ -287,10 +288,14 @@ export interface StepView {
 export interface SentDetailView {
   readonly row: SentRowView
   readonly lines: readonly {
+    /** Our own item id: what the sold-out tap names (#437). */
+    readonly itemId: string
     readonly qty: number
     readonly name: string
     readonly options: readonly string[]
     readonly note: string | null
+    /** The item carries tonight's sold-out mark. */
+    readonly soldOut: boolean
   }[]
   /** The POS bill it joined, as staff know it there; null until it has joined one. */
   readonly billRef: string | null
@@ -302,10 +307,12 @@ export function sentDetailView(detail: SentOrderDetail, timezone: string): SentD
   return {
     row: sentRowView(detail.order, clock),
     lines: detail.lines.map((line) => ({
+      itemId: line.itemId,
       qty: line.qty,
       name: line.name,
       options: line.optionNames,
       note: line.note,
+      soldOut: line.soldOut,
     })),
     billRef: detail.posBillRef,
     steps: detail.steps.map((step) => ({

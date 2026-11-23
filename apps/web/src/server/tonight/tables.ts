@@ -1,5 +1,6 @@
 // Tonight's table commands, server side (#73; the screen is #85): open a table for phones, close
-// it, Open all, Close all, New guests, and the owner's mark of a payment table. Every write is the
+// it, Open all, Close all, New guests, the owner's mark of a payment table, and the sold-out mark
+// staff make where they review orders (#437). Every write is the
 // service write path's (`applyService`), which checks the permission inside its own transaction
 // (`tables.open_close`; `settings.payment_tables` with a sign-in of the last 15 minutes for the
 // mark) and writes the Log entry; this file only says who is asking and shapes the answer.
@@ -10,6 +11,7 @@
 // The answer is accepted with the service path's details, or refused with its code (D72); the
 // screen words the code.
 import {
+  type Actor,
   JOB_NAMES,
   type JobPayload,
   newId,
@@ -17,6 +19,7 @@ import {
   type TenantId,
   type VenueId,
 } from '@restro/core'
+import { itemsOfVenue } from '@restro/core/apply'
 import {
   applyService,
   type RefusalCode,
@@ -26,6 +29,7 @@ import {
 import type { DbPool } from '@restro/db'
 
 import { logError } from '../log'
+import { setItemsSoldOut } from '../sold-out/service'
 
 /**
  * The Log entry an accepted write answered with (`undoEntry`): the Undo sends it back so core can
@@ -94,6 +98,12 @@ export interface TonightScope {
   readonly venueId: string
   /** The account, or the person a PIN named on a shared device. */
   readonly actor: ServiceActor
+  /**
+   * The signed-in account as a menu change's actor (`user:<id>`). A menu row's actor may only
+   * be a user, an integration or the system, never a staff member, so a sold-out mark made by
+   * a PIN'd person is the account's write with the person in the Log (#437).
+   */
+  readonly account: Actor
   /** When the account last entered its password: its session's start. */
   readonly signedInAt?: Date
 }
@@ -157,6 +167,52 @@ export async function runTableCommand(
   command: TableCommand,
 ): Promise<TonightResult> {
   return answer(await run(scope, command))
+}
+
+/**
+ * Marks an item sold out for the night from where orders are reviewed, or puts it back on sale
+ * (D147, #437). Three steps, in this order:
+ *  1. the item must be this venue's (the phone's word is never trusted for an id);
+ *  2. the service command `sold_out.mark`, which is the gate (`sold_out`, a Staff permission
+ *     since D147) and writes the night's Log line naming whoever tapped;
+ *  3. the menu change itself, through apply() (`setItemsSoldOut`, rule 1), which also queues
+ *     `publish-live` so phones see it on their next look (every 15 s).
+ * The gate runs before the menu write, so nothing is written for somebody who may not mark. If
+ * the menu write then fails, the Log keeps a line saying someone marked it — true of the tap —
+ * and the screen says it was not saved.
+ */
+export async function markItemSoldOut(
+  scope: TonightScope,
+  services: TonightServices,
+  input: { readonly itemId: string; readonly soldOut: boolean },
+): Promise<TonightResult> {
+  const ours = await itemsOfVenue(scope.pool, scope.tenantId, scope.venueId, [input.itemId])
+  if (!ours.has(input.itemId)) return { ok: false, error: 'venue_missing' }
+  const result = await run(scope, {
+    type: 'sold_out.mark',
+    itemIds: [input.itemId],
+    soldOut: input.soldOut,
+  })
+  if (result.status !== 'accepted') return answer(result)
+  const saved = await setItemsSoldOut(
+    {
+      pool: scope.pool,
+      tenantId: scope.tenantId,
+      venueId: scope.venueId as VenueId,
+      actor: scope.account,
+      // The command above is the gate; this call never decides who may mark.
+      canMark: true,
+    },
+    { enqueue: services.enqueue },
+    { itemIds: [input.itemId], soldOut: input.soldOut },
+  )
+  if (!saved.ok) {
+    logError('tonight_sold_out_not_saved', new Error(saved.error))
+    return { ok: false, error: saved.error }
+  }
+  return saved.liveQueued
+    ? { ok: true, details: result.details }
+    : { ok: true, details: result.details, queued: false }
 }
 
 /**

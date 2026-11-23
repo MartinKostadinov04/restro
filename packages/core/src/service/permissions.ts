@@ -144,20 +144,25 @@ const RESERVATION_PERMISSIONS: readonly Permission[] = [
 ]
 
 /**
- * What staff hold: tables, pauses, alerts, the night's first sections (design §5) and tonight's
- * reservations — the arrivals, walk-ins and waiting list of whoever is on the floor.
+ * What staff hold: tables, pauses, alerts, sold out, the night's first sections (design §5) and
+ * tonight's reservations — the arrivals, walk-ins and waiting list of whoever is on the floor.
+ *
+ * `sold_out` is staff’s because of D147: whoever reviews orders may mark an item sold out, and
+ * at 01:00 that is the bartender holding the empty bottle, not a manager. It reaches a venue
+ * that has never edited its Staff role; on an edited one the owner finds it unticked (#366).
  */
 const STAFF_PERMISSIONS: readonly Permission[] = [
   'tables.open_close',
   'tables.resume',
   'ordering.pause',
   'alerts.answer',
+  'sold_out',
   'night.view',
   'reservations.tonight',
 ]
 
 /**
- * What a manager holds: everything staff hold, plus lifting a pause, sold out, the Log, the whole
+ * What a manager holds: everything staff hold, plus lifting a pause, the Log, the whole
  * night, money follow-ups and all eight reservation permissions — the booking book, the pay rule,
  * blocks, past nights, ending the night, and the two reservation settings. Those last two are the
  * one place a default role below the owner holds a settings key, so a manager needs their own
@@ -169,7 +174,6 @@ const STAFF_PERMISSIONS: readonly Permission[] = [
 const MANAGER_PERMISSIONS: readonly Permission[] = grantedPermissions([
   ...STAFF_PERMISSIONS,
   'ordering.lift',
-  'sold_out',
   'log.view',
   'night.view_full',
   'money.follow_up',

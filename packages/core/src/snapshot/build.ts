@@ -48,7 +48,6 @@ import {
 import { parseSnapshot, SnapshotError, snapshotPath } from './errors'
 import {
   type MenuSnapshot,
-  NEW_BADGE,
   SNAPSHOT_FIELD_TYPES,
   SNAPSHOT_SCHEMA,
   type SnapshotItem,
@@ -366,9 +365,11 @@ export function buildSnapshot(resolved: ResolvedMenu, ctx: SnapshotContext): Men
       dietary,
       tags,
       portion: valueAs('measurement', read('item', fields, 'portion')),
-      // Only "new": dietary labels and tags have their own slots, so a face never shows them
-      // twice (lead's decision 10-10, doc example `"badges": ["new"]`).
-      badges: item.computed.badges.includes(NEW_BADGE) ? [NEW_BADGE] : [],
+      // Always empty: Restro adds no badge of its own (D152), and dietary labels and tags have
+      // their own slots, so a face never shows them twice (lead's decision 10-10). The slot
+      // stays in the contract: a face still reads it, and `new` is still a name a badge
+      // could have.
+      badges: [],
       availability: {
         state: soldOut ? 'sold_out' : 'available',
         schedule: valueAs('availability', read('item', fields, 'availability')),
