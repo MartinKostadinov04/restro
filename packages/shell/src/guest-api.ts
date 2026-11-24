@@ -13,6 +13,8 @@
 // alone, with its payment and, while the card is being collected, the provider's form values.
 
 import {
+  GROUP_LABEL_MAX,
+  GROUP_TABLES_MAX,
   GuestPositionSchema,
   idSchema,
   LocaleSchema,
@@ -94,9 +96,6 @@ const OrderLineFields = {
   qty: z.int().min(1).max(SERVICE_LIMITS.quantity),
   note: z.string().max(SERVICE_LIMITS.note),
 }
-
-/** The most member tables a linked group's bill carries: a party on more is very unusual. */
-export const GROUP_TABLES_MAX = 50
 
 /** A table's POS bills as a phone sees them. */
 const BillPartsSchema = z
@@ -288,37 +287,39 @@ export const GuestTableStateSchema = z.strictObject({
       parts: BillPartsSchema,
       /** The lines paid in the app in this sitting (D127 1.2): never who paid. */
       paidLines: PaidLinesSchema,
-      /**
-       * The linked group's bill where the table is in one (#319, D160 §1): every member table's
-       * lines under its own heading and one total. The fields above stay this table's own, what
-       * its Pay reads. Absent where the table is in no group.
-       */
-      group: z
-        .strictObject({
-          /** False while a member table's bill is not known well: the total is not final. */
-          complete: z.boolean(),
-          totalMinor: minor,
-          paidMinor: minor,
-          owedMinor: minor,
-          tables: z
-            .array(
-              z.strictObject({
-                label: z.string().max(64),
-                /** The table this phone is at. */
-                own: z.boolean(),
-                /** False when its latest reading failed or none was made: shown as updating. */
-                complete: z.boolean(),
-                totalMinor: minor,
-                paidMinor: minor,
-                owedMinor: minor,
-                parts: BillPartsSchema,
-                paidLines: PaidLinesSchema,
-              }),
-            )
-            .min(2)
-            .max(GROUP_TABLES_MAX),
-        })
-        .optional(),
+    })
+    .nullable(),
+  /**
+   * The linked group's bill where the table is in one (#319, D160 §1): every member table's lines
+   * under its own heading and one total. Beside `bill`, not in it: it shows even while this table
+   * has no reading of its own, and `bill` stays this table's own, what its Pay reads. Null where
+   * the table is in no group, and wherever `bill` is hidden for want of a location pass.
+   */
+  group: z
+    .strictObject({
+      /** False while a member table's bill is not known well, or the group has more tables than
+       * it carries: the total is not final. */
+      complete: z.boolean(),
+      totalMinor: minor,
+      paidMinor: minor,
+      owedMinor: minor,
+      tables: z
+        .array(
+          z.strictObject({
+            label: z.string().max(GROUP_LABEL_MAX),
+            /** The table this phone is at. */
+            own: z.boolean(),
+            /** False when its latest reading failed or none was made: shown as updating. */
+            complete: z.boolean(),
+            totalMinor: minor,
+            paidMinor: minor,
+            owedMinor: minor,
+            parts: BillPartsSchema,
+            paidLines: PaidLinesSchema,
+          }),
+        )
+        .min(2)
+        .max(GROUP_TABLES_MAX),
     })
     .nullable(),
 })

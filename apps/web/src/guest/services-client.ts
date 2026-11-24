@@ -63,6 +63,7 @@ import {
   ANSWER_LOST_CODE,
   type CommandResult,
   EMPTY_SERVICE_STATE,
+  type GroupBillView,
   GUEST_PASS_HEADER,
   GUEST_PAYMENT_HEADER,
   GUEST_PHONE_HEADER,
@@ -283,26 +284,27 @@ function tableBillOf(bill: GuestTableState['bill'], at: number, now: number): Ta
     owedMinor: bill.owedMinor,
     parts: partsOf(bill.parts),
     paidLines: bill.paidLines,
-    ...(bill.group === undefined
-      ? {}
-      : {
-          group: {
-            complete: bill.group.complete,
-            totalMinor: bill.group.totalMinor,
-            paidMinor: bill.group.paidMinor,
-            owedMinor: bill.group.owedMinor,
-            tables: bill.group.tables.map((table) => ({
-              label: table.label,
-              own: table.own,
-              complete: table.complete,
-              totalMinor: table.totalMinor,
-              paidMinor: table.paidMinor,
-              owedMinor: table.owedMinor,
-              parts: partsOf(table.parts),
-              paidLines: table.paidLines,
-            })),
-          },
-        }),
+  }
+}
+
+/** The table's linked group's bill as the face draws it (#319), or null in none. */
+function tableGroupOf(group: GuestTableState['group']): GroupBillView | null {
+  if (group === null) return null
+  return {
+    complete: group.complete,
+    totalMinor: group.totalMinor,
+    paidMinor: group.paidMinor,
+    owedMinor: group.owedMinor,
+    tables: group.tables.map((table) => ({
+      label: table.label,
+      own: table.own,
+      complete: table.complete,
+      totalMinor: table.totalMinor,
+      paidMinor: table.paidMinor,
+      owedMinor: table.owedMinor,
+      parts: partsOf(table.parts),
+      paidLines: table.paidLines,
+    })),
   }
 }
 
@@ -775,6 +777,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       ...EMPTY_SERVICE_STATE,
       revision: server?.version ?? 0,
       tableBill: server === null ? null : tableBillOf(server.bill, serverAt, now),
+      tableGroup: server === null ? null : tableGroupOf(server.group),
       paying: server === null || retired ? null : payingView(server),
       payment: payment === null || isHidden(payment) ? null : paymentViewOf(payment, receiptEmail),
       order: server?.order == null ? null : orderView(server.order, pending, now),

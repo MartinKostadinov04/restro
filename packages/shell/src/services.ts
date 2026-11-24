@@ -449,12 +449,6 @@ export interface TableBillView {
   readonly parts: readonly TableBillPartView[]
   /** The lines paid in the app in this sitting, greyed under "Paid in the app" on every phone. */
   readonly paidLines: readonly PaidLineView[]
-  /**
-   * The linked group's bill where the table is in one (#319, D160 §1): every member table's lines
-   * under its own heading and one total for the party. The fields above stay this table's own,
-   * what its Pay reads: each table still pays its own. Absent where the table is in no group.
-   */
-  readonly group?: GroupBillView
 }
 
 /** One member table of a linked group's bill, under its own heading. Nothing names a person. */
@@ -721,6 +715,14 @@ export interface ServiceState {
    * phone has no location pass (`location.state` `needed`).
    */
   readonly tableBill?: TableBillView | null
+  /**
+   * The linked group's bill where the table is in one (#319, D160 §1): every member table's lines
+   * under its own heading and one total for the party, drawn in the bill in place of this table's
+   * lines alone. It shows even while this table has no reading of its own (`tableBill` null);
+   * `tableBill` stays this table's own, what its Pay reads: each table still pays its own. Absent
+   * or null where the table is in no group or the phone has no location pass.
+   */
+  readonly tableGroup?: GroupBillView | null
   /**
    * Paying on the bill here (#114): `state` is on, paused or off (no ids), `minCardMinor` the
    * smallest card payment. `electronicReceipt` (#186) is true where the pay screen offers the

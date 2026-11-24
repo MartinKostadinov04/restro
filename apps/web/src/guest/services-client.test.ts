@@ -40,6 +40,7 @@ function tableState(version: number, lines: Lines = [], location: LocationState 
     next: lines.length > 0 ? 2_000 : 10_000,
     table: { label: '7' },
     groupKey: 0,
+    group: null,
     ordering: {
       state: 'on',
       notesAndOptions: false,
@@ -1119,7 +1120,7 @@ describe('paying (#110, #114, D127)', () => {
       currency: 'EUR',
       parts: [{ lines: [{ id: BN, amountMinor: 2250, beingPaid: true }] }],
     })
-    expect(state.tableBill?.group).toBeUndefined()
+    expect(state.tableGroup).toBeNull()
     expect(state.payment).toBeNull()
   })
 
@@ -1129,7 +1130,6 @@ describe('paying (#110, #114, D127)', () => {
       label: '8',
       own: false,
       complete: false,
-      readAgoSeconds: 40,
       totalMinor: 1000,
       paidMinor: 0,
       owedMinor: 1000,
@@ -1152,46 +1152,62 @@ describe('paying (#110, #114, D127)', () => {
       ],
       paidLines: [],
     }
-    const grouped = {
-      ...own,
-      groupKey: 7,
-      bill: {
-        ...own.bill,
-        group: {
-          complete: false,
-          totalMinor: 3250,
-          paidMinor: 0,
-          owedMinor: 3250,
-          tables: [
-            {
-              label: '7',
-              own: true,
-              complete: true,
-              readAgoSeconds: 3,
-              totalMinor: own.bill.totalMinor,
-              paidMinor: own.bill.paidMinor,
-              owedMinor: own.bill.owedMinor,
-              parts: own.bill.parts,
-              paidLines: own.bill.paidLines,
-            },
-            other,
-          ],
+    const group = {
+      complete: false,
+      totalMinor: 3250,
+      paidMinor: 0,
+      owedMinor: 3250,
+      tables: [
+        {
+          label: '7',
+          own: true,
+          complete: true,
+          totalMinor: own.bill.totalMinor,
+          paidMinor: own.bill.paidMinor,
+          owedMinor: own.bill.owedMinor,
+          parts: own.bill.parts,
+          paidLines: own.bill.paidLines,
         },
-      },
+        other,
+      ],
     }
-    const h = harness(() => json(200, grouped))
+    const h = harness(() => json(200, { ...own, groupKey: 7, group }))
     h.client.start()
     await h.tick()
-    const bill = h.client.getState().tableBill
+    const state = h.client.getState()
     // This table's own bill is what Pay reads; the group is drawn beside it.
-    expect(bill).toMatchObject({ owedMinor: 2250, parts: [{ id: 'bill-1' }] })
-    expect(bill?.group).toMatchObject({
+    expect(state.tableBill).toMatchObject({ owedMinor: 2250, parts: [{ id: 'bill-1' }] })
+    expect(state.tableGroup).toMatchObject({
       complete: false,
       owedMinor: 3250,
       tables: [
         { label: '7', own: true, complete: true, owedMinor: 2250 },
         { label: '8', own: false, complete: false, parts: [{ lines: [{ id: 'bn_other' }] }] },
       ],
+    })
+  })
+
+  it('draws a linked group’s bill when this table has no bill read yet (#319)', async () => {
+    const own = payingTable(1)
+    const empty = { totalMinor: 0, paidMinor: 0, owedMinor: 0, parts: [], paidLines: [] }
+    const group = {
+      complete: false,
+      totalMinor: 1000,
+      paidMinor: 0,
+      owedMinor: 1000,
+      tables: [
+        { label: '7', own: true, complete: false, ...empty },
+        { label: '8', own: false, complete: true, ...empty, totalMinor: 1000, owedMinor: 1000 },
+      ],
+    }
+    const h = harness(() => json(200, { ...own, groupKey: 7, bill: null, group }))
+    h.client.start()
+    await h.tick()
+    const state = h.client.getState()
+    expect(state.tableBill).toBeNull()
+    expect(state.tableGroup).toMatchObject({
+      complete: false,
+      tables: [{ own: true }, { label: '8', owedMinor: 1000 }],
     })
   })
 

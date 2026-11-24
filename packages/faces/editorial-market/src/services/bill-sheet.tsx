@@ -135,6 +135,9 @@ export function BillSheet() {
   const rounds = distinctRounds(state.bill)
   const bill = state.bill
   const table = state.tableBill ?? null
+  // A linked group's bill, drawn by table in place of this table's lines alone (#319); it shows
+  // even before this table's own bill is read.
+  const group = distinctRounds(state.bill).length > 0 ? undefined : (state.tableGroup ?? undefined)
   // The POS's own amounts are signed: a waiter's discount line is negative (#293, DA-8).
   const money = (minor: number) => paySignedMoney(minor, table?.currency ?? 'EUR', locale)
   const paidLines = table?.paidLines ?? []
@@ -154,8 +157,6 @@ export function BillSheet() {
     rounds.length > 0
       ? []
       : (table?.parts.flatMap((part) => part.lines.map((line) => ({ part, line }))) ?? [])
-  // A linked group's bill, drawn by table in place of this table's lines alone (#319).
-  const group = rounds.length > 0 ? undefined : table?.group
   // What the table owes, as the host states it; nothing when the bill is empty or settled.
   const owed =
     table !== null && table.owedMinor > 0

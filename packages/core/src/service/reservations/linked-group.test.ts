@@ -3,7 +3,8 @@
 // sees it) run everywhere; what only a database can show runs on a real Postgres as the restro_app
 // role: a booked party on three tables and a walk-in on two read as one group from any member, a
 // one-table party and a table outside read as none, Change tables adds and removes a member, and a
-// member whose reading failed keeps its last lines and leaves the total not final. Skipped
+// member whose reading failed keeps its last lines and leaves the total not final, and a phone
+// whose own table is not read yet still sees the group's bill. Skipped
 // without a database where it needs one.
 import { randomUUID } from 'node:crypto'
 
@@ -12,6 +13,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { hasDatabase } from '../../apply/test-database'
 import { type Id, newId } from '../../ids'
+import { GROUP_LABEL_MAX, GROUP_TABLES_MAX } from '../../linked-group-limits'
 import { DEFAULT_ORDERING_SETTINGS } from '../../ordering-settings'
 import { hashTableCode } from '../../qr'
 import { serviceDate as serviceDateOf } from '../../service-day'
@@ -166,6 +168,29 @@ describe("a linked group's bill as a phone sees it (pure)", () => {
       parts: [],
     })
     expect(view).toMatchObject({ complete: false, owedMinor: 1_250 })
+  })
+
+  it('carries this table and the first others by name up to the cap, and the total not final', () => {
+    const others = Array.from({ length: GROUP_TABLES_MAX + 1 }, (_, index) => ({
+      tableId: `tb_${index}`,
+      label: `T${String(index).padStart(3, '0')}`,
+      own: false,
+      reading: 'complete' as const,
+      bill: bill(100),
+    }))
+    const own = {
+      tableId: 'tb_own',
+      label: `Z${'x'.repeat(GROUP_LABEL_MAX + 10)}`,
+      own: true,
+      reading: 'complete' as const,
+      bill: bill(1_000),
+    }
+    const view = groupBillOf(groupOf([...others, own]))
+    expect(view.tables).toHaveLength(GROUP_TABLES_MAX)
+    expect(view.tables.at(-1)).toMatchObject({ own: true, owedMinor: 1_000 })
+    expect(view.tables.at(-1)?.label).toHaveLength(GROUP_LABEL_MAX)
+    expect(view.tables.at(-2)?.label).toBe(`T${String(GROUP_TABLES_MAX - 2).padStart(3, '0')}`)
+    expect(view.complete).toBe(false)
   })
 })
 
@@ -531,9 +556,31 @@ describe.skipIf(!hasDatabase)('linked groups (as the restro_app role)', () => {
     if (!read.ok || read.answer.unchanged) throw new Error('expected a full state')
     expect(read.answer.groupKey).toBeGreaterThan(0)
     expect(read.answer.bill?.owedMinor).toBe(1_000)
-    expect(read.answer.bill?.group).toMatchObject({ complete: true, owedMinor: 1_700 })
-    expect(read.answer.bill?.group?.tables.map((table) => table.own).sort()).toEqual([false, true])
+    expect(read.answer.group).toMatchObject({ complete: true, owedMinor: 1_700 })
+    expect(read.answer.group?.tables.map((table) => table.own).sort()).toEqual([false, true])
     expect(JSON.stringify(read.answer)).not.toContain('B-C2')
     expect(queued).toContain(tableOf('C2'))
+  })
+
+  it("gives a phone the group's bill before its own table's bill is read", async () => {
+    forgetGuestCodes()
+    await seated(['C1', 'C2'])
+    await record('C2', 'complete', 700)
+    const code = `code${randomUUID().replaceAll('-', '')}`
+    await world.owner.query(
+      'update restro.tables set qr_token = $2, qr_code_hash = $3 where id = $1',
+      [tableOf('C1'), code, await hashTableCode(code)],
+    )
+    const read = await guestState(world.app, {
+      code,
+      view: 'bill',
+      limiter: new GuestLimiter(LOOSE),
+    })
+    if (!read.ok || read.answer.unchanged) throw new Error('expected a full state')
+    expect(read.answer.bill).toBeNull()
+    expect(read.answer.group).toMatchObject({ complete: false, owedMinor: 700 })
+    const tables = read.answer.group?.tables ?? []
+    expect(tables.find((table) => table.own)).toMatchObject({ complete: false, owedMinor: 0 })
+    expect(tables.find((table) => !table.own)).toMatchObject({ complete: true, owedMinor: 700 })
   })
 })

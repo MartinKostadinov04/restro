@@ -57,6 +57,7 @@ import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 import { type GuestEventInput, recordEvents } from '../events'
 import { TABLE_TOKEN_PATTERN } from '../guest-files'
 import { type LegalDetails, readLegalDetails } from '../legal-details'
+import { GROUP_LABEL_MAX, GROUP_TABLES_MAX } from '../linked-group-limits'
 import type { Locale, LocalizedText } from '../locales'
 import {
   type GuestPosition,
@@ -271,13 +272,14 @@ export interface GuestTableState {
     readonly parts: readonly GuestBillPart[]
     /** The lines paid in the app in this sitting (D127 1.2): never who paid. */
     readonly paidLines: readonly GuestPaidLine[]
-    /**
-     * The linked group's bill where the table is in one (#319, D160 §1): every member table's
-     * lines under its own heading and one total. This table's own fields above stay what its Pay
-     * reads (each table still pays its own). Absent where the table is in no group.
-     */
-    readonly group?: GuestGroupBill
   } | null
+  /**
+   * The linked group's bill where the table is in one (#319, D160 §1): every member table's lines
+   * under its own heading and one total. Beside `bill`, not in it, so it shows while this table
+   * has no reading of its own yet; `bill` stays what this table's Pay reads (each table still pays
+   * its own). Null where the table is in no group or the phone may not see the bill.
+   */
+  readonly group: GuestGroupBill | null
 }
 
 /** One POS bill of a table as a phone sees it. */
@@ -707,8 +709,8 @@ export function projectGuestState(
             owedMinor: bill.owedMinor,
             parts: partsOf(bill),
             paidLines: paidLinesOf(bill),
-            ...(read.group === null ? {} : { group: groupBillOf(read.group) }),
           },
+    group: !sees || read.group === null ? null : groupBillOf(read.group),
   }
 }
 
@@ -742,29 +744,41 @@ function paidLinesOf(bill: BillView): GuestPaidLine[] {
 /**
  * The linked group's bill (#319, D160 §1): every member table under its own heading and one
  * total over them, signed through the money module (rule 8). A member whose reading failed keeps
- * its last lines, marked not complete, and the total is not final (rule 6, log 1.8).
+ * its last lines, marked not complete, and the total is not final (rule 6, log 1.8). A group of
+ * more than `GROUP_TABLES_MAX` tables carries this phone's table and the first others by name,
+ * its total over those alone and not final; a name longer than `GROUP_LABEL_MAX` is cut. Pure.
  */
 export function groupBillOf(group: GroupRead): GuestGroupBill {
-  const tables = group.tables.map((member): GuestGroupTable => {
-    const bill = member.bill
-    return {
-      label: member.label,
-      own: member.own,
-      complete: member.reading === 'complete' && bill !== null && bill.complete,
-      totalMinor: bill?.totalMinor ?? 0,
-      paidMinor: bill?.paidMinor ?? 0,
-      owedMinor: bill?.owedMinor ?? 0,
-      parts: bill === null ? [] : partsOf(bill),
-      paidLines: bill === null ? [] : paidLinesOf(bill),
-    }
-  })
+  const cut = group.tables.length > GROUP_TABLES_MAX
+  const tables = (cut ? cappedTables(group.tables) : group.tables).map(
+    (member): GuestGroupTable => {
+      const bill = member.bill
+      return {
+        label: member.label.slice(0, GROUP_LABEL_MAX),
+        own: member.own,
+        complete: member.reading === 'complete' && bill !== null && bill.complete,
+        totalMinor: bill?.totalMinor ?? 0,
+        paidMinor: bill?.paidMinor ?? 0,
+        owedMinor: bill?.owedMinor ?? 0,
+        parts: bill === null ? [] : partsOf(bill),
+        paidLines: bill === null ? [] : paidLinesOf(bill),
+      }
+    },
+  )
   return {
-    complete: !group.unread && tables.every((member) => member.complete),
+    complete: !cut && !group.unread && tables.every((member) => member.complete),
     totalMinor: sumSignedMinor(tables.map((member) => member.totalMinor)),
     paidMinor: sumSignedMinor(tables.map((member) => member.paidMinor)),
     owedMinor: sumSignedMinor(tables.map((member) => member.owedMinor)),
     tables,
   }
+}
+
+/** This phone's table and the first others by name, `GROUP_TABLES_MAX` in all, in name order. */
+function cappedTables(tables: GroupRead['tables']): GroupRead['tables'] {
+  const others = tables.filter((member) => !member.own).slice(0, GROUP_TABLES_MAX - 1)
+  const kept = new Set([...tables.filter((member) => member.own), ...others])
+  return tables.filter((member) => kept.has(member))
 }
 
 /** Throws unless `answer` is free of every backend value the read knows of (rule 3). */

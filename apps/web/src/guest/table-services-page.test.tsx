@@ -71,6 +71,7 @@ function tableState(itemId: string | null): GuestTableState {
     next: 10_000,
     table: { label: '12' },
     groupKey: 0,
+    group: null,
     ordering: {
       state: 'on',
       notesAndOptions: true,

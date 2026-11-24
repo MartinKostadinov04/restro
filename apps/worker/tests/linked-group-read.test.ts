@@ -222,7 +222,7 @@ describe.skipIf(!hasDatabase)("a linked group's bill when a member table did not
     expect(await read('1')).toMatchObject({ kind: 'recorded', complete: true })
     expect(await read('2')).toMatchObject({ kind: 'recorded', complete: true })
 
-    const good = projectGuestState(await stateOf('1'), 'bill').bill?.group
+    const good = projectGuestState(await stateOf('1'), 'bill').group
     expect(good?.complete).toBe(true)
     expect(good?.tables).toHaveLength(2)
     const owed = good?.owedMinor ?? 0
@@ -237,8 +237,8 @@ describe.skipIf(!hasDatabase)("a linked group's bill when a member table did not
 
     const state = await stateOf('1')
     expect(state.group?.unread).toBe(true)
-    const group = projectGuestState(state, 'bill').bill?.group
-    if (group === undefined) throw new Error('no group bill')
+    const group = projectGuestState(state, 'bill').group
+    if (group === null) throw new Error('no group bill')
     expect(group.complete).toBe(false)
     const own = group.tables.find((table) => table.own)
     const other = group.tables.find((table) => !table.own)
@@ -250,6 +250,6 @@ describe.skipIf(!hasDatabase)("a linked group's bill when a member table did not
 
     // Table 2 reads well again: the total is final.
     expect(await read('2')).toMatchObject({ kind: 'recorded', complete: true })
-    expect(projectGuestState(await stateOf('1'), 'bill').bill?.group?.complete).toBe(true)
+    expect(projectGuestState(await stateOf('1'), 'bill').group?.complete).toBe(true)
   })
 })

@@ -434,12 +434,12 @@ describe("a linked group's bill, by table (#319, D160 §1)", () => {
   const beer = tableLine(3, 'Beer', 500)
   const groupOf = (
     second: { complete: boolean } = { complete: true },
-  ): NonNullable<ServiceState['tableBill']> => {
+  ): Pick<ServiceState, 'tableBill' | 'tableGroup'> => {
     const own = tableBillOf([wine, mojito])
     const other = tableBillOf([beer])
     return {
-      ...own,
-      group: {
+      tableBill: own,
+      tableGroup: {
         complete: second.complete,
         totalMinor: 2750,
         paidMinor: 0,
@@ -471,7 +471,7 @@ describe("a linked group's bill, by table (#319, D160 §1)", () => {
   }
 
   it('draws every member table under its own heading, marks this one, and gives one total', () => {
-    drawFace(fakeHost({ tableBill: groupOf(), paying: payingOf() }))
+    drawFace(fakeHost({ ...groupOf(), paying: payingOf() }))
     const sheet = openBill()
     expect(sheet.querySelector('[data-slot="bill.group"] h4')?.textContent).toBe(
       w.paying.groupTitle,
@@ -494,13 +494,13 @@ describe("a linked group's bill, by table (#319, D160 §1)", () => {
   })
 
   it('keeps Pay on this table’s own bill: each table still pays its own', () => {
-    drawFace(fakeHost({ tableBill: groupOf(), paying: payingOf() }))
+    drawFace(fakeHost({ ...groupOf(), paying: payingOf() }))
     const sheet = openBill()
     expect(within(sheet).getByRole('button', { name: /^Pay/ }).textContent).toContain('€22.50')
   })
 
   it('marks a table that did not read as updating, keeps its last lines, and says the total is not final', () => {
-    drawFace(fakeHost({ tableBill: groupOf({ complete: false }), paying: payingOf() }))
+    drawFace(fakeHost({ ...groupOf({ complete: false }), paying: payingOf() }))
     const sheet = openBill()
     const [other, mine] = [...sheet.querySelectorAll('[data-slot="bill.group.table"]')]
     expect(other?.getAttribute('data-updating')).toBe('')
@@ -512,6 +512,27 @@ describe("a linked group's bill, by table (#319, D160 §1)", () => {
     expect(sheet.querySelector('[data-slot="bill.group.not_final"]')?.textContent).toBe(
       w.paying.groupNotFinal,
     )
+  })
+
+  it('draws the group’s bill when this table’s own bill is not read yet', () => {
+    const { tableGroup } = groupOf({ complete: false })
+    const unread = tableGroup && {
+      ...tableGroup,
+      tables: tableGroup.tables.map((member) =>
+        member.own
+          ? { ...member, complete: false, totalMinor: 0, owedMinor: 0, parts: [] }
+          : member,
+      ),
+    }
+    drawFace(fakeHost({ tableBill: null, tableGroup: unread, paying: payingOf() }))
+    const sheet = openBill()
+    const [other, mine] = [...sheet.querySelectorAll('[data-slot="bill.group.table"]')]
+    expect([...(other?.querySelectorAll('li') ?? [])].map((li) => li.textContent)).toEqual([
+      'Beer · €5.00',
+    ])
+    expect(mine?.getAttribute('data-updating')).toBe('')
+    expect(sheet.querySelector('[data-slot="bill.group.not_final"]')).not.toBeNull()
+    expect(sheet.querySelector('[data-slot="bill.owed"]')).toBeNull()
   })
 
   it('draws the table’s own bill alone where it is in no group', () => {
