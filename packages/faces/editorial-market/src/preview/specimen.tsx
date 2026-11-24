@@ -176,7 +176,8 @@ const DISHES: Partial<Record<SpecimenPart, number>> = {
   'section-two': 2,
   switch: 2,
   'dish-row': 1,
-  'dish-rows': 3,
+  // More than the tile shows: Density's tiles are a window of one height, so a tighter value shows more.
+  'dish-rows': 6,
   'two-dishes': 2,
   'four-dishes': 4,
   'dish-long': 1,
@@ -307,7 +308,12 @@ function bindingOf(
   return { ...binding, state: { ...binding.state, order: { lines, removed: [], earlier: null } } }
 }
 
-/** The first section, holding just these dishes and no sub-section; a strip keeps its own cards. */
+/**
+ * The first section, holding just these dishes and no sub-section; a strip keeps its own cards. Any
+ * other part draws the dishes as the usual list, even where the venue's first section is a strip:
+ * a strip's cards keep their own spacing, frame and size, so Density, Frame or Layout would show
+ * nothing.
+ */
 function sectionOf(
   view: ViewModel,
   dishes: readonly ViewItem[],
@@ -315,7 +321,8 @@ function sectionOf(
 ): ViewSection | null {
   const first = (strip ? view.sections.find(isStrip) : undefined) ?? view.sections[0]
   if (first === undefined) return null
-  if (!strip) return { ...first, items: dishes, sections: [] }
+  if (!strip)
+    return { ...first, items: dishes, sections: [], hints: { ...first.hints, layout: 'vertical' } }
   const cards = allItems([first]).slice(0, 3)
   return {
     ...first,

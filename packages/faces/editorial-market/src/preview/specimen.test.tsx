@@ -82,7 +82,7 @@ const DISH_COUNT: Partial<Record<SpecimenPart, number>> = {
   section: 1,
   'section-two': 2,
   'dish-row': 1,
-  'dish-rows': 3,
+  'dish-rows': 6,
   'two-dishes': 2,
   'four-dishes': 4,
   'dish-long': 1,
@@ -145,6 +145,20 @@ describe('the specimen view draws one part', () => {
     for (const part of ['section', 'dish-rows', 'dish-long', 'four-dishes'] as const) {
       expect(first(part), part).toBe(lead)
     }
+  })
+
+  it("a dish part draws the usual list even where the venue's first section is a strip", () => {
+    const view = richView()
+    const [first, ...rest] = view.sections
+    if (first === undefined) throw new Error('richView has no section')
+    const stripFirst = {
+      ...view,
+      sections: [{ ...first, hints: { ...first.hints, layout: 'horizontal' as const } }, ...rest],
+    }
+    const { container } = render(<EditorialSpecimen view={stripFirst} part="dish-rows" />)
+    const section = container.querySelector('[data-design-part="section"]')
+    expect(section?.getAttribute('data-section-layout')).toBe('vertical')
+    expect(container.querySelectorAll('[data-design-part="item"]').length).toBeGreaterThan(1)
   })
 
   it('carries the design as the face does, and a card part draws its dish as a card', () => {

@@ -1994,6 +1994,7 @@
       "dismiss": "Close this note",
       "notes": {
         "bleed": "Edge-to-edge photos have no corners of their own",
+        "pageBand": "Applies only when the header's band is Panel colour or Ink.",
         "heavy": "{font} has no weight heavier than {weight}, so Heavy is drawn at its heaviest."
       }
     },

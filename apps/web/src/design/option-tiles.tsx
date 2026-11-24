@@ -50,7 +50,7 @@ import type { Draft } from './preview-draft'
 import type { FrameContent } from './preview-frames'
 import { previewSnapshot } from './preview-snapshot'
 import { ScaledFrame, TileLoading } from './scaled-frame'
-import { DEMO_ASSET_BASE, LOGO_OPTIONS, specimenOf } from './specimen'
+import { DEMO_ASSET_BASE, LOGO_OPTIONS, specimenOf, TALL_PHOTO_OPTIONS } from './specimen'
 
 /** The width a tile's picture is laid out at: the narrowest phone the renderer holds for. */
 const TILE_WIDTH = 320
@@ -73,7 +73,7 @@ const PART_HEIGHT: Readonly<Record<SpecimenPart, number>> = {
   'section-two': 330,
   switch: 390,
   'dish-row': 150,
-  'dish-rows': 420,
+  'dish-rows': 360,
   'two-dishes': 300,
   'four-dishes': 560,
   'dish-long': 190,
@@ -91,6 +91,13 @@ const PART_HEIGHT: Readonly<Record<SpecimenPart, number>> = {
   tip: 120,
   'receipt-top': 150,
 }
+
+/**
+ * The parts whose tiles are a window of one height, whatever the part's own: Density's rows, so a
+ * tighter value shows more dishes in the same room and a looser one fewer (the difference in spacing
+ * alone, a few pixels a row, is hard to see).
+ */
+const WINDOW: Partial<Record<SpecimenPart, number>> = { 'dish-rows': 360 }
 
 /** The height a part's tile starts with: a whole screen's own, else the guess above. */
 export function partHeightOf(part: SpecimenPart): number {
@@ -206,7 +213,8 @@ function Tile({
   // A tile is keyed by its slot (`OptionTile`), so a height told for another option is never kept.
   const [told, setTold] = useState<number | null>(null)
   // A part that drew nothing (0) keeps the guess, with the placeholder over it.
-  const height = part === null ? null : told !== null && told > 0 ? told : partHeightOf(part)
+  const height =
+    part === null ? null : (WINDOW[part] ?? (told !== null && told > 0 ? told : partHeightOf(part)))
   return (
     <label
       data-testid="design-tile"
@@ -303,15 +311,16 @@ export function OptionTiles({
   const services = part === null ? SERVICE_STAGES.has(plan.stage) : specimenNeedsServices(part)
   const strip = page.id === 'sections' && option.id === 'strip_card_size'
   const logo = LOGO_OPTIONS.has(`${page.id}.${option.id}`)
+  const tall = TALL_PHOTO_OPTIONS.has(`${page.id}.${option.id}`)
 
   // Typing a colour must stay smooth: the pictures follow a moment later.
   const look = useDeferredValue(useMemo(() => ({ theme, values }), [theme, values]))
   const specimen = useMemo<MenuSnapshot | null>(
     () =>
       draft.state === 'ready' && !state.disabled
-        ? specimenOf(draft.snapshot, { services, strip, part, logo })
+        ? specimenOf(draft.snapshot, { services, strip, part, logo, tall })
         : null,
-    [draft, state.disabled, services, strip, part, logo],
+    [draft, state.disabled, services, strip, part, logo, tall],
   )
 
   const note =
@@ -319,7 +328,9 @@ export function OptionTiles({
       ? null
       : state.note.kind === 'bleed'
         ? t('notes.bleed')
-        : t('notes.heavy', { font: state.note.font, weight: state.note.heaviest })
+        : state.note.kind === 'page-band'
+          ? t('notes.pageBand')
+          : t('notes.heavy', { font: state.note.font, weight: state.note.heaviest })
 
   return (
     <fieldset

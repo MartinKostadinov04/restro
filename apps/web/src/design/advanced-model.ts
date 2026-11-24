@@ -81,6 +81,7 @@ export function withOption(
 /** Why a row says something: a note under it, and whether the row can be picked at all. */
 export type RowNote =
   | { readonly kind: 'bleed' }
+  | { readonly kind: 'page-band' }
   | { readonly kind: 'heavy'; readonly font: string; readonly heaviest: number }
 
 export interface RowState {
@@ -112,6 +113,15 @@ export function rowStateOf(values: DesignValues, pageId: string, optionId: strin
     valueIn(values, 'photos', 'frame') === 'bleed'
   ) {
     return { disabled: true, note: { kind: 'bleed' } }
+  }
+  // The rail takes the header's band only where the header has one: on a page-coloured header both
+  // values draw the same rail (the renderer's rule).
+  if (
+    pageId === 'navigation' &&
+    optionId === 'band' &&
+    valueIn(values, 'header', 'band') === 'page'
+  ) {
+    return { disabled: true, note: { kind: 'page-band' } }
   }
   const weightRow =
     (pageId === 'general' && optionId === 'heading_weight') ||

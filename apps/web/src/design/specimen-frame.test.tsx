@@ -81,6 +81,21 @@ describe("a tile's frame draws the option's part alone", () => {
     expect(draw('header', 'band').count('header.logo')).toBe(0)
   })
 
+  it('Photos › Fit and Backdrop draw an upright photo, so it is not the shape of the Landscape box', () => {
+    const { snapshot } = fixture('big-menu')
+    const tall = specimenOf(snapshot, {
+      services: false,
+      strip: false,
+      part: 'dish-row',
+      tall: true,
+    })
+    const image = Object.values(tall.items).find((item) => item.image !== null)?.image
+    expect(image).toBe('as_DemoPhotoTall00000000A')
+    const asset = tall.assets[image as string]
+    expect((asset?.h ?? 0) > (asset?.w ?? 0)).toBe(true)
+    expect(LOGO_OPTIONS.has('photos.fit')).toBe(false)
+  })
+
   it('a venue logo is drawn as the sample logo, never as the demo dish photo', () => {
     const { snapshot } = fixture('big-menu')
     const withLogo = { ...snapshot, theme: { ...snapshot.theme, logo: 'as_VenueLogo00000000000A' } }

@@ -29,6 +29,16 @@ const DEMO_ASSET = 'as_DemoPhoto000000000000A' as AssetId
 /** A neutral logo mark, grey on clear, seen on a light band and a dark one alike. */
 const DEMO_LOGO = 'as_DemoLogo0000000000000A' as AssetId
 
+/** The demo photo upright (3:4), for the options about a photo that is not the box's shape. */
+const DEMO_TALL = 'as_DemoPhotoTall00000000A' as AssetId
+
+/**
+ * The options whose tiles draw the upright photo: how a photo fits its box, and what fills the room
+ * it leaves, show only with a photo of another shape than the box (the demo photo is 4:3, as the
+ * Landscape box).
+ */
+export const TALL_PHOTO_OPTIONS: ReadonlySet<string> = new Set(['photos.fit', 'photos.backdrop'])
+
 /** The options a tile shows a logo for even where the venue has none yet: the logo is what they size or show. */
 export const LOGO_OPTIONS: ReadonlySet<string> = new Set([
   'header.logo_size',
@@ -119,9 +129,15 @@ function longText(
 }
 
 /** The item as a specimen: orderable, with a picture and the parts a design styles. */
-function dressedItem(item: Item, index: number, draft: MenuSnapshot, long: boolean): Item {
+function dressedItem(
+  item: Item,
+  index: number,
+  draft: MenuSnapshot,
+  long: boolean,
+  photo: AssetId,
+): Item {
   const locales = draft.locales.available
-  const noPhoto = { ...item, image: DEMO_ASSET }
+  const noPhoto = { ...item, image: photo }
   const lead = index === 0
   return {
     ...noPhoto,
@@ -162,7 +178,14 @@ export function specimenOf(
     strip,
     part,
     logo = false,
-  }: { services: boolean; strip: boolean; part?: SpecimenPart | null; logo?: boolean },
+    tall = false,
+  }: {
+    services: boolean
+    strip: boolean
+    part?: SpecimenPart | null
+    logo?: boolean
+    tall?: boolean
+  },
 ): MenuSnapshot {
   const cut = cutDown(draft, {
     sections: part != null && RAIL_PARTS.has(part) ? RAIL_SECTIONS : TILE_SECTIONS,
@@ -172,7 +195,8 @@ export function specimenOf(
   const long = part === 'dish-long'
   ids.forEach((id, index) => {
     const item = items[id]
-    if (item !== undefined) items[id] = dressedItem(item, index, cut, long)
+    if (item !== undefined)
+      items[id] = dressedItem(item, index, cut, long, tall ? DEMO_TALL : DEMO_ASSET)
   })
   const sections = { ...cut.sections }
   const first = cut.menu.sections[0]
@@ -197,7 +221,20 @@ export function specimenOf(
     ...cut,
     items,
     sections,
-    assets: { [DEMO_ASSET]: photo, [DEMO_LOGO]: SAMPLE_LOGO },
+    assets: {
+      [DEMO_ASSET]: photo,
+      [DEMO_TALL]: {
+        ...photo,
+        w: 600,
+        h: 800,
+        variants: {
+          thumb: `/a/${DEMO_TALL}/w320.webp`,
+          card: `/a/${DEMO_TALL}/w640.webp`,
+          full: `/a/${DEMO_TALL}/w1280.webp`,
+        },
+      },
+      [DEMO_LOGO]: SAMPLE_LOGO,
+    },
     theme: { ...cut.theme, logo: cut.theme.logo === null && !logo ? null : DEMO_LOGO },
     ...(services ? { features: allFeatures(cut.features) } : {}),
   }

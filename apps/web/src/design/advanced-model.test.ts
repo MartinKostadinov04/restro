@@ -48,6 +48,21 @@ describe('rows that do not apply', () => {
     expect(rowStateOf(inset, 'photos', 'corners').disabled).toBe(false)
   })
 
+  it("the rail's Band is off while the header's band is the page colour: both values draw alike", () => {
+    const page = withOptionValue(values, 'header', 'band', 'page')
+    expect(rowStateOf(page, 'navigation', 'band')).toEqual({
+      disabled: true,
+      note: { kind: 'page-band' },
+    })
+    for (const band of ['panel', 'ink'])
+      expect(
+        rowStateOf(withOptionValue(values, 'header', 'band', band), 'navigation', 'band'),
+      ).toEqual({
+        disabled: false,
+        note: null,
+      })
+  })
+
   it('the weight rows note a font that stops short of Heavy, on the font that draws', () => {
     const lora = withOptionValue(values, 'general', 'body_font', 'lora')
     const same = withOptionValue(lora, 'general', 'heading_font', 'same')
