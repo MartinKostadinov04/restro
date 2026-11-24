@@ -57,7 +57,8 @@ export interface LinkedGroup {
   readonly tables: readonly LinkedTable[]
 }
 
-const byCodeUnits = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+/** Orders two ids by their code units, the same on every machine (no collation). */
+export const byCodeUnits = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 
 /**
  * The linked groups the holds make, by member table id. Pure. A table two parties hold is in no

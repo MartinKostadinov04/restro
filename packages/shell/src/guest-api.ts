@@ -308,7 +308,6 @@ export const GuestTableStateSchema = z.strictObject({
                 own: z.boolean(),
                 /** False when its latest reading failed or none was made: shown as updating. */
                 complete: z.boolean(),
-                readAgoSeconds: seconds.nullable(),
                 totalMinor: minor,
                 paidMinor: minor,
                 owedMinor: minor,

@@ -126,14 +126,12 @@ describe("a linked group's bill as a phone sees it (pure)", () => {
         { tableId: 'tb_1', label: '1', own: true, reading: 'complete', bill: bill(1_250) },
         { tableId: 'tb_2', label: '2', own: false, reading: 'complete', bill: bill(-200) },
       ]),
-      14_000,
     )
     expect(view).toMatchObject({ complete: true, totalMinor: 1_050, owedMinor: 1_050 })
     expect(view.tables.map((table) => [table.label, table.own, table.owedMinor])).toEqual([
       ['1', true, 1_250],
       ['2', false, -200],
     ])
-    expect(view.tables[0]?.readAgoSeconds).toBe(4)
     expect(view.tables[0]?.parts[0]?.lines[0]?.name).toEqual({ en_US: 'Beer' })
   })
 
@@ -146,7 +144,6 @@ describe("a linked group's bill as a phone sees it (pure)", () => {
         ],
         true,
       ),
-      14_000,
     )
     expect(view.complete).toBe(false)
     expect(view.tables[1]).toMatchObject({ complete: false, owedMinor: 500 })
@@ -162,11 +159,9 @@ describe("a linked group's bill as a phone sees it (pure)", () => {
         ],
         true,
       ),
-      14_000,
     )
     expect(view.tables[1]).toMatchObject({
       complete: false,
-      readAgoSeconds: null,
       owedMinor: 0,
       parts: [],
     })
@@ -413,7 +408,7 @@ describe.skipIf(!hasDatabase)('linked groups (as the restro_app role)', () => {
     const group = read.group
     if (group === null) throw new Error('no group')
     expect(group.unread).toBe(false)
-    const view = groupBillOf(group, Date.now())
+    const view = groupBillOf(group)
     expect(view).toMatchObject({ complete: true, owedMinor: 2_000 })
     expect(view.tables.map((table) => table.owedMinor).sort()).toEqual([1_000, 300, 700].sort())
     // This table's own bill stays what its Pay reads.
@@ -439,7 +434,7 @@ describe.skipIf(!hasDatabase)('linked groups (as the restro_app role)', () => {
       [tableOf('C1'), tableOf('C2'), tableOf('C3')].sort(),
     )
     expect(grown?.key).not.toBe(before?.key)
-    expect(groupBillOf(grown as GroupRead, Date.now()).owedMinor).toBe(2_000)
+    expect(groupBillOf(grown as GroupRead).owedMinor).toBe(2_000)
 
     await changeTables(party, ['C1', 'C2', 'C3'], ['C1', 'C3'])
     const shrunk = (await state('C3')).group
@@ -471,7 +466,7 @@ describe.skipIf(!hasDatabase)('linked groups (as the restro_app role)', () => {
     expect(group.key).not.toBe(good?.key)
     const failed = group.tables.find((table) => table.tableId === tableOf('C2'))
     expect(failed?.reading).toBe('failed')
-    const view = groupBillOf(group, Date.now())
+    const view = groupBillOf(group)
     expect(view.complete).toBe(false)
     const shown = view.tables.find((table) => table.owedMinor === 700)
     expect(shown).toMatchObject({ complete: false })

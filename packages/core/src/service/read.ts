@@ -86,6 +86,7 @@ import {
 import type { Permission } from './permissions'
 import { type ReceiptToBring, receiptsToBring } from './receipt-rows'
 import {
+  byCodeUnits,
   groupHasUnreadTable,
   type LinkedGroup,
   type LinkedTableReading,
@@ -650,7 +651,7 @@ async function groupOf(
       bill,
     })
   }
-  tables.sort((a, b) => compareSpotNames(a.label, b.label) || (a.tableId < b.tableId ? -1 : 1))
+  tables.sort((a, b) => compareSpotNames(a.label, b.label) || byCodeUnits(a.tableId, b.tableId))
   return { key: facts.key, unread: groupHasUnreadTable(facts.readings), tables }
 }
 

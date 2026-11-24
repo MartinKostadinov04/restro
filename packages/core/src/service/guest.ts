@@ -318,8 +318,6 @@ export interface GuestGroupTable {
    * last lines, if any, show as updating, and the group's total is not final.
    */
   readonly complete: boolean
-  /** Seconds since its lines shown were read; null with none read in its sitting. */
-  readonly readAgoSeconds: number | null
   readonly totalMinor: number
   readonly paidMinor: number
   readonly owedMinor: number
@@ -709,7 +707,7 @@ export function projectGuestState(
             owedMinor: bill.owedMinor,
             parts: partsOf(bill),
             paidLines: paidLinesOf(bill),
-            ...(read.group === null ? {} : { group: groupBillOf(read.group, now) }),
+            ...(read.group === null ? {} : { group: groupBillOf(read.group) }),
           },
   }
 }
@@ -746,14 +744,13 @@ function paidLinesOf(bill: BillView): GuestPaidLine[] {
  * total over them, signed through the money module (rule 8). A member whose reading failed keeps
  * its last lines, marked not complete, and the total is not final (rule 6, log 1.8).
  */
-export function groupBillOf(group: GroupRead, now: number): GuestGroupBill {
+export function groupBillOf(group: GroupRead): GuestGroupBill {
   const tables = group.tables.map((member): GuestGroupTable => {
     const bill = member.bill
     return {
       label: member.label,
       own: member.own,
       complete: member.reading === 'complete' && bill !== null && bill.complete,
-      readAgoSeconds: bill === null ? null : seconds(now - bill.readAt.getTime()),
       totalMinor: bill?.totalMinor ?? 0,
       paidMinor: bill?.paidMinor ?? 0,
       owedMinor: bill?.owedMinor ?? 0,
@@ -856,40 +853,25 @@ export async function guestState(
 
   // A poll on the bill asks for a fresh reading on both paths: a reading that found the same bill
   // leaves the version, so most bill polls are answered unchanged. Only a phone that may see it.
+  // On a linked group's bill (#319) every other member is read fresh the same way: the phone shows
+  // them all, so a stale one would hold back the group's total.
   const open = state.unchanged ? state.open : state.sitting !== null
-  const billReadAt = state.unchanged ? state.billReadAt : (state.bill?.readAt ?? null)
-  if (
-    input.view === 'bill' &&
-    open &&
-    location.state !== 'needed' &&
-    input.queueReading !== undefined &&
-    wantsFreshReading(billReadAt, state.now)
-  ) {
-    await input.queueReading({
-      tenantId: target.tenantId,
-      venueId: target.venueId,
-      tableId: target.tableId,
-    })
-  }
-  // On a linked group's bill (#319), every other member's bill is read fresh the same way: the
-  // phone shows them all, so a stale one would hold back the group's total.
-  if (
-    input.view === 'bill' &&
-    open &&
-    location.state !== 'needed' &&
-    input.queueReading !== undefined
-  ) {
+  if (input.view === 'bill' && open && location.state !== 'needed' && input.queueReading) {
     const others = state.unchanged
       ? (state.group?.others ?? [])
       : (state.group?.tables ?? [])
           .filter((member) => !member.own)
           .map((member) => ({ tableId: member.tableId, readAt: member.bill?.readAt ?? null }))
-    for (const member of others) {
-      if (!wantsFreshReading(member.readAt, state.now)) continue
+    const own = {
+      tableId: target.tableId,
+      readAt: state.unchanged ? state.billReadAt : (state.bill?.readAt ?? null),
+    }
+    for (const table of [own, ...others]) {
+      if (!wantsFreshReading(table.readAt, state.now)) continue
       await input.queueReading({
         tenantId: target.tenantId,
         venueId: target.venueId,
-        tableId: member.tableId,
+        tableId: table.tableId,
       })
     }
   }
