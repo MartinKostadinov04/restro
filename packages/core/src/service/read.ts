@@ -35,7 +35,7 @@ import {
   waiterCalls,
   withTenant,
 } from '@restro/db'
-import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm'
 
 import { resolveRoutesIn } from '../apply/menu-routes'
 import type { AreaId, BarId, TableId } from '../ids'
@@ -389,6 +389,12 @@ interface SittingBill {
   readonly backendValues: Set<string>
 }
 
+/** A table whose bill is read, with its open sitting (null when closed). */
+interface BillTable {
+  readonly tableId: string
+  readonly sitting: { readonly id: string; readonly openedAt: Date } | null
+}
+
 /**
  * The table's bill as its open sitting shows it (null when closed or not read since the sitting
  * opened), with the sitting's paid lines and every backend value of the stored reading and of the
@@ -396,61 +402,95 @@ interface SittingBill {
  */
 async function sittingBill(
   tx: ReadTx,
-  input: {
-    readonly tableId: string
-    readonly sitting: { readonly id: string; readonly openedAt: Date } | null
-    readonly beingPaid: ReadonlySet<string>
-  },
+  input: BillTable & { readonly beingPaid: ReadonlySet<string> },
 ): Promise<SittingBill> {
-  const [reading] = await tx
-    .select({
-      readSeq: billReadings.readSeq,
-      readAt: billReadings.readAt,
-      complete: billReadings.complete,
-      bills: billReadings.bills,
-    })
-    .from(billReadings)
-    .where(eq(billReadings.tableId, input.tableId))
+  const bills = await sittingBills(tx, { tables: [input], beingPaid: input.beingPaid })
+  const bill = bills.get(input.tableId)
+  if (bill === undefined) throw new Error('sittingBills left out the table it was asked for')
+  return bill
+}
 
-  const stored = reading === undefined ? [] : parseStoredBills(reading.bills)
-  // The table's payments that aren't final (#110): their provider values join the walk, so no
+/**
+ * `sittingBill` for several tables at once (a linked group's members, #319): the same reads, each
+ * one query for every table, keyed by table id.
+ */
+async function sittingBills(
+  tx: ReadTx,
+  input: { readonly tables: readonly BillTable[]; readonly beingPaid: ReadonlySet<string> },
+): Promise<Map<string, SittingBill>> {
+  const tableIds = input.tables.map((table) => table.tableId)
+  const sittingIds = input.tables.flatMap((table) =>
+    table.sitting === null ? [] : [table.sitting.id],
+  )
+  const readings = new Map(
+    (
+      await tx
+        .select({
+          tableId: billReadings.tableId,
+          readSeq: billReadings.readSeq,
+          readAt: billReadings.readAt,
+          complete: billReadings.complete,
+          bills: billReadings.bills,
+        })
+        .from(billReadings)
+        .where(inArray(billReadings.tableId, tableIds))
+    ).map((row) => [row.tableId, row]),
+  )
+  // The tables' payments that aren't final (#110): their provider values join the walk, so no
   // other answer can carry them (rule 3). A settled payment's stay out of it.
   const open = await tx
-    .select({ id: payments.id, ref: payments.providerPaymentRef, form: payments.formValues })
+    .select({
+      tableId: payments.tableId,
+      ref: payments.providerPaymentRef,
+      form: payments.formValues,
+    })
     .from(payments)
-    .where(and(eq(payments.tableId, input.tableId), isNull(payments.settledAt)))
-  // The lines paid in the app in this sitting (D127 1.2): the lines the POS closed on the
-  // captured payments, at what it closed them for (#197), oldest payment first. They name no
-  // payer: the payment's handle and provider values stay behind.
+    .where(and(inArray(payments.tableId, tableIds), isNull(payments.settledAt)))
+  // The lines paid in the app in each open sitting (D127 1.2): the lines the POS closed on the
+  // captured payments, at what it closed them for (#197), oldest payment first, `PAID_LINES_MAX`
+  // a table. They name no payer: the payment's handle and provider values stay behind.
+  const ranked = tx
+    .select({
+      tableId: payments.tableId,
+      name: paymentLines.name,
+      quantity: paymentLines.closedQuantity,
+      amountMinor: paymentLines.closedMinor,
+      paymentId: paymentLines.paymentId,
+      position: paymentLines.position,
+      paidRank:
+        sql<number>`row_number() over (partition by ${payments.tableId} order by ${payments.settledAt} asc, ${payments.id} asc, ${paymentLines.position} asc)`.as(
+          'paid_rank',
+        ),
+    })
+    .from(paymentLines)
+    .innerJoin(
+      payments,
+      and(eq(payments.tenantId, paymentLines.tenantId), eq(payments.id, paymentLines.paymentId)),
+    )
+    .where(
+      and(
+        inArray(payments.tableId, tableIds),
+        inArray(payments.sittingId, sittingIds),
+        eq(payments.state, 'captured'),
+        isNotNull(paymentLines.closedMinor),
+      ),
+    )
+    .as('ranked')
   const paidRows =
-    input.sitting === null
+    sittingIds.length === 0
       ? []
       : await tx
           .select({
-            name: paymentLines.name,
-            quantity: paymentLines.closedQuantity,
-            amountMinor: paymentLines.closedMinor,
-            paymentId: paymentLines.paymentId,
-            position: paymentLines.position,
+            tableId: ranked.tableId,
+            name: ranked.name,
+            quantity: ranked.quantity,
+            amountMinor: ranked.amountMinor,
+            paymentId: ranked.paymentId,
+            position: ranked.position,
           })
-          .from(paymentLines)
-          .innerJoin(
-            payments,
-            and(
-              eq(payments.tenantId, paymentLines.tenantId),
-              eq(payments.id, paymentLines.paymentId),
-            ),
-          )
-          .where(
-            and(
-              eq(payments.tableId, input.tableId),
-              eq(payments.sittingId, input.sitting.id),
-              eq(payments.state, 'captured'),
-              isNotNull(paymentLines.closedMinor),
-            ),
-          )
-          .orderBy(asc(payments.settledAt), asc(payments.id), asc(paymentLines.position))
-          .limit(PAID_LINES_MAX)
+          .from(ranked)
+          .where(lte(ranked.paidRank, PAID_LINES_MAX))
+          .orderBy(asc(ranked.tableId), asc(ranked.paidRank))
   // Restro's own refund of a paid line (148): "being sent" until the provider's list shows it
   // (D72: no local success), then "refunded"; "did not go through" tells the guest to see the bar.
   const refundRows =
@@ -477,42 +517,50 @@ async function sittingBill(
     if (live !== undefined) return live.confirmedAt === null ? 'sending' : 'refunded'
     return rows.length === 0 ? null : 'failed'
   }
-  const paidLines = paidRows.flatMap((row) => {
-    if (row.quantity === null || row.amountMinor === null) return []
-    const refund = refundOf(row.paymentId, row.position)
-    return [
-      {
-        name: row.name,
-        quantity: row.quantity,
-        amountMinor: row.amountMinor,
-        ...(refund === null ? {} : { refund }),
-      },
-    ]
-  })
-  const backendValues = billBackendValues(stored)
-  for (const payment of open) {
-    if (payment.ref !== null) backendValues.add(payment.ref)
-    for (const value of Object.values(payment.form ?? {})) {
-      if (typeof value === 'string') backendValues.add(value)
+  const read = new Map<string, SittingBill>()
+  for (const table of input.tables) {
+    const reading = readings.get(table.tableId)
+    const stored = reading === undefined ? [] : parseStoredBills(reading.bills)
+    const paidLines = paidRows.flatMap((row) => {
+      if (row.tableId !== table.tableId) return []
+      if (row.quantity === null || row.amountMinor === null) return []
+      const refund = refundOf(row.paymentId, row.position)
+      return [
+        {
+          name: row.name,
+          quantity: row.quantity,
+          amountMinor: row.amountMinor,
+          ...(refund === null ? {} : { refund }),
+        },
+      ]
+    })
+    const backendValues = billBackendValues(stored)
+    for (const payment of open) {
+      if (payment.tableId !== table.tableId) continue
+      if (payment.ref !== null) backendValues.add(payment.ref)
+      for (const value of Object.values(payment.form ?? {})) {
+        if (typeof value === 'string') backendValues.add(value)
+      }
     }
+    read.set(table.tableId, {
+      reading:
+        reading === undefined
+          ? null
+          : { readSeq: reading.readSeq, readAt: reading.readAt, complete: reading.complete },
+      bill:
+        reading === undefined || table.sitting === null || reading.readAt < table.sitting.openedAt
+          ? null
+          : billView({
+              readAt: reading.readAt,
+              complete: reading.complete,
+              bills: stored,
+              beingPaid: input.beingPaid,
+              paidLines,
+            }),
+      backendValues,
+    })
   }
-  return {
-    reading:
-      reading === undefined
-        ? null
-        : { readSeq: reading.readSeq, readAt: reading.readAt, complete: reading.complete },
-    bill:
-      reading === undefined || input.sitting === null || reading.readAt < input.sitting.openedAt
-        ? null
-        : billView({
-            readAt: reading.readAt,
-            complete: reading.complete,
-            bills: stored,
-            beingPaid: input.beingPaid,
-            paidLines,
-          }),
-    backendValues,
-  }
+  return read
 }
 
 /** What a poll needs of the table's linked group: its members' reading states and its key. */
@@ -629,28 +677,30 @@ async function groupOf(
         )
     ).map((row) => [row.id, row.openedAt]),
   )
-  const tables: GroupTableRead[] = []
-  for (const member of facts.readings) {
+  const others = await sittingBills(tx, {
+    tables: facts.readings
+      .filter((member) => member.tableId !== input.tableId)
+      .map((member) => {
+        const openedAt = opened.get(member.sittingId)
+        return {
+          tableId: member.tableId,
+          sitting: openedAt === undefined ? null : { id: member.sittingId, openedAt },
+        }
+      }),
+    beingPaid: input.beingPaid,
+  })
+  const tables: GroupTableRead[] = facts.readings.map((member) => {
     const own = member.tableId === input.tableId
-    let bill = input.ownBill
-    if (!own) {
-      const openedAt = opened.get(member.sittingId)
-      const read = await sittingBill(tx, {
-        tableId: member.tableId,
-        sitting: openedAt === undefined ? null : { id: member.sittingId, openedAt },
-        beingPaid: input.beingPaid,
-      })
-      for (const value of read.backendValues) input.backendValues.add(value)
-      bill = read.bill
-    }
-    tables.push({
+    const read = others.get(member.tableId)
+    for (const value of read?.backendValues ?? []) input.backendValues.add(value)
+    return {
       tableId: member.tableId,
       label: labels.get(member.tableId) ?? '',
       own,
       reading: member.reading,
-      bill,
-    })
-  }
+      bill: own ? input.ownBill : (read?.bill ?? null),
+    }
+  })
   tables.sort((a, b) => compareSpotNames(a.label, b.label) || byCodeUnits(a.tableId, b.tableId))
   return { key: facts.key, unread: groupHasUnreadTable(facts.readings), tables }
 }

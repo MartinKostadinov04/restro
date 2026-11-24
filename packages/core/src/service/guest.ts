@@ -880,14 +880,14 @@ export async function guestState(
       tableId: target.tableId,
       readAt: state.unchanged ? state.billReadAt : (state.bill?.readAt ?? null),
     }
-    for (const table of [own, ...others]) {
-      if (!wantsFreshReading(table.readAt, state.now)) continue
-      await input.queueReading({
-        tenantId: target.tenantId,
-        venueId: target.venueId,
-        tableId: table.tableId,
-      })
-    }
+    const queue = input.queueReading
+    await Promise.all(
+      [own, ...others]
+        .filter((table) => wantsFreshReading(table.readAt, state.now))
+        .map((table) =>
+          queue({ tenantId: target.tenantId, venueId: target.venueId, tableId: table.tableId }),
+        ),
+    )
   }
   if (state.unchanged) {
     return {
