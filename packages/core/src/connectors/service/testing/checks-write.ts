@@ -443,6 +443,91 @@ export const paymentRouteCheck: Check<WriteHarness> = async (harness) => {
   return problems
 }
 
+/**
+ * One payment over several tables of a linked group (D160 §2, #542), where the POS moves lines to a
+ * payment table: each table's picks are isolated on their own, the later ones `into` the bill the
+ * first made, and an undo puts each line back on its own table. The kit takes two lines of one
+ * table, as two isolates, since the POS does not tell the tables a move comes from apart:
+ *   - the second isolate joins the first one's bill: one bill on the payment table, holding both;
+ *   - an undo that names one line moves exactly it back, and the bill keeps the other;
+ *   - the undo of the rest empties the payment table and restores the real table's total.
+ */
+export const groupIsolateCheck: Check<WriteHarness> = async (harness) => {
+  const connector: ServiceConnector = harness.connector
+  const ctx = kitContext(harness)
+  const setUp = await paymentSetUp(harness)
+  if (typeof setUp === 'string') return [setUp]
+  const { table, before, bill, line } = setUp
+  const other = bill.lines.find((l) => !samePosRef(l.ref, line.ref))
+  if (other === undefined) return ['setting up the group payment: the bill has one line']
+  const paymentTable = await harness.waiter.paymentTable()
+  if (paymentTable === null) {
+    return ['moveLinesToTable is declared, but the harness gives no payment table']
+  }
+  const problems: string[] = []
+  const first = await connector.isolateLines(ctx, {
+    table,
+    picks: [{ bill: bill.ref, line: line.ref, quantity: line.quantity }],
+    paymentTable,
+    ref: 'kit-group-1',
+  })
+  problems.push(...outcomeProblems(IsolateOutcomeSchema, 'the first isolate outcome', first))
+  if (first.kind !== 'done') return [...problems, `isolating came back ${describe(first)}`]
+  const handle = first.result.isolated
+  const second = await connector.isolateLines(ctx, {
+    table,
+    picks: [{ bill: bill.ref, line: other.ref, quantity: other.quantity }],
+    paymentTable,
+    into: handle,
+    ref: 'kit-group-2',
+  })
+  problems.push(...outcomeProblems(IsolateOutcomeSchema, 'the joining isolate outcome', second))
+  if (second.kind !== 'done') {
+    return [...problems, `isolating into the bill came back ${describe(second)}`]
+  }
+  if (!samePosRef(second.result.isolated.ref, handle.ref)) {
+    problems.push(
+      `the joining isolate made bill ${second.result.isolated.ref.pos}, not ${handle.ref.pos}`,
+    )
+  }
+  const joined = await readComplete(harness, paymentTable)
+  if (typeof joined === 'string') return [...problems, joined]
+  const held = findBill(joined, handle.ref)
+  if (joined.bills.length !== 1 || held === undefined) {
+    problems.push(`the payment table holds ${joined.bills.length} bills, not the one joined`)
+  } else if (JSON.stringify(keys(held.lines)) !== JSON.stringify(keys([line, other]))) {
+    problems.push(`the joined bill holds ${keys(held.lines).join(', ')}, not both picks`)
+  }
+
+  const one = await connector.undoIsolate(ctx, {
+    isolated: handle,
+    table,
+    lines: [line.ref],
+    ref: 'kit-group-undo-1',
+  })
+  problems.push(...outcomeProblems(UndoOutcomeSchema, 'the undo of one line', one))
+  if (one.kind !== 'done') return [...problems, `undoing one line came back ${describe(one)}`]
+  const half = await readComplete(harness, paymentTable)
+  if (typeof half === 'string') return [...problems, half]
+  const left = findBill(half, handle.ref)
+  if (left === undefined || JSON.stringify(keys(left.lines)) !== JSON.stringify(keys([other]))) {
+    problems.push('an undo naming one line did not move exactly that line back')
+  }
+  const rest = await connector.undoIsolate(ctx, {
+    isolated: handle,
+    table,
+    ref: 'kit-group-undo-2',
+  })
+  if (rest.kind !== 'done') return [...problems, `undoing the rest came back ${describe(rest)}`]
+  const restored = await readRoute(harness, table, paymentTable)
+  if (typeof restored === 'string') return [...problems, restored]
+  if (total(restored.real) !== total(before)) {
+    problems.push(`the undo left the table at ${total(restored.real)}, not ${total(before)}`)
+  }
+  if (total(restored.payment) !== 0) problems.push('the undo left lines on the payment table')
+  return problems
+}
+
 /** The tip the kit gives: odd on purpose, so a tip read as a fraction or rounded shows. */
 export const KIT_TIP_MINOR = 137
 

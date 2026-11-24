@@ -129,7 +129,7 @@ import {
   venueTables,
   withTenant,
 } from '@restro/db'
-import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm'
 import type { Job } from 'pg-boss'
 
 import type { SimPolicy } from '../config'
@@ -467,7 +467,9 @@ async function price(
   if (pos !== null) {
     if (pos.paused) throw new PaymentStepRetry('the connection is paused')
     // A pay-first round is not on the POS yet: priced at Send, it is never read here (#113).
-    if (payment.kind === 'on_bill') lines = linesOf(await readPos(pos, pos.table))
+    // Every table it covers (#542: a linked group's), each read fresh.
+    if (payment.kind === 'on_bill')
+      lines = await sourceLines(await sourcesOf(env, target, payment, pos))
     tipAllowed = pos.connector.capabilities.recordTipOnClose
   }
   // No POS table (any more): the picked lines are gone, which `payment.price` releases.
@@ -763,6 +765,8 @@ type RouteStep = (
 
 /** The POS of a payment's table: its connector, its instance's budget and the table's ref. */
 interface PaymentPos {
+  /** The POS instance: a payment over several tables needs every one served by it (#542). */
+  readonly integrationId: string
   readonly connector: ServiceConnector
   readonly budget: Limiter
   readonly table: PosRef
@@ -809,6 +813,7 @@ async function posOf(
   const budgets = deps.budgets ?? SHARED_BUDGETS
   const connector = (deps.connectorFor ?? serviceConnectorFor)(integration, deps.sim)
   return {
+    integrationId: integration.id,
     connector,
     budget: budgets.forInstance(integration.id),
     table: posRef(place.placeId),
@@ -825,6 +830,62 @@ async function paymentTableOf(env: PaymentEnvironment, target: PaymentJob, payme
   const found = await placeOf(env, target, payment.paymentTableId)
   if (found === null) throw new PaymentStepRetry('the payment table has no POS place')
   return posRef(found.place.placeId)
+}
+
+/**
+ * One table the payment's lines are on: its own, or another table of its linked group (#542). `pos`
+ * is the payment's POS at that table, null where the payment's POS instance serves it no more.
+ */
+interface PaymentSource {
+  readonly tableId: string
+  readonly pos: PaymentPos | null
+}
+
+/** The tables the payment's lines are on, in table-id order (the order of their moves). */
+async function sourcesOf(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  pos: PaymentPos,
+): Promise<PaymentSource[]> {
+  const rows = await withTenant(env.pool, target.tenantId, (tx) =>
+    tx
+      .selectDistinct({ tableId: paymentLines.tableId })
+      .from(paymentLines)
+      .where(eq(paymentLines.paymentId, payment.id)),
+  )
+  const ids = [...new Set(rows.map((row) => row.tableId))].sort()
+  if (ids.length === 0) ids.push(payment.tableId)
+  const sources: PaymentSource[] = []
+  for (const tableId of ids) {
+    if (tableId === payment.tableId) {
+      sources.push({ tableId, pos })
+      continue
+    }
+    const found = await placeOf(env, target, tableId)
+    sources.push({
+      tableId,
+      pos:
+        found === null || found.integration.id !== pos.integrationId
+          ? null
+          : { ...pos, table: posRef(found.place.placeId) },
+    })
+  }
+  return sources
+}
+
+/** True when the payment's lines are on another table than its own, or on several (#542). */
+function acrossTables(payment: PaymentRow, sources: readonly PaymentSource[]): boolean {
+  return sources.length > 1 || sources[0]?.tableId !== payment.tableId
+}
+
+/** Every line of the tables the payment's lines are on, read now; a table not served adds none. */
+async function sourceLines(sources: readonly PaymentSource[]) {
+  const lines: ReturnType<typeof linesOf> = []
+  for (const source of sources) {
+    if (source.pos !== null) lines.push(...linesOf(await readPos(source.pos, source.pos.table)))
+  }
+  return lines
 }
 
 /** A complete reading of one POS table, or a retry: an incomplete one concludes nothing (rule 6). */
@@ -920,9 +981,20 @@ async function route(
   return answer
 }
 
-/** Takes the real table's write turn (the fence), or null while a send holds it. */
-async function takeTurn(env: PaymentEnvironment, target: PaymentJob): Promise<number | null> {
-  const taken = await route(env, target, { type: 'payment.turn', release: null })
+/**
+ * Takes the real table's write turn (the fence), or null while a send holds it. `tableId` names
+ * another table the payment's lines are on (#542); left out, the payment's own.
+ */
+async function takeTurn(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  tableId?: string,
+): Promise<number | null> {
+  const taken = await route(env, target, {
+    type: 'payment.turn',
+    release: null,
+    ...(tableId === undefined ? {} : { tableId }),
+  })
   const fence = taken.details.fence
   return taken.details.turn === 'taken' && typeof fence === 'number' ? fence : null
 }
@@ -945,6 +1017,11 @@ async function callsOf(
   env: PaymentEnvironment,
   target: PaymentJob,
   step: RouteWrite,
+  /**
+   * Only the calls of this reference and its parts (`<ref>-2`, …): one table's move of a payment
+   * over several, bill by bill (#542).
+   */
+  ref?: string,
 ): Promise<StepCalls | null> {
   const left = sql`${paymentSteps.outcome} = 'attempting'`
   const [row] = await withTenant(env.pool, target.tenantId, (tx) =>
@@ -962,7 +1039,18 @@ async function callsOf(
           filter (where ${left})) * 1000)::text`,
       })
       .from(paymentSteps)
-      .where(and(eq(paymentSteps.paymentId, target.paymentId), eq(paymentSteps.step, step))),
+      .where(
+        and(
+          eq(paymentSteps.paymentId, target.paymentId),
+          eq(paymentSteps.step, step),
+          ref === undefined
+            ? undefined
+            : or(
+                eq(paymentSteps.idempotencyKey, ref),
+                sql`starts_with(${paymentSteps.idempotencyKey}, ${`${ref}-`})`,
+              ),
+        ),
+      ),
   )
   if (row?.outcome === null || row?.outcome === undefined) return null
   return {
@@ -1068,6 +1156,21 @@ const isolateStep: RouteStep = async (env, target, payment, deps) => {
   }
   if (pos.paused) throw new PaymentStepRetry('the connection is paused')
   const paymentTable = await paymentTableOf(env, target, payment)
+  const sources = await sourcesOf(env, target, payment, pos)
+  if (acrossTables(payment, sources)) {
+    // One payment over several tables of a linked group (#542): each table's lines, under its turn.
+    const outcome = await isolateAcross(env, target, payment, pos, sources, paymentTable)
+    if (outcome === 'busy') {
+      await queuePrepare(env, target, WAIT_SECONDS)
+      return 'wait'
+    }
+    if (outcome === 'later') {
+      await queuePrepare(env, target, READ_BACK_SECONDS)
+      return 'wait'
+    }
+    await route(env, target, { type: 'payment.isolated', ...outcome })
+    return 'next'
+  }
   const fence = await takeTurn(env, target)
   if (fence === null) {
     await queuePrepare(env, target, WAIT_SECONDS)
@@ -1156,6 +1259,138 @@ async function isolate(
   // Unknown: read it back now, and on the next runs for the window. Nothing on the payment table
   // yet concludes nothing (it may land).
   return (await landed()) ? MOVED : 'later'
+}
+
+/** One of the payment's own lines, as `ownLines` reads it. */
+type OwnLine = Awaited<ReturnType<typeof ownLines>>[number]
+
+/** True when a bill line may be one of the payment's own (its POS ref, or quantity and amount). */
+function mayBeOwn(line: TableBills['bills'][number]['lines'][number], own: OwnLine): boolean {
+  return (
+    own.pos === line.ref.pos ||
+    (quantityKey(own.quantity) === quantityKey(line.quantity) &&
+      own.amountMinor === line.amountMinor)
+  )
+}
+
+/** True when the bill holds each of `lines`, one bill line each. */
+function holdsAll(bill: TableBills['bills'][number], lines: readonly OwnLine[]): boolean {
+  const left = [...bill.lines]
+  for (const mine of lines) {
+    const at = left.findIndex((line) => line.ref.pos === mine.pos)
+    const found = at >= 0 ? at : left.findIndex((line) => mayBeOwn(line, mine))
+    if (found < 0) return false
+    left.splice(found, 1)
+  }
+  return true
+}
+
+/**
+ * A payment over several tables of a linked group (#542): each table's lines move onto the one
+ * payment table, in table-id order, each under its own table's turn, the later ones `into` the
+ * bill the first made, so the payment closes once. A table whose lines are there already is an
+ * earlier run's move that landed. `busy` while a table's turn is a send's; `later` while a move
+ * whose outcome is unknown may still land; `partly` for a no after some tables moved (their lines
+ * then go back, as after a failed check).
+ */
+async function isolateAcross(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  pos: PaymentPos,
+  sources: readonly PaymentSource[],
+  paymentTable: PosRef,
+): Promise<
+  | {
+      readonly outcome: 'moved' | 'refused' | 'partly'
+      readonly code: string | null
+    }
+  | 'later'
+  | 'busy'
+> {
+  const own = await ownLines(env, target)
+  // The payment's bill on the payment table: every line one of its own. Another bill there is a
+  // waiter's, and nothing more is sent onto it.
+  const ours = (table: TableBills) =>
+    table.bills.filter((bill) => wholeOwnBill(bill, own) && bill.lines.length > 0)
+  const stop = (code: string, onPaymentTable: TableBills) => ({
+    outcome: ours(onPaymentTable).length > 0 ? ('partly' as const) : ('refused' as const),
+    code,
+  })
+  // The lines of the tables moved so far. A table's lines have landed when the payment's bill
+  // holds them beside these: two tables' lines may be alike (the same item at the same price), so
+  // one table's lines alone would match another's that moved first.
+  const placed: OwnLine[] = []
+  for (const [index, source] of sources.entries()) {
+    const mine = own.filter((line) => line.tableId === source.tableId)
+    const onPaymentTable = await readPos(pos, paymentTable)
+    const bills = ours(onPaymentTable)
+    const into = bills[0]
+    if (bills.length > 1 || onPaymentTable.bills.length > bills.length) {
+      return stop('payment_table_busy', onPaymentTable)
+    }
+    if (into !== undefined && holdsAll(into, [...placed, ...mine])) {
+      placed.push(...mine)
+      continue
+    }
+    const ref = `${payment.id}-isolate-${index + 1}`
+    const earlier = await callsOf(env, target, 'isolateLines', ref)
+    if (earlier !== null && mayStillLand(earlier, pos.timings)) return 'later'
+    if (source.pos === null) return stop('bill_closed', onPaymentTable)
+    const at = source.pos
+    const fence = await takeTurn(env, target, source.tableId)
+    if (fence === null) return 'busy'
+    try {
+      const real = await readPos(at, at.table)
+      const picks: { bill: PosRef; line: PosRef; quantity: string }[] = []
+      for (const line of mine) {
+        const bill = real.bills.find((b) => b.lines.some((l) => l.ref.pos === line.pos))
+        const found = bill?.lines.find((l) => l.ref.pos === line.pos)
+        if (bill === undefined || found === undefined) {
+          return stop('line_refused', onPaymentTable)
+        }
+        picks.push({ bill: bill.ref, line: found.ref, quantity: found.quantity })
+      }
+      // The connector takes the picks of one POS bill a call: a table with several bills (a
+      // staff bill beside Restro's) moves bill by bill, each into the payment's bill.
+      const byBill = new Map<string, typeof picks>()
+      for (const pick of picks)
+        byBill.set(pick.bill.pos, [...(byBill.get(pick.bill.pos) ?? []), pick])
+      let handle: IsolatedHandle | null =
+        into === undefined ? null : { ref: into.ref, table: paymentTable }
+      for (const [part, group] of [...byBill.values()].entries()) {
+        const moving = mine.filter((line) => group.some((pick) => pick.line.pos === line.pos))
+        const partRef = part === 0 ? ref : `${ref}-${part + 1}`
+        const outcome = await writePos(env, target, at, 'isolateLines', partRef, () =>
+          at.connector.isolateLines(at.context, {
+            table: at.table,
+            picks: group,
+            paymentTable,
+            ...(handle === null ? {} : { into: handle }),
+            ref: partRef,
+          }),
+        )
+        if (outcome.kind === 'done') {
+          handle = outcome.result.isolated
+          placed.push(...moving)
+          continue
+        }
+        const back = await readPos(pos, paymentTable)
+        const landed = ours(back).some((bill) => holdsAll(bill, [...placed, ...moving]))
+        if (landed) {
+          const bill = ours(back)[0]
+          handle = bill === undefined ? handle : { ref: bill.ref, table: paymentTable }
+          placed.push(...moving)
+          continue
+        }
+        if (outcome.kind === 'unknown') return 'later'
+        return stop(outcome.refusal.code, back)
+      }
+    } finally {
+      await route(env, target, { type: 'payment.turn', release: fence, tableId: source.tableId })
+    }
+  }
+  return MOVED
 }
 
 /** A decimal quantity without trailing zeros ("2.000000" → "2", "0.500000" → "0.5"). */
@@ -1573,7 +1808,11 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
   const short = payment.amountMinor === null || found < payment.amountMinor
   // A pay-first round was never on the real table: only the payment table's bill is checked.
   const onBill = payment.kind === 'on_bill'
-  const real = onBill && isolated !== null && short ? linesOf(await readPos(pos, pos.table)) : []
+  // Every table the payment's lines came from (#542: a linked group's).
+  const real =
+    onBill && isolated !== null && short
+      ? await sourceLines(await sourcesOf(env, target, payment, pos))
+      : []
   const provider = providerFor(env, target, deps, payment.providerKind)
   // The hold, read again right before the close: one cancelled or run out at the provider stops
   // the payment here, before a receipt is printed for a card that can't be charged.
@@ -1902,6 +2141,21 @@ const undoStep: RouteStep = async (env, target, payment, deps) => {
   }
   if (pos.paused) throw new PaymentStepRetry('the connection is paused')
   const paymentTable = await paymentTableOf(env, target, payment)
+  const sources = await sourcesOf(env, target, payment, pos)
+  if (acrossTables(payment, sources)) {
+    // One payment over several tables (#542): each line back to its own table, under its turn.
+    const outcome = await undoAcross(env, target, payment, pos, sources, paymentTable)
+    if (outcome === 'busy') {
+      await queuePrepare(env, target, WAIT_SECONDS)
+      return 'wait'
+    }
+    if (outcome === 'later') {
+      await queuePrepare(env, target, READ_BACK_SECONDS)
+      return 'wait'
+    }
+    await route(env, target, { type: 'payment.undone', outcome })
+    return 'next'
+  }
   const fence = await takeTurn(env, target)
   if (fence === null) {
     await queuePrepare(env, target, WAIT_SECONDS)
@@ -1984,6 +2238,107 @@ async function undo(
   return (await backOnTable(pos, moved)) ? 'returned' : 'not_back'
 }
 
+/**
+ * The undo of a payment over several tables (#542, D127): each line on the payment's bill goes
+ * back to the table it came from, by its POS reference, one move per table under that table's
+ * turn; a line of none of them (a ref the POS changed, a line added there) goes back with the
+ * payment's own table's, or the first table's where its own has none. As `undo` otherwise: read
+ * back while a move may still land, stranded for staff where the bill can't be told or a move is
+ * refused, and after "No receipt" proven back on the tables from a fresh read.
+ */
+async function undoAcross(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  pos: PaymentPos,
+  sources: readonly PaymentSource[],
+  paymentTable: PosRef,
+): Promise<'returned' | 'stranded' | 'not_back' | 'later' | 'busy'> {
+  const onTable = await readPos(pos, paymentTable)
+  const earlier = await callsOf(env, target, 'undoIsolate')
+  const own = await ownLines(env, target)
+  const mine = billsToMoveBack(onTable, own)
+  if (mine === null) return 'stranded'
+  if (mine.length > 0 && earlier !== null && mayStillLand(earlier, pos.timings)) return 'later'
+  const proving = payment.reason === 'no_receipt'
+  const recorded = proving ? await recordedLines(env, target) : []
+  if (recorded === null) return 'not_back'
+  const moved = [...recorded, ...linesOf({ ...onTable, bills: mine })]
+  if (proving && moved.length === 0) return 'not_back'
+  const rest = sources.find((source) => source.tableId === payment.tableId) ?? sources[0]
+  for (const [billIndex, bill] of mine.entries()) {
+    const isolated: IsolatedHandle = { ref: bill.ref, table: paymentTable }
+    // Each source table its own lines by ref; the table that takes the rest goes last, with no
+    // lines named, so whatever is left on the bill goes back with it.
+    const named = new Set(
+      sources.flatMap((source) =>
+        source === rest
+          ? []
+          : own.filter((line) => line.tableId === source.tableId).map((line) => line.pos),
+      ),
+    )
+    const order = [
+      ...sources.filter((source) => source !== rest),
+      ...(rest === undefined ? [] : [rest]),
+    ]
+    for (const source of order) {
+      const lines =
+        source === rest
+          ? bill.lines.filter((line) => !named.has(line.ref.pos))
+          : bill.lines.filter((line) =>
+              own.some((o) => o.tableId === source.tableId && o.pos === line.ref.pos),
+            )
+      if (lines.length === 0) continue
+      if (source.pos === null) return 'stranded'
+      const at = source.pos
+      const index = sources.indexOf(source) + 1
+      const ref = `${payment.id}-undo-${index}${billIndex === 0 ? '' : `-${billIndex}`}`
+      const fence = await takeTurn(env, target, source.tableId)
+      if (fence === null) return 'busy'
+      try {
+        const recordedHere = PaymentStepLinesSchema.safeParse(
+          linesOf({ ...onTable, bills: [{ ...bill, lines }] }),
+        )
+        const outcome = await writePos(
+          env,
+          target,
+          at,
+          'undoIsolate',
+          ref,
+          () =>
+            at.connector.undoIsolate(at.context, {
+              isolated,
+              table: at.table,
+              ...(source === rest ? {} : { lines: lines.map((line) => line.ref) }),
+              ref,
+            }),
+          recordedHere.success ? recordedHere.data : null,
+        )
+        if (outcome.kind === 'refused') {
+          if (outcome.refusal.code === 'bill_closed') {
+            if (proving) return 'not_back'
+            continue
+          }
+          const passing = outcome.refusal.code === 'bill_locked' || outcome.refusal.code === 'busy'
+          const since = earlier?.firstAgeMs ?? 0
+          return passing && since < pos.timings.readBackWindowMs ? 'later' : 'stranded'
+        }
+        if (outcome.kind === 'unknown') {
+          const back = await readPos(pos, paymentTable)
+          const still = back.bills.find((b) => b.ref.pos === bill.ref.pos)
+          if (still?.lines.some((line) => lines.some((l) => l.ref.pos === line.ref.pos))) {
+            return 'later'
+          }
+        }
+      } finally {
+        await route(env, target, { type: 'payment.turn', release: fence, tableId: source.tableId })
+      }
+    }
+  }
+  if (!proving) return 'returned'
+  return (await backOnTables(sources, moved)) ? 'returned' : 'not_back'
+}
+
 /** The payment's own lines, as `ownBill` compares them. */
 async function ownLines(env: PaymentEnvironment, target: PaymentJob) {
   const rows = await withTenant(env.pool, target.tenantId, (tx) =>
@@ -1992,9 +2347,11 @@ async function ownLines(env: PaymentEnvironment, target: PaymentJob) {
         pos: paymentLines.posLineRef,
         quantity: paymentLines.quantity,
         amountMinor: paymentLines.posAmountMinor,
+        tableId: paymentLines.tableId,
       })
       .from(paymentLines)
-      .where(eq(paymentLines.paymentId, target.paymentId)),
+      .where(eq(paymentLines.paymentId, target.paymentId))
+      .orderBy(paymentLines.position),
   )
   return rows
 }
@@ -2102,8 +2459,17 @@ async function recordedLines(
  * a waiter's identical round, or the rest of a line split for the payment, would read as back.
  */
 async function backOnTable(pos: PaymentPos, moved: PaymentStepLines): Promise<boolean> {
+  return backOnTables([{ tableId: '', pos }], moved)
+}
+
+/** `backOnTable` over the tables a payment's lines came from (#542): each line on one of them. */
+async function backOnTables(
+  sources: readonly PaymentSource[],
+  moved: PaymentStepLines,
+): Promise<boolean> {
   if (moved.length === 0) return false
-  const real = new Map(linesOf(await readPos(pos, pos.table)).map((line) => [line.pos, line]))
+  if (sources.some((source) => source.pos === null)) return false
+  const real = new Map((await sourceLines(sources)).map((line) => [line.pos, line]))
   return moved.every((line) => {
     const found = real.get(line.pos)
     if (found === undefined) return false

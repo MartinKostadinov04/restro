@@ -1131,3 +1131,120 @@ describe('the 11-18 screen round (lane 3 S1, S14)', () => {
     expect(tipped.sheet.textContent).toContain('Tip€2.50')
   })
 })
+
+describe("paying a linked group's bill (#542, D160 §2)", () => {
+  const w = stringsFor('en_US').services.paying
+  const wine = tableLine(1, 'House wine', 1250)
+  const mojito = tableLine(2, 'Mojito', 1000)
+  const beer = tableLine(3, 'Beer', 500)
+  /** Table 7 (this phone's: wine, mojito) and table 4 (beer), one party. */
+  const group = (options: { paysAcross?: boolean; fourRead?: boolean } = {}) => {
+    const own = tableBillOf([wine, mojito])
+    const other = tableBillOf([beer])
+    const read = options.fourRead ?? true
+    return {
+      ...base(),
+      tableBill: own,
+      tableGroup: {
+        complete: read,
+        totalMinor: 2750,
+        paidMinor: 0,
+        owedMinor: 2750,
+        paysAcross: options.paysAcross ?? true,
+        tables: [
+          {
+            label: '4',
+            own: false,
+            complete: read,
+            totalMinor: 500,
+            paidMinor: 0,
+            owedMinor: 500,
+            parts: other.parts,
+            paidLines: [],
+          },
+          {
+            label: '7',
+            own: true,
+            complete: true,
+            totalMinor: 2250,
+            paidMinor: 0,
+            owedMinor: 2250,
+            parts: own.parts,
+            paidLines: [],
+          },
+        ],
+      },
+    }
+  }
+  const tableAt = (sheet: HTMLElement, index: number) =>
+    sheet.querySelectorAll<HTMLElement>('[data-slot="pay.group.table"]')[index] as HTMLElement
+
+  it('pays the whole group: every member table under its heading, one Pay over all their lines', async () => {
+    const host = fakeHost(group())
+    const { sheet } = openPay(host)
+    expect(
+      [...sheet.querySelectorAll('[data-slot="pay.group.table"] header')].map((h) => h.textContent),
+    ).toEqual(['Table 4', `Table 7${w.yourTable}`])
+    fireEvent.click(payButton(sheet, 'The whole bill'))
+    for (const box of within(sheet).getAllByRole('checkbox') as HTMLInputElement[]) {
+      expect(box.checked).toBe(true)
+    }
+    fireEvent.click(payButton(sheet, 'Pay €27.50'))
+    await waitFor(() => expect(host.of('pay.start')).toHaveLength(1))
+    // Every member's lines, as the phone saw them: one payment over both tables.
+    expect(host.of('pay.start')[0]?.command).toMatchObject({
+      pick: {
+        kind: 'lines',
+        lines: [{ lineId: beer.id }, { lineId: wine.id }, { lineId: mojito.id }],
+      },
+      seen: [
+        { lineId: beer.id, amountMinor: 500 },
+        { lineId: wine.id, amountMinor: 1250 },
+        { lineId: mojito.id, amountMinor: 1000 },
+      ],
+    })
+  })
+
+  it("ticks one table's lines with Whole table, and leaves the other table's ticks alone", () => {
+    const { sheet } = openPay(fakeHost(group()))
+    const four = tableAt(sheet, 0)
+    const seven = tableAt(sheet, 1)
+    fireEvent.click(within(seven).getAllByRole('checkbox')[0] as HTMLInputElement)
+    fireEvent.click(within(four).getByRole('button', { name: w.wholeTable }))
+    expect((within(four).getByRole('checkbox') as HTMLInputElement).checked).toBe(true)
+    expect(
+      within(four).getByRole('button', { name: w.wholeTable }).getAttribute('aria-pressed'),
+    ).toBe('true')
+    expect(
+      (within(seven).getAllByRole('checkbox') as HTMLInputElement[]).map((box) => box.checked),
+    ).toEqual([true, false])
+    expect(payButton(sheet, 'Pay €17.50')).toBeTruthy()
+    fireEvent.click(within(four).getByRole('button', { name: w.wholeTable }))
+    expect((within(four).getByRole('checkbox') as HTMLInputElement).checked).toBe(false)
+    expect(payButton(sheet, 'Pay €12.50')).toBeTruthy()
+  })
+
+  it("holds back a table that can't be read now: its lines untickable, Try again, Call a waiter, no whole bill", () => {
+    const host = fakeHost(group({ fourRead: false }))
+    const { sheet } = openPay(host)
+    const four = tableAt(sheet, 0)
+    expect(within(four).queryByRole('checkbox')).toBeNull()
+    expect(within(four).getByText(/Beer · €5\.00/)).toBeTruthy()
+    expect(within(four).queryByRole('button', { name: w.wholeTable })).toBeNull()
+    expect(within(four).getByText(w.tableNotRead)).toBeTruthy()
+    expect(within(four).getByRole('button', { name: /call a waiter/i })).toBeTruthy()
+    fireEvent.click(within(four).getByRole('button', { name: 'Try again' }))
+    expect(host.refreshed()).toBe(1)
+    expect(payButton(sheet, 'The whole bill').hasAttribute('disabled')).toBe(true)
+    // This table's own lines still pay.
+    expect(within(tableAt(sheet, 1)).getAllByRole('checkbox')).toHaveLength(2)
+  })
+
+  it('pays its own table where the POS takes one table at a time, and says so in one line', () => {
+    const { sheet } = openPay(fakeHost(group({ paysAcross: false })))
+    expect(sheet.querySelector('[data-slot="pay.one_table"]')?.textContent).toBe(w.oneTableAtATime)
+    expect(sheet.querySelector('[data-slot="pay.group.table"]')).toBeNull()
+    fireEvent.click(payButton(sheet, 'The whole bill'))
+    expect(payButton(sheet, 'Pay €22.50')).toBeTruthy()
+  })
+})

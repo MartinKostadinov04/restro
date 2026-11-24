@@ -478,6 +478,13 @@ export interface GroupBillView {
   readonly paidMinor: number
   /** "Left to pay" for the whole party. */
   readonly owedMinor: number
+  /**
+   * One payment may cover lines of several member tables (#542): "The whole bill" takes every
+   * member's free lines, each table's heading has a "Whole table" tick, and the lines of any
+   * tables can be paid together. False or absent: each table pays its own (the POS takes one
+   * table's payment at a time), and the pay screen says so in one line.
+   */
+  readonly paysAcross?: boolean
   /** Every member table, this one included, in the order of their names. */
   readonly tables: readonly GroupTableView[]
 }
@@ -719,8 +726,9 @@ export interface ServiceState {
    * The linked group's bill where the table is in one (#319, D160 §1): every member table's lines
    * under its own heading and one total for the party, drawn in the bill in place of this table's
    * lines alone. It shows even while this table has no reading of its own (`tableBill` null);
-   * `tableBill` stays this table's own, what its Pay reads: each table still pays its own. Absent
-   * or null where the table is in no group or the phone has no location pass.
+   * `tableBill` stays this table's own. Where `paysAcross` is set, Pay reads every member table
+   * (`payableBill`, #542); elsewhere each table pays its own. Absent or null where the table is in
+   * no group or the phone has no location pass.
    */
   readonly tableGroup?: GroupBillView | null
   /**
@@ -885,6 +893,13 @@ export interface ServiceBinding {
    * while the order has lines, else the menu). Absent where the host does not poll.
    */
   readonly setScreen?: (screen: GuestScreen) => void
+  /**
+   * "Try again" on a table whose bill could not be read (#542, log 1.8): the host asks for the
+   * state now, which on the bill queues a fresh reading of every table older than core's
+   * `FRESH_READING_MS`. Nothing is shown as read until a reading says so (D72). Absent where the
+   * host does not poll: the face then draws no "Try again".
+   */
+  readonly refresh?: () => void
 }
 
 /** A state with nothing in it: no bill, no request, no payment. */

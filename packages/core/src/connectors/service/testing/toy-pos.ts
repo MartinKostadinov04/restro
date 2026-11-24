@@ -335,6 +335,11 @@ export function toyConnector(pos: ToyPos, capabilities = TOY_CAPABILITIES): Serv
           ? request.paymentTable
           : null
       if (onto === null) return Promise.resolve(refused('not_supported'))
+      // Joining the payment's bill (#542) is moving lines to a payment table: a split stays on its
+      // own table, so there is nothing of another table's to join.
+      if (request.into !== undefined && capabilities.severalBillsPerTable) {
+        return Promise.resolve(refused('not_supported'))
+      }
       return write(ctx, 'bills.split', () => {
         const pick = request.picks[0]
         const source = pos.bills.find((b) => b.id === pick?.bill.pos && !b.closed)
@@ -347,8 +352,13 @@ export function toyConnector(pos: ToyPos, capabilities = TOY_CAPABILITIES): Serv
         if (taken !== line.quantity && !capabilities.movePartOfLineQuantity) {
           return refused('not_supported')
         }
-        const split = pos.open(onto.pos, ctx.now(), true)
-        split.from = source.id
+        const into = request.into
+        const split =
+          into === undefined
+            ? pos.open(onto.pos, ctx.now(), true)
+            : pos.bills.find((b) => b.id === into.ref.pos && b.table === onto.pos && !b.closed)
+        if (split === undefined) return refused('bill_closed')
+        split.from ??= source.id
         if (taken === line.quantity) {
           source.lines = source.lines.filter((l) => l !== line)
           split.lines.push(line)
@@ -420,11 +430,23 @@ export function toyConnector(pos: ToyPos, capabilities = TOY_CAPABILITIES): Serv
     undoIsolate(ctx, request) {
       return write(ctx, 'bills.merge', () => {
         const split = pos.bills.find((b) => b.id === request.isolated.ref.pos && !b.closed)
-        const origin = pos.bills.find((b) => b.id === split?.from && !b.closed)
+        // Back to the bill the lines came from, or, for a bill that took several tables' lines
+        // (#542), the open bill of the table named.
+        const from = pos.bills.find((b) => b.id === split?.from && !b.closed)
+        const origin =
+          from?.table === request.table.pos
+            ? from
+            : pos.bills.find((b) => b.table === request.table.pos && !b.closed && b !== split)
         if (split === undefined || origin === undefined) return refused('bill_closed')
-        origin.lines.push(...split.lines)
-        split.lines = []
-        split.closed = true
+        const named = request.lines
+        // Named lines go back alone (#542), the bill stays open for the rest; none named, all go.
+        const back =
+          named === undefined
+            ? split.lines
+            : split.lines.filter((line) => named.some((ref) => ref.pos === line.id))
+        origin.lines.push(...back)
+        split.lines = split.lines.filter((line) => !back.includes(line))
+        if (named === undefined) split.closed = true
         return { kind: 'done', result: {} }
       })
     },

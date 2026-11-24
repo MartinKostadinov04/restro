@@ -47,12 +47,18 @@ import { DecimalQuantitySchema } from '../quantity'
 import { orderFromRow, releaseHeldLines } from '../table-order'
 import { parseStoredBills, paymentLineName, type StoredBill, type StoredBillLine } from './bill'
 import { defineCommand, type ServiceTx } from './definition'
+import { groupPaysAcross, lockPaymentTables, touchPaymentTables } from './group-pay'
 import { recordRetainUntil } from './log'
 import { writeOrder } from './order'
 import { orderingPaused } from './pause-scope'
 import { movePayFirstSentOrder } from './pay-first-sent-order'
 import { payingPaused } from './paying-pause'
 import { loadPayingConnection } from './payment-connection'
+import {
+  groupHasUnreadTable,
+  linkedGroupOfTable,
+  linkedGroupReadings,
+} from './reservations/linked-group'
 import { accepted, refused, type ServiceResult } from './results'
 import { readTableCapabilities } from './table-capabilities'
 
@@ -66,6 +72,11 @@ export const PAY_REFUSALS = [
   'being_paid',
   /** A picked line changed or went since the phone saw it (the knock, D111). */
   'bill_changed',
+  /**
+   * A table of the linked group whose bill did not read well now (rule 6, decision log 1.8): its
+   * lines, and "The whole bill", wait until it reads (#542).
+   */
+  'table_not_read',
   /** Below the venue's smallest card payment. */
   'below_minimum',
   /** A tip where the POS can't put one on the receipt (D127; the phone hears `ordering.tips`). */
@@ -217,7 +228,7 @@ export type PaymentRow = typeof payments.$inferSelect
 async function lockPayment(
   stx: ServiceTx,
   where: { readonly id: string } | { readonly handleHash: string; readonly tableId: string },
-): Promise<{ readonly payment: PaymentRow; readonly tableOpen: boolean } | null> {
+): Promise<{ readonly payment: PaymentRow } | null> {
   const condition =
     'id' in where
       ? eq(payments.id, where.id)
@@ -228,7 +239,8 @@ async function lockPayment(
     .from(payments)
     .where(and(condition, eq(payments.venueId, stx.venueId)))
   if (found === undefined) return null
-  const order = await stx.rows.tableOrder(found.tableId)
+  // Every table the payment covers (#542: a linked group's), in table-id order.
+  await lockPaymentTables(stx, found)
   // A pay-first payment's sent order, in its place in the lock order (#113): `release` ends it.
   if (found.sentOrderId !== null) await lockSentOrder(stx, found.sentOrderId)
   stx.rows.claim('payment', [found.id])
@@ -238,7 +250,7 @@ async function lockPayment(
     .where(eq(payments.id, found.id))
     .for('update')
   if (payment === undefined) return null
-  return { payment, tableOpen: order !== null }
+  return { payment }
 }
 
 /** Locks a pay-first payment's sent order (`sent_order` rank: after the order, before the payment). */
@@ -272,7 +284,6 @@ async function storedBillsOf(
 export async function release(
   stx: ServiceTx,
   payment: PaymentRow,
-  tableOpen: boolean,
   reason: string,
   state: 'released' | 'stranded' = 'released',
 ): Promise<void> {
@@ -288,7 +299,8 @@ export async function release(
       updatedAt: sql`now()`,
     })
     .where(eq(payments.id, payment.id))
-  if (tableOpen) stx.rows.touch(payment.tableId)
+  // Its lines ungrey on every table it covers, its own among them (#542).
+  await touchPaymentTables(stx, payment)
   await logPayment(stx, payment, state, reason)
   await recordPayFinished(stx, payment, state)
   if (payment.kind === 'pay_first') await endPayFirstBeforePos(stx, payment, reason)
@@ -374,6 +386,64 @@ function at(
   })
 }
 
+/** A line a phone may pick: its table, its POS bill and the line, from the table's reading. */
+interface PayableLine {
+  readonly tableId: string
+  readonly bill: StoredBill
+  readonly line: StoredBillLine
+}
+
+/**
+ * The lines of the tables' latest readings, each read in its table's open sitting: the phone's own
+ * table, and the linked group's other members where one payment covers several (#542). Null when
+ * the phone's own table has no reading in its sitting; another member with none adds no lines.
+ */
+async function payableLines(
+  stx: ServiceTx,
+  input: { readonly tableId: string; readonly tables: readonly string[] },
+): Promise<{ readonly lines: PayableLine[] } | null> {
+  const lines: PayableLine[] = []
+  for (const tableId of input.tables) {
+    const sitting = await stx.rows.openSitting(tableId)
+    const bills = sitting === null ? null : await storedBillsOf(stx, tableId, sitting.openedAt)
+    if (bills === null) {
+      if (tableId === input.tableId) return null
+      continue
+    }
+    for (const bill of bills) for (const line of bill.lines) lines.push({ tableId, bill, line })
+  }
+  return { lines }
+}
+
+/**
+ * The payments that aren't final on each table, by table id: those of the table, and those whose
+ * lines are on it (one payment over several tables counts once on each, #542).
+ */
+async function openPaymentsOn(
+  stx: ServiceTx,
+  tableIds: readonly string[],
+): Promise<Map<string, number>> {
+  const own = await stx.tx
+    .select({ id: payments.id, tableId: payments.tableId })
+    .from(payments)
+    .where(and(inArray(payments.tableId, [...tableIds]), isNull(payments.settledAt)))
+  const covering = await stx.tx
+    .selectDistinct({ id: paymentLines.paymentId, tableId: paymentLines.tableId })
+    .from(paymentLines)
+    .innerJoin(
+      payments,
+      and(eq(payments.tenantId, paymentLines.tenantId), eq(payments.id, paymentLines.paymentId)),
+    )
+    .where(and(inArray(paymentLines.tableId, [...tableIds]), isNull(payments.settledAt)))
+  const byTable = new Map<string, Set<string>>()
+  for (const row of [...own, ...covering]) {
+    const ids = byTable.get(row.tableId) ?? new Set<string>()
+    ids.add(row.id)
+    byTable.set(row.tableId, ids)
+  }
+  return new Map([...byTable].map(([tableId, ids]) => [tableId, ids.size]))
+}
+
 // ---------------------------------------------------------------------------------------------
 // Guest commands
 
@@ -407,8 +477,13 @@ export function payStart() {
     async handle(stx, command) {
       const refuse = (code: (typeof PAY_REFUSALS)[number]) => refused(command.actionId, code)
       // The table's order row serialises every payment of the table: the second of two friends
-      // sees the first one's lines.
-      const order = await stx.rows.tableOrder(command.tableId)
+      // sees the first one's lines. A table of a linked group locks every member's (D160 §2,
+      // #542), in table-id order, so a payment over several tables and one over a single member
+      // never both win a line, and two phones of the group pay one at a time.
+      const group = await linkedGroupOfTable(stx.tx, { tableId: command.tableId })
+      const members = group?.tables.map((member) => member.tableId) ?? [command.tableId]
+      const orders = await stx.rows.tableOrders(members)
+      const order = orders.get(command.tableId) ?? null
 
       // A repeat of the same tap finds its payment. The phone that repeats never got the first
       // answer (or lost it), so the handle it holds now is the new one: the hash is replaced.
@@ -423,6 +498,14 @@ export function payStart() {
           .set({ handleHash: command.handleHash, ...stx.provenance, updatedAt: sql`now()` })
           .where(eq(payments.id, repeat.id))
         return at(command, repeat, repeat.state, false)
+      }
+
+      // The group as it is now the members are locked: a table that joined or left it meanwhile
+      // (the hostess changed the party's tables) changed the bill the phone saw.
+      if (group !== null) {
+        const now = await linkedGroupOfTable(stx.tx, { tableId: command.tableId })
+        const still = now?.tables.map((member) => member.tableId) ?? [command.tableId]
+        if (still.join() !== members.join()) return refuse('bill_changed')
       }
 
       // Paying is on only when the account is connected and every check of D125 2.3 passes; a
@@ -448,12 +531,18 @@ export function payStart() {
       if (await orderingPaused(stx, command.tableId, table?.barId ?? null)) {
         return refuse('paying_paused')
       }
-      const bills = await storedBillsOf(stx, command.tableId, sitting.openedAt)
-      if (bills === null) return refuse('bill_changed')
+      // The tables whose lines this phone may pick: its own, or every member of its linked group
+      // where the POS moves lines to a payment table (#542); elsewhere each table pays its own.
+      const across = group !== null && (await groupPaysAcross(stx.tx, members))
+      const payable = await payableLines(stx, {
+        tableId: command.tableId,
+        tables: across ? members : [command.tableId],
+      })
+      if (payable === null) return refuse('bill_changed')
+      const all = payable.lines
 
-      // The lines picked, each with its POS bill, from the latest reading.
-      const all = bills.flatMap((bill) => bill.lines.map((line) => ({ bill, line })))
-      const lines: { readonly bill: StoredBill; readonly line: StoredBillLine }[] = []
+      // The lines picked, each with its table and POS bill, from the latest readings.
+      const lines: PayableLine[] = []
       if (command.pick.kind === 'whole') {
         // The whole bill must be exactly what the phone saw: one line more or less changed it.
         if (all.length === 0 || all.length !== command.seen.length) return refuse('bill_changed')
@@ -472,6 +561,17 @@ export function payStart() {
         if (new Set(lines.map(({ line }) => line.id)).size !== lines.length) {
           return refused(command.actionId, 'invalid_command')
         }
+      }
+      // A member table whose bill did not read well now (log 1.8): its lines wait, and so does
+      // "The whole bill" while any member is unread (a whole pick covers every member).
+      if (group !== null && across) {
+        const picked = new Set(lines.map((entry) => entry.tableId))
+        const readings = await linkedGroupReadings(stx.tx, group)
+        const unread = readings.filter((member) => member.reading !== 'complete')
+        if (command.pick.kind === 'whole' && groupHasUnreadTable(readings)) {
+          return refuse('table_not_read')
+        }
+        if (unread.some((member) => picked.has(member.tableId))) return refuse('table_not_read')
       }
       // The knock (D111): each picked line as the phone saw it, unchanged.
       const seen = new Map(command.seen.map((line) => [line.lineId, line]))
@@ -509,11 +609,13 @@ export function payStart() {
           ),
         )
       if (greyed.length > 0) return refuse('being_paid')
-      const open = await stx.tx
-        .select({ id: payments.id })
-        .from(payments)
-        .where(and(eq(payments.tableId, command.tableId), isNull(payments.settledAt)))
-      if (open.length >= TABLE_OPEN_PAYMENTS) return refuse('rate_limited')
+      // At most three payments that aren't final on each table the payment covers: one over
+      // several tables counts once on each of them (#542).
+      const covered = [...new Set([command.tableId, ...lines.map((entry) => entry.tableId)])]
+      const open = await openPaymentsOn(stx, covered)
+      if (covered.some((tableId) => (open.get(tableId) ?? 0) >= TABLE_OPEN_PAYMENTS)) {
+        return refuse('rate_limited')
+      }
 
       const linesMinor = signedSumMinor(lines.map(({ line }) => line.amountMinor))
       if (linesMinor === null || linesMinor === 0) return refuse('ask_waiter_to_split')
@@ -557,11 +659,11 @@ export function payStart() {
       const made = await stx.tx
         .insert(paymentLines)
         .values(
-          lines.map(({ line }, index) => ({
+          lines.map(({ line, tableId: lineTable }, index) => ({
             tenantId: stx.tenantId,
             venueId: stx.venueId,
             paymentId: id,
-            tableId: command.tableId,
+            tableId: lineTable,
             position: index + 1,
             posLineRef: line.pos,
             quantity: line.quantity,
@@ -580,7 +682,10 @@ export function payStart() {
       await stx.recordEvents(command.tableId, [
         { kind: 'pay.started', sittingId: sitting.id, ...guestEventAmount(amountMinor, currency) },
       ])
-      stx.rows.touch(command.tableId)
+      // Its lines read `beingPaid` on every table it covers.
+      for (const tableId of covered) {
+        if ((orders.get(tableId) ?? null) !== null) stx.rows.touch(tableId)
+      }
       return at(command, { id }, 'requested', true)
     },
   })
@@ -640,7 +745,7 @@ export function payCancel() {
         tableId: command.tableId,
       })
       if (locked === null) return refused(command.actionId, 'unknown_payment')
-      const { payment, tableOpen } = locked
+      const { payment } = locked
       if (payment.state === 'cancelling' || payment.state === 'released') {
         return at(command, payment, payment.state, false)
       }
@@ -649,7 +754,7 @@ export function payCancel() {
       }
       if (payment.state === 'requested') {
         // No provider call is made before `priced`: nothing to cancel there.
-        await release(stx, payment, tableOpen, 'cancelled')
+        await release(stx, payment, 'cancelled')
         return at(command, payment, 'released', true)
       }
       await stx.tx
@@ -698,7 +803,7 @@ export function paymentPrice() {
     async handle(stx, command) {
       const locked = await lockPayment(stx, { id: command.paymentId })
       if (locked === null) return refused(null, 'payment_missing')
-      const { payment, tableOpen } = locked
+      const { payment } = locked
       if (payment.state !== 'requested') return at(command, payment, payment.state, false)
       const picked = await stx.tx
         .select({
@@ -722,7 +827,7 @@ export function paymentPrice() {
           )
         })
       const releaseFor = async (reason: string) => {
-        await release(stx, payment, tableOpen, reason)
+        await release(stx, payment, reason)
         return at(command, payment, 'released', true)
       }
       // Only the picked lines are compared here: the bill-level checks (a part-paid bill, a whole-bill
@@ -838,7 +943,7 @@ export function paymentCheck() {
     async handle(stx, command) {
       const locked = await lockPayment(stx, { id: command.paymentId })
       if (locked === null) return refused(null, 'payment_missing')
-      const { payment, tableOpen } = locked
+      const { payment } = locked
       if (payment.state !== 'awaiting_guest') return at(command, payment, payment.state, false)
       const read = command.reading
       if (payment.providerPaymentRef !== read.ref) {
@@ -869,7 +974,7 @@ export function paymentCheck() {
         return at(command, payment, 'held', true)
       }
       if (read.status === 'released') {
-        await release(stx, payment, tableOpen, 'expired')
+        await release(stx, payment, 'expired')
         return at(command, payment, 'released', true)
       }
       // Not held (yet): the deadlines decide (design §6). While the guest's bank asks for a step,
@@ -921,7 +1026,7 @@ export function paymentSettle() {
     async handle(stx, command) {
       const locked = await lockPayment(stx, { id: command.paymentId })
       if (locked === null) return refused(null, 'payment_missing')
-      const { payment, tableOpen } = locked
+      const { payment } = locked
       if (payment.state !== command.from) return at(command, payment, payment.state, false)
       const reason = payment.reason ?? command.reason
       // `stranded` comes only from `payment.undone`, which keeps the same rule itself;
@@ -935,7 +1040,7 @@ export function paymentSettle() {
         return refused(null, 'enter_attempted')
       }
       const state = reason === 'stranded' ? 'stranded' : 'released'
-      await release(stx, payment, tableOpen, reason, state)
+      await release(stx, payment, reason, state)
       return at(command, payment, state, true)
     },
   })

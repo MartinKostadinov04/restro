@@ -493,10 +493,23 @@ describe("a linked group's bill, by table (#319, D160 §1)", () => {
     expect(sheet.querySelector('[data-slot="bill.owed"]')).toBeNull()
   })
 
-  it('keeps Pay on this table’s own bill: each table still pays its own', () => {
+  it('keeps Pay on this table’s own bill where each table pays its own', () => {
     drawFace(fakeHost({ ...groupOf(), paying: payingOf() }))
     const sheet = openBill()
     expect(within(sheet).getByRole('button', { name: /^Pay/ }).textContent).toContain('€22.50')
+  })
+
+  it('reads the group’s total on Pay where one payment covers every member table (#542)', () => {
+    const { tableBill, tableGroup } = groupOf()
+    drawFace(
+      fakeHost({
+        tableBill,
+        tableGroup: tableGroup && { ...tableGroup, paysAcross: true },
+        paying: payingOf(),
+      }),
+    )
+    const sheet = openBill()
+    expect(within(sheet).getByRole('button', { name: /^Pay/ }).textContent).toContain('€27.50')
   })
 
   it('marks a table that did not read as updating, keeps its last lines, and says the total is not final', () => {

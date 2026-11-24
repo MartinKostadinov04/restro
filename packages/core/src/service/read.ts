@@ -35,7 +35,21 @@ import {
   waiterCalls,
   withTenant,
 } from '@restro/db'
-import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm'
 
 import { resolveRoutesIn } from '../apply/menu-routes'
 import type { AreaId, BarId, TableId } from '../ids'
@@ -62,6 +76,7 @@ import {
 } from './bill'
 import type { ServiceActor } from './context'
 import { resolveGrants } from './grants'
+import { groupPaysAcross } from './group-pay'
 import type { LeaseScope } from './leases'
 import { activePausesOfTable, pausesOfVenue } from './pause-scope'
 import {
@@ -278,6 +293,11 @@ export interface GroupRead {
   readonly key: number
   /** A member table's bill is not known well now: the group's total is not final (log 1.8). */
   readonly unread: boolean
+  /**
+   * One payment may cover lines of several member tables (#542): the POS moves lines to a payment
+   * table, one bill a table, and serves every member. False: each phone pays its own table.
+   */
+  readonly paysAcross: boolean
   /** Every member, this table included, in the order of their names. */
   readonly tables: readonly GroupTableRead[]
 }
@@ -451,14 +471,14 @@ async function sittingBills(
   // a table. They name no payer: the payment's handle and provider values stay behind.
   const ranked = tx
     .select({
-      tableId: payments.tableId,
+      tableId: paymentLines.tableId,
       name: paymentLines.name,
       quantity: paymentLines.closedQuantity,
       amountMinor: paymentLines.closedMinor,
       paymentId: paymentLines.paymentId,
       position: paymentLines.position,
       paidRank:
-        sql<number>`row_number() over (partition by ${payments.tableId} order by ${payments.settledAt} asc, ${payments.id} asc, ${paymentLines.position} asc)`.as(
+        sql<number>`row_number() over (partition by ${paymentLines.tableId} order by ${payments.settledAt} asc, ${payments.id} asc, ${paymentLines.position} asc)`.as(
           'paid_rank',
         ),
     })
@@ -467,10 +487,26 @@ async function sittingBills(
       payments,
       and(eq(payments.tenantId, paymentLines.tenantId), eq(payments.id, paymentLines.paymentId)),
     )
+    // The line's table's open sitting: the payment's own sitting, or, for a line a payment of
+    // another table of its linked group paid (#542), a payment made since that sitting opened.
+    .innerJoin(
+      sittings,
+      and(
+        eq(sittings.tenantId, paymentLines.tenantId),
+        eq(sittings.tableId, paymentLines.tableId),
+        inArray(sittings.id, sittingIds),
+      ),
+    )
     .where(
       and(
-        inArray(payments.tableId, tableIds),
-        inArray(payments.sittingId, sittingIds),
+        inArray(paymentLines.tableId, tableIds),
+        or(
+          eq(payments.sittingId, sittings.id),
+          and(
+            ne(payments.tableId, paymentLines.tableId),
+            gte(payments.createdAt, sittings.openedAt),
+          ),
+        ),
         eq(payments.state, 'captured'),
         isNotNull(paymentLines.closedMinor),
       ),
@@ -702,7 +738,15 @@ async function groupOf(
     }
   })
   tables.sort((a, b) => compareSpotNames(a.label, b.label) || byCodeUnits(a.tableId, b.tableId))
-  return { key: facts.key, unread: groupHasUnreadTable(facts.readings), tables }
+  return {
+    key: facts.key,
+    unread: groupHasUnreadTable(facts.readings),
+    paysAcross: await groupPaysAcross(
+      tx,
+      facts.group.tables.map((member) => member.tableId),
+    ),
+    tables,
+  }
 }
 
 /**

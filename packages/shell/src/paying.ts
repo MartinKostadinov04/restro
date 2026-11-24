@@ -30,6 +30,8 @@ import { fallbackChain, pickText } from './text'
 export { PAY_ENDS, type PayEnd }
 
 import {
+  type GroupBillView,
+  type GroupTableView,
   type GuestCommand,
   type PayingView,
   type PaymentView,
@@ -84,6 +86,70 @@ export function pickWhole(picks: Picks, bill: TableBillView): Picks {
   const free = freeLines(bill)
   if (free.length > 0 && free.every((line) => picks.has(line.id))) return new Map()
   return new Map(free.map((line) => [line.id, seenOf(line)]))
+}
+
+/**
+ * The linked group whose bill one payment may cover (#542): the table's group where the venue's POS
+ * moves lines to a payment table (`paysAcross`), else null (no group, or each table pays its own).
+ */
+export function payAcross(state: Pick<ServiceState, 'tableGroup'>): GroupBillView | null {
+  const group = state.tableGroup ?? null
+  return group !== null && group.paysAcross === true ? group : null
+}
+
+/**
+ * The bill Pay reads: this table's own, or, where one payment covers several tables of its linked
+ * group (`payAcross`), the lines of every member table whose bill read well, with the group's
+ * totals over those tables and every member's paid lines (#542). A member table that is updating
+ * adds no lines and no amount, so nothing of it can be ticked or reads in Pay (log 1.8), and the
+ * bill is complete only when every member read. Null while this table has no bill of its own: the
+ * server prices a payment from this table's reading too.
+ */
+export function payableBill(
+  state: Pick<ServiceState, 'tableBill' | 'tableGroup'>,
+): TableBillView | null {
+  const own = state.tableBill ?? null
+  const group = payAcross(state)
+  if (own === null || group === null) return own
+  const read = group.tables.filter((table) => table.complete)
+  const sum = (amount: (table: GroupTableView) => number) =>
+    read.reduce((total, table) => total + amount(table), 0)
+  return {
+    ...own,
+    complete: read.length === group.tables.length,
+    totalMinor: sum((table) => table.totalMinor),
+    paidMinor: sum((table) => table.paidMinor),
+    owedMinor: sum((table) => table.owedMinor),
+    parts: read.flatMap((table) => table.parts),
+    paidLines: group.tables.flatMap((table) => table.paidLines),
+  }
+}
+
+/** The lines of `table` free to pay on `bill`: none of a member table that is updating. */
+function tableFreeLines(bill: TableBillView, table: GroupTableView): readonly TableBillLineView[] {
+  const free = new Set(freeLines(bill).map((line) => line.id))
+  return table.parts.flatMap((part) => part.lines.filter((line) => free.has(line.id)))
+}
+
+/** Whether every line of `table` free to pay is ticked: its "Whole table" reads pressed. */
+export function tablePicked(picks: Picks, bill: TableBillView, table: GroupTableView): boolean {
+  const lines = tableFreeLines(bill, table)
+  return lines.length > 0 && lines.every((line) => picks.has(line.id))
+}
+
+/**
+ * "Whole table" (#542): ticks every free line of one member table and leaves the other tables'
+ * ticks as they are, or clears that table's when they are all ticked.
+ */
+export function pickTable(picks: Picks, bill: TableBillView, table: GroupTableView): Picks {
+  const lines = tableFreeLines(bill, table)
+  const next = new Map(picks)
+  if (tablePicked(picks, bill, table)) {
+    for (const line of lines) next.delete(line.id)
+  } else {
+    for (const line of lines) next.set(line.id, seenOf(line))
+  }
+  return next
 }
 
 /**

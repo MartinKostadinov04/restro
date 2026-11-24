@@ -295,6 +295,14 @@ export interface PayingStrings {
   readonly tableUpdating: string
   readonly groupLeftToPay: string
   readonly groupNotFinal: string
+  /**
+   * Paying a linked group's bill (#542): the tick that takes every free line of one table, the
+   * line under a member table whose bill can't be read now (its lines and "The whole bill" wait),
+   * and the one line where the venue's POS takes each table's payment on its own.
+   */
+  readonly wholeTable: string
+  readonly tableNotRead: string
+  readonly oneTableAtATime: string
   readonly emptyBill: string
   readonly payOpen: string
   readonly askWaiterToPay: string
@@ -677,6 +685,7 @@ const EN: Strings = {
       paying_paused: 'Card payments are paused right now. Ask your waiter.',
       being_paid: 'Someone is already paying for this line.',
       bill_changed: 'Your bill changed since you opened it.',
+      table_not_read: 'A table’s bill can’t be read right now. Try again in a moment.',
       ask_waiter_to_split: 'Ask your waiter to split this bill.',
       turnstile: 'We couldn’t check this request. Try again.',
       sitting_ended:
@@ -700,6 +709,9 @@ const EN: Strings = {
       tableUpdating: 'Updating',
       groupLeftToPay: 'Left to pay, whole group',
       groupNotFinal: 'Not final: a table is still updating',
+      wholeTable: 'Whole table',
+      tableNotRead: 'This table’s bill can’t be read right now, so it can’t be paid yet.',
+      oneTableAtATime: 'Here each table pays its own bill: you pay for your table.',
       emptyBill: 'Nothing on your bill yet',
       payOpen: 'Pay',
       askWaiterToPay: 'Ask your waiter to pay.',
@@ -1055,6 +1067,8 @@ const BG: Strings = {
       paying_paused: 'Плащането с карта е спряно в момента. Попитайте сервитьора.',
       being_paid: 'Някой вече плаща този ред.',
       bill_changed: 'Сметката ви се промени, откакто я отворихте.',
+      table_not_read:
+        'Сметката на една от масите не може да се прочете в момента. Опитайте отново след малко.',
       ask_waiter_to_split: 'Помолете сервитьора да раздели сметката.',
       turnstile: 'Не успяхме да проверим заявката. Опитайте отново.',
       sitting_ended:
@@ -1078,6 +1092,10 @@ const BG: Strings = {
       tableUpdating: 'Обновява се',
       groupLeftToPay: 'За плащане, цялата група',
       groupNotFinal: 'Не е окончателна: една маса още се обновява',
+      wholeTable: 'Цялата маса',
+      tableNotRead:
+        'Сметката на тази маса не може да се прочете в момента, затова още не може да се плати.',
+      oneTableAtATime: 'Тук всяка маса плаща своята сметка: вие плащате за вашата маса.',
       emptyBill: 'Все още няма нищо в сметката',
       payOpen: 'Плати',
       askWaiterToPay: 'За да платите, попитайте сервитьора.',

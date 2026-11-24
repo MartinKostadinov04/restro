@@ -299,6 +299,8 @@ export interface FakeHost {
   readonly located: string[]
   /** The screens the face told the host it had open, in order (RR-52). */
   readonly screens: GuestScreen[]
+  /** How many times the guest asked for the state now ("Try again", #542). */
+  readonly refreshed: () => number
   readonly state: () => ServiceState
   readonly set: (patch: Partial<ServiceState>) => void
   /** The calls of one kind. */
@@ -313,6 +315,7 @@ export function fakeHost(initial: Partial<ServiceState> = {}): FakeHost {
   const calls: Call[] = []
   const forms: FakeHost['forms'] = []
   let dismissed = 0
+  let refreshed = 0
   const located: string[] = []
   const screens: GuestScreen[] = []
   const payForm: PayFormSlot = {
@@ -373,7 +376,11 @@ export function fakeHost(initial: Partial<ServiceState> = {}): FakeHost {
         stop: () => void located.push('stop'),
       },
       setScreen: (screen) => void screens.push(screen),
+      refresh: () => {
+        refreshed += 1
+      },
     }),
+    refreshed: () => refreshed,
     located,
     screens,
     forms,

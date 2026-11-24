@@ -90,6 +90,11 @@ export const GUEST_REFUSAL_CODES = [
   'being_paid',
   /** Pay: the bill changed since the phone opened it; the fresh bill is drawn. */
   'bill_changed',
+  /**
+   * Pay (#542, log 1.8): a picked line, or "The whole bill", is on a member table of the linked
+   * group whose bill did not read well now; it waits until that table reads again.
+   */
+  'table_not_read',
   /** Pay: below the venue's smallest card payment. */
   'below_minimum',
   /** Pay: part of a line, a part-paid bill or a whole-bill discount: the waiter splits it. */
