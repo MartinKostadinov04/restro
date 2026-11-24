@@ -8,6 +8,7 @@
 // and subscribes. So a change to the draft reaches the frame at once, and the frame never holds any
 // state of the design's.
 import type { LiveOverlay, MenuSnapshot } from '@restro/core'
+import type { SpecimenPart } from '@restro/editorial-market/preview'
 
 import type { PreviewScheme } from '@/publish/draft-face'
 
@@ -26,6 +27,11 @@ export interface FrameContent {
   readonly focus?: readonly string[]
   /** Where the frame reads photos from, when it draws the demo photo (`specimen.ts`). */
   readonly assetBase?: string
+  /**
+   * The one part the frame draws, alone (D159: an option's tile): the face's specimen view instead
+   * of the whole menu. The frame then has no stage, and tells its page the part's height.
+   */
+  readonly specimen?: SpecimenPart
 }
 
 export interface FrameStore {
@@ -36,6 +42,8 @@ export interface FrameStore {
    * part's page. `opens` is the part the tap opens, if any (`dish`).
    */
   tap(marker: string, opens?: string | null): void
+  /** The height of what the frame draws, in CSS pixels at its own width (a specimen's part). */
+  size(height: number): void
 }
 
 const STORES_KEY = '__restroDesignFrames'
@@ -51,6 +59,7 @@ export function framePath(venueId: string, slot: string): string {
 export function openFrameStore(
   slot: string,
   onPart?: (marker: string, opens: string | null) => void,
+  onSize?: (height: number) => void,
 ): {
   readonly set: (content: FrameContent | null) => void
   readonly close: () => void
@@ -63,6 +72,7 @@ export function openFrameStore(
   const store: FrameStore = {
     read: () => current,
     tap: (marker, opens = null) => onPart?.(marker, opens),
+    size: (height) => onSize?.(height),
     subscribe(listener) {
       listeners.add(listener)
       return () => listeners.delete(listener)

@@ -23,7 +23,7 @@ import { MESSAGES, renderWithIntl } from '@/test-utils'
 import { pageOfTap, previewStageOf, shownValues, tilePlanOf } from './advanced-model'
 import { AdvancedPanel } from './advanced-panel'
 import { DesignPage as Page } from './design-page'
-import { useTileContent } from './option-tiles'
+import { partHeightOf, SHORT_PART, tileSpanOf, useTileContent } from './option-tiles'
 import { specimenOf } from './specimen'
 
 const actions = vi.hoisted(() => ({
@@ -364,6 +364,52 @@ describe('a tile keeps its picture', () => {
     expect(result.current).toBe(first)
     rerender({ ...props, value: 'rows' })
     expect(result.current).not.toBe(first)
+  })
+})
+
+describe('a tile draws its part (D159)', () => {
+  it('a tile of an option with a part asks the frame for that part, not for a stage', () => {
+    const look = { theme: designThemeOf(DEFAULT_DESIGN), values: DEFAULT_DESIGN.values }
+    const { result } = renderHook(() =>
+      useTileContent({
+        specimen: specimenOf(fixture('with-images').snapshot, {
+          services: false,
+          strip: false,
+          part: 'dish-row',
+        }),
+        overlay: { version: 1, items: {} },
+        look,
+        pageId: 'items',
+        optionId: 'name_size',
+        value: 'l',
+        scheme: 'light',
+        services: false,
+        plan: tilePlanOf('items', 'name_size'),
+        part: 'dish-row',
+      }),
+    )
+    expect(result.current?.specimen).toBe('dish-row')
+    expect(result.current?.stage).toBeUndefined()
+    expect(result.current?.focus).toBeUndefined()
+  })
+
+  it('a short part takes the row at 1:1; a tall one goes two to a line', () => {
+    expect(partHeightOf('rail')).toBeLessThanOrEqual(SHORT_PART)
+    expect(tileSpanOf(partHeightOf('rail'))).toBe('col-span-2')
+    expect(tileSpanOf(SHORT_PART)).toBe('col-span-2')
+    expect(tileSpanOf(SHORT_PART + 1)).toBe('col-span-2 @min-[364px]:col-span-1')
+    expect(tileSpanOf(partHeightOf('dish-open'))).toBe('col-span-2 @min-[364px]:col-span-1')
+  })
+
+  it("each tile of a row names its part, and the row's tiles draw the same one", async () => {
+    setup()
+    await advanced()
+    await userEvent.click(pageChip('items'))
+    const parts = within(row('items', 'name_size'))
+      .getAllByTestId('design-tile')
+      .map((tile) => tile.getAttribute('data-part'))
+    expect(parts.length).toBeGreaterThan(1)
+    expect(new Set(parts)).toEqual(new Set(['dish-row']))
   })
 })
 

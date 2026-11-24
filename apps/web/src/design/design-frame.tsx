@@ -11,12 +11,38 @@
 //   - a tile of a screen's page asks for a stage: the frame opens the sheet the tile is about by
 //     tapping the renderer's own controls, as a person would, and scrolls to the part the option
 //     styles. The demo host behind the sheets is the preview's (`useDemoServices`).
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+//
+// A tile of an option (D159) asks for one part instead (`content.specimen`): the frame then draws the
+// face's specimen view of that part alone, no menu around it and no stage, and tells the Design page
+// the part's height so the tile is as tall as the part. Only a sheet's body binds the demo host.
+import type { Locale } from '@restro/core'
+import {
+  EditorialSpecimen,
+  type EditorialSpecimenProps,
+  type SpecimenPart,
+  specimenNeedsHost,
+  useDemoServices,
+} from '@restro/editorial-market/preview'
+import { buildViewModel } from '@restro/shell'
+import {
+  Component,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 
+import { faceEntry } from '@/faces/registry'
+import { FONT_STACKS } from '@/fonts'
+import { buildContext, chooseLocale } from '@/guest/context'
 import { DraftFace } from '@/publish/draft-face'
+import { useAdminLocale } from '@/publish/names'
 
 import type { Stage } from './advanced-model'
-import { closeDish, drive, holdScroll, keepHistoryInside } from './frame-stage'
+import { closeStage, drive, holdScroll, keepHistoryInside } from './frame-stage'
 import { type FrameContent, frameStoreOf } from './preview-frames'
 
 const nothing = (): FrameContent | null => null
@@ -40,13 +66,13 @@ export function partOf(target: Element): { part: string; opens: string | null } 
  * Reaches the frame's stage, once per stage and focus: a change of value redraws the same frame. A
  * frame with a stage keeps `focus()` from scrolling (a tile never scrolls the panel it sits in)
  * while the stage lasts. A frame whose stage is taken away (the live preview, once the Dish page is
- * left) goes back to the menu: the dish it opened is closed.
+ * left) goes back to the menu: the dish or sheet it opened is closed.
  */
 export function useStage(ready: boolean, stage: Stage | undefined, focus: string): void {
   const staged = useRef(false)
   useEffect(() => {
     if (!ready) return undefined
-    if (staged.current && stage === undefined) closeDish()
+    if (staged.current && stage === undefined) closeStage()
     staged.current = stage !== undefined
     const release = stage === undefined ? undefined : holdScroll(window)
     const stop = drive(stage ?? 'menu', focus === '' ? [] : focus.split(' '))
@@ -59,6 +85,96 @@ export function useStage(ready: boolean, stage: Stage | undefined, focus: string
 
 /** A phone's scrollbar lies over the page and takes no width: the same here, on any computer. */
 const FRAME_CSS = 'html{scrollbar-width:none}html::-webkit-scrollbar{display:none}'
+
+/** The table the services preview pretends the phone is at, as the preview's (`DraftFace`). */
+const PREVIEW_TABLE_TOKEN = 'preview'
+/** The platform's part of R15, pretended on for the services preview, as the preview's. */
+const PREVIEW_CAPABILITIES = { callWaiter: true, bill: true, ordering: true, pay: true } as const
+
+/**
+ * One part of the guest page alone (D159): the view model built as the preview builds it, drawn by
+ * the face's specimen view. The demo host is bound only for a sheet's body, which reads its state.
+ */
+export function SpecimenFrame({
+  content,
+  part,
+  onHeight,
+}: {
+  content: FrameContent
+  part: SpecimenPart
+  onHeight: (height: number) => void
+}) {
+  const { snapshot, overlay, services } = content
+  const adminLocale = useAdminLocale()
+  const locale: Locale = chooseLocale({
+    search: '',
+    browser: [adminLocale],
+    remembered: adminLocale,
+    available: snapshot.locales.available,
+    menuDefault: snapshot.locales.default,
+  })
+  // The clock is fixed when the frame opens, so the picture does not shift while it is looked at.
+  const [now] = useState(() => new Date())
+  const view = useMemo(() => {
+    const context = buildContext({
+      locale,
+      now,
+      tableToken: null,
+      manifest: faceEntry(undefined).manifest,
+    })
+    return buildViewModel(
+      snapshot,
+      overlay,
+      services
+        ? {
+            ...context,
+            tableToken: PREVIEW_TABLE_TOKEN,
+            orderingEnabled: true,
+            capabilities: PREVIEW_CAPABILITIES,
+          }
+        : context,
+    )
+  }, [snapshot, overlay, locale, now, services])
+  const props: EditorialSpecimenProps = {
+    view,
+    part,
+    onHeight,
+    assetBase: content.assetBase,
+    languages: snapshot.locales.available,
+    fontStacks: FONT_STACKS,
+    scheme: content.scheme,
+  }
+  return (
+    <QuietBoundary>
+      {specimenNeedsHost(part) ? <HostedSpecimen {...props} /> : <EditorialSpecimen {...props} />}
+    </QuietBoundary>
+  )
+}
+
+/**
+ * A part that throws draws nothing, not the app's error page inside a tile: the tile keeps its value
+ * word and radio, so the value can still be picked.
+ */
+class QuietBoundary extends Component<
+  { readonly children: ReactNode },
+  { readonly failed: boolean }
+> {
+  override state = { failed: false }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  override render() {
+    return this.state.failed ? null : this.props.children
+  }
+}
+
+/** The specimen with the demo host bound; its own component, so the host is loaded only here. */
+function HostedSpecimen(props: EditorialSpecimenProps) {
+  const services = useDemoServices(props.view)
+  return <EditorialSpecimen {...props} services={services} />
+}
 
 export function DesignFrame({ slot }: { slot: string }) {
   const subscribe = useCallback(
@@ -92,12 +208,17 @@ export function DesignFrame({ slot }: { slot: string }) {
   }, [slot])
 
   useEffect(() => keepHistoryInside(window), [])
-  useStage(content !== null, content?.stage, content?.focus?.join(' ') ?? '')
+  const part = content?.specimen
+  // A specimen is a part alone: there is no menu to drive to a stage.
+  useStage(content !== null && part === undefined, content?.stage, content?.focus?.join(' ') ?? '')
+  const tellHeight = useCallback((height: number) => frameStoreOf(slot)?.size(height), [slot])
 
   return (
     <>
       <style>{FRAME_CSS}</style>
-      {content === null ? null : (
+      {content === null ? null : part !== undefined ? (
+        <SpecimenFrame content={content} part={part} onHeight={tellHeight} />
+      ) : (
         <DraftFace
           snapshot={content.snapshot}
           overlay={content.overlay}
