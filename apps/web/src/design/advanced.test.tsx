@@ -336,7 +336,7 @@ describe('Advanced on the Design page', () => {
 
   it('the heading weight row notes a font that has no Heavy', async () => {
     const lora = THEME_FONTS.find((font) => font.id === 'lora')
-    expect(lora?.heaviest).toBeLessThan(850)
+    expect(lora?.heaviest).toBeLessThan(900)
     const inLora = {
       ...DEFAULT_DESIGN,
       values: {

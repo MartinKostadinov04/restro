@@ -17,8 +17,12 @@
 
 import { THEME_FONTS } from '@restro/shell'
 
-/** The weights the Heavy steps ask for: the heading (880), the sub-heading (850) and the item name (850). */
-const HEAVY = { heading: 880, subheading: 850, name: 850 } as const
+/**
+ * The weight the Heavy steps ask for: the heading, the sub-heading and the item name, 900 each, so
+ * Heavy stands apart from Bold (700) at a name's size (850 hardly showed). The longest names still fit
+ * their line at 900 (`NAME_FIT`, re-measured 11-24).
+ */
+const HEAVY = { heading: 900, subheading: 900, name: 900 } as const
 
 /**
  * Heavy falls back where a font stops short of it (D130, Heading weight and Name weight): a font that
@@ -165,8 +169,8 @@ export const EDITORIAL_CSS = `
   --rm-nav-weight: 400;
 }
 .rm[data-heading-weight="heavy"] {
-  --rm-heading-weight: 880;
-  --rm-subheading-weight: 850;
+  --rm-heading-weight: 900;
+  --rm-subheading-weight: 900;
   --rm-nav-weight: 800;
 }
 .rm[data-corners="square"] {
@@ -177,10 +181,10 @@ export const EDITORIAL_CSS = `
   --rm-depth-up: none;
 }
 .rm[data-density="compact"] {
-  --rm-space: 0.5;
+  --rm-space: 0.4;
 }
 .rm[data-density="spacious"] {
-  --rm-space: 1;
+  --rm-space: 1.15;
 }
 .rm[data-text-size="large"] {
   --rm-type: 1.125;
@@ -243,22 +247,22 @@ export const EDITORIAL_CSS = `
    price stays a step under it and never under the description (14 px, and 12.5 px in two columns),
    which is why it hardly moves. */
 .rm[data-items-name-size="s"] {
-  --rm-name-text: calc(16px * var(--rm-type));
-  --rm-name-list: calc(15px * var(--rm-type));
-  --rm-name-one: calc(19px * var(--rm-type));
-  --rm-name-two: calc(13px * var(--rm-type));
+  --rm-name-text: calc(15px * var(--rm-type));
+  --rm-name-list: calc(14.5px * var(--rm-type));
+  --rm-name-one: calc(18px * var(--rm-type));
+  --rm-name-two: calc(12.5px * var(--rm-type));
   --rm-name-two-narrow: calc(12.5px * var(--rm-type));
-  --rm-name-strip: calc(18px * var(--rm-type));
+  --rm-name-strip: calc(17px * var(--rm-type));
   --rm-price-photo: calc(14px * var(--rm-type));
   --rm-price-strip: calc(14px * var(--rm-type));
 }
 .rm[data-items-name-size="l"] {
-  --rm-name-text: calc(19px * var(--rm-type));
-  --rm-name-list: calc(17px * var(--rm-type));
-  --rm-name-one: calc(24px * var(--rm-type));
-  --rm-name-two: calc(14px * var(--rm-type));
-  --rm-name-two-narrow: calc(12.5px * var(--rm-type));
-  --rm-name-strip: calc(22px * var(--rm-type));
+  --rm-name-text: calc(19.5px * var(--rm-type));
+  --rm-name-list: calc(18.5px * var(--rm-type));
+  --rm-name-one: calc(25px * var(--rm-type));
+  --rm-name-two: calc(15px * var(--rm-type));
+  --rm-name-two-narrow: calc(13px * var(--rm-type));
+  --rm-name-strip: calc(23px * var(--rm-type));
   --rm-price-photo: calc(16px * var(--rm-type));
   --rm-price-strip: calc(15px * var(--rm-type));
 }
@@ -266,7 +270,7 @@ export const EDITORIAL_CSS = `
   --rm-name-weight: 400;
 }
 .rm[data-items-name-weight="heavy"] {
-  --rm-name-weight: 850;
+  --rm-name-weight: 900;
 }
 ${HEAVY_FALLBACK_CSS}
 .rm[data-items-name-case="capitals"] {

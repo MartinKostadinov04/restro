@@ -40,7 +40,7 @@
 .rm-sr { clip: rect(0, 0, 0, 0) }
 .rm-sr { white-space: nowrap }
 .rm-sr { border: 0 }
-.rm-header { padding: 18px 20px 24px }
+.rm-header { padding: 20.7px 20px 27.6px }
 .rm-header { background: var(--rm-text) }
 .rm-header { color: var(--rm-bg) }
 .rm-brandline { display: grid }
@@ -69,13 +69,13 @@
 .rm-icon, .rm-overlay-head button { border: 0 }
 .rm-icon, .rm-overlay-head button { background: transparent }
 .rm-icon, .rm-overlay-head button { color: inherit }
-.rm-titleblock { padding-top: 26px }
+.rm-titleblock { padding-top: 29.9px }
 .rm-titleblock { max-width: 560px }
 .rm-titleblock h1 { margin: 0 }
 .rm-titleblock h1 { font-size: clamp(38px, 11vw, 60px) }
 .rm-titleblock h1 { line-height: 0.95 }
 .rm-titleblock h1 { font-family: var(--rm-font) }
-.rm-titleblock h1 { font-weight: 880 }
+.rm-titleblock h1 { font-weight: 900 }
 .rm-titleblock h1 { overflow-wrap: anywhere }
 .rm-titleblock > p { margin: 12px 0 0 }
 .rm-titleblock > p { max-width: 40ch }
@@ -119,9 +119,9 @@
 .rm-sections a:after { transition: transform 0.2s ease }
 .rm-sections a[aria-current="true"] { color: var(--rm-text) }
 .rm-sections a[aria-current="true"]:after { transform: scaleX(1) }
-.rm-section { padding: 58px 20px 0 }
+.rm-section { padding: 66.7px 20px 0 }
 .rm-section { scroll-margin-top: 56px }
-.rm-section-head { margin-bottom: 22px }
+.rm-section-head { margin-bottom: 25.3px }
 .rm-section-head > img { width: 100% }
 .rm-section-head > img { aspect-ratio: 16 / 7 }
 .rm-section-head > img { object-fit: cover }
@@ -131,7 +131,7 @@
 .rm-section h2, .rm-section h3, .rm-section h4 { font-size: 31px }
 .rm-section h2, .rm-section h3, .rm-section h4 { line-height: 1.02 }
 .rm-section h2, .rm-section h3, .rm-section h4 { font-family: var(--rm-font) }
-.rm-section h2, .rm-section h3, .rm-section h4 { font-weight: 880 }
+.rm-section h2, .rm-section h3, .rm-section h4 { font-weight: 900 }
 .rm-section h2, .rm-section h3, .rm-section h4 { overflow-wrap: anywhere }
 .rm-section-head p { max-width: 42ch }
 .rm-section-head p { margin: 12px 0 0 }
@@ -140,8 +140,8 @@
 .rm-items { gap: 0 }
 .rm-item { display: grid }
 .rm-item { grid-template-columns: minmax(0, 1fr) 116px }
-.rm-item { gap: 18px }
-.rm-item { padding: 25px 0 }
+.rm-item { gap: 20.7px }
+.rm-item { padding: 28.75px 0 }
 .rm-item { border-top: 1px solid var(--rm-border) }
 .rm-item { content-visibility: auto }
 .rm-item { contain-intrinsic-size: 210px }
@@ -182,11 +182,11 @@
 .rm-item-open { text-align: left }
 .rm-item { container-type: inline-size }
 .rm-item { --rm-name-inset: 0px }
-.rm-item :is(h3, h4) { --rm-name-size: 19px }
+.rm-item :is(h3, h4) { --rm-name-size: 19.5px }
 .rm-item :is(h3, h4) { --rm-name-fits: calc((100cqi - var(--rm-name-inset) - 12px) / (var(--rm-name-fit) + 1)) }
 .rm-item :is(h3, h4) { font-size: clamp(12px, var(--rm-name-fits), var(--rm-name-size)) }
 .rm-item :is(h3, h4) { line-height: 1.12 }
-.rm-item :is(h3, h4) { font-weight: 850 }
+.rm-item :is(h3, h4) { font-weight: 900 }
 .rm-item :is(h3, h4) { overflow-wrap: break-word }
 .rm-price { margin-top: 7px }
 .rm-price { font-size: 14px }
@@ -266,7 +266,7 @@
 .rm-section.is-feature .rm-photo img { aspect-ratio: 4 / 3 }
 .rm-section.is-feature .rm-photo img { border-radius: calc(var(--rm-radius) * 1.15) }
 .rm-section.is-feature .rm-item-copy { padding-top: 17px }
-.rm-section.is-feature .rm-item :is(h3, h4) { --rm-name-size: 22px }
+.rm-section.is-feature .rm-item :is(h3, h4) { --rm-name-size: 23px }
 .rm-section.is-feature .rm-price { font-size: 15px }
 .rm-footer { margin-top: 78px }
 .rm-footer { padding: 42px 20px calc(42px + env(safe-area-inset-bottom)) }
@@ -322,7 +322,7 @@
 .rm-overlay-head { border-bottom: 1px solid color-mix(in srgb, currentColor 16%, transparent) }
 .rm-overlay-head { font-size: 12px }
 .rm-overlay-head { font-family: var(--rm-font) }
-.rm-overlay-head { font-weight: 850 }
+.rm-overlay-head { font-weight: 900 }
 .rm-overlay-head { text-transform: uppercase }
 .rm-overlay-panel.is-detail > .rm-overlay-head { position: absolute }
 .rm-overlay-panel.is-detail > .rm-overlay-head { right: 12px }
@@ -399,7 +399,7 @@
 .rm-detail-title h2 { font-size: 30px }
 .rm-detail-title h2 { line-height: 1.03 }
 .rm-detail-title h2 { font-family: var(--rm-font) }
-.rm-detail-title h2 { font-weight: 880 }
+.rm-detail-title h2 { font-weight: 900 }
 .rm-detail-title h2 { overflow-wrap: anywhere }
 .rm-detail-title strong { font-size: 16px }
 .rm-detail-copy > p { color: var(--rm-muted) }
@@ -504,7 +504,7 @@
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo img { aspect-ratio: 4 / 3 }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo img { border-radius: calc(var(--rm-radius) * 1.2) }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy { padding-top: 18px }
-.rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { --rm-name-size: 24px }
+.rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { --rm-name-size: 25px }
 .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { line-height: 1.1 }
 .rm-section:not(.is-feature) .rm-item.has-photo .rm-price { font-size: 16px }
 .rm-item.is-text { display: block }
@@ -687,7 +687,7 @@
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo { padding: 14px 0 28px }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo { padding: 8px }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo img { aspect-ratio: 4 / 3 }
-.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { --rm-name-size: 14px }
+.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { --rm-name-size: 15px }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { line-height: 1.15 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy { display: flex }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy { flex-wrap: wrap }
@@ -702,7 +702,7 @@
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-arrow::after { display: none }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-open { padding-right: 0 }
 @media (max-width: 359px) .rm[data-layout="two"] .rm-section:not(.is-feature) > .rm-items { column-gap: 10px }
-@media (max-width: 359px) .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { --rm-name-size: 12.5px }
+@media (max-width: 359px) .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { --rm-name-size: 13px }
 @media (max-width: 359px) .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo { padding: 5px }
 .rm { overflow-x: clip }
 .rm { max-width: 100vw }
@@ -1306,7 +1306,7 @@
 .rm .ro-h { margin: 26px 0 10px }
 .rm .ro-h { font-size: 15px }
 .rm .ro-h { font-family: var(--rm-font) }
-.rm .ro-h { font-weight: 850 }
+.rm .ro-h { font-weight: 900 }
 .rm .ro-row { display: flex }
 .rm .ro-row { flex-wrap: wrap }
 .rm .ro-row { align-items: center }
@@ -1365,7 +1365,7 @@
 .rm .ro-page > h2 { margin: 0 0 6px }
 .rm .ro-page > h2 { font-size: 30px }
 .rm .ro-page > h2 { font-family: var(--rm-font) }
-.rm .ro-page > h2 { font-weight: 880 }
+.rm .ro-page > h2 { font-weight: 900 }
 .rm .ro-page > h2 { letter-spacing: -0.01em }
 .rm .ro-page > h2 { text-transform: uppercase }
 .rm .ro-page .ro-preview { margin: 0 0 8px }

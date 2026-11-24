@@ -92,7 +92,7 @@ export interface RowState {
 const FREE: RowState = { disabled: false, note: null }
 
 /** The weight Heavy is asked for in the renderer; a font that serves less draws it at its own top. */
-const HEAVY_WEIGHT = 850
+const HEAVY_WEIGHT = 900
 
 /** The font that draws headings and names: the heading font, or the body font when it is "same". */
 export function drawingFont(values: DesignValues): string {
