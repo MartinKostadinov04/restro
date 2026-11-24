@@ -2,7 +2,8 @@
 // HTTP through MSW, plus one run with every capability the switches can declare switched on, so
 // the kit's declared branches (several bills, first items open a bill, part quantities, who
 // entered a line, Restro's reference, bars, receipt numbers, training mode, a tip on close) run
-// too. Both profiles keep the tip switch off (Q41 is open); `pilot` runs once more with it on.
+// too. Both profiles keep the tip switch off (Q41 is open); `pilot` runs once more with it on,
+// and once more closing one bill with several card payments read back (Q20, D160 §3, #541).
 
 import { serviceConnectorSuite } from '@restro/core/connectors/testing'
 import { setupServer } from 'msw/node'
@@ -48,10 +49,18 @@ const fileOverHttp = {
   base: 'http://pilot-file.sim-pos.localhost',
   ...engineOf('pilot', { electronicReceipt: true, electronicReceiptFile: true }),
 }
+// Several card payments on one close, each reference read back on the closed bill (#541).
+const severalSwitches = { severalPaymentsPerClose: true, readClosedBills: true }
+const severalInProcess = engineOf('pilot', severalSwitches)
+const severalOverHttp = {
+  base: 'http://pilot-several.sim-pos.localhost',
+  ...engineOf('pilot', severalSwitches),
+}
 const server = setupServer(
   ...overHttp.flatMap(({ engine, base }) => simPosHandlers(engine, base)),
   ...simPosHandlers(tipOverHttp.engine, tipOverHttp.base),
   ...simPosHandlers(fileOverHttp.engine, fileOverHttp.base),
+  ...simPosHandlers(severalOverHttp.engine, severalOverHttp.base),
 )
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
@@ -109,6 +118,23 @@ serviceConnectorSuite(
   }),
 )
 
+serviceConnectorSuite(
+  simPosHarness({
+    name: 'sim-pos pilot closing one bill with several card payments, in process',
+    engine: severalInProcess.engine,
+    clock: severalInProcess.clock,
+    transport: inProcessTransport(severalInProcess.engine),
+  }),
+)
+serviceConnectorSuite(
+  simPosHarness({
+    name: 'sim-pos pilot closing one bill with several card payments, over HTTP',
+    engine: severalOverHttp.engine,
+    clock: severalOverHttp.clock,
+    transport: fetchTransport(severalOverHttp.base, { env: 'test' }),
+  }),
+)
+
 const wide = engineOf('pilot', {
   billsPerTable: 'several',
   firstItemsOpenBill: true,
@@ -122,6 +148,7 @@ const wide = engineOf('pilot', {
   receiptNumberOnClose: true,
   trainingMode: true,
   tipAsLine: true,
+  severalPaymentsPerClose: true,
 })
 serviceConnectorSuite(
   simPosHarness({
