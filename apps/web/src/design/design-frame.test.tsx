@@ -10,14 +10,14 @@ import type { Stage } from './advanced-model'
 import { useStage } from './design-frame'
 
 const stage = vi.hoisted(() => ({
-  closeDish: vi.fn(),
+  closeStage: vi.fn(),
   drive: vi.fn(),
   holdScroll: vi.fn(),
   release: vi.fn(),
   stop: vi.fn(),
 }))
 vi.mock('./frame-stage', () => ({
-  closeDish: stage.closeDish,
+  closeStage: stage.closeStage,
   drive: stage.drive,
   holdScroll: stage.holdScroll,
 }))
@@ -29,18 +29,18 @@ beforeEach(() => {
 })
 
 describe('the stage of a frame', () => {
-  it('goes back to the menu when its stage is taken away: lets go, closes the dish', () => {
+  it('goes back to the menu when its stage is taken away: lets go, closes the dish or sheet', () => {
     const { rerender } = renderHook(({ at }: { at: Stage | undefined }) => useStage(true, at, ''), {
       initialProps: { at: 'dish' as Stage | undefined },
     })
     expect(stage.holdScroll).toHaveBeenCalledTimes(1)
     expect(stage.drive).toHaveBeenLastCalledWith('dish', [])
-    expect(stage.closeDish).not.toHaveBeenCalled()
+    expect(stage.closeStage).not.toHaveBeenCalled()
 
     rerender({ at: undefined })
     expect(stage.stop).toHaveBeenCalledTimes(1)
     expect(stage.release).toHaveBeenCalledTimes(1)
-    expect(stage.closeDish).toHaveBeenCalledTimes(1)
+    expect(stage.closeStage).toHaveBeenCalledTimes(1)
     expect(stage.drive).toHaveBeenLastCalledWith('menu', [])
     expect(stage.holdScroll).toHaveBeenCalledTimes(1)
   })
@@ -53,7 +53,7 @@ describe('the stage of a frame', () => {
       },
     )
     rerender({ focus: 'item' })
-    expect(stage.closeDish).not.toHaveBeenCalled()
+    expect(stage.closeStage).not.toHaveBeenCalled()
     expect(stage.holdScroll).not.toHaveBeenCalled()
     expect(stage.drive).toHaveBeenLastCalledWith('menu', ['item'])
   })

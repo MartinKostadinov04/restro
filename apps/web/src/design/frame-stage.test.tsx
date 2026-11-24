@@ -12,7 +12,7 @@ import { renderWithIntl } from '@/test-utils'
 
 import { pageOfTap, type Stage, tilePlanOf } from './advanced-model'
 import { partOf } from './design-frame'
-import { closeDish, drive, keepHistoryInside, stuckTop, WAYS } from './frame-stage'
+import { closeDish, closeStage, drive, keepHistoryInside, stuckTop, WAYS } from './frame-stage'
 import { previewSnapshot } from './preview-snapshot'
 import { DEMO_ASSET_BASE, specimenOf } from './specimen'
 
@@ -206,6 +206,36 @@ describe('around the stages', () => {
     } finally {
       release()
     }
+  })
+
+  for (const stage of ['bag', 'bill', 'call', 'pay', 'receipt', 'dish'] as const) {
+    it(`closes the ${stage} stage's sheet by its address, with no step through the history`, async () => {
+      const release = keepHistoryInside(window)
+      try {
+        const steps = window.history.length
+        const { view, stop } = await reach(stage, [])
+        expect(view.container.querySelector('[role="dialog"]')).not.toBeNull()
+        stop()
+        act(() => closeStage())
+        await waitFor(() => expect(view.container.querySelector('[role="dialog"]')).toBeNull())
+        expect(window.location.hash).toBe('')
+        expect(window.history.length).toBe(steps)
+        view.unmount()
+      } finally {
+        release()
+      }
+    }, 30_000)
+  }
+
+  it('closing with nothing open leaves the address alone', () => {
+    window.history.replaceState(null, '', `${window.location.pathname}#elsewhere`)
+    const popped = vi.fn()
+    window.addEventListener('popstate', popped)
+    closeStage()
+    expect(window.location.hash).toBe('#elsewhere')
+    expect(popped).not.toHaveBeenCalled()
+    window.removeEventListener('popstate', popped)
+    window.history.replaceState(null, '', window.location.pathname)
   })
 
   it('a step back with nothing of the frame to go back to does nothing', () => {
