@@ -208,6 +208,7 @@ describe("what the phone hears of a pay-first round's sent order (#113)", () => 
     },
     reading: null,
     bill: null,
+    group: null,
     backendValues: new Set(),
   } as unknown as TableStateRead
 

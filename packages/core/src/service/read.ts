@@ -8,6 +8,7 @@
 // - `readTonight` gives Tonight's contents, filtered by what the actor holds at the venue: alerts
 //   by their permission, waiter calls to those who answer them, the Log to `log.view`.
 
+import { createHash } from 'node:crypto'
 import {
   alerts,
   areas,
@@ -34,7 +35,7 @@ import {
   waiterCalls,
   withTenant,
 } from '@restro/db'
-import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm'
 
 import { resolveRoutesIn } from '../apply/menu-routes'
 import type { AreaId, BarId, TableId } from '../ids'
@@ -84,7 +85,17 @@ import {
 } from './payment-todos'
 import type { Permission } from './permissions'
 import { type ReceiptToBring, receiptsToBring } from './receipt-rows'
+import {
+  byCodeUnits,
+  groupHasUnreadTable,
+  type LinkedGroup,
+  type LinkedTableReading,
+  linkedGroupOfTable,
+  linkedGroupReadings,
+  type MemberReading,
+} from './reservations/linked-group'
 import { payRuleAtTable, payRulesAtTables } from './reservations/pay-rule'
+import { compareSpotNames } from './reservations/plan-state'
 import { type SeatedParty, seatedPartiesAtTables } from './reservations/seated-parties'
 import { sentOrderLinesOf } from './send'
 import { withoutTipMinor } from './staff-amount'
@@ -234,10 +245,41 @@ export interface TableStateRead {
    */
   readonly bill: BillView | null
   /**
+   * The table's linked group (#319, D160 §1): the party's tables, this one among them, each with
+   * its bill. Null where the table is closed or in no group; then the bill reads as it always did.
+   */
+  readonly group: GroupRead | null
+  /**
    * *Backend*: every POS reference and POS text of the stored reading, for the forbidden-values
    * walk over what the phone is answered (rule 3). Never sent.
    */
   readonly backendValues: ReadonlySet<string>
+}
+
+/** One member table of a linked group, as a phone at one of them may see it. */
+export interface GroupTableRead {
+  readonly tableId: string
+  /** Our name over it, else its number. */
+  readonly label: string
+  /** The table the phone is at. */
+  readonly own: boolean
+  /** Whether its bill was read well in its sitting (rule 6): a `failed` one shows as updating. */
+  readonly reading: MemberReading
+  /** Its bill as its last complete reading in its open sitting showed it, or null. */
+  readonly bill: BillView | null
+}
+
+/** The linked group of the table a phone is at. */
+export interface GroupRead {
+  /**
+   * Changes whenever what the group's bill shows may have changed: a table joined or left, a
+   * member's version rose, or its reading state changed. Never 0 (0 is "no group" to a phone).
+   */
+  readonly key: number
+  /** A member table's bill is not known well now: the group's total is not final (log 1.8). */
+  readonly unread: boolean
+  /** Every member, this table included, in the order of their names. */
+  readonly tables: readonly GroupTableRead[]
 }
 
 /** "Nothing changed since `since`": what most polls get. */
@@ -255,6 +297,15 @@ export interface TableStateUnchanged {
    * leaves the version as it was, so a poll on the bill learns its age here (#75, D111).
    */
   readonly billReadAt: Date | null
+  /**
+   * The table's linked group, as far as a poll needs it: its key, to tell the phone to ask again
+   * when it moved, and when each other member's bill was last read, for a fresh reading on the
+   * bill (#319). Null where the table is closed or in no group.
+   */
+  readonly group: {
+    readonly key: number
+    readonly others: readonly { readonly tableId: string; readonly readAt: Date | null }[]
+  } | null
 }
 
 /** How long after its sitting ended a closed table still tells a phone its party was moved (P22). */
@@ -304,6 +355,354 @@ function nextChangeOf(
   if (order === null) return null
   const at = nextOrderChangeAt(orderFromRow(order))
   return at === null ? null : new Date(at)
+}
+
+/**
+ * The lines a payment still claims, at any table of the venue (*backend*: the POS's line refs):
+ * what reads `beingPaid` on a bill.
+ */
+async function linesBeingPaid(tx: ReadTx, venueId: string): Promise<Set<string>> {
+  // The lines a payment still claims read `beingPaid`, an `unconfirmed` one's too, wherever they
+  // read back (migration 0043): the same check as `pay.start`'s, so the grey and the refusal agree.
+  const greyed = await tx
+    .select({ ref: paymentLines.posLineRef })
+    .from(paymentLines)
+    .where(
+      and(
+        eq(paymentLines.venueId, venueId),
+        eq(paymentLines.open, true),
+        isNotNull(paymentLines.posLineRef),
+      ),
+    )
+  const beingPaid = new Set(greyed.flatMap((line) => (line.ref === null ? [] : [line.ref])))
+  return beingPaid
+}
+
+/** One table's bill in its open sitting, and the backend values of what was read for it. */
+interface SittingBill {
+  readonly reading: {
+    readonly readSeq: number
+    readonly readAt: Date
+    readonly complete: boolean
+  } | null
+  readonly bill: BillView | null
+  readonly backendValues: Set<string>
+}
+
+/** A table whose bill is read, with its open sitting (null when closed). */
+interface BillTable {
+  readonly tableId: string
+  readonly sitting: { readonly id: string; readonly openedAt: Date } | null
+}
+
+/**
+ * The table's bill as its open sitting shows it (null when closed or not read since the sitting
+ * opened), with the sitting's paid lines and every backend value of the stored reading and of the
+ * table's unsettled payments (rule 3).
+ */
+async function sittingBill(
+  tx: ReadTx,
+  input: BillTable & { readonly beingPaid: ReadonlySet<string> },
+): Promise<SittingBill> {
+  const bills = await sittingBills(tx, { tables: [input], beingPaid: input.beingPaid })
+  const bill = bills.get(input.tableId)
+  if (bill === undefined) throw new Error('sittingBills left out the table it was asked for')
+  return bill
+}
+
+/**
+ * `sittingBill` for several tables at once (a linked group's members, #319): the same reads, each
+ * one query for every table, keyed by table id.
+ */
+async function sittingBills(
+  tx: ReadTx,
+  input: { readonly tables: readonly BillTable[]; readonly beingPaid: ReadonlySet<string> },
+): Promise<Map<string, SittingBill>> {
+  const tableIds = input.tables.map((table) => table.tableId)
+  const sittingIds = input.tables.flatMap((table) =>
+    table.sitting === null ? [] : [table.sitting.id],
+  )
+  const readings = new Map(
+    (
+      await tx
+        .select({
+          tableId: billReadings.tableId,
+          readSeq: billReadings.readSeq,
+          readAt: billReadings.readAt,
+          complete: billReadings.complete,
+          bills: billReadings.bills,
+        })
+        .from(billReadings)
+        .where(inArray(billReadings.tableId, tableIds))
+    ).map((row) => [row.tableId, row]),
+  )
+  // The tables' payments that aren't final (#110): their provider values join the walk, so no
+  // other answer can carry them (rule 3). A settled payment's stay out of it.
+  const open = await tx
+    .select({
+      tableId: payments.tableId,
+      ref: payments.providerPaymentRef,
+      form: payments.formValues,
+    })
+    .from(payments)
+    .where(and(inArray(payments.tableId, tableIds), isNull(payments.settledAt)))
+  // The lines paid in the app in each open sitting (D127 1.2): the lines the POS closed on the
+  // captured payments, at what it closed them for (#197), oldest payment first, `PAID_LINES_MAX`
+  // a table. They name no payer: the payment's handle and provider values stay behind.
+  const ranked = tx
+    .select({
+      tableId: payments.tableId,
+      name: paymentLines.name,
+      quantity: paymentLines.closedQuantity,
+      amountMinor: paymentLines.closedMinor,
+      paymentId: paymentLines.paymentId,
+      position: paymentLines.position,
+      paidRank:
+        sql<number>`row_number() over (partition by ${payments.tableId} order by ${payments.settledAt} asc, ${payments.id} asc, ${paymentLines.position} asc)`.as(
+          'paid_rank',
+        ),
+    })
+    .from(paymentLines)
+    .innerJoin(
+      payments,
+      and(eq(payments.tenantId, paymentLines.tenantId), eq(payments.id, paymentLines.paymentId)),
+    )
+    .where(
+      and(
+        inArray(payments.tableId, tableIds),
+        inArray(payments.sittingId, sittingIds),
+        eq(payments.state, 'captured'),
+        isNotNull(paymentLines.closedMinor),
+      ),
+    )
+    .as('ranked')
+  const paidRows =
+    sittingIds.length === 0
+      ? []
+      : await tx
+          .select({
+            tableId: ranked.tableId,
+            name: ranked.name,
+            quantity: ranked.quantity,
+            amountMinor: ranked.amountMinor,
+            paymentId: ranked.paymentId,
+            position: ranked.position,
+          })
+          .from(ranked)
+          .where(lte(ranked.paidRank, PAID_LINES_MAX))
+          .orderBy(asc(ranked.tableId), asc(ranked.paidRank))
+  // Restro's own refund of a paid line (148): "being sent" until the provider's list shows it
+  // (D72: no local success), then "refunded"; "did not go through" tells the guest to see the bar.
+  const refundRows =
+    paidRows.length === 0
+      ? []
+      : await tx
+          .select({
+            paymentId: paymentRefunds.paymentId,
+            position: paymentRefunds.linePosition,
+            failedAt: paymentRefunds.failedAt,
+            confirmedAt: paymentRefunds.confirmedAt,
+          })
+          .from(paymentRefunds)
+          .where(
+            and(
+              inArray(paymentRefunds.paymentId, [...new Set(paidRows.map((row) => row.paymentId))]),
+              eq(paymentRefunds.origin, 'line'),
+            ),
+          )
+          .orderBy(asc(paymentRefunds.seenAt), asc(paymentRefunds.id))
+  const refundOf = (paymentId: string, position: number): LineRefundState | null => {
+    const rows = refundRows.filter((r) => r.paymentId === paymentId && r.position === position)
+    const live = rows.findLast((r) => r.failedAt === null)
+    if (live !== undefined) return live.confirmedAt === null ? 'sending' : 'refunded'
+    return rows.length === 0 ? null : 'failed'
+  }
+  const read = new Map<string, SittingBill>()
+  for (const table of input.tables) {
+    const reading = readings.get(table.tableId)
+    const stored = reading === undefined ? [] : parseStoredBills(reading.bills)
+    const paidLines = paidRows.flatMap((row) => {
+      if (row.tableId !== table.tableId) return []
+      if (row.quantity === null || row.amountMinor === null) return []
+      const refund = refundOf(row.paymentId, row.position)
+      return [
+        {
+          name: row.name,
+          quantity: row.quantity,
+          amountMinor: row.amountMinor,
+          ...(refund === null ? {} : { refund }),
+        },
+      ]
+    })
+    const backendValues = billBackendValues(stored)
+    for (const payment of open) {
+      if (payment.tableId !== table.tableId) continue
+      if (payment.ref !== null) backendValues.add(payment.ref)
+      for (const value of Object.values(payment.form ?? {})) {
+        if (typeof value === 'string') backendValues.add(value)
+      }
+    }
+    read.set(table.tableId, {
+      reading:
+        reading === undefined
+          ? null
+          : { readSeq: reading.readSeq, readAt: reading.readAt, complete: reading.complete },
+      bill:
+        reading === undefined || table.sitting === null || reading.readAt < table.sitting.openedAt
+          ? null
+          : billView({
+              readAt: reading.readAt,
+              complete: reading.complete,
+              bills: stored,
+              beingPaid: input.beingPaid,
+              paidLines,
+            }),
+      backendValues,
+    })
+  }
+  return read
+}
+
+/** What a poll needs of the table's linked group: its members' reading states and its key. */
+interface GroupFacts {
+  readonly group: LinkedGroup
+  readonly readings: readonly LinkedTableReading[]
+  readonly key: number
+}
+
+/**
+ * The key of a group's bill (`GroupRead.key`): a hash of every member's table, sitting, version
+ * and reading state, as a positive 31-bit whole number. Pure.
+ */
+export function groupKeyOf(
+  members: readonly {
+    readonly tableId: string
+    readonly sittingId: string
+    readonly version: number
+    readonly reading: MemberReading
+  }[],
+): number {
+  const text = members
+    .map((member) => `${member.tableId}:${member.sittingId}:${member.version}:${member.reading}`)
+    .sort()
+    .join('|')
+  return (createHash('sha256').update(text, 'utf8').digest().readUInt32BE(0) % 2_147_483_646) + 1
+}
+
+/** The table's linked group with its members' reading states and key, or null in none. */
+async function groupFacts(tx: ReadTx, tableId: string): Promise<GroupFacts | null> {
+  const group = await linkedGroupOfTable(tx, { tableId })
+  if (group === null) return null
+  const readings = await linkedGroupReadings(tx, group)
+  const versions = new Map(
+    (
+      await tx
+        .select({
+          tableId: tableOrders.tableId,
+          version: sql<string>`max(${tableOrders.version})::text`,
+        })
+        .from(tableOrders)
+        .where(
+          inArray(
+            tableOrders.tableId,
+            group.tables.map((member) => member.tableId),
+          ),
+        )
+        .groupBy(tableOrders.tableId)
+    ).map((row) => [row.tableId, Number(row.version)]),
+  )
+  const key = groupKeyOf(
+    readings.map((member) => ({
+      tableId: member.tableId,
+      sittingId: member.sittingId,
+      version: versions.get(member.tableId) ?? 0,
+      reading: member.reading,
+    })),
+  )
+  return { group, readings, key }
+}
+
+/** The group as an unchanged poll carries it. */
+function pollFacts(
+  facts: GroupFacts | null,
+  input: { readonly tableId: string },
+): TableStateUnchanged['group'] {
+  if (facts === null) return null
+  return {
+    key: facts.key,
+    others: facts.readings
+      .filter((member) => member.tableId !== input.tableId)
+      .map((member) => ({ tableId: member.tableId, readAt: member.readAt })),
+  }
+}
+
+/**
+ * The table's linked group with every member's bill (#319, D160 §1), or null in none. The phone's
+ * own bill is the one already read; each other member's backend values join `backendValues`.
+ */
+async function groupOf(
+  tx: ReadTx,
+  input: {
+    readonly tableId: string
+    readonly ownBill: BillView | null
+    readonly beingPaid: ReadonlySet<string>
+    readonly backendValues: Set<string>
+  },
+): Promise<GroupRead | null> {
+  const facts = await groupFacts(tx, input.tableId)
+  if (facts === null) return null
+  const labels = new Map(
+    (
+      await tx
+        .select({ id: venueTables.id, name: venueTables.name, number: venueTables.number })
+        .from(venueTables)
+        .where(
+          inArray(
+            venueTables.id,
+            facts.group.tables.map((member) => member.tableId),
+          ),
+        )
+    ).map((row) => [row.id, row.name ?? row.number ?? '']),
+  )
+  const opened = new Map(
+    (
+      await tx
+        .select({ id: sittings.id, openedAt: sittings.openedAt })
+        .from(sittings)
+        .where(
+          inArray(
+            sittings.id,
+            facts.group.tables.map((member) => member.sittingId),
+          ),
+        )
+    ).map((row) => [row.id, row.openedAt]),
+  )
+  const others = await sittingBills(tx, {
+    tables: facts.readings
+      .filter((member) => member.tableId !== input.tableId)
+      .map((member) => {
+        const openedAt = opened.get(member.sittingId)
+        return {
+          tableId: member.tableId,
+          sitting: openedAt === undefined ? null : { id: member.sittingId, openedAt },
+        }
+      }),
+    beingPaid: input.beingPaid,
+  })
+  const tables: GroupTableRead[] = facts.readings.map((member) => {
+    const own = member.tableId === input.tableId
+    const read = others.get(member.tableId)
+    for (const value of read?.backendValues ?? []) input.backendValues.add(value)
+    return {
+      tableId: member.tableId,
+      label: labels.get(member.tableId) ?? '',
+      own,
+      reading: member.reading,
+      bill: own ? input.ownBill : (read?.bill ?? null),
+    }
+  })
+  tables.sort((a, b) => compareSpotNames(a.label, b.label) || byCodeUnits(a.tableId, b.tableId))
+  return { key: facts.key, unread: groupHasUnreadTable(facts.readings), tables }
 }
 
 /**
@@ -379,6 +778,7 @@ export async function readTableState(
           open === undefined || open.readAt === null || open.readAt < open.openedAt
             ? null
             : open.readAt,
+        group: open === undefined ? null : pollFacts(await groupFacts(tx, input.tableId), input),
       }
     }
 
@@ -499,115 +899,15 @@ export async function readTableState(
       .from(pauses)
       .where(activePausesOfTable(table))
 
-    const [reading] = await tx
-      .select({
-        readSeq: billReadings.readSeq,
-        readAt: billReadings.readAt,
-        complete: billReadings.complete,
-        bills: billReadings.bills,
-      })
-      .from(billReadings)
-      .where(eq(billReadings.tableId, table.id))
-
-    const stored = reading === undefined ? [] : parseStoredBills(reading.bills)
-    // The table's payments that aren't final (#110): their provider values join the walk, so no
-    // other answer can carry them (rule 3). A settled payment's stay out of it.
-    const open = await tx
-      .select({ id: payments.id, ref: payments.providerPaymentRef, form: payments.formValues })
-      .from(payments)
-      .where(and(eq(payments.tableId, table.id), isNull(payments.settledAt)))
-    // The lines a payment still claims read `beingPaid`, an `unconfirmed` one's too, wherever they
-    // read back (migration 0043): the same check as `pay.start`'s, so the grey and the refusal agree.
-    const greyed = await tx
-      .select({ ref: paymentLines.posLineRef })
-      .from(paymentLines)
-      .where(
-        and(
-          eq(paymentLines.venueId, table.venueId),
-          eq(paymentLines.open, true),
-          isNotNull(paymentLines.posLineRef),
-        ),
-      )
-    const beingPaid = new Set(greyed.flatMap((line) => (line.ref === null ? [] : [line.ref])))
-    // The lines paid in the app in this sitting (D127 1.2): the lines the POS closed on the
-    // captured payments, at what it closed them for (#197), oldest payment first. They name no
-    // payer: the payment's handle and provider values stay behind.
-    const paidRows =
+    const beingPaid = await linesBeingPaid(tx, table.venueId)
+    const own = await sittingBill(tx, { tableId: table.id, sitting: sitting ?? null, beingPaid })
+    const { reading, backendValues } = own
+    // The party's other tables (#319, D160 §1): each member's bill, read as this table's is, and
+    // its backend values join the walk too, so no member's POS reference can reach a phone.
+    const group =
       sitting === undefined
-        ? []
-        : await tx
-            .select({
-              name: paymentLines.name,
-              quantity: paymentLines.closedQuantity,
-              amountMinor: paymentLines.closedMinor,
-              paymentId: paymentLines.paymentId,
-              position: paymentLines.position,
-            })
-            .from(paymentLines)
-            .innerJoin(
-              payments,
-              and(
-                eq(payments.tenantId, paymentLines.tenantId),
-                eq(payments.id, paymentLines.paymentId),
-              ),
-            )
-            .where(
-              and(
-                eq(payments.tableId, table.id),
-                eq(payments.sittingId, sitting.id),
-                eq(payments.state, 'captured'),
-                isNotNull(paymentLines.closedMinor),
-              ),
-            )
-            .orderBy(asc(payments.settledAt), asc(payments.id), asc(paymentLines.position))
-            .limit(PAID_LINES_MAX)
-    // Restro's own refund of a paid line (148): "being sent" until the provider's list shows it
-    // (D72: no local success), then "refunded"; "did not go through" tells the guest to see the bar.
-    const refundRows =
-      paidRows.length === 0
-        ? []
-        : await tx
-            .select({
-              paymentId: paymentRefunds.paymentId,
-              position: paymentRefunds.linePosition,
-              failedAt: paymentRefunds.failedAt,
-              confirmedAt: paymentRefunds.confirmedAt,
-            })
-            .from(paymentRefunds)
-            .where(
-              and(
-                inArray(paymentRefunds.paymentId, [
-                  ...new Set(paidRows.map((row) => row.paymentId)),
-                ]),
-                eq(paymentRefunds.origin, 'line'),
-              ),
-            )
-            .orderBy(asc(paymentRefunds.seenAt), asc(paymentRefunds.id))
-    const refundOf = (paymentId: string, position: number): LineRefundState | null => {
-      const rows = refundRows.filter((r) => r.paymentId === paymentId && r.position === position)
-      const live = rows.findLast((r) => r.failedAt === null)
-      if (live !== undefined) return live.confirmedAt === null ? 'sending' : 'refunded'
-      return rows.length === 0 ? null : 'failed'
-    }
-    const paidLines = paidRows.flatMap((row) => {
-      if (row.quantity === null || row.amountMinor === null) return []
-      const refund = refundOf(row.paymentId, row.position)
-      return [
-        {
-          name: row.name,
-          quantity: row.quantity,
-          amountMinor: row.amountMinor,
-          ...(refund === null ? {} : { refund }),
-        },
-      ]
-    })
-    const backendValues = billBackendValues(stored)
-    for (const payment of open) {
-      if (payment.ref !== null) backendValues.add(payment.ref)
-      for (const value of Object.values(payment.form ?? {})) {
-        if (typeof value === 'string') backendValues.add(value)
-      }
-    }
+        ? null
+        : await groupOf(tx, { tableId: table.id, ownBill: own.bill, beingPaid, backendValues })
     const capabilities = await readTableCapabilities(tx, table.id)
     const [venue] = await tx
       .select({ settings: venues.settings })
@@ -709,20 +1009,9 @@ export async function readTableState(
       receiptEmail: capabilities.electronicReceipt,
       payFirst,
       paying,
-      reading:
-        reading === undefined
-          ? null
-          : { readSeq: reading.readSeq, readAt: reading.readAt, complete: reading.complete },
-      bill:
-        reading === undefined || sitting === undefined || reading.readAt < sitting.openedAt
-          ? null
-          : billView({
-              readAt: reading.readAt,
-              complete: reading.complete,
-              bills: stored,
-              beingPaid,
-              paidLines,
-            }),
+      reading,
+      bill: own.bill,
+      group,
       backendValues,
     }
   })

@@ -66,6 +66,8 @@ function state(version = 1) {
     sentOrders: [],
     waiterCall: null,
     bill: null,
+    groupKey: 0,
+    group: null,
   }
 }
 

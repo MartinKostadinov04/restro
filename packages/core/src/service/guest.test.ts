@@ -133,6 +133,7 @@ describe.skipIf(!hasDatabase)('the guest API module (as the restro_app role)', (
         next: 2_000,
         location: 'off',
         night: 'open',
+        groupKey: 0,
       } satisfies GuestUnchanged,
     })
   })

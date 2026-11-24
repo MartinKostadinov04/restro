@@ -451,6 +451,37 @@ export interface TableBillView {
   readonly paidLines: readonly PaidLineView[]
 }
 
+/** One member table of a linked group's bill, under its own heading. Nothing names a person. */
+export interface GroupTableView {
+  /** The table's name. */
+  readonly label: string
+  /** The table this phone is at. */
+  readonly own: boolean
+  /**
+   * False when the table's latest reading failed or none was made yet (rule 6): its last lines
+   * are drawn marked as updating.
+   */
+  readonly complete: boolean
+  readonly totalMinor: number
+  readonly paidMinor: number
+  /** "Left to pay" at this table. */
+  readonly owedMinor: number
+  readonly parts: readonly TableBillPartView[]
+  readonly paidLines: readonly PaidLineView[]
+}
+
+/** A linked group's bill: grouped by table, one total (D139: nothing attributed to a person). */
+export interface GroupBillView {
+  /** False while a member table's bill is not known well: the total is drawn as not final. */
+  readonly complete: boolean
+  readonly totalMinor: number
+  readonly paidMinor: number
+  /** "Left to pay" for the whole party. */
+  readonly owedMinor: number
+  /** Every member table, this one included, in the order of their names. */
+  readonly tables: readonly GroupTableView[]
+}
+
 /**
  * The venue's legal details as the pay screen shows them (#198, D127 log 1.6): who the payment is
  * processed for, and what the two links open. Public fields only.
@@ -684,6 +715,14 @@ export interface ServiceState {
    * phone has no location pass (`location.state` `needed`).
    */
   readonly tableBill?: TableBillView | null
+  /**
+   * The linked group's bill where the table is in one (#319, D160 §1): every member table's lines
+   * under its own heading and one total for the party, drawn in the bill in place of this table's
+   * lines alone. It shows even while this table has no reading of its own (`tableBill` null);
+   * `tableBill` stays this table's own, what its Pay reads: each table still pays its own. Absent
+   * or null where the table is in no group or the phone has no location pass.
+   */
+  readonly tableGroup?: GroupBillView | null
   /**
    * Paying on the bill here (#114): `state` is on, paused or off (no ids), `minCardMinor` the
    * smallest card payment. `electronicReceipt` (#186) is true where the pay screen offers the

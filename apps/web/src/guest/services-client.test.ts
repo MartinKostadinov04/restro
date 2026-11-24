@@ -39,6 +39,8 @@ function tableState(version: number, lines: Lines = [], location: LocationState 
     version,
     next: lines.length > 0 ? 2_000 : 10_000,
     table: { label: '7' },
+    groupKey: 0,
+    group: null,
     ordering: {
       state: 'on',
       notesAndOptions: false,
@@ -839,6 +841,7 @@ describe('the services client and the location check', () => {
             next: 10_000,
             location: 'needed',
             night: 'open',
+            groupKey: 0,
           })
     })
     h.client.start()
@@ -862,6 +865,7 @@ describe('the services client and the location check', () => {
             next: 10_000,
             location: 'off',
             night: 'last_orders',
+            groupKey: 0,
           })
     })
     h.client.start()
@@ -870,6 +874,33 @@ describe('the services client and the location check', () => {
     expect(h.nextWait()).toBe(0)
     await h.tick()
     expect(h.calls[2]?.url).toBe('/api/guest/state?view=menu')
+  })
+
+  it('asks for the whole state when an unchanged answer’s linked group differs (#319)', async () => {
+    // Another member table's bill changed: this table's version did not, the group's key did.
+    let n = 0
+    const h = harness(() => {
+      n += 1
+      return n === 1
+        ? json(200, { ...tableState(4), groupKey: 11 })
+        : json(200, {
+            unchanged: true,
+            version: 4,
+            next: 10_000,
+            location: 'off',
+            night: 'open',
+            groupKey: n === 2 ? 11 : 12,
+          })
+    })
+    h.client.start()
+    await h.tick()
+    await h.tick()
+    // The same key: nothing to ask again.
+    expect(h.nextWait()).not.toBe(0)
+    await h.tick()
+    expect(h.nextWait()).toBe(0)
+    await h.tick()
+    expect(h.calls[3]?.url).toBe('/api/guest/state?view=menu')
   })
 
   it('sends Turnstile’s token with a Send', async () => {
@@ -1089,7 +1120,95 @@ describe('paying (#110, #114, D127)', () => {
       currency: 'EUR',
       parts: [{ lines: [{ id: BN, amountMinor: 2250, beingPaid: true }] }],
     })
+    expect(state.tableGroup).toBeNull()
     expect(state.payment).toBeNull()
+  })
+
+  it('draws a linked group’s bill by table, with its own table’s Pay untouched (#319)', async () => {
+    const own = payingTable(1)
+    const other = {
+      label: '8',
+      own: false,
+      complete: false,
+      totalMinor: 1000,
+      paidMinor: 0,
+      owedMinor: 1000,
+      parts: [
+        {
+          id: 'bill-2',
+          beingPaid: false,
+          totalMinor: 1000,
+          paidMinor: 0,
+          lines: [
+            {
+              id: 'bn_other',
+              name: null,
+              quantity: '2',
+              amountMinor: 1000,
+              beingPaid: false,
+            },
+          ],
+        },
+      ],
+      paidLines: [],
+    }
+    const group = {
+      complete: false,
+      totalMinor: 3250,
+      paidMinor: 0,
+      owedMinor: 3250,
+      tables: [
+        {
+          label: '7',
+          own: true,
+          complete: true,
+          totalMinor: own.bill.totalMinor,
+          paidMinor: own.bill.paidMinor,
+          owedMinor: own.bill.owedMinor,
+          parts: own.bill.parts,
+          paidLines: own.bill.paidLines,
+        },
+        other,
+      ],
+    }
+    const h = harness(() => json(200, { ...own, groupKey: 7, group }))
+    h.client.start()
+    await h.tick()
+    const state = h.client.getState()
+    // This table's own bill is what Pay reads; the group is drawn beside it.
+    expect(state.tableBill).toMatchObject({ owedMinor: 2250, parts: [{ id: 'bill-1' }] })
+    expect(state.tableGroup).toMatchObject({
+      complete: false,
+      owedMinor: 3250,
+      tables: [
+        { label: '7', own: true, complete: true, owedMinor: 2250 },
+        { label: '8', own: false, complete: false, parts: [{ lines: [{ id: 'bn_other' }] }] },
+      ],
+    })
+  })
+
+  it('draws a linked group’s bill when this table has no bill read yet (#319)', async () => {
+    const own = payingTable(1)
+    const empty = { totalMinor: 0, paidMinor: 0, owedMinor: 0, parts: [], paidLines: [] }
+    const group = {
+      complete: false,
+      totalMinor: 1000,
+      paidMinor: 0,
+      owedMinor: 1000,
+      tables: [
+        { label: '7', own: true, complete: false, ...empty },
+        { label: '8', own: false, complete: true, ...empty, totalMinor: 1000, owedMinor: 1000 },
+      ],
+    }
+    const h = harness(() => json(200, { ...own, groupKey: 7, bill: null, group }))
+    h.client.start()
+    await h.tick()
+    const state = h.client.getState()
+    expect(state.tableBill).toBeNull()
+    expect(state.tableGroup).toMatchObject({
+      complete: false,
+      tables: [{ own: true }, { label: '8', owedMinor: 1000 }],
+    })
   })
 
   it('asks Turnstile for the pay action, keeps the handle in the tab and reads the payment with it', async () => {
@@ -1791,7 +1910,14 @@ describe('the age of the bill’s reading (lane 3 S7, D121)', () => {
       paidLines: [],
     },
   })
-  const quiet = { unchanged: true, version: 1, next: 2_000, location: 'off', night: 'open' }
+  const quiet = {
+    unchanged: true,
+    version: 1,
+    next: 2_000,
+    location: 'off',
+    night: 'open',
+    groupKey: 0,
+  }
 
   it('grows while the answers are unchanged, and resets with the reading a whole answer brings', async () => {
     let whole = withBill(1, 3)
@@ -1882,6 +2008,7 @@ describe('the idle back-off (P25)', () => {
     next,
     location: 'off',
     night: 'open',
+    groupKey: 0,
   })
 
   it('doubles the gap while nothing changes, up to 15 s, and drops back on a change', async () => {

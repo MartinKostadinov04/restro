@@ -63,6 +63,7 @@ import {
   ANSWER_LOST_CODE,
   type CommandResult,
   EMPTY_SERVICE_STATE,
+  type GroupBillView,
   GUEST_PASS_HEADER,
   GUEST_PAYMENT_HEADER,
   GUEST_PHONE_HEADER,
@@ -90,6 +91,7 @@ import {
   type SentOrderView,
   type ServiceState,
   TABLE_AUTH_SCHEME,
+  type TableBillPartView,
   type TableBillView,
   TURNSTILE_PAY_ACTION,
   TURNSTILE_SEND_ACTION,
@@ -280,21 +282,47 @@ function tableBillOf(bill: GuestTableState['bill'], at: number, now: number): Ta
     totalMinor: bill.totalMinor,
     paidMinor: bill.paidMinor,
     owedMinor: bill.owedMinor,
-    parts: bill.parts.map((part) => ({
-      id: part.id,
-      beingPaid: part.beingPaid,
-      totalMinor: part.totalMinor,
-      paidMinor: part.paidMinor,
-      lines: part.lines.map((line) => ({
-        id: line.id,
-        name: line.name,
-        quantity: line.quantity,
-        amountMinor: line.amountMinor,
-        beingPaid: line.beingPaid,
-      })),
-    })),
+    parts: partsOf(bill.parts),
     paidLines: bill.paidLines,
   }
+}
+
+/** The table's linked group's bill as the face draws it (#319), or null in none. */
+function tableGroupOf(group: GuestTableState['group']): GroupBillView | null {
+  if (group === null) return null
+  return {
+    complete: group.complete,
+    totalMinor: group.totalMinor,
+    paidMinor: group.paidMinor,
+    owedMinor: group.owedMinor,
+    tables: group.tables.map((table) => ({
+      label: table.label,
+      own: table.own,
+      complete: table.complete,
+      totalMinor: table.totalMinor,
+      paidMinor: table.paidMinor,
+      owedMinor: table.owedMinor,
+      parts: partsOf(table.parts),
+      paidLines: table.paidLines,
+    })),
+  }
+}
+
+/** A table's POS bills as the face draws them. */
+function partsOf(parts: NonNullable<GuestTableState['bill']>['parts']): TableBillPartView[] {
+  return parts.map((part) => ({
+    id: part.id,
+    beingPaid: part.beingPaid,
+    totalMinor: part.totalMinor,
+    paidMinor: part.paidMinor,
+    lines: part.lines.map((line) => ({
+      id: line.id,
+      name: line.name,
+      quantity: line.quantity,
+      amountMinor: line.amountMinor,
+      beingPaid: line.beingPaid,
+    })),
+  }))
 }
 
 /** The paying phone's payment as the face sees it: the provider's form values stay behind. */
@@ -749,6 +777,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       ...EMPTY_SERVICE_STATE,
       revision: server?.version ?? 0,
       tableBill: server === null ? null : tableBillOf(server.bill, serverAt, now),
+      tableGroup: server === null ? null : tableGroupOf(server.group),
       paying: server === null || retired ? null : payingView(server),
       payment: payment === null || isHidden(payment) ? null : paymentViewOf(payment, receiptEmail),
       order: server?.order == null ? null : orderView(server.order, pending, now),
@@ -901,7 +930,8 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
             answer.unchanged &&
             server !== null &&
             (answer.location !== server.location.state ||
-              answer.night !== server.ordering.night.state)
+              answer.night !== server.ordering.night.state ||
+              answer.groupKey !== server.groupKey)
           ) {
             whole = true
             wait = 0

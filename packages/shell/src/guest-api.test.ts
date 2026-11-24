@@ -61,6 +61,8 @@ const STATE = {
   sentOrders: [],
   waiterCall: null,
   bill: null,
+  groupKey: 0,
+  group: null,
 }
 
 describe('the guest API wire shapes (#75)', () => {
@@ -72,6 +74,7 @@ describe('the guest API wire shapes (#75)', () => {
       next: 10_000,
       location: 'off',
       night: 'open',
+      groupKey: 0,
     }
     expect(GuestStateAnswerSchema.parse(unchanged)).toEqual(unchanged)
     expect(GuestStateAnswerSchema.safeParse({ ...unchanged, order: STATE.order }).success).toBe(

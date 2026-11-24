@@ -57,6 +57,7 @@ import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 import { type GuestEventInput, recordEvents } from '../events'
 import { TABLE_TOKEN_PATTERN } from '../guest-files'
 import { type LegalDetails, readLegalDetails } from '../legal-details'
+import { GROUP_LABEL_MAX, GROUP_TABLES_MAX } from '../linked-group-limits'
 import type { Locale, LocalizedText } from '../locales'
 import {
   type GuestPosition,
@@ -64,6 +65,7 @@ import {
   locationPassExpiry,
   locationVerdict,
 } from '../location-check'
+import { sumSignedMinor } from '../money'
 import { type OrderingSettings, readOrderingSettings } from '../ordering-settings'
 import { FAST_POLL_MS } from '../poll-cadence'
 import { hashTableCode } from '../qr'
@@ -72,7 +74,13 @@ import { type GuestNight, guestNight } from '../service-hours'
 import { orderFromRow, UNDO_WINDOW_MS } from '../table-order'
 import type { CallWaiterKind } from '../theme'
 import { applyService } from './apply-service'
-import { billBackendValues, forbiddenPaths, parseStoredBills, wantsFreshReading } from './bill'
+import {
+  type BillView,
+  billBackendValues,
+  forbiddenPaths,
+  parseStoredBills,
+  wantsFreshReading,
+} from './bill'
 import type { ServiceContext } from './context'
 import { GuestLimiter, type GuestLimitName, type LimitAnswer } from './guest-limits'
 import {
@@ -84,7 +92,12 @@ import {
 import { isFinalPaymentState, type PAY_REFUSALS } from './pay'
 import type { PayFirstState, PayingState } from './pay-first'
 import { paymentNumberOf } from './payment-number'
-import { readTableState, type TableStateRead, type TableStateUnchanged } from './read'
+import {
+  type GroupRead,
+  readTableState,
+  type TableStateRead,
+  type TableStateUnchanged,
+} from './read'
 import type { Refused, ServiceResult } from './results'
 import { loadSendMenu } from './send-menu'
 
@@ -243,6 +256,11 @@ export interface GuestTableState {
     readonly kinds: readonly CallWaiterKind[]
     readonly calledAgoSeconds: number
   } | null
+  /**
+   * The key of the table's linked group (#319): it changes whenever the group's bill may have, and
+   * is 0 where the table is in no group. A phone holding another key asks for the whole state.
+   */
+  readonly groupKey: number
   /** The table's bill as the last complete reading showed it, or null. */
   readonly bill: {
     readonly readAgoSeconds: number
@@ -251,31 +269,73 @@ export interface GuestTableState {
     readonly totalMinor: number
     readonly paidMinor: number
     readonly owedMinor: number
-    readonly parts: readonly {
-      readonly id: string
-      readonly beingPaid: boolean
-      readonly totalMinor: number
-      readonly paidMinor: number
-      readonly lines: readonly {
-        readonly id: string
-        /** Our item's name; null is "Other item", worded by the shell. */
-        readonly name: LocalizedText | null
-        readonly quantity: string
-        readonly amountMinor: number
-        /** In a payment that isn't final (D127 2.4): no payer, amount or timer. */
-        readonly beingPaid: boolean
-      }[]
-    }[]
+    readonly parts: readonly GuestBillPart[]
     /** The lines paid in the app in this sitting (D127 1.2): never who paid. */
-    readonly paidLines: readonly {
-      /** The line's name per language; null is "Other item", worded by the shell. */
-      readonly name: LocalizedText | null
-      readonly quantity: string
-      readonly amountMinor: number
-      /** Restro's own refund of the line (148): being sent, refunded, or did not go through. */
-      readonly refund?: 'sending' | 'refunded' | 'failed'
-    }[]
+    readonly paidLines: readonly GuestPaidLine[]
   } | null
+  /**
+   * The linked group's bill where the table is in one (#319, D160 §1): every member table's lines
+   * under its own heading and one total. Beside `bill`, not in it, so it shows while this table
+   * has no reading of its own yet; `bill` stays what this table's Pay reads (each table still pays
+   * its own). Null where the table is in no group or the phone may not see the bill.
+   */
+  readonly group: GuestGroupBill | null
+}
+
+/** One POS bill of a table as a phone sees it. */
+export interface GuestBillPart {
+  readonly id: string
+  readonly beingPaid: boolean
+  readonly totalMinor: number
+  readonly paidMinor: number
+  readonly lines: readonly {
+    readonly id: string
+    /** Our item's name; null is "Other item", worded by the shell. */
+    readonly name: LocalizedText | null
+    readonly quantity: string
+    readonly amountMinor: number
+    /** In a payment that isn't final (D127 2.4): no payer, amount or timer. */
+    readonly beingPaid: boolean
+  }[]
+}
+
+/** A line paid in the app in a sitting (D127 1.2): never who paid. */
+export interface GuestPaidLine {
+  /** The line's name per language; null is "Other item", worded by the shell. */
+  readonly name: LocalizedText | null
+  readonly quantity: string
+  readonly amountMinor: number
+  /** Restro's own refund of the line (148): being sent, refunded, or did not go through. */
+  readonly refund?: 'sending' | 'refunded' | 'failed'
+}
+
+/** One member table of a linked group's bill, under its own heading. No id: nothing acts on it. */
+export interface GuestGroupTable {
+  /** The table's name, as its own phone shows it. */
+  readonly label: string
+  /** The table this phone is at. */
+  readonly own: boolean
+  /**
+   * False when its latest reading failed, or nothing was read yet in its sitting (rule 6): its
+   * last lines, if any, show as updating, and the group's total is not final.
+   */
+  readonly complete: boolean
+  readonly totalMinor: number
+  readonly paidMinor: number
+  readonly owedMinor: number
+  readonly parts: readonly GuestBillPart[]
+  readonly paidLines: readonly GuestPaidLine[]
+}
+
+/** A linked group's bill: grouped by table, one total, nothing attributed to a person (D139). */
+export interface GuestGroupBill {
+  /** False while a member table's bill is not known well: the total is not final (log 1.8). */
+  readonly complete: boolean
+  readonly totalMinor: number
+  readonly paidMinor: number
+  readonly owedMinor: number
+  /** Every member table, this one included, in the order of their names. */
+  readonly tables: readonly GuestGroupTable[]
 }
 
 /** "Nothing changed since your version." */
@@ -287,6 +347,8 @@ export interface GuestUnchanged {
   readonly location: GuestLocationState
   /** Likewise for the night (#82): time alone changes it, under an unchanged version. */
   readonly night: GuestNight['state']
+  /** Likewise for the linked group (#319): another member table's change leaves this version. */
+  readonly groupKey: number
 }
 
 /** A command's answer as a phone gets it. */
@@ -562,6 +624,7 @@ export function projectGuestState(
     version: read.version,
     next: cadence(view, inFlight),
     table: { label: read.table.label },
+    groupKey: read.group?.key ?? 0,
     ordering: {
       state: read.sitting === null ? 'closed' : read.pauses.length > 0 ? 'paused' : 'on',
       ...(read.sitting === null && read.movedAway === true ? { movedAway: true as const } : {}),
@@ -644,27 +707,78 @@ export function projectGuestState(
             totalMinor: bill.totalMinor,
             paidMinor: bill.paidMinor,
             owedMinor: bill.owedMinor,
-            parts: bill.bills.map((part) => ({
-              id: part.id,
-              beingPaid: part.beingPaid,
-              totalMinor: part.totalMinor,
-              paidMinor: part.paidMinor,
-              lines: part.lines.map((line) => ({
-                id: line.id,
-                name: line.name,
-                quantity: line.quantity,
-                amountMinor: line.amountMinor,
-                beingPaid: line.beingPaid,
-              })),
-            })),
-            paidLines: bill.paidLines.map((line) => ({
-              name: line.name,
-              quantity: shownQuantity(line.quantity),
-              amountMinor: line.amountMinor,
-              ...(line.refund === undefined ? {} : { refund: line.refund }),
-            })),
+            parts: partsOf(bill),
+            paidLines: paidLinesOf(bill),
           },
+    group: !sees || read.group === null ? null : groupBillOf(read.group),
   }
+}
+
+/** A bill's POS bills as a phone sees them. */
+function partsOf(bill: BillView): GuestBillPart[] {
+  return bill.bills.map((part) => ({
+    id: part.id,
+    beingPaid: part.beingPaid,
+    totalMinor: part.totalMinor,
+    paidMinor: part.paidMinor,
+    lines: part.lines.map((line) => ({
+      id: line.id,
+      name: line.name,
+      quantity: line.quantity,
+      amountMinor: line.amountMinor,
+      beingPaid: line.beingPaid,
+    })),
+  }))
+}
+
+/** A bill's lines paid in the app, as a phone sees them. */
+function paidLinesOf(bill: BillView): GuestPaidLine[] {
+  return bill.paidLines.map((line) => ({
+    name: line.name,
+    quantity: shownQuantity(line.quantity),
+    amountMinor: line.amountMinor,
+    ...(line.refund === undefined ? {} : { refund: line.refund }),
+  }))
+}
+
+/**
+ * The linked group's bill (#319, D160 §1): every member table under its own heading and one
+ * total over them, signed through the money module (rule 8). A member whose reading failed keeps
+ * its last lines, marked not complete, and the total is not final (rule 6, log 1.8). A group of
+ * more than `GROUP_TABLES_MAX` tables carries this phone's table and the first others by name,
+ * its total over those alone and not final; a name longer than `GROUP_LABEL_MAX` is cut. Pure.
+ */
+export function groupBillOf(group: GroupRead): GuestGroupBill {
+  const cut = group.tables.length > GROUP_TABLES_MAX
+  const tables = (cut ? cappedTables(group.tables) : group.tables).map(
+    (member): GuestGroupTable => {
+      const bill = member.bill
+      return {
+        label: member.label.slice(0, GROUP_LABEL_MAX),
+        own: member.own,
+        complete: member.reading === 'complete' && bill !== null && bill.complete,
+        totalMinor: bill?.totalMinor ?? 0,
+        paidMinor: bill?.paidMinor ?? 0,
+        owedMinor: bill?.owedMinor ?? 0,
+        parts: bill === null ? [] : partsOf(bill),
+        paidLines: bill === null ? [] : paidLinesOf(bill),
+      }
+    },
+  )
+  return {
+    complete: !cut && !group.unread && tables.every((member) => member.complete),
+    totalMinor: sumSignedMinor(tables.map((member) => member.totalMinor)),
+    paidMinor: sumSignedMinor(tables.map((member) => member.paidMinor)),
+    owedMinor: sumSignedMinor(tables.map((member) => member.owedMinor)),
+    tables,
+  }
+}
+
+/** This phone's table and the first others by name, `GROUP_TABLES_MAX` in all, in name order. */
+function cappedTables(tables: GroupRead['tables']): GroupRead['tables'] {
+  const others = tables.filter((member) => !member.own).slice(0, GROUP_TABLES_MAX - 1)
+  const kept = new Set([...tables.filter((member) => member.own), ...others])
+  return tables.filter((member) => kept.has(member))
 }
 
 /** Throws unless `answer` is free of every backend value the read knows of (rule 3). */
@@ -753,20 +867,27 @@ export async function guestState(
 
   // A poll on the bill asks for a fresh reading on both paths: a reading that found the same bill
   // leaves the version, so most bill polls are answered unchanged. Only a phone that may see it.
+  // On a linked group's bill (#319) every other member is read fresh the same way: the phone shows
+  // them all, so a stale one would hold back the group's total.
   const open = state.unchanged ? state.open : state.sitting !== null
-  const billReadAt = state.unchanged ? state.billReadAt : (state.bill?.readAt ?? null)
-  if (
-    input.view === 'bill' &&
-    open &&
-    location.state !== 'needed' &&
-    input.queueReading !== undefined &&
-    wantsFreshReading(billReadAt, state.now)
-  ) {
-    await input.queueReading({
-      tenantId: target.tenantId,
-      venueId: target.venueId,
+  if (input.view === 'bill' && open && location.state !== 'needed' && input.queueReading) {
+    const others = state.unchanged
+      ? (state.group?.others ?? [])
+      : (state.group?.tables ?? [])
+          .filter((member) => !member.own)
+          .map((member) => ({ tableId: member.tableId, readAt: member.bill?.readAt ?? null }))
+    const own = {
       tableId: target.tableId,
-    })
+      readAt: state.unchanged ? state.billReadAt : (state.bill?.readAt ?? null),
+    }
+    const queue = input.queueReading
+    await Promise.all(
+      [own, ...others]
+        .filter((table) => wantsFreshReading(table.readAt, state.now))
+        .map((table) =>
+          queue({ tenantId: target.tenantId, venueId: target.venueId, tableId: table.tableId }),
+        ),
+    )
   }
   if (state.unchanged) {
     return {
@@ -777,6 +898,7 @@ export async function guestState(
         next: cadence(input.view, false),
         location: location.state,
         night: nightOf(guard, now).state,
+        groupKey: state.group?.key ?? 0,
       },
     }
   }
