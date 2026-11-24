@@ -340,6 +340,8 @@ describe('what the guest API may hand the page', () => {
     sentOrders: [],
     waiterCall: null,
     bill: null,
+    groupKey: 0,
+    group: null,
   }
 
   it('refuses a privacy link that is not https, so the consent text cannot carry a script link', () => {
@@ -433,6 +435,8 @@ describe('the page reaches the guest API only with a table of its own venue', ()
     sentOrders: [],
     waiterCall: null,
     bill: null,
+    groupKey: 0,
+    group: null,
   })
 
   it('takes a code that another venue owns for no table: menu only, and not one call to the guest API', async () => {

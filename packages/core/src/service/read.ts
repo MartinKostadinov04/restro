@@ -586,7 +586,7 @@ export function groupKeyOf(
     .map((member) => `${member.tableId}:${member.sittingId}:${member.version}:${member.reading}`)
     .sort()
     .join('|')
-  return (createHash('sha256').update(text).digest().readUInt32BE(0) % 2_147_483_646) + 1
+  return (createHash('sha256').update(text, 'utf8').digest().readUInt32BE(0) % 2_147_483_646) + 1
 }
 
 /** The table's linked group with its members' reading states and key, or null in none. */
