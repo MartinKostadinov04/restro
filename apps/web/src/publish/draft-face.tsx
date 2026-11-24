@@ -15,7 +15,13 @@
 // platform's part (capabilities, the table) is pretended.
 import type { LiveOverlay, Locale, MenuSnapshot } from '@restro/core'
 import { useDemoServices } from '@restro/editorial-market/preview'
-import { buildViewModel, type FaceHostProps, stringsFor, type ViewModel } from '@restro/shell'
+import {
+  buildViewModel,
+  type FaceHostProps,
+  type FaceManifest,
+  stringsFor,
+  type ViewModel,
+} from '@restro/shell'
 import { useMemo, useState } from 'react'
 
 import { ChosenFace, type ChosenFaceStrings } from '@/faces/chosen-face'
@@ -23,6 +29,8 @@ import { type FaceEntry, faceEntry } from '@/faces/registry'
 import { FONT_STACKS } from '@/fonts'
 import { CDN_BASE } from '@/guest/cdn'
 import { buildContext, chooseLocale } from '@/guest/context'
+import type { AdminLocale } from '@/i18n/locales'
+
 import { useAdminLocale } from './names'
 
 export type PreviewScheme = 'light' | 'dark'
@@ -31,6 +39,52 @@ export type PreviewScheme = 'light' | 'dark'
 const PREVIEW_TABLE_TOKEN = 'preview'
 /** The platform's part of R15, pretended on for the services preview. */
 const PREVIEW_CAPABILITIES = { callWaiter: true, bill: true, ordering: true, pay: true } as const
+
+/** The language a preview starts in: the admin's own when the menu has it, as a guest's browser would. */
+export function previewLocaleOf(snapshot: MenuSnapshot, adminLocale: AdminLocale): Locale {
+  return chooseLocale({
+    search: '',
+    browser: [adminLocale],
+    remembered: adminLocale,
+    available: snapshot.locales.available,
+    menuDefault: snapshot.locales.default,
+  })
+}
+
+/**
+ * The view model a preview draws: the guest page's, at no table; with `services`, at the demo table
+ * with the platform's part of R15 pretended on (the venue's own switches still decide). The Design
+ * page's frames draw their parts from the same view (`design-frame.tsx`).
+ */
+export function previewViewOf({
+  snapshot,
+  overlay,
+  locale,
+  now,
+  manifest,
+  services,
+}: {
+  snapshot: MenuSnapshot
+  overlay: LiveOverlay
+  locale: Locale
+  now: Date
+  manifest: FaceManifest
+  services: boolean
+}): ViewModel {
+  const context = buildContext({ locale, now, tableToken: null, manifest })
+  return buildViewModel(
+    snapshot,
+    overlay,
+    services
+      ? {
+          ...context,
+          tableToken: PREVIEW_TABLE_TOKEN,
+          orderingEnabled: true,
+          capabilities: PREVIEW_CAPABILITIES,
+        }
+      : context,
+  )
+}
 
 export function DraftFace({
   snapshot,
@@ -53,33 +107,22 @@ export function DraftFace({
   const adminLocale = useAdminLocale()
   // Starts in the admin's own language when the menu has it, as a guest's browser would.
   const [choice, setChoice] = useState<Locale | null>(null)
-  const locale: Locale =
-    choice ??
-    chooseLocale({
-      search: '',
-      browser: [adminLocale],
-      remembered: adminLocale,
-      available: snapshot.locales.available,
-      menuDefault: snapshot.locales.default,
-    })
+  const locale: Locale = choice ?? previewLocaleOf(snapshot, adminLocale)
   // The clock is fixed when the preview opens, so the picture does not shift while it is looked at.
   const [now] = useState(() => new Date())
   const entry = useMemo(() => faceEntry(faceId), [faceId])
-  const view = useMemo(() => {
-    const context = buildContext({ locale, now, tableToken: null, manifest: entry.manifest })
-    return buildViewModel(
-      snapshot,
-      overlay,
-      servicesPreview
-        ? {
-            ...context,
-            tableToken: PREVIEW_TABLE_TOKEN,
-            orderingEnabled: true,
-            capabilities: PREVIEW_CAPABILITIES,
-          }
-        : context,
-    )
-  }, [snapshot, overlay, locale, now, entry, servicesPreview])
+  const view = useMemo(
+    () =>
+      previewViewOf({
+        snapshot,
+        overlay,
+        locale,
+        now,
+        manifest: entry.manifest,
+        services: servicesPreview,
+      }),
+    [snapshot, overlay, locale, now, entry, servicesPreview],
+  )
   const host: DrawProps = {
     entry,
     strings: stringsFor(view.locale).guest,

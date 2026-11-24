@@ -23,6 +23,7 @@ import { CategoryRail } from './category-rail'
 import { EDITORIAL_CSS } from './css'
 import { DishPage } from './detail'
 import { type FilterKind, FilterSheet } from './filters'
+import { AllergenFooter } from './footer'
 import { Header } from './header'
 import { LayoutSwitch } from './layout-switch'
 import {
@@ -35,7 +36,6 @@ import {
   hasVisibleItems,
   isFiltering,
   isStrip,
-  langOf,
   matchesFilters,
   NO_FILTERS,
   themeVariables,
@@ -289,20 +289,7 @@ export function EditorialMarketFace(props: EditorialMarketFaceProps) {
             </div>
           ) : null}
         </main>
-        {view.allergenLegend.length > 0 ? (
-          <footer className="rm-footer" data-design-part="footer">
-            <h2>{strings.footerTitle}</h2>
-            <p>{allergenNames ? strings.footerTextNames : strings.footerText}</p>
-            <div className="rm-legend" data-slot="menu.allergen_legend">
-              {view.allergenLegend.map((allergen) => (
-                <span key={allergen.code} lang={langOf(allergen.label, locale)}>
-                  {allergenNames ? null : <b>{allergen.number}</b>}
-                  {allergen.label.text}
-                </span>
-              ))}
-            </div>
-          </footer>
-        ) : null}
+        <AllergenFooter view={view} strings={strings} allergenNames={allergenNames} />
         {filtersOpen && filterControl ? (
           <FilterSheet
             dietary={view.filters.dietary.map((label) => ({ key: label.code, label: label.label }))}

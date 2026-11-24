@@ -4,12 +4,13 @@
 // picture, one per value of the option. A tile's picture is the real renderer drawing only the part
 // the option changes (D159, `PART_OF_OPTION`), with that value swapped in, in the draft's colours and
 // body font (`ScaledFrame`, as a picture, with the face's specimen view in the frame). The row, its
-// label and its values come from the contract file, so an option added there is a row here; until it
-// has a part, its tiles draw the menu at its stage (`tilePlanOf`, `design-frame.tsx`).
+// label and its values come from the contract file, so an option added there is a row here (and a
+// test fails until it is given its part: an option with none draws the top of the menu).
 //
 // A tile is as tall as its part. A short part (at most 160 px tall at 320 px: a dish row, the rail)
 // takes the row's whole width and is drawn at 1:1, never scaled up; a taller one (a sheet, an open
 // dish, four dishes) goes two to a line, scaled down to no less than half, else alone on its line.
+// Until the part has drawn, and if it draws nothing, the tile shows its quiet placeholder.
 //
 // A row that does not apply is switched off with its hint under it, and its tiles draw nothing: a
 // radio with the value word is all it needs. A tile that cannot draw keeps its value word and radio,
@@ -26,7 +27,6 @@ import type {
   VenueTheme,
 } from '@restro/core'
 import {
-  SPECIMEN_FIXED_PARTS,
   SPECIMEN_PHONE_HEIGHT,
   type SpecimenPart,
   specimenNeedsServices,
@@ -97,7 +97,7 @@ const PART_HEIGHT: Readonly<Record<SpecimenPart, number>> = {
 
 /** The height a part's tile starts with: a whole screen's own, else the guess above. */
 export function partHeightOf(part: SpecimenPart): number {
-  return SPECIMEN_FIXED_PARTS.has(part) ? SPECIMEN_PHONE_HEIGHT : PART_HEIGHT[part]
+  return PART_HEIGHT[part]
 }
 
 /**
@@ -215,12 +215,8 @@ function Tile({
   // The part's height at `TILE_WIDTH`: the guess until its frame tells it; a whole screen's is fixed.
   // A tile is keyed by its slot (`OptionTile`), so a height told for another option is never kept.
   const [told, setTold] = useState<number | null>(null)
-  const height =
-    part === null
-      ? null
-      : SPECIMEN_FIXED_PARTS.has(part)
-        ? SPECIMEN_PHONE_HEIGHT
-        : (told ?? partHeightOf(part))
+  // A part that drew nothing (0) keeps the guess, with the placeholder over it.
+  const height = part === null ? null : told !== null && told > 0 ? told : partHeightOf(part)
   return (
     <label
       data-testid="design-tile"
