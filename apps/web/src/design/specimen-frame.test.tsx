@@ -16,7 +16,7 @@ import { pageOfMarker, specimenPartOf } from './advanced-model'
 import { SpecimenFrame } from './design-frame'
 import type { FrameContent } from './preview-frames'
 import { previewSnapshot } from './preview-snapshot'
-import { DEMO_ASSET_BASE, specimenOf } from './specimen'
+import { DEMO_ASSET_BASE, LOGO_OPTIONS, specimenOf } from './specimen'
 
 afterEach(() => {
   cleanup()
@@ -34,6 +34,7 @@ function contentOf(pageId: string, optionId: string): FrameContent {
         services,
         strip: pageId === 'sections' && optionId === 'strip_card_size',
         part,
+        logo: LOGO_OPTIONS.has(`${pageId}.${optionId}`),
       }),
       {} as never,
       DEFAULT_DESIGN.values,
@@ -70,6 +71,22 @@ describe("a tile's frame draws the option's part alone", () => {
     expect(count('item')).toBe(1)
     expect(count('header')).toBe(0)
     expect(count('nav')).toBe(0)
+  })
+
+  it('Header › Logo size draws a sample logo on a venue with none yet; the other header rows do not', () => {
+    const { snapshot } = fixture('big-menu')
+    expect(snapshot.theme.logo).toBeNull()
+    expect(draw('header', 'logo_size').count('header.logo')).toBe(1)
+    cleanup()
+    expect(draw('header', 'band').count('header.logo')).toBe(0)
+  })
+
+  it('a venue logo is drawn as the sample logo, never as the demo dish photo', () => {
+    const { snapshot } = fixture('big-menu')
+    const withLogo = { ...snapshot, theme: { ...snapshot.theme, logo: 'as_VenueLogo00000000000A' } }
+    const drawn = specimenOf(withLogo as typeof snapshot, { services: false, strip: false })
+    expect(drawn.theme.logo).toBe('as_DemoLogo0000000000000A')
+    expect(drawn.assets[drawn.theme.logo as string]?.variants.card).toMatch(/DemoLogo/)
   })
 
   it('Header › Band draws the header with its Bill pill, and no dish', () => {

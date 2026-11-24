@@ -38,7 +38,7 @@ import { DraftFace, previewLocaleOf, previewViewOf } from '@/publish/draft-face'
 import { useAdminLocale } from '@/publish/names'
 
 import type { Stage } from './advanced-model'
-import { closeStage, drive, holdScroll, keepHistoryInside } from './frame-stage'
+import { closeStage, drive, holdScroll, keepHistoryInside, stagePressing } from './frame-stage'
 import { type FrameContent, frameStoreOf } from './preview-frames'
 
 const nothing = (): FrameContent | null => null
@@ -87,8 +87,13 @@ export function useStage(
   }, [ready, stage, focus, services])
 }
 
-/** A phone's scrollbar lies over the page and takes no width: the same here, on any computer. */
-const FRAME_CSS = 'html{scrollbar-width:none}html::-webkit-scrollbar{display:none}'
+/**
+ * A phone's scrollbar lies over the page and takes no width: the same here, on any computer. A frame
+ * is a page of its own, so in development Next.js draws its badge in each one, over the picture;
+ * the frames hide it (the Design page keeps its own).
+ */
+const FRAME_CSS =
+  'html{scrollbar-width:none}html::-webkit-scrollbar{display:none}nextjs-portal{display:none!important}'
 
 /**
  * A part that cannot be drawn (its view model refused, its code threw) draws nothing, not the app's
@@ -215,9 +220,10 @@ export function DesignFrame({ slot }: { slot: string }) {
   )
 
   // A tap on a marked part names the part to the Design page, with what the tap opens. Captured
-  // before the renderer's own handler, which still runs.
+  // before the renderer's own handler, which still runs. The stage's own presses are not taps.
   useEffect(() => {
     const tapped = (event: MouseEvent) => {
+      if (stagePressing()) return
       const target = event.target instanceof Element ? event.target : null
       const tap = target === null ? null : partOf(target)
       if (tap !== null) frameStoreOf(slot)?.tap(tap.part, tap.opens)

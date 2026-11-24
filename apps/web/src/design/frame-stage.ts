@@ -129,6 +129,19 @@ export function reveal(markers: readonly string[]): boolean {
   return false
 }
 
+/** True while the stage presses one of the renderer's controls (see `stagePressing`). */
+let pressing = false
+
+/**
+ * True while a stage is pressing a control: the click under way is the stage's, not the owner's. A
+ * frame names the parts the owner taps to the Design page, which opens their part of the panel; a
+ * press of the stage's (the bill button in the header, a dish's add button) must not, or opening the
+ * Bill part would open the Header part the moment its stage presses the bill button.
+ */
+export function stagePressing(): boolean {
+  return pressing
+}
+
 /** Presses the stage's controls one after the other, then scrolls. Returns what stops it. */
 export function drive(stage: Stage, focus: readonly string[], onReached?: () => void): () => void {
   const way = WAYS[stage]
@@ -162,7 +175,13 @@ export function drive(stage: Stage, focus: readonly string[], onReached?: () => 
       if (typeof press !== 'string' && document.querySelector(press.unless) !== null) {
         step += 1
       } else if (control !== null) {
-        control.click()
+        // The click is dispatched, and handled, before `click()` returns.
+        pressing = true
+        try {
+          control.click()
+        } finally {
+          pressing = false
+        }
         step += 1
       }
     } else if (way.until === null || document.querySelector(way.until) !== null) {

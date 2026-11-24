@@ -24,7 +24,7 @@ import { optionsOfPage, pageOfTap, shownValues, tilePlanOf } from './advanced-mo
 import { AdvancedPanel } from './advanced-panel'
 import { draftOf } from './design-draft'
 import { DesignPage as Page } from './design-page'
-import { partHeightOf, SHORT_PART, tileSpanOf, useTileContent } from './option-tiles'
+import { useTileContent } from './option-tiles'
 import { partListOf } from './part-list'
 import { PartRows } from './part-rows'
 import { specimenOf } from './specimen'
@@ -424,6 +424,33 @@ describe('a tile keeps its picture', () => {
 })
 
 describe('a tile draws its part (D159)', () => {
+  it('a Logo size tile draws the sample logo on a venue with no logo yet; a Band tile draws none', () => {
+    const look = { theme: designThemeOf(DEFAULT_DESIGN), values: DEFAULT_DESIGN.values }
+    expect(look.theme.logo_asset_id ?? null).toBeNull()
+    const tile = (optionId: string) =>
+      renderHook(() =>
+        useTileContent({
+          specimen: specimenOf(fixture('with-images').snapshot, {
+            services: false,
+            strip: false,
+            part: 'header',
+            logo: optionId === 'logo_size',
+          }),
+          overlay: { version: 1, items: {} },
+          look,
+          pageId: 'header',
+          optionId,
+          value: 'l',
+          scheme: 'light',
+          services: false,
+          plan: tilePlanOf('header', optionId),
+          part: 'header',
+        }),
+      ).result.current
+    expect(tile('logo_size')?.snapshot.theme.logo).toBe('as_DemoLogo0000000000000A')
+    expect(tile('band')?.snapshot.theme.logo).toBeNull()
+  })
+
   it('a tile of an option with a part asks the frame for that part, not for a stage', () => {
     const look = { theme: designThemeOf(DEFAULT_DESIGN), values: DEFAULT_DESIGN.values }
     const { result } = renderHook(() =>
@@ -447,14 +474,6 @@ describe('a tile draws its part (D159)', () => {
     expect(result.current?.specimen).toBe('dish-row')
     expect(result.current?.stage).toBeUndefined()
     expect(result.current?.focus).toBeUndefined()
-  })
-
-  it('a short part takes the row at 1:1; a tall one goes two to a line', () => {
-    expect(partHeightOf('rail')).toBeLessThanOrEqual(SHORT_PART)
-    expect(tileSpanOf(partHeightOf('rail'))).toBe('col-span-2')
-    expect(tileSpanOf(SHORT_PART)).toBe('col-span-2')
-    expect(tileSpanOf(SHORT_PART + 1)).toBe('col-span-2 @min-[364px]:col-span-1')
-    expect(tileSpanOf(partHeightOf('dish-open'))).toBe('col-span-2 @min-[364px]:col-span-1')
   })
 
   it("each tile of a row names its part, and the row's tiles draw the same one", async () => {

@@ -7,9 +7,9 @@
 // label and its values come from the contract file, so an option added there is a row here (and a
 // test fails until it is given its part: an option with none draws the top of the menu).
 //
-// A tile is as tall as its part. A short part (at most 160 px tall at 320 px: a dish row, the rail)
-// takes the row's whole width and is drawn at 1:1, never scaled up; a taller one (a sheet, an open
-// dish, four dishes) goes two to a line, scaled down to no less than half, else alone on its line.
+// A tile is as tall as its part, one tile a line, the row's whole width: drawn at 1:1 where the panel
+// is wide enough, scaled down only where it is narrower, never up. Two to a line made the pictures
+// too small to tell the values apart (Martin 11-24).
 // Until the part has drawn, and if it draws nothing, the tile shows its quiet placeholder.
 //
 // A row that does not apply is switched off with its hint under it, and its tiles draw nothing: a
@@ -50,7 +50,7 @@ import type { Draft } from './preview-draft'
 import type { FrameContent } from './preview-frames'
 import { previewSnapshot } from './preview-snapshot'
 import { ScaledFrame, TileLoading } from './scaled-frame'
-import { DEMO_ASSET_BASE, specimenOf } from './specimen'
+import { DEMO_ASSET_BASE, LOGO_OPTIONS, specimenOf } from './specimen'
 
 /** The width a tile's picture is laid out at: the narrowest phone the renderer holds for. */
 const TILE_WIDTH = 320
@@ -60,9 +60,6 @@ const SERVICE_STAGES = new Set(['order', 'bag', 'bill', 'call', 'pay', 'receipt'
 
 /** How far from the screen a tile's picture starts to load: a page has dozens, and each is a renderer. */
 const NEAR_MARGIN = '240px'
-
-/** The tallest part, at `TILE_WIDTH`, that takes the row's whole width at 1:1 (D159). */
-export const SHORT_PART = 160
 
 /**
  * How tall each part is about to be at `TILE_WIDTH`, before its frame has told: the tile keeps that
@@ -98,16 +95,6 @@ const PART_HEIGHT: Readonly<Record<SpecimenPart, number>> = {
 /** The height a part's tile starts with: a whole screen's own, else the guess above. */
 export function partHeightOf(part: SpecimenPart): number {
   return PART_HEIGHT[part]
-}
-
-/**
- * How a tile of a part sits in the row's two columns. A short part takes both, at 1:1. A tall one
- * takes one where half the row leaves its picture at least half of `TILE_WIDTH`, else both: the row
- * is then at least 364 px (two columns of 160 px pictures in 9 px of border and padding a side, and
- * the 8 px gap).
- */
-export function tileSpanOf(height: number): string {
-  return height <= SHORT_PART ? 'col-span-2' : 'col-span-2 @min-[364px]:col-span-1'
 }
 
 /**
@@ -165,8 +152,11 @@ export function useTileContent({
   return useMemo(() => {
     if (specimen === null || overlay === null) return null
     const own = withOptionValue(look.values, pageId, optionId, value)
+    const drawn = previewSnapshot(specimen, themeWithValues(look.theme, own), own)
+    // An option about the logo keeps the sample logo where the draft has none yet (`specimenOf`).
+    const logo = LOGO_OPTIONS.has(`${pageId}.${optionId}`) ? specimen.theme.logo : drawn.theme.logo
     return {
-      snapshot: previewSnapshot(specimen, themeWithValues(look.theme, own), own),
+      snapshot: { ...drawn, theme: { ...drawn.theme, logo } },
       overlay,
       scheme:
         pageId === 'general' && optionId === 'screen' && value !== 'auto'
@@ -223,8 +213,6 @@ function Tile({
       data-value={value}
       data-part={part ?? undefined}
       className={cn(
-        // The row's width is the part's, not each value's: every tile of a row sits alike.
-        part !== null && tileSpanOf(partHeightOf(part)),
         'grid min-w-0 cursor-pointer content-start gap-2 rounded-md border p-2 has-checked:border-primary has-checked:bg-accent/40 has-focus-visible:ring-[3px] has-focus-visible:ring-ring/50 has-disabled:cursor-not-allowed has-disabled:opacity-70 phone:min-h-11',
       )}
     >
@@ -314,15 +302,16 @@ export function OptionTiles({
   const current = valueIn(values, page.id, option.id)
   const services = part === null ? SERVICE_STAGES.has(plan.stage) : specimenNeedsServices(part)
   const strip = page.id === 'sections' && option.id === 'strip_card_size'
+  const logo = LOGO_OPTIONS.has(`${page.id}.${option.id}`)
 
   // Typing a colour must stay smooth: the pictures follow a moment later.
   const look = useDeferredValue(useMemo(() => ({ theme, values }), [theme, values]))
   const specimen = useMemo<MenuSnapshot | null>(
     () =>
       draft.state === 'ready' && !state.disabled
-        ? specimenOf(draft.snapshot, { services, strip, part })
+        ? specimenOf(draft.snapshot, { services, strip, part, logo })
         : null,
-    [draft, state.disabled, services, strip, part],
+    [draft, state.disabled, services, strip, part, logo],
   )
 
   const note =
@@ -348,7 +337,7 @@ export function OptionTiles({
           {note}
         </p>
       )}
-      <div className="@container grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 gap-2">
         {shownValues(option.values).map((entry) => (
           <OptionTile
             key={entry.id}

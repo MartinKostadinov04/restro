@@ -12,7 +12,7 @@ import { renderWithIntl } from '@/test-utils'
 
 import { pageOfTap, type Stage, tilePlanOf } from './advanced-model'
 import { partOf } from './design-frame'
-import { closeStage, drive, keepHistoryInside, stuckTop, WAYS } from './frame-stage'
+import { closeStage, drive, keepHistoryInside, stagePressing, stuckTop, WAYS } from './frame-stage'
 import { previewSnapshot } from './preview-snapshot'
 import { DEMO_ASSET_BASE, specimenOf } from './specimen'
 
@@ -103,6 +103,24 @@ describe('the stages of a frame', () => {
     await waitFor(() => expect(reached).toBe(true), { timeout: 15_000, interval: 100 })
     stop()
     expect(count()).toBe('1')
+  }, 30_000)
+
+  it("the stage's own presses are not the owner's taps: no part of the panel opens from them", async () => {
+    // The bill button sits in the header: taken for a tap, it would open the Header part.
+    const seen: boolean[] = []
+    const listen = () => seen.push(stagePressing())
+    document.addEventListener('click', listen, true)
+    try {
+      const { view, stop } = await reach('bill', ['bill.lines'])
+      stop()
+      expect(seen.length).toBeGreaterThan(0)
+      expect(seen.every(Boolean)).toBe(true)
+      // The owner's own tap, after the stage, is a tap.
+      view.container.querySelector<HTMLElement>('[data-design-part]')?.click()
+      expect(seen.at(-1)).toBe(false)
+    } finally {
+      document.removeEventListener('click', listen, true)
+    }
   }, 30_000)
 
   it('a tile of a browsing page scrolls to the part it styles', async () => {

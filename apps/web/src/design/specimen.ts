@@ -7,8 +7,9 @@
 // The first dish leads every tile of a page (D159): it carries a portion, three labels, the allergens
 // and a badge, and, for a Description lines tile, a long description. The demo content is a
 // make-believe picture, a description, a portion and a few labels, never a real price, and it exists
-// only in this browser's frame: nothing here is saved or published. The demo photo is a file of the
-// app (`/design-demo`), so the frame is given that folder as its photo base (`DEMO_ASSET_BASE`).
+// only in this browser's frame: nothing here is saved or published. The demo photo and the sample logo
+// are files of the app (`/design-demo`), so the frame is given that folder as its photo base
+// (`DEMO_ASSET_BASE`).
 import {
   ALLERGENS,
   type AssetId,
@@ -25,6 +26,27 @@ import type { SpecimenPart } from '@restro/editorial-market/preview'
 export const DEMO_ASSET_BASE = '/design-demo'
 
 const DEMO_ASSET = 'as_DemoPhoto000000000000A' as AssetId
+/** A neutral logo mark, grey on clear, seen on a light band and a dark one alike. */
+const DEMO_LOGO = 'as_DemoLogo0000000000000A' as AssetId
+
+/** The options a tile shows a logo for even where the venue has none yet: the logo is what they size or show. */
+export const LOGO_OPTIONS: ReadonlySet<string> = new Set([
+  'header.logo_size',
+  'receipt.venue_block',
+])
+
+/** The sample logo's files: wide, as a logo is best (8:3). */
+const SAMPLE_LOGO = {
+  w: 1280,
+  h: 480,
+  focal: null,
+  alt: {},
+  variants: {
+    thumb: `/a/${DEMO_LOGO}/w320.webp`,
+    card: `/a/${DEMO_LOGO}/w640.webp`,
+    full: `/a/${DEMO_LOGO}/w1280.webp`,
+  },
+}
 
 /** How much of the menu a tile draws. */
 export const TILE_SECTIONS = 2
@@ -129,11 +151,18 @@ function dressedItem(item: Item, index: number, draft: MenuSnapshot, long: boole
 /**
  * The draft as a specimen: cut down, with demo content and a demo photo for every item, and (for the
  * guest-feature screens) every service on. `strip` draws the first section as a row of feature cards.
- * `part` is the part the tile draws (the face's specimen view), when it draws one.
+ * `part` is the part the tile draws (the face's specimen view), when it draws one. A venue's logo is
+ * drawn as the sample logo (the frame has the demo files only); `logo` draws it where the venue has
+ * none yet, for a tile whose option is about the logo (`LOGO_OPTIONS`).
  */
 export function specimenOf(
   draft: MenuSnapshot,
-  { services, strip, part }: { services: boolean; strip: boolean; part?: SpecimenPart | null },
+  {
+    services,
+    strip,
+    part,
+    logo = false,
+  }: { services: boolean; strip: boolean; part?: SpecimenPart | null; logo?: boolean },
 ): MenuSnapshot {
   const cut = cutDown(draft, {
     sections: part != null && RAIL_PARTS.has(part) ? RAIL_SECTIONS : TILE_SECTIONS,
@@ -168,9 +197,8 @@ export function specimenOf(
     ...cut,
     items,
     sections,
-    assets: { [DEMO_ASSET]: photo },
-    // A logo the venue has is drawn as the demo picture too: the frame has the one photo base.
-    theme: { ...cut.theme, logo: cut.theme.logo === null ? null : DEMO_ASSET },
+    assets: { [DEMO_ASSET]: photo, [DEMO_LOGO]: SAMPLE_LOGO },
+    theme: { ...cut.theme, logo: cut.theme.logo === null && !logo ? null : DEMO_LOGO },
     ...(services ? { features: allFeatures(cut.features) } : {}),
   }
 }

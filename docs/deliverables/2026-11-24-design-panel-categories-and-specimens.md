@@ -176,8 +176,8 @@ Every tile draws **only the part named below**, with the draft's colours, fonts 
   - The admin imports it through `@restro/editorial-market/preview`, which the guest page never imports (an import rule already enforced).
   - The frame's height fits the part, so a tile of one dish row is short.
 - **Size in the panel:**
-  - A short part (at most 160 px tall at 320 px: a dish row, the header, the rail, a section title) gets a tile the panel's full width, one per line, drawn at 1:1, never scaled up.
-  - A tall part (a sheet, an open dish, four dishes in two columns) gets two tiles a line, scaled down, never below half size.
+  - Every tile takes the panel's full width, one per line, drawn at 1:1 where the panel is wide enough, scaled down only where it is narrower, never up.
+  - Two tiles a line (the first build, for tall parts) made the pictures too small to tell the values apart; Martin 11-24: one a line, clarity first.
 - **Speed.**
   - The specimen frame loads no services host unless its part is a sheet. It draws no menu around the part.
   - Targets, checked on the pilot PC with the walk's seed:
