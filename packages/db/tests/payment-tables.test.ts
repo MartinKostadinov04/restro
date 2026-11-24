@@ -167,6 +167,7 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
       await tx.insert(paymentLines).values({
         ...base,
         paymentId: f.paymentId,
+        tableId: f.tableId,
         position: 1,
         posLineRef: 'line-1',
         quantity: '2',
@@ -479,6 +480,7 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
           tenantId: a.tenantId,
           venueId: a.venueId,
           paymentId: a.paymentId,
+          tableId: a.tableId,
           position: 2,
           quantity: '0',
           posAmountMinor: 0,
@@ -493,6 +495,7 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
         tenantId: a.tenantId,
         venueId: a.venueId,
         paymentId: a.paymentId,
+        tableId: a.tableId,
         position: 2,
         quantity: '0.5',
         posAmountMinor: 450,
@@ -564,6 +567,7 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
       tenantId: a.tenantId,
       venueId: a.venueId,
       paymentId,
+      tableId: a.tableId,
       position: 1,
       posLineRef: 'line-open',
       quantity: '1',
@@ -587,7 +591,7 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
       await tx.insert(payments).values(other)
       await tx
         .insert(paymentLines)
-        .values({ ...line(other.id), tenantId: b.tenantId, venueId: b.venueId })
+        .values({ ...line(other.id), tenantId: b.tenantId, venueId: b.venueId, tableId: b.tableId })
     })
     // Settling the first payment closes its lines in the same statement, with its provenance.
     await withTenantWrite(app, a.tenantId, (tx) =>
@@ -638,6 +642,7 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
         tenantId: a.tenantId,
         venueId: a.venueId,
         paymentId,
+        tableId: a.tableId,
         position: 1,
         posLineRef: ref,
         quantity: '1',

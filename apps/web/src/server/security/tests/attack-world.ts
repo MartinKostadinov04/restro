@@ -267,9 +267,9 @@ async function seedVenue(
   )
   await owner.query(
     `insert into restro.payment_lines
-       (tenant_id, venue_id, payment_id, position, quantity, pos_amount_minor, display_name,
-        closed_minor, closed_quantity, open, source, actor, job_id)
-     values ($1, $2, $3, 1, 1, 1200, $4, 1200, 1, false, 'restro', 'system', 'attack-seed')`,
+       (tenant_id, venue_id, payment_id, table_id, position, quantity, pos_amount_minor,
+        display_name, closed_minor, closed_quantity, open, source, actor, job_id)
+     values ($1, $2, $3, (select p.table_id from restro.payments p where p.id = $3), 1, 1, 1200, $4, 1200, 1, false, 'restro', 'system', 'attack-seed')`,
     [tenantId, venue.id, paidPayment, `${marker} drink`.slice(0, 60)],
   )
   const refund = newId('rf')

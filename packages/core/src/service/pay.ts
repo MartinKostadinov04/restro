@@ -561,6 +561,7 @@ export function payStart() {
             tenantId: stx.tenantId,
             venueId: stx.venueId,
             paymentId: id,
+            tableId: command.tableId,
             position: index + 1,
             posLineRef: line.pos,
             quantity: line.quantity,

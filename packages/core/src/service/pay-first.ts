@@ -380,6 +380,7 @@ export async function insertPayFirst(
         tenantId: stx.tenantId,
         venueId: stx.venueId,
         paymentId: prepared.paymentId,
+        tableId: input.tableId,
         position: index + 1,
         posLineRef: null,
         quantity: String(line.qty),
