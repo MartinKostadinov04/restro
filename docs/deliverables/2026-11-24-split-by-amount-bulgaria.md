@@ -254,6 +254,58 @@ New points:
 - **F7.** For model (b) through чл. 26а: is a part payment for drinks already served an advance under ЗДДС чл. 25, ал. 7? Which VAT group goes on the part-payment receipt?
 - **F8.** Several guests' tips summed into one tip line on one receipt: acceptable, or one line per payment? (The tip already waits on the accountant under D127.)
 
+- **F9** (added 11-25). Is a hold's authorisation already "the payment"? Н-18 ties the e-shop document to the authorisation of a card-not-present payment (чл. 3, ал. 17; чл. 52о). If that reading carried over to a venue's fiscal device, each guest's authorisation, placed minutes before the receipt, would be the moment the receipt is due. (Sharpens F2 and F6; §6 below.)
+
+---
+
+## 6. Addendum 2026-11-25: a check of official Bulgarian sources
+
+Martin asked on 11-25 for a check against official Bulgarian sources such as myPOS. It was done by a research agent on 11-25 and filed by the lead. Same tags as above. Planning research only, not legal advice.
+
+**Bottom line.** Nothing official contradicts model (a): hold every card, close once with several card payments on one receipt, then capture seconds later. Several sources fit it, but none confirms it outright. No official text deals with holds, with a capture after the receipt, or with several payments of the card type on one receipt. F1, F2, F6 and the new F9 stay with the lawyer or accountant, and S1, S2 and S4 stay with Mistral.
+
+### Н-18, consolidated text (lex.bg, read 2026-11-25; last amendment ДВ бр. 42/2025)
+Source: https://lex.bg/bg/laws/ldoc/2135540645
+- **[LAW] чл. 3, ал. 1:** card payments are not among the payments with no receipt.
+- **[LAW] чл. 3, ал. 15:** the regulation itself uses "смесено плащане" (mixed payment) for several payments closing one sale (pharmacies part-paid by the health fund).
+- **[LAW] чл. 3, ал. 17 and чл. 52о:** an e-shop paid by card not present may give a non-fiscal document instead of a receipt, at the card payment or at the virtual POS's authorisation of the payment order.
+  - **[READING]** This is the only text that ties timing to authorisation, and it covers e-shops only, not a venue's own fiscal device. It is the source of F9.
+- **[LAW] чл. 25, ал. 6:** the receipt is issued when the payment is made and handed over as the payment is received. No tolerance in seconds is stated.
+- **[LAW] чл. 26, ал. 1, т. 8:** the receipt shows the payment method or methods ("начин/и на плащане"). The wording is unchanged since 2019.
+- **[LAW] чл. 26а:** unchanged; the part-payments department is an option, not a duty.
+- **[LAW] Annex 17:** the NRA receives card payments as one total per period.
+- **[NOT FOUND]** Any rule in Н-18 on pre-authorised, blocked or reserved card amounts.
+
+### The NRA (nra.bg)
+- **[NRA] Opinion ВК-30-14766/23.10.2025, on card tips** (read in full): https://nra.bg/wps/portal/nra/actualno/stanovishte-bakshish
+  - A tip given before the bill closes goes on the same receipt. A tip paid after the receipt gets a second receipt. Where the tip was left after the card payment was authorised, one receipt may sum several tips.
+  - The risk the NRA names is a gap between fiscal turnover and the totals paid through card terminals.
+  - **[READING]** The NRA treats card authorisation and the receipt as one act at the counter, which helps the "capture seconds later" reading. It says nothing about holds or several cards. It also bears on F8 (several guests' tips on one receipt).
+- **[SECONDARY]** Abstracts of NRA opinions (behind a paywall) say a card payment through a virtual POS also needs a receipt, for example an online hotel booking: https://kik-info.com/stanovishta-na-nap/1bc407b0b7627baaeac910c471121aa1
+- **[NOT FOUND]**
+  - An NRA Q&A or opinion on one receipt with several cards, on splitting a restaurant bill, or on pre-authorisation (hotels, car rental, fuel).
+  - The texts of the opinions on чл. 26а (Plovdiv 2020 and 2024, Sofia 2026): only their titles are visible, and the texts are behind a paywall: https://kik-info.com/stanovishta-na-nap/115cd9861412b35dc637241c8e22c850
+
+### myPOS Bulgaria
+- **[VENDOR PAGE]** The Bulgarian split-bill page (updated 05.11.2026) matches the Spanish one cited in §1:
+  - equal shares for 2–20 people, or custom amounts;
+  - one card payment per person, all linked to one bill, with a tip per payer;
+  - Ultra and Flex terminals only.
+  - It says nothing about a fiscal receipt or pre-authorisation; the only receipts it mentions are digital QR receipts.
+  - https://www.mypos.com/bg-bg/blog/plashtania/dve-novi-funktsii-na-tvoya-mypos-terminal-razdeleni-plashtaniya-i-digitalni-belezhki
+  - The same article runs in other countries, so it is a global feature, not a Bulgarian fiscal design.
+- **[VENDOR PAGE]** Carbon Fiscal, the fiscal terminal: a receipt for every payment, whether cash, card or mixed. Nothing on splitting a bill. https://www.mypos.com/bg-bg/kupi-pos-terminal/carbon-fiscal
+- **[VENDOR PAGE] (extract)** Pre-authorisation:
+  - aimed at hotels, with food and beverage charges among the allowed uses;
+  - a hold of up to 30 days, for verified merchants only;
+  - one help article says every device except Carbon Fiscal supports it.
+  - https://help.mypos.com/hc/en-bg/articles/6882453362589-How-does-credit-card-pre-authorization-work
+- **[DOC]** ePay.bg: a hold of up to 30 days, with partial completion. Nothing on fiscal receipts. https://kb.epay.bg/en/web/preauth/
+
+### Fiscal-device and POS vendors
+- **[NOT FOUND]** Official text from Datecs, Daisy, Tremol, Eltrade, Microinvest, Gensoft, Mistral or barsy on several card payments on one receipt, or on pre-authorisation.
+- **[SECONDARY] (extract)** Datecs FP-700 manual: the payment command takes a payment type and an amount between the sale and the close. Whether it may repeat for the card type is not stated, so the question stays with Mistral (S1, S2, S4). https://www.scribd.com/document/632167931/FP-700-doc
+
 ---
 
 ## Sources
