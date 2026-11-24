@@ -183,6 +183,12 @@ export async function chooseTheme(page: Page, theme: VisualTheme): Promise<void>
     throw new Error(`there is no preset ${theme.id} in core`)
   }
   const colours = preset?.colours ?? CUSTOM_COLOURS
+  // The boxes are in the panel's "Colours and logo" part, opened from its list (D159).
+  if (!(await page.getByLabel('Your brand colour', { exact: true }).isVisible())) {
+    const back = page.getByTestId('design-part-back')
+    if (await back.isVisible()) await back.click()
+    await page.getByTestId('design-part-colours').click()
+  }
   for (const [label, value] of [
     ['Your brand colour', colours.tertiary],
     ['Page', colours.primary],

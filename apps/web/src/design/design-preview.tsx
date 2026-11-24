@@ -113,14 +113,17 @@ export function DesignPreview({
   onScheme,
   onPart,
   stage,
+  focus,
 }: {
   venueId: string
   draft: Draft
   onRetry: () => void
   /** A tap on a marked part of the page (`data-design-part`): click to edit (D129). */
   onPart?: (marker: string, opens: string | null) => void
-  /** What the frame shows first: a dish while the Dish page is open (D129); the menu otherwise. */
+  /** What the frame shows first: the part a page of the panel styles (D159); the menu otherwise. */
   stage?: Stage
+  /** The parts the frame scrolls to, the first it finds: the open page's part, or the menu's top. */
+  focus?: readonly string[]
   /** The draft's look, whole. */
   theme: VenueTheme
   values: DesignValues
@@ -136,9 +139,16 @@ export function DesignPreview({
   const content = useMemo<FrameContent | null>(
     () =>
       draft.state === 'ready' && snapshot !== null
-        ? { snapshot, overlay: draft.overlay, scheme, services, ...(stage ? { stage } : {}) }
+        ? {
+            snapshot,
+            overlay: draft.overlay,
+            scheme,
+            services,
+            ...(stage ? { stage } : {}),
+            ...(focus ? { focus } : {}),
+          }
         : null,
-    [draft, snapshot, scheme, services, stage],
+    [draft, snapshot, scheme, services, stage, focus],
   )
 
   return (

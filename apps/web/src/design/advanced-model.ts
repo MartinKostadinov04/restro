@@ -21,9 +21,6 @@ import type { DesignDraft } from './design-draft'
 /** Simple is the Style, the colours and the fonts; Advanced is General and the component pages. */
 export type PanelMode = 'simple' | 'advanced'
 
-/** The page that opens first in Advanced. */
-export const FIRST_PAGE: DesignPageId = DESIGN_PAGES[0].id
-
 /** A page of the contract by its id. */
 export function pageById(
   id: string,
@@ -235,12 +232,31 @@ export function pageOfTap(
   return owner
 }
 
+/** What the live preview shows: a stage it opens (none for the menu itself), and the part it scrolls to. */
+export interface PreviewPlan {
+  readonly stage?: Stage
+  readonly focus: readonly string[]
+}
+
+/** The top of the menu: what the preview shows with the list, or a part of the panel's own, open. */
+export const MENU_TOP: PreviewPlan = { focus: ['header'] }
+
 /**
- * What the live preview shows first while a page is open: a dish, while the Dish page is open in
- * Advanced, so its options are seen at work (D129); the menu otherwise.
+ * What the live preview shows while a part is open (D159): a page of the contract shows its part,
+ * at its first option's stage (a sheet open, a dish open) and scrolled to the page's own part, so
+ * its options are seen at work; the list and the panel's own parts (Style, colours, fonts, layout)
+ * show the top of the menu. Leaving a stage for the menu closes what the stage opened.
  */
-export function previewStageOf(mode: PanelMode, pageId: DesignPageId): Stage | undefined {
-  return mode === 'advanced' && pageId === 'dish' ? 'dish' : undefined
+export function previewStageOf(
+  part: string | null,
+  pages: readonly DesignPage[] = DESIGN_PAGES,
+): PreviewPlan {
+  const page = part === null ? undefined : pageById(part, pages)
+  const first = page === undefined ? undefined : choiceOptions(page)[0]
+  if (page === undefined || first === undefined) return MENU_TOP
+  const plan = tilePlanOf(page.id, first.id, pages)
+  const focus = plan.focus.length > 0 ? plan.focus : MENU_TOP.focus
+  return plan.stage === 'menu' ? { focus } : { stage: plan.stage, focus }
 }
 
 // --- How a row lists its values ------------------------------------------------------------------

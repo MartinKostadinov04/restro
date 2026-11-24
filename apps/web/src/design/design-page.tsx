@@ -1,11 +1,13 @@
 'use client'
 
-// The Design page (D129): the editing panel on the left, the live preview on the right (under the
-// panel on a phone). In Simple the panel holds the Style tiles, the three colours with their harmony
-// suggestions and Advanced roles, the body and heading fonts and the logo. In Advanced (D130) it holds
-// General and the thirteen component pages, drawn from the contract file (`advanced-panel.tsx`); the
-// two are one draft, so switching keeps every edit. A tap on a marked part of the preview opens the
-// page that owns it (click to edit), or, in Simple, says the part is styled in Advanced. Every change is a change
+// The Design page (D129): the editing panel on the left, the live preview on the right (docked under
+// the panel on a phone). The panel opens on a list of parts (D159, `part-rows.tsx`): in Simple the
+// Style, Colours and logo, Fonts and Layout; in Advanced the first three, then General and the
+// thirteen component pages of the contract file (`advanced-panel.tsx`). A row opens its part in
+// place, with ‹ Back to the list; the address remembers the open part (`?part=`, `part-address.ts`)
+// and the preview shows it. Simple and Advanced are one draft, so switching keeps every edit and the
+// open part where the other level has it. A tap on a marked part of the preview opens its page (click
+// to edit), or, in Simple, says the part is styled in Advanced. Every change is a change
 // to a draft in this browser: the preview follows at once, and nothing is written until Done, which
 // saves the whole design through `saveDesignAction` (D129, rule 1) from the revision the page loaded.
 // Someone else's save in between refuses it: the page says so and takes the saved design. The design
@@ -20,12 +22,21 @@ import type {
   SnapshotLayout,
   StyleValues,
 } from '@restro/core'
-import { DESIGN_PAGES, designLayoutOf, SNAPSHOT_MENU_LAYOUTS, THEME_FONTS } from '@restro/core'
+import { DESIGN_PAGES, designLayoutOf, SNAPSHOT_MENU_LAYOUTS } from '@restro/core'
 import { ArrowLeftIcon, Undo2Icon, XIcon } from 'lucide-react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
-import { type ReactNode, useEffect, useId, useMemo, useState, useTransition } from 'react'
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -47,7 +58,6 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { studioPath } from '@/composer/design-path'
-import { FONT_STACKS } from '@/fonts'
 import { resolveAdminLocale } from '@/i18n/locales'
 import { cn } from '@/lib/utils'
 import { WRAPS } from '@/lib/wrapping'
@@ -57,7 +67,6 @@ import type { DesignView } from '@/server/design/service'
 import type { MyStyles as MyStylesData } from '@/server/design/styles'
 
 import {
-  FIRST_PAGE,
   type PanelMode,
   pageOfMarker,
   pageOfTap,
@@ -89,11 +98,22 @@ import { DesignPreview } from './design-preview'
 import { LogoField, useLogoUpload } from './logo-field'
 import { isValidLook, type ValidLook } from './look-state'
 import { MyStyles } from './my-styles'
+import { leavePart, PART_PARAM, partInAddress, pushPart, replacePart } from './part-address'
+import {
+  isOwnPart,
+  type OwnPartId,
+  openingOf,
+  type PartId,
+  pageOfPart,
+  partAcross,
+  partListOf,
+} from './part-list'
+import { fontStackOf, Pane, type PaneEnter, PartHeader, PartList } from './part-rows'
 import { usePreviewDraft } from './preview-draft'
 import { Segmented } from './segmented'
 import { StyleTiles } from './style-tiles'
 
-/** One part of the panel. */
+/** One group of controls inside an open part (the logo under the colours). */
 function PanelSection({
   title,
   testId,
@@ -105,10 +125,17 @@ function PanelSection({
 }) {
   return (
     <section className="grid gap-3" data-testid={testId}>
-      <h2 className="text-sm font-semibold">{title}</h2>
+      <h3 className="text-sm font-semibold">{title}</h3>
       {children}
     </section>
   )
+}
+
+/** Where the panel is: the level, the open part (null: the list), and how that view arrived. */
+interface PanelView {
+  readonly mode: PanelMode
+  readonly part: PartId | null
+  readonly enter: PaneEnter
 }
 
 /** How much shorter the visible screen gets when a phone's keyboard is up, at the least. */
@@ -128,12 +155,6 @@ function generalOption(id: string): Extract<DesignOption, { kind: 'choice' }> {
     throw new Error(`the design contract has no choice option ${id}`)
   }
   return option as Extract<DesignOption, { kind: 'choice' }>
-}
-
-/** A font's name is drawn in the font; "the same as the body" has no font of its own. */
-function fontStackOf(id: string): string | undefined {
-  const font = THEME_FONTS.find((entry) => entry.id === id)
-  return font === undefined ? undefined : FONT_STACKS[font.family]
 }
 
 function FontSelect({
@@ -251,11 +272,45 @@ export function DesignPage({
   const [revision, setRevision] = useState(initial.revision)
   const [saving, startSaving] = useTransition()
   const [leaving, setLeaving] = useState(false)
-  // Simple or Advanced, and the page open in Advanced. Both look at the one draft.
-  const [mode, setMode] = useState<PanelMode>('simple')
-  const [pageId, setPageId] = useState<DesignPageId>(FIRST_PAGE)
-  // Counts the taps on the preview that opened a page: the page lands on its first option.
-  const [reveal, setReveal] = useState(false)
+  // Simple or Advanced, and the part open in the panel (the address's `?part=`, D159). Both levels
+  // look at the one draft.
+  const requested = useSearchParams().get(PART_PARAM)
+  const [panel, setPanel] = useState<PanelView>(() => ({
+    ...openingOf(requested, 'simple'),
+    enter: null,
+  }))
+  const { mode, part } = panel
+  const current = useRef(panel)
+  current.current = panel
+  // Where the focus goes once the next view is drawn: the open part's title, or the row it left.
+  const focusNext = useRef<{ readonly title: true } | { readonly row: string } | null>(null)
+  // The page's own step back is on its way, and the part to name once it lands (null: the list).
+  const stepping = useRef<{ readonly next: PartId | null } | null>(null)
+  const panelBox = useRef<HTMLDivElement>(null)
+  // Each view is drawn anew (the pane is keyed by it) and starts at its top; the focus goes to the
+  // open part's title, or back to the row of the part it left, as that element is drawn.
+  const takeFocus = useCallback((node: HTMLElement, wanted: (target: object) => boolean) => {
+    const target = focusNext.current
+    if (target === null || !wanted(target)) return
+    focusNext.current = null
+    panelBox.current?.scrollTo?.({ top: 0 })
+    node.focus()
+    node.scrollIntoView?.({ block: 'nearest' })
+  }, [])
+  const titleRef = useCallback(
+    (node: HTMLHeadingElement | null) => {
+      if (node !== null) takeFocus(node, (target) => 'title' in target)
+    },
+    [takeFocus],
+  )
+  const rowRef = useCallback(
+    (id: string) => (node: HTMLButtonElement | null) => {
+      if (node !== null) {
+        takeFocus(node, (target) => 'row' in target && target.row === id)
+      }
+    },
+    [takeFocus],
+  )
   // In Simple, the page of a tapped part that only Advanced styles.
   const [styledIn, setStyledIn] = useState<DesignPageId | null>(null)
   // On a phone the preview sits at the foot of the screen; it steps aside while the keyboard is up.
@@ -353,6 +408,8 @@ export function DesignPage({
   }
 
   // --- The preview ---
+  // It shows the open part's part: its sheet or dish open, scrolled to it; the menu's top otherwise.
+  const preview = useMemo(() => previewStageOf(part), [part])
   const { draft: previewDraft, refresh } = usePreviewDraft(venueId, menuId)
   const [scheme, setScheme] = useState<PreviewScheme>(
     initial.design.values.general.screen === 'dark' ? 'dark' : 'light',
@@ -412,10 +469,68 @@ export function DesignPage({
     followScreen(next.draft.values)
   }
 
-  // --- Simple and Advanced ---
-  function openPage(id: DesignPageId) {
-    setPageId(id)
-    setReveal(true)
+  // --- The list of parts, Simple and Advanced ---
+
+  // The browser's Back and Forward move between the list and a part (the address is the truth).
+  // The page's own step back (‹ Back) lands here too: the panel is on the list already, and a part
+  // opened before it landed gets its step now.
+  useEffect(() => {
+    const onPop = () => {
+      const own = stepping.current
+      if (own !== null) {
+        stepping.current = null
+        if (own.next !== null) pushPart(own.next)
+        return
+      }
+      const was = current.current
+      const next = openingOf(partInAddress(), was.mode)
+      if (next.part === was.part && next.mode === was.mode) return
+      focusNext.current =
+        next.part !== null ? { title: true } : was.part === null ? null : { row: was.part }
+      setPanel({ ...next, enter: next.part === null ? 'back' : 'forward' })
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  /**
+   * The address follows the panel: a part opened from the list is a step of its own, another part
+   * names itself on the same step, and the list steps back. While the page's own step back has not
+   * landed, the part is kept for it (`onPop` above): a step pushed now would be the one undone.
+   */
+  function addressTo(next: PartId | null) {
+    if (stepping.current !== null) stepping.current = { next }
+    else if (part === null) {
+      if (next !== null) pushPart(next)
+    } else if (next === null) {
+      if (leavePart()) stepping.current = { next: null }
+    } else if (next !== part) replacePart(next)
+  }
+
+  /** Opens a part in place, with the focus on its title. */
+  function openPart(id: PartId, level: PanelMode = mode) {
+    addressTo(id)
+    focusNext.current = { title: true }
+    setPanel({ mode: level, part: id, enter: 'forward' })
+  }
+
+  /** ‹ Back: the list, with the focus on the row the part was opened from. */
+  function backToList() {
+    if (part === null) return
+    addressTo(null)
+    focusNext.current = { row: part }
+    setPanel({ mode, part: null, enter: 'back' })
+  }
+
+  /** The level switch keeps the open part where the other level has it; else the list. */
+  function switchLevel(next: PanelMode) {
+    setStyledIn(null)
+    if (next === mode) return
+    const kept = partAcross(part, next)
+    addressTo(kept)
+    // The focus stays on the switch.
+    focusNext.current = null
+    setPanel({ mode: next, part: kept, enter: null })
   }
 
   // Click to edit: a tap on a marked part of the preview opens the page that owns it, unless the
@@ -427,14 +542,17 @@ export function DesignPage({
       if (owner !== null) setStyledIn(owner)
       return
     }
-    const owner = pageOfTap(marker, opens, pageId)
-    if (owner !== null) openPage(owner)
+    // A part of the panel's own (or the list) is no page: any tap opens its page.
+    const open = (part !== null && !isOwnPart(part) ? part : '') as DesignPageId
+    const owner = pageOfTap(marker, opens, open)
+    if (owner !== null) openPart(owner)
   }
 
   function showAdvanced() {
-    setMode('advanced')
-    if (styledIn !== null) openPage(styledIn)
+    const owner = styledIn
     setStyledIn(null)
+    if (owner === null) switchLevel('advanced')
+    else openPart(owner, 'advanced')
   }
 
   function pick(page: string, option: string, value: string) {
@@ -532,6 +650,53 @@ export function DesignPage({
     />
   )
 
+  // The open part: its title beside ‹ Back, and what it holds.
+  const openPage = part === null ? null : pageOfPart(part)
+  const partTitle =
+    part === null ? '' : openPage === null ? t(`parts.${part as OwnPartId}`) : openPage[locale]
+  let partBody: ReactNode = null
+  if (part === 'style') {
+    partBody = styleControl
+  } else if (part === 'colours') {
+    partBody = (
+      <>
+        {coloursControl}
+        <PanelSection title={t('logo.title')} testId="design-logo-section">
+          {logoControl}
+        </PanelSection>
+      </>
+    )
+  } else if (part === 'fonts') {
+    partBody = (
+      <div className="grid gap-4" data-testid="design-fonts-section">
+        {bodyFontControl}
+        {headingFontControl}
+      </div>
+    )
+  } else if (part === 'layout') {
+    partBody = (
+      <LayoutField
+        values={draft.values}
+        canEdit={canEdit}
+        onChange={(layout) => change(withLayout(draft, layout))}
+      />
+    )
+  } else if (openPage !== null) {
+    partBody = (
+      <AdvancedPanel
+        venueId={venueId}
+        locale={locale}
+        page={openPage}
+        values={draft.values}
+        theme={shown.theme}
+        draft={previewDraft}
+        scheme={scheme}
+        canEdit={canEdit}
+        onPick={pick}
+      />
+    )
+  }
+
   return (
     <div className="flex min-h-svh flex-col md:h-svh" data-testid="design-page">
       <header className="flex min-w-0 items-center gap-3 border-b px-2 py-2 sm:px-4">
@@ -559,7 +724,8 @@ export function DesignPage({
         <div
           // On a phone the preview and the bar are docked under the panel: a control moved into view
           // stops above them, never behind them.
-          className="relative grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-8 p-4 max-md:[&_*]:scroll-mb-[calc(40svh+5rem)] md:overflow-y-auto md:border-r"
+          ref={panelBox}
+          className="relative grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6 p-4 max-md:[&_*]:scroll-mb-[calc(40svh+5rem)] md:overflow-y-auto md:border-r"
           data-testid="design-panel"
         >
           {canEdit ? null : (
@@ -574,97 +740,60 @@ export function DesignPage({
               { value: 'simple', label: t('advanced.simple') },
               { value: 'advanced', label: t('advanced.advanced') },
             ]}
-            onChange={(next) => {
-              setMode(next)
-              setStyledIn(null)
-            }}
+            onChange={switchLevel}
           />
 
-          {mode === 'simple' ? (
-            <>
-              {styledIn === null ? null : (
-                <div
-                  role="status"
-                  className="flex flex-wrap items-center gap-2 rounded-md border p-3 text-sm"
-                  data-testid="design-styled-in-advanced"
-                >
-                  <span className="min-w-0 flex-1 font-medium">{t('advanced.styledIn')}</span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className={WRAPS}
-                    onClick={showAdvanced}
-                    data-testid="design-show-advanced"
-                  >
-                    {t('advanced.show')}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={t('advanced.dismiss')}
-                    onClick={() => setStyledIn(null)}
-                  >
-                    <XIcon aria-hidden />
-                  </Button>
-                </div>
-              )}
+          {mode === 'simple' && styledIn !== null ? (
+            <div
+              role="status"
+              className="flex flex-wrap items-center gap-2 rounded-md border p-3 text-sm"
+              data-testid="design-styled-in-advanced"
+            >
+              <span className="min-w-0 flex-1 font-medium">{t('advanced.styledIn')}</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={WRAPS}
+                onClick={showAdvanced}
+                data-testid="design-show-advanced"
+              >
+                {t('advanced.show')}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t('advanced.dismiss')}
+                onClick={() => setStyledIn(null)}
+              >
+                <XIcon aria-hidden />
+              </Button>
+            </div>
+          ) : null}
 
-              <PanelSection title={t('styles.title')} testId="design-style-section">
-                {styleControl}
-              </PanelSection>
-
-              <PanelSection title={t('colours.title')} testId="design-colours-section">
-                {coloursControl}
-              </PanelSection>
-
-              <PanelSection title={t('fonts.title')} testId="design-fonts-section">
-                {bodyFontControl}
-                {headingFontControl}
-              </PanelSection>
-
-              <PanelSection title={t('logo.title')} testId="design-logo-section">
-                {logoControl}
-              </PanelSection>
-
-              <PanelSection title={t('layout.title')} testId="design-layout-section">
-                <LayoutField
-                  values={draft.values}
-                  canEdit={canEdit}
-                  onChange={(layout) => change(withLayout(draft, layout))}
-                />
-              </PanelSection>
-            </>
-          ) : (
-            <AdvancedPanel
-              venueId={venueId}
-              locale={locale}
-              open={pageId}
-              reveal={reveal}
-              onRevealed={() => setReveal(false)}
-              onOpen={setPageId}
-              values={draft.values}
-              theme={shown.theme}
-              draft={previewDraft}
-              scheme={scheme}
-              canEdit={canEdit}
-              onPick={pick}
-              custom={{
-                style: styleControl,
-                colours: (
-                  <>
-                    {coloursControl}
-                    <PanelSection title={t('logo.title')} testId="design-logo-section">
-                      {logoControl}
-                    </PanelSection>
-                  </>
-                ),
-                body_font: bodyFontControl,
-                heading_font: headingFontControl,
-              }}
-            />
-          )}
+          <Pane key={`${mode}:${part ?? ''}`} enter={panel.enter}>
+            {part === null ? (
+              <PartList
+                list={partListOf(mode)}
+                draft={draft}
+                styles={myStyles}
+                locale={locale}
+                onOpen={(id) => openPart(id)}
+                rowRef={rowRef}
+              />
+            ) : (
+              <section
+                className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6"
+                aria-labelledby="design-part-title"
+                data-testid="design-part-page"
+                data-part={part}
+              >
+                <PartHeader title={partTitle} titleRef={titleRef} onBack={backToList} />
+                {partBody}
+              </section>
+            )}
+          </Pane>
         </div>
 
         {/* On a phone the preview is docked at the foot of the screen, above the bar, so a tap on a
@@ -690,7 +819,8 @@ export function DesignPage({
               scheme={scheme}
               onScheme={setScheme}
               onPart={onPart}
-              stage={previewStageOf(mode, pageId)}
+              stage={preview.stage}
+              focus={preview.focus}
             />
           </section>
 

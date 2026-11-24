@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 // The Design page on a screen (D129, #175): Style tiles, the three colours and the fonts in a draft,
 // Undo, Cancel, Done with the revision it loaded, a refused save, an unreadable pair, the leave
-// warning, the read-only view and a preview that could not load. The server actions, the toast and
-// the navigation are the only fakes. The frames' own drawing is the Playwright spec's (design.spec.ts).
+// warning, the read-only view and a preview that could not load; the list of parts (D159), its
+// summaries, opening a part and back, the address's `?part=` and the level switch. The server
+// actions, the toast and the navigation are the only fakes. The frames' own drawing is the
+// Playwright spec's (design.spec.ts).
 import { DEFAULT_DESIGN, designThemeOf } from '@restro/core'
 import { fixture } from '@restro/shell/testing'
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -22,6 +24,8 @@ const actions = vi.hoisted(() => ({
   setStyleStatusAction: vi.fn(),
 }))
 const push = vi.hoisted(() => vi.fn())
+/** What the address's `?part=` says when the page loads. */
+const address = vi.hoisted(() => ({ part: null as string | null }))
 const uploadImage = vi.hoisted(() => vi.fn())
 vi.mock('@/composer/item-sheet-upload', async (original) => ({
   ...(await original<typeof import('@/composer/item-sheet-upload')>()),
@@ -34,7 +38,10 @@ vi.mock('@/server/design/actions', () => ({
 }))
 vi.mock('@/server/publish/actions', () => ({ previewDraftAction: actions.previewDraftAction }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }))
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push }),
+  useSearchParams: () => new URLSearchParams(address.part === null ? '' : `part=${address.part}`),
+}))
 
 const VENUE = 'vn_0123456789ABCDEFGHIJKL'
 const MENU = 'nd_0123456789ABCDEFGHIJKL'
@@ -67,21 +74,47 @@ function setup(initial: Partial<DesignView> = {}) {
   )
 }
 
+/**
+ * Opens a part of the panel from its list (D159), back to the list first when another is open; a
+ * part already open stays.
+ */
+function show(part: string) {
+  const open = screen.queryByTestId('design-part-page')
+  if (open?.getAttribute('data-part') === part) return
+  if (open !== null) fireEvent.click(screen.getByTestId('design-part-back'))
+  fireEvent.click(screen.getByTestId(`design-part-${part}`))
+}
+const openPart = () => screen.queryByTestId('design-part-page')?.getAttribute('data-part') ?? null
+const row = (part: string) => screen.getByTestId(`design-part-${part}`)
+
 const done = () => screen.getByTestId('design-done') as HTMLButtonElement
 const cancel = () => screen.getByTestId('design-cancel') as HTMLButtonElement
 const undo = () => screen.getByTestId('design-undo') as HTMLButtonElement
-const brand = () => screen.getByLabelText('Your brand colour') as HTMLInputElement
+const brand = () => {
+  show('colours')
+  return screen.getByLabelText('Your brand colour') as HTMLInputElement
+}
 const type = (element: HTMLInputElement, value: string) =>
   fireEvent.change(element, { target: { value } })
-const radio = (style: string) =>
-  within(
+const radio = (style: string) => {
+  show('style')
+  return within(
     screen
       .getAllByTestId('design-style-tile')
       .find((tile) => tile.getAttribute('data-style') === style) as HTMLElement,
   ).getByRole('radio') as HTMLInputElement
+}
 
-const pageColour = () =>
-  document.querySelector('[data-colour="primary"] input:not([type="color"])') as HTMLInputElement
+const pageColour = () => {
+  show('colours')
+  return document.querySelector(
+    '[data-colour="primary"] input:not([type="color"])',
+  ) as HTMLInputElement
+}
+const bodyFont = () => {
+  show('fonts')
+  return screen.getByTestId('design-body-font') as HTMLButtonElement
+}
 const level = (name: 'Simple' | 'Advanced') =>
   userEvent.click(
     within(screen.getByRole('group', { name: 'Level of detail' })).getByRole('button', { name }),
@@ -122,6 +155,7 @@ function fakeObjectUrls() {
 }
 
 async function chooseLogo() {
+  show('colours')
   const file = new File([new Uint8Array(64)], 'logo.png', { type: 'image/png' })
   await userEvent.upload(screen.getByTestId('design-logo-input') as HTMLInputElement, file)
 }
@@ -137,6 +171,9 @@ beforeEach(() => {
     overlay: OVERLAY,
   })
   push.mockReset()
+  address.part = null
+  // The address of the page: jsdom keeps one for the whole file.
+  window.history.replaceState(null, '', '/')
   vi.mocked(toast.success).mockReset()
   vi.mocked(toast.error).mockReset()
 })
@@ -152,6 +189,9 @@ describe('the Design page', () => {
     expect(cancel().disabled).toBe(true)
     expect(undo().disabled).toBe(true)
     expect(screen.queryByTestId('design-unsaved')).toBeNull()
+    // The panel opens on its list of parts.
+    expect(screen.getByTestId('design-part-list')).toBeTruthy()
+    expect(openPart()).toBeNull()
     expect(radio('basic').checked).toBe(true)
     // Only the Styles with a file are offered; all five have one since #178.
     expect(
@@ -389,6 +429,7 @@ describe('the Design page', () => {
     type(brand(), '#16a34a')
     await userEvent.click(radio('editorial'))
     await act(async () => upload.settle({ ok: true, assetId: 'as_0123456789ABCDEFGHIJKL' }))
+    show('colours')
     await waitFor(() =>
       expect(screen.getByTestId('design-logo-image').getAttribute('src')).toBe('blob:logo-1'),
     )
@@ -502,6 +543,7 @@ describe('the Design page', () => {
   it('says quietly that a Style tile is loading while its picture is drawn', () => {
     actions.previewDraftAction.mockReturnValueOnce(new Promise(() => {}))
     setup()
+    show('style')
     const tile = screen.getAllByTestId('design-style-tile')[0] as HTMLElement
     const loading = within(tile).getByTestId('design-tile-loading')
     expect(loading.textContent).toBe('Loading…')
@@ -557,9 +599,17 @@ describe('the Design page', () => {
     expect(screen.queryByTestId('design-done')).toBeNull()
     expect(screen.queryByTestId('design-cancel')).toBeNull()
     expect(screen.queryByTestId('design-undo')).toBeNull()
+    // The list opens every part; nothing in them can be changed.
+    expect(screen.getByTestId('design-part-list')).toBeTruthy()
     expect(radio('basic').disabled).toBe(true)
     expect(brand().disabled).toBe(true)
-    expect((screen.getByTestId('design-body-font') as HTMLButtonElement).disabled).toBe(true)
+    expect(bodyFont().disabled).toBe(true)
+    show('layout')
+    const layout = within(screen.getByTestId('design-layout'))
+    for (const button of layout.getAllByRole('button')) {
+      expect(button.matches(':disabled')).toBe(true)
+    }
+    expect(layout.getByRole('switch').matches(':disabled')).toBe(true)
   })
 
   it('says so when the preview cannot load, offers Retry, and the panel stays usable', async () => {
@@ -576,5 +626,175 @@ describe('the Design page', () => {
       within(screen.getByTestId('design-preview')).getByRole('button', { name: 'Try again' }),
     )
     await waitFor(() => expect(screen.getByTestId('design-preview-frame')).toBeTruthy())
+  })
+})
+
+describe('the list of parts (D159)', () => {
+  /** The saved design with some values of its own. */
+  function designWith(general: Record<string, string>, items: Record<string, string> = {}) {
+    const design = {
+      ...COLOURED,
+      values: {
+        ...COLOURED.values,
+        general: { ...COLOURED.values.general, ...general },
+        items: { ...COLOURED.values.items, ...items },
+      },
+    } as DesignView['design']
+    return { design, theme: designThemeOf(design) }
+  }
+  const advancedPressed = () =>
+    within(screen.getByRole('group', { name: 'Level of detail' }))
+      .getByRole('button', { name: 'Advanced' })
+      .getAttribute('aria-pressed')
+
+  it('Simple lists the Style, Colours and logo, Fonts and Layout, each with its summary', () => {
+    setup(
+      designWith(
+        { body_font: 'lora', heading_font: 'playfair-display' },
+        { layout: 'two', guest_switch: 'off' },
+      ),
+    )
+    const list = screen.getByTestId('design-part-list')
+    expect(
+      within(list)
+        .getAllByRole('button')
+        .map((button) => button.dataset.part),
+    ).toEqual(['style', 'colours', 'fonts', 'layout'])
+    // No "Parts of the menu" in Simple.
+    expect(screen.queryByRole('heading', { name: 'Parts of the menu' })).toBeNull()
+    // The summary is read whole in the row's name; on the screen it is one line, cut if long.
+    expect(row('style').getAttribute('aria-label')).toBe('Style: Basic, changed')
+    expect(row('colours').getAttribute('aria-label')).toBe('Colours and logo: No logo')
+    expect(within(row('colours')).getAllByTestId('design-part-dot')).toHaveLength(3)
+    expect(row('fonts').getAttribute('aria-label')).toBe('Fonts: Lora · Playfair Display')
+    expect(row('layout').getAttribute('aria-label')).toBe(
+      'Layout: Two columns · guests cannot switch',
+    )
+    const summary = within(row('layout')).getByText('Two columns · guests cannot switch')
+    expect(summary.className).toContain('truncate')
+    expect(summary.getAttribute('aria-hidden')).toBe('true')
+    // Each font's name is drawn in that font.
+    const body = within(row('fonts')).getByText('Lora')
+    const heading = within(row('fonts')).getByText('Playfair Display')
+    expect(body.style.fontFamily).not.toBe('')
+    expect(heading.style.fontFamily).not.toBe(body.style.fontFamily)
+    // Every row is a tap target of at least 44 px.
+    expect(row('style').className).toContain('min-h-11')
+  })
+
+  it('says the Style unchanged, the body font once when the heading is the same, and a logo', () => {
+    setup({
+      ...designWith({ body_font: 'lora', heading_font: 'same' }, { guest_switch: 'on' }),
+      logo: { assetId: 'as_0123456789ABCDEFGHIJKL', url: null, width: 10, height: 10 },
+    })
+    expect(row('style').getAttribute('aria-label')).toBe('Style: Basic')
+    expect(row('fonts').getAttribute('aria-label')).toBe('Fonts: Lora')
+    expect(row('colours').getAttribute('aria-label')).toBe('Colours and logo: Logo')
+    expect(row('layout').getAttribute('aria-label')).toMatch(/· guests can switch$/)
+    cleanup()
+    setup()
+    // A Style picked is named in its row.
+    fireEvent.click(radio('editorial'))
+    fireEvent.click(screen.getByTestId('design-part-back'))
+    expect(row('style').getAttribute('aria-label')).toBe('Style: Editorial')
+  })
+
+  it('a row opens its part in place, the title takes the focus, and Back returns to the row', async () => {
+    setup()
+    await userEvent.click(row('fonts'))
+    expect(openPart()).toBe('fonts')
+    expect(screen.queryByTestId('design-part-list')).toBeNull()
+    const title = screen.getByTestId('design-part-title')
+    expect(title.textContent).toBe('Fonts')
+    expect(document.activeElement).toBe(title)
+    expect(window.location.search).toBe('?part=fonts')
+    // The pane slides and fades in over 180 ms; with reduced motion it only fades, over 120 ms.
+    const pane = screen.getByTestId('design-pane')
+    expect(pane.className).toContain('duration-180')
+    expect(pane.className).toContain('motion-reduce:duration-120')
+    expect(pane.className).toContain('motion-safe:data-[entering=forward]:translate-x-2')
+
+    const back = screen.getByRole('button', { name: 'Back to all parts' })
+    expect(back.textContent).toBe('Back')
+    await userEvent.click(back)
+    expect(openPart()).toBeNull()
+    expect(document.activeElement).toBe(row('fonts'))
+    await waitFor(() => expect(window.location.search).toBe(''))
+  })
+
+  it("the browser's Back returns from a part to the list, with the focus on its row", async () => {
+    setup()
+    await userEvent.click(row('layout'))
+    expect(window.location.search).toBe('?part=layout')
+    act(() => window.history.back())
+    await waitFor(() => expect(openPart()).toBeNull())
+    expect(document.activeElement).toBe(row('layout'))
+    // Forward opens it again.
+    act(() => window.history.forward())
+    await waitFor(() => expect(openPart()).toBe('layout'))
+  })
+
+  it('opens the part the address names, at the level that lists it', async () => {
+    address.part = 'items'
+    window.history.replaceState(null, '', '/?part=items')
+    setup()
+    expect(openPart()).toBe('items')
+    expect(advancedPressed()).toBe('true')
+    expect(screen.getByTestId('design-part-title').textContent).toBe('Items')
+    // Back from a part a link opened takes it off the address and stays on the page.
+    await userEvent.click(screen.getByTestId('design-part-back'))
+    expect(screen.getByTestId('design-part-list')).toBeTruthy()
+    expect(window.location.search).toBe('')
+    cleanup()
+
+    address.part = 'layout'
+    setup()
+    expect(openPart()).toBe('layout')
+    expect(advancedPressed()).toBe('false')
+    cleanup()
+
+    address.part = 'nothing'
+    setup()
+    expect(openPart()).toBeNull()
+    expect(screen.getByTestId('design-part-list')).toBeTruthy()
+  })
+
+  it('Simple and Advanced keep the open part where the other level has it, else the list', async () => {
+    setup()
+    show('style')
+    await level('Advanced')
+    expect(openPart()).toBe('style')
+    await level('Simple')
+    expect(openPart()).toBe('style')
+    show('colours')
+    await level('Advanced')
+    expect(openPart()).toBe('colours')
+    // Layout's options are on the Items page in Advanced.
+    await level('Simple')
+    show('layout')
+    await level('Advanced')
+    expect(openPart()).toBe('items')
+    expect(window.location.search).toBe('?part=items')
+    await level('Simple')
+    expect(openPart()).toBe('layout')
+    // A page Simple does not have: the list.
+    await level('Advanced')
+    show('photos')
+    await level('Simple')
+    expect(openPart()).toBeNull()
+    expect(screen.getByTestId('design-part-list')).toBeTruthy()
+    await waitFor(() => expect(window.location.search).toBe(''))
+  })
+
+  it('a part opened before Back has landed keeps a step of its own', async () => {
+    setup()
+    await userEvent.click(row('fonts'))
+    // Two quick taps: ‹ Back, then another row, before the browser's step back lands.
+    fireEvent.click(screen.getByTestId('design-part-back'))
+    fireEvent.click(row('layout'))
+    await waitFor(() => expect(window.location.search).toBe('?part=layout'))
+    expect(openPart()).toBe('layout')
+    act(() => window.history.back())
+    await waitFor(() => expect(openPart()).toBeNull())
   })
 })
