@@ -3,7 +3,7 @@
 // it kept from scrolling and a tap on the veil closing it. Escape is handled by the face (it knows
 // which of several stacked dialogs is the top one); the face also hands the focus back on close.
 
-import { type ReactNode, useEffect, useId, useRef } from 'react'
+import { createContext, type ReactNode, useContext, useEffect, useId, useRef } from 'react'
 
 import { BackIcon, CloseIcon } from './icons'
 
@@ -12,6 +12,12 @@ const FOCUSABLE =
 
 /** How many dialogs hold the page still: stacked dialogs close in any order, the last one frees it. */
 let scrollLocks = 0
+
+/**
+ * A dialog drawn as a picture (the Design panel's specimen view, D159): it takes no focus, keeps no
+ * Tab inside it and leaves the page free to scroll. A guest's page never sets it.
+ */
+export const StillOverlay = createContext(false)
 
 export function Overlay({
   title,
@@ -44,8 +50,10 @@ export function Overlay({
   const titleId = useId()
   const panel = useRef<HTMLDivElement>(null)
   const close = useRef<HTMLButtonElement>(null)
+  const still = useContext(StillOverlay)
 
   useEffect(() => {
+    if (still) return undefined
     close.current?.focus({ preventScroll: true })
     scrollLocks += 1
     document.body.style.overflow = 'hidden'
@@ -69,7 +77,7 @@ export function Overlay({
       if (scrollLocks === 0) document.body.style.overflow = ''
       document.removeEventListener('keydown', keepFocusInside)
     }
-  }, [])
+  }, [still])
 
   return (
     <div

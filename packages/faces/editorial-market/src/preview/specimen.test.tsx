@@ -5,7 +5,7 @@
 // and a sheet's part draws its body with the demo host's state.
 
 import type { ViewModel } from '@restro/shell'
-import { cleanup, render } from '@testing-library/react'
+import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { orderingView, resetPage } from '../services/test-kit'
@@ -15,6 +15,7 @@ import {
   EditorialSpecimen,
   SPECIMEN_FIXED_PARTS,
   SPECIMEN_PARTS,
+  SPECIMEN_PHONE_HEIGHT,
   type SpecimenPart,
   specimenNeedsHost,
   specimenNeedsServices,
@@ -123,6 +124,15 @@ describe('the specimen view draws one part', () => {
     expect(count('section')).toBe(0)
   })
 
+  it('the header is drawn as a guest sees it, with its Bill and Pay pills', () => {
+    for (const part of ['header', 'header-rail'] as const) {
+      const { container } = draw(part)
+      expect(container.querySelector('[data-slot="menu.bill"]'), part).not.toBeNull()
+      expect(container.querySelector('[data-slot="menu.pay"]'), part).not.toBeNull()
+      cleanup()
+    }
+  })
+
   it('the same dish leads every dish part', () => {
     const first = (part: SpecimenPart) => {
       const { container } = draw(part)
@@ -158,7 +168,7 @@ describe('the specimen view draws one part', () => {
     expect(container.querySelectorAll('.ro-lines li.ro-orderline')).toHaveLength(2)
   })
 
-  it('tells its height, and a whole-screen part fills the frame instead', () => {
+  it("tells its height, and a whole-screen part tells the phone's", () => {
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
       height: 123.4,
       width: 320,
@@ -179,6 +189,67 @@ describe('the specimen view draws one part', () => {
     const fixed: number[] = []
     const part = [...SPECIMEN_FIXED_PARTS][0] as SpecimenPart
     render(<EditorialSpecimen view={richView()} part={part} onHeight={(h) => fixed.push(h)} />)
-    expect(fixed).toEqual([])
+    expect(fixed).toEqual([SPECIMEN_PHONE_HEIGHT])
+  })
+
+  it('a part that draws nothing tells 0, so the tile keeps its placeholder', () => {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      height: 0,
+      width: 0,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    const heights: number[] = []
+    render(
+      <EditorialSpecimen view={richView()} part="dish-row" onHeight={(h) => heights.push(h)} />,
+    )
+    expect(heights).toEqual([0])
+  })
+})
+
+/** What can take the focus, as the face's dialogs count it. */
+const FOCUSABLE =
+  'button, a[href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])'
+
+describe('a specimen is a picture: nothing in it takes the focus or a pointer', () => {
+  for (const part of SPECIMEN_PARTS) {
+    it(`${part}: inert, no focus moved, no scroll locked`, () => {
+      const { container } = draw(part)
+      const root = container.querySelector<HTMLElement>('[data-specimen]')
+      expect(root?.hasAttribute('inert')).toBe(true)
+      // Every control sits inside the inert root, so none is reached by Tab or a tap.
+      for (const control of container.querySelectorAll(FOCUSABLE)) {
+        expect(control.closest('[inert]'), `${part}: ${control.outerHTML.slice(0, 60)}`).toBe(root)
+      }
+      // A dialog drawn still (the call sheet, the dish open) moves no focus and locks no scroll.
+      expect(document.activeElement).toBe(document.body)
+      expect(document.body.style.overflow).toBe('')
+    })
+  }
+
+  it("a tap on the rail moves no address, and the header's Bill opens no sheet", () => {
+    const before = window.location.hash
+    const { container } = draw('header-rail')
+    const link = container.querySelector<HTMLAnchorElement>('[data-design-part="nav"] a[href^="#"]')
+    expect(link).not.toBeNull()
+    if (link !== null) fireEvent.click(link)
+    const bill = container.querySelector<HTMLElement>('[data-slot="menu.bill"]')
+    if (bill !== null) fireEvent.click(bill)
+    expect(window.location.hash).toBe(before)
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it("the call's foot stands ready with nothing pressed: its button is not greyed", () => {
+    const { container } = draw('call-foot')
+    const button = container.querySelector<HTMLButtonElement>(
+      '[data-design-part="call"] > .ro-primary',
+    )
+    expect(button).not.toBeNull()
+    expect(button?.disabled).toBe(false)
   })
 })

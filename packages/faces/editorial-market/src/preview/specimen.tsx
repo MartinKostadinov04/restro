@@ -6,16 +6,18 @@
 // swapped into the design shows here exactly as on a guest's phone.
 //
 // Admin only: it is exported through `@restro/editorial-market/preview`, which a guest page never
-// imports (a dependency rule forbids it). It is a picture, so it keeps no state of the guest's: its
-// handlers do nothing, sticky parts are drawn in place, and nothing moves (no animation).
+// imports (a dependency rule forbids it). It is a picture: nothing in it takes the focus or a pointer
+// (`inert`, no pointer events, every click stopped before a handler or a link sees it), a dialog in
+// it moves no focus and locks no scroll (`StillOverlay`), sticky parts are drawn in place, and
+// nothing moves (no animation).
 //
 // Sizes. A part is laid out at the frame's width and its height follows its content: `onHeight` is
-// told the height each time it changes, so the frame can be as tall as the part. The parts that are
-// a whole screen (a dish open over the menu, a sheet open) fill the frame's height instead
-// (`SPECIMEN_FIXED_PARTS`, `SPECIMEN_PHONE_HEIGHT`).
+// told the height each time it changes, so the frame can be as tall as the part, and 0 when the part
+// drew nothing. The parts that are a whole screen (a dish open over the menu, a sheet open) fill the
+// frame's height instead, and tell `SPECIMEN_PHONE_HEIGHT` once drawn (`SPECIMEN_FIXED_PARTS`).
 //
-// Services. The parts with an Add control or the order bar draw the services with a still binding of
-// their own (no host, no timers); the parts that are a sheet's body (the call, the bill, the bag, the
+// Services. The parts with a service control (the header's Bill and Pay, an Add control, the order
+// bar) draw the services with a still binding of their own (no host, no timers); the parts that are a sheet's body (the call, the bill, the bag, the
 // tip, the receipt) need the demo host's state, which the frame binds (`specimenNeedsHost`).
 
 import {
@@ -39,6 +41,7 @@ import {
 } from '@restro/shell'
 import {
   type CSSProperties,
+  type MouseEvent,
   type ReactNode,
   useLayoutEffect,
   useMemo,
@@ -49,6 +52,7 @@ import {
 import { CategoryRail } from '../category-rail'
 import { EDITORIAL_CSS } from '../css'
 import { DishPage } from '../detail'
+import { AllergenFooter } from '../footer'
 import { Header } from '../header'
 import { LayoutSwitch } from '../layout-switch'
 import {
@@ -58,17 +62,17 @@ import {
   designVariables,
   isStrip,
   type Layout,
-  langOf,
   NO_FILTERS,
   themeVariables,
 } from '../model'
-import { Overlay } from '../overlay'
+import { Overlay, StillOverlay } from '../overlay'
 import type { PageContext } from '../parts'
 import { SectionBlock } from '../section'
 import { ServiceBar } from '../services/bag-bar'
 import { BagSheet } from '../services/bag-sheet'
 import { BillSheet } from '../services/bill-sheet'
 import { CallSheet } from '../services/call-sheet'
+import { HeaderTools } from '../services/header-tools'
 import { PreviewMarker } from '../services/parts'
 import { Confirmation } from '../services/pay-sheet'
 import { ServicesProvider, useServicesRequired } from '../services/provider'
@@ -77,7 +81,7 @@ import { TipRow } from '../services/tip-row'
 
 /** Every part the specimen view draws. */
 export const SPECIMEN_PARTS = [
-  /** The header alone: the logo, the venue's title, its tools. */
+  /** The header alone: the logo, the venue's title, its tools (the Bill and Pay pills too). */
   'header',
   /** The section rail alone, four sections, the first marked. */
   'rail',
@@ -147,7 +151,14 @@ const HOSTED: ReadonlySet<SpecimenPart> = new Set([
 ])
 
 /** The parts that draw a service control: the view model must have the guest services on. */
-const SERVED: ReadonlySet<SpecimenPart> = new Set([...HOSTED, 'dish-card', 'dish-add', 'order-bar'])
+const SERVED: ReadonlySet<SpecimenPart> = new Set([
+  ...HOSTED,
+  'header',
+  'header-rail',
+  'dish-card',
+  'dish-add',
+  'order-bar',
+])
 
 /** Whether the frame must bind the demo host (`useDemoServices`) for this part: only a sheet's body. */
 export function specimenNeedsHost(part: SpecimenPart): boolean {
@@ -204,6 +215,10 @@ const SPECIMEN_CSS = `
 }
 .rm[data-specimen]:not([data-specimen-fixed]) {
   min-height: 0;
+}
+.rm[data-specimen],
+.rm[data-specimen] * {
+  pointer-events: none !important;
 }
 .rm[data-specimen] *,
 .rm[data-specimen] *::before,
@@ -310,10 +325,26 @@ function sectionOf(
   }
 }
 
-/** The view a part draws: a card's tile always draws the dish as a card. */
+/**
+ * The view a part draws: a card's tile always draws the dish as a card; the call's foot is drawn with
+ * the waiter as its only kind, so its button stands ready as it does once a kind is chosen, with
+ * nothing pressed.
+ */
 function partView(view: ViewModel, part: SpecimenPart): ViewModel {
-  if (part !== 'dish-card') return view
-  return { ...view, design: { ...view.design, items: { ...view.design.items, frame: 'cards' } } }
+  if (part === 'dish-card') {
+    return { ...view, design: { ...view.design, items: { ...view.design.items, frame: 'cards' } } }
+  }
+  const call = view.features.callWaiter
+  if (part === 'call-foot' && call !== null) {
+    return { ...view, features: { ...view.features, callWaiter: { ...call, kinds: ['waiter'] } } }
+  }
+  return view
+}
+
+/** A click in a picture does nothing: no handler, no link (the rail's `#section` addresses). */
+function stopClick(event: MouseEvent) {
+  event.preventDefault()
+  event.stopPropagation()
 }
 
 /** The Editorial Market page cut down to one part. */
@@ -361,11 +392,15 @@ export function EditorialSpecimen(props: EditorialSpecimenProps) {
   told.current = onHeight
   useLayoutEffect(() => {
     const element = root.current
-    if (element === null || fixed) return undefined
+    if (element === null) return undefined
+    if (fixed) {
+      told.current?.(SPECIMEN_PHONE_HEIGHT)
+      return undefined
+    }
     let last = -1
     const measure = () => {
-      const height = Math.ceil(element.getBoundingClientRect().height)
-      if (height === last || height <= 0) return
+      const height = Math.max(0, Math.ceil(element.getBoundingClientRect().height))
+      if (height === last) return
       last = height
       told.current?.(height)
     }
@@ -381,6 +416,13 @@ export function EditorialSpecimen(props: EditorialSpecimenProps) {
     <div
       ref={root}
       className="rm"
+      inert
+      onClickCapture={stopClick}
+      // A part that moves the focus on opening (the receipt's title) gives it straight back: an inert
+      // root already refuses it in a browser; this holds wherever inert is not drawn.
+      onFocusCapture={(event) => {
+        if (event.target instanceof HTMLElement) event.target.blur()
+      }}
       data-face="editorial-market"
       data-specimen={part}
       data-specimen-fixed={fixed ? '' : undefined}
@@ -399,22 +441,24 @@ export function EditorialSpecimen(props: EditorialSpecimenProps) {
     >
       {/* biome-ignore lint/security/noDangerouslySetInnerHtml: constant stylesheets of the face and this file, no user input */}
       <style dangerouslySetInnerHTML={{ __html: css }} />
-      <ServicesProvider
-        view={view}
-        assetBase={assetBase}
-        services={binding}
-        tableLabel={tableLabel}
-        openDish={nothing}
-      >
-        <Part
-          part={part}
+      <StillOverlay.Provider value>
+        <ServicesProvider
           view={view}
-          ctx={ctx}
-          dishes={dishes}
-          languages={languages}
+          assetBase={assetBase}
+          services={binding}
           tableLabel={tableLabel}
-        />
-      </ServicesProvider>
+          openDish={nothing}
+        >
+          <Part
+            part={part}
+            view={view}
+            ctx={ctx}
+            dishes={dishes}
+            languages={languages}
+            tableLabel={tableLabel}
+          />
+        </ServicesProvider>
+      </StillOverlay.Provider>
     </div>
   )
 }
@@ -446,6 +490,7 @@ function Part({
         view.features.filters && (view.filters.dietary.length > 0 || view.filters.tags.length > 0)
       }
       onOpenFilters={nothing}
+      tools={<HeaderTools />}
     />
   )
   const rail = (
@@ -477,12 +522,16 @@ function Part({
         </>
       )
     case 'switch':
-      return block(view.layout.guestSwitch ? <StillSwitch layout={ctx.layout} ctx={ctx} /> : null)
+      return block(
+        view.layout.guestSwitch ? (
+          <LayoutSwitch layout={ctx.layout} onChange={nothing} strings={ctx.strings} />
+        ) : null,
+      )
     case 'dish-allergens':
       return (
         <>
           {block()}
-          <AllergenFooter view={view} ctx={ctx} />
+          <AllergenFooter view={view} strings={strings} allergenNames={ctx.allergenNames} />
         </>
       )
     case 'dish-open': {
@@ -524,7 +573,7 @@ function Part({
       )
     case 'call-foot':
       return (
-        <StillPanel pick='[data-design-part="call"] > .ro-primary' chooseFirstKind>
+        <StillPanel pick='[data-design-part="call"] > .ro-primary'>
           <CallSheet />
         </StillPanel>
       )
@@ -561,35 +610,6 @@ function Part({
 const RECEIPT_TOP =
   '.ro-confirm > h3, .ro-confirm-logo, [data-design-part="receipt.venue"], [data-slot="pay.confirmation.when"]'
 
-/** The layout switch, drawn as the guest finds it; a tap only moves the picture's own mark. */
-function StillSwitch({ layout, ctx }: { readonly layout: Layout; readonly ctx: PageContext }) {
-  const [shown, setShown] = useState(layout)
-  return <LayoutSwitch layout={shown} onChange={setShown} strings={ctx.strings} />
-}
-
-/**
- * The allergen footer as the face draws it under the menu: its title, the line that explains the
- * codes and the legend. The face draws it inline (face.tsx), so it is mirrored here.
- */
-function AllergenFooter({ view, ctx }: { readonly view: ViewModel; readonly ctx: PageContext }) {
-  const { strings, locale, allergenNames } = ctx
-  if (view.allergenLegend.length === 0) return null
-  return (
-    <footer className="rm-footer" data-design-part="footer">
-      <h2>{strings.footerTitle}</h2>
-      <p>{allergenNames ? strings.footerTextNames : strings.footerText}</p>
-      <div className="rm-legend" data-slot="menu.allergen_legend">
-        {view.allergenLegend.map((allergen) => (
-          <span key={allergen.code} lang={langOf(allergen.label, locale)}>
-            {allergenNames ? null : <b>{allergen.number}</b>}
-            {allergen.label.text}
-          </span>
-        ))}
-      </div>
-    </footer>
-  )
-}
-
 /** The Call a waiter sheet, open, as the face's sheets draw it (services/sheets.tsx). */
 function CallOverlay() {
   const o = useServicesRequired()
@@ -614,25 +634,9 @@ interface Cut {
  * elements it selects are shown, cut out of the body with a little room around them; where none is
  * laid out (no layout at all, as in a test), the whole body shows.
  */
-function StillPanel({
-  pick,
-  chooseFirstKind = false,
-  children,
-}: {
-  readonly pick?: string
-  /** Tick the first kind of the call, so the sheet's button is drawn as it is used, not greyed. */
-  readonly chooseFirstKind?: boolean
-  readonly children: ReactNode
-}) {
+function StillPanel({ pick, children }: { readonly pick?: string; readonly children: ReactNode }) {
   const inner = useRef<HTMLDivElement>(null)
   const [cut, setCut] = useState<Cut | null>(null)
-
-  useLayoutEffect(() => {
-    if (!chooseFirstKind) return
-    inner.current
-      ?.querySelector<HTMLButtonElement>('[data-design-part="call.kinds"] button')
-      ?.click()
-  }, [chooseFirstKind])
 
   useLayoutEffect(() => {
     const box = inner.current
