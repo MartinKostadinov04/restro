@@ -25,7 +25,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import type { PreviewScheme } from '@/publish/draft-face'
 
-import type { Stage } from './advanced-model'
+import { isServiceStage, type Stage } from './advanced-model'
 import type { Draft } from './preview-draft'
 import type { FrameContent } from './preview-frames'
 import { previewSnapshot } from './preview-snapshot'
@@ -132,7 +132,14 @@ export function DesignPreview({
 }) {
   const t = useTranslations('design.preview')
   const [device, setDevice] = useState<Device>('phone')
-  const [services, setServices] = useState(false)
+  // Opening a part drawn on a guest service (the bill, the order, paying…) turns the services on, so
+  // the preview has a bill to show; they stay on back on the list, and the owner may turn them off.
+  const [services, setServices] = useState(() => stage !== undefined && isServiceStage(stage))
+  const [stageShown, setStageShown] = useState(stage)
+  if (stage !== stageShown) {
+    setStageShown(stage)
+    if (stage !== undefined && isServiceStage(stage)) setServices(true)
+  }
   const servicesId = useId()
   const snapshot = useDraftSnapshot(draft, theme, values)
 

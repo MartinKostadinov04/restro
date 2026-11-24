@@ -100,11 +100,12 @@ import { isValidLook, type ValidLook } from './look-state'
 import { MyStyles } from './my-styles'
 import {
   leavePart,
+  notePop,
   PART_PARAM,
   partInAddress,
   pushPart,
   replacePart,
-  stepUnderPart,
+  settleAddress,
 } from './part-address'
 import {
   isOwnPart,
@@ -479,12 +480,14 @@ export function DesignPage({
 
   // --- The list of parts, Simple and Advanced ---
 
-  // A part a reload or a link opened gets the list under it, so the browser's Back returns to the
-  // list; an address naming no part we have is cleared.
+  // A part a link opened gets the list under it, so the browser's Back returns to the list; an
+  // address naming no part we have is cleared (`settleAddress`). Once per page: a second run of the
+  // effect (React's strict mode) would add a step.
+  const settled = useRef(false)
   useEffect(() => {
-    const opened = current.current.part
-    if (opened !== null) stepUnderPart(opened)
-    else if (partInAddress() !== null) replacePart(null)
+    if (settled.current) return
+    settled.current = true
+    settleAddress(current.current.part)
   }, [])
 
   // The browser's Back and Forward move between the list and a part (the address is the truth).
@@ -492,6 +495,7 @@ export function DesignPage({
   // opened before it landed gets its step now.
   useEffect(() => {
     const onPop = () => {
+      notePop()
       const own = stepping.current
       if (own !== null) {
         stepping.current = null
@@ -499,7 +503,10 @@ export function DesignPage({
         return
       }
       const was = current.current
-      const next = openingOf(partInAddress(), was.mode)
+      const named = partInAddress()
+      const next = openingOf(named, was.mode)
+      // A part no level has opens the list, and leaves the address.
+      if (named !== null && next.part === null) replacePart(null)
       if (next.part === was.part && next.mode === was.mode) return
       focusNext.current =
         next.part !== null ? { title: true } : was.part === null ? null : { row: was.part }

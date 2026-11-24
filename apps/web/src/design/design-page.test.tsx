@@ -762,9 +762,109 @@ describe('the list of parts (D159)', () => {
     cleanup()
 
     address.part = 'nothing'
+    window.history.replaceState(null, '', '/?part=nothing')
     setup()
     expect(openPart()).toBeNull()
     expect(screen.getByTestId('design-part-list')).toBeTruthy()
+    // A part no level has leaves the address.
+    expect(window.location.search).toBe('')
+  })
+
+  it('a part no level has, reached by Back or Forward, opens the list and leaves the address', async () => {
+    setup()
+    window.history.pushState({}, '', '/?part=nothing')
+    act(() => window.history.back())
+    await waitFor(() => expect(window.location.search).toBe(''))
+    act(() => window.history.forward())
+    await waitFor(() => expect(window.location.search).toBe(''))
+    expect(openPart()).toBeNull()
+    expect(screen.getByTestId('design-part-list')).toBeTruthy()
+  })
+
+  it('‹ Back after Done steps back to the list, though the save rewrote the history state', async () => {
+    setup()
+    const before = window.history.length
+    await userEvent.click(row('style'))
+    expect(window.history.length).toBe(before + 1)
+    await userEvent.click(radio('editorial'))
+    await userEvent.click(done())
+    await waitFor(() => expect(actions.saveDesignAction).toHaveBeenCalledTimes(1))
+    // Next.js's refresh after a save rewrites the step's state, without any key of ours.
+    window.history.replaceState({ __NA: true }, '', window.location.href)
+    const back = vi.spyOn(window.history, 'back')
+    await userEvent.click(screen.getByTestId('design-part-back'))
+    expect(back).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(window.location.search).toBe(''))
+    // No step was added: the list is the step under the part, and the part is forward of it.
+    expect(window.history.length).toBe(before + 1)
+    act(() => window.history.forward())
+    await waitFor(() => expect(openPart()).toBe('style'))
+  })
+
+  it('‹ Back after a reload stays on the page and adds no step', async () => {
+    vi.spyOn(performance, 'getEntriesByType').mockReturnValue([
+      { type: 'reload' } as PerformanceNavigationTiming,
+    ])
+    address.part = 'fonts'
+    window.history.replaceState({ restroDesignPart: true }, '', '/?part=fonts')
+    const before = window.history.length
+    setup()
+    expect(openPart()).toBe('fonts')
+    // The step under a reloaded part is the list already, of the document before: none is added.
+    expect(window.history.length).toBe(before)
+    const back = vi.spyOn(window.history, 'back')
+    await userEvent.click(screen.getByTestId('design-part-back'))
+    // Stepping back would load the document before; the part leaves the address on this step.
+    expect(back).not.toHaveBeenCalled()
+    expect(window.location.search).toBe('')
+    expect(window.history.length).toBe(before)
+    expect(screen.getByTestId('design-part-list')).toBeTruthy()
+  })
+
+  it('‹ Back with a dish open adds no history step', async () => {
+    setup()
+    await level('Advanced')
+    await userEvent.click(row('dish'))
+    expect(window.location.search).toBe('?part=dish')
+    const steps = window.history.length
+    await userEvent.click(screen.getByTestId('design-part-back'))
+    await waitFor(() => expect(window.location.search).toBe(''))
+    expect(window.history.length).toBe(steps)
+    expect(screen.getByTestId('design-part-list')).toBeTruthy()
+  })
+
+  it('the level switch replaces the step of the open part, never adds one', async () => {
+    setup()
+    await userEvent.click(row('layout'))
+    const steps = window.history.length
+    await level('Advanced')
+    expect(window.location.search).toBe('?part=items')
+    expect(window.history.length).toBe(steps)
+    await level('Simple')
+    expect(window.location.search).toBe('?part=layout')
+    expect(window.history.length).toBe(steps)
+    // One Back from there returns to the list, not to another part.
+    act(() => window.history.back())
+    await waitFor(() => expect(openPart()).toBeNull())
+  })
+
+  it('a part drawn on a guest service turns the preview’s services on; they stay on, and can go off', async () => {
+    setup()
+    const services = () => screen.getByTestId('design-preview-services')
+    expect(services().getAttribute('aria-checked')).toBe('false')
+    await level('Advanced')
+    await userEvent.click(row('items'))
+    expect(services().getAttribute('aria-checked')).toBe('false')
+    await userEvent.click(screen.getByTestId('design-part-back'))
+    for (const part of ['bill', 'order', 'pay', 'receipt', 'call', 'sheets']) {
+      await userEvent.click(row(part))
+      expect(services().getAttribute('aria-checked')).toBe('true')
+      await userEvent.click(screen.getByTestId('design-part-back'))
+      // Back on the list, they stay on.
+      expect(services().getAttribute('aria-checked')).toBe('true')
+      await userEvent.click(services())
+      expect(services().getAttribute('aria-checked')).toBe('false')
+    }
   })
 
   it("a part a link opened has the list under it: the browser's Back returns to the list", async () => {

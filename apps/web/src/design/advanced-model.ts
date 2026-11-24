@@ -20,7 +20,10 @@ import type { SpecimenPart } from '@restro/editorial-market/preview'
 
 import type { DesignDraft } from './design-draft'
 
-/** Simple is the Style, the colours and the fonts; Advanced is General and the component pages. */
+/**
+ * Simple is the Style, the colours and logo, the fonts and the layout; Advanced is the first three,
+ * then General and the component pages (D159).
+ */
 export type PanelMode = 'simple' | 'advanced'
 
 /** A page of the contract by its id. */
@@ -161,6 +164,21 @@ export type Stage =
   | 'receipt'
   /** A dish, open. */
   | 'dish'
+
+/** The stages that draw a guest service (D71): the preview shows them only with its services on. */
+const SERVICE_STAGES: ReadonlySet<Stage> = new Set([
+  'order',
+  'bag',
+  'bill',
+  'call',
+  'pay',
+  'receipt',
+])
+
+/** True when a stage draws a guest service, so the preview needs its services on to show it. */
+export function isServiceStage(stage: Stage): boolean {
+  return SERVICE_STAGES.has(stage)
+}
 
 export interface TilePlan {
   readonly stage: Stage
