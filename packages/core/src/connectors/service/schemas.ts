@@ -458,6 +458,23 @@ export function closePaymentsProblem(request: {
   return null
 }
 
+/**
+ * Why a connector refuses a close's payments before any write, or null when it may go on (D160
+ * §3): two or more payments where it doesn't declare `closeWithSeveralPayments` (undeclared means
+ * not claimed, D122 §3), or `payments` that don't add up. A close that names no `payments` is
+ * checked as before #541.
+ */
+export function closePaymentsRefusal(
+  request: Parameters<typeof closePaymentsProblem>[0],
+  closeWithSeveralPayments: boolean,
+): { readonly code: 'not_supported' | 'amount_mismatch'; readonly detail: string } | null {
+  if (closePaymentsOf(request).length > 1 && !closeWithSeveralPayments) {
+    return { code: 'not_supported', detail: 'the POS takes one payment per close from Restro' }
+  }
+  const problem = request.payments === undefined ? null : closePaymentsProblem(request)
+  return problem === null ? null : { code: 'amount_mismatch', detail: problem }
+}
+
 /** Close the isolated bill with its payment (D122 §8 step 4), or its payments (D160 §3). */
 export const PayAndCloseRequestSchema = z
   .strictObject({

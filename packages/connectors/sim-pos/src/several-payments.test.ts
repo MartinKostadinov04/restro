@@ -257,6 +257,22 @@ describe('one bill closed with several card payments (D160 §3, #541)', () => {
     expect(harness.pos.calls().slice(callsBefore)).toStrictEqual([])
   })
 
+  it('undeclared, a list of one payment closes as one payment, with no payment reference', async () => {
+    const harness = harnessOf({})
+    expect(harness.connector.capabilities.closeWithSeveralPayments).toBe(false)
+    const ctx = kitContext(harness)
+    const { handle, linesMinor } = await isolatedRound(harness, ctx, [
+      { article: '1001', quantity: '2' },
+    ])
+    const outcome = await harness.connector.payAndClose(
+      ctx,
+      closeOf(handle, [{ amountMinor: linesMinor, tipMinor: 0, ref: 'py_1' }]),
+    )
+    expect(outcome.kind).toBe('done')
+    const bill = harness.engine.state.bills.find((x) => x.id === handle.ref.pos)
+    expect(bill?.payments.map((p) => [p.amountMinor, p.ref])).toStrictEqual([[linesMinor, null]])
+  })
+
   it('is declared only with a close that takes a payment type', () => {
     const connector: ServiceConnector = harnessOf({
       severalPaymentsPerClose: true,

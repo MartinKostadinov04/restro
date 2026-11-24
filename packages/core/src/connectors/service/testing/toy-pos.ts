@@ -16,8 +16,7 @@ import type { ServiceConnector, ServiceContext } from '../connector'
 import { type PosRef, posRef } from '../pos-ref'
 import {
   type BillLine,
-  closePaymentsOf,
-  closePaymentsProblem,
+  closePaymentsRefusal,
   type PayAndCloseResult,
   type PosBill,
   type Reading,
@@ -377,12 +376,8 @@ export function toyConnector(pos: ToyPos, capabilities = TOY_CAPABILITIES): Serv
       return { complete: true, value: { currency: 'EUR', bill } }
     },
     payAndClose(ctx, request) {
-      if (closePaymentsOf(request).length > 1 && !capabilities.closeWithSeveralPayments) {
-        return Promise.resolve(refused('not_supported'))
-      }
-      if (request.payments !== undefined && closePaymentsProblem(request) !== null) {
-        return Promise.resolve(refused('amount_mismatch'))
-      }
+      const paymentsRefusal = closePaymentsRefusal(request, capabilities.closeWithSeveralPayments)
+      if (paymentsRefusal !== null) return Promise.resolve(refused(paymentsRefusal.code))
       if (request.tipMinor > 0 && !capabilities.recordTipOnClose) {
         return Promise.resolve(refused('not_supported'))
       }

@@ -618,29 +618,29 @@ export const tipRetryCheck: Check<WriteHarness> = async (harness) => {
   return [...problems, ...(await closedWithTipProblems(harness, setUp))]
 }
 
-/** The kit's card payments of one close: three, two with a tip, the tips the kit's tip. */
-const KIT_PAYMENT_REFS = ['kit-pay-1', 'kit-pay-2', 'kit-pay-3'] as const
-const KIT_PAYMENT_TIPS = [100, 37, 0] as const
-
 /**
- * Three card payments sharing `linesMinor` (and, where `tipped`, the kit's tip): a third each,
- * the last the rest, so they add up to the close exactly (rule 8).
+ * Three card payments sharing `linesMinor`: a third each, the last the rest, so they add up to the
+ * close exactly (rule 8). Where `tipped`, two carry a tip (1.00 and 0.37), inside their amount.
  */
 function kitPayments(linesMinor: number, tipped: boolean): ClosePayment[] {
   const third = ratioOfMinor(linesMinor, 1, 3)
-  const parts = [third, third, subtractMinor(linesMinor, addMinor(third, third))]
-  return parts.map((part, index) => {
-    const tipMinor = tipped ? (KIT_PAYMENT_TIPS[index] ?? 0) : 0
-    return {
-      amountMinor: addMinor(part, tipMinor),
-      tipMinor,
-      ref: KIT_PAYMENT_REFS[index] ?? `kit-pay-${index + 1}`,
-    }
-  })
+  const payment = (shareMinor: number, tip: number, ref: string): ClosePayment => {
+    const tipMinor = tipped ? tip : 0
+    return { amountMinor: addMinor(shareMinor, tipMinor), tipMinor, ref }
+  }
+  return [
+    payment(third, 100, 'kit-pay-1'),
+    payment(third, 37, 'kit-pay-2'),
+    payment(subtractMinor(linesMinor, addMinor(third, third)), 0, 'kit-pay-3'),
+  ]
 }
 
-/** A close of `payments`, its amount and tip their sums. */
-function severalClose(handle: IsolatedHandle, payments: readonly ClosePayment[], ref: string) {
+/** A close request carrying `payments`, its amount and tip their sums. */
+function severalPaymentsClose(
+  handle: IsolatedHandle,
+  payments: readonly ClosePayment[],
+  ref: string,
+) {
   return {
     isolated: handle,
     amountMinor: payments.reduce((sum, p) => addMinor(sum, p.amountMinor), 0),
@@ -692,7 +692,7 @@ export const severalPaymentsCheck: Check<WriteHarness> = async (harness) => {
     const callsBefore = harness.pos.calls().length
     const outcome = await connector.payAndClose(
       ctx,
-      severalClose(setUp.handle, payments, 'kit-close-several'),
+      severalPaymentsClose(setUp.handle, payments, 'kit-close-several'),
     )
     const problems = outcomeProblems(CloseOutcomeSchema, 'the close outcome', outcome)
     if (outcome.kind !== 'refused' || outcome.refusal.code !== 'not_supported') {
@@ -730,7 +730,7 @@ export const severalPaymentsCheck: Check<WriteHarness> = async (harness) => {
   const digestBefore = await harness.pos.digest?.()
   const refused = await connector.payAndClose(
     ctx,
-    severalClose(setUp.handle, over, 'kit-close-several-over'),
+    severalPaymentsClose(setUp.handle, over, 'kit-close-several-over'),
   )
   problems.push(...outcomeProblems(CloseOutcomeSchema, 'the refused close outcome', refused))
   if (refused.kind !== 'refused') {
@@ -752,7 +752,7 @@ export const severalPaymentsCheck: Check<WriteHarness> = async (harness) => {
     problems.push('a refused close with three payments changed the isolated bill')
   }
 
-  const close = severalClose(setUp.handle, payments, 'kit-close-several')
+  const close = severalPaymentsClose(setUp.handle, payments, 'kit-close-several')
   const outcome = await connector.payAndClose(ctx, close)
   problems.push(...outcomeProblems(CloseOutcomeSchema, 'the close outcome', outcome))
   if (outcome.kind !== 'done') {
@@ -768,7 +768,13 @@ export const severalPaymentsCheck: Check<WriteHarness> = async (harness) => {
     )
   }
   const listed = receipt.map((p) => p.ref ?? '-').sort()
-  if (listed.join(', ') !== [...KIT_PAYMENT_REFS].sort().join(', ')) {
+  if (
+    listed.join(', ') !==
+    payments
+      .map((p) => p.ref)
+      .sort()
+      .join(', ')
+  ) {
     problems.push(`the receipt's payments carry ${listed.join(', ')}, not Restro's references`)
   }
 
@@ -778,7 +784,7 @@ export const severalPaymentsCheck: Check<WriteHarness> = async (harness) => {
       problems.push('the bill closed with three payments does not read back as closed')
     } else {
       const refs = read.value.paymentRefs ?? []
-      for (const ref of KIT_PAYMENT_REFS) {
+      for (const { ref } of payments) {
         if (!refs.includes(ref)) problems.push(`the closed bill does not read back ${ref}`)
         const proof = closeProof(read.value, {
           refs: new Set([ref]),
