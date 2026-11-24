@@ -95,7 +95,7 @@ It is worked out from the contract, so no page needs code of its own.
 ### 3.3 Moving through it
 
 - **Opening a row.** A tap on a row replaces the list with that page. The page's title sits next to a ‹ back button, which returns to the list with that row focused.
-  - The pane slides 8 px and fades in over 180 ms. With reduced motion it is a 120 ms fade only.
+  - The pane slides 8 px and fades in over 180 ms. With reduced motion there is no motion at all (`operational-screens.md` → Reduced motion: "off, never gentler"; the example designer's 120 ms fade is not taken).
   - Keyboard: the page's title takes focus when it opens.
 - **The address remembers the open part** (`?part=items`).
   - The browser's Back and a phone's back gesture return to the list, not out of the Design page.
