@@ -16,6 +16,7 @@ import {
   type DesignValues,
   THEME_FONTS,
 } from '@restro/core'
+import type { SpecimenPart } from '@restro/editorial-market/preview'
 
 import type { DesignDraft } from './design-draft'
 
@@ -225,6 +226,71 @@ export function tilePlanOf(
   if (pageId === 'general') return { stage, focus: [] }
   const page = pageById(pageId, pages)
   return { stage, focus: page === undefined ? [] : page.markers.slice(0, 2) }
+}
+
+/**
+ * The part an option's tile draws alone (D159, the spec's §5.1): the face's specimen view of that
+ * part, with nothing of the page around it. Every option of the contract is here: `null` for the
+ * options that have no tiles of a part (a Style redraws the whole menu; the colours and the fonts are
+ * fields), so a contract option missing from this table fails its test.
+ */
+export const PART_OF_OPTION: Readonly<Record<string, SpecimenPart | null>> = {
+  'general.style': null,
+  'general.colours': null,
+  'general.body_font': null,
+  'general.heading_font': null,
+  'general.screen': 'section-two',
+  'general.heading_weight': 'section',
+  'general.corners': 'dish-card',
+  'general.depth': 'dish-card',
+  'general.density': 'dish-rows',
+  'general.text_size': 'dish-row',
+  'general.buttons': 'call-foot',
+  'header.band': 'header',
+  'header.arrangement': 'header',
+  'header.title_size': 'header',
+  'header.logo_size': 'header',
+  'navigation.marker': 'rail',
+  'navigation.band': 'header-rail',
+  'sections.header': 'section',
+  'sections.title_size': 'section',
+  'sections.title_case': 'section',
+  'sections.strip_card_size': 'strip',
+  'items.frame': 'two-dishes',
+  'items.name_size': 'dish-row',
+  'items.name_weight': 'dish-row',
+  'items.name_case': 'dish-row',
+  'items.price_place': 'dish-row',
+  'items.portion_place': 'dish-row',
+  'items.description_lines': 'dish-long',
+  'items.layout': 'four-dishes',
+  'items.guest_switch': 'switch',
+  'photos.shape': 'dish-row',
+  'photos.fit': 'dish-row',
+  'photos.backdrop': 'dish-row',
+  'photos.frame': 'dish-row',
+  'photos.corners': 'dish-row',
+  'labels.labels': 'dish-row',
+  'labels.allergens': 'dish-allergens',
+  'dish.kind': 'dish-open',
+  'dish.photo': 'dish-open',
+  'sheets.sheets': 'call-sheet',
+  'call.kinds': 'call-kinds',
+  'bill.rows': 'bill-lines',
+  'bill.lines': 'bill-lines',
+  'order.add_control': 'dish-add',
+  'order.order_bar': 'order-bar',
+  'order.line_photos': 'bag-lines',
+  'pay.tip': 'tip',
+  'receipt.venue_block': 'receipt-top',
+}
+
+/**
+ * The part an option's tile draws alone, or null where it has none: the tile then draws the menu at
+ * its stage (`tilePlanOf`), as an option the contract gained before this table did.
+ */
+export function specimenPartOf(pageId: string, optionId: string): SpecimenPart | null {
+  return PART_OF_OPTION[`${pageId}.${optionId}`] ?? null
 }
 
 // --- A tap on the preview ------------------------------------------------------------------------

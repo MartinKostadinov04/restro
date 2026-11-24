@@ -4,7 +4,8 @@
 // scaled down to fit the box it sits in, never up. `content` is handed to the frame's page through
 // its store (`preview-frames.ts`). With `picture`, it is a picture and not a control (a Style tile):
 // nothing in it can be focused, clicked or read twice. Until the frame's page has loaded, the box
-// shows a placeholder, with `loading` written on it when given (the live preview).
+// shows a placeholder, with `loading` written on it when given (the live preview). A frame that draws
+// one part (D159) tells its height through `onHeight`; the box around it sets the frame's height.
 import { useTranslations } from 'next-intl'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
@@ -52,6 +53,7 @@ export function ScaledFrame({
   className,
   testId,
   onPart,
+  onHeight,
   loading,
 }: {
   venueId: string
@@ -66,6 +68,8 @@ export function ScaledFrame({
   testId?: string
   /** A tap on a marked part of the frame (`data-design-part`), by its name and what the tap opens. */
   onPart?: (marker: string, opens: string | null) => void
+  /** The height of what the frame draws, at `width`, each time it changes (a specimen's part). */
+  onHeight?: (height: number) => void
   /** What the placeholder says while the frame loads; a picture's placeholder says nothing. */
   loading?: string
 }) {
@@ -80,10 +84,16 @@ export function ScaledFrame({
   latest.current = content
   const tapped = useRef(onPart)
   tapped.current = onPart
+  const sized = useRef(onHeight)
+  sized.current = onHeight
 
   // Before the frame is put in, so its page always finds its store.
   useLayoutEffect(() => {
-    const opened = openFrameStore(slot, (marker, opens) => tapped.current?.(marker, opens))
+    const opened = openFrameStore(
+      slot,
+      (marker, opens) => tapped.current?.(marker, opens),
+      (height) => sized.current?.(height),
+    )
     opened.set(latest.current)
     store.current = opened
     return () => {

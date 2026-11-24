@@ -13,8 +13,12 @@ export const WAYS: Readonly<
   Record<Stage, { readonly press: readonly string[]; readonly until: string | null }>
 > = {
   menu: { press: [], until: null },
-  order: { press: [slotOf('item.add')], until: slotOf('menu.bag') },
-  bag: { press: [slotOf('item.add'), slotOf('menu.bag')], until: '[role="dialog"]' },
+  // The bag's slot is drawn empty at once; its button only once the bag holds the line.
+  order: { press: [slotOf('item.add')], until: `${slotOf('menu.bag')} button` },
+  bag: {
+    press: [slotOf('item.add'), `${slotOf('menu.bag')} button`],
+    until: '[role="dialog"]',
+  },
   bill: { press: [slotOf('menu.bill')], until: '[role="dialog"]' },
   call: { press: [slotOf('menu.call_waiter')], until: '[role="dialog"]' },
   pay: { press: [slotOf('menu.pay'), slotOf('pay.whole')], until: slotOf('pay.tip.row') },
@@ -195,13 +199,32 @@ export function keepHistoryInside(frame: Window & typeof globalThis): () => void
   }
 }
 
+/** The addresses the renderer gives an open dish (`#item-…`) and an open sheet (`#bag`, `#pay`…). */
+const DISH_ADDRESS = /^#item-/
+const SHEET_ADDRESS = /^#(bag|tab|call|pay)$/
+
+/** Takes the address off and tells the renderer, as the browser's Back would, with no history step. */
+function leaveAddress(): void {
+  window.history.replaceState(null, '', window.location.pathname + window.location.search)
+  window.dispatchEvent(new PopStateEvent('popstate', { state: null }))
+}
+
 /**
  * Closes the dish the Dish stage opened, so a frame that goes back to the menu shows the menu: the
  * dish's address is taken off and the renderer told, as the browser's Back would. The allergen sheet
  * opened from the dish goes with it (the renderer's rule); a sheet the owner opened stays.
  */
 export function closeDish(): void {
-  if (!/^#item-/.test(window.location.hash)) return
-  window.history.replaceState(null, '', window.location.pathname + window.location.search)
-  window.dispatchEvent(new PopStateEvent('popstate', { state: null }))
+  if (DISH_ADDRESS.test(window.location.hash)) leaveAddress()
+}
+
+/**
+ * Closes whatever a stage opened, the dish or a sheet (the bag, the bill, Call a waiter, Pay and the
+ * receipt in it), so a frame whose stage is taken away shows the menu again. As `closeDish`: the
+ * address is taken off and the renderer told, with no step through the history (S10). The order a
+ * stage put in the bag stays: it is the demo host's, and the menu's bar shows it as a guest's would.
+ */
+export function closeStage(): void {
+  const { hash } = window.location
+  if (DISH_ADDRESS.test(hash) || SHEET_ADDRESS.test(hash)) leaveAddress()
 }

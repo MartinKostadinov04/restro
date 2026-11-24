@@ -210,7 +210,7 @@ export function PaidInApp({
  * tip, the total, "Paid by card" and the payment number, and Save. It saves an image on the phone
  * and leaves no link; it is not a receipt and does not look like one.
  */
-function Confirmation({
+export function Confirmation({
   view,
   id,
   closeLabel,
