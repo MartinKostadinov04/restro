@@ -30,12 +30,18 @@ are written on a branch that carries the numbers below it.
 | 1.19 | Guest accounts | Not now. Plug them in later, "once we become a recognisable solution". | later | needs its own decision, since D9 says guests need no account |
 | 1.11 | The DJ beat matches, so a paid place in a queue cannot mean "this is your next track" | **The lead had this backwards and Martin corrected it in round 3.** Restro's own queue is real and timestamped, so a request's place in it is a fact, not a guess. What cannot be stated is a *time*, since the DJ's own tracks run between ours. So: show the place, never invent a clock. Beat matching is absorbed by 1.7's unordered awaiting-play set, not by replacing the queue. | firm | round 3, correcting round 2 |
 | 1.12 | The DJ can agree or disagree with a song that does not fit the theme or the mood | Agreed: a short fixed reason list, one tap, money released at once, the guest told in plain words. No appeal and no re-queue. | firm | round 2 |
-| 1.13 | Does the venue screen requests before the DJ sees them at all? | Yes: **blocked artists and title words, and no genre control at all.** Martin was right that the demo restricts to music and excludes podcasts, and the lead's stated reason was wrong — there *is* a category and there *are* tags. But nothing in them names a genre, so the conclusion survives its own bad argument. | firm | closed by [the metadata research](2026-11-22-song-request-metadata.md), PR #509 |
+| 1.13 | Does the venue screen requests before the DJ sees them at all? | **No genre control at all** — and, narrowed by 1.23 in round 4, no blocked artists or title words either in release 1. Martin was right that the demo restricts to music and excludes podcasts, and the lead's stated reason was wrong — there *is* a category and there *are* tags. But nothing in them names a genre, so the conclusion survives its own bad argument. | firm | closed by [the metadata research](2026-11-22-song-request-metadata.md), PR #509 |
 | 1.14 | What does the guest see while he waits? | **His place in the queue**, which is a fact, and *"with the DJ now"* once the request reaches the awaiting-play set — **not a time**, unless it is measured from this venue's own history. Identity across a refresh or a closed browser, with no profile and no table, is D121's guest session. | firm | round 3; a time estimate only once measured, never invented |
 | 1.15 | Can a guest take his money back before the song plays? | Yes — while the request is still waiting, not once the DJ has accepted it. | firm | round 2, map Q7 |
 | 1.16 | When does the venue stop taking requests for the night? | The venue setting is only the **automatic** stop. The **DJ opens and closes requests himself** during the night. | firm | round 2; same shape as the existing ordering pause |
 | 1.17 | Can the same song be asked for again, and how soon? | Yes, a venue setting, 30 minutes as the default. | firm | round 2, map Q9 |
-| 1.18 | Who answers a guest whose song never played? | A song that never plays is **refunded automatically**. Separately, a guest can file a **few-button report**, which notifies staff and lands in the Log as the dispute's record. No published response time. | firm | round 2, map Q12, decision 148 |
+| 1.18 | Who answers a guest whose song never played? | A song that never plays has its hold **released automatically** — a release, not a refund, because 1.6 captures nothing until the song plays (see 1.22 for when). Separately, a guest can file a **few-button report**, which notifies staff and lands in the Log as the dispute's record. No published response time. | firm | round 2, map Q12, decision 148 |
+| 1.20 | Inside the DJ's working set, does he get a free choice of which of the three to play? | **Free choice kept.** No order inside the set, as 1.7 says. The cost is accepted openly: the system can no longer infer which song he just played, so **each card carries *played* and *didn't play*** and he taps one per song. The MVP's 60-second undo of a start comes across with it. The MVP earned its automatic marking only by forcing the order and letting him play the head alone; the choice is worth more than the tap. | firm | round 4; closes the cross-review's finding 3, PR #510 |
+| 1.21 | On a night that takes 180 requests and plays 40, does intake stop by itself? | **No automatic cap.** The DJ opens and closes the door to new requests from his own screen, which extends 1.16 from a pause to the one control that governs intake. What keeps this honest is 1.22: nobody waits all night on a request that will not arrive, because the money goes back after ninety minutes whatever the DJ does. | firm | round 4; extends 1.16, closes the cross-review's finding 4, PR #510 |
+| 1.22 | How long may a held request sit unplayed? | **Ninety minutes, then the hold is released by itself** — not only at the end of the night. And the rule is told to the guest, short and friendly, **all the way through the flow**: you do not pay until the DJ plays your song or reads your greeting; the money is frozen until then; if ninety minutes pass without it, we release it. The exact words and where they appear belong to the screen plan. | firm | round 4; supersedes 1.6's night-end-only release, cross-review finding 8, PR #510 |
+| 1.23 | How much screening does release 1 do? | **Only what the MVP already does: the music-only search.** Anything inappropriate that gets through is declined by the DJ, who sees it. No blocked-word lists, no name or greeting checks beyond the MVP's own length cut and control-character strip — "in the first round I think it is overkill to do more." This narrows 1.13, which had added blocked artists and title words. The lead's one condition, accepted as part of the answer: **nothing a guest typed is read aloud or shown in the room until the DJ has seen it**, so his refusal is a real filter and not a formality. | firm | round 4; narrows 1.13, answers cross-review finding 7, PR #510 |
+| 1.24 | With no table on a request, what does a guest open? | **The venue's own menu carries the link.** The table's QR opens the menu as it does today, and the menu's navigation holds that venue's song-request link. So the venue's identity arrives with the page the guest already has, nothing new is printed, and the table — which the session does know — is deliberately never written onto the request (1.8). A venue-level link for screens and posters costs nothing extra on top, for guests who are standing. | firm | round 4; answers the entry point D100 and D99 both deferred, on D121's session |
+| 1.25 | Is a guest's card kept, so a second request is one tap? | **No. "I think it's a security risk to keep credit card details."** Apple Pay and Google Pay are the fast path for a repeat request; a raw card is entered again each time. The lead's note, recorded and not argued: a saved card lives at the provider and never on our servers, and a repeat may still be challenged by the bank — so the gain was smaller than it sounded, and the answer costs little. | firm | round 4; D127 keeps 3-D Secure on every card payment |
 
 **Rows the earlier answers killed outright.** Map Q6 (one backer's card fails while others succeed)
 is gone with chip-ins — there is one payer in release 1. Map Q13 (whose account, who is the seller)
@@ -81,8 +87,12 @@ expensive to retrofit:
    no partial capture. This is the one that cannot be retrofitted cheaply, because it turns a
    request from having a payer into having backers.
 
-Point 5 is why row 1.5 (two guests, one song) stops being urgent: the structure keeps it open either
-way, so it becomes a product question for a later release rather than something this one must settle.
+Point 5 is what makes row 1.5 (two guests, one song) cheap rather than optional. An earlier draft of
+this section deferred 1.5 to a later release, which contradicted the row's own `firm` status; the row
+wins. **Popularity ships in release 1**, and the MVP is why it is affordable: supporting someone else's
+request is already built there, with its own idempotency key and an atomic check that either secures the
+place or takes no money at all. What this release changes is only what support *does* to the order —
+distinct guests instead of summed money — not the gesture or its plumbing.
 
 What stays a redesign rather than a migration: the guest screen. Bidding brings back amounts on
 screen and row 1.3 with them. That is a screen plan under D123, not an architecture problem.
@@ -328,21 +338,40 @@ machine in `modules/` — and the richer one answers more.
 
 Both need a re-read of the rows they came from before the spec cites them.
 
+## Settled by the lead after round 4, reported rather than asked
+
+These follow from Martin's answers or are tuning the lead owns; none is a product choice left open.
+
+- **Free requests default off wherever a price is set.** Row 1.2's venue setting stays. The default is
+  the lead's because a free request queued behind every paid one can never reach the DJ on a busy night,
+  so leaving it on by default would publish a place number that cannot move. The MVP has no free path at
+  all — €5 is its minimum — so nothing is being thrown away.
+- **The DJ may mark *played* on any request in the queue, not only the three in his working set.** He
+  often plays a track off his own laptop that someone has already paid for; without this the venue gives
+  away exactly what it sold, and the hold is released although the guest got his song. One control, and
+  it follows directly from 1.20's per-card marking.
+- **No catalogue import in release 1.** The MVP rations itself to 80 uncached searches a day, caches
+  results briefly and keeps every song it has ever returned, telling a guest to pick from the saved ones
+  when the daily limit is spent. The fix is therefore small: **keep the search for discovery and let our
+  own song table accumulate permanently** instead of expiring after a day, so the ration is only ever
+  spent on a song nobody has asked for before. The cross-review's proposal to import a whole metadata
+  catalogue is dropped, and the probe behind that decision is
+  [here](2026-11-22-song-request-catalogue-probe.md).
+- **The DJ's screen shows him the arithmetic.** Since intake has no automatic cap (1.21), his screen says
+  how many are waiting against how many he has played tonight, so closing the door is an informed act
+  rather than a guess. A number on a screen, not a rule.
+
 ## Still to do before the spec
 
-1. **Row 1.13**, genre blocking, waits on the metadata research (`sr/metadata` branch, PR into
-   `sr/ingestion`). It is the only open row.
-2. **A review of every decision above by a different model** — Martin's instruction on 2026-11-22,
-   to run once the research lands: does the set as a whole fit the most robust and optimal picture,
-   and where it does not, what is the proposal? Run with Fable (`claude-fable-5-2`), reading this
-   file, the [map](2026-11-19-song-requests-port-map.md), the
-   [inventory](2026-11-18-song-requests-port-inventory.md) and the
-   [research](2026-11-18-song-requests-how-others-do-it.md). Its findings are answered here before
-   any decision file is written.
-3. **Then the decisions themselves**, which **cannot be written on this branch**: `sr/ingestion`
-   carries decisions 1 to 123, the next free number is 154, and the guard forbids a gap at the top.
-   They need a branch cut from something that already carries 1 to 153. Measured on 2026-11-22,
-   `or/foundation` and `docs/pos-support-answers` each carry the full gapless set on their own, so
-   either can serve as the base; `docs/pos-support-answers` is docs-only and therefore the cheaper
-   one. Flagged early because it decides where the spec branch is cut, not just where the files
-   land.
+1. **The frontier is empty.** Every row is settled; rounds 1 to 4 and the cross-review are answered.
+2. **Two claims in our own documents did not survive the read of the MVP** and must be re-read before the
+   spec cites them: the display-name profanity list (no word list exists anywhere in that code) and the
+   unrecorded identity cookie (the server does hash and record it, with a 12-hour expiry). Both are in
+   §"What the demo already settles".
+3. **The spec issue and its tickets**, which cite the rows of this file (1.1 to 1.25) rather than decision
+   numbers, so nothing waits on the numbering.
+4. **Then the decisions themselves**, which **cannot be written on this branch**: `sr/ingestion` carries
+   decisions 1 to 123, the next free number is 154, and the guard forbids a gap at the top. They need a
+   branch cut from something that already carries 1 to 153. Measured on 2026-11-22, `or/foundation` and
+   `docs/pos-support-answers` each carry the full gapless set on their own, so either can serve as the
+   base; `docs/pos-support-answers` is docs-only and therefore the cheaper one.
