@@ -88,9 +88,9 @@ describe('the bill sheet', () => {
     const sheet = openBill()
     const rounds = [...sheet.querySelectorAll('.ro-round')]
     expect(rounds).toHaveLength(2)
-    expect(rounds[0]?.textContent).toContain('Round 1 · 19:42')
+    expect(rounds[0]?.textContent).toContain('Order 1 · 19:42')
     expect(rounds[0]?.textContent).toContain('From the waiter')
-    expect(rounds[1]?.textContent).toContain('Round 2 · 20:15')
+    expect(rounds[1]?.textContent).toContain('Order 2 · 20:15')
     expect(rounds[1]?.textContent).toContain('From the app')
     expect(rounds[0]?.getAttribute('data-source')).toBe('staff')
     expect(rounds[1]?.getAttribute('data-source')).toBe('guest')

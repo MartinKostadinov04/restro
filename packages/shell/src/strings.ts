@@ -526,7 +526,7 @@ const EN: Strings = {
     tab: 'Your table’s bill',
     tabIntro: 'Everything ordered at this table, from the app and from the waiter.',
     emptyTab: 'Nothing has been ordered yet.',
-    round: 'Round',
+    round: 'Order',
     fromApp: 'From the app',
     fromWaiter: 'From the waiter',
     lineStatus: {
