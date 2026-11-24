@@ -708,11 +708,19 @@ describe('the list of parts (D159)', () => {
     expect(title.textContent).toBe('Fonts')
     expect(document.activeElement).toBe(title)
     expect(window.location.search).toBe('?part=fonts')
-    // The pane slides and fades in over 180 ms; with reduced motion it only fades, over 120 ms.
+    // The pane slides and fades in over 180 ms; with reduced motion it has no motion at all: no
+    // transition, no offset and no fade (operational-screens.md, "Reduced means off").
     const pane = screen.getByTestId('design-pane')
-    expect(pane.className).toContain('duration-180')
-    expect(pane.className).toContain('motion-reduce:duration-120')
-    expect(pane.className).toContain('motion-safe:data-[entering=forward]:translate-x-2')
+    const classes = pane.className.split(/\s+/)
+    expect(classes).toContain('motion-safe:duration-180')
+    expect(classes).toContain('motion-reduce:transition-none')
+    expect(classes).toContain('motion-safe:data-[entering]:opacity-0')
+    expect(classes).toContain('motion-safe:data-[entering=forward]:translate-x-2')
+    // Every class that moves or fades it holds only when motion is allowed.
+    const moving = /transition-\[|duration-|ease-|opacity-0|translate-/
+    for (const name of classes.filter((entry) => moving.test(entry))) {
+      expect(name.startsWith('motion-safe:')).toBe(true)
+    }
 
     const back = screen.getByRole('button', { name: 'Back to all parts' })
     expect(back.textContent).toBe('Back')

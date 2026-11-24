@@ -7,8 +7,8 @@
 // the rows are and what their summaries say is `part-list.ts`.
 //
 // Ported from the example designer's mechanics (`DesignStudio.jsx`: the category list, the drill-in
-// with ‹, the pane that slides 8 px and fades in over 180 ms, a 120 ms fade only with reduced motion),
-// not its code: our rows are shadcn and D107's, and the address remembers the open part.
+// with ‹, the pane that slides 8 px and fades in over 180 ms), not its code: our rows are shadcn and
+// D107's, the address remembers the open part, and reduced motion means none (D109).
 import { type DesignPage, type DesignValues, THEME_FONTS } from '@restro/core'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -43,7 +43,8 @@ export type PaneEnter = 'forward' | 'back' | null
 
 /**
  * One view of the panel. It draws its first frame 8 px to the side and transparent, then lets go so
- * it slides and fades in over 180 ms; with reduced motion it only fades, over 120 ms.
+ * it slides and fades in over 180 ms. With reduced motion it has no motion at all: it is simply there
+ * (operational-screens.md, "Reduced means off").
  */
 export function Pane({ enter, children }: { enter: PaneEnter; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -64,8 +65,8 @@ export function Pane({ enter, children }: { enter: PaneEnter; children: ReactNod
       data-testid="design-pane"
       className={cn(
         'grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6',
-        'transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:duration-120',
-        'data-[entering]:opacity-0 motion-safe:data-[entering=forward]:translate-x-2 motion-safe:data-[entering=back]:-translate-x-2',
+        'motion-safe:transition-[opacity,transform] motion-safe:duration-180 motion-safe:ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none',
+        'motion-safe:data-[entering]:opacity-0 motion-safe:data-[entering=forward]:translate-x-2 motion-safe:data-[entering=back]:-translate-x-2',
       )}
     >
       {children}
