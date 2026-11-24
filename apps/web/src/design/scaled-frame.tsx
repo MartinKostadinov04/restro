@@ -5,7 +5,8 @@
 // its store (`preview-frames.ts`). With `picture`, it is a picture and not a control (a Style tile):
 // nothing in it can be focused, clicked or read twice. Until the frame's page has loaded, the box
 // shows a placeholder, with `loading` written on it when given (the live preview). A frame that draws
-// one part (D159) tells its height through `onHeight`; the box around it sets the frame's height.
+// one part (D159) tells its height through `onHeight`, and the box around it sets the frame's height;
+// its placeholder stays until the part has drawn, and comes back if it draws nothing (a height of 0).
 import { useTranslations } from 'next-intl'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
@@ -86,13 +87,18 @@ export function ScaledFrame({
   tapped.current = onPart
   const sized = useRef(onHeight)
   sized.current = onHeight
+  // The part the frame draws has told a height above 0: it is drawn.
+  const [drawn, setDrawn] = useState(false)
 
   // Before the frame is put in, so its page always finds its store.
   useLayoutEffect(() => {
     const opened = openFrameStore(
       slot,
       (marker, opens) => tapped.current?.(marker, opens),
-      (height) => sized.current?.(height),
+      (height) => {
+        setDrawn(height > 0)
+        sized.current?.(height)
+      },
     )
     opened.set(latest.current)
     store.current = opened
@@ -153,7 +159,11 @@ export function ScaledFrame({
           }}
         />
       )}
-      {loaded ? null : loading === undefined ? <TileLoading /> : <PreviewLoading label={loading} />}
+      {loaded && (onHeight === undefined || drawn) ? null : loading === undefined ? (
+        <TileLoading />
+      ) : (
+        <PreviewLoading label={loading} />
+      )}
     </div>
   )
 }

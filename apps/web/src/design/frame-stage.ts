@@ -1,24 +1,32 @@
-// How a frame of the Design page reaches a stage (D130, ticket 8): a tile of a screen's page shows that
-// screen, so the frame presses the renderer's own controls, one after the other, as a person would,
-// and scrolls to the part the option styles. The demo host behind the sheets is the preview's.
+// How the Design page's live preview reaches a stage (D130, D159): while a page of the panel is open,
+// the preview shows that page's part, so its frame presses the renderer's own controls, one after the
+// other, as a person would, and scrolls to the part; when the stage is taken away it closes what it
+// opened. The demo host behind the sheets is the preview's. (The tiles draw a part alone, with no
+// stage: `design-frame.tsx`.)
+import { SHEETS } from '@restro/editorial-market/preview'
+
 import type { Stage } from './advanced-model'
 
 const slotOf = (name: string) => `[data-slot="${name}"]`
+
+/** A control to press; with `unless`, skipped while that already shows. */
+type Press = string | { readonly press: string; readonly unless: string }
+
+/** The bag's button: its slot is drawn empty at once, the button only once the bag holds a line. */
+const BAG_BUTTON = `${slotOf('menu.bag')} button`
+/** A dish into the bag, only while the bag is empty: a stage opened again adds nothing more. */
+const ADD_ONCE: Press = { press: slotOf('item.add'), unless: BAG_BUTTON }
 
 /**
  * The controls to press, in order, to reach a stage: each is pressed once it exists. A stage ends at
  * `until`, which is what shows when it is reached.
  */
 export const WAYS: Readonly<
-  Record<Stage, { readonly press: readonly string[]; readonly until: string | null }>
+  Record<Stage, { readonly press: readonly Press[]; readonly until: string | null }>
 > = {
   menu: { press: [], until: null },
-  // The bag's slot is drawn empty at once; its button only once the bag holds the line.
-  order: { press: [slotOf('item.add')], until: `${slotOf('menu.bag')} button` },
-  bag: {
-    press: [slotOf('item.add'), `${slotOf('menu.bag')} button`],
-    until: '[role="dialog"]',
-  },
+  order: { press: [ADD_ONCE], until: BAG_BUTTON },
+  bag: { press: [ADD_ONCE, BAG_BUTTON], until: '[role="dialog"]' },
   bill: { press: [slotOf('menu.bill')], until: '[role="dialog"]' },
   call: { press: [slotOf('menu.call_waiter')], until: '[role="dialog"]' },
   pay: { press: [slotOf('menu.pay'), slotOf('pay.whole')], until: slotOf('pay.tip.row') },
@@ -149,8 +157,11 @@ export function drive(stage: Stage, focus: readonly string[], onReached?: () => 
     if (stopped) return
     const press = way.press[step]
     if (press !== undefined) {
-      const control = document.querySelector<HTMLElement>(press)
-      if (control !== null) {
+      const selector = typeof press === 'string' ? press : press.press
+      const control = document.querySelector<HTMLElement>(selector)
+      if (typeof press !== 'string' && document.querySelector(press.unless) !== null) {
+        step += 1
+      } else if (control !== null) {
         control.click()
         step += 1
       }
@@ -199,9 +210,10 @@ export function keepHistoryInside(frame: Window & typeof globalThis): () => void
   }
 }
 
-/** The addresses the renderer gives an open dish (`#item-…`) and an open sheet (`#bag`, `#pay`…). */
+/** The address the renderer gives an open dish. */
 const DISH_ADDRESS = /^#item-/
-const SHEET_ADDRESS = /^#(bag|tab|call|pay)$/
+/** The addresses of the renderer's sheets (`#bag`, `#tab`, `#call`, `#pay`): the face's own list. */
+const SHEET_ADDRESSES: ReadonlySet<string> = new Set(SHEETS.map((sheet) => `#${sheet}`))
 
 /** Takes the address off and tells the renderer, as the browser's Back would, with no history step. */
 function leaveAddress(): void {
@@ -210,21 +222,13 @@ function leaveAddress(): void {
 }
 
 /**
- * Closes the dish the Dish stage opened, so a frame that goes back to the menu shows the menu: the
- * dish's address is taken off and the renderer told, as the browser's Back would. The allergen sheet
- * opened from the dish goes with it (the renderer's rule); a sheet the owner opened stays.
- */
-export function closeDish(): void {
-  if (DISH_ADDRESS.test(window.location.hash)) leaveAddress()
-}
-
-/**
  * Closes whatever a stage opened, the dish or a sheet (the bag, the bill, Call a waiter, Pay and the
- * receipt in it), so a frame whose stage is taken away shows the menu again. As `closeDish`: the
- * address is taken off and the renderer told, with no step through the history (S10). The order a
- * stage put in the bag stays: it is the demo host's, and the menu's bar shows it as a guest's would.
+ * receipt in it), so a frame whose stage is taken away, or changed, shows the menu again: the
+ * address is taken off and the renderer told, as the browser's Back would, with no step through the
+ * history (S10). The allergen sheet opened from a dish goes with it (the renderer's rule). The order
+ * a stage put in the bag stays: it is the demo host's, and the menu's bar shows it as a guest's would.
  */
 export function closeStage(): void {
   const { hash } = window.location
-  if (DISH_ADDRESS.test(hash) || SHEET_ADDRESS.test(hash)) leaveAddress()
+  if (DISH_ADDRESS.test(hash) || SHEET_ADDRESSES.has(hash)) leaveAddress()
 }

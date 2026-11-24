@@ -12,7 +12,7 @@ import { renderWithIntl } from '@/test-utils'
 
 import { pageOfTap, type Stage, tilePlanOf } from './advanced-model'
 import { partOf } from './design-frame'
-import { closeDish, closeStage, drive, keepHistoryInside, stuckTop, WAYS } from './frame-stage'
+import { closeStage, drive, keepHistoryInside, stuckTop, WAYS } from './frame-stage'
 import { previewSnapshot } from './preview-snapshot'
 import { DEMO_ASSET_BASE, specimenOf } from './specimen'
 
@@ -90,6 +90,20 @@ describe('the stages of a frame', () => {
       stop()
     }, 30_000)
   }
+
+  it('the order stage opened again adds nothing more to the bag', async () => {
+    const first = await reach('order', [])
+    first.stop()
+    const count = () => first.view.container.querySelector('.ro-count')?.textContent
+    expect(count()).toBe('1')
+    let reached = false
+    const stop = drive('order', [], () => {
+      reached = true
+    })
+    await waitFor(() => expect(reached).toBe(true), { timeout: 15_000, interval: 100 })
+    stop()
+    expect(count()).toBe('1')
+  }, 30_000)
 
   it('a tile of a browsing page scrolls to the part it styles', async () => {
     const { stop } = await reach('menu', ['item'])
@@ -188,7 +202,7 @@ describe('around the stages', () => {
       const first = await reach('dish', [])
       expect(window.location.hash).toMatch(/^#item-/)
       first.stop()
-      closeDish()
+      closeStage()
       await waitFor(() => expect(dishOf(first.view)).toBeNull())
       expect(window.location.hash).toBe('')
       first.view.unmount()
