@@ -250,7 +250,7 @@ export const EDITORIAL_CSS = `
   --rm-name-text: calc(15px * var(--rm-type));
   --rm-name-list: calc(14.5px * var(--rm-type));
   --rm-name-one: calc(18px * var(--rm-type));
-  --rm-name-two: calc(12.5px * var(--rm-type));
+  --rm-name-two: calc(13px * var(--rm-type));
   --rm-name-two-narrow: calc(12.5px * var(--rm-type));
   --rm-name-strip: calc(17px * var(--rm-type));
   --rm-price-photo: calc(14px * var(--rm-type));
@@ -260,8 +260,8 @@ export const EDITORIAL_CSS = `
   --rm-name-text: calc(19.5px * var(--rm-type));
   --rm-name-list: calc(18.5px * var(--rm-type));
   --rm-name-one: calc(25px * var(--rm-type));
-  --rm-name-two: calc(15px * var(--rm-type));
-  --rm-name-two-narrow: calc(13px * var(--rm-type));
+  --rm-name-two: calc(14px * var(--rm-type));
+  --rm-name-two-narrow: calc(12.5px * var(--rm-type));
   --rm-name-strip: calc(23px * var(--rm-type));
   --rm-price-photo: calc(16px * var(--rm-type));
   --rm-price-strip: calc(15px * var(--rm-type));

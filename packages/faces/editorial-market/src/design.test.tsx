@@ -440,8 +440,8 @@ const NAME_FIT_ADDED: readonly string[] = [
   `.rm-section:not(.is-feature) .rm-item.has-photo ${NAME} { --rm-name-size: 25px }`,
   `${TWO} .rm-item ${NAME} { --rm-name-fits: calc((100cqi - var(--rm-name-inset)) / var(--rm-name-fit)) }`,
   `${TWO} .rm-item-copy > [data-slot="item.name"] { flex-basis: 100% }`,
-  `${TWO} .rm-item.has-photo ${NAME} { --rm-name-size: 15px }`,
-  `${NARROW}${TWO} .rm-item.has-photo ${NAME} { --rm-name-size: 13px }`,
+  `${TWO} .rm-item.has-photo ${NAME} { --rm-name-size: 14px }`,
+  `${NARROW}${TWO} .rm-item.has-photo ${NAME} { --rm-name-size: 12.5px }`,
 ]
 
 /** The lines the widened steps move (Martin 11-24), as today's line and Editorial's now. */

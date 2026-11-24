@@ -687,7 +687,7 @@
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo { padding: 14px 0 28px }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo { padding: 8px }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo img { aspect-ratio: 4 / 3 }
-.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { --rm-name-size: 15px }
+.rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { --rm-name-size: 14px }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { line-height: 1.15 }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy { display: flex }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-item-copy { flex-wrap: wrap }
@@ -702,7 +702,7 @@
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-arrow::after { display: none }
 .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item-open { padding-right: 0 }
 @media (max-width: 359px) .rm[data-layout="two"] .rm-section:not(.is-feature) > .rm-items { column-gap: 10px }
-@media (max-width: 359px) .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { --rm-name-size: 13px }
+@media (max-width: 359px) .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo :is(h3, h4) { --rm-name-size: 12.5px }
 @media (max-width: 359px) .rm[data-layout="two"] .rm-section:not(.is-feature) .rm-item.has-photo .rm-photo { padding: 5px }
 .rm { overflow-x: clip }
 .rm { max-width: 100vw }

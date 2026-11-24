@@ -68,6 +68,27 @@ export function holdScroll(frame: Window & typeof globalThis): () => void {
   }
 }
 
+/**
+ * A frame never takes the focus from the Design page. The renderer moves the focus as it would on a
+ * guest's phone: into a sheet it opens, back to the dish's button when the dish closes. In a frame
+ * that would pull the owner's focus out of the panel (after Back, the part's row lost it to the
+ * preview's dish button when the stage closed). So while the frame's document does not have the
+ * focus, `focus()` in it does nothing; once the owner is in the frame (a tap, Tab), it works.
+ * Returns the way to undo it (for tests).
+ */
+export function keepFocusOut(frame: Window & typeof globalThis): () => void {
+  const proto = frame.HTMLElement.prototype
+  const focus = proto.focus
+  const kept = function (this: HTMLElement, options?: FocusOptions) {
+    if (!frame.document.hasFocus()) return
+    focus.call(this, options)
+  }
+  proto.focus = kept
+  return () => {
+    if (proto.focus === kept) proto.focus = focus
+  }
+}
+
 /** Scrolls the nearest scrolling box inside the sheet so that the part is in its middle. */
 function scrollSheetTo(part: HTMLElement): void {
   for (

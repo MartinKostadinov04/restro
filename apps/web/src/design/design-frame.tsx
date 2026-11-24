@@ -38,7 +38,14 @@ import { DraftFace, previewLocaleOf, previewViewOf } from '@/publish/draft-face'
 import { useAdminLocale } from '@/publish/names'
 
 import type { Stage } from './advanced-model'
-import { closeStage, drive, holdScroll, keepHistoryInside, stagePressing } from './frame-stage'
+import {
+  closeStage,
+  drive,
+  holdScroll,
+  keepFocusOut,
+  keepHistoryInside,
+  stagePressing,
+} from './frame-stage'
 import { type FrameContent, frameStoreOf } from './preview-frames'
 
 const nothing = (): FrameContent | null => null
@@ -233,6 +240,8 @@ export function DesignFrame({ slot }: { slot: string }) {
   }, [slot])
 
   useEffect(() => keepHistoryInside(window), [])
+  // Before the stage's own hold on `focus()`, so the hold wraps it.
+  useEffect(() => keepFocusOut(window), [])
   // A specimen is a part alone: there is no menu to drive to a stage.
   useStage(
     content !== null,

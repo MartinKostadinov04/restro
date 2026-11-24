@@ -12,7 +12,15 @@ import { renderWithIntl } from '@/test-utils'
 
 import { pageOfTap, type Stage, tilePlanOf } from './advanced-model'
 import { partOf } from './design-frame'
-import { closeStage, drive, keepHistoryInside, stagePressing, stuckTop, WAYS } from './frame-stage'
+import {
+  closeStage,
+  drive,
+  keepFocusOut,
+  keepHistoryInside,
+  stagePressing,
+  stuckTop,
+  WAYS,
+} from './frame-stage'
 import { previewSnapshot } from './preview-snapshot'
 import { DEMO_ASSET_BASE, specimenOf } from './specimen'
 
@@ -66,8 +74,9 @@ describe('the stages of a frame', () => {
       expect(snapshot.sections[section]?.items.length).toBeLessThanOrEqual(3)
     }
     for (const id of ids) expect(snapshot.items[id]?.image).toBeTruthy()
-    // The demo photo is the only asset, so the frame's photo base is the app's folder.
-    expect(Object.keys(snapshot.assets)).toHaveLength(1)
+    // Only the demo pictures (the photo, an upright photo, a sample logo), so the frame's photo base
+    // is the app's folder.
+    for (const id of Object.keys(snapshot.assets)) expect(id).toMatch(/^as_Demo/)
   })
 
   const STAGES: [Stage, string[]][] = [
@@ -258,6 +267,23 @@ describe('around the stages', () => {
       }
     }, 30_000)
   }
+
+  it('a frame does not take the focus while the owner is in the Design page, and does once they are in it', () => {
+    document.body.innerHTML = '<button id="opener">Dish</button>'
+    const opener = document.getElementById('opener') as HTMLButtonElement
+    const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+    const release = keepFocusOut(window)
+    try {
+      // The dish closing hands the focus back to its button: not while the owner is in the panel.
+      opener.focus()
+      expect(document.activeElement).not.toBe(opener)
+      hasFocus.mockReturnValue(true)
+      opener.focus()
+      expect(document.activeElement).toBe(opener)
+    } finally {
+      release()
+    }
+  })
 
   it('closing with nothing open leaves the address alone', () => {
     window.history.replaceState(null, '', `${window.location.pathname}#elsewhere`)

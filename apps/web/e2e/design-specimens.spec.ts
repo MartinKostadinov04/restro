@@ -1,6 +1,7 @@
 import { type BrowserContext, expect, type Page, test } from '@playwright/test'
 
-import { runScript } from './global-setup'
+import { e2eSealEnvironment } from '../../worker/src/e2e-seal-keys'
+import { runScriptWith } from './global-setup'
 import { ADMIN_PASSWORD } from './support'
 
 // The speed of the Advanced panel's option pictures (D159) on the walk's demo club
@@ -40,9 +41,13 @@ async function signIn(target: Page, email: string) {
   throw new Error(`could not sign in as ${email}`)
 }
 
-/** The demo club's venue, from the seed's summary line (its ids are drawn at random). */
+/**
+ * The demo club's venue, from the seed's summary line (its ids are drawn at random). The seed seals
+ * its table codes, so it needs a public key: the test process has none (only the servers get the
+ * run's, playwright.config.ts), and this spec never opens a table code, so a throwaway pair does.
+ */
 function seedDemo(): string {
-  const out = runScript('./scripts/seed-demo.ts')
+  const out = runScriptWith(e2eSealEnvironment().web, './scripts/seed-demo.ts')
   for (const line of out.split('\n')) {
     if (!line.startsWith('{')) continue
     const parsed = JSON.parse(line) as { event?: string; venueId?: string }
