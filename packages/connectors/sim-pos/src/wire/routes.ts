@@ -40,7 +40,11 @@ const RowBody = z.strictObject({
   ref: z.string().min(1).max(200).nullish(),
   amount: Amount.optional(),
 })
-const PaymentBody = z.strictObject({ type: Id.nullish(), amount: Amount })
+const PaymentBody = z.strictObject({
+  type: Id.nullish(),
+  amount: Amount,
+  ref: z.string().min(1).max(200).nullish(),
+})
 
 const AddBody = z.strictObject({
   bill: Id,
@@ -53,7 +57,7 @@ const MoveBody = z.strictObject({
 })
 const VoidBody = z.strictObject({ row: Id, quantity: Quantity.nullish() })
 const CloseBody = z.strictObject({
-  payments: z.array(PaymentBody).max(10),
+  payments: z.array(PaymentBody).max(20),
   note: z.string().max(200).nullish(),
   receiptEmail: z.email().nullish(),
 })
@@ -75,7 +79,7 @@ function rowIn(row: z.output<typeof RowBody>): RowIn {
 }
 
 function paymentIn(payment: z.output<typeof PaymentBody>): PaymentIn {
-  return { type: payment.type ?? null, amountMinor: payment.amount }
+  return { type: payment.type ?? null, amountMinor: payment.amount, ref: payment.ref ?? null }
 }
 
 const notFound: Route = { kind: 'error', status: 404, detail: 'no such path' }

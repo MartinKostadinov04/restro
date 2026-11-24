@@ -33,6 +33,7 @@ import {
   newBillReferenceCheck,
   oldestBillCheck,
   paymentRouteCheck,
+  severalPaymentsCheck,
   staffBillCheck,
   tipOnCloseCheck,
   tipRetryCheck,
@@ -172,6 +173,23 @@ export function serviceConnectorSuite(harness: WriteHarness): void {
       electronicReceiptCheck,
       harness,
     )
+    if (!harness.connector.capabilities.closeWithSeveralPayments) {
+      check(
+        'a close with two card payments is refused not_supported before any write (closeWithSeveralPayments undeclared)',
+        severalPaymentsCheck,
+        harness,
+      )
+    } else if (harness.waiter.closedPayments === undefined) {
+      it.todo(
+        "one bill closes with three card payments on one receipt (the harness cannot show a receipt's payments)",
+      )
+    } else {
+      check(
+        'one bill closes with three card payments on one receipt, all or nothing, each reference read back',
+        severalPaymentsCheck,
+        harness,
+      )
+    }
     if (!harness.connector.capabilities.recordTipOnClose) {
       check(
         'a close with a tip is refused not_supported before any write (recordTipOnClose undeclared)',

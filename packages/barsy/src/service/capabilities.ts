@@ -41,4 +41,9 @@ export const BARSY_SERVICE_CAPABILITIES: ServiceCapabilities = {
   //     whose meaning for an API write is not stated (C54);
   //   recordTipOnClose: whether the API can add the "Бакшиш" item to a bill, and its fiscal
   //     setup, wait on Lukanet (D127 §Open); until then no tip is offered on barsy.
+  // closeWithSeveralPayments (D160 §3): Accounts_close takes several payments, each with its
+  // ref_num, and payments_history reads them back (methods/accounts/close.html, get.html); whether
+  // several card payments print on one fiscal receipt, all or none, is not stated (S1–S5 of the
+  // 11-24 split-by-amount research), and no payment write is built on barsy. Not claimed.
+  closeWithSeveralPayments: false,
 }
