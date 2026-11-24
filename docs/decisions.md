@@ -158,11 +158,11 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D151](decisions/D151.md) | Carrying a printed receipt to the guest is not Restro's work | firm |
 | [D152](decisions/D152.md) | Restro never puts a badge on a menu item by itself | firm |
 | [D153](decisions/D153.md) | A bar tablet is paired with a one-time code, not with an account | firm; refines D141 |
-| [D154](decisions/D154.md) | The admin is organised around the open venue | proposed, awaiting Martin |
 | [D155](decisions/D155.md) | Ordering, reservations and song requests are modules, switched on per venue | proposed, awaiting Martin |
 | [D156](decisions/D156.md) | Each module has its own Settings | proposed, awaiting Martin |
 | [D157](decisions/D157.md) | A person opens only what their role at that venue works | proposed, awaiting Martin |
 | [D158](decisions/D158.md) | Restro opens inside the venue | proposed, awaiting Martin |
+| [D161](decisions/D161.md) | The admin is organised around the open venue | proposed, awaiting Martin |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

@@ -6,7 +6,7 @@ import { type Browser, type BrowserContext, expect, type Page, test } from '@pla
 import { runScript } from './global-setup'
 import { ADMIN_PASSWORD } from './support'
 
-// The sidebar and the organisation's Settings (CF-09a, D74, D154) on a production build. Off a
+// The sidebar and the organisation's Settings (CF-09a, D74, D161) on a production build. Off a
 // venue's page the sidebar lists the organisation's venues, "All venues", "New venue" (owners and
 // admins only) and Settings. On a venue's page it is the venue's: its name (the venue switcher) and
 // its screens grouped by module, each module with its own Settings (D156).
@@ -135,7 +135,7 @@ test('the sidebar lists the venues by name, then All venues, New venue and Setti
 test('open a venue from the sidebar: its screens by module, then switch venue on the same screen', async () => {
   await venueItem(page, 'Boulevard Club').click()
   await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}$/)
-  // On a venue's page the sidebar is the venue's (D154): its name on top, which switches venue,
+  // On a venue's page the sidebar is the venue's (D161): its name on top, which switches venue,
   // and its screens grouped by module; the heading and the browser tab name the screen.
   await expect(switcher(page)).toContainText('Boulevard Club')
   await expect(page.getByRole('heading', { name: 'Studio', level: 1 })).toBeVisible()

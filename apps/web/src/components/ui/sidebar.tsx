@@ -253,7 +253,7 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
   const { toggleSidebar, isMobile, open, openMobile } = useSidebar()
   const t = useTranslations('ui')
 
-  // On a phone the sidebar is a sheet opened from ☰ (D154); on a desktop it folds beside the page.
+  // On a phone the sidebar is a sheet opened from ☰ (D161); on a desktop it folds beside the page.
   return (
     <Button
       aria-expanded={isMobile ? openMobile : open}

@@ -343,7 +343,7 @@ function laterHtml() {
         <div class="card"><b>Резервации</b> · Резервации, планът и гостите <span class="sw on"></span></div>
         <div class="card"><b>Заявки за песни</b> · DJ опашка <span class="sw"></span></div></div></div></div></div>
   </section>
-  <section class="later-block"><h2>2 · Долна лента на телефона · Phone bottom bar <small>ticket 5, decision 154</small></h2>
+  <section class="later-block"><h2>2 · Долна лента на телефона · Phone bottom bar <small>ticket 5, decision 161</small></h2>
     <p class="caption">Екраните за вечерта, после Студио, после „Още“. Лентата за избор в Студиото стои над нея. Под две места: без лента. · Service screens, Studio, More; the Studio's selection bar sits above it; under two destinations, no bar.</p>
     <div class="stage" style="padding:0;justify-content:flex-start">
       ${phoneWithBar('owner', {}, 'studio', '<b>Собственик</b>, Студио с избрани артикули')}

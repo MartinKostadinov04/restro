@@ -143,7 +143,7 @@ test.afterAll(async () => {
 
 test('the Studio’s Design subtab opens a page of its own; Settings holds no Appearance card', async () => {
   await page.goto(`/venues/${venueId}`)
-  // The venue's screens are the sidebar's entries, grouped by module (D154).
+  // The venue's screens are the sidebar's entries, grouped by module (D161).
   await expect(page.getByTestId('venue-nav').locator('[data-nav]')).toHaveText([
     'Studio',
     'Tables & QR',

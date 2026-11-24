@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // The admin sidebar. Off a venue's page (D74): the organisation's venues as items of their own,
-// "All venues", "New venue" for owners and admins only. On a venue's page (D154): the venue
+// "All venues", "New venue" for owners and admins only. On a venue's page (D161): the venue
 // switcher and the venue's menu grouped by module, each module with its own Settings (D156).
 // Always: the organisation's Settings, and in the footer the organisation (a switcher only for a
 // person who belongs to several).
@@ -185,7 +185,7 @@ describe('the Venues group', () => {
   })
 })
 
-describe('on a venue’s page (D154)', () => {
+describe('on a venue’s page (D161)', () => {
   const groupLabels = () =>
     [...document.querySelectorAll('[data-sidebar="group-label"]')].map((label) => label.textContent)
   const entry = (key: string) => {

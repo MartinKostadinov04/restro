@@ -198,7 +198,7 @@ Tonight's gain is order, not taps: two levels, settings split by module, a title
 Each ends with the `ship.md` §1 block; branches from and pull requests into `sr/foundation`. Each "D15x" is the proposed decision file of that number.
 
 **1. Path addresses.** `/venues/{v}/studio`, `/tables`, `/tonight`, `/reservations`, `/ordering/settings`, `/reservations/settings`, `/settings`, each rendering today's screen; old `?tab=` links redirect through `canonicalVenueQuery`. One `venuePageGuard()` every venue page calls (tenant 404, device, staff-only, module off) and one test table of every venue address × (other tenant, device, staff-only, no `reservations.tonight`), written before the pages (K1). One `venuePath()` every link calls, including the worker's push link (`apps/worker/src/alerts/deliver.ts:89`) and the provider's return (`apps/web/src/server/settings/paying-addresses.ts:8`). No segment `loading.tsx` (it turns a 404 into 200, tonight's build row 7); whether the sidebar moves into a venue layout.
-- **Model:** Opus · **Codes it:** agent session · **Branch:** `sr/nav-paths` · **Read:** D97, D122 §7, D141, D154, step 0's S2 · **Stop and ask if:** a link outside `apps/web` names a venue address · **Menu functionality:** none · **Screen:** none (same screens).
+- **Model:** Opus · **Codes it:** agent session · **Branch:** `sr/nav-paths` · **Read:** D97, D122 §7, D141, D161, step 0's S2 · **Stop and ask if:** a link outside `apps/web` names a venue address · **Menu functionality:** none · **Screen:** none (same screens).
 
 **2. The module switch.** The section "Modules" above: writer, reader, defaults, three refusals; an off module's pages, actions and `applyService` commands refuse through ticket 1's guard (K12a); Venue › Settings › Модули; glossary "Module / Модул".
 - **Model:** Opus (core write path) · **Codes it:** agent session · **Branch:** `sr/nav-modules` · **Read:** D64, D71, D100, D122 §7, D155, rules 1 and 5, `packages/core/src/apply/guest-features.ts` · **Stop and ask if:** a default would hide a screen a venue uses today · **Menu functionality:** none · **Screen:** plan below; `operational-screens.md`.
@@ -211,7 +211,7 @@ Each ends with the `ship.md` §1 block; branches from and pull requests into `sr
 - **Model:** Opus (rights) · **Codes it:** agent session · **Branch:** `sr/nav-who-opens` · **Read:** D97, D141, D157, `step0-security.md` · **Stop and ask if:** an owner's or admin's reach changes · **Menu functionality:** none · **Screen:** none.
 
 **5. The phone's bottom bar** (below 768 px). The on modules' service screens in D141's landing order (Резервации, Тази вечер, later Опашка), then Студио, then Още; four before Още. Design and every Settings under Още, which lists only what the bar lacks (K7, K17). Under two destinations, no bar (K10). Studio's slot moves as modules switch on (K19). The selection bar (`composer/selection-bar.tsx:56`) sits above the bar (K9). View rows scroll with a cut-off last label, a fade, the open view in sight, arrow keys (K8). In `e2e/touch-targets.spec.ts`; WCAG 2.4.11.
-- **Model:** Sonnet · **Codes it:** agent session · **Branch:** `sr/nav-phone-bar` · **Read:** D123, D154, `operational-screens.md` · **Stop and ask if:** another floating control collides · **Menu functionality:** none · **Screen:** story "reach Tonight or Reservations mid-service" 2 → 1 (Square Dashboard, Toast Now); every venue page below 768 px; states: one, two, five destinations; string Още / More.
+- **Model:** Sonnet · **Codes it:** agent session · **Branch:** `sr/nav-phone-bar` · **Read:** D123, D161, `operational-screens.md` · **Stop and ask if:** another floating control collides · **Menu functionality:** none · **Screen:** story "reach Tonight or Reservations mid-service" 2 → 1 (Square Dashboard, Toast Now); every venue page below 768 px; states: one, two, five destinations; string Още / More.
 
 **6. Open inside the venue (D158).** One venue: `/` and sign-in open it; several: the last used (a cookie), never one the person lost.
 - **Model:** Sonnet · **Codes it:** agent session · **Branch:** `sr/nav-last-venue` · **Read:** D141, D158 · **Stop and ask if:** a staff landing would change · **Menu functionality:** none · **Screen:** none.
@@ -227,9 +227,9 @@ Each ends with the `ship.md` §1 block; branches from and pull requests into `sr
 
 ## Decisions for Martin (154–158)
 
-The lead assigned these numbers; their files are `docs/decisions/D154.md`–`D158.md`, indexed, status proposed. **The pull request builds 154 and 156 A before you answer: merging it is your yes to both, and a no closes it.** Ask those two first; 155, 157 and 158 wait with their tickets.
+The lead assigned these numbers; their files are `docs/decisions/D155.md`–`D158.md` and `D161.md`, indexed, status proposed. **The pull request builds 161 and 156 A before you answer: merging it is your yes to both, and a no closes it.** Ask those two first; 155, 157 and 158 wait with their tickets.
 
-**154. The admin is organised around the open venue** (replaces D74; refines D97's tab list). The sidebar lists the open venue's screens grouped by module; the venue's name at its top switches venue; a page has at most one row of views, four at most. On a phone the same menu opens from ☰ now, and a bottom bar follows (ticket 5). *Recommend yes.* It undoes your 10-11 choice ("bring venues to the sidebar and keep the tabs"): then a venue had three tabs, now five tabs and twenty screens. Cost: switching venue is one tap longer.
+**161. The admin is organised around the open venue** (replaces D74; refines D97's tab list). The sidebar lists the open venue's screens grouped by module; the venue's name at its top switches venue; a page has at most one row of views, four at most. On a phone the same menu opens from ☰ now, and a bottom bar follows (ticket 5). *Recommend yes.* It undoes your 10-11 choice ("bring venues to the sidebar and keep the tabs"): then a venue had three tabs, now five tabs and twenty screens. Cost: switching venue is one tap longer.
 
 **155. Ordering, reservations and song requests are modules, switched on per venue.** Off means not shown and refused; nothing is deleted; switching off is refused while guests can still use it or bookings are to come; existing venues keep what they have, a new venue starts with the menu. Who switches: *recommend the organisation's owner*, with Restro's team able to do it for him. The alternative is Restro's team only, as a paid add-on would be (Square).
 
@@ -257,7 +257,7 @@ The lead assigned these numbers; their files are `docs/decisions/D154.md`–`D15
 | K12 | Changed: (a)–(c) are ticket 2's criteria. (d): the group keeps Martin's word "Поръчки"; its settings row now holds Alerts too. |
 | K13 | Changed: ticket 7 moves the shared service parts first. |
 | K14 | Changed: "Модули / Modules", glossary entry in ticket 2. |
-| K15 | Changed: the old 157 split into the staff and Settings rights (D157), the bar (into D154); the device frame is fixed tonight as defects (S1, S3). "Who switches" is in D155. Numbers per the lead. |
+| K15 | Changed: the old 157 split into the staff and Settings rights (D157), the bar (into D161); the device frame is fixed tonight as defects (S1, S3). "Who switches" is in D155. Numbers per the lead. |
 | K16 | Changed: no group line; crumb names the venue, the title the screen. |
 | K17 | Changed, in ticket 5. |
 | K18 | Changed: the tapped entry is marked at once and a keyed `Suspense` per screen (the `loading.tsx` was dropped in the build, row 7). |
@@ -273,7 +273,7 @@ The lead assigned these numbers; their files are `docs/decisions/D154.md`–`D15
 | L4 | Changed. Glossary "Module" and "Screen" in this pull request; code says `module`; D155 and ticket 2's key (`venues.settings.modules`) match. Ticket 2's (c) word is left to its own grilling. |
 | L5 | Left to the copy pass, as Open question 2 says: the section and Tonight's view keep their names tonight. Recommend "Изпратени поръчки" for Tonight's view (the glossary's Sent order). |
 | L6 | Changed. Модули is the last card of Общи (ticket 2); "За гостите" is a card inside Поръчки (ticket 3). |
-| L7 | Changed. D154 and D156 say merging is the yes, each with a scene; D156 B is five entries; the index rows landed with the files. |
+| L7 | Changed. D161 and D156 say merging is the yes, each with a scene; D156 B is five entries; the index rows landed with the files. |
 | L8 | Changed. No state under the venue's name. |
 | L9 | Changed. Collapsed to icons, a rule separates the groups (the labels go), so each gear sits under its own module's icons; the tooltip and accessible name still say whose Settings. A different icon per module's Settings is ticket 5's to judge with the bottom bar. |
 | L10 | Changed. The device frame is the layout's (`sharedDeviceOf`, a context), so `/venues` shows no ☰ either; the crumb names the page's venue (a device may open any venue of its organisation today; ticket 8 keeps it to its own). Изход on a paired tablet ends its session: the tablet is no longer the bar tablet, and making it one again takes "Make this the bar tablet" today, the owner's code under D153. |

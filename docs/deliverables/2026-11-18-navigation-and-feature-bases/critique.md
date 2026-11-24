@@ -38,7 +38,7 @@ Independent read, 2026-11-19, of `../2026-11-18-navigation-and-feature-bases.md`
 
 **K14. The words.** "Feature base" is not in `GLOSSARY.md`; its interface word "Функции" sits beside "Функции за гостите" (`bg.json:795`). *Change:* "Модули / Modules" for the section, a glossary entry in the same change.
 
-**K15. The decisions.** D154, D155, D156 and D158 are the right asks. D157 bundles four things: the staff's entries (K11), the device's frame (S1 and S3 are defects, no decision), Settings' read (S4, its own ask) and the phone bar (belongs to D154). D155 should also ask whether the owner or Restro's team switches a base on (D122 §7 has that role; Square's are paid). Open question 1 is K5 and is Martin's. The numbers D154–D158 have no files and five lanes are numbering at once; `scripts/decisions.test.ts` reads citations. *Change:* call them N1–N5 until the lead assigns numbers.
+**K15. The decisions.** D161, D155, D156 and D158 are the right asks. D157 bundles four things: the staff's entries (K11), the device's frame (S1 and S3 are defects, no decision), Settings' read (S4, its own ask) and the phone bar (belongs to D161). D155 should also ask whether the owner or Restro's team switches a base on (D122 §7 has that role; Square's are paid). Open question 1 is K5 and is Martin's. The numbers 154 to 158 have no files and five lanes are numbering at once; `scripts/decisions.test.ts` reads citations. *Change:* call them N1–N5 until the lead assigns numbers.
 
 ## Polish
 

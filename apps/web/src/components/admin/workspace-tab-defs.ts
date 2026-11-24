@@ -1,5 +1,5 @@
 // The screens of a venue, declared once and kept in the URL as `?tab=…` (and `&section=…` for
-// Settings, D97). On a person's own sign-in the sidebar opens them (D154, venue-nav-defs.ts); a
+// Settings, D97). On a person's own sign-in the sidebar opens them (D161, venue-nav-defs.ts); a
 // shared device keeps them as one row of tabs (D122 §7). The Platform (PassportEdit.jsx) wrote the
 // tab list twice and let it drift; here a new screen is one entry. Each Settings section belongs to
 // one module (D156): the sidebar opens a module's first section and the page's row shows that

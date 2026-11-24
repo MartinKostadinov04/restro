@@ -25,11 +25,11 @@ A venue with no POS, whose menus Restro's users build and fully control. "By han
 _Avoid_: by-hand venue, Restro venue, manual venue
 
 **Module**:
-A part of what a venue does that it can have or not: Ordering, Reservations, later Song requests (D155, proposed). Each has its own group in the venue's sidebar, its screens, its own Settings and its rights (D154, D156). The menu is not a module: every venue has it. Interface: "Модул / Module"; code: `module`.
+A part of what a venue does that it can have or not: Ordering, Reservations, later Song requests (D155, proposed). Each has its own group in the venue's sidebar, its screens, its own Settings and its rights (D161, D156). The menu is not a module: every venue has it. Interface: "Модул / Module"; code: `module`.
 _Avoid_: feature base, add-on, feature (clashes with Guest feature)
 
 **Screen**:
-One destination of the admin, opened from the sidebar: the Studio, Tables & QR, Tonight, Reservations, a module's Settings (D154). A screen may have one row of views (Tonight › Log) or sections (Settings › Hours).
+One destination of the admin, opened from the sidebar: the Studio, Tables & QR, Tonight, Reservations, a module's Settings (D161). A screen may have one row of views (Tonight › Log) or sections (Settings › Hours).
 _Avoid_: tab (for a destination), page (a page is a route)
 
 **Venue state**:

@@ -1,7 +1,7 @@
 'use client'
 
 // The admin's frame: icon-collapse sidebar with, on a venue's page, the venue switcher and the
-// venue's own menu (D154), elsewhere the organisation's venues (D74); the organisation's Settings;
+// venue's own menu (D161), elsewhere the organisation's venues (D74); the organisation's Settings;
 // the organisation and the user menu in the footer. A shared device has no sidebar at all (its
 // layout leaves it out, D122 §7). Ported from the Platform's SidebarLayout.jsx
 // (134-224 menu, 226-332 footer). The Platform left a "Lookup" collapsible hidden in the menu and

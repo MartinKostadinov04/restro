@@ -88,7 +88,7 @@ async function snapshot(fileName: string, target: Page = page) {
   await target.screenshot({ path: path.join(dir, fileName) })
 }
 
-/** A venue in the sidebar's list, off a venue's page (on one, the switcher names it, D154). */
+/** A venue in the sidebar's list, off a venue's page (on one, the switcher names it, D161). */
 const sidebarItem = (target: Page, name: string) =>
   target.getByTestId('venue-nav-item').filter({ hasText: name })
 const switcherName = (target: Page) => target.getByTestId('venue-switcher-name')

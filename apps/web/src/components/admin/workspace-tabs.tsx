@@ -147,7 +147,7 @@ interface WorkspaceTabsProps {
   contents: Partial<Record<WorkspaceTabValue, ReactNode>>
   /**
    * A shared device: Tonight and Reservations only (RR-83). On a person's own sign-in the sidebar
-   * opens the venue's screens (D154) and this row is not drawn.
+   * opens the venue's screens (D161) and this row is not drawn.
    */
   sharedDevice?: boolean
   /** What the person holds: Reservations shows only with its key (#326). */
@@ -159,7 +159,7 @@ const isWorkspaceTabValue = (value: string): value is WorkspaceTabValue =>
 
 /**
  * The screens of a shared device's venue page (Tonight, Reservations), mirrored in the URL
- * (`?tab=tonight`); a person's own sign-in opens screens from the sidebar instead (D154). Ported
+ * (`?tab=tonight`); a person's own sign-in opens screens from the sidebar instead (D161). Ported
  * from the Platform's PassportEdit.jsx (27-75, 157-179) with its two defects fixed: the tab list is
  * declared once (workspace-tab-defs.ts), and the current tab is *derived* from the URL instead of
  * being set while rendering.

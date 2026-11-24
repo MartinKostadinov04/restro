@@ -1,4 +1,4 @@
-// The sidebar of a venue's page (D154), declared once: groups by what the venue does — its menu,
+// The sidebar of a venue's page (D161), declared once: groups by what the venue does — its menu,
 // its modules (ordering, reservations; D155) and the venue itself — each entry opening one of
 // today's addresses (`?tab=…&section=…`). Each module has its own "Settings" (D156). A new module is
 // one group here plus its screens. The page decides again who may open what: a missing entry is a

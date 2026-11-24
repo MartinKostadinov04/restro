@@ -45,7 +45,7 @@ const VENUES_PATH = '/venues'
  * SidebarLayout.jsx (337-371); the trail is passed by each page as props, because a layout does
  * not re-render when you move between its pages. A client component, so it reads the frame the
  * layout set (admin-frame.tsx): on a shared device there is no sidebar to toggle, and the device's
- * name on the right opens the language, theme and sign-out (D154).
+ * name on the right opens the language, theme and sign-out (D161).
  */
 export function AdminHeader({ trail = [], current }: AdminHeaderProps) {
   const t = useTranslations('nav')

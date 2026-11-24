@@ -21,10 +21,10 @@ Independent cold read, 2026-11-19, of the revised plan, its mockups (as source),
 **L6. The tickets break the plan's own "four at most" rule.** Ticket 2's Модули makes the Venue row five (`mock.js:188`). Ticket 3's "За гостите" makes Ordering's settings five. *Change:* Модули becomes the last card of Общи, and "За гостите" goes inside the Поръчки section. Write both into tickets 2 and 3.
 
 **L7. The decisions as asks.**
-- The PR builds decisions 154 and 156 A before Martin answers. Say so: merging is his yes, and a no closes the PR. Ask those two first; 155, 157 and 158 wait with their tickets.
+- The PR builds decisions 161 and 156 A before Martin answers. Say so: merging is his yes, and a no closes the PR. Ask those two first; 155, 157 and 158 wait with their tickets.
 - Open each ask with a scene, for example: "Monday you switch reservations off; three bookings exist for Saturday: refused."
 - Decision 156 B is misdescribed: five entries, not six (`mock.js:64`), and "a shared device cannot open" its settings holds under A too. B's real cost is one more tap and Tonight's live load first.
-- `D154.md`–`D158.md` exist untracked with no index rows, so `scripts/decisions.test.ts` (rule 2) fails CI unless the rows land in the same commit; the plan's "without the D" line is stale.
+- `D155.md`–`D158.md` and `D161.md` (then numbered 154 to 158) exist untracked with no index rows, so `scripts/decisions.test.ts` (rule 2) fails CI unless the rows land in the same commit; the plan's "without the D" line is stale.
 
 ## Polish
 

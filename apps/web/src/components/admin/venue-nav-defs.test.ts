@@ -1,4 +1,4 @@
-// The venue sidebar's entries (D154, D156): which a person is shown, where each goes, and which is
+// The venue sidebar's entries (D161, D156): which a person is shown, where each goes, and which is
 // open for an address. The page decides again; these tables are the sidebar's half.
 import { describe, expect, it } from 'vitest'
 

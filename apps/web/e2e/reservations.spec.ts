@@ -101,7 +101,7 @@ test.afterAll(async () => {
 test('the screen has its own module in the sidebar and opens on tonight, in arrival order', async () => {
   const { page } = owner
   await openReservations(page)
-  // Reservations is a module of its own (D154, D155): its screen and its Settings, after Ordering.
+  // Reservations is a module of its own (D161, D155): its screen and its Settings, after Ordering.
   await expect(page.getByTestId('venue-nav-group-reservations').locator('[data-nav]')).toHaveText([
     'Reservations',
     'Settings',
@@ -229,7 +229,7 @@ test('the sidebar holds every screen at the narrowest desktop, in Bulgarian, and
   browser,
 }) => {
   // The widest words (Bulgarian) at the narrowest desktop: the venue's screens are the sidebar's
-  // entries (D154), none pushes the page sideways.
+  // entries (D161), none pushes the page sideways.
   const context = await browser.newContext({ viewport: { width: 1024, height: 800 } })
   const page = await context.newPage()
   try {

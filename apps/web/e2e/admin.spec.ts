@@ -57,7 +57,7 @@ test('sign in, open a venue, switch tabs (the URL follows), switch language, sig
   // --- open the venue ------------------------------------------------------------------------
   await cards.first().getByRole('link', { name: 'Отвори' }).click()
   await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}$/)
-  // The sidebar names the venue (its switcher) and lists its screens by module (D154); the page's
+  // The sidebar names the venue (its switcher) and lists its screens by module (D161); the page's
   // heading names the screen. The Studio is open by default (its own spec tests it in depth).
   await expect(page.getByTestId('venue-switcher')).toContainText(VENUE_NAME)
   await expect(page.getByRole('heading', { name: 'Студио', level: 1 })).toBeVisible()

@@ -2,7 +2,7 @@
 
 // What the admin frame knows about this sign-in, for the parts a page draws itself (its top bar):
 // whether it is a shared device (D122 §7), which has no sidebar and whose name opens the language,
-// theme and sign-out (D154), and whether it is a staff-only sign-in (D141), which has no venues
+// theme and sign-out (D161), and whether it is a staff-only sign-in (D141), which has no venues
 // list to go back to. Set once by the admin layout.
 import { createContext, type ReactNode, useContext } from 'react'
 

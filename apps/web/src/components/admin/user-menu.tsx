@@ -50,7 +50,7 @@ function initialOf(name: string): string {
 
 /**
  * The language, the colour theme and sign-out: the user menu's items, shared by the sidebar's
- * footer and a shared device's top bar (D154), which has no sidebar.
+ * footer and a shared device's top bar (D161), which has no sidebar.
  */
 export function UserMenuItems() {
   const t = useTranslations('user')

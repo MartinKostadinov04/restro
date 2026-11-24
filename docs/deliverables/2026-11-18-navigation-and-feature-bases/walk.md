@@ -1,6 +1,6 @@
 # Lane 6 persona walk (PR #456), 2026-11-20
 
-Walked by two fresh Opus agents through Playwright on the lane database: the owner first, then the waiter, the door host and the shared tablet. Each was walked at 390 × 844 and 1280 × 800, in Bulgarian, and the owner in English at 1280 too. The navigation only (sidebar, phone sheet, top bar, moving between screens) was critiqued with design-critique, accessibility-review and ux-copy under `screen-review`'s overrides, and checked against the plan's Tonight's build, D154 and D156. Screenshots: `after/`; the before shots are in `before/`.
+Walked by two fresh Opus agents through Playwright on the lane database: the owner first, then the waiter, the door host and the shared tablet. Each was walked at 390 × 844 and 1280 × 800, in Bulgarian, and the owner in English at 1280 too. The navigation only (sidebar, phone sheet, top bar, moving between screens) was critiqued with design-critique, accessibility-review and ux-copy under `screen-review`'s overrides, and checked against the plan's Tonight's build, D161 and D156. Screenshots: `after/`; the before shots are in `before/`.
 
 Every persona reaches every screen it may open. There is no dead end on a personal sign-in, and nothing was found twice on the page after d4479361.
 
@@ -17,9 +17,9 @@ Every persona reaches every screen it may open. There is no dead end on a person
 | S7 | bug | Reservations' 5 s refresh is sometimes aborted after arriving through the sidebar; may be a dev-server effect | waiter | for Martin's pick (check CI build) |
 | S8 | plan C4 | A staff-only sign-in off its venue still saw All venues | waiter, host | fixed in this PR |
 | S9 | Clean rule 2 | The screen's name appears twice (the title, then the screen's own heading) | Reservations, Tonight, Venue › General | for Martin's pick |
-| S10 | D154 | The phone's menu button was the panel icon, not ☰ | top bar, 390 | fixed in this PR |
+| S10 | D161 | The phone's menu button was the panel icon, not ☰ | top bar, 390 | fixed in this PR |
 | S11 | copy | Waiter and host: settings screens with nothing they can change say nothing about it | staff | for Martin's pick; or D157 first |
-| S12 | D154 | The tablet shows the venue's name twice and three rows of choices on Tonight | tablet, 390 | for Martin's pick |
+| S12 | D161 | The tablet shows the venue's name twice and three rows of choices on Tonight | tablet, 390 | for Martin's pick |
 | S13 | copy rule 8 | "Поръчки" names the sidebar group, a settings section and a view of Tonight | all | for Martin's pick ("Правила за поръчки") |
 | S14 | 1.4.11 | The open entry's background is 1.05:1 against the sidebar | sidebar | for Martin's pick |
 | S15 | critique | Four identical "Настройки" entries; D156 A accepts this | sidebar, 390 | answered by D156 (A or B) |

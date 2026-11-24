@@ -10,7 +10,7 @@ Kept current by the lane 6 session so a restart reuses what exists.
 ## Done since
 - Step 0 code check: `docs/reviews/2026-11-18-screen-round/lane6-navigation/step0-code.md`.
 - Step 1 plan written (Fable, before the model change), first critique `critique.md` (Fable), plan revised by a fresh Opus planner (Martin 11-19: no more Fable).
-- Step 3: D154–D158 written as proposed and indexed.
+- Step 3: D155–D158 and D161 written as proposed and indexed.
 
 - Second critique `critique-2.md` (Opus); answers L1–L10 in the plan.
 - Step 4 build: PR #456 into `sr/foundation` (commit 783eda35).

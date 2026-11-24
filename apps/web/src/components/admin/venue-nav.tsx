@@ -1,6 +1,6 @@
 'use client'
 
-// The sidebar's venue part (D154). On a venue's page: the venue switcher in the sidebar's header
+// The sidebar's venue part (D161). On a venue's page: the venue switcher in the sidebar's header
 // and the venue's own menu, grouped by what the venue does (venue-nav-defs.ts). Elsewhere (the
 // venues overview, the organisation's Settings): one item per venue, the overview and "New venue"
 // for owners and admins, as before (D74). Ported from the item list of the Platform's
@@ -152,7 +152,7 @@ interface VenueSwitcherProps {
 }
 
 /**
- * The open venue's name at the top of the sidebar, which switches venue (D154): the other venues
+ * The open venue's name at the top of the sidebar, which switches venue (D161): the other venues
  * on the same screen, all venues, and a new venue for owners and admins.
  */
 export function VenueSwitcher({

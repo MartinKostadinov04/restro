@@ -113,7 +113,7 @@ test('a staff-only sign-in lands on the first screen its role allows (D141)', as
   const { page } = waiter
   await page.goto('/venues')
   // Its role works tonight's reservations, so the night's list is the first screen it may open;
-  // Tonight is one entry away in the sidebar, under Ordering (D154).
+  // Tonight is one entry away in the sidebar, under Ordering (D161).
   await expect(page).toHaveURL(/\/venues\/vn_[^/?]+\?tab=reservations/)
   await expect(page.locator('[data-nav="reservations"]')).toHaveAttribute('aria-current', 'page')
   // A staff-only sign-in works at one venue: its name, nothing to switch to.

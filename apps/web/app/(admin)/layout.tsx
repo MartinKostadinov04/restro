@@ -34,7 +34,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
 
   // A shared device works its venue's night and nothing else (D122 §7): no sidebar, so no venue
   // list, no organisation switcher and no organisation Settings (lane 6 step 0, S1, S3, C2). Its
-  // top bar carries its name, which opens the language, theme and sign-out (D154).
+  // top bar carries its name, which opens the language, theme and sign-out (D161).
   if (device !== null) {
     return (
       <AdminFrameProvider value={{ device: { name: device.name }, staffOnly: true }}>

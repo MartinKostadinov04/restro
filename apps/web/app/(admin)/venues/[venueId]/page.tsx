@@ -46,7 +46,7 @@ import { TablesTab } from '@/tables/tables-tab'
 import { TonightSkeleton } from '@/tonight/tonight-skeleton'
 import { TonightTab } from '@/tonight/tonight-tab'
 
-/** The open screen's name: the page's title and the browser tab's (D154, WCAG 2.4.2). */
+/** The open screen's name: the page's title and the browser tab's (D161, WCAG 2.4.2). */
 async function screenNameOf(tab: WorkspaceTabValue, section: SettingsSectionValue) {
   const t = await getTranslations()
   return tab === 'settings'
@@ -153,7 +153,7 @@ export default async function VenueWorkspacePage({
 
   const tNav = await getTranslations('nav')
 
-  // The open screen's name (the venue is in the breadcrumb and the sidebar's switcher, D154) and
+  // The open screen's name (the venue is in the breadcrumb and the sidebar's switcher, D161) and
   // the guest address `/m/<organisation>/<venue>` (D84). A shared device has no sidebar (Tonight,
   // and Reservations where it may): its title stays the venue's name.
   const title = (
@@ -404,7 +404,7 @@ export default async function VenueWorkspacePage({
             contents={{ tonight: screens.tonight, reservations: screens.reservations }}
           />
         ) : (
-          // On a person's own sign-in the sidebar opens the screens (D154): only the open one is
+          // On a person's own sign-in the sidebar opens the screens (D161): only the open one is
           // drawn, its skeleton shown while it streams in. No `loading.tsx` above it: that answers
           // a deleted venue with 200, not 404, and leaves a hidden copy of the screen (CI, 11-19).
           <div key={openTab}>{screens[openTab]}</div>
