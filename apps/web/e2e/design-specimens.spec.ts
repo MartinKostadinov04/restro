@@ -2,7 +2,7 @@ import { type BrowserContext, expect, type Page, test } from '@playwright/test'
 
 import { e2eSealEnvironment } from '../../worker/src/e2e-seal-keys'
 import { runScriptWith } from './global-setup'
-import { ADMIN_PASSWORD } from './support'
+import { ADMIN_PASSWORD, TONIGHT_PIN_PEPPER } from './support'
 
 // The speed of the Advanced panel's option pictures (D159) on the walk's demo club
 // (`db:seed:demo`: a Bulgarian club menu with photos, a design, a night in progress), on a production
@@ -43,11 +43,18 @@ async function signIn(target: Page, email: string) {
 
 /**
  * The demo club's venue, from the seed's summary line (its ids are drawn at random). The seed seals
- * its table codes, so it needs a public key: the test process has none (only the servers get the
- * run's, playwright.config.ts), and this spec never opens a table code, so a throwaway pair does.
+ * its table codes and gives its staff PINs, so it needs a public key and the PIN pepper: the test
+ * process has neither (only the servers get them, playwright.config.ts). This spec never opens a
+ * table code, so a throwaway pair does; the pepper is the servers' own.
  */
 function seedDemo(): string {
-  const out = runScriptWith(e2eSealEnvironment().web, './scripts/seed-demo.ts')
+  const out = runScriptWith(
+    {
+      ...e2eSealEnvironment().web,
+      STAFF_PIN_PEPPER: process.env.STAFF_PIN_PEPPER ?? TONIGHT_PIN_PEPPER,
+    },
+    './scripts/seed-demo.ts',
+  )
   for (const line of out.split('\n')) {
     if (!line.startsWith('{')) continue
     const parsed = JSON.parse(line) as { event?: string; venueId?: string }
