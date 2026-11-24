@@ -449,6 +449,43 @@ export interface TableBillView {
   readonly parts: readonly TableBillPartView[]
   /** The lines paid in the app in this sitting, greyed under "Paid in the app" on every phone. */
   readonly paidLines: readonly PaidLineView[]
+  /**
+   * The linked group's bill where the table is in one (#319, D160 §1): every member table's lines
+   * under its own heading and one total for the party. The fields above stay this table's own,
+   * what its Pay reads: each table still pays its own. Absent where the table is in no group.
+   */
+  readonly group?: GroupBillView
+}
+
+/** One member table of a linked group's bill, under its own heading. Nothing names a person. */
+export interface GroupTableView {
+  /** The table's name. */
+  readonly label: string
+  /** The table this phone is at. */
+  readonly own: boolean
+  /**
+   * False when the table's latest reading failed or none was made yet (rule 6): its last lines
+   * are drawn marked as updating.
+   */
+  readonly complete: boolean
+  readonly totalMinor: number
+  readonly paidMinor: number
+  /** "Left to pay" at this table. */
+  readonly owedMinor: number
+  readonly parts: readonly TableBillPartView[]
+  readonly paidLines: readonly PaidLineView[]
+}
+
+/** A linked group's bill: grouped by table, one total (D139: nothing attributed to a person). */
+export interface GroupBillView {
+  /** False while a member table's bill is not known well: the total is drawn as not final. */
+  readonly complete: boolean
+  readonly totalMinor: number
+  readonly paidMinor: number
+  /** "Left to pay" for the whole party. */
+  readonly owedMinor: number
+  /** Every member table, this one included, in the order of their names. */
+  readonly tables: readonly GroupTableView[]
 }
 
 /**

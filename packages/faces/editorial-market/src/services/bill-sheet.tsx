@@ -5,8 +5,20 @@
 // each line), the lines already paid in the app, and Pay. The face never adds a round of its own (a
 // round the guest just sent appears here when the host's state has it), and a guest round that the
 // state lists twice is drawn once.
+//
+// A table in a linked group (#319, D160 §1) draws the group's bill: every member table's lines under
+// its own heading, "Your table" on this phone's, a table whose reading failed marked as updating
+// (rule 6), and one total for the party, said to be not final while a table is updating. Nothing
+// names a person (D139). Pay still pays this table's own bill: paying across tables is its own
+// ticket.
 
-import { lineNameText, type PayingStrings, paySignedMoney } from '@restro/shell'
+import {
+  type GroupTableView,
+  lineNameText,
+  type PayingStrings,
+  paySignedMoney,
+  type TableBillPartView,
+} from '@restro/shell'
 import { useEffect, useState } from 'react'
 
 import { Text } from '../parts'
@@ -45,6 +57,77 @@ function ReadingAge({
   )
 }
 
+/** A table's POS lines, a line in a payment that is not final greyed "Being paid". */
+function TableLines({
+  parts,
+  money,
+}: {
+  readonly parts: readonly TableBillPartView[]
+  readonly money: (minor: number) => string
+}) {
+  const { words, locale } = useServicesRequired()
+  const w = words.paying
+  return (
+    <ul className="ro-lines" data-slot="bill.lines" data-design-part="bill.lines">
+      {parts.flatMap((part) =>
+        part.lines.map((line) => {
+          const greyed = part.beingPaid || line.beingPaid
+          return (
+            <li
+              key={line.id}
+              data-being-paid={greyed ? '' : undefined}
+              data-discount={line.amountMinor < 0 ? '' : undefined}
+            >
+              <span>
+                {lineNameText(line.name, locale, words.otherItem)}
+                {mark(line.quantity)} · {money(line.amountMinor)}
+                {greyed ? ` · ${w.beingPaid}` : ''}
+              </span>
+            </li>
+          )
+        }),
+      )}
+    </ul>
+  )
+}
+
+/**
+ * One member table of the group's bill under its own heading (#319): its lines, what is left to
+ * pay there and its lines paid in the app. A table whose bill is not known well now keeps its last
+ * lines, marked as updating (rule 6, D160 log 1.8).
+ */
+function GroupTable({
+  table,
+  money,
+}: {
+  readonly table: GroupTableView
+  readonly money: (minor: number) => string
+}) {
+  const { words, guest } = useServicesRequired()
+  const w = words.paying
+  const empty = table.parts.every((part) => part.lines.length === 0)
+  return (
+    <section
+      className="ro-round"
+      data-slot="bill.group.table"
+      data-own={table.own ? '' : undefined}
+      data-updating={table.complete ? undefined : ''}
+    >
+      <header>
+        <span>{guest.table(table.label)}</span>
+        {table.own ? <em>{w.yourTable}</em> : null}
+        {table.complete ? null : <em data-slot="bill.group.updating">{w.tableUpdating}</em>}
+      </header>
+      {empty ? null : <TableLines parts={table.parts} money={money} />}
+      <p className="ro-sum">
+        <span>{w.leftToPay}</span>
+        <b>{money(table.owedMinor)}</b>
+      </p>
+      <PaidInApp lines={table.paidLines} money={money} />
+    </section>
+  )
+}
+
 export function BillSheet() {
   const o = useServicesRequired()
   const { words, state, locale, features } = o
@@ -71,6 +154,8 @@ export function BillSheet() {
     rounds.length > 0
       ? []
       : (table?.parts.flatMap((part) => part.lines.map((line) => ({ part, line }))) ?? [])
+  // A linked group's bill, drawn by table in place of this table's lines alone (#319).
+  const group = rounds.length > 0 ? undefined : table?.group
   // What the table owes, as the host states it; nothing when the bill is empty or settled.
   const owed =
     table !== null && table.owedMinor > 0
@@ -99,7 +184,13 @@ export function BillSheet() {
       </div>
     )
   }
-  const empty = tableLines.length === 0 && rounds.length === 0 && paidLines.length === 0
+  const empty =
+    group === undefined
+      ? tableLines.length === 0 && rounds.length === 0 && paidLines.length === 0
+      : group.tables.every(
+          (member) =>
+            member.paidLines.length === 0 && member.parts.every((part) => part.lines.length === 0),
+        )
   return (
     <div className="ro-sheet" data-design-part="bill">
       <p className="rm-overlay-intro">{words.tabIntro}</p>
@@ -125,26 +216,27 @@ export function BillSheet() {
         </>
       )}
       {empty ? <p className="ro-empty">{table === null ? words.emptyTab : w.emptyBill}</p> : null}
-      {tableLines.length === 0 ? null : (
+      {group === undefined || empty ? null : (
+        <section data-slot="bill.group">
+          <h4 className="ro-h">{w.groupTitle}</h4>
+          {group.tables.map((member, index) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: a member table carries no id (rule 3)
+            <GroupTable key={index} table={member} money={money} />
+          ))}
+          <div className="ro-sum is-big" data-slot="bill.group.owed" data-design-part="bill.total">
+            <span>{w.groupLeftToPay}</span>
+            <b>{money(group.owedMinor)}</b>
+          </div>
+          {group.complete ? null : (
+            <p className="ro-allergy" data-slot="bill.group.not_final">
+              {w.groupNotFinal}
+            </p>
+          )}
+        </section>
+      )}
+      {group !== undefined || tableLines.length === 0 ? null : (
         <>
-          <ul className="ro-lines" data-slot="bill.lines" data-design-part="bill.lines">
-            {tableLines.map(({ part, line }) => {
-              const greyed = part.beingPaid || line.beingPaid
-              return (
-                <li
-                  key={line.id}
-                  data-being-paid={greyed ? '' : undefined}
-                  data-discount={line.amountMinor < 0 ? '' : undefined}
-                >
-                  <span>
-                    {lineNameText(line.name, locale, words.otherItem)}
-                    {mark(line.quantity)} · {money(line.amountMinor)}
-                    {greyed ? ` · ${w.beingPaid}` : ''}
-                  </span>
-                </li>
-              )
-            })}
-          </ul>
+          <TableLines parts={table?.parts ?? []} money={money} />
           <p className="ro-sum" data-slot="bill.owed">
             <span>{w.leftToPay}</span>
             <b>{money(table?.owedMinor ?? 0)}</b>
@@ -193,8 +285,9 @@ export function BillSheet() {
           </div>
         </>
       )}
-      {table == null ? null : (
-        // The lines paid in the app in this sitting stay on the bill, greyed (D127 1.2).
+      {table == null || group !== undefined ? null : (
+        // The lines paid in the app in this sitting stay on the bill, greyed (D127 1.2); a group
+        // draws each table's under its own heading.
         <PaidInApp lines={paidLines} money={money} />
       )}
       {features.pay && owed !== null ? (

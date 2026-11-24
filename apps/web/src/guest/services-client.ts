@@ -90,6 +90,7 @@ import {
   type SentOrderView,
   type ServiceState,
   TABLE_AUTH_SCHEME,
+  type TableBillPartView,
   type TableBillView,
   TURNSTILE_PAY_ACTION,
   TURNSTILE_SEND_ACTION,
@@ -280,21 +281,46 @@ function tableBillOf(bill: GuestTableState['bill'], at: number, now: number): Ta
     totalMinor: bill.totalMinor,
     paidMinor: bill.paidMinor,
     owedMinor: bill.owedMinor,
-    parts: bill.parts.map((part) => ({
-      id: part.id,
-      beingPaid: part.beingPaid,
-      totalMinor: part.totalMinor,
-      paidMinor: part.paidMinor,
-      lines: part.lines.map((line) => ({
-        id: line.id,
-        name: line.name,
-        quantity: line.quantity,
-        amountMinor: line.amountMinor,
-        beingPaid: line.beingPaid,
-      })),
-    })),
+    parts: partsOf(bill.parts),
     paidLines: bill.paidLines,
+    ...(bill.group === undefined
+      ? {}
+      : {
+          group: {
+            complete: bill.group.complete,
+            totalMinor: bill.group.totalMinor,
+            paidMinor: bill.group.paidMinor,
+            owedMinor: bill.group.owedMinor,
+            tables: bill.group.tables.map((table) => ({
+              label: table.label,
+              own: table.own,
+              complete: table.complete,
+              totalMinor: table.totalMinor,
+              paidMinor: table.paidMinor,
+              owedMinor: table.owedMinor,
+              parts: partsOf(table.parts),
+              paidLines: table.paidLines,
+            })),
+          },
+        }),
   }
+}
+
+/** A table's POS bills as the face draws them. */
+function partsOf(parts: NonNullable<GuestTableState['bill']>['parts']): TableBillPartView[] {
+  return parts.map((part) => ({
+    id: part.id,
+    beingPaid: part.beingPaid,
+    totalMinor: part.totalMinor,
+    paidMinor: part.paidMinor,
+    lines: part.lines.map((line) => ({
+      id: line.id,
+      name: line.name,
+      quantity: line.quantity,
+      amountMinor: line.amountMinor,
+      beingPaid: line.beingPaid,
+    })),
+  }))
 }
 
 /** The paying phone's payment as the face sees it: the provider's form values stay behind. */
@@ -901,7 +927,8 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
             answer.unchanged &&
             server !== null &&
             (answer.location !== server.location.state ||
-              answer.night !== server.ordering.night.state)
+              answer.night !== server.ordering.night.state ||
+              answer.groupKey !== server.groupKey)
           ) {
             whole = true
             wait = 0

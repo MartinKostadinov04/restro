@@ -285,6 +285,16 @@ export interface PayingStrings {
   readonly roundPending: string
   readonly beingPaid: string
   readonly leftToPay: string
+  /**
+   * A linked group's bill (#319, D160 §1): its title, the mark on this phone's own table, the mark
+   * on a table whose reading failed (rule 6), the party's one total, and the line saying that total
+   * is not final while a table is updating.
+   */
+  readonly groupTitle: string
+  readonly yourTable: string
+  readonly tableUpdating: string
+  readonly groupLeftToPay: string
+  readonly groupNotFinal: string
   readonly emptyBill: string
   readonly payOpen: string
   readonly askWaiterToPay: string
@@ -685,6 +695,11 @@ const EN: Strings = {
       roundPending: 'The latest order is still reaching your bill',
       beingPaid: 'Being paid',
       leftToPay: 'Left to pay',
+      groupTitle: 'Your group’s bill',
+      yourTable: 'Your table',
+      tableUpdating: 'Updating',
+      groupLeftToPay: 'Left to pay, whole group',
+      groupNotFinal: 'Not final: a table is still updating',
       emptyBill: 'Nothing on your bill yet',
       payOpen: 'Pay',
       askWaiterToPay: 'Ask your waiter to pay.',
@@ -1058,6 +1073,11 @@ const BG: Strings = {
       roundPending: 'Последната поръчка още влиза в сметката',
       beingPaid: 'Плаща се',
       leftToPay: 'За плащане',
+      groupTitle: 'Сметката на групата',
+      yourTable: 'Вашата маса',
+      tableUpdating: 'Обновява се',
+      groupLeftToPay: 'За плащане, цялата група',
+      groupNotFinal: 'Не е окончателна: една маса още се обновява',
       emptyBill: 'Все още няма нищо в сметката',
       payOpen: 'Плати',
       askWaiterToPay: 'За да платите, попитайте сервитьора.',

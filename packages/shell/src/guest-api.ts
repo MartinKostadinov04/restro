@@ -95,6 +95,48 @@ const OrderLineFields = {
   note: z.string().max(SERVICE_LIMITS.note),
 }
 
+/** The most member tables a linked group's bill carries: a party on more is very unusual. */
+export const GROUP_TABLES_MAX = 50
+
+/** A table's POS bills as a phone sees them. */
+const BillPartsSchema = z
+  .array(
+    z.strictObject({
+      id: z.string().min(1).max(64),
+      beingPaid: z.boolean(),
+      totalMinor: minor,
+      paidMinor: minor,
+      lines: z
+        .array(
+          z.strictObject({
+            id: z.string().min(1).max(64),
+            /** Our item's name; null is "Other item", worded by the shell. */
+            name: LocalizedTextSchema.nullable(),
+            quantity: z.string().max(32),
+            amountMinor: minor,
+            /** In a payment that isn't final (D127 2.4): no payer, amount or timer. */
+            beingPaid: z.boolean(),
+          }),
+        )
+        .max(500),
+    }),
+  )
+  .max(50)
+
+/** The lines paid in the app in a sitting (D127 1.2): never who paid. */
+const PaidLinesSchema = z
+  .array(
+    z.strictObject({
+      /** The line's name per language; null is "Other item", worded by the shell. */
+      name: LocalizedTextSchema.nullable(),
+      quantity: z.string().max(32),
+      amountMinor: minor,
+      /** Restro's own refund of the line (148): being sent, refunded, or did not go through. */
+      refund: z.enum(['sending', 'refunded', 'failed']).optional(),
+    }),
+  )
+  .max(PAID_LINES_MAX)
+
 /** The table's state as a phone may see it. */
 export const GuestTableStateSchema = z.strictObject({
   unchanged: z.literal(false),
@@ -230,6 +272,11 @@ export const GuestTableStateSchema = z.strictObject({
       calledAgoSeconds: seconds,
     })
     .nullable(),
+  /**
+   * The key of the table's linked group (#319): it changes whenever the group's bill may have, and
+   * is 0 where the table is in no group. A phone holding another key asks for the whole state.
+   */
+  groupKey: z.int().nonnegative(),
   bill: z
     .strictObject({
       readAgoSeconds: seconds,
@@ -238,42 +285,41 @@ export const GuestTableStateSchema = z.strictObject({
       totalMinor: minor,
       paidMinor: minor,
       owedMinor: minor,
-      parts: z
-        .array(
-          z.strictObject({
-            id: z.string().min(1).max(64),
-            beingPaid: z.boolean(),
-            totalMinor: minor,
-            paidMinor: minor,
-            lines: z
-              .array(
-                z.strictObject({
-                  id: z.string().min(1).max(64),
-                  /** Our item's name; null is "Other item", worded by the shell. */
-                  name: LocalizedTextSchema.nullable(),
-                  quantity: z.string().max(32),
-                  amountMinor: minor,
-                  /** In a payment that isn't final (D127 2.4): no payer, amount or timer. */
-                  beingPaid: z.boolean(),
-                }),
-              )
-              .max(500),
-          }),
-        )
-        .max(50),
+      parts: BillPartsSchema,
       /** The lines paid in the app in this sitting (D127 1.2): never who paid. */
-      paidLines: z
-        .array(
-          z.strictObject({
-            /** The line's name per language; null is "Other item", worded by the shell. */
-            name: LocalizedTextSchema.nullable(),
-            quantity: z.string().max(32),
-            amountMinor: minor,
-            /** Restro's own refund of the line (148): being sent, refunded, or did not go through. */
-            refund: z.enum(['sending', 'refunded', 'failed']).optional(),
-          }),
-        )
-        .max(PAID_LINES_MAX),
+      paidLines: PaidLinesSchema,
+      /**
+       * The linked group's bill where the table is in one (#319, D160 §1): every member table's
+       * lines under its own heading and one total. The fields above stay this table's own, what
+       * its Pay reads. Absent where the table is in no group.
+       */
+      group: z
+        .strictObject({
+          /** False while a member table's bill is not known well: the total is not final. */
+          complete: z.boolean(),
+          totalMinor: minor,
+          paidMinor: minor,
+          owedMinor: minor,
+          tables: z
+            .array(
+              z.strictObject({
+                label: z.string().max(64),
+                /** The table this phone is at. */
+                own: z.boolean(),
+                /** False when its latest reading failed or none was made: shown as updating. */
+                complete: z.boolean(),
+                readAgoSeconds: seconds.nullable(),
+                totalMinor: minor,
+                paidMinor: minor,
+                owedMinor: minor,
+                parts: BillPartsSchema,
+                paidLines: PaidLinesSchema,
+              }),
+            )
+            .min(2)
+            .max(GROUP_TABLES_MAX),
+        })
+        .optional(),
     })
     .nullable(),
 })
@@ -290,6 +336,8 @@ export const GuestUnchangedSchema = z.strictObject({
   location: z.enum(GUEST_LOCATION_STATES),
   /** Likewise for the night: time alone changes it (#82). */
   night: z.enum(NIGHT_STATES),
+  /** Likewise for the linked group (#319): another member table's change leaves this version. */
+  groupKey: z.int().nonnegative(),
 })
 
 /** What `GET /api/guest/state` answers with 200. */

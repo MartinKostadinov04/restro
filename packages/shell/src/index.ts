@@ -238,6 +238,8 @@ export {
   type BillView,
   type CommandResult,
   EMPTY_SERVICE_STATE,
+  type GroupBillView,
+  type GroupTableView,
   GUEST_REFUSAL_CODES,
   type GuestCommand,
   GuestCommandSchema,
