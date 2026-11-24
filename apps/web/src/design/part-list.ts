@@ -10,7 +10,6 @@ import {
   canonicalJson,
   DESIGN_PAGES,
   type DesignChoiceOption,
-  type DesignOption,
   type DesignPage,
   type DesignValues,
   designLayoutOf,
@@ -19,7 +18,9 @@ import {
   type StyleValues,
 } from '@restro/core'
 
-import { type PanelMode, valueIn } from './advanced-model'
+import type { AdminLocale } from '@/i18n/locales'
+
+import { optionsOfPage, type PanelMode, valueIn } from './advanced-model'
 import { type DesignDraft, valuesOfStyle } from './design-draft'
 
 /** The parts that are the panel's own rows, not pages of the contract. */
@@ -102,20 +103,6 @@ export function partAcross(
   return null
 }
 
-/** General's options that are rows of their own in Advanced, so General does not repeat them. */
-const OWN_ROW_OPTIONS: ReadonlySet<string> = new Set([
-  'style',
-  'colours',
-  'body_font',
-  'heading_font',
-])
-
-/** The options a part page shows: every option of the page, but General's own rows (D159). */
-export function optionsOfPage(page: DesignPage): readonly DesignOption[] {
-  if (page.id !== 'general') return page.options
-  return page.options.filter((option) => !OWN_ROW_OPTIONS.has(option.id))
-}
-
 // --- Summaries -----------------------------------------------------------------------------------
 
 /** The word of an option's value in the draft, in the panel's language; null for a value it lacks. */
@@ -123,7 +110,7 @@ function wordOf(
   option: DesignChoiceOption,
   values: DesignValues,
   pageId: string,
-  locale: 'bg' | 'en',
+  locale: AdminLocale,
 ): string | null {
   const id = valueIn(values, pageId, option.id)
   const value = option.values.find((entry) => entry.id === id)
@@ -131,7 +118,7 @@ function wordOf(
 }
 
 /** A part page's summary: the value words of its first two options, joined by " · ". */
-export function pageSummaryOf(page: DesignPage, values: DesignValues, locale: 'bg' | 'en'): string {
+export function pageSummaryOf(page: DesignPage, values: DesignValues, locale: AdminLocale): string {
   return optionsOfPage(page)
     .filter((option): option is DesignChoiceOption => option.kind === 'choice')
     .slice(0, 2)
@@ -161,7 +148,7 @@ export interface NamedStyles {
 }
 
 /** The name of a premade Style, from the contract's Style option. */
-function premadeName(id: string, locale: 'bg' | 'en', pages: readonly DesignPage[]): string {
+function premadeName(id: string, locale: AdminLocale, pages: readonly DesignPage[]): string {
   const option = pages
     .find((page) => page.id === 'general')
     ?.options.find((entry) => entry.kind === 'style')
@@ -177,7 +164,7 @@ function premadeName(id: string, locale: 'bg' | 'en', pages: readonly DesignPage
 export function styleSummaryOf(
   draft: Pick<DesignDraft, 'style' | 'values' | 'picked'>,
   styles: NamedStyles,
-  locale: 'bg' | 'en',
+  locale: AdminLocale,
   pages: readonly DesignPage[] = DESIGN_PAGES,
 ): StyleSummary {
   const { picked, values } = draft
@@ -212,7 +199,7 @@ export interface FontSummary {
 
 export function fontSummaryOf(
   values: DesignValues,
-  locale: 'bg' | 'en',
+  locale: AdminLocale,
   pages: readonly DesignPage[] = DESIGN_PAGES,
 ): FontSummary {
   const general = pages.find((page) => page.id === 'general')

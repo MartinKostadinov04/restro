@@ -20,13 +20,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DesignView } from '@/server/design/service'
 import { MESSAGES, renderWithIntl } from '@/test-utils'
 
-import { pageOfTap, shownValues, tilePlanOf } from './advanced-model'
+import { optionsOfPage, pageOfTap, shownValues, tilePlanOf } from './advanced-model'
 import { AdvancedPanel } from './advanced-panel'
 import { draftOf } from './design-draft'
 import { DesignPage as Page } from './design-page'
 import { useTileContent } from './option-tiles'
-import { optionsOfPage, partListOf } from './part-list'
-import { PartList } from './part-rows'
+import { partListOf } from './part-list'
+import { PartRows } from './part-rows'
 import { specimenOf } from './specimen'
 
 const actions = vi.hoisted(() => ({
@@ -474,7 +474,7 @@ describe('the panel is driven by the contract file', () => {
     }
     render(
       <NextIntlClientProvider locale="en" messages={MESSAGES.en}>
-        <PartList
+        <PartRows
           list={partListOf('advanced', [...DESIGN_PAGES, planted])}
           draft={draftOf(SAVED)}
           styles={{ saved: [], venues: [] }}

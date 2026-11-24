@@ -741,10 +741,10 @@ describe('the list of parts (D159)', () => {
     expect(openPart()).toBe('items')
     expect(advancedPressed()).toBe('true')
     expect(screen.getByTestId('design-part-title').textContent).toBe('Items')
-    // Back from a part a link opened takes it off the address and stays on the page.
+    // Back from a part a link opened returns to the list under it and stays on the page.
     await userEvent.click(screen.getByTestId('design-part-back'))
     expect(screen.getByTestId('design-part-list')).toBeTruthy()
-    expect(window.location.search).toBe('')
+    await waitFor(() => expect(window.location.search).toBe(''))
     cleanup()
 
     address.part = 'layout'
@@ -757,6 +757,25 @@ describe('the list of parts (D159)', () => {
     setup()
     expect(openPart()).toBeNull()
     expect(screen.getByTestId('design-part-list')).toBeTruthy()
+  })
+
+  it("a part a link opened has the list under it: the browser's Back returns to the list", async () => {
+    address.part = 'fonts'
+    window.history.replaceState(null, '', '/?part=fonts')
+    setup()
+    expect(openPart()).toBe('fonts')
+    act(() => window.history.back())
+    await waitFor(() => expect(openPart()).toBeNull())
+    expect(window.location.search).toBe('')
+    expect(document.activeElement).toBe(row('fonts'))
+  })
+
+  it('names the open part by its title', async () => {
+    setup()
+    await userEvent.click(row('fonts'))
+    expect(screen.getByRole('region', { name: 'Fonts' })).toBe(
+      screen.getByTestId('design-part-page'),
+    )
   })
 
   it('Simple and Advanced keep the open part where the other level has it, else the list', async () => {

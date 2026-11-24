@@ -16,6 +16,7 @@ import { type ReactNode, type Ref, useLayoutEffect, useRef, useState } from 'rea
 
 import { Button } from '@/components/ui/button'
 import { FONT_STACKS } from '@/fonts'
+import type { AdminLocale } from '@/i18n/locales'
 import { cn } from '@/lib/utils'
 
 import type { DesignDraft } from './design-draft'
@@ -26,7 +27,7 @@ import {
   layoutSummaryOf,
   type NamedStyles,
   type OwnPartId,
-  type PartList as PartListData,
+  type PartList,
   pageSummaryOf,
   styleSummaryOf,
 } from './part-list'
@@ -75,10 +76,12 @@ export function Pane({ enter, children }: { enter: PaneEnter; children: ReactNod
 /** The header of an open part: ‹ Back to the list, and the part's title, which takes the focus. */
 export function PartHeader({
   title,
+  titleId,
   titleRef,
   onBack,
 }: {
   title: string
+  titleId: string
   titleRef: Ref<HTMLHeadingElement>
   onBack: () => void
 }) {
@@ -98,6 +101,7 @@ export function PartHeader({
       </Button>
       <h2
         ref={titleRef}
+        id={titleId}
         tabIndex={-1}
         className="min-w-0 scroll-mt-24 text-base font-semibold outline-none"
         data-testid="design-part-title"
@@ -165,7 +169,7 @@ function Dot({ colour }: { colour: string }) {
 }
 
 /** The list of parts for a level, with every row's summary worked out from the draft. */
-export function PartList({
+export function PartRows({
   list,
   draft,
   styles,
@@ -173,10 +177,10 @@ export function PartList({
   onOpen,
   rowRef,
 }: {
-  list: PartListData
+  list: PartList
   draft: Pick<DesignDraft, 'style' | 'values' | 'picked' | 'look' | 'logo'>
   styles: NamedStyles
-  locale: 'bg' | 'en'
+  locale: AdminLocale
   onOpen: (id: string) => void
   /** Where each row is kept, so going back focuses the row it came from. */
   rowRef: (id: string) => (node: HTMLButtonElement | null) => void

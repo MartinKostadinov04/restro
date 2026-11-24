@@ -10,6 +10,7 @@ import {
   DESIGN_MARKER_PAGES,
   DESIGN_PAGES,
   type DesignChoiceOption,
+  type DesignOption,
   type DesignPage,
   type DesignPageId,
   type DesignValues,
@@ -121,6 +122,20 @@ export function rowStateOf(values: DesignValues, pageId: string, optionId: strin
     }
   }
   return FREE
+}
+
+/** General's options that are rows of their own in Advanced, so General does not repeat them. */
+const OWN_ROW_OPTIONS: ReadonlySet<string> = new Set([
+  'style',
+  'colours',
+  'body_font',
+  'heading_font',
+])
+
+/** The options a part page shows: every option of the page, but General's own rows (D159). */
+export function optionsOfPage(page: DesignPage): readonly DesignOption[] {
+  if (page.id !== 'general') return page.options
+  return page.options.filter((option) => !OWN_ROW_OPTIONS.has(option.id))
 }
 
 /** The choice options of a page, in the contract's order. */
@@ -252,7 +267,8 @@ export function previewStageOf(
   pages: readonly DesignPage[] = DESIGN_PAGES,
 ): PreviewPlan {
   const page = part === null ? undefined : pageById(part, pages)
-  const first = page === undefined ? undefined : choiceOptions(page)[0]
+  const first =
+    page === undefined ? undefined : optionsOfPage(page).find((option) => option.kind === 'choice')
   if (page === undefined || first === undefined) return MENU_TOP
   const plan = tilePlanOf(page.id, first.id, pages)
   const focus = plan.focus.length > 0 ? plan.focus : MENU_TOP.focus

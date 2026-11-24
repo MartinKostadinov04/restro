@@ -37,6 +37,17 @@ export function pushPart(part: string): void {
   window.history.pushState({ [PUSHED]: true }, '', addressWith(part))
 }
 
+/**
+ * A part opened by a reload or a link: the list is put under it as a step of its own, so the
+ * browser's Back returns to the list, not out of the Design page. A step this page pushed already
+ * has the list under it.
+ */
+export function stepUnderPart(part: string): void {
+  if (pushedHere()) return
+  replacePart(null)
+  pushPart(part)
+}
+
 /** Names another part, or none, on the step the page is on. */
 export function replacePart(part: string | null): void {
   window.history.replaceState({ [PUSHED]: part !== null && pushedHere() }, '', addressWith(part))
@@ -44,8 +55,8 @@ export function replacePart(part: string | null): void {
 
 /**
  * Back to the list: one step back when the page pushed the step it is on, else the part is taken
- * off the address on this step (a reload or a link opened the part). True when it stepped back: the
- * step lands a moment later, with a popstate.
+ * off the address on this step. True when it stepped back: the step lands a moment later, with a
+ * popstate.
  */
 export function leavePart(): boolean {
   if (!pushedHere()) {

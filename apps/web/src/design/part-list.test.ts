@@ -10,13 +10,18 @@ import {
 } from '@restro/core'
 import { describe, expect, it } from 'vitest'
 
-import { MENU_TOP, previewStageOf, tilePlanOf, withOptionValue } from './advanced-model'
+import {
+  MENU_TOP,
+  optionsOfPage,
+  previewStageOf,
+  tilePlanOf,
+  withOptionValue,
+} from './advanced-model'
 import { type DesignDraft, draftOf, withHeadingFont, withStyle } from './design-draft'
 import {
   fontSummaryOf,
   layoutSummaryOf,
   openingOf,
-  optionsOfPage,
   pageOfPart,
   pageSummaryOf,
   partAcross,

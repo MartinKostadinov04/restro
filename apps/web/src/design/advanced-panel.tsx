@@ -1,15 +1,14 @@
 'use client'
 
 // One part page of the Design panel in Advanced (D129, D130, D159): the options of General or of one
-// of the thirteen component pages, opened from the list of parts (`part-list.tsx`). Everything on it
+// of the thirteen component pages, opened from the list of parts (`part-rows.tsx`). Everything on it
 // is drawn from the contract file (`DESIGN_PAGES`): its options, their labels and their values. A
 // choice option is a row of tiles (`option-tiles.tsx`). General holds only its own seven options:
 // the Style, the colours and the fonts are rows of the list (`optionsOfPage`).
 import type { DesignChoiceOption, DesignPage, DesignValues, VenueTheme } from '@restro/core'
 
-import { rowStateOf } from './advanced-model'
+import { optionsOfPage, rowStateOf } from './advanced-model'
 import { OptionTiles } from './option-tiles'
-import { optionsOfPage } from './part-list'
 import type { Draft } from './preview-draft'
 
 export function AdvancedPanel({

@@ -1001,6 +1001,18 @@ test('at 320 px the list fills the panel and nothing scrolls sideways, in a part
     await openPart('photos', target)
     expect(await sideways()).toBe(false)
     await target.screenshot({ path: shotPath('phone-320-part') })
+    // In Bulgarian, the longest row keeps its whole title on one line; only the summary is cut.
+    await narrow.addCookies([
+      { name: 'NEXT_LOCALE', value: 'bg', url: new URL(target.url()).origin },
+    ])
+    await target.goto(target.url().replace(/\?.*$/, ''))
+    await levelSwitch(target).getByRole('button', { name: 'Разширено' }).click()
+    const call = target.getByTestId('design-part-call')
+    await expect(call).toContainText('Повикване на сервитьор')
+    expect(await call.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    const title = call.getByText('Повикване на сервитьор', { exact: true })
+    expect(await title.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    expect(await sideways()).toBe(false)
   } finally {
     await narrow.close()
   }

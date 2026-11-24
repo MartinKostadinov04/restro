@@ -98,7 +98,14 @@ import { DesignPreview } from './design-preview'
 import { LogoField, useLogoUpload } from './logo-field'
 import { isValidLook, type ValidLook } from './look-state'
 import { MyStyles } from './my-styles'
-import { leavePart, PART_PARAM, partInAddress, pushPart, replacePart } from './part-address'
+import {
+  leavePart,
+  PART_PARAM,
+  partInAddress,
+  pushPart,
+  replacePart,
+  stepUnderPart,
+} from './part-address'
 import {
   isOwnPart,
   type OwnPartId,
@@ -108,7 +115,7 @@ import {
   partAcross,
   partListOf,
 } from './part-list'
-import { fontStackOf, Pane, type PaneEnter, PartHeader, PartList } from './part-rows'
+import { fontStackOf, Pane, type PaneEnter, PartHeader, PartRows } from './part-rows'
 import { usePreviewDraft } from './preview-draft'
 import { Segmented } from './segmented'
 import { StyleTiles } from './style-tiles'
@@ -287,6 +294,7 @@ export function DesignPage({
   // The page's own step back is on its way, and the part to name once it lands (null: the list).
   const stepping = useRef<{ readonly next: PartId | null } | null>(null)
   const panelBox = useRef<HTMLDivElement>(null)
+  const partTitleId = useId()
   // Each view is drawn anew (the pane is keyed by it) and starts at its top; the focus goes to the
   // open part's title, or back to the row of the part it left, as that element is drawn.
   const takeFocus = useCallback((node: HTMLElement, wanted: (target: object) => boolean) => {
@@ -470,6 +478,14 @@ export function DesignPage({
   }
 
   // --- The list of parts, Simple and Advanced ---
+
+  // A part a reload or a link opened gets the list under it, so the browser's Back returns to the
+  // list; an address naming no part we have is cleared.
+  useEffect(() => {
+    const opened = current.current.part
+    if (opened !== null) stepUnderPart(opened)
+    else if (partInAddress() !== null) replacePart(null)
+  }, [])
 
   // The browser's Back and Forward move between the list and a part (the address is the truth).
   // The page's own step back (‹ Back) lands here too: the panel is on the list already, and a part
@@ -774,7 +790,7 @@ export function DesignPage({
 
           <Pane key={`${mode}:${part ?? ''}`} enter={panel.enter}>
             {part === null ? (
-              <PartList
+              <PartRows
                 list={partListOf(mode)}
                 draft={draft}
                 styles={myStyles}
@@ -785,11 +801,16 @@ export function DesignPage({
             ) : (
               <section
                 className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6"
-                aria-labelledby="design-part-title"
+                aria-labelledby={partTitleId}
                 data-testid="design-part-page"
                 data-part={part}
               >
-                <PartHeader title={partTitle} titleRef={titleRef} onBack={backToList} />
+                <PartHeader
+                  title={partTitle}
+                  titleId={partTitleId}
+                  titleRef={titleRef}
+                  onBack={backToList}
+                />
                 {partBody}
               </section>
             )}
