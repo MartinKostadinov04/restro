@@ -158,7 +158,8 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D151](decisions/D151.md) | Carrying a printed receipt to the guest is not Restro's work | firm |
 | [D152](decisions/D152.md) | Restro never puts a badge on a menu item by itself | firm |
 | [D153](decisions/D153.md) | A bar tablet is paired with a one-time code, not with an account | firm; refines D141 |
-| [D154](decisions/D154.md) | A bill move between tables is the staff’s, at the POS, and a close carries our reference and nothing about the guest | §1 withdrawn by Martin 11-24; §2 firm on the lead’s side; refines D122 and D127 |
+| [D154](decisions/D154.md) | A bill move between tables is the staff’s, at the POS, and a close carries our reference and nothing about the guest | §1 withdrawn by Martin 11-24; §2 firm on the lead’s side; refines D122 and D127; §1’s “settling on its own” refined by D160 |
+| [D160](decisions/D160.md) | A party’s tables can be paid in one payment, and guests can share a bill by amount, settling together | firm; refines D139 (13.13), D154 §1 and D127; part payment waits on Mistral |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.
