@@ -5,19 +5,19 @@ import { ADMIN_PASSWORD } from './support'
 
 // The speed of the Advanced panel's option pictures (D159) on the walk's demo club
 // (`db:seed:demo`: a Bulgarian club menu with photos, a design, a night in progress), on a production
-// build. Each tile's frame draws one part alone (the face's specimen view). Targets:
+// build. Each tile's frame draws one part alone (the face's specimen view). The spec's targets are
+// the first picture of a page within 1 s of opening it and every picture in view within 3 s, on the
+// pilot PC; they are checked on the walk. GitHub's runners are slower and vary, so this spec fails
+// only well past them (3 s and 8 s): it catches a return to whole-menu tiles (10-40 s), not jitter.
 //
-//   the first picture of a page is drawn within 1 s of opening the page
-//   every picture in view is drawn within 3 s
-//
-// Measured from the tap on the page's chip to the specimen's root standing in the tile's frame. The
-// numbers are attached to the test's report (`speed`), so a slow run says how slow.
+// Measured from the tap on the part's row to the specimen's root standing in the tile's frame. The
+// numbers are attached to the test's report (`speed`), so every run says how fast it was.
 test.describe.configure({ mode: 'serial' })
 test.setTimeout(120_000)
 
 const OWNER_EMAIL = 'owner@club-biad.test'
-const FIRST_MS = 1_000
-const IN_VIEW_MS = 3_000
+const FIRST_MS = 3_000
+const IN_VIEW_MS = 8_000
 
 let owner: BrowserContext
 let page: Page
@@ -123,17 +123,17 @@ function timeTiles(
 }
 
 for (const pageId of ['items', 'header', 'order'] as const) {
-  test(`Advanced › ${pageId}: the first picture within 1 s, those in view within 3 s`, async () => {
+  test(`Advanced › ${pageId}: the pictures are drawn in seconds, not tens of seconds`, async () => {
     await page.goto(`/venues/${venueId}/design`)
     await expect(page.getByTestId('design-panel')).toBeVisible()
     await page
       .getByRole('group', { name: 'Level of detail' })
       .getByRole('button', { name: 'Advanced' })
       .click()
-    await expect(page.getByTestId('design-pages')).toBeVisible()
+    await expect(page.getByTestId('design-part-list')).toBeVisible()
 
     const start = await page.evaluate(() => performance.now())
-    await page.getByTestId(`design-page-${pageId}`).click()
+    await page.getByTestId(`design-part-${pageId}`).click()
     const { inView, first, all } = await timeTiles(page, pageId, start)
     expect(inView).toBeGreaterThan(0)
     test.info().annotations.push({

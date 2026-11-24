@@ -460,7 +460,7 @@ describe('a tile draws its part (D159)', () => {
   it("each tile of a row names its part, and the row's tiles draw the same one", async () => {
     setup()
     await advanced()
-    await userEvent.click(pageChip('items'))
+    await openPart('items')
     const parts = within(row('items', 'name_size'))
       .getAllByTestId('design-tile')
       .map((tile) => tile.getAttribute('data-part'))

@@ -165,7 +165,7 @@ Every tile draws **only the part named below**, with the draft's colours, fonts 
 ### 5.2 What the dishes are
 
 - The venue's own dishes, cut down as today (`specimen.ts`). Where the venue has none of a part, it is dressed with demo content: the demo photo, a sample description, a portion, a few labels.
-- Demo content is never a price, never saved and never published.
+- Demo content never replaces a real price: a sample price stands only where a dish has none, so the Price place tiles show something. Demo content is never saved and never published.
 - The owner recognises their own menu in every tile.
 - One dish is used throughout a page, the same one in every tile, so the only thing that changes from tile to tile is the value.
 
