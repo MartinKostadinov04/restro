@@ -18,6 +18,8 @@ export interface PaymentIn {
   /** A payment type id, or null for the login's default (Q26). */
   readonly type: string | null
   readonly amountMinor: number
+  /** The caller's reference for this payment, read back on the closed bill (Q20, S3). */
+  readonly ref?: string | null
 }
 
 export type SimCall =

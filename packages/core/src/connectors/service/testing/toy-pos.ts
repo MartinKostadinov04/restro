@@ -14,13 +14,14 @@ import {
 import { NO_SERVICE_CAPABILITIES, type ServiceCapabilities } from '../capabilities'
 import type { ServiceConnector, ServiceContext } from '../connector'
 import { type PosRef, posRef } from '../pos-ref'
-import type {
-  BillLine,
-  PayAndCloseResult,
-  PosBill,
-  Reading,
-  TableBills,
-  WriteOutcome,
+import {
+  type BillLine,
+  closePaymentsRefusal,
+  type PayAndCloseResult,
+  type PosBill,
+  type Reading,
+  type TableBills,
+  type WriteOutcome,
 } from '../schemas'
 import { chooseTargetBill } from '../target-bill'
 import type { PosCall, WaiterDriver, WriteHarness } from './harness'
@@ -375,6 +376,8 @@ export function toyConnector(pos: ToyPos, capabilities = TOY_CAPABILITIES): Serv
       return { complete: true, value: { currency: 'EUR', bill } }
     },
     payAndClose(ctx, request) {
+      const paymentsRefusal = closePaymentsRefusal(request, capabilities.closeWithSeveralPayments)
+      if (paymentsRefusal !== null) return Promise.resolve(refused(paymentsRefusal.code))
       if (request.tipMinor > 0 && !capabilities.recordTipOnClose) {
         return Promise.resolve(refused('not_supported'))
       }

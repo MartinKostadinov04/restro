@@ -99,6 +99,11 @@ export interface ServiceConnector extends ServiceReader {
    * carries the POS's file for Restro to send. The result says which came of it
    * (`electronicReceipt`: `sent`, `file` or `not_issued`). Undeclared, an email is refused
    * `not_supported` before any write. The email goes nowhere but into that one call.
+   *
+   * With `payments` (D160 §3, #541) it closes once with one card payment each, every payment
+   * carrying its reference, and one receipt: all of them or none. Two or more are refused
+   * `not_supported` before any write where `closeWithSeveralPayments` is undeclared, and payments
+   * that don't add up to the close (`closePaymentsProblem`) are refused `amount_mismatch`.
    */
   payAndClose(
     ctx: ServiceContext,

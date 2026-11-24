@@ -20,6 +20,7 @@ import {
   addMinor,
   type Currency,
   chooseTargetBill,
+  closePaymentsRefusal,
   decimalToMinor,
   type Floor,
   type FloorBar,
@@ -96,7 +97,12 @@ const TableItem = z.object({
 })
 const BarItem = z.object({ id: Id, name: z.string().min(1) })
 const BillItem = z.object({ id: Id, total: Money, paid: Money })
-const ClosedBillItem = BillItem.extend({ receipt: z.string().min(1).max(200).optional() })
+const ClosedBillItem = BillItem.extend({
+  receipt: z.string().min(1).max(200).optional(),
+  // Each payment the close took, with the caller's reference (Q20). Any caller's are read back;
+  // closeProof matches only the references Restro sent.
+  payments: z.array(z.object({ ref: z.string().nullable().optional() })).optional(),
+})
 const RowItem = z.object({
   id: Id,
   article: Id,
@@ -353,6 +359,13 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
           restroRefs: capabilities.ownLineReference
             ? rows.items.flatMap((row) => (row.ref ? [row.ref] : []))
             : [],
+          ...(capabilities.closeWithSeveralPayments
+            ? {
+                paymentRefs: (head.payments ?? []).flatMap((payment) =>
+                  payment.ref ? [payment.ref] : [],
+                ),
+              }
+            : {}),
         },
       }
     })
@@ -550,6 +563,12 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
     },
 
     async payAndClose(ctx, request) {
+      // D160 §3: several card payments on one close only where declared, and only payments that
+      // add up to the close (rule 8). Nothing is written.
+      const paymentsRefusal = closePaymentsRefusal(request, capabilities.closeWithSeveralPayments)
+      if (paymentsRefusal !== null) {
+        return refusal(paymentsRefusal.code, 'bill', paymentsRefusal.detail)
+      }
       // D127: a tip goes on the same bill and receipt, or it isn't taken. Nothing is written.
       if (request.tipMinor > 0 && (!capabilities.recordTipOnClose || tipItem === null)) {
         return refusal('not_supported', 'bill', 'the POS records no tip from Restro')
@@ -609,13 +628,19 @@ export function createSimPosConnector(options: SimPosConnectorOptions): ServiceC
           if (!ok(added)) return failureOf(added)
         }
       }
+      const type = request.paymentType === null ? {} : { type: request.paymentType.pos }
       const body = {
-        payments: [
-          {
-            ...(request.paymentType === null ? {} : { type: request.paymentType.pos }),
-            amount: minorToDecimal(request.amountMinor),
-          },
-        ],
+        // One payment as before (#541: unchanged); where several are declared, one each with its
+        // reference (Q20: a POS without the switch takes no reference on a payment). The tips are
+        // on the bill as its tip row, so each payment's amount holds its own.
+        payments:
+          request.payments === undefined || !capabilities.closeWithSeveralPayments
+            ? [{ ...type, amount: minorToDecimal(request.amountMinor) }]
+            : request.payments.map((payment) => ({
+                ...type,
+                amount: minorToDecimal(payment.amountMinor),
+                ref: payment.ref,
+              })),
         ...(request.receiptEmail === undefined ? {} : { receiptEmail: request.receiptEmail }),
       }
       const sent = await within(ctx.timings.writeTimeoutMs, (signal) =>

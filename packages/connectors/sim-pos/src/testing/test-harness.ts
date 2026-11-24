@@ -124,6 +124,12 @@ export function simPosHarness(options: SimHarnessOptions): WriteHarness {
         const bill = engine.state.bills.find((b) => b.id === ref.pos && b.state === 'closed')
         return bill === undefined ? null : billOf(engine, bill, login.id)
       },
+      closedPayments: async (ref) => {
+        const bill = engine.state.bills.find((b) => b.id === ref.pos && b.state === 'closed')
+        return bill === undefined
+          ? null
+          : bill.payments.map((payment) => ({ amountMinor: payment.amountMinor, ref: payment.ref }))
+      },
     },
   }
 }

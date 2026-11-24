@@ -52,6 +52,12 @@ export const SERVICE_CAPABILITIES = [
   'trainingMode',
   /** Close a bill with a chosen payment type. */
   'closeWithPaymentType',
+  /**
+   * Close one bill with several card payments: one close, one fiscal receipt listing each payment,
+   * each carrying Restro's own reference, read back on the closed bill (D160 §3, #541). Undeclared,
+   * a close with two or more payments is refused `not_supported` before any write.
+   */
+  'closeWithSeveralPayments',
   /** Open, pay and close a sale in one call (pay-first). */
   'openPayCloseInOneCall',
   /** Item availability right before an order (D122 §4, Stock): `readAvailability` exists. */

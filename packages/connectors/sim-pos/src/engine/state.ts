@@ -63,6 +63,8 @@ export interface SimRow {
 export interface SimPayment {
   readonly type: string
   readonly amountMinor: number
+  /** The caller's reference for this payment, or null (Q20, S3). */
+  readonly ref: string | null
   readonly by: string
   readonly at: string
 }
