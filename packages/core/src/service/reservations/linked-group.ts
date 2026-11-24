@@ -32,6 +32,7 @@
 import type { ReadTx } from '@restro/db'
 import { billReadings, reservationSpots, reservations, sittings, spots } from '@restro/db'
 import { and, eq, gte, inArray, isNull, ne } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 
 /** The read side of a transaction: the reads here never write. */
 type Readable = Pick<ReadTx, 'select'>
@@ -150,6 +151,69 @@ async function holdsAt(
   })
 }
 
+const otherHold = alias(reservationSpots, 'other_hold')
+const otherSpot = alias(spots, 'other_spot')
+
+/**
+ * Whether a party holding the table in its open sitting also holds a spot of another table: one
+ * indexed read, and the only one an unchanged poll of a table in no group pays (#319). False means
+ * the table is in no group; true means `linkedGroupOfTable` has more to read.
+ */
+export async function partyHoldsAnotherTable(
+  tx: Readable,
+  input: { readonly tableId: string },
+): Promise<boolean> {
+  const rows = await tx
+    .select({ reservationId: reservations.id })
+    .from(sittings)
+    .innerJoin(
+      spots,
+      and(
+        eq(spots.tenantId, sittings.tenantId),
+        eq(spots.venueId, sittings.venueId),
+        eq(spots.tableId, sittings.tableId),
+      ),
+    )
+    .innerJoin(
+      reservationSpots,
+      and(
+        eq(reservationSpots.tenantId, spots.tenantId),
+        eq(reservationSpots.spotId, spots.id),
+        isNull(reservationSpots.releasedAt),
+        gte(reservationSpots.updatedAt, sittings.openedAt),
+      ),
+    )
+    .innerJoin(
+      reservations,
+      and(
+        eq(reservations.tenantId, reservationSpots.tenantId),
+        eq(reservations.id, reservationSpots.reservationId),
+        eq(reservations.status, 'seated'),
+        ne(reservations.kind, 'block'),
+        isNull(reservations.deletedAt),
+      ),
+    )
+    .innerJoin(
+      otherHold,
+      and(
+        eq(otherHold.tenantId, reservations.tenantId),
+        eq(otherHold.reservationId, reservations.id),
+        isNull(otherHold.releasedAt),
+      ),
+    )
+    .innerJoin(
+      otherSpot,
+      and(
+        eq(otherSpot.tenantId, otherHold.tenantId),
+        eq(otherSpot.id, otherHold.spotId),
+        ne(otherSpot.tableId, sittings.tableId),
+      ),
+    )
+    .where(and(eq(sittings.tableId, input.tableId), isNull(sittings.endedAt)))
+    .limit(1)
+  return rows.length > 0
+}
+
 /** The spots' tables a party holds now, whatever their sittings: where its group may reach. */
 async function tablesHeldBy(tx: Readable, reservationId: string): Promise<string[]> {
   const rows = await tx
@@ -178,13 +242,16 @@ export async function linkedGroupsAtTables(
 
 /**
  * The table's linked group, or null where it is in none: no party holds it in this sitting, the
- * party sits on this table alone, or two parties hold it. A few indexed reads: the guest API asks
- * it on every poll of a phone.
+ * party sits on this table alone, or two parties hold it. The guest API asks it on every poll of
+ * a phone: a table in no group costs one indexed read (`partyHoldsAnotherTable`), a grouped one a
+ * few more.
  */
 export async function linkedGroupOfTable(
   tx: Readable,
   input: { readonly tableId: string },
 ): Promise<LinkedGroup | null> {
+  // Most tables are in no group: one read says so, and nothing more is read (#319).
+  if (!(await partyHoldsAnotherTable(tx, input))) return null
   const here = await holdsAt(tx, { tableIds: [input.tableId] })
   const [party, other] = here
   if (party === undefined || other !== undefined) return null
