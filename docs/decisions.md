@@ -133,8 +133,8 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D126](decisions/D126.md) | Stripe is the first payment provider; the pretend till stays for tables and bills | firm; refines D98 and D122; refined by D125 |
 | [D127](decisions/D127.md) | How the guest page pays: the commands, the route with its failure rules, Stripe's notices, tips only on the same receipt, the smallest card payment, the bank's check on every payment, where each call runs | firm; refines D98, D121, D122 and D125 |
 | [D128](decisions/D128.md) | One renderer draws every guest menu from one option list; a Style is a preset of it | firm; supersedes D69 in part and D105's "how a template is made"; revises D92's "no presets" |
-| [D129](decisions/D129.md) | The Studio: one design per venue, Simple and Advanced, Done saves the whole design | firm; refines D128; revises D92; refines D122 |
-| [D130](decisions/D130.md) | The design option set: 48 options on 14 pages, and the never-list | firm; refines D128 and D129 |
+| [D129](decisions/D129.md) | The Studio: one design per venue, Simple and Advanced, Done saves the whole design | firm; refines D128; revises D92; refines D122; refined by D159 |
+| [D130](decisions/D130.md) | The design option set: 48 options on 14 pages, and the never-list | firm; refines D128 and D129; refined by D159 |
 | [D131](decisions/D131.md) | Sold-out and unavailable items are hidden; scheduled items are out of scope | firm; supersedes D22 |
 | [D132](decisions/D132.md) | Three wordings settled: a stamped new bill is never resent, a payment's return address, refunds are read and never made | firm; refines D112, D116 and D127 |
 | [D133](decisions/D133.md) | The model follows the job, not the session; Opus checks the heavy zone, Sonnet builds and keeps the books, sessions stay short | firm; refines D58, D104 and D108 |
@@ -158,6 +158,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D151](decisions/D151.md) | Carrying a printed receipt to the guest is not Restro's work | firm |
 | [D152](decisions/D152.md) | Restro never puts a badge on a menu item by itself | firm |
 | [D153](decisions/D153.md) | A bar tablet is paired with a one-time code, not with an account | firm; refines D141 |
+| [D159](decisions/D159.md) | The Design panel opens on a list of parts, and an option's picture draws the part alone | firm; refines D129 and D130 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

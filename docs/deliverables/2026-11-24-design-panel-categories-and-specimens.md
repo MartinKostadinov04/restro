@@ -1,6 +1,6 @@
 # Design panel: a list of parts, and pictures of the part alone
 
-Spec for Martin's review, 11-24. Made by the lane 2 session of the 11-18 screen round (Opus), after Martin's request of 11-24.
+Spec, 11-24. **Answered:** Martin accepted all six recommendations the same day ("Yes, all six"); recorded in D159 and the decision log `2026-11-24-design-panel-decision-log.md`. Made by the lane 2 session of the 11-18 screen round (Opus), after Martin's request of 11-24.
 
 **Martin's request (11-24), in short.** The example designer in `D:\platform` is better designed in two ways:
 1. The first step is choosing a part of the design (Style ›, Brand ›, Type › …), not pills or tabs.
@@ -248,6 +248,8 @@ Tests:
 - each option's specimen draws its part and not the header or rail (Items › Name size draws no `header` marker);
 - the speed targets in one e2e on the walk seed.
 
+The build also updates `docs/guides/admin-map.md` (the Design row and its tap counts).
+
 Walk at the end, at 320 and 390 px and on a PC width, in Bulgarian:
 - Simple's four rows;
 - Advanced › Items › Name size;
@@ -259,7 +261,7 @@ Walk at the end, at 320 and 390 px and on a PC width, in Bulgarian:
 
 ## 8. Questions for Martin
 
-Each with a recommendation. Q2 changes how D129 groups General, so it needs Martin's yes. The rest are within current decisions.
+Each with a recommendation. **Martin 11-24: "Yes, all six"**, so every recommendation below is decided (D159).
 
 **Q1. Colours and the logo: one row or two?**
 You open Design on Club Biad. The list shows "Style › Club", "Colours and logo › ● ● ● Logo", "Fonts › Inter · Playfair Display", "Layout › List".
@@ -297,7 +299,7 @@ Picking a Style goes from 3 taps to 4 (Design, Style ›, the tile, Done).
 **Q6. The list as a pattern for other screens.**
 A future Settings page with eight groups of settings would use the same list: rows with a summary, ›, and ‹ back.
 
-*Recommendation: yes. The lead adds the pattern row to `operational-screens.md` with this PR, so the next screen with many groups uses it too.*
+*Recommendation: yes. The pattern row is added to `operational-screens.md` with this PR, so the next screen with many groups uses it too.*
 
 ---
 
