@@ -89,7 +89,6 @@ function timeTiles(
     ({ pageId: id, since }) =>
       new Promise<{ inView: number; first: number; all: number }>((resolve, reject) => {
         const drawnAt = new Map<HTMLElement, number>()
-        let shown: HTMLElement[] | null = null
         const give = setTimeout(
           () => reject(new Error('the tiles in view did not draw in 30 s')),
           30_000,
@@ -107,16 +106,22 @@ function timeTiles(
               `[data-testid="design-option"][data-page="${id}"] [data-testid="design-tile"]`,
             ),
           ].filter((tile) => tile.querySelector('[data-testid="design-tile-picture"]') !== null)
-          // The tiles in view, once the page's tiles stand.
-          if (shown === null && tiles.length > 0) {
-            shown = tiles.filter((tile) => {
-              const box = tile.getBoundingClientRect()
-              return box.bottom > 0 && box.top < window.innerHeight && box.height > 0
-            })
-          }
+          // The tiles in view now, in the panel's own scrolling box and not only in the window: a
+          // tile's frame loads lazily, so one below the panel's edge loads once it is scrolled to, as
+          // it should. Looked at on every frame, since the tiles grow from their placeholders to
+          // their parts' heights and push the later ones out of view.
+          const panel = document
+            .querySelector('[data-testid="design-panel"]')
+            ?.getBoundingClientRect()
+          const top = Math.max(0, panel?.top ?? 0)
+          const bottom = Math.min(window.innerHeight, panel?.bottom ?? window.innerHeight)
+          const shown = tiles.filter((tile) => {
+            const box = tile.getBoundingClientRect()
+            return box.bottom > top && box.top < bottom && box.height > 0
+          })
           const now = performance.now() - since
           for (const tile of tiles) if (!drawnAt.has(tile) && drawn(tile)) drawnAt.set(tile, now)
-          if (shown !== null && shown.length > 0 && shown.every((tile) => drawnAt.has(tile))) {
+          if (shown.length > 0 && shown.every((tile) => drawnAt.has(tile))) {
             clearTimeout(give)
             const times = shown.map((tile) => drawnAt.get(tile) ?? now)
             resolve({

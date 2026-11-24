@@ -550,7 +550,9 @@ test('the layout for all menus is part of the draft, and the guest switch with i
   )
 })
 
-const levelSwitch = (target: Page = page) => target.getByRole('group', { name: 'Level of detail' })
+/** Simple or Advanced, in either language (a test switches to Bulgarian). */
+const levelSwitch = (target: Page = page) =>
+  target.getByRole('group', { name: /^(Level of detail|Ниво на детайлност)$/ })
 /** The open part of the panel, its id in `data-part`. */
 const openedPart = (target: Page = page) => target.getByTestId('design-part-page')
 /** The tile of one value of one option on one page of Advanced. */
