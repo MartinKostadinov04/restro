@@ -59,7 +59,7 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 
 **Product design (Martin)**
 - #60 Martin: the admin's pattern divergences (D123's Patterns table): pick which become `change.md` tickets, in order; the rest wait for their screen's next redesign.
-- Q78: the DJ request queue in templates: slot, contract, and whether every template draws it; when T82 reaches the face contract.
+- Q78: the DJ request queue in templates: slot, contract, and whether every template draws it; now ticket #524 of spec #520 (the entry comes from the menu's navigation, row 1.24).
 - Q22: barsy post retry window before voiding (only if Stripe holds).
 - Q11: disputes ("drink never arrived", unauthorised use).
 - Q15: effect of a fixed per-transaction fee on small tickets.
@@ -87,8 +87,9 @@ Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a n
 - T85 Claude: portability groundwork (D103): containers, storage module, schema split with a no-join check, restore drill; before T82.
 - T84 Martin + Claude: analytics questions and the guest event model (D103), before the prototypes are ported.
 - T83 Martin, then Claude: port the reservations prototype (D101), after ordering from the menu.
-- T82 Martin, then Claude: port the song-requests prototype (D99, D100); starts with a grilling round against D99.
-- T81 Martin + Claude: grill table-less access to song requests (D100), when T82 starts.
+- #520 Claude (spec, Opus): song requests — a guest asks the DJ for a song and pays only if it plays. Written 11-24 from the ingestion of the Club Biad MVP: research (#509), a cross-review by a different model (#510), a catalogue probe, and the grilling of 11-22 to 11-24 whose rows 1.1–1.25 in `docs/deliverables/2026-11-22-song-requests-grilling-answers.md` are binding until they become decision files. Closes T82 and T81 (table-less access: row 1.24, the menu's navigation carries the link; no table is written onto a request). Ten tickets, #521–#530, linked as sub-issues with dependencies set: #521 the service rows and the one write path (Opus, lead, migration) first and alone; then #522 search and our growing catalogue, #523 holding money and capturing it late, #525 the queue the guests read, #529 the venue's settings; #526 the DJ's screen, #527 greetings and #528 popularity wait on #523; #524 the guest's flow last. They stay at `task`, not `ready-for-agent`, until three gates are settled: which writer owns our song table (spec open question 2), the stage branch `sr/foundation` cut from `or/foundation` while acceptance runs (Martin), and the two jobs in #526's screen plan that have no pattern in `docs/guides/operational-screens.md` (the waiting-against-played counter, and a set whose members are deliberately unordered). Decision files come later, on a branch that carries 1–153.
+- T82 Martin, then Claude: closed by #520 (the ingestion ran 11-22 to 11-24; D99, D100 held).
+- T81 Martin + Claude: closed by #520 (row 1.24).
 - #8 Claude (research, Opus): Bulgarian fiscal rules for card payments through the app, deposits and paid song requests; prepares the lawyer's Q74 and Q75; waits for Martin's go.
 - #9 = T80 Claude (research, Sonnet): payment-provider feasibility (D98): myPOS, Borica, ePay, Stripe, SumUp; done 10-17, findings in `docs/deliverables/2026-10-17-payment-providers-feasibility.md` (recommends Stripe first, myPOS second); next: Martin picks the first provider, now map #29's ticket #49 (Q77 closed by D122: a fixed subscription), then Q76 and the lawyer's Q74/Q75.
 - #10 Claude (upkeep, Sonnet): one home per rule in the agent docs; CLAUDE.md under 1,500 words; CLAUDE.md diff shown to Martin before merge.
