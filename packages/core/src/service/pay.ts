@@ -419,7 +419,7 @@ async function payableLines(
  * The payments that aren't final on each table, by table id: those of the table, and those whose
  * lines are on it (one payment over several tables counts once on each, #542).
  */
-async function openPaymentsOn(
+export async function openPaymentsOn(
   stx: ServiceTx,
   tableIds: readonly string[],
 ): Promise<Map<string, number>> {

@@ -112,8 +112,8 @@ export function payableBill(
   const group = payAcross(state)
   if (own === null || group === null) return own
   const read = group.tables.filter((table) => table.complete)
-  const sum = (amount: (table: GroupTableView) => number) =>
-    read.reduce((total, table) => total + amount(table), 0)
+  // Signed, through the money module (rule 8): a table's total may be negative (a discount, #293).
+  const sum = (amount: (table: GroupTableView) => number) => sumSignedMinor(read.map(amount))
   return {
     ...own,
     complete: read.length === group.tables.length,

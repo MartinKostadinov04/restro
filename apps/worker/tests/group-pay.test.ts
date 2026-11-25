@@ -685,6 +685,34 @@ describe.skipIf(!hasDatabase)("one payment over a linked group's tables", () => 
     ])
   })
 
+  it("a waiter's bill like the picked lines on the payment table before any move: nothing moves onto it", async () => {
+    const before = everyTableRows()
+    // Tables 1 and 3 have the same round: a waiter's bill of it matches table 1's lines.
+    const picked = [...(await linesOf('1')), ...(await linesOf('3'))]
+    const id = await held('3', picked)
+    // Once the payment holds its payment table, a waiter rings the same round there.
+    let rung: string | null = null
+    beforeCall = async (method, args) => {
+      if (method !== 'readTable' || rung !== null) return
+      const table = (args[1] as { pos: string }).pos
+      if (!PAYMENT_TABLES.includes(table)) return
+      if ((await stored(id))?.payment_table_id == null) return
+      rung = table
+      sim.host.engine.waiter.addRound(table, [{ article: '2001' }, { article: '2002' }])
+    }
+    const row = await drive(id, 10)
+    expect(rung).not.toBeNull()
+    expect(row).toMatchObject({ state: 'released', settled: true })
+    // Nothing was moved or closed: the waiter's bill is the waiter's, every table as it was.
+    expect(calls('moveRows')).toBe(0)
+    expect(calls('closeBill')).toBe(0)
+    expect(everyTableRows()).toEqual(before)
+    expect(rowsOn(rung as unknown as string)).toEqual(['2001', '2002'])
+    expect(engine.paymentsOf(providerRef(accountRef), id as never)).toEqual([
+      expect.objectContaining({ status: 'released' }),
+    ])
+  })
+
   it('a failed last check: every line goes back to its own table, nothing closed', async () => {
     const before = everyTableRows()
     const id = await held('2', await everyLine(), true)
@@ -705,6 +733,36 @@ describe.skipIf(!hasDatabase)("one payment over a linked group's tables", () => 
     expect(after.slice(2)).toEqual(before.slice(2))
     expect(after[1]).toEqual([...(before[1] ?? []), '2001'].sort())
     expect(paymentTablesEmpty()).toBe(true)
+  })
+
+  it("a covered table that can't be read at the last check: nothing closes for less (rule 6)", async () => {
+    const picked = [...(await linesOf('1')), ...(await linesOf('2'))]
+    const id = await held('2', picked)
+    // At the check, a waiter voids a line on the payment's bill, so the check reads the tables
+    // the lines came from; table 1 has lost its POS place meanwhile.
+    const [place] = await query<{ id: string; state: string }>(
+      'select id, state from restro.places where table_id = $1',
+      [tableId('1')],
+    )
+    let voided = false
+    beforeCall = async (method, args) => {
+      if (method !== 'readIsolated' || voided) return
+      voided = true
+      const isolated = args[1] as { ref: { pos: string } }
+      const bill = sim.host.engine.state.bills.find((b) => b.id === isolated.ref.pos)
+      sim.host.engine.waiter.voidLine(isolated.ref.pos, bill?.rows[0]?.id as string)
+      await query(`update restro.places set state = 'deleted' where id = $1`, [place?.id])
+    }
+    try {
+      const row = await drive(id, 6)
+      expect(voided).toBe(true)
+      // Table 1's lines are not taken as voided: nothing closed, nothing captured.
+      expect(calls('closeBill')).toBe(0)
+      expect(row?.state).not.toBe('captured')
+      expect(row?.captured_minor).toBeNull()
+    } finally {
+      await query('update restro.places set state = $2 where id = $1', [place?.id, place?.state])
+    }
   })
 
   it('"No receipt" after a close the POS did not confirm: every line back on its own table', async () => {
