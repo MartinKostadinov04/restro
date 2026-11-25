@@ -1,11 +1,11 @@
 // #286, #308 (designer audit DA-34): the next job of a key must start at once when nothing of its
 // key is running: a table's next round, a payment's next step, a menu's next publish, a venue's
-// next table files or purge, an organisation's next index, a connection's next probe. pg-boss
-// fetches past the singleton keys of `singleton` and `stately` queues that were running at its
-// monitor's last count (`queue.singletons_active`, written about once a minute, cached by each
-// worker for `queueCacheIntervalSeconds`). On a `stately` queue a job whose key ran at that count
-// waited up to two minutes, after a restart and in steady state. These queues are `short` now, one
-// run at a time per key through its group (core/jobs.ts `ONE_RUN_PER_GROUP_JOBS`).
+// next table files or purge, an organisation's next index, a connection's next probe, a guest's
+// next email. pg-boss fetches past the singleton keys of `singleton` and `stately` queues that were
+// running at its monitor's last count (`queue.singletons_active`, written about once a minute,
+// cached by each worker for `queueCacheIntervalSeconds`). On a `stately` queue a job whose key ran
+// at that count waited up to two minutes, after a restart and in steady state. These queues are
+// `short` now, one run at a time per key through its group (core/jobs.ts `ONE_RUN_PER_GROUP_JOBS`).
 //
 // Real pg-boss on Postgres, with the worker's own registry and queue options around a handler the
 // test scripts. The monitor is off and the test writes its count itself, the same aggregate pg-boss
@@ -29,6 +29,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { QUEUE_SCHEMA } from '../src/connection'
 import { WorkerStatus } from '../src/health'
 import { createConnectionJobs } from '../src/jobs/connection'
+import { createGuestEmailJob } from '../src/jobs/guest-email'
 import { createSendJobs } from '../src/jobs/order-send'
 import { createPaymentJobs } from '../src/jobs/payments'
 import { createPublishJobs } from '../src/jobs/publish'
@@ -84,6 +85,11 @@ const QUEUES: readonly [string, ProducedJobName, Payload][] = [
     "a connection's probe",
     JOB_NAMES.connectionProbe,
     () => ({ tenantId: newId('tn'), integrationId: newId('in') }),
+  ],
+  [
+    "a reservation's guest email",
+    JOB_NAMES.guestEmail,
+    () => ({ ...venue(), reservationId: newId('rv'), kind: 'reservation_cancelled', entry: 1 }),
   ],
 ]
 
@@ -223,14 +229,20 @@ describe.skipIf(!hasDatabase)(
         ...createPublishJobs(deps as never),
         ...createPurgeJobs(deps as never),
         ...createConnectionJobs(deps as never),
+        createGuestEmailJob({ sender: null }),
       ] as JobDefinition[]
       jobs = QUEUES.map(([, name]) =>
         scripted(all.find((job) => job.name === name) as JobDefinition),
       )
 
-      // A database from before #286 and #308: these queues were created `stately`.
+      // A database from before #286 and #308: these queues were created `stately`. A queue born
+      // `short` (the guest emails, #576) has no older policy to find.
       const old = await startBoss()
-      for (const [, name] of QUEUES) await old.createQueue(name, { policy: 'stately' })
+      for (const job of jobs) {
+        if (job.options.previousPolicy === 'stately') {
+          await old.createQueue(job.name, { policy: 'stately' })
+        }
+      }
       await old.stop({ graceful: false })
       boss = await startWorker()
     }, SETUP_TIMEOUT_MS)

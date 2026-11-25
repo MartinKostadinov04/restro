@@ -206,6 +206,14 @@ export const JOB_NAMES = {
    * is the only thing that makes one "refunded". Not sent by anyone else.
    */
   paymentRefundTick: 'payment-refund-tick',
+  /**
+   * Email one guest about his reservation (#576; D136, D101): what happened, from the venue's name,
+   * in his language. Queued by the caller of the service command that made the news, from the
+   * accepted answer (`guestEmailJobOf` in core/service), never by anyone else; sent only by the
+   * worker, which reads the reservation again and sends nothing when the news is no longer true.
+   * One per piece of news (`ONE_RUN_PER_GROUP_JOBS`).
+   */
+  guestEmail: 'guest-email',
 } as const
 
 /** One of the queue names. */
@@ -324,6 +332,34 @@ export type PaymentJob = z.output<typeof PaymentJobSchema>
 export const PurgeVenueJobSchema = z.strictObject({ tenantId, venueId })
 export type PurgeVenueJob = z.output<typeof PurgeVenueJobSchema>
 
+/**
+ * What a guest email tells him (#576): one kind per piece of news. Every one is about a reservation
+ * today; the next tickets add theirs here (confirmed, declined, the night's end's decline, the
+ * request received, the prepayment's) and the worker words each, so the job and the sender keep
+ * their shape. A paper receipt by email (Q80), if it comes back, is a kind of its own here too.
+ */
+export const GUEST_EMAIL_KINDS = ['reservation_cancelled'] as const
+
+/** One kind of guest email. */
+export type GuestEmailKind = (typeof GUEST_EMAIL_KINDS)[number]
+
+/**
+ * `guest-email`: one piece of news about one reservation. `entry` is the Log entry that recorded
+ * it (`log_entries.seq`): the worker sends only while that entry is still the reservation's latest
+ * news of its kind, and the email service sees it in the idempotency key, so the same news goes
+ * out once and later news about the same reservation is an email of its own. No address and no
+ * name: the worker reads them from the guest record when it sends, so a guest erased meanwhile
+ * is not emailed.
+ */
+export const GuestEmailJobSchema = z.strictObject({
+  tenantId,
+  venueId,
+  reservationId: idSchema('rv'),
+  kind: z.enum(GUEST_EMAIL_KINDS),
+  entry: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+})
+export type GuestEmailJob = z.output<typeof GuestEmailJobSchema>
+
 /** The payload schema of each job that carries one. */
 export const JOB_PAYLOADS = {
   [JOB_NAMES.barsyConnect]: BarsyConnectJobSchema,
@@ -344,6 +380,7 @@ export const JOB_PAYLOADS = {
   [JOB_NAMES.purgeVenue]: PurgeVenueJobSchema,
   [JOB_NAMES.paymentPrepare]: PaymentJobSchema,
   [JOB_NAMES.paymentCheck]: PaymentJobSchema,
+  [JOB_NAMES.guestEmail]: GuestEmailJobSchema,
 } as const
 
 /** The jobs a producer may send (the ticks are only ever created by the scheduler). */
@@ -408,6 +445,11 @@ export function jobSingletonKey<N extends ProducedJobName>(name: N, data: JobPay
       return (data as PublishOrganizationIndexJob).tenantId
     case JOB_NAMES.purgeVenue:
       return (data as PurgeVenueJob).venueId
+    case JOB_NAMES.guestEmail: {
+      // One per piece of news: the reservation, the kind and the Log entry that recorded it.
+      const email = data as GuestEmailJob
+      return `${email.reservationId}:${email.kind}:${email.entry}`
+    }
     case JOB_NAMES.paymentPrepare:
     case JOB_NAMES.paymentCheck:
       // One per payment (#110).
@@ -501,6 +543,7 @@ export const ONE_RUN_PER_GROUP_JOBS: ReadonlySet<ProducedJobName> = new Set<Prod
   JOB_NAMES.publishOrganizationIndex,
   JOB_NAMES.purgeVenue,
   JOB_NAMES.connectionProbe,
+  JOB_NAMES.guestEmail,
 ])
 
 /** Validates a payload for `name` and returns it with the options `send` needs. */

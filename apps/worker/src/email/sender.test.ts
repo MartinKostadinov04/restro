@@ -4,10 +4,11 @@ import { createFakeEmailSender } from '../../tests/fake-email-sender'
 import {
   createResendSender,
   EmailSendError,
+  type GuestEmail,
   type ReceiptMessage,
   receiptWords,
   senderName,
-} from './email-sender'
+} from './sender'
 
 const KEY = `re_${'k'.repeat(30)}`
 const GUEST = 'guest-secret@example.test'
@@ -199,6 +200,85 @@ describe('the Resend sender (#186)', () => {
   })
 })
 
+describe('the same sender for every other guest email (#576)', () => {
+  const NOTE: GuestEmail = {
+    to: GUEST,
+    venueName: 'Club "Нощ"',
+    words: {
+      subject: 'Резервацията ви е отменена',
+      text: 'Резервацията ви в Club Нощ е отменена.',
+    },
+    idempotencyKey: 'rv_abc-reservation_cancelled-17',
+  }
+  const guestSender = (reply: Parameters<typeof fakeFetch>[0]) => {
+    const { calls, fetchImpl } = fakeFetch(reply)
+    return {
+      calls,
+      send: createResendSender({
+        apiKey: KEY,
+        fromAddress: 'reservations@mail.restro.example',
+        fromSetting: 'GUEST_EMAIL_FROM_ADDRESS',
+        fetch: fetchImpl,
+      }),
+    }
+  }
+
+  it('sends plain text from the venue name, with no attachment, no HTML and a key against doubles', async () => {
+    const { calls, send } = guestSender({})
+    await send.sendGuestEmail(NOTE)
+    expect(calls).toHaveLength(1)
+    const [call] = calls
+    expect(call?.headers).toMatchObject({ 'idempotency-key': NOTE.idempotencyKey })
+    expect(call?.body).toEqual({
+      from: '"Club Нощ" <reservations@mail.restro.example>',
+      to: [GUEST],
+      subject: NOTE.words.subject,
+      text: NOTE.words.text,
+    })
+  })
+
+  it('names its own setting when the from-address is missing', () => {
+    expect(() =>
+      createResendSender({
+        apiKey: KEY,
+        fromAddress: ' ',
+        fromSetting: 'GUEST_EMAIL_FROM_ADDRESS',
+      }),
+    ).toThrow(/GUEST_EMAIL_FROM_ADDRESS/)
+  })
+
+  it.each([
+    ['an address that is not one', { ...NOTE, to: 'not an address' }],
+    ['a blank subject', { ...NOTE, words: { ...NOTE.words, subject: ' ' } }],
+    [
+      'a subject that breaks the header',
+      { ...NOTE, words: { ...NOTE.words, subject: 'a\r\nBcc: x' } },
+    ],
+    ['a subject too long', { ...NOTE, words: { ...NOTE.words, subject: 's'.repeat(201) } }],
+    ['a blank text', { ...NOTE, words: { ...NOTE.words, text: '\n' } }],
+    ['a text too long', { ...NOTE, words: { ...NOTE.words, text: 't'.repeat(10_001) } }],
+    ['a key with a space', { ...NOTE, idempotencyKey: 'rv abc' }],
+  ] as [string, GuestEmail][])(
+    'refuses %s for good, before any call, never naming the address',
+    async (_name, message) => {
+      const { calls, send } = guestSender({})
+      const error = await send.sendGuestEmail(message).then(
+        () => null,
+        (caught: unknown) => caught,
+      )
+      expect(error).toBeInstanceOf(EmailSendError)
+      expect(error).toMatchObject({ status: null, retryable: false })
+      expect((error as Error).message).not.toContain('example.test')
+      expect(calls).toHaveLength(0)
+    },
+  )
+
+  it('answers a busy service the same way as for a receipt: worth another try', async () => {
+    const { send } = guestSender({ status: 503, json: {} })
+    await expect(send.sendGuestEmail(NOTE)).rejects.toMatchObject({ status: 503, retryable: true })
+  })
+})
+
 describe('the fake sender (tests only)', () => {
   it('remembers what it was given and can be told to fail', async () => {
     const fake = createFakeEmailSender()
@@ -207,5 +287,6 @@ describe('the fake sender (tests only)', () => {
     fake.failWith = new EmailSendError(503, true, 'busy')
     await expect(fake.sendReceipt(MESSAGE)).rejects.toBeInstanceOf(EmailSendError)
     expect(fake.sent).toHaveLength(1)
+    expect(fake.guestSent).toEqual([])
   })
 })

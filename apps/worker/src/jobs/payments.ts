@@ -139,8 +139,8 @@ import type { Job } from 'pg-boss'
 import type { SimPolicy } from '../config'
 import { ROUTE_RUNS_AT_ONCE } from '../connection'
 import type { PaymentProviders } from '../connectors'
+import { EmailSendError, type EmailSender, RECEIPT_CALL_TIMEOUT_MS } from '../email/sender'
 import type { Logger } from '../logger'
-import { EmailSendError, type EmailSender, RECEIPT_CALL_TIMEOUT_MS } from '../receipts/email-sender'
 import { assertSimAllowed, serviceConnectorFor, serviceContext } from '../service-connectors'
 import type { Limiter } from '../sync/limiter'
 import { type Bounded, bounded } from './connection'
@@ -225,7 +225,7 @@ export interface PaymentJobDeps {
    * where RECEIPT_FROM_ADDRESS is unset: a connector that returns the file is then never given
    * the guest's email (the waiter brings paper).
    */
-  readonly receiptSender?: EmailSender | null
+  readonly receiptSender?: Pick<EmailSender, 'sendReceipt'> | null
   /** The waits between a receipt send's tries (default 1 s, then 4 s); tests pass zeros. */
   readonly receiptRetryDelaysMs?: readonly number[]
 }

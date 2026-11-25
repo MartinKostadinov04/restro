@@ -29,6 +29,7 @@ import {
   releaseHeldSpots,
   writeHeldSpots,
 } from './book'
+import { guestEmailOwed } from './guest-email'
 import { lockReservation, nextQueueKey, type Reservation, refuse, spotsOfReservation } from './rows'
 import {
   endedByNightEnd,
@@ -107,12 +108,17 @@ export async function setReservationStatus(
     reason: command.reason ?? undefined,
     details: { freed: freed.join(','), ...tableWorkDetails(closing.close.work) },
   })
+  // Cancelled through this door is the Cancel button's act too (above), so the guest is told the
+  // same way (#576).
+  const email =
+    to === 'cancelled' ? await guestEmailOwed(stx, reservation, 'reservation_cancelled') : {}
   return accepted(null, {
     details: {
       reservationId: reservation.id,
       status: to,
       changed: true,
       ...tableWorkDetails(closing.close.work),
+      ...email,
     },
   })
 }

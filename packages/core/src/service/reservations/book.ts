@@ -24,6 +24,7 @@ import { type Id, newId } from '../../ids'
 import { addDaysToDay, serviceDate as serviceDateOf } from '../../service-day'
 import type { ServiceTx } from '../definition'
 import { accepted, refused, type ServiceResult } from '../results'
+import { guestEmailOwed } from './guest-email'
 import { venuePhoneKey } from './guests'
 import {
   heldStretch,
@@ -828,7 +829,9 @@ export async function cancelReservation(
     reason: command.reason ?? undefined,
     details: { freed: freed.join(',') },
   })
-  return accepted(null, { details: { reservationId: reservation.id } })
+  // A guest with an address is told (#576, D136); the caller queues the email from the answer.
+  const email = await guestEmailOwed(stx, reservation, 'reservation_cancelled')
+  return accepted(null, { details: { reservationId: reservation.id, ...email } })
 }
 
 /**

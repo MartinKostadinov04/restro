@@ -374,16 +374,19 @@ describe('buildJobs', () => {
       // The provider notices (#108) need no POS and no sealing key.
       JOB_NAMES.providerNotices,
       JOB_NAMES.walletDomain,
+      // The guest emails (#576) run everywhere; without their address they send nothing.
+      JOB_NAMES.guestEmail,
     ])
     // One warning per missing setting: the sealing keys, the purge connection (D83), the backup
-    // connection (#320), the bill-id key of the table readings (#74) and the receipt email's
-    // from-address (#186).
-    expect(warnings).toHaveLength(5)
+    // connection (#320), the bill-id key of the table readings (#74), the receipt email's
+    // from-address (#186) and the guest emails' from-address (#576).
+    expect(warnings).toHaveLength(6)
     expect(warnings.some((warning) => warning.includes('DATABASE_URL_BACKUP'))).toBe(true)
     expect(warnings.some((warning) => warning.includes('SEAL_PUBLIC_KEY'))).toBe(true)
     expect(warnings.some((warning) => warning.includes('DATABASE_URL_PURGE'))).toBe(true)
     expect(warnings.some((warning) => warning.includes('BILL_ID_KEY'))).toBe(true)
     expect(warnings.some((warning) => warning.includes('RECEIPT_FROM_ADDRESS'))).toBe(true)
+    expect(warnings.some((warning) => warning.includes('GUEST_EMAIL_FROM_ADDRESS'))).toBe(true)
     for (const warning of warnings) expect(warning).not.toMatch(/[A-Za-z0-9_-]{40,}/)
   })
 
@@ -432,6 +435,7 @@ describe('buildJobs', () => {
       JOB_NAMES.publishOrganizationIndex,
       JOB_NAMES.providerNotices,
       JOB_NAMES.walletDomain,
+      JOB_NAMES.guestEmail,
       JOB_NAMES.sealTableCodes,
     ])
   })

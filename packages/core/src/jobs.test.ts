@@ -76,6 +76,13 @@ describe('job names and payloads', () => {
       [JOB_NAMES.publishOrganizationIndex]: { tenantId },
       [JOB_NAMES.purgeVenue]: { tenantId, venueId },
       [JOB_NAMES.connectionProbe]: { tenantId, integrationId },
+      [JOB_NAMES.guestEmail]: {
+        tenantId,
+        venueId,
+        reservationId: newId('rv'),
+        kind: 'reservation_cancelled',
+        entry: 1,
+      },
     }
     expect(new Set(Object.keys(payloads))).toEqual(ONE_RUN_PER_GROUP_JOBS)
     for (const name of ONE_RUN_PER_GROUP_JOBS) {
@@ -113,6 +120,38 @@ describe('job names and payloads', () => {
       url: 'https://demo.barsyonline.com/endpoints/res/files_get?x=1',
     })
     expect(job.singletonKey).toBe(`${integrationId}:7183`)
+  })
+
+  describe('the guest email job (#576)', () => {
+    const job = {
+      tenantId,
+      venueId,
+      reservationId: newId('rv'),
+      kind: 'reservation_cancelled',
+      entry: 42,
+    } as const
+
+    it('starts at once, keyed and grouped by the reservation, the news and its Log entry', () => {
+      const prepared = prepareJob(JOB_NAMES.guestEmail, job)
+      expect(prepared.singletonKey).toBe(`${job.reservationId}:reservation_cancelled:42`)
+      expect(prepared.group).toEqual({ id: prepared.singletonKey })
+      expect(prepared).not.toHaveProperty('startAfter')
+      // News recorded by another Log entry is another email, never one dropped as a double.
+      const again = prepareJob(JOB_NAMES.guestEmail, { ...job, entry: 43 })
+      expect(again.singletonKey).not.toBe(prepared.singletonKey)
+    })
+
+    it('carries ids and the news only: refuses an address, an unknown kind or a bad entry', () => {
+      expect(() =>
+        prepareJob(JOB_NAMES.guestEmail, { ...job, email: 'guest@example.com' }),
+      ).toThrow()
+      expect(() => prepareJob(JOB_NAMES.guestEmail, { ...job, kind: 'receipt' })).toThrow()
+      expect(() => prepareJob(JOB_NAMES.guestEmail, { ...job, entry: 0 })).toThrow()
+      expect(() => prepareJob(JOB_NAMES.guestEmail, { ...job, entry: 1.5 })).toThrow()
+      expect(() =>
+        prepareJob(JOB_NAMES.guestEmail, { ...job, reservationId: newId('tb') }),
+      ).toThrow()
+    })
   })
 
   describe('the publish jobs', () => {

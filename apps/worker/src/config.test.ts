@@ -48,6 +48,7 @@ describe('loadConfig', () => {
       send: true,
       alerts: NO_ALERTS,
       receiptEmail: null,
+      guestEmail: null,
     })
     expect(DEFAULT_HEALTH_PORT).toBe(8081)
   })
@@ -98,6 +99,7 @@ describe('loadConfig', () => {
       send: true,
       alerts: NO_ALERTS,
       receiptEmail: null,
+      guestEmail: null,
     })
     // Unset, the Send follows the sync.
     expect(loadConfig({ DATABASE_URL: URL, WORKER_POS_SYNC: 'off' }).send).toBe(false)
@@ -240,6 +242,33 @@ describe('loadConfig', () => {
       'RECEIPT_FROM_ADDRESS',
     ])
     expect(lines.join('\n')).not.toMatch(/s3cret/)
+  })
+
+  it('reads the guest email settings (#576): their own address switches them on and needs the key', () => {
+    const key = `re_${'k'.repeat(30)}`
+    const from = 'reservations@mail.restro.example'
+    const config = loadConfig({
+      DATABASE_URL: URL,
+      RESEND_API_KEY: ` ${key} `,
+      GUEST_EMAIL_FROM_ADDRESS: ` ${from} `,
+    })
+    expect(config.guestEmail).toEqual({ apiKey: key, fromAddress: from })
+    // Each kind of email has its own address: one does not switch the other on.
+    expect(config.receiptEmail).toBeNull()
+    expect(
+      loadConfig({ DATABASE_URL: URL, RESEND_API_KEY: key, RECEIPT_FROM_ADDRESS: from }).guestEmail,
+    ).toBeNull()
+    expect(loadConfig({ DATABASE_URL: URL, GUEST_EMAIL_FROM_ADDRESS: ' ' }).guestEmail).toBeNull()
+    const lines = problemsOf({ DATABASE_URL: URL, GUEST_EMAIL_FROM_ADDRESS: from })
+    expect(lines.map((line) => line.split(' ')[0])).toEqual(['RESEND_API_KEY'])
+    expect(lines.join('\n')).toMatch(/GUEST_EMAIL_FROM_ADDRESS/)
+    const bad = problemsOf({
+      DATABASE_URL: URL,
+      RESEND_API_KEY: key,
+      GUEST_EMAIL_FROM_ADDRESS: 'not-an-address-s3cret',
+    })
+    expect(bad.map((line) => line.split(' ')[0])).toEqual(['GUEST_EMAIL_FROM_ADDRESS'])
+    expect(bad.join('\n')).not.toMatch(/s3cret/)
   })
 
   it('refuses the simulated POS in production, by NODE_ENV or by BARSY_ENV, and nowhere else', () => {

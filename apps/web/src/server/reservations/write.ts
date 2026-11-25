@@ -14,9 +14,10 @@
 //
 // `via` is left to the engine's own default for a staff command, because the Log's `via` list has
 // no value for the reservations screens yet (the report's open question).
-import { newId } from '@restro/core'
+import { JOB_NAMES, newId } from '@restro/core'
 import {
   applyService,
+  guestEmailJobOf,
   type RefusalCode,
   type ServiceActor,
   type ServiceResult,
@@ -24,6 +25,7 @@ import {
 import type { Venue } from '@restro/db'
 
 import { getPool } from '../db'
+import { enqueueJob } from '../jobs'
 import { logError } from '../log'
 import { requireTenant } from '../session'
 import { identifyAtSharedDevice, ownActor, personAtSharedDevice } from '../staff/service'
@@ -255,6 +257,24 @@ function answer(result: ServiceResult, who: string | null): RvWriteResult {
 }
 
 /**
+ * Queues the guest email a command's answer owes (#576): a cancelled booking whose guest has an
+ * email address. Only the worker sends it. The write is done whatever becomes of its email, so a
+ * queue that cannot be reached is logged (a code, never the guest) and the answer stands.
+ */
+async function queueGuestEmail(
+  result: ServiceResult,
+  scope: { readonly tenantId: string; readonly venueId: string },
+): Promise<void> {
+  const job = guestEmailJobOf(result, scope)
+  if (job === null) return
+  try {
+    await enqueueJob(JOB_NAMES.guestEmail, job)
+  } catch (error) {
+    logError('guest_email_queue_failed', error)
+  }
+}
+
+/**
  * Runs one reservations command for a venue of the signed-in person's organisation, as the account
  * or as the person a PIN names. The tenant is the person's organisation, never the request's, and
  * another tenant's venue comes back as `venue_missing` (row-level security).
@@ -316,6 +336,7 @@ export async function performReservationWrite(
     if (result.status === 'refused' && fromSession && result.code === 'permission_denied') {
       return { ok: false, error: 'pin_required' }
     }
+    await queueGuestEmail(result, { tenantId: organization.id, venueId: venue.id })
     return answer(result, named)
   } catch (error) {
     // redirect() and notFound() are control flow, not failures.

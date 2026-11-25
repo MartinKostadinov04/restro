@@ -954,6 +954,83 @@ describe.skipIf(!hasDatabase)('taking and changing a booking (as the restro_app 
       // T1, which it gave up before it was deleted, is still free for somebody else.
       await book(day, '22:00', ['T1'])
     })
+
+    describe('the email a cancel owes the guest (#576)', () => {
+      /** A booking whose guest record holds an address (or not), and that record's id. */
+      const bookWithEmail = async (day: string, email: string | null) => {
+        const id = await book(day, '21:00', [])
+        const guestId = (await row(id)).guest_id
+        if (guestId === null) throw new Error('a booking with a phone has a guest record')
+        if (email !== null) await accept({ type: 'guest.save', guestId, email } as ServiceCommand)
+        return { id, guestId }
+      }
+      const lastStatusEntry = async (id: string) =>
+        Number(
+          (
+            await world.owner.query<{ seq: string }>(
+              `select max(seq)::text as seq from restro.log_entries
+                where reservation_id = $1 and kind = 'reservation.status'`,
+              [id],
+            )
+          ).rows[0]?.seq,
+        )
+
+      it('says so in the answer, with the Log entry and never the address', async () => {
+        const { id } = await bookWithEmail(night(11), 'guest@example.com')
+        const details = await accept({ type: 'reservation.cancel', reservationId: id })
+        expect(details).toEqual({
+          reservationId: id,
+          guestEmail: 'reservation_cancelled',
+          guestEmailEntry: await lastStatusEntry(id),
+        })
+        expect(JSON.stringify(details)).not.toContain('example.com')
+      })
+
+      it('is owed when the Tonight screen marks the party cancelled too', async () => {
+        const { id } = await bookWithEmail(night(11), 'guest@example.com')
+        const details = await accept({
+          type: 'reservation.set_status',
+          reservationId: id,
+          status: 'cancelled',
+        } as ServiceCommand)
+        expect(details).toMatchObject({
+          guestEmail: 'reservation_cancelled',
+          guestEmailEntry: await lastStatusEntry(id),
+        })
+      })
+
+      it('is not owed without an address, after the guest is erased, on a delete or another status', async () => {
+        const without = await bookWithEmail(night(12), null)
+        expect(
+          await accept({ type: 'reservation.cancel', reservationId: without.id }),
+        ).not.toHaveProperty('guestEmail')
+
+        const blank = await bookWithEmail(night(12), '  ')
+        expect(
+          await accept({ type: 'reservation.cancel', reservationId: blank.id }),
+        ).not.toHaveProperty('guestEmail')
+
+        const deleted = await bookWithEmail(night(12), 'guest@example.com')
+        expect(
+          await accept({ type: 'reservation.delete', reservationId: deleted.id }),
+        ).not.toHaveProperty('guestEmail')
+
+        const arriving = await bookWithEmail(night(12), 'guest@example.com')
+        expect(
+          await accept({
+            type: 'reservation.set_status',
+            reservationId: arriving.id,
+            status: 'no_show',
+          } as ServiceCommand),
+        ).not.toHaveProperty('guestEmail')
+
+        const erased = await bookWithEmail(night(12), 'guest@example.com')
+        await accept({ type: 'guest.erase', guestId: erased.guestId } as ServiceCommand)
+        expect(
+          await accept({ type: 'reservation.cancel', reservationId: erased.id }),
+        ).not.toHaveProperty('guestEmail')
+      })
+    })
   })
 
   describe('copying to another night', () => {

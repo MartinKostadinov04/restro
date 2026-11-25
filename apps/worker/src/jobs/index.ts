@@ -19,19 +19,22 @@
 // dump is taken, and the log says so once.
 // The payment jobs (#110) read the POS too, so they run beside the floor reading when the worker
 // has a payment provider.
+// The guest emails (#576) need no POS and no sealing key: every worker runs the job, and without
+// GUEST_EMAIL_FROM_ADDRESS it sends nothing (one warning in the log).
 import { randomBytes } from 'node:crypto'
 
 import { createAssetStore, createBackupStore, createPublishStore } from '@restro/assets'
 
 import { ConfigError, requireSealKeys, type SealKeys, type WorkerConfig } from '../config'
 import { paymentProviders } from '../connectors'
+import { createResendSender } from '../email/sender'
 import type { Logger } from '../logger'
-import { createResendSender } from '../receipts/email-sender'
 import { createAlertJobs, telegramClientOf } from './alerts'
 import { createBarsyJobs } from './barsy'
 import { createConnectionJobs } from './connection'
 import { createDbBackupJob, pgDump } from './db-backup'
 import { createFloorJobs } from './floor'
+import { createGuestEmailJob } from './guest-email'
 import { createSendJobs } from './order-send'
 import { orderTidyTick } from './order-tidy'
 import { createPaymentRecoveryJob } from './payment-recovery'
@@ -71,7 +74,17 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
   const publishJobs = createPublishJobs({ publishStore, assetStore })
   // The provider notices (#108) need no POS and no sealing key: every worker handles them.
   const providers = paymentProviders()
+  // A reservation's news to its guest (#576) goes through the same sender as the receipt, from
+  // its own address; without one the queued emails are taken and dropped, and the log says so.
+  const guestSender =
+    config.guestEmail === null || config.guestEmail === undefined
+      ? null
+      : createResendSender({ ...config.guestEmail, fromSetting: 'GUEST_EMAIL_FROM_ADDRESS' })
+  if (guestSender === null) {
+    log.warn('GUEST_EMAIL_FROM_ADDRESS is not set: no guest is emailed about a reservation')
+  }
   const noticeJobs = [createProviderNoticesJob({ providers }), createWalletDomainJob({ providers })]
+  const guestEmailJobs = [createGuestEmailJob({ sender: guestSender })]
   // The floor reading (#71) needs no credentials (the simulated POS has none) and no sealing keys,
   // so every worker runs it unless WORKER_POS_SYNC is off (it is a POS read); a `sim` instance is
   // refused in production inside it.
@@ -174,6 +187,7 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
       ...connectionJobs,
       ...publishJobs,
       ...noticeJobs,
+      ...guestEmailJobs,
       ...alertJobs,
       ...purgeJobs,
       ...backupJobs,
@@ -188,6 +202,7 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
       ...connectionJobs,
       ...publishJobs,
       ...noticeJobs,
+      ...guestEmailJobs,
       ...alertJobs,
       ...purgeJobs,
       ...backupJobs,
@@ -202,6 +217,7 @@ export async function buildJobs(config: WorkerConfig, log: Logger): Promise<JobD
     ...connectionJobs,
     ...publishJobs,
     ...noticeJobs,
+    ...guestEmailJobs,
     ...alertJobs,
     ...purgeJobs,
     ...backupJobs,
