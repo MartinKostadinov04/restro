@@ -235,9 +235,14 @@ describe.skipIf(!hasDatabase)(
         scripted(all.find((job) => job.name === name) as JobDefinition),
       )
 
-      // A database from before #286 and #308: these queues were created `stately`.
+      // A database from before #286 and #308: these queues were created `stately`. A queue born
+      // `short` (the guest emails, #576) has no older policy to find.
       const old = await startBoss()
-      for (const [, name] of QUEUES) await old.createQueue(name, { policy: 'stately' })
+      for (const job of jobs) {
+        if (job.options.previousPolicy === 'stately') {
+          await old.createQueue(job.name, { policy: 'stately' })
+        }
+      }
       await old.stop({ graceful: false })
       boss = await startWorker()
     }, SETUP_TIMEOUT_MS)
