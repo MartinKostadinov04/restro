@@ -48,6 +48,8 @@ import {
   spotSymbolOf,
 } from '../../spot-shapes'
 import { type ReadInput, type Who, whoOf } from '../night-read'
+import { linkedGroupsAtTables } from './linked-group'
+import { outlinePad, type PlanGroupRead, planGroupsOf } from './plan-groups'
 import {
   compareSpots,
   holdCoversAt,
@@ -171,6 +173,13 @@ export interface FloorPlanRead {
   readonly extent: PlanExtent
   /** Spots the shape folder refused: drawn nowhere, counted so they are not simply missing. */
   readonly unreadable: number
+  /**
+   * The linked groups to outline (D160 §1, #540): each party sitting on two spots or more of this
+   * plan tonight. Empty on any night but the one in progress, which is the only one with sittings.
+   */
+  readonly groups: readonly PlanGroupRead[]
+  /** How far an outline stands off its spots, in grid units; the plan's box keeps that margin. */
+  readonly outlinePad: number
   /**
    * The night's waiting list, oldest first (#330): what a free spot's sheet offers under "From the
    * waiting list". The same read the night's list uses, so the queue is never in two orders.
@@ -446,6 +455,8 @@ export async function readFloorPlan(
       spots: [],
       extent: planExtent([]),
       unreadable: 0,
+      groups: [],
+      outlinePad: outlinePad([]),
       waiting: [],
     }
     // A night older than the month of plans is a record in the Log, not a plan (D141, 9.21): the
@@ -548,6 +559,7 @@ export async function readFloorPlan(
         leading: lead === null ? null : holdRead(lead, true),
       })
     }
+    const pad = outlinePad(drawn.map((spot) => spot.place))
     return {
       ok: true,
       access,
@@ -555,8 +567,19 @@ export async function readFloorPlan(
         ...bare,
         kinds,
         spots: drawn,
-        extent: planExtent(drawn.map((spot) => spot.place)),
+        // The box keeps one outline's pad around the spots, so a group's outline on the room's edge
+        // is not cut off (#540).
+        extent: planExtent(
+          drawn.map((spot) => spot.place),
+          pad,
+        ),
+        outlinePad: pad,
         unreadable,
+        // Linked groups exist in a table's open sitting, so only the night in progress has any.
+        groups:
+          day === reader.today
+            ? planGroupsOf(await linkedGroupsAtTables(tx, { venueId: reader.venue.id }), drawn)
+            : [],
         // The queue of this night, for the free spots' sheets (#330). A night that has passed is
         // read-only, so nothing there is offered a spot and the read is skipped.
         waiting: passed ? [] : await waitingParties(tx, reader.venue.id, day, now),

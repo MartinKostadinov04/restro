@@ -33,13 +33,16 @@ export interface SeededNights {
  * The scenes: a night as it runs, the same with the owner's switch on for the past, the same
  * with the club's pay-first settings set, so the pay rule a party carries has a table's own rule
  * above it (#334), and the night Change tables is tried on (#331): four spots with a Table each,
- * two parties at their tables, one of them with a bill, and a bill on a table nobody holds.
+ * two parties at their tables, one of them with a bill, and a bill on a table nobody holds; and
+ * the night two linked groups are seen on (#540): Иванова on three tables (two next to each other,
+ * one apart) and Петров on two, each table with a bill read, one of Иванова's not read at all.
  */
 export const RESERVATION_SCENES = [
   'book',
   'book-past-open',
   'book-pay-rule',
   'book-change-tables',
+  'book-linked-groups',
 ] as const
 export type ReservationScene = (typeof RESERVATION_SCENES)[number]
 
@@ -79,6 +82,9 @@ export const BOOK = {
   counter: 'Бар плот',
   /** Change tables (#331): the party booked on a spot later tonight, in the way of Димитров. */
   later: 'Колев',
+  /** Linked groups (#540): the party's spots, as the plan and Tonight's sheet name them. */
+  groupApart: 'Бар 13',
+  groupNeighbour: 'Маса 10',
   phone: '+359888123456',
   /** The guest record's key: digits only, as the guests table keeps it (D140). */
   phoneKey: '359888123456',
@@ -163,14 +169,16 @@ export async function seedReservationsNight(
   const clubTables = (
     await owner.query<{ id: string }>(
       `select id from restro.tables where tenant_id = $1 and archived_at is null
-       order by number limit 4`,
+       order by number limit 6`,
       [tenantId],
     )
   ).rows.map((row) => row.id)
   const firstTable = clubTables[0]
   // Change tables (#331) needs codes to follow: Маса 9, Сепаре 1 and Бар 13 get Tables 2–4 too.
   const moving = scene === 'book-change-tables'
-  const tableOf = (index: number) => (moving ? (clubTables[index] ?? null) : null)
+  // Linked groups (#540) need the same codes, and open sittings to make the groups of.
+  const linked = scene === 'book-linked-groups'
+  const tableOf = (index: number) => (moving || linked ? (clubTables[index] ?? null) : null)
 
   // #334: the pay-rule scene gives the club the house rule a club runs on — everything on the
   // bill — and gives the one spot that has a Table a rule of its own, which is what beats the rule
@@ -266,7 +274,7 @@ export async function seedReservationsNight(
     height: 80,
     seats: 2,
   })
-  await spot({
+  const table9 = await spot({
     name: 'Маса 9',
     kind: 'table',
     shape: 'rect',
@@ -286,8 +294,8 @@ export async function seedReservationsNight(
     width: 40,
     height: 40,
   })
-  await spot({
-    name: 'Бар 13',
+  const bar13 = await spot({
+    name: BOOK.groupApart,
     kind: 'stool',
     shape: 'circle',
     x: 100,
@@ -314,6 +322,19 @@ export async function seedReservationsNight(
     width: 80,
     height: 240,
   })
+  // The neighbour of Маса 9, close enough for one outline round both (#540).
+  const table10 = linked
+    ? await spot({
+        name: BOOK.groupNeighbour,
+        kind: 'table',
+        shape: 'rect',
+        x: 560,
+        y: 40,
+        width: 80,
+        height: 80,
+        tableId: tableOf(4),
+      })
+    : null
   // The second plan has a spot of its own, so picking it changes what is drawn.
   await spot({
     name: 'Тераса 1',
@@ -429,19 +450,22 @@ export async function seedReservationsNight(
     partySize: 2,
     label: BOOK.seated,
     seated: `now() - interval '85 minutes'`,
-    spots: [booth1],
+    // Linked groups: Петров sits on the two tables at the other end of the room.
+    spots: linked && table10 !== null ? [table9, table10] : [booth1],
   })
   // On the Change tables night Иванова is already at her table, with a round on its bill.
   const late = await reservation({
     serviceDate: day,
     starts: `now() - interval '40 minutes'`,
     kind: 'booking',
-    status: moving ? 'seated' : 'reserved',
+    status: moving || linked ? 'seated' : 'reserved',
     partySize: 4,
     guest: true,
     note: BOOK.note,
-    ...(moving ? { seated: `now() - interval '35 minutes'` } : {}),
-    spots: [table7],
+    ...(moving || linked ? { seated: `now() - interval '35 minutes'` } : {}),
+    // Linked groups: Иванова sits on Маса 7 and Сепаре 1, which touch, and on Бар 13, which stands
+    // apart from them.
+    spots: linked ? [table7, booth1, bar13] : [table7],
   })
   await reservation({
     serviceDate: day,
@@ -510,6 +534,67 @@ export async function seedReservationsNight(
     await open(clubTables[0], true)
     await open(clubTables[2], false)
     await open(clubTables[3], true, true)
+  }
+  if (linked) {
+    // Linked groups (#540): every table of the two parties is open, and each has a bill read well
+    // but Бар 13's Table 4, whose reading failed with no good one before it (rule 6). Иванова's
+    // tables are 1, 3 and 4 (€15.00, €7.00 and not known), Петров's 2 and 5 (€2.00 and €3.00).
+    const reads: readonly (readonly [number, number | null])[] = [
+      [0, 1500],
+      [1, 200],
+      [2, 700],
+      [3, null],
+      [4, 300],
+    ]
+    for (const [index, totalMinor] of reads) {
+      const tableId = clubTables[index]
+      if (tableId === undefined) throw new Error('the club has fewer than five tables')
+      await owner.query(
+        `insert into restro.sittings
+           (id, tenant_id, venue_id, table_id, service_date, opened_how, opened_at,
+            had_bill_lines, source, actor, job_id)
+         values ($1, $2, $3, $4, $5, 'one', now() - interval '35 minutes', true, $6, $7, $8)`,
+        [newId('st'), tenantId, venueId, tableId, day, ...SEED],
+      )
+      const bills =
+        totalMinor === null
+          ? []
+          : [
+              {
+                pos: `B${index + 1}`,
+                id: newId('rd'),
+                currency: 'EUR',
+                totalMinor,
+                paidMinor: 0,
+                openedAt: new Date().toISOString(),
+                openedByRestro: false,
+                paymentInFlight: false,
+                lines: [
+                  {
+                    pos: `L${index + 1}`,
+                    id: newId('bn'),
+                    itemPos: null,
+                    itemId: null,
+                    name: null,
+                    posName: 'Round',
+                    quantity: '1',
+                    amountMinor: totalMinor,
+                    enteredBy: 'staff',
+                    enteredAt: null,
+                    restroRef: null,
+                  },
+                ],
+              },
+            ]
+      await owner.query(
+        `insert into restro.bill_readings
+           (tenant_id, venue_id, table_id, read_seq, read_at, complete, bills, source, actor, job_id)
+         values ($1, $2, $3, 1, now(), $4, $5::jsonb, 'worker', 'system', 'e2e-seed')
+         on conflict (tenant_id, table_id) do update
+           set read_at = excluded.read_at, complete = excluded.complete, bills = excluded.bills`,
+        [tenantId, venueId, tableId, totalMinor !== null, JSON.stringify(bills)],
+      )
+    }
   }
   await reservation({
     serviceDate: day,

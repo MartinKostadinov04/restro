@@ -53,7 +53,7 @@ import {
   openTableAction,
   tableBillAction,
 } from '@/server/tonight/actions'
-import type { TableSheetBill } from '@/server/tonight/load'
+import type { TableSheetBill, TableSheetGroup } from '@/server/tonight/load'
 import type { TableTile, TonightView } from '@/server/tonight/view'
 
 import { useMoney } from './money'
@@ -95,6 +95,8 @@ export function TableSheet({
   const { run, busy } = useTonightRun()
   const [newGuests, setNewGuests] = useState(false)
   const [bill, setBill] = useState<TableSheetBill | null | undefined>(undefined)
+  // The party's other tables and its total, where this table is in a linked group (#540).
+  const [group, setGroup] = useState<TableSheetGroup | null>(null)
   const money = useMoney()
   const tableName = useTableName()
   const name = tableName(tile.label, tile.numbered)
@@ -103,7 +105,9 @@ export function TableSheet({
     let live = true
     void readAttempt(() => tableBillAction({ venueId: view.venueId, tableId: tile.id })).then(
       (result) => {
-        if (live) setBill(result.ok ? result.bill : null)
+        if (!live) return
+        setBill(result.ok ? result.bill : null)
+        setGroup(result.ok ? (result.group ?? null) : null)
       },
     )
     return () => {
@@ -116,6 +120,13 @@ export function TableSheet({
     const who = party.name ?? t('sh_party_noname')
     return party.size === null ? who : t('sh_party', { name: who, k: party.size })
   }
+  /** Every table of the venue by id, so a group's members are named as their own tiles are. */
+  const tiles = new Map(
+    [...view.groups.flatMap((bar) => bar.tables), ...view.paymentTables].map((one) => [
+      one.id,
+      one,
+    ]),
+  )
   const closed = tile.state === 'closed'
   const since = tile.since ?? ''
   const sub = closed
@@ -143,6 +154,43 @@ export function TableSheet({
             {t('sh_f2', { amt: money(bill.totalMinor, bill.currency) })}
           </dt>
         </div>
+      )}
+      {group === null ? null : (
+        <>
+          <div className="flex justify-between gap-3" data-testid="sh-group">
+            <dt>{t('sh_group', { n: group.tables.length })}</dt>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt
+              className="text-muted-foreground [overflow-wrap:anywhere]"
+              data-testid="sh-group-tables"
+            >
+              {group.tables
+                .map((member) => tableName(member.label, tiles.get(member.id)?.numbered ?? false))
+                .join(', ')}
+            </dt>
+          </div>
+          <div className="flex justify-between gap-3" data-testid="sh-group-total">
+            <dt className="text-muted-foreground">{t('sh_group_total')}</dt>
+            <dd className="font-medium tabular-nums">{money(group.totalMinor, group.currency)}</dd>
+          </div>
+          {group.tables
+            .filter((member) => member.updating)
+            .map((member) => (
+              <div key={member.id} className="flex justify-between gap-3">
+                <dt className="[overflow-wrap:anywhere]" data-testid="sh-group-updating">
+                  {t('sh_group_updating', { name: member.label })}
+                </dt>
+              </div>
+            ))}
+          {group.final ? null : (
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground" data-testid="sh-group-not-final">
+                {t('sh_group_not_final')}
+              </dt>
+            </div>
+          )}
+        </>
       )}
       {tile.payRule === null ? null : (
         <div className="flex justify-between gap-3">

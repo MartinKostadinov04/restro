@@ -39,6 +39,7 @@ import { BookingForm } from './booking-form'
 import { type ChangeTablesParty, ChangeTablesSheet } from './change-tables'
 import { useDoorActions } from './door-actions'
 import { NoPlanYet } from './no-plan'
+import { GroupOutlines } from './plan-outline'
 import { drawnSize, KindSymbol, SpotTile, StateMark, stateTileClass } from './plan-shape'
 import { useSpotCalled, useSpotLine, useSpotStateWord } from './plan-words'
 import { planOpening, roomStyle, usePlanView } from './plan-zoom'
@@ -232,6 +233,11 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
     () => (kindKey === 'all' ? plan.spots : plan.spots.filter((spot) => spot.kind === kindKey)),
     [kindKey, plan.spots],
   )
+  /** The linked group each of its spots belongs to, so a spot's label says whose it is (#540). */
+  const partyOf = useMemo(
+    () => new Map(plan.groups.flatMap((group) => group.spotIds.map((id) => [id, group] as const))),
+    [plan.groups],
+  )
   const chips = kinds.filter((kind) => kind.filters)
   const spot = openSpot === null ? null : (plan.spots.find((one) => one.id === openSpot) ?? null)
   const blocked = blocking === null ? null : (plan.spots.find((one) => one.id === blocking) ?? null)
@@ -405,8 +411,10 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
             data-testid="rv-plan-room"
             data-scale={view.scale.toFixed(3)}
           >
+            <GroupOutlines plan={plan} shown={shown} />
             {shown.map((one) => {
               const kind = kindOf(one)
+              const party = partyOf.get(one.id)
               return (
                 <SpotTile
                   key={one.id}
@@ -422,10 +430,11 @@ export function FloorPlan({ initial, frame }: { initial: RvPlanView; frame: RvFr
                       ? drawnSize(one.place, plan.extent, frameWidth * view.scale)
                       : null
                   }
-                  label={t('p_spot', {
+                  label={t(party === undefined ? 'p_spot' : 'p_spot_party', {
                     name: one.name,
                     kind: kind?.label ?? '',
                     state: stateWord(one.state),
+                    party: party === undefined ? '' : (party.name ?? t('no_name')),
                   })}
                   onOpen={() => {
                     // A drag that ended on a spot moved the plan; it did not open the spot.
