@@ -78,6 +78,9 @@ export const LOG_KIND_GROUP = {
   // A hold read that said nothing: the route's own count of its tries. A manager's alert says what
   // came of it, and six identical lines would say nothing more.
   'payment.hold_unread': null,
+  // A group payment's holds, one line per guest's card (#543): the payment's own steps say what the
+  // table sees, and the guest screens' ticket words the holds where staff need them.
+  'payment.hold': null,
 } as const satisfies Record<LogKind, LogGroup | null>
 
 /** The kinds the venue sees, in `LOG_KINDS` order. */

@@ -4,12 +4,13 @@
 
 import { describe, expect, it } from 'vitest'
 
-import type { PaymentId } from '../../../ids'
+import type { PaymentHoldId, PaymentId } from '../../../ids'
 import type { PaymentProvider, PaymentWriteOutcome } from '../provider'
 import { type ProviderRef, providerRef } from '../provider-ref'
 import { ProviderFormValuesSchema, type ProviderPayment } from '../schemas'
 import {
   failedReadsCheck,
+  groupHoldsCheck,
   idempotentCaptureCheck,
   idempotentCreateCheck,
   lostTimeoutCheck,
@@ -36,6 +37,7 @@ type Bug =
   | 'refundAsDelta'
   | 'refundsNewestFirst'
   | 'readsOtherAccount'
+  | 'groupFoundByPaymentAlone'
 
 function toyHarness(bug?: Bug): PaymentHarness {
   const payments = new Map<string, ProviderPayment>()
@@ -99,6 +101,7 @@ function toyHarness(bug?: Bug): PaymentHarness {
         payments.set(ref.provider, {
           ref,
           paymentId: request.paymentId,
+          ...(request.holdId === undefined ? {} : { holdId: request.holdId }),
           status: 'awaiting_guest',
           needsGuestAction: false,
           currency: request.currency,
@@ -117,9 +120,21 @@ function toyHarness(bug?: Bug): PaymentHarness {
           result: { paymentRef: ref, form: ProviderFormValuesSchema.parse({ ref: ref.provider }) },
         }
       }),
-    findByPaymentId: async (_account: ProviderRef, paymentId: PaymentId) => {
+    findByPaymentId: async (
+      _account: ProviderRef,
+      paymentId: PaymentId,
+      holdId?: PaymentHoldId,
+    ) => {
       if (failReads && bug !== 'partialReadComplete') return { complete: false, reason: 'failed' }
-      const found = [...payments.values()].filter((p) => p.paymentId === paymentId)
+      const carrying = [...payments.values()].filter((p) => p.paymentId === paymentId)
+      if (
+        holdId === undefined &&
+        bug !== 'groupFoundByPaymentAlone' &&
+        carrying.some((p) => p.holdId !== undefined)
+      ) {
+        return { complete: false, reason: 'a group payment is read back by its holds' }
+      }
+      const found = holdId === undefined ? carrying : carrying.filter((p) => p.holdId === holdId)
       return { complete: true, value: found.at(-1) ?? null }
     },
     readPayment: async (_account, paymentRef) => {
@@ -251,6 +266,7 @@ const CASES: readonly [Bug | undefined, PaymentCheck][] = [
   [undefined, refundReadBackCheck],
   [undefined, refundListCheck],
   [undefined, otherAccountCheck],
+  [undefined, groupHoldsCheck],
   ['refundMethod', operationsCheck],
   ['doubleCapture', oneCaptureCheck],
   ['captureAboveHold', partialCaptureCheck],
@@ -261,6 +277,7 @@ const CASES: readonly [Bug | undefined, PaymentCheck][] = [
   ['refundAsDelta', refundReadBackCheck],
   ['refundsNewestFirst', refundListCheck],
   ['readsOtherAccount', otherAccountCheck],
+  ['groupFoundByPaymentAlone', groupHoldsCheck],
 ]
 
 describe('the payment conformance suite on a toy provider', () => {

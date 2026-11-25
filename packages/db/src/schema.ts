@@ -2734,6 +2734,26 @@ export const PAYMENT_ACCOUNT_STATES = [
 export const PAYMENT_DISPUTE_STATES = ['open', 'won', 'lost'] as const
 
 /**
+ * The states of one guest's hold in a group payment (D160 §3; #543): `requested` until the provider
+ * made its payment, `awaiting_guest` while that guest's phone confirms the card, `held` once the
+ * provider reports the card authorised, `releasing` while the provider is told to let it go, and
+ * the final states. Why a hold was released (the guest took it back, the time ran out, staff
+ * cancelled, the bill changed) is its `reason`, not a state.
+ */
+export const PAYMENT_HOLD_STATES = [
+  'requested',
+  'awaiting_guest',
+  'held',
+  'releasing',
+  'released',
+  'captured',
+  'capture_failed',
+] as const
+
+/** The final states of a hold. */
+export const PAYMENT_HOLD_FINAL_STATES = ['released', 'captured', 'capture_failed'] as const
+
+/**
  * What a provider's notice is about, in the platform's words (#108): the provider's web part maps
  * its own event types to these, so no provider event name reaches the platform. `account` is a
  * change to a venue's account (re-read the connection), `access_lost` is the venue taking Restro's
@@ -2824,6 +2844,16 @@ export const payments = restro.table(
     confirmBy: timestamp('confirm_by', { withTimezone: true }),
     /** The provider's session ends then (design §6: 10 minutes). */
     sessionEndsAt: timestamp('session_ends_at', { withTimezone: true }),
+    /**
+     * A group payment's shared amount (D160 §3; #543): the POS's own amounts of the shared lines,
+     * tips not included, fixed when sharing starts. Set only on a group payment, whose cards are
+     * its `payment_holds`, one per guest; null on every other payment. A group payment has no
+     * provider payment of its own: it waits in `awaiting_guest` while the holds gather and is
+     * `held` once they cover this amount.
+     */
+    sharedMinor: bigint('shared_minor', { mode: 'number' }),
+    /** When gathering ends with every hold let go: 10 minutes from the first hold (D160 2.5). */
+    gatheringEndsAt: timestamp('gathering_ends_at', { withTimezone: true }),
     /** The wait for a free payment table ends then (design §6: 60 seconds from `held`). */
     queueEndsAt: timestamp('queue_ends_at', { withTimezone: true }),
     /** The payment table it owns, from `queued` until final and the table reads empty. */
@@ -2967,6 +2997,15 @@ export const payments = restro.table(
     check(
       'payments_settled',
       sql`(${t.settledAt} is not null) = (${t.state} in ${sqlWords(PAYMENT_FINAL_STATES)})`,
+    ),
+    // A group payment (D160 §3): on a bill only, with no card or email of its own.
+    check(
+      'payments_group',
+      sql`${t.sharedMinor} is null or (${t.sharedMinor} > 0 and ${t.kind} = 'on_bill' and ${t.providerPaymentRef} is null and ${t.formValues} is null and ${t.receiptEmail} is null)`,
+    ),
+    check(
+      'payments_gathering_ends_at',
+      sql`${t.gatheringEndsAt} is null or ${t.sharedMinor} is not null`,
     ),
     ...provenanceChecks('payments', t),
   ],
@@ -3155,6 +3194,104 @@ export const paymentLines = restro.table(
 )
 
 /**
+ * One guest's card in a group payment (`ph_`; D160 §3, #543): the amount that guest typed, their
+ * own tip and their own provider payment, held by manual capture. The payment closes once, with one
+ * card payment per held card on one receipt, and every hold is captured on proof of the close.
+ * Written only by `applyService`; goes with its payment when the payment is purged.
+ */
+export const paymentHolds = restro.table(
+  'payment_holds',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'restrict' }),
+    venueId: text('venue_id').notNull(),
+    paymentId: text('payment_id').notNull(),
+    state: text('state').notNull(),
+    /** Why it was released or refused, a code from core's list (e.g. `withdrawn`); null otherwise. */
+    reason: text('reason'),
+    /** The sha-256 of this guest's hold handle; the handle itself is never stored. */
+    handleHash: text('handle_hash').notNull(),
+    /** The phone's action id (idempotency); cleared at the end of the service day. */
+    actionId: text('action_id'),
+    /** The total held on this card: the guest's part of the shared amount plus their tip. */
+    amountMinor: bigint('amount_minor', { mode: 'number' }).notNull(),
+    /** The tip inside the amount; 0 for none (D160 2.6). */
+    tipMinor: bigint('tip_minor', { mode: 'number' }).notNull().default(0),
+    /** What was captured, once captured: never above the amount held. */
+    capturedMinor: bigint('captured_minor', { mode: 'number' }),
+    /** ISO 4217, upper case: the payment's. */
+    currency: text('currency').notNull(),
+    providerKind: text('provider_kind').notNull(),
+    /** *Backend*: the provider's id of this hold's payment. */
+    providerPaymentRef: text('provider_payment_ref'),
+    /**
+     * *Backend*: what this guest's card form needs, only while `awaiting_guest`, served only to the
+     * phone holding the hold's handle (as `payments.form_values`, #110).
+     */
+    formValues: jsonb('form_values').$type<Record<string, unknown>>(),
+    /** The phone must confirm the card by then (design §6), extended while the bank asks. */
+    confirmBy: timestamp('confirm_by', { withTimezone: true }),
+    /** When the provider drops the hold uncaptured, as the provider reports it. */
+    captureBefore: timestamp('capture_before', { withTimezone: true }),
+    /** Dispute evidence read from the provider at capture: the bank's check and its code. */
+    threeDsResult: text('three_ds_result'),
+    authorisationCode: text('authorisation_code'),
+    /** When it reached a final state. */
+    settledAt: timestamp('settled_at', { withTimezone: true }),
+    ...serviceProvenance(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('payment_holds_tenant_id_id_unique').on(t.tenantId, t.id),
+    unique('payment_holds_tenant_id_action_id_unique').on(t.tenantId, t.actionId),
+    unique('payment_holds_handle_hash_unique').on(t.handleHash),
+    venueFk('payment_holds', t),
+    foreignKey({
+      name: 'payment_holds_payment_fk',
+      columns: [t.tenantId, t.paymentId],
+      foreignColumns: [payments.tenantId, payments.id],
+    }),
+    // A provider's payment belongs to one hold of ours.
+    uniqueIndex('payment_holds_provider_payment_unique')
+      .on(t.providerKind, t.providerPaymentRef)
+      .where(sql`${t.providerPaymentRef} is not null`),
+    index('payment_holds_payment_idx').on(t.tenantId, t.paymentId),
+    check('payment_holds_id_format', sql`${t.id} ~ '^ph_[0-9A-Za-z]+$'`),
+    check('payment_holds_state', sql`${t.state} in ${sqlWords(PAYMENT_HOLD_STATES)}`),
+    check('payment_holds_reason', sql`${t.reason} is null or ${t.reason} ~ ${NAME_PATTERN}`),
+    check('payment_holds_handle_hash', sql`${t.handleHash} ~ '^[0-9a-f]{64}$'`),
+    check('payment_holds_action_id', sql`${t.actionId} is null or ${t.actionId} ~ ${NAME_PATTERN}`),
+    check('payment_holds_amounts', sql`${t.tipMinor} >= 0 and ${t.amountMinor} > ${t.tipMinor}`),
+    check(
+      'payment_holds_captured_minor',
+      sql`${t.capturedMinor} is null or ${t.capturedMinor} between 0 and ${t.amountMinor}`,
+    ),
+    check('payment_holds_currency', sql`${t.currency} ~ '^[A-Z]{3}$'`),
+    check('payment_holds_provider_kind', sql`${t.providerKind} ~ ${PROVIDER_KIND_PATTERN}`),
+    check(
+      'payment_holds_provider_payment_ref',
+      sql`${t.providerPaymentRef} is null or ${t.providerPaymentRef} ~ ${PROVIDER_REF_PATTERN}`,
+    ),
+    check(
+      'payment_holds_form_values',
+      sql`${t.formValues} is null or (${t.state} = 'awaiting_guest' and jsonb_typeof(${t.formValues}) = 'object')`,
+    ),
+    check(
+      'payment_holds_evidence',
+      sql`(${t.threeDsResult} is null or ${t.threeDsResult} ~ ${NAME_PATTERN}) and (${t.authorisationCode} is null or char_length(${t.authorisationCode}) between 1 and 64)`,
+    ),
+    check(
+      'payment_holds_settled',
+      sql`(${t.settledAt} is not null) = (${t.state} in ${sqlWords(PAYMENT_HOLD_FINAL_STATES)})`,
+    ),
+    ...provenanceChecks('payment_holds', t),
+  ],
+)
+
+/**
  * One POS or provider write of a payment, append-only (D127 3.9): recorded `attempting` before the
  * call, then a new row with the outcome. The recovery job resumes from the last one.
  */
@@ -3167,6 +3304,8 @@ export const paymentSteps = restro.table(
       .references(() => tenants.id, { onDelete: 'restrict' }),
     venueId: text('venue_id').notNull(),
     paymentId: text('payment_id').notNull(),
+    /** The guest's hold a provider step of a group payment is for (#543); null otherwise. */
+    holdId: text('hold_id'),
     /** The call, e.g. `createHold`, `isolateLines`, `payAndClose`, `capture`. */
     step: text('step').notNull(),
     outcome: text('outcome').notNull(),
@@ -3192,6 +3331,11 @@ export const paymentSteps = restro.table(
       name: 'payment_steps_payment_fk',
       columns: [t.tenantId, t.paymentId],
       foreignColumns: [payments.tenantId, payments.id],
+    }),
+    foreignKey({
+      name: 'payment_steps_hold_fk',
+      columns: [t.tenantId, t.holdId],
+      foreignColumns: [paymentHolds.tenantId, paymentHolds.id],
     }),
     index('payment_steps_payment_id_seq_idx').on(t.paymentId, t.seq.desc()),
     check('payment_steps_step', sql`${t.step} ~ ${NAME_PATTERN}`),

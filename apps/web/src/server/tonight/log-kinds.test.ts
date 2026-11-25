@@ -19,7 +19,7 @@ describe('every kind of the Log has its place on the screen', () => {
     const hidden = Object.entries(LOG_KIND_GROUP)
       .filter(([, group]) => group === null)
       .map(([kind]) => kind)
-    expect(noSentence).toEqual(['lease.taken_over', 'payment.hold_unread'])
+    expect(noSentence).toEqual(['lease.taken_over', 'payment.hold_unread', 'payment.hold'])
     expect(hidden).toEqual(noSentence)
   })
 })

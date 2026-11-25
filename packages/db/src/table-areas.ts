@@ -41,6 +41,7 @@ export const NON_CORE_TABLE_AREAS = {
 
   // --- money: payments (D125, D126). Foreign keys into the core are allowed (see above). -----
   payments: 'money',
+  payment_holds: 'money',
   payment_lines: 'money',
   payment_steps: 'money',
   payment_refunds: 'money',
