@@ -12,6 +12,8 @@
 //   t/<code's SHA-256>.json     {venue_public_id, venue_slug, organization_slug, table_label, menu_id}
 //                               what a table's QR code means and which menu it opens (D95)
 //   m/<menu>/<venue>/current.json  {snapshot_id, version, hash}  which snapshot is current
+//   b/<venue id>.json           what the venue's booking page shows (#577): its name, whether it
+//                               takes online bookings, its clock, weekly hours and closed dates
 //
 // All are public by design and hold nothing internal (rule 3). The code is the venue's random
 // public code (`public-id.ts`), an internal key of the CDN since D84; the slugs are the current
@@ -24,6 +26,7 @@
 import { z } from 'zod'
 
 import { idSchema } from './ids'
+import { WEEKDAYS, type Weekday } from './ordering-settings'
 import { PUBLIC_ID_PATTERN } from './public-id'
 
 /** Venue slugs: lower-case kebab-case, 1 to 63 characters (`demo-club`). */
@@ -171,3 +174,43 @@ export const CurrentPointerSchema = z.strictObject({
 })
 /** The content of `current.json`. */
 export type CurrentPointer = z.output<typeof CurrentPointerSchema>
+
+/** A wall-clock time as the booking file publishes it, `HH:MM`. */
+const BookingTimeSchema = z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/)
+
+/** One weekday's opening and closing on the booking page. */
+const BookingDayHoursSchema = z.strictObject({
+  opens: BookingTimeSchema,
+  closes: BookingTimeSchema,
+})
+
+/** The most closed dates a booking file lists (the venue's own list is capped at 500). */
+export const BOOKING_FILE_CLOSED_DATES_MAX = 500
+
+/**
+ * `b/<venue id>.json`: what the venue's booking page shows (#577; spec #322 Implementation
+ * Decisions 1, rule 4). The page draws everything from the published files: this one, and the
+ * venue's menu files for its Style and languages. Public by design: the venue's own name, whether it
+ * takes online bookings, its clock, the opening and closing of each weekday (never last orders or
+ * anything else of the ordering settings) and its one-off closed dates from today on. No POS id, no
+ * tenant id, no person (rule 3; the publisher runs the forbidden-values walk on it).
+ */
+export const BookingFileSchema = z.strictObject({
+  venue_id: idSchema('vn'),
+  /** The venue's name, as the booking page heads it. */
+  name: z.string().trim().min(1).max(120),
+  /** False: the page says the club takes no online bookings, and links nowhere. */
+  on: z.boolean(),
+  time_zone: z.string().min(1).max(64),
+  /** When the venue's service day ends, `HH:MM`. */
+  day_ends_at: BookingTimeSchema,
+  hours: z.strictObject(
+    Object.fromEntries(WEEKDAYS.map((day) => [day, BookingDayHoursSchema.nullable()])) as {
+      [D in Weekday]: z.ZodNullable<typeof BookingDayHoursSchema>
+    },
+  ),
+  /** One-off closed service days from today on, oldest first. */
+  closed_dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).max(BOOKING_FILE_CLOSED_DATES_MAX),
+})
+/** The content of `b/<venue id>.json`. */
+export type BookingFile = z.output<typeof BookingFileSchema>

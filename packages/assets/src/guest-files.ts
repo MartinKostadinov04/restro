@@ -10,6 +10,8 @@
 // `publish-table-tokens` job (S3-07; `writeTableTokenFile`, `deleteTableTokenFile`). The web app
 // reads both, never the database (rule 4), and never writes the store.
 import {
+  type BookingFile,
+  BookingFileSchema,
   type OrganizationFile,
   OrganizationFileSchema,
   type TableTokenFile,
@@ -20,6 +22,7 @@ import {
 import type { z } from 'zod'
 
 import {
+  bookingPath,
   organizationIndexPath,
   publishPutOptions,
   tableTokenPath,
@@ -78,6 +81,19 @@ export async function readTableTokenFile(
   codeHash: string,
 ): Promise<TableTokenFile | null> {
   return parseGuestFile(TableTokenFileSchema, await store.get(tableTokenPath(codeHash)))
+}
+
+/** The bytes of a venue's booking file `b/<venue id>.json` (#577). */
+export function bookingFileBytes(file: BookingFile): Uint8Array {
+  return encode(BookingFileSchema.parse(file))
+}
+
+/** A venue's booking file as the store holds it, or null (no file, or not valid). */
+export async function readBookingFileFrom(
+  store: Pick<PublishStore, 'get'>,
+  venueId: BookingFile['venue_id'],
+): Promise<BookingFile | null> {
+  return parseGuestFile(BookingFileSchema, await store.get(bookingPath(venueId)))
 }
 
 /** The bytes of a table code's file. */

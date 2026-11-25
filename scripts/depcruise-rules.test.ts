@@ -693,6 +693,7 @@ describe('the guest page reads published files only (rule 4)', () => {
         'apps/web/src/guest/assets.ts': "import '@restro/assets'",
         'apps/web/src/guest/server.ts': "import '../server/db'",
         'apps/web/app/m/[venue]/page.ts': "import '../../../src/server/db'",
+        'apps/web/app/book/[...address]/page.ts': "import '../../../src/server/db'",
         'apps/web/src/guest/pg.ts': "import 'pg'",
       },
       ['guest-page-reads-published-files-only'],

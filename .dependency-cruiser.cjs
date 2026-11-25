@@ -304,7 +304,7 @@ module.exports = {
       severity: 'error',
       comment:
         'apps/web/app/m and apps/web/src/guest (the guest phone page) must not import the ./preview subpath of any face (packages/faces/*/src/preview): it is the admin-only demo host, and a guest page binds real services or none (D72).',
-      from: { path: ['^apps/web/app/m/', '^apps/web/src/guest/'] },
+      from: { path: ['^apps/web/app/m/', '^apps/web/app/book/', '^apps/web/src/guest/'] },
       to: { path: ['^packages/faces/[^/]+/src/preview(/|$)', '^@restro/[^/]+/preview(/|$)'] },
     },
     {
@@ -367,7 +367,7 @@ module.exports = {
       severity: 'error',
       comment:
         'apps/web/app/m and apps/web/src/guest (the guest phone page) must not import @restro/db, @restro/core/apply, @restro/core/service, @restro/core/events, @restro/assets, pg or apps/web/src/server: guest pages never read the database (rule 4).',
-      from: { path: ['^apps/web/app/m/', '^apps/web/src/guest/'] },
+      from: { path: ['^apps/web/app/m/', '^apps/web/app/book/', '^apps/web/src/guest/'] },
       to: {
         path: [
           '^packages/db/',

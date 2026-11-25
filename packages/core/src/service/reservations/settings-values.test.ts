@@ -26,6 +26,7 @@ import {
 describe("part 2's values", () => {
   it('start cautious: a night only, nothing confirms itself, no prepayment, no wording', () => {
     expect(DEFAULT_ONLINE_SETTINGS).toEqual({
+      bookingPage: false,
       guestMay: 'night',
       autoConfirm: false,
       prepayment: false,
@@ -60,14 +61,20 @@ describe("part 2's values", () => {
     expect(readOnlineSettings({ guestMay: 'spot' }).guestMay).toBe('spot')
   })
 
-  it("are the column's own default in the database, so a row made any other way agrees", () => {
+  it("are what the column's own default in the database reads as, so a row made any other way agrees", () => {
     const folder = join(__dirname, '../../../../db/migrations')
     const migration = readdirSync(folder).find((file) => file.endsWith('_reservation_rules.sql'))
     expect(migration, 'the migration of ticket #325').toBeDefined()
     const sql = readFileSync(join(folder, migration as string), 'utf8')
     const literal = /ALTER COLUMN "online" SET DEFAULT '(\{.*?\})'::jsonb/.exec(sql)?.[1]
     expect(literal, 'the migration sets the default of `online`').toBeDefined()
-    expect(JSON.parse(literal as string)).toEqual(DEFAULT_ONLINE_SETTINGS)
+    // The column's default is #325's object: every key it holds is one of the schema's, and a key
+    // added since (#577's `bookingPage`) reads as its own default, so a row made by the database
+    // means exactly what a row made by the settings command means.
+    const stored = JSON.parse(literal as string)
+    expect(OnlineSettingsSchema.safeParse(stored).success).toBe(true)
+    expect(readOnlineSettings(stored)).toEqual(DEFAULT_ONLINE_SETTINGS)
+    expect(DEFAULT_ONLINE_SETTINGS).toEqual({ ...stored, bookingPage: false })
   })
 })
 
@@ -99,6 +106,8 @@ describe("ticket #325's commands", () => {
     'reservation_closed_date.add',
     'reservation_closed_date.remove',
     'spot.set_seats',
+    // #577: the booking page's switch.
+    'reservation_online.set',
   ] as const
 
   it('need the reservation settings and the password again, from a person only', () => {

@@ -1,12 +1,13 @@
 // What Settings › Reservations draws (ticket #325): the venue's reservation rules and its spots with
 // their seats, read as plain data. Read-only, on `withTenant`; every write is a command through
-// `applyService`. Part 2's values (`online`) are deliberately not here: no screen shows them, so
-// no read hands them out (spec #321, Implementation Decisions 9).
+// `applyService`. Of part 2's values (`online`) only the booking page switch is here (#577), the
+// one a screen shows; the rest stay unread (spec #321, Implementation Decisions 9).
 
 import { type DbPool, reservationSettings, spots, venueSpotKinds, withTenant } from '@restro/db'
 import { and, eq, isNull } from 'drizzle-orm'
 
 import { closedDatesOf } from './closed-dates'
+import { bookingPageOn } from './online'
 
 /** One spot as the settings list shows it. */
 export interface SettingsSpot {
@@ -29,6 +30,8 @@ export interface ReservationSettingsView {
   readonly phoneRequired: boolean
   readonly editPastNights: boolean
   readonly privateNotesOn: boolean
+  /** The booking page takes requests (#577): the online booking switch. */
+  readonly bookingPage: boolean
   /** One-off closed service days, newest first. */
   readonly closedDates: readonly string[]
   /** The venue's spots still on a plan, by name. */
@@ -42,6 +45,7 @@ const NOT_SAVED = {
   phoneRequired: true,
   editPastNights: false,
   privateNotesOn: true,
+  bookingPage: false,
   closedDates: [],
 } as const
 
@@ -96,6 +100,7 @@ export async function readReservationSettings(
       phoneRequired: row.phoneRequired,
       editPastNights: row.editPastNights,
       privateNotesOn: row.privateNotesOn,
+      bookingPage: bookingPageOn(row),
       closedDates: closedDatesOf(row.closedDates).reverse(),
       spots: list,
     }

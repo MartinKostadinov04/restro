@@ -50,6 +50,12 @@ describe('the Turnstile check', () => {
     expect(await turnstileCheck(SECRET, pay)('token', ACTION_ID, 'send')).toBe('failed')
     const send = answer(200, { success: true, action: 'order_send' })
     expect(await turnstileCheck(SECRET, send)('token', ACTION_ID, 'pay')).toBe('failed')
+    // A booking request (#577) takes `booking_request` and nothing else.
+    const booking = answer(200, { success: true, action: 'booking_request' })
+    expect(await turnstileCheck(SECRET, booking)('token', ACTION_ID, 'booking')).toBe('passed')
+    expect(await turnstileCheck(SECRET, booking)('token', ACTION_ID, 'send')).toBe('failed')
+    expect(await turnstileCheck(SECRET, send)('token', ACTION_ID, 'booking')).toBe('failed')
+    expect(await turnstileCheck(SECRET, pay)('token', ACTION_ID, 'booking')).toBe('failed')
   })
 
   it('takes the test secret’s `test` action, or none, and only from a test secret', async () => {

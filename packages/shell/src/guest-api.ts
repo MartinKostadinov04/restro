@@ -66,6 +66,9 @@ export const TURNSTILE_SEND_ACTION = 'order_send'
 /** The Turnstile action a `pay.start`'s widget names (#110, D127 §Limits). */
 export const TURNSTILE_PAY_ACTION = 'pay_start'
 
+/** The Turnstile action a booking request's widget names (#577). */
+export const TURNSTILE_BOOKING_ACTION = 'booking_request'
+
 /**
  * The header of the payment handle (D127 2.2): the secret only the paying phone holds, kept in
  * `sessionStorage`. Never in an address or a body, never logged; only its hash is stored.

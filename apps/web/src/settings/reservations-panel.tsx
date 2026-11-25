@@ -5,8 +5,8 @@
 // at once with Undo ("a single reversible write"): nothing here is a form saved as a whole. Writes go through the reservation
 // commands, which need `settings.reservations` and the person's own sign-in; a role without it sees
 // the same values as text. The venue's service hours are not repeated here: one line links to Hours.
-// Part 2's settings (what guests may do online, the prepayment and its wording) are stored with
-// their defaults and have no control on this screen.
+// Of part 2's settings only the online booking switch has a control here (#577); the rest (the
+// prepayment and its wording) are stored with their defaults.
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { useEffect, useState } from 'react'
@@ -18,6 +18,7 @@ import { saveReservationRulesAction } from '@/server/settings/reservations-actio
 import type { ReservationsView } from '@/server/settings/reservations-view'
 
 import { ClosedDatesCard } from './reservations-closed-dates'
+import { OnlineBookingCard } from './reservations-online-booking'
 import { ReadOnlyLine } from './section-notices'
 import { SettingRow, SettingValue } from './settings-row'
 import { useSettingsRun } from './use-settings-run'
@@ -227,6 +228,7 @@ export function ReservationsPanel({ view }: { view: ReservationsView }) {
       </div>
 
       <ClosedDatesCard view={view} runner={runner} enabled={rulesOpen} />
+      <OnlineBookingCard view={view} runner={runner} enabled={rulesOpen} />
       <PlanCard view={view} runner={runner} />
       {runner.dialog}
     </div>

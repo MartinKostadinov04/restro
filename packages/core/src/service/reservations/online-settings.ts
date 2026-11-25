@@ -1,9 +1,10 @@
-// Part 2's reservation settings, declared and stored, never shown or read (ticket #325; spec #321,
-// Implementation Decisions 9; D136). A venue is not asked for these twice: part 2 builds the screen
-// and the booking page that read them, and until then they sit in `reservation_settings.online`
-// with their defaults. No control, no validation screen and no part-2 behaviour lives here.
+// Part 2's reservation settings (ticket #325; spec #321, Implementation Decisions 9; D136), stored in
+// `reservation_settings.online` with their defaults. A venue is not asked for these twice: part 2
+// builds the screens and the booking page that read them. The first one read is `bookingPage`
+// (#577): whether the venue's booking page takes requests, switched by `reservation_online.set`.
 //
 // What D136 names, and nothing more:
+// - whether the booking page takes requests at all (`bookingPage`, #577);
 // - what a guest may do on the booking page: ask for a night only, choose a zone, or pick the spot
 //   (`guestMay`);
 // - whether a booking confirms itself (`autoConfirm`) — D136 applies it only where the guest picked
@@ -33,6 +34,11 @@ const Wording = z.record(z.string().regex(/^[a-z]{2}$/), z.string().max(ONLINE_W
  * short of a value, and one read says what part 2 would see.
  */
 export const OnlineSettingsSchema = z.strictObject({
+  /**
+   * Whether the venue takes bookings on its booking page at all (#577; spec #322 story 26). Off by
+   * default: a venue's page says it takes no online bookings until an owner switches this on.
+   */
+  bookingPage: z.boolean().default(false),
   /** What guests may do on the booking page. Cautious by default: only ask for a night. */
   guestMay: z.enum(GUEST_MAY_VALUES).default('night'),
   /** Whether a booking confirms itself. Off: a hostess answers every online booking. */

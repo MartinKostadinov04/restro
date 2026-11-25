@@ -74,6 +74,7 @@ describe('job names and payloads', () => {
       [JOB_NAMES.publishLive]: { tenantId, menuId, venueId },
       [JOB_NAMES.publishTableTokens]: { tenantId, venueId, retired: [] },
       [JOB_NAMES.publishOrganizationIndex]: { tenantId },
+      [JOB_NAMES.publishBooking]: { tenantId, venueId },
       [JOB_NAMES.purgeVenue]: { tenantId, venueId },
       [JOB_NAMES.connectionProbe]: { tenantId, integrationId },
       [JOB_NAMES.guestEmail]: {

@@ -10,7 +10,7 @@
 // Only client code may import this file (see manifests.ts for why): server code reads
 // manifests.ts.
 
-import type { FaceHostProps } from '@restro/shell'
+import type { BookingHostProps, FaceHostProps } from '@restro/shell'
 import type { ComponentType } from 'react'
 
 import { DEFAULT_FACE_ID, MANIFESTS, type ManifestEntry } from './manifests'
@@ -23,9 +23,17 @@ export interface FaceEntry extends ManifestEntry {
   readonly load: () => Promise<ComponentType<FaceHostProps>>
 }
 
+/** Imports a face's booking page (#577). */
+export type BookingLoader = () => Promise<ComponentType<BookingHostProps>>
+
 /** How each template's components are imported, by the template's name. */
 const LOADERS: Readonly<Record<string, FaceEntry['load']>> = {
   'editorial-market': async () => (await import('@restro/editorial-market')).EditorialMarketFace,
+}
+
+/** How each template's booking page is imported, for the templates that have one (#577). */
+const BOOKING_LOADERS: Readonly<Record<string, BookingLoader>> = {
+  'editorial-market': async () => (await import('@restro/editorial-market')).EditorialMarketBooking,
 }
 
 export const FACES: readonly FaceEntry[] = MANIFESTS.map((entry) => {
@@ -34,6 +42,15 @@ export const FACES: readonly FaceEntry[] = MANIFESTS.map((entry) => {
     throw new Error(`the template "${entry.id}" has no loader in the registry`)
   return { ...entry, load }
 })
+
+/**
+ * The face's booking page loader, or undefined for a face that has none: the booking page then
+ * says online booking is not available. Kept beside the entries, not in them, so an entry stays
+ * its manifest with its one loader.
+ */
+export function bookingLoader(id: string): BookingLoader | undefined {
+  return Object.hasOwn(BOOKING_LOADERS, id) ? BOOKING_LOADERS[id] : undefined
+}
 
 const byId = new Map(FACES.map((entry) => [entry.id, entry]))
 

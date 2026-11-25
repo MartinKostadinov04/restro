@@ -49,6 +49,12 @@ export const JOB_NAMES = {
    */
   publishOrganizationIndex: 'publish-organization-index',
   /**
+   * Write a venue's booking file `b/<venue id>.json` (#577): what its booking page shows. Queued in
+   * the same transaction as a change to what the file holds (the booking page switch, the closed
+   * dates, the service hours); the publish jobs also write it after a publish. Idempotent.
+   */
+  publishBooking: 'publish-booking',
+  /**
    * Erase one deleted venue now (D83: "Delete permanently"): its own rows, files, codes and
    * tokens (tombstoned). Only the worker's purge job, through the role `restro_purge`.
    */
@@ -324,6 +330,10 @@ export type PublishTableTokensJob = z.output<typeof PublishTableTokensJobSchema>
 export const PublishOrganizationIndexJobSchema = z.strictObject({ tenantId })
 export type PublishOrganizationIndexJob = z.output<typeof PublishOrganizationIndexJobSchema>
 
+/** `publish-booking`: one venue's booking file. */
+export const PublishBookingJobSchema = z.strictObject({ tenantId, venueId })
+export type PublishBookingJob = z.output<typeof PublishBookingJobSchema>
+
 /** `payment-prepare` and `payment-check`: one payment (`py_`) of one venue. */
 export const PaymentJobSchema = z.strictObject({ tenantId, venueId, paymentId: idSchema('py') })
 export type PaymentJob = z.output<typeof PaymentJobSchema>
@@ -382,6 +392,7 @@ export const JOB_PAYLOADS = {
   [JOB_NAMES.assetVariants]: AssetVariantsJobSchema,
   [JOB_NAMES.publishTableTokens]: PublishTableTokensJobSchema,
   [JOB_NAMES.publishOrganizationIndex]: PublishOrganizationIndexJobSchema,
+  [JOB_NAMES.publishBooking]: PublishBookingJobSchema,
   [JOB_NAMES.purgeVenue]: PurgeVenueJobSchema,
   [JOB_NAMES.paymentPrepare]: PaymentJobSchema,
   [JOB_NAMES.paymentCheck]: PaymentJobSchema,
@@ -448,6 +459,8 @@ export function jobSingletonKey<N extends ProducedJobName>(name: N, data: JobPay
     }
     case JOB_NAMES.publishOrganizationIndex:
       return (data as PublishOrganizationIndexJob).tenantId
+    case JOB_NAMES.publishBooking:
+      return (data as PublishBookingJob).venueId
     case JOB_NAMES.purgeVenue:
       return (data as PurgeVenueJob).venueId
     case JOB_NAMES.guestEmail: {
@@ -546,6 +559,7 @@ export const ONE_RUN_PER_GROUP_JOBS: ReadonlySet<ProducedJobName> = new Set<Prod
   JOB_NAMES.publishLive,
   JOB_NAMES.publishTableTokens,
   JOB_NAMES.publishOrganizationIndex,
+  JOB_NAMES.publishBooking,
   JOB_NAMES.purgeVenue,
   JOB_NAMES.connectionProbe,
   JOB_NAMES.guestEmail,

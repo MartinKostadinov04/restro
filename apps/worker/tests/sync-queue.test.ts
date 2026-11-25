@@ -371,6 +371,7 @@ describe('buildJobs', () => {
       JOB_NAMES.assetVariants,
       JOB_NAMES.publishTableTokens,
       JOB_NAMES.publishOrganizationIndex,
+      JOB_NAMES.publishBooking,
       // The provider notices (#108) need no POS and no sealing key.
       JOB_NAMES.providerNotices,
       JOB_NAMES.walletDomain,
@@ -433,6 +434,7 @@ describe('buildJobs', () => {
       JOB_NAMES.assetVariants,
       JOB_NAMES.publishTableTokens,
       JOB_NAMES.publishOrganizationIndex,
+      JOB_NAMES.publishBooking,
       JOB_NAMES.providerNotices,
       JOB_NAMES.walletDomain,
       JOB_NAMES.guestEmail,

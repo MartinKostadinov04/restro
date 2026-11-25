@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   addClosedDateAction,
   removeClosedDateAction,
+  saveOnlineBookingAction,
   saveReservationRulesAction,
 } from '@/server/settings/reservations-actions'
 import type { ReservationsView } from '@/server/settings/reservations-view'
@@ -18,6 +19,7 @@ vi.mock('@/server/settings/reservations-actions', () => ({
   saveReservationRulesAction: vi.fn(),
   addClosedDateAction: vi.fn(),
   removeClosedDateAction: vi.fn(),
+  saveOnlineBookingAction: vi.fn(),
 }))
 vi.mock('@/server/settings/plan-actions', () => ({
   startPlanAction: vi.fn(),
@@ -48,10 +50,12 @@ function view(
       phoneRequired: true,
       editPastNights: false,
       privateNotesOn: true,
+      bookingPage: false,
       closedDates: [],
       spots: [],
       ...settings,
     },
+    bookingPath: '/book/night-group/club-night',
     plan: { plans: [], spots: [], kinds: [], tables: [], unreadable: 0 },
     ...more,
   }
@@ -60,7 +64,12 @@ function view(
 const OK = { ok: true, details: {} } as const
 
 beforeEach(() => {
-  for (const action of [saveReservationRulesAction, addClosedDateAction, removeClosedDateAction]) {
+  for (const action of [
+    saveReservationRulesAction,
+    addClosedDateAction,
+    removeClosedDateAction,
+    saveOnlineBookingAction,
+  ]) {
     vi.mocked(action).mockReset()
     vi.mocked(action).mockResolvedValue(OK)
   }
@@ -96,6 +105,35 @@ describe('Settings › Reservations', () => {
         phoneRequired: true,
       }),
     )
+  })
+
+  it('switches online booking at once, with Undo that sends the previous value (#577)', async () => {
+    const user = userEvent.setup()
+    renderWithIntl(<ReservationsPanel view={view()} />)
+    expect(screen.getByText('Guests can ask for a table on your booking page')).toBeTruthy()
+    const address = screen.getByTestId('rs-booking-address')
+    expect(address.getAttribute('href')).toBe('/book/night-group/club-night')
+    await user.click(screen.getByRole('switch', { name: 'Online booking' }))
+    await waitFor(() =>
+      expect(saveOnlineBookingAction).toHaveBeenCalledWith({ venueId: VENUE, bookingPage: true }),
+    )
+    expect(vi.mocked(toast.success).mock.calls[0]?.[0]).toBe('Online booking is on.')
+    const options = vi.mocked(toast.success).mock.calls[0]?.[1] as unknown as {
+      action: { onClick: () => void }
+    }
+    options.action.onClick()
+    await waitFor(() =>
+      expect(saveOnlineBookingAction).toHaveBeenLastCalledWith({
+        venueId: VENUE,
+        bookingPage: false,
+      }),
+    )
+  })
+
+  it('shows online booking as text to a role that may not change it (#577)', () => {
+    renderWithIntl(<ReservationsPanel view={view({ bookingPage: true }, { canChange: false })} />)
+    expect(screen.queryByRole('switch', { name: 'Online booking' })).toBeNull()
+    expect(screen.getByTestId('rs-booking-value').textContent).toBe('On')
   })
 
   it('names the consequence of editing a night that has passed, in one line', () => {

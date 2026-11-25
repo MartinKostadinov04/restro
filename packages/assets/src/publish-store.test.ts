@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import {
   assertPublishPath,
+  bookingPath,
   currentPath,
   InvalidPublishPathError,
   livePath,
@@ -39,6 +40,20 @@ describe('publish paths', () => {
     expect(publishCacheControl(venueIndexPath('k3x9p2m7qa1z'))).toBe('public, max-age=30')
     expect(publishCacheControl(tableTokenPath('abcdefgh'))).toBe('public, max-age=30')
     expect(publishContentType(venueIndexPath('k3x9p2m7qa1z'))).toBe('application/json')
+  })
+
+  it("knows a venue's booking file (#577), read every 30 seconds", () => {
+    expect(parsePublishPath(bookingPath(vn))).toEqual({ kind: 'booking', venueId: vn })
+    expect(publishCacheControl(bookingPath(vn))).toBe('public, max-age=30')
+    expect(publishContentType(bookingPath(vn))).toBe('application/json')
+    for (const path of [
+      'b/demo.json',
+      'b/tn_0123456789ABCDEFGHIJKL.json',
+      `b/${vn}`,
+      `b/${vn}.json/x`,
+    ]) {
+      expect(parsePublishPath(path), path).toBeNull()
+    }
   })
 
   it.each([

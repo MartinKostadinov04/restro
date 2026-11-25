@@ -997,8 +997,11 @@ export function guestResult(
 /** What Turnstile's siteverify said of a token (the web's call; design §5). */
 export type HumanCheckVerdict = 'passed' | 'failed' | 'unavailable'
 
-/** What a token was made for: a Send, or a Pay (each widget names its own action). */
-export type HumanCheckUse = 'send' | 'pay'
+/**
+ * What a token was made for: a Send, a Pay, or a request from the booking page (#577); each widget
+ * names its own action.
+ */
+export type HumanCheckUse = 'send' | 'pay' | 'booking'
 
 /** Calls siteverify for `token` with `actionId` as its idempotency key. */
 export type HumanCheck = (

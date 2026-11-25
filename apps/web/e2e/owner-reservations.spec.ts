@@ -10,7 +10,7 @@ import { ADMIN_PASSWORD } from './support'
 // words), at a venue made by hand (reservations are Restro's own, on every venue):
 //
 //   The section sits right after Ordering. With no turn time saved it asks for one first and shows
-//   no switch; once the hold time is saved the three switches open.
+//   no switch; once the hold time is saved the three rule switches and Online booking (#577) open.
 //   A switch saves at once and Undo puts it back; the hold time is saved in place; a closed date is
 //   added through its dialog and removed in one tap (Undo adds it back); the plan editor (#397)
 //   lists the floor's spots, and a spot's seats are changed in its sheet and kept after a reload.
@@ -114,7 +114,9 @@ test('asks for the hold time first, then opens the switches', async ({ browser }
   await page.reload()
   await expect(page.getByLabel('Мястото се пази')).toHaveValue('120')
   await expect(page.getByTestId('rs-hold-first')).toHaveCount(0)
-  await expect(page.getByRole('switch')).toHaveCount(3)
+  // The three rules and Online booking (#577), which waits for the hold time as they do.
+  await expect(page.getByRole('switch')).toHaveCount(4)
+  await expect(page.getByRole('switch', { name: 'Онлайн резервации' })).toBeVisible()
   await snapshot(page, 'reservations-desktop.png')
   await context.close()
 })
@@ -212,6 +214,8 @@ test('a role without the right sees everything read-only', async ({ browser }) =
   for (const id of looking) await expect(panel.getByTestId(id)).toBeEnabled()
   await expect(panel.getByTestId('rs-hold-value')).toHaveText('90 мин')
   await expect(panel.getByTestId('rs-phone-value')).toBeVisible()
+  // Online booking as text (#577).
+  await expect(panel.getByTestId('rs-booking-value')).toHaveText('Изключено')
   await snapshot(page, 'reservations-read-only-phone.png')
   await noSidewaysScroll(page)
   await context.close()
@@ -222,6 +226,9 @@ test('fits a phone: the longest Bulgarian text, no sideways scroll', async ({ br
   await page.goto(reservations())
   await expect(page.getByText('Разреши редакция на минала вечер')).toBeVisible()
   await expect(page.getByText('Управителят води личен списък с гости')).toBeVisible()
+  await expect(
+    page.getByText('Гостите могат да заявят маса на страницата ви за резервации'),
+  ).toBeVisible()
   await snapshot(page, 'reservations-phone.png')
   await noSidewaysScroll(page)
   await context.close()

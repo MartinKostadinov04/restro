@@ -9,6 +9,8 @@
 //                    barsy photo it then queues the automatic publish of the menus that use it
 //   publish-table-tokens  the t/<token>.json files of a venue's table QR codes: writes the active
 //                    ones, removes the retired ones (S3-07; the only writer of those files)
+//   publish-booking  b/<venue id>.json, what the venue's booking page shows (#577); also written
+//                    after every publish
 //
 // The publish queues keep one job waiting and one running per key, menu + venue for the three
 // publish queues (core/jobs.ts `ONE_RUN_PER_GROUP_JOBS`: pg-boss's `short` policy and a group per
@@ -19,6 +21,8 @@ import type { AssetStore, PublishStore } from '@restro/assets'
 import {
   AssetVariantsJobSchema,
   JOB_NAMES,
+  type PublishBookingJob,
+  PublishBookingJobSchema,
   type PublishMenuJob,
   PublishMenuJobSchema,
   type PublishOrganizationIndexJob,
@@ -34,6 +38,7 @@ import type { Job } from 'pg-boss'
 import type { z } from 'zod'
 
 import { autoPublishIsPaused, queuePublishForAsset, resumeAutoPublish } from '../publish/after-sync'
+import { writeBookingFile } from '../publish/booking'
 import { type PublishFilesDeps, writeLiveOverlay, writePublishFiles } from '../publish/files'
 import { writeOrganizationIndex } from '../publish/organization-index'
 import { type LiveAsks, queueLiveRollovers } from '../publish/rollover'
@@ -99,6 +104,25 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
         { err: error },
         'the organisation index could not be written after a publish',
       )
+    }
+  }
+
+  /**
+   * The venue's booking file after a publish (#577): the venue's name may have changed with it.
+   * Idempotent; a failure is logged and does not fail the publish, and the next publish or the
+   * booking job repairs it.
+   */
+  async function refreshBooking(
+    context: WorkerContext,
+    scope: { tenantId: string; venueId: string },
+  ): Promise<void> {
+    try {
+      await writeBookingFile(
+        { pool: context.pool, store: deps.publishStore, now: context.now },
+        scope,
+      )
+    } catch (error) {
+      context.log.warn({ err: error }, 'the booking file could not be written after a publish')
     }
   }
 
@@ -241,6 +265,7 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
               }
             }
             await refreshLive(context, { tenantId, menuId, venueId })
+            await refreshBooking(context, { tenantId, venueId })
             await queueTableFiles(context, tenantId, venueId)
             const written = files.status === 'checked' ? files.written.length : 0
             return {
@@ -302,6 +327,7 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
               }
             }
             await refreshLive(context, payload)
+            await refreshBooking(context, payload)
             return {
               counters: { snapshot_version: result.version, files_written: result.written.length },
               notes: [`files of version ${result.version} are in place`],
@@ -487,6 +513,35 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
     },
   })
 
+  // --- publish-booking -----------------------------------------------------------------
+
+  const booking = defineJob<PublishBookingJob>({
+    name: JOB_NAMES.publishBooking,
+    options: {
+      // One waiting and one running per venue, through its group (`ONE_RUN_PER_GROUP_JOBS` in
+      // core/jobs.ts). Never `stately` (#308).
+      policy: 'short',
+      queue: {
+        retryLimit: 2,
+        retryDelay: 30,
+        retryBackoff: true,
+        expireInSeconds: 2 * 60,
+        deleteAfterSeconds: 24 * 60 * 60,
+      },
+      work: { pollingIntervalSeconds: 2, groupConcurrency: 1 },
+    },
+    async handler(jobs, context) {
+      for (const job of jobs) {
+        const payload = parsePayload(PublishBookingJobSchema, job, JOB_NAMES.publishBooking)
+        const result = await writeBookingFile(
+          { pool: context.pool, store: deps.publishStore, now: context.now },
+          payload,
+        )
+        context.log.info({ venueId: payload.venueId, ...result }, 'booking file')
+      }
+    },
+  })
+
   return [
     publish,
     files,
@@ -495,5 +550,6 @@ export function createPublishJobs(deps: PublishJobDeps): JobDefinition[] {
     variants,
     tableTokens,
     organizationIndex,
+    booking,
   ] as JobDefinition[]
 }

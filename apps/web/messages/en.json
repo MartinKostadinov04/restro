@@ -1,7 +1,8 @@
 {
   "meta": {
     "description": "Venue admin for QR menus and ordering in nightclubs.",
-    "guestMenu": "Menu"
+    "guestMenu": "Menu",
+    "bookingPage": "Book a table"
   },
   "common": {
     "yes": "Yes",
@@ -2609,6 +2610,8 @@
     "lg_rv_set_private": "Manager's private guest list changed",
     "lg_rv_set_closed_added": "Closed date added",
     "lg_rv_set_closed_removed": "Closed date removed",
+    "lg_rv_set_booking_on": "Online booking switched on",
+    "lg_rv_set_booking_off": "Online booking switched off",
     "lg_rv_pay_rule": "Pay rule: {rule}",
     "lg_rv_pr_venue": "the club's rule",
     "lg_rv_pr_on_bill": "everything on the bill",
@@ -3447,6 +3450,11 @@
     "rs_closed_remove": "Remove {date}",
     "rs_closed_added": "Closed date added",
     "rs_closed_removed": "Closed date removed",
+    "rs_booking": "Online booking",
+    "rs_booking_d": "Guests can ask for a table on your booking page",
+    "rs_booking_address": "Booking page address",
+    "rs_done_booking_on": "Online booking is on.",
+    "rs_done_booking_off": "Online booking is off.",
     "pe_title": "Floor plan",
     "pe_d": "The spots reservations hold: where they are, how many people they take and which Table they go with.",
     "pe_empty_t": "No floor plan yet",

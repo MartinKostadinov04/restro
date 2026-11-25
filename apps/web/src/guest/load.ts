@@ -6,6 +6,7 @@
 //   m/<menu>/<venue>/current.json       -> {snapshot_id, version, hash}
 //   snap/<snapshot>.json                -> the snapshot (immutable, cached for a year)
 //   m/<menu>/<venue>/live.json          -> the sold-out marks
+//   b/<venue>.json                      -> what the venue's booking page shows (#577)
 //
 // An address `/m/<organisation>/<venue>` (D84) starts from the organisation's file: a renamed
 // organisation leaves a redirect under its old name, a renamed venue is listed under its old name
@@ -18,6 +19,8 @@
 // `fetch` it is given, so the chain is tested without a browser.
 
 import {
+  type BookingFile,
+  BookingFileSchema,
   type CurrentPointer,
   CurrentPointerSchema,
   hashTableCode,
@@ -104,6 +107,7 @@ export const files = {
   },
   snapshot: (base: string, pointer: PointerRef) => join(base, `snap/${pointer.snapshot_id}.json`),
   table: (base: string, codeHash: string) => join(base, `t/${codeHash}.json`),
+  booking: (base: string, venueId: string) => join(base, `b/${venueId}.json`),
 }
 
 /** Fetches a file and checks it with `schema`. A 404 is `whenMissing`; anything else wrong is `failed`. */
@@ -156,6 +160,8 @@ export interface ResolvedAddress {
   readonly publicId: string
   /** The address as it should read now (the page corrects the address bar to it). */
   readonly canonical: GuestAddress
+  /** The organisation's id (`tn_`), as its published index names it: what the booking page asks with. */
+  readonly organizationId: string
 }
 
 /**
@@ -187,9 +193,15 @@ export async function resolveGuestAddress(
       },
       publicId: entry.public_id,
       canonical: { organization: file.slug, venue },
+      organizationId: file.organization_id,
     }
   }
   throw new GuestLoadError('unknown_venue')
+}
+
+/** `b/<venue id>.json` (#577): the venue's booking page. No file means the page was never written. */
+export function loadBookingFile(deps: LoadDeps, venueId: string): Promise<BookingFile> {
+  return getFile(deps, files.booking(deps.base, venueId), BookingFileSchema, 'not_published')
 }
 
 /** `current.json`. No pointer means nothing was published yet. */
