@@ -124,6 +124,13 @@ export const OFFLINE_AFTER_MS = 10_000
 export const BILL_AGE_REFRESH_MS = 15_000
 
 /**
+ * How often a phone with no share of its own reads the table's share (#544). A share that is on
+ * sets its own cadence from the server; this is the gap while there is none, so a share another
+ * phone starts shows to everyone sitting on the bill, and #545's shown-after reaches them.
+ */
+export const SHARE_IDLE_MS = 10_000
+
+/**
  * A request that has not answered after this long is aborted (D121: "about 10 seconds"), and the
  * command is answered `pending` with `answer_lost`. It is the shell's own number, so a face's wait
  * for the host can be set from it and stay longer than it (DA-2).
@@ -628,6 +635,8 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
   let shareHandle: string | null = readShareHandle()
   let share: GuestShareAnswer | null = null
   let cancelShareTimer: (() => void) | null = null
+  /** A share read is waiting to run: without it the state answer would arm a second one. */
+  let shareArmed = false
   let sharePolling = false
   /** The share the guest sent away with "Back to the bill", while it has not moved since. */
   let shareHidden: { readonly id: string; readonly state: string } | null = null
@@ -891,11 +900,13 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
 
   function scheduleShare(ms: number): void {
     cancelShareTimer?.()
-    cancelShareTimer = shareDue() ? deps.setTimer(pollShare, ms) : null
+    shareArmed = shareDue()
+    cancelShareTimer = shareArmed ? deps.setTimer(pollShare, ms) : null
   }
 
   /** Reads the table's share for every phone of the table (#544): ours alone carries our part. */
   async function pollShare(): Promise<void> {
+    shareArmed = false
     if (!shareDue() || sharePolling) return
     sharePolling = true
     let wait: number | null = null
@@ -935,7 +946,9 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       sharePolling = false
     }
     recompute()
-    if (wait !== null) scheduleShare(wait)
+    // Read on at the idle gap where this answer set no cadence of its own: no share of this table
+    // yet, or the part this phone held is gone. `scheduleShare` arms nothing where none is due.
+    scheduleShare(wait ?? SHARE_IDLE_MS)
   }
 
   function recompute(): void {
@@ -1125,6 +1138,9 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     }
     recompute()
     schedule(wait)
+    // The state answer is what says whether this venue shares at all, so a phone that opened the
+    // bill before it landed (the invite link does) starts reading the share as soon as it does.
+    if (!sharePolling && !shareArmed) scheduleShare(0)
   }
 
   async function post(command: GuestCommand, ageMs: number, check: GuestCheck): Promise<Response> {
@@ -1472,13 +1488,19 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       // Back from a redirect of the card form: the phone's word is a nudge (D127). It says which
       // form it was, so a part of the share is nudged with its own command.
       const returned = deps.memory?.get(PAY_RETURNED_KEY)
-      if (returned != null) {
+      const nudge =
+        returned === 'share'
+          ? shareHandle === null
+            ? null
+            : ('share.returned' as const)
+          : returned == null || handle === null
+            ? null
+            : ('pay.returned' as const)
+      // A word with no handle to go with it is left where it is: this tab holds no payment of its
+      // own to nudge, and the page's own cleaning of the address is what wrote it.
+      if (nudge !== null) {
         deps.memory?.remove(PAY_RETURNED_KEY)
-        if (returned === 'share' && shareHandle !== null) {
-          void dispatch({ kind: 'share.returned', actionId: crypto.randomUUID() })
-        } else if (returned !== 'share' && handle !== null) {
-          void dispatch({ kind: 'pay.returned', actionId: crypto.randomUUID() })
-        }
+        void dispatch({ kind: nudge, actionId: crypto.randomUUID() })
       }
     },
     stop() {

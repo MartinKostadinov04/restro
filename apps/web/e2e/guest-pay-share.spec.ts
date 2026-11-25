@@ -176,9 +176,12 @@ test('split the amount: two parts cover one bill, and a third phone sees the sam
 
   // The share is priced, and every phone of the table sees it — a third phone that only opened the
   // table's QR or the link the first one showed, with no part of its own, sees the same share.
-  await expect.poll(async () => (await third.share())?.sharedMinor, SETTLED).toBe(total)
+  // `awaiting_guest` is the worker having priced it (`payment.price`): until then it is `requested`
+  // and no part can be taken.
+  await expect.poll(async () => (await third.share())?.state, SETTLED).toBe('awaiting_guest')
   const seen = await third.share()
   expect(seen).toMatchObject({ id: paymentId, state: 'awaiting_guest', holds: 0, mine: null })
+  expect(seen?.sharedMinor).toBe(total)
   expect(seen?.leftMinor).toBe(total)
   expect(seen?.lines).toHaveLength(lines.length)
   const minimum = seen?.minimumMinor ?? 0
