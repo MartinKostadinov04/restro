@@ -1,3 +1,7 @@
 # Known false positives only, one fingerprint each, with Martin's OK (D67: guardrails only tighten).
 # 10-21: a made-up table code in a test (tb_0123456789ABCDEFGHIJKL), renamed in 24ff9e9; still in history.
 8838b833849f4918e2d9ad51a71302e9f359917d:apps/web/src/guest/load.test.ts:generic-api-key:401
+# 11-25: the same thing again — a made-up table code in a test (TOKEN_A in apps/web/src/tables/test-view.ts),
+# quoted in the 10-29 repair review's file listing. Only used to build http://localhost:3000/t/<code>; nothing to rotate.
+# Fired on 11-25 because #199's branch was cut on 10-29, so the scan swept main's history back to that branch point.
+6b467a01fd28ce36c4d2794ad73b03ea3634e99f:docs/reviews/2026-10-29-repair-review/index.md:generic-api-key:1724
