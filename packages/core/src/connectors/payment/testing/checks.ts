@@ -4,7 +4,7 @@
 // is wrong on purpose. Every answer is parsed with the seam's schemas, and the provider's own
 // ledger is asked after each step whether money moved: only `capture` may move it.
 
-import { newId, type PaymentId, type RefundId } from '../../../ids'
+import { newId, type PaymentHoldId, type PaymentId, type RefundId } from '../../../ids'
 import { addMinor, subtractMinor } from '../../../money'
 import type { Reading } from '../../service/schemas'
 import { paymentCapabilitiesProblems } from '../capabilities'
@@ -110,9 +110,11 @@ class Run {
     paymentId: PaymentId,
     amountMinor = this.amount,
     idempotencyKey = `${paymentId}:hold`,
+    holdId?: PaymentHoldId,
   ): Promise<PaymentWriteOutcome<CreateHoldResult>> {
     const answer = await this.h.provider.createHold({
       paymentId,
+      ...(holdId === undefined ? {} : { holdId }),
       accountRef: this.account,
       amountMinor,
       currency: this.h.currency,
@@ -122,10 +124,15 @@ class Run {
     return this.parse('createHold', answer) as PaymentWriteOutcome<CreateHoldResult>
   }
 
-  async find(paymentId: PaymentId): Promise<Reading<ProviderPayment | null>> {
+  async find(
+    paymentId: PaymentId,
+    holdId?: PaymentHoldId,
+  ): Promise<Reading<ProviderPayment | null>> {
     return this.parse(
       'findByPaymentId',
-      await this.h.provider.findByPaymentId(this.account, paymentId),
+      await (holdId === undefined
+        ? this.h.provider.findByPaymentId(this.account, paymentId)
+        : this.h.provider.findByPaymentId(this.account, paymentId, holdId)),
     )
   }
 
@@ -546,6 +553,102 @@ export const moneyOnlyByCaptureCheck = check(async (run) => {
   before = await run.moved()
   run.done('the capture', await run.capture(guest.paymentRef, run.amount, `${paymentId}:capture`))
   await run.expectMoved('the capture', before, run.amount)
+})
+
+/**
+ * A group payment (D160 §3, #543): one payment shared by amount, each guest's card its own hold,
+ * made by its own key and carrying the hold's id beside the payment's. Each hold is found by its
+ * hold (the payment's id alone concludes nothing), a create that timed out after it landed is read
+ * back by its hold before the key repeats it, and the holds are captured or released one by one:
+ * one hold's capture leaves the others held, and only the captures move money.
+ */
+export const groupHoldsCheck = check(async (run) => {
+  const before = await run.moved()
+  const paymentId = newId('py')
+  const holds: { holdId: PaymentHoldId; amountMinor: number; guest: GuestPayment }[] = []
+  for (const extra of [0, 200, 400]) {
+    const holdId = newId('ph')
+    const amountMinor = addMinor(run.amount, extra)
+    const key = `${holdId}:hold`
+    let created: CreateHoldResult
+    const landThenTimeOut = run.h.faults.landThenTimeOut
+    if (extra === 200 && landThenTimeOut !== undefined) {
+      // The second guest's create lands, then times out: it is read back by its hold first.
+      landThenTimeOut('createHold')
+      run.unknown(
+        'a hold timing out after it landed',
+        await run.create(paymentId, amountMinor, key, holdId),
+      )
+      const found = run.complete('the read-back by the hold', await run.find(paymentId, holdId))
+      if (found === null) return run.fail('a hold that landed is not found by its hold')
+      created = run.done(
+        'the hold again with its key',
+        await run.create(paymentId, amountMinor, key, holdId),
+      )
+      run.expect(
+        sameProviderRef(created.paymentRef, found.ref),
+        'the retried hold made a second payment',
+      )
+    } else {
+      created = run.done(
+        'a hold of the group',
+        await run.create(paymentId, amountMinor, key, holdId),
+      )
+    }
+    holds.push({
+      holdId,
+      amountMinor,
+      guest: { accountRef: run.account, paymentRef: created.paymentRef, form: created.form },
+    })
+  }
+  const refs = new Set(holds.map((hold) => hold.guest.paymentRef.provider))
+  run.expect(refs.size === holds.length, 'two holds of the group share one provider payment')
+  for (const hold of holds) {
+    const found = run.complete(
+      'findByPaymentId with the hold',
+      await run.find(paymentId, hold.holdId),
+    )
+    if (found === null) return run.fail('a hold of the group is not found by its hold')
+    run.expect(
+      sameProviderRef(found.ref, hold.guest.paymentRef),
+      'a hold is found under another ref',
+    )
+    run.expect(found.paymentId === paymentId, 'a hold carries another payment id')
+    run.expect(found.holdId === hold.holdId, `a hold reads hold ${found.holdId ?? 'none'}`)
+    run.expect(found.amountMinor === hold.amountMinor, `a hold is for ${found.amountMinor}`)
+  }
+  const alone = await run.find(paymentId)
+  run.expect(
+    !alone.complete,
+    "the read-back by the payment's id alone concluded something about a group payment",
+  )
+  const stranger = run.complete('an unknown hold', await run.find(paymentId, newId('ph')))
+  run.expect(stranger === null, 'a hold never made reads a payment')
+  await run.expectMoved('holding a group', before)
+
+  for (const hold of holds) await run.h.guest.pay(hold.guest)
+  const [first, second, third] = holds
+  if (first === undefined || second === undefined || third === undefined) return
+  const ref = (hold: (typeof holds)[number]) => hold.guest.paymentRef
+  run.done(
+    'the first hold captured',
+    await run.capture(ref(first), first.amountMinor, `${first.holdId}:capture`),
+  )
+  await run.expectPayment('the second hold, after the first was captured', ref(second), 'held')
+  await run.expectPayment('the third hold, after the first was captured', ref(third), 'held')
+  run.done('the second hold released', await run.release(ref(second), `${second.holdId}:release`))
+  run.done(
+    'the third hold captured',
+    await run.capture(ref(third), third.amountMinor, `${third.holdId}:capture`),
+  )
+  await run.expectPayment('the first hold', ref(first), 'captured', first.amountMinor)
+  await run.expectPayment('the second hold', ref(second), 'released')
+  await run.expectPayment('the third hold', ref(third), 'captured', third.amountMinor)
+  await run.expectMoved(
+    'a group captured one hold at a time',
+    before,
+    addMinor(first.amountMinor, third.amountMinor),
+  )
 })
 
 // ---------------------------------------------------------------------------------------------

@@ -222,6 +222,49 @@ export function percentOfMinor(minor: number, percent: number): number {
   return ratioOfMinor(minor, percent, 100)
 }
 
+/**
+ * Why one guest's part of a group payment is refused (D160 §3, 2.2, 2.11, 2.12):
+ *   - `above_share`: it would take the parts above the shared amount;
+ *   - `below_minimum`: it is below the smallest card payment;
+ *   - `rest_below_minimum`: it would leave a rest above zero but below the smallest card payment,
+ *     which nobody could then pay.
+ */
+export const SHARE_PART_PROBLEMS = ['above_share', 'below_minimum', 'rest_below_minimum'] as const
+export type SharePartProblem = (typeof SHARE_PART_PROBLEMS)[number]
+
+/**
+ * What is left of a group payment's shared amount once the parts already claimed are taken off
+ * (`sharedMinor − claimedMinor`): "the rest", one guest's part as one tap (2.11). Throws
+ * `MoneyError` when the parts claimed are above the shared amount, which the limits never allow.
+ */
+export function shareRestMinor(sharedMinor: number, claimedMinor: number): number {
+  return subtractMinor(sharedMinor, claimedMinor)
+}
+
+/**
+ * Checks one guest's part of a group payment against the limits (D160 §3; rule 8): never above
+ * what is left of the shared amount, never below the smallest card payment, and never leaving a
+ * rest that is above zero and below it. Null when the part may be held. Every amount is integer
+ * minor units; the part is the guest's share of the bill, without the tip.
+ */
+export function sharePartProblem(input: {
+  readonly sharedMinor: number
+  /** The parts of the holds that are not let go: asked for, at the card form, or held. */
+  readonly claimedMinor: number
+  readonly partMinor: number
+  /** The smallest card payment: the venue's own floor or the provider's minimum, the higher. */
+  readonly minimumMinor: number
+}): SharePartProblem | null {
+  assertMinor(input.partMinor, 'the part')
+  assertMinor(input.minimumMinor, 'the minimum')
+  const left = shareRestMinor(input.sharedMinor, input.claimedMinor)
+  if (input.partMinor > left) return 'above_share'
+  if (input.partMinor < Math.max(input.minimumMinor, 1)) return 'below_minimum'
+  const rest = subtractMinor(left, input.partMinor)
+  if (rest > 0 && rest < input.minimumMinor) return 'rest_below_minimum'
+  return null
+}
+
 const formatters = new Map<string, Intl.NumberFormat>()
 
 /**

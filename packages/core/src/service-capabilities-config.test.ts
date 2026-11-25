@@ -37,6 +37,7 @@ describe('the recorded service capabilities (#78)', () => {
       electronicReceipt: false,
       electronicReceiptFile: false,
       severalBillsPerTable: false,
+      closeWithSeveralPayments: false,
     })
     expect(
       readServiceCapabilities({
@@ -54,6 +55,7 @@ describe('the recorded service capabilities (#78)', () => {
       electronicReceipt: false,
       electronicReceiptFile: false,
       severalBillsPerTable: false,
+      closeWithSeveralPayments: false,
     })
     expect(
       readServiceCapabilities({

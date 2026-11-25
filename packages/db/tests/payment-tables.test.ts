@@ -17,6 +17,7 @@ import {
   type DbPool,
   locks,
   paymentAccounts,
+  paymentHolds,
   paymentLines,
   paymentRefunds,
   paymentSteps,
@@ -93,6 +94,23 @@ function paymentRow(f: Fixture, patch: Partial<typeof payments.$inferInsert> = {
     ...PROVENANCE,
     ...patch,
   } satisfies typeof payments.$inferInsert
+}
+
+/** One guest's hold on the fixture's payment (migration 0058), with `patch` over the defaults. */
+function holdRow(f: Fixture, patch: Partial<typeof paymentHolds.$inferInsert> = {}) {
+  return {
+    id: testId('ph'),
+    tenantId: f.tenantId,
+    venueId: f.venueId,
+    paymentId: f.paymentId,
+    state: 'requested',
+    handleHash: randomBytes(32).toString('hex'),
+    amountMinor: 4000,
+    currency: 'EUR',
+    providerKind: 'sim',
+    ...PROVENANCE,
+    ...patch,
+  } satisfies typeof paymentHolds.$inferInsert
 }
 
 describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
@@ -175,6 +193,7 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
         displayName: 'Mojito',
         ...PROVENANCE,
       })
+      await tx.insert(paymentHolds).values(holdRow(f))
       await tx.insert(paymentSteps).values({
         ...base,
         paymentId: f.paymentId,
@@ -710,5 +729,74 @@ describe.skipIf(!hasDatabase)('paying tables (migration 0030)', () => {
       )
       expect(message, JSON.stringify(patch)).toMatch(/payments_dispute_times/)
     }
+  })
+
+  it("keeps a group payment's holds within the route's shape (migration 0058)", async () => {
+    const hold = (patch: Partial<typeof paymentHolds.$inferInsert>) =>
+      withTenantWrite(app, a.tenantId, (tx) => tx.insert(paymentHolds).values(holdRow(a, patch)))
+    const pi = () => `pi_${testId('x').slice(2)}`
+    for (const [patch, error] of [
+      [{ id: 'ph_not valid' }, /payment_holds_id_format/],
+      [{ state: 'gathering' }, /payment_holds_state/],
+      [{ amountMinor: 0 }, /payment_holds_amounts/],
+      [{ amountMinor: 300, tipMinor: 300 }, /payment_holds_amounts/],
+      [{ tipMinor: -1 }, /payment_holds_amounts/],
+      [{ capturedMinor: 4001 }, /payment_holds_captured_minor/],
+      [{ formValues: { secret: 'x' } }, /payment_holds_form_values/],
+      [{ state: 'captured' }, /payment_holds_settled/],
+      [{ settledAt: new Date() }, /payment_holds_settled/],
+      [{ handleHash: 'not a hash' }, /payment_holds_handle_hash/],
+      [{ source: 'nobody' }, /payment_holds_source/],
+    ] as const) {
+      expect(await databaseError(hold(patch)), JSON.stringify(patch)).toMatch(error)
+    }
+    // A provider's payment belongs to one hold, and a hold handle to one guest.
+    const ref = pi()
+    const handleHash = randomBytes(32).toString('hex')
+    await hold({ state: 'awaiting_guest', providerPaymentRef: ref, formValues: { secret: 'x' } })
+    expect(await databaseError(hold({ providerPaymentRef: ref }))).toMatch(
+      /payment_holds_provider_payment_unique/,
+    )
+    await hold({ handleHash, state: 'captured', capturedMinor: 4000, settledAt: new Date() })
+    expect(await databaseError(hold({ handleHash }))).toMatch(/payment_holds_handle_hash_unique/)
+    // A hold of another tenant's payment points at nothing this tenant can see.
+    expect(
+      await databaseError(
+        withTenantWrite(app, a.tenantId, (tx) =>
+          tx.insert(paymentHolds).values(holdRow({ ...a, paymentId: b.paymentId })),
+        ),
+      ),
+    ).toMatch(/payment_holds_payment_fk/)
+    // A step names a hold of its own tenant.
+    const step = (holdId: string) =>
+      withTenantWrite(app, a.tenantId, (tx) =>
+        tx.insert(paymentSteps).values({
+          tenantId: a.tenantId,
+          venueId: a.venueId,
+          paymentId: a.paymentId,
+          holdId,
+          step: 'createHold',
+          outcome: 'attempting',
+          ...PROVENANCE,
+        }),
+      )
+    expect(await databaseError(step(testId('ph')))).toMatch(/payment_steps_hold_fk/)
+  })
+
+  it('lets only an on-bill payment with no card of its own be a group payment (migration 0058)', async () => {
+    const group = (patch: Partial<typeof payments.$inferInsert>) =>
+      withTenantWrite(app, a.tenantId, (tx) =>
+        tx.insert(payments).values(paymentRow(a, { sharedMinor: 10000, ...patch })),
+      )
+    for (const [patch, error] of [
+      [{ sharedMinor: 0 }, /payments_group/],
+      [{ kind: 'pay_first', sentOrderId: a.sentOrderId }, /payments_group/],
+      [{ providerPaymentRef: 'pi_own' }, /payments_group/],
+      [{ receiptEmail: 'guest@example.com' }, /payments_group/],
+      [{ sharedMinor: null, gatheringEndsAt: new Date() }, /payments_gathering_ends_at/],
+    ] as const) {
+      expect(await databaseError(group(patch)), JSON.stringify(patch)).toMatch(error)
+    }
+    await group({ state: 'awaiting_guest', gatheringEndsAt: new Date() })
   })
 })

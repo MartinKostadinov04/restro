@@ -72,6 +72,7 @@ describe('the table areas list', () => {
   it('puts the paying tables in money (D127), where the rule does not reach them', () => {
     expect(tablesInArea('money')).toEqual([
       'payment_accounts',
+      'payment_holds',
       'payment_lines',
       'payment_refunds',
       'payment_steps',

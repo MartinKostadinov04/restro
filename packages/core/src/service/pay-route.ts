@@ -874,6 +874,9 @@ export function paymentChecked() {
         ),
       )
       const lowered = amountMinor !== payment.amountMinor
+      // A group payment's holds sum to its amount, each guest's part fixed (#543): a lower bill
+      // has no one's part to lower, so it does not close; the holds are let go with the route.
+      if (lowered && payment.sharedMinor !== null) return failed('bill_changed')
       if (again && !lowered) return at(payment, 'checked', false, { amountMinor })
       await move(
         stx,
@@ -980,6 +983,8 @@ export function paymentCaptured() {
       })
       if (refusedLock(locked)) return locked
       const { payment } = locked
+      // A group payment is captured hold by hold (`share.hold_captured`, #543).
+      if (payment.sharedMinor !== null) return refused(null, 'group_payment')
       const capturable =
         payment.state === 'closed' ||
         (payment.state === 'unconfirmed' && payment.reason === 'receipt_printed')
@@ -1286,6 +1291,8 @@ export function paymentExpired() {
         payment.state === 'unconfirmed' &&
         (UNCONFIRMED_REASONS as readonly (string | null)[]).includes(payment.reason)
       const cancelling = payment.state === 'cancelling'
+      // A group payment's hold gone is `share.hold_gone` (#543): the other guests' cards still hold.
+      if (payment.sharedMinor !== null) return refused(null, 'group_payment')
       if (!waiting && !asking && !cancelling) return at(payment, payment.state, false)
       if (
         cancelling &&

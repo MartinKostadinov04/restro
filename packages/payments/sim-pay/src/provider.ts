@@ -6,6 +6,7 @@
 import {
   CaptureRequestSchema,
   CreateHoldRequestSchema,
+  PaymentHoldIdSchema,
   PaymentIdSchema,
   type PaymentProvider,
   PrepareDomainRequestSchema,
@@ -49,8 +50,12 @@ export function createSimPayProvider(options: SimPayProviderOptions): PaymentPro
     prepareDomain: async (request) =>
       engine.prepareDomain(PrepareDomainRequestSchema.parse(request)),
     createHold: async (request) => engine.createHold(CreateHoldRequestSchema.parse(request)),
-    findByPaymentId: async (accountRef, paymentId) =>
-      engine.findByPaymentId(ProviderRefSchema.parse(accountRef), PaymentIdSchema.parse(paymentId)),
+    findByPaymentId: async (accountRef, paymentId, holdId) =>
+      engine.findByPaymentId(
+        ProviderRefSchema.parse(accountRef),
+        PaymentIdSchema.parse(paymentId),
+        holdId === undefined ? undefined : PaymentHoldIdSchema.parse(holdId),
+      ),
     readPayment: async (accountRef, paymentRef) =>
       engine.readPayment(ProviderRefSchema.parse(accountRef), ProviderRefSchema.parse(paymentRef)),
     readNoticeSubject: async (accountRef, notice) =>

@@ -51,6 +51,11 @@ export interface RecordedServiceCapabilities {
   readonly electronicReceipt: boolean
   /** With it: the POS returns the receipt file and Restro sends it ("sent"); else the POS sends ("requested"). */
   readonly electronicReceiptFile: boolean
+  /**
+   * One close takes several card payments, one per hold of a group payment (D160 §3, #543): else
+   * sharing a bill by amount is not offered at the table.
+   */
+  readonly closeWithSeveralPayments: boolean
 }
 
 /** Nothing declared: the cautious answer. */
@@ -63,6 +68,7 @@ export const NO_RECORDED_SERVICE_CAPABILITIES: RecordedServiceCapabilities = Obj
   severalBillsPerTable: false,
   electronicReceipt: false,
   electronicReceiptFile: false,
+  closeWithSeveralPayments: false,
 })
 
 function snakeCase(name: string): string {
@@ -92,5 +98,6 @@ export function readServiceCapabilities(config: unknown): RecordedServiceCapabil
     severalBillsPerTable: stored.several_bills_per_table === true,
     electronicReceipt: stored.electronic_receipt === true,
     electronicReceiptFile: stored.electronic_receipt_file === true,
+    closeWithSeveralPayments: stored.close_with_several_payments === true,
   }
 }

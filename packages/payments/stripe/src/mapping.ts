@@ -8,6 +8,7 @@ import {
   ConnectionStatusSchema,
   CurrencySchema,
   type PaymentDisputeState,
+  PaymentHoldIdSchema,
   PaymentIdSchema,
   type ProviderPayment,
   ProviderPaymentSchema,
@@ -28,6 +29,13 @@ import type {
 
 /** The metadata key that carries our payment id on the PaymentIntent (design §10). */
 export const PAYMENT_METADATA_KEY = 'restro_payment'
+
+/**
+ * The metadata key that carries a group payment's hold (`ph_`, D160 §3, #543) beside the payment's
+ * id: each guest's card is its own PaymentIntent, so several carry one payment id and each is read
+ * back by its hold.
+ */
+export const HOLD_METADATA_KEY = 'restro_hold'
 
 /** The metadata key that carries our refund row on a refund Restro made (`refundLine`). */
 export const REFUND_METADATA_KEY = 'restro_refund'
@@ -161,6 +169,12 @@ export function paymentIdOf(intent: StripePaymentIntent): ProviderPayment['payme
   return parsed.success ? parsed.data : null
 }
 
+/** The group payment's hold the intent was made for, or null on any other payment (#543). */
+export function holdIdOf(intent: StripePaymentIntent): ProviderPayment['holdId'] | null {
+  const parsed = PaymentHoldIdSchema.safeParse(intent.metadata?.[HOLD_METADATA_KEY])
+  return parsed.success ? parsed.data : null
+}
+
 /**
  * The payment as the seam has it. `charge` is the intent's latest charge (expanded), and
  * `dispute` the latest dispute's state and `disputeDueAt` its answer-by date, read separately; all
@@ -176,6 +190,7 @@ export function providerPayment(
   if (status === null) return { ok: false, reason: `unknown payment status ${intent.status}` }
   const paymentId = paymentIdOf(intent)
   if (paymentId === null) return { ok: false, reason: 'the payment carries no Restro payment id' }
+  const holdId = holdIdOf(intent)
   const currency = CurrencySchema.safeParse(intent.currency.toUpperCase())
   if (!currency.success) return { ok: false, reason: `unknown currency ${intent.currency}` }
   const card = charge?.payment_method_details?.card ?? null
@@ -184,6 +199,7 @@ export function providerPayment(
   const parsed = ProviderPaymentSchema.safeParse({
     ref: providerRef(intent.id),
     paymentId,
+    ...(holdId === null ? {} : { holdId }),
     status,
     needsGuestAction: intent.status === 'requires_action',
     currency: currency.data,
