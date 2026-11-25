@@ -367,11 +367,11 @@ describe('the heading font (D130)', () => {
     expect(weight(at({ body_font: 'manrope' }), '--rm-heading-weight')).toBe(800)
     expect(weight(at({ body_font: 'manrope' }), '--rm-name-weight')).toBe(800)
     // A font that serves Heavy keeps it: Playfair Display reaches 900.
-    expect(weight(at({ heading_font: 'playfair-display' }), '--rm-heading-weight')).toBe(880)
-    expect(weight(at({ heading_font: 'playfair-display' }), '--rm-name-weight')).toBe(850)
+    expect(weight(at({ heading_font: 'playfair-display' }), '--rm-heading-weight')).toBe(900)
+    expect(weight(at({ heading_font: 'playfair-display' }), '--rm-name-weight')).toBe(900)
     // The heading font is the one drawing: a Lora body under an Inter heading keeps Heavy.
     expect(weight(at({ body_font: 'lora', heading_font: 'inter' }), '--rm-heading-weight')).toBe(
-      880,
+      900,
     )
     // And bold or regular are not touched.
     expect(weight({ general: { heading_font: 'lora' } }, '--rm-heading-weight')).toBe(700)

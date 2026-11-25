@@ -432,20 +432,43 @@ const NAME_FIT_ADDED: readonly string[] = [
   '.rm-item-copy > [data-slot="item.name"] { min-width: 0 }',
   '.rm-item { container-type: inline-size }',
   '.rm-item { --rm-name-inset: 0px }',
-  `.rm-item ${NAME} { --rm-name-size: 19px }`,
+  `.rm-item ${NAME} { --rm-name-size: 19.5px }`,
   `.rm-item ${NAME} { --rm-name-fits: calc((100cqi - var(--rm-name-inset) - 12px) / (var(--rm-name-fit) + 1)) }`,
   `.rm-item ${NAME} { font-size: clamp(12px, var(--rm-name-fits), var(--rm-name-size)) }`,
   `.rm-item ${NAME} { overflow-wrap: break-word }`,
-  `.rm-section.is-feature .rm-item ${NAME} { --rm-name-size: 22px }`,
-  `.rm-section:not(.is-feature) .rm-item.has-photo ${NAME} { --rm-name-size: 24px }`,
+  `.rm-section.is-feature .rm-item ${NAME} { --rm-name-size: 23px }`,
+  `.rm-section:not(.is-feature) .rm-item.has-photo ${NAME} { --rm-name-size: 25px }`,
   `${TWO} .rm-item ${NAME} { --rm-name-fits: calc((100cqi - var(--rm-name-inset)) / var(--rm-name-fit)) }`,
   `${TWO} .rm-item-copy > [data-slot="item.name"] { flex-basis: 100% }`,
   `${TWO} .rm-item.has-photo ${NAME} { --rm-name-size: 14px }`,
   `${NARROW}${TWO} .rm-item.has-photo ${NAME} { --rm-name-size: 12.5px }`,
 ]
 
+/** The lines the widened steps move (Martin 11-24), as today's line and Editorial's now. */
+const WIDENED: readonly (readonly [string, string])[] = [
+  ['.rm-header { padding: 18px 20px 24px }', '.rm-header { padding: 20.7px 20px 27.6px }'],
+  ['.rm-titleblock { padding-top: 26px }', '.rm-titleblock { padding-top: 29.9px }'],
+  ['.rm-section { padding: 58px 20px 0 }', '.rm-section { padding: 66.7px 20px 0 }'],
+  ['.rm-section-head { margin-bottom: 22px }', '.rm-section-head { margin-bottom: 25.3px }'],
+  ['.rm-item { gap: 18px }', '.rm-item { gap: 20.7px }'],
+  ['.rm-item { padding: 25px 0 }', '.rm-item { padding: 28.75px 0 }'],
+  ['.rm-titleblock h1 { font-weight: 880 }', '.rm-titleblock h1 { font-weight: 900 }'],
+  [
+    '.rm-section h2, .rm-section h3, .rm-section h4 { font-weight: 880 }',
+    '.rm-section h2, .rm-section h3, .rm-section h4 { font-weight: 900 }',
+  ],
+  ['.rm-item :is(h3, h4) { font-weight: 850 }', '.rm-item :is(h3, h4) { font-weight: 900 }'],
+  ['.rm-overlay-head { font-weight: 850 }', '.rm-overlay-head { font-weight: 900 }'],
+  ['.rm-detail-title h2 { font-weight: 880 }', '.rm-detail-title h2 { font-weight: 900 }'],
+  ['.rm .ro-h { font-weight: 850 }', '.rm .ro-h { font-weight: 900 }'],
+  ['.rm .ro-page > h2 { font-weight: 880 }', '.rm .ro-page > h2 { font-weight: 900 }'],
+]
+
 /** Each departure of `packages/shell/src/design/styles/editorial.ts`, as the lines it may touch. */
 const DEPARTURES: readonly ((line: string, added: boolean) => boolean)[] = [
+  // Martin 11-24, widened steps: Heavy is 900 (it stood too close to Bold at 850 and 880), and
+  // Spacious is 1.15 of the spacing step, not 1. These exact lines, each old value for its new one.
+  (line, added) => WIDENED.some(([was, now]) => line === (added ? now : was)),
   // A dish page with no photo starts under the back button (P14, #420): its own new rule.
   (line, added) =>
     added && line.startsWith('.rm-overlay-panel.is-detail .rm-detail-copy:first-child {'),

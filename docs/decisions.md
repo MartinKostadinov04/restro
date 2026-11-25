@@ -133,8 +133,8 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D126](decisions/D126.md) | Stripe is the first payment provider; the pretend till stays for tables and bills | firm; refines D98 and D122; refined by D125 |
 | [D127](decisions/D127.md) | How the guest page pays: the commands, the route with its failure rules, Stripe's notices, tips only on the same receipt, the smallest card payment, the bank's check on every payment, where each call runs | firm; refines D98, D121, D122 and D125 |
 | [D128](decisions/D128.md) | One renderer draws every guest menu from one option list; a Style is a preset of it | firm; supersedes D69 in part and D105's "how a template is made"; revises D92's "no presets" |
-| [D129](decisions/D129.md) | The Studio: one design per venue, Simple and Advanced, Done saves the whole design | firm; refines D128; revises D92; refines D122 |
-| [D130](decisions/D130.md) | The design option set: 48 options on 14 pages, and the never-list | firm; refines D128 and D129 |
+| [D129](decisions/D129.md) | The Studio: one design per venue, Simple and Advanced, Done saves the whole design | firm; refines D128; revises D92; refines D122; refined by D159 |
+| [D130](decisions/D130.md) | The design option set: 48 options on 14 pages, and the never-list | firm; refines D128 and D129; refined by D159 |
 | [D131](decisions/D131.md) | Sold-out and unavailable items are hidden; scheduled items are out of scope | firm; supersedes D22 |
 | [D132](decisions/D132.md) | Three wordings settled: a stamped new bill is never resent, a payment's return address, refunds are read and never made | firm; refines D112, D116 and D127 |
 | [D133](decisions/D133.md) | The model follows the job, not the session; Opus checks the heavy zone, Sonnet builds and keeps the books, sessions stay short | firm; refines D58, D104 and D108 |
@@ -163,6 +163,7 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D156](decisions/D156.md) | Each module has its own Settings | firm; refines D97 |
 | [D157](decisions/D157.md) | A person opens only what their role at that venue works | firm; refines D141 and D97 |
 | [D158](decisions/D158.md) | Restro opens inside the venue | firm; extends D141 |
+| [D159](decisions/D159.md) | The Design panel opens on a list of parts, and an option's picture draws the part alone | firm; refines D129 and D130 |
 | [D160](decisions/D160.md) | A party’s tables can be paid in one payment, and guests can share a bill by amount, settling together | firm; refines D139 (13.13), D154 §1 and D127; part payment waits on Mistral |
 | [D161](decisions/D161.md) | The admin is organised around the open venue | firm; supersedes D74; refines D97 |
 

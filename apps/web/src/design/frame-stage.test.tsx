@@ -12,7 +12,15 @@ import { renderWithIntl } from '@/test-utils'
 
 import { pageOfTap, type Stage, tilePlanOf } from './advanced-model'
 import { partOf } from './design-frame'
-import { closeDish, drive, keepHistoryInside, stuckTop, WAYS } from './frame-stage'
+import {
+  closeStage,
+  drive,
+  keepFocusOut,
+  keepHistoryInside,
+  stagePressing,
+  stuckTop,
+  WAYS,
+} from './frame-stage'
 import { previewSnapshot } from './preview-snapshot'
 import { DEMO_ASSET_BASE, specimenOf } from './specimen'
 
@@ -66,8 +74,9 @@ describe('the stages of a frame', () => {
       expect(snapshot.sections[section]?.items.length).toBeLessThanOrEqual(3)
     }
     for (const id of ids) expect(snapshot.items[id]?.image).toBeTruthy()
-    // The demo photo is the only asset, so the frame's photo base is the app's folder.
-    expect(Object.keys(snapshot.assets)).toHaveLength(1)
+    // Only the demo pictures (the photo, an upright photo, a sample logo), so the frame's photo base
+    // is the app's folder.
+    for (const id of Object.keys(snapshot.assets)) expect(id).toMatch(/^as_Demo/)
   })
 
   const STAGES: [Stage, string[]][] = [
@@ -90,6 +99,38 @@ describe('the stages of a frame', () => {
       stop()
     }, 30_000)
   }
+
+  it('the order stage opened again adds nothing more to the bag', async () => {
+    const first = await reach('order', [])
+    first.stop()
+    const count = () => first.view.container.querySelector('.ro-count')?.textContent
+    expect(count()).toBe('1')
+    let reached = false
+    const stop = drive('order', [], () => {
+      reached = true
+    })
+    await waitFor(() => expect(reached).toBe(true), { timeout: 15_000, interval: 100 })
+    stop()
+    expect(count()).toBe('1')
+  }, 30_000)
+
+  it("the stage's own presses are not the owner's taps: no part of the panel opens from them", async () => {
+    // The bill button sits in the header: taken for a tap, it would open the Header part.
+    const seen: boolean[] = []
+    const listen = () => seen.push(stagePressing())
+    document.addEventListener('click', listen, true)
+    try {
+      const { view, stop } = await reach('bill', ['bill.lines'])
+      stop()
+      expect(seen.length).toBeGreaterThan(0)
+      expect(seen.every(Boolean)).toBe(true)
+      // The owner's own tap, after the stage, is a tap.
+      view.container.querySelector<HTMLElement>('[data-design-part]')?.click()
+      expect(seen.at(-1)).toBe(false)
+    } finally {
+      document.removeEventListener('click', listen, true)
+    }
+  }, 30_000)
 
   it('a tile of a browsing page scrolls to the part it styles', async () => {
     const { stop } = await reach('menu', ['item'])
@@ -188,7 +229,7 @@ describe('around the stages', () => {
       const first = await reach('dish', [])
       expect(window.location.hash).toMatch(/^#item-/)
       first.stop()
-      closeDish()
+      closeStage()
       await waitFor(() => expect(dishOf(first.view)).toBeNull())
       expect(window.location.hash).toBe('')
       first.view.unmount()
@@ -206,6 +247,53 @@ describe('around the stages', () => {
     } finally {
       release()
     }
+  })
+
+  for (const stage of ['bag', 'bill', 'call', 'pay', 'receipt', 'dish'] as const) {
+    it(`closes the ${stage} stage's sheet by its address, with no step through the history`, async () => {
+      const release = keepHistoryInside(window)
+      try {
+        const steps = window.history.length
+        const { view, stop } = await reach(stage, [])
+        expect(view.container.querySelector('[role="dialog"]')).not.toBeNull()
+        stop()
+        act(() => closeStage())
+        await waitFor(() => expect(view.container.querySelector('[role="dialog"]')).toBeNull())
+        expect(window.location.hash).toBe('')
+        expect(window.history.length).toBe(steps)
+        view.unmount()
+      } finally {
+        release()
+      }
+    }, 30_000)
+  }
+
+  it('a frame does not take the focus while the owner is in the Design page, and does once they are in it', () => {
+    document.body.innerHTML = '<button id="opener">Dish</button>'
+    const opener = document.getElementById('opener') as HTMLButtonElement
+    const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+    const release = keepFocusOut(window)
+    try {
+      // The dish closing hands the focus back to its button: not while the owner is in the panel.
+      opener.focus()
+      expect(document.activeElement).not.toBe(opener)
+      hasFocus.mockReturnValue(true)
+      opener.focus()
+      expect(document.activeElement).toBe(opener)
+    } finally {
+      release()
+    }
+  })
+
+  it('closing with nothing open leaves the address alone', () => {
+    window.history.replaceState(null, '', `${window.location.pathname}#elsewhere`)
+    const popped = vi.fn()
+    window.addEventListener('popstate', popped)
+    closeStage()
+    expect(window.location.hash).toBe('#elsewhere')
+    expect(popped).not.toHaveBeenCalled()
+    window.removeEventListener('popstate', popped)
+    window.history.replaceState(null, '', window.location.pathname)
   })
 
   it('a step back with nothing of the frame to go back to does nothing', () => {

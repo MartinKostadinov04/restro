@@ -10,19 +10,21 @@ import {
   DESIGN_MARKER_PAGES,
   DESIGN_PAGES,
   type DesignChoiceOption,
+  type DesignOption,
   type DesignPage,
   type DesignPageId,
   type DesignValues,
   THEME_FONTS,
 } from '@restro/core'
+import type { SpecimenPart } from '@restro/editorial-market/preview'
 
 import type { DesignDraft } from './design-draft'
 
-/** Simple is the Style, the colours and the fonts; Advanced is General and the component pages. */
+/**
+ * Simple is the Style, the colours and logo, the fonts and the layout; Advanced is the first three,
+ * then General and the component pages (D159).
+ */
 export type PanelMode = 'simple' | 'advanced'
-
-/** The page that opens first in Advanced. */
-export const FIRST_PAGE: DesignPageId = DESIGN_PAGES[0].id
 
 /** A page of the contract by its id. */
 export function pageById(
@@ -79,6 +81,7 @@ export function withOption(
 /** Why a row says something: a note under it, and whether the row can be picked at all. */
 export type RowNote =
   | { readonly kind: 'bleed' }
+  | { readonly kind: 'page-band' }
   | { readonly kind: 'heavy'; readonly font: string; readonly heaviest: number }
 
 export interface RowState {
@@ -89,7 +92,7 @@ export interface RowState {
 const FREE: RowState = { disabled: false, note: null }
 
 /** The weight Heavy is asked for in the renderer; a font that serves less draws it at its own top. */
-const HEAVY_WEIGHT = 850
+const HEAVY_WEIGHT = 900
 
 /** The font that draws headings and names: the heading font, or the body font when it is "same". */
 export function drawingFont(values: DesignValues): string {
@@ -111,6 +114,15 @@ export function rowStateOf(values: DesignValues, pageId: string, optionId: strin
   ) {
     return { disabled: true, note: { kind: 'bleed' } }
   }
+  // The rail takes the header's band only where the header has one: on a page-coloured header both
+  // values draw the same rail (the renderer's rule).
+  if (
+    pageId === 'navigation' &&
+    optionId === 'band' &&
+    valueIn(values, 'header', 'band') === 'page'
+  ) {
+    return { disabled: true, note: { kind: 'page-band' } }
+  }
   const weightRow =
     (pageId === 'general' && optionId === 'heading_weight') ||
     (pageId === 'items' && optionId === 'name_weight')
@@ -124,6 +136,20 @@ export function rowStateOf(values: DesignValues, pageId: string, optionId: strin
     }
   }
   return FREE
+}
+
+/** General's options that are rows of their own in Advanced, so General does not repeat them. */
+const OWN_ROW_OPTIONS: ReadonlySet<string> = new Set([
+  'style',
+  'colours',
+  'body_font',
+  'heading_font',
+])
+
+/** The options a part page shows: every option of the page, but General's own rows (D159). */
+export function optionsOfPage(page: DesignPage): readonly DesignOption[] {
+  if (page.id !== 'general') return page.options
+  return page.options.filter((option) => !OWN_ROW_OPTIONS.has(option.id))
 }
 
 /** The choice options of a page, in the contract's order. */
@@ -148,6 +174,21 @@ export type Stage =
   | 'receipt'
   /** A dish, open. */
   | 'dish'
+
+/** The stages that draw a guest service (D71): the preview shows them only with its services on. */
+const SERVICE_STAGES: ReadonlySet<Stage> = new Set([
+  'order',
+  'bag',
+  'bill',
+  'call',
+  'pay',
+  'receipt',
+])
+
+/** True when a stage draws a guest service, so the preview needs its services on to show it. */
+export function isServiceStage(stage: Stage): boolean {
+  return SERVICE_STAGES.has(stage)
+}
 
 export interface TilePlan {
   readonly stage: Stage
@@ -215,6 +256,71 @@ export function tilePlanOf(
   return { stage, focus: page === undefined ? [] : page.markers.slice(0, 2) }
 }
 
+/**
+ * The part an option's tile draws alone (D159, the spec's §5.1): the face's specimen view of that
+ * part, with nothing of the page around it. Every option of the contract is here: `null` for the
+ * options that have no tiles of a part (a Style redraws the whole menu; the colours and the fonts are
+ * fields), so a contract option missing from this table fails its test.
+ */
+export const PART_OF_OPTION: Readonly<Record<string, SpecimenPart | null>> = {
+  'general.style': null,
+  'general.colours': null,
+  'general.body_font': null,
+  'general.heading_font': null,
+  'general.screen': 'section-two',
+  'general.heading_weight': 'section',
+  'general.corners': 'dish-card',
+  'general.depth': 'dish-card',
+  'general.density': 'dish-rows',
+  'general.text_size': 'dish-row',
+  'general.buttons': 'call-foot',
+  'header.band': 'header',
+  'header.arrangement': 'header',
+  'header.title_size': 'header',
+  'header.logo_size': 'header',
+  'navigation.marker': 'rail',
+  'navigation.band': 'header-rail',
+  'sections.header': 'section',
+  'sections.title_size': 'section',
+  'sections.title_case': 'section',
+  'sections.strip_card_size': 'strip',
+  'items.frame': 'two-dishes',
+  'items.name_size': 'dish-row',
+  'items.name_weight': 'dish-row',
+  'items.name_case': 'dish-row',
+  'items.price_place': 'dish-row',
+  'items.portion_place': 'dish-row',
+  'items.description_lines': 'dish-long',
+  'items.layout': 'four-dishes',
+  'items.guest_switch': 'switch',
+  'photos.shape': 'dish-row',
+  'photos.fit': 'dish-row',
+  'photos.backdrop': 'dish-row',
+  'photos.frame': 'dish-row',
+  'photos.corners': 'dish-row',
+  'labels.labels': 'dish-row',
+  'labels.allergens': 'dish-allergens',
+  'dish.kind': 'dish-open',
+  'dish.photo': 'dish-open',
+  'sheets.sheets': 'call-sheet',
+  'call.kinds': 'call-kinds',
+  'bill.rows': 'bill-lines',
+  'bill.lines': 'bill-lines',
+  'order.add_control': 'dish-add',
+  'order.order_bar': 'order-bar',
+  'order.line_photos': 'bag-lines',
+  'pay.tip': 'tip',
+  'receipt.venue_block': 'receipt-top',
+}
+
+/**
+ * The part an option's tile draws alone, or null where it has none: the tile then draws the menu at
+ * its stage (`tilePlanOf`), as an option the contract gained before this table did.
+ */
+export function specimenPartOf(pageId: string, optionId: string): SpecimenPart | null {
+  return PART_OF_OPTION[`${pageId}.${optionId}`] ?? null
+}
+
 // --- A tap on the preview ------------------------------------------------------------------------
 
 /**
@@ -235,12 +341,32 @@ export function pageOfTap(
   return owner
 }
 
+/** What the live preview shows: a stage it opens (none for the menu itself), and the part it scrolls to. */
+export interface PreviewPlan {
+  readonly stage?: Stage
+  readonly focus: readonly string[]
+}
+
+/** The top of the menu: what the preview shows with the list, or a part of the panel's own, open. */
+export const MENU_TOP: PreviewPlan = { focus: ['header'] }
+
 /**
- * What the live preview shows first while a page is open: a dish, while the Dish page is open in
- * Advanced, so its options are seen at work (D129); the menu otherwise.
+ * What the live preview shows while a part is open (D159): a page of the contract shows its part,
+ * at its first option's stage (a sheet open, a dish open) and scrolled to the page's own part, so
+ * its options are seen at work; the list and the panel's own parts (Style, colours, fonts, layout)
+ * show the top of the menu. Leaving a stage for the menu closes what the stage opened.
  */
-export function previewStageOf(mode: PanelMode, pageId: DesignPageId): Stage | undefined {
-  return mode === 'advanced' && pageId === 'dish' ? 'dish' : undefined
+export function previewStageOf(
+  part: string | null,
+  pages: readonly DesignPage[] = DESIGN_PAGES,
+): PreviewPlan {
+  const page = part === null ? undefined : pageById(part, pages)
+  const first =
+    page === undefined ? undefined : optionsOfPage(page).find((option) => option.kind === 'choice')
+  if (page === undefined || first === undefined) return MENU_TOP
+  const plan = tilePlanOf(page.id, first.id, pages)
+  const focus = plan.focus.length > 0 ? plan.focus : MENU_TOP.focus
+  return plan.stage === 'menu' ? { focus } : { stage: plan.stage, focus }
 }
 
 // --- How a row lists its values ------------------------------------------------------------------

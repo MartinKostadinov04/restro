@@ -31,7 +31,11 @@ vi.mock('@/server/design/actions', () => ({
 }))
 vi.mock('@/server/publish/actions', () => ({ previewDraftAction: actions.previewDraftAction }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh }) }))
+// The page opens on the Style, where My styles is (D159: `?part=style`).
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), refresh }),
+  useSearchParams: () => new URLSearchParams('part=style'),
+}))
 
 const VENUE = 'vn_0123456789ABCDEFGHIJKL'
 const MENU = 'nd_0123456789ABCDEFGHIJKL'

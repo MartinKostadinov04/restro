@@ -316,8 +316,21 @@ async function walkComposer(page: Page) {
   const frame = await (await element.elementHandle())?.contentFrame()
   if (!frame) throw new Error('the preview has no frame')
   await expect(frame.locator('[data-face]').first()).toBeVisible()
-  await expectFloor(page, 'the Design page', 10)
+  // Simple is four parts since D159 (Style, Colours and logo, Fonts, Layout), with the level switch,
+  // the colour scheme and Back: eight at least.
+  await expectFloor(page, 'the Design page', 8)
   await expectFloor(frame, 'the template in the preview', 3)
+  // Advanced: the list of parts, then a part's option pictures (each tile is a radio).
+  await page
+    .getByRole('group', { name: /^(Level of detail|Ниво на детайлност)$/ })
+    .getByRole('button')
+    .nth(1)
+    .click()
+  await expect(page.getByTestId('design-part-list')).toBeVisible()
+  await expectFloor(page, 'the list of parts', 14, '[data-testid="design-part-list"]')
+  await page.getByTestId('design-part-items').click()
+  await expect(page.getByTestId('design-advanced-panel')).toBeVisible()
+  await expectFloor(page, 'the Items part', 10, '[data-testid="design-advanced-panel"]')
 }
 
 test('the Studio’s Structure and Design screens: every control has a 44 px hit area on a phone', async ({

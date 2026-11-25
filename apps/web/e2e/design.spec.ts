@@ -10,10 +10,12 @@ import { ADMIN_PASSWORD } from './support'
 
 // The Studio's Design page in Simple (D129, #175) on a production build, with the REAL worker running
 // beside it. The venue is the fixture of scripts/seed-design-e2e.ts: three drinks, no design, nothing
-// published. In English unless a step says otherwise. Steps:
+// published. In English unless a step says otherwise. The panel opens on its list of parts (D159); a
+// step opens the part it works in (`openPart`). Steps:
 //
 //   the Studio's Design subtab opens a page of its own; Settings holds no Appearance card
 //   the panel and the preview, with the phone, tablet and PC widths drawn in a frame of that width
+//   the list of parts: a row opens its part, ‹ Back returns to its row, the address keeps the part
 //   the Style tiles draw the menu; a Style fills every option, and keeps the colours and body font
 //   a colour shows in the preview at once; Undo takes the last step back
 //   the fonts are dropdowns, each name in its font, and the preview follows
@@ -99,6 +101,18 @@ const frame = (target: Page = page) => target.frameLocator('[data-testid="design
 /** The template's root inside the live preview's frame. */
 const previewRoot = (target: Page = page) =>
   frame(target).locator('[data-face="editorial-market"]:not([data-testid])')
+
+/**
+ * Opens a part of the panel from its list of parts (D159): the list first when another part is open.
+ * The open part's title takes the focus.
+ */
+async function openPart(id: string, target: Page = page) {
+  const back = target.getByTestId('design-part-back')
+  if (await back.isVisible()) await back.click()
+  await target.getByTestId(`design-part-${id}`).click()
+  await expect(target.getByTestId('design-part-page')).toHaveAttribute('data-part', id)
+  await expect(target.getByTestId('design-part-title')).toBeFocused()
+}
 
 async function openDesign(target: Page = page) {
   await target.goto(designUrl())
@@ -255,7 +269,42 @@ test('on a laptop the whole preview is on screen at 1200, 1280 and 1440 px, and 
   }
 })
 
+test('the panel opens on its list of parts; a row opens its part, Back returns to its row, and the address keeps it', async () => {
+  await openDesign()
+  const list = page.getByTestId('design-part-list')
+  await expect(list.locator('[data-part]')).toHaveCount(4)
+  await expect(list.locator('[data-part]')).toHaveText([
+    /^Style/,
+    /^Colours and logo/,
+    /^Fonts/,
+    /^Layout/,
+  ])
+  // The summary is read whole in the row's name.
+  await expect(page.getByRole('button', { name: /^Colours and logo: No logo$/ })).toBeVisible()
+
+  await openPart('fonts')
+  await expect(page).toHaveURL(/[?&]part=fonts/)
+  await page.getByRole('button', { name: 'Back to all parts' }).click()
+  await expect(list).toBeVisible()
+  await expect(page.getByTestId('design-part-fonts')).toBeFocused()
+  await expect(page).not.toHaveURL(/part=/)
+
+  // The browser's Back returns to the list, not out of the page.
+  await openPart('layout')
+  await page.goBack()
+  await expect(list).toBeVisible()
+  await expect(page).toHaveURL(new RegExp(`/venues/${venueId}/design$`))
+
+  // A reload, or a link, opens the same part; Back then takes the part off the address.
+  await page.goto(`${designUrl()}?part=fonts`)
+  await expect(page.getByTestId('design-part-page')).toHaveAttribute('data-part', 'fonts')
+  await page.getByTestId('design-part-back').click()
+  await expect(list).toBeVisible()
+  await expect(page).toHaveURL(new RegExp(`/venues/${venueId}/design$`))
+})
+
 test('a colour shows in the preview at once, and Undo takes the last step back', async () => {
+  await openPart('colours')
   // One set of three pickers, no presets.
   await expect(page.getByTestId('design-three-colours').locator('[data-colour]')).toHaveCount(3)
   await brandBox().fill(BRAND)
@@ -276,6 +325,7 @@ test('a colour shows in the preview at once, and Undo takes the last step back',
 })
 
 test('a Style tile draws the menu; picking it fills every option and keeps the colours and body font', async () => {
+  await openPart('style')
   // A tile per Style with a file: all five of the contract's since #178, in the contract's order.
   const tiles = page.getByTestId('design-style-tile')
   await expect(tiles).toHaveCount(5)
@@ -293,18 +343,18 @@ test('a Style tile draws the menu; picking it fills every option and keeps the c
   await expect(root).toHaveCSS('--rm-l-accent', BRAND)
 
   await expect(previewRoot()).toHaveAttribute('data-buttons', 'accent')
+  await openPart('fonts')
   await page.getByTestId('design-body-font').click()
   await page.getByRole('option', { name: 'Lora' }).click()
   await expect(page.getByTestId('design-body-font')).toHaveText('Lora')
 
+  await openPart('style')
   await tile('editorial').click()
   await expect(tile('editorial').getByRole('radio')).toBeChecked()
   await expect(previewRoot()).toHaveAttribute('data-buttons', 'ink')
   await expect(previewRoot()).toHaveAttribute('data-header-band', 'ink')
   await expect(previewRoot()).toHaveAttribute('data-layout', 'two')
-  await expect(brandBox()).toHaveValue(BRAND)
   await expect(previewRoot()).toHaveCSS('--rm-l-accent', BRAND)
-  await expect(page.getByTestId('design-body-font')).toHaveText('Lora')
   await expect(previewRoot()).toHaveCSS('--rm-font', /Lora/)
   // Undo takes the Style back as one step.
   await undo().click()
@@ -312,9 +362,17 @@ test('a Style tile draws the menu; picking it fills every option and keeps the c
   await expect(previewRoot()).toHaveAttribute('data-buttons', 'accent')
   await tile('editorial').click()
   await expect(previewRoot()).toHaveAttribute('data-buttons', 'ink')
+  // The list says which Style it is, and the colours and the body font the Style kept.
+  await page.getByTestId('design-part-back').click()
+  await expect(page.getByTestId('design-part-style')).toContainText('Editorial')
+  await openPart('colours')
+  await expect(brandBox()).toHaveValue(BRAND)
+  await openPart('fonts')
+  await expect(page.getByTestId('design-body-font')).toHaveText('Lora')
 })
 
 test('the fonts are dropdowns, each name in its own font', async () => {
+  await openPart('fonts')
   await page.getByTestId('design-body-font').click()
   const options = page.getByRole('option')
   await expect(options).toHaveText([
@@ -336,6 +394,7 @@ test('the fonts are dropdowns, each name in its own font', async () => {
 })
 
 test('an Advanced role that does not read turns Done off and names the pair', async () => {
+  await openPart('colours')
   await page.getByTestId('design-advanced-toggle').click()
   const text = page.getByTestId('role-light-text')
   await text.getByRole('button', { name: 'Adjust Text, Light screen' }).click()
@@ -365,16 +424,19 @@ test('leaving with unsaved edits asks first', async () => {
   await dialog.getByRole('button', { name: 'Keep editing' }).click()
   await expect(dialog).toHaveCount(0)
   await expect(page).toHaveURL(new RegExp(`/venues/${venueId}/design`))
+  await expect(page.getByTestId('design-part-page')).toHaveAttribute('data-part', 'colours')
   await expect(brandBox()).toHaveValue(BRAND)
 })
 
 test('Cancel throws away everything since the page opened, and leaves the saved design', async () => {
   const before = await designEvents()
   await cancel().click()
-  await expect(tile('basic').getByRole('radio')).toBeChecked()
   await expect(previewRoot()).toHaveAttribute('data-buttons', 'accent')
-  await expect(page.getByTestId('design-body-font')).toHaveText('Inter')
   await expect(previewRoot()).not.toHaveCSS('--rm-l-accent', BRAND)
+  await openPart('style')
+  await expect(tile('basic').getByRole('radio')).toBeChecked()
+  await openPart('fonts')
+  await expect(page.getByTestId('design-body-font')).toHaveText('Inter')
   await expect(done()).toBeDisabled()
   await expect(undo()).toBeDisabled()
   await expect(unsaved()).toHaveCount(0)
@@ -385,8 +447,11 @@ test('Cancel throws away everything since the page opened, and leaves the saved 
 
 test('Done appends one event, says when guests see it, and survives a reload', async () => {
   const before = await designEvents()
+  await openPart('colours')
   await brandBox().fill(BRAND)
+  await openPart('style')
   await tile('editorial').click()
+  await openPart('fonts')
   await page.getByTestId('design-body-font').click()
   await page.getByRole('option', { name: 'Lora' }).click()
   await done().click()
@@ -401,11 +466,14 @@ test('Done appends one event, says when guests see it, and survives a reload', a
 
   await page.reload()
   await expect(previewRoot()).toBeVisible()
+  // The reload opens the part that was open.
+  await expect(page.getByTestId('design-body-font')).toHaveText('Lora')
+  await openPart('colours')
   await expect(brandBox()).toHaveValue(BRAND)
   await expect(pageBox()).toHaveValue(BRAND_PAGE)
   await expect(panelsBox()).toHaveValue(BRAND_PANELS)
+  await openPart('style')
   await expect(tile('editorial').getByRole('radio')).toBeChecked()
-  await expect(page.getByTestId('design-body-font')).toHaveText('Lora')
   await expect(done()).toBeDisabled()
 })
 
@@ -421,6 +489,8 @@ test('a save from a page that loaded before another save is refused, says so and
     const second = await secondContext.newPage()
     await openDesign(second)
     await openDesign(page)
+    await openPart('fonts', second)
+    await openPart('fonts')
 
     // This page changes something and has not saved it.
     await page.getByTestId('design-heading-font').click()
@@ -461,6 +531,7 @@ test('a save from a page that loaded before another save is refused, says so and
 
 test('the layout for all menus is part of the draft, and the guest switch with it', async () => {
   await openDesign()
+  await openPart('layout')
   const layout = page.getByTestId('design-layout')
   await layout.getByRole('button', { name: 'One column' }).click()
   await expect(previewRoot()).toHaveAttribute('data-layout', 'one')
@@ -476,10 +547,17 @@ test('the layout for all menus is part of the draft, and the guest switch with i
   )
   await expect(guestSwitch).toHaveAttribute('aria-checked', 'false')
   await expect(previewRoot()).toHaveAttribute('data-layout', 'one')
+  await page.getByTestId('design-part-back').click()
+  await expect(page.getByTestId('design-part-layout')).toHaveAccessibleName(
+    'Layout: One column · guests cannot switch',
+  )
 })
 
-const levelSwitch = (target: Page = page) => target.getByRole('group', { name: 'Level of detail' })
-const pageChip = (id: string, target: Page = page) => target.getByTestId(`design-page-${id}`)
+/** Simple or Advanced, in either language (a test switches to Bulgarian). */
+const levelSwitch = (target: Page = page) =>
+  target.getByRole('group', { name: /^(Level of detail|Ниво на детайлност)$/ })
+/** The open part of the panel, its id in `data-part`. */
+const openedPart = (target: Page = page) => target.getByTestId('design-part-page')
 /** The tile of one value of one option on one page of Advanced. */
 const optionTile = (pageId: string, option: string, value: string, target: Page = page) =>
   target.locator(
@@ -489,11 +567,14 @@ const optionTile = (pageId: string, option: string, value: string, target: Page 
 test('Advanced lists General and the thirteen pages; a tile draws the part with its value and one tap picks it', async () => {
   await openDesign()
   await levelSwitch().getByRole('button', { name: 'Advanced' }).click()
-  await expect(page.getByTestId('design-pages').getByRole('button')).toHaveCount(14)
-  await expect(pageChip('general')).toHaveAttribute('aria-current', 'page')
+  // Style, Colours and logo, Fonts, then under "Parts of the menu" General and the thirteen pages.
+  const rows = page.getByTestId('design-part-list').locator('[data-part]')
+  await expect(rows).toHaveCount(17)
+  await expect(page.getByRole('heading', { name: 'Parts of the menu' })).toBeVisible()
+  await expect(rows.nth(3)).toHaveAttribute('data-part', 'general')
 
-  await pageChip('items').click()
-  await expect(page.getByTestId('design-advanced-title')).toHaveText('Items')
+  await openPart('items')
+  await expect(page.getByTestId('design-part-title')).toHaveText('Items')
   const cards = optionTile('items', 'frame', 'cards')
   // The tile's picture is the renderer, drawing the part with that value in the draft's colours.
   const picture = cards
@@ -501,15 +582,10 @@ test('Advanced lists General and the thirteen pages; a tile draws the part with 
     .locator('[data-face="editorial-market"]:not([data-testid])')
   await expect(picture).toHaveAttribute('data-items-frame', 'cards', WORKER_WAIT)
   await expect(picture.locator('[data-design-part="item"]').first()).toBeVisible()
-  // The frame is scrolled to the part the option styles, not left at the top of the menu.
-  await expect
-    .poll(() =>
-      cards
-        .frameLocator('[data-testid="design-tile-specimen"]')
-        .locator('html')
-        .evaluate(() => window.scrollY),
-    )
-    .toBeGreaterThan(0)
+  // The frame draws the part the option styles alone (D159): the dishes, not the menu's top.
+  await expect(picture).toHaveAttribute('data-specimen', 'two-dishes')
+  await expect(picture.locator('[data-design-part="header"]')).toHaveCount(0)
+  await expect(picture.locator('[data-design-part="nav"]')).toHaveCount(0)
   await page.screenshot({ path: shotPath('advanced-items') })
 
   // One tap: the preview follows at once, and it is one Undo step.
@@ -520,12 +596,14 @@ test('Advanced lists General and the thirteen pages; a tile draws the part with 
   await expect(previewRoot()).not.toHaveAttribute('data-items-frame', 'cards')
   await expect(undo()).toBeDisabled()
 
-  // A pick survives the switch to Simple and back.
+  // A pick survives the switch to Simple and back; Items is Layout in Simple, and back again.
   await cards.getByRole('radio').click()
   await levelSwitch().getByRole('button', { name: 'Simple' }).click()
-  await expect(page.getByTestId('design-style-section')).toBeVisible()
+  await expect(openedPart()).toHaveAttribute('data-part', 'layout')
+  await expect(page).toHaveURL(/[?&]part=layout/)
   await expect(previewRoot()).toHaveAttribute('data-items-frame', 'cards')
   await levelSwitch().getByRole('button', { name: 'Advanced' }).click()
+  await expect(openedPart()).toHaveAttribute('data-part', 'items')
   await expect(optionTile('items', 'frame', 'cards').getByRole('radio')).toBeChecked()
   await cancel().click()
   await expect(previewRoot()).not.toHaveAttribute('data-items-frame', 'cards')
@@ -537,38 +615,42 @@ test('a tap on a part of the preview opens its page; in Simple it says the part 
   await previewRoot().locator('[data-design-part="section.title"]').first().click()
   const note = page.getByTestId('design-styled-in-advanced')
   await expect(note).toContainText('Styled in Advanced')
-  await expect(page.getByTestId('design-style-section')).toBeVisible()
+  await expect(page.getByTestId('design-part-list')).toBeVisible()
   await note.getByRole('button', { name: 'Show Advanced' }).click()
-  await expect(pageChip('sections')).toHaveAttribute('aria-current', 'page')
-  await expect(page.getByTestId('design-advanced-title')).toBeFocused()
+  await expect(openedPart()).toHaveAttribute('data-part', 'sections')
+  await expect(page.getByTestId('design-part-title')).toBeFocused()
 
   // Advanced: a tap on a part opens the page that owns it, whatever page was open.
   for (const [part, pageId, title] of [
     ['header.title', 'header', 'Header'],
     ['section.title', 'sections', 'Sections'],
   ] as const) {
-    await pageChip('general').click()
+    await openPart('general')
     await previewRoot().locator(`[data-design-part="${part}"]`).first().click()
-    await expect(pageChip(pageId)).toHaveAttribute('aria-current', 'page')
-    await expect(page.getByTestId('design-advanced-title')).toHaveText(title)
+    await expect(openedPart()).toHaveAttribute('data-part', pageId)
+    await expect(page.getByTestId('design-part-title')).toHaveText(title)
   }
   // A dish's name opens the dish as it does for a guest, and its page; a tap in the open dish opens
   // the Dish page.
-  await pageChip('general').click()
+  await openPart('general')
   await previewRoot().locator('[data-design-part="item.name"]').first().click()
-  await expect(pageChip('items')).toHaveAttribute('aria-current', 'page')
+  await expect(openedPart()).toHaveAttribute('data-part', 'items')
   await expect(frame().locator('[data-design-part="dish"]').first()).toBeVisible()
   await frame()
     .locator('[data-design-part="dish"]')
     .first()
     .click({ position: { x: 4, y: 4 } })
-  await expect(pageChip('dish')).toHaveAttribute('aria-current', 'page')
+  await expect(openedPart()).toHaveAttribute('data-part', 'dish')
+  // Back to the list: the preview returns to the top of the menu.
+  await page.getByTestId('design-part-back').click()
+  await expect(page.getByTestId('design-part-dish')).toBeFocused()
+  await expect(frame().locator('[data-design-part="dish"]')).toHaveCount(0)
 })
 
 test('Photo corners are off while the Frame is edge to edge, with the hint', async () => {
   await openDesign()
   await levelSwitch().getByRole('button', { name: 'Advanced' }).click()
-  await pageChip('photos').click()
+  await openPart('photos')
   await optionTile('photos', 'frame', 'bleed').getByRole('radio').click()
   const corners = page.locator(
     '[data-testid="design-option"][data-page="photos"][data-option="corners"]',
@@ -629,8 +711,13 @@ test('a member whose role forbids it sees the page read-only, with no Done and n
     await expect(member.getByTestId('design-bar')).toHaveCount(0)
     await expect(done(member)).toHaveCount(0)
     await expect(cancel(member)).toHaveCount(0)
+    // The list opens every part; what is in it cannot be changed.
+    await expect(member.getByTestId('design-part-list')).toBeVisible()
+    await openPart('style', member)
     await expect(tile('basic', member).getByRole('radio')).toBeDisabled()
+    await openPart('colours', member)
     await expect(brandBox(member)).toBeDisabled()
+    await openPart('fonts', member)
     await expect(member.getByTestId('design-body-font')).toBeDisabled()
     // The saved design is what the preview draws.
     await expect(previewRoot(member)).toHaveCSS('--rm-l-accent', BRAND)
@@ -660,8 +747,11 @@ test('at phone width the preview is docked above the bar, scrolls inside, and a 
       view: document.documentElement.clientWidth,
     }))
     expect(widths.page).toBeLessThanOrEqual(widths.view)
-    // The Style tiles and the preview share the first screen: one tap, no scroll (S3).
+    // The list fills the panel, the preview is docked at the foot; the Style's tiles are one tap away
+    // and share the first screen with the preview (S3, D159).
     await expect(target.getByTestId('design-preview-frame')).toBeInViewport()
+    await expect(target.getByTestId('design-part-style')).toBeInViewport()
+    await openPart('style', target)
     await expect(target.getByTestId('design-style-tile').first()).toBeInViewport()
     // On a phone the preview is a phone: no width switch (S4).
     await expect(
@@ -693,6 +783,7 @@ test('at phone width the preview is docked above the bar, scrolls inside, and a 
     expect(scrolled).toBe(true)
 
     // Narrow: the dark screen's colour sits under the light one's.
+    await openPart('colours', target)
     await target.getByTestId('design-advanced-toggle').click()
     const light = await target.getByTestId('role-light-text').boundingBox()
     const dark = await target.getByTestId('role-dark-text').boundingBox()
@@ -710,12 +801,14 @@ test('at phone width the preview is docked above the bar, scrolls inside, and a 
 
 test('My styles: the draft saved under a name, Update, Delete with Undo', async () => {
   await openDesign()
+  await openPart('colours')
+  const brand = await brandBox().inputValue()
+  await openPart('style')
   await expect(page.getByRole('heading', { name: 'Restro styles' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'My styles' })).toBeVisible()
   // A venue's own design is not a tile of its own page; the organisation's other venue's is.
   await expect(myTile('In use at Design Club Varna')).toHaveCount(1)
   await expect(myTile('In use at Design Club Sofia')).toHaveCount(0)
-  const brand = await brandBox().inputValue()
 
   // Three taps and the name: Design is open, "Save this look as a style", the name, Save.
   await tile('classic').getByRole('radio').click()
@@ -731,18 +824,23 @@ test('My styles: the draft saved under a name, Update, Delete with Undo', async 
   await page.getByTestId('design-my-style-update').click()
   await expect(toastSaying('Our classic now holds this design')).toBeVisible()
 
-  // Picking it fills the options in, ticks it instead of the Restro tile, and keeps the colours.
+  // Picking it fills the options in, ticks it instead of the Restro tile, and keeps the colours. The
+  // reload opens the Style again, and the list names the saved Style.
   await page.reload()
-  await expect(page.getByTestId('design-panel')).toBeVisible()
+  await expect(openedPart()).toHaveAttribute('data-part', 'style')
   await myTile('Our classic').getByRole('radio').click()
   await expect(unsaved()).toBeVisible()
   await expect(myTile('Our classic').getByRole('radio')).toBeChecked()
   await expect(tile('basic').getByRole('radio')).not.toBeChecked()
+  await page.getByTestId('design-part-back').click()
+  await expect(page.getByTestId('design-part-style')).toHaveAccessibleName('Style: Our classic')
+  await openPart('colours')
   await expect(brandBox()).toHaveValue(brand)
   await done().click()
   await expect(toastSaying('Design saved')).toBeVisible()
 
   // Two taps to delete it, and Undo in the toast brings it back.
+  await openPart('style')
   await myMenu('Our classic').click()
   await page.getByTestId('design-my-style-delete').click()
   await expect(toastSaying('Style deleted')).toBeVisible()
@@ -764,6 +862,9 @@ test('My styles at the organisation’s other venue: its Styles, and this venue�
   expect(otherVenueId).not.toBe(venueId)
   await page.goto(`/venues/${otherVenueId}/design`)
   await expect(page.getByTestId('design-panel')).toBeVisible()
+  await openPart('colours')
+  const brand = await brandBox().inputValue()
+  await openPart('style')
   // The organisation's saved Style is here too, and so is the first venue's design.
   await expect(myTile('Our classic')).toHaveCount(1)
   await expect(myTile('In use at Design Club Sofia')).toHaveCount(1)
@@ -780,9 +881,9 @@ test('My styles at the organisation’s other venue: its Styles, and this venue�
   await expect(dialog).toBeHidden()
 
   // Copying the other venue's design: one tap, then Done. This venue's own brand is untouched.
-  const brand = await brandBox().inputValue()
   await myTile('In use at Design Club Sofia').getByRole('radio').click()
   await expect(unsaved()).toBeVisible()
+  await openPart('colours')
   await expect(brandBox()).toHaveValue(brand)
   await done().click()
   await expect(toastSaying('Design saved')).toBeVisible()
@@ -802,10 +903,17 @@ test('in Bulgarian, the long names fit a tile at 390 px', async ({ browser }) =>
     const target = await bulgarian.newPage()
     await openDesign(target)
     await expect(target.getByTestId('design-back')).toHaveText('Към студиото')
-    await expect(target.getByRole('heading', { name: 'Стил', exact: true })).toBeVisible()
-    await expect(target.getByRole('heading', { name: 'Цветове', exact: true })).toBeVisible()
-    await expect(target.getByRole('heading', { name: 'Шрифтове', exact: true })).toBeVisible()
+    await expect(target.getByTestId('design-part-list').locator('[data-part]')).toHaveText([
+      /^Стил/,
+      /^Цветове и лого/,
+      /^Шрифтове/,
+      /^Подредба/,
+    ])
+    await openPart('colours', target)
+    await expect(target.getByRole('button', { name: 'Назад към всички части' })).toHaveText('Назад')
+    await expect(target.getByTestId('design-part-title')).toHaveText('Цветове и лого')
     await expect(target.getByLabel('Цветът на вашата марка', { exact: true })).toHaveValue(BRAND)
+    await openPart('style', target)
     await expect(done(target)).toHaveText('Готово')
     await expect(cancel(target)).toHaveText('Отказ')
     await expect(undo(target)).toHaveText('Върни')
@@ -844,7 +952,7 @@ test('Advanced at 390 px in Bulgarian: the longest labels fit their tile, target
       .getByRole('group', { name: 'Ниво на детайлност' })
       .getByRole('button', { name: 'Разширено' })
       .click()
-    await target.getByTestId('design-page-items').click()
+    await openPart('items', target)
     const portion = target.locator(
       '[data-testid="design-option"][data-page="items"][data-option="portion_place"]',
     )
@@ -864,5 +972,48 @@ test('Advanced at 390 px in Bulgarian: the longest labels fit their tile, target
     expect(sideways).toBe(true)
   } finally {
     await bulgarian.close()
+  }
+})
+
+test('at 320 px the list fills the panel and nothing scrolls sideways, in a part either', async ({
+  browser,
+}) => {
+  const narrow = await browser.newContext({
+    storageState: ownerState,
+    viewport: { width: 320, height: 640 },
+    isMobile: true,
+    hasTouch: true,
+  })
+  try {
+    const target = await narrow.newPage()
+    await openDesign(target)
+    const sideways = () =>
+      target.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      )
+    await levelSwitch(target).getByRole('button', { name: 'Advanced' }).click()
+    await expect(target.getByTestId('design-part-list').locator('[data-part]')).toHaveCount(17)
+    expect(await sideways()).toBe(false)
+    // The longest summary is cut on its line, not wider than the row.
+    for (const row of await target.getByTestId('design-part-list').locator('[data-part]').all()) {
+      expect(await row.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    }
+    await openPart('photos', target)
+    expect(await sideways()).toBe(false)
+    await target.screenshot({ path: shotPath('phone-320-part') })
+    // In Bulgarian, the longest row keeps its whole title on one line; only the summary is cut.
+    await narrow.addCookies([
+      { name: 'NEXT_LOCALE', value: 'bg', url: new URL(target.url()).origin },
+    ])
+    await target.goto(target.url().replace(/\?.*$/, ''))
+    await levelSwitch(target).getByRole('button', { name: 'Разширено' }).click()
+    const call = target.getByTestId('design-part-call')
+    await expect(call).toContainText('Повикване на сервитьор')
+    expect(await call.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    const title = call.getByText('Повикване на сервитьор', { exact: true })
+    expect(await title.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    expect(await sideways()).toBe(false)
+  } finally {
+    await narrow.close()
   }
 })

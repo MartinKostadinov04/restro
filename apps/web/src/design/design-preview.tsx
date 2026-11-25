@@ -25,7 +25,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import type { PreviewScheme } from '@/publish/draft-face'
 
-import type { Stage } from './advanced-model'
+import { isServiceStage, type Stage } from './advanced-model'
 import type { Draft } from './preview-draft'
 import type { FrameContent } from './preview-frames'
 import { previewSnapshot } from './preview-snapshot'
@@ -113,14 +113,17 @@ export function DesignPreview({
   onScheme,
   onPart,
   stage,
+  focus,
 }: {
   venueId: string
   draft: Draft
   onRetry: () => void
   /** A tap on a marked part of the page (`data-design-part`): click to edit (D129). */
   onPart?: (marker: string, opens: string | null) => void
-  /** What the frame shows first: a dish while the Dish page is open (D129); the menu otherwise. */
+  /** What the frame shows first: the part a page of the panel styles (D159); the menu otherwise. */
   stage?: Stage
+  /** The parts the frame scrolls to, the first it finds: the open page's part, or the menu's top. */
+  focus?: readonly string[]
   /** The draft's look, whole. */
   theme: VenueTheme
   values: DesignValues
@@ -129,16 +132,30 @@ export function DesignPreview({
 }) {
   const t = useTranslations('design.preview')
   const [device, setDevice] = useState<Device>('phone')
-  const [services, setServices] = useState(false)
+  // Opening a part drawn on a guest service (the bill, the order, paying…) turns the services on, so
+  // the preview has a bill to show; they stay on back on the list, and the owner may turn them off.
+  const [services, setServices] = useState(() => stage !== undefined && isServiceStage(stage))
+  const [stageShown, setStageShown] = useState(stage)
+  if (stage !== stageShown) {
+    setStageShown(stage)
+    if (stage !== undefined && isServiceStage(stage)) setServices(true)
+  }
   const servicesId = useId()
   const snapshot = useDraftSnapshot(draft, theme, values)
 
   const content = useMemo<FrameContent | null>(
     () =>
       draft.state === 'ready' && snapshot !== null
-        ? { snapshot, overlay: draft.overlay, scheme, services, ...(stage ? { stage } : {}) }
+        ? {
+            snapshot,
+            overlay: draft.overlay,
+            scheme,
+            services,
+            ...(stage ? { stage } : {}),
+            ...(focus ? { focus } : {}),
+          }
         : null,
-    [draft, snapshot, scheme, services, stage],
+    [draft, snapshot, scheme, services, stage, focus],
   )
 
   return (
