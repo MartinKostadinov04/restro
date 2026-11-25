@@ -1254,6 +1254,24 @@ export const ATTACKS: readonly Attack[] = [
     },
   },
   {
+    action: 'confirmRequestAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.confirmRequestAction({
+        venueId: x.id,
+        reservationId: x.reservation,
+        spotIds: [x.spot],
+      })
+    },
+  },
+  {
+    action: 'declineRequestAction',
+    call: (v) => {
+      const x = v.venues[0]
+      return nightBook.declineRequestAction({ venueId: x.id, reservationId: x.reservation })
+    },
+  },
+  {
     action: 'deleteBookingAction',
     call: (v) => {
       const x = v.venues[0]
@@ -2482,6 +2500,23 @@ export const MIXED: readonly Attack[] = [
     action: 'cancelBookingAction',
     call: (v, a) =>
       nightBook.cancelBookingAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+      }),
+  },
+  {
+    action: 'confirmRequestAction',
+    call: (v, a) =>
+      nightBook.confirmRequestAction({
+        venueId: a.venues[0].id,
+        reservationId: v.venues[0].reservation,
+        spotIds: [v.venues[0].spot],
+      }),
+  },
+  {
+    action: 'declineRequestAction',
+    call: (v, a) =>
+      nightBook.declineRequestAction({
         venueId: a.venues[0].id,
         reservationId: v.venues[0].reservation,
       }),
