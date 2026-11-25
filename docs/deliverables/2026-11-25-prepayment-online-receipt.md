@@ -132,6 +132,15 @@ Asked through Martin, folded into the next letter; the letter itself is kept out
 - **M4.** On the night, can the table's final receipt take the чл. 26а discount for that prepayment, and can your API apply it, or does the waiter?
 - **M5.** Storno: can your system storno a prepayment refunded to a card through the provider?
 
+## Does this cover a paid song request?
+
+Asked by the ordering lead on 11-25 (spec #520; D163: held when asked, taken when played; Q75, Q80). The question was not researched further; this only says where the findings above reach.
+
+- **It does reach the closed door.** The song is played in the club, the venue's trade site. So the web-shop document (§1) is closed for a song request too, as the 10-17 file found (Q4).
+- **It does reach the timing.** The receipt is due at capture, when the DJ marks the song played, and the hold is not the payment (L7). A refused request whose hold is released needs no document.
+- **It reaches only half of the electronic receipt.** Door A (listed software, §2) works for any sale at the trade site, so it covers song requests where the POS can issue one. Door B (the booking page as an online shop) needs a distance contract. **[READING]** A guest asking from inside the club is physically present, so door B likely does not open for a song request.
+- **It stops at the rest.** A song request is not an advance against a later bill, so §3's part-payment and no-show findings do not apply. The VAT rate, whether a DJ under contract changes the seller (L8), and Q80 (a paper receipt per capture with no email) were not researched here and stay open as they were.
+
 ## Still unknown
 
 - The full reasoning of the two NRA opinions (paywalled; only their lead paragraphs were read).
