@@ -48,6 +48,8 @@ const OTHER_ACCOUNT = process.env.STRIPE_HARNESS_OTHER_ACCOUNT ?? 'acct_1UUjixH6
 const PENDING: Readonly<Record<string, string>> = {
   "a payment's refunds list one by one, oldest first":
     "#261: needs both sandbox keys; the list's shape is pinned by refunds-read.test.ts until it's recorded",
+  "a group payment's holds are found by their hold and captured or released one by one":
+    '#543: not recorded yet; group-payment.test.ts covers the holds offline until it is',
 }
 
 /** A key from the environment, refused unless it is a sandbox key; the error names only the variable. */

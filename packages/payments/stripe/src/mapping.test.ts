@@ -183,6 +183,26 @@ describe('providerPayment', () => {
     expect(mapped.ok && mapped.value.needsGuestAction).toBe(true)
   })
 
+  it("carries a group payment's hold (#543), and none where it is absent or not ours", () => {
+    const holdId = 'ph_0123456789abcdefghijkl'
+    const group = providerPayment(
+      intent({ metadata: { restro_payment: PAYMENT_ID, restro_hold: holdId } }),
+      null,
+      null,
+    )
+    expect(group.ok && group.value.holdId).toBe(holdId)
+    const ordinary = providerPayment(intent(), null, null)
+    expect(ordinary.ok && 'holdId' in ordinary.value).toBe(false)
+    const malformed = providerPayment(
+      intent({
+        metadata: { restro_payment: PAYMENT_ID, restro_hold: 'py_0123456789abcdefghijkl' },
+      }),
+      null,
+      null,
+    )
+    expect(malformed.ok && 'holdId' in malformed.value).toBe(false)
+  })
+
   it('reads a payment that is not ours, or of an unknown status, as unmapped', () => {
     expect(providerPayment(intent({ metadata: {} }), null, null).ok).toBe(false)
     expect(providerPayment(intent({ status: 'something_new' }), null, null).ok).toBe(false)

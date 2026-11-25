@@ -264,7 +264,10 @@ test('freeing the table closes its codes, and its Undo gives them back', async (
   const seven = await openSpot(page, 'Маса 7')
   await expect(seven.getByTestId('rv-spot-state')).toContainText('Sitting')
   await seven.getByTestId('rv-spot-free').click()
-  // Their round is on the table, so the door says so before it frees it (the open-bill warning).
+  // Their round is on the table, so the door says so before it frees it (the open-bill warning),
+  // and the warning names the table it is about: this club numbers its tables, and a hostess at
+  // 79 of them cannot act on "some table has an open bill" (#558).
+  await expect(page.getByTestId('rv-free-bill')).toContainText(`${TABLE} still has an open bill.`)
   await page.getByTestId('rv-free-bill-do').click()
   await expect(toast(page, "Иванова's table is free again.")).toBeVisible()
 

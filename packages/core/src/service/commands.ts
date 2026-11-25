@@ -46,6 +46,7 @@ import {
   type ServiceTx,
 } from './definition'
 import { tableReturned, tableVanished } from './floor-pause'
+import { SHARE_COMMANDS } from './group-payment'
 import { markNightReportSent } from './night-report-sent'
 import { editOrder, type OrderEditCommand, tidyTableOrder } from './order'
 import {
@@ -75,6 +76,7 @@ import {
   paymentStep,
   payReturned,
   payStart,
+  shareStart,
   TipSchema,
 } from './pay'
 import { PAY_FIRST_COMMANDS } from './pay-first'
@@ -347,6 +349,9 @@ export const SERVICE_COMMANDS = {
   'pay.start': payStart(),
   'pay.returned': payReturned(),
   'pay.cancel': payCancel(),
+  // #543: sharing the bill by amount (D160 §3). A group payment for the ticked lines, and each
+  // guest's hold on their own card; the phone names its hold by the handle's hash, as a Pay does.
+  'share.start': shareStart(),
   // #81, #180: one open call per table: a later request is added to it. Not located; no text, no
   // identity.
   'waiter.call': defineCommand({
@@ -752,6 +757,8 @@ export const SERVICE_COMMANDS = {
   ...PAY_ROUTE_COMMANDS,
   // #113: a pay-first round entered on a payment table, and its check before the close.
   ...PAY_FIRST_COMMANDS,
+  // #543: a group payment's holds (the guests' and staff's commands, and the worker's steps).
+  ...SHARE_COMMANDS,
   // #109: what the provider answered about a venue's account: its account, a reading, the access
   // lost, the guest domain registered. A provider notice only nudges the worker to read.
   'payment_account.started': defineCommand({

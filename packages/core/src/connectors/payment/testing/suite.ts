@@ -16,6 +16,7 @@ import {
   disputeReadBackCheck,
   expiryCheck,
   failedReadsCheck,
+  groupHoldsCheck,
   guestStepCheck,
   holdCheck,
   idempotentCaptureCheck,
@@ -88,6 +89,11 @@ export function paymentProviderSuite(harness: PaymentHarness): void {
     )
     check('a release ends a hold, moves nothing and blocks a capture', releaseCheck, harness)
     check('no step but capture moves money', moneyOnlyByCaptureCheck, harness)
+    check(
+      "a group payment's holds are found by their hold and captured or released one by one",
+      groupHoldsCheck,
+      harness,
+    )
     checkIf(
       harness.provider.capabilities.lineRefund && harness.lineRefund !== undefined,
       'refundLine refunds a part of a captured payment once, and refuses every other refund',

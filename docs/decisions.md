@@ -177,6 +177,9 @@ Status: **firm** (agreed), **applied** (done or in force), **pending** (stated o
 | [D170](decisions/D170.md) | A song request carries no table, and the way in is the venue's own menu | firm; refines D100; closes D99's and D100's deferral of the entry point (T81) |
 | [D171](decisions/D171.md) | The venue's settings for song requests, and the defaults an owner never has to think about | firm; supersedes D99's venue settings |
 | [D172](decisions/D172.md) | Staging runs on Coolify on Martin's own server; production's host stays open | firm; refines D43 and D103 for staging only |
+| [D173](decisions/D173.md) | A cache of an outside system's own objects is written by one narrow writer beside the two write paths | firm; refines rule 1 and D122 §9 by naming the third kind of data; replaces the lead's provisional ruling of 11-25 on #520 |
+| [D174](decisions/D174.md) | A song row is kept only while something refers to it and refreshed by its id before its thirty days are up | firm; settles #522's retention and source, replacing "keeps songs permanently"; the imported catalogue becomes #567 |
+| [D175](decisions/D175.md) | A prepayment's receipt is due when the money is taken: the POS issues it, emailed where it can, and the till to-do is the fallback | pending (proposed to Martin 11-25); refines D136 |
 
 ## Not repeated here
 `CLAUDE.md` holds the nine rules, the import boundaries, the testing rules and the report format; `docs/agents/lead.md` the lead workflow; `docs/open-items.md` the open questions and tasks. Proposals (P…), engineering notes, research facts and acceptance runs stay in `docs/tracker.md`.

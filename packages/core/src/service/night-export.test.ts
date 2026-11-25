@@ -13,9 +13,13 @@ describe("the Log screen's kinds", () => {
     expect(Object.keys(LOG_KIND_GROUP).sort()).toEqual(Object.keys(LOG_KINDS).sort())
   })
 
-  it('hides only the lease taken over and the failed hold reads', () => {
+  it('hides only the lease taken over, the failed hold reads and the holds of a group payment', () => {
     const hidden = Object.entries(LOG_KIND_GROUP).filter(([, group]) => group === null)
-    expect(hidden.map(([kind]) => kind)).toEqual(['lease.taken_over', 'payment.hold_unread'])
+    expect(hidden.map(([kind]) => kind)).toEqual([
+      'lease.taken_over',
+      'payment.hold_unread',
+      'payment.hold',
+    ])
     expect(SHOWN_LOG_KINDS).not.toContain('lease.taken_over')
     expect(SHOWN_LOG_KINDS).not.toContain('payment.hold_unread')
   })

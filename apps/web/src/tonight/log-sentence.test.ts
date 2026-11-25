@@ -93,7 +93,8 @@ const SETTING_WORDS = [
 ] as const satisfies readonly LogLineView['setting'][number][]
 
 const SHOWN = (Object.keys(SENTENCES) as LogLineView['kind'][]).filter(
-  (kind) => kind !== 'lease.taken_over' && kind !== 'payment.hold_unread',
+  (kind) =>
+    kind !== 'lease.taken_over' && kind !== 'payment.hold_unread' && kind !== 'payment.hold',
 )
 
 describe("the Log's sentences", () => {
@@ -102,6 +103,7 @@ describe("the Log's sentences", () => {
   it('has one for every shown kind, and the lease and the failed hold reads alone have none', () => {
     expect(SENTENCES['lease.taken_over']).toBeNull()
     expect(SENTENCES['payment.hold_unread']).toBeNull()
+    expect(SENTENCES['payment.hold']).toBeNull()
     for (const kind of SHOWN) {
       expect(SENTENCES[kind], kind).toBeTypeOf('function')
     }

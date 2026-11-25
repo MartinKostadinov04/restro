@@ -69,6 +69,9 @@ export const LOG_KINDS = {
   'payment.answered': 'record',
   // A hold the last check could not read (RR-18): the count that bounds its tries.
   'payment.hold_unread': 'record',
+  // One guest's hold of a group payment (#543): asked, held, let go, captured or not. The money
+  // record of each card under its payment; the payment's own steps are `payment.state`.
+  'payment.hold': 'record',
   // A refund the venue made in its provider's dashboard, read back (lg_pay_refund), its storno
   // done or put back (lg_pay_storno), and a dispute opened or closed (lg_pay_dispute) (#222).
   'payment.refund_seen': 'record',

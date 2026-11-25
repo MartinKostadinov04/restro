@@ -46,12 +46,18 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile'
 import { WRAPS } from '@/lib/wrapping'
 import { arrivalChecksAction, changeTablesAction } from '@/server/reservations/actions'
-import type { RvFrame, RvHoldView, RvPlanView, RvSpotView } from '@/server/reservations/view'
+import type {
+  RvDoorTableView,
+  RvFrame,
+  RvHoldView,
+  RvPlanView,
+  RvSpotView,
+} from '@/server/reservations/view'
 
 import { ConfirmDialog } from './confirm-dialog'
 import { SameGuestsDialog } from './door-dialogs'
 import { NoPlanYet } from './no-plan'
-import { useBlockReasonWord, useSpotCalled, useSpotsCalled } from './plan-words'
+import { useBlockReasonWord, useSpotCalled, useSpotsCalled, useTablesCalled } from './plan-words'
 import { PickWait, SpotList, SpotPlan, usePickerWay, usePickPlan } from './spot-picker'
 import type { RvRunSpec } from './use-reservation-run'
 
@@ -75,7 +81,7 @@ interface Swap {
 type Asking =
   | { readonly step: 'swap'; readonly hold: RvHoldView; readonly spot: RvSpotView }
   | { readonly step: 'same_guests'; readonly payRule: PayRule | null }
-  | { readonly step: 'bill'; readonly billSpots: readonly string[] }
+  | { readonly step: 'bill'; readonly billTables: readonly RvDoorTableView[] }
 
 /** The parties on a spot this night that are not blocks, with their hold. */
 const partiesOn = (spot: RvSpotView) => spot.holds.filter((hold) => hold.kind !== 'block')
@@ -117,6 +123,7 @@ export function ChangeTablesSheet({
   const reasonWord = useBlockReasonWord()
   const called = useSpotCalled()
   const spotsCalled = useSpotsCalled()
+  const tablesCalled = useTablesCalled()
   const [picker, setWay] = usePickerWay()
   const pick = usePickPlan(frame, party.day)
   const plan = pick.plan
@@ -343,9 +350,9 @@ export function ChangeTablesSheet({
           setAsking({ step: 'same_guests', payRule: read.checks.payRule })
           return
         }
-        const billSpots = theirs.filter((table) => table.bill).map((table) => table.tableName)
-        if (billSpots.length > 0) {
-          setAsking({ step: 'bill', billSpots })
+        const billTables = theirs.filter((table) => table.bill)
+        if (billTables.length > 0) {
+          setAsking({ step: 'bill', billTables })
           return
         }
         write(undefined)
@@ -496,7 +503,7 @@ export function ChangeTablesSheet({
       />
     ) : (
       <ConfirmDialog
-        title={t('d_bill_t', { spot: asking.billSpots.join(', ') })}
+        title={t('d_bill_t', { spot: tablesCalled(asking.billTables) })}
         body={t('d_bill_b')}
         doLabel={t('d_bill_do')}
         keepLabel={t('d_bill_no')}
