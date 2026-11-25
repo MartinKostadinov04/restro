@@ -88,7 +88,7 @@ db:roles: restro_app created on postgres.<ref>@<pooler host>:5432/postgres; priv
  restro_app   |                   0
 ```
 
-Both scripts are idempotent: run the workflow again after every merge into `main` that adds a migration (later Railway's pre-deploy step does the same with the same variables).
+Both scripts are idempotent: run the workflow again after every merge into `main` that adds a migration (staging's containers never migrate the database: this workflow stays the only way, `docs/runbooks/staging-coolify.md` §7).
 
 ## 7. Verify
 
