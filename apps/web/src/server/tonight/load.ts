@@ -1,6 +1,6 @@
 // Reads Tonight for the signed-in actor and shapes it for the screen (#85). Reads only: the
 // service read side filters by what the actor holds and calls no POS (rule 3 and 4 of the plan).
-import { guestNight, readOrderingSettings } from '@restro/core'
+import { guestNight, readOrderingSettings, sumSignedMinor } from '@restro/core'
 import {
   readTableState,
   readTonight,
@@ -140,10 +140,8 @@ export async function loadTableSheet(input: {
               label: member.label,
               updating: member.reading !== 'complete',
             })),
-            totalMinor: group.tables.reduce(
-              (sum, member) => sum + (member.bill?.totalMinor ?? 0),
-              0,
-            ),
+            // Rule 8: money adds through the money module only.
+            totalMinor: sumSignedMinor(group.tables.map((member) => member.bill?.totalMinor ?? 0)),
             currency:
               group.tables.map((member) => member.bill?.currency).find((one) => one != null) ??
               'EUR',
