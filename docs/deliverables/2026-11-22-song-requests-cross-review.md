@@ -2,7 +2,7 @@
 
 Asked for by Martin on 2026-11-22 ("a fable on all decisions so far and do they fit the most robust and
 optimal picture and if not whats the proposal"), run by a different model from the one that held the
-grilling. Read: [the grilling answers](2026-11-22-song-requests-grilling-answers.md) (rows 1.1–1.19 and
+grilling. Read: [the decision log](2026-11-22-song-requests-decision-log.md) (rows 1.1–1.19 and
 every design section), [the map](2026-11-19-song-requests-port-map.md),
 [the market research](2026-11-18-song-requests-how-others-do-it.md),
 [the metadata research](2026-11-22-song-request-metadata.md), and the
