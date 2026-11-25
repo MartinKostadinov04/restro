@@ -1,0 +1,3 @@
+ALTER TABLE "restro"."reservations" ADD COLUMN "guest_token_hash" text;--> statement-breakpoint
+ALTER TABLE "restro"."reservations" ADD CONSTRAINT "reservations_guest_token_hash_unique" UNIQUE("guest_token_hash");--> statement-breakpoint
+ALTER TABLE "restro"."reservations" ADD CONSTRAINT "reservations_guest_token_hash_format" CHECK ("restro"."reservations"."guest_token_hash" is null or "restro"."reservations"."guest_token_hash" ~ '^[0-9a-f]{64}$');
