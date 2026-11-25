@@ -1,4 +1,4 @@
-# Runbook: staging on Coolify, at restro.synexcloud.com
+# Runbook: staging on Coolify
 
 Martin's steps, click by click, for staging on his own server (D172). It replaces §5 of
 `docs/runbooks/staging-deploy.md` (Railway) and its private address; the rest of that file still
@@ -25,18 +25,27 @@ holds, and this one points back to it where it does. The order and the reasons b
 | #375 merged into `main` | it puts the Dockerfile and `docker-compose.staging.yml` into the repository; Coolify builds from them |
 | #554 merged (`or/foundation` into `main`) | staging deploys from `main` |
 | PR #199 merged, the five secrets set, the migration run | `docs/runbooks/staging-deploy.md` §2 and §3, unchanged: the database must have its tables before the app starts |
-| A Turnstile widget for `restro.synexcloud.com` | `staging-deploy.md` §4, with this address as the widget's domain |
+| A Turnstile widget for the staging address (§2) | `staging-deploy.md` §4, with that host name as the widget's domain |
 
 Sections 2 to 5 below can be done before the merges; the first deploy (§6) waits for all four.
 
-## 2. The address (5 minutes)
+## 2. The address
 
-Wherever `synexcloud.com`'s DNS is managed, add an **A record**: name `restro`, value the
-server's public IP address (the same one your other Coolify sites point at).
+**For now** staging uses the address Coolify generates for the `web` service, of the form
+`https://<letters>.<server IP>.sslip.io` (Martin, 11-25). It needs no DNS record. Below,
+**`<staging address>`** means that address, starting `https://`.
 
-Then tell the lead one thing: **is `synexcloud.com` behind Cloudflare's proxy** (an orange cloud
-next to the record) or not? It decides how the app reads a visitor's address for its
-guess-limiter on table codes; the lead adjusts that setting to your answer.
+- It must start with **`https://`**, not `http://`: sign-in cookies, Stripe's notices and the
+  wallets all need HTTPS, and the web build refuses an `http://` address. If Coolify generated an
+  `http://` address, edit it to `https://` (Coolify then fetches a certificate for it).
+- Send the lead the address once Coolify shows it (§5): it goes into four variables and the
+  Turnstile widget, and the lead needs it to prepare the variables file.
+
+**Later**, `restro.synexcloud.com` (D172): add an **A record** `restro` pointing at the server's
+IP wherever `synexcloud.com`'s DNS is managed (DNS only, no Cloudflare proxy, Martin 11-25), put
+it in the `web` service's domain instead, update the four variables to it, add it to the
+Turnstile widget, and redeploy. The lead then moves the Stripe endpoint and the wallet
+registration to it.
 
 ## 3. The project (5 minutes)
 
@@ -61,9 +70,10 @@ projects on the same server.
 
 ## 5. The domain and the variables (15 minutes)
 
-**Domain.** Open the `web` service → **Domains** → `https://restro.synexcloud.com:3000`. The
+**Domain.** Open the `web` service → **Domains**. Coolify has filled in a generated
+`sslip.io` address; make it `https://…sslip.io:3000` (https, and `:3000` at the end). The
 `:3000` tells Coolify which port inside the container the site answers on; visitors never see
-it. Leave **`worker`** and **`sim-pos`** without a domain: they are reached only by the web app,
+it. Send the lead the address without `:3000`: that is the `<staging address>`. Leave **`worker`** and **`sim-pos`** without a domain: they are reached only by the web app,
 over the project's private network. Add no port mappings anywhere.
 
 **Variables.** The lead fills a git-ignored file on this PC, `E:\Restro\.env.staging.local`,
@@ -94,7 +104,7 @@ worker and never the web app.
 | `DATABASE_URL` | ✓ | ✓ | | the app role's pooler string (`supabase-setup.md` §4), ending `sslmode=verify-full&sslrootcert=/tmp/supabase-ca.crt` (the container writes the certificate to that file at start); never the owner's |
 | `DATABASE_URL_PURGE` | | ✓ | | the purge role's string, the same way |
 | `SUPABASE_CA_CERT` | ✓ | ✓ | | the certificate text, as in the GitHub secret |
-| `BETTER_AUTH_URL` | ✓ | | | `https://restro.synexcloud.com` |
+| `BETTER_AUTH_URL` | ✓ | | | `<staging address>` |
 | `BETTER_AUTH_SECRET`, `GUEST_PASS_KEY`, `STAFF_PIN_PEPPER` | ✓ | | | fresh random values, generated locally |
 | `REVEAL_SERVICE_TOKEN` | ✓ | ✓ | | one fresh random value, the same in both |
 | `SEAL_PUBLIC_KEY` | ✓ | ✓ | | the public half of a new pair (`pnpm keys:seal`) |
@@ -102,7 +112,7 @@ worker and never the web app.
 | `BILL_ID_KEY` | | ✓ | | a fresh random value |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | ✓ | | | from the Turnstile widget (§1) |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | ✓ | | | the `pk_test_…` key |
-| `NEXT_PUBLIC_CDN_BASE_URL` | ✓ | | | `https://restro.synexcloud.com/cdn` |
+| `NEXT_PUBLIC_CDN_BASE_URL` | ✓ | | | `<staging address>/cdn` |
 | `STRIPE_NOTICE_SECRET` | ✓ | | | the signing secret of the test-mode endpoint (§8); can be blank at the first deploy |
 | `STRIPE_SECRET_KEY` | | ✓ | | the `rk_test_…` key |
 | `SIM_POS_CONTROL_TOKEN` | | | ✓ | a fresh random value |
@@ -127,8 +137,8 @@ corrects this table in the same pull request that changes the file.
 1. Coolify → the application → **Deploy**. The first build takes a while (it installs and
    builds the whole workspace); later ones reuse what has not changed.
 2. When it finishes, each of the three services should show **healthy**.
-3. Open `https://restro.synexcloud.com`: the sign-in page loads, with a padlock.
-4. Open `https://restro.synexcloud.com/api/health`: it answers `{"status":"ok"}`.
+3. Open `<staging address>`: the sign-in page loads, with a padlock.
+4. Open `<staging address>/api/health`: it answers `{"status":"ok"}`.
 5. Tell the lead "deployed" and nothing else.
 
 **If something is red:** send the lead the service's name and the step that failed (Build or
@@ -148,11 +158,12 @@ repository.
 
 - **Check 4 (signed notices):** once staging runs, the lead connects a staging venue to a Stripe
   **test** connected account and adds a test-mode endpoint in Stripe at
-  `https://restro.synexcloud.com/api/payments/notices/stripe`. Its signing secret becomes
+  `<staging address>/api/payments/notices/stripe`. Its signing secret becomes
   `STRIPE_NOTICE_SECRET` (§5); you paste it and redeploy. Until then the route answers 503 on
   purpose and Stripe retries.
-- **Check 5 (Apple Pay and Google Pay):** `restro.synexcloud.com` is already a domain you own, so
-  this no longer waits for the Restro domain. An agent registers that exact host with Stripe for
+- **Check 5 (Apple Pay and Google Pay):** no purchase is needed: the staging address works,
+  and the lead recommends running it once `restro.synexcloud.com` is in place, because a wallet
+  registration belongs to one exact host and the `sslip.io` one is temporary. An agent registers that exact host with Stripe for
   test mode through the API; then you open the guest page on your phone and tap the wallet, with
   a real card already in it: with test keys Stripe does not charge it (`staging-deploy.md` §8).
 

@@ -8,7 +8,7 @@ one left off, at its section 6.
 > **Staging moved to Coolify on 2026-11-25 (D172).** Railway is not used for staging: §5 is
 > replaced by `docs/runbooks/staging-coolify.md`, and so are the private address in §6 and the
 > domain in §8. §1–§4, the variable list in §6 and §7 still hold, with
-> `https://restro.synexcloud.com` wherever this file says the Railway address.
+> the staging address (`staging-coolify.md` §2) wherever this file says the Railway address.
 
 ## 0. Ground rules
 
@@ -189,7 +189,7 @@ When both services are up:
 
 ## 8. The domain, for check 5 only
 
-> **On Coolify** staging already has a domain of Martin's, `restro.synexcloud.com` (D172), so the
+> **On Coolify** staging has its own address (an `sslip.io` one for now, `restro.synexcloud.com` later, D172), so the
 > purchase below is no longer needed for check 5; the phone part still is.
 
 Check 5 — Apple Pay and Google Pay — needs a domain registered with Stripe, so a
