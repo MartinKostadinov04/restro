@@ -61,6 +61,12 @@ describe('the booking page of the Editorial Market (#577)', () => {
     expect(options).toEqual(['Thu, 26 Nov', 'Fri, 27 Nov (closed)', 'Sat, 28 Nov'])
   })
 
+  it('asks the server about the night the form starts on', () => {
+    const binding = bindingOf()
+    render(<EditorialMarketBooking view={view} booking={BOOKING} binding={binding} />)
+    expect(binding.checkNight).toHaveBeenCalledWith('2026-11-26')
+  })
+
   it('asks the server about a chosen night, and refuses a closed one in words that name another way', () => {
     const binding = bindingOf()
     render(<EditorialMarketBooking view={view} booking={BOOKING} binding={binding} />)
@@ -125,6 +131,8 @@ describe('the booking page of the Editorial Market (#577)', () => {
     )
     expect(screen.getByRole('status').textContent).toContain('Your request is with the club')
     expect(screen.getByRole('status').textContent).toContain('send you an email')
+    // The focus moves to the answer's heading, not lost with the form.
+    expect(document.activeElement?.textContent).toBe('Your request is with the club')
   })
 
   it("words the host's refusal", () => {

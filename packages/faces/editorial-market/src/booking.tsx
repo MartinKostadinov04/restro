@@ -9,13 +9,22 @@
 // takes no online bookings, and links nowhere.
 
 import {
+  BOOKING_LIMITS,
   type BookingForm,
   BookingFormSchema,
   type BookingHostProps,
   bookingNightText,
   stringsFor,
 } from '@restro/shell'
-import { type CSSProperties, type FormEvent, type ReactNode, useId, useState } from 'react'
+import {
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react'
 
 import { BOOKING_CSS } from './booking-css'
 import { EDITORIAL_CSS } from './css'
@@ -41,6 +50,20 @@ export function EditorialMarketBooking(props: EditorialMarketBookingProps) {
   const [note, setNote] = useState('')
   // The form did not pass the shell's own check (the browser's already passed): said, not sent.
   const [invalid, setInvalid] = useState(false)
+  const answer = useRef<HTMLHeadingElement>(null)
+  const stage = binding?.stage
+  const checkNight = binding?.checkNight
+  const firstDate = firstOpen?.date ?? null
+
+  // The night the form starts on is asked about once, as a chosen one is.
+  useEffect(() => {
+    if (firstDate !== null) checkNight?.(firstDate)
+  }, [checkNight, firstDate])
+
+  // The form gives way to the answer: the focus moves to its heading, so it is read and not lost.
+  useEffect(() => {
+    if (stage === 'sent') answer.current?.focus()
+  }, [stage])
 
   const chosen = booking.nights.find((entry) => entry.date === night) ?? null
   // What is known about the chosen night: the file says a closed one at once, and the server's
@@ -89,7 +112,9 @@ export function EditorialMarketBooking(props: EditorialMarketBookingProps) {
   } else if (binding?.stage === 'sent') {
     body = (
       <section className="bk-answer" role="status" aria-labelledby={`${id}-sent`}>
-        <h2 id={`${id}-sent`}>{words.sentTitle}</h2>
+        <h2 id={`${id}-sent`} ref={answer} tabIndex={-1}>
+          {words.sentTitle}
+        </h2>
         <p>{words.sentText}</p>
       </section>
     )
@@ -132,7 +157,7 @@ export function EditorialMarketBooking(props: EditorialMarketBookingProps) {
               type="number"
               inputMode="numeric"
               min={1}
-              max={50}
+              max={BOOKING_LIMITS.partySize}
               value={partySize}
               onChange={(event) => setPartySize(event.target.value)}
               required
@@ -146,7 +171,7 @@ export function EditorialMarketBooking(props: EditorialMarketBookingProps) {
               id={`${id}-name`}
               className="bk-input"
               autoComplete="name"
-              maxLength={80}
+              maxLength={BOOKING_LIMITS.name}
               value={name}
               onChange={(event) => setName(event.target.value)}
               required
@@ -161,8 +186,8 @@ export function EditorialMarketBooking(props: EditorialMarketBookingProps) {
               className="bk-input"
               type="tel"
               autoComplete="tel"
-              minLength={6}
-              maxLength={40}
+              minLength={BOOKING_LIMITS.phoneMin}
+              maxLength={BOOKING_LIMITS.phone}
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
               required
@@ -177,7 +202,7 @@ export function EditorialMarketBooking(props: EditorialMarketBookingProps) {
               className="bk-input"
               type="email"
               autoComplete="email"
-              maxLength={200}
+              maxLength={BOOKING_LIMITS.email}
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
@@ -190,7 +215,7 @@ export function EditorialMarketBooking(props: EditorialMarketBookingProps) {
             <textarea
               id={`${id}-note`}
               className="bk-input bk-note"
-              maxLength={500}
+              maxLength={BOOKING_LIMITS.note}
               value={note}
               onChange={(event) => setNote(event.target.value)}
             />

@@ -58,7 +58,7 @@ export const BOOKING_CSS = `
   width: 100%;
   min-height: 48px;
   padding: 10px 12px;
-  border: 1px solid var(--rm-border);
+  border: 1px solid var(--rm-muted);
   border-radius: var(--rm-radius);
   background: var(--rm-surface);
   color: var(--rm-text);
@@ -66,17 +66,12 @@ export const BOOKING_CSS = `
   font-size: 16px;
 }
 .bk-input:focus-visible {
-  outline: 2px solid var(--rm-accent);
+  outline: 3px solid var(--rm-accent-text);
   outline-offset: 2px;
 }
 .bk-note {
   min-height: 96px;
   resize: vertical;
-}
-.bk-pair {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 12px;
 }
 .bk-refusal {
   margin: 0;
@@ -100,12 +95,15 @@ export const BOOKING_CSS = `
   cursor: pointer;
   touch-action: manipulation;
 }
+.bk-send:active:not(:disabled) {
+  transform: scale(0.97);
+}
 .bk-send:disabled {
   opacity: 0.55;
   cursor: default;
 }
 .bk-send:focus-visible {
-  outline: 2px solid var(--rm-accent);
+  outline: 3px solid var(--rm-accent-text);
   outline-offset: 3px;
 }
 .bk-answer {
@@ -123,14 +121,12 @@ export const BOOKING_CSS = `
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
+.bk-answer h2:focus:not(:focus-visible) {
+  outline: none;
+}
 .bk-answer p {
   margin: 8px 0 0;
   color: var(--rm-muted);
   overflow-wrap: anywhere;
-}
-@media (max-width: 360px) {
-  .bk-pair {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 `
