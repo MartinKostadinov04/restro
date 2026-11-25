@@ -334,6 +334,12 @@ export interface GuestGroupBill {
   readonly totalMinor: number
   readonly paidMinor: number
   readonly owedMinor: number
+  /**
+   * One payment may cover lines of several member tables (#542, D160 §2): "The whole bill" and
+   * each table's lines can be picked together. False where the POS splits a bill off on its own
+   * table: each phone pays its own table, one table at a time.
+   */
+  readonly paysAcross: boolean
   /** Every member table, this one included, in the order of their names. */
   readonly tables: readonly GuestGroupTable[]
 }
@@ -770,6 +776,8 @@ export function groupBillOf(group: GroupRead): GuestGroupBill {
     totalMinor: sumSignedMinor(tables.map((member) => member.totalMinor)),
     paidMinor: sumSignedMinor(tables.map((member) => member.paidMinor)),
     owedMinor: sumSignedMinor(tables.map((member) => member.owedMinor)),
+    // A group cut to its first tables can't be paid across: some of its lines aren't shown.
+    paysAcross: group.paysAcross && !cut,
     tables,
   }
 }

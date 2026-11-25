@@ -208,6 +208,8 @@ export {
   type PayTotals,
   type Picks,
   paidReceiptText,
+  payAcross,
+  payableBill,
   payBlock,
   payFormLocale,
   payingOffHere,
@@ -217,6 +219,7 @@ export {
   paySignedMoney,
   payStartCommand,
   payTotalsOf,
+  pickTable,
   pickWhole,
   receiptEmailOf,
   reconcilePicks,
@@ -226,6 +229,7 @@ export {
   TIP_PERCENTS,
   type TipChoice,
   type TipPercent,
+  tablePicked,
   togglePick,
 } from './paying'
 export { type ScheduleStatus, scheduleStatus } from './schedule'

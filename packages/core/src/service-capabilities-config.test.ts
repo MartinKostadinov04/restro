@@ -36,6 +36,7 @@ describe('the recorded service capabilities (#78)', () => {
       moveLinesToTable: false,
       electronicReceipt: false,
       electronicReceiptFile: false,
+      severalBillsPerTable: false,
     })
     expect(
       readServiceCapabilities({
@@ -52,6 +53,7 @@ describe('the recorded service capabilities (#78)', () => {
       moveLinesToTable: false,
       electronicReceipt: false,
       electronicReceiptFile: false,
+      severalBillsPerTable: false,
     })
     expect(
       readServiceCapabilities({
@@ -67,6 +69,7 @@ describe('the recorded service capabilities (#78)', () => {
           ...NO_SERVICE_CAPABILITIES,
           electronicReceipt: true,
           electronicReceiptFile: true,
+          severalBillsPerTable: false,
         }),
       }),
     ).toMatchObject({ electronicReceipt: true })

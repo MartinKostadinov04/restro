@@ -62,6 +62,7 @@ import {
   PAYMENT_UNCONFIRMED_KIND,
 } from './alert-rules'
 import { defineCommand, type ServiceTx } from './definition'
+import { lockPaymentTables, paymentTablesOf, touchPaymentTables } from './group-pay'
 import {
   freePaymentTable,
   type LeaseKey,
@@ -158,7 +159,6 @@ export const PosRefSchema = z.string().min(1).max(200)
 
 export interface Locked {
   readonly payment: PaymentRow
-  readonly tableOpen: boolean
   readonly leases: Map<string, { readonly holder: string | null; readonly fence: number }>
   /** The open alert of each kind claimed, by kind. */
   readonly alerts: Map<string, { readonly id: string; readonly doneAt: Date | null }>
@@ -191,7 +191,8 @@ export async function lockRoute(
     .from(payments)
     .where(and(eq(payments.id, id), eq(payments.venueId, stx.venueId)))
   if (found === undefined) return refused(null, 'payment_missing')
-  const order = await stx.rows.tableOrder(found.tableId)
+  // Every table the payment covers (#542: a linked group's), in table-id order.
+  await lockPaymentTables(stx, { id, tableId: found.tableId })
   if (found.sentOrderId !== null) await lockSentOrder(stx, found.sentOrderId)
   const leases = await lockLeases(stx, touches.leases?.(found) ?? [])
   const kinds = touches.alertKinds ?? []
@@ -215,7 +216,7 @@ export async function lockRoute(
   const [payment] = await stx.tx.select().from(payments).where(eq(payments.id, id)).for('update')
   if (payment === undefined) return refused(null, 'payment_missing')
   if (payment.paymentTableId !== found.paymentTableId) return refused(null, 'payment_changed')
-  return { payment, tableOpen: order !== null, leases, alerts: open }
+  return { payment, leases, alerts: open }
 }
 
 /** The payment table's lease. */
@@ -234,7 +235,7 @@ export async function move(
   set: Partial<typeof payments.$inferInsert> = {},
   details?: Readonly<Record<string, string | number | boolean | null>>,
 ): Promise<void> {
-  const { payment, tableOpen } = locked
+  const { payment } = locked
   const final = isFinalPaymentState(state)
   const settles = final && payment.settledAt === null
   await stx.tx
@@ -250,7 +251,8 @@ export async function move(
       updatedAt: sql`now()`,
     })
     .where(eq(payments.id, payment.id))
-  if (tableOpen) stx.rows.touch(payment.tableId)
+  // It shows on every table it covers, its own among them (#542).
+  await touchPaymentTables(stx, payment)
   await logPayment(stx, payment, state, set.reason ?? payment.reason ?? null, details)
   // Paying ended (D142), recorded by the write that settles the payment and no other.
   if (settles) {
@@ -534,17 +536,26 @@ export function paymentTurn() {
       paymentId,
       /** Null to take the turn; the fence of the take to release it. */
       release: z.int().nonnegative().nullable(),
+      /**
+       * The table whose turn it is: one of the tables the payment's lines are on (#542: each table
+       * of a linked group moves its own lines, under its own turn). Left out, the payment's table.
+       */
+      tableId: tableId.optional(),
     }),
     origins: ['worker'],
     permission: null,
     idempotency: 'by_state',
     async handle(stx, command) {
       const locked = await lockRoute(stx, command.paymentId, {
-        leases: (found) => [turnLease(found.tableId)],
+        leases: (found) => [turnLease(command.tableId ?? found.tableId)],
       })
       if (refusedLock(locked)) return locked
       const { payment } = locked
-      const lease = turnLease(payment.tableId)
+      const turnTable = command.tableId ?? payment.tableId
+      if (!(await paymentTablesOf(stx.tx, payment)).includes(turnTable)) {
+        return refused(null, 'invalid_command')
+      }
+      const lease = turnLease(turnTable)
       if (command.release !== null) {
         const released = await releaseLease(stx, {
           ...lease,
@@ -595,14 +606,17 @@ function isolateRefusalReason(code: string | null): string {
 
 /**
  * `payment.isolated`: the POS moved the payment's lines onto its payment table (`moved`), or said a
- * definite no (`refused`, nothing moved: the payment is cancelled and its hold released).
+ * definite no (`refused`, nothing moved: the payment is cancelled and its hold released). A payment
+ * over several tables moves each table's lines on its own (#542): a no after some of them moved is
+ * `partly`, and the lines that moved go back to their own tables (the undo, as after a failed
+ * check) before the hold is released.
  */
 export function paymentIsolated() {
   return defineCommand({
     schema: z.strictObject({
       type: z.literal('payment.isolated'),
       paymentId,
-      outcome: z.enum(['moved', 'refused']),
+      outcome: z.enum(['moved', 'refused', 'partly']),
       code: CodeSchema.nullable(),
     }),
     origins: ['worker'],
@@ -620,6 +634,14 @@ export function paymentIsolated() {
       if (command.outcome === 'moved') {
         await move(stx, locked, 'isolated')
         return at(payment, 'isolated', true)
+      }
+      if (command.outcome === 'partly') {
+        const why = command.code ?? 'isolate_refused'
+        await move(stx, locked, 'isolated', { reason: 'check_failed' }, { why })
+        if (command.code === 'payment_table_busy') {
+          await raise(stx, locked, PAYMENT_CHECK_FAILED_KIND, 'alerts.answer')
+        }
+        return at(payment, 'isolated', true, { reason: 'check_failed', why })
       }
       await move(stx, locked, 'cancelling', { reason: isolateRefusalReason(command.code) })
       // A waiter's bill took the payment table under a move: a manager is told what stopped.

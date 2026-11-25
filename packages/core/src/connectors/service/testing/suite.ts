@@ -30,6 +30,8 @@ import {
   electronicReceiptCheck,
   emptyTableCheck,
   excludedBillCheck,
+  groupIsolateCheck,
+  isolationRoute,
   newBillReferenceCheck,
   oldestBillCheck,
   paymentRouteCheck,
@@ -168,6 +170,13 @@ export function serviceConnectorSuite(harness: WriteHarness): void {
       paymentRouteCheck,
       harness,
     )
+    if (isolationRoute(harness.connector.capabilities) === 'payment_table') {
+      check(
+        "one payment over several tables: each table's picks join the payment's bill, and each line goes back to its own table",
+        groupIsolateCheck,
+        harness,
+      )
+    }
     check(
       'a close with the guest email asks for an electronic receipt only where declared, and returns its file only where declared',
       electronicReceiptCheck,

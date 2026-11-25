@@ -373,6 +373,13 @@ export const IsolateLinesRequestSchema = z.strictObject({
   table: PosRefSchema,
   picks: z.array(LinePickSchema).min(1).max(100),
   paymentTable: PosRefSchema.nullable(),
+  /**
+   * One payment over several tables of a linked group (D160 §2, #542): the bill an earlier isolate
+   * of this payment made on `paymentTable`, which these picks join, so the payment closes once.
+   * Only where the POS moves lines to a table; the payment table may then hold that bill and no
+   * other (else `busy`). Left out, the payment table must be empty, as for one table.
+   */
+  into: IsolatedHandleSchema.optional(),
   ref: WriteRefSchema,
 })
 export type IsolateLinesRequest = z.output<typeof IsolateLinesRequestSchema>
@@ -605,6 +612,11 @@ export type PayAndCloseResult = z.output<typeof PayAndCloseResultSchema>
 export const UndoIsolateRequestSchema = z.strictObject({
   isolated: IsolatedHandleSchema,
   table: PosRefSchema,
+  /**
+   * Only these lines of the isolated bill go back to `table` (one payment over several tables, each
+   * line to its own, D160 §2, #542); left out, every line on it does.
+   */
+  lines: z.array(PosRefSchema).min(1).max(500).optional(),
   ref: WriteRefSchema,
 })
 export type UndoIsolateRequest = z.output<typeof UndoIsolateRequestSchema>

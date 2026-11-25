@@ -16,6 +16,7 @@ import {
   type GroupTableView,
   lineNameText,
   type PayingStrings,
+  payableBill,
   paySignedMoney,
   type TableBillPartView,
 } from '@restro/shell'
@@ -158,9 +159,12 @@ export function BillSheet() {
       ? []
       : (table?.parts.flatMap((part) => part.lines.map((line) => ({ part, line }))) ?? [])
   // What the table owes, as the host states it; nothing when the bill is empty or settled.
+  // Where one payment covers the linked group (#542), Pay opens with every member's lines ticked,
+  // so it reads the group's total.
+  const payOwed = payableBill(state)?.owedMinor ?? 0
   const owed =
-    table !== null && table.owedMinor > 0
-      ? money(table.owedMinor)
+    table !== null && payOwed > 0
+      ? money(payOwed)
       : bill !== null && bill.total.minor > 0
         ? bill.total.text
         : null

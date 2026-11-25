@@ -41,6 +41,12 @@ export interface RecordedServiceCapabilities {
    * and that route is the only one built today, so paying is offered only where this is declared (#116).
    */
   readonly moveLinesToTable: boolean
+  /**
+   * Several bills on one table: the POS isolates a payment by splitting a bill off on its own table,
+   * not by moving lines to a payment table, so one payment never covers two tables of a linked
+   * group (#542): each phone pays its own table.
+   */
+  readonly severalBillsPerTable: boolean
   /** The close can ask the POS for an electronic receipt to the guest's email (D127, #186). */
   readonly electronicReceipt: boolean
   /** With it: the POS returns the receipt file and Restro sends it ("sent"); else the POS sends ("requested"). */
@@ -54,6 +60,7 @@ export const NO_RECORDED_SERVICE_CAPABILITIES: RecordedServiceCapabilities = Obj
   recordTipOnClose: false,
   closeWithPaymentType: false,
   moveLinesToTable: false,
+  severalBillsPerTable: false,
   electronicReceipt: false,
   electronicReceiptFile: false,
 })
@@ -82,6 +89,7 @@ export function readServiceCapabilities(config: unknown): RecordedServiceCapabil
     recordTipOnClose: stored.record_tip_on_close === true,
     closeWithPaymentType: stored.close_with_payment_type === true,
     moveLinesToTable: stored.move_lines_to_table === true,
+    severalBillsPerTable: stored.several_bills_per_table === true,
     electronicReceipt: stored.electronic_receipt === true,
     electronicReceiptFile: stored.electronic_receipt_file === true,
   }

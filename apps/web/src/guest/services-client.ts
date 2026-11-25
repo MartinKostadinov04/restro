@@ -250,6 +250,11 @@ export interface TableServices {
   readonly location: LocationControls
   /** The screen the face has open: sets the polls' cadence and what they ask for (RR-52). */
   readonly setScreen: (screen: GuestScreen) => void
+  /**
+   * Asks for the state now ("Try again" on a table whose bill could not be read, #542): on the bill
+   * the server queues a fresh reading of every table older than 15 s.
+   */
+  readonly refresh: () => void
   /** This phone's payment: the provider's form values while it awaits the card, or null. */
   readonly formValues: () => PayFormValues | null
   /** "Back to the bill": forgets the payment's screen (and its handle) once it is final. */
@@ -295,6 +300,7 @@ function tableGroupOf(group: GuestTableState['group']): GroupBillView | null {
     totalMinor: group.totalMinor,
     paidMinor: group.paidMinor,
     owedMinor: group.owedMinor,
+    paysAcross: group.paysAcross,
     tables: group.tables.map((table) => ({
       label: table.label,
       own: table.own,
@@ -1236,6 +1242,10 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       idleMs = 0
       if (running && view() !== before && !polling) schedule(0)
       recompute()
+    },
+    refresh() {
+      idleMs = 0
+      if (running && !polling) schedule(0)
     },
     formValues() {
       return payment?.form == null

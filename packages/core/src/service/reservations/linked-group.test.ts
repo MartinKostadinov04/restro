@@ -116,9 +116,10 @@ describe("a linked group's bill as a phone sees it (pure)", () => {
     ],
     paidLines: [],
   })
-  const groupOf = (tables: GroupRead['tables'], unread = false): GroupRead => ({
+  const groupOf = (tables: GroupRead['tables'], unread = false, paysAcross = false): GroupRead => ({
     key: 7,
     unread,
+    paysAcross,
     tables,
   })
 

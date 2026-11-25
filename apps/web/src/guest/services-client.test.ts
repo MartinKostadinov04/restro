@@ -1157,6 +1157,7 @@ describe('paying (#110, #114, D127)', () => {
       totalMinor: 3250,
       paidMinor: 0,
       owedMinor: 3250,
+      paysAcross: false,
       tables: [
         {
           label: '7',
@@ -1180,6 +1181,7 @@ describe('paying (#110, #114, D127)', () => {
     expect(state.tableGroup).toMatchObject({
       complete: false,
       owedMinor: 3250,
+      paysAcross: false,
       tables: [
         { label: '7', own: true, complete: true, owedMinor: 2250 },
         { label: '8', own: false, complete: false, parts: [{ lines: [{ id: 'bn_other' }] }] },
@@ -1195,6 +1197,8 @@ describe('paying (#110, #114, D127)', () => {
       totalMinor: 1000,
       paidMinor: 0,
       owedMinor: 1000,
+      // One payment may cover both tables (#542): the phone learns it with the group.
+      paysAcross: true,
       tables: [
         { label: '7', own: true, complete: false, ...empty },
         { label: '8', own: false, complete: true, ...empty, totalMinor: 1000, owedMinor: 1000 },
@@ -1207,8 +1211,21 @@ describe('paying (#110, #114, D127)', () => {
     expect(state.tableBill).toBeNull()
     expect(state.tableGroup).toMatchObject({
       complete: false,
+      paysAcross: true,
       tables: [{ own: true }, { label: '8', owedMinor: 1000 }],
     })
+  })
+
+  it('asks for the state at once on "Try again", for a member table that did not read (#542)', async () => {
+    const h = harness(() => json(200, payingTable(1)))
+    h.client.start()
+    await h.tick()
+    expect(h.nextWait()).toBeGreaterThan(0)
+    const before = h.calls.length
+    h.client.refresh()
+    expect(h.nextWait()).toBe(0)
+    await h.tick()
+    expect(h.calls.length).toBe(before + 1)
   })
 
   it('asks Turnstile for the pay action, keeps the handle in the tab and reads the payment with it', async () => {

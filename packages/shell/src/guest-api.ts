@@ -303,6 +303,11 @@ export const GuestTableStateSchema = z.strictObject({
       totalMinor: minor,
       paidMinor: minor,
       owedMinor: minor,
+      /**
+       * One payment may cover lines of several member tables (#542): the venue's POS moves lines
+       * to a payment table. False: each table pays its own, one at a time.
+       */
+      paysAcross: z.boolean(),
       tables: z
         .array(
           z.strictObject({
