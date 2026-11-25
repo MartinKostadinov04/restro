@@ -200,8 +200,8 @@ Code reaches production only through a green pull request and a check on staging
 | --- | --- | --- | --- |
 | Local / agent | Node + Postgres (a container or a dev database) | Recorded fixtures (MSW) only | Building and tests |
 | CI | GitHub Actions with a Postgres service container | Recorded fixtures | Every pull request, and pushes to `main` and the stage branches (`<stage>/foundation`) |
-| Staging | A Railway environment, stopped when idle | Reads: a pilot venue, through its own API user. Writes: the Barsy test installation only (D33). A `sim-pos` server on staging is a later step that needs Martin's OK | Martin checks changes before release |
-| Production | Railway, EU West | Pilot venues, one API user each | Live |
+| Staging | Coolify on Martin's own server in the EU, at an `sslip.io` address for now, `restro.synexcloud.com` later (D172): web, worker and `sim-pos` from `docker-compose.staging.yml` | Reads: a pilot venue, through its own API user. Writes: the Barsy test installation only (D33). `sim-pos` runs beside it (Martin's OK, 11-25) | Martin checks changes before release |
+| Production | Railway, EU West (host open again, D172) | Pilot venues, one API user each | Live |
 
 `sim-pos` runs locally and in CI as the pilot POS's stand-in; source kind `sim` is refused by the worker in production and hidden from the source picker there.
 
