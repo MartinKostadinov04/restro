@@ -877,14 +877,15 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
   }
 
   /**
-   * Whether the share is read now: this phone holds a part, the guest has the bill (and paying)
-   * open, or a share it is watching is on. A share sent away is read on only while the bill is
-   * open, so a new one another phone starts still shows.
+   * Whether the share is read now: this phone holds a part, the guest has the bill open where the
+   * venue offers sharing at all, or a share it is watching is on. A share sent away is read on only
+   * while the bill is open, so a new one another phone starts still shows. Where the POS cannot
+   * close one bill with several payments there is never a share to read, so no phone asks for one.
    */
   function shareDue(): boolean {
     if (!running || retired) return false
     if (shareHandle !== null) return true
-    if (screen === 'bill') return true
+    if (screen === 'bill' && server?.ordering?.sharing === true) return true
     return share !== null && !isShareHidden(share)
   }
 

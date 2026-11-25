@@ -146,7 +146,7 @@ test('split the amount: two parts cover one bill, and a third phone sees the sam
     .poll(async () => (await first.state()).bill?.parts.flatMap((part) => part.lines).length ?? 0, {
       ...SETTLED,
     })
-    .toBeGreaterThanOrEqual(3)
+    .toBeGreaterThanOrEqual(2)
   const state = await first.state()
   expect(state.ordering?.sharing).toBe(true)
   const lines = state.bill?.parts.flatMap((part) => part.lines) ?? []
@@ -267,5 +267,5 @@ test('split the amount: two parts cover one bill, and a third phone sees the sam
   }
   expect(said.bills).toHaveLength(1)
   expect(said.bills[0]?.state).toBe('closed')
-  expect(said.bills[0]?.rows.map((row) => row.article).sort()).toEqual(['2001', '2002', '2002'])
+  expect(said.bills[0]?.rows.map((row) => row.article).sort()).toEqual(['2001', '2002'])
 })

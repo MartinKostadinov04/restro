@@ -173,6 +173,7 @@ describe('the services client', () => {
       notesAndOptions: false,
       payFirst: 'off',
       tips: false,
+      sharing: false,
       night: { state: 'open', at: null },
     })
     expect(h.nextWait()).toBe(10_000)
@@ -1265,7 +1266,9 @@ describe('paying (#110, #114, D127)', () => {
     })
     // The face never sees the provider's values; the page asks for them.
     expect(JSON.stringify(h.client.getState())).not.toContain('pi_x_secret_y')
+    // `kind` says whose form it is: this payment's, or this phone's part of a share (#544).
     expect(h.client.formValues()).toEqual({
+      kind: 'payment',
       provider: 'stripe',
       values: { clientSecret: 'pi_x_secret_y', account: 'acct_1A' },
     })
