@@ -1,14 +1,18 @@
 import { notFound, redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
-import { Suspense } from 'react'
+import { type ReactNode, Suspense } from 'react'
 import { AdminHeader } from '@/components/admin/admin-header'
 import { VenueSettingsGeneral } from '@/components/admin/venue-settings-general'
 import {
   NO_SETTINGS_RIGHTS,
+  SETTINGS_MODULE_OF,
   type SettingsRights,
+  type SettingsSectionValue,
   settingsSectionOf,
   sharedDeviceTabOf,
+  venueQueryRedirect,
   type WorkspaceRights,
+  type WorkspaceTabValue,
   workspaceTabOf,
 } from '@/components/admin/workspace-tab-defs'
 import { SettingsSections, WorkspaceTabs } from '@/components/admin/workspace-tabs'
@@ -30,7 +34,7 @@ import { canPublishMenu } from '@/server/roles'
 import { requireTenant } from '@/server/session'
 import { loadSettingsAccess } from '@/server/settings/access'
 import { payingOffered } from '@/server/settings/paying-offer'
-import { onSharedDevice as sessionIsSharedDevice } from '@/server/staff/shared-device'
+import { sharedDeviceOf } from '@/server/staff/shared-device'
 import { getVenue, venueHasTill } from '@/server/venues'
 import { AlertsSection } from '@/settings/alerts-section'
 import { OrderingSection } from '@/settings/ordering-section'
@@ -42,10 +46,27 @@ import { TablesTab } from '@/tables/tables-tab'
 import { TonightSkeleton } from '@/tonight/tonight-skeleton'
 import { TonightTab } from '@/tonight/tonight-tab'
 
-export async function generateMetadata({ params }: PageProps<'/venues/[venueId]'>) {
+/** The open screen's name: the page's title and the browser tab's (D161, WCAG 2.4.2). */
+async function screenNameOf(tab: WorkspaceTabValue, section: SettingsSectionValue) {
+  const t = await getTranslations()
+  return tab === 'settings'
+    ? t(`nav.settingsOf.${SETTINGS_MODULE_OF[section]}`)
+    : t(`workspace.tabs.${tab}`)
+}
+
+export async function generateMetadata({ params, searchParams }: PageProps<'/venues/[venueId]'>) {
   const { organization } = await requireTenant()
   const venue = await getVenue(organization.id, (await params).venueId)
-  return { title: venue?.name ?? (await getTranslations('venues'))('title') }
+  if (!venue) return { title: (await getTranslations('venues'))('title') }
+  // Named from the address alone: a screen the person may not open is sent elsewhere by the page.
+  const query = await searchParams
+  const tab = workspaceTabOf(query.tab, { reservations: true })
+  const section = settingsSectionOf(query.section, true, {
+    roles: true,
+    alerts: true,
+    paying: true,
+  })
+  return { title: `${await screenNameOf(tab, section)} · ${venue.name}` }
 }
 
 export default async function VenueWorkspacePage({
@@ -58,27 +79,19 @@ export default async function VenueWorkspacePage({
   const venue = await getVenue(organization.id, (await params).venueId)
   if (!venue) notFound()
 
-  // The Studio reads the whole menu: only read it while its tab is the open one (the tab bar
-  // shows the skeleton at once when someone switches to it, and the page streams the rest in).
-  // The same holds for the Settings sections (`?section=`, D97).
+  // The Studio reads the whole menu: read it only while it is the open screen (its Suspense
+  // fallback shows the skeleton while the page streams in). The same holds for the Settings
+  // sections (`?section=`, D97).
   const query = await searchParams
   // Old links: the Design tab and subtab are the Design page now, and the composer is the Studio (D129).
   const menu = typeof query.menu === 'string' ? query.menu : null
   if (query.tab === 'design' || (query.tab === 'composer' && query.sub === 'design')) {
     redirect(designPagePath(venue.id, menu))
   }
-  if (query.tab === 'composer') {
-    const params = new URLSearchParams()
-    for (const [key, value] of Object.entries(query)) {
-      if (typeof value === 'string' && key !== 'tab' && key !== 'sub') params.set(key, value)
-    }
-    params.set('tab', 'studio')
-    redirect(`/venues/${venue.id}?${params.toString()}`)
-  }
   if (query.tab === 'studio' && query.sub === 'design') redirect(designPagePath(venue.id, menu))
   // A shared device works Tonight: no Studio, no Tables & QR, no Settings and no Publish bar,
   // which need the person's own sign-in (D122 §7, RR-83, RR-84, RR-85). An old link lands on Tonight.
-  const sharedDevice = await sessionIsSharedDevice({ tenantId: organization.id, sessionId })
+  const sharedDevice = (await sharedDeviceOf(organization.id, sessionId)) !== null
   // Reservations is a tab of its own after Tonight (#326), for whoever works tonight's
   // reservations (D141). Without the key there is no tab and no link to it.
   const tabRights: WorkspaceRights = {
@@ -127,21 +140,29 @@ export default async function VenueWorkspacePage({
     access === null
       ? NO_SETTINGS_RIGHTS
       : { roles: held.includes('settings.roles'), alerts: held.includes('settings.alerts'), paying }
-  const openSection = settingsSectionOf(query.section, hasTill, rights)
-  // A section the person may not open, or the venue does not have, lands on General with the
-  // address saying so, never General under another section's address (S26).
-  if (settingsOpen && typeof query.section === 'string' && query.section !== openSection) {
-    redirect(`/venues/${venue.id}?tab=settings&section=${openSection}`)
+  // One address per screen (C9): an old tab (the composer, Integration, Publishing), a section the
+  // person is not offered, or another screen's parameters (C1) are sent to the address the
+  // sidebar marks: an unoffered section lands on its module's first, an unknown one on General,
+  // with the address saying so (lane 5 S26). The composer's old links were redirected here before (D129).
+  if (!sharedDevice) {
+    const target = venueQueryRedirect(query, tabRights, { hasTill, rights })
+    if (target !== null) redirect(`/venues/${venue.id}?${target}`)
   }
+  const openSection = settingsSectionOf(query.section, hasTill, rights)
   const sectionOpen = (section: typeof openSection) => settingsOpen && openSection === section
 
   const tNav = await getTranslations('nav')
 
-  // The name and the guest address `/m/<organisation>/<venue>` (D84) head every tab.
+  // The open screen's name (the venue is in the breadcrumb and the sidebar's switcher, D161) and
+  // the guest address `/m/<organisation>/<venue>` (D84). A shared device has no sidebar (Tonight,
+  // and Reservations where it may): its title stays the venue's name.
   const title = (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]">
-        {venue.name}
+      <h1
+        className="text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]"
+        data-testid="venue-screen-title"
+      >
+        {sharedDevice ? venue.name : await screenNameOf(openTab, openSection)}
       </h1>
       {guestPath === null ? null : (
         <code
@@ -153,6 +174,214 @@ export default async function VenueWorkspacePage({
       )}
     </>
   )
+
+  const screens: Partial<Record<WorkspaceTabValue, ReactNode>> = {
+    studio: studioOpen ? (
+      <Suspense fallback={<ComposerSkeleton />}>
+        <ComposerTab
+          tenantId={organization.id}
+          role={organization.role}
+          venue={venue}
+          menu={query.menu}
+        />
+      </Suspense>
+    ) : (
+      <ComposerSkeleton />
+    ),
+    tables: tablesOpen ? (
+      <Suspense fallback={<TablesSkeleton />}>
+        <TablesTab
+          tenantId={organization.id}
+          role={organization.role}
+          venue={venue}
+          userId={user.id}
+          sessionId={sessionId}
+          email={user.email}
+        />
+      </Suspense>
+    ) : (
+      <TablesSkeleton />
+    ),
+    tonight: tonightOpen ? (
+      <Suspense fallback={<TonightSkeleton />}>
+        <TonightTab
+          tenantId={organization.id}
+          venue={venue}
+          userId={user.id}
+          email={user.email}
+          sessionId={sessionId}
+          view={typeof query.view === 'string' ? query.view : undefined}
+          day={typeof query.day === 'string' ? query.day : undefined}
+        />
+      </Suspense>
+    ) : (
+      <TonightSkeleton />
+    ),
+    ...(tabRights.reservations
+      ? {
+          reservations: reservationsOpen ? (
+            <Suspense fallback={<ReservationsSkeleton />}>
+              <ReservationsTab
+                tenantId={organization.id}
+                venue={venue}
+                userId={user.id}
+                email={user.email}
+                sessionId={sessionId}
+                view={typeof query.view === 'string' ? query.view : undefined}
+                day={typeof query.day === 'string' ? query.day : undefined}
+                guest={typeof query.guest === 'string' ? query.guest : undefined}
+              />
+            </Suspense>
+          ) : (
+            <ReservationsSkeleton />
+          ),
+        }
+      : {}),
+    settings: (
+      <SettingsSections
+        hasTill={hasTill}
+        rights={rights}
+        module={SETTINGS_MODULE_OF[openSection]}
+        contents={{
+          general: sectionOpen('general') ? (
+            <Suspense fallback={<SettingsSectionSkeleton />}>
+              <VenueSettingsGeneral
+                tenantId={organization.id}
+                role={organization.role}
+                venue={venue}
+                hasTill={hasTill}
+              />
+            </Suspense>
+          ) : (
+            <SettingsSectionSkeleton />
+          ),
+          hours: sectionOpen('hours') ? (
+            <Suspense fallback={<SettingsSectionSkeleton />}>
+              <OrderingSection
+                tenantId={organization.id}
+                venue={venue}
+                part="hours"
+                hasPos={hasTill}
+                canChange={held.includes('settings.guards')}
+                canEditLegal={held.includes('settings.connect_payments')}
+                email={user.email}
+              />
+            </Suspense>
+          ) : (
+            <SettingsSectionSkeleton />
+          ),
+          ordering: sectionOpen('ordering') ? (
+            <Suspense fallback={<SettingsSectionSkeleton />}>
+              <OrderingSection
+                tenantId={organization.id}
+                venue={venue}
+                part="ordering"
+                hasPos={hasTill}
+                canChange={held.includes('settings.guards')}
+                canEditLegal={held.includes('settings.connect_payments')}
+                email={user.email}
+              />
+            </Suspense>
+          ) : (
+            <SettingsSectionSkeleton />
+          ),
+          reservations: sectionOpen('reservations') ? (
+            <Suspense fallback={<SettingsSectionSkeleton />}>
+              <ReservationsSection
+                tenantId={organization.id}
+                venue={venue}
+                canChange={held.includes('settings.reservations')}
+                email={user.email}
+              />
+            </Suspense>
+          ) : (
+            <SettingsSectionSkeleton />
+          ),
+          ...(paying
+            ? {
+                paying: sectionOpen('paying') ? (
+                  <Suspense fallback={<SettingsSectionSkeleton />}>
+                    <PayingSection
+                      tenantId={organization.id}
+                      venue={venue}
+                      canConnect={held.includes('settings.connect_payments')}
+                      email={user.email}
+                      connection={
+                        query.connection === 'return' || query.connection === 'refresh'
+                          ? query.connection
+                          : undefined
+                      }
+                    />
+                  </Suspense>
+                ) : (
+                  <SettingsSectionSkeleton />
+                ),
+              }
+            : {}),
+          ...(rights.alerts
+            ? {
+                alerts: sectionOpen('alerts') ? (
+                  <Suspense fallback={<SettingsSectionSkeleton />}>
+                    <AlertsSection
+                      tenantId={organization.id}
+                      venue={venue}
+                      email={user.email}
+                      canUnlinkPerson={rights.roles}
+                    />
+                  </Suspense>
+                ) : (
+                  <SettingsSectionSkeleton />
+                ),
+              }
+            : {}),
+          ...(rights.roles
+            ? {
+                staff: sectionOpen('staff') ? (
+                  <Suspense fallback={<SettingsSectionSkeleton />}>
+                    <StaffSection
+                      tenantId={organization.id}
+                      venue={venue}
+                      userId={user.id}
+                      sessionId={sessionId}
+                      email={user.email}
+                      held={held}
+                    />
+                  </Suspense>
+                ) : (
+                  <SettingsSectionSkeleton />
+                ),
+              }
+            : {}),
+          ...(hasTill
+            ? {
+                publish: sectionOpen('publish') ? (
+                  <Suspense fallback={<SettingsSectionSkeleton />}>
+                    <PublishSettingsSection
+                      tenantId={organization.id}
+                      role={organization.role}
+                      venue={venue}
+                    />
+                  </Suspense>
+                ) : (
+                  <SettingsSectionSkeleton />
+                ),
+              }
+            : {}),
+          versioning: sectionOpen('versioning') ? (
+            <Suspense fallback={<SettingsSectionSkeleton />}>
+              <VersioningSection
+                tenantId={organization.id}
+                role={organization.role}
+                venue={venue}
+              />
+            </Suspense>
+          ) : (
+            <SettingsSectionSkeleton />
+          ),
+        }}
+      />
+    ),
+  }
 
   return (
     <>
@@ -168,216 +397,18 @@ export default async function VenueWorkspacePage({
           offerPublish={!sharedDevice && !tonightOpen}
           title={title}
         />
-        <WorkspaceTabs
-          sharedDevice={sharedDevice}
-          rights={tabRights}
-          contents={{
-            studio: studioOpen ? (
-              <Suspense fallback={<ComposerSkeleton />}>
-                <ComposerTab
-                  tenantId={organization.id}
-                  role={organization.role}
-                  venue={venue}
-                  menu={query.menu}
-                />
-              </Suspense>
-            ) : (
-              <ComposerSkeleton />
-            ),
-            tables: tablesOpen ? (
-              <Suspense fallback={<TablesSkeleton />}>
-                <TablesTab
-                  tenantId={organization.id}
-                  role={organization.role}
-                  venue={venue}
-                  userId={user.id}
-                  sessionId={sessionId}
-                  email={user.email}
-                />
-              </Suspense>
-            ) : (
-              <TablesSkeleton />
-            ),
-            tonight: tonightOpen ? (
-              <Suspense fallback={<TonightSkeleton />}>
-                <TonightTab
-                  tenantId={organization.id}
-                  venue={venue}
-                  userId={user.id}
-                  email={user.email}
-                  sessionId={sessionId}
-                  view={typeof query.view === 'string' ? query.view : undefined}
-                  day={typeof query.day === 'string' ? query.day : undefined}
-                />
-              </Suspense>
-            ) : (
-              <TonightSkeleton />
-            ),
-            ...(tabRights.reservations
-              ? {
-                  reservations: reservationsOpen ? (
-                    <Suspense fallback={<ReservationsSkeleton />}>
-                      <ReservationsTab
-                        tenantId={organization.id}
-                        venue={venue}
-                        userId={user.id}
-                        email={user.email}
-                        sessionId={sessionId}
-                        view={typeof query.view === 'string' ? query.view : undefined}
-                        day={typeof query.day === 'string' ? query.day : undefined}
-                        guest={typeof query.guest === 'string' ? query.guest : undefined}
-                      />
-                    </Suspense>
-                  ) : (
-                    <ReservationsSkeleton />
-                  ),
-                }
-              : {}),
-            settings: (
-              <SettingsSections
-                hasTill={hasTill}
-                rights={rights}
-                contents={{
-                  general: sectionOpen('general') ? (
-                    <Suspense fallback={<SettingsSectionSkeleton />}>
-                      <VenueSettingsGeneral
-                        tenantId={organization.id}
-                        role={organization.role}
-                        venue={venue}
-                        hasTill={hasTill}
-                      />
-                    </Suspense>
-                  ) : (
-                    <SettingsSectionSkeleton />
-                  ),
-                  hours: sectionOpen('hours') ? (
-                    <Suspense fallback={<SettingsSectionSkeleton />}>
-                      <OrderingSection
-                        tenantId={organization.id}
-                        venue={venue}
-                        part="hours"
-                        hasPos={hasTill}
-                        canChange={held.includes('settings.guards')}
-                        canEditLegal={held.includes('settings.connect_payments')}
-                        email={user.email}
-                      />
-                    </Suspense>
-                  ) : (
-                    <SettingsSectionSkeleton />
-                  ),
-                  ordering: sectionOpen('ordering') ? (
-                    <Suspense fallback={<SettingsSectionSkeleton />}>
-                      <OrderingSection
-                        tenantId={organization.id}
-                        venue={venue}
-                        part="ordering"
-                        hasPos={hasTill}
-                        canChange={held.includes('settings.guards')}
-                        canEditLegal={held.includes('settings.connect_payments')}
-                        email={user.email}
-                      />
-                    </Suspense>
-                  ) : (
-                    <SettingsSectionSkeleton />
-                  ),
-                  reservations: sectionOpen('reservations') ? (
-                    <Suspense fallback={<SettingsSectionSkeleton />}>
-                      <ReservationsSection
-                        tenantId={organization.id}
-                        venue={venue}
-                        canChange={held.includes('settings.reservations')}
-                        email={user.email}
-                      />
-                    </Suspense>
-                  ) : (
-                    <SettingsSectionSkeleton />
-                  ),
-                  ...(paying
-                    ? {
-                        paying: sectionOpen('paying') ? (
-                          <Suspense fallback={<SettingsSectionSkeleton />}>
-                            <PayingSection
-                              tenantId={organization.id}
-                              venue={venue}
-                              canConnect={held.includes('settings.connect_payments')}
-                              email={user.email}
-                              connection={
-                                query.connection === 'return' || query.connection === 'refresh'
-                                  ? query.connection
-                                  : undefined
-                              }
-                            />
-                          </Suspense>
-                        ) : (
-                          <SettingsSectionSkeleton />
-                        ),
-                      }
-                    : {}),
-                  ...(rights.alerts
-                    ? {
-                        alerts: sectionOpen('alerts') ? (
-                          <Suspense fallback={<SettingsSectionSkeleton />}>
-                            <AlertsSection
-                              tenantId={organization.id}
-                              venue={venue}
-                              email={user.email}
-                              canUnlinkPerson={rights.roles}
-                            />
-                          </Suspense>
-                        ) : (
-                          <SettingsSectionSkeleton />
-                        ),
-                      }
-                    : {}),
-                  ...(rights.roles
-                    ? {
-                        staff: sectionOpen('staff') ? (
-                          <Suspense fallback={<SettingsSectionSkeleton />}>
-                            <StaffSection
-                              tenantId={organization.id}
-                              venue={venue}
-                              userId={user.id}
-                              sessionId={sessionId}
-                              email={user.email}
-                              held={held}
-                            />
-                          </Suspense>
-                        ) : (
-                          <SettingsSectionSkeleton />
-                        ),
-                      }
-                    : {}),
-                  ...(hasTill
-                    ? {
-                        publish: sectionOpen('publish') ? (
-                          <Suspense fallback={<SettingsSectionSkeleton />}>
-                            <PublishSettingsSection
-                              tenantId={organization.id}
-                              role={organization.role}
-                              venue={venue}
-                            />
-                          </Suspense>
-                        ) : (
-                          <SettingsSectionSkeleton />
-                        ),
-                      }
-                    : {}),
-                  versioning: sectionOpen('versioning') ? (
-                    <Suspense fallback={<SettingsSectionSkeleton />}>
-                      <VersioningSection
-                        tenantId={organization.id}
-                        role={organization.role}
-                        venue={venue}
-                      />
-                    </Suspense>
-                  ) : (
-                    <SettingsSectionSkeleton />
-                  ),
-                }}
-              />
-            ),
-          }}
-        />
+        {sharedDevice ? (
+          <WorkspaceTabs
+            sharedDevice
+            rights={tabRights}
+            contents={{ tonight: screens.tonight, reservations: screens.reservations }}
+          />
+        ) : (
+          // On a person's own sign-in the sidebar opens the screens (D161): only the open one is
+          // drawn, its skeleton shown while it streams in. No `loading.tsx` above it: that answers
+          // a deleted venue with 200, not 404, and leaves a hidden copy of the screen (CI, 11-19).
+          <div key={openTab}>{screens[openTab]}</div>
+        )}
         {tonightOpen && !sharedDevice && canPublishMenu(organization.role) ? (
           <TonightPublish tenantId={organization.id} venueId={venue.id} guestPath={guestPath} />
         ) : null}

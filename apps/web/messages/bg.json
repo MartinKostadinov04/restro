@@ -444,7 +444,22 @@
     "newVenue": "Ново заведение",
     "organization": "Организация",
     "settings": "Настройки",
-    "breadcrumb": "Навигационна пътека"
+    "breadcrumb": "Навигационна пътека",
+    "groups": {
+      "menu": "Меню",
+      "ordering": "Поръчки",
+      "reservations": "Резервации",
+      "venue": "Заведение"
+    },
+    "settingsOf": {
+      "ordering": "Настройки на поръчките",
+      "reservations": "Настройки на резервациите",
+      "venue": "Настройки на заведението",
+      "organization": "Настройки на организацията"
+    },
+    "switchVenue": "Смени заведението",
+    "venueNav": "Навигация в заведението",
+    "deviceMenu": "Език, тема и изход"
   },
   "organizationSwitcher": {
     "label": "Организация",

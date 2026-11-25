@@ -444,7 +444,22 @@
     "newVenue": "New venue",
     "organization": "Organisation",
     "settings": "Settings",
-    "breadcrumb": "Breadcrumb"
+    "breadcrumb": "Breadcrumb",
+    "groups": {
+      "menu": "Menu",
+      "ordering": "Ordering",
+      "reservations": "Reservations",
+      "venue": "Venue"
+    },
+    "settingsOf": {
+      "ordering": "Ordering settings",
+      "reservations": "Reservation settings",
+      "venue": "Venue settings",
+      "organization": "Organisation settings"
+    },
+    "switchVenue": "Switch venue",
+    "venueNav": "Venue navigation",
+    "deviceMenu": "Language, theme and sign out"
   },
   "organizationSwitcher": {
     "label": "Organisation",

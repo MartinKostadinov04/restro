@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
-// The admin sidebar (D74): the organisation's venues as items of their own (no list of a venue's
-// sections), "All venues", "New venue" for owners and admins only, the organisation's Settings, and
-// in the footer the organisation (a switcher only for a person who belongs to several).
+// The admin sidebar. Off a venue's page (D74): the organisation's venues as items of their own,
+// "All venues", "New venue" for owners and admins only. On a venue's page (D161): the venue
+// switcher and the venue's menu grouped by module, each module with its own Settings (D156).
+// Always: the organisation's Settings, and in the footer the organisation (a switcher only for a
+// person who belongs to several).
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -37,7 +39,7 @@ vi.mock('@/lib/auth-client', () => ({ authClient: { signOut: vi.fn() } }))
 
 const VENUES = [
   { id: 'vn_zebra', name: 'zebra Lounge' },
-  { id: 'vn_beta', name: 'Beta Bar' },
+  { id: 'vn_beta', name: 'Beta Bar', reservations: true },
   { id: 'vn_alpha', name: 'Alpha Club' },
 ]
 const ONE_ORGANIZATION = [{ id: 'tn_one', name: 'Night Group' }]
@@ -49,7 +51,7 @@ interface Options {
   /** Start with the sidebar collapsed to icons. */
   collapsed?: boolean
   canCreateVenue?: boolean
-  offerSettings?: boolean
+  staffOnly?: boolean
   organizations?: typeof ONE_ORGANIZATION
 }
 
@@ -58,7 +60,7 @@ function renderSidebar({
   search = '',
   collapsed = false,
   canCreateVenue = true,
-  offerSettings = true,
+  staffOnly = false,
   organizations = ONE_ORGANIZATION,
 }: Options = {}) {
   navigation.pathname = pathname
@@ -70,7 +72,7 @@ function renderSidebar({
         organizations={organizations}
         activeOrganizationId="tn_one"
         canCreateVenue={canCreateVenue}
-        offerSettings={offerSettings}
+        staffOnly={staffOnly}
         user={{ name: 'Maria Petrova', email: 'maria@example.com' }}
       />
     </SidebarProvider>,
@@ -124,45 +126,6 @@ describe('the Venues group', () => {
     ).toEqual(['vn_a', 'vn_b'])
   })
 
-  it('links each venue to its page, and does not list a venue’s sections', () => {
-    renderSidebar({ pathname: '/venues/vn_alpha', search: 'tab=tables' })
-    expect(venueNamed('Beta Bar').getAttribute('href')).toBe('/venues/vn_beta?tab=tables')
-    // The sections are the tabs at the top of the venue page: nothing of them is in the sidebar.
-    for (const section of ['Composer', 'Tables & QR', 'Design', 'Integration']) {
-      expect(screen.queryByRole('link', { name: section })).toBeNull()
-    }
-  })
-
-  it('highlights the venue that is open, and only that one', () => {
-    renderSidebar({ pathname: '/venues/vn_beta' })
-    const open = venueItems().filter((link) => link.getAttribute('aria-current') === 'page')
-    expect(open.map((link) => link.getAttribute('data-venue-id'))).toEqual(['vn_beta'])
-    expect(open[0]?.getAttribute('data-active')).toBe('true')
-    expect(venueNamed('Alpha Club').getAttribute('data-active')).toBe('false')
-    // Neither "All venues" nor Settings is lit on a venue's page.
-    expect(screen.getByTestId('venue-nav-all').getAttribute('aria-current')).toBeNull()
-    expect(screen.getByTestId('nav-settings').getAttribute('aria-current')).toBeNull()
-  })
-
-  it('keeps the open tab when another venue is chosen', () => {
-    renderSidebar({ pathname: '/venues/vn_alpha', search: 'tab=tables' })
-    expect(venueNamed('zebra Lounge').getAttribute('href')).toBe('/venues/vn_zebra?tab=tables')
-    expect(venueNamed('Alpha Club').getAttribute('href')).toBe('/venues/vn_alpha?tab=tables')
-  })
-
-  it('carries no tab from the overview, from Settings, or when the tab is unknown', () => {
-    for (const options of [
-      { pathname: '/venues', search: 'tab=tables' },
-      { pathname: '/settings/integrations', search: 'tab=tables' },
-      { pathname: '/venues/vn_alpha', search: 'tab=nonsense' },
-      { pathname: '/venues/vn_alpha', search: '' },
-    ]) {
-      const { unmount } = renderSidebar(options)
-      expect(venueNamed('Beta Bar').getAttribute('href')).toBe('/venues/vn_beta')
-      unmount()
-    }
-  })
-
   it('has an "All venues" item for the overview, lit on the overview', () => {
     renderSidebar({ pathname: '/venues' })
     const all = screen.getByRole('link', { name: 'All venues' })
@@ -210,7 +173,7 @@ describe('the Venues group', () => {
           organizations={ONE_ORGANIZATION}
           activeOrganizationId="tn_one"
           canCreateVenue={false}
-          offerSettings
+          staffOnly={false}
           user={{ name: 'Maria Petrova', email: 'maria@example.com' }}
         />
       </SidebarProvider>,
@@ -222,28 +185,166 @@ describe('the Venues group', () => {
   })
 })
 
+describe('on a venue’s page (D161)', () => {
+  const groupLabels = () =>
+    [...document.querySelectorAll('[data-sidebar="group-label"]')].map((label) => label.textContent)
+  const entry = (key: string) => {
+    const found = document.querySelector(`[data-nav="${key}"]`)
+    if (!found) throw new Error(`no entry ${key}`)
+    return found
+  }
+
+  it('draws the venue’s menu by module instead of the venues list', () => {
+    renderSidebar({ pathname: '/venues/vn_beta', search: 'tab=tonight' })
+    expect(groupLabels()).toEqual(['Menu', 'Ordering', 'Reservations', 'Venue', 'Organisation'])
+    expect(screen.queryAllByTestId('venue-nav-item')).toHaveLength(0)
+    expect(entry('studio').getAttribute('href')).toBe('/venues/vn_beta?tab=studio')
+    expect(entry('tables').getAttribute('href')).toBe('/venues/vn_beta?tab=tables')
+    expect(entry('tonight').getAttribute('href')).toBe('/venues/vn_beta?tab=tonight')
+    expect(entry('reservations').getAttribute('href')).toBe('/venues/vn_beta?tab=reservations')
+    expect(entry('settings-ordering').getAttribute('href')).toBe(
+      '/venues/vn_beta?tab=settings&section=hours',
+    )
+    expect(entry('settings-reservations').getAttribute('href')).toBe(
+      '/venues/vn_beta?tab=settings&section=reservations',
+    )
+    expect(entry('settings-venue').getAttribute('href')).toBe(
+      '/venues/vn_beta?tab=settings&section=general',
+    )
+  })
+
+  it('marks the open screen, and only it', () => {
+    for (const [search, open] of [
+      ['', 'studio'],
+      ['tab=tonight&view=log', 'tonight'],
+      ['tab=settings&section=alerts', 'settings-ordering'],
+      ['tab=settings&section=reservations', 'settings-reservations'],
+      ['tab=settings&section=staff', 'settings-venue'],
+      ['tab=settings', 'settings-venue'],
+    ] as const) {
+      const { unmount } = renderSidebar({ pathname: '/venues/vn_beta', search })
+      const current = [...document.querySelectorAll('[data-nav][aria-current="page"]')].map(
+        (link) => link.getAttribute('data-nav'),
+      )
+      expect(current, search).toEqual([open])
+      unmount()
+    }
+  })
+
+  it('marks a tapped entry at once, before the page has answered', async () => {
+    renderSidebar({ pathname: '/venues/vn_beta', search: 'tab=studio' })
+    await userEvent.click(entry('settings-ordering'))
+    expect(entry('settings-ordering').getAttribute('aria-current')).toBe('page')
+    expect(entry('studio').getAttribute('aria-current')).toBeNull()
+  })
+
+  it('leaves the mark alone on a click that opens another browser tab', async () => {
+    renderSidebar({ pathname: '/venues/vn_beta', search: 'tab=studio' })
+    const user = userEvent.setup()
+    await user.keyboard('{Control>}')
+    await user.click(entry('settings-ordering'))
+    await user.keyboard('{/Control}')
+    expect(entry('settings-ordering').getAttribute('aria-current')).toBeNull()
+    expect(entry('studio').getAttribute('aria-current')).toBe('page')
+  })
+
+  it('names each Settings by its module to a screen reader and in its tooltip', async () => {
+    renderSidebar({ pathname: '/venues/vn_beta', collapsed: true })
+    expect(screen.getByRole('link', { name: 'Ordering settings' })).toBe(entry('settings-ordering'))
+    expect(screen.getByRole('link', { name: 'Reservation settings' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Venue settings' })).toBeTruthy()
+    await userEvent.hover(entry('settings-ordering'))
+    expect((await screen.findByRole('tooltip')).textContent).toBe('Ordering settings')
+  })
+
+  it('lists the night’s reservations only where the person works them (#326)', () => {
+    renderSidebar({ pathname: '/venues/vn_alpha' })
+    expect(document.querySelector('[data-nav="reservations"]')).toBeNull()
+    // The module keeps its Settings, read-only where the role lacks the right.
+    expect(entry('settings-reservations')).toBeTruthy()
+  })
+
+  it('switches venue from the venue’s name, on the same screen and nothing else of it (C1)', async () => {
+    renderSidebar({ pathname: '/venues/vn_alpha', search: 'tab=settings&section=hours&view=log' })
+    const switcher = screen.getByTestId('venue-switcher')
+    expect(screen.getByRole('button', { name: 'Alpha Club, Switch venue' })).toBe(switcher)
+    await userEvent.click(switcher)
+    const items = await screen.findAllByTestId('venue-nav-item')
+    expect(items.map((item) => item.getAttribute('data-venue-id'))).toEqual([
+      'vn_alpha',
+      'vn_beta',
+      'vn_zebra',
+    ])
+    expect(items[1]?.getAttribute('href')).toBe('/venues/vn_beta?tab=settings&section=hours')
+    expect(items[0]?.getAttribute('aria-current')).toBe('page')
+    expect(screen.getByTestId('venue-nav-all').getAttribute('href')).toBe('/venues')
+    expect(screen.getByTestId('venue-nav-new')).toBeTruthy()
+  })
+
+  it('carries only the screen to another venue', async () => {
+    for (const [search, href] of [
+      ['tab=tonight&view=log&day=2026-11-18', '/venues/vn_beta?tab=tonight'],
+      ['tab=studio&menu=mn_1&item=nd_2', '/venues/vn_beta?tab=studio'],
+      ['tab=nonsense', '/venues/vn_beta'],
+      ['', '/venues/vn_beta'],
+    ] as const) {
+      const { unmount } = renderSidebar({ pathname: '/venues/vn_alpha', search })
+      await userEvent.click(screen.getByTestId('venue-switcher'))
+      const beta = (await screen.findAllByTestId('venue-nav-item')).find(
+        (item) => item.getAttribute('data-venue-id') === 'vn_beta',
+      )
+      expect(beta?.getAttribute('href'), search).toBe(href)
+      unmount()
+    }
+  })
+
+  it('offers members no new venue in the switcher', async () => {
+    renderSidebar({ pathname: '/venues/vn_alpha', canCreateVenue: false })
+    await userEvent.click(screen.getByTestId('venue-switcher'))
+    await screen.findAllByTestId('venue-nav-item')
+    expect(screen.queryByTestId('venue-nav-new')).toBeNull()
+  })
+
+  it('gives a staff-only sign-in the venue’s name alone: nothing to switch to, no Restro link (C4)', () => {
+    renderSidebar({ pathname: '/venues/vn_alpha', staffOnly: true })
+    const name = screen.getByTestId('venue-switcher')
+    expect(name.tagName).toBe('DIV')
+    expect(name.textContent).toContain('Alpha Club')
+    expect(screen.queryByRole('button', { name: /Switch venue/ })).toBeNull()
+    expect(screen.queryByRole('link', { name: /Restro/ })).toBeNull()
+  })
+
+  it('shows Restro’s mark without a link to the venues for a staff-only sign-in elsewhere', () => {
+    renderSidebar({ pathname: '/settings', staffOnly: true })
+    expect(screen.getByText('Restro')).toBeTruthy()
+    expect(screen.queryByRole('link', { name: /Restro/ })).toBeNull()
+  })
+
+  it('lists a staff-only sign-in its venue elsewhere, with no All venues and no new venue (C4)', () => {
+    renderSidebar({ pathname: '/settings', staffOnly: true, canCreateVenue: true })
+    expect(screen.getAllByTestId('venue-nav-item').length).toBeGreaterThan(0)
+    expect(screen.queryByTestId('venue-nav-all')).toBeNull()
+    expect(screen.queryByTestId('venue-nav-new')).toBeNull()
+  })
+})
+
 describe('the Organisation group', () => {
   it('has one item, Settings, that opens /settings', () => {
     renderSidebar()
     expect(
       screen.getByText('Organisation', { selector: '[data-sidebar="group-label"]' }),
     ).toBeTruthy()
-    const settings = screen.getByRole('link', { name: 'Settings' })
+    // Its accessible name and tooltip say whose Settings; the visible word is still in it.
+    const settings = screen.getByRole('link', { name: 'Organisation settings' })
+    expect(settings.textContent).toBe('Settings')
     expect(settings.getAttribute('href')).toBe('/settings')
     expect(settings.getAttribute('aria-current')).toBeNull()
   })
 
   it('lights Settings on every settings page', () => {
     renderSidebar({ pathname: '/settings/integrations' })
-    expect(screen.getByRole('link', { name: 'Settings' }).getAttribute('aria-current')).toBe('page')
+    expect(screen.getByTestId('nav-settings').getAttribute('aria-current')).toBe('page')
     expect(venueItems().every((link) => link.getAttribute('aria-current') === null)).toBe(true)
-  })
-
-  it('offers a shared device neither a new venue nor the organisation’s Settings (RR-85)', () => {
-    renderSidebar({ canCreateVenue: false, offerSettings: false })
-    expect(screen.queryByTestId('venue-nav-new')).toBeNull()
-    expect(screen.queryByTestId('nav-settings')).toBeNull()
-    expect(venueItems().length).toBeGreaterThan(0)
   })
 
   it('speaks Bulgarian first-class', () => {
@@ -254,7 +355,7 @@ describe('the Organisation group', () => {
           organizations={ONE_ORGANIZATION}
           activeOrganizationId="tn_one"
           canCreateVenue
-          offerSettings
+          staffOnly={false}
           user={{ name: 'Maria Petrova', email: 'maria@example.com' }}
         />
       </SidebarProvider>,
@@ -266,7 +367,7 @@ describe('the Organisation group', () => {
     expect(
       screen.getByText('Организация', { selector: '[data-sidebar="group-label"]' }),
     ).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Настройки' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Настройки на организацията' })).toBeTruthy()
   })
 })
 
@@ -275,7 +376,7 @@ describe('the footer', () => {
     renderSidebar({ organizations: ONE_ORGANIZATION })
     expect(within(screen.getByTestId('organization-name')).getByText('Night Group')).toBeTruthy()
     expect(screen.queryByTestId('organization-switcher')).toBeNull()
-    // The venue switcher is gone: the venues are in the list above.
+    // Off a venue's page there is no venue switcher: the venues are in the list above.
     expect(screen.queryByTestId('venue-switcher')).toBeNull()
   })
 
@@ -305,8 +406,8 @@ describe('the sidebar collapsed to icons', () => {
 
   it('names the other items too', async () => {
     renderSidebar({ collapsed: true })
-    await userEvent.hover(screen.getByRole('link', { name: 'Settings' }))
-    expect((await screen.findByRole('tooltip')).textContent).toBe('Settings')
+    await userEvent.hover(screen.getByTestId('nav-settings'))
+    expect((await screen.findByRole('tooltip')).textContent).toBe('Organisation settings')
   })
 
   it('shows no tooltip while the sidebar is open: the names are in view', async () => {

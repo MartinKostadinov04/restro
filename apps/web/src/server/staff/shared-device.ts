@@ -5,6 +5,7 @@
 // doesn't become a person's sign-in by opening another venue's page.
 import { sharedDevices, withTenant } from '@restro/db'
 import { and, eq, isNull } from 'drizzle-orm'
+import { cache } from 'react'
 
 import { getPool } from '../db'
 
@@ -22,3 +23,24 @@ export async function onSharedDevice(input: {
   )
   return rows.length > 0
 }
+
+/**
+ * The shared device this session is, with its venue and the name the owner gave it, or null for a
+ * person's own sign-in. Read once per request (`cache`): the admin frame draws the device's top bar
+ * from it and the page asks again.
+ */
+export const sharedDeviceOf = cache(
+  async (
+    tenantId: string,
+    sessionId: string,
+  ): Promise<{ readonly venueId: string; readonly name: string } | null> => {
+    const rows = await withTenant(getPool(), tenantId, (tx) =>
+      tx
+        .select({ venueId: sharedDevices.venueId, name: sharedDevices.name })
+        .from(sharedDevices)
+        .where(and(eq(sharedDevices.sessionId, sessionId), isNull(sharedDevices.revokedAt)))
+        .limit(1),
+    )
+    return rows[0] ?? null
+  },
+)
