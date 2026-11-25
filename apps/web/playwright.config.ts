@@ -67,7 +67,8 @@ const serverEnvironment = (origin: string) => ({
   // Tonight's "Turn on" (RR-86) needs the public key; the spec stubs the browser's push APIs. In the
   // key's shape, no key at all: nothing is ever pushed in a test.
   VAPID_PUBLIC_KEY: `B${'p'.repeat(86)}`,
-  // `localhost`, not 127.0.0.1: the endpoint answers a Host of localhost or *.railway.internal only.
+  // `localhost`, not 127.0.0.1: the endpoint answers a Host of localhost, *.railway.internal or a
+  // name listed in WORKER_PRIVATE_HOSTS only.
   WORKER_REVEAL_URL: `http://localhost:${WORKER_PORT}`,
   // Cloudflare's published test secret (it passes every token, .env.example), for the Send's test
   // (#77) and the Pay's (#110): without a secret every Send and Pay fails the human check. The

@@ -1,7 +1,8 @@
-// Structured logs (pino). JSON, one object per line, in production, which is what Railway's log
-// view reads; readable lines in development. Never personal data, never secrets (CLAUDE.md
-// "Logs"): errors go through `describeError` (see errors.ts), and the redact paths below are a
-// second line of defence if a caller ever puts a credential in a log object.
+// Structured logs (pino). JSON, one object per line, when deployed (staging or production), which
+// is what a hosting platform's log view reads; readable lines in development. Never personal data,
+// never secrets (CLAUDE.md "Logs"): errors go through `describeError` (see errors.ts), and the
+// redact paths below are a second line of defence if a caller ever puts a credential in a log
+// object.
 import { type DestinationStream, type Logger, pino } from 'pino'
 
 import type { LogLevel } from './config'

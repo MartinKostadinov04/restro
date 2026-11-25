@@ -120,7 +120,9 @@ export async function startWorker(
   try {
     // Before anything is opened: a bad asset store setting stops the start here.
     const jobs = options.jobs ?? (await buildJobs(config, log))
-    health = await startHealthServer(config.healthPort, () => status.report(now()))
+    health = await startHealthServer(config.healthPort, () => status.report(now()), {
+      privateHosts: config.privateHosts,
+    })
 
     pool = createPool(config.databaseUrl, {
       max: APP_POOL_MAX,

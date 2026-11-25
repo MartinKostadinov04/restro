@@ -41,9 +41,10 @@ export const ServerEnvSchema = z.object({
       return trimmed === undefined || trimmed === '' ? undefined : trimmed
     }),
   /**
-   * The worker's reveal endpoint on the private network (#70), e.g.
-   * `http://worker.railway.internal:8081` (`http://localhost:8081` locally): the Tables screen asks
-   * it for the codes it draws. Without it (or the token) the screen shows no QR codes. Empty
+   * The worker's reveal endpoint on the private network (#70): Railway
+   * `http://worker.railway.internal:8081`, Docker Compose the service name listed in the worker's
+   * WORKER_PRIVATE_HOSTS (`http://worker:8081`), `http://localhost:8081` locally. The Tables screen
+   * asks it for the codes it draws. Without it (or the token) the screen shows no QR codes. Empty
    * counts as missing.
    */
   WORKER_REVEAL_URL: z
