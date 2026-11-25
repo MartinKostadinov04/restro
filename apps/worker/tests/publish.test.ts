@@ -788,6 +788,7 @@ describe.skipIf(!hasDatabase)('the publish jobs and photo variants', () => {
         purgeDatabaseUrl: null,
         workerId: 'publish-merge-test',
         healthPort: 0,
+        privateHosts: [],
         logLevel: 'silent',
         prettyLogs: false,
         seal: null,

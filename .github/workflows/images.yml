@@ -163,7 +163,8 @@ jobs:
       - name: Every service answers its health check
         run: |
           check() {
-            command=$(jq -r ".services[\"$1\"].healthcheck.test[3]" "$RUNNER_TEMP/compose.json")
+            # The script is the test's last item: ["CMD", "node", "-e", <script>].
+            command=$(jq -r ".services[\"$1\"].healthcheck.test[-1]" "$RUNNER_TEMP/compose.json")
             for attempt in $(seq 1 "$2"); do
               if docker exec "$1" node -e "$command"; then
                 echo "$1 is healthy"

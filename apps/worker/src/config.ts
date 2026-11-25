@@ -70,10 +70,9 @@ export interface WorkerConfig {
   /**
    * Host names the internal endpoints (reveal, Telegram link, payment connection) answer besides
    * `localhost` and `*.railway.internal`: WORKER_PRIVATE_HOSTS, exact single-label names such as
-   * a Docker Compose service's (`worker`). Always set by {@link loadConfig}; optional in the type
-   * so a test's hand-written configuration need not name it.
+   * a Docker Compose service's (`worker`). Empty when unset.
    */
-  readonly privateHosts?: readonly string[]
+  readonly privateHosts: readonly string[]
   /** Where barsy photos are stored: the same store the web app reads (`@restro/assets`). */
   readonly assets: AssetStoreConfig
   /** Where published menus and photo variants go: the store the `/cdn` route (later the CDN) serves. */

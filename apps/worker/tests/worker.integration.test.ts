@@ -121,6 +121,7 @@ describe.skipIf(!hasDatabase)('worker (integration, real Postgres)', () => {
       purgeDatabaseUrl: null,
       workerId: WORKER_ID,
       healthPort: 0,
+      privateHosts: [],
       logLevel: 'debug',
       prettyLogs: false,
       seal: null,

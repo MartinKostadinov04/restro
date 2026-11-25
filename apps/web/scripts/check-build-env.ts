@@ -6,7 +6,8 @@
 //
 // The payment provider's publishable key must be a test key unless the build says it is for
 // production (PAYMENTS_ENV=production, the setting that means real money for the web app and the
-// worker alike), and then it must be a live key: the same rule the worker applies to its secret key.
+// worker alike), and then it must be a live key: the same rule the worker applies to its secret key
+// (`stripeKeyMode` in packages/payments/stripe/src/config.ts, which the web app may not import).
 //
 //   node apps/web/scripts/check-build-env.ts      (exits 1 and lists the problems)
 

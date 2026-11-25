@@ -79,6 +79,7 @@ describe.skipIf(!hasDatabase)('sync jobs on pg-boss', () => {
       purgeDatabaseUrl: null,
       workerId: 'sync-queue-test',
       healthPort: 0,
+      privateHosts: [],
       logLevel: 'silent',
       prettyLogs: false,
       seal: world.keys,

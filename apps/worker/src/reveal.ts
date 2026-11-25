@@ -100,7 +100,7 @@ interface RevealDeps {
  * `listed` (WORKER_PRIVATE_HOSTS: exact single-label names such as a Compose service's, already
  * lower-cased by the configuration). A port suffix is ignored.
  */
-export function isPrivateHost(host: string | undefined, listed: readonly string[] = []): boolean {
+export function isPrivateHost(host: string | undefined, listed: readonly string[]): boolean {
   if (host === undefined) return false
   const name = host
     .trim()

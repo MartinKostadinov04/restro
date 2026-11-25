@@ -20,7 +20,8 @@ ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
     COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
     NEXT_TELEMETRY_DISABLED=1
-# pnpm at the version package.json's packageManager names, through Node's own corepack.
+# pnpm at the version package.json's packageManager names, through Node's own corepack (checked
+# against package.json in the next stage, so the two cannot drift apart silently).
 RUN corepack enable && corepack prepare pnpm@10.34.6 --activate
 WORKDIR /app
 
@@ -30,11 +31,15 @@ COPY .npmrc package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # .npmrc pins `use-node-version`, which makes pnpm download its own Node for every script it runs.
 # This image's Node is already that exact version (checked here, so the two cannot drift apart
 # silently), so the build drops the line instead of downloading a second copy of the same Node.
-# engine-strict stays and still checks engines.node.
+# engine-strict stays and still checks engines.node. pnpm's version is checked against
+# package.json's packageManager the same way.
 RUN expected="v$(sed -n 's/^use-node-version=//p' .npmrc)" \
  && [ "$(node --version)" = "$expected" ] \
     || { echo "The image's Node $(node --version) is not .npmrc's $expected: update NODE_IMAGE." >&2; exit 1; } \
  && sed -i '/^use-node-version=/d' .npmrc \
+ && manager="pnpm@$(pnpm --version)" \
+ && grep -q "\"packageManager\": \"$manager\"" package.json \
+    || { echo "The image's $manager is not package.json's packageManager: update the base stage." >&2; exit 1; } \
  && pnpm fetch
 
 # --- The repository ---------------------------------------------------------------------------
@@ -49,9 +54,10 @@ RUN pnpm install --frozen-lockfile --offline
 
 # --- Runtime dependencies only: what the images ship ---------------------------------------
 # Every package's `dependencies`, with the platform's native binaries (sharp's libvips for this
-# Linux), and none of the dev tools.
+# Linux), and none of the dev tools. `pnpm fetch` left a modules folder made for every dependency;
+# a production-only install replaces it, which pnpm otherwise refuses to do without a terminal.
 FROM source AS prod-deps
-RUN pnpm install --frozen-lockfile --offline --prod
+RUN pnpm install --frozen-lockfile --offline --prod --config.confirm-modules-purge=false
 
 # --- The worker's bundle -----------------------------------------------------------------------
 FROM deps AS worker-build

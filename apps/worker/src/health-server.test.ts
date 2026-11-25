@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import type { HealthReport } from './health'
 import {
+  type ConnectionHandler,
   type HealthServer,
   type RevealHandler,
   startHealthServer,
@@ -332,6 +333,37 @@ describe('startHealthServer', () => {
         body: { ...REQUEST, actor: { ...REQUEST.actor, userId: 'refused' } },
       })
       expect(refused.status).toBe(403)
+    })
+  })
+
+  describe('the payment connection endpoint', () => {
+    const handler: ConnectionHandler = {
+      token: 'a-service-token-of-at-least-32-characters',
+      handle: async () => {
+        throw new Error('not reached: every call below lacks the token')
+      },
+      failed: () => undefined,
+    }
+    const ask = (port: number, host: string) =>
+      call(port, '/internal/payments/connection', 'POST', {
+        headers: { host, 'content-type': 'application/json' },
+        body: '{}',
+      })
+
+    it('answers a WORKER_PRIVATE_HOSTS name like the reveal endpoint does', async () => {
+      const port = await start(['worker'])
+      server?.setConnectionHandler(handler)
+      // Past the host check, the missing token is the answer; a public name never gets that far.
+      expect((await ask(port, 'worker:8081')).status).toBe(401)
+      expect((await ask(port, `localhost:${port}`)).status).toBe(401)
+      expect((await ask(port, 'web:3000')).status).toBe(404)
+      expect((await ask(port, 'worker.example.com')).status).toBe(404)
+    })
+
+    it('answers only localhost and Railway names without the list', async () => {
+      const port = await start()
+      server?.setConnectionHandler(handler)
+      expect((await ask(port, 'worker:8081')).status).toBe(404)
     })
   })
 

@@ -181,57 +181,47 @@ export function startHealthServer(
       response.end(request.method === 'HEAD' ? undefined : JSON.stringify(body))
     }
 
+    // An internal endpoint, answered only through a private host name.
+    const answer = <Request, Answer extends { readonly status: string }>(
+      endpoint: Internal<Request, Answer>,
+    ) => void answerInternal(request, send, endpoint, privateHosts)
+
     if (path === REVEAL_PATH) {
       const handler = revealHandler
-      void answerInternal(
-        request,
-        send,
-        {
-          handler,
-          parse: (value) => {
-            const result = RevealRequestSchema.safeParse(value)
-            return result.success ? result.data : null
-          },
-          limit: MAX_REVEAL_BODY_BYTES,
-          run: (parsed: RevealRequest) => (handler as RevealHandler).reveal(parsed),
-          failure: 'reveal failed',
+      answer({
+        handler,
+        parse: (value) => {
+          const result = RevealRequestSchema.safeParse(value)
+          return result.success ? result.data : null
         },
-        privateHosts,
-      )
+        limit: MAX_REVEAL_BODY_BYTES,
+        run: (parsed: RevealRequest) => (handler as RevealHandler).reveal(parsed),
+        failure: 'reveal failed',
+      })
     } else if (path === TELEGRAM_PATH) {
       const handler = telegramHandler
-      void answerInternal(
-        request,
-        send,
-        {
-          handler,
-          parse: (value) => {
-            const result = TelegramRequestSchema.safeParse(value)
-            return result.success ? result.data : null
-          },
-          limit: MAX_TELEGRAM_BODY_BYTES,
-          run: (parsed: TelegramRequest) => (handler as TelegramLinkHandler).handle(parsed),
-          failure: 'request failed',
+      answer({
+        handler,
+        parse: (value) => {
+          const result = TelegramRequestSchema.safeParse(value)
+          return result.success ? result.data : null
         },
-        privateHosts,
-      )
+        limit: MAX_TELEGRAM_BODY_BYTES,
+        run: (parsed: TelegramRequest) => (handler as TelegramLinkHandler).handle(parsed),
+        failure: 'request failed',
+      })
     } else if (path === CONNECTION_PATH) {
       const handler = connectionHandler
-      void answerInternal(
-        request,
-        send,
-        {
-          handler,
-          parse: (value) => {
-            const result = ConnectionRequestSchema.safeParse(value)
-            return result.success ? result.data : null
-          },
-          limit: MAX_CONNECTION_BODY_BYTES,
-          run: (parsed: ConnectionRequest) => (handler as ConnectionHandler).handle(parsed),
-          failure: 'request failed',
+      answer({
+        handler,
+        parse: (value) => {
+          const result = ConnectionRequestSchema.safeParse(value)
+          return result.success ? result.data : null
         },
-        privateHosts,
-      )
+        limit: MAX_CONNECTION_BODY_BYTES,
+        run: (parsed: ConnectionRequest) => (handler as ConnectionHandler).handle(parsed),
+        failure: 'request failed',
+      })
     } else if (path !== HEALTH_PATH) {
       send(404, { error: 'not found' })
     } else if (request.method !== 'GET' && request.method !== 'HEAD') {
