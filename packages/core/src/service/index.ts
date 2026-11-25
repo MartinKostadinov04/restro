@@ -134,6 +134,7 @@ export {
 } from './dispute-evidence'
 export {
   postgresCode,
+  type QueueExecutor,
   SERVICE_LOCK_TIMEOUT,
   SERVICE_STATEMENT_TIMEOUT,
   type ServiceOptions,

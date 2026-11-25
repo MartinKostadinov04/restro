@@ -5,8 +5,9 @@
 // and the email service is the worker's (CLAUDE.md: a provider is called outside any transaction).
 // So the handler that made the news says so in its accepted answer — `guestEmail` (the kind) and
 // `guestEmailEntry` (the Log entry that recorded the news) — and the caller of `applyService` turns
-// that into a `guest-email` job with `guestEmailJobOf`, the way the guest API queues a payment's
-// step after `pay.start`. The answer carries a code and a number, never the address or the name.
+// that into a `guest-email` job with `guestEmailJobOf`, queued through the command's `queueJobs` in
+// the same transaction (#592), so the news and its email are saved together or not at all. The
+// answer carries a code and a number, never the address or the name.
 //
 // The worker reads the reservation and the guest record again when it sends, and sends nothing
 // when the news is no longer true (a deletion, a later change, an erased guest), so what is said

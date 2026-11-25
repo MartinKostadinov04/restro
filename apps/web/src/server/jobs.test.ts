@@ -1,14 +1,14 @@
 import { JOB_NAMES, newId } from '@restro/core'
 import { describe, expect, it } from 'vitest'
 
-import { enqueueJob, type JobSender } from './jobs'
+import { enqueueJob, enqueueJobIn, type JobSender } from './jobs'
 
 const tenantId = newId('tn')
 const integrationId = newId('in')
 const venueId = newId('vn')
 
 function recorder(answer: string | null = 'job-1') {
-  const sent: { name: string; data: object; options: { singletonKey: string } }[] = []
+  const sent: { name: string; data: object; options: Parameters<JobSender['send']>[2] }[] = []
   const sender: JobSender = {
     async send(name, data, options) {
       sent.push({ name, data, options })
@@ -85,5 +85,41 @@ describe('enqueueJob', () => {
       ),
     ).rejects.toThrow(/invalid payload/)
     expect(sent).toEqual([])
+  })
+})
+
+describe('enqueueJobIn', () => {
+  it('sends the job through the caller’s transaction, so it commits with the write (#592)', async () => {
+    const { sent, sender } = recorder()
+    const db = { executeSql: async () => ({ rows: [] }) }
+    const job = {
+      tenantId,
+      venueId,
+      reservationId: newId('rv'),
+      kind: 'reservation_cancelled',
+      entry: 7,
+    } as const
+    expect(await enqueueJobIn(db, JOB_NAMES.guestEmail, job, sender)).toBe('job-1')
+    expect(sent).toHaveLength(1)
+    expect(sent[0]?.name).toBe('guest-email')
+    expect(sent[0]?.data).toEqual(job)
+    expect(sent[0]?.options.db).toBe(db)
+  })
+
+  it('throws when the queue fails, so the caller’s transaction rolls back', async () => {
+    const sender: JobSender = {
+      send: async () => {
+        throw new Error('queue unreachable')
+      },
+    }
+    const db = { executeSql: async () => ({ rows: [] }) }
+    await expect(
+      enqueueJobIn(
+        db,
+        JOB_NAMES.guestEmail,
+        { tenantId, venueId, reservationId: newId('rv'), kind: 'reservation_cancelled', entry: 1 },
+        sender,
+      ),
+    ).rejects.toThrow('queue unreachable')
   })
 })
