@@ -305,7 +305,9 @@ describe('the sheet, on an online request (#578)', () => {
     await user.click(screen.getByTestId('rv-sheet-decline'))
     const dialog = await screen.findByTestId('rv-decline-dialog')
     expect(dialog.textContent).toContain('Decline Ivanova’s request?')
-    expect(dialog.textContent).toContain('Ivanova gets an email that the club could not take it.')
+    expect(dialog.textContent).toContain(
+      'Ivanova gets an email that the request could not be taken.',
+    )
     expect(screen.getByTestId('rv-decline-dialog-keep').textContent).toBe('Keep the request')
     await user.click(screen.getByTestId('rv-decline-dialog-do'))
     expect(onDecline).toHaveBeenCalledWith('rv_one', 'Ivanova', expect.any(Function))

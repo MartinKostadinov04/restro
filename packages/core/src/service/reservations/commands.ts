@@ -417,7 +417,6 @@ export const RESERVATION_COMMANDS = {
     schema: z.strictObject({
       type: z.literal('reservation.decline'),
       reservationId,
-      reason: code.nullable().optional(),
     }),
     origins: ['staff'],
     // Answering a request is whoever works tonight's reservations (#578); four digits on a shared

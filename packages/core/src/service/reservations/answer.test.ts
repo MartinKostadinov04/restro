@@ -181,6 +181,11 @@ describe.skipIf(!hasDatabase)('answering an online request (as the restro_app ro
 
   it('keeps the spots a request already holds when none are chosen', async () => {
     const id = await request(null, ['T2'])
+    // A bare status move to Reserved is refused: only Confirm answers a request.
+    expect(
+      await run({ type: 'reservation.set_status', reservationId: id, status: 'reserved' }),
+    ).toMatchObject({ status: 'refused', code: 'status_move_not_allowed' })
+    expect(await row(id)).toMatchObject({ status: 'requested' })
     const details = await accept({ type: 'reservation.confirm', reservationId: id })
     expect(await heldNames(id)).toEqual(['T2'])
     // No address, no email.

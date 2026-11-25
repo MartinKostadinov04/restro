@@ -24,10 +24,9 @@ export interface ReservationConfirmCommand {
   readonly spotIds?: readonly string[]
 }
 
-/** `reservation.decline`: the request, and a reason code if the venue keeps one. */
+/** `reservation.decline`: the request. */
 export interface ReservationDeclineCommand {
   readonly reservationId: string
-  readonly reason?: string | null
 }
 
 const sameSet = (a: readonly string[], b: readonly string[]) =>
@@ -117,7 +116,6 @@ export async function declineReservation(
       status: 'declined',
       queueKey: null,
       endedAt: sql`now()`,
-      reason: command.reason ?? reservation.reason,
       ...stx.provenance,
       updatedAt: sql`now()`,
     })
@@ -129,7 +127,6 @@ export async function declineReservation(
     guestId: reservation.guestId ?? undefined,
     fromState: reservation.status,
     toState: 'declined',
-    reason: command.reason ?? undefined,
     details: { freed: freed.join(',') },
   })
   const email = await guestEmailOwed(stx, reservation, 'reservation_declined')

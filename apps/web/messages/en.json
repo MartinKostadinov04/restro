@@ -2828,7 +2828,7 @@
     "rq_confirm_b": "Choose the spots it gets, then confirm. A guest with an email is sent the night, the hour and the spots.",
     "rq_confirmed": "Reservation confirmed.",
     "rq_decline_t": "Decline {name}’s request?",
-    "rq_decline_b": "{name} gets an email that the club could not take it.",
+    "rq_decline_b": "{name} gets an email that the request could not be taken.",
     "rq_decline_b_none": "It stays on the night as Declined. The guest left no email, so nobody is told.",
     "rq_decline_keep": "Keep the request",
     "rq_declined": "Request declined.",

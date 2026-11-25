@@ -381,7 +381,7 @@ export function ReservationSheet({
   const [failed, setFailed] = useState(false)
   // Who changed the reservation while this sheet was open, once that has happened.
   const [changedBy, setChangedBy] = useState<WhoView | null>(null)
-  const [confirm, setConfirm] = useState<'cancel' | 'delete' | 'confirm' | 'decline' | null>(null)
+  const [asking, setAsking] = useState<'cancel' | 'delete' | 'confirm' | 'decline' | null>(null)
   // The newest history line the sheet has shown, which is how a change is noticed.
   const seen = useRef<number | null>(null)
 
@@ -540,7 +540,7 @@ export function ReservationSheet({
           className={WRAPS}
           disabled={busy}
           data-testid="rv-sheet-confirm"
-          onClick={() => setConfirm('confirm')}
+          onClick={() => setAsking('confirm')}
         >
           {t('rq_confirm')}
         </Button>
@@ -552,7 +552,7 @@ export function ReservationSheet({
           className={WRAPS}
           disabled={busy}
           data-testid="rv-sheet-decline"
-          onClick={() => setConfirm('decline')}
+          onClick={() => setAsking('decline')}
         >
           {t('rq_decline')}
         </Button>
@@ -606,7 +606,7 @@ export function ReservationSheet({
           className={WRAPS}
           disabled={busy}
           data-testid="rv-cancel"
-          onClick={() => setConfirm('cancel')}
+          onClick={() => setAsking('cancel')}
         >
           {t('bk_cancel')}
         </Button>
@@ -664,7 +664,7 @@ export function ReservationSheet({
               <DropdownMenuItem
                 className="min-h-11"
                 data-testid="rv-delete"
-                onSelect={() => setConfirm('delete')}
+                onSelect={() => setAsking('delete')}
               >
                 {t('bk_delete')}
               </DropdownMenuItem>
@@ -685,20 +685,20 @@ export function ReservationSheet({
   )
 
   const confirmation =
-    confirm === null || detail === null || detail === undefined ? null : confirm === 'confirm' ? (
+    asking === null || detail === null || detail === undefined ? null : asking === 'confirm' ? (
       <ConfirmRequestDialog
         frame={frame}
         detail={detail}
         busy={busy}
-        onClose={() => setConfirm(null)}
+        onClose={() => setAsking(null)}
         onConfirm={(spotIds, refusal) =>
           onConfirm(detail.row.id, party, spotIds, refusal, () => {
-            setConfirm(null)
+            setAsking(null)
             load()
           })
         }
       />
-    ) : confirm === 'decline' ? (
+    ) : asking === 'decline' ? (
       <ConfirmDialog
         testId="rv-decline-dialog"
         title={t('rq_decline_t', { name: party })}
@@ -710,15 +710,15 @@ export function ReservationSheet({
         doLabel={t('rq_decline')}
         keepLabel={t('rq_decline_keep')}
         busy={busy}
-        onKeep={() => setConfirm(null)}
+        onKeep={() => setAsking(null)}
         onDo={() =>
           onDecline(detail.row.id, party, () => {
-            setConfirm(null)
+            setAsking(null)
             load()
           })
         }
       />
-    ) : confirm === 'cancel' ? (
+    ) : asking === 'cancel' ? (
       <ConfirmDialog
         testId="rv-cancel-dialog"
         title={t('bk_cancel_t', { party })}
@@ -726,10 +726,10 @@ export function ReservationSheet({
         doLabel={t('bk_cancel')}
         keepLabel={t('bk_keep')}
         busy={busy}
-        onKeep={() => setConfirm(null)}
+        onKeep={() => setAsking(null)}
         onDo={() =>
           onCancel(detail.row.id, party, () => {
-            setConfirm(null)
+            setAsking(null)
             load()
           })
         }
@@ -742,10 +742,10 @@ export function ReservationSheet({
         doLabel={t('bk_delete_do')}
         keepLabel={t('bk_keep')}
         busy={busy}
-        onKeep={() => setConfirm(null)}
+        onKeep={() => setAsking(null)}
         onDo={() =>
           onDelete(detail.row.id, party, () => {
-            setConfirm(null)
+            setAsking(null)
             onClose()
           })
         }

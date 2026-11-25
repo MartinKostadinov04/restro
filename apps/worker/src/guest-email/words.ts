@@ -66,11 +66,11 @@ const NEWS: Readonly<
   },
   reservation_declined: {
     bg: {
-      subject: 'Клубът не можа да приеме резервацията Ви',
+      subject: 'Резервацията Ви не може да бъде приета',
       headline: (venue) => `${venue} не можа да приеме резервацията Ви.`,
     },
     en: {
-      subject: 'The club could not take your reservation',
+      subject: 'Your reservation could not be taken',
       headline: (venue) => `${venue} could not take your reservation.`,
     },
   },

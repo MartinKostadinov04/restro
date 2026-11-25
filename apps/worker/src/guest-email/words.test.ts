@@ -123,10 +123,10 @@ describe('the answer to a request (#578)', () => {
 
   it('says a decline as the club could not take it, in the venue’s voice, never an apology', () => {
     const bg = guestEmailWords('reservation_declined', 'bg', FACTS)
-    expect(bg.subject).toBe('Клубът не можа да приеме резервацията Ви')
+    expect(bg.subject).toBe('Резервацията Ви не може да бъде приета')
     expect(bg.text.split('\n')[0]).toBe('Club Нощ не можа да приеме резервацията Ви.')
     const en = guestEmailWords('reservation_declined', 'en', FACTS)
-    expect(en.subject).toBe('The club could not take your reservation')
+    expect(en.subject).toBe('Your reservation could not be taken')
     expect(en.text.split('\n')[0]).toBe('Club Нощ could not take your reservation.')
     for (const { subject, text } of [bg, en]) {
       expect(`${subject}\n${text}`).not.toMatch(/sorry|apolog|regret|съжал|извин|отмен/i)
