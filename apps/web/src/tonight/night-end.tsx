@@ -4,7 +4,8 @@
 // dialog names the action and its consequence ("Remove a thing for good" in its structure), with
 // the preview's numbers in its body as short lines, in the end-of-night report's own words (S13,
 // copy rule 8): how many tables close for phones, how many bills stay open in the POS, how many
-// parties become Finished, No-shows and Not seated (a line only where there is one), and the
+// parties become Finished, No-shows and Not seated, how many online requests nobody answered are
+// declined (#578; each guest gets an email), a line only where there is one, and the
 // club's closing hour when it has not come yet. While the preview is counted the dialog shows its pending state; a preview that
 // cannot be read, or a write that fails, is the error toast that stays, and nothing is closed.
 // Closing the night never moves money: a table paying by card keeps its code until the payment
@@ -59,7 +60,7 @@ export function NightEndedBanner({ view }: { view: Pick<TonightView, 'nightEnd' 
 
 /** One line of the consequence: what it counts, for the screen and for the PIN sheet's words. */
 interface Line {
-  readonly id: 'codes' | 'bills' | 'finished' | 'noshows' | 'notseated'
+  readonly id: 'codes' | 'bills' | 'finished' | 'noshows' | 'notseated' | 'declined'
   readonly text: string
 }
 
@@ -87,6 +88,9 @@ export function consequenceLines(
   }
   if (preview.notSeated > 0) {
     lines.push({ id: 'notseated', text: count(t('nt_r_notseated'), preview.notSeated) })
+  }
+  if (preview.declined > 0) {
+    lines.push({ id: 'declined', text: t('ne_l_declined', { n: preview.declined }) })
   }
   return lines
 }

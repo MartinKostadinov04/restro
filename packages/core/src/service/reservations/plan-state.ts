@@ -131,9 +131,10 @@ export function spotStateAt(
  * list, and the spot was simply held.
  */
 export function spotStateOfNight(holds: readonly SpotHoldFact[]): SpotState {
-  // A line called off held nothing: a booking the guest cancelled, and a block somebody lifted,
-  // both leave the night as if the spot had been free (the Log still says they were there).
-  const real = holds.filter((hold) => hold.status !== 'cancelled')
+  // A line called off held nothing: a booking the guest cancelled, a request the venue declined
+  // (#578) and a block somebody lifted all leave the night as if the spot had been free (the Log
+  // still says they were there).
+  const real = holds.filter((hold) => hold.status !== 'cancelled' && hold.status !== 'declined')
   if (real.some((hold) => hold.kind === 'block')) return 'blocked'
   if (real.some((hold) => hold.status === 'seated' || hold.seatedAt !== null)) return 'sitting'
   return real.length > 0 ? 'held' : 'free'

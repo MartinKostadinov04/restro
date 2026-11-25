@@ -334,11 +334,16 @@ export type PurgeVenueJob = z.output<typeof PurgeVenueJobSchema>
 
 /**
  * What a guest email tells him (#576): one kind per piece of news. Every one is about a reservation
- * today; the next tickets add theirs here (confirmed, declined, the night's end's decline, the
+ * today: cancelled (#576), confirmed and declined (#578; a request the night's end declines is the
+ * same news, "the club could not take your reservation"). The next tickets add theirs here (the
  * request received, the prepayment's) and the worker words each, so the job and the sender keep
  * their shape. A paper receipt by email (Q80), if it comes back, is a kind of its own here too.
  */
-export const GUEST_EMAIL_KINDS = ['reservation_cancelled'] as const
+export const GUEST_EMAIL_KINDS = [
+  'reservation_cancelled',
+  'reservation_confirmed',
+  'reservation_declined',
+] as const
 
 /** One kind of guest email. */
 export type GuestEmailKind = (typeof GUEST_EMAIL_KINDS)[number]

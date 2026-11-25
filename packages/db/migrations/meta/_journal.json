@@ -414,6 +414,13 @@
       "when": 1795565624365,
       "tag": "0058_payment_holds",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1795610613572,
+      "tag": "0059_declined_status",
+      "breakpoints": true
     }
   ]
 }

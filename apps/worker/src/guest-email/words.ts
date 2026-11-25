@@ -28,6 +28,11 @@ export interface ReservationFacts {
   readonly timeZone: string
   /** How many are coming; null for nobody (a block, which is never emailed). */
   readonly partySize: number | null
+  /**
+   * The names of the spots the reservation holds, as the venue's plan names them (#578). Only the
+   * confirmed email names them: a cancelled or declined booking holds none. Left out: none.
+   */
+  readonly spotNames?: readonly string[]
 }
 
 /** The words of each piece of news, per language: the subject, and the line that says it. */
@@ -47,14 +52,37 @@ const NEWS: Readonly<
       headline: (venue) => `Your reservation at ${venue} is cancelled.`,
     },
   },
+  // #578: the answer to a request. Plain statements in the venue's voice, never an apology
+  // template; a request the night's end declined reads the same as one a hostess declined.
+  reservation_confirmed: {
+    bg: {
+      subject: 'Резервацията Ви е потвърдена',
+      headline: (venue) => `Резервацията Ви в ${venue} е потвърдена.`,
+    },
+    en: {
+      subject: 'Your reservation is confirmed',
+      headline: (venue) => `Your reservation at ${venue} is confirmed.`,
+    },
+  },
+  reservation_declined: {
+    bg: {
+      subject: 'Резервацията Ви не може да бъде приета',
+      headline: (venue) => `${venue} не можа да приеме резервацията Ви.`,
+    },
+    en: {
+      subject: 'Your reservation could not be taken',
+      headline: (venue) => `${venue} could not take your reservation.`,
+    },
+  },
 }
 
 /** The labels of the reservation's lines. */
-const LABELS: Readonly<Record<GuestEmailLanguage, { date: string; hour: string; party: string }>> =
-  {
-    bg: { date: 'Дата', hour: 'Час', party: 'Гости' },
-    en: { date: 'Date', hour: 'Time', party: 'Guests' },
-  }
+const LABELS: Readonly<
+  Record<GuestEmailLanguage, { date: string; hour: string; party: string; spots: string }>
+> = {
+  bg: { date: 'Дата', hour: 'Час', party: 'Гости', spots: 'Места' },
+  en: { date: 'Date', hour: 'Time', party: 'Guests', spots: 'Spots' },
+}
 
 const WEEKDAYS: Readonly<Record<GuestEmailLanguage, readonly string[]>> = {
   // Sunday first, as `getUTCDay` counts.
@@ -134,6 +162,11 @@ export function guestEmailWords(
     `${labels.date}: ${nightWords(facts.serviceDate, language)}`,
     `${labels.hour}: ${hourWords(facts.startsAt, facts.timeZone)}`,
     ...(facts.partySize === null ? [] : [`${labels.party}: ${facts.partySize}`]),
+    ...(kind === 'reservation_confirmed' &&
+    facts.spotNames !== undefined &&
+    facts.spotNames.length > 0
+      ? [`${labels.spots}: ${facts.spotNames.join(', ')}`]
+      : []),
   ]
   return { subject: news.subject, text: lines.join('\n') }
 }

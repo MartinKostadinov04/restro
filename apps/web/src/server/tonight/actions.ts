@@ -21,7 +21,7 @@ import { z } from 'zod'
 
 import { getPool } from '../db'
 import { queuePaymentStep } from '../guest-api'
-import { enqueueJob } from '../jobs'
+import { enqueueJob, enqueueJobIn } from '../jobs'
 import { logError, logWarn } from '../log'
 import { requireTenant } from '../session'
 import { identifyAtSharedDevice, ownActor, personAtSharedDevice } from '../staff/service'
@@ -29,6 +29,7 @@ import { getVenue } from '../venues'
 import { loadTableBill, type TableSheetBill } from './load'
 import { clockIn } from './night-view'
 import {
+  endNight,
   markItemSoldOut,
   markPaymentTable,
   runTableCommand,
@@ -204,6 +205,8 @@ export interface NightEndPreviewView {
   readonly finished: number
   readonly noShow: number
   readonly notSeated: number
+  /** Online requests nobody answered, which the night's end declines (#578). */
+  readonly declined: number
   readonly codesClose: number
   readonly codesKept: number
   readonly openBills: number
@@ -248,6 +251,7 @@ export async function nightEndPreviewAction(
         finished: preview.finished,
         noShow: preview.noShow,
         notSeated: preview.notSeated,
+        declined: preview.declined,
         codesClose: preview.codesClose,
         codesKept: preview.codesKept,
         openBills: preview.openBills,
@@ -271,7 +275,9 @@ export async function nightEndPreviewAction(
 export async function endNightAction(input: unknown): Promise<TonightResult> {
   const parsed = OnVenue.safeParse(input)
   if (!parsed.success) return INVALID
-  return perform(parsed.data, (scope) => command(scope, { type: 'night.end' }))
+  return perform(parsed.data, (scope) =>
+    endNight(scope, { enqueueIn: (queue, name, data) => enqueueJobIn(queue, name, data) }),
+  )
 }
 
 /** Marks a table as a payment table, or takes the mark away (the person's own sign-in). */

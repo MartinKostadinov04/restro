@@ -398,6 +398,38 @@ export async function cancelBookingAction(input: unknown): Promise<RvWriteResult
   )
 }
 
+const Confirm = z.strictObject({
+  venueId,
+  reservationId: idSchema('rv'),
+  spotIds: spotList,
+  pin,
+})
+
+/**
+ * Confirms an online request with the spots the hostess chose (#578): it becomes Reserved, and a
+ * spot somebody took meanwhile is refused `spot_taken`, naming the party that holds it.
+ */
+export async function confirmRequestAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = Confirm.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const { venueId: id, reservationId, spotIds, pin: typed } = parsed.data
+  return performReservationWrite(
+    { venueId: id, ...withPin(typed) },
+    { type: 'reservation.confirm', reservationId, spotIds },
+  )
+}
+
+/** Declines an online request (#578): it stays on the night as Declined, and the guest is told. */
+export async function declineRequestAction(input: unknown): Promise<RvWriteResult> {
+  const parsed = Booked.safeParse(input)
+  if (!parsed.success) return invalidWrite()
+  const { venueId: id, reservationId, pin: typed } = parsed.data
+  return performReservationWrite(
+    { venueId: id, ...withPin(typed) },
+    { type: 'reservation.decline', reservationId },
+  )
+}
+
 /** Takes a booking out of the book: one that should never have existed. The Log keeps who. */
 export async function deleteBookingAction(input: unknown): Promise<RvWriteResult> {
   const parsed = Booked.safeParse(input)

@@ -203,8 +203,8 @@ export async function readBookingChecks(
             input.reservationId === undefined
               ? undefined
               : ne(reservations.id, input.reservationId),
-            // A party that was called off, or never came, is not "already booked tonight".
-            sql`${reservations.status} not in ('cancelled', 'no_show', 'not_seated', 'finished')`,
+            // A party that was called off, declined or never came is not "already booked tonight".
+            sql`${reservations.status} not in ('cancelled', 'declined', 'no_show', 'not_seated', 'finished')`,
           ),
         )
         .orderBy(reservations.startsAt)

@@ -88,6 +88,7 @@ const LOG_STATE_WORDS: Readonly<Record<string, string>> = {
   cancelled: 'lg_rv_s_cancelled',
   not_seated: 'lg_rv_s_not_seated',
   requested: 'lg_rv_s_requested',
+  declined: 'lg_rv_s_declined',
   deleted: 'lg_rv_s_deleted',
 }
 

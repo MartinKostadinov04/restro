@@ -11,8 +11,9 @@
 //                     Before the days close, every night that has passed with a party the night's
 //                     end did not reach (seated after the hour, a night nobody ended) is swept once
 //                     more through `reservation_night.sweep` (#332; D138): Seated → Finished, a booking
-//                     → No-show, the still waiting → Not seated. A night with nothing left is not
-//                     asked, and a repeated run changes nothing.
+//                     → No-show, the still waiting → Not seated, an unanswered request → Declined
+//                     (#578, whose guest is emailed). A night with nothing left is not asked, and a
+//                     repeated run changes nothing.
 //
 // A venue's day ends at its own hour in its own time zone, so the tick runs hourly rather than
 // once at 07:00 Sofia. `service_day.close` changes nothing for a day already closed, so a run that
@@ -36,7 +37,8 @@ import { sql } from 'drizzle-orm'
 import { type ClosedDay, sendNightReport } from '../alerts/night-report'
 import type { TelegramClient } from '../alerts/telegram'
 import type { Logger } from '../logger'
-import { defineJob, type JobDefinition } from './types'
+import { queueNightEndEmails } from './guest-email'
+import { defineJob, type JobDefinition, type JobQueue } from './types'
 
 /** One ended service day of a venue still to close. */
 export interface DueServiceDay {
@@ -110,7 +112,7 @@ export async function unsweptNights(pool: DbPool, now: Date): Promise<DueService
              and service_date < ${today}::date
              and deleted_at is null
              and kind <> 'block'
-             and status in ('seated', 'reserved', 'waiting')
+             and status in ('seated', 'reserved', 'waiting', 'requested')
            order by service_date`)
         for (const row of nights.rows) {
           due.push({ tenantId: organisation.id, venueId: venue.id, serviceDate: row.service_date })
@@ -126,6 +128,7 @@ export async function sweepPassedNights(
   pool: DbPool,
   now: Date,
   log: Pick<Logger, 'warn'>,
+  queue?: JobQueue,
 ): Promise<number> {
   let swept = 0
   for (const night of await unsweptNights(pool, now)) {
@@ -141,6 +144,8 @@ export async function sweepPassedNights(
           jobId: `night-sweep-${randomUUID()}`,
           now,
         },
+        // A request nobody answered is declined: its guest's email rides in the sweep (#578).
+        queue === undefined ? {} : { queueJobs: queueNightEndEmails(queue) },
       )
       if (result.status === 'accepted' && result.details.changed === true) swept += 1
     } catch (error) {
@@ -309,7 +314,7 @@ export function createServiceDayJob(options: {
     },
     async handler(_jobs, context) {
       const now = context.now()
-      const swept = await sweepPassedNights(context.pool, now, context.log)
+      const swept = await sweepPassedNights(context.pool, now, context.log, context.queue)
       if (swept > 0) context.log.info({ swept }, 'passed nights swept')
       const closed = await closeServiceDays(context.pool, now, context.log)
       if (closed > 0) context.log.info({ closed }, 'service days closed')

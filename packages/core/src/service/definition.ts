@@ -9,6 +9,7 @@ import type { z } from 'zod'
 
 import type { VenueLockStrength } from '../apply/venue-lock'
 import type { GuestEventInput } from '../events'
+import type { GuestEmailKind } from '../jobs'
 import type { ServiceActor, ServiceOrigin, Via } from './context'
 import type { LeaseTx } from './leases'
 import type { LogEntryInput, LogKind } from './log'
@@ -68,6 +69,18 @@ export interface ServiceTx extends LeaseTx {
    * sits on (a reservation never changes its night). Nothing recovers the night from the clock.
    */
   touchNight(serviceDate: string): void
+  /**
+   * Says that this command owes a guest an email its answer cannot name (#578): the night's end
+   * declines every request nobody answered, more than an answer's flat details carry (a single
+   * command's news rides in its details, `guestEmailJobOf`). The engine hands the list to the
+   * caller's `queueJobs` with the accepted answer, in this same transaction (#592); a refusal
+   * drops it.
+   */
+  oweGuestEmail(email: {
+    readonly reservationId: string
+    readonly kind: GuestEmailKind
+    readonly entry: number
+  }): void
   /** Appends a Log entry with this command's venue, day and provenance. */
   log(entry: LogEntryInput): Promise<void>
   /**

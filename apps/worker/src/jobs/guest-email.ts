@@ -21,9 +21,19 @@ import {
   GuestEmailJobSchema,
   type GuestEmailKind,
   JOB_NAMES,
+  prepareJob,
 } from '@restro/core'
-import { GUEST_EMAIL_LOG_KINDS } from '@restro/core/service'
-import { type DbPool, guests, logEntries, reservations, venues, withTenant } from '@restro/db'
+import { GUEST_EMAIL_LOG_KINDS, type ServiceOptions } from '@restro/core/service'
+import {
+  type DbPool,
+  guests,
+  logEntries,
+  reservationSpots,
+  reservations,
+  spots,
+  venues,
+  withTenant,
+} from '@restro/db'
 import { and, eq, isNull, max } from 'drizzle-orm'
 import type { Job } from 'pg-boss'
 
@@ -34,7 +44,7 @@ import {
   type ReservationFacts,
 } from '../guest-email/words'
 import type { Logger } from '../logger'
-import { defineJob, type JobDefinition } from './types'
+import { defineJob, type JobDefinition, type JobQueue } from './types'
 
 /** What the job reads before it sends: the reservation as it is now, and whom to tell. */
 export interface GuestEmailNews extends ReservationFacts {
@@ -55,6 +65,8 @@ export type GuestEmailSkip = 'reservation_missing' | 'news_changed' | 'no_email'
 /** The state each kind of news leaves a reservation in, while it is still true. */
 const STILL_TRUE: Readonly<Record<GuestEmailKind, (news: GuestEmailNews) => boolean>> = {
   reservation_cancelled: (news) => news.status === 'cancelled',
+  reservation_confirmed: (news) => news.status === 'reserved',
+  reservation_declined: (news) => news.status === 'declined',
 }
 
 /**
@@ -118,6 +130,20 @@ export const readGuestEmailNews: GuestEmailReader = (pool, job) =>
           eq(logEntries.kind, GUEST_EMAIL_LOG_KINDS[job.kind]),
         ),
       )
+    // The spots it holds now, by the plan's names: what the confirmed email tells the guest.
+    const held =
+      job.kind === 'reservation_confirmed'
+        ? await tx
+            .select({ name: spots.name })
+            .from(reservationSpots)
+            .innerJoin(spots, eq(spots.id, reservationSpots.spotId))
+            .where(
+              and(
+                eq(reservationSpots.reservationId, job.reservationId),
+                isNull(reservationSpots.releasedAt),
+              ),
+            )
+        : []
     return {
       status: row.status,
       deleted: row.deletedAt !== null,
@@ -128,6 +154,10 @@ export const readGuestEmailNews: GuestEmailReader = (pool, job) =>
       email: row.email,
       venueName: row.venueName,
       timeZone: row.timeZone,
+      // "Bar 2" before "Bar 10": the names in the order a person counts them.
+      spotNames: [...new Set(held.map((spot) => spot.name))].sort((a, b) =>
+        a.localeCompare(b, 'bg', { numeric: true }),
+      ),
     }
   })
 
@@ -220,4 +250,23 @@ export function createGuestEmailJob(options: {
       }
     },
   })
+}
+
+/**
+ * The `queueJobs` of the worker's runs that end a night (#578): the closing hour and the sweep of a
+ * passed night. One `guest-email` job per request the night's end declined (`owed.guestEmails`),
+ * sent in the command's own transaction (#592), so the declines and their emails are saved
+ * together or not at all.
+ */
+export function queueNightEndEmails(queue: JobQueue): NonNullable<ServiceOptions['queueJobs']> {
+  return async (_result, db, owed) => {
+    for (const job of owed.guestEmails) {
+      const prepared = prepareJob(JOB_NAMES.guestEmail, job)
+      await queue.send(JOB_NAMES.guestEmail, prepared.data, {
+        singletonKey: prepared.singletonKey,
+        group: prepared.group,
+        db,
+      })
+    }
+  }
 }

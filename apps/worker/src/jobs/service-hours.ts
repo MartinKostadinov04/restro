@@ -48,7 +48,8 @@ import {
 import { type BreakerEnvironment, SHARED_BREAKERS } from './breaker'
 import { type ConnectionJobDeps, probeOnce } from './connection'
 import { floorTargets } from './floor'
-import { defineJob, type JobDefinition } from './types'
+import { queueNightEndEmails } from './guest-email'
+import { defineJob, type JobDefinition, type JobQueue } from './types'
 
 /** A live venue that has opened some weekday, with its clock. */
 export interface NightVenue {
@@ -107,6 +108,7 @@ export async function closeTablesAtClosingHour(
   pool: DbPool,
   now: Date,
   log: Pick<Logger, 'warn'>,
+  queue?: JobQueue,
 ): Promise<number> {
   let closed = 0
   for (const venue of await venuesWithHours(pool)) {
@@ -177,6 +179,8 @@ export async function closeTablesAtClosingHour(
           jobId: `service-hours-${randomUUID()}`,
           now,
         },
+        // The night's end declines the requests nobody answered: their guests' emails ride in it.
+        queue === undefined ? {} : { queueJobs: queueNightEndEmails(queue) },
       )
       if (result.status === 'accepted') closed += Number(result.details.closed ?? 0)
     } catch (error) {
@@ -310,7 +314,12 @@ export const serviceHoursTick: JobDefinition = defineJob({
   schedule: { cron: '* * * * *', tz: 'Europe/Sofia' },
   options: { queue: TICK_QUEUE },
   async handler(_jobs, context) {
-    const closed = await closeTablesAtClosingHour(context.pool, context.now(), context.log)
+    const closed = await closeTablesAtClosingHour(
+      context.pool,
+      context.now(),
+      context.log,
+      context.queue,
+    )
     if (closed > 0) context.log.info({ closed }, 'tables closed at the closing hour')
   },
 })

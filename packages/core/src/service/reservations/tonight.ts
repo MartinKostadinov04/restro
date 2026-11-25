@@ -79,6 +79,11 @@ export async function setReservationStatus(
       details: { reservationId: reservation.id, status: from, changed: false },
     })
   }
+  // A request becomes Reserved only by Confirm, which claims its spots and emails the guest
+  // (`reservation.confirm`, #578): a bare status move would do neither.
+  if (from === 'requested' && command.status === 'reserved') {
+    return refuse('status_move_not_allowed')
+  }
   const move = moveStatus(from, command.status)
   if (!move.ok) return refuse(move.code)
   const to = move.status

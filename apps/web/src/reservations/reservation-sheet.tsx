@@ -23,6 +23,12 @@ import type { PayRule } from '@restro/core'
 //
 // A booking with a guest record links to his card on Guests (#333), under "…".
 //
+// An online request is answered here (#578): **Confirm** is the primary action and opens the spot
+// choice ("Choose then act"), **Decline** beside it asks once, naming the guest, with no Undo — the
+// guest is emailed either answer. A role that may not answer is told who may, in one line. A
+// request is not cancelled (that is the guest's doing on a booking) and gets its tables in the
+// Confirm dialog, not through Change tables.
+//
 // The Pay rule section is here as well (#334, D135): three cards — the club's rule, everything on
 // the bill, pay first — one of which is always the one in force, so an empty rule reads "The club's
 // rule" and never as a blank. A tap writes at once with Undo on the toast; where a table of theirs
@@ -71,6 +77,7 @@ import { useWho } from '@/tonight/who'
 
 import type { PartyName, PayRuleChange } from './booking-actions'
 import { ConfirmDialog } from './confirm-dialog'
+import { ConfirmRequestDialog } from './confirm-request'
 import {
   useByClubWord,
   useGuestsText,
@@ -78,6 +85,7 @@ import {
   usePayRuleWord,
   useStatusWord,
 } from './reservation-words'
+import type { RvRunSpec } from './use-reservation-run'
 
 /** One labelled line of the sheet; nothing is drawn where there is nothing to say. */
 function Line({ label, value }: { label: string; value: string | null }) {
@@ -304,7 +312,7 @@ function Body({
 }
 
 /** The states a booking is over in: nothing is changed on it any more. */
-const ENDED = ['finished', 'no_show', 'cancelled', 'not_seated'] as const
+const ENDED = ['finished', 'no_show', 'cancelled', 'not_seated', 'declined'] as const
 
 export function ReservationSheet({
   frame,
@@ -316,6 +324,8 @@ export function ReservationSheet({
   onNoShow,
   onPutBack,
   onCancel,
+  onConfirm,
+  onDecline,
   onDelete,
   onArrive,
   onGuests,
@@ -337,6 +347,16 @@ export function ReservationSheet({
   onPutBack: (reservationId: string, party: PartyName, done: () => void) => void
   /** Calls the booking off; the sheet reads it again when it worked. */
   onCancel: (reservationId: string, party: PartyName, done: () => void) => void
+  /** Confirms an online request with the spots chosen (#578); the sheet reads it again. */
+  onConfirm: (
+    reservationId: string,
+    party: PartyName,
+    spotIds: readonly string[],
+    refusal: NonNullable<RvRunSpec['refusal']>,
+    done: () => void,
+  ) => void
+  /** Declines an online request (#578); the sheet reads it again. */
+  onDecline: (reservationId: string, party: PartyName, done: () => void) => void
   /** Takes the booking out of the book; the sheet closes when it worked. */
   onDelete: (reservationId: string, party: PartyName, done: () => void) => void
   /** The guests are here (#329); absent where this night or this role cannot seat them. */
@@ -361,7 +381,7 @@ export function ReservationSheet({
   const [failed, setFailed] = useState(false)
   // Who changed the reservation while this sheet was open, once that has happened.
   const [changedBy, setChangedBy] = useState<WhoView | null>(null)
-  const [confirm, setConfirm] = useState<'cancel' | 'delete' | null>(null)
+  const [asking, setAsking] = useState<'cancel' | 'delete' | 'confirm' | 'decline' | null>(null)
   // The newest history line the sheet has shown, which is how a change is noticed.
   const seen = useRef<number | null>(null)
 
@@ -423,7 +443,12 @@ export function ReservationSheet({
     detail !== null &&
     writable &&
     mayWork &&
-    (status === 'reserved' || status === 'waiting' || status === 'requested')
+    (status === 'reserved' || status === 'waiting')
+  // An online request is answered (#578) by whoever works tonight's reservations, and on a shared
+  // device by the person the PIN names. A role that may not reads who may.
+  const isRequest = detail != null && !isBlock && status === 'requested'
+  const mayAnswer = isRequest && writable && (frame.can.tonight || frame.device)
+  const sayWhoAnswers = isRequest && writable && !mayAnswer
   const mayDelete =
     detail !== undefined && detail !== null && writable && !isBlock && (mayManage || detail.mine)
   const mayCopy = detail?.row.kind === 'booking' && frame.can.tonight
@@ -446,7 +471,7 @@ export function ReservationSheet({
     detail != null &&
     !isBlock &&
     writable &&
-    (status === 'reserved' || status === 'requested' || status === 'seated') &&
+    (status === 'reserved' || status === 'seated') &&
     onChangeTables !== null
   const party: PartyName = detail?.row.name ?? t('no_name')
   // A party the night's end closed (#332): "Put back" is an admin's, and on a shared device it is
@@ -509,10 +534,38 @@ export function ReservationSheet({
           {t('d_guests')}
         </Button>
       ) : null}
+      {mayAnswer && detail ? (
+        <Button
+          type="button"
+          className={WRAPS}
+          disabled={busy}
+          data-testid="rv-sheet-confirm"
+          onClick={() => setAsking('confirm')}
+        >
+          {t('rq_confirm')}
+        </Button>
+      ) : null}
+      {mayAnswer && detail ? (
+        <Button
+          type="button"
+          variant="outline"
+          className={WRAPS}
+          disabled={busy}
+          data-testid="rv-sheet-decline"
+          onClick={() => setAsking('decline')}
+        >
+          {t('rq_decline')}
+        </Button>
+      ) : null}
+      {sayWhoAnswers ? (
+        <p className="text-sm text-muted-foreground" data-testid="rv-answer-who">
+          {t('rq_who')}
+        </p>
+      ) : null}
       {mayEdit && detail ? (
         <Button
           type="button"
-          variant={mayArrive || mayGuests ? 'outline' : 'default'}
+          variant={mayArrive || mayGuests || mayAnswer ? 'outline' : 'default'}
           className={WRAPS}
           disabled={busy}
           data-testid="rv-edit"
@@ -536,7 +589,7 @@ export function ReservationSheet({
       {detail?.phone ? (
         <Button
           asChild
-          variant={mayEdit ? 'outline' : 'default'}
+          variant={mayEdit || mayAnswer ? 'outline' : 'default'}
           className={WRAPS}
           data-testid="rv-call"
         >
@@ -553,7 +606,7 @@ export function ReservationSheet({
           className={WRAPS}
           disabled={busy}
           data-testid="rv-cancel"
-          onClick={() => setConfirm('cancel')}
+          onClick={() => setAsking('cancel')}
         >
           {t('bk_cancel')}
         </Button>
@@ -611,7 +664,7 @@ export function ReservationSheet({
               <DropdownMenuItem
                 className="min-h-11"
                 data-testid="rv-delete"
-                onSelect={() => setConfirm('delete')}
+                onSelect={() => setAsking('delete')}
               >
                 {t('bk_delete')}
               </DropdownMenuItem>
@@ -632,7 +685,40 @@ export function ReservationSheet({
   )
 
   const confirmation =
-    confirm === null || detail === null || detail === undefined ? null : confirm === 'cancel' ? (
+    asking === null || detail === null || detail === undefined ? null : asking === 'confirm' ? (
+      <ConfirmRequestDialog
+        frame={frame}
+        detail={detail}
+        busy={busy}
+        onClose={() => setAsking(null)}
+        onConfirm={(spotIds, refusal) =>
+          onConfirm(detail.row.id, party, spotIds, refusal, () => {
+            setAsking(null)
+            load()
+          })
+        }
+      />
+    ) : asking === 'decline' ? (
+      <ConfirmDialog
+        testId="rv-decline-dialog"
+        title={t('rq_decline_t', { name: party })}
+        body={
+          detail.email === null || detail.email === ''
+            ? t('rq_decline_b_none')
+            : t('rq_decline_b', { name: party })
+        }
+        doLabel={t('rq_decline')}
+        keepLabel={t('rq_decline_keep')}
+        busy={busy}
+        onKeep={() => setAsking(null)}
+        onDo={() =>
+          onDecline(detail.row.id, party, () => {
+            setAsking(null)
+            load()
+          })
+        }
+      />
+    ) : asking === 'cancel' ? (
       <ConfirmDialog
         testId="rv-cancel-dialog"
         title={t('bk_cancel_t', { party })}
@@ -640,10 +726,10 @@ export function ReservationSheet({
         doLabel={t('bk_cancel')}
         keepLabel={t('bk_keep')}
         busy={busy}
-        onKeep={() => setConfirm(null)}
+        onKeep={() => setAsking(null)}
         onDo={() =>
           onCancel(detail.row.id, party, () => {
-            setConfirm(null)
+            setAsking(null)
             load()
           })
         }
@@ -656,10 +742,10 @@ export function ReservationSheet({
         doLabel={t('bk_delete_do')}
         keepLabel={t('bk_keep')}
         busy={busy}
-        onKeep={() => setConfirm(null)}
+        onKeep={() => setAsking(null)}
         onDo={() =>
           onDelete(detail.row.id, party, () => {
-            setConfirm(null)
+            setAsking(null)
             onClose()
           })
         }

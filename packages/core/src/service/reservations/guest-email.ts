@@ -12,6 +12,11 @@
 // The worker reads the reservation and the guest record again when it sends, and sends nothing
 // when the news is no longer true (a deletion, a later change, an erased guest), so what is said
 // here is only that there was news for a guest who had an address at the time.
+//
+// One command can owe many emails: the night's end declines every request nobody answered (#578).
+// Its answer carries counts, not a list, so the sweep owes each guest his email through
+// `stx.oweGuestEmail` (`oweNightEndEmail`), and the caller's `queueJobs` gets them in the same
+// transaction as the declines.
 
 import { guests } from '@restro/db'
 import { and, eq, isNull } from 'drizzle-orm'
@@ -29,6 +34,8 @@ import type { ResultDetails, ServiceResult } from '../results'
 /** The Log kind each email's news is recorded under: the entry the worker checks is still latest. */
 export const GUEST_EMAIL_LOG_KINDS: Readonly<Record<GuestEmailKind, LogKind>> = {
   reservation_cancelled: 'reservation.status',
+  reservation_confirmed: 'reservation.status',
+  reservation_declined: 'reservation.status',
 }
 
 /**
@@ -75,4 +82,22 @@ export function guestEmailJobOf(
     entry: result.details.guestEmailEntry,
   })
   return job.success ? job.data : null
+}
+
+/**
+ * Owes the guest of a request the night's end declined his email (#578; spec #322, Implementation
+ * Decision 2), through `stx.oweGuestEmail`: one night's end declines many. Call it right after the
+ * Log entry that recorded the decline; nothing for a guest with no address or an erased record.
+ */
+export async function oweNightEndEmail(
+  stx: ServiceTx,
+  line: { readonly id: string; readonly kind: string; readonly guestId: string | null },
+): Promise<void> {
+  const owed = await guestEmailOwed(stx, line, 'reservation_declined')
+  if (typeof owed.guestEmailEntry !== 'number') return
+  stx.oweGuestEmail({
+    reservationId: line.id,
+    kind: 'reservation_declined',
+    entry: owed.guestEmailEntry,
+  })
 }

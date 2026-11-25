@@ -34,6 +34,7 @@ export const PIN_FALL_ROWS = [
   { action: 'create', fall: 'pin' },
   { action: 'edit', fall: 'pin' },
   { action: 'cancel', fall: 'pin' },
+  { action: 'answer', fall: 'pin' },
   { action: 'delete', fall: 'pin' },
   { action: 'restore', fall: 'pin' },
   { action: 'put_back', fall: 'pin' },

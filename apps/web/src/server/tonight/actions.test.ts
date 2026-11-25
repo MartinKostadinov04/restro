@@ -18,7 +18,7 @@ const getVenue = vi.hoisted(() =>
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('../db', () => ({ getPool: () => ({}) }))
-vi.mock('../jobs', () => ({ enqueueJob: vi.fn() }))
+vi.mock('../jobs', () => ({ enqueueJob: vi.fn(), enqueueJobIn: vi.fn() }))
 vi.mock('../log', () => ({ logError: vi.fn() }))
 vi.mock('../session', () => ({
   requireTenant: async () => ({
@@ -39,7 +39,7 @@ vi.mock('../staff/service', () => ({
 vi.mock('../venues', () => ({ getVenue }))
 vi.mock('../guest-api', () => ({ queuePaymentStep }))
 vi.mock('./load', () => ({ loadTableBill: vi.fn() }))
-vi.mock('./tables', () => ({ runTableCommand, markPaymentTable: vi.fn() }))
+vi.mock('./tables', () => ({ runTableCommand, markPaymentTable: vi.fn(), endNight: vi.fn() }))
 
 import {
   answerPaymentAction,

@@ -21,8 +21,8 @@ import {
 
 const anyStatus = fc.constantFrom(...RESERVATION_STATUSES)
 
-describe('the eight statuses', () => {
-  it('are D135 seven and D138 Not seated', () => {
+describe('the nine statuses', () => {
+  it('are D135 seven, D138 Not seated and part 2 Declined', () => {
     expect([...RESERVATION_STATUSES]).toEqual([
       'requested',
       'reserved',
@@ -32,6 +32,7 @@ describe('the eight statuses', () => {
       'no_show',
       'cancelled',
       'not_seated',
+      'declined',
     ])
   })
 
@@ -41,7 +42,7 @@ describe('the eight statuses', () => {
 
   it('allow exactly the moves the spec names', () => {
     expect(RESERVATION_STATUS_MOVES).toEqual({
-      requested: ['reserved', 'cancelled'],
+      requested: ['reserved', 'cancelled', 'declined'],
       reserved: ['seated', 'no_show', 'cancelled'],
       waiting: ['seated', 'not_seated', 'cancelled'],
       seated: ['finished'],
@@ -49,6 +50,7 @@ describe('the eight statuses', () => {
       no_show: [],
       cancelled: [],
       not_seated: [],
+      declined: [],
     })
   })
 

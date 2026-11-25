@@ -10,7 +10,10 @@ import type { PayRule } from '@restro/core'
 //     Restore is offered on the toast and lives in the night's bin;
 //   • Restore — from the bin;
 //   • Put back — one party the night's end closed (#332), an admin's: no question, the toast's Undo
-//     is the safety net, and there is no way to put a whole night back.
+//     is the safety net, and there is no way to put a whole night back;
+//   • Confirm and Decline — the answer to an online request (#578): Confirm with the spots chosen
+//     in its dialog, Decline after one question naming the guest; neither has an Undo, because the
+//     guest is emailed the answer.
 // Each is a command through `applyService` (rule 1); the PIN sheet is the run hook's, for a shared
 // device. Nothing here decides whether a person may: the service path does, inside its own
 // transaction, and a refusal comes back as the toast that stays.
@@ -20,6 +23,8 @@ import { toast } from 'sonner'
 
 import {
   cancelBookingAction,
+  confirmRequestAction,
+  declineRequestAction,
   deleteBookingAction,
   noShowAction,
   putBackAction,
@@ -92,6 +97,48 @@ export function useBookingActions({
         pin: { title: t('bk_pin_cancel', { party }), body: t('bk_pin_b') },
         act: (pin) =>
           cancelBookingAction({ venueId, reservationId, ...(pin === undefined ? {} : { pin }) }),
+        after: onChanged,
+        onDone,
+      }),
+    [onChanged, run, t, venueId],
+  )
+
+  /** Confirms a request with the spots chosen (#578); `refusal` words a spot taken meanwhile. */
+  const confirm = useCallback(
+    (
+      reservationId: string,
+      party: PartyName,
+      spotIds: readonly string[],
+      refusal: RvRunSpec['refusal'],
+      onDone: () => void,
+    ) =>
+      run({
+        id: `rv-confirm:${reservationId}`,
+        done: t('rq_confirmed'),
+        pin: { title: t('bk_pin_confirm', { party }), body: t('bk_pin_b') },
+        act: (pin) =>
+          confirmRequestAction({
+            venueId,
+            reservationId,
+            spotIds: [...spotIds],
+            ...(pin === undefined ? {} : { pin }),
+          }),
+        ...(refusal === undefined ? {} : { refusal }),
+        after: onChanged,
+        onDone,
+      }),
+    [onChanged, run, t, venueId],
+  )
+
+  /** Declines a request (#578): it stays on the night as Declined and the guest is emailed. */
+  const decline = useCallback(
+    (reservationId: string, party: PartyName, onDone: () => void) =>
+      run({
+        id: `rv-decline:${reservationId}`,
+        done: t('rq_declined'),
+        pin: { title: t('bk_pin_decline', { party }), body: t('bk_pin_b') },
+        act: (pin) =>
+          declineRequestAction({ venueId, reservationId, ...(pin === undefined ? {} : { pin }) }),
         after: onChanged,
         onDone,
       }),
@@ -211,5 +258,5 @@ export function useBookingActions({
     [onChanged, run, t, venueId],
   )
 
-  return { noShow, cancel, restore, remove, payRule, putBack }
+  return { noShow, cancel, confirm, decline, restore, remove, payRule, putBack }
 }

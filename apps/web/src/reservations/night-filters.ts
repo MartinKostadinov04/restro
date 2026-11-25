@@ -1,6 +1,7 @@
 // The filters over one night's list (#326), apart from the screen so their counts and their
-// filtering can be tested without rendering anything. "All" is always there; every other filter is
-// drawn only where the night holds at least one row behind it.
+// filtering can be tested without rendering anything. "All" is always there, and so is "Requested"
+// (#578): its number is the night's unanswered requests, and a 0 there is news too. Every other
+// filter is drawn only where the night holds at least one row behind it.
 //
 // The order is the order a night runs in, not the order of the status list: who is still to come,
 // who is waiting, who is in, then how the evening ended for them.
@@ -37,6 +38,11 @@ export function filterCount(counts: RvCountsView, filter: ReservationFilter): nu
   if (filter === 'all') return counts.all
   if (filter === 'late') return counts.late
   return counts.byStatus[filter] ?? 0
+}
+
+/** Whether a filter's chip is drawn: "All" and "Requested" always, any other one with a row. */
+export function chipShown(counts: RvCountsView, filter: ReservationFilter): boolean {
+  return filter === 'all' || filter === 'requested' || filterCount(counts, filter) > 0
 }
 
 /** One waiting party as its row is drawn: the night's row, with what the queue adds to it. */
