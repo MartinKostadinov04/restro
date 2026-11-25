@@ -460,6 +460,42 @@ export interface PayingStrings {
   readonly share: ShareStrings
 }
 
+/** The words of the booking page (#577): the form, the answer screen and the refusals. */
+export interface BookingStrings {
+  readonly title: string
+  readonly intro: string
+  readonly night: string
+  /** A night the club closed, as the night list shows it. */
+  readonly closedMark: (label: string) => string
+  readonly partySize: string
+  readonly name: string
+  readonly phone: string
+  readonly email: string
+  readonly note: string
+  readonly send: string
+  readonly sending: string
+  readonly noNights: string
+  readonly sentTitle: string
+  readonly sentText: string
+  readonly offTitle: string
+  readonly offText: string
+  /** A template that has no booking page. */
+  readonly unavailableTitle: string
+  readonly unavailableText: string
+  readonly refusals: {
+    readonly booking_off: string
+    readonly closed_night: string
+    readonly outside_hours: string
+    readonly too_far: string
+    readonly night_passed: string
+    readonly invalid_phone: string
+    readonly human_check: string
+    readonly rate_limited: string
+    readonly invalid_request: string
+    readonly unavailable: string
+  }
+}
+
 /** The words of one language. `lang` is the language the strings are really in. */
 export interface Strings {
   readonly lang: Locale
@@ -482,6 +518,7 @@ export interface Strings {
   readonly dietary: { readonly [D in DietaryLabel]: string }
   readonly guest: GuestStrings
   readonly services: ServiceStrings
+  readonly booking: BookingStrings
 }
 
 const EN: Strings = {
@@ -883,6 +920,39 @@ const EN: Strings = {
         'Allow location so we know you’re at the table. Otherwise your waiter tells you the total.',
       allowLocation: 'Allow location',
       callWaiter: 'Call a waiter',
+    },
+  },
+  booking: {
+    title: 'Book a table',
+    intro: 'Ask for a table for one night. The club looks at your request and answers by email.',
+    night: 'Night',
+    closedMark: (label) => `${label} (closed)`,
+    partySize: 'Guests',
+    name: 'Name',
+    phone: 'Phone',
+    email: 'Email',
+    note: 'Note (optional)',
+    send: 'Send the request',
+    sending: 'Sending…',
+    noNights: 'There is no night to book right now. Call the club to ask for a table.',
+    sentTitle: 'Your request is with the club',
+    sentText: 'The club will look at it and send you an email.',
+    offTitle: 'No online bookings',
+    offText: 'This club takes no online bookings. Call the club or ask at the door.',
+    unavailableTitle: 'Online booking is not available',
+    unavailableText: 'This page cannot take bookings. Call the club to ask for a table.',
+    refusals: {
+      booking_off:
+        'This club takes no online bookings right now. Call the club to ask for a table.',
+      closed_night: 'The club is closed that night. Choose another night, or call the club.',
+      outside_hours: 'The club is not open that night. Choose another night.',
+      too_far: 'That night is too far ahead. Choose a nearer night, or call the club.',
+      night_passed: 'That night has passed. Choose another night.',
+      invalid_phone: 'Check the phone number.',
+      human_check: 'We could not check that you are a person. Try again.',
+      rate_limited: 'Slow down a moment.',
+      invalid_request: 'Check the form and try again.',
+      unavailable: 'The request did not go through. Try again in a moment.',
     },
   },
 }
@@ -1295,6 +1365,40 @@ const BG: Strings = {
         'Разрешете местоположение, за да знаем, че сте на масата. Иначе сервитьорът ще ви каже сумата.',
       allowLocation: 'Разреши местоположение',
       callWaiter: 'Повикай сервитьор',
+    },
+  },
+  booking: {
+    title: 'Резервирайте маса',
+    intro: 'Заявете маса за една вечер. Клубът ще прегледа заявката и ще ви отговори по имейл.',
+    night: 'Вечер',
+    closedMark: (label) => `${label} (затворено)`,
+    partySize: 'Брой гости',
+    name: 'Име',
+    phone: 'Телефон',
+    email: 'Имейл',
+    note: 'Бележка (по желание)',
+    send: 'Изпрати заявката',
+    sending: 'Изпраща се…',
+    noNights: 'В момента няма вечер за резервация. Обадете се на клуба, за да заявите маса.',
+    sentTitle: 'Заявката ви е при клуба',
+    sentText: 'Клубът ще я прегледа и ще ви изпрати имейл.',
+    offTitle: 'Без онлайн резервации',
+    offText: 'Този клуб не приема онлайн резервации. Обадете се на клуба или попитайте на входа.',
+    unavailableTitle: 'Онлайн резервациите не са достъпни',
+    unavailableText: 'Тази страница не приема резервации. Обадете се на клуба, за да заявите маса.',
+    refusals: {
+      booking_off:
+        'В момента клубът не приема онлайн резервации. Обадете се на клуба, за да заявите маса.',
+      closed_night: 'Клубът е затворен тази вечер. Изберете друга вечер или се обадете на клуба.',
+      outside_hours: 'Клубът не работи тази вечер. Изберете друга вечер.',
+      too_far:
+        'Тази вечер е твърде далеч напред. Изберете по-близка вечер или се обадете на клуба.',
+      night_passed: 'Тази вечер вече мина. Изберете друга вечер.',
+      invalid_phone: 'Проверете телефонния номер.',
+      human_check: 'Не успяхме да проверим, че сте човек. Опитайте отново.',
+      rate_limited: 'Малко по-бавно, моля.',
+      invalid_request: 'Проверете формата и опитайте отново.',
+      unavailable: 'Заявката не беше изпратена. Опитайте отново след малко.',
     },
   },
 }

@@ -6,6 +6,8 @@
 // browsing page. The demo host for the admin's preview is the subpath `@restro/editorial-market/
 // preview`, which a guest page never imports.
 
+export { EditorialMarketBooking, type EditorialMarketBookingProps } from './booking'
+export { BOOKING_CSS } from './booking-css'
 export { EDITORIAL_CSS } from './css'
 export { EditorialMarketFace, type EditorialMarketFaceProps } from './face'
 export { EDITORIAL_MARKET_MANIFEST } from './manifest'
