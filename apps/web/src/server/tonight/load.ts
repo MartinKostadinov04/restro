@@ -1,6 +1,6 @@
 // Reads Tonight for the signed-in actor and shapes it for the screen (#85). Reads only: the
 // service read side filters by what the actor holds and calls no POS (rule 3 and 4 of the plan).
-import { guestNight, readOrderingSettings } from '@restro/core'
+import { guestNight, readOrderingSettings, sumSignedMinor } from '@restro/core'
 import {
   readTableState,
   readTonight,
@@ -84,19 +84,68 @@ export interface TableSheetBill {
   readonly complete: boolean
 }
 
-/** The open sitting's bill of a table, or null when it is closed or not read yet. */
-export async function loadTableBill(input: {
+/**
+ * A table's linked group as its sheet shows it (D160 §1, decision log 1.7 and 1.8; #540): the
+ * party's tables by our name, the group's total as the members' last bills add up, and whether
+ * that total is final. A member that did not read well in its sitting is `updating`: its last
+ * lines count, the total is not final, and the sheet says which table it waits for (rule 6).
+ */
+export interface TableSheetGroup {
+  readonly tables: readonly {
+    readonly id: string
+    /** Our name over the table, else its number: the sheet words it with the table's own tile. */
+    readonly label: string
+    readonly updating: boolean
+  }[]
+  readonly totalMinor: number
+  readonly currency: string
+  /** False while any member table's bill is not known well now. */
+  readonly final: boolean
+}
+
+/** What a table's sheet reads beyond its tile. */
+export interface TableSheetRead {
+  readonly bill: TableSheetBill | null
+  /** Null where the table is in no group: the sheet then shows no party line. */
+  readonly group: TableSheetGroup | null
+}
+
+/** The open sitting's bill of a table and its linked group, or nulls when closed or not read yet. */
+export async function loadTableSheet(input: {
   readonly tenantId: string
   readonly venueId: string
   readonly tableId: string
-}): Promise<TableSheetBill | null> {
+}): Promise<TableSheetRead> {
+  const none = { bill: null, group: null } as const
   const state = await readTableState(getPool(), input)
-  if (state === null || state.unchanged || state.bill === null) return null
+  if (state === null || state.unchanged) return none
   // The tenant's rows are all the database hides: a table of another venue has no bill here (RR-71).
-  if (state.table.venueId !== input.venueId) return null
+  if (state.table.venueId !== input.venueId) return none
+  const group = state.group
   return {
-    totalMinor: state.bill.totalMinor,
-    currency: state.bill.currency ?? 'EUR',
-    complete: state.bill.complete,
+    bill:
+      state.bill === null
+        ? null
+        : {
+            totalMinor: state.bill.totalMinor,
+            currency: state.bill.currency ?? 'EUR',
+            complete: state.bill.complete,
+          },
+    group:
+      group === null
+        ? null
+        : {
+            tables: group.tables.map((member) => ({
+              id: member.tableId,
+              label: member.label,
+              updating: member.reading !== 'complete',
+            })),
+            // Rule 8: money adds through the money module only.
+            totalMinor: sumSignedMinor(group.tables.map((member) => member.bill?.totalMinor ?? 0)),
+            currency:
+              group.tables.map((member) => member.bill?.currency).find((one) => one != null) ??
+              'EUR',
+            final: !group.unread,
+          },
   }
 }

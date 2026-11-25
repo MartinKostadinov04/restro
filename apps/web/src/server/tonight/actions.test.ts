@@ -38,7 +38,7 @@ vi.mock('../staff/service', () => ({
 }))
 vi.mock('../venues', () => ({ getVenue }))
 vi.mock('../guest-api', () => ({ queuePaymentStep }))
-vi.mock('./load', () => ({ loadTableBill: vi.fn() }))
+vi.mock('./load', () => ({ loadTableSheet: vi.fn() }))
 vi.mock('./tables', () => ({ runTableCommand, markPaymentTable: vi.fn(), endNight: vi.fn() }))
 
 import {

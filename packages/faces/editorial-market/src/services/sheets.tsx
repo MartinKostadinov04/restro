@@ -12,6 +12,7 @@ import { LocationSheet, StopLocationCheck } from './location-sheet'
 import { PreviewMarker } from './parts'
 import { PaySheet } from './pay-sheet'
 import { type Sheet, useServices } from './provider'
+import { ShareSheet } from './share-sheet'
 
 export function ServiceSheets() {
   const o = useServices()
@@ -38,7 +39,15 @@ export function ServiceSheets() {
         {sheet === 'bag' ? <BagSheet /> : null}
         {sheet === 'tab' ? <BillSheet /> : null}
         {sheet === 'call' ? <CallSheet /> : null}
-        {sheet === 'pay' ? <PaySheet /> : null}
+        {/* A group payment of the table takes the pay sheet over on every phone (D160 §3): the
+            others reach it by the QR code or the link, which open the table's page at `#pay`. */}
+        {sheet === 'pay' ? (
+          state.share == null ? (
+            <PaySheet />
+          ) : (
+            <ShareSheet share={state.share} />
+          )
+        ) : null}
         {/* "Stop location check" (D119, DA-9; Martin 11-06): while the check is on, the stop is
             reachable from every service screen - the bag, the bill, Pay and Call a waiter -
             whatever the venue's Bill switch is, so the consent text's "You can stop anytime"

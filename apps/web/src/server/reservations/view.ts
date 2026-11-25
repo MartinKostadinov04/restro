@@ -403,8 +403,24 @@ export interface RvPlanView {
   readonly extent: PlanExtent
   /** Spots whose stored numbers the folder refused: drawn nowhere, counted here. */
   readonly unreadable: number
+  /**
+   * The linked groups to outline (D160 §1, #540): each party sitting on two spots of this plan or
+   * more tonight. A walk-in nobody named has `name: null`.
+   */
+  readonly groups: readonly RvPlanGroupView[]
+  /** How far an outline stands off its spots, in grid units (the box keeps that margin). */
+  readonly outlinePad: number
   /** The night's waiting list, oldest first: what a free spot's sheet offers (#330). */
   readonly waiting: readonly RvWaitingView[]
+}
+
+/** One party's spots on the plan, for the outline drawn around them. */
+export interface RvPlanGroupView {
+  /** The party's reservation: a key, never shown. */
+  readonly id: string
+  readonly name: string | null
+  /** Its spots on this plan, by our spot ids. */
+  readonly spotIds: readonly string[]
 }
 
 /** One line of a spot's history (D141: the one Log). */
@@ -473,6 +489,12 @@ export function rvPlanView(plan: FloorPlanRead, timezone: string): RvPlanView {
     })),
     extent: plan.extent,
     unreadable: plan.unreadable,
+    groups: plan.groups.map((group) => ({
+      id: group.reservationId,
+      name: group.name,
+      spotIds: group.spotIds,
+    })),
+    outlinePad: plan.outlinePad,
     waiting: plan.waiting.map((party) => rvWaitingView(party, timezone)),
   }
 }
@@ -568,7 +590,10 @@ export function rvChecksView(checks: BookingChecks, timezone: string): RvChecksV
 /** One Table of the spots being seated: whether its codes are open, and whether it carries a bill. */
 export interface RvDoorTableView {
   readonly tableId: string
-  readonly tableName: string
+  /** Our name for the table, else its number, else the spot's name: resolved in the read (#558). */
+  readonly label: string
+  /** The label is a number, so a dialogue says «Маса 22» rather than a bare 22. */
+  readonly numbered: boolean
   readonly open: boolean
   /** An order is on this table in its current sitting (a sent round or the bag): the only reason to ask (#419). */
   readonly hasOrder: boolean
@@ -621,7 +646,8 @@ export function rvArrivalChecksView(checks: ArrivalChecks, timezone: string): Rv
     payRule: checks.payRule,
     tables: checks.tables.map((table) => ({
       tableId: table.tableId,
-      tableName: table.tableName,
+      label: table.label,
+      numbered: table.numbered,
       open: table.open,
       hasOrder: table.hasOrder,
       bill: table.bill,

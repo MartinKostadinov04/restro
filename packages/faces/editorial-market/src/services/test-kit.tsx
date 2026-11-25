@@ -295,6 +295,8 @@ export interface FakeHost {
   }[]
   /** How many times the payment's screen was dismissed ("Back to the bill"). */
   readonly dismissed: () => number
+  /** How many times the share's screen was dismissed ("Back to the bill", "Start again"). */
+  readonly shareDismissed: () => number
   /** The location controls the guest used, by name, in order ("allow", "decline", "stop"…). */
   readonly located: string[]
   /** The screens the face told the host it had open, in order (RR-52). */
@@ -309,12 +311,25 @@ export interface FakeHost {
   ) => (Call & { command: Extract<GuestCommand, { kind: K }> })[]
 }
 
+/** The invite a host hands the face for "Show the others" (#544): the table's address and its code. */
+export const SHARE_INVITE = {
+  url: 'https://club-x.example/m/sofia/club-x/t/7#pay',
+  qrImage: 'data:image/png;base64,QRCODE',
+} as const
+
 /** A host that records every command and answers only when the test says so. */
-export function fakeHost(initial: Partial<ServiceState> = {}): FakeHost {
+export function fakeHost(
+  initial: Partial<ServiceState> = {},
+  options: {
+    /** What "Show the others" shows; null for a host that has no invite to give. */
+    readonly invite?: ServiceBinding['shareInvite']
+  } = {},
+): FakeHost {
   let state: ServiceState = { ...EMPTY_SERVICE_STATE, ...initial }
   const calls: Call[] = []
   const forms: FakeHost['forms'] = []
   let dismissed = 0
+  let shareDismissed = 0
   let refreshed = 0
   const located: string[] = []
   const screens: GuestScreen[] = []
@@ -365,6 +380,12 @@ export function fakeHost(initial: Partial<ServiceState> = {}): FakeHost {
           dismissed += 1
         },
       },
+      shareControls: {
+        dismiss: () => {
+          shareDismissed += 1
+        },
+      },
+      shareInvite: options.invite === undefined ? SHARE_INVITE : options.invite,
       location: {
         allow: async () => {
           located.push('allow')
@@ -385,6 +406,7 @@ export function fakeHost(initial: Partial<ServiceState> = {}): FakeHost {
     screens,
     forms,
     dismissed: () => dismissed,
+    shareDismissed: () => shareDismissed,
     state: () => state,
     set: (patch) => {
       state = { ...state, ...patch }
