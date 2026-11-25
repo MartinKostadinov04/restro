@@ -53,10 +53,20 @@ export interface ArrivalChecksInput extends ReadInput {
   readonly reservationId?: string
 }
 
+/**
+ * How a screen names one Table: the same pair the floor plan reads (`SpotTableRead`), because the
+ * door and the plan must not name the same table two different ways.
+ */
+export interface TableLabel {
+  /** Our name for the table, else the number it carries, else the name of the spot it stands on. */
+  readonly label: string
+  /** The label is the till's number, so a screen says «Маса 7» rather than a bare 7. */
+  readonly numbered: boolean
+}
+
 /** One table of the spots being tapped, as the door sees it. */
-export interface DoorTable {
+export interface DoorTable extends TableLabel {
   readonly tableId: string
-  readonly tableName: string
   /** Its codes are already open (#329). On its own that asks nothing: see `roundSent`. */
   readonly open: boolean
   /**
@@ -129,16 +139,30 @@ export interface ArrivalChecks {
   readonly payRule: PayRule | null
 }
 
-/** The tables of these spots, by spot id, with the names the screen shows. */
+/**
+ * The tables of these spots, by spot id, each already carrying the label the screen says out loud.
+ *
+ * The label is resolved **here**, once, in the floor plan's own order (`plan-read`): our name for
+ * the table, else the number it carries, else the name of the spot it stands on. A venue that
+ * labels its tables by number has no name on any of them (the schema: `name` is "our name for it,
+ * or null"), so reading the name alone left every dialogue naming nothing (#558). No caller
+ * repeats this fallback, and there is no second rule beside the first.
+ */
 async function tablesOfSpots(
   tx: ReadTx,
   venueId: string,
   spotIds: readonly string[],
-): Promise<Map<string, { readonly tableId: string; readonly tableName: string }>> {
-  const bySpot = new Map<string, { tableId: string; tableName: string }>()
+): Promise<Map<string, { readonly tableId: string } & TableLabel>> {
+  const bySpot = new Map<string, { tableId: string } & TableLabel>()
   if (spotIds.length === 0) return bySpot
   const rows = await tx
-    .select({ spotId: spots.id, tableId: spots.tableId, tableName: venueTables.name })
+    .select({
+      spotId: spots.id,
+      spotName: spots.name,
+      tableId: spots.tableId,
+      tableName: venueTables.name,
+      tableNumber: venueTables.number,
+    })
     .from(spots)
     .leftJoin(venueTables, eq(venueTables.id, spots.tableId))
     .where(
@@ -146,7 +170,11 @@ async function tablesOfSpots(
     )
   for (const row of rows) {
     if (row.tableId !== null) {
-      bySpot.set(row.spotId, { tableId: row.tableId, tableName: row.tableName ?? '' })
+      bySpot.set(row.spotId, {
+        tableId: row.tableId,
+        label: row.tableName ?? row.tableNumber ?? row.spotName,
+        numbered: row.tableName === null && row.tableNumber !== null,
+      })
     }
   }
   return bySpot
@@ -287,9 +315,11 @@ export async function readArrivalChecks(
     const bySpot = await tablesOfSpots(tx, reader.venue.id, spotIds)
     const wanted = [...new Set([...bySpot.values()].map((one) => one.tableId))].sort()
     const state = await openTables(tx, reader.venue.id, wanted)
+    const labelled = new Map([...bySpot.values()].map((one) => [one.tableId, one]))
     const tables: DoorTable[] = wanted.map((tableId) => ({
       tableId,
-      tableName: [...bySpot.values()].find((one) => one.tableId === tableId)?.tableName ?? '',
+      label: labelled.get(tableId)?.label ?? '',
+      numbered: labelled.get(tableId)?.numbered ?? false,
       open: state.get(tableId)?.open ?? false,
       bill: state.get(tableId)?.bill ?? false,
       hasOrder: state.get(tableId)?.hasOrder ?? false,
