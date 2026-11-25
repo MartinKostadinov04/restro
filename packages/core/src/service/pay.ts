@@ -30,6 +30,7 @@
 
 import {
   billReadings,
+  paymentHolds,
   paymentLines,
   paymentSteps,
   payments,
@@ -42,6 +43,7 @@ import { z } from 'zod'
 import { guestEventAmount, guestEventOutcome } from '../events'
 import { idSchema, newId } from '../ids'
 import { addMinor, percentOfMinor, sumSignedMinor } from '../money'
+import { readPayFirstSettings } from '../pay-first-settings'
 import { readPayingSettings } from '../paying-settings'
 import { DecimalQuantitySchema } from '../quantity'
 import { orderFromRow, releaseHeldLines } from '../table-order'
@@ -93,6 +95,11 @@ export const PAY_REFUSALS = [
   'too_late',
   /** No payment of this table has that handle. */
   'unknown_payment',
+  /**
+   * Sharing the bill by amount is not offered here (D160 §3, 2.8, 2.19): the table's POS does not
+   * declare one close with several card payments, or guests at the venue pay before they order.
+   */
+  'share_not_offered',
 ] as const
 
 /** How long the guest has to confirm once the form's values reach the phone (design §6). */
@@ -103,6 +110,8 @@ export const PAYMENT_SESSION_MS = 10 * 60_000
 export const TABLE_OPEN_PAYMENTS = 3
 /** How long a held payment waits for a free payment table (design §6: 60 seconds from `held`). */
 export const PAYMENT_QUEUE_MS = 60_000
+/** How long a group payment gathers its holds: 10 minutes from the first (D160 §3, 2.5). */
+export const SHARE_GATHERING_MS = 10 * 60_000
 
 /** The payment states before a hold is made: a cancel still wins. */
 const BEFORE_HOLD = ['requested', 'priced', 'awaiting_guest'] as const
@@ -287,6 +296,7 @@ export async function release(
   reason: string,
   state: 'released' | 'stranded' = 'released',
 ): Promise<void> {
+  if (payment.sharedMinor !== null) await releaseShareHolds(stx, payment.id, reason)
   await stx.tx
     .update(payments)
     .set({
@@ -305,6 +315,48 @@ export async function release(
   await recordPayFinished(stx, payment, state)
   if (payment.kind === 'pay_first') await endPayFirstBeforePos(stx, payment, reason)
 }
+
+/**
+ * A group payment's holds as it is released (#543): every hold must be final already, or asked
+ * for and never sent to the provider (no step recorded), which is released here. A hold that may
+ * stand at the provider is let go only through the worker (`share.hold_settle`), so releasing the
+ * payment over one would leave a card held: that throws.
+ */
+async function releaseShareHolds(stx: ServiceTx, id: string, reason: string): Promise<void> {
+  const holds = await stx.tx
+    .select({ id: paymentHolds.id, state: paymentHolds.state })
+    .from(paymentHolds)
+    .where(eq(paymentHolds.paymentId, id))
+  const touched = new Set(
+    (
+      await stx.tx
+        .selectDistinct({ holdId: paymentSteps.holdId })
+        .from(paymentSteps)
+        .where(eq(paymentSteps.paymentId, id))
+    ).map((step) => step.holdId),
+  )
+  for (const hold of holds) {
+    if (SETTLED_HOLDS.includes(hold.state)) continue
+    if (hold.state !== 'requested' || touched.has(hold.id)) {
+      throw new Error(
+        'a group payment was released while one of its holds may stand at the provider',
+      )
+    }
+    await stx.tx
+      .update(paymentHolds)
+      .set({
+        state: 'released',
+        reason,
+        settledAt: sql`now()`,
+        ...stx.provenance,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(paymentHolds.id, hold.id))
+  }
+}
+
+/** The final states of a group payment's hold (`PAYMENT_HOLD_FINAL_STATES` in `@restro/db`). */
+const SETTLED_HOLDS: readonly string[] = ['released', 'captured', 'capture_failed']
 
 /**
  * A pay-first payment that ended before its round reached the POS (#113): its lines are free on the
@@ -447,6 +499,46 @@ export async function openPaymentsOn(
 // ---------------------------------------------------------------------------------------------
 // Guest commands
 
+/** What starts a payment of the bill: a Pay, or a group payment's start (#543). */
+interface StartCommand {
+  readonly tableId: string
+  readonly actionId: string
+  readonly handleHash: string
+  readonly pick: z.output<typeof PickSchema>
+  readonly seen: readonly z.output<typeof SeenLineSchema>[]
+  readonly tip: z.output<typeof TipSchema>
+  readonly receiptEmail?: string | undefined
+}
+
+/**
+ * `share.start`: a phone starts sharing the ticked lines by amount, "The whole bill" by default
+ * (D160 §3, #543). One payment for the lines, with no card of its own: each guest's card is a hold
+ * (`share.hold`), and the payment gathers until the holds cover its shared amount. The same checks
+ * as a Pay, and three more: the POS closes one bill with several card payments, guests at the
+ * venue don't pay before they order, and no tip or email here (each guest's tip is on their hold;
+ * a group payment sends no emailed receipt, 2.19).
+ */
+export function shareStart() {
+  return defineCommand({
+    schema: z.strictObject({
+      type: z.literal('share.start'),
+      tableId,
+      actionId,
+      ageMs: z
+        .int()
+        .nonnegative()
+        .max(24 * 60 * 60_000),
+      handleHash,
+      pick: PickSchema,
+      seen: z.array(SeenLineSchema).min(1).max(200),
+    }),
+    origins: ['guest'],
+    permission: null,
+    idempotency: 'by_nature',
+    handle: (stx, command) => startPayment(stx, { ...command, tip: { kind: 'none' } }, true),
+  })
+}
+
 /** `pay.start`: the guest pays picked lines, or the whole bill (design §3). */
 export function payStart() {
   return defineCommand({
@@ -474,221 +566,253 @@ export function payStart() {
     origins: ['guest'],
     permission: null,
     idempotency: 'by_nature',
-    async handle(stx, command) {
-      const refuse = (code: (typeof PAY_REFUSALS)[number]) => refused(command.actionId, code)
-      // The table's order row serialises every payment of the table: the second of two friends
-      // sees the first one's lines. A table of a linked group locks every member's (D160 §2,
-      // #542), in table-id order, so a payment over several tables and one over a single member
-      // never both win a line, and two phones of the group pay one at a time.
-      const group = await linkedGroupOfTable(stx.tx, { tableId: command.tableId })
-      const members = group?.tables.map((member) => member.tableId) ?? [command.tableId]
-      const orders = await stx.rows.tableOrders(members)
-      const order = orders.get(command.tableId) ?? null
+    handle: (stx, command) => startPayment(stx, command, false),
+  })
+}
 
-      // A repeat of the same tap finds its payment. The phone that repeats never got the first
-      // answer (or lost it), so the handle it holds now is the new one: the hash is replaced.
-      const [repeat] = await stx.tx
-        .select({ id: payments.id, state: payments.state, tableId: payments.tableId })
-        .from(payments)
-        .where(eq(payments.actionId, command.actionId))
-      if (repeat !== undefined) {
-        if (repeat.tableId !== command.tableId) return refuse('unknown_payment')
-        await stx.tx
-          .update(payments)
-          .set({ handleHash: command.handleHash, ...stx.provenance, updatedAt: sql`now()` })
-          .where(eq(payments.id, repeat.id))
-        return at(command, repeat, repeat.state, false)
+/** A Pay, or a group payment's start (`share`): the lines checked and the payment recorded. */
+async function startPayment(
+  stx: ServiceTx,
+  command: StartCommand,
+  share: boolean,
+): Promise<ServiceResult> {
+  const refuse = (code: (typeof PAY_REFUSALS)[number]) => refused(command.actionId, code)
+  // The table's order row serialises every payment of the table: the second of two friends
+  // sees the first one's lines. A table of a linked group locks every member's (D160 §2,
+  // #542), in table-id order, so a payment over several tables and one over a single member
+  // never both win a line, and two phones of the group pay one at a time.
+  const group = await linkedGroupOfTable(stx.tx, { tableId: command.tableId })
+  const members = group?.tables.map((member) => member.tableId) ?? [command.tableId]
+  const orders = await stx.rows.tableOrders(members)
+  const order = orders.get(command.tableId) ?? null
+
+  // A repeat of the same tap finds its payment. The phone that repeats never got the first
+  // answer (or lost it), so the handle it holds now is the new one: the hash is replaced.
+  const [repeat] = await stx.tx
+    .select({ id: payments.id, state: payments.state, tableId: payments.tableId })
+    .from(payments)
+    .where(eq(payments.actionId, command.actionId))
+  if (repeat !== undefined) {
+    if (repeat.tableId !== command.tableId) return refuse('unknown_payment')
+    // A repeat names the same kind of start: a Pay's action id never answers a share's.
+    const [kind] = await stx.tx
+      .select({ sharedMinor: payments.sharedMinor })
+      .from(payments)
+      .where(eq(payments.id, repeat.id))
+    if ((kind?.sharedMinor != null) !== share) return refused(command.actionId, 'invalid_command')
+    await stx.tx
+      .update(payments)
+      .set({ handleHash: command.handleHash, ...stx.provenance, updatedAt: sql`now()` })
+      .where(eq(payments.id, repeat.id))
+    return at(command, repeat, repeat.state, false)
+  }
+
+  // The group as it is now the members are locked: a table that joined or left it meanwhile
+  // (the hostess changed the party's tables) changed the bill the phone saw.
+  if (group !== null) {
+    const now = await linkedGroupOfTable(stx.tx, { tableId: command.tableId })
+    const still = now?.tables.map((member) => member.tableId) ?? [command.tableId]
+    if (still.join() !== members.join()) return refuse('bill_changed')
+  }
+
+  // Paying is on only when the account is connected and every check of D125 2.3 passes; a
+  // lost account pauses it (D125 2.4). The account row is locked `FOR SHARE`, so a disconnect
+  // cannot land between this check and the payment.
+  const connection = await loadPayingConnection(stx.tx, stx.venueId, 'share')
+  if (connection.state === 'lost_access') return refuse('paying_paused')
+  if (!connection.readiness.on || connection.providerKind === null) {
+    return refuse('paying_not_offered')
+  }
+  // The provider's breaker (#112): paying pauses alone, ordering goes on.
+  if (await payingPaused(stx)) return refuse('paying_paused')
+  const account = { providerKind: connection.providerKind }
+
+  if (order === null) return refuse('sitting_ended')
+  const sitting = await stx.rows.openSitting(command.tableId)
+  if (sitting === null) return refuse('sitting_ended')
+  const [table] = await stx.tx
+    .select({ barId: venueTables.barId })
+    .from(venueTables)
+    .where(eq(venueTables.id, command.tableId))
+  // Paying pauses with ordering: the table's, its bar's, the venue's or the connection's (#111).
+  if (await orderingPaused(stx, command.tableId, table?.barId ?? null)) {
+    return refuse('paying_paused')
+  }
+  // The tables whose lines this phone may pick: its own, or every member of its linked group
+  // where the POS moves lines to a payment table (#542); elsewhere each table pays its own.
+  const across = group !== null && (await groupPaysAcross(stx.tx, members))
+  const payable = await payableLines(stx, {
+    tableId: command.tableId,
+    tables: across ? members : [command.tableId],
+  })
+  if (payable === null) return refuse('bill_changed')
+  const all = payable.lines
+
+  // The lines picked, each with its table and POS bill, from the latest readings.
+  const lines: PayableLine[] = []
+  if (command.pick.kind === 'whole') {
+    // The whole bill must be exactly what the phone saw: one line more or less changed it.
+    if (all.length === 0 || all.length !== command.seen.length) return refuse('bill_changed')
+    lines.push(...all)
+  } else {
+    const byId = new Map(all.map((entry) => [entry.line.id, entry]))
+    for (const pick of command.pick.lines) {
+      const found = byId.get(pick.lineId)
+      if (found === undefined) return refuse('bill_changed')
+      // Part of a line: the POS's own amount for it is known only once a waiter splits it.
+      if (!sameQuantity(pick.quantity, found.line.quantity)) {
+        return refuse('ask_waiter_to_split')
       }
+      lines.push(found)
+    }
+    if (new Set(lines.map(({ line }) => line.id)).size !== lines.length) {
+      return refused(command.actionId, 'invalid_command')
+    }
+  }
+  // A member table whose bill did not read well now (log 1.8): its lines wait, and so does
+  // "The whole bill" while any member is unread (a whole pick covers every member).
+  if (group !== null && across) {
+    const picked = new Set(lines.map((entry) => entry.tableId))
+    const readings = await linkedGroupReadings(stx.tx, group)
+    const unread = readings.filter((member) => member.reading !== 'complete')
+    if (command.pick.kind === 'whole' && groupHasUnreadTable(readings)) {
+      return refuse('table_not_read')
+    }
+    if (unread.some((member) => picked.has(member.tableId))) return refuse('table_not_read')
+  }
+  // The knock (D111): each picked line as the phone saw it, unchanged.
+  const seen = new Map(command.seen.map((line) => [line.lineId, line]))
+  for (const { line } of lines) {
+    const saw = seen.get(line.id)
+    if (
+      saw === undefined ||
+      !sameQuantity(saw.quantity, line.quantity) ||
+      saw.amountMinor !== line.amountMinor
+    ) {
+      return refuse('bill_changed')
+    }
+  }
+  // A bill a payment already isolated is being paid; a part-paid bill, or a bill whose total
+  // isn't its lines (a bill-level discount, D122 §8), only a waiter can split: the hold is the
+  // picked lines' amounts, so any pick from it, the whole bill too, would charge too much.
+  for (const bill of new Set(lines.map(({ bill }) => bill))) {
+    if (bill.paymentInFlight) return refuse('being_paid')
+    if (bill.paidMinor > 0) return refuse('ask_waiter_to_split')
+    if (signedSumMinor(bill.lines.map((line) => line.amountMinor)) !== bill.totalMinor) {
+      return refuse('ask_waiter_to_split')
+    }
+  }
 
-      // The group as it is now the members are locked: a table that joined or left it meanwhile
-      // (the hostess changed the party's tables) changed the bill the phone saw.
-      if (group !== null) {
-        const now = await linkedGroupOfTable(stx.tx, { tableId: command.tableId })
-        const still = now?.tables.map((member) => member.tableId) ?? [command.tableId]
-        if (still.join() !== members.join()) return refuse('bill_changed')
-      }
+  // The grey: a line a payment still claims, an `unconfirmed` one's too (migration 0043).
+  const refs = lines.map(({ line }) => line.pos)
+  const greyed = await stx.tx
+    .select({ ref: paymentLines.posLineRef })
+    .from(paymentLines)
+    .where(
+      and(
+        eq(paymentLines.venueId, stx.venueId),
+        eq(paymentLines.open, true),
+        inArray(paymentLines.posLineRef, refs),
+      ),
+    )
+  if (greyed.length > 0) return refuse('being_paid')
+  // At most three payments that aren't final on each table the payment covers: one over
+  // several tables counts once on each of them (#542).
+  const covered = [...new Set([command.tableId, ...lines.map((entry) => entry.tableId)])]
+  const open = await openPaymentsOn(stx, covered)
+  if (covered.some((tableId) => (open.get(tableId) ?? 0) >= TABLE_OPEN_PAYMENTS)) {
+    return refuse('rate_limited')
+  }
 
-      // Paying is on only when the account is connected and every check of D125 2.3 passes; a
-      // lost account pauses it (D125 2.4). The account row is locked `FOR SHARE`, so a disconnect
-      // cannot land between this check and the payment.
-      const connection = await loadPayingConnection(stx.tx, stx.venueId, 'share')
-      if (connection.state === 'lost_access') return refuse('paying_paused')
-      if (!connection.readiness.on || connection.providerKind === null) {
-        return refuse('paying_not_offered')
-      }
-      // The provider's breaker (#112): paying pauses alone, ordering goes on.
-      if (await payingPaused(stx)) return refuse('paying_paused')
-      const account = { providerKind: connection.providerKind }
+  const linesMinor = signedSumMinor(lines.map(({ line }) => line.amountMinor))
+  if (linesMinor === null || linesMinor === 0) return refuse('ask_waiter_to_split')
+  const tipMinor = tipOf(command.tip, linesMinor)
+  // A tip given as an amount stops at the lines' own amount (100 %, as a percent tip does).
+  if (command.tip.kind === 'amount' && tipMinor > linesMinor) {
+    return refused(command.actionId, 'invalid_command')
+  }
+  // No tip where the POS can't put it on the receipt (D127): the phone was told none is possible.
+  const capabilities = await readTableCapabilities(stx.tx, command.tableId)
+  if (tipMinor > 0 && !capabilities.recordTipOnClose) return refuse('tip_not_offered')
+  // Sharing by amount (D160 §3, 2.8, 2.19): only where the POS declares one close with several
+  // card payments (undeclared means not claimed), never where guests pay before they order.
+  if (
+    share &&
+    (!capabilities.closeWithSeveralPayments ||
+      readPayFirstSettings(stx.venue.settings).itemMode === 'pay_first')
+  ) {
+    return refuse('share_not_offered')
+  }
+  // Where the table's POS can no longer issue an electronic receipt (the recorded capability
+  // changed since the phone was offered the field), the address is dropped and the guest pays
+  // with paper: never a refused Pay for a field the phone was offered.
+  const receiptEmail =
+    capabilities.electronicReceipt && !share ? (command.receiptEmail ?? null) : null
+  const amountMinor = addMinor(linesMinor, tipMinor)
+  // The venue's own floor here; the provider's minimum is checked when the worker prices it.
+  const floor = readPayingSettings(stx.venue.settings).minCardMinor ?? 0
+  if (amountMinor < floor) return refuse('below_minimum')
 
-      if (order === null) return refuse('sitting_ended')
-      const sitting = await stx.rows.openSitting(command.tableId)
-      if (sitting === null) return refuse('sitting_ended')
-      const [table] = await stx.tx
-        .select({ barId: venueTables.barId })
-        .from(venueTables)
-        .where(eq(venueTables.id, command.tableId))
-      // Paying pauses with ordering: the table's, its bar's, the venue's or the connection's (#111).
-      if (await orderingPaused(stx, command.tableId, table?.barId ?? null)) {
-        return refuse('paying_paused')
-      }
-      // The tables whose lines this phone may pick: its own, or every member of its linked group
-      // where the POS moves lines to a payment table (#542); elsewhere each table pays its own.
-      const across = group !== null && (await groupPaysAcross(stx.tx, members))
-      const payable = await payableLines(stx, {
-        tableId: command.tableId,
-        tables: across ? members : [command.tableId],
-      })
-      if (payable === null) return refuse('bill_changed')
-      const all = payable.lines
-
-      // The lines picked, each with its table and POS bill, from the latest readings.
-      const lines: PayableLine[] = []
-      if (command.pick.kind === 'whole') {
-        // The whole bill must be exactly what the phone saw: one line more or less changed it.
-        if (all.length === 0 || all.length !== command.seen.length) return refuse('bill_changed')
-        lines.push(...all)
-      } else {
-        const byId = new Map(all.map((entry) => [entry.line.id, entry]))
-        for (const pick of command.pick.lines) {
-          const found = byId.get(pick.lineId)
-          if (found === undefined) return refuse('bill_changed')
-          // Part of a line: the POS's own amount for it is known only once a waiter splits it.
-          if (!sameQuantity(pick.quantity, found.line.quantity)) {
-            return refuse('ask_waiter_to_split')
-          }
-          lines.push(found)
+  const id = newId('py')
+  const currency = lines[0]?.bill.currency ?? 'EUR'
+  // A group payment gathers until 10 minutes after its first hold (D160 2.5); until a first
+  // hold comes, 10 minutes from its start, so lines nobody holds never stay greyed.
+  const startedAt = (await stx.dbNow()).getTime()
+  await stx.tx.insert(payments).values({
+    id,
+    tenantId: stx.tenantId,
+    venueId: stx.venueId,
+    tableId: command.tableId,
+    sittingId: sitting.id,
+    barId: table?.barId ?? null,
+    serviceDate: stx.serviceDate,
+    kind: 'on_bill',
+    state: 'requested',
+    handleHash: command.handleHash,
+    actionId: command.actionId,
+    tipMinor,
+    receiptEmail,
+    currency,
+    providerKind: account.providerKind,
+    ...(share
+      ? {
+          sharedMinor: linesMinor,
+          gatheringEndsAt: new Date(startedAt + SHARE_GATHERING_MS),
         }
-        if (new Set(lines.map(({ line }) => line.id)).size !== lines.length) {
-          return refused(command.actionId, 'invalid_command')
-        }
-      }
-      // A member table whose bill did not read well now (log 1.8): its lines wait, and so does
-      // "The whole bill" while any member is unread (a whole pick covers every member).
-      if (group !== null && across) {
-        const picked = new Set(lines.map((entry) => entry.tableId))
-        const readings = await linkedGroupReadings(stx.tx, group)
-        const unread = readings.filter((member) => member.reading !== 'complete')
-        if (command.pick.kind === 'whole' && groupHasUnreadTable(readings)) {
-          return refuse('table_not_read')
-        }
-        if (unread.some((member) => picked.has(member.tableId))) return refuse('table_not_read')
-      }
-      // The knock (D111): each picked line as the phone saw it, unchanged.
-      const seen = new Map(command.seen.map((line) => [line.lineId, line]))
-      for (const { line } of lines) {
-        const saw = seen.get(line.id)
-        if (
-          saw === undefined ||
-          !sameQuantity(saw.quantity, line.quantity) ||
-          saw.amountMinor !== line.amountMinor
-        ) {
-          return refuse('bill_changed')
-        }
-      }
-      // A bill a payment already isolated is being paid; a part-paid bill, or a bill whose total
-      // isn't its lines (a bill-level discount, D122 §8), only a waiter can split: the hold is the
-      // picked lines' amounts, so any pick from it, the whole bill too, would charge too much.
-      for (const bill of new Set(lines.map(({ bill }) => bill))) {
-        if (bill.paymentInFlight) return refuse('being_paid')
-        if (bill.paidMinor > 0) return refuse('ask_waiter_to_split')
-        if (signedSumMinor(bill.lines.map((line) => line.amountMinor)) !== bill.totalMinor) {
-          return refuse('ask_waiter_to_split')
-        }
-      }
-
-      // The grey: a line a payment still claims, an `unconfirmed` one's too (migration 0043).
-      const refs = lines.map(({ line }) => line.pos)
-      const greyed = await stx.tx
-        .select({ ref: paymentLines.posLineRef })
-        .from(paymentLines)
-        .where(
-          and(
-            eq(paymentLines.venueId, stx.venueId),
-            eq(paymentLines.open, true),
-            inArray(paymentLines.posLineRef, refs),
-          ),
-        )
-      if (greyed.length > 0) return refuse('being_paid')
-      // At most three payments that aren't final on each table the payment covers: one over
-      // several tables counts once on each of them (#542).
-      const covered = [...new Set([command.tableId, ...lines.map((entry) => entry.tableId)])]
-      const open = await openPaymentsOn(stx, covered)
-      if (covered.some((tableId) => (open.get(tableId) ?? 0) >= TABLE_OPEN_PAYMENTS)) {
-        return refuse('rate_limited')
-      }
-
-      const linesMinor = signedSumMinor(lines.map(({ line }) => line.amountMinor))
-      if (linesMinor === null || linesMinor === 0) return refuse('ask_waiter_to_split')
-      const tipMinor = tipOf(command.tip, linesMinor)
-      // A tip given as an amount stops at the lines' own amount (100 %, as a percent tip does).
-      if (command.tip.kind === 'amount' && tipMinor > linesMinor) {
-        return refused(command.actionId, 'invalid_command')
-      }
-      // No tip where the POS can't put it on the receipt (D127): the phone was told none is possible.
-      const capabilities = await readTableCapabilities(stx.tx, command.tableId)
-      if (tipMinor > 0 && !capabilities.recordTipOnClose) return refuse('tip_not_offered')
-      // Where the table's POS can no longer issue an electronic receipt (the recorded capability
-      // changed since the phone was offered the field), the address is dropped and the guest pays
-      // with paper: never a refused Pay for a field the phone was offered.
-      const receiptEmail = capabilities.electronicReceipt ? (command.receiptEmail ?? null) : null
-      const amountMinor = addMinor(linesMinor, tipMinor)
-      // The venue's own floor here; the provider's minimum is checked when the worker prices it.
-      const floor = readPayingSettings(stx.venue.settings).minCardMinor ?? 0
-      if (amountMinor < floor) return refuse('below_minimum')
-
-      const id = newId('py')
-      const currency = lines[0]?.bill.currency ?? 'EUR'
-      await stx.tx.insert(payments).values({
-        id,
+      : {}),
+    ...stx.provenance,
+  })
+  const made = await stx.tx
+    .insert(paymentLines)
+    .values(
+      lines.map(({ line, tableId: lineTable }, index) => ({
         tenantId: stx.tenantId,
         venueId: stx.venueId,
-        tableId: command.tableId,
-        sittingId: sitting.id,
-        barId: table?.barId ?? null,
-        serviceDate: stx.serviceDate,
-        kind: 'on_bill',
-        state: 'requested',
-        handleHash: command.handleHash,
-        actionId: command.actionId,
-        tipMinor,
-        receiptEmail,
-        currency,
-        providerKind: account.providerKind,
+        paymentId: id,
+        tableId: lineTable,
+        position: index + 1,
+        posLineRef: line.pos,
+        quantity: line.quantity,
+        posAmountMinor: line.amountMinor,
+        displayName: displayNameOf(line),
+        name: paymentLineName(line.name),
         ...stx.provenance,
-      })
-      const made = await stx.tx
-        .insert(paymentLines)
-        .values(
-          lines.map(({ line, tableId: lineTable }, index) => ({
-            tenantId: stx.tenantId,
-            venueId: stx.venueId,
-            paymentId: id,
-            tableId: lineTable,
-            position: index + 1,
-            posLineRef: line.pos,
-            quantity: line.quantity,
-            posAmountMinor: line.amountMinor,
-            displayName: displayNameOf(line),
-            name: paymentLineName(line.name),
-            ...stx.provenance,
-          })),
-        )
-        .onConflictDoNothing()
-        .returning({ position: paymentLines.position })
-      // The database's word on the grey (`payment_lines_open_line_unique`): refused, rolled back.
-      if (made.length !== lines.length) return refuse('being_paid')
-      // Paying began (D142): with `pay.finished` it shows the payments a guest abandoned, which no
-      // service row of ours does.
-      await stx.recordEvents(command.tableId, [
-        { kind: 'pay.started', sittingId: sitting.id, ...guestEventAmount(amountMinor, currency) },
-      ])
-      // Its lines read `beingPaid` on every table it covers.
-      for (const tableId of covered) {
-        if ((orders.get(tableId) ?? null) !== null) stx.rows.touch(tableId)
-      }
-      return at(command, { id }, 'requested', true)
-    },
-  })
+      })),
+    )
+    .onConflictDoNothing()
+    .returning({ position: paymentLines.position })
+  // The database's word on the grey (`payment_lines_open_line_unique`): refused, rolled back.
+  if (made.length !== lines.length) return refuse('being_paid')
+  // Paying began (D142): with `pay.finished` it shows the payments a guest abandoned, which no
+  // service row of ours does.
+  await stx.recordEvents(command.tableId, [
+    { kind: 'pay.started', sittingId: sitting.id, ...guestEventAmount(amountMinor, currency) },
+  ])
+  // Its lines read `beingPaid` on every table it covers.
+  for (const tableId of covered) {
+    if ((orders.get(tableId) ?? null) !== null) stx.rows.touch(tableId)
+  }
+  return at(command, { id }, 'requested', true)
 }
 
 /** `pay.returned` and `pay.cancel` name their payment by its handle. */
@@ -833,15 +957,31 @@ export function paymentPrice() {
       // Only the picked lines are compared here: the bill-level checks (a part-paid bill, a whole-bill
       // discount) are made at `pay.start` only; a bill changed since is for #111's check of the moved lines.
       if (changed || picked.length === 0) return releaseFor('bill_changed')
-      if (payment.tipMinor > 0 && !command.tipAllowed) return releaseFor('paying_not_offered')
-      const amountMinor = holdAmountMinor(
-        picked.map((line) => line.posAmountMinor),
-        payment.tipMinor,
-      )
       const floor = Math.max(
         readPayingSettings(stx.venue.settings).minCardMinor ?? 0,
         command.providerMinimumMinor,
         1,
+      )
+      if (payment.sharedMinor !== null) {
+        // A group payment (#543) has no card of its own: it gathers its guests' holds from here.
+        // Its amount is the shared amount until the holds cover it with their tips.
+        if (payment.sharedMinor < floor) return releaseFor('below_minimum')
+        await stx.tx
+          .update(payments)
+          .set({
+            state: 'awaiting_guest',
+            amountMinor: payment.sharedMinor,
+            ...stx.provenance,
+            updatedAt: sql`now()`,
+          })
+          .where(eq(payments.id, payment.id))
+        await touchPaymentTables(stx, payment)
+        return at(command, payment, 'awaiting_guest', true)
+      }
+      if (payment.tipMinor > 0 && !command.tipAllowed) return releaseFor('paying_not_offered')
+      const amountMinor = holdAmountMinor(
+        picked.map((line) => line.posAmountMinor),
+        payment.tipMinor,
       )
       if (amountMinor === null || amountMinor < floor) return releaseFor('below_minimum')
       await stx.tx
@@ -875,6 +1015,7 @@ export function paymentHoldCreated() {
       const locked = await lockPayment(stx, { id: command.paymentId })
       if (locked === null) return refused(null, 'payment_missing')
       const { payment } = locked
+      if (payment.sharedMinor !== null) return refused(null, 'group_payment')
       if (
         payment.providerPaymentRef !== null &&
         payment.providerPaymentRef !== command.providerPaymentRef
@@ -944,6 +1085,7 @@ export function paymentCheck() {
       const locked = await lockPayment(stx, { id: command.paymentId })
       if (locked === null) return refused(null, 'payment_missing')
       const { payment } = locked
+      if (payment.sharedMinor !== null) return refused(null, 'group_payment')
       if (payment.state !== 'awaiting_guest') return at(command, payment, payment.state, false)
       const read = command.reading
       if (payment.providerPaymentRef !== read.ref) {
@@ -1039,6 +1181,10 @@ export function paymentSettle() {
       if (!answered && (await enterAttempted(stx, payment.id))) {
         return refused(null, 'enter_attempted')
       }
+      // A group payment (#543) settles once every hold is let go (`share.hold_settle`).
+      if (payment.sharedMinor !== null && (await shareHoldsPending(stx, payment.id))) {
+        return refused(null, 'holds_pending')
+      }
       const state = reason === 'stranded' ? 'stranded' : 'released'
       await release(stx, payment, reason, state)
       return at(command, payment, state, true)
@@ -1063,6 +1209,7 @@ export function paymentHoldUnknown() {
       const locked = await lockPayment(stx, { id: command.paymentId })
       if (locked === null) return refused(null, 'payment_missing')
       const { payment } = locked
+      if (payment.sharedMinor !== null) return refused(null, 'group_payment')
       if (payment.state !== 'priced') return at(command, payment, payment.state, false)
       await stx.tx
         .update(payments)
@@ -1115,6 +1262,15 @@ export async function enterAttempted(stx: ServiceTx, id: string): Promise<boolea
   )
 }
 
+/** True while a hold of the group payment may still stand at the provider (#543). */
+export async function shareHoldsPending(stx: ServiceTx, id: string): Promise<boolean> {
+  const holds = await stx.tx
+    .select({ state: paymentHolds.state })
+    .from(paymentHolds)
+    .where(eq(paymentHolds.paymentId, id))
+  return holds.some((hold) => !SETTLED_HOLDS.includes(hold.state) && hold.state !== 'requested')
+}
+
 /** True once a close of the payment's bill was attempted: from then on it is never undone (#111). */
 export async function closeAttempted(stx: ServiceTx, id: string): Promise<boolean> {
   const [step] = await stx.tx
@@ -1138,6 +1294,8 @@ export function paymentStep() {
       .strictObject({
         type: z.literal('payment.step'),
         paymentId,
+        /** A group payment's hold the provider step is for (#543): its own provider payment. */
+        holdId: idSchema('ph').nullable().default(null),
         step: z.enum(PAYMENT_STEP_NAMES),
         outcome: z.enum(['attempting', 'done', 'refused', 'unknown']),
         answer: PosRefSchema.nullable(),
@@ -1168,6 +1326,22 @@ export function paymentStep() {
         .where(and(eq(payments.id, command.paymentId), eq(payments.venueId, stx.venueId)))
         .for('update')
       if (payment === undefined) return refused(null, 'payment_missing')
+      if (command.holdId !== null) {
+        const [hold] = await stx.tx
+          .select({ state: paymentHolds.state })
+          .from(paymentHolds)
+          .where(and(eq(paymentHolds.id, command.holdId), eq(paymentHolds.paymentId, payment.id)))
+        if (hold === undefined) return refused(null, 'payment_missing', { reason: 'hold_missing' })
+        // A hold is asked of the provider only while it is still asked for: a hold withdrawn or
+        // let go before the call is never made, so it holds nothing (#543).
+        if (
+          command.step === 'createHold' &&
+          command.outcome === 'attempting' &&
+          hold.state !== 'requested'
+        ) {
+          return refused(null, 'hold_not_requested', { state: hold.state })
+        }
+      }
       if (command.outcome === 'attempting' && ONCE_STEPS.includes(command.step)) {
         // A close is sent once; an entry once unless the POS refused it (nothing written). A run
         // that finds another's attempt backs off before it calls the POS (#113).
@@ -1188,6 +1362,7 @@ export function paymentStep() {
         tenantId: stx.tenantId,
         venueId: stx.venueId,
         paymentId: payment.id,
+        holdId: command.holdId,
         step: command.step,
         outcome: command.outcome,
         answer: command.answer,

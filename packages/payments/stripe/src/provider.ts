@@ -1,6 +1,6 @@
 // The Stripe payment provider (#107; D126, D127 §Interfaces, design §10): direct charges on the
-// venue's own Stripe account (`Stripe-Account`), a manual-capture PaymentIntent per payment, Accounts
-// v2 with Stripe's hosted onboarding for connecting. Only apps/worker builds it (D127 1.2).
+// venue's own Stripe account (`Stripe-Account`), a manual-capture PaymentIntent per payment (per hold,
+// for a group payment: #543), Accounts v2 with Stripe's hosted onboarding for connecting. Only apps/worker builds it (D127 1.2).
 //
 // Every request is parsed with the seam's schemas first: a malformed request is a bug in the
 // platform and throws. Every Stripe answer is parsed with this package's schemas (`api.ts`)
@@ -18,6 +18,8 @@ import {
   type Currency,
   type PaymentCapabilities,
   type PaymentDisputeState,
+  type PaymentHoldId,
+  PaymentHoldIdSchema,
   type PaymentId,
   PaymentIdSchema,
   type PaymentProvider,
@@ -59,6 +61,7 @@ import {
   connectionStatus,
   disputeDueAt,
   disputeState,
+  HOLD_METADATA_KEY,
   type Mapped,
   PAYMENT_METADATA_KEY,
   providerPayment,
@@ -292,12 +295,19 @@ export function createStripeProvider(options: StripeProviderOptions): PaymentPro
     return { kind: 'done', result: read.value }
   }
 
-  /** The intents this account has for our payment id: recent ones listed, older ones searched. */
+  /**
+   * The intents this account has for our payment id (and, with `holdId`, for that hold of a group
+   * payment, #543): recent ones listed, older ones searched.
+   */
   async function intentsFor(
     accountRef: ProviderRef,
     paymentId: PaymentId,
+    holdId: PaymentHoldId | undefined,
   ): Promise<Got<Set<string>>> {
     const found = new Set<string>()
+    const ours = (intent: StripePaymentIntent) =>
+      intent.metadata?.[PAYMENT_METADATA_KEY] === paymentId &&
+      (holdId === undefined || intent.metadata?.[HOLD_METADATA_KEY] === holdId)
     // Search is not for read-after-write: data is searchable "in less than a minute", and "can be
     // up to an hour behind during outages" (https://docs.stripe.com/api/payment_intents/search.md,
     // https://docs.stripe.com/search.md#data-freshness). So a payment made in the last two hours
@@ -321,25 +331,31 @@ export function createStripeProvider(options: StripeProviderOptions): PaymentPro
       )
       if (!listed.ok) return listed
       for (const intent of listed.value.data) {
-        if (intent.metadata?.[PAYMENT_METADATA_KEY] === paymentId) found.add(intent.id)
+        if (ours(intent)) found.add(intent.id)
       }
       const last = listed.value.data.at(-1)
       if (!listed.value.has_more || last === undefined) break
       startingAfter = last.id
     }
     // GET /v1/payment_intents/search (https://docs.stripe.com/api/payment_intents/search.md;
-    // query language: https://docs.stripe.com/search.md). Our id is base62, safe in the quotes.
+    // query language: https://docs.stripe.com/search.md). Our ids are base62, safe in the quotes.
+    // A hold is searched by both keys, joined by `AND` (search.md, "Query structure"): a group
+    // payment has one intent per hold, so the payment's id alone may match more than ten.
+    const byPayment = `metadata['${PAYMENT_METADATA_KEY}']:'${paymentId}'`
+    const query =
+      holdId === undefined
+        ? byPayment
+        : `${byPayment} AND metadata['${HOLD_METADATA_KEY}']:'${holdId}'`
     const searched = await get(SearchResultSchema, () =>
-      stripe.paymentIntents.search(
-        { query: `metadata['${PAYMENT_METADATA_KEY}']:'${paymentId}'`, limit: 10 },
-        on(accountRef),
-      ),
+      stripe.paymentIntents.search({ query, limit: 10 }, on(accountRef)),
     )
     if (!searched.ok) return searched
     if (searched.value.has_more) {
       return { ok: false, missing: false, reason: 'more than ten payments carry this payment id' }
     }
-    for (const intent of searched.value.data) found.add(intent.id)
+    for (const intent of searched.value.data) {
+      if (ours(intent)) found.add(intent.id)
+    }
     return { ok: true, value: found }
   }
 
@@ -503,7 +519,11 @@ export function createStripeProvider(options: StripeProviderOptions): PaymentPro
             capture_method: 'manual',
             allowed_payment_method_types: ['card'],
             payment_method_options: { card: { request_three_d_secure: 'any' } },
-            metadata: { [PAYMENT_METADATA_KEY]: req.paymentId },
+            // A group payment's hold (#543) carries its hold's id too, for its own read-back.
+            metadata: {
+              [PAYMENT_METADATA_KEY]: req.paymentId,
+              ...(req.holdId === undefined ? {} : { [HOLD_METADATA_KEY]: req.holdId }),
+            },
             description: req.description,
           },
           keyed(req.accountRef, req.idempotencyKey),
@@ -525,16 +545,29 @@ export function createStripeProvider(options: StripeProviderOptions): PaymentPro
       return { kind: 'done', result: { paymentRef: providerRef(intent.data.id), form } }
     },
 
-    async findByPaymentId(accountRef, paymentId): Promise<Reading<ProviderPayment | null>> {
+    // With `holdId`, the one intent of that hold of a group payment (#543). Without it, more than
+    // one intent, or one made for a hold, concludes nothing: a group payment's intents are each read
+    // back by their hold, never by the payment's id alone.
+    async findByPaymentId(accountRef, paymentId, holdId): Promise<Reading<ProviderPayment | null>> {
       const ref = ProviderRefSchema.parse(accountRef)
       const id = PaymentIdSchema.parse(paymentId)
-      const intents = await intentsFor(ref, id)
+      const hold = holdId === undefined ? undefined : PaymentHoldIdSchema.parse(holdId)
+      const intents = await intentsFor(ref, id, hold)
       if (!intents.ok) return incomplete(`the payments were not read: ${intents.reason}`)
       const [only, ...more] = [...intents.value]
       if (only === undefined) return { complete: true, value: null }
-      if (more.length > 0) return incomplete('more than one payment carries this payment id')
+      if (more.length > 0) {
+        return incomplete(
+          hold === undefined
+            ? 'more than one payment carries this payment id'
+            : 'more than one payment carries this hold id',
+        )
+      }
       const read = await readIntent(ref, only)
       if (!read.ok) return incomplete(`the payment was not read: ${read.reason}`)
+      if (hold === undefined && read.value.holdId !== undefined) {
+        return incomplete("a group payment's payments are read back by their holds")
+      }
       return { complete: true, value: read.value }
     },
 

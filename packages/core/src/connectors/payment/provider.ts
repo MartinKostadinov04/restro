@@ -11,7 +11,7 @@
 // worker's refund job. Every other refund or dispute is the venue's own, only read back after a
 // notice (`readNoticeSubject`, #108; `readRefunds`, #261).
 
-import type { PaymentId } from '../../ids'
+import type { PaymentHoldId, PaymentId } from '../../ids'
 import type { EmptyResult, Reading, WriteOutcome } from '../service/schemas'
 import type { PaymentCapabilities } from './capabilities'
 import type { ProviderRef } from './provider-ref'
@@ -78,10 +78,18 @@ export interface PaymentProvider {
   // Paying (D127 3.1)
   /** Create a hold, idempotent by key; nothing moves. */
   createHold(request: CreateHoldRequest): Promise<PaymentWriteOutcome<CreateHoldResult>>
-  /** Our payment's provider payment, or null where none was made: the read-back after a timeout. */
+  /**
+   * Our payment's provider payment, or null where none was made: the read-back after a timeout.
+   * With `holdId` (a group payment's hold, #543), the one provider payment made for that hold:
+   * a group payment has one per hold, so each is found by its hold, never by the payment alone.
+   * Without `holdId`, a provider payment carrying a hold's id is never taken for the payment's: a
+   * match that carries one makes the reading incomplete, so a lost hold is never released or
+   * captured as a single payment's.
+   */
   findByPaymentId(
     accountRef: ProviderRef,
     paymentId: PaymentId,
+    holdId?: PaymentHoldId,
   ): Promise<Reading<ProviderPayment | null>>
   /** The payment's status, amounts, `captureBefore`, the bank's check and its code. */
   readPayment(accountRef: ProviderRef, paymentRef: ProviderRef): Promise<Reading<ProviderPayment>>

@@ -70,6 +70,7 @@ import {
   JOB_NAMES,
   type OrderLine,
   type PayAndCloseResult,
+  PaymentHoldIdSchema,
   PaymentIdSchema,
   type PaymentJob,
   PaymentJobSchema,
@@ -109,6 +110,7 @@ import {
   quantityKey,
   READ_BACK_EVERY_MS,
   type RoundLine,
+  SHARE_CAPTURE_TRIES,
   sentOrderLinesOf,
   tableLabel,
 } from '@restro/core/service'
@@ -118,6 +120,7 @@ import {
   locks,
   logEntries,
   paymentAccounts,
+  paymentHolds,
   paymentLines,
   paymentSteps,
   payments,
@@ -129,7 +132,7 @@ import {
   venueTables,
   withTenant,
 } from '@restro/db'
-import { and, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm'
 import type { Job } from 'pg-boss'
 
 import type { SimPolicy } from '../config'
@@ -1837,8 +1840,16 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
   // The hold, read again right before the close: one cancelled or run out at the provider stops
   // the payment here, before a receipt is printed for a card that can't be charged.
   const account = await accountOf(env, target)
+  // A group payment's holds, each read (#543): their parts sum to what the share holds.
+  const shareHolds =
+    payment.sharedMinor === null
+      ? null
+      : (await holdsOf(env, target)).filter((row) => row.state === 'held')
   const hold =
-    account === null || account.accountRef === null || payment.providerPaymentRef === null
+    shareHolds !== null ||
+    account === null ||
+    account.accountRef === null ||
+    payment.providerPaymentRef === null
       ? null
       : await provider.readPayment(
           providerRef(account.accountRef),
@@ -1846,10 +1857,12 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
         )
   // A read that says nothing is tried again, a bounded number of times; then the check goes on with
   // no hold, and fails. It never reads as a hold gone or one still there (D125, D127 3.10).
-  let heldMinor: number | null = null
-  if (hold?.complete === true) {
+  let heldMinor: number | null =
+    shareHolds === null ? null : await heldOfShare(env, target, payment, shareHolds, deps)
+  if (shareHolds === null && hold?.complete === true) {
     heldMinor = hold.value.status === 'held' ? hold.value.heldMinor : 0
-  } else {
+  }
+  if (heldMinor === null) {
     const { details } = await route(env, target, { type: 'payment.hold_unread' })
     if (typeof details.tries !== 'number' || details.tries < HOLD_READ_TRIES) {
       throw new PaymentStepRetry('the hold could not be read')
@@ -1911,13 +1924,23 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
   // the receipt can reach the guest: the POS sends it itself, or it returns the file and Restro's
   // sender has it to send. Never past this function: held in memory, never logged (#186).
   const capabilities = pos.connector.capabilities
+  // A group payment sends no emailed receipt (#543): the waiter brings the one paper receipt.
   const receiptEmail =
+    now.sharedMinor === null &&
     now.receiptEmail !== null &&
     capabilities.electronicReceipt &&
     (!capabilities.electronicReceiptFile || (deps.receiptSender ?? null) !== null)
       ? now.receiptEmail
       : null
   const ref = `${payment.id}-close`
+  // One card payment per hold on the one close (#543, `closeWithSeveralPayments`): each its part and
+  // its tip, named by the hold's id, so the till shows each guest's card on the one receipt.
+  const closePayments =
+    now.sharedMinor === null
+      ? null
+      : (await holdsOf(env, target))
+          .filter((row) => row.state === 'held')
+          .map((row) => ({ amountMinor: row.amountMinor, tipMinor: row.tipMinor, ref: row.id }))
   const outcome = await writePos(
     env,
     target,
@@ -1932,6 +1955,7 @@ const checkAndClose: RouteStep = async (env, target, payment, deps) => {
         // The card payment type: the connector picks its card type (no venue setting yet, #111).
         paymentType: null,
         ...(receiptEmail === null ? {} : { receiptEmail }),
+        ...(closePayments === null ? {} : { payments: closePayments }),
         ref,
       }),
     null,
@@ -2067,6 +2091,7 @@ async function sendReceipt(
  * the same key; gone, the capture failed.
  */
 const captureStep: RouteStep = async (env, target, payment, deps) => {
+  if (payment.sharedMinor !== null) return captureShare(env, target, payment, deps)
   const account = await accountOf(env, target)
   if (account === null || account.accountRef === null) {
     throw new PaymentStepRetry("the venue's account is gone while a hold stands")
@@ -2516,6 +2541,579 @@ const freeStep: RouteStep = async (env, target, payment, deps) => {
   return 'next'
 }
 
+// ---------------------------------------------------------------------------------------------
+// A group payment (#543; D160 §3): each guest's card is a hold of its own (`payment_holds`), one
+// provider payment each, carrying the hold's id. Every provider call is a `payment.step` with the
+// hold's id, and its idempotency key is the hold's (`${holdId}:hold`, `:capture`, `:release`), so
+// a retry after an unknown outcome makes the provider do it once, and a lost answer is read back
+// by the hold's id (`findByPaymentId` with the hold, D125 3.9). The close is the route's, once,
+// with one card payment per hold; then each hold is captured on its own.
+
+type HoldRow = typeof paymentHolds.$inferSelect
+
+/** The holds of the group payment, oldest first. */
+async function holdsOf(env: PaymentEnvironment, target: PaymentJob): Promise<HoldRow[]> {
+  return withTenant(env.pool, target.tenantId, (tx) =>
+    tx
+      .select()
+      .from(paymentHolds)
+      .where(eq(paymentHolds.paymentId, target.paymentId))
+      .orderBy(asc(paymentHolds.createdAt), asc(paymentHolds.id)),
+  )
+}
+
+/** The final states of a hold (`PAYMENT_HOLD_FINAL_STATES`). */
+const HOLD_FINAL: readonly string[] = ['released', 'captured', 'capture_failed']
+
+/** Records one provider step of a hold (D127 3.9), as `recordStep` does a payment's. */
+function recordHoldStep(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  holdId: string,
+  step: 'createHold' | 'findByPaymentId' | 'release' | 'capture',
+  idempotencyKey: string,
+) {
+  return async (
+    outcome: 'attempting' | 'done' | 'refused' | 'unknown',
+    answer: string | null = null,
+  ): Promise<'recorded' | 'not_requested'> => {
+    const recorded = await apply(env, target, {
+      type: 'payment.step',
+      paymentId: target.paymentId,
+      holdId,
+      step,
+      outcome,
+      answer,
+      idempotencyKey,
+      lines: null,
+    })
+    // A hold let go before its call: the call is never made (core's `payment.step`).
+    if (recorded.code === 'hold_not_requested') return 'not_requested'
+    if (recorded.code !== null) throw new PaymentStepRetry(`the ${step} step was not recorded`)
+    await env.onStep?.({ step, outcome })
+    return 'recorded'
+  }
+}
+
+/** The hold's provider steps of one kind, latest first. */
+async function holdSteps(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  holdId: string,
+  step: 'createHold' | 'findByPaymentId' | 'release' | 'capture',
+): Promise<{ readonly outcome: string; readonly answer: string | null }[]> {
+  return withTenant(env.pool, target.tenantId, (tx) =>
+    tx
+      .select({ outcome: paymentSteps.outcome, answer: paymentSteps.answer })
+      .from(paymentSteps)
+      .where(and(eq(paymentSteps.holdId, holdId), eq(paymentSteps.step, step)))
+      .orderBy(desc(paymentSteps.seq)),
+  )
+}
+
+/**
+ * A hold's capture or release key (`providerKey`'s rule, per hold): a new one after a read showed
+ * an earlier call left the hold as it was (`not_landed`), and for a capture also after a refusal,
+ * since the provider answers a key it refused with the same refusal (D127 3.14).
+ */
+async function holdKey(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  holdId: string,
+  step: 'capture' | 'release',
+): Promise<string> {
+  const steps = await holdSteps(env, target, holdId, step)
+  const missed = steps.filter(
+    (row) => row.answer === 'not_landed' || (step === 'capture' && row.outcome === 'refused'),
+  ).length
+  const base = `${holdId}:${step}`
+  return missed === 0 ? base : `${base}:${missed + 1}`
+}
+
+/** The venue's account, ready for a hold's call, or null where none can be made. */
+async function shareAccountOf(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+): Promise<{ readonly accountRef: string; readonly usable: boolean } | null> {
+  const account = await accountOf(env, target)
+  if (account === null || account.accountRef === null) return null
+  const usable =
+    account.providerKind === payment.providerKind &&
+    account.state === 'connected' &&
+    account.payingPausedAt === null
+  return { accountRef: account.accountRef, usable }
+}
+
+/** Settles a hold `released` with a reason (`share.hold_settle`). */
+function settleHold(env: PaymentEnvironment, target: PaymentJob, hold: HoldRow, reason: string) {
+  return apply(env, target, {
+    type: 'share.hold_settle',
+    paymentId: target.paymentId,
+    holdId: hold.id,
+    reason,
+  })
+}
+
+/**
+ * A `requested` hold: asks the provider for it once (`createHold`, D127 3.15), then
+ * `share.hold_created`. An earlier call with no state is let go (`share.hold_unknown`); the
+ * release finds what it made by the hold's id.
+ */
+async function createShareHold(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  hold: HoldRow,
+  deps: PaymentJobDeps,
+): Promise<void> {
+  const account = await shareAccountOf(env, target, payment)
+  if (account === null || !account.usable) {
+    await settleHold(env, target, hold, account === null ? 'paying_not_offered' : 'paying_paused')
+    return
+  }
+  const [earlier] = await holdSteps(env, target, hold.id, 'createHold')
+  if (earlier !== undefined) {
+    if (earlier.outcome === 'refused') {
+      await settleHold(env, target, hold, holdRefusalReason(earlier.answer))
+      return
+    }
+    await apply(env, target, {
+      type: 'share.hold_unknown',
+      paymentId: target.paymentId,
+      holdId: hold.id,
+    })
+    return
+  }
+  const provider = providerFor(env, target, deps, payment.providerKind)
+  const idempotencyKey = `${hold.id}:hold`
+  const step = recordHoldStep(env, target, hold.id, 'createHold', idempotencyKey)
+  if ((await step('attempting')) === 'not_requested') return
+  let outcome: Awaited<ReturnType<PaymentProvider['createHold']>>
+  try {
+    outcome = await provider.createHold({
+      paymentId: PaymentIdSchema.parse(payment.id),
+      holdId: PaymentHoldIdSchema.parse(hold.id),
+      accountRef: providerRef(account.accountRef),
+      amountMinor: hold.amountMinor,
+      currency: currencyOf(payment),
+      idempotencyKey,
+      description: await descriptionOf(env, target, payment),
+    })
+  } catch (error) {
+    env.log.warn({ paymentId: payment.id, holdId: hold.id, err: error }, 'a hold was not made')
+    outcome = { kind: 'unknown', reason: 'threw' }
+  }
+  if (outcome.kind === 'unknown') {
+    await step('unknown', outcome.reason === 'threw' ? 'threw' : 'unknown')
+    await apply(env, target, {
+      type: 'share.hold_unknown',
+      paymentId: target.paymentId,
+      holdId: hold.id,
+    })
+    return
+  }
+  if (outcome.kind === 'refused') {
+    await step('refused', outcome.refusal.code)
+    await settleHold(env, target, hold, holdRefusalReason(outcome.refusal.code))
+    return
+  }
+  await step('done')
+  await apply(env, target, {
+    type: 'share.hold_created',
+    paymentId: target.paymentId,
+    holdId: hold.id,
+    providerPaymentRef: outcome.result.paymentRef.provider,
+    formValues: { ...outcome.result.form },
+  })
+}
+
+/**
+ * A hold to let go: releases its provider payment (found by the hold's id where its reference was
+ * never recorded), then `share.hold_settle`. A release the provider refused is read back, never
+ * sent again; one whose answer was lost is read back before it is sent again (D125 3.9).
+ */
+async function releaseShareHold(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  hold: HoldRow,
+  deps: PaymentJobDeps,
+): Promise<void> {
+  const reason = hold.reason ?? payment.reason ?? 'cancelled'
+  const touched = (await holdSteps(env, target, hold.id, 'createHold')).length > 0
+  if (!touched && hold.providerPaymentRef === null) {
+    await settleHold(env, target, hold, reason)
+    return
+  }
+  const account = await shareAccountOf(env, target, payment)
+  if (account === null)
+    throw new PaymentStepRetry("the venue's account is gone while a hold may stand")
+  const provider = providerFor(env, target, deps, payment.providerKind)
+  const accountRef = providerRef(account.accountRef)
+  let paymentRef = hold.providerPaymentRef
+  if (paymentRef === null) {
+    const find = recordHoldStep(env, target, hold.id, 'findByPaymentId', `${hold.id}:find`)
+    await find('attempting')
+    const found = await provider.findByPaymentId(
+      accountRef,
+      PaymentIdSchema.parse(payment.id),
+      PaymentHoldIdSchema.parse(hold.id),
+    )
+    if (!found.complete) {
+      await find('unknown', 'incomplete')
+      throw new PaymentStepRetry('the provider could not say whether a hold was made')
+    }
+    await find('done', found.value === null ? 'none' : 'found')
+    if (found.value === null || isOver(found.value)) {
+      await settleHold(env, target, hold, reason)
+      return
+    }
+    paymentRef = found.value.ref.provider
+  }
+  const [lastRelease] = await holdSteps(env, target, hold.id, 'release')
+  if (lastRelease?.outcome === 'refused' && lastRelease.answer !== 'not_found') {
+    const read = await provider.readPayment(accountRef, providerRef(paymentRef))
+    if (!read.complete) throw new PaymentStepRetry('the refused hold could not be read back')
+    if (isOver(read.value)) await settleHold(env, target, hold, reason)
+    // Still held: nothing Restro may do (it never refunds); read back until the provider drops it.
+    return
+  }
+  const idempotencyKey = await holdKey(env, target, hold.id, 'release')
+  const step = recordHoldStep(env, target, hold.id, 'release', idempotencyKey)
+  await step('attempting')
+  let outcome: Awaited<ReturnType<PaymentProvider['release']>>
+  try {
+    outcome = await provider.release({
+      accountRef,
+      paymentRef: providerRef(paymentRef),
+      idempotencyKey,
+    })
+  } catch (error) {
+    env.log.warn({ paymentId: payment.id, holdId: hold.id, err: error }, 'a hold was not released')
+    outcome = { kind: 'unknown', reason: 'threw' }
+  }
+  if (outcome.kind === 'unknown') {
+    const answer = landedAnswer(
+      await provider.readPayment(accountRef, providerRef(paymentRef)),
+      isOver,
+    )
+    await step('unknown', answer)
+    if (answer === 'landed') {
+      await settleHold(env, target, hold, reason)
+      return
+    }
+    throw new PaymentStepRetry("a hold's release has an unknown outcome")
+  }
+  if (outcome.kind === 'refused') {
+    await step('refused', outcome.refusal.code)
+    const read =
+      outcome.refusal.code === 'not_found'
+        ? null
+        : await provider.readPayment(accountRef, providerRef(paymentRef))
+    if (read === null || (read.complete && isOver(read.value))) {
+      await settleHold(env, target, hold, reason)
+      return
+    }
+    env.log.error(
+      { paymentId: payment.id, holdId: hold.id, code: outcome.refusal.code },
+      'the provider refused to release a hold Restro let go',
+    )
+    return
+  }
+  await step('done')
+  await settleHold(env, target, hold, reason)
+}
+
+/** The provider's reading of a hold at the card form, recorded (`share.hold_check`). */
+async function checkShareHold(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  hold: HoldRow,
+  accountRef: string,
+  deps: PaymentJobDeps,
+) {
+  if (hold.providerPaymentRef === null) return null
+  const provider = providerFor(env, target, deps, payment.providerKind)
+  const reading = await provider.readPayment(
+    providerRef(accountRef),
+    providerRef(hold.providerPaymentRef),
+  )
+  if (!reading.complete) throw new PaymentStepRetry("a hold's payment could not be read")
+  const read = reading.value
+  return apply(env, target, {
+    type: 'share.hold_check',
+    paymentId: target.paymentId,
+    holdId: hold.id,
+    reading: {
+      ref: read.ref.provider,
+      status: read.status,
+      needsGuestAction: read.needsGuestAction,
+      currency: read.currency,
+      amountMinor: read.amountMinor,
+      heldMinor: read.heldMinor,
+      captureBefore: read.captureBefore,
+      threeDs: read.threeDs,
+      authorisationCode: read.authorisationCode,
+    },
+  })
+}
+
+/**
+ * Queues the share's next check at its nearest deadline: the end of gathering, or a guest's
+ * confirm deadline at the card form.
+ */
+async function queueShareDeadline(env: PaymentEnvironment, target: PaymentJob): Promise<void> {
+  const payment = await paymentOf(env, target)
+  if (payment === null || payment.state !== 'awaiting_guest') return
+  const holds = await holdsOf(env, target)
+  const times = [
+    payment.gatheringEndsAt?.getTime() ?? null,
+    ...holds
+      .filter((hold) => hold.state === 'awaiting_guest')
+      .map((hold) => hold.confirmBy?.getTime() ?? null),
+  ].filter((time): time is number => time !== null)
+  if (times.length === 0) return
+  await queueDeadlineCheck(env, target, Math.min(...times) - env.now().getTime())
+}
+
+/**
+ * `awaiting_guest` of a group payment, its holds gathering: past the 10 minutes, everything is
+ * let go (`share.expire`); a shared line voided or changed in a reading ends it too
+ * (`share.bill_check`). Otherwise each hold asked for is made at the provider, each hold let go
+ * is released, and each at the card form is read.
+ */
+async function gather(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  deps: PaymentJobDeps,
+): Promise<void> {
+  if (payment.gatheringEndsAt !== null && env.now() >= payment.gatheringEndsAt) {
+    await apply(env, target, { type: 'share.expire', paymentId: target.paymentId })
+    return
+  }
+  const billCheck = await apply(env, target, {
+    type: 'share.bill_check',
+    paymentId: target.paymentId,
+  })
+  if (billCheck.state !== 'awaiting_guest') return
+  for (const hold of await holdsOf(env, target)) {
+    if (hold.state === 'requested') await createShareHold(env, target, payment, hold, deps)
+    else if (hold.state === 'releasing') await releaseShareHold(env, target, payment, hold, deps)
+  }
+  const account = await shareAccountOf(env, target, payment)
+  if (account !== null) {
+    for (const hold of await holdsOf(env, target)) {
+      if (hold.state !== 'awaiting_guest') continue
+      await checkShareHold(env, target, payment, hold, account.accountRef, deps)
+    }
+  }
+  await queueShareDeadline(env, target)
+}
+
+/**
+ * `cancelling` of a group payment: every hold not final is released (or settled where it never
+ * reached the provider); the last one settles the payment `released` (`share.hold_settle`). A
+ * share with no hold left to let go settles through `payment.settle`.
+ */
+async function cancelShare(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  deps: PaymentJobDeps,
+): Promise<void> {
+  for (const hold of await holdsOf(env, target)) {
+    if (HOLD_FINAL.includes(hold.state)) continue
+    await releaseShareHold(env, target, payment, hold, deps)
+  }
+  const after = await paymentOf(env, target)
+  if (after?.state === 'cancelling') {
+    await apply(env, target, {
+      type: 'payment.settle',
+      paymentId: target.paymentId,
+      from: 'cancelling',
+      reason: 'cancelled',
+    })
+  }
+}
+
+/**
+ * What the share's holds hold now, read right before the close (`checkAndClose`): each hold's
+ * part of what it holds, never more than its amount, so one hold can't stand in for another
+ * short. Zero for one gone; null when a hold can't be read (as the single payment's read).
+ */
+async function heldOfShare(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  holds: readonly HoldRow[],
+  deps: PaymentJobDeps,
+): Promise<number | null> {
+  const account = await accountOf(env, target)
+  if (account === null || account.accountRef === null) return null
+  const provider = providerFor(env, target, deps, payment.providerKind)
+  let sum = 0
+  for (const hold of holds) {
+    if (hold.providerPaymentRef === null) return 0
+    const read = await provider.readPayment(
+      providerRef(account.accountRef),
+      providerRef(hold.providerPaymentRef),
+    )
+    if (!read.complete) return null
+    const held = read.value.status === 'held' ? Math.min(read.value.heldMinor, hold.amountMinor) : 0
+    sum = addMinor(sum, held)
+  }
+  return sum
+}
+
+/**
+ * `closed` (or "Receipt printed") of a group payment: each held hold is captured on its own, for
+ * its amount, with its own key. A refused capture is tried again with a new key, up to
+ * `SHARE_CAPTURE_TRIES`; then the hold is `capture_failed` and the owners are alerted with its
+ * amount (D127 3.14). An unknown capture is read back from the provider, as the single one is.
+ */
+async function captureShare(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  deps: PaymentJobDeps,
+): Promise<StepDone> {
+  const account = await accountOf(env, target)
+  if (account === null || account.accountRef === null) {
+    throw new PaymentStepRetry("the venue's account is gone while a hold stands")
+  }
+  const provider = providerFor(env, target, deps, payment.providerKind)
+  const accountRef = providerRef(account.accountRef)
+  const captured = (
+    hold: HoldRow,
+    outcome: 'captured' | 'refused',
+    minor: number | null,
+    code: string | null,
+  ) =>
+    route(env, target, {
+      type: 'share.hold_captured',
+      holdId: hold.id,
+      outcome,
+      capturedMinor: minor,
+      code,
+    })
+  let again = false
+  for (const hold of await holdsOf(env, target)) {
+    if (hold.state !== 'held') continue
+    if (hold.providerPaymentRef === null)
+      throw new PaymentStepRetry('a held hold has no provider payment')
+    const paymentRef = providerRef(hold.providerPaymentRef)
+    const idempotencyKey = await holdKey(env, target, hold.id, 'capture')
+    const step = recordHoldStep(env, target, hold.id, 'capture', idempotencyKey)
+    await step('attempting')
+    let outcome: Awaited<ReturnType<PaymentProvider['capture']>>
+    try {
+      outcome = await provider.capture({
+        accountRef,
+        paymentRef,
+        amountMinor: hold.amountMinor,
+        idempotencyKey,
+      })
+    } catch (error) {
+      env.log.warn({ paymentId: payment.id, holdId: hold.id, err: error }, 'a capture threw')
+      outcome = { kind: 'unknown', reason: 'threw' }
+    }
+    if (outcome.kind === 'done') {
+      await step('done')
+      await captured(hold, 'captured', outcome.result.capturedMinor, null)
+      continue
+    }
+    if (outcome.kind === 'refused' && outcome.refusal.code !== 'already_captured') {
+      await step('refused', outcome.refusal.code)
+      const refusals = (await holdSteps(env, target, hold.id, 'capture')).filter(
+        (row) => row.outcome === 'refused',
+      ).length
+      if (refusals >= SHARE_CAPTURE_TRIES) {
+        await captured(hold, 'refused', null, outcome.refusal.code)
+      } else {
+        again = true
+      }
+      continue
+    }
+    const reading = await provider.readPayment(accountRef, paymentRef)
+    const answer = landedAnswer(reading, (read) => read.status === 'captured')
+    await step(
+      outcome.kind === 'refused' ? 'refused' : 'unknown',
+      outcome.kind === 'refused' ? outcome.refusal.code : answer,
+    )
+    if (reading.complete && reading.value.status === 'captured') {
+      await captured(hold, 'captured', reading.value.capturedMinor, null)
+      continue
+    }
+    if (answer === 'gone' && reading.complete) {
+      await captured(
+        hold,
+        'refused',
+        null,
+        ranOut(reading.value, env.now()) ? 'hold_expired' : 'not_held',
+      )
+      continue
+    }
+    again = true
+  }
+  if (again) throw new PaymentStepRetry("a hold's capture is to be tried again")
+  return 'next'
+}
+
+/**
+ * The check job for a group payment: while gathering, past its end, everything is let go; each
+ * hold at the card form is read. While the covered share waits for a payment table, a hold gone at
+ * the provider lets the share go (`share.hold_gone`).
+ */
+async function checkShare(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  deps: PaymentJobDeps,
+): Promise<PaymentRunOutcome> {
+  const account = await shareAccountOf(env, target, payment)
+  if (payment.state === 'awaiting_guest') {
+    if (payment.gatheringEndsAt !== null && env.now() >= payment.gatheringEndsAt) {
+      await apply(env, target, { type: 'share.expire', paymentId: target.paymentId })
+    } else if (account !== null) {
+      for (const hold of await holdsOf(env, target)) {
+        if (hold.state !== 'awaiting_guest') continue
+        await checkShareHold(env, target, payment, hold, account.accountRef, deps)
+      }
+    }
+  } else if (
+    (payment.state === 'held' || payment.state === 'queued') &&
+    payment.paymentTableId === null &&
+    account !== null
+  ) {
+    const provider = providerFor(env, target, deps, payment.providerKind)
+    for (const hold of await holdsOf(env, target)) {
+      if (hold.state !== 'held' || hold.providerPaymentRef === null) continue
+      const read = await provider.readPayment(
+        providerRef(account.accountRef),
+        providerRef(hold.providerPaymentRef),
+      )
+      if (!read.complete) throw new PaymentStepRetry("a hold's payment could not be read")
+      if (isOver(read.value)) {
+        await apply(env, target, {
+          type: 'share.hold_gone',
+          paymentId: target.paymentId,
+          holdId: hold.id,
+        })
+        break
+      }
+    }
+  }
+  const after = await paymentOf(env, target)
+  if (after === null) return { kind: 'missing' }
+  // Held (covered), let go, or holds to make or release: the prepare step takes it on.
+  await queuePrepare(env, target)
+  if (after.state === 'awaiting_guest') await queueShareDeadline(env, target)
+  return { kind: 'at', state: after.state }
+}
+
 /** A step of the old shape (price, hold, cancel), run as a route step. */
 const stepOf =
   (
@@ -2532,7 +3130,10 @@ const stepOf =
   }
 
 /** Where a payment stands, as the route reads it. */
-type RouteState = Pick<PaymentRow, 'state' | 'reason' | 'paymentTableId' | 'kind'>
+type RouteState = Pick<PaymentRow, 'state' | 'reason' | 'paymentTableId' | 'kind'> & {
+  /** Set on a group payment (#543); the recovery's rows leave it out (their steps are the same). */
+  readonly sharedMinor?: number | null
+}
 
 /** True when the worker has a step to take for the payment (the recovery's question, #112). */
 export function hasNextStep(payment: RouteState): boolean {
@@ -2544,7 +3145,10 @@ function routeStep(payment: RouteState): RouteStep | null {
   const { state, reason } = payment
   if (state === 'requested') return stepOf(price)
   if (state === 'priced') return stepOf(hold)
-  if (state === 'cancelling') return stepOf(cancel)
+  const shared = payment.sharedMinor !== undefined && payment.sharedMinor !== null
+  // A group payment gathers its holds while `awaiting_guest`, and lets each go on its own (#543).
+  if (state === 'awaiting_guest' && shared) return stepOf(gather)
+  if (state === 'cancelling') return stepOf(shared ? cancelShare : cancel)
   if ((state === 'held' || state === 'queued') && payment.paymentTableId === null) {
     return queueStep
   }
@@ -2676,6 +3280,7 @@ export async function checkPayment(
     await queuePrepare(env, target)
     return { kind: 'at', state: payment.state }
   }
+  if (payment.sharedMinor !== null) return checkShare(env, target, payment, deps)
   // A held payment waiting for a table or a manager's answer: its hold may run out (#112, R4).
   const waiting =
     (payment.state === 'held' || payment.state === 'queued') && payment.paymentTableId === null

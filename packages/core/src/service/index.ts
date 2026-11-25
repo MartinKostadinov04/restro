@@ -139,6 +139,13 @@ export {
   type ServiceOptions,
 } from './engine'
 export {
+  type HoldRow,
+  partOf,
+  SHARE_CAPTURE_TRIES,
+  SHARE_END_REASONS,
+  SHARE_REFUSALS,
+} from './group-payment'
+export {
   ForbiddenValueError,
   forgetGuestCodes,
   GUEST_POLL_MS,
@@ -155,6 +162,8 @@ export {
   type GuestPaymentInput,
   type GuestPaymentView,
   type GuestRefusal,
+  type GuestShareInput,
+  type GuestShareView,
   type GuestStateInput,
   type GuestStateless,
   type GuestTableState,
@@ -163,6 +172,7 @@ export {
   guestAct,
   guestPayment,
   guestResult,
+  guestShare,
   guestState,
   type HumanCheck,
   type HumanCheckUse,
