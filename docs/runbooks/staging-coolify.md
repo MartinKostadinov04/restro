@@ -125,7 +125,9 @@ starting scenario, `quiet-night` when blank).
 Already written in the Compose file, so not in your paste: `ASSET_STORE` and `PUBLISH_STORE`
 (`local`), the shared folder they use, `PAYMENTS_ENV=staging`, `PAYMENTS_PROVIDER=stripe`,
 `BARSY_ENV=staging`, `WORKER_HEALTH_PORT=8081`, the worker's private address
-`http://worker:8081` and the name it answers on, the simulator's allowed host, and `LOG_LEVEL=info`.
+`http://worker:8081` and the name it answers on, the simulator's allowed host, `LOG_LEVEL=info`,
+and `CLIENT_ADDRESS_FROM=proxy` (with no Cloudflare in front, the web app takes a guest's address
+only from what Coolify's proxy adds, never from headers a visitor can fake).
 The worker runs without `NODE_ENV=production` on purpose: that setting would refuse the
 simulated POS.
 
