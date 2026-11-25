@@ -2891,8 +2891,9 @@ async function gather(
   deps: PaymentJobDeps,
 ): Promise<void> {
   if (payment.gatheringEndsAt !== null && env.now() >= payment.gatheringEndsAt) {
-    await apply(env, target, { type: 'share.expire', paymentId: target.paymentId })
-    return
+    // The database's clock decides; a worker clock a little ahead gathers on.
+    const ended = await apply(env, target, { type: 'share.expire', paymentId: target.paymentId })
+    if (ended.state !== 'awaiting_guest') return
   }
   const billCheck = await apply(env, target, {
     type: 'share.bill_check',
