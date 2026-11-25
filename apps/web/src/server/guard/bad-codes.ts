@@ -5,11 +5,18 @@
 //   - 50 wrong codes: the network is blocked for 15 minutes (`blocked`, a 429), logged once.
 // The numbers are D122's. A wrong code is one that is malformed or has no published file.
 //
-// The network is the client's address as the edge saw it (`clientNetwork`): Cloudflare's
-// `CF-Connecting-IP` (Cloudflare sets it and overwrites one a client sends), else `X-Real-IP` (set
-// by Railway's edge), else the LAST `X-Forwarded-For` entry (the one our own proxy appended; the
-// first is whatever the client claimed). An IPv6 address counts by its /64, the block one
-// subscriber gets, as Cloudflare's own rate limiting does. The address is never logged.
+// The network is the client's address as the edge saw it (`clientNetwork`), read by one of two
+// modes (the setting `CLIENT_ADDRESS_FROM`, `clientAddressFrom` in `env.ts`):
+//   - `cloudflare` (also when the setting is unset): Cloudflare's `CF-Connecting-IP` (Cloudflare
+//     sets it and overwrites one a client sends), else `X-Real-IP` (set by Railway's edge), else
+//     the LAST `X-Forwarded-For` entry (the one our own proxy appended; the first is whatever the
+//     client claimed). Right only when such an edge stands in front of the app.
+//   - `proxy`: only the LAST `X-Forwarded-For` entry. With no Cloudflare in front (staging on
+//     Coolify behind Traefik) a visitor can send any `CF-Connecting-IP` or `X-Real-IP` and get a
+//     fresh bucket on every request; the entry our own proxy appends is the one address a visitor
+//     cannot choose. Those two headers are ignored entirely.
+// An IPv6 address counts by its /64, the block one subscriber gets, as Cloudflare's own rate
+// limiting does. The address is never logged.
 //
 // State lives in this process (one web instance at pilot scale, stack.md), bounded to the 10,000
 // networks seen last: an attacker with more networks than that only resets the oldest counts. A
@@ -137,14 +144,16 @@ export function networkOf(address: string): string {
     .join(':')}::/64`
 }
 
+/** Where the client's address is read from (see the top of this file). */
+export type ClientAddressSource = 'cloudflare' | 'proxy'
+
 /** The network a request comes from (see the top of this file), or `unknown`. */
-export function clientNetwork(headers: Headers): string {
-  const forwarded = headers.get('x-forwarded-for')?.split(',').at(-1)
+export function clientNetwork(headers: Headers, from: ClientAddressSource = 'cloudflare'): string {
+  const forwarded = headers.get('x-forwarded-for')?.split(',').at(-1)?.trim() || ''
   const address =
-    headers.get('cf-connecting-ip')?.trim() ||
-    headers.get('x-real-ip')?.trim() ||
-    forwarded?.trim() ||
-    ''
+    from === 'proxy'
+      ? forwarded
+      : headers.get('cf-connecting-ip')?.trim() || headers.get('x-real-ip')?.trim() || forwarded
   return address === '' ? 'unknown' : networkOf(address)
 }
 

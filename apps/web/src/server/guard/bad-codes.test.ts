@@ -2,6 +2,7 @@
 // how it reads the client's network. Pure: an injected clock, no I/O.
 import { describe, expect, it } from 'vitest'
 
+import { clientAddressFrom } from '../env'
 import { BAD_CODE_LIMITS, BadCodeLimiter, clientNetwork, networkOf } from './bad-codes'
 
 const MINUTE = 60_000
@@ -105,5 +106,68 @@ describe("the client's network", () => {
     expect(networkOf('[2001:db8:1:2::9]:443')).toBe('2001:db8:1:2::/64')
     // Two addresses of one subscriber are one network.
     expect(networkOf('2001:db8:1:2::a')).toBe(networkOf('2001:db8:1:2:ffff::b'))
+  })
+})
+
+describe('the proxy mode of clientNetwork (CLIENT_ADDRESS_FROM=proxy)', () => {
+  const headers = (init: Record<string, string>) => new Headers(init)
+
+  it('ignores a spoofed cf-connecting-ip and x-real-ip', () => {
+    const spoofed = headers({
+      'cf-connecting-ip': '6.6.6.6',
+      'x-real-ip': '7.7.7.7',
+      'x-forwarded-for': '198.51.100.3',
+    })
+    expect(clientNetwork(spoofed, 'proxy')).toBe('198.51.100.3')
+    // Rotating the spoofed headers does not change the bucket.
+    const rotated = headers({
+      'cf-connecting-ip': '8.8.8.8',
+      'x-real-ip': '9.9.9.9',
+      'x-forwarded-for': '198.51.100.3',
+    })
+    expect(clientNetwork(rotated, 'proxy')).toBe(clientNetwork(spoofed, 'proxy'))
+  })
+
+  it('takes the last of several x-forwarded-for entries, spaces trimmed', () => {
+    const forwarded = ' 6.6.6.6 ,  10.0.0.1 ,   198.51.100.9  '
+    expect(clientNetwork(headers({ 'x-forwarded-for': forwarded }), 'proxy')).toBe('198.51.100.9')
+  })
+
+  it('is unknown with no x-forwarded-for, even when the other headers are there', () => {
+    expect(clientNetwork(headers({}), 'proxy')).toBe('unknown')
+    const others = headers({ 'cf-connecting-ip': '6.6.6.6', 'x-real-ip': '7.7.7.7' })
+    expect(clientNetwork(others, 'proxy')).toBe('unknown')
+  })
+
+  it('leaves the cloudflare chain as it was, given or not', () => {
+    const all = headers({
+      'cf-connecting-ip': '203.0.113.7',
+      'x-real-ip': '10.0.0.1',
+      'x-forwarded-for': '1.1.1.1, 198.51.100.3',
+    })
+    expect(clientNetwork(all)).toBe('203.0.113.7')
+    expect(clientNetwork(all, 'cloudflare')).toBe('203.0.113.7')
+    const onlyForwarded = headers({ 'x-forwarded-for': '1.1.1.1, 198.51.100.3' })
+    expect(clientNetwork(onlyForwarded, 'cloudflare')).toBe('198.51.100.3')
+  })
+})
+
+describe('the CLIENT_ADDRESS_FROM setting', () => {
+  it('is cloudflare when unset or empty, and takes the two values', () => {
+    expect(clientAddressFrom({})).toBe('cloudflare')
+    expect(clientAddressFrom({ CLIENT_ADDRESS_FROM: '  ' })).toBe('cloudflare')
+    expect(clientAddressFrom({ CLIENT_ADDRESS_FROM: 'cloudflare' })).toBe('cloudflare')
+    expect(clientAddressFrom({ CLIENT_ADDRESS_FROM: ' proxy ' })).toBe('proxy')
+  })
+
+  it('refuses any other value, naming the variable and never the value', () => {
+    let message = ''
+    try {
+      clientAddressFrom({ CLIENT_ADDRESS_FROM: 'Proxy-secret-9' })
+    } catch (error) {
+      message = (error as Error).message
+    }
+    expect(message).toContain('CLIENT_ADDRESS_FROM')
+    expect(message).not.toContain('Proxy-secret-9')
   })
 })
