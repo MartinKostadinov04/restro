@@ -23,6 +23,8 @@ import {
   payEmailKey,
   payHandleKey,
   payRecentKey,
+  SHARE_IDLE_MS,
+  shareHandleKey,
   type TableServicesDeps,
 } from './services-client'
 
@@ -50,6 +52,7 @@ function tableState(version: number, lines: Lines = [], location: LocationState 
       payingLegal: null,
       minCardMinor: 50,
       tips: false,
+      sharing: false,
       receiptEmail: false,
       night: { state: 'open', at: null },
     },
@@ -172,6 +175,7 @@ describe('the services client', () => {
       notesAndOptions: false,
       payFirst: 'off',
       tips: false,
+      sharing: false,
       night: { state: 'open', at: null },
     })
     expect(h.nextWait()).toBe(10_000)
@@ -1264,7 +1268,9 @@ describe('paying (#110, #114, D127)', () => {
     })
     // The face never sees the provider's values; the page asks for them.
     expect(JSON.stringify(h.client.getState())).not.toContain('pi_x_secret_y')
+    // `kind` says whose form it is: this payment's, or this phone's part of a share (#544).
     expect(h.client.formValues()).toEqual({
+      kind: 'payment',
       provider: 'stripe',
       values: { clientSecret: 'pi_x_secret_y', account: 'acct_1A' },
     })
@@ -2095,5 +2101,189 @@ describe('the idle back-off (P25)', () => {
       await h.tick()
       expect(h.nextWait()).toBe(2_000)
     }
+  })
+})
+
+describe('splitting the amount (#544)', () => {
+  const CODE = 'table-code-123'
+  const HANDLE = 'AbCdEfGhIjKlMnOpQrStUv'
+  const PY = newId('py')
+
+  /** A table of a venue whose POS can close one bill with several payments (D160 §2.8). */
+  const sharingTable = (version = 1) => {
+    const base = tableState(version)
+    return { ...base, ordering: { ...base.ordering, paying: 'on' as const, sharing: true } }
+  }
+
+  /** What `GET /api/guest/share` answers while two phones are settling together. */
+  const shareAnswer = (changes: Record<string, unknown> = {}) => ({
+    id: PY,
+    number: 'R3T8W',
+    state: 'awaiting_guest',
+    reason: null,
+    currency: 'EUR',
+    sharedMinor: 3_250,
+    heldMinor: 1_625,
+    claimedMinor: 1_625,
+    leftMinor: 1_625,
+    minimumMinor: 50,
+    endsAt: '2026-11-26T00:30:00.000Z',
+    holds: 1,
+    lines: [{ name: { en_US: 'Negroni' }, quantity: '1', amountMinor: 1_050 }],
+    mine: null,
+    timeZone: 'Europe/Sofia',
+    next: 2_000,
+    ...changes,
+  })
+
+  /** A store of the browser's, holding this phone's own part until the day ends. */
+  function store(initial: Record<string, string> = {}) {
+    const kept = new Map(Object.entries(initial))
+    return {
+      kept,
+      get: (key: string) => kept.get(key) ?? null,
+      set: (key: string, value: string) => void kept.set(key, value),
+      remove: (key: string) => void kept.delete(key),
+    }
+  }
+
+  /** The table's state, and the share once asked for; `share` decides that answer. */
+  const server =
+    (share: () => Response, state: (version: number) => GuestTableState = sharingTable) =>
+    (url: string) =>
+      url.endsWith('/api/guest/share') ? share() : json(200, state(1))
+
+  const urls = (h: { calls: { url: string }[] }) => h.calls.map((call) => call.url)
+
+  it('never asks where the venue cannot close one bill with several payments', async () => {
+    const h = harness(server(() => json(200, null), tableState))
+    h.client.setScreen('bill')
+    h.client.start()
+    await h.tick()
+    await h.tick()
+    expect(urls(h)).toEqual(['/api/guest/state?view=bill', '/api/guest/state?view=bill&since=1'])
+  })
+
+  it('asks as soon as the state says the venue shares, though the bill opened first', async () => {
+    const h = harness(server(() => json(200, null)))
+    // The invite link is `…#pay`: the face has the bill open before any answer has come, so the
+    // screen alone cannot say whether there is a share to read.
+    h.client.setScreen('bill')
+    h.client.start()
+    await h.tick()
+    expect(urls(h)).toEqual(['/api/guest/state?view=bill'])
+    await h.tick()
+    expect(h.calls[1]?.url).toBe('/api/guest/share')
+  })
+
+  it('reads on at the idle gap while the table has no share yet', async () => {
+    const h = harness(server(() => json(200, null)))
+    h.client.setScreen('bill')
+    h.client.start()
+    await h.tick()
+    await h.tick()
+    expect(h.client.getState().share).toBeNull()
+    expect(h.nextWait()).toBe(SHARE_IDLE_MS)
+    await h.tick()
+    expect(h.calls[2]?.url).toBe('/api/guest/share')
+  })
+
+  it('follows the server’s own cadence once a share is on, and draws it', async () => {
+    const h = harness(server(() => json(200, shareAnswer())))
+    h.client.setScreen('bill')
+    h.client.start()
+    await h.tick()
+    await h.tick()
+    expect(h.nextWait()).toBe(2_000)
+    const share = h.client.getState().share
+    expect(share?.id).toBe(PY)
+    expect(share?.leftMinor).toBe(1_625)
+    expect(share?.mine).toBeNull()
+  })
+
+  it('reads its own part wherever the phone is, with its handle', async () => {
+    const h = harness(
+      server(() =>
+        json(
+          200,
+          shareAnswer({
+            mine: { state: 'held', reason: null, amountMinor: 1_625, tipMinor: 0, form: null },
+          }),
+        ),
+      ),
+      { durable: store({ [shareHandleKey(CODE)]: `${HANDLE}|4600000` }) },
+    )
+    h.client.start()
+    await h.tick()
+    expect(h.calls[0]?.url).toBe('/api/guest/share')
+    const sent = h.calls[0]?.init.headers as Record<string, string> | undefined
+    expect(sent?.['X-Restro-Payment']).toBe(HANDLE)
+    expect(h.client.getState().share?.mine?.state).toBe('held')
+  })
+
+  it('nudges its own part after the card form’s redirect, and leaves a word it cannot use', async () => {
+    const mine = {
+      state: 'awaiting_guest',
+      reason: null,
+      amountMinor: 1_625,
+      tipMinor: 0,
+      form: null,
+    }
+    const word = store({ [PAY_RETURNED_KEY]: 'share' })
+    const h = harness(
+      (url: string) => {
+        if (url.endsWith('/actions')) {
+          const body = {
+            result: { status: 'accepted', code: null, subjectId: null, ref: null },
+            state: sharingTable(2),
+            pass: null,
+            handle: null,
+          }
+          return json(200, body)
+        }
+        return url.endsWith('/api/guest/share')
+          ? json(200, shareAnswer({ mine }))
+          : json(200, sharingTable(1))
+      },
+      { memory: word, durable: store({ [shareHandleKey(CODE)]: `${HANDLE}|4600000` }) },
+    )
+    h.client.start()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const sent = h.calls
+      .filter((call) => call.url.endsWith('/actions'))
+      .map((call) => JSON.parse(String(call.init.body)).command.kind)
+    expect(sent).toEqual(['share.returned'])
+    expect(word.kept.has(PAY_RETURNED_KEY)).toBe(false)
+
+    // A word of a part this phone does not hold is nobody's to spend: the page's own cleaning of
+    // the address wrote it, and the tab that holds the part reads it.
+    const alone = store({ [PAY_RETURNED_KEY]: 'share' })
+    const other = harness(
+      server(() => json(200, shareAnswer())),
+      { memory: alone },
+    )
+    other.client.start()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(other.calls.some((call) => call.url.endsWith('/actions'))).toBe(false)
+    expect(alone.kept.get(PAY_RETURNED_KEY)).toBe('share')
+  })
+
+  it('forgets the part the server does not know, and keeps reading the table’s share', async () => {
+    let gone = false
+    const kept = store({ [shareHandleKey(CODE)]: `${HANDLE}|4600000` })
+    const h = harness(
+      server(() => (gone ? json(404, { code: 'unknown_payment' }) : json(200, shareAnswer()))),
+      { durable: kept },
+    )
+    gone = true
+    h.client.setScreen('bill')
+    h.client.start()
+    await h.tick()
+    expect(kept.kept.has(shareHandleKey(CODE))).toBe(false)
+    // The part is gone, not the share: a phone on the bill of a sharing venue reads on.
+    await h.tick()
+    gone = false
+    await h.tick()
+    expect(urls(h).filter((url) => url.endsWith('/api/guest/share')).length).toBeGreaterThan(1)
   })
 })

@@ -23,13 +23,17 @@ import {
 } from '@restro/core'
 import { z } from 'zod'
 import { SERVICE_KINDS } from './features'
-import { GUEST_REFUSAL_CODES, PAYMENT_STATES } from './service-vocabulary'
+import { GUEST_REFUSAL_CODES, PAYMENT_STATES, SHARE_HOLD_STATES } from './service-vocabulary'
 import {
   GuestCommandSchema,
   PayCancelSchema,
   PayReturnedSchema,
   PayStartSchema,
   SERVICE_LIMITS,
+  ShareHoldSchema,
+  ShareReturnedSchema,
+  ShareStartSchema,
+  ShareWithdrawSchema,
 } from './services'
 
 /** The largest request body the API reads, in bytes. */
@@ -181,6 +185,12 @@ export const GuestTableStateSchema = z.strictObject({
     minCardMinor: z.int().positive(),
     /** A tip can be given when paying here (D127: the POS records it on the receipt). */
     tips: z.boolean(),
+    /**
+     * The bill can be shared by amount here (D160 2.8): the table's POS closes one bill with
+     * several card payments, and guests here don't pay before they order. The phone offers "Split
+     * the amount" only then; the server refuses a `share.start` either way.
+     */
+    sharing: z.boolean(),
     /** An email for the venue's electronic receipt can be given when paying here (D127, #186). */
     receiptEmail: z.boolean(),
     /** The venue's night (#82): `at` is the wall-clock time the words name, `HH:MM`. */
@@ -381,12 +391,18 @@ export type GuestCheck = z.output<typeof GuestCheckSchema>
  * The guest's pay commands (#110, D127; design §3), defined with the face contract's commands
  * (services.ts): `pay.start` picks whole lines of the bill or the whole bill and sends each line as
  * the phone saw it (the knock, D111); `pay.returned` and `pay.cancel` name the payment by the
- * handle in `X-Restro-Payment`.
+ * handle in `X-Restro-Payment`. The share commands (D160 §3) sit beside them: `share.start` picks
+ * as a Pay does, `share.hold` takes this phone's own part, and `share.withdraw` and
+ * `share.returned` name that part by the handle in the same header.
  */
 export const GuestPayCommandSchema = z.discriminatedUnion('kind', [
   PayStartSchema,
   PayReturnedSchema,
   PayCancelSchema,
+  ShareStartSchema,
+  ShareHoldSchema,
+  ShareWithdrawSchema,
+  ShareReturnedSchema,
 ])
 
 /** A guest pay command. */
@@ -536,6 +552,70 @@ export const GuestPaymentAnswerSchema = z.strictObject({
 
 /** What `GET /api/guest/payment` answers with 200. */
 export type GuestPaymentAnswer = z.output<typeof GuestPaymentAnswerSchema>
+
+/**
+ * What `GET /api/guest/share` answers a phone of the table with 200 (D160 §3, #544), or null where
+ * the table has no group payment: the shared amount, what is claimed and held of it, the shared
+ * lines, and — for a phone that sent the handle of its own part in `X-Restro-Payment` — that part
+ * under `mine`, with the provider's form values while its card is being collected. Nothing names a
+ * payer: `holds` is how many parts there are (rule 3).
+ */
+export const GuestShareAnswerSchema = z.strictObject({
+  id: idSchema('py'),
+  /** The short number the guest shows the waiter (five letters). */
+  number: z.string().regex(/^[A-Z0-9]{5}$/),
+  /** `awaiting_guest` while the parts are being taken, then the states of the closing payment. */
+  state: z.enum(GUEST_PAYMENT_STATES),
+  /** Why the share ended (`expired`, `cancelled`, `withdrawn`, `bill_changed`), or null. */
+  reason: z.string().max(64).nullable(),
+  currency: z.string().length(3),
+  /** The amount the table is settling together. */
+  sharedMinor: minor,
+  /** The parts whose cards are held: covered for sure. */
+  heldMinor: minor,
+  /** The parts claimed, held or on their way to a card form. */
+  claimedMinor: minor,
+  /** What is still to be claimed. */
+  leftMinor: minor,
+  /** The smallest card payment here: a part below it is refused. */
+  minimumMinor: minor,
+  /** When the share runs out (an ISO instant), or null once it has ended. */
+  endsAt: z.iso.datetime().nullable(),
+  /** How many parts there are, never whose. */
+  holds: z.int().nonnegative(),
+  lines: z
+    .array(
+      z.strictObject({
+        name: LocalizedTextSchema.nullable(),
+        quantity: z.string().max(32),
+        amountMinor: minor,
+      }),
+    )
+    .max(SERVICE_LIMITS.payLines),
+  /** This phone's own part, or null while it has taken none. */
+  mine: z
+    .strictObject({
+      state: z.enum(SHARE_HOLD_STATES),
+      reason: z.string().max(64).nullable(),
+      amountMinor: minor,
+      tipMinor: minor,
+      form: z
+        .strictObject({
+          provider: z.string().regex(/^[a-z][a-z0-9_-]{0,31}$/),
+          values: z.record(z.string().max(64), z.string().max(2_000)),
+          confirmSeconds: seconds,
+        })
+        .nullable(),
+    })
+    .nullable(),
+  /** The venue's time zone (IANA). */
+  timeZone: z.string().min(1).max(64),
+  /** Milliseconds to the next poll. */
+  next: z.int().positive(),
+})
+
+/** What `GET /api/guest/share` answers with 200. */
+export type GuestShareAnswer = z.output<typeof GuestShareAnswerSchema>
 
 /** The answer of a request the API refused before any command ran (401, 400, 404, 413, 429). */
 export const GuestApiErrorSchema = z.strictObject({

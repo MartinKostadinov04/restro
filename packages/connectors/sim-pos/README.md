@@ -42,6 +42,7 @@ Tables are named by number (`7`) or by the POS's own id. `SIM_POS_URL` (from the
 - `payment-trouble`: a waiter's round slips into a move, a close prints no receipt, a line is voided after the guest confirmed, a bill is locked on a terminal.
 - `tip-on-close`: Table 7's 46.00 EUR bill on a POS that takes a tip as one row of its Tip article (`tipAsLine`), so a guest's tip lands on the same bill and receipt (D127).
 - `receipt-sent` and `receipt-file`: Demo Bar on a POS that issues the sale as an electronic receipt to the guest's email (`electronicReceipt`): the first sends it itself, the second returns the receipt file on the close for Restro to send (`electronicReceiptFile`) (#186).
+- `share`: Demo Bar on a POS that takes several card payments on one close (`severalPaymentsPerClose`), so a table's guests settle together: each part is its own hold and the close takes them all (#543, #544).
 - `pay-first`: Demo Bar with no open bills on a POS whose first items open a bill (`firstItemsOpenBill`) and whose notes reach the ticket (`notesReachTicket`): a guest pays a pay-first round at Send and Restro enters it on a free payment table (#113).
 
 A file holds the floor, catalogue, logins and open bills, the profile and switches, the faults, a `setup` list of waiter operations, and, for the dev seed, the `menu` the venue's owner would have made. Demo Bar runs the `pilot` profile with the bars read (`readsTableBar`) and one login for every bar (`oneLoginPerBar` off), so the floor reading sees both bars.

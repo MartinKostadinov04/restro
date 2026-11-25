@@ -228,6 +228,13 @@ export interface TableStateRead {
   readonly notesAndOptions: boolean
   /** A tip can be given when paying here: the table's POS records it on the receipt (D127). */
   readonly tips: boolean
+  /**
+   * The bill can be shared by amount here (D160 2.8, 2.19): the table's POS declares that it closes
+   * one bill with several card payments (undeclared means not claimed, D122 §3), and guests here do
+   * not pay before they order. The phone offers "Split the amount" only then; the server refuses a
+   * `share.start` either way (`share_not_offered`).
+   */
+  readonly sharing: boolean
   /** An email for the venue's electronic receipt can be given when paying here (D127, #186). */
   readonly receiptEmail: boolean
   /**
@@ -1050,6 +1057,7 @@ export async function readTableState(
       pauses: active,
       notesAndOptions: capabilities.notesReachTicket,
       tips: capabilities.recordTipOnClose,
+      sharing: capabilities.closeWithSeveralPayments && payFirstSettings.itemMode !== 'pay_first',
       receiptEmail: capabilities.electronicReceipt,
       payFirst,
       paying,

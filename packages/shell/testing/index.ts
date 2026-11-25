@@ -78,6 +78,10 @@ export {
   RECEIPT_LOOK,
   recordSaving,
   type SaveRecord,
+  type ShareScenario,
+  shareHold,
+  shareScenarios,
+  shareView,
 } from './paying'
 export { stubServices } from './services'
 export { type FaceContractSuiteOptions, faceContractSuite } from './suite'

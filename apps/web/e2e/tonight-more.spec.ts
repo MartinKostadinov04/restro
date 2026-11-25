@@ -122,6 +122,9 @@ let waiter: { context: BrowserContext; page: Page }
 let tablet: { context: BrowserContext; page: Page }
 
 test.beforeAll(async ({ browser }) => {
+  // Three sign-ins, which Better Auth's limiter may make wait for each other, so the hook needs
+  // more than its own 30 seconds (a file's test.setTimeout does not reach a hook).
+  test.setTimeout(240_000)
   seed('seed')
   owner = await person(browser, TONIGHT_OWNER_EMAIL, TABLET)
   waiter = await person(browser, TONIGHT_WAITER_EMAIL, TABLET)
