@@ -121,8 +121,11 @@ test('nothing chosen yet: the picker and an empty state, and a hand-made venue s
   await expect(page).toHaveURL(/\/venues\/vn_[0-9A-Za-z]{22}/)
   venueUrl = new URL(page.url()).pathname
   venueId = venueUrl.split('/').pop() ?? ''
-  await page.getByRole('tab', { name: 'Настройки' }).click()
-  await expect(page.getByRole('heading', { name: INTEGRATION_VENUE_NAME, level: 1 })).toBeVisible()
+  await page.getByRole('link', { name: 'Настройки на заведението' }).click()
+  await expect(page.getByTestId('venue-switcher')).toContainText(INTEGRATION_VENUE_NAME)
+  await expect(
+    page.getByRole('heading', { name: 'Настройки на заведението', level: 1 }),
+  ).toBeVisible()
   // The card is drawn after the tab's data is read: wait for the skeleton to go, then it is absent.
   await expect(page.getByTestId('menu-source-skeleton')).toHaveCount(0)
   await expect(page.getByTestId('menu-source')).toHaveCount(0)
@@ -272,7 +275,6 @@ test('a venue that serves a venue of the system shows its Menu source: instance,
 
   // Chosen means stored: it survives a reload.
   await page.reload()
-  await page.getByRole('tab', { name: 'Настройки' }).click()
   await expect(page.getByRole('radio', { name: /Текуща цена/ })).toBeChecked()
   await snapshot('s1-menu-source-card-bg-light-desktop.png')
 
@@ -457,12 +459,10 @@ test('a second connection is added, refused for a used address, and removed for 
   }
 })
 
-test('an old ?tab=integration link opens the venue’s Settings tab', async () => {
+test('an old ?tab=integration link opens the venue’s own Settings', async () => {
   await page.goto(`${venueUrl}?tab=integration`)
-  await expect(page.getByRole('tab', { name: 'Настройки' })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  )
+  await expect(page).toHaveURL(/\?tab=settings&section=general$/)
+  await expect(page.locator('[data-nav="settings-venue"]')).toHaveAttribute('aria-current', 'page')
   await expect(page.getByTestId('menu-source')).toBeVisible()
   await expect(page.getByTestId('menu-source-venue')).toHaveText('Main bar')
 })

@@ -88,8 +88,10 @@ async function snapshot(fileName: string, target: Page = page) {
   await target.screenshot({ path: path.join(dir, fileName) })
 }
 
+/** A venue in the sidebar's list, off a venue's page (on one, the switcher names it, D161). */
 const sidebarItem = (target: Page, name: string) =>
   target.getByTestId('venue-nav-item').filter({ hasText: name })
+const switcherName = (target: Page) => target.getByTestId('venue-switcher-name')
 const settingsTab = (id: string) => `/venues/${id}?tab=settings`
 
 /** What a guest sees at an address, in a browser that has never been there (no cached files). */
@@ -137,7 +139,7 @@ test.afterAll(async () => {
 
 test('an owner renames the venue; the sidebar and the page follow', async () => {
   await page.goto(settingsTab(seed.barId))
-  await expect(sidebarItem(page, BAR)).toBeVisible()
+  await expect(switcherName(page)).toHaveText(BAR)
   const input = page.getByTestId('venue-name-input')
   await expect(input).toHaveValue(BAR)
   await expect(page.getByTestId('venue-name-save')).toBeDisabled()
@@ -147,9 +149,8 @@ test('an owner renames the venue; the sidebar and the page follow', async () => 
   await expect(
     page.getByText('Saved. Guests see the new name after the next publish.'),
   ).toBeVisible()
-  await expect(sidebarItem(page, RENAMED)).toBeVisible()
-  await expect(sidebarItem(page, BAR)).toHaveCount(0)
-  await expect(page.getByRole('heading', { level: 1, name: RENAMED })).toBeVisible()
+  await expect(switcherName(page)).toHaveText(RENAMED)
+  await expect(page.getByRole('heading', { level: 1, name: 'Venue settings' })).toBeVisible()
   // The address did not change (D84: `/m/<organisation>/<venue>`).
   await expect(page.getByTestId('venue-header-address')).toHaveText(
     `/m/lifecycle-club/${seed.barSlug}`,

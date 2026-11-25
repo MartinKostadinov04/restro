@@ -444,7 +444,22 @@
     "newVenue": "New venue",
     "organization": "Organisation",
     "settings": "Settings",
-    "breadcrumb": "Breadcrumb"
+    "breadcrumb": "Breadcrumb",
+    "groups": {
+      "menu": "Menu",
+      "ordering": "Ordering",
+      "reservations": "Reservations",
+      "venue": "Venue"
+    },
+    "settingsOf": {
+      "ordering": "Ordering settings",
+      "reservations": "Reservation settings",
+      "venue": "Venue settings",
+      "organization": "Organisation settings"
+    },
+    "switchVenue": "Switch venue",
+    "venueNav": "Venue navigation",
+    "deviceMenu": "Language, theme and sign out"
   },
   "organizationSwitcher": {
     "label": "Organisation",
@@ -1786,7 +1801,6 @@
       "failed": "Something went wrong. Try again."
     },
     "colours": {
-      "title": "Colours",
       "description": "Start with your brand colour. The page and the panels are filled in from it and you can change them. Every other colour is worked out for you, so text stays easy to read.",
       "invalid": "Enter a colour like #3366cc.",
       "tertiary": {
@@ -1974,11 +1988,7 @@
       "keep": "Keep editing"
     },
     "styles": {
-      "title": "Style",
       "restro": "Restro styles"
-    },
-    "fonts": {
-      "title": "Fonts"
     },
     "layout": {
       "title": "Layout for all menus",
@@ -1993,14 +2003,28 @@
       "mode": "Level of detail",
       "simple": "Simple",
       "advanced": "Advanced",
-      "pages": "Design pages",
       "styledIn": "Styled in Advanced",
       "show": "Show Advanced",
       "dismiss": "Close this note",
       "notes": {
         "bleed": "Edge-to-edge photos have no corners of their own",
+        "pageBand": "Applies only when the header's band is Panel colour or Ink.",
         "heavy": "{font} has no weight heavier than {weight}, so Heavy is drawn at its heaviest."
       }
+    },
+    "parts": {
+      "style": "Style",
+      "colours": "Colours and logo",
+      "fonts": "Fonts",
+      "layout": "Layout",
+      "menuParts": "Parts of the menu",
+      "back": "Back",
+      "backLabel": "Back to all parts",
+      "changed": "{style}, changed",
+      "logo": "Logo",
+      "noLogo": "No logo",
+      "layoutSwitch": "{layout} · guests can switch",
+      "layoutFixed": "{layout} · guests cannot switch"
     },
     "myStyles": {
       "title": "My styles",

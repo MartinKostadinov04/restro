@@ -98,11 +98,16 @@ test.afterAll(async () => {
   await owner?.context.close()
 })
 
-test('the tab sits after Tonight and opens on tonight, in arrival order', async () => {
+test('the screen has its own module in the sidebar and opens on tonight, in arrival order', async () => {
   const { page } = owner
   await openReservations(page)
-  const tabs = page.getByRole('tablist', { name: 'Switch tab' }).getByRole('tab')
-  await expect(tabs).toHaveText(['Studio', 'Tables & QR', 'Tonight', 'Reservations', 'Settings'])
+  // Reservations is a module of its own (D161, D155): its screen and its Settings, after Ordering.
+  await expect(page.getByTestId('venue-nav-group-reservations').locator('[data-nav]')).toHaveText([
+    'Reservations',
+    'Settings',
+  ])
+  await expect(page.locator('[data-nav="reservations"]')).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('heading', { name: 'Reservations', level: 1 })).toBeVisible()
 
   await expect(rows(page)).toHaveCount(4)
   // The night's own order: who came first, then the late booking, then the party still to come.
@@ -220,26 +225,27 @@ test('on a phone the night is a list of its own, and the sheet is a drawer', asy
   }
 })
 
-test('five tabs are one row at the narrowest desktop, in Bulgarian, and nothing scrolls sideways', async ({
+test('the sidebar holds every screen at the narrowest desktop, in Bulgarian, and nothing scrolls sideways', async ({
   browser,
 }) => {
-  // The widest words (Bulgarian) at the width the row first appears at: a fifth tab must not push
-  // the page sideways, and the row itself must not need scrolling to reach Settings.
+  // The widest words (Bulgarian) at the narrowest desktop: the venue's screens are the sidebar's
+  // entries (D161), none pushes the page sideways.
   const context = await browser.newContext({ viewport: { width: 1024, height: 800 } })
   const page = await context.newPage()
   try {
     await signIn(page, TONIGHT_OWNER_EMAIL)
     await page.goto(`/venues/${venueId}?tab=reservations`)
     await expect(screen(page)).toBeVisible()
-    const list = page.getByRole('tablist', { name: 'Смяна на раздела' })
-    await expect(list.getByRole('tab')).toHaveText([
+    await expect(page.getByTestId('venue-nav').locator('[data-nav]')).toHaveText([
       'Студио',
       'Маси и QR',
       'Тази вечер',
+      'Настройки',
       'Резервации',
       'Настройки',
+      'Настройки',
     ])
-    expect(await list.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1)
+    await expect(page.getByRole('heading', { name: 'Резервации', level: 1 })).toBeVisible()
     const sideways = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     )

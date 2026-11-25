@@ -138,7 +138,10 @@ test('on Tonight what an owner can press follows the night’s work (RR-80)', as
   await expect(section).toBeVisible({ timeout: 30_000 })
   await expect(section.getByRole('button').or(section.getByRole('link')).first()).toBeVisible()
   await expect(section.locator(':disabled')).toHaveCount(0)
-  await expect(demo.getByRole('combobox').nth(1)).toContainText('Actions and tables')
+  // The venue's own tab bar is gone (D161): Tonight's views are the page's only dropdown.
+  await expect(demo.locator('[aria-label="Sections of Tonight"]:visible').first()).toContainText(
+    'Actions and tables',
+  )
   const workBox = await work.boundingBox()
   const sectionBox = await section.boundingBox()
   expect(sectionBox?.y ?? 0).toBeGreaterThanOrEqual((workBox?.y ?? 0) + (workBox?.height ?? 0))
@@ -160,12 +163,16 @@ test('a tablet with an owner’s account is not offered what it would be refused
   await tablet.goto('/venues')
   await expect(tablet.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 30_000 })
   await expect(tablet.getByTestId('new-venue')).toHaveCount(0)
-  await tablet.getByRole('button', { name: /sidebar/i }).click()
-  await expect(tablet.getByTestId('venue-nav-item').first()).toBeVisible()
-  await expect(tablet.getByTestId('venue-nav-new')).toHaveCount(0)
+  // A shared device has no sidebar at all (D161, D122 §7): its name in the top bar opens the
+  // language, the theme and Sign out, and nothing to navigate.
+  await expect(tablet.getByRole('button', { name: /sidebar/i })).toHaveCount(0)
+  await expect(tablet.getByTestId('venue-nav-item')).toHaveCount(0)
   await expect(tablet.getByTestId('nav-settings')).toHaveCount(0)
-  await tablet.waitForTimeout(500) // the side sheet slides in
+  await tablet.getByTestId('device-menu').click()
+  await expect(tablet.getByTestId('sign-out')).toBeVisible()
+  await expect(tablet.getByTestId('venue-nav-new')).toHaveCount(0)
   await tablet.screenshot({ path: test.info().outputPath('rr-85-tablet-menu.png') })
+  await tablet.keyboard.press('Escape')
 
   // The old links: the organisation's Settings say what they need, the venue's land on Tonight.
   await tablet.goto('/settings')

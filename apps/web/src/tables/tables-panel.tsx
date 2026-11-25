@@ -155,7 +155,7 @@ function Panel({ view: given }: { view: TablesView }) {
         </EmptyHeader>
         <EmptyContent>
           <Button asChild variant="outline">
-            <Link href={`/venues/${view.venueId}?tab=settings#menu-source`}>
+            <Link href={`/venues/${view.venueId}?tab=settings&section=general#menu-source`}>
               {t('empty.action')}
             </Link>
           </Button>
