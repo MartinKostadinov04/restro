@@ -47,6 +47,8 @@ export const PIN_FALL_ACTIONS = [
   'edit',
   /** Cancel. */
   'cancel',
+  /** Confirm or decline an online request (#578). */
+  'answer',
   /** Delete. */
   'delete',
   /** Restore. */
@@ -83,6 +85,8 @@ export const DEFAULT_PIN_FALL: Readonly<Record<PinFallAction, PinFall>> = {
   create: 'pin',
   edit: 'pin',
   cancel: 'pin',
+  // D141 names it: "confirm or decline an online request" writes the booking book.
+  answer: 'pin',
   delete: 'pin',
   restore: 'pin',
   put_back: 'pin',
@@ -197,6 +201,9 @@ export function pinFallActionOf(type: string, payload: unknown): PinFallAction |
       return 'spots'
     case 'reservation.cancel':
       return 'cancel'
+    case 'reservation.confirm':
+    case 'reservation.decline':
+      return 'answer'
     case 'reservation.delete':
       return 'delete'
     case 'reservation.restore':

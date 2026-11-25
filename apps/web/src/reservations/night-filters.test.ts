@@ -5,7 +5,13 @@
 import { describe, expect, it } from 'vitest'
 import type { RvCountsView, RvRowView, RvWaitingView } from '@/server/reservations/view'
 
-import { filterCount, filterRows, RESERVATION_FILTERS, waitingQueue } from './night-filters'
+import {
+  chipShown,
+  filterCount,
+  filterRows,
+  RESERVATION_FILTERS,
+  waitingQueue,
+} from './night-filters'
 import { RV_STATUSES } from './statuses'
 
 const row = (over: Partial<RvRowView> = {}): RvRowView => ({
@@ -79,6 +85,19 @@ describe('the number on a chip', () => {
 
   it('is 0 for a state the night holds nothing of, so its chip is not drawn', () => {
     expect(filterCount(counts({ all: 3 }), 'no_show')).toBe(0)
+    expect(chipShown(counts({ all: 3 }), 'no_show')).toBe(false)
+  })
+
+  it('draws "Requested" even at 0, first after "Late", so no answer waiting is news too (#578)', () => {
+    expect(RESERVATION_FILTERS[2]).toBe('requested')
+    expect(chipShown(counts(), 'requested')).toBe(true)
+    expect(chipShown(counts(), 'all')).toBe(true)
+    expect(filterCount(counts(), 'requested')).toBe(0)
+    const two = counts({ all: 2, byStatus: { ...counts().byStatus, requested: 2 } })
+    expect(filterCount(two, 'requested')).toBe(2)
+    expect(
+      chipShown(counts({ all: 1, byStatus: { ...counts().byStatus, declined: 1 } }), 'declined'),
+    ).toBe(true)
   })
 })
 

@@ -7,7 +7,8 @@
 // The permissions are D141's eight, no more:
 // - `reservations.tonight` — the hostess's taps: arrivals, the waiting list, the plan's spots,
 //   **taking** a booking (create, copy), **working** any booking whoever took it (edit, cancel:
-//   D135 13.18, S20 of the 11-18 screen round) and taking out one she made herself (#328);
+//   D135 13.18, S20 of the 11-18 screen round), **answering** an online request (confirm,
+//   decline: #578) and taking out one she made herself (#328);
 // - `reservations.manage` — the manager's acts on the booking book (D135: "stays the manager's"):
 //   take out another's, restore, and put back what the night's end closed; being the wider key,
 //   it also edits and cancels (`alsoPermittedBy`);
@@ -44,6 +45,7 @@ import { idSchema } from '../../ids'
 import { SPOT_PLACE_FIELDS, SPOT_SYMBOLS, spotPlaceIssues } from '../../spot-shapes'
 import { type CommandDefinition, defineCommand } from '../definition'
 import { endTheNightNow } from '../night-end'
+import { confirmReservation, declineReservation } from './answer'
 import {
   arriveReservation,
   holdReservationSpots,
@@ -122,8 +124,9 @@ const party = {
 const partySize = z.number().int().min(1).max(500)
 
 /**
- * The status a command may move a reservation to: every one of the eight **except** Requested,
- * which part 2 owns and nothing in part 1 creates (D136), and **except Seated**, because marking a
+ * The status a command may move a reservation to: every one of the nine **except** Requested,
+ * which only a booking made online starts in (D136), **except Declined**, which only the answer to
+ * a request gives (`reservation.decline`, or the night's end: #578), and **except Seated**, because marking a
  * party present opens its table's codes and so has a command of its own (`reservation.arrive`,
  * #329). Leaving Seated out of the schema is what makes a second seat path impossible rather than
  * merely unlikely: a caller asking for it is refused before any handler runs. Listed rather than
@@ -392,6 +395,36 @@ export const RESERVATION_COMMANDS = {
     alsoPermittedBy: ['reservations.manage'],
     idempotency: 'by_nature',
     handle: cancelReservation,
+  }),
+  // Answering an online request (#578; spec #322, Implementation Decision 2): Confirm makes it
+  // Reserved and gives it its spots in the same command, refusing a spot taken meanwhile by name;
+  // Decline makes it Declined. Each emails a guest with an address. Both write the booking book, so
+  // both take four digits on a shared device (D141: "confirm or decline an online request").
+  'reservation.confirm': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('reservation.confirm'),
+      reservationId,
+      spotIds: spotIds.optional(),
+    }),
+    origins: ['staff'],
+    // Answering a request is whoever works tonight's reservations (#578); four digits on a shared
+    // device (D141). The booking book's key alone does not widen it (S20 pins the widened list).
+    permission: 'reservations.tonight',
+    idempotency: 'by_nature',
+    handle: confirmReservation,
+  }),
+  'reservation.decline': defineCommand({
+    schema: z.strictObject({
+      type: z.literal('reservation.decline'),
+      reservationId,
+      reason: code.nullable().optional(),
+    }),
+    origins: ['staff'],
+    // Answering a request is whoever works tonight's reservations (#578); four digits on a shared
+    // device (D141). The booking book's key alone does not widen it (S20 pins the widened list).
+    permission: 'reservations.tonight',
+    idempotency: 'by_nature',
+    handle: declineReservation,
   }),
   // D135's "delete": the line leaves the night's list without becoming a cancellation nobody made.
   // The row stays (app code deletes nothing), so Restore can put it back and the Log still names it.

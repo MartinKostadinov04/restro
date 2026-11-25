@@ -187,6 +187,8 @@ export interface NightEndPreview {
   readonly finished: number
   readonly noShow: number
   readonly notSeated: number
+  /** Online requests nobody answered, which the night's end declines and emails (#578). */
+  readonly declined: number
   /** The table codes that would close now. */
   readonly codesClose: number
   /** The table codes a card payment keeps open until it ends. */
@@ -200,9 +202,9 @@ export interface NightEndPreview {
 }
 
 /**
- * The early end's preview (#332; RS-48): how many parties become Finished, No-show and Not seated,
- * how many codes close and how many a card keeps, how many bills are still open, and whether the
- * club's closing hour is still to come. Read by whoever may end the night — and on a shared
+ * The early end's preview (#332; RS-48): how many parties become Finished, No-show, Not seated and
+ * Declined, how many codes close and how many a card keeps, how many bills are still open, and
+ * whether the club's closing hour is still to come. Read by whoever may end the night — and on a shared
  * device, where the action is present and asks for the PIN (D141), never disabled.
  */
 export async function readNightEndPreview(
@@ -234,12 +236,13 @@ export async function readNightEndPreview(
           isNull(reservations.deletedAt),
         ),
       )
-    const counts = { finished: 0, noShow: 0, notSeated: 0 }
+    const counts = { finished: 0, noShow: 0, notSeated: 0, declined: 0 }
     for (const line of lines) {
       const to = nightEndStatus(line.status as ReservationStatus, line.kind as ReservationKind)
       if (to === 'finished') counts.finished += 1
       else if (to === 'no_show') counts.noShow += 1
       else if (to === 'not_seated') counts.notSeated += 1
+      else if (to === 'declined') counts.declined += 1
     }
     const tables = await openSittingBills(tx, venue.id)
     const hours = serviceHoursOn(serviceDate, clock)

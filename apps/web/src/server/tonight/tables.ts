@@ -22,6 +22,7 @@ import {
 import { itemsOfVenue } from '@restro/core/apply'
 import {
   applyService,
+  nightEndGuestEmailJobs,
   type RefusalCode,
   type ServiceActor,
   type ServiceResult,
@@ -148,17 +149,48 @@ function answer(result: ServiceResult): TonightResult {
       }
 }
 
-async function run(scope: TonightScope, command: unknown): Promise<ServiceResult> {
+async function run(
+  scope: TonightScope,
+  command: unknown,
+  jobId: string = newId('jb'),
+): Promise<ServiceResult> {
   const { result } = await applyService(scope.pool, command, {
     tenantId: scope.tenantId,
     venueId: scope.venueId,
     origin: 'staff',
     via: 'tonight',
     actor: scope.actor,
-    jobId: newId('jb'),
+    jobId,
     ...(scope.signedInAt === undefined ? {} : { signedInAt: scope.signedInAt }),
   })
   return result
+}
+
+/**
+ * Ends the night now (`night.end`, #332) and queues the emails it owes (#578): one per online
+ * request nobody answered, which the night's end declined. They are read from the Log entries of
+ * this command's own job once it committed; a queue that cannot be reached is logged (a code,
+ * never a guest) and the night's end stands.
+ */
+export async function endNight(
+  scope: TonightScope,
+  services: TonightServices,
+): Promise<TonightResult> {
+  const jobId = newId('jb')
+  const result = await run(scope, { type: 'night.end' }, jobId)
+  if (result.status === 'accepted' && Number(result.details.declined ?? 0) > 0) {
+    try {
+      const jobs = await nightEndGuestEmailJobs(scope.pool, {
+        tenantId: scope.tenantId,
+        venueId: scope.venueId,
+        jobId,
+      })
+      for (const job of jobs) await services.enqueue(JOB_NAMES.guestEmail, job)
+    } catch (error) {
+      logError('night_end_emails_not_queued', error)
+    }
+  }
+  return answer(result)
 }
 
 /** Runs one of Tonight's table commands. */

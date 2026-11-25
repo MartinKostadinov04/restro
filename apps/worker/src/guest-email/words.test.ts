@@ -96,3 +96,40 @@ describe('the words of a guest email (#576)', () => {
     expect(() => nightWords('2026-13-01', 'en')).toThrow(RangeError)
   })
 })
+
+describe('the answer to a request (#578)', () => {
+  const CONFIRMED = { ...FACTS, spotNames: ['Bar 2', 'Bar 10'] }
+
+  it('says a confirmation with the spots it holds, in both languages', () => {
+    const bg = guestEmailWords('reservation_confirmed', 'bg', CONFIRMED)
+    expect(bg.subject).toBe('Резервацията Ви е потвърдена')
+    expect(bg.text.split('\n')[0]).toBe('Резервацията Ви в Club Нощ е потвърдена.')
+    expect(bg.text).toContain('Час: 22:30')
+    expect(bg.text).toContain('Гости: 4')
+    expect(bg.text.split('\n').at(-1)).toBe('Места: Bar 2, Bar 10')
+    const en = guestEmailWords('reservation_confirmed', 'en', CONFIRMED)
+    expect(en.subject).toBe('Your reservation is confirmed')
+    expect(en.text.split('\n')[0]).toBe('Your reservation at Club Нощ is confirmed.')
+    expect(en.text.split('\n').at(-1)).toBe('Spots: Bar 2, Bar 10')
+  })
+
+  it('leaves the spots out of a confirmation with none, and out of every other kind', () => {
+    expect(guestEmailWords('reservation_confirmed', 'en', FACTS).text).not.toContain('Spots')
+    for (const kind of ['reservation_cancelled', 'reservation_declined'] as const) {
+      expect(guestEmailWords(kind, 'en', CONFIRMED).text).not.toContain('Spots')
+      expect(guestEmailWords(kind, 'bg', CONFIRMED).text).not.toContain('Места')
+    }
+  })
+
+  it('says a decline as the club could not take it, in the venue’s voice, never an apology', () => {
+    const bg = guestEmailWords('reservation_declined', 'bg', FACTS)
+    expect(bg.subject).toBe('Клубът не можа да приеме резервацията Ви')
+    expect(bg.text.split('\n')[0]).toBe('Club Нощ не можа да приеме резервацията Ви.')
+    const en = guestEmailWords('reservation_declined', 'en', FACTS)
+    expect(en.subject).toBe('The club could not take your reservation')
+    expect(en.text.split('\n')[0]).toBe('Club Нощ could not take your reservation.')
+    for (const { subject, text } of [bg, en]) {
+      expect(`${subject}\n${text}`).not.toMatch(/sorry|apolog|regret|съжал|извин|отмен/i)
+    }
+  })
+})

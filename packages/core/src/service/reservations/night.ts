@@ -3,8 +3,10 @@
 //
 // - **The night's end** is the venue's closing hour, or an admin's early end before it
 //   (`night-end.ts`, which owns the moment and its record). There the parties are swept: the seated
-//   become Finished, a booking nobody came for No-show, a party still waiting Not seated, a block
-//   untouched (`nightEndStatus`).
+//   become Finished, a booking nobody came for No-show, a party still waiting Not seated, an online
+//   request nobody answered Declined, a block untouched (`nightEndStatus`). Each declined request's
+//   guest is emailed by the caller, from the Log entries its own job wrote
+//   (`nightEndGuestEmailJobs`); nothing here touches money.
 // - **A night has passed** when its service day ended (D45). The worker then runs the same sweep
 //   once more (`sweepPassedNight`), for whatever the night's end left: a party seated after the
 //   hour, a booking made after it, a night whose end never ran.
@@ -35,16 +37,23 @@ export interface NightSweep {
   readonly finished: number
   readonly noShow: number
   readonly notSeated: number
+  /** Online requests nobody answered (#578; spec #322, Implementation Decision 2). */
+  readonly declined: number
 }
 
 /** The sweep's counts as a result's or a Log entry's details. */
 export function sweepDetails(sweep: NightSweep): Record<string, number> {
-  return { finished: sweep.finished, noShow: sweep.noShow, notSeated: sweep.notSeated }
+  return {
+    finished: sweep.finished,
+    noShow: sweep.noShow,
+    notSeated: sweep.notSeated,
+    declined: sweep.declined,
+  }
 }
 
 /** True when the sweep moved nobody. */
 export function sweptNobody(sweep: NightSweep): boolean {
-  return sweep.finished + sweep.noShow + sweep.notSeated === 0
+  return sweep.finished + sweep.noShow + sweep.notSeated + sweep.declined === 0
 }
 
 /** One move the sweep makes: a party, and the status the night's end gives it. */
@@ -79,6 +88,7 @@ export function countSweep(moves: readonly SweepMove[]): NightSweep {
     finished: moves.filter((move) => move.to === 'finished').length,
     noShow: moves.filter((move) => move.to === 'no_show').length,
     notSeated: moves.filter((move) => move.to === 'not_seated').length,
+    declined: moves.filter((move) => move.to === 'declined').length,
   }
 }
 

@@ -77,9 +77,9 @@ describe('the sweep', () => {
     expect(nightEndStatus('reserved', 'booking')).toBe('no_show')
     expect(nightEndStatus('waiting', 'walk_in')).toBe('not_seated')
     expect(nightEndStatus('reserved', 'block')).toBeNull()
-    // Requested is part 2's (#323): the night's end does nothing to it.
-    expect(nightEndStatus('requested', 'booking')).toBeNull()
-    for (const status of ['finished', 'no_show', 'cancelled', 'not_seated'] as const) {
+    // A request nobody answered is declined (#578; spec #322, Implementation Decision 2).
+    expect(nightEndStatus('requested', 'booking')).toBe('declined')
+    for (const status of ['finished', 'no_show', 'cancelled', 'not_seated', 'declined'] as const) {
       expect(nightEndStatus(status, 'booking')).toBeNull()
     }
   })
@@ -97,13 +97,14 @@ describe('the sweep', () => {
     fc.assert(
       fc.property(anyLines, fc.integer({ min: 1, max: 5 }), (lines, runs) => {
         let night = lines
-        const counted = { finished: 0, noShow: 0, notSeated: 0 }
+        const counted = { finished: 0, noShow: 0, notSeated: 0, declined: 0 }
         for (let run = 0; run < runs; run += 1) {
           const moves = planSweep(night)
           const counts = countSweep(moves)
           counted.finished += counts.finished
           counted.noShow += counts.noShow
           counted.notSeated += counts.notSeated
+          counted.declined += counts.declined
           const to = new Map(moves.map((move) => [move.id, move.to]))
           night = night.map((line) => ({ ...line, status: to.get(line.id) ?? line.status }))
           // From the second run on, nothing moves.
@@ -130,6 +131,7 @@ describe('putting one reservation back', () => {
     expect(putBack('not_seated')).toEqual({ ok: true, status: 'waiting' })
     expect(putBack('finished')).toEqual({ ok: false, code: 'put_back_not_allowed' })
     expect(putBack('cancelled')).toEqual({ ok: false, code: 'put_back_not_allowed' })
+    expect(putBack('declined')).toEqual({ ok: false, code: 'put_back_not_allowed' })
   })
 
   it('knows from the Log whether the night’s end or a hostess’s tap ended a party', () => {

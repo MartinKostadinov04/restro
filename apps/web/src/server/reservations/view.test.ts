@@ -85,8 +85,9 @@ const night = (over: Partial<ReservationNightRead> = {}): ReservationNightRead =
 })
 
 describe('the states the screen knows', () => {
-  it('lists all eight of them (D138), in the order a night runs in', () => {
+  it('lists all nine of them (D138, #578), in the order a night runs in', () => {
     expect([...RV_STATUSES]).toEqual([
+      'requested',
       'reserved',
       'waiting',
       'seated',
@@ -94,7 +95,7 @@ describe('the states the screen knows', () => {
       'no_show',
       'not_seated',
       'cancelled',
-      'requested',
+      'declined',
     ])
   })
 })

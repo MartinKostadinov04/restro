@@ -138,3 +138,27 @@ describe('the guest email job (#576)', () => {
     expect(decision).toMatchObject({ send: true, to: ADDRESS, language: 'bg' })
   })
 })
+
+describe('the answer to a request (#578)', () => {
+  it('sends a confirmation while the booking is Reserved, and a decline while it is Declined', () => {
+    const confirmed = { ...job, kind: 'reservation_confirmed' } as const
+    expect(guestEmailDecision(confirmed, { ...NEWS, status: 'reserved' })).toMatchObject({
+      send: true,
+    })
+    // Declined or cancelled since: the confirmation is no longer true.
+    for (const status of ['declined', 'cancelled', 'requested']) {
+      expect(guestEmailDecision(confirmed, { ...NEWS, status })).toEqual({
+        send: false,
+        reason: 'news_changed',
+      })
+    }
+    const declined = { ...job, kind: 'reservation_declined' } as const
+    expect(guestEmailDecision(declined, { ...NEWS, status: 'declined' })).toMatchObject({
+      send: true,
+    })
+    expect(guestEmailDecision(declined, { ...NEWS, status: 'cancelled' })).toEqual({
+      send: false,
+      reason: 'news_changed',
+    })
+  })
+})

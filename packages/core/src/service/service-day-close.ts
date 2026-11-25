@@ -15,8 +15,8 @@
 // payment held, cancelling or awaiting the guest at the day's end goes on afterwards, so the
 // totals would undercount, and its action id is what answers a repeat of `pay.start`. A payment is
 // final once `settled_at` is set (0030's `payments_settled`), a sent order once it is in one of
-// `SETTLED_STATES`. A party still Reserved, Waiting or Seated waits too (`reservations_open`), so
-// the door's counts never freeze an unfinished status. The worker tries again on its next run.
+// `SETTLED_STATES`. A party still Requested, Reserved, Waiting or Seated waits too
+// (`reservations_open`), so the door's counts never freeze an unfinished status. The worker tries again on its next run.
 //
 // The night's open venue alerts are cleared with the close (#162; Martin 10-27): each gets `done_at`
 // and one `alert.cleared` Log line, so nobody presses Done on yesterday's alerts and the next night
@@ -262,7 +262,7 @@ export async function closeServiceDay(
   // written on the night while this runs is counted once it commits, by its own re-roll.
   await lockNightReservations(stx, day)
   await lockNightCounts(stx.tx, stx.venueId, day)
-  // A party of the day still Reserved, Waiting or Seated was not reached by the sweep (it failed,
+  // A party of the day still Requested, Reserved, Waiting or Seated was not reached by the sweep (it failed,
   // or has not run yet): closing now would freeze unfinished statuses into the door's counts
   // (D144), so the day waits for the next tick. The sweep runs before the close in the same tick.
   const [openParty] = await stx.tx
@@ -274,7 +274,7 @@ export async function closeServiceDay(
         eq(reservations.serviceDate, day),
         isNull(reservations.deletedAt),
         ne(reservations.kind, 'block'),
-        inArray(reservations.status, ['reserved', 'waiting', 'seated']),
+        inArray(reservations.status, ['requested', 'reserved', 'waiting', 'seated']),
       ),
     )
     .limit(1)

@@ -21,9 +21,23 @@ import {
   GuestEmailJobSchema,
   type GuestEmailKind,
   JOB_NAMES,
+  prepareJob,
 } from '@restro/core'
-import { GUEST_EMAIL_LOG_KINDS } from '@restro/core/service'
-import { type DbPool, guests, logEntries, reservations, venues, withTenant } from '@restro/db'
+import {
+  GUEST_EMAIL_LOG_KINDS,
+  nightEndGuestEmailJobs,
+  type ServiceResult,
+} from '@restro/core/service'
+import {
+  type DbPool,
+  guests,
+  logEntries,
+  reservationSpots,
+  reservations,
+  spots,
+  venues,
+  withTenant,
+} from '@restro/db'
 import { and, eq, isNull, max } from 'drizzle-orm'
 import type { Job } from 'pg-boss'
 
@@ -34,7 +48,7 @@ import {
   type ReservationFacts,
 } from '../guest-email/words'
 import type { Logger } from '../logger'
-import { defineJob, type JobDefinition } from './types'
+import { defineJob, type JobDefinition, type JobQueue } from './types'
 
 /** What the job reads before it sends: the reservation as it is now, and whom to tell. */
 export interface GuestEmailNews extends ReservationFacts {
@@ -55,6 +69,8 @@ export type GuestEmailSkip = 'reservation_missing' | 'news_changed' | 'no_email'
 /** The state each kind of news leaves a reservation in, while it is still true. */
 const STILL_TRUE: Readonly<Record<GuestEmailKind, (news: GuestEmailNews) => boolean>> = {
   reservation_cancelled: (news) => news.status === 'cancelled',
+  reservation_confirmed: (news) => news.status === 'reserved',
+  reservation_declined: (news) => news.status === 'declined',
 }
 
 /**
@@ -118,6 +134,20 @@ export const readGuestEmailNews: GuestEmailReader = (pool, job) =>
           eq(logEntries.kind, GUEST_EMAIL_LOG_KINDS[job.kind]),
         ),
       )
+    // The spots it holds now, by the plan's names: what the confirmed email tells the guest.
+    const held =
+      job.kind === 'reservation_confirmed'
+        ? await tx
+            .select({ name: spots.name })
+            .from(reservationSpots)
+            .innerJoin(spots, eq(spots.id, reservationSpots.spotId))
+            .where(
+              and(
+                eq(reservationSpots.reservationId, job.reservationId),
+                isNull(reservationSpots.releasedAt),
+              ),
+            )
+        : []
     return {
       status: row.status,
       deleted: row.deletedAt !== null,
@@ -128,6 +158,10 @@ export const readGuestEmailNews: GuestEmailReader = (pool, job) =>
       email: row.email,
       venueName: row.venueName,
       timeZone: row.timeZone,
+      // "Bar 2" before "Bar 10": the names in the order a person counts them.
+      spotNames: [...new Set(held.map((spot) => spot.name))].sort((a, b) =>
+        a.localeCompare(b, 'bg', { numeric: true }),
+      ),
     }
   })
 
@@ -220,4 +254,35 @@ export function createGuestEmailJob(options: {
       }
     },
   })
+}
+
+/**
+ * Queues the emails a night's end owes (#578): one `guest-email` job per request it declined, read
+ * from the Log entries of its own run (`jobId`). Called by the worker's two runs that end a night —
+ * the closing hour and the sweep of a passed night — after the command committed. Nothing is read
+ * when the answer counted no decline. A queue that cannot be reached is logged (the venue, never a
+ * guest) and the night's end stands; answers how many were queued.
+ */
+export async function queueNightEndEmails(
+  pool: DbPool,
+  queue: JobQueue,
+  result: ServiceResult,
+  scope: { readonly tenantId: string; readonly venueId: string; readonly jobId: string },
+  log: Pick<Logger, 'warn'>,
+): Promise<number> {
+  if (result.status !== 'accepted' || Number(result.details.declined ?? 0) <= 0) return 0
+  let queued = 0
+  try {
+    for (const job of await nightEndGuestEmailJobs(pool, scope)) {
+      const prepared = prepareJob(JOB_NAMES.guestEmail, job)
+      await queue.send(JOB_NAMES.guestEmail, prepared.data, {
+        singletonKey: prepared.singletonKey,
+        group: prepared.group,
+      })
+      queued += 1
+    }
+  } catch (error) {
+    log.warn({ venueId: scope.venueId, err: error }, 'the night end emails could not be queued')
+  }
+  return queued
 }

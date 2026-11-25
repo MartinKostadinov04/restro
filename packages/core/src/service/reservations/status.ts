@@ -1,11 +1,14 @@
-// The eight statuses of a reservation and the moves between them (ticket #323; spec #321,
+// The nine statuses of a reservation and the moves between them (ticket #323; spec #321,
 // Implementation Decision 1). D135 names seven — Requested, Reserved, Waiting, Seated, Finished,
 // No-show, Cancelled — and the later D138 names an eighth for a party still on the waiting list
-// when the night ends: Not seated. One table of allowed moves, so every command and every screen
+// when the night ends: Not seated. Part 2 (#578; spec #322, Implementation Decision 2) adds a
+// ninth, Declined: the venue's answer "no" to an online request, by a hostess or by the night's
+// end. One table of allowed moves, so every command and every screen
 // reads the same rule and a move nobody allowed is refused by its name instead of being written.
 //
-// Requested is here for part 2 (booking online): nothing in part 1 creates it, and a booking a
-// hostess takes over the phone is Reserved.
+// Requested is part 2's (booking online): a booking a hostess takes over the phone is Reserved.
+// A request is answered by Confirm (Reserved) or Decline (Declined); a guest who calls it off
+// himself makes it Cancelled.
 //
 // Not seated is an end state of its own and is never counted as a no-show on a guest's card: the
 // counts there are a rough count for a hostess, not a record (D140).
@@ -34,6 +37,11 @@ export const RESERVATION_STATUSES = [
   'cancelled',
   /** Still waiting when the night ended (D138): never a no-show. */
   'not_seated',
+  /**
+   * An online request the venue said no to, by a hostess's Decline or by the night's end (#578).
+   * Never a no-show, and distinct from Cancelled, which is a booking called off.
+   */
+  'declined',
 ] as const
 
 /** One reservation status. */
@@ -49,7 +57,7 @@ export const ReservationStatusSchema = z.enum(RESERVATION_STATUSES)
 export const RESERVATION_STATUS_MOVES: Readonly<
   Record<ReservationStatus, readonly ReservationStatus[]>
 > = {
-  requested: ['reserved', 'cancelled'],
+  requested: ['reserved', 'cancelled', 'declined'],
   reserved: ['seated', 'no_show', 'cancelled'],
   waiting: ['seated', 'not_seated', 'cancelled'],
   seated: ['finished'],
@@ -57,6 +65,7 @@ export const RESERVATION_STATUS_MOVES: Readonly<
   no_show: [],
   cancelled: [],
   not_seated: [],
+  declined: [],
 }
 
 /** The statuses nothing moves out of, except "Put back". */
@@ -65,6 +74,7 @@ export const END_STATUSES = [
   'no_show',
   'cancelled',
   'not_seated',
+  'declined',
 ] as const satisfies readonly ReservationStatus[]
 
 /** True for a status the night is over for. */
@@ -131,9 +141,10 @@ export const PUT_BACK_UNDONE_REASON = 'put_back_undone'
 
 /**
  * What the night's end does to one party (D138; spec #321, Implementation Decision 6): the seated
- * become Finished, a booking nobody came for No-show, a party still waiting Not seated. A block is
- * untouched, and so is everything already over. **Requested** is untouched too: none can exist in
- * part 1 (#323), and declining one, releasing its hold and emailing the guest are part 2's.
+ * become Finished, a booking nobody came for No-show, a party still waiting Not seated, and an
+ * online request nobody answered Declined (spec #322, Implementation Decision 2): its spots are
+ * released and the guest is emailed, by the sweep's callers. A block is untouched, and so is
+ * everything already over. Money is never touched here.
  *
  * The same rule serves the closing hour, an admin's early end and the sweep once a night has
  * passed, so a party is marked the same way whichever of them reaches it first, and a second run
@@ -151,6 +162,8 @@ export function nightEndStatus(
       return 'no_show'
     case 'waiting':
       return 'not_seated'
+    case 'requested':
+      return 'declined'
     default:
       return null
   }
@@ -159,8 +172,8 @@ export function nightEndStatus(
 /**
  * Where "Put back" returns a party (D138): a no-show was booked, so it goes back to Reserved; a
  * party marked Not seated was in the queue, so it goes back to Waiting. Nothing else is put back —
- * a finished party is finished (its codes are closed), and a cancelled one is re-made, not
- * restored. Whether the night's end or a hostess's tap ended it decides only **who** may put it
+ * a finished party is finished (its codes are closed), and a cancelled or declined one is re-made,
+ * not restored. Whether the night's end or a hostess's tap ended it decides only **who** may put it
  * back (`endedByNightEnd`), never where it goes.
  */
 export function putBackStatus(from: ReservationStatus): ReservationStatus | null {
@@ -216,8 +229,8 @@ export function undoPutBack(from: ReservationStatus, entries: readonly StatusEnt
 
 /**
  * Whether this status counts on a guest's card as a time he did not come (D140). Only No-show
- * does: Not seated is the venue's own doing — nobody had a table for him — and Cancelled is an
- * answer, not an absence.
+ * does: Not seated is the venue's own doing — nobody had a table for him — and Cancelled and
+ * Declined are answers, not absences.
  */
 export function countsAsNoShow(status: ReservationStatus): boolean {
   return status === 'no_show'

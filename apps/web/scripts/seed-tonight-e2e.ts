@@ -10,7 +10,8 @@
 //   book <scene>      resets the club's reservations and sets a night's book (#326): `book`,
 //                     `book-past-open` with the owner's switch on for correcting a night that
 //                     has passed, `book-pay-rule` or `book-change-tables` (#331), whose spots have
-//                     Tables and whose open tables are written too (scripts/e2e/reservations-night.ts).
+//                     Tables and whose open tables are written too, or `book-requests` (#578), with
+//                     two online requests to answer (scripts/e2e/reservations-night.ts).
 //   call <table>      a guest at the open table (its number) calls a waiter, as the phone's tap does.
 //   round <table>     the phones at the open table (its number) have sent a round, as Send leaves it:
 //                     the one thing that makes the door ask "is it the same party?" (#419).

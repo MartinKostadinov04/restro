@@ -48,7 +48,8 @@ import {
 import { type BreakerEnvironment, SHARED_BREAKERS } from './breaker'
 import { type ConnectionJobDeps, probeOnce } from './connection'
 import { floorTargets } from './floor'
-import { defineJob, type JobDefinition } from './types'
+import { queueNightEndEmails } from './guest-email'
+import { defineJob, type JobDefinition, type JobQueue } from './types'
 
 /** A live venue that has opened some weekday, with its clock. */
 export interface NightVenue {
@@ -107,6 +108,7 @@ export async function closeTablesAtClosingHour(
   pool: DbPool,
   now: Date,
   log: Pick<Logger, 'warn'>,
+  queue?: JobQueue,
 ): Promise<number> {
   let closed = 0
   for (const venue of await venuesWithHours(pool)) {
@@ -166,6 +168,7 @@ export async function closeTablesAtClosingHour(
           .limit(1),
       )
       if (open === undefined && !unended) continue
+      const jobId = `service-hours-${randomUUID()}`
       const { result } = await applyService(
         pool,
         { type: 'hours.close_tables' },
@@ -174,11 +177,21 @@ export async function closeTablesAtClosingHour(
           venueId: venue.venueId,
           origin: 'worker',
           actor: { kind: 'system' },
-          jobId: `service-hours-${randomUUID()}`,
+          jobId,
           now,
         },
       )
       if (result.status === 'accepted') closed += Number(result.details.closed ?? 0)
+      // The night's end declined the requests nobody answered: their guests are told (#578).
+      if (queue !== undefined) {
+        await queueNightEndEmails(
+          pool,
+          queue,
+          result,
+          { tenantId: venue.tenantId, venueId: venue.venueId, jobId },
+          log,
+        )
+      }
     } catch (error) {
       log.warn(
         { venueId: venue.venueId, err: error },
@@ -310,7 +323,12 @@ export const serviceHoursTick: JobDefinition = defineJob({
   schedule: { cron: '* * * * *', tz: 'Europe/Sofia' },
   options: { queue: TICK_QUEUE },
   async handler(_jobs, context) {
-    const closed = await closeTablesAtClosingHour(context.pool, context.now(), context.log)
+    const closed = await closeTablesAtClosingHour(
+      context.pool,
+      context.now(),
+      context.log,
+      context.queue,
+    )
     if (closed > 0) context.log.info({ closed }, 'tables closed at the closing hour')
   },
 })

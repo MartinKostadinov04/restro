@@ -33,13 +33,16 @@ export interface SeededNights {
  * The scenes: a night as it runs, the same with the owner's switch on for the past, the same
  * with the club's pay-first settings set, so the pay rule a party carries has a table's own rule
  * above it (#334), and the night Change tables is tried on (#331): four spots with a Table each,
- * two parties at their tables, one of them with a bill, and a bill on a table nobody holds.
+ * two parties at their tables, one of them with a bill, and a bill on a table nobody holds. The
+ * requests night (#578) adds two online requests nobody has answered yet, one to confirm and one to
+ * decline.
  */
 export const RESERVATION_SCENES = [
   'book',
   'book-past-open',
   'book-pay-rule',
   'book-change-tables',
+  'book-requests',
 ] as const
 export type ReservationScene = (typeof RESERVATION_SCENES)[number]
 
@@ -83,6 +86,11 @@ export const BOOK = {
   /** The guest record's key: digits only, as the guests table keeps it (D140). */
   phoneKey: '359888123456',
   note: 'Торта в 01:00',
+  /** The online requests of the requests night (#578): one is confirmed, one declined. */
+  requested: 'Стоянова',
+  requestedToo: 'Николова',
+  /** A spot nobody holds tonight, for the request's Confirm. */
+  free: 'Маса 9',
 } as const
 
 /** The club's one regular on the venue's list (#333): three letters of the name suggest him. */
@@ -521,6 +529,24 @@ export async function seedReservationsNight(
     reason: 'arrival_undone',
     ended: `now() - interval '18 minutes'`,
   })
+
+  // Two online requests nobody has answered (#578): the guests asked on the booking page, which is
+  // part 2's, so the fixture writes them as that page will. Neither holds a spot yet.
+  if (scene === 'book-requests') {
+    for (const [label, partySize, minutes] of [
+      [BOOK.requested, 3, 120],
+      [BOOK.requestedToo, 2, 150],
+    ] as const) {
+      await reservation({
+        serviceDate: day,
+        starts: `now() + interval '${minutes} minutes'`,
+        kind: 'booking',
+        status: 'requested',
+        partySize,
+        label,
+      })
+    }
+  }
 
   // One spot kept out of use (#327, D137): a block of the club's own, with its reason and no end
   // — it stays on until somebody lifts it, which is what the plan's Unblock does.

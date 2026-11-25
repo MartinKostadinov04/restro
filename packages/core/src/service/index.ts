@@ -441,7 +441,11 @@ export {
   type TakenCheck,
 } from './reservations/booking-checks'
 export { CLOSED_DATES_MAX } from './reservations/closed-dates'
-export { GUEST_EMAIL_LOG_KINDS, guestEmailJobOf } from './reservations/guest-email'
+export {
+  GUEST_EMAIL_LOG_KINDS,
+  guestEmailJobOf,
+  nightEndGuestEmailJobs,
+} from './reservations/guest-email'
 export { phoneKeyOf, regionOfLocale } from './reservations/guests'
 export {
   type GuestBooking,

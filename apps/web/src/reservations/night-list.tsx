@@ -56,6 +56,7 @@ import { useDoorActions } from './door-actions'
 import { GuestsDialog } from './door-dialogs'
 import { GiveSpotDialog } from './give-spot'
 import {
+  chipShown,
   filterCount,
   filterRows,
   RESERVATION_FILTERS,
@@ -298,10 +299,9 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
       onSpot: spot.name,
     })
   }
-  // A filter with nothing behind it does no job, so it is not drawn (D123 rule 2).
-  const chips = RESERVATION_FILTERS.filter(
-    (value) => value === 'all' || filterCount(night.counts, value) > 0,
-  )
+  // A filter with nothing behind it does no job, so it is not drawn (D123 rule 2); Requested is the
+  // one exception, its 0 telling the hostess nothing waits on an answer (#578).
+  const chips = RESERVATION_FILTERS.filter((value) => chipShown(night.counts, value))
 
   // A failed read keeps the list and says so in a notice that stays until the next read gets
   // through, rather than taking the night off the screen.
@@ -507,6 +507,8 @@ export function NightList({ initial, frame }: { initial: RvNightView; frame: RvF
           onNoShow={actions.noShow}
           onPutBack={actions.putBack}
           onCancel={actions.cancel}
+          onConfirm={actions.confirm}
+          onDecline={actions.decline}
           onDelete={actions.remove}
           onArrive={
             mayTake

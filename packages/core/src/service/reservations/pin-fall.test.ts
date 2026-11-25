@@ -41,6 +41,9 @@ const ACTION_OF: Readonly<Record<string, PinFallAction | null>> = {
   'reservation.create': 'create',
   'reservation.edit': 'edit',
   'reservation.cancel': 'cancel',
+  // #578: answering an online request writes the booking book (D141 names it).
+  'reservation.confirm': 'answer',
+  'reservation.decline': 'answer',
   'reservation.delete': 'delete',
   'reservation.restore': 'restore',
   'reservation.copy': 'copy',
@@ -182,6 +185,7 @@ describe('where the PIN falls', () => {
       'create',
       'edit',
       'cancel',
+      'answer',
       'delete',
       'restore',
       'put_back',
@@ -193,6 +197,7 @@ describe('where the PIN falls', () => {
     expect(actionsBehindPin({ status: 'pin', create: 'tap', edit: 'tap' })).toEqual([
       'status',
       'cancel',
+      'answer',
       'delete',
       'restore',
       'put_back',

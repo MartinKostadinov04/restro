@@ -77,6 +77,13 @@ export type RvCommand =
       readonly spotIds?: readonly string[]
     }
   | { readonly type: 'reservation.cancel'; readonly reservationId: string }
+  /** Answering an online request (#578): Confirm with its spots, or Decline. */
+  | {
+      readonly type: 'reservation.confirm'
+      readonly reservationId: string
+      readonly spotIds?: readonly string[]
+    }
+  | { readonly type: 'reservation.decline'; readonly reservationId: string }
   | { readonly type: 'reservation.delete'; readonly reservationId: string }
   | { readonly type: 'reservation.restore'; readonly reservationId: string }
   | {

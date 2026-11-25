@@ -229,6 +229,14 @@ _Avoid_: unbooked guest, drop-in
 The parties with no spot for a night, in the order they were added. A hostess gives a spot and calls by hand; nothing on it is automated.
 _Avoid_: queue, standby list
 
+**Requested**:
+A reservation a guest asked for on the booking page that the venue has not answered yet. Staff confirm it, giving it its spots, or decline it; one nobody answers is declined at the night's end.
+_Avoid_: pending, unconfirmed, inquiry
+
+**Declined**:
+How a request the venue could not take is recorded: by staff, or by the night's end when nobody answered. It is the venue's answer to a request; calling off a reservation is cancelling it, which is a different word and a different email.
+_Avoid_: rejected, refused, cancelled (for a request)
+
 **Not seated**:
 How a party still on the waiting list when the night ends is recorded. It is not a no-show: nobody failed to come.
 _Avoid_: unseated, missed, expired
