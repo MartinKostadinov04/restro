@@ -1,0 +1,2 @@
+ALTER TABLE "restro"."reservations" ADD COLUMN "requested_area_id" text;--> statement-breakpoint
+ALTER TABLE "restro"."reservations" ADD CONSTRAINT "reservations_requested_area_fk" FOREIGN KEY ("tenant_id","requested_area_id") REFERENCES "restro"."areas"("tenant_id","id") ON DELETE no action ON UPDATE no action;

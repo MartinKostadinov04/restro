@@ -3902,6 +3902,11 @@ export const reservations = restro.table(
      * hash: the token has at least 128 random bits.
      */
     guestTokenHash: text('guest_token_hash'),
+    /**
+     * The Area an online request asks for (#580), when the guest chose one instead of a spot. The
+     * hostess places the party; this only says where they asked to sit. Same tenant (the key below).
+     */
+    requestedAreaId: text('requested_area_id'),
     ...serviceProvenance(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -3918,6 +3923,11 @@ export const reservations = restro.table(
       name: 'reservations_made_by_fk',
       columns: [t.tenantId, t.madeBy],
       foreignColumns: [staffMembers.tenantId, staffMembers.id],
+    }),
+    foreignKey({
+      name: 'reservations_requested_area_fk',
+      columns: [t.tenantId, t.requestedAreaId],
+      foreignColumns: [areas.tenantId, areas.id],
     }),
     unique('reservations_guest_token_hash_unique').on(t.guestTokenHash),
     check(
