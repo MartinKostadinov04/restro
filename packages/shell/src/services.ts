@@ -47,7 +47,12 @@ import { z } from 'zod'
 
 import { SERVICE_KINDS, type ServiceKind } from './features'
 import type { ViewMoney } from './money'
-import type { BillLineStatus, PaymentState, RequestStatus } from './service-vocabulary'
+import type {
+  BillLineStatus,
+  PaymentState,
+  RequestStatus,
+  ShareHoldState,
+} from './service-vocabulary'
 import type { ViewText } from './text'
 
 export {
@@ -59,6 +64,10 @@ export {
   type PaymentState,
   REQUEST_STATUSES,
   type RequestStatus,
+  SHARE_ENDS,
+  SHARE_HOLD_STATES,
+  type ShareEnd,
+  type ShareHoldState,
 } from './service-vocabulary'
 
 /** The limits of a command: the schema, the bag reducer and the screens all read these. */
@@ -170,8 +179,36 @@ export type GuestCommand =
   | { readonly kind: 'pay.returned'; readonly actionId: string }
   /** "Pay later": only before the hold; after it the answer is `too_late`. */
   | { readonly kind: 'pay.cancel'; readonly actionId: string }
+  /**
+   * "Split the amount" (D160 §3, #544): the picked lines become one group payment the table
+   * settles together. It picks exactly as a Pay does and carries no tip and no receipt address of
+   * its own — each guest's tip rides on their own part, and a group payment emails no receipt.
+   */
+  | {
+      readonly kind: 'share.start'
+      readonly actionId: string
+      readonly pick: PayPick
+      readonly seen: readonly PaySeenLine[]
+    }
+  /**
+   * This phone's own part of the group payment, with its own tip (at most one of `tipMinor` and
+   * `tipPercent`; neither is no tip). `rest` is "The rest" as one tap, which the server reads
+   * against the holds of the moment. The host keeps the part's handle; the face sees only `share`.
+   */
+  | {
+      readonly kind: 'share.hold'
+      readonly actionId: string
+      readonly paymentId: string
+      readonly part: { readonly kind: 'amount'; readonly minor: number } | { readonly kind: 'rest' }
+      readonly tipMinor: number | null
+      readonly tipPercent: number | null
+    }
+  /** "Take my part back", until the shared amount is covered (D160 2.5). */
+  | { readonly kind: 'share.withdraw'; readonly actionId: string }
+  /** The phone is back from the card form of its own part (a nudge, as `pay.returned` is). */
+  | { readonly kind: 'share.returned'; readonly actionId: string }
 
-/** What a `pay.start` picks: lines of the bill, each with a quantity, or the whole bill. */
+/** What a `pay.start` or a `share.start` picks: lines of the bill, each with a quantity, or all. */
 export type PayPick =
   | {
       readonly kind: 'lines'
@@ -202,39 +239,95 @@ const BillLineIdSchema = idSchema('bn')
 /** A guest's email for the venue's electronic receipt: one valid address, nothing else (#186). */
 export const ReceiptEmailSchema = z.email().max(254)
 
+/** What a `pay.start` or a `share.start` picks: whole lines of the bill, or the whole bill. */
+const PickSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('lines'),
+    lines: z
+      .array(z.strictObject({ lineId: BillLineIdSchema, quantity: DecimalQuantitySchema }))
+      .min(1)
+      .max(SERVICE_LIMITS.payLines),
+  }),
+  z.strictObject({ kind: z.literal('whole') }),
+])
+
+/** The knock (D111): every picked line as the phone saw it when it picked. */
+const SeenSchema = z
+  .array(
+    z.strictObject({
+      lineId: BillLineIdSchema,
+      quantity: DecimalQuantitySchema,
+      amountMinor: z.int(),
+    }),
+  )
+  .min(1)
+  .max(SERVICE_LIMITS.payLines)
+
+/** At most one of `tipMinor` and `tipPercent`; neither is no tip (it starts at zero, D127). */
+const TipFields = {
+  tipMinor: z.int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable(),
+  tipPercent: z.int().min(1).max(SERVICE_LIMITS.tipPercentMax).nullable(),
+} as const
+
+const oneTip = { message: 'set either tipMinor or tipPercent, not both', path: ['tipPercent'] }
+
 /** `pay.start`: whole lines of the bill (a line's whole quantity) or the whole bill (D127). */
 export const PayStartSchema = z
   .strictObject({
     kind: z.literal('pay.start'),
     actionId: ActionIdSchema,
-    pick: z.discriminatedUnion('kind', [
-      z.strictObject({
-        kind: z.literal('lines'),
-        lines: z
-          .array(z.strictObject({ lineId: BillLineIdSchema, quantity: DecimalQuantitySchema }))
-          .min(1)
-          .max(SERVICE_LIMITS.payLines),
-      }),
-      z.strictObject({ kind: z.literal('whole') }),
-    ]),
-    seen: z
-      .array(
-        z.strictObject({
-          lineId: BillLineIdSchema,
-          quantity: DecimalQuantitySchema,
-          amountMinor: z.int(),
-        }),
-      )
-      .min(1)
-      .max(SERVICE_LIMITS.payLines),
-    tipMinor: z.int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable(),
-    tipPercent: z.int().min(1).max(SERVICE_LIMITS.tipPercentMax).nullable(),
+    pick: PickSchema,
+    seen: SeenSchema,
+    ...TipFields,
     receiptEmail: ReceiptEmailSchema.optional(),
   })
-  .refine((command) => command.tipMinor === null || command.tipPercent === null, {
-    message: 'set either tipMinor or tipPercent, not both',
-    path: ['tipPercent'],
+  .refine((command) => command.tipMinor === null || command.tipPercent === null, oneTip)
+
+/**
+ * `share.start`: the guest shares the picked lines by amount, so the table settles together (a
+ * group payment, D160 §3; "Split the amount" is the button's wording only). It picks exactly as a
+ * Pay does and carries no tip and no receipt address of its own: each guest's tip rides on their
+ * own hold (2.6), and a group payment sends no emailed receipt (2.19).
+ */
+export const ShareStartSchema = z.strictObject({
+  kind: z.literal('share.start'),
+  actionId: ActionIdSchema,
+  pick: PickSchema,
+  seen: SeenSchema,
+})
+
+/**
+ * `share.hold`: this phone's own part of a share, with its own tip. `rest` is "The rest" as one
+ * tap (D160 2.11); an amount is minor units. The host answers the hold's handle, which only this
+ * phone holds.
+ */
+export const ShareHoldSchema = z
+  .strictObject({
+    kind: z.literal('share.hold'),
+    actionId: ActionIdSchema,
+    paymentId: idSchema('py'),
+    part: z.discriminatedUnion('kind', [
+      z.strictObject({
+        kind: z.literal('amount'),
+        minor: z.int().positive().max(Number.MAX_SAFE_INTEGER),
+      }),
+      z.strictObject({ kind: z.literal('rest') }),
+    ]),
+    ...TipFields,
   })
+  .refine((command) => command.tipMinor === null || command.tipPercent === null, oneTip)
+
+/** `share.withdraw`: "Take my part back", until the shared amount is covered (D160 2.5). */
+export const ShareWithdrawSchema = z.strictObject({
+  kind: z.literal('share.withdraw'),
+  actionId: ActionIdSchema,
+})
+
+/** `share.returned`: this phone is back from the card form of its own hold (a nudge). */
+export const ShareReturnedSchema = z.strictObject({
+  kind: z.literal('share.returned'),
+  actionId: ActionIdSchema,
+})
 
 /** `pay.returned`: the payment is named by the handle in `X-Restro-Payment`. */
 export const PayReturnedSchema = z.strictObject({
@@ -328,6 +421,10 @@ export const GuestCommandSchema = z.discriminatedUnion('kind', [
   PayStartSchema,
   PayReturnedSchema,
   PayCancelSchema,
+  ShareStartSchema,
+  ShareHoldSchema,
+  ShareWithdrawSchema,
+  ShareReturnedSchema,
 ])
 
 /** What the host answers to a command. */
@@ -580,6 +677,73 @@ export interface PaymentView {
   readonly form: { readonly confirmSeconds: number } | null
 }
 
+/** One line of the shared amount of a group payment: what the table is settling together. */
+export interface ShareLineView {
+  /** The line's name per language; null is "Other item", worded by the shell. */
+  readonly name: LocalizedText | null
+  readonly quantity: string
+  readonly amountMinor: number
+}
+
+/**
+ * This phone's own part of a group payment (its hold), as the host reads it. The provider's form
+ * values never reach the face: the page keeps them and fills the form slot, exactly as for a
+ * payment of this phone's own.
+ */
+export interface ShareHoldView {
+  /** Where the hold stands; `captured` once the bill closed and the hold was taken (D160 2.15). */
+  readonly state: ShareHoldState
+  /** Why it ended or is ending (`expired`, `withdrawn`, `bill_changed`…), or null. */
+  readonly reason: string | null
+  /** This phone's part of the shared amount, without the tip. */
+  readonly amountMinor: number
+  readonly tipMinor: number
+  /** The card form is ready for this guest; the slot is filled. */
+  readonly form: { readonly confirmSeconds: number } | null
+}
+
+/**
+ * A group payment of the table as the host reads it (`GET /api/guest/share`, D160 §3): the shared
+ * amount, how much of it is claimed and held, and this phone's own part. Every phone of the table
+ * sees the same share; only `mine` is this phone's, from the hold's handle only it holds.
+ *
+ * It names no payer and carries no id of a person (rule 3): `holds` is how many parts there are,
+ * not who they belong to.
+ */
+export interface ShareView {
+  readonly id: string
+  /** The short number the guest shows the waiter. */
+  readonly number: string
+  /**
+   * Where the share stands: `awaiting_guest` while the parts are being taken, then the states a
+   * payment passes through as the bill closes, and `captured` once the table has paid.
+   */
+  readonly state: PaymentState
+  /** Why it ended (`expired`, `cancelled`, `withdrawn`, `bill_changed`), or null. */
+  readonly reason: string | null
+  readonly currency: Currency
+  /** The amount the table is settling together. */
+  readonly sharedMinor: number
+  /** The parts whose cards are held: covered for sure. */
+  readonly heldMinor: number
+  /** The parts claimed, held or on their way to the card form. */
+  readonly claimedMinor: number
+  /** What is still to be claimed (`sharedMinor − claimedMinor`). */
+  readonly leftMinor: number
+  /** The smallest card payment: a part below it is refused. */
+  readonly minimumMinor: number
+  /** When the share runs out (an ISO instant), or null once it has ended. */
+  readonly endsAt: string | null
+  /** How many parts there are, never whose. */
+  readonly holds: number
+  /** The lines of the shared amount. */
+  readonly lines: readonly ShareLineView[]
+  /** This phone's own part, or null while it has taken none. */
+  readonly mine: ShareHoldView | null
+  /** The venue's time zone (IANA). */
+  readonly timeZone: string
+}
+
 /** One waiter request as the host has it. */
 export interface RequestView {
   readonly id: string
@@ -742,6 +906,12 @@ export interface ServiceState {
    * null when this phone has none. A closed or reloaded page comes back to it.
    */
   readonly payment?: PaymentView | null
+  /**
+   * The table's group payment (D160 §3), while one is on: the shared amount, what is claimed and
+   * held, and this phone's own part under `mine`. Every phone of the table sees it; absent or null
+   * where none is on. Nothing in it says who paid what.
+   */
+  readonly share?: ShareView | null
   /** The table's shared order (#75); absent where the host has none. */
   readonly order?: TableOrderView | null
   /**
@@ -775,6 +945,12 @@ export interface ServiceState {
      * paying offers no tip. Absent where the host does not say: treated as false.
      */
     readonly tips?: boolean
+    /**
+     * The bill can be shared by amount here (D160 2.8): the table's POS closes one bill with
+     * several card payments, and guests here don't pay before they order. False or absent: the pay
+     * screen offers Pay alone, and the server refuses a `share.start` either way.
+     */
+    readonly sharing?: boolean
     /**
      * The venue's night (#82): `last_orders` shows "Last orders at {at}", `closed` "Ordering from
      * phones has closed for tonight" and `opens_later` the opening time; the last two take the
@@ -885,6 +1061,20 @@ export interface ServiceBinding {
   readonly payForm?: PayFormSlot
   /** "Back to the bill" from a payment's last screen (#114): forgets the payment on this phone. */
   readonly payControls?: PayControls
+  /**
+   * "Back to the bill" and "Start again" from a group payment's last screen (D160 §3): the host
+   * forgets the share on this phone, as `payControls` forgets a payment, so the bill screen comes
+   * back. Absent where the host has none: the face then closes the sheet instead.
+   */
+  readonly shareControls?: PayControls
+  /**
+   * How the other phones at the table reach a group payment (D160 2.10): the table's own address,
+   * and that address as a QR code the face draws in an `<img>` (`qrImage` is a `data:` URL, so no
+   * request leaves the phone for it). The host makes both — the face draws no code of its own and
+   * loads no library for one. Absent where the host has none (the admin's preview, a test), and
+   * `qrImage` null where the code could not be drawn: the face then shows the link alone.
+   */
+  readonly shareInvite?: { readonly url: string; readonly qrImage: string | null } | null
   /** The answers to the location screens (#76); absent where the host does not check. */
   readonly location?: LocationControls
   /**

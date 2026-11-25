@@ -109,6 +109,17 @@ export const GUEST_REFUSAL_CODES = [
   'unknown_payment',
   /** Pay or Send (#113): a tip where the POS cannot record one. */
   'tip_not_offered',
+  /**
+   * Split the amount (D160 2.8): sharing a bill is not offered here, because the table's POS does
+   * not close one bill with several card payments, or guests here pay before they order.
+   */
+  'share_not_offered',
+  /** Split the amount: the share is no longer taking parts (covered, or let go). */
+  'share_over',
+  /** Split the amount: the part asked for is above what is left of the shared amount. */
+  'above_share',
+  /** Split the amount: the part would leave the others a rest nobody could pay. */
+  'rest_below_minimum',
   /** Not available yet. */
   'not_built',
 ] as const
@@ -140,6 +151,34 @@ export const PAYMENT_STATES = [
 
 /** One state of a payment. */
 export type PaymentState = (typeof PAYMENT_STATES)[number]
+
+/**
+ * The states of one guest's own part of a group payment (its hold, D160 §3): `requested` until the
+ * provider has it, `awaiting_guest` while this phone confirms the card, `held` once the card is
+ * authorised, `releasing` while it is being let go, then the final states. `captured` is paid.
+ */
+export const SHARE_HOLD_STATES = [
+  'requested',
+  'awaiting_guest',
+  'held',
+  'releasing',
+  'released',
+  'captured',
+  'capture_failed',
+] as const
+
+/** One state of a hold. */
+export type ShareHoldState = (typeof SHARE_HOLD_STATES)[number]
+
+/**
+ * How a group payment, or one guest's part of it, ended with nothing charged (the words are
+ * `strings.services.paying.share.ended`): the time ran out, staff cancelled it, this guest took
+ * their part back, or the bill changed under it. `other` carries no reason of its own.
+ */
+export const SHARE_ENDS = ['expired', 'cancelled', 'withdrawn', 'bill_changed', 'other'] as const
+
+/** One way a group payment ended with nothing charged. */
+export type ShareEnd = (typeof SHARE_ENDS)[number]
 
 /** How a payment ended with nothing charged (the words are `strings.services.paying.ended`). */
 export const PAY_ENDS = [

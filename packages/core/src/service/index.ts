@@ -522,6 +522,7 @@ export {
   type PlanEditorRead,
   readPlanEditor,
 } from './reservations/plan-editor-read'
+export { outlinePad, type PlanGroupRead, planGroupsOf } from './reservations/plan-groups'
 export {
   daysBetween,
   type FloorPlanRead,

@@ -15,9 +15,13 @@ import type {
   PayingView,
   PaymentView,
   ServiceState,
+  ShareEnd,
+  ShareHoldView,
+  ShareView,
   TableBillView,
 } from '../src/services'
 import { EMPTY_SERVICE_STATE, PAYMENT_STATES } from '../src/services'
+import type { ShareScreen } from '../src/sharing'
 
 const bn = (n: number) => `bn_${String(n).padStart(22, '0')}`
 
@@ -171,6 +175,165 @@ export function payScenarios(): readonly PayScenario[] {
     capture_failed: [of('capture_failed', 'checking')],
   }
   return PAYMENT_STATES.flatMap((state) => byState[state])
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * A group payment of the table: "Split the amount" (#544, D160 §3)
+ * ------------------------------------------------------------------------------------------- */
+
+/**
+ * The table's group payment as the host sends it: €109.00 shared, €27.50 held by one other phone,
+ * €81.50 left, the smallest card payment €0.50, and the share with about nine minutes to run.
+ */
+export function shareView(changes: Partial<ShareView> = {}): ShareView {
+  return {
+    id: 'py_0000000000000000000009',
+    number: 'R3T8W',
+    state: 'awaiting_guest',
+    reason: null,
+    currency: 'EUR',
+    sharedMinor: 10_900,
+    heldMinor: 2_750,
+    claimedMinor: 2_750,
+    leftMinor: 8_150,
+    minimumMinor: 50,
+    endsAt: '2026-11-25T23:30:00.000Z',
+    holds: 1,
+    lines: [
+      {
+        name: { en_US: 'House wine', bg_BG: 'Домашно вино' },
+        quantity: '2',
+        amountMinor: 2_500,
+      },
+      { name: { en_US: 'Mojito', bg_BG: 'Мохито' }, quantity: '1', amountMinor: 1_000 },
+    ],
+    mine: null,
+    timeZone: 'Europe/Sofia',
+    ...changes,
+  }
+}
+
+/** This phone's own part of the share: €40.00 with no tip, at the card form. */
+export function shareHold(changes: Partial<ShareHoldView> = {}): ShareHoldView {
+  return {
+    state: 'awaiting_guest',
+    reason: null,
+    amountMinor: 4_000,
+    tipMinor: 0,
+    form: { confirmSeconds: 120 },
+    ...changes,
+  }
+}
+
+/** One stage of a group payment and what a face has to draw for it. */
+export interface ShareScenario {
+  readonly name: string
+  readonly share: ShareView
+  /** The shell's screen for it (`shareScreen`), written out here rather than computed. */
+  readonly screen: ShareScreen['kind']
+  /** The card form slot is mounted. */
+  readonly slot: boolean
+  /** "Paid" and the payment number show. */
+  readonly paid: boolean
+  /** Which ending, on the screens that are one. */
+  readonly end?: ShareEnd
+  /** "Start again" shows. */
+  readonly again?: boolean
+  /** "Take my part back" shows. */
+  readonly takeBack?: boolean
+}
+
+/**
+ * Every state a group payment reaches, on a phone that has taken no part of it and on one that has
+ * (#544): what is drawn is written out here, so a face is tested against the ticket rather than
+ * against the shell's own `shareScreen`.
+ */
+export function shareScenarios(): readonly ShareScenario[] {
+  const only = (
+    state: ShareView['state'],
+    screen: ShareScreen['kind'],
+    changes: Partial<ShareView> = {},
+  ): ShareScenario => ({
+    name: changes.reason == null ? `share:${state}` : `share:${state}:${changes.reason}`,
+    share: shareView({ state, ...changes }),
+    screen,
+    slot: false,
+    paid: false,
+  })
+  const mine = (
+    hold: ShareHoldView['state'],
+    screen: ShareScreen['kind'],
+    changes: {
+      readonly share?: Partial<ShareView>
+      readonly hold?: Partial<ShareHoldView>
+      readonly name?: string
+    } = {},
+  ): ShareScenario => ({
+    name: `mine:${changes.name ?? hold}`,
+    share: shareView({
+      ...changes.share,
+      mine: shareHold({
+        state: hold,
+        form: hold === 'awaiting_guest' ? { confirmSeconds: 120 } : null,
+        ...changes.hold,
+      }),
+    }),
+    screen,
+    slot: screen === 'card',
+    paid: screen === 'paid',
+    takeBack:
+      (hold === 'awaiting_guest' || hold === 'held') &&
+      (changes.share?.state ?? 'awaiting_guest') === 'awaiting_guest',
+  })
+  return [
+    // A phone that has taken no part follows the share itself.
+    only('requested', 'preparing'),
+    only('priced', 'preparing'),
+    only('awaiting_guest', 'open'),
+    only('held', 'closing'),
+    only('queued', 'closing'),
+    only('isolated', 'closing'),
+    only('entered', 'closing'),
+    only('checked', 'closing'),
+    only('closed', 'closing'),
+    only('cancelling', 'closing'),
+    only('captured', 'settled'),
+    only('unconfirmed', 'checking'),
+    only('stranded', 'checking'),
+    only('capture_failed', 'checking'),
+    { ...only('released', 'ended', { reason: 'expired' }), end: 'expired' },
+    { ...only('released', 'ended', { reason: 'cancelled' }), end: 'cancelled' },
+    { ...only('released', 'ended', { reason: 'withdrawn' }), end: 'withdrawn' },
+    {
+      ...only('released', 'ended', { reason: 'bill_changed' }),
+      end: 'bill_changed',
+      again: true,
+    },
+    { ...only('released', 'ended'), end: 'other' },
+    // A phone that has taken one follows its own part, because that is what its card did.
+    mine('requested', 'preparing'),
+    mine('awaiting_guest', 'card'),
+    mine('awaiting_guest', 'preparing', { name: 'awaiting_guest:no-form', hold: { form: null } }),
+    mine('held', 'waiting'),
+    mine('held', 'closing', { name: 'held:closing', share: { state: 'closed' } }),
+    mine('releasing', 'releasing'),
+    mine('captured', 'paid', {
+      name: 'captured',
+      share: { state: 'captured', heldMinor: 10_900, claimedMinor: 10_900, leftMinor: 0 },
+      hold: { tipMinor: 250 },
+    }),
+    mine('capture_failed', 'checking', { share: { state: 'unconfirmed' } }),
+    // A part given back while the others still take theirs: back to the share, not to an ending.
+    mine('released', 'open', { name: 'released:gathering', hold: { reason: 'withdrawn' } }),
+    {
+      ...mine('released', 'ended', {
+        name: 'released:expired',
+        share: { state: 'released', reason: 'expired' },
+        hold: { reason: 'expired' },
+      }),
+      end: 'expired',
+    },
+  ]
 }
 
 /* ---------------------------------------------------------------------------------------------

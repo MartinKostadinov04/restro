@@ -26,6 +26,11 @@
 // step 2 publishes a menu of one item, the POS's Aperol Spritz, paid first: its id is in the ready
 // line.
 //
+// With `PAY_HARNESS_MODE=share` (apps/web/e2e/guest-pay-share.spec.ts, #544) the POS runs the
+// `share` scenario (several card payments on one close), so the table offers sharing the bill by
+// amount; `holds <paymentId>` is every guest of that share finishing their card form, answered by a
+// `pay_harness_holds_paid` line with how many parts were paid this time (each one only once).
+//
 // With `PAY_HARNESS_MODE=group` (apps/web/e2e/guest-pay-group.spec.ts, #542) a party is booked on
 // tables 1 and 2 and marked present, as the hostess would, so the two are one linked group; each
 // table has a waiter's round (table 2: one 2001), both read, and table 2's code is in the ready
@@ -88,9 +93,11 @@ const PAYMENT_TABLES = ['39001', 'pay main 2']
 const PAY_FIRST = process.env.PAY_HARNESS_MODE === 'pay-first'
 /** The linked group's run (#542): a party on tables 1 and 2. */
 const GROUP = process.env.PAY_HARNESS_MODE === 'group'
+/** The shared bill's run (#544): a POS that takes several card payments on one close. */
+const SHARE = process.env.PAY_HARNESS_MODE === 'share'
 /** Demo Bar's table 2 on the simulator, the group's second table. */
 const POS_TABLE_2 = '30002'
-const SCENARIO = PAY_FIRST ? 'pay-first' : 'demo-bar'
+const SCENARIO = PAY_FIRST ? 'pay-first' : SHARE ? 'share' : 'demo-bar'
 const PAY_FIRST_ARTICLE = { id: '2002', name: 'Aperol Spritz', priceMinor: 1_100 }
 /** The run that publishes a menu and prints the guest page's path (#114). */
 const PAGE = process.env.PAY_HARNESS_PAGE === '1'
@@ -165,7 +172,7 @@ async function main(): Promise<void> {
   const integrationId = (await createIntegration(pool, tenantId, { kind: 'sim', host }))
     .id as IntegrationId
   // The connector declares what the scenario's switches allow; the floor reading records it.
-  if (PAY_FIRST) {
+  if (PAY_FIRST || SHARE) {
     await updateIntegration(pool, tenantId, integrationId, { config: { sim_scenario: SCENARIO } })
   }
   const venue = await provisionVenue(pool, tenantId, {
@@ -317,6 +324,8 @@ async function main(): Promise<void> {
     ...(second === null ? {} : { code2: second.code }),
     ...(PAGE ? { path: menuPath({ slug: venue.slug, publicId: venue.publicId }) } : {}),
   })
+  // Every part's provider payment this run has already pressed, so `holds` presses each one once.
+  const paidRefs = new Set<string>()
   const lines = createInterface({ input: process.stdin })
   lines.on('line', (line) => {
     const [command, paymentId] = line.trim().split(/\s+/)
@@ -328,6 +337,27 @@ async function main(): Promise<void> {
           rows: bill.rows.map((row) => ({ article: row.article, note: row.note })),
         }))
       print({ event: 'pay_harness_bills', bills })
+      return
+    }
+    if (command === 'holds' && paymentId !== undefined) {
+      void (async () => {
+        const rows = await query<{ ref: string | null }>(
+          `select provider_payment_ref as ref from restro.payment_holds
+             where payment_id = $1 and provider_payment_ref is not null
+             order by created_at, id`,
+          [paymentId],
+        )
+        let paid = 0
+        for (const row of rows) {
+          if (row.ref === null || paidRefs.has(row.ref)) continue
+          paidRefs.add(row.ref)
+          engine.guest.pay(providerRef(row.ref))
+          paid += 1
+        }
+        print({ event: 'pay_harness_holds_paid', paymentId, paid, holds: rows.length })
+      })().catch((error: unknown) => {
+        print({ event: 'pay_harness_failed', paymentId, why: String(error) })
+      })
       return
     }
     if (command !== 'pay' || paymentId === undefined) return

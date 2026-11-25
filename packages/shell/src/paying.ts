@@ -509,11 +509,26 @@ export function payFormLocale(locale: Locale): string {
 export function refusalText(
   words: ServiceStrings,
   code: string | null | undefined,
-  context: { readonly command?: string; readonly minCard?: string | null } = {},
+  context: {
+    readonly command?: string
+    readonly minCard?: string | null
+    /** What a group payment still has to claim, for `above_share` (the amount as text). */
+    readonly left?: string | null
+  } = {},
 ): string {
   if (code === null || code === undefined) return words.refusedOther
   if (code === 'below_minimum') {
     return context.minCard == null ? words.refusedOther : words.paying.belowMinimum(context.minCard)
+  }
+  // A part of a group payment the others' parts have overtaken, or one that would leave a rest
+  // nobody could pay (D160 2.12): both carry an amount, so neither is in the refusals map.
+  if (code === 'above_share') {
+    return context.left == null ? words.refusedOther : words.paying.share.aboveShare(context.left)
+  }
+  if (code === 'rest_below_minimum') {
+    return context.minCard == null
+      ? words.refusedOther
+      : words.paying.share.restBelowMinimum(context.minCard)
   }
   // The client's own answers (no server code): a Send or Pay it did not make while offline, and a
   // Send whose answer was lost (D120, D121).

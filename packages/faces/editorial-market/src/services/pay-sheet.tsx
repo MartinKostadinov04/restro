@@ -30,6 +30,7 @@ import {
   NO_TIP,
   offersPay,
   offersReceiptEmail,
+  offersShare,
   type PayBlock,
   type PayFormSlot,
   type PayingStrings,
@@ -54,6 +55,7 @@ import {
   type ServiceStrings,
   sameAmountAgo,
   saveConfirmation,
+  shareStartCommand,
   type TableBillLineView,
   type TableBillPartView,
   type TableBillView,
@@ -70,7 +72,7 @@ import { useServicesRequired } from './provider'
 import { TipRow } from './tip-row'
 
 /** Puts the page's card form into the slot; the face loads no provider library. */
-function FormSlot({
+export function FormSlot({
   slot,
   label,
   locale,
@@ -154,7 +156,13 @@ function payBlockText(
  * the privacy notice (#198, D127 1.6): drawn wherever the guest can enter a card, so the choosing
  * screen and the card screen both carry it.
  */
-function LegalBlock({ paying, w }: { readonly paying: PayingView; readonly w: PayingStrings }) {
+export function LegalBlock({
+  paying,
+  w,
+}: {
+  readonly paying: PayingView
+  readonly w: PayingStrings
+}) {
   // Without the legal details the line would name the wrong entity (the venue's trade name): the
   // host sends them whenever paying is offered, so nothing is drawn only where it is not.
   const { legal, processor } = paying
@@ -435,6 +443,24 @@ export function PaySheet() {
     }
   }
 
+  /**
+   * "Split the amount" (D160 §3): the ticked lines become one group payment the table settles
+   * together. It picks exactly as Pay does and carries no tip of its own — each guest's tip rides
+   * on their own part — so the tip row's choice is left where it is and sent with that part.
+   */
+  async function split() {
+    if (bill === null) return
+    setBusy(true)
+    setAsking(null)
+    try {
+      await send(
+        shareStartCommand(newActionId(), payStartCommand(newActionId(), picks, NO_TIP, false)),
+      )
+    } finally {
+      if (alive.current) setBusy(false)
+    }
+  }
+
   if (payment !== null) return <PaymentScreen payment={payment} money={money} />
   // Without a location pass there is no bill and no order: why, and the way to allow it.
   if (state.location?.state === 'needed') {
@@ -673,20 +699,47 @@ export function PaySheet() {
           <p className="ro-allergy">{w.legalPrices}</p>
           <LegalBlock paying={paying} w={w} />
           {asking === null ? (
-            <button
-              type="button"
-              className="ro-primary is-wide"
-              data-design-part="button"
-              data-slot="pay.start"
-              disabled={block !== null || busy}
-              onClick={() => {
-                const ago = sameAmountAgo(paying.recent, totals.totalMinor)
-                if (ago !== null) setAsking(ago)
-                else void start()
-              }}
-            >
-              <span>{w.payX(money(totals.totalMinor))}</span>
-            </button>
+            // Pay and "Split the amount" side by side under the ticked lines (D160 2.17). The pair
+            // is one row of the face's own `.ro-row`, so the sheet needs no look of its own.
+            <div className="ro-row" data-slot="pay.actions">
+              <button
+                type="button"
+                className="ro-primary is-wide"
+                data-design-part="button"
+                data-slot="pay.start"
+                disabled={block !== null || busy}
+                onClick={() => {
+                  const ago = sameAmountAgo(paying.recent, totals.totalMinor)
+                  if (ago !== null) setAsking(ago)
+                  else void start()
+                }}
+              >
+                <span>{w.payX(money(totals.totalMinor))}</span>
+              </button>
+              {offersShare(state) ? (
+                <button
+                  type="button"
+                  className="ro-ghost"
+                  data-design-part="pay.scope"
+                  data-slot="pay.share"
+                  // The same blocks hold as for Pay, bar the tip and the receipt address, which a
+                  // group payment carries on each guest's own part instead (2.6, 2.19).
+                  disabled={
+                    busy ||
+                    block === 'offline' ||
+                    block === 'ordering_paused' ||
+                    block === 'cards_paused' ||
+                    block === 'not_up_to_date' ||
+                    block === 'nothing_picked' ||
+                    block === 'nothing_owed' ||
+                    block === 'below_minimum'
+                  }
+                  onClick={() => void split()}
+                >
+                  {w.share.splitAmount}
+                </button>
+              ) : null}
+            </div>
           ) : (
             <div className="ro-notice" role="alertdialog" data-slot="pay.same">
               <span>{w.sameQuestion(asking)}</span>

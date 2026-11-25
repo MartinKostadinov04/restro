@@ -40,6 +40,12 @@
 //   form values stay here (`formValues`) for the page to fill the form slot. `pay.returned` and
 //   `pay.cancel` carry the handle in `X-Restro-Payment`. After a redirect back from the card form
 //   the page has set a marker, and the client sends `pay.returned` once.
+// - A group payment of the table (#544, D160 §3): every phone on the bill screen reads
+//   `GET /api/guest/share`, so a guest who opens the table's link sees the share the others
+//   started. A phone that has taken a part holds that hold's own handle (kept like the payment's,
+//   its own key) and sends it in `X-Restro-Payment` for `share.withdraw` and `share.returned`; the
+//   card form's values for its part come with its own answer. Nothing here is a local success
+//   (D72): every figure, and the end of the share, is the engine's.
 // - Send (#77, D122 §5): the table's sent orders come with the state, and the client marks the ones
 //   this phone's Sends made (`mine`, from the accepted answer's subject), so only this phone shows
 //   "Sending…". The mark lives in this page's memory: a reload shows them as any phone's.
@@ -75,6 +81,8 @@ import {
   type GuestPaymentAnswer,
   GuestPaymentAnswerSchema,
   type GuestScreen,
+  type GuestShareAnswer,
+  GuestShareAnswerSchema,
   GuestStateAnswerSchema,
   type GuestTableState,
   HOST_ANSWER_TIMEOUT_MS,
@@ -90,6 +98,7 @@ import {
   type RequestView,
   type SentOrderView,
   type ServiceState,
+  type ShareView,
   TABLE_AUTH_SCHEME,
   type TableBillPartView,
   type TableBillView,
@@ -113,6 +122,13 @@ export const OFFLINE_AFTER_MS = 10_000
  * after the server took it.
  */
 export const BILL_AGE_REFRESH_MS = 15_000
+
+/**
+ * How often a phone with no share of its own reads the table's share (#544). A share that is on
+ * sets its own cadence from the server; this is the gap while there is none, so a share another
+ * phone starts shows to everyone sitting on the bill, and #545's shown-after reaches them.
+ */
+export const SHARE_IDLE_MS = 10_000
 
 /**
  * A request that has not answered after this long is aborted (D121: "about 10 seconds"), and the
@@ -192,6 +208,15 @@ export const PAY_EMAIL_KEY = 'restro.payEmail'
 /** The key of one table's receipt address. */
 export const payEmailKey = (code: string): string => `${PAY_EMAIL_KEY}.${code}`
 
+/**
+ * The durable key of this phone's share hold (#544): its own handle, kept like the payment's, so a
+ * page closed and opened again finds the part this phone took. One per table code.
+ */
+export const SHARE_HANDLE_KEY = 'restro.shareHandle'
+
+/** The key of one table's share handle. */
+export const shareHandleKey = (code: string): string => `${SHARE_HANDLE_KEY}.${code}`
+
 /** When a day has no end the server named, a handle is kept this long (hours). */
 const DEFAULT_KEEP_HOURS = 6
 
@@ -259,6 +284,8 @@ export interface TableServices {
   readonly formValues: () => PayFormValues | null
   /** "Back to the bill": forgets the payment's screen (and its handle) once it is final. */
   readonly dismissPayment: () => void
+  /** "Back to the bill" on a share that has ended: forgets its screen, never the share itself. */
+  readonly dismissShare: () => void
   /** Starts polling (again): when the page shows. */
   readonly start: () => void
   /** Stops polling: when the page hides or goes away. */
@@ -267,6 +294,8 @@ export interface TableServices {
 
 /** What the page needs to fill the card form: which provider's and its values. Never a face's. */
 export interface PayFormValues {
+  /** Whose form it is: the phone's own payment, or its part of the table's share (#544). */
+  readonly kind: 'payment' | 'share'
   readonly provider: string
   readonly values: Readonly<Record<string, string>>
 }
@@ -351,6 +380,40 @@ function paymentViewOf(answer: GuestPaymentAnswer, receiptEmail: string | null):
   }
 }
 
+/**
+ * The table's share of the bill as the face draws it (#544, D160 §3). The provider and its form
+ * values stay here, as a payment's do: a face sees only that a form is to be filled.
+ */
+function shareViewOf(answer: GuestShareAnswer): ShareView {
+  const mine = answer.mine
+  return {
+    id: answer.id,
+    number: answer.number,
+    state: answer.state,
+    reason: answer.reason,
+    currency: answer.currency as ShareView['currency'],
+    sharedMinor: answer.sharedMinor,
+    heldMinor: answer.heldMinor,
+    claimedMinor: answer.claimedMinor,
+    leftMinor: answer.leftMinor,
+    minimumMinor: answer.minimumMinor,
+    endsAt: answer.endsAt,
+    holds: answer.holds,
+    lines: answer.lines,
+    mine:
+      mine === null
+        ? null
+        : {
+            state: mine.state,
+            reason: mine.reason,
+            amountMinor: mine.amountMinor,
+            tipMinor: mine.tipMinor,
+            form: mine.form === null ? null : { confirmSeconds: mine.form.confirmSeconds },
+          },
+    timeZone: answer.timeZone,
+  }
+}
+
 /** The kinds drawn before the server answers. */
 const OPTIMISTIC = new Set([
   'order.add',
@@ -367,6 +430,12 @@ const LOCATED = new Set(['order.add', 'order.change', 'order.restore', 'order.se
 
 /** The commands that name the phone's payment by its handle. */
 const BY_HANDLE = new Set(['pay.returned', 'pay.cancel'])
+
+/** The commands that name this phone's part of the table's share by its own handle (#544). */
+const BY_SHARE_HANDLE = new Set(['share.withdraw', 'share.returned'])
+
+/** The commands Turnstile answers for as paying (D127, D160 §2.8): a payment or a share's part. */
+const PAY_LIKE = new Set(['pay.start', 'share.start', 'share.hold'])
 
 type Consent = LocationView['consent']
 
@@ -562,6 +631,15 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
   let cancelPayTimer: (() => void) | null = null
   let payPolling = false
   let recentNoted: string | null = null
+  /** This phone's handle on its part of the table's share, and the last answer about the share. */
+  let shareHandle: string | null = readShareHandle()
+  let share: GuestShareAnswer | null = null
+  let cancelShareTimer: (() => void) | null = null
+  /** A share read is waiting to run: without it the state answer would arm a second one. */
+  let shareArmed = false
+  let sharePolling = false
+  /** The share the guest sent away with "Back to the bill", while it has not moved since. */
+  let shareHidden: { readonly id: string; readonly state: string } | null = null
   let prompt: LocationView['prompt'] = 'none'
   /** The sent orders this phone's Sends made. */
   const mine = new Set<string>()
@@ -776,6 +854,103 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     if (wait !== null) schedulePay(wait)
   }
 
+  /** The handle of this phone's part of the share, unless the day it was kept for has ended. */
+  function readShareHandle(): string | null {
+    const kept = durable?.get(shareHandleKey(deps.code))
+    if (kept == null) return null
+    const [value, until] = kept.split('|')
+    if (value === undefined || !(Number(until) > deps.now())) {
+      durable?.remove(shareHandleKey(deps.code))
+      return null
+    }
+    return PAYMENT_HANDLE_PATTERN.test(value) ? value : null
+  }
+
+  /** Keeps the share's handle until the service day ends, or forgets it. */
+  function keepShareHandle(next: string | null): void {
+    shareHandle = next
+    if (next === null) {
+      durable?.remove(shareHandleKey(deps.code))
+      return
+    }
+    const hours = DEFAULT_KEEP_HOURS * 3_600
+    const seconds = Math.max(60, server?.location.dayEndsInSeconds ?? hours)
+    durable?.set(shareHandleKey(deps.code), `${next}|${deps.now() + seconds * 1000}`)
+  }
+
+  /** The share is the one the guest sent away, and it has not moved since. */
+  function isShareHidden(answer: GuestShareAnswer): boolean {
+    return (
+      shareHidden !== null && shareHidden.id === answer.id && shareHidden.state === answer.state
+    )
+  }
+
+  /**
+   * Whether the share is read now: this phone holds a part, the guest has the bill open where the
+   * venue offers sharing at all, or a share it is watching is on. A share sent away is read on only
+   * while the bill is open, so a new one another phone starts still shows. Where the POS cannot
+   * close one bill with several payments there is never a share to read, so no phone asks for one.
+   */
+  function shareDue(): boolean {
+    if (!running || retired) return false
+    if (shareHandle !== null) return true
+    if (screen === 'bill' && server?.ordering?.sharing === true) return true
+    return share !== null && !isShareHidden(share)
+  }
+
+  function scheduleShare(ms: number): void {
+    cancelShareTimer?.()
+    shareArmed = shareDue()
+    cancelShareTimer = shareArmed ? deps.setTimer(pollShare, ms) : null
+  }
+
+  /** Reads the table's share for every phone of the table (#544): ours alone carries our part. */
+  async function pollShare(): Promise<void> {
+    shareArmed = false
+    if (!shareDue() || sharePolling) return
+    sharePolling = true
+    let wait: number | null = null
+    try {
+      const response = await request(`${base}/api/guest/share`, {
+        method: 'GET',
+        headers: {
+          ...headers(),
+          ...(shareHandle === null ? {} : { [GUEST_PAYMENT_HEADER]: shareHandle }),
+        },
+        cache: 'no-store',
+        referrerPolicy: 'no-referrer',
+      })
+      if (response.status < 500) answered()
+      if (response.status === 401) {
+        retired = true
+      } else if (response.status === 404) {
+        // The part this phone held is not known any more (its day ended, or another table's).
+        keepShareHandle(null)
+      } else if (!response.ok) {
+        wait = backoff(retryAfterOf(response))
+      } else {
+        const answer = GuestShareAnswerSchema.nullable().parse(await readJson(response))
+        failures = 0
+        share = answer
+        if (answer === null) {
+          // No share of this table any more: the part this phone held went with it.
+          keepShareHandle(null)
+          shareHidden = null
+        } else {
+          wait = answer.next
+        }
+      }
+    } catch {
+      wait = backoff(null)
+    } finally {
+      sharePolling = false
+    }
+    recompute()
+    // Read on at the idle gap where this answer set no cadence of its own: no share of this table
+    // yet, or the part this phone held is gone. `scheduleShare` arms nothing where none is due.
+    scheduleShare(wait ?? SHARE_IDLE_MS)
+  }
+
   function recompute(): void {
     const now = deps.now()
     releaseLost()
@@ -786,6 +961,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       tableGroup: server === null ? null : tableGroupOf(server.group),
       paying: server === null || retired ? null : payingView(server),
       payment: payment === null || isHidden(payment) ? null : paymentViewOf(payment, receiptEmail),
+      share: share === null || isShareHidden(share) ? null : shareViewOf(share),
       order: server?.order == null ? null : orderView(server.order, pending, now),
       requests: server?.waiterCall == null ? [] : requestsOf(server.waiterCall),
       ordering: retired
@@ -797,6 +973,7 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
               notesAndOptions: server.ordering.notesAndOptions,
               payFirst: server.ordering.payFirst,
               tips: server.ordering.tips,
+              sharing: server.ordering.sharing,
               night: server.ordering.night,
               ...(server.ordering.movedAway === true ? { movedAway: true as const } : {}),
             },
@@ -961,6 +1138,9 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     }
     recompute()
     schedule(wait)
+    // The state answer is what says whether this venue shares at all, so a phone that opened the
+    // bill before it landed (the invite link does) starts reading the share as soon as it does.
+    if (!sharePolling && !shareArmed) scheduleShare(0)
   }
 
   async function post(command: GuestCommand, ageMs: number, check: GuestCheck): Promise<Response> {
@@ -970,6 +1150,9 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
         ...headers(),
         ...(BY_HANDLE.has(command.kind) && handle !== null
           ? { [GUEST_PAYMENT_HEADER]: handle }
+          : {}),
+        ...(BY_SHARE_HANDLE.has(command.kind) && shareHandle !== null
+          ? { [GUEST_PAYMENT_HEADER]: shareHandle }
           : {}),
         [GUEST_PHONE_HEADER]: deps.phone,
         'Content-Type': 'application/json',
@@ -1027,13 +1210,17 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
     if (BY_HANDLE.has(command.kind) && handle === null) {
       return settle(answer('rejected', 'unknown_payment'))
     }
+    // The same for a part of the share: only the phone holding its handle can name it.
+    if (BY_SHARE_HANDLE.has(command.kind) && shareHandle === null) {
+      return settle(answer('rejected', 'unknown_payment'))
+    }
     const check: { location?: GuestPosition; consentVersion?: string; humanToken?: string } = {}
     if (position !== null) {
       check.location = position
       check.consentVersion = LOCATION_CONSENT_VERSION
     }
-    if ((command.kind === 'order.send' || command.kind === 'pay.start') && deps.humanToken) {
-      const action = command.kind === 'pay.start' ? TURNSTILE_PAY_ACTION : TURNSTILE_SEND_ACTION
+    if ((command.kind === 'order.send' || PAY_LIKE.has(command.kind)) && deps.humanToken) {
+      const action = PAY_LIKE.has(command.kind) ? TURNSTILE_PAY_ACTION : TURNSTILE_SEND_ACTION
       const token = await deps.humanToken(action).catch(() => null)
       if (token !== null) check.humanToken = token
     }
@@ -1098,6 +1285,16 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       schedulePay(0)
     } else if (command.kind === 'pay.returned' || command.kind === 'pay.cancel') {
       schedulePay(0)
+    }
+    // The part this phone took of the share (#544): its own handle comes with the accepted answer,
+    // and the share is read from now on. Every other share command is read for at once.
+    if (command.kind === 'share.hold' && body.handle !== null) {
+      keepShareHandle(body.handle)
+      shareHidden = null
+      scheduleShare(0)
+    } else if (command.kind.startsWith('share.')) {
+      shareHidden = null
+      scheduleShare(0)
     }
     return settle(
       answer(body.result.status, body.result.code, {
@@ -1241,6 +1438,9 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       // A screen that asks differently is asked for now (opening the bill reads it fresh, D111).
       idleMs = 0
       if (running && view() !== before && !polling) schedule(0)
+      // The bill (and paying from it) reads the table's share too, so a guest opening the link
+      // sees what the others started.
+      if (!sharePolling) scheduleShare(0)
       recompute()
     },
     refresh() {
@@ -1248,9 +1448,12 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       if (running && !polling) schedule(0)
     },
     formValues() {
-      return payment?.form == null
-        ? null
-        : { provider: payment.form.provider, values: payment.form.values }
+      if (payment?.form != null) {
+        const { provider, values } = payment.form
+        return { kind: 'payment', provider, values }
+      }
+      const mine = share?.mine?.form ?? null
+      return mine === null ? null : { kind: 'share', provider: mine.provider, values: mine.values }
     },
     dismissPayment() {
       // "The venue is checking the payment" is not an end: the handle stays and the payment is read
@@ -1266,19 +1469,38 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       cancelPayTimer = null
       recompute()
     },
+    dismissShare() {
+      // The share is the table's, not this phone's: only its screen goes. It comes back by itself
+      // when it moves (D72), and the bill screen keeps reading for the one another phone starts.
+      if (share === null) return
+      shareHidden = { id: share.id, state: share.state }
+      recompute()
+      scheduleShare(0)
+    },
     start() {
       if (running || retired) return
       running = true
       idleMs = 0
       answered()
       schedule(0)
-      if (handle !== null) {
-        schedulePay(0)
-        // Back from a redirect of the card form: the phone's word is a nudge (D127).
-        if (deps.memory?.get(PAY_RETURNED_KEY) != null) {
-          deps.memory.remove(PAY_RETURNED_KEY)
-          void dispatch({ kind: 'pay.returned', actionId: crypto.randomUUID() })
-        }
+      if (handle !== null) schedulePay(0)
+      scheduleShare(0)
+      // Back from a redirect of the card form: the phone's word is a nudge (D127). It says which
+      // form it was, so a part of the share is nudged with its own command.
+      const returned = deps.memory?.get(PAY_RETURNED_KEY)
+      const nudge =
+        returned === 'share'
+          ? shareHandle === null
+            ? null
+            : ('share.returned' as const)
+          : returned == null || handle === null
+            ? null
+            : ('pay.returned' as const)
+      // A word with no handle to go with it is left where it is: this tab holds no payment of its
+      // own to nudge, and the page's own cleaning of the address is what wrote it.
+      if (nudge !== null) {
+        deps.memory?.remove(PAY_RETURNED_KEY)
+        void dispatch({ kind: nudge, actionId: crypto.randomUUID() })
       }
     },
     stop() {
@@ -1290,6 +1512,8 @@ export function createTableServices(deps: TableServicesDeps): TableServices {
       cancelTimer = null
       cancelPayTimer?.()
       cancelPayTimer = null
+      cancelShareTimer?.()
+      cancelShareTimer = null
       recompute()
     },
   }

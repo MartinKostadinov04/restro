@@ -41,10 +41,10 @@ import {
   setGuestsAction,
   undoArrivalAction,
 } from '@/server/reservations/actions'
-import type { RvFrame } from '@/server/reservations/view'
+import type { RvDoorTableView, RvFrame } from '@/server/reservations/view'
 import { ConfirmDialog } from './confirm-dialog'
 import { SameGuestsDialog } from './door-dialogs'
-import { useSpotCalled } from './plan-words'
+import { useSpotCalled, useTablesCalled } from './plan-words'
 import { type RvRunSpec, useSpotsLostLine } from './use-reservation-run'
 
 /** The party at the door: what a seating needs to know about it. */
@@ -89,8 +89,8 @@ interface Asking {
   readonly step: 'same_guests' | 'bill' | 'free_bill'
   /** The pay rule the party carries, so the same-guests answers say what becomes of it (#334). */
   readonly payRule: PayRule | null
-  /** The tables that still carry something, by name: the open-bill sentence names them. */
-  readonly billSpots: readonly string[]
+  /** The tables that still carry something: the open-bill sentence names each of them (#558). */
+  readonly billTables: readonly RvDoorTableView[]
   /** The spots the advice was about, for the Undo of a freeing; empty where it is not known. */
   readonly spots: readonly string[]
 }
@@ -106,6 +106,7 @@ export function useDoorActions({
   onChanged: () => void
 }) {
   const t = useTranslations('reservations')
+  const tablesCalled = useTablesCalled()
   const spotsLostLine = useSpotsLostLine()
   const venueId = frame.venueId
   const [asking, setAsking] = useState<Asking | null>(null)
@@ -242,25 +243,23 @@ export function useDoorActions({
             seat(party, undefined)
             return
           }
-          const billSpots = read.checks.tables
-            .filter((table) => table.bill)
-            .map((table) => table.tableName)
+          const billTables = read.checks.tables.filter((table) => table.bill)
           // Only an order already on the table is a question: open for phones alone asks nothing.
           if (read.checks.tables.some((table) => table.hasOrder)) {
             setAsking({
               party,
               step: 'same_guests',
-              billSpots,
+              billTables,
               spots: read.checks.spotIds,
               payRule: read.checks.payRule,
             })
             return
           }
-          if (billSpots.length > 0) {
+          if (billTables.length > 0) {
             setAsking({
               party,
               step: 'bill',
-              billSpots,
+              billTables,
               spots: read.checks.spotIds,
               payRule: read.checks.payRule,
             })
@@ -362,15 +361,13 @@ export function useDoorActions({
             letGo(party, party.spotIds)
             return
           }
-          const billSpots = read.checks.tables
-            .filter((table) => table.bill)
-            .map((table) => table.tableName)
+          const billTables = read.checks.tables.filter((table) => table.bill)
           const spots = read.checks.spotIds
-          if (billSpots.length > 0) {
+          if (billTables.length > 0) {
             setAsking({
               party,
               step: 'free_bill',
-              billSpots,
+              billTables,
               spots,
               payRule: read.checks.payRule,
             })
@@ -392,7 +389,7 @@ export function useDoorActions({
       />
     ) : asking.step === 'free_bill' ? (
       <ConfirmDialog
-        title={t('d_free_t', { spot: asking.billSpots.join(', ') })}
+        title={t('d_free_t', { spot: tablesCalled(asking.billTables) })}
         body={t('d_free_b')}
         doLabel={t('d_free_do')}
         keepLabel={t('d_bill_no')}
@@ -403,7 +400,7 @@ export function useDoorActions({
       />
     ) : (
       <ConfirmDialog
-        title={t('d_bill_t', { spot: asking.billSpots.join(', ') })}
+        title={t('d_bill_t', { spot: tablesCalled(asking.billTables) })}
         body={t('d_bill_b')}
         doLabel={t('d_bill_do')}
         keepLabel={t('d_bill_no')}

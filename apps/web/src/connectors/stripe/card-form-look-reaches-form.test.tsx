@@ -103,6 +103,7 @@ const tableState = (): GuestTableState =>
       payingLegal: null,
       minCardMinor: 50,
       tips: false,
+      sharing: false,
       receiptEmail: false,
       night: { state: 'open', at: null },
     },

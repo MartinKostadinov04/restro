@@ -26,7 +26,7 @@ import { logError, logWarn } from '../log'
 import { requireTenant } from '../session'
 import { identifyAtSharedDevice, ownActor, personAtSharedDevice } from '../staff/service'
 import { getVenue } from '../venues'
-import { loadTableBill, type TableSheetBill } from './load'
+import { loadTableSheet, type TableSheetBill, type TableSheetGroup } from './load'
 import { clockIn } from './night-view'
 import {
   endNight,
@@ -460,10 +460,18 @@ export async function undoOpenAllAction(input: unknown): Promise<TonightResult> 
   )
 }
 
-/** The bill of a table as last read, for its sheet (read-only). */
-export async function tableBillAction(
-  input: unknown,
-): Promise<{ readonly ok: true; readonly bill: TableSheetBill | null } | { readonly ok: false }> {
+/**
+ * The bill of a table as last read, and its linked group where it is in one (#540), for its sheet
+ * (read-only). `group` is left out, not null, for a table in no group.
+ */
+export async function tableBillAction(input: unknown): Promise<
+  | {
+      readonly ok: true
+      readonly bill: TableSheetBill | null
+      readonly group?: TableSheetGroup
+    }
+  | { readonly ok: false }
+> {
   const parsed = OnTableRead.safeParse(input)
   if (!parsed.success) return { ok: false }
   try {
@@ -478,14 +486,12 @@ export async function tableBillAction(
       actor: { kind: 'user', userId: user.id, sessionId },
     })
     if (!access.ok) return { ok: false }
-    return {
-      ok: true,
-      bill: await loadTableBill({
-        tenantId: organization.id,
-        venueId: venue.id,
-        tableId: parsed.data.tableId,
-      }),
-    }
+    const sheet = await loadTableSheet({
+      tenantId: organization.id,
+      venueId: venue.id,
+      tableId: parsed.data.tableId,
+    })
+    return { ok: true, bill: sheet.bill, ...(sheet.group === null ? {} : { group: sheet.group }) }
   } catch (error) {
     if (error instanceof Error && 'digest' in error) throw error
     logError('tonight_table_bill_failed', error)

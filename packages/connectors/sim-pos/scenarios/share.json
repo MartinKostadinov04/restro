@@ -1,0 +1,6 @@
+{
+  "name": "share",
+  "extends": "demo-bar",
+  "description": "Demo Bar on a POS that takes several card payments on one close (severalPaymentsPerClose, Q20), so a table's guests can settle together: each part is its own hold and the close takes them all (D160 2.8, #543). No open bills; the harness enters the waiter's round itself.",
+  "switches": { "severalPaymentsPerClose": true }
+}
