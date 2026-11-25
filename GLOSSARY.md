@@ -24,6 +24,14 @@ _Avoid_: barsy venue, till venue, synced venue
 A venue with no POS, whose menus Restro's users build and fully control. "By hand" is the source a hand-made venue is created with.
 _Avoid_: by-hand venue, Restro venue, manual venue
 
+**Module**:
+A part of what a venue does that it can have or not: Ordering, Reservations, later Song requests (D155, proposed). Each has its own group in the venue's sidebar, its screens, its own Settings and its rights (D161, D156). The menu is not a module: every venue has it. Interface: "Модул / Module"; code: `module`.
+_Avoid_: feature base, add-on, feature (clashes with Guest feature)
+
+**Screen**:
+One destination of the admin, opened from the sidebar: the Studio, Tables & QR, Tonight, Reservations, a module's Settings (D161). A screen may have one row of views (Tonight › Log) or sections (Settings › Hours).
+_Avoid_: tab (for a destination), page (a page is a route)
+
 **Venue state**:
 Draft (never published, or unpublished), Live, Archived, or Deleted.
 
@@ -65,6 +73,10 @@ _Avoid_: import, pull (on its own)
 A sync that reads everything the POS holds. Only a complete full read can conclude that an item was deleted in the POS.
 _Avoid_: full pull, full sync
 
+**Changes read**:
+A sync that reads only what changed in the POS since the last read. It never concludes that an item was deleted; only a full read can.
+_Avoid_: quick sync, incremental sync
+
 **Layer**:
 One origin of a stored value: the POS, a user's manual edit, an override, or an edition. Restro's layers can only make the menu more cautious than the POS.
 
@@ -88,7 +100,7 @@ _Avoid_: product, article, dish, drink
 
 **Item schema**:
 The set of fields an item can have, such as name, description, price, photo and allergens.
-_Avoid_: template (that is the phone design)
+_Avoid_: template, style (those are the phone design)
 
 **Placement**:
 An item's membership of a section and its position there. Placements are layout, kept apart from what an item is.
@@ -108,7 +120,7 @@ A venue-defined label on an item, such as a dietary label, shown to guests.
 _Avoid_: badge, label (on its own)
 
 **Sold out**:
-An item that stays visible but greyed out with no order button, because the POS stopped selling it or a manager marked it sold out for tonight.
+An item the POS stopped selling, or a manager marked sold out for tonight; guests do not see it until it is back on sale (D131).
 _Avoid_: unavailable, out of stock
 
 **Hidden**:
@@ -116,9 +128,16 @@ An item or section guests do not see at all.
 
 ## Publishing and design
 
-**Composer**:
-The admin screen where a venue's menus are arranged (Structure) and styled (Design).
-_Avoid_: editor, builder
+**Studio**:
+The admin tab where a venue's menus are arranged (Structure) and styled (Design).
+_Avoid_: composer (its old name, still in code), editor, builder
+
+**Structure**:
+The part of the Studio where a venue arranges its menus: sections, items, order, hiding, sold out.
+
+**Design**:
+The part of the Studio where a venue styles its menus: the Style, the colours and fonts, and in Advanced every component of the guest page.
+_Avoid_: designer (the tool, not the screen), theme editor
 
 **Publish**:
 Making a menu's current draft the version guests see.
@@ -126,13 +145,17 @@ Making a menu's current draft the version guests see.
 **Version**:
 One published state of a menu. A venue keeps the live version and up to two restorable ones.
 
-**Template**:
-A guest phone design a venue picks in the Design tab, such as Editorial Market.
-_Avoid_: face (the template's code), theme, skin; never for the item schema
+**Style**:
+A complete set of design choices for the guest page. Restro's premade Styles (Basic, Editorial, Soft, Classic, Club) and an organisation's own saved Styles; a venue picks one and changes what it likes (D128).
+_Avoid_: template (the old word, still in code and file names), face (the renderer's code), theme, skin, preset (on its own); never for the item schema
+
+**Basic**:
+The Style every venue starts on: a plain, well-working menu.
+_Avoid_: default, plain
 
 **Guest page**:
-The page a guest opens on their phone: one venue's menu in that venue's template.
-_Avoid_: guest menu, public page, shell (the host code around a template)
+The page a guest opens on their phone: one venue's menu in that venue's Style.
+_Avoid_: guest menu, public page, shell (the host code around the renderer)
 
 **Guest feature**:
 A service a venue can switch on for guests, such as the order, the bill or calling a waiter. Guests see it only once Restro supports it.
@@ -150,6 +173,18 @@ A place in an area where guests sit and scan a table code.
 **Table code**:
 The QR code on a table; it opens the menu routed to that table.
 _Avoid_: QR token, QR link, sticker
+
+**Spot**:
+What a reservation holds on a venue's floor plan: a table, a booth, a stool or a standing place, as the venue defines it. It belongs to reservations and may name the table codes that belong to it.
+_Avoid_: place, seat, reservable
+
+**Floor plan**:
+A drawing of one floor of a venue with its spots; a venue has one or more.
+_Avoid_: map, layout, venue map
+
+**Linked group**:
+The tables one party, booked or walk-in, holds for a stretch of a night, reviewed and paid together. Each table keeps its own bill in the POS and its own tickets; Restro shows the total grouped by table yet cumulative for the group, and one payment can cover lines of several of its tables.
+_Avoid_: merged table, table combination
 
 **Open for phones**:
 A table where staff let phones order to the bill, opened and closed by staff in Restro (one table, "Open all", "Close all") or closed at the venue's closing hour. Phones at other tables see the menu only.
@@ -177,6 +212,54 @@ _Avoid_: URL, link, slug
 **Service day**:
 A venue's business day, which ends at 07:00 local time by default, not at midnight.
 _Avoid_: day, night, shift
+
+## Reservations
+
+A **spot** and a **floor plan** are above, with tables and addresses.
+
+**Reservation**:
+A party's claim on one or more spots for one night, from an hour, held by the venue. It never reaches a POS.
+_Avoid_: booking record, table booking, event
+
+**Walk-in**:
+A party seated now, with no reservation taken beforehand and no name needed.
+_Avoid_: unbooked guest, drop-in
+
+**Waiting list**:
+The parties with no spot for a night, in the order they were added. A hostess gives a spot and calls by hand; nothing on it is automated.
+_Avoid_: queue, standby list
+
+**Not seated**:
+How a party still on the waiting list when the night ends is recorded. It is not a no-show: nobody failed to come.
+_Avoid_: unseated, missed, expired
+
+**Block**:
+A spot taken out of use with a reason, as a reservation on that spot, until someone removes it or its dates pass.
+_Avoid_: lock, out of order, closed table
+
+**Turn time**:
+One value per spot: how long it is held and the shortest gap before a later reservation on it.
+_Avoid_: duration, slot length, buffer
+
+**Guest record**:
+What a venue keeps about one guest — a name, a phone, an email, a note and this venue's own counts of coming and not coming — keyed by his phone, and erased on request as an update that leaves his past reservations standing.
+_Avoid_: customer, contact, CRM entry
+
+**Regular**:
+A guest on the venue's own list, suggested while a hostess types a name. The list belongs to the venue; a manager may also keep a private one.
+_Avoid_: VIP, favourite, loyal customer
+
+**Booking page**:
+A venue's public page where guests ask for or book a spot themselves, in that venue's Style.
+_Avoid_: reservation widget, booking form, landing page
+
+**Prepayment**:
+Money a guest pays in advance to hold a reservation, taken on the venue's own payment account.
+_Avoid_: deposit (which is the guest's own word for it), down payment, booking fee
+
+**Pay rule**:
+What a table's guests must do before they can order — the venue's own rule, everything on the bill, or pay first — settled per table, per reservation, and per venue.
+_Avoid_: payment mode, pay-first setting
 
 ## Ordering and bills
 
@@ -257,7 +340,7 @@ A payment that leaves its POS bill open with something still owed.
 _Avoid_: partial (on its own), instalment
 
 **Group payment**:
-Several guests' cards settling one bill, or one share of it, together.
+Several guests' cards settling one bill, or one share of it, together: each card is held for the amount its guest chose, and the bill closes once, with one receipt, when the amounts cover it. On the guest's screen the button reads "Split the amount".
 _Avoid_: split payment (a split moves items), split tender
 
 **Location check**:

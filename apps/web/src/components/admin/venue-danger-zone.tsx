@@ -13,9 +13,10 @@ import { DeleteVenueDialog } from './delete-venue-dialog'
 interface VenueDangerZoneProps {
   readonly venueId: string
   readonly venueName: string
+  readonly hasTill: boolean
 }
 
-export function VenueDangerZone({ venueId, venueName }: VenueDangerZoneProps) {
+export function VenueDangerZone({ venueId, venueName, hasTill }: VenueDangerZoneProps) {
   const t = useTranslations('workspace.settings.danger')
   const [open, setOpen] = useState(false)
 
@@ -25,7 +26,7 @@ export function VenueDangerZone({ venueId, venueName }: VenueDangerZoneProps) {
       className="flex flex-col gap-4 rounded-lg border border-destructive/40 p-4 sm:flex-row sm:items-center sm:justify-between"
       data-testid="venue-danger-zone"
     >
-      <div className="grid gap-1">
+      <div className="grid grid-cols-1 gap-1">
         <h3
           id="venue-danger-heading"
           className="flex items-center gap-2 text-lg font-medium text-destructive"
@@ -48,6 +49,7 @@ export function VenueDangerZone({ venueId, venueName }: VenueDangerZoneProps) {
         onOpenChange={setOpen}
         venueId={venueId}
         venueName={venueName}
+        hasTill={hasTill}
       />
     </section>
   )

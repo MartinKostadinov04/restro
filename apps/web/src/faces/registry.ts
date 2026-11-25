@@ -1,11 +1,10 @@
-// The template registry (D69): every face the app can draw, in one place. A venue's snapshot names
-// its template (`presentation.face`); the guest page and the previews look it up here.
+// The template registry (D69, D128): the one face the app draws, the renderer. A venue's look is the
+// snapshot's design block, which the renderer reads; no snapshot picks a face.
 //
 // An entry carries everything that is cheap to know without drawing the face: its manifest (so the
 // host can ask for the right photo sizes), its names, and where its picture is. The face's
-// components are NOT imported here: `load()` imports them when they are first needed, so a guest
-// downloads the one template its venue chose, not all of them. The manifests are imported through
-// each face's `./manifest` entry, which pulls in the manifest and nothing else.
+// components are NOT imported here: `load()` imports them when they are first needed. The manifest
+// is imported through the face's `./manifest` entry, which pulls in the manifest and nothing else.
 //
 // What is known about a template without loading it lives in `manifests.ts`; this file adds `load()`.
 // Only client code may import this file (see manifests.ts for why): server code reads
@@ -27,7 +26,6 @@ export interface FaceEntry extends ManifestEntry {
 /** How each template's components are imported, by the template's name. */
 const LOADERS: Readonly<Record<string, FaceEntry['load']>> = {
   'editorial-market': async () => (await import('@restro/editorial-market')).EditorialMarketFace,
-  'qr-phone': async () => (await import('@restro/qr-phone')).QrPhoneFace,
 }
 
 export const FACES: readonly FaceEntry[] = MANIFESTS.map((entry) => {

@@ -64,7 +64,15 @@ const OFF: ViewFeatures = {
 describe('R15: the shell’s names come from core', () => {
   it('re-exports the request kinds, without a second list', () => {
     expect(SERVICE_KINDS).toBe(CALL_WAITER_KINDS)
-    expect(SERVICE_KINDS).toEqual(['waiter', 'bill', 'water', 'cutlery', 'terminal', 'other'])
+    expect(SERVICE_KINDS).toEqual([
+      'waiter',
+      'bill',
+      'ice',
+      'water',
+      'glasses',
+      'clean_table',
+      'terminal',
+    ])
   })
 })
 
@@ -225,8 +233,8 @@ describe('R15: call a waiter', () => {
   })
 
   it('keeps the vocabulary’s order whatever the order stored', () => {
-    const view = build(withFeatures(WITH_CHIPS, asking(['other', 'waiter', 'cutlery'])))
-    expect(view.features.callWaiter?.kinds).toEqual(['waiter', 'cutlery', 'other'])
+    const view = build(withFeatures(WITH_CHIPS, asking(['terminal', 'waiter', 'glasses'])))
+    expect(view.features.callWaiter?.kinds).toEqual(['waiter', 'glasses', 'terminal'])
   })
 
   it('is off when no kind is allowed, though the venue switched it on', () => {

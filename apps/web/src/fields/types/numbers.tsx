@@ -107,7 +107,7 @@ function MoneyDisplay({ value }: DisplayProps<'money'>) {
 function MoneyEditor({ value, onChange, inputId, invalid }: EditorProps<'money'>) {
   const t = useTranslations('fields.hints')
   const environment = useFieldEnvironment()
-  const [text, setText] = useState(() => moneyToInput(value))
+  const [text, setText] = useState(() => moneyToInput(value, environment.locale))
   const parsed = parseMoneyInput(text, environment.currency)
 
   function change(next: string) {
@@ -126,7 +126,10 @@ function MoneyEditor({ value, onChange, inputId, invalid }: EditorProps<'money'>
         <Input
           id={inputId}
           inputMode="decimal"
-          placeholder="0.00"
+          placeholder={moneyToInput(
+            { amount_minor: 0, currency: environment.currency },
+            environment.locale,
+          )}
           value={text}
           aria-invalid={invalid || parsed === 'invalid' || undefined}
           onChange={(event) => change(event.target.value)}

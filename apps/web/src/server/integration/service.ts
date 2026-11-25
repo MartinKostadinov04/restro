@@ -38,7 +38,7 @@ import {
 } from '@restro/db'
 import { and, asc, desc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 
-import { connectorServer, SYSTEM_KINDS } from '../../connectors/server'
+import { connectorServer, systemKinds } from '../../connectors/server'
 import type { ConnectorServer, Enqueue } from '../../connectors/server-types'
 import { absenceHeldOf, type HeldSyncEntry } from '../../connectors/sync-reads'
 import { type TillVenueLink, tillVenueLinks } from '../../connectors/till-venues'
@@ -314,7 +314,7 @@ export async function loadIntegrationsView(
     // A kind this build does not know has no tab to show it in.
     if (connector !== null) instances.push(await instanceView(scope, connector, row, live))
   }
-  const systems: SystemOption[] = SYSTEM_KINDS.map((kind) => ({
+  const systems: SystemOption[] = systemKinds().map((kind) => ({
     kind,
     label: connectorLabel(kind),
     instances: instances.filter((instance) => instance.kind === kind).length,

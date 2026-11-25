@@ -21,6 +21,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme}
       className="toaster group"
+      toastOptions={{ duration: 8000 }}
       icons={{
         success: <CircleCheckIcon className="size-4" />,
         info: <InfoIcon className="size-4" />,
@@ -34,6 +35,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
           '--normal-text': 'var(--popover-foreground)',
           '--normal-border': 'var(--border)',
           '--border-radius': 'var(--radius)',
+          // A modal Radix dialog or sheet sets `pointer-events: none` on the body, which the toasts
+          // inherit: a click then falls through to the dialog beneath, so Undo could not be pressed
+          // while an item sheet was open. The toaster takes pointer events back.
+          pointerEvents: 'auto',
         } as React.CSSProperties
       }
       {...props}

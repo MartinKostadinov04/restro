@@ -1,17 +1,19 @@
 // @vitest-environment jsdom
 // The guest page end to end in a page-like environment, with a fake `fetch` standing in for the
-// CDN: the loading skeleton, the menu, the table banner from ?t=, the language from ?lang=, and the
+// CDN: the loading skeleton, the menu, the table banner from #t=, the language from ?lang=, and the
 // friendly notices. The page may only ask for files under /cdn (rule 4). The address is
 // `/m/<slug>-<code>` (D68): only the code finds the venue, and the page corrects the slug.
+import { createHash } from 'node:crypto'
 import type { MenuSnapshot } from '@restro/core'
 import * as shell from '@restro/shell'
 import { fixture } from '@restro/shell/testing'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DEFAULT_FACE_ID, faceEntry } from '@/faces/registry'
 
+import { languageCookieName } from './context'
 import { GuestMenu } from './guest-menu'
 import { files } from './load'
 
@@ -20,6 +22,21 @@ import { files } from './load'
 beforeAll(async () => {
   await faceEntry(DEFAULT_FACE_ID).load()
 }, 60_000)
+
+/** What the page reported for the night (D142), by table code: the events client is not what these tests are about. */
+const reported = vi.hoisted(() => [] as { code: string; fact: { kind: string; itemId?: string } }[])
+vi.mock('./use-guest-events', async () => {
+  const { useCallback } = await import('react')
+  return {
+    useGuestEvents: (code: string | null) =>
+      useCallback(
+        (fact: { kind: string; itemId?: string }) => {
+          if (code !== null) reported.push({ code, fact })
+        },
+        [code],
+      ),
+  }
+})
 
 // The real shell, watched: what the page tells it about the table is what these tests are about.
 vi.mock('@restro/shell', async (importOriginal) => {
@@ -32,6 +49,8 @@ const tableTokensGiven = () =>
   vi.mocked(shell.buildViewModel).mock.calls.map(([, , context]) => context.tableToken)
 
 const TOKEN = 'tb_0123456789ABCDEFGHIJKL'
+/** A table code's file is named after its SHA-256 (#70). */
+const sha = (code: string) => createHash('sha256').update(code).digest('hex')
 const CODE = 'k3x9p2m7qa1z'
 const SLUG = 'demo-club'
 /** The canonical route parameter and path of the venue. */
@@ -56,7 +75,10 @@ function published(look: Partial<MenuSnapshot> = {}) {
     [files.current('/cdn', index), pointer],
     [files.snapshot('/cdn', pointer), snapshot],
     [files.live('/cdn', index), { version: pointer.version, items: {} }],
-    [files.table('/cdn', TOKEN), { venue_public_id: CODE, venue_slug: SLUG, table_label: '12' }],
+    [
+      files.table('/cdn', sha(TOKEN)),
+      { venue_public_id: CODE, venue_slug: SLUG, table_label: '12' },
+    ],
   ])
 }
 
@@ -69,22 +91,34 @@ function serve(bodies: Map<string, unknown>) {
     vi.fn(async (url: string) => {
       requested.push(url)
       const body = bodies.get(url)
+      if (body instanceof Response) return body
       return body === undefined ? new Response(null, { status: 404 }) : Response.json(body)
     }),
   )
 }
 
+/**
+ * Opens the page. `languages` is the guest's own earlier pick at this venue (its cookie, P11): the
+ * venue's default language comes before the browser's, so a test that wants a language names it
+ * the way a guest would. The browser reports the same list.
+ */
 function visit(search: string, languages = ['bg-BG'], param = PARAM) {
   window.history.replaceState(null, '', `/m/${param}${search}`)
   vi.spyOn(window.navigator, 'languages', 'get').mockReturnValue(languages)
+  const pick = languages[0]?.split('-')[0]
+  if (pick !== undefined) document.cookie = `${languageCookieName(CODE)}=${pick}; Path=/m`
 }
 
 beforeEach(() => {
+  reported.length = 0
   document.title = ''
+  document.cookie = `${languageCookieName(CODE)}=; Path=/m; Max-Age=0`
 })
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  // The table code a page kept for its tab must not reach the next test.
+  window.sessionStorage.clear()
 })
 
 describe('the guest menu page', () => {
@@ -123,17 +157,51 @@ describe('the guest menu page', () => {
     expect(new URLSearchParams(window.location.search).get('lang')).toBe('en')
   })
 
-  it('shows the table banner for a known table code (?t=) and keeps the code in the address', async () => {
+  it('shows the table banner for a known table code (#t=) and keeps the code in the fragment', async () => {
     serve(published())
-    visit(`?t=${TOKEN}`)
+    visit(`#t=${TOKEN}`)
     render(<GuestMenu venue={PARAM} />)
     expect(await screen.findByText('Маса 12')).toBeTruthy()
-    expect(window.location.search).toContain(TOKEN)
+    expect(window.location.hash).toBe(`#t=${TOKEN}`)
+    // Only the code's hash went over the wire (#70).
+    expect(requested.some((url) => url.includes(TOKEN))).toBe(false)
+  })
+
+  it('keeps the table through a reload on a dish page, whose address carries no code', async () => {
+    serve(published())
+    visit(`#t=${TOKEN}`)
+    const first = render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Маса 12')).toBeTruthy()
+    first.unmount()
+    // The dish page took the fragment; the reload finds the code this tab kept.
+    visit('#item-nd_anything')
+    const reloaded = render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Маса 12')).toBeTruthy()
+    reloaded.unmount()
+    // A new code in the address replaces it; an unknown one leaves no table behind.
+    visit('#t=tb_ZZZZZZZZZZZZZZZZZZZZZZ')
+    const unknown = render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Негрони')).toBeTruthy()
+    expect(screen.queryByText(/Маса/)).toBeNull()
+    unknown.unmount()
+    visit('')
+    render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Негрони')).toBeTruthy()
+    expect(screen.queryByText(/Маса/)).toBeNull()
+  })
+
+  it('moves the code of an older link (?t=) into the fragment, keeping ?lang=', async () => {
+    serve(published())
+    visit(`?t=${TOKEN}&lang=bg`)
+    render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Маса 12')).toBeTruthy()
+    expect(window.location.search).toBe('?lang=bg')
+    expect(window.location.hash).toBe(`#t=${TOKEN}`)
   })
 
   it('leaves the banner out for an unknown table code, the menu still shows', async () => {
     serve(published())
-    visit('?t=tb_ZZZZZZZZZZZZZZZZZZZZZZ')
+    visit('#t=tb_ZZZZZZZZZZZZZZZZZZZZZZ')
     render(<GuestMenu venue={PARAM} />)
     expect(await screen.findByText('Негрони')).toBeTruthy()
     expect(screen.queryByText(/Маса/)).toBeNull()
@@ -142,7 +210,7 @@ describe('the guest menu page', () => {
   it('gives the shell a table code only once the published table file confirmed it (A5-F5)', async () => {
     vi.mocked(shell.buildViewModel).mockClear()
     const bodies = published()
-    const tableFile = files.table('/cdn', TOKEN)
+    const tableFile = files.table('/cdn', sha(TOKEN))
     // The table file's answer is held back until the menu is on the screen.
     let release: () => void = () => {}
     const gate = new Promise<void>((open) => {
@@ -158,7 +226,7 @@ describe('the guest menu page', () => {
         return body === undefined ? new Response(null, { status: 404 }) : Response.json(body)
       }),
     )
-    visit(`?t=${TOKEN}`)
+    visit(`#t=${TOKEN}`)
     render(<GuestMenu venue={PARAM} />)
 
     // The table's file may name the menu the code opens (D95), so the page waits for it: while
@@ -177,12 +245,12 @@ describe('the guest menu page', () => {
   it('treats a well-formed but unknown table code like no code at all (A5-F5)', async () => {
     vi.mocked(shell.buildViewModel).mockClear()
     serve(published())
-    visit('?t=tb_ZZZZZZZZZZZZZZZZZZZZZZ')
+    visit('#t=tb_ZZZZZZZZZZZZZZZZZZZZZZ')
     render(<GuestMenu venue={PARAM} />)
     expect(await screen.findByText('Негрони')).toBeTruthy()
     // The lookup went out (the file is not there) ...
     await waitFor(() =>
-      expect(requested).toContain(files.table('/cdn', 'tb_ZZZZZZZZZZZZZZZZZZZZZZ')),
+      expect(requested).toContain(files.table('/cdn', sha('tb_ZZZZZZZZZZZZZZZZZZZZZZ'))),
     )
     await new Promise((done) => setTimeout(done, 50))
     // ... and the shell never heard of the code, before or after the answer.
@@ -194,16 +262,16 @@ describe('the guest menu page', () => {
     vi.mocked(shell.buildViewModel).mockClear()
     const bodies = published()
     // The file names another venue by its public code (the slug alone proves nothing).
-    bodies.set(files.table('/cdn', TOKEN), {
+    bodies.set(files.table('/cdn', sha(TOKEN)), {
       venue_public_id: 'zzzzzzzzzzzz',
       venue_slug: SLUG,
       table_label: '7',
     })
     serve(bodies)
-    visit(`?t=${TOKEN}`)
+    visit(`#t=${TOKEN}`)
     render(<GuestMenu venue={PARAM} />)
     expect(await screen.findByText('Негрони')).toBeTruthy()
-    await waitFor(() => expect(requested).toContain(files.table('/cdn', TOKEN)))
+    await waitFor(() => expect(requested).toContain(files.table('/cdn', sha(TOKEN))))
     await new Promise((done) => setTimeout(done, 50))
     expect(screen.queryByText(/Маса/)).toBeNull()
     expect(tableTokensGiven().every((token) => token === null)).toBe(true)
@@ -263,15 +331,14 @@ describe('the guest menu page', () => {
     it('applies the mismatched overlay at once, then asks again with ?v= and shows the matching one', async () => {
       const bodies = published()
       bodies.set(plain, { version: version + 1, items: marks(hummus) })
-      bodies.set(bust(1), { version, items: marks(negroni, hummus) })
+      bodies.set(bust(1), { version, items: marks(negroni) })
       serve(bodies)
       visit('', ['en-GB'])
       render(<GuestMenu venue={PARAM} />)
 
+      // The overlay fetched again with ?v= wins: Negroni leaves the menu (D131), Hummus is back.
+      await waitFor(() => expect(screen.queryByText('Negroni')).toBeNull())
       expect(await screen.findByText('Hummus')).toBeTruthy()
-      // The overlay of the other version marks Hummus: it applies, it is not ignored.
-      // The overlay fetched again with ?v= adds Negroni.
-      await waitFor(() => expect(screen.getAllByText('Sold out')).toHaveLength(2))
       expect(bustedRequests()).toEqual([bust(1)])
     })
 
@@ -282,10 +349,11 @@ describe('the guest menu page', () => {
       visit('', ['en-GB'])
       render(<GuestMenu venue={PARAM} />)
 
-      expect(await screen.findByText('Hummus')).toBeTruthy()
+      // The overlay of the other version takes Hummus off the menu: it applies, it is not ignored.
+      expect(await screen.findByText('Negroni')).toBeTruthy()
       await waitFor(() => expect(bustedRequests()).toEqual([bust(1)]))
       // Nothing matching arrived: what was on the screen stays.
-      expect(screen.getAllByText('Sold out')).toHaveLength(1)
+      expect(screen.queryByText('Hummus')).toBeNull()
       expect(bustedRequests().length).toBeLessThanOrEqual(3)
     })
 
@@ -320,33 +388,35 @@ describe('the guest menu page', () => {
     visit('', ['en-GB'])
     render(<GuestMenu venue={PARAM} />)
 
-    expect(await screen.findByText('Hummus')).toBeTruthy()
-    // The file is not taken for "no overlay": the mark shows.
-    await waitFor(() => expect(screen.getAllByText('Sold out')).toHaveLength(1))
+    expect(await screen.findByText('Negroni')).toBeTruthy()
+    // The file is not taken for "no overlay": the sold-out dish leaves the menu (D131).
+    await waitFor(() => expect(screen.queryByText('Hummus')).toBeNull())
   })
 
   describe('the address in the browser (D68)', () => {
     it('is left alone when it is already canonical', async () => {
       serve(published())
-      visit(`?t=${TOKEN}&lang=bg`)
+      visit(`?lang=bg#t=${TOKEN}`)
       const replace = vi.spyOn(window.history, 'replaceState')
       render(<GuestMenu venue={PARAM} />)
       expect(await screen.findByText('Маса 12')).toBeTruthy()
       expect(replace).not.toHaveBeenCalled()
       expect(window.location.pathname).toBe(PATH)
-      expect(window.location.search).toBe(`?t=${TOKEN}&lang=bg`)
+      expect(window.location.search).toBe('?lang=bg')
+      expect(window.location.hash).toBe(`#t=${TOKEN}`)
     })
 
-    it('is corrected when the slug is stale (a renamed venue), keeping ?t= and ?lang=', async () => {
+    it('is corrected when the slug is stale (a renamed venue), keeping #t= and ?lang=', async () => {
       serve(published())
       const stale = `old-name-${CODE}`
-      visit(`?t=${TOKEN}&lang=bg`, ['bg-BG'], stale)
+      visit(`?lang=bg#t=${TOKEN}`, ['bg-BG'], stale)
       expect(window.location.pathname).toBe(`/m/${stale}`)
       const push = vi.spyOn(window.history, 'pushState')
       render(<GuestMenu venue={stale} />)
       expect(await screen.findByText('Маса 12')).toBeTruthy()
       await waitFor(() => expect(window.location.pathname).toBe(PATH))
-      expect(window.location.search).toBe(`?t=${TOKEN}&lang=bg`)
+      expect(window.location.search).toBe('?lang=bg')
+      expect(window.location.hash).toBe(`#t=${TOKEN}`)
       // Replaced, not pushed: the stale address is not left in the history.
       expect(push).not.toHaveBeenCalled()
     })
@@ -416,13 +486,8 @@ describe('the template the venue chose (SH-04)', () => {
     expect(screen.queryByTestId('menu-skeleton')).toBeNull()
   })
 
-  it('draws the template the snapshot names, in the menu layout it carries (D92)', async () => {
-    serve(
-      published({
-        presentation: { face: 'editorial-market', options: {} },
-        layout: { default: 'one', guest_switch: false },
-      }),
-    )
+  it('draws the menu layout the snapshot carries (D92)', async () => {
+    serve(published({ layout: { default: 'one', guest_switch: false } }))
     visit('', ['en-GB'])
     render(<GuestMenu venue={PARAM} />)
     const root = await faceRoot('editorial-market')
@@ -431,24 +496,17 @@ describe('the template the venue chose (SH-04)', () => {
     expect(root.querySelector('[data-slot="menu.layout_switch"]')).toBeNull()
   })
 
-  it('draws another template when the snapshot names it', async () => {
-    serve(published({ presentation: { face: 'qr-phone', options: {} } }))
-    visit('', ['en-GB'])
-    render(<GuestMenu venue={PARAM} />)
-    await faceRoot('qr-phone')
-    expect(document.querySelector('[data-face="editorial-market"]')).toBeNull()
-    expect(await screen.findByText('Negroni')).toBeTruthy()
-  })
-
-  it('draws the Editorial Market for a template it does not know, and says so once', async () => {
+  it('draws the renderer whatever an old snapshot’s presentation names, without a word (D128)', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    serve(published({ presentation: { face: 'a-template-from-the-future', options: {} } }))
-    visit('', ['en-GB'])
-    render(<GuestMenu venue={PARAM} />)
-    await faceRoot('editorial-market')
-    expect(warn.mock.calls.filter(([line]) => String(line).includes('unknown_face'))).toHaveLength(
-      1,
-    )
+    for (const face of ['qr-phone', 'a-template-from-the-future']) {
+      serve(published({ presentation: { face, options: {} } }))
+      visit('', ['en-GB'])
+      const { unmount } = render(<GuestMenu venue={PARAM} />)
+      await faceRoot('editorial-market')
+      expect(await screen.findByText('Negroni')).toBeTruthy()
+      unmount()
+    }
+    expect(warn.mock.calls.filter(([line]) => String(line).includes('unknown_face'))).toEqual([])
   })
 
   it('forces the scheme the snapshot carries onto the template', async () => {
@@ -470,10 +528,142 @@ describe('the template the venue chose (SH-04)', () => {
 
   it('draws the template with the confirmed table and the languages of the menu', async () => {
     serve(published())
-    visit(`?t=${TOKEN}`, ['bg-BG'])
+    visit(`#t=${TOKEN}`, ['bg-BG'])
     render(<GuestMenu venue={PARAM} />)
     await faceRoot('editorial-market')
     expect(await screen.findByText('Маса 12')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'EN' })).toBeTruthy()
+  })
+})
+
+describe('the dish page at a table, and the tab’s title', () => {
+  /** The tab's title once the page has named it after the menu (its heading). */
+  const titleOfMenu = async () => {
+    const heading = (await screen.findByRole('heading', { level: 1 })).textContent ?? ''
+    expect(heading).not.toBe('')
+    await waitFor(() => expect(document.title).toBe(heading))
+    return heading
+  }
+  const openedItems = () =>
+    reported.filter(({ fact }) => fact.kind === 'item.opened').map(({ fact }) => fact.itemId)
+
+  it('reports a dish the guest taps open, and names the tab after it while it is open (C1, S13)', async () => {
+    serve(published())
+    visit(`#t=${TOKEN}`)
+    render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Маса 12')).toBeTruthy()
+    const menuTitle = await titleOfMenu()
+    await userEvent.click(screen.getByRole('button', { name: /^Негрони/ }))
+    const itemId = decodeURIComponent(window.location.hash.replace(/^#item-/, ''))
+    expect(itemId).toMatch(/^nd_/)
+    await waitFor(() => expect(openedItems()).toEqual([itemId]))
+    expect(reported.every(({ code }) => code === TOKEN)).toBe(true)
+    await waitFor(() => expect(document.title).toBe(`Негрони · ${menuTitle}`))
+    // Back to the menu: the title follows; a second open is a second report.
+    await act(async () => {
+      window.history.back()
+    })
+    await waitFor(() => expect(document.title).toBe(menuTitle))
+    await userEvent.click(screen.getByRole('button', { name: /^Негрони/ }))
+    await waitFor(() => expect(openedItems()).toEqual([itemId, itemId]))
+  })
+
+  it('reports nothing without a table, but still names the tab after the dish', async () => {
+    serve(published())
+    visit('')
+    render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Негрони')).toBeTruthy()
+    const menuTitle = await titleOfMenu()
+    await userEvent.click(screen.getByRole('button', { name: /^Негрони/ }))
+    await waitFor(() => expect(document.title).toBe(`Негрони · ${menuTitle}`))
+    expect(reported).toEqual([])
+  })
+
+  it('keeps the table through a reload whose table file could not be read (C2)', async () => {
+    serve(published())
+    visit(`#t=${TOKEN}`)
+    const first = render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Маса 12')).toBeTruthy()
+    first.unmount()
+    // A reload on a dish page while the table's file fails once: no table this time …
+    const failing = published()
+    failing.set(files.table('/cdn', sha(TOKEN)), new Response('x', { status: 503 }))
+    serve(failing)
+    visit('#item-nd_anything')
+    const unreadable = render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Негрони')).toBeTruthy()
+    await waitFor(() => expect(requested).toContain(files.table('/cdn', sha(TOKEN))))
+    expect(screen.queryByText(/Маса/)).toBeNull()
+    unreadable.unmount()
+    // … but the tab did not forget it: the next reload finds the table again.
+    serve(published())
+    visit('')
+    render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Маса 12')).toBeTruthy()
+  })
+
+  it('forgets the old table when a new code in the address cannot be read', async () => {
+    const other = 'tb_ZZZZZZZZZZZZZZZZZZZZZZ'
+    serve(published())
+    visit(`#t=${TOKEN}`)
+    const first = render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Маса 12')).toBeTruthy()
+    first.unmount()
+    // The guest scans another table's code, and its file fails: no table now …
+    const failing = published()
+    failing.set(files.table('/cdn', sha(other)), new Response('x', { status: 503 }))
+    serve(failing)
+    visit(`#t=${other}`)
+    const scanned = render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Негрони')).toBeTruthy()
+    await waitFor(() => expect(requested).toContain(files.table('/cdn', sha(other))))
+    scanned.unmount()
+    // … and a reload on a dish page (no code in the address) does not bring the first table back.
+    serve(published())
+    visit('#item-nd_anything')
+    render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByText('Негрони')).toBeTruthy()
+    expect(screen.queryByText(/Маса/)).toBeNull()
+    expect(requested).not.toContain(files.table('/cdn', sha(TOKEN)))
+  })
+
+  it('names the tab in the page’s language before the menu loads and when it fails (R4)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    )
+    visit('')
+    const bulgarian = render(<GuestMenu venue={PARAM} />)
+    await waitFor(() => expect(document.title).toBe('Меню'))
+    bulgarian.unmount()
+    visit('?lang=en', ['en-GB'])
+    render(<GuestMenu venue={PARAM} />)
+    await waitFor(() => expect(document.title).toBe('Menu'))
+  })
+
+  it('keeps the word in the page’s language when the load fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 500 })),
+    )
+    visit('')
+    const bulgarian = render(<GuestMenu venue={PARAM} />)
+    expect(await screen.findByRole('button', { name: /Опитай|Опитайте/ })).toBeTruthy()
+    expect(document.title).toBe('Меню')
+    bulgarian.unmount()
+    // In English, even when the server's streamed title lands over the page's own (Next.js puts
+    // the metadata title in after the page has started): the settled page says it again.
+    let fail: (response: Response) => void = () => {}
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>((resolve) => (fail = resolve))),
+    )
+    visit('?lang=en', ['en-GB'])
+    render(<GuestMenu venue={PARAM} />)
+    await waitFor(() => expect(document.title).toBe('Menu'))
+    document.title = 'Меню'
+    await act(async () => fail(new Response(null, { status: 500 })))
+    expect(await screen.findByRole('button', { name: /try again/i })).toBeTruthy()
+    expect(document.title).toBe('Menu')
   })
 })

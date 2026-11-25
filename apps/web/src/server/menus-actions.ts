@@ -21,7 +21,6 @@ import {
   renameMenu,
   restoreMenu,
   setLiveMenu,
-  setMenuSettings,
 } from '@restro/core/apply'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
@@ -32,6 +31,7 @@ import { logError } from './log'
 import { publishNow } from './publish/service'
 import { canManageIntegration, canPublishMenu } from './roles'
 import { requireTenant } from './session'
+import { onSharedDevice } from './staff/shared-device'
 import { listVenues, venueHasTill } from './venues'
 
 /** What every menu action answers. */
@@ -63,8 +63,11 @@ async function run<T extends { readonly ok: true }>(
   ) => Promise<T | { readonly ok: false; readonly error: MenuWriteError }>,
 ): Promise<T | Failure> {
   try {
-    const { organization, user } = await requireTenant()
+    const { organization, user, sessionId } = await requireTenant()
     if (!canManageIntegration(organization.role)) return { ok: false, error: 'not_allowed' }
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'not_allowed' }
+    }
     const result = await write(organization.id, `user:${user.id}`, organization.role)
     if (!result.ok) return { ok: false, error: result.error }
     revalidatePath(`/venues/${revalidate}`)
@@ -122,31 +125,6 @@ export async function moveMenuAction(input: unknown): Promise<MenuActionResult> 
   const { venueId: venue, menuId: menu, position } = parsed.data
   return run<Success>('menu_move_failed', venue, async (tenantId) => {
     const result = await moveMenu(getPool(), tenantId, { venueId: venue, menuId: menu, position })
-    return result.ok ? summary(result) : result
-  })
-}
-
-const SettingsInput = z.strictObject({
-  venueId,
-  menuId,
-  // Checked by core (`MenuSettingsSchema`): an unknown key or value is refused there.
-  settings: z.record(z.string(), z.unknown()),
-})
-
-/**
- * Sets a menu's layout and whether guests may switch it (D92: the composer's "Menu layout", brief
- * S6). Every venue's, a till venue's too; it reaches guests with the menu's next publish.
- */
-export async function setMenuSettingsAction(input: unknown): Promise<MenuActionResult> {
-  const parsed = SettingsInput.safeParse(input)
-  if (!parsed.success) return { ok: false, error: 'invalid' }
-  const { venueId: venue, menuId: menu, settings } = parsed.data
-  return run<Success>('menu_settings_failed', venue, async (tenantId) => {
-    const result = await setMenuSettings(getPool(), tenantId, {
-      venueId: venue,
-      menuId: menu,
-      settings,
-    })
     return result.ok ? summary(result) : result
   })
 }
@@ -255,8 +233,11 @@ export async function listImportSourcesAction(toVenueId: unknown): Promise<Impor
     return { ok: false, error: 'invalid' }
   }
   try {
-    const { organization } = await requireTenant()
+    const { organization, sessionId } = await requireTenant()
     if (!canManageIntegration(organization.role)) return { ok: false, error: 'not_allowed' }
+    if (await onSharedDevice({ tenantId: organization.id, sessionId })) {
+      return { ok: false, error: 'not_allowed' }
+    }
     const pool = getPool()
     const sources: ImportSource[] = []
     for (const venue of await listVenues(organization.id)) {

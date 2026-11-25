@@ -4,6 +4,12 @@ import { describe, expect, it } from 'vitest'
 import { ConfigError, DEFAULT_HEALTH_PORT, loadConfig, requireSealKeys } from './config'
 
 const URL = 'postgres://restro_app:s3cret-pw@localhost:54329/restro'
+/** What the alerts' settings are when none is set (#83). */
+const NO_ALERTS = { telegramToken: null, teamChatId: null, healthchecksUrl: null, vapid: null }
+/** A made-up bot token in the shape Telegram's BotFather gives. */
+const BOT_TOKEN = `123456789:${'A'.repeat(35)}`
+/** An obviously fake reveal token, long enough for the 32-character minimum. */
+const REVEAL_TOKEN = `test-reveal-token-${'x'.repeat(24)}`
 
 /** The lines of the error `loadConfig` throws for `env`. */
 function problemsOf(env: Record<string, string | undefined>, defaultWorkerId?: () => string) {
@@ -24,16 +30,24 @@ describe('loadConfig', () => {
     expect(loadConfig({ DATABASE_URL: URL }, () => 'my-host')).toEqual({
       databaseUrl: URL,
       purgeDatabaseUrl: null,
+      backup: null,
       workerId: 'my-host',
       healthPort: DEFAULT_HEALTH_PORT,
       logLevel: 'info',
       prettyLogs: true,
       seal: null,
       barsy: { env: 'development', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] },
+      sim: { env: 'development', allowHosts: [] },
       // Local files under the repository's .local/assets unless told otherwise.
       assets: { kind: 'local', dir: expect.stringMatching(/\.local[\\/]assets$/) },
       // And the publish store under .local/cdn.
       publish: { kind: 'local', dir: expect.stringMatching(/\.local[\\/]cdn$/) },
+      revealToken: null,
+      billIdKey: null,
+      posSync: true,
+      send: true,
+      alerts: NO_ALERTS,
+      receiptEmail: null,
     })
     expect(DEFAULT_HEALTH_PORT).toBe(8081)
   })
@@ -54,10 +68,16 @@ describe('loadConfig', () => {
         BARSY_ENV: ' Staging ',
         BARSY_ALLOWED_HOST_SUFFIXES: '.barsyonline.com, .barsy.test',
         BARSY_PRODUCTION_HOSTS: 'club.barsyonline.com,https://Other.barsyonline.com/',
+        SIM_POS_ALLOWED_HOSTS: 'Demo.Restro.test, sim.staging.example',
+        REVEAL_SERVICE_TOKEN: ` ${REVEAL_TOKEN} `,
+        BILL_ID_KEY: ` ${'k'.repeat(40)} `,
+        WORKER_POS_SYNC: ' OFF ',
+        WORKER_SEND: ' On ',
       }),
     ).toEqual({
       databaseUrl: URL,
       purgeDatabaseUrl: 'postgres://restro_purge:secret@localhost:5432/restro',
+      backup: null,
       workerId: 'worker-a',
       healthPort: 9090,
       logLevel: 'debug',
@@ -68,9 +88,189 @@ describe('loadConfig', () => {
         allowedHostSuffixes: ['.barsyonline.com', '.barsy.test'],
         productionHosts: ['club.barsyonline.com', 'other.barsyonline.com'],
       },
+      // NODE_ENV is production here, so the simulated POS is refused whatever BARSY_ENV says.
+      sim: { env: 'production', allowHosts: ['demo.restro.test', 'sim.staging.example'] },
       assets: { kind: 'local', dir: expect.stringMatching(/assets$/) },
       publish: { kind: 'local', dir: expect.stringMatching(/cdn$/) },
+      revealToken: REVEAL_TOKEN,
+      billIdKey: 'k'.repeat(40),
+      posSync: false,
+      send: true,
+      alerts: NO_ALERTS,
+      receiptEmail: null,
     })
+    // Unset, the Send follows the sync.
+    expect(loadConfig({ DATABASE_URL: URL, WORKER_POS_SYNC: 'off' }).send).toBe(false)
+  })
+
+  it('reads the backup’s settings only where the backup role is set (ticket #320)', () => {
+    // Without DATABASE_URL_BACKUP the store's variables are ignored, even wrong ones.
+    expect(loadConfig({ DATABASE_URL: URL, BACKUP_STORE: 's3' }).backup).toBeNull()
+    const backup = loadConfig({
+      DATABASE_URL: URL,
+      DATABASE_URL_BACKUP: ' postgres://restro_backup:pw-for-backup@localhost:54329/restro ',
+      LOCAL_BACKUP_DIR: '/data/backups',
+      PG_DUMP_PATH: ' /usr/lib/postgresql/17/bin/pg_dump ',
+    }).backup
+    expect(backup).toEqual({
+      databaseUrl: 'postgres://restro_backup:pw-for-backup@localhost:54329/restro',
+      store: { kind: 'local', dir: expect.stringMatching(/backups$/) },
+      pgDumpPath: '/usr/lib/postgresql/17/bin/pg_dump',
+    })
+  })
+
+  it('passes the dumps’ own key and endpoint through, and not the asset store’s', () => {
+    const base = {
+      DATABASE_URL: URL,
+      DATABASE_URL_BACKUP: 'postgres://restro_backup:pw-for-backup@localhost:54329/restro',
+      BACKUP_STORE: 'r2',
+      R2_ACCOUNT_ID: '0123456789abcdef',
+      R2_BACKUP_BUCKET: 'restro-backups-staging',
+      PUBLISH_STORE: 'local',
+      ASSET_STORE: 'local',
+    }
+    const backup = loadConfig({
+      ...base,
+      R2_BACKUP_ACCESS_KEY_ID: 'AKIABACKUPFAKE0',
+      R2_BACKUP_SECRET_ACCESS_KEY: 'backup-not-a-real-secret',
+    }).backup
+    expect(backup?.store).toEqual({
+      kind: 'r2',
+      accessKeyId: 'AKIABACKUPFAKE0',
+      secretAccessKey: 'backup-not-a-real-secret',
+      bucket: 'restro-backups-staging',
+      endpoint: 'https://0123456789abcdef.eu.r2.cloudflarestorage.com',
+    })
+    // The asset store's key does not stand in for the dumps' key.
+    const lines = problemsOf({
+      ...base,
+      R2_ACCESS_KEY_ID: 'AKIAFAKEFAKEFAKE',
+      R2_SECRET_ACCESS_KEY: 'not-a-real-secret-key',
+    })
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toContain('R2_BACKUP_ACCESS_KEY_ID')
+    expect(lines[0]).not.toContain('AKIAFAKEFAKEFAKE')
+  })
+
+  it('names the backup variables that are wrong, never their values', () => {
+    const lines = problemsOf({
+      DATABASE_URL: URL,
+      DATABASE_URL_BACKUP: 'postgres://restro_backup:pw-for-backup@localhost/restro',
+      NODE_ENV: 'production',
+      ASSET_STORE: 'local',
+      PUBLISH_STORE: 'local',
+    })
+    expect(lines).toEqual(['BACKUP_STORE must be set to "local" or "r2" in production.'])
+    const wrong = problemsOf({
+      DATABASE_URL: URL,
+      DATABASE_URL_BACKUP: 'mysql://user:pw-for-backup@host/db',
+    })
+    expect(wrong).toEqual(['DATABASE_URL_BACKUP must be a postgres:// or postgresql:// URL.'])
+  })
+
+  it('reads the alerts’ settings (#83) and keeps the secrets out of the errors', () => {
+    const vapid = {
+      VAPID_PUBLIC_KEY: `B${'p'.repeat(86)}`,
+      VAPID_PRIVATE_KEY: 'q'.repeat(43),
+      VAPID_SUBJECT: 'mailto:ops@restro.example',
+    }
+    expect(
+      loadConfig({
+        DATABASE_URL: URL,
+        TELEGRAM_BOT_TOKEN: ` ${BOT_TOKEN} `,
+        TELEGRAM_TEAM_CHAT_ID: ' -1001234567890 ',
+        HEALTHCHECKS_PING_URL: ' https://hc-ping.com/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee ',
+        ...vapid,
+      }).alerts,
+    ).toEqual({
+      telegramToken: BOT_TOKEN,
+      teamChatId: '-1001234567890',
+      healthchecksUrl: 'https://hc-ping.com/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      vapid: {
+        publicKey: vapid.VAPID_PUBLIC_KEY,
+        privateKey: vapid.VAPID_PRIVATE_KEY,
+        subject: vapid.VAPID_SUBJECT,
+      },
+    })
+
+    const lines = problemsOf({
+      DATABASE_URL: URL,
+      TELEGRAM_BOT_TOKEN: 'not-a-token-s3cret',
+      TELEGRAM_TEAM_CHAT_ID: 'my-chat',
+      HEALTHCHECKS_PING_URL: 'http://hc-ping.com/plain',
+      VAPID_PUBLIC_KEY: vapid.VAPID_PUBLIC_KEY,
+    })
+    expect(lines.map((line) => line.split(' ')[0])).toEqual([
+      'TELEGRAM_BOT_TOKEN',
+      'TELEGRAM_TEAM_CHAT_ID',
+      'HEALTHCHECKS_PING_URL',
+      'VAPID_PRIVATE_KEY',
+      'VAPID_SUBJECT',
+    ])
+    expect(lines.join('\n')).not.toMatch(/s3cret|my-chat|plain/)
+  })
+
+  it('reads no Web Push keys as off: unset or blank, nothing pushed, nothing refused (RR-86)', () => {
+    expect(loadConfig({ DATABASE_URL: URL }).alerts?.vapid).toBeNull()
+    expect(loadConfig({ DATABASE_URL: URL, VAPID_PUBLIC_KEY: '' }).alerts?.vapid).toBeNull()
+  })
+
+  it('reads the receipt email settings (#186): the address switches it on and needs the key, the key alone does not', () => {
+    const key = `re_${'k'.repeat(30)}`
+    const from = 'receipts@mail.restro.example'
+    expect(
+      loadConfig({
+        DATABASE_URL: URL,
+        RESEND_API_KEY: ` ${key} `,
+        RECEIPT_FROM_ADDRESS: ` ${from} `,
+      }).receiptEmail,
+    ).toEqual({ apiKey: key, fromAddress: from })
+    const names = (env: Record<string, string>) =>
+      problemsOf({ DATABASE_URL: URL, ...env }).map((line) => line.split(' ')[0])
+    // The key alone is the stack's email key for other mail: receipts stay off.
+    expect(loadConfig({ DATABASE_URL: URL, RESEND_API_KEY: key }).receiptEmail).toBeNull()
+    expect(names({ RECEIPT_FROM_ADDRESS: from })).toEqual(['RESEND_API_KEY'])
+    const lines = problemsOf({
+      DATABASE_URL: URL,
+      RESEND_API_KEY: 'sk-s3cret-not-a-resend-key',
+      RECEIPT_FROM_ADDRESS: 'not-an-address-s3cret',
+    })
+    expect(lines.map((line) => line.split(' ')[0])).toEqual([
+      'RESEND_API_KEY',
+      'RECEIPT_FROM_ADDRESS',
+    ])
+    expect(lines.join('\n')).not.toMatch(/s3cret/)
+  })
+
+  it('refuses the simulated POS in production, by NODE_ENV or by BARSY_ENV, and nowhere else', () => {
+    const stores = {
+      ASSET_STORE: 'local',
+      LOCAL_ASSET_DIR: '/data/assets',
+      PUBLISH_STORE: 'local',
+      LOCAL_PUBLISH_DIR: '/data/cdn',
+    }
+    expect(loadConfig({ DATABASE_URL: URL, NODE_ENV: 'production', ...stores }).sim.env).toBe(
+      'production',
+    )
+    expect(loadConfig({ DATABASE_URL: URL, BARSY_ENV: 'production' }).sim.env).toBe('production')
+    expect(loadConfig({ DATABASE_URL: URL, BARSY_ENV: 'staging' }).sim.env).toBe('staging')
+    expect(loadConfig({ DATABASE_URL: URL, BARSY_ENV: 'test' }).sim.env).toBe('test')
+    expect(loadConfig({ DATABASE_URL: URL }).sim).toEqual({ env: 'development', allowHosts: [] })
+  })
+
+  it('refuses a short reveal token or bill-id key and an unknown WORKER_POS_SYNC, without repeating them', () => {
+    const lines = problemsOf({
+      DATABASE_URL: URL,
+      REVEAL_SERVICE_TOKEN: 'short-token',
+      BILL_ID_KEY: 'short-key',
+      WORKER_POS_SYNC: 'sometimes',
+    })
+    expect(lines.map((line) => line.split(' ')[0])).toEqual([
+      'REVEAL_SERVICE_TOKEN',
+      'BILL_ID_KEY',
+      'WORKER_POS_SYNC',
+    ])
+    expect(lines.join('\n')).not.toMatch(/short-token|short-key|sometimes/)
   })
 
   it('refuses unusable barsy and asset settings by name, without repeating the values', () => {

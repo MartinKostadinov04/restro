@@ -1,0 +1,248 @@
+// Tonight's table commands, server side (#73; the screen is #85): open a table for phones, close
+// it, Open all, Close all, New guests, the owner's mark of a payment table, and the sold-out mark
+// staff make where they review orders (#437). Every write is the
+// service write path's (`applyService`), which checks the permission inside its own transaction
+// (`tables.open_close`; `settings.payment_tables` with a sign-in of the last 15 minutes for the
+// mark) and writes the Log entry; this file only says who is asking and shapes the answer.
+// - The actor is the signed-in account, or on a shared device the person whose PIN was entered
+//   (`identifyAtSharedDevice`): there every staff write needs a PIN, and that person's role decides.
+// - The mark retires the table's code (a payment table has none, D122 §7): the worker's
+//   `publish-table-tokens` job is queued to remove its files, as the Tables tab does.
+// The answer is accepted with the service path's details, or refused with its code (D72); the
+// screen words the code.
+import {
+  type Actor,
+  JOB_NAMES,
+  type JobPayload,
+  newId,
+  type ProducedJobName,
+  type TenantId,
+  type VenueId,
+} from '@restro/core'
+import { itemsOfVenue } from '@restro/core/apply'
+import {
+  applyService,
+  type RefusalCode,
+  type ServiceActor,
+  type ServiceResult,
+} from '@restro/core/service'
+import type { DbPool } from '@restro/db'
+
+import { logError } from '../log'
+import { setItemsSoldOut } from '../sold-out/service'
+
+/**
+ * The Log entry an accepted write answered with (`undoEntry`): the Undo sends it back so core can
+ * refuse it once the write is 30 seconds old or the thing was changed again (#219).
+ */
+export interface UndoToken {
+  readonly entry: number
+}
+
+/** A table command Tonight sends; the venue is the scope's. */
+export type TableCommand =
+  | { readonly type: 'table.open'; readonly tableId: string; readonly undo?: UndoToken }
+  | { readonly type: 'table.close'; readonly tableId: string; readonly undo?: UndoToken }
+  | { readonly type: 'table.new_guests'; readonly tableId: string; readonly sittingId?: string }
+  | { readonly type: 'tables.open_all' }
+  | { readonly type: 'tables.undo_open_all'; readonly undo: UndoToken }
+  | { readonly type: 'tables.close_all' }
+  /** Ends the night (#332): an admin before the closing hour; the hour's own tick is the worker's. */
+  | { readonly type: 'night.end' }
+  | { readonly type: 'table.resume'; readonly tableId: string }
+  | {
+      readonly type: 'sent_order.answer'
+      readonly sentOrderId: string
+      readonly answer: 'found' | 'not_found'
+    }
+  | { readonly type: 'waiter_call.done'; readonly waiterCallId: string }
+  | { readonly type: 'waiter_call.undone'; readonly waiterCallId: string; readonly undo: UndoToken }
+  | { readonly type: 'receipt.brought'; readonly paymentId: string }
+  | { readonly type: 'receipt.unbrought'; readonly paymentId: string; readonly undo?: UndoToken }
+  | {
+      readonly type: 'payment.refund_line'
+      readonly paymentId: string
+      readonly position: number
+      readonly quantity?: string
+    }
+  | { readonly type: 'payment.storno_done'; readonly refundId: string }
+  | { readonly type: 'payment.storno_undo'; readonly refundId: string; readonly undo: UndoToken }
+  | { readonly type: 'payment.refund_failed_seen'; readonly refundId: string }
+  | {
+      readonly type: 'payment.refund_failed_seen_undo'
+      readonly refundId: string
+      readonly undo: UndoToken
+    }
+  | { readonly type: 'alert.done'; readonly alertId: string }
+  | {
+      readonly type: 'payment.answer'
+      readonly paymentId: string
+      readonly answering: 'close' | 'lines_not_back'
+      readonly answer: 'receipt_printed' | 'no_receipt' | 'on_till' | 'not_on_till'
+    }
+  | { readonly type: 'ordering.pause'; readonly barId: string | null; readonly undo?: UndoToken }
+  | { readonly type: 'ordering.lift'; readonly pauseId: string }
+  | { readonly type: 'ordering.undo_pause'; readonly pauseId: string; readonly undo: UndoToken }
+  | {
+      readonly type: 'push.subscribe'
+      readonly endpoint: string
+      readonly p256dh: string
+      readonly auth: string
+    }
+  | { readonly type: 'push.revoke'; readonly endpointHash: string }
+
+/** Who acts at which venue. The tenant is the person's organisation, never the request's. */
+export interface TonightScope {
+  readonly pool: DbPool
+  readonly tenantId: string
+  readonly venueId: string
+  /** The account, or the person a PIN named on a shared device. */
+  readonly actor: ServiceActor
+  /**
+   * The signed-in account as a menu change's actor (`user:<id>`). A menu row's actor may only
+   * be a user, an integration or the system, never a staff member, so a sold-out mark made by
+   * a PIN'd person is the account's write with the person in the Log (#437).
+   */
+  readonly account: Actor
+  /** When the account last entered its password: its session's start. */
+  readonly signedInAt?: Date
+}
+
+/** What the mark needs besides the database: the queue (a fake in tests). */
+export interface TonightServices {
+  readonly enqueue: <N extends ProducedJobName>(
+    name: N,
+    data: JobPayload<N>,
+  ) => Promise<string | null>
+}
+
+/** Why a PIN did not name a person (`identifyStaffByPin`'s codes). */
+export type PinRefusal = 'not_shared_device' | 'pin_wrong' | 'device_waiting'
+
+/** Tonight's answer to a table command. */
+export type TonightResult =
+  | {
+      readonly ok: true
+      /** The service path's details: who opened the table and when, how many were opened. */
+      readonly details: Extract<ServiceResult, { status: 'accepted' }>['details']
+      /** For the mark: false when the retired code's files could not be queued for removal. */
+      readonly queued?: boolean
+    }
+  | {
+      readonly ok: false
+      /** The service path's refusal code, a PIN's, `invalid` or `failed`. */
+      readonly error: RefusalCode | PinRefusal | 'invalid' | 'failed' | (string & {})
+      /** For `device_waiting`: how long the device waits before the next PIN. */
+      readonly retryAfterSeconds?: number
+      /** What the refusal says beside its code (the answer someone gave first, the state moved to). */
+      readonly details?: Extract<ServiceResult, { status: 'refused' }>['details']
+    }
+
+function answer(result: ServiceResult): TonightResult {
+  return result.status === 'accepted'
+    ? { ok: true, details: result.details }
+    : {
+        ok: false,
+        error: result.code,
+        ...(Object.keys(result.details).length === 0 ? {} : { details: result.details }),
+      }
+}
+
+async function run(scope: TonightScope, command: unknown): Promise<ServiceResult> {
+  const { result } = await applyService(scope.pool, command, {
+    tenantId: scope.tenantId,
+    venueId: scope.venueId,
+    origin: 'staff',
+    via: 'tonight',
+    actor: scope.actor,
+    jobId: newId('jb'),
+    ...(scope.signedInAt === undefined ? {} : { signedInAt: scope.signedInAt }),
+  })
+  return result
+}
+
+/** Runs one of Tonight's table commands. */
+export async function runTableCommand(
+  scope: TonightScope,
+  command: TableCommand,
+): Promise<TonightResult> {
+  return answer(await run(scope, command))
+}
+
+/**
+ * Marks an item sold out for the night from where orders are reviewed, or puts it back on sale
+ * (D147, #437). Three steps, in this order:
+ *  1. the item must be this venue's (the phone's word is never trusted for an id);
+ *  2. the service command `sold_out.mark`, which is the gate (`sold_out`, a Staff permission
+ *     since D147) and writes the night's Log line naming whoever tapped;
+ *  3. the menu change itself, through apply() (`setItemsSoldOut`, rule 1), which also queues
+ *     `publish-live` so phones see it on their next look (every 15 s).
+ * The gate runs before the menu write, so nothing is written for somebody who may not mark. If
+ * the menu write then fails, the Log keeps a line saying someone marked it — true of the tap —
+ * and the screen says it was not saved.
+ */
+export async function markItemSoldOut(
+  scope: TonightScope,
+  services: TonightServices,
+  input: { readonly itemId: string; readonly soldOut: boolean },
+): Promise<TonightResult> {
+  const ours = await itemsOfVenue(scope.pool, scope.tenantId, scope.venueId, [input.itemId])
+  if (!ours.has(input.itemId)) return { ok: false, error: 'venue_missing' }
+  const result = await run(scope, {
+    type: 'sold_out.mark',
+    itemIds: [input.itemId],
+    soldOut: input.soldOut,
+  })
+  if (result.status !== 'accepted') return answer(result)
+  const saved = await setItemsSoldOut(
+    {
+      pool: scope.pool,
+      tenantId: scope.tenantId,
+      venueId: scope.venueId as VenueId,
+      actor: scope.account,
+      // The command above is the gate; this call never decides who may mark.
+      canMark: true,
+    },
+    { enqueue: services.enqueue },
+    { itemIds: [input.itemId], soldOut: input.soldOut },
+  )
+  if (!saved.ok) {
+    logError('tonight_sold_out_not_saved', new Error(saved.error))
+    return { ok: false, error: saved.error }
+  }
+  return saved.liveQueued
+    ? { ok: true, details: result.details }
+    : { ok: true, details: result.details, queued: false }
+}
+
+/**
+ * Marks a table as a payment table, or takes the mark away (a settings change: the person's own
+ * sign-in, never a PIN). The retired code's files are queued for removal; a failure to queue is
+ * logged and reported as `queued: false` (the mark is saved; the file goes with the venue's next
+ * token job).
+ */
+export async function markPaymentTable(
+  scope: TonightScope,
+  services: TonightServices,
+  input: { readonly tableId: string; readonly isPaymentTable: boolean },
+): Promise<TonightResult> {
+  const result = await run(scope, { type: 'table.mark_payment', ...input })
+  if (result.status !== 'accepted') return answer(result)
+  // The retired files are named by the code's hash: they go to the job, never to the screen.
+  const { retired: names, ...details } = result.details
+  const retired = String(names ?? '')
+    .split(',')
+    .filter((name) => name !== '')
+  if (retired.length === 0) return { ok: true, details }
+  try {
+    await services.enqueue(JOB_NAMES.publishTableTokens, {
+      tenantId: scope.tenantId as TenantId,
+      venueId: scope.venueId as VenueId,
+      retired,
+    })
+    return { ok: true, details, queued: true }
+  } catch (error) {
+    logError('table_token_job_not_queued', error)
+    return { ok: true, details, queued: false }
+  }
+}

@@ -135,7 +135,7 @@ test('the Tags panel creates a tag with a name in each language and a colour', a
   await page.getByTestId('tag-name-en_US').fill('Only English')
   await page.getByTestId('tag-form-save').click()
   await expect(page.getByRole('alert')).toContainText('Въведете име')
-  await panel().getByRole('button', { name: 'Отказ', exact: true }).click()
+  await panel().getByRole('button', { name: 'Не създавай', exact: true }).click()
 
   // It is saved: a reload finds it.
   await closePanel()

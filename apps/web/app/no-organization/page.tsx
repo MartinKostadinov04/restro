@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 
 import { SignOutButton } from '@/components/auth/sign-out-button'
+import { LocaleToggle } from '@/components/locale-toggle'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { requireAccess } from '@/server/session'
 
@@ -18,6 +19,10 @@ export default async function NoOrganizationPage() {
   const t = await getTranslations('noOrganization')
   return (
     <main className="flex min-h-svh items-center justify-center p-6">
+      {/* The same BG/EN switch as the sign-in page (lane 5 S28). */}
+      <div className="absolute top-4 right-4">
+        <LocaleToggle />
+      </div>
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>

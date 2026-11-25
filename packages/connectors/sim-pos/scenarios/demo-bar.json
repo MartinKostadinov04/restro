@@ -1,0 +1,262 @@
+{
+  "name": "demo-bar",
+  "description": "Demo Bar: the dev seed's venue on the simulated POS. Two bars, twelve tables and four payment tables, about thirty articles. The base the named scenarios build on; the menu block is what the dev seed writes through apply() with POS provenance.",
+  "profile": "pilot",
+  "switches": { "readsTableBar": true, "oneLoginPerBar": false },
+  "pageSize": 20,
+  "bars": [
+    { "id": "2001", "name": "Main bar" },
+    { "id": "9c4d1e6a-3b7f-4a02-8d15-6e0b2f7a9c48", "name": "Upstairs" }
+  ],
+  "tables": [
+    { "id": "30001", "number": "1", "hall": "Main hall", "bar": "2001", "payment": false },
+    { "id": "30002", "number": "2", "hall": "Main hall", "bar": "2001", "payment": false },
+    { "id": "30003", "number": "3", "hall": "Main hall", "bar": "2001", "payment": false },
+    { "id": "30004", "number": "4", "hall": "Main hall", "bar": "2001", "payment": false },
+    { "id": "30005", "number": "5", "hall": "Main hall", "bar": "2001", "payment": false },
+    { "id": "30006", "number": "6", "hall": "Main hall", "bar": "2001", "payment": false },
+    {
+      "id": "up 7",
+      "number": "7",
+      "hall": "Upstairs",
+      "bar": "9c4d1e6a-3b7f-4a02-8d15-6e0b2f7a9c48",
+      "payment": false
+    },
+    {
+      "id": "up 8",
+      "number": "8",
+      "hall": "Upstairs",
+      "bar": "9c4d1e6a-3b7f-4a02-8d15-6e0b2f7a9c48",
+      "payment": false
+    },
+    {
+      "id": "up 9",
+      "number": "9",
+      "hall": "Upstairs",
+      "bar": "9c4d1e6a-3b7f-4a02-8d15-6e0b2f7a9c48",
+      "payment": false
+    },
+    {
+      "id": "up 10",
+      "number": "10",
+      "hall": "Upstairs",
+      "bar": "9c4d1e6a-3b7f-4a02-8d15-6e0b2f7a9c48",
+      "payment": false
+    },
+    {
+      "id": "up 11",
+      "number": "11",
+      "hall": "Upstairs",
+      "bar": "9c4d1e6a-3b7f-4a02-8d15-6e0b2f7a9c48",
+      "payment": false
+    },
+    {
+      "id": "up 12",
+      "number": "12",
+      "hall": "Upstairs",
+      "bar": "9c4d1e6a-3b7f-4a02-8d15-6e0b2f7a9c48",
+      "payment": false
+    },
+    { "id": "39001", "number": "PM1", "hall": "Main hall", "bar": "2001", "payment": true },
+    { "id": "pay main 2", "number": "PM2", "hall": "Main hall", "bar": "2001", "payment": true },
+    {
+      "id": "39011",
+      "number": "PU1",
+      "hall": "Upstairs",
+      "bar": "9c4d1e6a-3b7f-4a02-8d15-6e0b2f7a9c48",
+      "payment": true
+    },
+    {
+      "id": "pay up 2",
+      "number": "PU2",
+      "hall": "Upstairs",
+      "bar": "9c4d1e6a-3b7f-4a02-8d15-6e0b2f7a9c48",
+      "payment": true
+    }
+  ],
+  "articles": [
+    { "id": "2001", "name": "Negroni", "priceMinor": 1050, "tip": false },
+    { "id": "2002", "name": "Aperol Spritz", "priceMinor": 1100, "tip": false },
+    { "id": "2003", "name": "Mojito", "priceMinor": 950, "tip": false },
+    { "id": "2004", "name": "Daiquiri", "priceMinor": 900, "tip": false },
+    { "id": "2005", "name": "Margarita", "priceMinor": 1000, "tip": false },
+    { "id": "2006", "name": "Cosmopolitan", "priceMinor": 1050, "tip": false },
+    { "id": "2007", "name": "Gin and tonic", "priceMinor": 1200, "tip": false },
+    { "id": "2008", "name": "Old Fashioned", "priceMinor": 1155, "tip": false },
+    { "id": "2101", "name": "Zagorka 500 ml", "priceMinor": 450, "tip": false },
+    { "id": "2102", "name": "Kamenitza 500 ml", "priceMinor": 450, "tip": false },
+    { "id": "2103", "name": "Heineken 330 ml", "priceMinor": 550, "tip": false },
+    { "id": "2104", "name": "Craft IPA 330 ml", "priceMinor": 805, "tip": false },
+    { "id": "2105", "name": "Guinness 440 ml", "priceMinor": 700, "tip": false },
+    { "id": "2201", "name": "Cola 330 ml", "priceMinor": 450, "tip": false },
+    { "id": "2202", "name": "Still water 500 ml", "priceMinor": 300, "tip": false },
+    { "id": "2203", "name": "Sparkling water 500 ml", "priceMinor": 335, "tip": false },
+    { "id": "2204", "name": "Orange juice 250 ml", "priceMinor": 500, "tip": false },
+    { "id": "2205", "name": "Red Bull 250 ml", "priceMinor": 600, "tip": false },
+    { "id": "2301", "name": "Tequila shot", "priceMinor": 650, "tip": false },
+    { "id": "2302", "name": "Vodka shot", "priceMinor": 595, "tip": false },
+    { "id": "2303", "name": "Whisky 12 years", "priceMinor": 1405, "tip": false },
+    { "id": "2304", "name": "Jägermeister shot", "priceMinor": 625, "tip": false },
+    { "id": "2401", "name": "Vodka bottle 0.7 l", "priceMinor": 9900, "tip": false },
+    { "id": "2402", "name": "Champagne bottle 0.75 l", "priceMinor": 14500, "tip": false },
+    { "id": "2403", "name": "Rum bottle 0.7 l", "priceMinor": 8800, "tip": false },
+    { "id": "2501", "name": "Nachos with cheese", "priceMinor": 895, "tip": false },
+    { "id": "2502", "name": "Chicken wings", "priceMinor": 1205, "tip": false },
+    { "id": "2503", "name": "Fries", "priceMinor": 605, "tip": false },
+    { "id": "2504", "name": "Pizza Margherita", "priceMinor": 1300, "tip": false },
+    { "id": "2999", "name": "Tip", "priceMinor": 0, "tip": true }
+  ],
+  "paymentTypes": [
+    { "id": "1", "name": "Cash", "kind": "cash" },
+    { "id": "card 2", "name": "Card", "kind": "card" }
+  ],
+  "logins": [
+    { "id": "restro", "kind": "api", "name": "Restro", "bars": [] },
+    { "id": "restro main", "kind": "api", "name": "Restro (Main bar)", "bars": ["2001"] },
+    {
+      "id": "restro upstairs",
+      "kind": "api",
+      "name": "Restro (Upstairs)",
+      "bars": ["9c4d1e6a-3b7f-4a02-8d15-6e0b2f7a9c48"]
+    },
+    {
+      "id": "maria",
+      "kind": "waiter",
+      "name": "Maria",
+      "bars": ["2001", "9c4d1e6a-3b7f-4a02-8d15-6e0b2f7a9c48"]
+    },
+    {
+      "id": "ivan",
+      "kind": "waiter",
+      "name": "Ivan",
+      "bars": ["9c4d1e6a-3b7f-4a02-8d15-6e0b2f7a9c48"]
+    }
+  ],
+  "bills": [],
+  "menu": {
+    "sections": [
+      {
+        "id": "cocktails",
+        "title": { "bg_BG": "Коктейли", "en_US": "Cocktails" },
+        "items": [
+          { "article": "2001", "name": { "bg_BG": "Негрони", "en_US": "Negroni" } },
+          { "article": "2002", "name": { "bg_BG": "Аперол Шприц", "en_US": "Aperol Spritz" } },
+          { "article": "2003", "name": { "bg_BG": "Мохито", "en_US": "Mojito" } },
+          { "article": "2004", "name": { "bg_BG": "Дайкири", "en_US": "Daiquiri" } },
+          { "article": "2005", "name": { "bg_BG": "Маргарита", "en_US": "Margarita" } },
+          { "article": "2006", "name": { "bg_BG": "Космополитан", "en_US": "Cosmopolitan" } },
+          {
+            "article": "2007",
+            "name": { "bg_BG": "Джин и тоник", "en_US": "Gin and tonic" },
+            "optionGroups": [
+              {
+                "id": "gin",
+                "name": { "bg_BG": "Избери джин", "en_US": "Choose your gin" },
+                "min": 1,
+                "max": 1,
+                "options": [
+                  {
+                    "id": "bombay",
+                    "name": { "bg_BG": "Bombay Sapphire", "en_US": "Bombay Sapphire" },
+                    "priceDeltaMinor": 0
+                  },
+                  {
+                    "id": "hendricks",
+                    "name": { "bg_BG": "Hendrick's", "en_US": "Hendrick's" },
+                    "priceDeltaMinor": 300
+                  }
+                ]
+              }
+            ]
+          },
+          { "article": "2008", "name": { "bg_BG": "Олд Фашънд", "en_US": "Old Fashioned" } }
+        ]
+      },
+      {
+        "id": "beer",
+        "title": { "bg_BG": "Бира", "en_US": "Beer" },
+        "items": [
+          { "article": "2101", "name": { "bg_BG": "Загорка 500 мл", "en_US": "Zagorka 500 ml" } },
+          {
+            "article": "2102",
+            "name": { "bg_BG": "Каменица 500 мл", "en_US": "Kamenitza 500 ml" }
+          },
+          { "article": "2103", "name": { "bg_BG": "Хайнекен 330 мл", "en_US": "Heineken 330 ml" } },
+          {
+            "article": "2104",
+            "name": { "bg_BG": "Крафт IPA 330 мл", "en_US": "Craft IPA 330 ml" }
+          },
+          {
+            "article": "2105",
+            "name": { "bg_BG": "Гинес 440 мл", "en_US": "Guinness 440 ml" },
+            "soldOut": true
+          }
+        ]
+      },
+      {
+        "id": "soft",
+        "title": { "bg_BG": "Безалкохолни", "en_US": "Soft drinks" },
+        "items": [
+          { "article": "2201", "name": { "bg_BG": "Кока-Кола 330 мл", "en_US": "Cola 330 ml" } },
+          { "article": "2202", "name": { "bg_BG": "Вода 500 мл", "en_US": "Still water 500 ml" } },
+          {
+            "article": "2203",
+            "name": { "bg_BG": "Газирана вода 500 мл", "en_US": "Sparkling water 500 ml" }
+          },
+          {
+            "article": "2204",
+            "name": { "bg_BG": "Портокалов сок 250 мл", "en_US": "Orange juice 250 ml" }
+          },
+          { "article": "2205", "name": { "bg_BG": "Ред Бул 250 мл", "en_US": "Red Bull 250 ml" } }
+        ]
+      },
+      {
+        "id": "shots",
+        "title": { "bg_BG": "Шотове и уиски", "en_US": "Shots and whisky" },
+        "items": [
+          { "article": "2301", "name": { "bg_BG": "Текила шот", "en_US": "Tequila shot" } },
+          { "article": "2302", "name": { "bg_BG": "Водка шот", "en_US": "Vodka shot" } },
+          { "article": "2303", "name": { "bg_BG": "Уиски 12 години", "en_US": "Whisky 12 years" } },
+          {
+            "article": "2304",
+            "name": { "bg_BG": "Йегермайстер шот", "en_US": "Jägermeister shot" }
+          }
+        ]
+      },
+      {
+        "id": "bottles",
+        "title": { "bg_BG": "Бутилки", "en_US": "Bottles" },
+        "items": [
+          {
+            "article": "2401",
+            "name": { "bg_BG": "Водка бутилка 0.7 л", "en_US": "Vodka bottle 0.7 l" },
+            "payment": "pay_first"
+          },
+          {
+            "article": "2402",
+            "name": { "bg_BG": "Шампанско 0.75 л", "en_US": "Champagne bottle 0.75 l" },
+            "payment": "pay_first"
+          },
+          {
+            "article": "2403",
+            "name": { "bg_BG": "Ром бутилка 0.7 л", "en_US": "Rum bottle 0.7 l" },
+            "payment": "pay_first"
+          }
+        ]
+      },
+      {
+        "id": "food",
+        "title": { "bg_BG": "Храна", "en_US": "Food" },
+        "items": [
+          {
+            "article": "2501",
+            "name": { "bg_BG": "Начос със сирене", "en_US": "Nachos with cheese" }
+          },
+          { "article": "2502", "name": { "bg_BG": "Пилешки крилца", "en_US": "Chicken wings" } },
+          { "article": "2503", "name": { "bg_BG": "Пържени картофки", "en_US": "Fries" } },
+          { "article": "2504", "name": { "bg_BG": "Пица Маргарита", "en_US": "Pizza Margherita" } }
+        ]
+      }
+    ]
+  }
+}

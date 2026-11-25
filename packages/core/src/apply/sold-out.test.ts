@@ -11,6 +11,7 @@ import type pg from 'pg'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import type { ChangeSet } from '../change-set'
+import { tillVenueLinks } from '../connectors/till-venues'
 import { sha256Hex } from '../hash'
 import { type NodeId, newId } from '../ids'
 import { apply } from './apply'
@@ -458,6 +459,40 @@ describe.skipIf(!hasDatabase)('sold out tonight (as the restro_app role)', () =>
         (row) => row.layer === 'edition:service:2026-10-09',
       )
       expect(tonight).toEqual([])
+    })
+
+    it('marks on a POS venue too, where no POS reports stock (D147)', async () => {
+      const posVenue = (
+        await provisionVenue(app, tenant, { name: 'Till bar', slug: testSlug('till-bar') })
+      ).id
+      await withTenantWrite(app, tenant, (tx) =>
+        tx.insert(tillVenueLinks).values({
+          tenantId: tenant,
+          integrationId: integration,
+          bid: 7,
+          name: 'Till bar',
+          venueId: posVenue,
+        }),
+      )
+      const onPos = (soldOut: boolean) =>
+        setSoldOutTonight(
+          app,
+          tenant,
+          { venueId: posVenue, itemIds: [barsyOn], soldOut, actor: manager },
+          { now: night },
+        )
+      // The mark goes in the venue’s service edition, as it does on a hand-made venue: rule 5
+      // only ever makes the menu more cautious, so where the menu comes from does not matter.
+      await expect(onPos(true)).resolves.toMatchObject({ rejected: [] })
+      const marked = (await rowsOf(barsyOn)).filter(
+        (row) => row.layer === 'edition:service:2026-10-09',
+      )
+      expect(marked).toMatchObject([{ value: false, scope: 'master' }])
+      // Taking a mark off is a clear: it can only reveal what the POS itself last said.
+      await expect(onPos(false)).resolves.toMatchObject({ rejected: [] })
+      expect(
+        (await rowsOf(barsyOn)).filter((row) => row.layer === 'edition:service:2026-10-09'),
+      ).toEqual([])
     })
 
     it('refuses an unknown venue', async () => {

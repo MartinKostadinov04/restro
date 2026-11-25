@@ -7,10 +7,10 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 **Payment provider and the lawyer, for song requests and deposits (T80)**
 - Q74 lawyer: does an in-venue card payment through the app need the venue's fiscal device, or the Н-18 alternative regime; its conditions. Prepared in `docs/deliverables/2026-10-17-fiscal-rules-in-app-payments.md` (questions L1–L4, L7, L9, L11, L12).
 - Q75 lawyer: deposits and paid song requests: document, VAT timing, who issues. Prepared in `docs/deliverables/2026-10-17-fiscal-rules-in-app-payments.md` (questions L4–L8, L10).
-- Q76 Martin → myPOS (Restro writes through myPOS's contact form; myPOS is the first provider, #49, 10-21): holds in the embedded form or only on myPOS's page, hold length, partial completion, how a platform connects and limits its key, notification retries, sandbox, payer receipts, the Zamboo link, venue onboarding.
-- Q77 Martin: the charging model for song requests and deposits (fixed fee, percentage invoiced, both).
+- Q76 Martin → myPOS, parked: Stripe is the first provider (D126), so ask only if myPOS comes back (Restro writes through myPOS's contact form): holds in the embedded form or only on myPOS's page, hold length, partial completion, how a platform connects and limits its key, notification retries, sandbox, payer receipts, the Zamboo link, venue onboarding.
 - Q82 Lukanet: seven open points from the signed-in API reading (part payment on an open bill, refusing a row, our id on a bill, approval in the status, offline docs); send with Q79.
 - Q79 Lukanet: is barsy NRA-listed sales software; can it take Restro's orders as an Annex 42 import before acceptance (fiscal research 10-17, L11); with Q8 and Q24.
+- Q84 Martin → each POS provider (Mistral for the pilot, barsy): can the POS issue a sale as an electronic receipt from the venue's fiscal device (is it NRA-listed sales software under any name), can its API mark the sale electronic and take the guest's email, and does it send the receipt or return the file? Restro is built for it either way (Martin 10-28, D127, #186).
 - Q80 Martin, after the lawyer: a paper fiscal receipt per song-request capture with no guest email (D99); weigh the options.
 - Q81 Martin, after the lawyer: the bill screen as a "document" under Н-18 чл. 7а; until then no template screen resembles a receipt or says "фискален".
 
@@ -43,7 +43,6 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 - Q63: does Restro count as sales software under Н-18?
 - Q64: paper receipt required, or is an electronic one enough?
 - Q65: does dual BGN/EUR display still apply (we read: ended 8 Aug 2026)?
-- Q66: duty to check age for alcohol ordered in the app (D11)?
 - Q67: GDPR roles (venue vs Restro), data processing agreement, retention, privacy notice and terms.
 - Q42: allergen rules for food and drinks in catering and online menus; do pilots hold allergens in barsy?
 - Q10: accounting treatment of online tips.
@@ -59,7 +58,7 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 
 **Product design (Martin)**
 - #60 Martin: the admin's pattern divergences (D123's Patterns table): pick which become `change.md` tickets, in order; the rest wait for their screen's next redesign.
-- Q78: the DJ request queue in templates: slot, contract, and whether every template draws it; when T82 reaches the face contract.
+- Q78: the DJ request queue in templates: slot, contract, and whether every template draws it; now ticket #524 of spec #520 (the entry comes from the menu's navigation, row 1.24).
 - Q22: barsy post retry window before voiding (only if Stripe holds).
 - Q11: disputes ("drink never arrived", unauthorised use).
 - Q15: effect of a fixed per-transaction fee on small tickets.
@@ -69,16 +68,28 @@ Owner is the group heading. None blocks the current stages unless a brief says s
 
 ## Open tasks
 Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a new task is a GitHub issue (`#n`); the T-numbers stay until they close.
-- #29 Claude + Martin: wayfinder map "Ordering from the menu" (Opus, Martin 10-18; D110). Grillings #35–#40 done (D111–D121); the ordered check and board review settled D122 (10-21). Redrawn 10-21: the pilot runs the whole workflow, paying included, on Mistral; barsy, a simulated test POS and the provider's sandbox are the test beds. Reworked 10-21 after the independent ticket review (`docs/deliverables/2026-10-21-map-29-ticket-review.md`): build now, the Mistral connector gets its own spec when Mistral answers; tips and "call a waiter" are in the pilot; the template is designed last by its own agent (D122). Open tickets: #48 Mistral's answers (Martin sends; replaces T69), #49 payment provider (grilling), #51 build and test before Mistral (grilling), #52 law and accounting (Martin), #53 guest payment commands (grilling, after #49, #45), #54 refunds and disputes in Restro (task), #55 service data, roles and retention (grilling), #56 pilot readiness list (task, after #52), #57 template assignment file (task, after #45, #53), #47 read-back on barsy (needs test access). Design, reworked under D123 once that work landed: #50 Tonight redesign and #61 the owner's setup screens (prototypes with screen plans), #45 the guest bill screen's behaviour and words (prototype, after #49). Start from `docs/deliverables/2026-10-21-ordering-handover-2.md` (the waves and the model per ticket). Planning only; no build before T79 is on main and Martin opens ordering.
-- #38 field test, Martin: done 10-20 at the pilot club: location coverage with decent accuracy inside (Martin; no per-reading numbers filed). The check is workable; the default radius stays 150 m and the "can't check" width 1 km (D118). If guests are refused in practice, the venue's "How far from the spot counts as inside" setting (100–500 m) is the first lever.
-- #40 follow-ups, Claude: (1) the next field visit checks whether Safari on iPhone asks for location again within one night, which would show D121's consent screen and the phone's prompt more than once; (2) the privacy list (T31, with Q83's lawyer questions) gets how long order notes ("no ice") are kept on Restro's order record, which D121 left open.
-- #59 Claude: the Integrations screen is wider than the phone in Bulgarian (trial finding 2.1); folded into the owner's setup-screens ticket of map #29; closes with it.
+- #29 Claude + Martin: wayfinder map "Ordering from the menu" (Opus; D110, D122). The pilot runs the whole workflow, paying included, on Mistral; barsy, a simulated test POS and the provider's sandbox are the test beds. Open tickets: #48 Mistral's answers (Martin sends; replaces T69), #52 law and accounting (Martin), #53 guest payment commands (grilling), #55 service data, roles and retention (grilling), #47 read-back on barsy (needs test access), #61 the owner's setup screens (prototype). Spec part 1 is #64 and part 2 (paying) is #102. Start from `docs/deliverables/2026-10-21-ordering-handover-2.md` (the waves and the model per ticket).
+- Follow-ups from closed #40, Claude: (1) the next field visit checks whether Safari on iPhone asks for location again within one night, which would show D121's consent screen and the phone's prompt more than once; (2) the privacy list (T31, with Q83's lawyer questions) gets how long order notes ("no ice") are kept on Restro's order record, which D121 left open.
+- #64 Claude: spec, ordering from the menu part 1 (ordering onto the bill, and Tonight); #102 the same for part 2 (paying in the app).
+- #168 Claude: spec, the menu designer (the Studio: one renderer, Styles, the 48 options; decisions D128-D131, decision log `docs/deliverables/2026-10-27-menu-designer-decision-log.md`); tickets #169 contract file and Styles, #170 design record, #239 ordering on the renderer, #171 the renderer, #172 browsing options, #173 screen options, #174 staged options, #175 Studio and Design in Simple, #176 Advanced, #177 My styles, #178 Soft, Classic and Club (closes T87); stage `st/foundation`, cut from `or/foundation` 10-30.
+- #321 Claude: spec, reservations part 1 (staff tool: floor plan, the night, who may do what); tickets #324 permissions and PIN, #325 settings, #326 the night's list, #327 floor plan, #328 taking and changing a booking, #329 arrivals and seating, #330 waiting list, #331 change tables, #332 ending the night, #333 guests and regulars.
+- #322 Martin: spec, reservations part 2 (booking online, money on a reservation); waiting; ticket #334 the pay rule a reservation carries (Claude).
+- #539 Claude (the lead of this feature set): spec, paying a party's tables in one payment and sharing a bill by amount (D160), part of #102. Tickets: #319 linked groups and the group's bill on the phone; #540 linked groups in Tonight; #541 close with several card payments; #542 one payment over several tables; #543 the group payment engine; #544 its guest screens; #545 Tonight's "Cancel sharing"; #546 the refund split. Waits on Martin's approval of the tickets.
+- #358, #359 Claude: the night's numbers, parts 1 (the phone's funnel and tip count) and 2 (what sold, one row per item per night); #360 part 3 (the door, the three definitions) waits, Martin.
+- #361 Claude: a venue that has taken a booking cannot be erased (the nine reservation tables are in neither purge list).
+- #364 Claude: the table-areas list lets a new table default to core, so D103's rule is checked only in part.
+- #366 Claude: default roles are editable, a preselection rather than a fixed set.
+- #311 Martin (triage): a staff-only account for the bar tablet.
+- #320 Claude (upkeep): hourly database dumps to R2, 30-day retention, alert on failure; #340 the dumps get their own storage key and EU endpoint; #339 Martin: switch the database backups on (bucket, role, client tools, a first dump).
+- #202 Claude (upkeep): security advisories (Next.js 16.4.1 and others) before the first deploy.
+- #375 Claude (upkeep): the Railway deploy configuration (`railway.json` for web and worker, the builder's Node, the `NEXT_PUBLIC_*` values the web build inlines); blocks #117's checks 4 and 5. Nothing deploys from it.
+- #117 Martin: the seven sandbox checks before the pilot (7, a group payment with several holds, added 11-25: runs after #543 and #546 merge). 1–3 passed 10-29; 6 (3-D Secure in the card form) runs 11-09. 4 and 5 wait on a staging deploy, planned step by step in `docs/deliverables/2026-11-09-staging-chain-for-stripe-checks.md`, with his clicks written out in `docs/runbooks/staging-deploy.md`: his part is the acceptance walk, the five `staging` secrets, the migration run, a Turnstile widget, Railway, the variables, the deploy, and for 5 the domain and his own phone. Open for him there: `sim-pos` on staging, and whether Railway's Hobby plan lets him pick the Amsterdam region.
+- #349 Martin: walk-through of st/foundation, pick from the low points.
+- Martin: pick from the first `screen-review` round (D146, Tables & QR and the guest menu), `docs/reviews/2026-11-18-screens-trial/findings.md` → Fix plan: A and B are bugs (Before the pilot), filed 11-18 as #441 and #442, fixed 11-18 by #447 and #445; C reshapes Tables & QR on a phone (needs his yes), plus a Polish table; S8 joins #60 row 7. Next round: the re-check of the 11-10 walk rows after #410–#416 merge (Claude).
+- #281 Claude: the card form draws in the venue's font.
+- #190, #42 Claude: flaky tests (composer Design subtab touch-targets e2e; tables route-picker under the full vitest run).
 - T92 Claude: motion audit (review-animations) and worst-case pass (break-ui) vendored with overrides, then trialled on Editorial Market and the composer (D106); awaits Martin's OK.
 - T91 Claude, then Martin: guest page `viewport-fit=cover`, a status-bar colour from the venue's `background` roles and `interactive-widget=resizes-content` (D109); the templates' safe-area padding is inert without it; iPhone check by Martin; after T90.
-- #21 Claude: operational-screens note, audit and template flow additions, stack-doc library table, T91 and T88 refinements (D109); Sonnet.
-- #20 Claude: contract fixtures and matrix cases for the worst cases D109 lists; Sonnet; after #18's ruling.
-- #19 Claude: template-design interaction-polish reference, override rows, template-review checks (D109); Sonnet; after PR 16 merges.
-- #18 Claude: Emil Kowalski skills, three reviews joined and ruled in D109; closes when #19, #20 and #21 are merged.
 - T90 Claude: contract markers for the audits (add to bag, open dish, pay controls, language switch); small; before T87.
 - T89 Claude: screenshot matrix for any template (contract markers, `FACES_VISUAL_FACE`); blocks T87; Sonnet.
 - T88 Claude: four admin defects from the design-skills trial, plus the admin's global reduced-motion rule and the Toaster defaults (D109) (Sonnet); six ordering-sheet findings wait for ordering (D79).
@@ -87,11 +98,10 @@ Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a n
 - T85 Claude: portability groundwork (D103): containers, storage module, schema split with a no-join check, restore drill; before T82.
 - T84 Martin + Claude: analytics questions and the guest event model (D103), before the prototypes are ported.
 - T83 Martin, then Claude: port the reservations prototype (D101), after ordering from the menu.
-- T82 Martin, then Claude: port the song-requests prototype (D99, D100); starts with a grilling round against D99.
-- T81 Martin + Claude: grill table-less access to song requests (D100), when T82 starts.
+- #520 Claude (spec, Opus): song requests — a guest asks the DJ for a song and pays only if it plays. Written 11-24 from the ingestion of the Club Biad MVP: research (#509), a cross-review by a different model (#510), a catalogue probe, and the grilling of 11-22 to 11-24 whose rows 1.1–1.25 in `docs/deliverables/2026-11-22-song-requests-grilling-answers.md` are binding until they become decision files. Closes T82 and T81 (table-less access: row 1.24, the menu's navigation carries the link; no table is written onto a request). Ten tickets, #521–#530, linked as sub-issues with dependencies set: #521 the service rows and the one write path (Opus, lead, migration) first and alone; then #522 search and our growing catalogue, #523 holding money and capturing it late, #525 the queue the guests read, #529 the venue's settings; #526 the DJ's screen, #527 greetings and #528 popularity wait on #523; #524 the guest's flow last. They stay at `task`, not `ready-for-agent`, until three gates are settled: which writer owns our song table (spec open question 2), the stage branch `sq/foundation` cut from `or/foundation` while acceptance runs (Martin), and the two jobs in #526's screen plan that have no pattern in `docs/guides/operational-screens.md` (the waiting-against-played counter, and a set whose members are deliberately unordered). The prefix is `sq/`, not `sr/`: `sr/foundation` is the screen-round and design stage branch, already merged into `or/foundation` and still taking pull requests (#535, #532, #456). Decision files come later, on a branch carrying the full set, and the number is read off the base branch at the moment of writing, never assumed: `or/foundation` stood at 154 on 11-24 at midday and at 160 by the evening. **Numbers held on 11-24 and not yet on any trunk:** 155–158 by #456 (the venue's sidebar by module, waiting for Martin) and 159 by #532 and #535 (the Design panel). #456 had written its own 154 before `or/foundation` used that number for the bill move, which would have forced one of the two decisions to be dropped at the merge; it was renumbered to 161 on 11-24 (commit `3ad55303`), so the sequence closes at 1–161 once both land and the next free number is 162. A lane that waits for an answer re-reads the highest number on its base before it merges, not when it wrote.
+- T82 Martin, then Claude: closed by #520 (the ingestion ran 11-22 to 11-24; D99, D100 held).
+- T81 Martin + Claude: closed by #520 (row 1.24).
 - #8 Claude (research, Opus): Bulgarian fiscal rules for card payments through the app, deposits and paid song requests; prepares the lawyer's Q74 and Q75; waits for Martin's go.
-- #9 = T80 Claude (research, Sonnet): payment-provider feasibility (D98): myPOS, Borica, ePay, Stripe, SumUp; done 10-17, findings in `docs/deliverables/2026-10-17-payment-providers-feasibility.md` (recommends Stripe first, myPOS second); next: Martin picks the first provider, now map #29's ticket #49 (Q77 closed by D122: a fixed subscription), then Q76 and the lawyer's Q74/Q75.
-- #10 Claude (upkeep, Sonnet): one home per rule in the agent docs; CLAUDE.md under 1,500 words; CLAUDE.md diff shown to Martin before merge.
 - #26 Claude: dev seed with a real till venue, so audits cover the till-venue rules; Sonnet.
 - #25 Martin: eight small awkward points from the acceptance walk, pick which become change tickets.
 - T45 Claude: deploy pipeline re-runs the freeze-window check; at the Stage 3 deploy.
@@ -115,7 +125,7 @@ Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a n
 - T74 Claude: Editorial Market template (D69–D72), plan approved 10-11; SH-01 to SH-08 all merged into `sh/foundation` on 10-11; left: acceptance with Martin, then the PRs; open points per step in the tracker.
 - T73 Claude: one role rule for composer writes (recommend owner/admin); with CF-09.
 - T71 Claude: barsy shares items by catalogue; follow it (sync unit = catalogue); decides CF-05/CF-07 (Opus).
-- T69 Martin: ask Mistral (office@mistral.bg) for API docs, a test installation and terms; second till.
+- T69 Martin: ask Mistral (office@mistral.bg) for API docs, a test installation and terms; second till. 11-06: the documentation is in hand (`Zamboo api v1`, OpenAPI, no login) and reviewed in `docs/deliverables/2026-11-06-zamboo-api-review.md`; what is left is the ten questions A1–A10 there, on #48 — above all whether a table-service interface exists beside the documented delivery API, the чл. 52з, ал. 5 authorisation, and a sandbox.
 - T63 Claude: tag colour and order to the face; colour required at `menu-snapshot/2`.
 - T65 Claude (Haiku): `/t/<token>` keeps `lang` on redirect.
 - T66 Claude (CF-10): Tables tab by `salon_id`; per-venue place types; hide place 0; no code for non-public places.
@@ -125,7 +135,7 @@ Owner, then state. "Claude" is the lead agent and its subagents. Since 10-17 a n
 - T59 Claude: verify on the demo `files_get` auth and multi-calls; photos done 10-10.
 - T40 Claude: architecture doc updates (Core rules, scope, polling, Supabase, Stage plan tab).
 - T39 Martin: send Lukanet the test-environment request (draft by Claude; Q41, Q60, Q71); before T9.
-- T25 Martin: platform accounts by stage (Railway, domain, Cloudflare, Sentry, Resend, Telegram, Supabase prod); guide from Claude.
+- T25 Martin: platform accounts by stage (Railway, domain, Cloudflare, Sentry, Resend, Telegram, Supabase prod); guide from Claude. For sandbox checks 4 and 5 only Railway, a Turnstile widget and the domain are needed: `docs/runbooks/staging-deploy.md` is that part of the guide; Sentry, Resend, Telegram, the public bucket and anything production are deliberately left out of it.
 - T9 Martin: send Lukanet the consolidated questions, after T39.
 - T13 Martin: ask a pilot owner for the "software resource" price (Q25, Q29, Q41).
 - T33 Martin: send the lawyer/accountant questions.

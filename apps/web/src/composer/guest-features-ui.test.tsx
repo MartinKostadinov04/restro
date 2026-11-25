@@ -4,26 +4,28 @@
 // (R6), the one Save button, and the read-only view for a person who may not change the venue.
 
 import type { GuestFeatures } from '@restro/core'
-import { screen, waitFor, within } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  saveFeatureOptionsAction,
-  saveGuestFeaturesAction,
-} from '@/server/composer/guest-features-actions'
+import { saveGuestFeaturesAction } from '@/server/composer/guest-features-actions'
 import { renderWithIntl } from '@/test-utils'
 
-import { GuestFeaturesCard, type TemplateFeatureOptions } from './guest-features-panel'
+import {
+  type GuestConnections,
+  GuestFeaturesCard,
+  type PrivacyNotice,
+} from './guest-features-panel'
 
 vi.mock('@/server/composer/guest-features-actions', () => ({
   saveGuestFeaturesAction: vi.fn(),
-  saveFeatureOptionsAction: vi.fn(),
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const VENUE = 'vn_0123456789ABCDEFGHIJKL'
+/** The legal details' form on Settings › Ordering, where the privacy notice link is set. */
+const LEGAL_FORM = `/venues/${VENUE}?tab=settings&section=ordering#ord-legal`
 
 /** Filters on, every service off: what a venue has until it chooses. */
 const FEATURES: GuestFeatures = {
@@ -34,34 +36,28 @@ const FEATURES: GuestFeatures = {
   pay: false,
 }
 
-/**
- * A template's own feature switch, as a template may declare one (Editorial Market's layout switch
- * was one until D92 made it a menu setting).
- */
-const OPTIONS: TemplateFeatureOptions = {
-  declared: [
-    {
-      key: 'layoutSwitch',
-      type: 'boolean',
-      default: true,
-      label: { bg: 'Гостите могат да сменят подредбата', en: 'Guests can change the layout' },
-    },
-  ],
-  values: { layoutSwitch: true },
-}
-
 function setup({
   features = FEATURES,
-  options = OPTIONS,
   canEdit = true,
+  privacy = { onFile: true, href: LEGAL_FORM },
+  connections = { pos: false, card: false },
+  locale = 'en',
 }: {
   features?: GuestFeatures
-  options?: TemplateFeatureOptions
   canEdit?: boolean
+  privacy?: PrivacyNotice
+  connections?: GuestConnections
+  locale?: 'en' | 'bg'
 } = {}) {
   renderWithIntl(
-    <GuestFeaturesCard venueId={VENUE} features={features} options={options} canEdit={canEdit} />,
-    { locale: 'en' },
+    <GuestFeaturesCard
+      venueId={VENUE}
+      features={features}
+      canEdit={canEdit}
+      privacy={privacy}
+      connections={connections}
+    />,
+    { locale },
   )
 }
 
@@ -72,8 +68,6 @@ const checkboxNamed = (name: string) => screen.getByRole('checkbox', { name })
 beforeEach(() => {
   vi.mocked(saveGuestFeaturesAction).mockReset()
   vi.mocked(saveGuestFeaturesAction).mockResolvedValue({ ok: true })
-  vi.mocked(saveFeatureOptionsAction).mockReset()
-  vi.mocked(saveFeatureOptionsAction).mockResolvedValue({ ok: true })
   vi.mocked(toast.success).mockReset()
   vi.mocked(toast.error).mockReset()
 })
@@ -82,7 +76,6 @@ describe('the guest features panel', () => {
   it('shows the saved menu switches, and the allergen line without a switch', () => {
     setup({ features: { ...FEATURES, filters: false } })
     expect(switchNamed('Filters (diet and tags)').getAttribute('aria-checked')).toBe('false')
-    expect(switchNamed('Guests can change the layout').getAttribute('aria-checked')).toBe('true')
 
     const allergens = screen.getByTestId('allergens-always')
     expect(allergens.textContent).toBe('Allergen information is always shown')
@@ -102,11 +95,15 @@ describe('the guest features panel', () => {
     expect(save().hasAttribute('disabled')).toBe(true)
   })
 
-  it('checks "Waiter" when "Call a waiter" goes on with no kind chosen, and saves it', async () => {
+  it('ticks every kind but the card terminal when "Call a waiter" goes on, "Waiter" fixed on, and saves them', async () => {
     setup()
     await userEvent.click(switchNamed('Call a waiter'))
     expect(checkboxNamed('Waiter').getAttribute('aria-checked')).toBe('true')
-    expect(checkboxNamed('Bill').getAttribute('aria-checked')).toBe('false')
+    expect(checkboxNamed('Waiter').hasAttribute('disabled')).toBe(true)
+    for (const name of ['The bill', 'Ice', 'Water', 'Glasses', 'Clean the table']) {
+      expect(checkboxNamed(name).getAttribute('aria-checked')).toBe('true')
+    }
+    expect(checkboxNamed('Card terminal').getAttribute('aria-checked')).toBe('false')
 
     await userEvent.click(save())
     await waitFor(() => expect(saveGuestFeaturesAction).toHaveBeenCalledTimes(1))
@@ -114,69 +111,59 @@ describe('the guest features panel', () => {
       venueId: VENUE,
       features: {
         filters: true,
-        call_waiter: { enabled: true, kinds: ['waiter'] },
+        call_waiter: {
+          enabled: true,
+          kinds: ['waiter', 'bill', 'ice', 'water', 'glasses', 'clean_table'],
+        },
         bill: false,
         ordering: false,
         pay: false,
       },
     })
-    expect(saveFeatureOptionsAction).not.toHaveBeenCalled()
     expect(toast.success).toHaveBeenCalledWith('Saved. Guests see it after the next publish')
   })
 
   it('keeps the request kinds in the order of the vocabulary', async () => {
     setup()
     await userEvent.click(switchNamed('Call a waiter'))
-    await userEvent.click(checkboxNamed('Other'))
-    await userEvent.click(checkboxNamed('Bill'))
-    await userEvent.click(checkboxNamed('Waiter'))
+    for (const name of ['The bill', 'Ice', 'Water', 'Glasses', 'Clean the table']) {
+      await userEvent.click(checkboxNamed(name))
+    }
+    await userEvent.click(checkboxNamed('Card terminal'))
+    await userEvent.click(checkboxNamed('Ice'))
     await userEvent.click(save())
     await waitFor(() => expect(saveGuestFeaturesAction).toHaveBeenCalledTimes(1))
     expect(saveGuestFeaturesAction).toHaveBeenCalledWith(
       expect.objectContaining({
         features: expect.objectContaining({
-          call_waiter: { enabled: true, kinds: ['bill', 'other'] },
+          call_waiter: { enabled: true, kinds: ['waiter', 'ice', 'terminal'] },
         }),
       }),
     )
   })
 
-  it('will not save "Call a waiter" with no request ticked, and says why', async () => {
+  // What each switch really waits for (Martin, 11-09): the bill and ordering wait for the venue's
+  // POS, paying waits for card payments, and calling a waiter waits for nothing — it is Restro's
+  // own, so a note there would be false. No roadmap stage numbers: they mean nothing to an owner.
+  it('tells the owner what the bill, ordering and paying wait for, and says nothing under the call', () => {
     setup()
-    await userEvent.click(switchNamed('Call a waiter'))
-    expect(screen.queryByTestId('call-kinds-none')).toBeNull()
-
-    await userEvent.click(checkboxNamed('Waiter'))
-    expect(screen.getByRole('alert').textContent).toBe(
-      'Tick at least one request, or switch Call a waiter off.',
-    )
-    expect(save().hasAttribute('disabled')).toBe(true)
-
-    // Switching it off is a valid way out: nothing changed, so nothing to save, and no alert.
-    await userEvent.click(switchNamed('Call a waiter'))
-    expect(screen.queryByTestId('call-kinds-none')).toBeNull()
-    expect(save().hasAttribute('disabled')).toBe(true)
-    expect(saveGuestFeaturesAction).not.toHaveBeenCalled()
-  })
-
-  it('shows the Stage 4 note under waiter, bill and ordering, and the Stage 5 note under pay', () => {
-    setup()
+    expect(screen.getAllByText("Guests see this once the venue's POS is connected")).toHaveLength(2)
     expect(
-      screen.getAllByText('Guests see this once ordering is connected (Stage 4)'),
-    ).toHaveLength(3)
-    expect(screen.getByText('Guests see this once payment is connected (Stage 5)')).toBeTruthy()
+      screen.getByText('Guests see this once card payments are connected for the venue'),
+    ).toBeTruthy()
+    expect(screen.queryByText(/Stage [45]/)).toBeNull()
   })
 
-  it('saves a template feature switch through its own action, not the guest features one', async () => {
-    setup()
-    await userEvent.click(switchNamed('Guests can change the layout'))
-    await userEvent.click(save())
-    await waitFor(() => expect(saveFeatureOptionsAction).toHaveBeenCalledTimes(1))
-    expect(saveFeatureOptionsAction).toHaveBeenCalledWith({
-      venueId: VENUE,
-      options: { layoutSwitch: false },
-    })
-    expect(saveGuestFeaturesAction).not.toHaveBeenCalled()
+  it('shows a note only for the part that is not connected (walk P3)', () => {
+    const posNote = "Guests see this once the venue's POS is connected"
+    const cardNote = 'Guests see this once card payments are connected for the venue'
+    setup({ connections: { pos: true, card: true } })
+    expect(screen.queryAllByText(posNote)).toHaveLength(0)
+    expect(screen.queryAllByText(cardNote)).toHaveLength(0)
+    cleanup()
+    setup({ connections: { pos: true, card: false } })
+    expect(screen.queryAllByText(posNote)).toHaveLength(0)
+    expect(screen.queryAllByText(cardNote)).toHaveLength(1)
   })
 
   it('says why a save was refused and keeps the change to try again', async () => {
@@ -193,12 +180,47 @@ describe('the guest features panel', () => {
     await waitFor(() => expect(save().hasAttribute('disabled')).toBe(false))
   })
 
+  describe('the privacy notice link (RR-O44)', () => {
+    it('keeps ordering off until the venue has the link, and says where to add it', () => {
+      setup({ privacy: { onFile: false, href: LEGAL_FORM } })
+      expect(switchNamed('Order from the phone').hasAttribute('disabled')).toBe(true)
+      const line = screen.getByTestId('feature-ordering-privacy')
+      expect(line.textContent).toContain('privacy notice link')
+      expect(within(line).getByRole('link').getAttribute('href')).toBe(LEGAL_FORM)
+    })
+
+    it('leaves ordering that is already on as it is, and says guests are shown no link', () => {
+      setup({
+        features: { ...FEATURES, ordering: true },
+        privacy: { onFile: false, href: LEGAL_FORM },
+      })
+      const ordering = switchNamed('Order from the phone')
+      expect(ordering.getAttribute('aria-checked')).toBe('true')
+      expect(ordering.hasAttribute('disabled')).toBe(false)
+      expect(screen.getByTestId('feature-ordering-privacy').textContent).toContain(
+        'guests are shown none',
+      )
+    })
+
+    it('shows no line once the link is on file', () => {
+      setup()
+      expect(switchNamed('Order from the phone').hasAttribute('disabled')).toBe(false)
+      expect(screen.queryByTestId('feature-ordering-privacy')).toBeNull()
+    })
+
+    it('says it in Bulgarian', () => {
+      setup({ privacy: { onFile: false, href: LEGAL_FORM }, locale: 'bg' })
+      expect(screen.getByTestId('feature-ordering-privacy').textContent).toContain(
+        'политиката за поверителност',
+      )
+    })
+  })
+
   it('is read-only for a person who may not change the venue', () => {
     setup({ canEdit: false })
     expect(screen.getByText('Only owners and admins can change these.')).toBeTruthy()
     const names = [
       'Filters (diet and tags)',
-      'Guests can change the layout',
       'Call a waiter',
       "Show the table's bill",
       'Order from the phone',

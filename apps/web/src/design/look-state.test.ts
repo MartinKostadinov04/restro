@@ -100,14 +100,46 @@ describe('the form state of a saved look', () => {
     })
     expect(state.edited).toEqual({ primary: false, secondary: false })
     expect(state.logoAssetId).toBe('as_0123456789ABCDEFGHIJKL')
-    // Saved from the form it is the three colours, never the brand colour.
-    const saved = themeOf(state).theme
-    expect(saved).toMatchObject({
-      preset: null,
-      colors: { primary: mono.primary, secondary: mono.secondary, tertiary: '#2563eb' },
+    expect(state.brand).toBe('#2563eb')
+    // DA-13: until a colour is touched it saves that one brand colour again, so the look stays the
+    // one guests have and no colour role is rewritten. The form shows it as the three colours.
+    const view = themeOf(state)
+    expect(view.theme).toMatchObject({
+      brand: '#2563eb',
       logo_asset_id: 'as_0123456789ABCDEFGHIJKL',
     })
-    expect(saved).not.toHaveProperty('brand')
+    expect(view.theme).not.toHaveProperty('colors')
+    expect(view.theme).not.toHaveProperty('preset')
+    // And the look it works out to is the one the publisher would draw from that brand colour.
+    expect(view.roles).toEqual(themeRolesOf({ brand: '#2563eb', logo_asset_id: null }))
+  })
+
+  it('turns a brand-only look into its three colours as soon as a colour is touched (DA-13)', () => {
+    const state = lookStateOf({ brand: '#2563eb', logo_asset_id: null })
+    const mono = suggestHarmony('#2563eb', 'monochrome')
+    for (const touched of [
+      setBrand(state, '#2563eb'),
+      setColour(state, 'primary', '#f5f1ea'),
+      setColour(state, 'secondary', '#e7e0d4'),
+      followBrand(state),
+      applyHarmony(state, 'complementary'),
+    ]) {
+      expect(touched.brand).toBeNull()
+      const saved = themeOf(touched).theme
+      expect(saved).toMatchObject({ preset: null })
+      expect(saved).not.toHaveProperty('brand')
+      expect(saved.colors?.tertiary).toBe('#2563eb')
+    }
+    // A hand-set Advanced role is not one of the three colours: the brand colour stays.
+    const role = setOverride(state, 'dark', 'accent', '#c0ffee')
+    expect(role.brand).toBe('#2563eb')
+    expect(themeOf(role).theme).toMatchObject({
+      brand: '#2563eb',
+      overrides: { dark: { accent: '#c0ffee' } },
+    })
+    // Nothing of the brand-only path reaches a look that was saved with three colours.
+    expect(lookStateOf({ logo_asset_id: null, preset: null, colors: mono }).brand).toBeNull()
+    expect(NONE.brand).toBeNull()
   })
 
   it('knows a look that is not the old way', () => {

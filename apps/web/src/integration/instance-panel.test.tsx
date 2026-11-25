@@ -82,7 +82,7 @@ describe('an instance panel', () => {
 
   it('keeps the run history collapsed: one line with the last run', () => {
     panel({ runs: [run(), run({ id: 'jb_b' })] })
-    expect(screen.getByTestId('history-last').textContent).toMatch(/^Last run: Full sync/)
+    expect(screen.getByTestId('history-last').textContent).toMatch(/^Last run: Full read/)
     expect(screen.queryAllByTestId('run-row')).toHaveLength(0)
   })
 

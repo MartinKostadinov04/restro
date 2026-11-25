@@ -1,22 +1,40 @@
 // GET /api/tables/<tb_ id>/qr?format=png|svg: the file behind "Download PNG" and "Download SVG" in
 // the Tables & QR tab (brief S3-07). The tenant is the signed-in person's organisation, never the
 // request's; a table of another organisation, a table without a code and a made-up id all answer
-// 404 alike. The logic is in src/server/tables/download.ts.
+// 404 alike. Only an owner or admin gets a file: the worker reveals the code (#70). The logic is in
+// src/server/tables/download.ts.
 import { getPool } from '@/server/db'
 import { defaultQrBaseUrl } from '@/server/env'
+import { revealConfig, revealFor } from '@/server/reveal'
+import { canManageIntegration } from '@/server/roles'
 import { getAccess } from '@/server/session'
+import { onSharedDevice } from '@/server/staff/shared-device'
 import { buildQrDownload, parseFormat } from '@/server/tables/download'
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ tableId: string }> },
 ): Promise<Response> {
-  const tenantId = (await getAccess())?.organization?.id
-  if (tenantId === undefined) return new Response('Not signed in', { status: 401 })
+  const access = await getAccess()
+  const organization = access?.organization
+  if (access === null || organization == null) {
+    return new Response('Not signed in', { status: 401 })
+  }
+  if (!canManageIntegration(organization.role)) return new Response('Not found', { status: 404 })
+  const tenantId = organization.id
+  // A shared tablet works Tonight; a code needs the person's own sign-in (RR-84).
+  if (await onSharedDevice({ tenantId, sessionId: access.sessionId })) {
+    return new Response('Not found', { status: 404 })
+  }
+  const actor = { userId: access.user.id, sessionId: access.sessionId }
   const { tableId } = await params
   const format = parseFormat(new URL(request.url).searchParams.get('format'))
   const file = await buildQrDownload(
-    { pool: getPool(), defaultBaseUrl: defaultQrBaseUrl() },
+    {
+      pool: getPool(),
+      defaultBaseUrl: defaultQrBaseUrl(),
+      reveal: (venueId) => revealFor(revealConfig(), { tenantId, venueId, actor }),
+    },
     tenantId,
     tableId,
     format,

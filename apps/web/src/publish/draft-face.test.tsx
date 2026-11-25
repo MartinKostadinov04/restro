@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
-// The draft preview draws the template the draft names (brief SH-04): the registry's default when
-// it names none, `faceId` over the draft's own, the menu's layout whichever template draws it
-// (D92), and the preview's scheme over the snapshot's. The template is loaded on first use.
+// The draft preview draws the renderer (D128) in the menu's layout (D92), and the preview's scheme
+// over the snapshot's. The renderer is loaded on first use.
 import type { MenuSnapshot } from '@restro/core'
 import { fixture } from '@restro/shell/testing'
 import { screen, waitFor } from '@testing-library/react'
@@ -48,57 +47,28 @@ describe('the draft face', () => {
     expect(screen.queryByTestId('menu-skeleton')).toBeNull()
   })
 
-  it('draws the template the draft names', async () => {
+  it('draws the renderer whatever an old draft’s presentation names, in the menu’s layout', async () => {
     const { container } = renderWithIntl(
-      <DraftFace
-        snapshot={snapshotWith({ face: 'qr-phone', options: {} })}
-        overlay={OVERLAY}
-        scheme="light"
-      />,
-    )
-    await faceRoot(container, 'qr-phone')
-    expect(container.querySelector('[data-face="editorial-market"]')).toBeNull()
-  })
-
-  it('draws the template of faceId instead, in the menu’s layout whichever template it is', async () => {
-    const draft = snapshotWith(
-      { face: 'editorial-market', options: {} },
-      { default: 'one', guest_switch: false },
-    )
-    const own = renderWithIntl(<DraftFace snapshot={draft} overlay={OVERLAY} scheme="light" />)
-    expect((await faceRoot(own.container, 'editorial-market')).dataset.layout).toBe('one')
-    own.unmount()
-
-    // Another template is asked for: the options of the first one do not follow it.
-    const other = renderWithIntl(
-      <DraftFace snapshot={draft} overlay={OVERLAY} scheme="light" faceId="qr-phone" />,
-    )
-    await faceRoot(other.container, 'qr-phone')
-    other.unmount()
-
-    // And back: the draft names qr-phone, the override asks for the Editorial Market, which draws
-    // the menu's layout: a setting of the menu (D92), not of a template.
-    const back = renderWithIntl(
       <DraftFace
         snapshot={snapshotWith(
           { face: 'qr-phone', options: { layout: 'two' } },
-          { default: 'list', guest_switch: true },
+          { default: 'one', guest_switch: false },
         )}
         overlay={OVERLAY}
         scheme="light"
-        faceId="editorial-market"
       />,
     )
-    expect((await faceRoot(back.container, 'editorial-market')).dataset.layout).toBe('list')
+    expect((await faceRoot(container, 'editorial-market')).dataset.layout).toBe('one')
   })
 
-  it('gives the default template for a name the registry does not know', async () => {
+  it('gives the renderer for a faceId the registry does not know', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { container } = renderWithIntl(
       <DraftFace
-        snapshot={snapshotWith({ face: 'removed-template', options: {} })}
+        snapshot={snapshotWith(undefined)}
         overlay={OVERLAY}
         scheme="light"
+        faceId="removed-template"
       />,
     )
     await faceRoot(container, 'editorial-market')

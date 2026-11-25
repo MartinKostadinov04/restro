@@ -49,7 +49,8 @@ function picker(
 describe('the menu picker', () => {
   it('says whose menu an area takes when it chose none: the venue’s live menu', () => {
     renderWithIntl(picker({ effective: FROM_VENUE }))
-    expect(screen.getByTestId('route-select').textContent).toBe("Menu: Venue's (Main menu)")
+    // Short (S14): the venue's menu is named in the list, not on every card.
+    expect(screen.getByTestId('route-select').textContent).toBe("The venue's menu")
     expect(screen.queryByTestId('menu-overrides')).toBeNull()
     expect(screen.getByRole('combobox', { name: 'Menu for the area Terrace' })).toBeTruthy()
   })
@@ -57,7 +58,7 @@ describe('the menu picker', () => {
   it('says it is the area’s menu on a table that chose none, and the table’s own when it did, marked', () => {
     const table = { target: { tableId: TABLE }, targetName: 'table 2' }
     const { unmount } = renderWithIntl(picker({ ...table, effective: FROM_AREA }))
-    expect(screen.getByTestId('route-select').textContent).toBe("Menu: Area's (Cocktails)")
+    expect(screen.getByTestId('route-select').textContent).toBe('Same as the area (Cocktails)')
     expect(screen.queryByTestId('menu-overrides')).toBeNull()
     unmount()
     renderWithIntl(picker({ ...table, value: COCKTAILS, effective: OWN }))
@@ -71,13 +72,13 @@ describe('the menu picker', () => {
     expect(screen.getByTestId('menu-overrides')).toBeTruthy()
   })
 
-  it('offers the venue’s menus with the live one marked, and “Same as the venue” first on an area', async () => {
+  it('offers the venue’s menus with the live one marked, and “The venue’s menu” first on an area', async () => {
     const user = userEvent.setup({ delay: null })
     renderWithIntl(picker({ effective: FROM_VENUE }))
     await user.click(screen.getByTestId('route-select'))
     const options = await screen.findAllByRole('option')
     expect(options.map((option) => option.textContent)).toEqual([
-      'Same as the venue',
+      "The venue's menu",
       'Main menu (live)',
       'Cocktails',
     ])
@@ -149,6 +150,10 @@ describe('the menu picker', () => {
       ),
     )
     vi.mocked(setMenuRouteAction).mockResolvedValueOnce({ ok: true, queued: false })
+    // The picker is disabled until the first save has finished.
+    await waitFor(() =>
+      expect(screen.getByTestId('route-select').hasAttribute('disabled')).toBe(false),
+    )
     await user.click(screen.getByTestId('route-select'))
     await user.click(await screen.findByRole('option', { name: 'Cocktails' }))
     await waitFor(() =>
@@ -180,8 +185,9 @@ describe('the menu picker', () => {
   it('is plain text for a member who may not choose', () => {
     renderWithIntl(picker({ canManage: false, effective: FROM_VENUE }))
     expect(screen.queryByTestId('route-select')).toBeNull()
+    // The open list names the live menu; whoever cannot open it reads the name here.
     expect(within(screen.getByTestId('route-picker')).getByTestId('route-text').textContent).toBe(
-      "Menu: Venue's (Main menu)",
+      "The venue's menu (Main menu)",
     )
   })
 
@@ -189,5 +195,16 @@ describe('the menu picker', () => {
     renderWithIntl(picker({ value: COCKTAILS, effective: FROM_AREA }), { locale: 'bg' })
     expect(screen.getByTestId('route-select').textContent).toBe('Меню: Cocktails')
     expect(screen.getByTestId('menu-overrides').textContent).toBe('Заменя')
+  })
+
+  it('keeps the inherited choices short in Bulgarian (S14)', () => {
+    const { unmount } = renderWithIntl(picker({ effective: FROM_VENUE }), { locale: 'bg' })
+    expect(screen.getByTestId('route-select').textContent).toBe('Менюто на заведението')
+    unmount()
+    renderWithIntl(
+      picker({ target: { tableId: TABLE }, targetName: 'маса 2', effective: FROM_AREA }),
+      { locale: 'bg' },
+    )
+    expect(screen.getByTestId('route-select').textContent).toBe('Като зоната (Cocktails)')
   })
 })

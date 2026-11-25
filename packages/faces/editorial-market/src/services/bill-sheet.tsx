@@ -1,25 +1,254 @@
-// The table bill sheet (`#tab`). It draws the host's `state.bill` and nothing else: every round,
-// the guests' and the waiter's, with the host's status for each line and the host's total. The
-// face never adds a round of its own (a round the guest just sent appears here when the host's
-// state has it), and a guest round that the state lists twice is drawn once.
+// The table bill sheet (`#tab`). It draws what the host has and nothing else (D72): the table's bill
+// as the POS reads it (`state.tableBill`: its own lines and amounts, a line in a payment that is not
+// final greyed "Being paid", "Left to pay", and how old the reading is), the rounds of the host's
+// own record when it has one (`state.bill`: the guests' and the waiter's, with the host's status for
+// each line), the lines already paid in the app, and Pay. The face never adds a round of its own (a
+// round the guest just sent appears here when the host's state has it), and a guest round that the
+// state lists twice is drawn once.
+//
+// A table in a linked group (#319, D160 §1) draws the group's bill: every member table's lines under
+// its own heading, "Your table" on this phone's, a table whose reading failed marked as updating
+// (rule 6), and one total for the party, said to be not final while a table is updating. Nothing
+// names a person (D139). Pay still pays this table's own bill: paying across tables is its own
+// ticket.
+
+import {
+  type GroupTableView,
+  lineNameText,
+  type PayingStrings,
+  payableBill,
+  paySignedMoney,
+  type TableBillPartView,
+} from '@restro/shell'
+import { useEffect, useState } from 'react'
 
 import { Text } from '../parts'
 import { distinctRounds, keyed } from './bill'
+import { CallWaiter, PaidInApp } from './pay-sheet'
 import { useServicesRequired } from './provider'
+
+/** "×2" for a line of more than one. */
+const mark = (quantity: string) => (quantity === '1' ? '' : ` ×${quantity}`)
+
+/**
+ * "Updated 12 s ago" (lane 3 S7, D121): the host's age of the reading, counted on by the second
+ * until the host says another, so the line never stands still between two polls. A new age from
+ * the host starts it again (the caller keys it by the age).
+ */
+function ReadingAge({
+  seconds,
+  complete,
+  w,
+}: {
+  readonly seconds: number
+  readonly complete: boolean
+  readonly w: PayingStrings
+}) {
+  const [since, setSince] = useState(0)
+  useEffect(() => {
+    const start = Date.now()
+    const timer = setInterval(() => setSince(Math.floor((Date.now() - start) / 1000)), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  const age = seconds + since
+  return (
+    <p className="ro-allergy" data-slot="bill.updated">
+      {complete ? w.updated(age) : w.stale(age)}
+    </p>
+  )
+}
+
+/** A table's POS lines, a line in a payment that is not final greyed "Being paid". */
+function TableLines({
+  parts,
+  money,
+}: {
+  readonly parts: readonly TableBillPartView[]
+  readonly money: (minor: number) => string
+}) {
+  const { words, locale } = useServicesRequired()
+  const w = words.paying
+  return (
+    <ul className="ro-lines" data-slot="bill.lines" data-design-part="bill.lines">
+      {parts.flatMap((part) =>
+        part.lines.map((line) => {
+          const greyed = part.beingPaid || line.beingPaid
+          return (
+            <li
+              key={line.id}
+              data-being-paid={greyed ? '' : undefined}
+              data-discount={line.amountMinor < 0 ? '' : undefined}
+            >
+              <span>
+                {lineNameText(line.name, locale, words.otherItem)}
+                {mark(line.quantity)} · {money(line.amountMinor)}
+                {greyed ? ` · ${w.beingPaid}` : ''}
+              </span>
+            </li>
+          )
+        }),
+      )}
+    </ul>
+  )
+}
+
+/**
+ * One member table of the group's bill under its own heading (#319): its lines, what is left to
+ * pay there and its lines paid in the app. A table whose bill is not known well now keeps its last
+ * lines, marked as updating (rule 6, D160 log 1.8).
+ */
+function GroupTable({
+  table,
+  money,
+}: {
+  readonly table: GroupTableView
+  readonly money: (minor: number) => string
+}) {
+  const { words, guest } = useServicesRequired()
+  const w = words.paying
+  const empty = table.parts.every((part) => part.lines.length === 0)
+  return (
+    <section
+      className="ro-round"
+      data-slot="bill.group.table"
+      data-own={table.own ? '' : undefined}
+      data-updating={table.complete ? undefined : ''}
+    >
+      <header>
+        <span>{guest.table(table.label)}</span>
+        {table.own ? <em>{w.yourTable}</em> : null}
+        {table.complete ? null : <em data-slot="bill.group.updating">{w.tableUpdating}</em>}
+      </header>
+      {empty ? null : <TableLines parts={table.parts} money={money} />}
+      <p className="ro-sum">
+        <span>{w.leftToPay}</span>
+        <b>{money(table.owedMinor)}</b>
+      </p>
+      <PaidInApp lines={table.paidLines} money={money} />
+    </section>
+  )
+}
 
 export function BillSheet() {
   const o = useServicesRequired()
   const { words, state, locale, features } = o
+  const w = words.paying
   const rounds = distinctRounds(state.bill)
   const bill = state.bill
+  const table = state.tableBill ?? null
+  // A linked group's bill, drawn by table in place of this table's lines alone (#319); it shows
+  // even before this table's own bill is read.
+  const group = distinctRounds(state.bill).length > 0 ? undefined : (state.tableGroup ?? undefined)
+  // The POS's own amounts are signed: a waiter's discount line is negative (#293, DA-8).
+  const money = (minor: number) => paySignedMoney(minor, table?.currency ?? 'EUR', locale)
+  const paidLines = table?.paidLines ?? []
+  // A round that is not on the bill as last read: still in flight, or taken by the POS after the
+  // reading was made (P15). Compared with when the round settled, not when Send was tapped: a
+  // round that waited for approval and settled after the reading is not on this bill yet.
+  const readAt = table?.readAt
+  const roundPending = (state.sentOrders ?? []).some((sent) => {
+    if (sent.unpaid === true) return false
+    if (sent.state === 'sending' || sent.state === 'awaiting_approval') return true
+    if (sent.state !== 'added' || readAt === undefined) return false
+    return (sent.settledAt ?? sent.sentAt) > readAt
+  })
+  // The POS's own lines are the bill where the host has no record of rounds (the guest page's host
+  // has none); where it has, the rounds are the same lines with their status and who ordered them.
+  const tableLines =
+    rounds.length > 0
+      ? []
+      : (table?.parts.flatMap((part) => part.lines.map((line) => ({ part, line }))) ?? [])
   // What the table owes, as the host states it; nothing when the bill is empty or settled.
-  const owed = bill !== null && bill.total.minor > 0 ? bill.total : null
+  // Where one payment covers the linked group (#542), Pay opens with every member's lines ticked,
+  // so it reads the group's total.
+  const payOwed = payableBill(state)?.owedMinor ?? 0
+  const owed =
+    table !== null && payOwed > 0
+      ? money(payOwed)
+      : bill !== null && bill.total.minor > 0
+        ? bill.total.text
+        : null
+  // Without a location pass there is no bill: why, and the guest's own way to allow it (the pay
+  // sheet says the same).
+  if (state.location?.state === 'needed') {
+    return (
+      <div className="ro-sheet" data-slot="bill.hidden">
+        <h3 className="ro-h">{w.locationTitle}</h3>
+        <p>{w.locationBody}</p>
+        {o.binding.location === undefined ? null : (
+          <button
+            type="button"
+            className="ro-primary is-wide"
+            data-design-part="button"
+            onClick={() => o.binding.location?.reopen()}
+          >
+            <span>{w.allowLocation}</span>
+          </button>
+        )}
+        <CallWaiter />
+      </div>
+    )
+  }
+  const empty =
+    group === undefined
+      ? tableLines.length === 0 && rounds.length === 0 && paidLines.length === 0
+      : group.tables.every(
+          (member) =>
+            member.paidLines.length === 0 && member.parts.every((part) => part.lines.length === 0),
+        )
   return (
-    <div className="ro-sheet">
+    <div className="ro-sheet" data-design-part="bill">
       <p className="rm-overlay-intro">{words.tabIntro}</p>
-      {rounds.length === 0 || bill === null ? (
-        <p className="ro-empty">{words.emptyTab}</p>
-      ) : (
+      {table === null || rounds.length > 0 ? null : (
+        <>
+          {roundPending ? (
+            // A round the guests sent that the last reading of the bill does not hold yet: the
+            // freshness line would present a total without it as current (P15). The round is never
+            // added to the total here (D72); the line goes once a reading includes it.
+            <p className="ro-allergy" data-slot="bill.pending">
+              {w.roundPending}
+            </p>
+          ) : null}
+          {/* A failed reading keeps its warning, with the pending line beside it, never instead. */}
+          {roundPending && table.complete ? null : (
+            <ReadingAge
+              key={`${table.readAgoSeconds}:${table.readAt ?? ''}`}
+              seconds={table.readAgoSeconds}
+              complete={table.complete}
+              w={w}
+            />
+          )}
+        </>
+      )}
+      {empty ? <p className="ro-empty">{table === null ? words.emptyTab : w.emptyBill}</p> : null}
+      {group === undefined || empty ? null : (
+        <section data-slot="bill.group">
+          <h4 className="ro-h">{w.groupTitle}</h4>
+          {group.tables.map((member, index) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: a member table carries no id (rule 3)
+            <GroupTable key={index} table={member} money={money} />
+          ))}
+          <div className="ro-sum is-big" data-slot="bill.group.owed" data-design-part="bill.total">
+            <span>{w.groupLeftToPay}</span>
+            <b>{money(group.owedMinor)}</b>
+          </div>
+          {group.complete ? null : (
+            <p className="ro-allergy" data-slot="bill.group.not_final">
+              {w.groupNotFinal}
+            </p>
+          )}
+        </section>
+      )}
+      {group !== undefined || tableLines.length === 0 ? null : (
+        <>
+          <TableLines parts={table?.parts ?? []} money={money} />
+          <p className="ro-sum" data-slot="bill.owed">
+            <span>{w.leftToPay}</span>
+            <b>{money(table?.owedMinor ?? 0)}</b>
+          </p>
+        </>
+      )}
+      {rounds.length === 0 || bill === null ? null : (
         <>
           {rounds.map((round, index) => (
             <section key={round.id} className="ro-round" data-source={round.origin}>
@@ -29,7 +258,7 @@ export function BillSheet() {
                 </span>
                 <em>{round.origin === 'guest' ? words.fromApp : words.fromWaiter}</em>
               </header>
-              <ul>
+              <ul data-design-part="bill.lines">
                 {round.lines.map((line) => (
                   <li key={line.id} data-status={line.status}>
                     <span className="ro-qty">{line.qty}×</span>
@@ -55,30 +284,36 @@ export function BillSheet() {
               </ul>
             </section>
           ))}
-          <div className="ro-sum is-big">
+          <div className="ro-sum is-big" data-design-part="bill.total">
             <span>{words.tableTotal}</span>
             <b>{bill.total.text}</b>
           </div>
         </>
       )}
-      {features.pay && state.receipt !== null ? (
-        <button
-          type="button"
-          className="ro-ghost"
-          onClick={(event) => o.openSheet('receipt', event.currentTarget)}
-        >
-          {words.viewReceipt}
-        </button>
-      ) : null}
+      {table == null || group !== undefined ? null : (
+        // The lines paid in the app in this sitting stay on the bill, greyed (D127 1.2); a group
+        // draws each table's under its own heading.
+        <PaidInApp lines={paidLines} money={money} />
+      )}
       {features.pay && owed !== null ? (
         <button
           type="button"
           className="ro-primary is-wide"
-          onClick={(event) => o.openSheet('pay', event.currentTarget)}
+          data-design-part="button"
+          onClick={(event) => {
+            // The Pay sheet opens with the whole bill ticked: its Pay reads this amount (S14).
+            o.armWholeBill()
+            o.openSheet('pay', event.currentTarget)
+          }}
         >
           <span>{words.pay}</span>
-          <b>{owed.text}</b>
+          <b>{owed}</b>
         </button>
+      ) : o.payOffAtVenue && owed !== null ? (
+        // Paying is off at the venue: no Pay button, the words in its place (D127, #346).
+        <p className="ro-notice" data-slot="bill.ask_waiter">
+          {w.askWaiterToPay}
+        </p>
       ) : null}
     </div>
   )

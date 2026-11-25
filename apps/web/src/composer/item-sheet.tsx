@@ -51,6 +51,11 @@ import type { ItemSheetData, SheetResult, SheetTarget } from '@/server/item-shee
 import { ItemSheetDetailsTab } from './item-sheet-details-tab'
 import { ItemSheetHistoryTab } from './item-sheet-history-tab'
 import { ItemSheetMediaTab } from './item-sheet-media-tab'
+import {
+  type ItemPaymentChoice,
+  paymentChoiceOf,
+  useModeInSentence,
+} from './item-sheet-payment-mode'
 import { ItemSheetTranslationsTab } from './item-sheet-translations-tab'
 
 export interface ItemSheetProps {
@@ -60,6 +65,11 @@ export interface ItemSheetProps {
   venueId?: string
   /** The menu the composer has open (brief S6); absent = the venue's live menu. */
   menuId?: string
+  /**
+   * The person may not change the menu (a plain member, RR-70): the sheet shows the item and
+   * offers no edit, Revert, upload or save. The server refuses such a write anyway.
+   */
+  readOnly?: boolean
   /** Open or closed; open when omitted. */
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -85,9 +95,10 @@ function isTab(value: string): value is TabId {
 /**
  * "Overrides to review" (V12, brief S6: the badge on the item's row, and this note): the till
  * changed a value since our override of it was made. The fields are named; Details offers "Keep
- * mine" or the till's value for each. Nothing when there is none.
+ * mine" or the till's value for each; a member (RR-70), who has neither, is told who decides.
+ * Nothing when there is none.
  */
-function ReviewNotice({ data }: { data: ItemSheetData }) {
+function ReviewNotice({ data, readOnly }: { data: ItemSheetData; readOnly: boolean }) {
   const t = useTranslations('itemSheet.review')
   const uiLanguage = useLocale()
   const dataLocale: Locale = toDataLocale(isAdminLocale(uiLanguage) ? uiLanguage : 'bg')
@@ -113,7 +124,10 @@ function ReviewNotice({ data }: { data: ItemSheetData }) {
       <div className="grid gap-0.5">
         <p className="font-medium">{t('title')}</p>
         <p className="text-muted-foreground">
-          {t('text', { source: data.tillLabel, fields: fields.join(', ') })}
+          {t(readOnly ? 'textReadOnly' : 'text', {
+            source: data.tillLabel,
+            fields: fields.join(', '),
+          })}
         </p>
       </div>
     </section>
@@ -124,12 +138,17 @@ export function ItemSheet({
   itemId,
   venueId: venueIdProp,
   menuId,
+  readOnly = false,
   open = true,
   onOpenChange,
   tags,
   onCreateTag,
 }: ItemSheetProps) {
   const t = useTranslations('itemSheet')
+  const composer = useTranslations('composer')
+  const owner = useTranslations('ownerSettings')
+  const inSentence = useModeInSentence()
+  const uiLocale = useLocale()
   const params = useParams<{ venueId?: string }>()
   const venueId = venueIdProp ?? (typeof params.venueId === 'string' ? params.venueId : undefined)
   // Where the actions look: the venue, and the composer's menu when there is one.
@@ -176,7 +195,12 @@ export function ItemSheet({
 
   /** Runs a save; shows its refreshed data, or says why nothing changed. True when it saved. */
   const run = useCallback(
-    async (task: Promise<SheetResult>, success?: string): Promise<boolean> => {
+    async (
+      task: Promise<SheetResult>,
+      success?: string,
+      /** A sentence for a refusal this save words itself. */
+      words?: (error: string) => string | undefined,
+    ): Promise<boolean> => {
       setBusy(true)
       try {
         const result = await task
@@ -185,10 +209,10 @@ export function ItemSheet({
           if (success) toast.success(success)
           return true
         }
-        toast.error(t(`errors.${result.error}`, { source }))
+        toast.error(words?.(result.error) ?? t(`errors.${result.error}`, { source }))
         return false
       } catch {
-        toast.error(t('errors.failed'))
+        toast.error(words?.('failed') ?? t('errors.failed'))
         return false
       } finally {
         setBusy(false)
@@ -222,6 +246,43 @@ export function ItemSheet({
           t(soldOut ? 'soldOutSaved' : 'backOnSale'),
         )
       : Promise.resolve(false)
+  /**
+   * An item's payment mode from its radio cards (#218): saved at once through the item action
+   * (`null` = same as the venue), with a toast that carries Undo (id `payment_mode:<item id>`).
+   */
+  const savePaymentMode = async (next: ItemPaymentChoice): Promise<boolean> => {
+    if (!target) return false
+    const previous = paymentChoiceOf(
+      data?.fields.find((field) => field.key === 'payment_mode')?.value,
+    )
+    const venueMode = data?.payFirstDefault
+    const same = owner('pf_i_same', { mode: venueMode ? inSentence(venueMode) : '' })
+    // In a sentence: lower case in Bulgarian, "Като на заведението" too (the plan's words).
+    const mode =
+      next === null ? (uiLocale === 'bg' ? same.toLocaleLowerCase('bg') : same) : inSentence(next)
+    const words = (error: string) =>
+      error === 'failed' || error === 'refused' ? owner('pf_err_save') : undefined
+    const saved = await run(
+      saveItemFieldAction(target, itemId, 'payment_mode', next),
+      undefined,
+      words,
+    )
+    if (saved) {
+      toast.success(owner('pf_i_toast', { mode }), {
+        id: `payment_mode:${itemId}`,
+        action: {
+          label: owner('st_undo'),
+          onClick: () =>
+            void run(
+              saveItemFieldAction(target, itemId, 'payment_mode', previous),
+              undefined,
+              words,
+            ),
+        },
+      })
+    }
+    return saved
+  }
   const saveTranslation = (fieldKey: string, locale: Locale, text: string | null) =>
     target
       ? run(saveItemTranslationAction(target, itemId, fieldKey, locale, text), t('saved'))
@@ -288,7 +349,12 @@ export function ItemSheet({
           </p>
         ) : null}
 
-        {data ? <ReviewNotice data={data} /> : null}
+        {data && readOnly ? (
+          <p className="mx-4 mt-3 text-sm text-muted-foreground" data-testid="item-sheet-read-only">
+            {composer('readOnly')}
+          </p>
+        ) : null}
+        {data ? <ReviewNotice data={data} readOnly={readOnly} /> : null}
 
         {data ? (
           <TillLabelProvider label={data.tillLabel}>
@@ -326,17 +392,24 @@ export function ItemSheet({
                       <ItemSheetDetailsTab
                         data={data}
                         busy={busy}
+                        readOnly={readOnly}
                         onSave={saveField}
                         onRevert={revertField}
                         onKeep={keepField}
                         onOpenMedia={() => setTab('media')}
                         onSoldOut={setSoldOut}
+                        onPaymentMode={savePaymentMode}
                       />
                     </div>
                   </TabsContent>
                   <TabsContent value="translations" forceMount>
                     <div hidden={tab !== 'translations'}>
-                      <ItemSheetTranslationsTab data={data} busy={busy} onSave={saveTranslation} />
+                      <ItemSheetTranslationsTab
+                        data={data}
+                        busy={busy}
+                        readOnly={readOnly}
+                        onSave={saveTranslation}
+                      />
                     </div>
                   </TabsContent>
                   <TabsContent value="media" forceMount>
@@ -345,6 +418,7 @@ export function ItemSheet({
                         key={`${data.revision}:${data.image?.assetId ?? ''}`}
                         data={data}
                         busy={busy}
+                        readOnly={readOnly}
                         onAttach={attachImage}
                         onSaveDetails={saveImageDetails}
                         onRemove={removeImage}

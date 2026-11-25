@@ -125,8 +125,13 @@ describe.skipIf(!hasDatabase)('worker (integration, real Postgres)', () => {
       prettyLogs: false,
       seal: null,
       barsy: { env: 'test', allowedHostSuffixes: ['.barsyonline.com'], productionHosts: [] },
+      sim: { env: 'test', allowHosts: [] },
       assets: { kind: 'local', dir: tmpdir() },
       publish: { kind: 'local', dir: tmpdir() },
+      revealToken: null,
+      billIdKey: null,
+      posSync: true,
+      send: false,
     }
     const logger = await createLogger({
       level: 'debug',

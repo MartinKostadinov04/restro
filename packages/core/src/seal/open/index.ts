@@ -7,5 +7,7 @@ export {
   isSealKeyPair,
   openBarsyCredentials,
   openSecret,
+  openStaffPin,
+  openTableCode,
   parseSealPrivateKey,
 } from './open'

@@ -10,7 +10,12 @@
  *   addresses keep redirecting, D84). The organisation's own earlier names may be taken back;
  * - `failed`: something broke on the server (logged there); nothing was changed.
  */
-export type UpdateOrganizationError = 'not_allowed' | 'invalid' | 'taken' | 'failed'
+export type UpdateOrganizationError =
+  | 'not_allowed'
+  | 'invalid'
+  | 'taken'
+  | 'failed'
+  | 'sign_in_again'
 
 /**
  * The answer of `updateOrganizationAction`: the name and the address name as stored now.

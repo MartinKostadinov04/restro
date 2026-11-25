@@ -2,6 +2,8 @@
 // is a bill) and the pay entry (`menu.pay`). Each exists only while the view model has its feature
 // on (R15, fail-closed). The total is the host's: `state.bill.total`, never a sum of the face's.
 
+import { payMoney } from '@restro/shell'
+
 import { CardIcon, ReceiptIcon } from '../icons'
 import { useServices } from './provider'
 
@@ -9,7 +11,15 @@ export function HeaderTools() {
   const o = useServices()
   if (o === null) return null
   const { features, words, state } = o
-  const total = state.bill !== null && state.bill.rounds.length > 0 ? state.bill.total.text : null
+  // The host's number, never a sum of the face's: its own record of the rounds, else what the POS
+  // says is left to pay on the table's bill.
+  const table = state.tableBill ?? null
+  const total =
+    state.bill !== null && state.bill.rounds.length > 0
+      ? state.bill.total.text
+      : table !== null && table.owedMinor > 0
+        ? payMoney(table.owedMinor, table.currency, o.locale)
+        : null
   return (
     <>
       {features.bill ? (

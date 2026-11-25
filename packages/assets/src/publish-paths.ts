@@ -11,7 +11,7 @@
 //   o/<organisation slug>.json         the organisation's venues by address name, or a redirect
 //                                      from an old organisation name: where `/m/<organisation>/<venue>` starts (D84)
 //   v/<venue public code>.json         {venue_id, menu_id, slug, organization}: what the old address `/m/<slug>-<code>` shows (S3-03, D68)
-//   t/<table token>.json               {venue_public_id, venue_slug, organization_slug, table_label, menu_id}: what a table's QR code means
+//   t/<code's SHA-256>.json            {venue_public_id, venue_slug, organization_slug, table_label, menu_id}: what a table's QR code means
 //
 // Pure: no I/O.
 import {
@@ -122,8 +122,12 @@ export const variantPath = (assetId: AssetId, width: number): string =>
 export const venueIndexPath = (publicId: string): string => `v/${publicId}.json`
 /** The path of an organisation's index (or redirect) by its slug: where `/m/<organisation>/<venue>` starts. */
 export const organizationIndexPath = (slug: string): string => `o/${slug}.json`
-/** The path of the file behind a table's QR code. */
-export const tableTokenPath = (token: string): string => `t/${token}.json`
+/**
+ * The path of the file behind a table's QR code: named by the code's SHA-256 (`hashTableCode`,
+ * D122 §9), never by the code. (Files named by the plain code, from before #70, are removed by the
+ * worker's `seal-table-codes` job; the same path shape still names them for that.)
+ */
+export const tableTokenPath = (codeHash: string): string => `t/${codeHash}.json`
 
 const IMMUTABLE = 'public, max-age=31536000, immutable'
 

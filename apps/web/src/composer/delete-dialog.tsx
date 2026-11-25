@@ -41,8 +41,9 @@ export function DeleteDialog({
             <DialogDescription>{t(`${target.kind}.description`)}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
+            {/* The way out names what stays (S17): "Keep the section", not a bare "Cancel". */}
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              {t('cancel')}
+              {t(`${target.kind}.keep`)}
             </Button>
             <Button
               type="button"

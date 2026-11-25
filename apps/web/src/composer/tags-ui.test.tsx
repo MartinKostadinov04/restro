@@ -120,6 +120,48 @@ describe('the multi-select bar', () => {
     expect(state.setItemTags).toHaveBeenCalledWith(picked, [state.ids.local], [])
   })
 
+  it('offers “Payment mode…” only where pay first can take effect', () => {
+    const state = makeTestState()
+    state.selected = new Set([state.ids.negroni])
+    renderWithIntl(
+      <WithComposer state={state}>
+        <SelectionBar />
+      </WithComposer>,
+    )
+    expect(screen.queryByTestId('payment-mode')).toBeNull()
+  })
+
+  it('sets the payment mode of the whole selection in one call', async () => {
+    const state = makeTestState({ payFirstDefault: 'on_bill' })
+    const picked = [state.ids.negroni, state.ids.spritz]
+    state.selected = new Set(picked)
+    renderWithIntl(
+      <WithComposer state={state}>
+        <SelectionBar />
+      </WithComposer>,
+    )
+    await userEvent.click(screen.getByTestId('payment-mode'))
+    expect(await screen.findByTestId('payment-mode-option-same')).toBeTruthy()
+    expect(screen.getByTestId('payment-mode-option-same').textContent).toBe(
+      'Same as the venue (On the bill)',
+    )
+    await userEvent.click(screen.getByTestId('payment-mode-option-pay_first'))
+    expect(state.setPaymentMode).toHaveBeenCalledWith(picked, 'pay_first')
+  })
+
+  it('“Same as the venue” takes the mode away from the whole selection', async () => {
+    const state = makeTestState({ payFirstDefault: 'pay_first' })
+    state.selected = new Set([state.ids.negroni])
+    renderWithIntl(
+      <WithComposer state={state}>
+        <SelectionBar />
+      </WithComposer>,
+    )
+    await userEvent.click(screen.getByTestId('payment-mode'))
+    await userEvent.click(await screen.findByTestId('payment-mode-option-same'))
+    expect(state.setPaymentMode).toHaveBeenCalledWith([state.ids.negroni], null)
+  })
+
   it('removes a tag only from the tags the selection holds, with how many hold it', async () => {
     const state = makeTestState()
     const picked = [state.ids.negroni, state.ids.spritz]

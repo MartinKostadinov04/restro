@@ -1,15 +1,24 @@
-// The Design tab's server actions against a real Postgres, as the restro_app role (brief SH-05a):
-// what saveLookAction and chooseTemplateAction write, who may call them, and every refusal. The
-// session is the only fake: it says which organisation and role is asking.
-import { newId, readPresentation, readVenueTheme, THEME_PRESETS } from '@restro/core'
-import { provisionTenant, provisionVenue, setVenuePresentation } from '@restro/core/apply'
+// The Design page's server action against a real Postgres, as the restro_app role (D129): what
+// saveDesignAction writes through `setDesign`, who may call it, and every refusal. The session is the
+// only fake: it says which organisation and role is asking.
+import {
+  BASIC_DESIGN_VALUES,
+  DEFAULT_DESIGN,
+  type DesignContent,
+  designContentOf,
+  designThemeOf,
+  newId,
+  readDesign,
+  readDesignRecord,
+  THEME_PRESETS,
+} from '@restro/core'
+import { provisionTenant, provisionVenue } from '@restro/core/apply'
 import type pg from 'pg'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { saveFeatureOptionsAction } from '../composer/guest-features-actions'
 import { getPool } from '../db'
 import { hasDatabase, openOwnerPool, testSlug, useTestServerEnvironment } from '../test-database'
-import { chooseTemplateAction, saveLookAction } from './actions'
+import { saveDesignAction } from './actions'
 import { loadDesign } from './service'
 
 const asked = vi.hoisted(() => ({ tenantId: '', role: 'owner' }))
@@ -19,42 +28,35 @@ vi.mock('@/server/session', () => ({
   requireTenant: async () => ({
     user: { id: 'us_sh05atester', name: 'Tester', email: 'tester@example.test' },
     organizations: [],
-    organization: { id: asked.tenantId, name: 'SH-05a club', slug: 'sh05a-club', role: asked.role },
+    organization: {
+      id: asked.tenantId,
+      name: 'Design club',
+      slug: 'design-club',
+      role: asked.role,
+    },
   }),
 }))
 vi.mock('next/cache', () => ({ revalidatePath: (path: string) => revalidated.push(path) }))
 
-// The Editorial Market declares no option since D92 (brief S6: its layouts are the menu's settings).
-// These tests are about how a template's options are saved and kept apart, so the template gets
-// back the three it had.
-vi.mock('@restro/editorial-market/manifest', async (importOriginal) => {
-  const real = await importOriginal<typeof import('@restro/editorial-market/manifest')>()
-  const { OPTIONS_BEFORE_D92 } = await import('@/faces/test-options')
-  return {
-    ...real,
-    EDITORIAL_MARKET_MANIFEST: { ...real.EDITORIAL_MARKET_MANIFEST, options: OPTIONS_BEFORE_D92 },
-  }
-})
-
 const midnight = THEME_PRESETS.find((preset) => preset.id === 'midnight')
 if (midnight === undefined) throw new Error('the Midnight preset is missing')
 
-/** A whole look, the way the Design tab builds one for the Midnight preset. */
-const wholeTheme = (fields: Record<string, unknown> = {}) => ({
-  logo_asset_id: null,
-  preset: 'midnight',
+/** A whole design: Basic with the Midnight colours, and the body font asked for. */
+const wholeDesign = (font = 'lora', fields: Record<string, unknown> = {}) => ({
+  style: 'basic',
+  values: {
+    ...BASIC_DESIGN_VALUES,
+    general: { ...BASIC_DESIGN_VALUES.general, body_font: font, screen: 'dark' },
+  },
   colors: midnight.colours,
   overrides: midnight.overrides,
-  font: 'lora',
-  radius: midnight.radius,
-  shadow: 3,
-  scheme: 'dark',
+  logo_asset_id: null,
   ...fields,
 })
 
 const NO_ASSET = 'as_0123456789ABCDEFGHIJKL'
 
-describe.skipIf(!hasDatabase)('the Design tab’s actions (as the restro_app role)', () => {
+describe.skipIf(!hasDatabase)('the Design page’s action (as the restro_app role)', () => {
   const tenant = newId('tn')
   const otherTenant = newId('tn')
   let owner: pg.Pool
@@ -73,11 +75,19 @@ describe.skipIf(!hasDatabase)('the Design tab’s actions (as the restro_app rol
       id,
       JSON.stringify(settings),
     ])
+  const recordOf = async (id: string) => readDesignRecord(await settingsOf(id))
+  /** Saves a design from the revision stored now. */
+  const saveNow = async (design: unknown = wholeDesign()) =>
+    saveDesignAction({
+      venueId,
+      expectedRevision: readDesign(await settingsOf(venueId)).revision,
+      design,
+    })
 
   beforeAll(async () => {
     useTestServerEnvironment()
     owner = openOwnerPool()
-    await provisionTenant(getPool(), { tenantId: tenant, name: 'SH-05a club' })
+    await provisionTenant(getPool(), { tenantId: tenant, name: 'Design club' })
     await provisionTenant(getPool(), { tenantId: otherTenant, name: 'Another club' })
     venueId = (
       await provisionVenue(getPool(), tenant, { name: 'Look Club', slug: testSlug('look') })
@@ -98,7 +108,7 @@ describe.skipIf(!hasDatabase)('the Design tab’s actions (as the restro_app rol
   afterAll(async () => {
     if (owner) {
       const tenants = [tenant, otherTenant]
-      for (const table of ['menus', 'nodes', 'venues']) {
+      for (const table of ['events', 'menus', 'nodes', 'venues']) {
         await owner.query(`delete from restro.${table} where tenant_id = any($1)`, [tenants])
       }
       await owner.query('delete from restro.tenants where id = any($1)', [tenants])
@@ -106,58 +116,98 @@ describe.skipIf(!hasDatabase)('the Design tab’s actions (as the restro_app rol
     }
   })
 
-  describe('saveLookAction', () => {
-    it('saves a whole look, readable, and refreshes the venue page', async () => {
-      expect(await saveLookAction({ venueId, theme: wholeTheme() })).toEqual({ ok: true })
-      const stored = readVenueTheme(await settingsOf(venueId))
+  describe('saveDesignAction', () => {
+    it('saves the whole design into the record, and refreshes the venue and Design pages', async () => {
+      expect(await saveNow()).toEqual({ ok: true, revision: 1 })
+      const stored = await recordOf(venueId)
       expect(stored).toMatchObject({
+        revision: 1,
+        style: 'basic',
         logo_asset_id: null,
-        preset: 'midnight',
         colors: midnight.colours,
-        font: 'lora',
-        radius: 6,
-        shadow: 3,
-        scheme: 'dark',
+        provenance: { layer: 'manual', source: 'manual', actor: 'user:us_sh05atester' },
       })
+      expect(stored?.values.general).toMatchObject({ body_font: 'lora', screen: 'dark' })
       expect(stored?.overrides?.dark?.background).toBe('#0e0d0c')
-      expect(revalidated).toEqual([`/venues/${venueId}`])
+      expect(revalidated).toEqual([`/venues/${venueId}`, `/venues/${venueId}/design`])
     })
 
-    it('saves a look built from one brand colour, with every v2 field', async () => {
-      const theme = {
-        logo_asset_id: null,
-        brand: '#E11D48',
-        font: 'inter',
-        radius: 8,
-        shadow: 1,
-        scheme: 'auto',
+    it('appends one event with the person and the job for every save', async () => {
+      const eventsOfVenue = () =>
+        owner.query<{ source: string; actor: string; job_id: string; field_key: string }>(
+          `select source, actor, job_id, field_key from restro.events
+           where tenant_id = $1 and scope = $2 order by seq`,
+          [tenant, `venue:${venueId}`],
+        )
+      // Events are append-only: those of the earlier tests stay.
+      const before = (await eventsOfVenue()).rows.length
+      await saveNow()
+      await saveNow(wholeDesign('manrope'))
+      const added = (await eventsOfVenue()).rows.slice(before)
+      expect(added.map((row) => row.field_key)).toEqual(['design', 'design'])
+      for (const row of added) {
+        expect(row).toMatchObject({ source: 'manual', actor: 'user:us_sh05atester' })
+        expect(row.job_id).toMatch(/^jb_/)
       }
-      expect(await saveLookAction({ venueId, theme })).toEqual({ ok: true })
-      expect(readVenueTheme(await settingsOf(venueId))).toEqual({ ...theme, brand: '#e11d48' })
+    })
+
+    it('keeps every option’s value as the page sent it, the layout among them', async () => {
+      const values = {
+        ...BASIC_DESIGN_VALUES,
+        items: { ...BASIC_DESIGN_VALUES.items, layout: 'one', guest_switch: 'off' },
+      }
+      await saveNow(wholeDesign('lora', { values }))
+      expect((await recordOf(venueId))?.values).toEqual(values)
     })
 
     it('leaves the other settings of the venue alone', async () => {
-      await setSettings(venueId, {
-        presentation: { face: 'editorial-market', options: {} },
-        other: 1,
-      })
-      await saveLookAction({ venueId, theme: wholeTheme() })
-      const settings = await settingsOf(venueId)
-      expect(settings?.other).toBe(1)
-      expect(readPresentation(settings)).toEqual({ face: 'editorial-market', options: {} })
+      await setSettings(venueId, { other: 1 })
+      await saveNow()
+      expect((await settingsOf(venueId))?.other).toBe(1)
     })
 
-    it('refuses a look whose colours do not read, naming every failing pair, and writes nothing', async () => {
-      const before = await saveLookAction({ venueId, theme: wholeTheme({ font: 'manrope' }) })
-      expect(before).toEqual({ ok: true })
-      const unreadable = wholeTheme({
+    it('of two designs saved at once keeps one, and tells the other what is stored', async () => {
+      const results = await Promise.all([
+        saveDesignAction({ venueId, expectedRevision: 0, design: wholeDesign('manrope') }),
+        saveDesignAction({ venueId, expectedRevision: 0, design: wholeDesign('lora') }),
+      ])
+      const kept = results.findIndex((result) => result.ok)
+      expect(kept).not.toBe(-1)
+      expect(results[1 - kept]).toMatchObject({
+        ok: false,
+        error: 'stale',
+        view: {
+          revision: 1,
+          design: { values: { general: { body_font: kept === 0 ? 'manrope' : 'lora' } } },
+        },
+      })
+    })
+
+    it('refuses a stale revision with the stored design and writes nothing', async () => {
+      await saveNow(wholeDesign('manrope'))
+      const result = await saveDesignAction({
+        venueId,
+        expectedRevision: 0,
+        design: wholeDesign('lora'),
+      })
+      expect(result).toMatchObject({
+        ok: false,
+        error: 'stale',
+        view: { revision: 1, theme: { font: 'manrope' } },
+      })
+      expect((await recordOf(venueId))?.values.general.body_font).toBe('manrope')
+    })
+
+    it('refuses a design whose colours do not read, naming every failing pair, and writes nothing', async () => {
+      expect(await saveNow(wholeDesign('manrope'))).toEqual({ ok: true, revision: 1 })
+      const unreadable = wholeDesign('lora', {
         overrides: {
           ...midnight.overrides,
           // Text the colour of the page, in the light set.
           light: { ...midnight.overrides.light, text: midnight.overrides.light.background },
         },
       })
-      const result = await saveLookAction({ venueId, theme: unreadable })
+      const result = await saveDesignAction({ venueId, expectedRevision: 1, design: unreadable })
       expect(result).toMatchObject({ ok: false, error: 'unreadable' })
       if (result.ok || result.error !== 'unreadable') return
       expect(result.issues.map((issue) => `${issue.mode}:${issue.fg}-on-${issue.bg}`)).toEqual([
@@ -166,266 +216,112 @@ describe.skipIf(!hasDatabase)('the Design tab’s actions (as the restro_app rol
       ])
       expect(result.issues[0]).toMatchObject({ min: 4.5 })
       expect(result.issues[0]?.ratio).toBeLessThan(4.5)
-      // The earlier look is still the stored one.
-      expect(readVenueTheme(await settingsOf(venueId))?.font).toBe('manrope')
+      // The earlier design is still the stored one.
+      expect((await recordOf(venueId))?.values.general.body_font).toBe('manrope')
     })
 
-    it('refuses a partial look (the old card’s shape, or a v2 field missing) and writes nothing', async () => {
-      const complete = wholeTheme()
-      const partial: [string, unknown][] = [
-        ['the first version’s brand and logo only', { logo_asset_id: null, brand: '#2563eb' }],
-        ['no font', { ...complete, font: undefined }],
-        ['no corners', { ...complete, radius: undefined }],
-        ['no shadow', { ...complete, shadow: undefined }],
-        ['no light/dark policy', { ...complete, scheme: undefined }],
-        ['three colours without saying which preset', { ...complete, preset: undefined }],
-        ['three colours and a brand colour', { ...complete, brand: '#2563eb' }],
-        ['null (that would drop the look)', null],
+    it('refuses input that is not a whole design, and writes nothing', async () => {
+      const whole = wholeDesign()
+      const { general, ...otherPages } = whole.values
+      const { body_font: _noFont, ...generalWithoutFont } = general
+      const bad: unknown[] = [
+        null,
+        'design',
+        { venueId, design: whole },
+        { venueId, expectedRevision: -1, design: whole },
+        { venueId, expectedRevision: 0, design: null },
+        { venueId, expectedRevision: 0, design: { ...whole, style: 'made-up' } },
+        { venueId, expectedRevision: 0, design: { ...whole, brand: '#2563eb' } },
+        { venueId, expectedRevision: 0, design: { ...whole, extra: 1 } },
+        {
+          venueId,
+          expectedRevision: 0,
+          design: { ...whole, values: { ...otherPages, general: generalWithoutFont } },
+        },
+        {
+          venueId,
+          expectedRevision: 0,
+          design: { ...whole, values: { ...otherPages, general: { ...general, body_font: 'x' } } },
+        },
+        {
+          venueId,
+          expectedRevision: 0,
+          design: { ...whole, colors: { primary: 'red', secondary: '#fff', tertiary: '#000' } },
+        },
+        { venueId: 'vn_nope', expectedRevision: 0, design: whole },
+        { venueId, expectedRevision: 0, design: whole, extra: 1 },
       ]
-      for (const [label, theme] of partial) {
-        expect(await saveLookAction({ venueId, theme }), label).toEqual({
+      for (const input of bad) {
+        expect(await saveDesignAction(input), JSON.stringify(input)).toEqual({
           ok: false,
           error: 'invalid',
         })
       }
-      expect(readVenueTheme(await settingsOf(venueId))).toBeNull()
+      expect(await recordOf(venueId)).toBeNull()
       expect(revalidated).toEqual([])
     })
 
-    it('refuses input that is not a look at all', async () => {
-      const bad: unknown[] = [
-        null,
-        'theme',
-        { venueId, theme: wholeTheme({ font: 'comic-sans' }) },
-        { venueId, theme: wholeTheme({ radius: 99 }) },
-        {
-          venueId,
-          theme: wholeTheme({ colors: { primary: 'red', secondary: '#fff', tertiary: '#000' } }),
-        },
-        { venueId, theme: wholeTheme({ extra: 1 }) },
-        { venueId: 'vn_nope', theme: wholeTheme() },
-        { venueId, theme: wholeTheme(), extra: 1 },
-      ]
-      for (const input of bad) {
-        const result = await saveLookAction(
-          typeof input === 'object' && input !== null && 'venueId' in input
-            ? input
-            : { venueId, theme: input },
-        )
-        expect(result, JSON.stringify(input)).toEqual({ ok: false, error: 'invalid' })
-      }
-      expect(readVenueTheme(await settingsOf(venueId))).toBeNull()
-    })
-
     it('refuses a logo that is not a stored image of this organisation', async () => {
-      expect(
-        await saveLookAction({ venueId, theme: wholeTheme({ logo_asset_id: NO_ASSET }) }),
-      ).toEqual({
+      expect(await saveNow(wholeDesign('lora', { logo_asset_id: NO_ASSET }))).toEqual({
         ok: false,
         error: 'logo_not_usable',
       })
-      expect(readVenueTheme(await settingsOf(venueId))).toBeNull()
+      expect(await recordOf(venueId)).toBeNull()
     })
 
     it('lets an admin save, and refuses a plain member without writing', async () => {
       asked.role = 'admin'
-      expect((await saveLookAction({ venueId, theme: wholeTheme() })).ok).toBe(true)
+      expect((await saveNow()).ok).toBe(true)
       await setSettings(venueId, {})
       for (const role of ['member', 'viewer', '']) {
         asked.role = role
-        expect(await saveLookAction({ venueId, theme: wholeTheme() }), role).toEqual({
-          ok: false,
-          error: 'forbidden',
-        })
+        expect(await saveNow(), role).toEqual({ ok: false, error: 'forbidden' })
       }
-      expect(readVenueTheme(await settingsOf(venueId))).toBeNull()
+      expect(await recordOf(venueId)).toBeNull()
     })
 
     it('does not find a venue of another organisation', async () => {
-      expect(await saveLookAction({ venueId: otherVenueId, theme: wholeTheme() })).toEqual({
-        ok: false,
-        error: 'not_found',
-      })
-      expect(readVenueTheme(await settingsOf(otherVenueId))).toBeNull()
-      expect(await saveLookAction({ venueId: newId('vn'), theme: wholeTheme() })).toEqual({
-        ok: false,
-        error: 'not_found',
-      })
-    })
-  })
-
-  describe('chooseTemplateAction', () => {
-    const look = { layout: 'one', featureFirstSection: false }
-
-    it('saves the visible template with its look options and refreshes the page', async () => {
-      const result = await chooseTemplateAction({
-        venueId,
-        face: 'editorial-market',
-        lookOptions: look,
-      })
-      expect(result).toEqual({
-        ok: true,
-        presentation: { face: 'editorial-market', options: look },
-      })
-      expect(readPresentation(await settingsOf(venueId))).toEqual({
-        face: 'editorial-market',
-        options: look,
-      })
-      expect(revalidated).toEqual([`/venues/${venueId}`])
-    })
-
-    it('refuses the hidden reference template and a name that is not in the registry', async () => {
-      for (const face of ['qr-phone', 'no-such-template', 'Editorial-Market', '']) {
-        const result = await chooseTemplateAction({ venueId, face, lookOptions: {} })
-        expect(result.ok, face).toBe(false)
-        expect(['unknown_face', 'invalid'], face).toContain(result.ok ? '' : result.error)
-      }
-      expect(await chooseTemplateAction({ venueId, face: 'qr-phone', lookOptions: {} })).toEqual({
-        ok: false,
-        error: 'unknown_face',
-      })
-      expect(readPresentation(await settingsOf(venueId))).toBeNull()
-    })
-
-    it('merges the look options and keeps the feature options the composer panel saved', async () => {
-      await setVenuePresentation(getPool(), tenant, {
-        venueId: venueId as never,
-        presentation: {
-          face: 'editorial-market',
-          options: { layout: 'two', featureFirstSection: true, layoutSwitch: false },
-        },
-      })
-      // The form also sends a feature key and a key the template does not declare: both ignored.
-      const result = await chooseTemplateAction({
-        venueId,
-        face: 'editorial-market',
-        lookOptions: { ...look, layoutSwitch: true, madeUp: 'x' },
-      })
-      expect(result).toEqual({
-        ok: true,
-        presentation: {
-          face: 'editorial-market',
-          options: { layout: 'one', featureFirstSection: false, layoutSwitch: false },
-        },
-      })
-      expect(readPresentation(await settingsOf(venueId))?.options).toEqual({
-        layout: 'one',
-        featureFirstSection: false,
-        layoutSwitch: false,
-      })
-    })
-
-    it('replaces a value the template does not list by its default', async () => {
-      const result = await chooseTemplateAction({
-        venueId,
-        face: 'editorial-market',
-        lookOptions: { layout: 'diagonal', featureFirstSection: 'yes' },
-      })
-      expect(result).toMatchObject({
-        ok: true,
-        presentation: { options: { layout: 'two', featureFirstSection: true } },
-      })
-    })
-
-    it('and the composer panel’s feature options never drop each other’s keys', async () => {
-      // Look first, then the composer panel's switch, then the look again: each write keeps the
-      // other's keys (SH-05b's saveFeatureOptionsAction is the mirror image of this action).
-      await chooseTemplateAction({ venueId, face: 'editorial-market', lookOptions: look })
-      expect(await saveFeatureOptionsAction({ venueId, options: { layoutSwitch: false } })).toEqual(
-        { ok: true },
-      )
-      expect(readPresentation(await settingsOf(venueId))?.options).toEqual({
-        layout: 'one',
-        featureFirstSection: false,
-        layoutSwitch: false,
-      })
-      await chooseTemplateAction({
-        venueId,
-        face: 'editorial-market',
-        lookOptions: { layout: 'list', featureFirstSection: true },
-      })
-      expect(readPresentation(await settingsOf(venueId))?.options).toEqual({
-        layout: 'list',
-        featureFirstSection: true,
-        layoutSwitch: false,
-      })
-      expect(await saveFeatureOptionsAction({ venueId, options: { layoutSwitch: true } })).toEqual({
-        ok: true,
-      })
-      expect(readPresentation(await settingsOf(venueId))?.options).toEqual({
-        layout: 'list',
-        featureFirstSection: true,
-        layoutSwitch: true,
-      })
-    })
-
-    it('leaves the look and the other settings alone', async () => {
-      await saveLookAction({ venueId, theme: wholeTheme() })
-      await chooseTemplateAction({ venueId, face: 'editorial-market', lookOptions: look })
-      expect(readVenueTheme(await settingsOf(venueId))?.font).toBe('lora')
-    })
-
-    it('refuses bad input', async () => {
-      const bad: unknown[] = [
-        null,
-        { venueId, face: 'editorial-market' },
-        { venueId, face: 'editorial-market', lookOptions: 'one' },
-        { venueId, face: 'editorial-market', lookOptions: { layout: 1 } },
-        { venueId, face: 'editorial-market', lookOptions: {}, extra: true },
-        { venueId: 'vn_nope', face: 'editorial-market', lookOptions: {} },
-      ]
-      for (const input of bad) {
-        expect(await chooseTemplateAction(input), JSON.stringify(input)).toEqual({
-          ok: false,
-          error: 'invalid',
-        })
-      }
-      expect(readPresentation(await settingsOf(venueId))).toBeNull()
-    })
-
-    it('refuses a plain member without writing, and does not find another organisation’s venue', async () => {
-      asked.role = 'member'
       expect(
-        await chooseTemplateAction({ venueId, face: 'editorial-market', lookOptions: look }),
-      ).toEqual({ ok: false, error: 'forbidden' })
-      asked.role = 'owner'
-      expect(
-        await chooseTemplateAction({
+        await saveDesignAction({
           venueId: otherVenueId,
-          face: 'editorial-market',
-          lookOptions: look,
+          expectedRevision: 0,
+          design: wholeDesign(),
         }),
       ).toEqual({ ok: false, error: 'not_found' })
-      expect(readPresentation(await settingsOf(venueId))).toBeNull()
-      expect(readPresentation(await settingsOf(otherVenueId))).toBeNull()
+      expect(await recordOf(otherVenueId)).toBeNull()
+      expect(
+        await saveDesignAction({
+          venueId: newId('vn'),
+          expectedRevision: 0,
+          design: wholeDesign(),
+        }),
+      ).toEqual({ ok: false, error: 'not_found' })
     })
   })
 
   describe('loadDesign', () => {
     const noStore = async () => ({ getUrl: async () => 'https://example.test/logo' })
 
-    it('gives the default template and no look for a venue that has chosen none', async () => {
-      const row = { settings: await settingsOf(venueId) } as never
+    it('gives Basic at revision 0 for a venue with no record', async () => {
+      const row = { settings: (await settingsOf(venueId)) ?? {} }
       const view = await loadDesign(getPool(), tenant, row, noStore, 'owner')
       expect(view).toEqual({
-        theme: null,
-        presentation: { face: 'editorial-market', options: {} },
+        revision: 0,
+        design: designContentOf(DEFAULT_DESIGN),
+        theme: designThemeOf(DEFAULT_DESIGN),
         logo: null,
         canEdit: true,
       })
     })
 
-    it('gives the saved look and template, and read-only for a member', async () => {
-      await saveLookAction({ venueId, theme: wholeTheme() })
-      await chooseTemplateAction({
-        venueId,
-        face: 'editorial-market',
-        lookOptions: { layout: 'one', featureFirstSection: true },
-      })
-      const row = { settings: await settingsOf(venueId) } as never
+    it('gives the saved design and its revision, and read-only for a member', async () => {
+      await saveNow()
+      const row = { settings: (await settingsOf(venueId)) ?? {} }
       const view = await loadDesign(getPool(), tenant, row, noStore, 'member')
-      expect(view.theme?.preset).toBe('midnight')
-      expect(view.presentation.options).toMatchObject({ layout: 'one' })
+      expect(view.revision).toBe(1)
+      expect((view.design as DesignContent).values.general.body_font).toBe('lora')
+      expect(view.theme.font).toBe('lora')
+      expect(view.theme.colors).toEqual(midnight.colours)
       expect(view.canEdit).toBe(false)
       expect((await loadDesign(getPool(), tenant, row, noStore, 'admin')).canEdit).toBe(true)
     })

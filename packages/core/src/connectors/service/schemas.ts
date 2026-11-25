@@ -1,0 +1,625 @@
+// The shapes that cross the service seam (spec #64, Implementation Decisions 1; #51 design §1;
+// the connector-fitness verification of 10-22). Zod at the boundary: a connector's answer is
+// parsed with these before the platform acts on it, and the conformance kit parses every answer.
+//
+// Two rules belong to the interface, not only its types:
+//   - a timeout is always `unknown`: never `refused`, never a reason to write again (D115);
+//   - a reading with any failed part is `complete: false` and concludes nothing (rule 6, D122 §6).
+
+import { z } from 'zod'
+
+import { addMinor, CurrencySchema, MoneyError } from '../../money'
+import { DecimalQuantitySchema } from '../../quantity'
+import { PosRefSchema } from './pos-ref'
+
+// ---------------------------------------------------------------------------------------------
+// Values
+
+/** A quantity as the POS sent it, as decimal text (`quantity.ts`, shared with the bill). */
+export { DecimalQuantitySchema }
+
+/** A quantity Restro sends: decimal text above zero. */
+export const OrderQuantitySchema = DecimalQuantitySchema.refine(
+  (value) => !value.startsWith('-') && /[1-9]/.test(value),
+  'a quantity Restro sends is above zero',
+)
+
+/** A signed amount in minor units: discounts and negative lines exist (verification fix 30). */
+export const SignedMinorSchema = z.int()
+
+/** A non-negative amount in minor units. */
+export const MinorSchema = z.int().nonnegative()
+
+/** A moment with its offset, as ISO 8601 text. */
+export const InstantSchema = z.iso.datetime({ offset: true })
+
+// ---------------------------------------------------------------------------------------------
+// Refusals and outcomes
+
+/**
+ * How far a refusal reaches (verification fix 55+56): this line or item, this POS bill, the whole
+ * POS login, or the whole venue. The first `login` or `venue` refusal starts a connection pause
+ * at once (D120, D122 §6).
+ */
+export const REFUSAL_SCOPES = ['line', 'bill', 'login', 'venue'] as const
+export type RefusalScope = (typeof REFUSAL_SCOPES)[number]
+
+/**
+ * Why the POS said a definite "no" (#51 design §1; D120's outright refusals; C46, C47). A
+ * connector maps its POS's answer to one of these only where the POS's docs or a recording say
+ * so; anything else that is not a clear yes is `unknown`.
+ */
+export const REFUSAL_CODES = [
+  /** The chosen POS bill is closed (D115: read the table again and use the next one). */
+  'bill_closed',
+  /** The chosen POS bill is locked by staff. */
+  'bill_locked',
+  /** No POS bill to join and the connector may not open one (D122 §4, D124 §2). */
+  'needs_first_item',
+  /** An item cannot be sold now (C47); the refusal names its line. */
+  'item_unavailable',
+  /** The POS refused one line for another reason it names. */
+  'line_refused',
+  /** The amount does not match what the POS expects (a close). */
+  'amount_mismatch',
+  /** The step was already done (a second close of the same bill). */
+  'already_done',
+  /**
+   * The POS is busy: another device holds this bill, or, only where the connector knows its POS
+   * answers so before doing anything, it took no more calls just now. Either way nothing was
+   * written.
+   */
+  'busy',
+  /** A read the step needs first failed, so nothing was written: the step never went out (D116). */
+  'read_failed',
+  /** The POS login's credentials are refused. */
+  'credentials',
+  /** The POS login lacks a right this step needs. */
+  'no_rights',
+  /** Restro's cash desk, or its equivalent, is missing (D120). */
+  'cash_desk_missing',
+  /** The POS's cash period or day is closed (D120). */
+  'period_closed',
+  /** The fiscal device refuses (verification fix 55+56: a close pause). */
+  'fiscal_device',
+  /** The connector does not offer this step: its capability is not declared. */
+  'not_supported',
+] as const
+export type RefusalCode = (typeof REFUSAL_CODES)[number]
+
+/** A definite "no", with its reach. `line` is the index of the refused line where scope is `line`. */
+export const RefusalSchema = z
+  .strictObject({
+    code: z.enum(REFUSAL_CODES),
+    scope: z.enum(REFUSAL_SCOPES),
+    line: z.int().nonnegative().nullable(),
+    /** The POS's own words, for the Restro team's Log only: never shown to a guest (rule 3). */
+    detail: z.string().max(500).nullable(),
+    /** The POS bill the refusal is about, where the step chose one (D115: use the next one). */
+    bill: PosRefSchema.optional(),
+  })
+  .refine((refusal) => (refusal.scope === 'line') === (refusal.line !== null), {
+    message: 'a line refusal names its line, and only a line refusal does',
+  })
+export type Refusal = z.output<typeof RefusalSchema>
+
+/**
+ * What a write step answers: done, a definite "no", or `unknown` (a timeout: read back, D115).
+ * The payment provider seam reuses it with its own refusal (`connectors/payment`).
+ */
+export function writeOutcomeSchema<R extends z.ZodType>(
+  result: R,
+): ReturnType<typeof outcomeSchema<R, typeof RefusalSchema>>
+export function writeOutcomeSchema<R extends z.ZodType, F extends z.ZodType>(
+  result: R,
+  refusal: F,
+): ReturnType<typeof outcomeSchema<R, F>>
+export function writeOutcomeSchema(result: z.ZodType, refusal: z.ZodType = RefusalSchema) {
+  return outcomeSchema(result, refusal)
+}
+
+function outcomeSchema<R extends z.ZodType, F extends z.ZodType>(result: R, refusal: F) {
+  return z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('done'), result }),
+    z.strictObject({ kind: z.literal('refused'), refusal }),
+    z.strictObject({ kind: z.literal('unknown'), reason: z.string().max(500) }),
+  ])
+}
+export type WriteOutcome<R, F = Refusal> =
+  | { readonly kind: 'done'; readonly result: R }
+  | { readonly kind: 'refused'; readonly refusal: F }
+  | { readonly kind: 'unknown'; readonly reason: string }
+
+/** What a read answers. An incomplete reading concludes nothing (rule 6), never a shorter list. */
+export function readingSchema<T extends z.ZodType>(value: T) {
+  return z.discriminatedUnion('complete', [
+    z.strictObject({ complete: z.literal(true), value }),
+    z.strictObject({
+      complete: z.literal(false),
+      reason: z.string().max(500),
+      busy: z.literal(true).optional(),
+    }),
+  ])
+}
+export type Reading<T> =
+  | { readonly complete: true; readonly value: T }
+  | {
+      readonly complete: false
+      readonly reason: string
+      /**
+       * Set only by a connector that knows its POS answered "busy" before doing anything, or when
+       * the call never left for want of room in the budget. Then nothing is wrong with the table
+       * or the connection: it is no failed reading, the same as a read the budget skipped.
+       */
+      readonly busy?: true
+    }
+
+// ---------------------------------------------------------------------------------------------
+// The probe (D120's "cheap POS read", D122 §6, D124 §5)
+
+/**
+ * The probe's answer. It never writes (rule 7). Beside "it answered", it carries the POS's current
+ * mode where the POS reports one (training mode pauses a live connection at once, D124 §5),
+ * whether the POS says it is degraded, and the fiscal device's state where readable. `null` means
+ * the POS does not say.
+ */
+export const ProbeResultSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('answered'),
+    mode: z.enum(['live', 'training']).nullable(),
+    degraded: z.boolean().nullable(),
+    fiscalDevice: z.enum(['ok', 'fault']).nullable(),
+  }),
+  z.strictObject({ kind: z.literal('refused'), refusal: RefusalSchema }),
+  z.strictObject({ kind: z.literal('unknown'), reason: z.string().max(500) }),
+])
+export type ProbeResult = z.output<typeof ProbeResultSchema>
+
+// ---------------------------------------------------------------------------------------------
+// The floor (D122 §1, D124 §1)
+
+/** A bar, where the POS knows bars. Never made up (D124 §1). */
+export const FloorBarSchema = z.strictObject({
+  ref: PosRefSchema,
+  name: z.string().min(1).max(200),
+})
+export type FloorBar = z.output<typeof FloorBarSchema>
+
+/** A table as the POS lists it. */
+export const FloorTableSchema = z.strictObject({
+  ref: PosRefSchema,
+  /** The table's public label as the POS shows it ("7", "VIP"). */
+  name: z.string().min(1).max(200),
+  /** The table's area (a hall) as the POS names it, or null. */
+  area: z.string().min(1).max(200).nullable(),
+  /** The bar that serves it, or null where the POS has none or can't say (D124 §1). */
+  bar: PosRefSchema.nullable(),
+  /** Whether the POS marks it a payment table; null where the POS has no such mark. */
+  paymentTable: z.boolean().nullable(),
+})
+export type FloorTable = z.output<typeof FloorTableSchema>
+
+/** The floor: tables, payment tables among them, and the bars where the POS knows them. */
+export const FloorSchema = z
+  .strictObject({
+    tables: z.array(FloorTableSchema),
+    bars: z.array(FloorBarSchema),
+  })
+  .superRefine((floor, ctx) => {
+    const bars = new Set(floor.bars.map((bar) => bar.ref.pos))
+    const tables = new Set<string>()
+    for (const [index, table] of floor.tables.entries()) {
+      if (tables.has(table.ref.pos)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'a table is listed twice',
+          path: ['tables', index],
+        })
+      }
+      tables.add(table.ref.pos)
+      if (table.bar !== null && !bars.has(table.bar.pos)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'a table names a bar the floor does not list',
+          path: ['tables', index, 'bar'],
+        })
+      }
+    }
+    if (bars.size !== floor.bars.length) {
+      ctx.addIssue({ code: 'custom', message: 'a bar is listed twice', path: ['bars'] })
+    }
+  })
+export type Floor = z.output<typeof FloorSchema>
+
+// ---------------------------------------------------------------------------------------------
+// A table's reading, grouped per POS bill (D115, D122 §1; verification fixes 7+8, 17+31, 18,
+// 28+29, 30, 37)
+
+/** One line of a POS bill, as the POS gives it. */
+export const BillLineSchema = z.strictObject({
+  ref: PosRefSchema,
+  /** The POS item, or null for a line with no item (a charge the POS adds). */
+  item: PosRefSchema.nullable(),
+  /** The POS's own text for the line, for D75's fallback; never used where our own name exists. */
+  name: z.string().max(500).nullable(),
+  quantity: DecimalQuantitySchema,
+  /** The POS's own line total, signed; never quantity × price recomputed (rule 8). */
+  amountMinor: SignedMinorSchema,
+  /** Who entered it, where `whoEnteredLine` is declared; else null. */
+  enteredBy: z.enum(['restro', 'staff']).nullable(),
+  /** When it was entered, where the POS says; else null. */
+  enteredAt: InstantSchema.nullable(),
+  /** Restro's own reference read back, where `ownLineReference` is declared; else null. */
+  restroRef: z.string().min(1).max(200).nullable(),
+})
+export type BillLine = z.output<typeof BillLineSchema>
+
+/** One open POS bill on the table. */
+export const PosBillSchema = z.strictObject({
+  ref: PosRefSchema,
+  /** The POS's own total for this bill, signed; not necessarily the sum of its lines (fix 17+31). */
+  totalMinor: SignedMinorSchema,
+  /** What is already paid against it (fix 18: a part-paid bill is not payable in the app). */
+  paidMinor: MinorSchema,
+  /** When the POS opened it, where `billOpeningTime` is declared; else null (D124 §2). */
+  openedAt: InstantSchema.nullable(),
+  /** Whether Restro's own POS login opened it, where the POS says; else null (D124 §3). */
+  openedByRestro: z.boolean().nullable(),
+  /** The isolated bill of a payment still in flight (part 2): never "the oldest" for a send. */
+  paymentInFlight: z.boolean(),
+  lines: z.array(BillLineSchema),
+})
+export type PosBill = z.output<typeof PosBillSchema>
+
+/** A table's open POS bills, oldest first as the POS orders them. */
+export const TableBillsSchema = z.strictObject({
+  table: PosRefSchema,
+  currency: CurrencySchema,
+  bills: z.array(PosBillSchema),
+})
+export type TableBills = z.output<typeof TableBillsSchema>
+
+/** The isolated bill of a payment (part 2): one POS bill, or nothing left to read. */
+export const IsolatedBillSchema = z.strictObject({
+  currency: CurrencySchema,
+  bill: PosBillSchema.nullable(),
+})
+export type IsolatedBill = z.output<typeof IsolatedBillSchema>
+
+/**
+ * One closed POS bill as a read of closed bills shows it, only where `readClosedBills` is declared:
+ * what D127's third proof of a close looks at.
+ */
+export const ClosedBillSchema = z.strictObject({
+  ref: PosRefSchema,
+  totalMinor: SignedMinorSchema,
+  /** The receipt number the bill carries, where the POS gives one (`receiptNumberOnClose`). */
+  receiptNumber: z.string().min(1).max(200).nullable(),
+  /** Restro's references on its lines, where the POS keeps them (`ownLineReference`). */
+  restroRefs: z.array(z.string().min(1).max(200)),
+  /**
+   * Restro's references on the bill's card payments, where `closeWithSeveralPayments` is declared
+   * (D160 §3); absent elsewhere. One close takes every payment or none, so any one proves it.
+   */
+  paymentRefs: z.array(z.string().min(1).max(200)).optional(),
+})
+export type ClosedBill = z.output<typeof ClosedBillSchema>
+
+/** The item-availability read (D122 §4, Stock), only where `itemAvailability` is declared. */
+export const AvailabilitySchema = z.strictObject({
+  items: z.array(z.strictObject({ item: PosRefSchema, available: z.boolean() })),
+})
+export type Availability = z.output<typeof AvailabilitySchema>
+
+// ---------------------------------------------------------------------------------------------
+// Write requests
+
+/** A line Restro sends: an item, a quantity, its options and a note. Never a price (rule 5). */
+export const OrderLineSchema = z.strictObject({
+  item: PosRefSchema,
+  quantity: OrderQuantitySchema,
+  options: z.array(PosRefSchema).max(50),
+  /** Sent only where `notesReachTicket` is declared (D122 §4). */
+  note: z.string().max(200).nullable(),
+})
+export type OrderLine = z.output<typeof OrderLineSchema>
+
+/** Restro's reference for one write (a sent order's or a payment step's). */
+export const WriteRefSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/)
+
+/** "Put these lines on this table's bill" (D115): the connector chooses the POS bill. */
+export const AddLinesRequestSchema = z.strictObject({
+  table: PosRefSchema,
+  lines: z.array(OrderLineSchema).min(1).max(100),
+  ref: WriteRefSchema,
+  /** The start of the venue's current service day: never join a bill opened before it (D124 §2). */
+  serviceDayStartsAt: InstantSchema,
+  /** POS bills the platform has under payment: never joined by a send (fix 7+8). */
+  excludeBills: z.array(PosRefSchema),
+})
+export type AddLinesRequest = z.output<typeof AddLinesRequestSchema>
+
+/** Which POS bill the lines went onto, where the POS says. */
+export const AddLinesResultSchema = z.strictObject({
+  /**
+   * Null only where the POS doesn't say. Where `firstItemsOpenBill` is declared, a round that
+   * opened a bill always names it: pay-first finds its round by it (D127, #113; the kit checks).
+   */
+  bill: PosRefSchema.nullable(),
+  opened: z.boolean(),
+})
+export type AddLinesResult = z.output<typeof AddLinesResultSchema>
+
+/** A picked line and how much of it (part 2: what a guest pays). */
+export const LinePickSchema = z.strictObject({
+  bill: PosRefSchema,
+  line: PosRefSchema,
+  quantity: OrderQuantitySchema,
+})
+export type LinePick = z.output<typeof LinePickSchema>
+
+/**
+ * What the POS made when it isolated the picks (fix 7+8): opaque to the platform, stored as a
+ * backend fact of the moment. A payment table at a one-bill POS, a split-off POS bill elsewhere.
+ */
+export const IsolatedHandleSchema = z.strictObject({
+  ref: PosRefSchema,
+  table: PosRefSchema,
+})
+export type IsolatedHandle = z.output<typeof IsolatedHandleSchema>
+
+/** Isolate the picks (D122 §8 step 3), onto `paymentTable` where the POS moves lines to a table. */
+export const IsolateLinesRequestSchema = z.strictObject({
+  table: PosRefSchema,
+  picks: z.array(LinePickSchema).min(1).max(100),
+  paymentTable: PosRefSchema.nullable(),
+  /**
+   * One payment over several tables of a linked group (D160 §2, #542): the bill an earlier isolate
+   * of this payment made on `paymentTable`, which these picks join, so the payment closes once.
+   * Only where the POS moves lines to a table; the payment table may then hold that bill and no
+   * other (else `busy`). Left out, the payment table must be empty, as for one table.
+   */
+  into: IsolatedHandleSchema.optional(),
+  ref: WriteRefSchema,
+})
+export type IsolateLinesRequest = z.output<typeof IsolateLinesRequestSchema>
+
+export const IsolateLinesResultSchema = z.strictObject({ isolated: IsolatedHandleSchema })
+export type IsolateLinesResult = z.output<typeof IsolateLinesResultSchema>
+
+/** A guest's email for an electronic receipt: one valid address, nothing else (D127, #186). */
+export const ReceiptEmailSchema = z.email().max(254)
+
+/** The most card payments one close carries: one per guest of a group payment (D160 §3). */
+export const CLOSE_PAYMENTS_MAX = 20
+
+/**
+ * One card payment of a close (D160 §3, #541): one guest's part of a group payment. Its amount
+ * holds its tip; the reference is Restro's own for this payment, read back on the closed bill.
+ */
+export const ClosePaymentSchema = z
+  .strictObject({
+    amountMinor: MinorSchema.positive(),
+    tipMinor: MinorSchema,
+    ref: WriteRefSchema,
+  })
+  .refine((payment) => payment.tipMinor <= payment.amountMinor, {
+    message: "a payment's tip is inside its amount, never above it",
+    path: ['tipMinor'],
+  })
+export type ClosePayment = z.output<typeof ClosePaymentSchema>
+
+/**
+ * The card payments a close carries: its `payments`, or, where it names none (one payment, as
+ * before #541), a list of one made of the close's own amount, tip and reference.
+ */
+export function closePaymentsOf(request: {
+  readonly amountMinor: number
+  readonly tipMinor: number
+  readonly ref: string
+  readonly payments?: readonly ClosePayment[] | undefined
+}): readonly ClosePayment[] {
+  return (
+    request.payments ?? [
+      { amountMinor: request.amountMinor, tipMinor: request.tipMinor, ref: request.ref },
+    ]
+  )
+}
+
+/**
+ * Why a close's payments don't add up, or null when they do (rule 8, D160 §3): the payments'
+ * amounts must sum to the close's amount and their tips to its tip, each tip inside its payment,
+ * each reference once. The isolated bill's own amount is the connector's to check against its
+ * reading. Integer minor units through the money module; a sum past the safe range doesn't add up.
+ */
+export function closePaymentsProblem(request: {
+  readonly amountMinor: number
+  readonly tipMinor: number
+  readonly ref: string
+  readonly payments?: readonly ClosePayment[] | undefined
+}): string | null {
+  const payments = closePaymentsOf(request)
+  if (payments.length === 0) return 'a close needs a payment'
+  if (payments.length > CLOSE_PAYMENTS_MAX) return `more than ${CLOSE_PAYMENTS_MAX} payments`
+  if (new Set(payments.map((payment) => payment.ref)).size !== payments.length) {
+    return 'two payments carry the same reference'
+  }
+  if (payments.some((payment) => payment.tipMinor > payment.amountMinor)) {
+    return "a payment's tip is above its amount"
+  }
+  let amounts: number
+  let tips: number
+  try {
+    amounts = payments.reduce((sum, payment) => addMinor(sum, payment.amountMinor), 0)
+    tips = payments.reduce((sum, payment) => addMinor(sum, payment.tipMinor), 0)
+  } catch (error) {
+    if (error instanceof MoneyError) return `the payments do not add up: ${error.message}`
+    throw error
+  }
+  if (amounts !== request.amountMinor) {
+    return `the payments sum to ${amounts}, not the close's ${request.amountMinor}`
+  }
+  if (tips !== request.tipMinor) {
+    return `the payments' tips sum to ${tips}, not the close's ${request.tipMinor}`
+  }
+  return null
+}
+
+/**
+ * Why a connector refuses a close's payments before any write, or null when it may go on (D160
+ * §3): two or more payments where it doesn't declare `closeWithSeveralPayments` (undeclared means
+ * not claimed, D122 §3), or `payments` that don't add up. A close that names no `payments` is
+ * checked as before #541.
+ */
+export function closePaymentsRefusal(
+  request: Parameters<typeof closePaymentsProblem>[0],
+  closeWithSeveralPayments: boolean,
+): { readonly code: 'not_supported' | 'amount_mismatch'; readonly detail: string } | null {
+  if (closePaymentsOf(request).length > 1 && !closeWithSeveralPayments) {
+    return { code: 'not_supported', detail: 'the POS takes one payment per close from Restro' }
+  }
+  const problem = request.payments === undefined ? null : closePaymentsProblem(request)
+  return problem === null ? null : { code: 'amount_mismatch', detail: problem }
+}
+
+/** Close the isolated bill with its payment (D122 §8 step 4), or its payments (D160 §3). */
+export const PayAndCloseRequestSchema = z
+  .strictObject({
+    isolated: IsolatedHandleSchema,
+    /**
+     * The whole payment: the isolated bill's own amount plus the tip (D127 §The route). With
+     * several `payments`, their amounts' sum.
+     */
+    amountMinor: MinorSchema,
+    /**
+     * The tip inside `amountMinor`, 0 for none. It goes on the same bill and fiscal receipt where
+     * `recordTipOnClose` is declared; elsewhere a tip above 0 is refused before any write (D127).
+     * With several `payments`, their tips' sum: every tip goes on the one receipt (D160 §3).
+     */
+    tipMinor: MinorSchema,
+    /**
+     * The card payments, one per guest of a group payment (D160 §3), where
+     * `closeWithSeveralPayments` is declared; undeclared, two or more are refused before any
+     * write. Absent, the close is one payment of `amountMinor` with `tipMinor` and `ref`.
+     */
+    payments: z.array(ClosePaymentSchema).min(1).max(CLOSE_PAYMENTS_MAX).optional(),
+    /** The POS's payment type, where `closeWithPaymentType` is declared; else null. */
+    paymentType: PosRefSchema.nullable(),
+    /**
+     * The guest's email, where `electronicReceipt` is declared: the close asks the POS for the
+     * sale as an electronic receipt to this address (D127, #186). Absent for paper. Personal
+     * data: carried to this one close and never recorded, logged or sent anywhere else.
+     */
+    receiptEmail: ReceiptEmailSchema.optional(),
+    ref: WriteRefSchema,
+  })
+  .refine((request) => request.tipMinor <= request.amountMinor, {
+    message: 'the tip is inside the amount, never above it',
+    path: ['tipMinor'],
+  })
+  .superRefine((request, issues) => {
+    if (request.payments === undefined) return
+    const problem = closePaymentsProblem(request)
+    if (problem !== null) issues.addIssue({ code: 'custom', message: problem, path: ['payments'] })
+  })
+export type PayAndCloseRequest = z.output<typeof PayAndCloseRequestSchema>
+
+/** The largest receipt file Restro will send on: a fiscal receipt is a page or two. */
+export const RECEIPT_FILE_MAX_BYTES = 2_000_000
+
+/**
+ * The POS's own receipt file, where `electronicReceiptFile` is declared: passed on unchanged,
+ * never drawn, read or edited by Restro, and never stored (D127, #186).
+ */
+export const ReceiptFileSchema = z.strictObject({
+  /** The file's name as the POS gave it. */
+  filename: z
+    .string()
+    .min(1)
+    .max(120)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
+  contentType: z.enum(['application/pdf', 'text/html', 'text/plain']),
+  /** The bytes, base64 as sent over the wire. */
+  contentBase64: z
+    .base64()
+    .min(1)
+    .max(Math.ceil((RECEIPT_FILE_MAX_BYTES * 4) / 3) + 4),
+})
+export type ReceiptFile = z.output<typeof ReceiptFileSchema>
+
+/**
+ * A POS's receipt file as a connector read it, made safe to pass on, or null when it can't be: the
+ * file's name is made safe rather than refused (anything outside letters, digits, dot, dash and
+ * underscore becomes an underscore, and a name must start with a letter or digit), and line breaks
+ * wrapped into the base64 are taken out; the bytes themselves are never changed. A type or size
+ * Restro doesn't pass on is null. Never throws: a bad file must not turn a finished close into an
+ * unknown one (D127, #186); the connector then reports the receipt as not issued.
+ */
+export function safeReceiptFile(raw: unknown): ReceiptFile | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const { filename, contentType, contentBase64 } = raw as Record<string, unknown>
+  if (typeof filename !== 'string' || typeof contentBase64 !== 'string') return null
+  const stem = Array.from(filename.normalize('NFKD'))
+    .map((char) => (/[A-Za-z0-9._-]/.test(char) ? char : '_'))
+    .join('')
+    .replace(/^[^A-Za-z0-9]+/, '')
+    .slice(0, 120)
+  const parsed = ReceiptFileSchema.safeParse({
+    filename: stem === '' ? 'receipt' : stem,
+    contentType,
+    contentBase64: contentBase64.replace(/\s+/g, ''),
+  })
+  return parsed.success ? parsed.data : null
+}
+
+/**
+ * What became of the electronic receipt a close was asked for (D127, #186), reported only when
+ * the close was given an email:
+ *   - `sent`: the POS issued it and sends it itself;
+ *   - `file`: the POS issued it and `receiptFile` is its file, for Restro to send;
+ *   - `not_issued`: the close was done but the POS issued no electronic receipt (a printer fault,
+ *     a file Restro could not pass on). The waiter brings paper; the guest is never told it was
+ *     sent.
+ */
+export const ElectronicReceiptOutcomeSchema = z.enum(['sent', 'file', 'not_issued'])
+export type ElectronicReceiptOutcome = z.output<typeof ElectronicReceiptOutcomeSchema>
+
+export const PayAndCloseResultSchema = z
+  .strictObject({
+    /** Where `receiptNumberOnClose` is declared; else null. Backend only. */
+    receiptNumber: z.string().min(1).max(100).nullable(),
+    /**
+     * What became of the electronic receipt: present exactly when the close was given an email
+     * (a connector without `electronicReceipt` refuses one).
+     */
+    electronicReceipt: ElectronicReceiptOutcomeSchema.optional(),
+    /**
+     * The receipt as a file: present exactly when `electronicReceipt` is `file`. Absent where the
+     * POS sends the receipt itself, where none was issued, or for paper.
+     */
+    receiptFile: ReceiptFileSchema.optional(),
+  })
+  .refine(
+    (result) => (result.receiptFile !== undefined) === (result.electronicReceipt === 'file'),
+    {
+      message: "a receipt file comes with 'file', and only with it",
+      path: ['receiptFile'],
+    },
+  )
+export type PayAndCloseResult = z.output<typeof PayAndCloseResultSchema>
+
+/** Put isolated lines back on the real table (D122 §8: a declined card, a failed last check). */
+export const UndoIsolateRequestSchema = z.strictObject({
+  isolated: IsolatedHandleSchema,
+  table: PosRefSchema,
+  /**
+   * Only these lines of the isolated bill go back to `table` (one payment over several tables, each
+   * line to its own, D160 §2, #542); left out, every line on it does.
+   */
+  lines: z.array(PosRefSchema).min(1).max(500).optional(),
+  ref: WriteRefSchema,
+})
+export type UndoIsolateRequest = z.output<typeof UndoIsolateRequestSchema>
+
+export const EmptyResultSchema = z.strictObject({})
+export type EmptyResult = z.output<typeof EmptyResultSchema>

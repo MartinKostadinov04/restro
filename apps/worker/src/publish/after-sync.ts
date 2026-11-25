@@ -65,6 +65,7 @@ async function enqueueAutoPublish(
   const id = await env.enqueue(JOB_NAMES.publishMenu, job.data, {
     singletonKey: job.singletonKey,
     startAfter: job.startAfter,
+    ...(job.group === undefined ? {} : { group: job.group }),
   })
   return id === null
     ? 'a publish is already waiting for this menu: this sync joins it'
