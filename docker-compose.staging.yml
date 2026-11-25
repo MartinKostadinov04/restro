@@ -49,9 +49,11 @@ services:
       STAFF_PIN_PEPPER: ${STAFF_PIN_PEPPER:?}
       GUEST_PASS_KEY: ${GUEST_PASS_KEY:?}
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:?}
-      STRIPE_NOTICE_SECRET: ${STRIPE_NOTICE_SECRET:?}
       # Optional.
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      # Exists only once the provider's test endpoint points at this running staging; until then
+      # the notice route answers 503, so requiring it would block the first deploy.
+      STRIPE_NOTICE_SECRET: ${STRIPE_NOTICE_SECRET:-}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
     volumes:
       - restro-data:/data
