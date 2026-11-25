@@ -320,6 +320,7 @@ async function deleteRows(tx: PurgeTx, table: string, where: SQL): Promise<reado
 const VENUE_SERVICE_TABLES = [
   'payment_refunds',
   'payment_steps',
+  'payment_holds',
   'payment_lines',
   'payments',
   'payment_accounts',
@@ -443,6 +444,7 @@ async function deleteDuePayments(
   )
   count(counts, 'payment_refunds', await deleteRows(tx, 'payment_refunds', due))
   count(counts, 'payment_steps', await deleteRows(tx, 'payment_steps', due))
+  count(counts, 'payment_holds', await deleteRows(tx, 'payment_holds', due))
   count(counts, 'payment_lines', await deleteRows(tx, 'payment_lines', due))
   count(
     counts,

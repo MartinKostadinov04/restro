@@ -1,7 +1,8 @@
 // The simulated provider's account rules (#103 review): an unfinished account gets a fresh link
 // for itself, an account it never made is not found, and a restricted account still releases a
 // hold but captures nothing. #110: an engine given a run puts it in every ref it makes, so a
-// restarted engine never reuses a ref an earlier run stored.
+// restarted engine never reuses a ref an earlier run stored. #543: a group payment's holds are
+// one payment each, read back by their hold, captured or released one by one.
 
 import { newId, providerRef } from '@restro/core'
 import { describe, expect, it } from 'vitest'
@@ -206,5 +207,154 @@ describe('a restricted account', () => {
         description: 'Test Bar, table 1',
       }),
     ).toMatchObject({ kind: 'refused', refusal: { code: 'account_restricted' } })
+  })
+})
+
+describe("a group payment's holds (#543)", () => {
+  async function groupOf(amounts: readonly number[]) {
+    const { engine, provider } = simPay()
+    const accountRef = engine.addAccount()
+    const paymentId = newId('py')
+    const holds = []
+    for (const amountMinor of amounts) {
+      const holdId = newId('ph')
+      const created = await provider.createHold({
+        paymentId,
+        holdId,
+        accountRef,
+        amountMinor,
+        currency: 'EUR',
+        idempotencyKey: `${holdId}:hold`,
+        description: 'Test Bar, table 1',
+      })
+      if (created.kind !== 'done') throw new Error(`createHold answered ${created.kind}`)
+      holds.push({ holdId, amountMinor, paymentRef: created.result.paymentRef })
+    }
+    return { engine, provider, accountRef, paymentId, holds }
+  }
+
+  it('makes one payment per hold, each found by its hold and carrying it', async () => {
+    const { engine, provider, accountRef, paymentId, holds } = await groupOf([1_200, 800, 1_500])
+    expect(new Set(holds.map((hold) => hold.paymentRef.provider)).size).toBe(3)
+    expect(engine.paymentsOf(accountRef, paymentId)).toHaveLength(3)
+    for (const hold of holds) {
+      expect(await provider.findByPaymentId(accountRef, paymentId, hold.holdId)).toEqual({
+        complete: true,
+        value: expect.objectContaining({
+          ref: hold.paymentRef,
+          paymentId,
+          holdId: hold.holdId,
+          amountMinor: hold.amountMinor,
+          status: 'awaiting_guest',
+        }),
+      })
+    }
+    expect(await provider.findByPaymentId(accountRef, paymentId, newId('ph'))).toEqual({
+      complete: true,
+      value: null,
+    })
+  })
+
+  it('concludes nothing from the payment id alone, even with a single hold', async () => {
+    const { provider, accountRef, paymentId } = await groupOf([1_200])
+    expect((await provider.findByPaymentId(accountRef, paymentId)).complete).toBe(false)
+  })
+
+  it('reads an ordinary payment with no hold id, as before', async () => {
+    const { engine, provider } = simPay()
+    const accountRef = engine.addAccount()
+    const paymentId = newId('py')
+    await provider.createHold({
+      paymentId,
+      accountRef,
+      amountMinor: 1_200,
+      currency: 'EUR',
+      idempotencyKey: `${paymentId}:hold`,
+      description: 'Test Bar, table 1',
+    })
+    const found = await provider.findByPaymentId(accountRef, paymentId)
+    expect(found.complete && found.value !== null && 'holdId' in found.value).toBe(false)
+    expect(found).toMatchObject({ complete: true, value: { paymentId } })
+  })
+
+  it('captures and releases the holds one by one, each by its own key', async () => {
+    const { engine, provider, accountRef, paymentId, holds } = await groupOf([1_200, 800, 1_500])
+    for (const hold of holds) engine.guest.pay(hold.paymentRef)
+    const [first, second, third] = holds as [
+      (typeof holds)[0],
+      (typeof holds)[0],
+      (typeof holds)[0],
+    ]
+
+    const captured = await provider.capture({
+      accountRef,
+      paymentRef: first.paymentRef,
+      amountMinor: first.amountMinor,
+      idempotencyKey: `${first.holdId}:capture`,
+    })
+    expect(captured).toMatchObject({
+      kind: 'done',
+      result: { status: 'captured', holdId: first.holdId },
+    })
+    // The other holds are untouched by the first one's capture.
+    for (const hold of [second, third]) {
+      expect(await provider.findByPaymentId(accountRef, paymentId, hold.holdId)).toMatchObject({
+        value: { status: 'held', heldMinor: hold.amountMinor },
+      })
+    }
+    expect(
+      await provider.release({
+        accountRef,
+        paymentRef: second.paymentRef,
+        idempotencyKey: `${second.holdId}:release`,
+      }),
+    ).toMatchObject({ kind: 'done', result: { status: 'released', heldMinor: 0 } })
+    expect(
+      await provider.capture({
+        accountRef,
+        paymentRef: third.paymentRef,
+        amountMinor: third.amountMinor,
+        idempotencyKey: `${third.holdId}:capture`,
+      }),
+    ).toMatchObject({ kind: 'done', result: { status: 'captured' } })
+    expect(engine.movedMinor(accountRef)).toBe(first.amountMinor + third.amountMinor)
+  })
+
+  it('reads a hold whose create timed out back by its hold, and the key makes it once', async () => {
+    const { engine, provider, accountRef, paymentId, holds } = await groupOf([1_200])
+    const holdId = newId('ph')
+    const request = {
+      paymentId,
+      holdId,
+      accountRef,
+      amountMinor: 900,
+      currency: 'EUR' as const,
+      idempotencyKey: `${holdId}:hold`,
+      description: 'Test Bar, table 1',
+    }
+    engine.fault('createHold', { kind: 'land_then_timeout' })
+    expect((await provider.createHold(request)).kind).toBe('unknown')
+    const found = await provider.findByPaymentId(accountRef, paymentId, holdId)
+    if (!found.complete || found.value === null) throw new Error('the landed hold is not found')
+    const again = await provider.createHold(request)
+    expect(again).toMatchObject({ kind: 'done', result: { paymentRef: found.value.ref } })
+    expect(engine.paymentsOf(accountRef, paymentId)).toHaveLength(holds.length + 1)
+  })
+
+  it('refuses the same key for another hold', async () => {
+    const { provider, accountRef, paymentId, holds } = await groupOf([1_200])
+    const [hold] = holds
+    if (hold === undefined) throw new Error('no hold')
+    expect(
+      await provider.createHold({
+        paymentId,
+        holdId: newId('ph'),
+        accountRef,
+        amountMinor: hold.amountMinor,
+        currency: 'EUR',
+        idempotencyKey: `${hold.holdId}:hold`,
+        description: 'Test Bar, table 1',
+      }),
+    ).toMatchObject({ kind: 'refused', refusal: { code: 'key_reused' } })
   })
 })

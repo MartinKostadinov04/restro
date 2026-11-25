@@ -407,6 +407,13 @@
       "when": 1795559263606,
       "tag": "0057_payment_line_table",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1795565624365,
+      "tag": "0058_payment_holds",
+      "breakpoints": true
     }
   ]
 }

@@ -183,6 +183,8 @@ export const TABLE_ACCESS = {
   payments: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
   payment_lines: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
   payment_steps: { tenancy: 'tenant', app: ['SELECT', 'INSERT'], purge: PURGED },
+  // One guest's card in a group payment (#543; D160 §3): erased with its payment.
+  payment_holds: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },
   // The refunds the venue made in its provider's dashboard (#222): written by `applyService`,
   // erased with their payment.
   payment_refunds: { tenancy: 'tenant', app: ['SELECT', 'INSERT', 'UPDATE'], purge: PURGED },

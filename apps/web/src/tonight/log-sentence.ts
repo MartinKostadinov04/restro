@@ -314,6 +314,7 @@ export const SENTENCES = {
   'sold_out.cleared': (_l, c) => c.say('lg_back_on_sale'),
   'lease.taken_over': null,
   'payment.hold_unread': null,
+  'payment.hold': null,
 } as const satisfies Record<LogKind, Sentence | null>
 
 /** The sentence of a line; null for the kind that never shows. */

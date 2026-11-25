@@ -32,6 +32,13 @@ import { ProviderRefSchema } from './provider-ref'
 export const PaymentIdSchema = idSchema('py')
 
 /**
+ * One guest's hold in a group payment (`ph_`, D160 §3, #543): a payment shared by amount has one
+ * provider payment per hold, each carrying the hold's id beside the payment's, so each is read back
+ * by the hold alone (several provider payments share the payment's id).
+ */
+export const PaymentHoldIdSchema = idSchema('ph')
+
+/**
  * An idempotency key: the same key with the same request makes the provider do the step once and
  * answer the same again (D125 3.9). The platform derives it from the payment and its step. The
  * pattern is the database's (`payment_steps.idempotency_key`, `PROVIDER_REF_PATTERN`: the first
@@ -155,6 +162,8 @@ export const ProviderPaymentSchema = z
     ref: ProviderRefSchema,
     /** Our payment, as the provider keeps it. */
     paymentId: PaymentIdSchema,
+    /** The hold of a group payment it was made for (#543); absent on any other payment. */
+    holdId: PaymentHoldIdSchema.optional(),
     status: z.enum(PROVIDER_PAYMENT_STATUSES),
     /** The guest's bank asks for a step (3-D Secure); only while `awaiting_guest`. */
     needsGuestAction: z.boolean(),
@@ -342,6 +351,11 @@ export type PrepareDomainRequest = z.output<typeof PrepareDomainRequestSchema>
  */
 export const CreateHoldRequestSchema = z.strictObject({
   paymentId: PaymentIdSchema,
+  /**
+   * A group payment's hold (#543): the provider payment is one guest's card, one of several for
+   * the payment, and carries the hold's id for the read-back (`findByPaymentId` with the hold).
+   */
+  holdId: PaymentHoldIdSchema.optional(),
   accountRef: ProviderRefSchema,
   amountMinor: PositiveMinorSchema,
   currency: CurrencySchema,

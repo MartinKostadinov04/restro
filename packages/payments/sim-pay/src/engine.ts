@@ -12,6 +12,8 @@
 //     server error included); with another request it is refused (`key_reused`);
 //   - a hold not captured by its `captureBefore` is dropped (read as released);
 //   - two payments carrying one payment id make the read-back incomplete: it concludes nothing;
+//   - a group payment's hold (#543) is its own payment carrying the hold's id beside the payment's,
+//     and is read back by its hold; the payment's id alone concludes nothing about a group payment;
 //   - a refund or a dispute happens outside Restro (`venue`, `bank`, test controls), leaves a
 //     notice in the outbox (`takeNotices`), and reads back as it stands now (#108);
 //   - the guest's card held or declined at the form leaves a `payment.*` notice too (#110).
@@ -25,6 +27,7 @@ import {
   type Currency,
   type EmptyResult,
   type PaymentDisputeState,
+  type PaymentHoldId,
   type PaymentId,
   type PaymentRefusal,
   type PaymentRefusalCode,
@@ -121,6 +124,8 @@ interface SimPayment {
   readonly ref: ProviderRef
   readonly account: string
   readonly paymentId: PaymentId
+  /** The group payment's hold it was made for (#543); null on any other payment. */
+  readonly holdId: PaymentHoldId | null
   readonly currency: Currency
   readonly amountMinor: number
   status: ProviderPayment['status']
@@ -467,6 +472,7 @@ export class SimPayEngine {
         ref,
         account: account.ref.provider,
         paymentId: request.paymentId,
+        holdId: request.holdId ?? null,
         currency: request.currency,
         amountMinor: request.amountMinor,
         status: 'awaiting_guest',
@@ -492,13 +498,33 @@ export class SimPayEngine {
     })
   }
 
-  findByPaymentId(accountRef: ProviderRef, paymentId: PaymentId): Reading<ProviderPayment | null> {
+  /**
+   * The read-back by our payment id, or, with `holdId`, the one payment made for that hold of a
+   * group payment (#543). Without a hold, a payment id that any hold's payment carries concludes
+   * nothing: a group payment has one payment per hold, each read back by its own hold, so none of
+   * them is the payment's alone (and a create without a hold must never be retried over them).
+   */
+  findByPaymentId(
+    accountRef: ProviderRef,
+    paymentId: PaymentId,
+    holdId?: PaymentHoldId,
+  ): Reading<ProviderPayment | null> {
     if (this.#failReads) return { complete: false, reason: 'the search failed part-way' }
-    const found = [...this.#payments.values()].filter(
+    const carrying = [...this.#payments.values()].filter(
       (p) => p.account === accountRef.provider && p.paymentId === paymentId,
     )
+    if (holdId === undefined && carrying.some((p) => p.holdId !== null)) {
+      return { complete: false, reason: "a group payment's payments are read back by their holds" }
+    }
+    const found = holdId === undefined ? carrying : carrying.filter((p) => p.holdId === holdId)
     if (found.length > 1) {
-      return { complete: false, reason: 'more than one payment carries this payment id' }
+      return {
+        complete: false,
+        reason:
+          holdId === undefined
+            ? 'more than one payment carries this payment id'
+            : 'more than one payment carries this hold id',
+      }
     }
     const [payment] = found
     return complete(payment === undefined ? null : this.#view(payment))
@@ -769,6 +795,7 @@ export class SimPayEngine {
     return {
       ref: payment.ref,
       paymentId: payment.paymentId,
+      ...(payment.holdId === null ? {} : { holdId: payment.holdId }),
       status: payment.status,
       needsGuestAction: payment.needsGuestAction,
       currency: payment.currency,

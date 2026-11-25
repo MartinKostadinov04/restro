@@ -35,6 +35,12 @@
 // of which only the sha-256 goes further. `pay.returned` and `pay.cancel` name the payment by that
 // handle. Each queues the worker's next step. `guestPayment` answers the paying phone alone: the
 // form's values, the one provider value a guest answer carries, are in no other answer (the walk).
+//
+// Sharing the bill by amount (#543, D160 §3): `share.start` and `share.hold` take the same limits and
+// Turnstile as a Pay. The share belongs to the table, not to a phone: its start's handle is made and
+// dropped. Each hold gets its own handle, which `share.withdraw` and `share.returned` name.
+// `guestShare` answers every phone of the table (and of its linked group) with the share; the
+// form's values go only to the phone holding that hold's handle.
 
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 
@@ -42,6 +48,7 @@ import {
   billReadings,
   type DbPool,
   guestTableByCodeHash,
+  paymentHolds,
   paymentLines,
   paymentSteps,
   payments,
@@ -52,7 +59,7 @@ import {
   withTenant,
 } from '@restro/db'
 import { withTenantWrite } from '@restro/db/write'
-import { and, asc, desc, eq, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, or } from 'drizzle-orm'
 
 import { type GuestEventInput, recordEvents } from '../events'
 import { TABLE_TOKEN_PATTERN } from '../guest-files'
@@ -65,8 +72,9 @@ import {
   locationPassExpiry,
   locationVerdict,
 } from '../location-check'
-import { sumSignedMinor } from '../money'
+import { shareRestMinor, sumSignedMinor } from '../money'
 import { type OrderingSettings, readOrderingSettings } from '../ordering-settings'
+import { CARD_FLOOR_MINOR, readPayingSettings, smallestCardMinor } from '../paying-settings'
 import { FAST_POLL_MS } from '../poll-cadence'
 import { hashTableCode } from '../qr'
 import { serviceDate, wallClock } from '../service-day'
@@ -82,6 +90,7 @@ import {
   wantsFreshReading,
 } from './bill'
 import type { ServiceContext } from './context'
+import { partOf, SHARE_ACTIVE_HOLD_STATES } from './group-payment'
 import { GuestLimiter, type GuestLimitName, type LimitAnswer } from './guest-limits'
 import {
   type LocationPassClaims,
@@ -1093,7 +1102,19 @@ const GUEST_COMMAND_TYPES: ReadonlySet<string> = new Set([
 ])
 
 /** The guest's pay commands (#110): guarded here, then the engine. Never located (D122 §4). */
-const PAY_TYPES: ReadonlySet<string> = new Set(['pay.start', 'pay.returned', 'pay.cancel'])
+const PAY_TYPES: ReadonlySet<string> = new Set([
+  'pay.start',
+  'pay.returned',
+  'pay.cancel',
+  // #543: sharing the bill by amount, guarded as a Pay.
+  'share.start',
+  'share.hold',
+  'share.withdraw',
+  'share.returned',
+])
+
+/** The pay commands that may start something at the provider: the phone's limits and Turnstile. */
+const PAY_STARTS: ReadonlySet<string> = new Set(['pay.start', 'share.start', 'share.hold'])
 
 /** The commands this module answers without the engine: "Allow location". */
 const GUARDED_HERE: ReadonlySet<string> = new Set(['location.check'])
@@ -1634,6 +1655,21 @@ async function paymentByAction(
   })
 }
 
+/** The hold a `share.hold` with this action id made at this venue, or null. */
+async function holdByAction(
+  pool: DbPool,
+  target: CodeTarget,
+  actionId: string,
+): Promise<{ readonly id: string } | null> {
+  return withTenant(pool, target.tenantId, async (tx) => {
+    const [made] = await tx
+      .select({ id: paymentHolds.id })
+      .from(paymentHolds)
+      .where(and(eq(paymentHolds.actionId, actionId), eq(paymentHolds.venueId, target.venueId)))
+    return made ?? null
+  })
+}
+
 /** True when the payment is final (or gone): the phone may start another. */
 async function paymentEnded(pool: DbPool, target: CodeTarget, paymentId: string): Promise<boolean> {
   return withTenant(pool, target.tenantId, async (tx) => {
@@ -1694,10 +1730,13 @@ async function payAct(
     if (payTakenAt !== null) limits.giveBack(subject, ['payGap'], payTakenAt)
   }
 
-  if (type === 'pay.start') {
+  if (PAY_STARTS.has(type)) {
     // A repeat of the same tap (its answer was lost) skips the guards: its Turnstile token is
     // spent, and the payment is already counted. The engine gives it a fresh handle.
-    const repeat = await paymentByAction(pool, target, actionId)
+    const repeat =
+      type === 'share.hold'
+        ? await holdByAction(pool, target, actionId)
+        : await paymentByAction(pool, target, actionId)
     if (repeat === null) {
       const takenAt = Date.now()
       const phoneLimit = limits.take(subject, ['payGap', 'pays'], takenAt)
@@ -1731,21 +1770,31 @@ async function payAct(
       if (verdict === 'unavailable') count('human_check_open')
     }
     handle = randomBytes(16).toString('base64url')
-    command = {
-      type,
-      actionId,
-      tableId: target.tableId,
-      ageMs: input.ageMs,
-      handleHash: hashPaymentHandle(handle),
-      pick: input.command.pick,
-      seen: input.command.seen,
-      tip: tipOfCommand(input.command),
-      // The guest's email for the venue's electronic receipt (D127, #186): the engine's schema
-      // checks it, and refuses it where the connector declares no electronic receipt.
-      ...(input.command.receiptEmail === undefined
-        ? {}
-        : { receiptEmail: input.command.receiptEmail }),
-    }
+    command =
+      type === 'share.start'
+        ? {
+            type,
+            actionId,
+            tableId: target.tableId,
+            ageMs: input.ageMs,
+            // The share is the table's: its handle is made and dropped, never sent to a phone.
+            handleHash: hashPaymentHandle(handle),
+            pick: input.command.pick,
+            seen: input.command.seen,
+          }
+        : type === 'share.hold'
+          ? {
+              type,
+              actionId,
+              tableId: target.tableId,
+              ageMs: input.ageMs,
+              handleHash: hashPaymentHandle(handle),
+              paymentId: input.command.paymentId,
+              part: input.command.part,
+              tip: tipOfCommand(input.command),
+            }
+          : payStartCommand(input, target, type, actionId, handle)
+    if (type === 'share.start') handle = null
   } else {
     if (input.handle === undefined || !HANDLE_PATTERN.test(input.handle)) {
       return reject('unknown_payment')
@@ -1774,9 +1823,14 @@ async function payAct(
     const next = result.details.state
     if (type === 'pay.start') limits.setOpenPayment(subject, paymentId)
     // The worker takes it from here; a job that can't be queued is queued again by the phone's
-    // poll of its payment (`guestPayment`).
+    // poll of its payment (`guestPayment`, `guestShare`). A share's start is priced, a hold asked
+    // for or let go by the prepare step; a guest back from the card form is read by the check.
     const job =
-      type === 'pay.start' || next === 'cancelling'
+      type === 'pay.start' ||
+      type === 'share.start' ||
+      type === 'share.hold' ||
+      type === 'share.withdraw' ||
+      next === 'cancelling'
         ? 'prepare'
         : next === 'awaiting_guest'
           ? 'check'
@@ -1813,6 +1867,31 @@ async function payAct(
     pass: null,
     retryAfter: null,
     handle: result.status === 'accepted' ? handle : null,
+  }
+}
+
+/** A `pay.start`'s command for the engine, with its fresh handle's hash. */
+function payStartCommand(
+  input: GuestActInput,
+  target: CodeTarget,
+  type: string,
+  actionId: string,
+  handle: string,
+): { readonly type: string; readonly actionId: string } & Record<string, unknown> {
+  return {
+    type,
+    actionId,
+    tableId: target.tableId,
+    ageMs: input.ageMs,
+    handleHash: hashPaymentHandle(handle),
+    pick: input.command.pick,
+    seen: input.command.seen,
+    tip: tipOfCommand(input.command),
+    // The guest's email for the venue's electronic receipt (D127, #186): the engine's schema
+    // checks it, and refuses it where the connector declares no electronic receipt.
+    ...(input.command.receiptEmail === undefined
+      ? {}
+      : { receiptEmail: input.command.receiptEmail }),
   }
 }
 
@@ -2057,6 +2136,243 @@ export async function guestPayment(
   if (payment.providerPaymentRef !== null) backend.add(payment.providerPaymentRef)
   for (const value of Object.values(values)) backend.add(value)
   const paths = forbiddenPaths({ ...answer, form: null }, backend)
+  if (paths.length > 0) throw new ForbiddenValueError(paths)
+  return { ok: true, answer }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sharing the bill by amount (#543, D160 §3)
+
+/** How long an ended share stays on the table's phones, so each reads why it ended. */
+const SHARE_SHOWN_AFTER_MS = 10 * 60_000
+
+/** What every phone of the table, and of its linked group, sees of a share of the bill. */
+export interface GuestShareView {
+  readonly id: string
+  /** The short number the guests show the waiter (`paymentNumberOf`). */
+  readonly number: string
+  /** `awaiting_guest` while the guests' cards gather; then the payment's own states. */
+  readonly state: string
+  /** Why it ended (`expired`, `cancelled`, `withdrawn`, `bill_changed`…), or null. */
+  readonly reason: string | null
+  readonly currency: string
+  /** The amount shared: the ticked lines, or the whole bill. */
+  readonly sharedMinor: number
+  /** The parts the guests' cards hold now, tips aside. */
+  readonly heldMinor: number
+  /** The parts asked for, at the card form or held, tips aside: "the rest" is what is left. */
+  readonly claimedMinor: number
+  readonly leftMinor: number
+  /** The smallest part, and the smallest rest a part may leave (D160 2.6). */
+  readonly minimumMinor: number
+  /** When everything is let go if the share is not covered (an ISO instant), from the first hold. */
+  readonly endsAt: string | null
+  /** How many guests' cards count towards it now. */
+  readonly holds: number
+  readonly lines: readonly {
+    /** The line's name per language; null is "Other item", worded by the shell. */
+    readonly name: LocalizedText | null
+    readonly quantity: string
+    readonly amountMinor: number
+  }[]
+  /** This phone's own hold, named by its handle; null without one. */
+  readonly mine: {
+    readonly state: string
+    readonly reason: string | null
+    /** The part with its tip. */
+    readonly amountMinor: number
+    readonly tipMinor: number
+    /** The card form: only while the hold awaits the guest. */
+    readonly form: {
+      readonly provider: string
+      readonly values: Readonly<Record<string, string>>
+      readonly confirmSeconds: number
+    } | null
+  } | null
+  /** The venue's time zone (IANA). */
+  readonly timeZone: string
+  readonly next: number
+}
+
+/** What `guestShare` needs from its caller. */
+export interface GuestShareInput {
+  /** The table code from `Authorization: Table <code>`. */
+  readonly code: string
+  /** The phone's hold handle from `X-Restro-Payment`, when it holds one: never logged or stored. */
+  readonly handle?: string
+  readonly limiter?: GuestLimiter
+  /** Queues the worker's next step when the share waits on it (recovery after a lost job). */
+  readonly queuePayment?: QueuePayment
+}
+
+/**
+ * Reads the table's share of the bill for any of its phones (#543): the latest group payment
+ * covering the table (#542: any table of its linked group), still open or ended in the last ten
+ * minutes. Every phone sees what is held and what is left; the phone holding a hold's handle sees
+ * its own hold and card form. Nothing here is a local success (D72): each figure is the engine's.
+ */
+export async function guestShare(
+  pool: DbPool,
+  input: GuestShareInput,
+): Promise<
+  | { readonly ok: true; readonly answer: GuestShareView | null }
+  | GuestStateless
+  | { readonly ok: false; readonly code: 'unknown_payment' }
+> {
+  const target = await targetOf(pool, input.code)
+  if (target === null) return { ok: false, code: 'code_retired' }
+  const codeLimit = (input.limiter ?? limiter).take(target.hash, ['codeRequests'], Date.now())
+  if (!codeLimit.ok) return limited(codeLimit)
+  if (input.handle !== undefined && !HANDLE_PATTERN.test(input.handle)) {
+    return { ok: false, code: 'unknown_payment' }
+  }
+  const handleHash = input.handle === undefined ? null : hashPaymentHandle(input.handle)
+  const now = new Date()
+
+  const found = await withTenant(pool, target.tenantId, async (tx) => {
+    const [payment] = await tx
+      .select()
+      .from(payments)
+      .where(
+        and(
+          eq(payments.venueId, target.venueId),
+          isNotNull(payments.sharedMinor),
+          or(
+            eq(payments.tableId, target.tableId),
+            inArray(
+              payments.id,
+              tx
+                .select({ id: paymentLines.paymentId })
+                .from(paymentLines)
+                .where(eq(paymentLines.tableId, target.tableId)),
+            ),
+          ),
+          or(
+            isNull(payments.settledAt),
+            gt(payments.settledAt, new Date(now.getTime() - SHARE_SHOWN_AFTER_MS)),
+          ),
+        ),
+      )
+      .orderBy(desc(payments.createdAt))
+      .limit(1)
+    if (payment === undefined) return null
+    const holds = await tx
+      .select()
+      .from(paymentHolds)
+      .where(eq(paymentHolds.paymentId, payment.id))
+      .orderBy(asc(paymentHolds.createdAt), asc(paymentHolds.id))
+    const lines = await tx
+      .select({
+        ref: paymentLines.posLineRef,
+        name: paymentLines.name,
+        quantity: paymentLines.quantity,
+        amountMinor: paymentLines.posAmountMinor,
+      })
+      .from(paymentLines)
+      .where(eq(paymentLines.paymentId, payment.id))
+      .orderBy(asc(paymentLines.position))
+    const [reading] = await tx
+      .select({ bills: billReadings.bills })
+      .from(billReadings)
+      .where(eq(billReadings.tableId, target.tableId))
+    const [venue] = await tx
+      .select({ timezone: venues.timezone, settings: venues.settings })
+      .from(venues)
+      .where(eq(venues.id, target.venueId))
+    return { payment, holds, lines, bills: reading?.bills, venue }
+  })
+  if (found === null) {
+    // A phone with a hold's handle whose share is gone from the table: not this table's.
+    return handleHash === null ? { ok: true, answer: null } : { ok: false, code: 'unknown_payment' }
+  }
+  const { payment, holds, lines } = found
+  const sharedMinor = payment.sharedMinor ?? 0
+  const mine =
+    handleHash === null ? null : (holds.find((hold) => hold.handleHash === handleHash) ?? null)
+  if (handleHash !== null && mine === null) return { ok: false, code: 'unknown_payment' }
+
+  // The worker's next step, queued again where a job was lost: a hold to ask for or let go is the
+  // prepare step's; a deadline passed is the check's.
+  const gathering = payment.state === 'awaiting_guest'
+  const pending = holds.some((hold) => hold.state === 'requested' || hold.state === 'releasing')
+  const overdue =
+    gathering &&
+    ((payment.gatheringEndsAt !== null && payment.gatheringEndsAt <= now) ||
+      holds.some(
+        (hold) =>
+          hold.state === 'awaiting_guest' && hold.confirmBy !== null && hold.confirmBy <= now,
+      ))
+  const job = pending ? 'prepare' : (paymentWorkerJob(payment) ?? (overdue ? 'check' : null))
+  if (job !== null) {
+    await input.queuePayment?.(
+      { tenantId: target.tenantId, venueId: target.venueId, paymentId: payment.id },
+      job,
+    )
+  }
+
+  const active = holds.filter((hold) => SHARE_ACTIVE_HOLD_STATES.includes(hold.state))
+  const claimedMinor = sumSignedMinor(active.map(partOf))
+  const heldMinor = sumSignedMinor(
+    holds.filter((hold) => hold.state === 'held' || hold.state === 'captured').map(partOf),
+  )
+  const values: Record<string, string> = {}
+  for (const [key, value] of Object.entries(mine?.formValues ?? {})) {
+    if (typeof value === 'string') values[key] = value
+  }
+  const answer: GuestShareView = {
+    id: payment.id,
+    number: paymentNumberOf(payment.id),
+    state: payment.state,
+    reason: payment.reason,
+    currency: payment.currency,
+    sharedMinor,
+    heldMinor,
+    claimedMinor,
+    leftMinor: shareRestMinor(sharedMinor, claimedMinor),
+    minimumMinor: smallestCardMinor(
+      readPayingSettings(found.venue?.settings ?? {}),
+      CARD_FLOOR_MINOR,
+    ),
+    endsAt: payment.gatheringEndsAt?.toISOString() ?? null,
+    holds: active.length,
+    lines: lines.map((line) => ({
+      name: line.name,
+      quantity: shownQuantity(line.quantity),
+      amountMinor: line.amountMinor,
+    })),
+    mine:
+      mine === null
+        ? null
+        : {
+            state: mine.state,
+            reason: mine.reason,
+            amountMinor: mine.amountMinor,
+            tipMinor: mine.tipMinor,
+            form:
+              mine.state === 'awaiting_guest' && mine.formValues !== null
+                ? {
+                    provider: mine.providerKind,
+                    values,
+                    confirmSeconds: seconds(
+                      (mine.confirmBy?.getTime() ?? now.getTime()) - now.getTime(),
+                    ),
+                  }
+                : null,
+          },
+    timeZone: found.venue?.timezone ?? 'Europe/Sofia',
+    next: PAYMENT_POLL_MS,
+  }
+  // Every backend value of the bill, the share and its holds, the provider's references and the
+  // form's values among them: none may appear outside the phone's own form (rule 3).
+  const backend = billBackendValues(parseStoredBills(found.bills))
+  for (const line of lines) if (line.ref !== null) backend.add(line.ref)
+  for (const hold of holds)
+    if (hold.providerPaymentRef !== null) backend.add(hold.providerPaymentRef)
+  for (const value of Object.values(values)) backend.add(value)
+  const paths = forbiddenPaths(
+    { ...answer, mine: answer.mine === null ? null : { ...answer.mine, form: null } },
+    backend,
+  )
   if (paths.length > 0) throw new ForbiddenValueError(paths)
   return { ok: true, answer }
 }
