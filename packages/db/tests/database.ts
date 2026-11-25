@@ -163,6 +163,7 @@ export async function databaseError(work: Promise<unknown>): Promise<string> {
 export const PAYING_TABLES_CHILDREN_FIRST = [
   'payment_refunds',
   'payment_steps',
+  'payment_holds',
   'payment_lines',
   'payments',
   'payment_accounts',
