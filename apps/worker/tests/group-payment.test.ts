@@ -300,6 +300,9 @@ describe.skipIf(!hasDatabase)('sharing a bill by amount', () => {
     await query(`update restro.locks set holder = null, deadline = null where venue_id = $1`, [
       demo.venueId,
     ])
+    await query('update restro.payment_accounts set paying_paused_at = null where venue_id = $1', [
+      demo.venueId,
+    ])
     await query(
       `update restro.sittings set ended_at = now(), end_reason = 'staff_closed'
        where table_id = $1 and ended_at is null`,
@@ -748,6 +751,84 @@ describe.skipIf(!hasDatabase)('sharing a bill by amount', () => {
         await nothingCharged(id, reason, before)
       }
     }
+  })
+
+  it('releases a hold let go before the cover, and the share is done only once it is', async () => {
+    const id = await shared()
+    await holding(id, 5_000)
+    const late = await holding(id, 2_000)
+    // The guest takes their part back; the provider refuses the release and still holds the card.
+    expect(await guest({ type: 'share.withdraw' }, late.handle)).toMatchObject({
+      result: { status: 'accepted' },
+    })
+    engine.fault('release', { kind: 'refuse', code: 'not_held' })
+    // Two other guests take the €50 left between them, and cover the share.
+    await holding(id, 2_000)
+    await holding(id, 'rest')
+    expect(await stored(id)).toMatchObject({ state: 'held' })
+    expect((await holdsOf(id)).map((h) => h.state)).toEqual(['held', 'releasing', 'held', 'held'])
+
+    // The bill closes and the three held holds are captured; the share waits for the fourth.
+    const row = await drive(id, 12)
+    expect(row?.state).toBe('closed')
+    expect(calls('closeBill')).toBe(1)
+    expect((await holdsOf(id)).map((h) => h.state)).toEqual([
+      'captured',
+      'releasing',
+      'captured',
+      'captured',
+    ])
+    // The provider drops the card it held (its hold ran out): it is released, and the share done.
+    payClock.advance(8 * 24 * 60 * 60_000)
+    expect(await drive(id)).toMatchObject({ state: 'captured', captured_minor: '10000' })
+    expect((await holdsOf(id)).map((h) => h.state)).toEqual([
+      'captured',
+      'released',
+      'captured',
+      'captured',
+    ])
+  })
+
+  it('never settles a hold whose call may have reached the provider, even with paying paused', async () => {
+    const id = await shared()
+    const answer = await askHold(id, 4_000)
+    if (!answer.ok || answer.result.status !== 'accepted') throw new Error('refused')
+    const [hold] = await query<{ id: string }>(
+      'select id from restro.payment_holds where action_id = $1',
+      [answer.result.actionId],
+    )
+    // The worker dies right after it recorded the hold's call as attempting.
+    const crash = {
+      ...env(),
+      onStep: async ({ step, outcome }: { step: string; outcome: string }) => {
+        if (step === 'createHold' && outcome === 'attempting') throw new Error('killed')
+      },
+    }
+    await expect(preparePayment(crash, target(id), deps())).rejects.toThrow('killed')
+    // Paying is paused at the venue meanwhile.
+    await query('update restro.payment_accounts set paying_paused_at = now() where venue_id = $1', [
+      demo.venueId,
+    ])
+    // The engine refuses to settle it as never made.
+    const settle = await applyService(
+      pool,
+      { type: 'share.hold_settle', paymentId: id, holdId: hold?.id, reason: 'paying_paused' },
+      {
+        tenantId,
+        venueId: demo.venueId,
+        origin: 'worker',
+        actor: { kind: 'system' },
+        jobId: `settle-${randomUUID()}`,
+      },
+    )
+    expect(settle.result).toMatchObject({ status: 'refused', code: 'hold_not_releasing' })
+    // The worker lets it go through the provider: it looks for what the call made, then settles.
+    await preparePayment(env(), target(id), deps())
+    await preparePayment(env(), target(id), deps())
+    expect(await holdsOf(id)).toEqual([
+      expect.objectContaining({ id: hold?.id, state: 'released', reason: 'hold_refused' }),
+    ])
+    expect(await steps(id)).toContain('findByPaymentId:done')
   })
 
   it("tries a refused capture again, then alerts the owners with that hold's amount", async () => {

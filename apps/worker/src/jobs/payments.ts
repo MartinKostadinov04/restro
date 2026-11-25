@@ -119,6 +119,7 @@ import {
   integrations,
   locks,
   logEntries,
+  PAYMENT_HOLD_FINAL_STATES,
   paymentAccounts,
   paymentHolds,
   paymentLines,
@@ -2562,8 +2563,9 @@ async function holdsOf(env: PaymentEnvironment, target: PaymentJob): Promise<Hol
   )
 }
 
-/** The final states of a hold (`PAYMENT_HOLD_FINAL_STATES`). */
-const HOLD_FINAL: readonly string[] = ['released', 'captured', 'capture_failed']
+/** True for a hold in a final state. */
+const isFinalHold = (state: string) =>
+  (PAYMENT_HOLD_FINAL_STATES as readonly string[]).includes(state)
 
 /** Records one provider step of a hold (D127 3.9), as `recordStep` does a payment's. */
 function recordHoldStep(
@@ -2657,8 +2659,9 @@ function settleHold(env: PaymentEnvironment, target: PaymentJob, hold: HoldRow, 
 
 /**
  * A `requested` hold: asks the provider for it once (`createHold`, D127 3.15), then
- * `share.hold_created`. An earlier call with no state is let go (`share.hold_unknown`); the
- * release finds what it made by the hold's id.
+ * `share.hold_created`. An earlier call with no state is let go (`share.hold_unknown`), before
+ * anything else is looked at: the release finds what it made by the hold's id. Only a hold no call
+ * touched is settled at once where the account can't take it.
  */
 async function createShareHold(
   env: PaymentEnvironment,
@@ -2667,11 +2670,6 @@ async function createShareHold(
   hold: HoldRow,
   deps: PaymentJobDeps,
 ): Promise<void> {
-  const account = await shareAccountOf(env, target, payment)
-  if (account === null || !account.usable) {
-    await settleHold(env, target, hold, account === null ? 'paying_not_offered' : 'paying_paused')
-    return
-  }
   const [earlier] = await holdSteps(env, target, hold.id, 'createHold')
   if (earlier !== undefined) {
     if (earlier.outcome === 'refused') {
@@ -2683,6 +2681,11 @@ async function createShareHold(
       paymentId: target.paymentId,
       holdId: hold.id,
     })
+    return
+  }
+  const account = await shareAccountOf(env, target, payment)
+  if (account === null || !account.usable) {
+    await settleHold(env, target, hold, account === null ? 'paying_not_offered' : 'paying_paused')
     return
   }
   const provider = providerFor(env, target, deps, payment.providerKind)
@@ -2915,6 +2918,35 @@ async function gather(
 }
 
 /**
+ * A covered share's holds that were let go before the cover (a guest's withdrawal, a confirm
+ * deadline passed in the run that covered it): released at the provider whatever the route does
+ * next, since no close ever names them. (No hold is still asked for or at the card form once the
+ * share is covered: the limits keep the claimed parts within the shared amount.) True while a hold
+ * is left neither held nor final.
+ */
+async function releaseLetGo(
+  env: PaymentEnvironment,
+  target: PaymentJob,
+  payment: PaymentRow,
+  deps: PaymentJobDeps,
+): Promise<boolean> {
+  let left = false
+  for (const hold of await holdsOf(env, target)) {
+    if (hold.state !== 'releasing') continue
+    try {
+      await releaseShareHold(env, target, payment, hold, deps)
+    } catch (error) {
+      if (!(error instanceof PaymentStepRetry)) throw error
+      env.log.warn({ paymentId: payment.id, holdId: hold.id }, error.message)
+    }
+  }
+  for (const hold of await holdsOf(env, target)) {
+    if (!isFinalHold(hold.state) && hold.state !== 'held') left = true
+  }
+  return left
+}
+
+/**
  * `cancelling` of a group payment: every hold not final is released (or settled where it never
  * reached the provider); the last one settles the payment `released` (`share.hold_settle`). A
  * share with no hold left to let go settles through `payment.settle`.
@@ -2926,7 +2958,7 @@ async function cancelShare(
   deps: PaymentJobDeps,
 ): Promise<void> {
   for (const hold of await holdsOf(env, target)) {
-    if (HOLD_FINAL.includes(hold.state)) continue
+    if (isFinalHold(hold.state)) continue
     await releaseShareHold(env, target, payment, hold, deps)
   }
   const after = await paymentOf(env, target)
@@ -3000,7 +3032,9 @@ async function captureShare(
       capturedMinor: minor,
       code,
     })
-  let again = false
+  // A hold let go before the cover is released first: the share never reads as done while a
+  // guest's card is still held for nothing (core's `finishCaptures` waits for it too).
+  let again = await releaseLetGo(env, target, payment, deps)
   for (const hold of await holdsOf(env, target)) {
     if (hold.state !== 'held') continue
     if (hold.providerPaymentRef === null)
@@ -3235,6 +3269,17 @@ export async function preparePayment(
 ): Promise<PaymentRunOutcome> {
   let last: string | null = null
   const started = env.now().getTime()
+  // A covered share's holds let go before the cover are released whatever step comes next (#543).
+  const first = await paymentOf(env, target)
+  if (
+    first !== null &&
+    first.sharedMinor !== null &&
+    first.state !== 'awaiting_guest' &&
+    first.state !== 'cancelling' &&
+    first.state !== 'requested'
+  ) {
+    await releaseLetGo(env, target, first, deps)
+  }
   for (let steps = 0; steps < PREPARE_STEPS; steps += 1) {
     // Past the run's deadline: the next run goes on from here.
     if (env.now().getTime() - started >= PAYMENT_RUN_MS) {

@@ -41,11 +41,18 @@ import {
   paymentSteps,
   payments,
 } from '@restro/db'
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { idSchema, newId } from '../ids'
-import { addMinor, SHARE_PART_PROBLEMS, sharePartProblem, sumSignedMinor } from '../money'
+import {
+  addMinor,
+  SHARE_PART_PROBLEMS,
+  sharePartProblem,
+  shareRestMinor,
+  subtractMinor,
+  sumSignedMinor,
+} from '../money'
 import { CARD_FLOOR_MINOR, readPayingSettings, smallestCardMinor } from '../paying-settings'
 import { PAYMENT_CAPTURE_FAILED_KIND } from './alert-rules'
 import { parseStoredBills } from './bill'
@@ -53,6 +60,7 @@ import { defineCommand, type ServiceTx } from './definition'
 import { lockPaymentTables, paymentTablesOf, touchPaymentTables } from './group-pay'
 import {
   closeAttempted,
+  isFinalHold,
   logPayment,
   PAYMENT_CONFIRM_MS,
   PAYMENT_QUEUE_MS,
@@ -85,9 +93,7 @@ export type ShareRefusal = (typeof SHARE_REFUSALS)[number]
 export const SHARE_END_REASONS = ['expired', 'cancelled', 'withdrawn', 'bill_changed'] as const
 
 /** The hold states that hold, or may come to hold, part of the shared amount. */
-const ACTIVE = ['requested', 'awaiting_guest', 'held'] as const
-/** The final hold states. */
-const FINAL: readonly string[] = ['released', 'captured', 'capture_failed']
+export const SHARE_ACTIVE_HOLD_STATES: readonly string[] = ['requested', 'awaiting_guest', 'held']
 /** The payment states while a share gathers its holds. */
 const GATHERING: readonly string[] = ['requested', 'awaiting_guest']
 /** How many refused captures of one hold the worker sees before the owners are alerted. */
@@ -178,12 +184,12 @@ async function holdsOf(stx: ServiceTx, id: string): Promise<HoldRow[]> {
 
 /** True for a hold that holds, or may come to hold, part of the shared amount. */
 function isActive(hold: Pick<HoldRow, 'state'>): boolean {
-  return (ACTIVE as readonly string[]).includes(hold.state)
+  return SHARE_ACTIVE_HOLD_STATES.includes(hold.state)
 }
 
 /** A hold's part of the shared amount: its amount without its tip. */
 export function partOf(hold: Pick<HoldRow, 'amountMinor' | 'tipMinor'>): number {
-  return hold.amountMinor - hold.tipMinor
+  return subtractMinor(hold.amountMinor, hold.tipMinor)
 }
 
 /** The parts of the active holds: what is claimed of the shared amount. */
@@ -204,6 +210,29 @@ async function holdTouched(stx: ServiceTx, hold: string): Promise<boolean> {
     .where(eq(paymentSteps.holdId, hold))
     .limit(1)
   return step !== undefined
+}
+
+/**
+ * True when no provider payment can stand for a `requested` hold: no provider step touched it, or
+ * its only provider steps are its `createHold`, the last of them refused.
+ */
+async function neverMade(stx: ServiceTx, hold: string): Promise<boolean> {
+  const steps = await stx.tx
+    .select({ step: paymentSteps.step, outcome: paymentSteps.outcome })
+    .from(paymentSteps)
+    .where(eq(paymentSteps.holdId, hold))
+    .orderBy(desc(paymentSteps.seq))
+  if (steps.length === 0) return true
+  return steps.every((row) => row.step === 'createHold') && steps[0]?.outcome === 'refused'
+}
+
+/** The hold's state as stored now (after a command wrote it). */
+async function holdStateOf(stx: ServiceTx, hold: string): Promise<string | null> {
+  const [row] = await stx.tx
+    .select({ state: paymentHolds.state })
+    .from(paymentHolds)
+    .where(eq(paymentHolds.id, hold))
+  return row?.state ?? null
 }
 
 /** The smallest card payment at the venue: its own floor, else the platform's (the provider's). */
@@ -233,7 +262,7 @@ async function setHold(
   state: string,
   set: Partial<typeof paymentHolds.$inferInsert> = {},
 ): Promise<void> {
-  const final = FINAL.includes(state)
+  const final = isFinalHold(state)
   await stx.tx
     .update(paymentHolds)
     .set({
@@ -291,7 +320,7 @@ async function letGo(
 async function settleIfLetGo(stx: ServiceTx, payment: PaymentRow): Promise<boolean> {
   if (payment.state !== 'cancelling') return false
   const holds = await holdsOf(stx, payment.id)
-  if (holds.some((hold) => !FINAL.includes(hold.state))) return false
+  if (holds.some((hold) => !isFinalHold(hold.state))) return false
   if (!answered(payment) && (await closeAttempted(stx, payment.id))) return false
   const stranded = payment.reason === 'stranded'
   await release(stx, payment, payment.reason ?? 'cancelled', stranded ? 'stranded' : 'released')
@@ -425,7 +454,7 @@ export function shareHold() {
         return refuse('share_over')
       }
       const claimed = claimedOf(holds)
-      const left = payment.sharedMinor - claimed
+      const left = shareRestMinor(payment.sharedMinor, claimed)
       const partMinor = command.part.kind === 'rest' ? left : command.part.minor
       const minimumMinor = minimumOf(stx)
       const problem = sharePartProblem({
@@ -529,13 +558,21 @@ export function shareWithdraw() {
       }
       if (!GATHERING.includes(payment.state)) return refused(command.actionId, 'too_late')
       const others = share.holds.filter((row) => row.id !== hold.id && isActive(row))
+      // The answer names the hold's state as written: `released` where nothing reached the
+      // provider (or the share ended with it), else `releasing`.
       if (others.length === 0) {
         const state = await endShare(stx, share, 'withdrawn')
-        return at(command, payment, state, true, { holdId: hold.id, holdState: 'releasing' })
+        return at(command, payment, state, true, {
+          holdId: hold.id,
+          holdState: await holdStateOf(stx, hold.id),
+        })
       }
       await letGo(stx, payment, hold, 'withdrawn')
       await touchPaymentTables(stx, payment)
-      return at(command, payment, payment.state, true, { holdId: hold.id, holdState: 'releasing' })
+      return at(command, payment, payment.state, true, {
+        holdId: hold.id,
+        holdState: await holdStateOf(stx, hold.id),
+      })
     },
   })
 }
@@ -885,10 +922,17 @@ export function shareHoldSettle() {
       if (isResult(found)) return found
       const { share, hold } = found
       const { payment } = share
-      if (FINAL.includes(hold.state)) {
+      if (isFinalHold(hold.state)) {
         return at(command, payment, payment.state, false, { holdState: hold.state })
       }
-      if (!answered(payment) && (await closeAttempted(stx, payment.id))) {
+      // A `releasing` hold was let go while the share gathered, so no close ever named it (a close
+      // carries only the held holds): it is released whatever the close did. Any other hold is
+      // never released once a close was attempted (D127 3.10).
+      if (
+        hold.state !== 'releasing' &&
+        !answered(payment) &&
+        (await closeAttempted(stx, payment.id))
+      ) {
         return refused(null, 'close_attempted')
       }
       // A hold the share still counts on is let go only through `releasing`, or with its share.
@@ -896,12 +940,19 @@ export function shareHoldSettle() {
       if (hold.state !== 'releasing' && !(ending || hold.state === 'requested')) {
         return refused(null, 'hold_not_releasing')
       }
+      // A `requested` hold a provider call touched may stand at the provider: only its release
+      // (`share.hold_unknown` makes it `releasing`) settles it, unless the provider refused it.
+      if (hold.state === 'requested' && !(await neverMade(stx, hold.id))) {
+        return refused(null, 'hold_not_releasing')
+      }
       const reason = hold.reason ?? command.reason
       await setHold(stx, hold, 'released', { reason })
       await logHold(stx, payment, hold, 'released', reason)
       await touchPaymentTables(stx, payment)
-      const released = await settleIfLetGo(stx, payment)
-      return at(command, payment, released ? 'released' : payment.state, true, {
+      // The last hold let go after the close ends the share's captures.
+      const finished = await finishCaptures(stx, share.locked, payment)
+      const released = finished === null && (await settleIfLetGo(stx, payment))
+      return at(command, payment, finished ?? (released ? 'released' : payment.state), true, {
         holdState: 'released',
       })
     },
@@ -951,26 +1002,46 @@ export function shareHoldCaptured() {
         await logHold(stx, payment, hold, 'capture_failed', reason)
         await raiseHoldAlert(stx, locked, hold)
       }
-      const holds = await holdsOf(stx, payment.id)
-      const pending = holds.some((row) => row.state === 'held')
-      if (pending) return at(command, payment, payment.state, true, { holdState: command.outcome })
-      const capturedMinor = sumSignedMinor(holds.map((row) => row.capturedMinor ?? 0))
-      const failed = holds.some((row) => row.state === 'capture_failed')
-      if (failed) {
-        await move(stx, locked, 'capture_failed', { reason: 'capture_refused', capturedMinor })
-        return at(command, payment, 'capture_failed', true)
+      const finished = await finishCaptures(stx, locked, payment)
+      if (finished === null) {
+        return at(command, payment, payment.state, true, { holdState: command.outcome })
       }
-      // One fiscal receipt for the share, no emailed one (2.19): the waiter brings paper (#200).
-      await move(
-        stx,
-        locked,
-        'captured',
-        { capturedMinor, receiptToBringAt: await stx.dbNow() },
-        { receiptToBring: true },
-      )
-      return at(command, payment, 'captured', true)
+      return at(command, payment, finished, true)
     },
   })
+}
+
+/**
+ * Ends a closed share once every hold is final (`share.hold_captured`, `share.hold_settle`):
+ * `captured` with what every hold took, or `capture_failed` where one failed. Never while a hold
+ * is still held or still to be let go: a hold let go before the cover is released first, so no
+ * guest's card stays held behind a payment that reads as done. Null while one is left.
+ */
+async function finishCaptures(
+  stx: ServiceTx,
+  locked: Locked,
+  payment: PaymentRow,
+): Promise<'captured' | 'capture_failed' | null> {
+  const capturable =
+    payment.state === 'closed' ||
+    (payment.state === 'unconfirmed' && payment.reason === 'receipt_printed')
+  if (!capturable) return null
+  const holds = await holdsOf(stx, payment.id)
+  if (holds.some((row) => !isFinalHold(row.state))) return null
+  const capturedMinor = sumSignedMinor(holds.map((row) => row.capturedMinor ?? 0))
+  if (holds.some((row) => row.state === 'capture_failed')) {
+    await move(stx, locked, 'capture_failed', { reason: 'capture_refused', capturedMinor })
+    return 'capture_failed'
+  }
+  // One fiscal receipt for the share, no emailed one (2.19): the waiter brings paper (#200).
+  await move(
+    stx,
+    locked,
+    'captured',
+    { capturedMinor, receiptToBringAt: await stx.dbNow() },
+    { receiptToBring: true },
+  )
+  return 'captured'
 }
 
 /** The owners' alert for one hold whose capture failed: that hold's amount (D127 3.14). */

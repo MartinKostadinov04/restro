@@ -30,6 +30,7 @@
 
 import {
   billReadings,
+  PAYMENT_HOLD_FINAL_STATES,
   paymentHolds,
   paymentLines,
   paymentSteps,
@@ -336,7 +337,7 @@ async function releaseShareHolds(stx: ServiceTx, id: string, reason: string): Pr
     ).map((step) => step.holdId),
   )
   for (const hold of holds) {
-    if (SETTLED_HOLDS.includes(hold.state)) continue
+    if (isFinalHold(hold.state)) continue
     if (hold.state !== 'requested' || touched.has(hold.id)) {
       throw new Error(
         'a group payment was released while one of its holds may stand at the provider',
@@ -355,8 +356,10 @@ async function releaseShareHolds(stx: ServiceTx, id: string, reason: string): Pr
   }
 }
 
-/** The final states of a group payment's hold (`PAYMENT_HOLD_FINAL_STATES` in `@restro/db`). */
-const SETTLED_HOLDS: readonly string[] = ['released', 'captured', 'capture_failed']
+/** True for a group payment's hold in a final state (`PAYMENT_HOLD_FINAL_STATES`). */
+export function isFinalHold(state: string): boolean {
+  return (PAYMENT_HOLD_FINAL_STATES as readonly string[]).includes(state)
+}
 
 /**
  * A pay-first payment that ended before its round reached the POS (#113): its lines are free on the
@@ -589,17 +592,20 @@ async function startPayment(
   // A repeat of the same tap finds its payment. The phone that repeats never got the first
   // answer (or lost it), so the handle it holds now is the new one: the hash is replaced.
   const [repeat] = await stx.tx
-    .select({ id: payments.id, state: payments.state, tableId: payments.tableId })
+    .select({
+      id: payments.id,
+      state: payments.state,
+      tableId: payments.tableId,
+      sharedMinor: payments.sharedMinor,
+    })
     .from(payments)
     .where(eq(payments.actionId, command.actionId))
   if (repeat !== undefined) {
     if (repeat.tableId !== command.tableId) return refuse('unknown_payment')
     // A repeat names the same kind of start: a Pay's action id never answers a share's.
-    const [kind] = await stx.tx
-      .select({ sharedMinor: payments.sharedMinor })
-      .from(payments)
-      .where(eq(payments.id, repeat.id))
-    if ((kind?.sharedMinor != null) !== share) return refused(command.actionId, 'invalid_command')
+    if ((repeat.sharedMinor !== null) !== share) {
+      return refused(command.actionId, 'invalid_command')
+    }
     await stx.tx
       .update(payments)
       .set({ handleHash: command.handleHash, ...stx.provenance, updatedAt: sql`now()` })
@@ -1268,7 +1274,7 @@ export async function shareHoldsPending(stx: ServiceTx, id: string): Promise<boo
     .select({ state: paymentHolds.state })
     .from(paymentHolds)
     .where(eq(paymentHolds.paymentId, id))
-  return holds.some((hold) => !SETTLED_HOLDS.includes(hold.state) && hold.state !== 'requested')
+  return holds.some((hold) => !isFinalHold(hold.state) && hold.state !== 'requested')
 }
 
 /** True once a close of the payment's bill was attempted: from then on it is never undone (#111). */

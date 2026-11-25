@@ -72,7 +72,7 @@ import {
   locationPassExpiry,
   locationVerdict,
 } from '../location-check'
-import { sumSignedMinor } from '../money'
+import { shareRestMinor, sumSignedMinor } from '../money'
 import { type OrderingSettings, readOrderingSettings } from '../ordering-settings'
 import { CARD_FLOOR_MINOR, readPayingSettings, smallestCardMinor } from '../paying-settings'
 import { FAST_POLL_MS } from '../poll-cadence'
@@ -90,7 +90,7 @@ import {
   wantsFreshReading,
 } from './bill'
 import type { ServiceContext } from './context'
-import { partOf } from './group-payment'
+import { partOf, SHARE_ACTIVE_HOLD_STATES } from './group-payment'
 import { GuestLimiter, type GuestLimitName, type LimitAnswer } from './guest-limits'
 import {
   type LocationPassClaims,
@@ -2146,9 +2146,6 @@ export async function guestPayment(
 /** How long an ended share stays on the table's phones, so each reads why it ended. */
 const SHARE_SHOWN_AFTER_MS = 10 * 60_000
 
-/** The hold states that count towards the share: asked for, at the card form, or held. */
-const ACTIVE_HOLDS: readonly string[] = ['requested', 'awaiting_guest', 'held']
-
 /** What every phone of the table, and of its linked group, sees of a share of the bill. */
 export interface GuestShareView {
   readonly id: string
@@ -2305,8 +2302,7 @@ export async function guestShare(
         (hold) =>
           hold.state === 'awaiting_guest' && hold.confirmBy !== null && hold.confirmBy <= now,
       ))
-  const job =
-    gathering && pending ? 'prepare' : (paymentWorkerJob(payment) ?? (overdue ? 'check' : null))
+  const job = pending ? 'prepare' : (paymentWorkerJob(payment) ?? (overdue ? 'check' : null))
   if (job !== null) {
     await input.queuePayment?.(
       { tenantId: target.tenantId, venueId: target.venueId, paymentId: payment.id },
@@ -2314,11 +2310,11 @@ export async function guestShare(
     )
   }
 
-  const active = holds.filter((hold) => ACTIVE_HOLDS.includes(hold.state))
-  const claimedMinor = active.reduce((sum, hold) => sum + partOf(hold), 0)
-  const heldMinor = holds
-    .filter((hold) => hold.state === 'held' || hold.state === 'captured')
-    .reduce((sum, hold) => sum + partOf(hold), 0)
+  const active = holds.filter((hold) => SHARE_ACTIVE_HOLD_STATES.includes(hold.state))
+  const claimedMinor = sumSignedMinor(active.map(partOf))
+  const heldMinor = sumSignedMinor(
+    holds.filter((hold) => hold.state === 'held' || hold.state === 'captured').map(partOf),
+  )
   const values: Record<string, string> = {}
   for (const [key, value] of Object.entries(mine?.formValues ?? {})) {
     if (typeof value === 'string') values[key] = value
@@ -2332,7 +2328,7 @@ export async function guestShare(
     sharedMinor,
     heldMinor,
     claimedMinor,
-    leftMinor: Math.max(0, sharedMinor - claimedMinor),
+    leftMinor: shareRestMinor(sharedMinor, claimedMinor),
     minimumMinor: smallestCardMinor(
       readPayingSettings(found.venue?.settings ?? {}),
       CARD_FLOOR_MINOR,
