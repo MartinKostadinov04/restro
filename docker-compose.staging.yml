@@ -39,6 +39,10 @@ services:
       LOCAL_ASSET_DIR: /data/assets
       LOCAL_PUBLISH_DIR: /data/cdn
       WORKER_REVEAL_URL: http://worker:8081
+      # No Cloudflare in front of staging: the guest's address is the last X-Forwarded-For entry,
+      # the one the platform's proxy adds; headers a visitor can send (CF-Connecting-IP, X-Real-IP)
+      # are ignored by the wrong-code limiter.
+      CLIENT_ADDRESS_FROM: proxy
       # Required on staging.
       DATABASE_URL: ${DATABASE_URL:?}
       SUPABASE_CA_CERT: ${SUPABASE_CA_CERT:?}
