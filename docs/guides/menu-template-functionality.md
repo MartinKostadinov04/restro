@@ -327,6 +327,20 @@ Decided in #45 (D127, "The guest's bill screen"; Martin read them in the prototy
 | `restBelowMinimum` | Refusal: would leave the others a rest nobody could pay (`rest_below_minimum`) | Така ще остане по-малко от {min} за останалите. | That would leave less than {min} for the others. |
 
 
+## The booking page
+
+### Book a table
+- **Shell key:** none; the renderer's optional booking screen (`BookingHostProps`, shell `booking.ts`), drawn at `/book/<organisation>/<venue>`
+- **Status:** supported
+- **Drawn means:** (#577; spec #322) a page of its own, not a screen of the menu: it needs no table code. The host gives the screen the venue's Style (`view`, the menu snapshot's), what the venue's booking file says (`booking`: `bookingViewOf`, the venue's name, whether online booking is on, and the nights it offers with their labels) and the form's binding; the words are the shell's (`stringsFor(locale).booking`, both languages). The template draws:
+  - with online booking on, the form: the night (a list of the nights the club is open, from today to 90 nights ahead; a night outside the hours or already past is not in it; a closed date is in it, marked "(closed)"), how many guests, name, phone and email (all required) and a note (optional), then "Send the request";
+  - a chosen night the club closed, or one the server's night answer (`binding.night`) refuses, says why in the refusal's words, which always name another way ("The club is closed that night. Choose another night, or call the club."), with Send off; a refused request shows its refusal the same way (`binding.refusal`) and the form stays filled;
+  - while sending, "Sending…" and Send off; once the server took it (D72, `binding.stage` `sent`), the answer in place of the form: "Your request is with the club" and "The club will look at it and send you an email.", never before;
+  - with online booking off, "No online bookings" and "This club takes no online bookings. Call the club or ask at the door.", with no form and no link.
+  - A renderer without a booking screen gets the host's notice "Online booking is not available" instead (shell words `unavailableTitle`, `unavailableText`).
+- **What the platform does (#577):** the owner's switch (Settings › Reservations › Online booking) and the venue's hours and closed dates make the booking file `b/<venue id>.json`, which the worker publishes beside the menu (prefixed ids and public fields only). `GET /api/booking/night` answers one thing, whether a night can be booked; `POST /api/booking` sends the request behind Turnstile (action `booking_request`) as the guest command `reservation.request`, which arrives as Requested with no spot; a hostess answers it in Reservations (#578). The guest chooses no status, spot or id.
+- **Where:** D72, D101, D105, D136
+
 ## Later
 
 ### Request a song from the DJ
@@ -334,12 +348,6 @@ Decided in #45 (D127, "The guest's bill screen"; Martin read them in the prototy
 - **Status:** decided, not in the contract yet
 - **Drawn means:** nothing yet; the slot and contract wait for the song-request port (T82, Q78).
 - **Where:** D99, D100
-
-### Reserve a table
-- **Shell key:** none yet
-- **Status:** planned
-- **Drawn means:** nothing; reservations are a hosted page first, after ordering from the menu.
-- **Where:** D101
 
 ---
 
