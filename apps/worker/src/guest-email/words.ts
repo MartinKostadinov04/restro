@@ -39,8 +39,8 @@ const NEWS: Readonly<
 > = {
   reservation_cancelled: {
     bg: {
-      subject: 'Резервацията ви е отказана',
-      headline: (venue) => `Резервацията ви в ${venue} е отказана.`,
+      subject: 'Резервацията ви е отменена',
+      headline: (venue) => `Резервацията ви в ${venue} е отменена.`,
     },
     en: {
       subject: 'Your reservation is cancelled',

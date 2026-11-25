@@ -69,7 +69,7 @@ describe('the guest email job (#576)', () => {
     const [email] = sender.guestSent
     expect(email?.to).toBe(ADDRESS)
     expect(email?.venueName).toBe('Club Нощ')
-    expect(email?.words.subject).toBe('Резервацията ви е отказана')
+    expect(email?.words.subject).toBe('Резервацията ви е отменена')
     expect(email?.words.text).toContain('Club Нощ')
     expect(email?.idempotencyKey).toBe(`${job.reservationId}-reservation_cancelled-17`)
     expect(sender.sent).toEqual([])

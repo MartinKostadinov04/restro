@@ -15,9 +15,9 @@ const FACTS = {
 describe('the words of a guest email (#576)', () => {
   it('says a cancellation in Bulgarian: the venue, what happened, the night, the hour, the party', () => {
     expect(guestEmailWords('reservation_cancelled', 'bg', FACTS)).toEqual({
-      subject: 'Резервацията ви е отказана',
+      subject: 'Резервацията ви е отменена',
       text: [
-        'Резервацията ви в Club Нощ е отказана.',
+        'Резервацията ви в Club Нощ е отменена.',
         '',
         'Вечер: събота, 28 ноември',
         'Час: 22:30',
@@ -52,6 +52,13 @@ describe('the words of a guest email (#576)', () => {
         expect(`${subject}\n${text}`).not.toMatch(/receipt|бележк|<|https?:/i)
       }
     }
+  })
+
+  it('says cancelled as „отменена“, never as declined („отказана“ is #578’s Declined)', () => {
+    const { subject, text } = guestEmailWords('reservation_cancelled', 'bg', FACTS)
+    expect(subject).toContain('отменена')
+    expect(text).toContain('отменена')
+    expect(`${subject}\n${text}`).not.toMatch(/отказ/i)
   })
 
   it('reads the night from the service day and the hour on the venue’s clock', () => {

@@ -205,8 +205,8 @@ describe('the same sender for every other guest email (#576)', () => {
     to: GUEST,
     venueName: 'Club "Нощ"',
     words: {
-      subject: 'Резервацията ви е отказана',
-      text: 'Резервацията ви в Club Нощ е отказана.',
+      subject: 'Резервацията ви е отменена',
+      text: 'Резервацията ви в Club Нощ е отменена.',
     },
     idempotencyKey: 'rv_abc-reservation_cancelled-17',
   }
