@@ -1,6 +1,8 @@
-// The worker's HTTP server, on node:http (no framework). Railway (and later an external uptime
-// check) probes `GET /health`; the answer comes from memory (see health.ts), never from the
-// database. The other routes are for the web app's server on the private network only: the reveal
+// The worker's HTTP server, on node:http (no framework). The hosting platform's health check (and
+// later an external uptime check) probes `GET /health`; the answer comes from memory (see
+// health.ts), never from the database. The other routes are for the web app's server on the
+// private network only (Railway: `*.railway.internal`; Docker Compose: the service name listed in
+// WORKER_PRIVATE_HOSTS; see `isPrivateHost` in reveal.ts): the reveal
 // endpoint (`POST /internal/reveal`, reveal.ts, #70) and the Telegram link endpoint
 // (`POST /internal/telegram`, alerts/telegram-link-api.ts, #87) and the payment connection
 // endpoint (`POST /internal/payments/connection`, payments/connection-api.ts, #109). Each exists once the worker has set
@@ -109,10 +111,11 @@ async function answerInternal<Request, Answer extends { readonly status: string 
   request: IncomingMessage,
   send: Send,
   endpoint: Internal<Request, Answer>,
+  privateHosts: readonly string[],
 ): Promise<void> {
   const { handler } = endpoint
   // Off, or asked through a public name: as if there were nothing here.
-  if (handler === null || !isPrivateHost(request.headers.host)) {
+  if (handler === null || !isPrivateHost(request.headers.host, privateHosts)) {
     send(404, { error: 'not found' })
     return
   }
@@ -144,11 +147,25 @@ async function answerInternal<Request, Answer extends { readonly status: string 
   }
 }
 
+/** Settings of {@link startHealthServer}. */
+export interface HealthServerOptions {
+  /**
+   * Host names the internal endpoints answer besides `localhost` and `*.railway.internal`
+   * (WORKER_PRIVATE_HOSTS, e.g. `worker` on Docker Compose). Default: none.
+   */
+  readonly privateHosts?: readonly string[]
+}
+
 /**
  * Starts listening on `port` (all interfaces, so another container can probe it) and answers
  * `GET /health` with `report()`. Rejects if the port cannot be bound.
  */
-export function startHealthServer(port: number, report: () => HealthReport): Promise<HealthServer> {
+export function startHealthServer(
+  port: number,
+  report: () => HealthReport,
+  options: HealthServerOptions = {},
+): Promise<HealthServer> {
+  const privateHosts = options.privateHosts ?? []
   let revealHandler: RevealHandler | null = null
   let telegramHandler: TelegramLinkHandler | null = null
   let connectionHandler: ConnectionHandler | null = null
@@ -166,40 +183,55 @@ export function startHealthServer(port: number, report: () => HealthReport): Pro
 
     if (path === REVEAL_PATH) {
       const handler = revealHandler
-      void answerInternal(request, send, {
-        handler,
-        parse: (value) => {
-          const result = RevealRequestSchema.safeParse(value)
-          return result.success ? result.data : null
+      void answerInternal(
+        request,
+        send,
+        {
+          handler,
+          parse: (value) => {
+            const result = RevealRequestSchema.safeParse(value)
+            return result.success ? result.data : null
+          },
+          limit: MAX_REVEAL_BODY_BYTES,
+          run: (parsed: RevealRequest) => (handler as RevealHandler).reveal(parsed),
+          failure: 'reveal failed',
         },
-        limit: MAX_REVEAL_BODY_BYTES,
-        run: (parsed: RevealRequest) => (handler as RevealHandler).reveal(parsed),
-        failure: 'reveal failed',
-      })
+        privateHosts,
+      )
     } else if (path === TELEGRAM_PATH) {
       const handler = telegramHandler
-      void answerInternal(request, send, {
-        handler,
-        parse: (value) => {
-          const result = TelegramRequestSchema.safeParse(value)
-          return result.success ? result.data : null
+      void answerInternal(
+        request,
+        send,
+        {
+          handler,
+          parse: (value) => {
+            const result = TelegramRequestSchema.safeParse(value)
+            return result.success ? result.data : null
+          },
+          limit: MAX_TELEGRAM_BODY_BYTES,
+          run: (parsed: TelegramRequest) => (handler as TelegramLinkHandler).handle(parsed),
+          failure: 'request failed',
         },
-        limit: MAX_TELEGRAM_BODY_BYTES,
-        run: (parsed: TelegramRequest) => (handler as TelegramLinkHandler).handle(parsed),
-        failure: 'request failed',
-      })
+        privateHosts,
+      )
     } else if (path === CONNECTION_PATH) {
       const handler = connectionHandler
-      void answerInternal(request, send, {
-        handler,
-        parse: (value) => {
-          const result = ConnectionRequestSchema.safeParse(value)
-          return result.success ? result.data : null
+      void answerInternal(
+        request,
+        send,
+        {
+          handler,
+          parse: (value) => {
+            const result = ConnectionRequestSchema.safeParse(value)
+            return result.success ? result.data : null
+          },
+          limit: MAX_CONNECTION_BODY_BYTES,
+          run: (parsed: ConnectionRequest) => (handler as ConnectionHandler).handle(parsed),
+          failure: 'request failed',
         },
-        limit: MAX_CONNECTION_BODY_BYTES,
-        run: (parsed: ConnectionRequest) => (handler as ConnectionHandler).handle(parsed),
-        failure: 'request failed',
-      })
+        privateHosts,
+      )
     } else if (path !== HEALTH_PATH) {
       send(404, { error: 'not found' })
     } else if (request.method !== 'GET' && request.method !== 'HEAD') {

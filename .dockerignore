@@ -1,0 +1,31 @@
+# What the image builds never need (the root Dockerfile copies the repository after this list).
+
+# Dependencies and build output: the images install and build their own.
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/*.tsbuildinfo
+**/next-env.d.ts
+.pnpm-store
+
+# Local data, history, documentation and editor files
+.local
+docs
+.git
+.claude
+.vscode
+.idea
+**/.DS_Store
+**/*.log
+
+# Settings and secrets: never in an image. Only the committed example.
+**/.env
+**/.env.*
+!.env.example
+
+# Test reports and coverage
+**/coverage
+**/playwright-report
+**/test-results
+**/blob-report

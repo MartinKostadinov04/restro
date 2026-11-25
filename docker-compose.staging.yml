@@ -1,0 +1,152 @@
+# Restro's STAGING deployment: the web app, the worker and the simulated POS, built from the root
+# Dockerfile (one target each). Staging only; the root docker-compose.yml is the optional local
+# Postgres and has nothing to do with this file.
+#
+# - The database is the hosted staging database, reached through DATABASE_URL; there is no
+#   database service here. Migrations are NOT run by this file or by any image: the "DB migrate
+#   (staging)" GitHub workflow (.github/workflows/db-migrate-staging.yml) stays the only way.
+# - No service publishes a port. The platform's proxy reaches `web` by its domain (container port
+#   3000); `worker` and `sim-pos` are on this deployment's private network only, by service name.
+# - `web` and `worker` share one named volume at /data: the worker writes photos and published
+#   menus there and the web app serves them (/cdn), so a published menu survives a redeploy.
+# - Fixed, non-secret values are written below. Every secret or per-deployment value is a
+#   variable: `${NAME:?}` is required (the deploy stops while it is empty), `${NAME:-}` optional.
+# - Nothing here names a host Restro must keep: production may build the same Dockerfile targets
+#   and run them anywhere.
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+      # Inlined into the bundle by `next build`; the build stops if one is missing or, for the
+      # publishable key, not a test key (apps/web/scripts/check-build-env.ts).
+      args:
+        NEXT_PUBLIC_CDN_BASE_URL: ${NEXT_PUBLIC_CDN_BASE_URL:?}
+        NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:?}
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:?}
+        PAYMENTS_ENV: staging
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      BARSY_ENV: staging
+      PAYMENTS_ENV: staging
+      PAYMENTS_PROVIDER: stripe
+      ASSET_STORE: local
+      PUBLISH_STORE: local
+      LOCAL_ASSET_DIR: /data/assets
+      LOCAL_PUBLISH_DIR: /data/cdn
+      WORKER_REVEAL_URL: http://worker:8081
+      # Required on staging.
+      DATABASE_URL: ${DATABASE_URL:?}
+      SUPABASE_CA_CERT: ${SUPABASE_CA_CERT:?}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}
+      SEAL_PUBLIC_KEY: ${SEAL_PUBLIC_KEY:?}
+      REVEAL_SERVICE_TOKEN: ${REVEAL_SERVICE_TOKEN:?}
+      STAFF_PIN_PEPPER: ${STAFF_PIN_PEPPER:?}
+      GUEST_PASS_KEY: ${GUEST_PASS_KEY:?}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:?}
+      STRIPE_NOTICE_SECRET: ${STRIPE_NOTICE_SECRET:?}
+      # Optional.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+    volumes:
+      - restro-data:/data
+    depends_on:
+      worker:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    restart: unless-stopped
+    init: true
+    # pg-boss gives running jobs 20 seconds at a stop (apps/worker/src/shutdown.ts).
+    stop_grace_period: 30s
+    environment:
+      # No NODE_ENV=production: it would refuse the simulated POS. BARSY_ENV=staging is the label.
+      BARSY_ENV: staging
+      PAYMENTS_ENV: staging
+      ASSET_STORE: local
+      PUBLISH_STORE: local
+      LOCAL_ASSET_DIR: /data/assets
+      LOCAL_PUBLISH_DIR: /data/cdn
+      WORKER_HEALTH_PORT: '8081'
+      WORKER_PRIVATE_HOSTS: worker
+      SIM_POS_ALLOWED_HOSTS: sim-pos
+      LOG_LEVEL: info
+      # Required on staging.
+      DATABASE_URL: ${DATABASE_URL:?}
+      DATABASE_URL_PURGE: ${DATABASE_URL_PURGE:?}
+      SUPABASE_CA_CERT: ${SUPABASE_CA_CERT:?}
+      SEAL_PUBLIC_KEY: ${SEAL_PUBLIC_KEY:?}
+      SEAL_PRIVATE_KEY: ${SEAL_PRIVATE_KEY:?}
+      REVEAL_SERVICE_TOKEN: ${REVEAL_SERVICE_TOKEN:?}
+      BILL_ID_KEY: ${BILL_ID_KEY:?}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?}
+      # Optional.
+      STRIPE_REFUND_KEY: ${STRIPE_REFUND_KEY:-}
+      BARSY_PRODUCTION_HOSTS: ${BARSY_PRODUCTION_HOSTS:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_TEAM_CHAT_ID: ${TELEGRAM_TEAM_CHAT_ID:-}
+      HEALTHCHECKS_PING_URL: ${HEALTHCHECKS_PING_URL:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RECEIPT_FROM_ADDRESS: ${RECEIPT_FROM_ADDRESS:-}
+    volumes:
+      - restro-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:8081/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # Healthy after pg-boss starts and the first heartbeat job runs (within about a minute).
+      start_period: 120s
+
+  sim-pos:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: sim-pos
+    restart: unless-stopped
+    init: true
+    environment:
+      # Required: without it the simulator listens on this machine only, and every control call
+      # needs it. Never routed through the proxy (no domain, no port).
+      SIM_POS_CONTROL_TOKEN: ${SIM_POS_CONTROL_TOKEN:?}
+      # Optional: the scenario it starts with (a file under packages/connectors/sim-pos/scenarios).
+      SIM_POS_SCENARIO: ${SIM_POS_SCENARIO:-quiet-night}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:4010/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  restro-data:
